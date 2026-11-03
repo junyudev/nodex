@@ -78,7 +78,8 @@ describe("Maitai scoped lifecycle", () => {
     function Capture() {
       const handle = useScopeHandle(scope);
       useLayoutEffect(() => {
-        owner ??= handle;
+        if (owner) return;
+        owner = handle;
       }, [handle]);
       return null;
     }

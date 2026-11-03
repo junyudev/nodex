@@ -3,6 +3,7 @@ import { collectCodexSubagentThreadIds } from "../../shared/codex-subagent-metad
 import { conversationTurnsWithOverlay } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { readLocalConversation } from "@/features/local-conversation/local-conversation-store";
 import {
+  useLayoutEffect,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -252,7 +253,9 @@ export function useWorkbenchSessionCommands({
   const queryClient = useQueryClient();
   const launchAgentRuntimeSession = useAgentRuntimeSessionLaunch();
   const panelControllerRef = useRef(controller);
-  panelControllerRef.current = controller;
+  useLayoutEffect(() => {
+    panelControllerRef.current = controller;
+  }, [controller]);
   const subagentSelectionRequestRef = useRef(0);
   const runtimeNavigationRequestRef = useRef(0);
   const { pendingProcessOutputOpen } = controller;

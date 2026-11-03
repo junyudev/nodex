@@ -177,11 +177,9 @@ export function DatabaseMoveDestinationPickerSurface({
     : undefined;
   const pickerDisabled = acceptingRowId !== null || stale;
 
+  if (!loading && showLoading) setShowLoading(false);
   useEffect(() => {
-    if (!loading) {
-      setShowLoading(false);
-      return;
-    }
+    if (!loading) return;
     const timer = window.setTimeout(() => setShowLoading(true), LOAD_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [loading]);

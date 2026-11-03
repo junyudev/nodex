@@ -198,10 +198,6 @@ function MarkdownNativeImage({
     }
     return parent?.registerResources(names, true);
   }, [src, parent]);
-  useEffect(() => {
-    const image = ref.current;
-    if (image?.complete && image.naturalWidth > 0) parent?.loaded(image);
-  }, [src, srcSet, parent]);
   const image = (
     <img
       {...props}
@@ -212,6 +208,7 @@ function MarkdownNativeImage({
       ref={(element) => {
         ref.current = element;
         parent?.attach(element);
+        if (element?.complete && element.naturalWidth > 0) parent?.loaded(element);
       }}
       onLoad={(event) => {
         parent?.loaded(event.currentTarget);

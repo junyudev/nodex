@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { act, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test } from "vite-plus/test";
 import { render } from "@/test/dom";
@@ -79,7 +80,9 @@ describe("card detail store", () => {
 
     let renderCount = 0;
     function RenderCountHarness() {
-      renderCount += 1;
+      useLayoutEffect(() => {
+        renderCount += 1;
+      });
       const detail = useDatabaseRowDetail("project-1", "card-1");
       return <span data-testid="detail-title">{detail.card?.title ?? "empty"}</span>;
     }
@@ -114,7 +117,9 @@ describe("card detail store", () => {
 
     let renderCount = 0;
     function RenderCountHarness() {
-      renderCount += 1;
+      useLayoutEffect(() => {
+        renderCount += 1;
+      });
       const detail = useDatabaseRowDetail("project-1", "card-1");
       return <span data-testid="detail-title">{detail.card?.title ?? "empty"}</span>;
     }
@@ -155,12 +160,16 @@ describe("card detail store", () => {
     let firstRenderCount = 0;
     let secondRenderCount = 0;
     function FirstHarness() {
-      firstRenderCount += 1;
+      useLayoutEffect(() => {
+        firstRenderCount += 1;
+      });
       const detail = useDatabaseRowDetail("project-1", "card-1");
       return <span data-testid="first-title">{detail.card?.title ?? "empty"}</span>;
     }
     function SecondHarness() {
-      secondRenderCount += 1;
+      useLayoutEffect(() => {
+        secondRenderCount += 1;
+      });
       const detail = useDatabaseRowDetail("project-1", "card-2");
       return <span data-testid="second-title">{detail.card?.title ?? "empty"}</span>;
     }

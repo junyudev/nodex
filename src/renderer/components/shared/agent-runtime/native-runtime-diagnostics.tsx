@@ -27,10 +27,14 @@ function NativeRuntimeDiagnosticsDialog({
 }: ModalCloseProps & { readonly read: () => Promise<ClaudeRuntimeDiagnostics> }) {
   const [diagnostics, setDiagnostics] = useState<ClaudeRuntimeDiagnostics | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let current = true;
+  const [previousRead, setPreviousRead] = useState(() => read);
+  if (previousRead !== read) {
+    setPreviousRead(() => read);
     setDiagnostics(null);
     setError(null);
+  }
+  useEffect(() => {
+    let current = true;
     void read().then(
       (value) => {
         if (current) setDiagnostics(value);

@@ -21,14 +21,14 @@ function ScrollProbe({
   scrollKey: string | null;
   retryFrames?: 0 | 1 | 2;
 }) {
-  const retainedScroll = useRetainedScrollPosition<HTMLDivElement>(scrollKey, {
+  const { ref, onScroll } = useRetainedScrollPosition<HTMLDivElement>(scrollKey, {
     retryFrames,
   });
   return (
     <div
-      ref={retainedScroll.ref}
+      ref={ref}
       data-testid="scroll-probe"
-      onScroll={retainedScroll.onScroll}
+      onScroll={onScroll}
       style={{ height: 40, width: 40, overflow: "auto" }}
     >
       <div style={{ height: 400, width: 400 }} />

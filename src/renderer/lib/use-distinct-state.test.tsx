@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { act } from "@testing-library/react";
 import { describe, expect, test } from "vite-plus/test";
 
@@ -5,15 +6,18 @@ import { render, settleAsyncRender } from "@/test/dom";
 import { useDistinctState, type SetDistinctState } from "./use-distinct-state";
 
 describe("useDistinctState", () => {
-  test("enters React only for semantic value transitions", async () => {
+  test("commits React updates only for semantic value transitions", async () => {
     let renderCount = 0;
     let value = false;
     let setValue: SetDistinctState<boolean> = () => false;
     let getValue = () => false;
 
     function Harness() {
-      renderCount += 1;
-      [value, setValue, getValue] = useDistinctState(false);
+      const state = useDistinctState(false);
+      useLayoutEffect(() => {
+        renderCount += 1;
+        [value, setValue, getValue] = state;
+      });
       return null;
     }
 
@@ -45,12 +49,15 @@ describe("useDistinctState", () => {
     let setValue: SetDistinctState<string[]> = () => false;
 
     function Harness() {
-      renderCount += 1;
-      [value, setValue] = useDistinctState(
+      const state = useDistinctState(
         ["session:a"],
         (current, next) =>
           current.length === next.length && current.every((entry, index) => entry === next[index]),
       );
+      useLayoutEffect(() => {
+        renderCount += 1;
+        [value, setValue] = state;
+      });
       return null;
     }
 

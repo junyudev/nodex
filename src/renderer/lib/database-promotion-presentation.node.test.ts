@@ -115,7 +115,13 @@ describe("Database promotion presentation", () => {
       },
     });
 
-    expect(owner.project(null, new Set()).model.slots).toEqual([
+    const currentRevision = owner.getSnapshot();
+    expect(owner.project(currentRevision - 1, null, new Set())).toEqual({
+      model: { evidence: null, pageIds: new Set(), slots: [] },
+      renderToken: null,
+    });
+
+    expect(owner.project(owner.getSnapshot(), null, new Set()).model.slots).toEqual([
       expect.objectContaining({
         kind: "predicted_promotion",
         operationId: "promotion",
@@ -139,7 +145,7 @@ describe("Database promotion presentation", () => {
     });
     await plan;
     await Promise.resolve();
-    expect(owner.project(null, new Set()).model.slots[0]?.previews).toEqual([
+    expect(owner.project(owner.getSnapshot(), null, new Set()).model.slots[0]?.previews).toEqual([
       { rootBlockId: "source", title: "Source", resultPageId: "wrapped-page" },
     ]);
 
@@ -149,7 +155,7 @@ describe("Database promotion presentation", () => {
       dataSourceId: "source",
       pageIds: ["wrapped-page"],
     });
-    expect(owner.project(null, new Set()).model.slots).toHaveLength(0);
+    expect(owner.project(owner.getSnapshot(), null, new Set()).model.slots).toHaveLength(0);
 
     notify?.({
       status: "committed",
@@ -160,7 +166,7 @@ describe("Database promotion presentation", () => {
         resultRootBlockIds: ["wrapped-page"],
       },
     });
-    expect(owner.project(null, new Set()).model.slots).toHaveLength(0);
+    expect(owner.project(owner.getSnapshot(), null, new Set()).model.slots).toHaveLength(0);
 
     localStructuralTransactionPresentation.reject("move-away");
     localStructuralTransactionPresentation.reject("promotion");
@@ -171,23 +177,30 @@ describe("Database promotion presentation", () => {
     const { owner, accept, refresh } = fixture();
     const notify = accept();
     notify(ack);
-    expect(owner.project(null, new Set(["page"])).renderToken).toBeNull();
-    expect(owner.project(read([], 19), new Set()).renderToken).toBeNull();
+    expect(owner.project(owner.getSnapshot(), null, new Set(["page"])).renderToken).toBeNull();
+    expect(owner.project(owner.getSnapshot(), read([], 19), new Set()).renderToken).toBeNull();
     expect(
-      owner.project({ ...read([]), identity: "other-panel" }, new Set()).renderToken,
+      owner.project(owner.getSnapshot(), { ...read([]), identity: "other-panel" }, new Set())
+        .renderToken,
     ).toBeNull();
     const changedWindow = { ...read(["page"]), windowKey: "other-window" };
-    const gap = owner.project(changedWindow, new Set(), new Set(["page"]));
+    const gap = owner.project(owner.getSnapshot(), changedWindow, new Set(), new Set(["page"]));
     expect(gap.renderToken).toBeNull();
     expect(gap.model.slots).toHaveLength(1);
-    const candidate = owner.project(changedWindow, new Set(["page"]), new Set(["page"]));
+    const candidate = owner.project(
+      owner.getSnapshot(),
+      changedWindow,
+      new Set(["page"]),
+      new Set(["page"]),
+    );
     expect(candidate.model.slots).toHaveLength(0);
     expect(owner.getActivity().acknowledged).toBe(1);
-    owner.project(null, new Set());
+    owner.project(owner.getSnapshot(), null, new Set());
     owner.markRendered(candidate.renderToken!);
     expect(owner.getActivity().acknowledged).toBe(1);
     owner.markRendered(
-      owner.project(changedWindow, new Set(["page"]), new Set(["page"])).renderToken!,
+      owner.project(owner.getSnapshot(), changedWindow, new Set(["page"]), new Set(["page"]))
+        .renderToken!,
     );
     expect(owner.getActivity().acknowledged).toBe(0);
     await Promise.resolve();
@@ -236,7 +249,7 @@ describe("Database promotion presentation", () => {
     });
     await plan;
     await Promise.resolve();
-    expect(owner.project(null, new Set()).model.slots).toHaveLength(1);
+    expect(owner.project(owner.getSnapshot(), null, new Set()).model.slots).toHaveLength(1);
 
     notify?.({
       status: "committed",
@@ -245,7 +258,7 @@ describe("Database promotion presentation", () => {
     });
 
     expect(owner.getActivity().acknowledged).toBe(1);
-    expect(owner.project(read([], 19), new Set()).model.slots).toHaveLength(1);
+    expect(owner.project(owner.getSnapshot(), read([], 19), new Set()).model.slots).toHaveLength(1);
     localStructuralTransactionPresentation.reject("planned");
     detach();
   });
@@ -255,12 +268,12 @@ describe("Database promotion presentation", () => {
     accept()(ack);
     const reshaped = { ...read([]), windowKey: "through:next-window" };
 
-    const staleVisible = owner.project(reshaped, new Set(["page"]), new Set());
+    const staleVisible = owner.project(owner.getSnapshot(), reshaped, new Set(["page"]), new Set());
     expect(staleVisible.renderToken).toBeNull();
     expect(staleVisible.model.pageIds.has("page")).toBe(true);
     expect(staleVisible.model.slots).toHaveLength(0);
 
-    const candidate = owner.project(reshaped, new Set(), new Set());
+    const candidate = owner.project(owner.getSnapshot(), reshaped, new Set(), new Set());
     expect(candidate.model.slots).toHaveLength(0);
     expect(candidate.renderToken).not.toBeNull();
     owner.markRendered(candidate.renderToken!);
@@ -271,10 +284,12 @@ describe("Database promotion presentation", () => {
     const { owner, accept } = fixture();
     const notify = accept();
     notify({ status: "recovering", reason: "Reply lost" });
-    expect(owner.project(read(["page"]), new Set(["page"])).renderToken).toBeNull();
+    expect(
+      owner.project(owner.getSnapshot(), read(["page"]), new Set(["page"])).renderToken,
+    ).toBeNull();
     expect(owner.getActivity().unknown).toBe(1);
     notify(ack);
-    const candidate = owner.project(read(["page"]), new Set(["page"]));
+    const candidate = owner.project(owner.getSnapshot(), read(["page"]), new Set(["page"]));
     expect(candidate.model.slots).toHaveLength(0);
     expect(owner.getActivity().acknowledged).toBe(1);
     owner.markRendered(candidate.renderToken!);
@@ -284,7 +299,12 @@ describe("Database promotion presentation", () => {
   test("a visible overlay cannot use another model's membership proof", () => {
     const { owner, accept } = fixture();
     accept()(ack);
-    const candidate = owner.project(read(["page"]), new Set(), new Set(["page"]));
+    const candidate = owner.project(
+      owner.getSnapshot(),
+      read(["page"]),
+      new Set(),
+      new Set(["page"]),
+    );
     expect(candidate.renderToken).toBeNull();
     expect(candidate.model.slots).toHaveLength(1);
   });
@@ -293,17 +313,20 @@ describe("Database promotion presentation", () => {
     const { owner, accept, detach, refresh } = fixture();
     const first = accept("first");
     const second = accept("second");
-    expect(owner.project(null, new Set()).model.slots.map((slot) => slot.operationId)).toEqual([
-      "first",
-      "second",
-    ]);
+    expect(
+      owner
+        .project(owner.getSnapshot(), null, new Set())
+        .model.slots.map((slot) => slot.operationId),
+    ).toEqual(["first", "second"]);
     first({ status: "rejected", reason: "Conflict" });
-    expect(owner.project(null, new Set()).model.slots.map((slot) => slot.operationId)).toEqual([
-      "second",
-    ]);
+    expect(
+      owner
+        .project(owner.getSnapshot(), null, new Set())
+        .model.slots.map((slot) => slot.operationId),
+    ).toEqual(["second"]);
     detach();
     second(ack);
-    expect(owner.project(read([]), new Set()).model.slots).toHaveLength(0);
+    expect(owner.project(owner.getSnapshot(), read([]), new Set()).model.slots).toHaveLength(0);
     expect(refresh).not.toHaveBeenCalled();
   });
 });

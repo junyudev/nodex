@@ -1,4 +1,4 @@
-import { useEffectEvent, useLayoutEffect } from "react";
+import { useLayoutEffect, useState } from "react";
 import { makeWorkbenchSceneKey } from "../../shared/workbench-scene";
 import {
   databaseViewPresentationIdentity,
@@ -13,13 +13,26 @@ export function useWorkbenchDatabaseViewPresentation(
   const owner = registration?.owner;
   const sceneKey = registration ? makeWorkbenchSceneKey(registration.sceneOwner) : null;
   const identity = registration ? databaseViewPresentationIdentity(registration.surface) : null;
-  const register = useEffectEvent(() => {
-    if (!registration || !databaseViewId) return;
-    return registration.owner.registerResolvedDatabaseView(
-      registration.sceneOwner,
-      registration.surface,
+  const [retainedRegistration, setRetainedRegistration] = useState(registration);
+  const retainedSceneKey = retainedRegistration
+    ? makeWorkbenchSceneKey(retainedRegistration.sceneOwner)
+    : null;
+  const retainedIdentity = retainedRegistration
+    ? databaseViewPresentationIdentity(retainedRegistration.surface)
+    : null;
+  if (
+    owner !== retainedRegistration?.owner ||
+    sceneKey !== retainedSceneKey ||
+    identity !== retainedIdentity
+  ) {
+    setRetainedRegistration(registration);
+  }
+  useLayoutEffect(() => {
+    if (!retainedRegistration || !databaseViewId) return;
+    return retainedRegistration.owner.registerResolvedDatabaseView(
+      retainedRegistration.sceneOwner,
+      retainedRegistration.surface,
       databaseViewId,
     );
-  });
-  useLayoutEffect(() => register(), [owner, sceneKey, identity, databaseViewId]);
+  }, [retainedRegistration, databaseViewId]);
 }

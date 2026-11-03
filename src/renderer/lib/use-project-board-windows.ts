@@ -1,5 +1,5 @@
 import { hashKey, useQueries, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useEffectEvent, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { subscribeBoardChanges } from "@/lib/api";
 import { applyBoardChangeEventToBoard } from "@/lib/board-summary-events";
 import { boardByProjectQueryOptions } from "@/lib/query-options";
@@ -7,7 +7,6 @@ import { queryKeys } from "@/lib/query-keys";
 import type { BoardSummary, BoardSummarySnapshot, Project } from "@/lib/types";
 import { invalidateExactQuery } from "./query-invalidation";
 import { useProjectionInvalidationRegistry } from "./projection-invalidation-context";
-import type { ProjectionInvalidationRegistry } from "./projection-invalidation-registry";
 
 const BOARD_CHANGE_REFETCH_COALESCE_MS = 50;
 
@@ -63,107 +62,100 @@ export function useBoardsForProjects(
     queries: projects.map((project) => boardByProjectQueryOptions(project.id)),
     combine: combineBoardResults,
   });
-  const subscribeToProjects = useEffectEvent(
-    (currentRegistry: ProjectionInvalidationRegistry, currentQueryClient: typeof queryClient) => {
-      if (projects.length === 0) return;
-
-      const projectIds = projects.map((project) => project.id);
-      const refetchTimers = refetchTimersRef.current;
-      const scheduleRefetch = (projectId: string) => {
-        if (refetchTimers.has(projectId)) return;
-        const timer = setTimeout(() => {
-          refetchTimers.delete(projectId);
-          void invalidateExactQuery(currentQueryClient, queryKeys.boards.byProject(projectId));
-        }, BOARD_CHANGE_REFETCH_COALESCE_MS);
-        refetchTimers.set(projectId, timer);
-      };
-      const unsubscribes: Array<() => void> = [];
-      for (const projectId of projectIds) {
-        const project = projects.find((candidate) => candidate.id === projectId);
-        if (!project) continue;
-        unsubscribes.push(
-          subscribeBoardChanges(projectId, (event) => {
-            let applied = false;
-            currentQueryClient.setQueryData<BoardSummarySnapshot | undefined>(
-              queryKeys.boards.byProject(projectId),
-              (current) => {
-                if (
-                  !current ||
-                  !event.storeEpoch ||
-                  event.commitSeq === undefined ||
-                  event.storeEpoch !== current.storeEpoch ||
-                  event.commitSeq < current.commitSeq
-                )
-                  return current;
-                const next = applyBoardChangeEventToBoard(current.board, event);
-                if (!next) return current;
-                applied = true;
-                return {
-                  ...current,
-                  board: next,
-                  commitSeq: event.commitSeq,
-                };
-              },
-            );
-            if (!applied) scheduleRefetch(projectId);
-          }),
-        );
-        unsubscribes.push(
-          currentRegistry.register({
-            scope: {
-              kind: "project",
-              libraryId: project.libraryId,
-              projectId,
-            },
-            consumerKey: hashKey(queryKeys.boards.byProject(projectId)),
-            getDependencies: () => {
-              const snapshot = currentQueryClient.getQueryData<BoardSummarySnapshot>(
-                queryKeys.boards.byProject(projectId),
-              );
+  useEffect(() => {
+    const authorities = JSON.parse(projectAuthorityKey) as Array<[string, string, string]>;
+    if (authorities.length === 0) return;
+    const projectIds = authorities.map(([projectId]) => projectId);
+    const currentRegistry = projectionRegistry;
+    const currentQueryClient = queryClient;
+    const refetchTimers = refetchTimersRef.current;
+    const scheduleRefetch = (projectId: string) => {
+      if (refetchTimers.has(projectId)) return;
+      const timer = setTimeout(() => {
+        refetchTimers.delete(projectId);
+        void invalidateExactQuery(currentQueryClient, queryKeys.boards.byProject(projectId));
+      }, BOARD_CHANGE_REFETCH_COALESCE_MS);
+      refetchTimers.set(projectId, timer);
+    };
+    const unsubscribes: Array<() => void> = [];
+    for (const [projectId, libraryId, databaseId] of authorities) {
+      unsubscribes.push(
+        subscribeBoardChanges(projectId, (event) => {
+          let applied = false;
+          currentQueryClient.setQueryData<BoardSummarySnapshot | undefined>(
+            queryKeys.boards.byProject(projectId),
+            (current) => {
+              if (
+                !current ||
+                !event.storeEpoch ||
+                event.commitSeq === undefined ||
+                event.storeEpoch !== current.storeEpoch ||
+                event.commitSeq < current.commitSeq
+              )
+                return current;
+              const next = applyBoardChangeEventToBoard(current.board, event);
+              if (!next) return current;
+              applied = true;
               return {
-                databaseIds: snapshot ? [snapshot.databaseId] : [project.databaseId],
-                dataSourceIds: snapshot ? [snapshot.dataSourceId] : [],
-                viewIds: snapshot ? [snapshot.viewId] : [],
-                pageIds:
-                  snapshot?.board.columns.flatMap((column) =>
-                    column.cards.map((card) => card.id),
-                  ) ?? [],
+                ...current,
+                board: next,
+                commitSeq: event.commitSeq,
               };
             },
-            getCursor: () => {
-              const snapshot = currentQueryClient.getQueryData<BoardSummarySnapshot>(
-                queryKeys.boards.byProject(projectId),
-              );
-              return snapshot
-                ? {
-                    storeEpoch: snapshot.storeEpoch,
-                    commitSeq: snapshot.commitSeq,
-                  }
-                : null;
-            },
-            invalidate: () =>
-              invalidateExactQuery(currentQueryClient, queryKeys.boards.byProject(projectId)),
-          }),
-        );
-      }
+          );
+          if (!applied) scheduleRefetch(projectId);
+        }),
+      );
+      unsubscribes.push(
+        currentRegistry.register({
+          scope: {
+            kind: "project",
+            libraryId,
+            projectId,
+          },
+          consumerKey: hashKey(queryKeys.boards.byProject(projectId)),
+          getDependencies: () => {
+            const snapshot = currentQueryClient.getQueryData<BoardSummarySnapshot>(
+              queryKeys.boards.byProject(projectId),
+            );
+            return {
+              databaseIds: snapshot ? [snapshot.databaseId] : [databaseId],
+              dataSourceIds: snapshot ? [snapshot.dataSourceId] : [],
+              viewIds: snapshot ? [snapshot.viewId] : [],
+              pageIds:
+                snapshot?.board.columns.flatMap((column) => column.cards.map((card) => card.id)) ??
+                [],
+            };
+          },
+          getCursor: () => {
+            const snapshot = currentQueryClient.getQueryData<BoardSummarySnapshot>(
+              queryKeys.boards.byProject(projectId),
+            );
+            return snapshot
+              ? {
+                  storeEpoch: snapshot.storeEpoch,
+                  commitSeq: snapshot.commitSeq,
+                }
+              : null;
+          },
+          invalidate: () =>
+            invalidateExactQuery(currentQueryClient, queryKeys.boards.byProject(projectId)),
+        }),
+      );
+    }
 
-      return () => {
-        for (const unsubscribe of unsubscribes) {
-          unsubscribe();
-        }
-        for (const projectId of projectIds) {
-          const timer = refetchTimers.get(projectId);
-          if (!timer) continue;
-          clearTimeout(timer);
-          refetchTimers.delete(projectId);
-        }
-      };
-    },
-  );
-  useEffect(
-    () => subscribeToProjects(projectionRegistry, queryClient),
-    [projectAuthorityKey, projectionRegistry, queryClient],
-  );
+    return () => {
+      for (const unsubscribe of unsubscribes) {
+        unsubscribe();
+      }
+      for (const projectId of projectIds) {
+        const timer = refetchTimers.get(projectId);
+        if (!timer) continue;
+        clearTimeout(timer);
+        refetchTimers.delete(projectId);
+      }
+    };
+  }, [projectAuthorityKey, projectionRegistry, queryClient]);
 
   useEffect(() => {
     const refetchTimers = refetchTimersRef.current;

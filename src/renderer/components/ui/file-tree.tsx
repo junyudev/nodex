@@ -1,6 +1,7 @@
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react";
 import type { FileTreeOptions, FileTreeSortComparator } from "@pierre/trees";
 import {
+  useLayoutEffect,
   Component,
   useEffect,
   useMemo,
@@ -50,6 +51,31 @@ const equalPaths = (left: readonly string[], right: readonly string[]) =>
 const sameExpansion = (left: readonly string[], right: readonly string[]) =>
   equalPaths(left.filter(Boolean).toSorted(), right.filter(Boolean).toSorted());
 
+/** Reconcile one model transaction without publishing intermediate selection. */
+function reconcileFileTree(
+  model: ReturnType<typeof useFileTree>["model"],
+  syncingSelection: { current: boolean },
+  paths: readonly string[],
+  directoryPaths: readonly string[],
+  expandedPaths: readonly string[],
+  resetPaths: boolean,
+) {
+  syncingSelection.current = true;
+  try {
+    if (resetPaths) model.resetPaths(paths, { initialExpandedPaths: expandedPaths });
+    // A custom sort does not honor initial expansion, so settle every folder explicitly.
+    const open = new Set(expandedPaths.filter(Boolean));
+    for (const path of directoryPaths) {
+      const item = model.getItem(path);
+      if (!item || !("isExpanded" in item)) continue;
+      if (open.has(path) && !item.isExpanded()) item.expand();
+      else if (!open.has(path) && item.isExpanded()) item.collapse();
+    }
+  } finally {
+    syncingSelection.current = false;
+  }
+}
+
 /** One long-lived tree model owns focus, selection, sticky folders, and virtualization. */
 function FileTreeContent({
   paths,
@@ -77,7 +103,9 @@ function FileTreeContent({
   onPointerOver,
 }: FileTreeProps) {
   const callbacks = useRef({ onSelectionChange, onStateChange, renderRowDecoration });
-  callbacks.current = { onSelectionChange, onStateChange, renderRowDecoration };
+  useLayoutEffect(() => {
+    callbacks.current = { onSelectionChange, onStateChange, renderRowDecoration };
+  }, [onSelectionChange, onStateChange, renderRowDecoration]);
   const syncingSelection = useRef(false);
   const { model } = useFileTree({
     paths,
@@ -125,21 +153,14 @@ function FileTreeContent({
     )
       return;
     previousReset.current = { paths, expandedPaths, resetKey };
-    syncingSelection.current = true;
-    try {
-      if (!previous || previous.resetKey !== resetKey || !equalPaths(previous.paths, paths))
-        model.resetPaths(paths, { initialExpandedPaths: expandedPaths });
-      // A custom sort does not honor initial expansion, so settle every folder explicitly.
-      const open = new Set(expandedPaths.filter(Boolean));
-      for (const path of directoryPaths) {
-        const item = model.getItem(path);
-        if (!item || !("isExpanded" in item)) continue;
-        if (open.has(path) && !item.isExpanded()) item.expand();
-        else if (!open.has(path) && item.isExpanded()) item.collapse();
-      }
-    } finally {
-      syncingSelection.current = false;
-    }
+    reconcileFileTree(
+      model,
+      syncingSelection,
+      paths,
+      directoryPaths,
+      expandedPaths,
+      !previous || previous.resetKey !== resetKey || !equalPaths(previous.paths, paths),
+    );
   }, [directoryPaths, expandedPaths, model, paths, resetKey]);
 
   useEffect(() => {
@@ -151,19 +172,31 @@ function FileTreeContent({
 
   useEffect(() => {
     const selected = model.getSelectedPaths();
-    if (equalPaths(selected, selectedPath ? [selectedPath] : [])) return;
+    const availableSelectedPath =
+      selectedPath &&
+      (paths.includes(selectedPath) || directoryPaths.includes(selectedPath.replace(/\/$/, "")))
+        ? selectedPath
+        : null;
+    if (equalPaths(selected, availableSelectedPath ? [availableSelectedPath] : [])) return;
     syncingSelection.current = true;
     try {
       for (const path of selected) model.getItem(path)?.deselect();
-      if (selectedPath) model.getItem(selectedPath)?.select();
+      if (availableSelectedPath) model.getItem(availableSelectedPath)?.select();
     } finally {
       syncingSelection.current = false;
     }
-  }, [model, paths, selectedPath]);
+  }, [directoryPaths, model, paths, selectedPath]);
 
   const lastReveal = useRef<{ selectedPath: string; resetKey?: string } | null>(null);
   useEffect(() => {
-    if (!revealSelectedPath || !selectedPath || !model.getItem(selectedPath)) return;
+    if (
+      !revealSelectedPath ||
+      !selectedPath ||
+      (!paths.includes(selectedPath) &&
+        !directoryPaths.includes(selectedPath.replace(/\/$/, ""))) ||
+      !model.getItem(selectedPath)
+    )
+      return;
     if (
       lastReveal.current?.selectedPath === selectedPath &&
       lastReveal.current.resetKey === resetKey
@@ -171,7 +204,15 @@ function FileTreeContent({
       return;
     lastReveal.current = { selectedPath, resetKey };
     model.scrollToPath(selectedPath, { offset: revealSelectedPathScrollOffset });
-  }, [model, paths, resetKey, revealSelectedPath, revealSelectedPathScrollOffset, selectedPath]);
+  }, [
+    directoryPaths,
+    model,
+    paths,
+    resetKey,
+    revealSelectedPath,
+    revealSelectedPathScrollOffset,
+    selectedPath,
+  ]);
 
   const scrollTop = useRef(initialScrollTop);
   useEffect(() => {

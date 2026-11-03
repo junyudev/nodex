@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { isPlausiblePageKeyPrefixDraft, normalizePageKeyPrefixInput } from "../../shared/page-key";
 import type { DatabasePageKeyPrefixPreviewV2 } from "../../shared/database-module-v2";
@@ -59,8 +59,6 @@ export function usePageKeyPrefixPreview({
   const liveSignature = JSON.stringify(liveRequest);
   const [debouncedRequest, setDebouncedRequest] = useState(liveRequest);
   const debouncedSignature = JSON.stringify(debouncedRequest);
-  const readPreviewRef = useRef(readPreview);
-  readPreviewRef.current = readPreview;
 
   useEffect(() => {
     if (!enabled || !valid) return;
@@ -91,7 +89,7 @@ export function usePageKeyPrefixPreview({
       debouncedRequestedPrefix,
     ),
     queryFn: async () =>
-      await readPreviewRef.current({
+      await readPreview({
         projectId: debouncedProjectId,
         databaseId: debouncedDatabaseId,
         nameHint: debouncedNameHint,

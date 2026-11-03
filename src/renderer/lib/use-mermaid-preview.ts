@@ -25,12 +25,14 @@ export function useMermaidPreview(
   const lastResultRef = useRef<MermaidRenderResult | undefined>(undefined);
   const setLatestState = useEffectEvent((next: MermaidPreviewState) => setState(next));
 
+  const normalizedSource = source.trim();
+  if ((!enabled || !normalizedSource) && state.status !== "empty") {
+    setState({ status: "empty" });
+  }
+
   useEffect(() => {
     const normalizedSource = source.trim();
-    if (!enabled || !normalizedSource) {
-      setLatestState({ status: "empty" });
-      return;
-    }
+    if (!enabled || !normalizedSource) return;
 
     let stale = false;
     const timeout = window.setTimeout(() => {

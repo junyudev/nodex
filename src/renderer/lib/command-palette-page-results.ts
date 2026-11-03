@@ -395,16 +395,21 @@ export function useCommandPalettePageSearchFacets({
   const scopeKey = useMemo(() => buildCommandPalettePageSearchScopeKey(projectIds), [projectIds]);
   const [batch, setBatch] = useState<CommandPalettePageFacetBatch>({
     facets: { tags: [], assignees: [] },
-    status: "idle",
+    status: enabled && scopeKey ? "pending" : "idle",
     error: null,
   });
+  const [request, setRequest] = useState({ enabled, scopeKey });
+  if (request.enabled !== enabled || request.scopeKey !== scopeKey) {
+    setRequest({ enabled, scopeKey });
+    setBatch((current) =>
+      enabled && scopeKey
+        ? { ...current, status: "pending", error: null }
+        : { facets: { tags: [], assignees: [] }, status: "idle", error: null },
+    );
+  }
   useEffect(() => {
-    if (!enabled || !scopeKey) {
-      setBatch({ facets: { tags: [], assignees: [] }, status: "idle", error: null });
-      return;
-    }
+    if (!enabled || !scopeKey) return;
     let cancelled = false;
-    setBatch((current) => ({ ...current, status: "pending", error: null }));
     void invoke("pages:search-facets", scopeKey.split("\n"))
       .then((facets) => {
         if (!cancelled) setBatch({ facets, status: "success", error: null });

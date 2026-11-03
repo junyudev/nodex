@@ -21,6 +21,7 @@ import {
   type Placement,
 } from "@floating-ui/react";
 import {
+  useLayoutEffect,
   cloneElement,
   useCallback,
   useEffect,
@@ -116,10 +117,16 @@ export function NodexHoverCard({
   const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
   const referenceElementRef = useRef<HTMLElement>(null);
   const onOpenChangeRef = useRef(onOpenChange);
-  onOpenChangeRef.current = onOpenChange;
+  useLayoutEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  }, [onOpenChange]);
+  if (disabled && uncontrolledOpen) setUncontrolledOpen(false);
   const requestedOpen = controlled ? open : uncontrolledOpen;
   const requestedOpenRef = useRef(requestedOpen);
-  requestedOpenRef.current = requestedOpen;
+  useLayoutEffect(() => {
+    if (disabled && requestedOpenRef.current) onOpenChangeRef.current?.(false);
+    requestedOpenRef.current = !disabled && requestedOpen;
+  }, [disabled, requestedOpen]);
   const resolvedOpen = !disabled && requestedOpen;
 
   const handleOpenChange = useCallback(
@@ -167,7 +174,7 @@ export function NodexHoverCard({
     context,
     floatingStyles,
     placement: resolvedPlacement,
-    refs,
+    refs: { setReference, setFloating },
   } = useFloating<HTMLElement>({
     open: resolvedOpen,
     onOpenChange: handleOpenChange,
@@ -229,11 +236,6 @@ export function NodexHoverCard({
   ]);
 
   useEffect(() => {
-    if (!disabled || !requestedOpen) return;
-    handleOpenChange(false);
-  }, [disabled, handleOpenChange, requestedOpen]);
-
-  useEffect(() => {
     if (typeof window === "undefined") return undefined;
 
     const handleGlobalDismiss = () => {
@@ -248,8 +250,8 @@ export function NodexHoverCard({
   }, [handleOpenChange, resolvedOpen]);
 
   const referenceChild = children as ReactElement<HoverCardReferenceProps>;
-  const childProps = referenceChild.props;
-  const mergedReferenceRef = useMergeRefs([refs.setReference, referenceElementRef, childProps.ref]);
+  const { ref: childRef, ...childProps } = referenceChild.props;
+  const mergedReferenceRef = useMergeRefs([setReference, referenceElementRef, childRef]);
   const referenceProps = getReferenceProps(childProps) as HoverCardReferenceProps;
   const referenceCloneProps = {
     ...referenceProps,
@@ -270,7 +272,7 @@ export function NodexHoverCard({
             returnFocus={false}
           >
             <NodexFloatingSurface
-              ref={refs.setFloating}
+              ref={setFloating}
               data-side={resolvedPlacement.split("-")[0]}
               data-slot="hover-card-content"
               data-state="open"

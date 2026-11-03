@@ -1,6 +1,6 @@
 import { FileDetailsMetadata, FileListMetadata } from "@/components/shared/file-metadata";
 import { formatBytes, formatDate } from "@/lib/file-metadata-format";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { FileDetailsToolbar } from "@/components/shared/file-details-toolbar";
@@ -196,17 +196,17 @@ function LibraryFilesDialogContent({
   const previewVersion = selectedVersion ?? selected?.head_version ?? null;
   const versionMetadata = detail.versions.find((version) => version.version === previewVersion);
 
-  useEffect(() => {
-    if (selectedFileId === null && catalog.files.length > 0)
-      setSelectedFileId(catalog.files[0]!.file_id);
-  }, [catalog.files, selectedFileId]);
+  if (selectedFileId === null && catalog.files.length > 0)
+    setSelectedFileId(catalog.files[0]!.file_id);
 
-  useEffect(() => {
+  const [previousSelectedFileId, setPreviousSelectedFileId] = useState(selectedFileId);
+  if (previousSelectedFileId !== selectedFileId) {
+    setPreviousSelectedFileId(selectedFileId);
     setSelectedVersion(null);
     setConfirmPurge(false);
     setEditingName(false);
     setEntryPath(null);
-  }, [selectedFileId]);
+  }
 
   const authority = metadata.data
     ? {

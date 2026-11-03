@@ -26,11 +26,16 @@ export function useFileSearch(input: {
     error: string | null;
   } | null>(null);
 
+  const [sessionIdentity, setSessionIdentity] = useState({ enabled, scopeKey });
+  if (sessionIdentity.enabled !== enabled || sessionIdentity.scopeKey !== scopeKey) {
+    setSessionIdentity({ enabled, scopeKey });
+    if (enabled) setBatch(null);
+  }
+
   useEffect(() => {
     if (!enabled) return;
     let active = true;
     const roots = rootsKey.split("\0");
-    setBatch(null);
     const controller = createFileSearchSession({
       hostId,
       roots,

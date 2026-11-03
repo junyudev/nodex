@@ -1,4 +1,10 @@
-import { useCallback, useRef, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import {
+  useLayoutEffect,
+  useCallback,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+} from "react";
 import type { MotionValue } from "motion/react";
 import { toast } from "@/components/ui/toast";
 import { makeWorkbenchPanelSlotKey } from "./workbench-panel-slot-key";
@@ -85,7 +91,9 @@ export function useWorkbenchChromeCommands({
   rightPanelSide,
 }: WorkbenchChromeCommandsInput) {
   const panelControllerRef = useRef(controller);
-  panelControllerRef.current = controller;
+  useLayoutEffect(() => {
+    panelControllerRef.current = controller;
+  }, [controller]);
   const { setActivePanelCollapsed, updateActivePanel } = lifecycle;
   const showActiveRightPanel = useCallback(async () => {
     if (!activePanelOwner) return;

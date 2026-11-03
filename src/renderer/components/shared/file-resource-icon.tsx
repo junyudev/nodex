@@ -228,8 +228,13 @@ export function FileResourceIcon({
   readonly className?: string;
   readonly style?: CSSProperties;
 }) {
-  const Icon = resolveFileResourceIcon(path, mimeType);
-  return <Icon className={className} style={style} />;
+  return (
+    <FileTabIconSvg
+      icon={resolveFileResourceIconKey(path, mimeType)}
+      className={className}
+      style={style}
+    />
+  );
 }
 
 /** Adds the format color used by file trees while preserving the shared path/MIME glyph. */

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { snapshotLinkActivation } from "./link-activation";
@@ -322,40 +322,40 @@ export function useTerminal({
 }: UseTerminalOptions): UseTerminalReturn {
   const links = useLinkOpening();
   const files = useFileReferenceRouter();
-  const linkOwner = useRef({
-    open: links?.openLink ?? openLink,
+  const readLinkOwner = useEffectEvent(() => ({
+    openLink: links?.openLink ?? openLink,
     hostId: explicitHostId ?? files.hostId,
-  });
-  linkOwner.current = { open: links?.openLink ?? openLink, hostId: explicitHostId ?? files.hostId };
+  }));
   const normalizedCwd = cwd.trim();
   const hasValidCwd = normalizedCwd.length > 0;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   // Keep xterm mounted across WorkbenchShell rerenders; tab callbacks often change identity.
-  const onNewTerminalTabRef = useRef(onNewTerminalTab);
+  const createTerminalTab = useEffectEvent(() => onNewTerminalTab?.());
   const [isConnected, setIsConnected] = useState(false);
-  const [isExited, setIsExited] = useState(false);
-  const [exitCode, setExitCode] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [isExited, setIsExited] = useState(
+    () => terminalSessionStore.getSnapshot(terminalId).exited,
+  );
+  const [exitCode, setExitCode] = useState<number | null>(
+    () => terminalSessionStore.getSnapshot(terminalId).exitCode,
+  );
+  const [error, setError] = useState<string | null>(() =>
+    terminalSessionStore.getError(terminalId),
+  );
   const [leaseConflict, setLeaseConflict] = useState<{
     generation: number;
     ownerWindowSessionId: string;
-  } | null>(null);
-  onNewTerminalTabRef.current = onNewTerminalTab;
+  } | null>(() => terminalSessionStore.getLeaseConflict(terminalId));
 
-  const latestOptionsRef = useRef({
-    terminalId,
-    cwd: normalizedCwd,
-    conversationId,
-    projectSessionId,
-  });
-  latestOptionsRef.current = {
-    terminalId,
-    cwd: normalizedCwd,
-    conversationId,
-    projectSessionId,
-  };
+  const [observedTerminalId, setObservedTerminalId] = useState(terminalId);
+  if (observedTerminalId !== terminalId) {
+    setObservedTerminalId(terminalId);
+    setIsExited(() => terminalSessionStore.getSnapshot(terminalId).exited);
+    setExitCode(() => terminalSessionStore.getSnapshot(terminalId).exitCode);
+    setError(() => terminalSessionStore.getError(terminalId));
+    setLeaseConflict(() => terminalSessionStore.getLeaseConflict(terminalId));
+  }
 
   const reconnect = useCallback(() => {
     const term = termRef.current;
@@ -372,12 +372,12 @@ export function useTerminal({
     };
     void terminalSessionStore.createOrAttach({
       sessionId: terminalId,
-      conversationId: latestOptionsRef.current.conversationId,
-      projectSessionId: latestOptionsRef.current.projectSessionId,
-      cwd: latestOptionsRef.current.cwd,
+      conversationId: conversationId,
+      projectSessionId: projectSessionId,
+      cwd: normalizedCwd,
       size,
     });
-  }, [hasValidCwd, terminalId]);
+  }, [conversationId, hasValidCwd, normalizedCwd, projectSessionId, terminalId]);
 
   const takeOver = useCallback(() => {
     const conflict = terminalSessionStore.getLeaseConflict(terminalId);
@@ -430,13 +430,10 @@ export function useTerminal({
 
     term.loadAddon(new ClipboardAddon());
     term.loadAddon(fit);
-    installTerminalLinkOpening(term, () => ({
-      openLink: linkOwner.current.open,
-      hostId: linkOwner.current.hostId,
-    }));
+    installTerminalLinkOpening(term, () => readLinkOwner());
     term.open(container);
     installCodexKeyHandler(term, terminalId, () => {
-      onNewTerminalTabRef.current?.();
+      createTerminalTab();
     });
     const restoreMouseCoordinates = patchXtermWindowZoomMouseCoordinates(term);
     const writeDisplayData = (data: string) => {
@@ -600,14 +597,6 @@ export function useTerminal({
       setIsConnected(false);
     };
   }, [conversationId, hasValidCwd, normalizedCwd, projectSessionId, terminalId, visible]);
-
-  useEffect(() => {
-    const snapshot = terminalSessionStore.getSnapshot(terminalId);
-    setIsExited(snapshot.exited);
-    setExitCode(snapshot.exitCode);
-    setError(terminalSessionStore.getError(terminalId));
-    setLeaseConflict(terminalSessionStore.getLeaseConflict(terminalId));
-  }, [terminalId]);
 
   return {
     containerRef,

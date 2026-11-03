@@ -175,6 +175,7 @@ export function AgentModelPicker(
     readonly modelOnly?: boolean;
   },
 ) {
+  const { triggerRef } = props;
   const { catalog, selection, models, provider } = props;
   const [pending, setPending] = useState(false);
   const [showAllModels, setShowAllModels] = useState(false);
@@ -494,7 +495,7 @@ export function AgentModelPicker(
         props.triggerButton ??
         (props.triggerStyle === "settings" ? (
           <NodexSettingsDropdownTrigger
-            ref={props.triggerRef}
+            ref={triggerRef}
             aria-label="Agent intelligence"
             className="w-full min-w-0 justify-between"
             data-fast-mode-indicator={settingsIndicators.includes("fast") ? "true" : undefined}
@@ -523,7 +524,7 @@ export function AgentModelPicker(
           </NodexSettingsDropdownTrigger>
         ) : (
           <IntelligenceSelectorTrigger
-            ref={props.triggerRef}
+            ref={triggerRef}
             geometry={geometry}
             isOpen={open}
             labelCandidates={labels}

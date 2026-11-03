@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { act, render } from "@testing-library/react";
 import { describe, expect, test } from "vite-plus/test";
 import {
@@ -101,7 +102,9 @@ describe("Maitai external-store bridge", () => {
       equality: (left, right) => left.value === right.value,
     });
     function Probe() {
-      renderCount += 1;
+      useLayoutEffect(() => {
+        renderCount += 1;
+      });
       return <output>{useScopedAtomValue(externalAtom).value}</output>;
     }
     const store = createMaitaiStore();

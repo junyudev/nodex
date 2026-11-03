@@ -103,7 +103,7 @@ export function resolveIntelligenceSelectorAlignOffset(input: {
 }
 
 export function useIntelligenceSelectorTriggerGeometry(
-  labelCandidates: readonly IntelligenceSelectorLabelCandidate[],
+  _labelCandidates: readonly IntelligenceSelectorLabelCandidate[],
 ): IntelligenceSelectorTriggerGeometry {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const wrapperRef = useRef<HTMLSpanElement>(null);
@@ -114,7 +114,6 @@ export function useIntelligenceSelectorTriggerGeometry(
   };
   const measurementsRef = useRef(initialMeasurements);
   const [measurements, setMeasurements] = useState(initialMeasurements);
-  const labelMeasurementKey = buildIntelligenceSelectorLabelMeasurementKey(labelCandidates);
 
   const measure = useCallback(() => {
     const trigger = triggerRef.current;
@@ -146,9 +145,6 @@ export function useIntelligenceSelectorTriggerGeometry(
 
   useLayoutEffect(() => {
     measure();
-  }, [labelMeasurementKey, measure]);
-
-  useLayoutEffect(() => {
     let active = true;
     void document.fonts?.ready.then(() => {
       if (active) measure();
@@ -156,8 +152,17 @@ export function useIntelligenceSelectorTriggerGeometry(
 
     if (typeof ResizeObserver === "undefined") {
       window.addEventListener("resize", measure);
+      const observer =
+        typeof MutationObserver === "undefined" ? null : new MutationObserver(measure);
+      if (measurementRef.current)
+        observer?.observe(measurementRef.current, {
+          childList: true,
+          characterData: true,
+          subtree: true,
+        });
       return () => {
         active = false;
+        observer?.disconnect();
         window.removeEventListener("resize", measure);
       };
     }
@@ -280,12 +285,13 @@ export const IntelligenceSelectorTrigger = forwardRef<
   const prefersReducedMotion = useResolvedReducedMotion();
   const configuredReducedMotion = useReducedMotionConfig();
   const shouldReduceMotion = Boolean(prefersReducedMotion || configuredReducedMotion);
+  const { triggerRef, measurementRef, wrapperRef, expandedContentWidth } = geometry;
   const setTriggerRef = useCallback(
     (element: HTMLButtonElement | null) => {
-      geometry.triggerRef.current = element;
+      triggerRef.current = element;
       setForwardedRef(forwardedRef, element);
     },
-    [forwardedRef, geometry.triggerRef],
+    [forwardedRef, triggerRef],
   );
   const reservedIndicators = Math.max(indicators.length, isOpen ? 1 : 0);
   const reserveFastSlot = reservedIndicators > 0;
@@ -298,10 +304,7 @@ export const IntelligenceSelectorTrigger = forwardRef<
     transition,
   } satisfies CSSProperties;
   const contentStyle = {
-    inlineSize:
-      isOpen && geometry.expandedContentWidth !== undefined
-        ? geometry.expandedContentWidth
-        : undefined,
+    inlineSize: isOpen && expandedContentWidth !== undefined ? expandedContentWidth : undefined,
     interpolateSize: "allow-keywords",
     transition,
   } satisfies CSSProperties;
@@ -317,7 +320,7 @@ export const IntelligenceSelectorTrigger = forwardRef<
         data-intelligence-selector-trigger="true"
       >
         <span
-          ref={geometry.measurementRef}
+          ref={measurementRef}
           aria-hidden="true"
           className="pointer-events-none absolute start-0 top-0 invisible grid w-max whitespace-nowrap text-sm [&>*]:col-start-1 [&>*]:row-start-1"
           data-intelligence-selector-label-measurement="true"
@@ -333,7 +336,7 @@ export const IntelligenceSelectorTrigger = forwardRef<
         </span>
 
         <span
-          ref={geometry.wrapperRef}
+          ref={wrapperRef}
           className="flex min-w-0 items-center"
           data-intelligence-selector-trigger-wrapper="true"
         >

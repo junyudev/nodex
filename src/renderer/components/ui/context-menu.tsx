@@ -82,10 +82,9 @@ const ContextMenuSubmenuCoordinatorContext = createContext<ContextMenuSubmenuCoo
 );
 
 function ContextMenuSubmenuCoordinatorProvider({ children }: { readonly children: ReactNode }) {
-  const coordinatorRef = useRef<ContextMenuSubmenuCoordinator>(null);
-  if (!coordinatorRef.current) coordinatorRef.current = createContextMenuSubmenuCoordinator();
+  const [coordinator] = useState(createContextMenuSubmenuCoordinator);
   return (
-    <ContextMenuSubmenuCoordinatorContext.Provider value={coordinatorRef.current}>
+    <ContextMenuSubmenuCoordinatorContext.Provider value={coordinator}>
       {children}
     </ContextMenuSubmenuCoordinatorContext.Provider>
   );
@@ -281,32 +280,26 @@ export function NodexContextMenuSubmenu({
   const coordinator = useContext(ContextMenuSubmenuCoordinatorContext);
   const [open, setOpen] = useState(false);
   const openRef = useRef(false);
-  const idRef = useRef(Symbol("nodex-context-submenu"));
   const onOpenChangeRef = useRef(onOpenChange);
   useLayoutEffect(() => {
     onOpenChangeRef.current = onOpenChange;
   }, [onOpenChange]);
-  const registrationRef = useRef<ContextMenuSubmenuRegistration>(null);
-  if (!registrationRef.current) {
-    registrationRef.current = {
-      id: idRef.current,
-      close: () => {
-        openRef.current = false;
-        setOpen(false);
-        onOpenChangeRef.current?.(false);
-      },
-    };
-  }
+  const [id] = useState(() => Symbol("nodex-context-submenu"));
+  const close = () => {
+    openRef.current = false;
+    setOpen(false);
+    onOpenChangeRef.current?.(false);
+  };
 
-  useEffect(() => () => coordinator?.deactivate(idRef.current), [coordinator]);
+  useEffect(() => () => coordinator?.deactivate(id), [coordinator, id]);
 
   const commitOpen = (nextOpen: boolean): void => {
     if (openRef.current === nextOpen) return;
     openRef.current = nextOpen;
     if (nextOpen) {
-      coordinator?.activate(registrationRef.current!);
+      coordinator?.activate({ id, close });
     } else {
-      coordinator?.deactivate(idRef.current);
+      coordinator?.deactivate(id);
     }
     setOpen(nextOpen);
     onOpenChangeRef.current?.(nextOpen);

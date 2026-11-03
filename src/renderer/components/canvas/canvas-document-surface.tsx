@@ -188,11 +188,11 @@ function CanvasEditor({
   const bindingRef = useRef<CanvasSceneBinding | null>(null);
   const presenceRef = useRef<CanvasPresenceController | null>(null);
   const viewportPersistenceRef = useRef<CanvasViewportPersistence | null>(null);
-  const documentClientSessionIdRef = useRef(
-    `canvas-document:${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`,
+  const [documentClientSessionId] = useState(
+    () => `canvas-document:${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`,
   );
-  const presenceClientSessionIdRef = useRef(
-    `canvas-surface:${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`,
+  const [presenceClientSessionId] = useState(
+    () => `canvas-surface:${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`,
   );
   const [restoredViewport] = useState(() =>
     readCanvasViewportPreference({
@@ -210,9 +210,7 @@ function CanvasEditor({
   const exportRecoveryRef = useRef<(() => Promise<void>) | null>(null);
   const retrySceneRef = useRef<(() => void) | null>(null);
   const latestElementsRef = useRef<readonly OrderedExcalidrawElement[]>([]);
-  const [placedPageIds, setPlacedPageIds] = useState(() =>
-    collectPlacedPageIds(latestElementsRef.current),
-  );
+  const [placedPageIds, setPlacedPageIds] = useState(() => collectPlacedPageIds([]));
   const [writeFrozen, setWriteFrozen] = useState(false);
 
   const handleExcalidrawAPI = useCallback((api: ExcalidrawImperativeAPI) => {
@@ -301,7 +299,7 @@ function CanvasEditor({
           libraryId: descriptor.libraryId,
           routingContext: descriptor.routingContext,
           documentId: descriptor.documentId,
-          clientSessionId: documentClientSessionIdRef.current,
+          clientSessionId: documentClientSessionId,
           expectedStoreEpoch: descriptor.storeEpoch,
           expectedGeneration: descriptor.generation,
           adapter: createCanvasSceneSyncAdapter({
@@ -330,8 +328,7 @@ function CanvasEditor({
       if (status.error) setSceneError(status.error.message);
     });
     presence = createCanvasPresenceController({
-      publish: (clock, state) =>
-        provider.publishPresenceFor(presenceClientSessionIdRef.current, clock, state),
+      publish: (clock, state) => provider.publishPresenceFor(presenceClientSessionId, clock, state),
       onCollaborators: (collaborators) => {
         if (!active) return;
         const api = excalidrawApiRef.current;
@@ -416,7 +413,7 @@ function CanvasEditor({
         const request = {
           routingContext: descriptor.routingContext,
           documentId: descriptor.documentId,
-          clientSessionId: documentClientSessionIdRef.current,
+          clientSessionId: documentClientSessionId,
         };
         const eligibility = await readCanvasSceneCompaction(request);
         if (!eligibility.ok || !eligibility.value.eligible) return;
@@ -522,13 +519,13 @@ function CanvasEditor({
       if (presenceRef.current === presence) presenceRef.current = null;
       void canvasSceneSurfaceRegistry.release(surfaceKey, runtime).catch(() => undefined);
     };
-  }, [descriptor, onReload, surfaceKey]);
+  }, [descriptor, documentClientSessionId, onReload, presenceClientSessionId, surfaceKey]);
 
   // Sync card labels when board changes
   useEffect(() => {
     const api = excalidrawApiRef.current;
     const binding = bindingRef.current;
-    if (!api || !binding || !board || writeFrozen) return;
+    if (!resolvedScene || !api || !binding || !board || writeFrozen) return;
     let active = true;
 
     void collaborationPromise

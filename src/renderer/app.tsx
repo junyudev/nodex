@@ -35,11 +35,12 @@ export default function App({ windowSessionBootstrap }: AppProps) {
   );
   const [showRecoveringCoreAuthority, setShowRecoveringCoreAuthority] = useState(false);
 
+  if (coreAuthorityStatus.kind !== "recovering" && showRecoveringCoreAuthority) {
+    setShowRecoveringCoreAuthority(false);
+  }
+
   useEffect(() => {
-    if (coreAuthorityStatus.kind !== "recovering") {
-      setShowRecoveringCoreAuthority(false);
-      return;
-    }
+    if (coreAuthorityStatus.kind !== "recovering") return;
     const timer = window.setTimeout(() => {
       setShowRecoveringCoreAuthority(true);
     }, CORE_RECOVERY_NOTICE_DELAY_MS);

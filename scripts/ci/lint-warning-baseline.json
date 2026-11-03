@@ -1,10 +1,4 @@
 {
-  "src/renderer/app-providers.test.tsx": {
-    "react(exhaustive-effect-dependencies)": 1
-  },
-  "src/renderer/app.tsx": {
-    "react(set-state-in-effect)": 1
-  },
   "src/renderer/components/block-documents/block-document-surface.tsx": {
     "react(exhaustive-effect-dependencies)": 1,
     "react(refs)": 3,
@@ -160,14 +154,6 @@
   "src/renderer/components/board/view-scroll-containers.tsx": {
     "react(refs)": 1
   },
-  "src/renderer/components/canvas/canvas-document-surface.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(purity)": 2,
-    "react(refs)": 1
-  },
-  "src/renderer/components/canvas/canvas-file-preview.tsx": {
-    "react(refs)": 4
-  },
   "src/renderer/components/conversation-media/conversation-video-player.tsx": {
     "react(set-state-in-effect)": 1
   },
@@ -199,54 +185,6 @@
   "src/renderer/components/database/use-property-option-registries.ts": {
     "react(exhaustive-effect-dependencies)": 3,
     "react(refs)": 2
-  },
-  "src/renderer/components/library/database-move-destination-picker.tsx": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/library/library-files-dialog.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(set-state-in-effect)": 2
-  },
-  "src/renderer/components/library/page-move-destination-picker.tsx": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/shared/agent-runtime/agent-model-picker.tsx": {
-    "react(refs)": 1
-  },
-  "src/renderer/components/shared/agent-runtime/intelligence-selector-trigger.tsx": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(immutability)": 2,
-    "react(refs)": 1
-  },
-  "src/renderer/components/shared/agent-runtime/native-runtime-diagnostics.tsx": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/shared/content-save-status.tsx": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/shared/file-resource-icon.tsx": {
-    "react(static-components)": 1
-  },
-  "src/renderer/components/shared/marker-navigation-rail.tsx": {
-    "react(exhaustive-effect-dependencies)": 3,
-    "react(set-state-in-effect)": 3
-  },
-  "src/renderer/components/ui/context-menu.tsx": {
-    "react(refs)": 4
-  },
-  "src/renderer/components/ui/file-tree.tsx": {
-    "react(exhaustive-effect-dependencies)": 3,
-    "react(refs)": 1
-  },
-  "src/renderer/components/ui/hover-card.tsx": {
-    "react(refs)": 2,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/components/ui/nodex-home-mark.tsx": {
-    "react(refs)": 1
-  },
-  "src/renderer/components/ui/viewer-header.tsx": {
-    "react(exhaustive-effect-dependencies)": 1
   },
   "src/renderer/components/workbench/app-shell-tabs.tsx": {
     "react(exhaustive-effect-dependencies)": 2,
@@ -785,124 +723,5 @@
   },
   "src/renderer/features/workspace-files/workspace-pierre-editor.tsx": {
     "react(refs)": 1
-  },
-  "src/renderer/lib/codex-panel-motion.ts": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/lib/command-palette-page-results.ts": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/lib/database-promotion-presentation.ts": {
-    "react(memo-dependencies)": 1
-  },
-  "src/renderer/lib/database-row-detail-store.test.tsx": {
-    "react(globals)": 4
-  },
-  "src/renderer/lib/file-markdown-media/file-markdown-media.tsx": {
-    "react(exhaustive-effect-dependencies)": 1
-  },
-  "src/renderer/lib/maitai/maitai-external-store.test.tsx": {
-    "react(globals)": 1
-  },
-  "src/renderer/lib/maitai/maitai-scope.test.tsx": {
-    "react(exhaustive-effect-dependencies)": 1
-  },
-  "src/renderer/lib/markdown/markdown-public-leaves.tsx": {
-    "react(exhaustive-effect-dependencies)": 1
-  },
-  "src/renderer/lib/projection-invalidation-context.tsx": {
-    "react(exhaustive-effect-dependencies)": 1
-  },
-  "src/renderer/lib/resize-observer-motion-values.browser.test.tsx": {
-    "react(globals)": 1,
-    "react(refs)": 1
-  },
-  "src/renderer/lib/retained-scroll-position.test.tsx": {
-    "react(refs)": 1
-  },
-  "src/renderer/lib/retained-scroll-position.ts": {
-    "react(refs)": 1
-  },
-  "src/renderer/lib/use-canonical-order-handoff.ts": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/lib/use-database-view-rules-controller.ts": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(set-state-in-effect)": 2
-  },
-  "src/renderer/lib/use-distinct-state.test.tsx": {
-    "react(globals)": 7
-  },
-  "src/renderer/lib/use-element-visibility.ts": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/lib/use-file-search.ts": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/lib/use-library-navigation.ts": {
-    "react(refs)": 2
-  },
-  "src/renderer/lib/use-mermaid-preview.ts": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/lib/use-page-chat-activity.test.tsx": {
-    "react(globals)": 1
-  },
-  "src/renderer/lib/use-page-key-prefix-preview.ts": {
-    "react(refs)": 1
-  },
-  "src/renderer/lib/use-project-board-windows.ts": {
-    "react(exhaustive-effect-dependencies)": 1
-  },
-  "src/renderer/lib/use-settings-list-navigation.ts": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/lib/use-store-backup-runtime.ts": {
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/lib/use-tabs.ts": {
-    "react(refs)": 1,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/lib/use-terminal.ts": {
-    "react(refs)": 3,
-    "react(set-state-in-effect)": 1
-  },
-  "src/renderer/lib/use-workbench-agent-bridge.ts": {
-    "react(refs)": 1
-  },
-  "src/renderer/lib/use-workbench-chrome-commands.ts": {
-    "react(refs)": 1
-  },
-  "src/renderer/lib/use-workbench-database-view-presentation.ts": {
-    "react(exhaustive-effect-dependencies)": 1
-  },
-  "src/renderer/lib/use-workbench-panel-command-router.ts": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(preserve-manual-memoization)": 1,
-    "react(refs)": 1
-  },
-  "src/renderer/lib/use-workbench-panel-lifecycle.ts": {
-    "react(memo-dependencies)": 1,
-    "react(refs)": 1
-  },
-  "src/renderer/lib/use-workbench-panel-openers.ts": {
-    "react(refs)": 1
-  },
-  "src/renderer/lib/use-workbench-profile-preferences.ts": {
-    "react(refs)": 2
-  },
-  "src/renderer/lib/use-workbench-scene-commands.ts": {
-    "react(exhaustive-effect-dependencies)": 1,
-    "react(memo-dependencies)": 1,
-    "react(refs)": 2
-  },
-  "src/renderer/lib/use-workbench-session-commands.ts": {
-    "react(refs)": 1
-  },
-  "src/renderer/lib/use-workbench-thread-summary.ts": {
-    "react(set-state-in-effect)": 1
   }
 }

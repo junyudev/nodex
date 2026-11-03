@@ -1,5 +1,5 @@
 import { animate, motionValue, type MotionValue } from "motion/react";
-import { useCallback, useEffect, useRef, type PointerEvent } from "react";
+import { useLayoutEffect, useCallback, useEffect, useRef, type PointerEvent } from "react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { setNodexHomeMarkLayerOwner } from "@/lib/nodex-home-mark-layer-ownership";
 import { retireNodexHomeMarkRendererAfterPaint } from "@/lib/nodex-home-mark-renderer-retirement";
@@ -73,7 +73,9 @@ export function NodexHomeMark() {
   const handoffFrameRef = useRef<number | null>(null);
   const finishRendererRetirementRef = useRef<(() => void) | null>(null);
   const reducedMotionRef = useRef(reducedMotion);
-  reducedMotionRef.current = reducedMotion;
+  useLayoutEffect(() => {
+    reducedMotionRef.current = reducedMotion;
+  }, [reducedMotion]);
 
   const showStaticMark = useCallback(() => {
     setNodexHomeMarkLayerOwner({

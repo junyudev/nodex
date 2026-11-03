@@ -27,22 +27,27 @@ export const useElementVisibility = (rootMargin = "160px 0px"): ElementVisibilit
   }));
   const ref = useCallback<RefCallback<HTMLElement>>((nextElement) => {
     setElement(nextElement);
-  }, []);
-
-  useEffect(() => {
-    if (!element) return;
-    if (typeof globalThis.IntersectionObserver !== "function") {
-      setVisibility({
-        visible: true,
-        intersecting: true,
-        intersectionRatio: 1,
-        viewportCenterDistance: 0,
-        documentOrder: element.offsetTop,
-      });
+    if (!nextElement) return;
+    if (typeof globalThis.IntersectionObserver === "function") {
+      setVisibility((current) => ({ ...current, visible: false }));
       return;
     }
+    setVisibility({
+      visible: true,
+      intersecting: true,
+      intersectionRatio: 1,
+      viewportCenterDistance: 0,
+      documentOrder: nextElement.offsetTop,
+    });
+  }, []);
+  const [previousRootMargin, setPreviousRootMargin] = useState(rootMargin);
+  if (previousRootMargin !== rootMargin) {
+    setPreviousRootMargin(rootMargin);
+    if (element && canObserve) setVisibility((current) => ({ ...current, visible: false }));
+  }
 
-    setVisibility((current) => ({ ...current, visible: false }));
+  useEffect(() => {
+    if (!element || typeof globalThis.IntersectionObserver !== "function") return;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry) return;

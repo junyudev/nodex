@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useEffectEvent, useRef, type MutableRefObject } from "react";
+import {
+  useLayoutEffect,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  type MutableRefObject,
+} from "react";
 import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
 import { toast } from "@/components/ui/toast";
 import { projectWorkspaceRootOrNull } from "./workbench-workspace-context";
@@ -171,7 +178,9 @@ export function useWorkbenchPanelCommandRouter({
   panelTabShortcutStateRef,
 }: WorkbenchPanelCommandRouterInput) {
   const panelControllerRef = useRef(controller);
-  panelControllerRef.current = controller;
+  useLayoutEffect(() => {
+    panelControllerRef.current = controller;
+  }, [controller]);
   const { previewTabsByPanel } = controller;
   const {
     activatePanelGroup,
@@ -556,7 +565,7 @@ export function useWorkbenchPanelCommandRouter({
       return await createManualTab(kind, panelId, options.leafId);
     },
     [
-      activeSession?.projectId,
+      activeSession,
       createManualTab,
       focusOrCreateProjectDbViewTab,
       focusOrCreateSessionTerminalTab,
@@ -591,10 +600,6 @@ export function useWorkbenchPanelCommandRouter({
     },
     [activePanelOwnerKey, focusedPanelGroupRef, panelTabShortcutStateRef],
   );
-
-  useEffect(() => {
-    focusedPanelGroupRef.current = null;
-  }, [activePanelOwnerKey, focusedPanelGroupRef]);
 
   const cycleFocusedPanelTab = useCallback(
     (

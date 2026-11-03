@@ -1,4 +1,11 @@
-import { createContext, useContext, useEffect, useEffectEvent, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useEffectEvent,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   ProjectionInvalidationRegistry,
   type ProjectionFenceCause,
@@ -49,23 +56,22 @@ export const useProjectionRegistration = (registration: ProjectionRegistration |
   const invalidate = useEffectEvent((cause: ProjectionInvalidationCause) =>
     registration?.invalidate(cause),
   );
-  const subscribe = useEffectEvent(() => {
-    if (!registration) return;
+  const [scope, setScope] = useState(registration?.scope ?? null);
+  if ((scope ? projectionScopeKey(scope) : null) !== scopeKey) {
+    setScope(registration?.scope ?? null);
+  }
+
+  useEffect(() => {
+    if (!scope || consumerKey === null) return;
     return registry.register({
-      scope: registration.scope,
-      consumerKey: registration.consumerKey,
-      ...(registration.causalRuntime ? { causalRuntime: registration.causalRuntime } : {}),
-      ...(registration.projectionEffects
-        ? { projectionEffects: registration.projectionEffects }
-        : {}),
+      scope,
+      consumerKey,
+      ...(causalRuntime ? { causalRuntime } : {}),
+      ...(projectionEffects ? { projectionEffects } : {}),
       getDependencies,
       getCursor,
       fence,
       invalidate,
     });
-  });
-
-  useEffect(() => {
-    return subscribe();
-  }, [causalRuntime, consumerKey, projectionEffects, registry, scopeKey]);
+  }, [causalRuntime, consumerKey, projectionEffects, registry, scope]);
 };

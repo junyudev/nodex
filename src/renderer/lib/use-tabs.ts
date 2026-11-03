@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { Project } from "./types";
 
 export type ViewTab = "board" | "list" | "toggle-list" | "calendar";
@@ -144,42 +144,31 @@ function buildInitialState(projects: Project[]): TabsState {
 }
 
 export function useTabs(projects: Project[]) {
-  const initializedRef = useRef(false);
-  const [state, setState] = useState<TabsState>(() => {
-    const s = buildInitialState(projects);
-    initializedRef.current = true;
-    return s;
-  });
+  const [state, setState] = useState<TabsState>(() => buildInitialState(projects));
+  const [previousProjects, setPreviousProjects] = useState(projects);
 
-  // Re-initialize when projects load (they start empty, then populate)
-  const prevProjectCountRef = useRef(projects.length);
-  useEffect(() => {
-    if (prevProjectCountRef.current === 0 && projects.length > 0) {
-      setState(buildInitialState(projects));
+  if (previousProjects !== projects) {
+    setPreviousProjects(projects);
+    if (previousProjects.length === 0 && projects.length > 0) {
+      setState(() => buildInitialState(projects));
+    } else if (projects.length > 0) {
+      const projectIds = new Set(projects.map((project) => project.id));
+      setState((previous) => {
+        const tabs = previous.tabs.filter((tab) => projectIds.has(tab.projectId));
+        if (tabs.length === previous.tabs.length) return previous;
+        if (tabs.length === 0) {
+          const tab = makeTab(projects[0].id);
+          return { tabs: [tab], activeTabId: tab.id };
+        }
+        return {
+          tabs,
+          activeTabId: tabs.some((tab) => tab.id === previous.activeTabId)
+            ? previous.activeTabId
+            : tabs[0].id,
+        };
+      });
     }
-    prevProjectCountRef.current = projects.length;
-  }, [projects]);
-
-  // Remove tabs for deleted projects
-  useEffect(() => {
-    if (projects.length === 0) return;
-    const projectIds = new Set(projects.map((p) => p.id));
-    setState((prev) => {
-      const validTabs = prev.tabs.filter((t) => projectIds.has(t.projectId));
-      if (validTabs.length === prev.tabs.length) return prev; // no change
-
-      if (validTabs.length === 0) {
-        const tab = makeTab(projects[0].id);
-        return { tabs: [tab], activeTabId: tab.id };
-      }
-
-      const activeStillValid = validTabs.some((t) => t.id === prev.activeTabId);
-      return {
-        tabs: validTabs,
-        activeTabId: activeStillValid ? prev.activeTabId : validTabs[0].id,
-      };
-    });
-  }, [projects]);
+  }
 
   // Persist and sync URL on state change
   useEffect(() => {

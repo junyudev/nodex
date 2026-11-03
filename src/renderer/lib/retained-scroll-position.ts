@@ -122,14 +122,12 @@ export function useRetainedScrollPosition<T extends HTMLElement>(
   options: UseRetainedScrollPositionOptions = {},
 ): UseRetainedScrollPositionResult<T> {
   const nodeRef = useRef<T | null>(null);
-  const latestKeyRef = useRef<string | null>(key);
   const nodeKeyRef = useRef<string | null>(null);
   const lastKnownSnapshotRef = useRef<{
     key: string;
     snapshot: RetainedScrollSnapshot;
   } | null>(null);
   const restoreVersionRef = useRef(0);
-  latestKeyRef.current = key;
 
   const axis = options.axis ?? "both";
   const retryFrames = options.retryFrames ?? 0;
@@ -180,10 +178,10 @@ export function useRetainedScrollPosition<T extends HTMLElement>(
 
   const saveNow = useCallback(() => {
     const node = nodeRef.current;
-    const currentKey = nodeKeyRef.current ?? latestKeyRef.current;
+    const currentKey = nodeKeyRef.current ?? key;
     if (!node || !currentKey) return;
     rememberNodePosition(currentKey, node);
-  }, [rememberNodePosition]);
+  }, [key, rememberNodePosition]);
 
   const ref = useCallback(
     (node: T | null) => {
@@ -194,20 +192,23 @@ export function useRetainedScrollPosition<T extends HTMLElement>(
       }
 
       nodeRef.current = node;
-      nodeKeyRef.current = latestKeyRef.current;
-      if (!node || !latestKeyRef.current) return;
-      restoreNodePosition(latestKeyRef.current, node);
+      nodeKeyRef.current = key;
+      if (!node || !key) return;
+      restoreNodePosition(key, node);
     },
-    [rememberNodePosition, restoreNodePosition],
+    [key, rememberNodePosition, restoreNodePosition],
   );
 
-  const onScroll = useCallback<UIEventHandler<T>>((event) => {
-    const currentKey = nodeKeyRef.current ?? latestKeyRef.current;
-    if (!currentKey) return;
-    const snapshot = makeScrollSnapshot(event.currentTarget);
-    lastKnownSnapshotRef.current = { key: currentKey, snapshot };
-    rememberRetainedScrollSnapshot(currentKey, snapshot);
-  }, []);
+  const onScroll = useCallback<UIEventHandler<T>>(
+    (event) => {
+      const currentKey = nodeKeyRef.current ?? key;
+      if (!currentKey) return;
+      const snapshot = makeScrollSnapshot(event.currentTarget);
+      lastKnownSnapshotRef.current = { key: currentKey, snapshot };
+      rememberRetainedScrollSnapshot(currentKey, snapshot);
+    },
+    [key],
+  );
 
   useLayoutEffect(() => {
     const node = nodeRef.current;

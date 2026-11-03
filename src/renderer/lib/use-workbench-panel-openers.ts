@@ -11,7 +11,7 @@ import {
   canonicalWorkbenchFilePath,
   workbenchFileResourceId,
 } from "../../shared/workbench-resource-identity";
-import { useCallback, useEffect, useRef } from "react";
+import { useLayoutEffect, useCallback, useEffect, useRef } from "react";
 import { recordWorkspaceSearchFile } from "./workspace-search-recent-files";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { sideChatRequestTitle } from "../../shared/side-chat-title";
@@ -274,7 +274,9 @@ export function useWorkbenchPanelOpeners({
 }: WorkbenchPanelOpenersInput) {
   const workbenchOwner = useWorkbenchWindowOwner();
   const panelControllerRef = useRef(controller);
-  panelControllerRef.current = controller;
+  useLayoutEffect(() => {
+    panelControllerRef.current = controller;
+  }, [controller]);
   const { previewTabsByPanel, sideChatTabsBySession } = controller;
   const {
     clearPanelPreviewTab,

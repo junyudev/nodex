@@ -17,11 +17,9 @@ export function ContentSaveStatus({ source }: { readonly source: ContentSaveStat
   });
   const active = phase !== "idle";
   const [delayed, setDelayed] = useState(false);
+  if (!active && delayed) setDelayed(false);
   useEffect(() => {
-    if (!active) {
-      setDelayed(false);
-      return;
-    }
+    if (!active) return;
     const timeout = setTimeout(() => setDelayed(true), 1000);
     return () => clearTimeout(timeout);
   }, [active]);

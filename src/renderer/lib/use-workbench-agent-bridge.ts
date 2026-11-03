@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffectEvent, useEffect } from "react";
 import {
   createElectronWorkbenchAgentBridgePort,
   createWorkbenchAgentBridge,
@@ -13,8 +13,7 @@ export function useWorkbenchAgentBridge(
   context: WorkbenchAgentContextOptions = {},
   commands?: WorkbenchSceneCommandExecutor,
 ) {
-  const contextRef = useRef(context);
-  contextRef.current = context;
+  const readContext = useEffectEvent(() => context);
   useEffect(() => {
     if (!window.api) return;
     const capability = createWorkbenchAgentBridge(
@@ -22,7 +21,7 @@ export function useWorkbenchAgentBridge(
       createElectronWorkbenchAgentBridgePort(window.api),
       {
         commands,
-        context: () => contextRef.current,
+        context: () => readContext(),
         onError: (error) => console.error("Workbench Agent bridge failed", error),
       },
     );

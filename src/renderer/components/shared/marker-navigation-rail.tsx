@@ -174,11 +174,10 @@ export function sameMarkerNavigationSet(
 export function useMarkerNavigationIdleReady(itemCount: number, minItems: number): boolean {
   const [idleReady, setIdleReady] = useState(false);
 
+  if (itemCount < minItems && idleReady) setIdleReady(false);
+
   useEffect(() => {
-    if (itemCount < minItems) {
-      setIdleReady(false);
-      return undefined;
-    }
+    if (itemCount < minItems) return;
 
     let cancelled = false;
     const markReady = () => {
@@ -297,7 +296,6 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
     () => new Map(items.map((item, index) => [item.id, index] as const)),
     [items],
   );
-  const itemIdsKey = useMemo(() => items.map((item) => item.id).join("\n"), [items]);
   const shouldVirtualize =
     items.length >= Math.max(MARKER_NAVIGATION_VIRTUALIZE_AFTER, virtualizeAfter);
   const virtualWindow = useMemo(
@@ -313,15 +311,10 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
     ? items.slice(virtualWindow.startIndex, virtualWindow.endIndex)
     : items;
 
-  useEffect(() => {
-    setCurrentItemIds((current) => {
-      const next = new Set([...current].filter((id) => itemIds.has(id)));
-      if (next.size > 0) {
-        return sameMarkerNavigationSet(current, next) ? current : next;
-      }
-      return new Set(lastItemId ? [lastItemId] : []);
-    });
-  }, [itemIds, itemIdsKey, lastItemId]);
+  const retainedCurrentIds = new Set([...currentItemIds].filter((id) => itemIds.has(id)));
+  const nextCurrentIds =
+    retainedCurrentIds.size > 0 ? retainedCurrentIds : new Set(lastItemId ? [lastItemId] : []);
+  if (!sameMarkerNavigationSet(currentItemIds, nextCurrentIds)) setCurrentItemIds(nextCurrentIds);
 
   const currentPrimaryItemId = useMemo(
     () => items.find((item) => currentItemIds.has(item.id))?.id ?? lastItemId,
@@ -330,7 +323,7 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
 
   useLayoutEffect(() => {
     const listElement = listRef.current;
-    if (!listElement || !shouldVirtualize) return;
+    if (!canRender || !listElement || !shouldVirtualize) return;
     const activeIndex = Math.max(0, itemIndexById.get(currentPrimaryItemId ?? "") ?? -1);
     const height = Math.min(
       listElement.clientHeight || 400,
@@ -344,13 +337,12 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
       listElement.scrollTop = scrollTop;
     }
     setVirtualViewport({ scrollTop, height });
-  }, [canRender, currentPrimaryItemId, itemIdsKey, itemIndexById, shouldVirtualize]);
+  }, [canRender, currentPrimaryItemId, itemIndexById, shouldVirtualize]);
+
+  if ((!scrollElement || !contentElement || !portalTarget) && canRender) setCanRender(false);
 
   useEffect(() => {
-    if (!scrollElement || !contentElement || !portalTarget) {
-      setCanRender((current) => (current ? false : current));
-      return undefined;
-    }
+    if (!scrollElement || !contentElement || !portalTarget) return;
 
     let frameId: number | null = null;
     const syncLayoutState = () => {
@@ -500,7 +492,6 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
   }, [
     collectObservationTargets,
     itemIds,
-    itemIdsKey,
     items,
     mutationsIncludeObservationTargets,
     scrollElement,

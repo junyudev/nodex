@@ -53,6 +53,42 @@ afterEach(() => {
 });
 
 describe("Workbench synchronous Window owner", () => {
+  test("clears panel focus atomically on Scene activation and never restores a previous Scene's focus", async () => {
+    const view = renderHook(() => useWorkbenchWindowState(), { wrapper: wrapper() });
+    const owner = view.result.current.owner;
+    await act(async () => {
+      owner.selectLibrary();
+      owner.setFocusedPanelGroup({
+        ownerKey: "library",
+        panelId: "right",
+        leafId: "library:right",
+      });
+      owner.setScene(
+        { kind: "project", projectId: "background" },
+        materializeInitialWorkbenchScene({ kind: "project", projectId: "background" }),
+      );
+    });
+    expect(owner.read().focusedPanelGroup?.ownerKey).toBe("library");
+    const observed: Array<string | null> = [];
+    const unsubscribe = owner.subscribe(() =>
+      observed.push(owner.read().focusedPanelGroup?.ownerKey ?? null),
+    );
+    await act(async () => {
+      owner.selectProject("project");
+      owner.setFocusedPanelGroup({
+        ownerKey: "project:project",
+        panelId: "bottom",
+        leafId: "project:bottom",
+      });
+      owner.navigateBack();
+      owner.navigateForward();
+    });
+    expect(observed).toEqual([null, "project:project", null, null]);
+    expect(owner.read().focusedPanelGroup).toBeNull();
+    unsubscribe();
+    view.unmount();
+  });
+
   test("records only explicit foreground Session navigation, never restoration or background updates", async () => {
     const view = renderHook(() => useWorkbenchWindowState(), { wrapper: wrapper() });
     const owner = view.result.current.owner;

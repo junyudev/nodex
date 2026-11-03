@@ -7,7 +7,7 @@ import {
   useQueries,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   type LibraryApplyOperation,
   type LibraryModuleReadRequest,
@@ -205,11 +205,13 @@ export const libraryCanvasTargetQueryOptions = (canvasId: string) =>
 export const useLibraryNavigationInvalidation = (): string | null => {
   const queryClient = useQueryClient();
   const metadata = useQuery(libraryMetadataQueryOptions());
-  const retainedLibraryId = useRef<string | null>(null);
+  const [retainedLibraryId, setRetainedLibraryId] = useState<string | null>(null);
   // A reset clears query data before Main receives its acknowledgement. Keep
   // the immutable audience identity alive across that bounded repair window.
-  if (metadata.data) retainedLibraryId.current = metadata.data.libraryId;
-  const libraryId = metadata.data?.libraryId ?? retainedLibraryId.current;
+  const observedLibraryId = metadata.data?.libraryId;
+  if (observedLibraryId && retainedLibraryId !== observedLibraryId)
+    setRetainedLibraryId(observedLibraryId);
+  const libraryId = observedLibraryId ?? retainedLibraryId;
   useEffect(
     () =>
       subscribeLibraryChanges(() => {

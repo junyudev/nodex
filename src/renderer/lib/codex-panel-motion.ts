@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import {
   animate,
   useMotionValue,
@@ -214,22 +214,25 @@ export function useCodexAnimatedPanelState({
   const animatedSize = useTransform([progress, targetSize], ([latestProgress, latestTargetSize]) =>
     resolveCodexAnimatedPanelSize(Number(latestProgress), Number(latestTargetSize)),
   );
-  const [mounted, setMounted] = useState(open);
-  const [animating, setAnimating] = useState(false);
-  const mountedRef = useRef(open);
+  const mountedActivity = useMotionValue(open);
+  const subscribeMounted = useCallback(
+    (listener: () => void) => mountedActivity.on("change", listener),
+    [mountedActivity],
+  );
+  const mounted = useSyncExternalStore(subscribeMounted, () => mountedActivity.get());
+  const animationActivity = useMotionValue(false);
+  const subscribeActivity = useCallback(
+    (listener: () => void) => animationActivity.on("change", listener),
+    [animationActivity],
+  );
+  const animating = useSyncExternalStore(subscribeActivity, () => animationActivity.get());
   const openRef = useRef(open);
   const resetKeyRef = useRef(resetKey);
   const animationRef = useRef<ReturnType<typeof animate> | null>(null);
   const animationGenerationRef = useRef(0);
 
-  const setMountedIfChanged = (nextMounted: boolean) => {
-    if (mountedRef.current === nextMounted) return;
-    mountedRef.current = nextMounted;
-    setMounted(nextMounted);
-  };
-
   useMotionValueEvent(progress, "change", (latestProgress) => {
-    setMountedIfChanged(openRef.current || clampCodexPanelProgress(latestProgress) > 0);
+    mountedActivity.set(openRef.current || clampCodexPanelProgress(latestProgress) > 0);
   });
 
   useEffect(() => {
@@ -246,31 +249,28 @@ export function useCodexAnimatedPanelState({
     animationRef.current = null;
 
     if (resetChanged || shouldSnapCodexMotion(reducedMotion, animateLayout)) {
-      setAnimating(false);
+      animationActivity.set(false);
       progress.set(nextProgress);
-      setMountedIfChanged(open);
+      mountedActivity.set(open);
       return undefined;
     }
 
     if (clampCodexPanelProgress(progress.get()) === nextProgress) {
-      setAnimating(false);
-      setMountedIfChanged(open || nextProgress > 0);
+      animationActivity.set(false);
+      mountedActivity.set(open || nextProgress > 0);
       return undefined;
     }
 
-    if (open) {
-      setMountedIfChanged(true);
-    }
-
-    setAnimating(true);
+    if (open) mountedActivity.set(true);
+    animationActivity.set(true);
     const controls = animate(progress, nextProgress, {
       ...CODEX_SHELL_PANEL_TRANSITION,
       onComplete: () => {
         if (animationGenerationRef.current === generation) {
-          setAnimating(false);
+          animationActivity.set(false);
         }
         if (!open && clampCodexPanelProgress(progress.get()) === 0) {
-          setMountedIfChanged(false);
+          mountedActivity.set(false);
         }
       },
     });
@@ -279,7 +279,7 @@ export function useCodexAnimatedPanelState({
     return () => {
       controls.stop();
     };
-  }, [animateLayout, open, progress, reducedMotion, resetKey]);
+  }, [animateLayout, animationActivity, open, progress, reducedMotion, resetKey, mountedActivity]);
 
   return {
     progress,

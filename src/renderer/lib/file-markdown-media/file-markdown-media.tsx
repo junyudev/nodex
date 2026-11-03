@@ -79,7 +79,6 @@ function useFileMarkdownMedia(source: string, sourceSet: string): MediaSnapshot 
   const scope = useContext(FileMarkdownMediaContext);
   const hostId = scope?.hostId;
   const sourceFilePath = scope?.sourceFilePath;
-  const revision = scope?.revision;
   const queryClient = useQueryClient();
   const key = JSON.stringify([
     scope?.hostId,
@@ -180,7 +179,7 @@ function useFileMarkdownMedia(source: string, sourceSet: string): MediaSnapshot 
       cancelled = true;
       urls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [key, queryClient, hostId, sourceFilePath, revision, source, sourceSet]);
+  }, [key, queryClient, hostId, sourceFilePath, source, sourceSet]);
   return snapshot.key === key
     ? snapshot
     : { key, failed: false, names: EMPTY_IMAGE_NAMES, settled: false };

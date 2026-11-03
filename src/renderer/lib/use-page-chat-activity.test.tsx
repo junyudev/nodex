@@ -1,4 +1,4 @@
-import { act } from "react";
+import { useLayoutEffect, act } from "react";
 import { describe, expect, test } from "vite-plus/test";
 import { render } from "@/test/dom";
 import type {
@@ -47,7 +47,9 @@ describe("usePageChatActivity", () => {
     };
     let renders = 0;
     function Probe() {
-      renders += 1;
+      useLayoutEffect(() => {
+        renders += 1;
+      });
       return <span data-testid="execution">{usePageChatActivity(summary, store).execution}</span>;
     }
     const view = render(<Probe />);

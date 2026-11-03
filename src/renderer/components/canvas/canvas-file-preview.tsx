@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import type { LibraryFileReadBinding } from "../../../shared/library-files";
@@ -35,9 +35,9 @@ export function CanvasFilePreview({
     error?: string;
   } | null>(null);
   const scope = JSON.stringify(authority);
-  const authorityRef = useRef({ scope, authority });
-  if (authorityRef.current.scope !== scope) authorityRef.current = { scope, authority };
-  const exactAuthority = authorityRef.current.authority;
+  const [authoritySnapshot, setAuthoritySnapshot] = useState({ scope, authority });
+  if (authoritySnapshot.scope !== scope) setAuthoritySnapshot({ scope, authority });
+  const exactAuthority = authoritySnapshot.authority;
   useEffect(() => {
     let active = true;
     let url: string | undefined;

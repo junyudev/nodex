@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { render, waitFor } from "@testing-library/react";
 import { motion } from "motion/react";
 import { describe, expect, test } from "vite-plus/test";
@@ -8,14 +9,13 @@ describe("ResizeObserver MotionValue geometry", () => {
     let renderCount = 0;
 
     function Harness() {
-      renderCount += 1;
-      const size = useElementSizeMotionValues();
+      useLayoutEffect(() => {
+        renderCount += 1;
+      });
+      const { ref, height, width } = useElementSizeMotionValues();
       return (
-        <div ref={size.ref} data-testid="measured-shell" style={{ height: 80, width: 120 }}>
-          <motion.div
-            data-testid="geometry-consumer"
-            style={{ height: size.height, width: size.width }}
-          />
+        <div ref={ref} data-testid="measured-shell" style={{ height: 80, width: 120 }}>
+          <motion.div data-testid="geometry-consumer" style={{ height, width }} />
         </div>
       );
     }

@@ -66,7 +66,7 @@ describe("renderer state provider", () => {
       const store = useMaitaiStore();
       useLayoutEffect(() => {
         stores.push(store);
-      }, [store, value]);
+      });
       return <span>{value}</span>;
     }
     const renderTree = (value: string) => (

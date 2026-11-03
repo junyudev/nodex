@@ -56,6 +56,10 @@
       "reason": "Browser test fixture intentionally passes sanitized Mermaid SVG markup through the security pipeline; it is generated diagram content, not an icon."
     },
     "src/renderer/lib/status-presentation.tsx": 1,
+    "src/renderer/lib/use-mermaid-preview.test.tsx": {
+      "count": 1,
+      "reason": "Test fixture resolves the Mermaid renderer with an inert empty SVG string to verify preview state transitions; it is not reusable product artwork."
+    },
     "src/renderer/components/board/editor/image-layout.browser.test.tsx": {
       "count": 2,
       "reason": "Browser test fixture uses SVG image bytes with exact dimensions to verify image layout stability."

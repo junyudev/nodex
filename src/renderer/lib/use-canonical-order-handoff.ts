@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 interface PendingCanonicalOrder {
   readonly operationId: symbol;
@@ -47,11 +47,9 @@ export function useCanonicalOrderHandoff({
   const [pending, setPending] = useState<PendingCanonicalOrder | null>(null);
   const displayedIds = resolveDisplayedOrder(canonicalIds, pending);
 
-  useEffect(() => {
-    if (pending?.phase !== "acknowledged") return;
-    if (sameStringOrder(canonicalIds, pending.previousIds)) return;
-    setPending((current) => (current?.operationId === pending.operationId ? null : current));
-  }, [canonicalIds, pending]);
+  if (pending?.phase === "acknowledged" && !sameStringOrder(canonicalIds, pending.previousIds)) {
+    setPending(null);
+  }
 
   const submit = useCallback(
     (nextIds: readonly string[], request: () => Promise<unknown> | unknown) => {

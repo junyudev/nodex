@@ -1,6 +1,5 @@
 import {
   forwardRef,
-  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -65,7 +64,6 @@ export function ViewerHeader({
     ...trailing.map((slot) => ({ ...slot, side: "trailing" as const })),
   ].filter((slot) => slot.content != null && slot.content !== false);
   const layoutKey = JSON.stringify(slots.map(({ content: _content, ...layout }) => layout));
-  const readSlots = useEffectEvent(() => slots);
 
   useLayoutEffect(() => {
     const header = headerRef.current;
@@ -76,7 +74,9 @@ export function ViewerHeader({
       element.removeAttribute("data-viewer-header-collapsed");
     };
     const measure = () => {
-      const current = readSlots();
+      const current = JSON.parse(layoutKey) as Array<
+        ViewerHeaderSlotLayout & { side: ViewerHeaderSide }
+      >;
       const headerStyle = getComputedStyle(header);
       const leadingStyle = getComputedStyle(leadingRef.current ?? header);
       const trailingStyle = getComputedStyle(trailingRef.current ?? header);

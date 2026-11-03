@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { MotionValue } from "motion/react";
 import { useResolvedReducedMotion } from "./use-reduced-motion";
 import { useConversationSubset } from "@/features/local-conversation";
@@ -134,10 +134,7 @@ export function useWorkbenchThreadSummary({
       : "pinned";
   const [popoverOpen, setPopoverOpen] = useState(false);
 
-  useEffect(() => {
-    if (mode === "popover") return;
-    setPopoverOpen(false);
-  }, [mode]);
+  if (mode !== "popover" && popoverOpen) setPopoverOpen(false);
 
   const browserRuntime = useBrowserSidebarRendererState();
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { WorkbenchRecentPageSessionSchema } from "../../shared/schemas/workbench";
 import type { WorkbenchRecentPageSession } from "./types";
 import {
@@ -243,11 +243,7 @@ export function recordRecentPageLeaveInPreferences(
 
 export function useWorkbenchProfilePreferences() {
   const [storedPreferences, setStoredPreferences] = useScopedAtom(workbenchProfilePreferencesAtom);
-  const initialPreferencesRef = useRef<WorkbenchProfilePreferences | null>(null);
-  if (!initialPreferencesRef.current) {
-    initialPreferencesRef.current = loadWorkbenchProfilePreferences();
-  }
-  const initialPreferences = initialPreferencesRef.current;
+  const [initialPreferences] = useState(loadWorkbenchProfilePreferences);
   const preferences = storedPreferences ?? initialPreferences;
 
   useLayoutEffect(() => {

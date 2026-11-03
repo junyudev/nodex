@@ -96,11 +96,13 @@ export function useDatabaseViewRulesController(input: {
   );
   const [pulse, setPulse] = useState(0);
 
-  useEffect(() => {
+  const [ownerKey, setOwnerKey] = useState(input.ownerKey);
+  if (ownerKey !== input.ownerKey) {
+    setOwnerKey(input.ownerKey);
     setPendingPopover(null);
     setPopover(null);
     setPulse(0);
-  }, [input.ownerKey]);
+  }
   const setPopoverOpen = useCallback(
     (target: Exclude<DatabaseViewRulePopoverTarget, null>, open: boolean) => {
       if (open) setPendingPopover(null);
@@ -130,11 +132,12 @@ export function useDatabaseViewRulesController(input: {
     return () => window.cancelAnimationFrame(frame);
   }, [input.barOpen, pendingPopover]);
 
-  useEffect(() => {
-    if (popover?.kind !== "quick_filter") return;
-    if (input.rules.propertyFilters.some((filter) => filter.filterId === popover.filterId)) return;
+  if (
+    popover?.kind === "quick_filter" &&
+    !input.rules.propertyFilters.some((filter) => filter.filterId === popover.filterId)
+  ) {
     setPopover(null);
-  }, [input.rules.propertyFilters, popover]);
+  }
 
   const revealInBar = useCallback(
     (target: DatabaseViewRuleBarPopoverTarget) => {

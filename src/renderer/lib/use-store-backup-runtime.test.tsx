@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type {
@@ -69,6 +70,36 @@ const portWith = (overrides: Partial<BackupRuntimePort>): BackupRuntimePort => (
 });
 
 describe("useStoreBackupRuntime", () => {
+  test("clears notices on opening and input transitions, while reads preserve the current notice", async () => {
+    const port = portWith({
+      start: async (command) => ({
+        kind: "submitted",
+        operationId: command.operationId,
+        job: job(command.operationId, "failed"),
+      }),
+    });
+    const view = renderHook(useStoreBackupRuntime, {
+      initialProps: { open: false, port },
+      wrapper: StrictMode,
+    });
+    await act(async () => {
+      await view.result.current.startManual();
+    });
+    expect(view.result.current.notice?.message).toBe("Snapshot failed.");
+    view.rerender({ open: true, port });
+    expect(view.result.current.notice).toBeNull();
+    await act(async () => {
+      await view.result.current.startManual();
+    });
+    await act(async () => {
+      await view.result.current.refresh();
+    });
+    expect(view.result.current.notice?.message).toBe("Snapshot failed.");
+    view.rerender({ open: true, port: portWith({}) });
+    expect(view.result.current.notice).toBeNull();
+    view.unmount();
+  });
+
   test("retries an unresolved submission with the exact operation and normalized label", async () => {
     const commands: CreateBackupCommandInput[] = [];
     const start = vi.fn(async (command: CreateBackupCommandInput) => {
@@ -80,9 +111,8 @@ describe("useStoreBackupRuntime", () => {
         job: job(command.operationId, "failed"),
       };
     });
-    const { result } = renderHook(() =>
-      useStoreBackupRuntime({ open: true, port: portWith({ start }) }),
-    );
+    const port = portWith({ start });
+    const { result } = renderHook(() => useStoreBackupRuntime({ open: true, port }));
 
     await act(async () => {
       await expect(result.current.startManual("  Before migration  ")).rejects.toThrow(
@@ -131,17 +161,13 @@ describe("useStoreBackupRuntime", () => {
       operationId: command.operationId,
       activeJobId: "backup:active",
     }));
-    const { result } = renderHook(() =>
-      useStoreBackupRuntime({
-        open: true,
-        port: portWith({
-          start,
-          job: async () => {
-            throw new Error("progress unavailable");
-          },
-        }),
-      }),
-    );
+    const port = portWith({
+      start,
+      job: async () => {
+        throw new Error("progress unavailable");
+      },
+    });
+    const { result } = renderHook(() => useStoreBackupRuntime({ open: true, port }));
 
     let outcome: BackupStartResult | undefined;
     await act(async () => {

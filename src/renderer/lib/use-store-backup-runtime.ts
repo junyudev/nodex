@@ -95,7 +95,6 @@ export function useStoreBackupRuntime({ open, port }: UseStoreBackupRuntimeInput
   }, [port]);
 
   const refresh = useCallback(async () => {
-    setNotice(null);
     await Promise.all([reloadInventory(), reloadStorageOptimization(), reloadJob()]);
   }, [reloadInventory, reloadJob, reloadStorageOptimization]);
 
@@ -236,10 +235,11 @@ export function useStoreBackupRuntime({ open, port }: UseStoreBackupRuntimeInput
     return () => clearInterval(timer);
   }, [open, reloadStorageOptimization, storageOptimization?.optimizing]);
 
-  useEffect(() => {
-    if (open) return;
+  const [previousInput, setPreviousInput] = useState({ open, port });
+  if (previousInput.open !== open || previousInput.port !== port) {
+    setPreviousInput({ open, port });
     setNotice(null);
-  }, [open]);
+  }
 
   const cancelJob = useCallback(async () => {
     if (!job || !projectBackupJob(job).cancellable) return;

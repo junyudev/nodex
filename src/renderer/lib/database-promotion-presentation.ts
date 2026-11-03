@@ -279,10 +279,14 @@ export class DatabasePromotionPresentationStore {
     else this.observations.add(release);
   };
   project(
+    revision: number,
     evidence: DatabasePromotionReadEvidence | null,
     pageIds: ReadonlySet<string>,
     canonicalPageIds = pageIds,
   ) {
+    // A superseded observation cannot acknowledge a render or consume journal work.
+    if (revision !== this.revision)
+      return { model: { evidence, pageIds, slots: [] }, renderToken: null };
     return this.journal.project(
       { evidence, pageIds, slots: [] },
       evidence && { storeEpoch: evidence.storeEpoch, commitSeq: evidence.commitSeq },
@@ -336,8 +340,7 @@ export const useDatabasePromotionPresentation = (input: {
     });
   }, [owner]);
   const projected = useMemo(() => {
-    void revision;
-    return owner.project(input.evidence, input.pageIds, input.canonicalPageIds);
+    return owner.project(revision, input.evidence, input.pageIds, input.canonicalPageIds);
   }, [owner, revision, input.evidence, input.pageIds, input.canonicalPageIds]);
   useLayoutEffect(() => {
     if (projected.renderToken !== null) owner.markRendered(projected.renderToken);

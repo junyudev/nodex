@@ -1,5 +1,5 @@
 import { act, useLayoutEffect, useRef } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, renderHook, screen, waitFor } from "@testing-library/react";
 import { useMotionValue } from "motion/react";
 import { describe, expect, test } from "vite-plus/test";
 import { useCodexAnimatedPanelState } from "./codex-panel-motion";
@@ -28,6 +28,31 @@ function Panel({
 }
 
 describe("animated panel content lifetime", () => {
+  test("snaps a reset and reduced-motion close without retaining animation activity", async () => {
+    const { result, rerender } = renderHook(
+      ({ open, reducedMotion, resetKey }) => {
+        const targetSize = useMotionValue(300);
+        return useCodexAnimatedPanelState({ open, reducedMotion, resetKey, targetSize });
+      },
+      { initialProps: { open: false, reducedMotion: false, resetKey: 0 } },
+    );
+    rerender({ open: true, reducedMotion: false, resetKey: 0 });
+    expect(result.current.mounted).toBe(true);
+    expect(result.current.animating).toBe(true);
+    rerender({ open: false, reducedMotion: false, resetKey: 1 });
+    expect(result.current.mounted).toBe(false);
+    expect(result.current.animating).toBe(false);
+    rerender({ open: true, reducedMotion: true, resetKey: 1 });
+    expect(result.current.mounted).toBe(true);
+    expect(result.current.animating).toBe(false);
+    rerender({ open: false, reducedMotion: true, resetKey: 1 });
+    expect(result.current.mounted).toBe(false);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.animating).toBe(false);
+  });
+
   test.each([false, true])(
     "mounts an opening panel in the same commit as its open intent (reduced motion: %s)",
     async (reducedMotion) => {

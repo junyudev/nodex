@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useEffectEvent, useRef, type MutableRefObject } from "react";
+import { runWithCleanup } from "@/lib/run-with-cleanup";
+import {
+  useLayoutEffect,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  type MutableRefObject,
+} from "react";
 import { toast } from "@/components/ui/toast";
 import {
   materializeWorkbenchImageEditorSurfaceConfig,
@@ -47,7 +55,9 @@ export function useWorkbenchPanelLifecycle({
   windowOwner,
 }: WorkbenchPanelLifecycleInput) {
   const panelControllerRef = useRef(controller);
-  panelControllerRef.current = controller;
+  useLayoutEffect(() => {
+    panelControllerRef.current = controller;
+  }, [controller]);
   const { imageEditorTabsBySession, planTabsBySession } = controller;
   const readPresentation = useCallback(
     () =>
@@ -204,24 +214,24 @@ export function useWorkbenchPanelLifecycle({
     },
     [activeSession, closeEphemeralPanelTab, planTabsBySession],
   );
-  const pinPreviewTab = useCallback(
-    async (panelId: PanelId, tabId: string, leafId?: string) => {
-      if (!activeSession) return;
-      const targetLeafId =
-        leafId ??
-        readPresentation()?.tabs.find((tab) => tab.tabId === tabId)?.groupId ??
-        resolveSessionPanelActiveLeafId(activeSession, panelId);
-      const imagePreview = (imageEditorTabsBySession[activeSession.id] ?? []).find(
-        (tab) =>
-          tab.id === tabId &&
-          tab.preview === true &&
-          tab.panelId === panelId &&
-          (tab.leafId ?? targetLeafId) === targetLeafId,
-      );
-      if (imagePreview) {
-        if (pinningPreviewTabIdsRef.current.has(tabId)) return;
-        pinningPreviewTabIdsRef.current.add(tabId);
-        try {
+  const pinPreviewTab = async (panelId: PanelId, tabId: string, leafId?: string) => {
+    if (!activeSession) return;
+    const targetLeafId =
+      leafId ??
+      readPresentation()?.tabs.find((tab) => tab.tabId === tabId)?.groupId ??
+      resolveSessionPanelActiveLeafId(activeSession, panelId);
+    const imagePreview = (imageEditorTabsBySession[activeSession.id] ?? []).find(
+      (tab) =>
+        tab.id === tabId &&
+        tab.preview === true &&
+        tab.panelId === panelId &&
+        (tab.leafId ?? targetLeafId) === targetLeafId,
+    );
+    if (imagePreview) {
+      if (pinningPreviewTabIdsRef.current.has(tabId)) return;
+      pinningPreviewTabIdsRef.current.add(tabId);
+      await runWithCleanup(
+        async () => {
           const config = await materializeWorkbenchImageEditorSurfaceConfig(imagePreview.options);
           if (!config) {
             trackImageEditorPinOutcome({
@@ -263,21 +273,26 @@ export function useWorkbenchPanelLifecycle({
             imageSource: imagePreview.options.imageSource,
             outcome: "pinned",
           });
-        } finally {
-          pinningPreviewTabIdsRef.current.delete(tabId);
-        }
-        return;
-      }
-      const previewTabsByPanel = windowOwner.read().ephemeralPanels.previewTabsByPanel;
-      const previewTab =
-        previewTabsByPanel[
-          makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId, targetLeafId)
-        ] ?? previewTabsByPanel[makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId)];
-      if (!previewTab || previewTab.id !== tabId) return;
-      if (pinningPreviewTabIdsRef.current.has(tabId)) return;
+        },
+        {
+          cleanup: () => {
+            pinningPreviewTabIdsRef.current.delete(tabId);
+          },
+        },
+      );
+      return;
+    }
+    const previewTabsByPanel = windowOwner.read().ephemeralPanels.previewTabsByPanel;
+    const previewTab =
+      previewTabsByPanel[
+        makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId, targetLeafId)
+      ] ?? previewTabsByPanel[makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId)];
+    if (!previewTab || previewTab.id !== tabId) return;
+    if (pinningPreviewTabIdsRef.current.has(tabId)) return;
 
-      pinningPreviewTabIdsRef.current.add(tabId);
-      try {
+    pinningPreviewTabIdsRef.current.add(tabId);
+    await runWithCleanup(
+      async () => {
         panelControllerRef.current.durable.activateTab(activeSession, panelId, targetLeafId);
         const createInput = makePinnedPreviewTabCreateInput(
           activeSession,
@@ -294,19 +309,14 @@ export function useWorkbenchPanelLifecycle({
           delete next[slotKey];
           return next;
         });
-      } finally {
-        pinningPreviewTabIdsRef.current.delete(tabId);
-      }
-    },
-    [
-      activeSession,
-      createSessionViewTab,
-      imageEditorTabsBySession,
-      pinningPreviewTabIdsRef,
-      windowOwner,
-      readPresentation,
-    ],
-  );
+      },
+      {
+        cleanup: () => {
+          pinningPreviewTabIdsRef.current.delete(tabId);
+        },
+      },
+    );
+  };
 
   const moveTabToPanel = useCallback(
     async (
