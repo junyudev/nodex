@@ -1,0 +1,141 @@
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_a33445b5936fa3::t_7eb14617365c67 121-123
+crates/nodex-core-contracts/src/database.rs
+  s_861e195a25a694::t_f57ebdf609c8ca 12,787-799,974-982,1241-1273,1287
+crates/nodex-core-contracts/src/library.rs
+  s_861e195a25a694::t_11452337ce2af4 17-41
+crates/nodex-core/src/database/genesis.rs
+  s_a33445b5936fa3::t_22926ddf99ef6c 80-83,195-200
+crates/nodex-core/src/database/mod.rs
+  s_a33445b5936fa3::t_c7cfb67db77ff2 16,8644-9132
+crates/nodex-core/src/database/mutation.rs
+  s_8c62977aa6fb11::t_77faff5082abc0 65,200-202,278-280,2624-2625,5308
+crates/nodex-core/src/database/property_semantics.rs
+  s_a33445b5936fa3::t_efa4c87f52412a 14-16,20,30,92-95,97,144-150
+crates/nodex-core/src/database/read.rs
+  s_a33445b5936fa3::t_791474a02ff9a4 892-900,1111
+crates/nodex-core/src/database/relation_projection.rs
+  s_a33445b5936fa3::t_94696c542c90c9 324-325,365
+crates/nodex-core/src/database/window.rs
+  s_a33445b5936fa3::t_785ec6024d870e 3232
+crates/nodex-core/src/database/work_graph.rs
+  s_8c62977aa6fb11::t_8b09f12351be77 1-411
+crates/nodex-core/src/infrastructure/local_commit.rs
+  s_098df3235fa721::t_78ff3a824c4556 1512-1518,1520,1541
+crates/nodex-core/src/infrastructure/migration.rs
+  s_a33445b5936fa3::t_14f4dada7414b5 2634-2638,2654-2666,8732,9548-9574,9577,9579-9580,9583,9586-9601,9603-9606,9608-9611,9613-9622
+crates/nodex-core/src/infrastructure/projection_requirement_extractor.rs
+  s_a33445b5936fa3::t_e237bcc73798d4 55-67,171,212-228,268-270
+crates/nodex-core/src/infrastructure/store_validation.rs
+  s_a33445b5936fa3::t_355784d5b2350d 863
+crates/nodex-core/src/library/mod.rs
+  s_8c62977aa6fb11::t_4bf1cba99c2ff8 7794
+crates/nodex-core/src/library/page_copy.rs
+  s_8c62977aa6fb11::t_e7370d7a785672 411,1589-1619
+crates/nodex-core/src/library/page_property_mutation.rs
+  s_8c62977aa6fb11::t_c7e5db9d6a9c82 553-556,859,895-942
+crates/nodex-store-format/src/lib.rs
+  s_861e195a25a694::t_8b85128a0345bb 277-278,284
+docs/product-specs/database-pages-and-views-behavior.md
+  s_8c62977aa6fb11::t_00dbdf7ead0701 903-935
+packages/core-protocol/openapi.json
+  s_861e195a25a694::t_403a22e0455c0b 2574-2613,6874,6994-6996,7151-7198,12993-13013,13759,13879-13881,15337-15363,34710-34779,47119-47152,51212-51268,54781-54801
+packages/core-protocol/src/compatibility.generated.ts
+  s_861e195a25a694::t_3487b6a890eb22 12,16
+packages/core-protocol/src/generated.ts
+  s_861e195a25a694::t_8aa2e03198faaf 589-598,1648,1691-1700,3166-3174,3400,3737-3742,8286-8300,11143-11150,12016-12027,12808-12812
+src/main/core-client/database-module-adapter.node.test.ts
+  s_861e195a25a694::t_fd1840dc9641ab 1327-1440
+src/main/core-client/database-module-adapter.ts
+  s_8c62977aa6fb11::t_63011452e0dd2e 1,125-130,1356-1382
+src/main/core-client/database-page-projection.node.test.ts
+  s_8c62977aa6fb11::t_8688b215087e93 216-226,228-231,266-280
+src/main/database-application/DatabaseModule.node.test.ts
+  s_8c62977aa6fb11::t_ca7aa77f5a1ac2 124
+src/renderer/components/board/page-stage/properties-section.test.tsx
+  s_8c62977aa6fb11::t_7ebcd5fbc9331c 102
+src/renderer/components/board/page-stage/use-page-stage-properties.test.tsx
+  s_a33445b5936fa3::t_5a3fde2a6f3a27 75
+src/renderer/components/database/data-source-property-value-editor.test.tsx
+  s_8c62977aa6fb11::t_6266691d5abc75 320-360
+src/renderer/components/database/data-source-property-value-editor.tsx
+  s_a33445b5936fa3::t_50b4c248763ffe 11,253-256
+src/renderer/lib/board-store.node.test.ts
+  s_8c62977aa6fb11::t_86752f7f5f5eb4 540
+src/renderer/lib/data-source-property-presentation-role.ts
+  s_a33445b5936fa3::t_68415561c3e39b 31
+src/renderer/lib/local-commit-ingress.test.ts
+  s_a33445b5936fa3::t_40d3d7b6769298 79
+src/renderer/lib/page-detail-metadata-runtime.node.test.ts
+  s_861e195a25a694::t_be65978ef2a529 622-676
+src/renderer/lib/page-detail-metadata-runtime.ts
+  s_a33445b5936fa3::t_7ab4a94f94340e 1,149,251
+src/renderer/lib/page-stage-page.ts
+  s_8c62977aa6fb11::t_5c0073c50bd60a 1,25,174-176
+src/renderer/lib/work-graph-runtime.ts
+  s_8c62977aa6fb11::t_6b0b2f939d9f21 1-57
+src/shared/core-database-row-projection.ts
+  s_a33445b5936fa3::t_e2aeda01bf2f29 1,26
+src/shared/data-source-built-ins.ts
+  s_a33445b5936fa3::t_86584cc26afade 17
+src/shared/database-identities.test.ts
+  s_a33445b5936fa3::t_a995a7827e5976 88
+src/shared/database-identities.ts
+  s_a33445b5936fa3::t_80d7171ee8c74a 43-44,57
+src/shared/database-module-v2-transport.ts
+  s_8c62977aa6fb11::t_62515a676c6e04 1,1748-1787,2504,2571-2573,2639-2644
+src/shared/database-module-v2.ts
+  s_8c62977aa6fb11::t_7764e69c8c4805 1,211-212,310-324,426-428
+src/shared/database-page-projection.ts
+  s_a33445b5936fa3::t_98139a61150b01 1,400-401,591-592
+src/shared/page-input-validation.ts
+  s_a33445b5936fa3::t_96b98f769270c8 1,60
+src/shared/page-summary.ts
+  s_a33445b5936fa3::t_90bd29c6cfac21 49
+src/shared/types.ts
+  s_a33445b5936fa3::t_d4464ebf6bdced 1,285-286,350
+src/shared/work-graph.test.ts
+  s_8c62977aa6fb11::t_7f65865a8c9f06 1-54
+src/shared/work-graph.ts
+  s_8c62977aa6fb11::t_92e051813a1c15 1-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6fd6f23500a821b5fe6860b83d8759eebe7991c1",
+  "prompts": {},
+  "sessions": {
+    "s_098df3235fa721": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19eb9-df69-7222-adba-8eb488f30462",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_861e195a25a694": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f00-6774-7220-894e-a1a31770d0e3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8c62977aa6fb11": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19eca-da45-7583-a0bd-2b995907eee9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a33445b5936fa3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f00-b917-74d3-9bf7-8a4af98b4a59",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
