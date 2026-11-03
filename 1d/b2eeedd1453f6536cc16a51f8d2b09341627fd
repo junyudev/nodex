@@ -1,0 +1,68 @@
+src/renderer/lib/run-with-cleanup.ts
+  s_6032e5818f5aae::t_2a3de1561fd1bd 1-41
+src/renderer/lib/run-with-cleanup.node.test.ts
+  s_6032e5818f5aae::t_2a3de1561fd1bd 1-13,19-200,202-203,205-264
+  s_6032e5818f5aae::t_62a7c7e9253524 14-18,201,204
+src/renderer/components/workbench/app-update-settings-control.tsx
+  s_6032e5818f5aae::t_773e54f8e3198a 1,258,270-275,288,294-299,310,318-322
+src/renderer/components/workbench/backup-settings-control.tsx
+  s_6032e5818f5aae::t_12fbdc47c307be 1,106,131-135,158,171-175,192,202-206,297,308-312,334,341-345
+src/renderer/components/workbench/database-settings/database-settings-rail.tsx
+  s_6032e5818f5aae::t_358da6787d546f 1,1824,1831-1844
+src/renderer/components/workbench/git-settings-page.tsx
+  s_6032e5818f5aae::t_dfbd5793f245f0 1,44,48
+src/renderer/components/workbench/managed-worktrees-settings-control.tsx
+  s_6032e5818f5aae::t_ba737f2119c6b6 1,251,265-276
+src/renderer/components/workbench/review-diff-panel.tsx
+  s_6032e5818f5aae::t_515b198b15b8bd 1,3333,3667
+src/renderer/components/workbench/use-workbench-sidebar-controller.ts
+  s_6032e5818f5aae::t_fea43cebae081a 1,589,634,653,705,765,1082
+src/renderer/components/workbench/workbench-db-view-panel.tsx
+  s_6032e5818f5aae::t_00a7a14347100a 1,594,696
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_6032e5818f5aae::t_134d43f72356da 1,2160
+src/renderer/components/workbench/workbench-settings-controls.tsx
+  s_6032e5818f5aae::t_9eeb965361e90b 1,534,544-549,564,574-579,698,708-713,728,738-743
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_6032e5818f5aae::t_292a63d711dcc3 1,875-877,880
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_6032e5818f5aae::t_1fdf4e9a5eca62 1,2277,2299-2317,2347,2358-2368,2391,2395-2403,2548,2574-2583,2613,2797-2815,2977,2987-2993,3236,3240-3246,3263,3267-3274
+src/renderer/features/local-conversation/view/composer/use-composer-intelligence-controller.ts
+  s_6032e5818f5aae::t_3d68b7d4e3fb39 1,98,127-132
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_6032e5818f5aae::t_5c16e3ca55056c 1,1197,1206-1210,1266,1274
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.tsx
+  s_6032e5818f5aae::t_b6ba3c56f37d91 1,1138
+src/renderer/features/local-conversation/view/shared/branch-selector-popover.tsx
+  s_6032e5818f5aae::t_1dd187d16c6e75 1,343,347
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx
+  s_6032e5818f5aae::t_1ebbb364c3c313 1,813,817-824,826-831,893,897-909,922,926-938
+src/renderer/features/local-conversation/view/shared/turn-diff-surface.tsx
+  s_6032e5818f5aae::t_2aac392753c3fc 1,710,735-751
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_6032e5818f5aae::t_bec18b164c8607 1,824,832-841,864,872-881
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-branch-setup-dialog.tsx
+  s_6032e5818f5aae::t_00f5ab0ff629dd 1,111,122-130
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-create-pull-request-dialog.tsx
+  s_6032e5818f5aae::t_867bee0002e4ee 1,265,382-392
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-git-action-dialog.tsx
+  s_6032e5818f5aae::t_e35b6bdbab55dc 1,243,303-312,341,349-358
+src/renderer/lib/use-workbench-panel-lifecycle.ts
+  s_6032e5818f5aae::t_a4d9e650e5dfd0 1,233,294
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1db2eeedd1453f6536cc16a51f8d2b09341627fd",
+  "prompts": {},
+  "sessions": {
+    "s_6032e5818f5aae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a0b3-5826-7613-a20d-ea884175ac96",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
