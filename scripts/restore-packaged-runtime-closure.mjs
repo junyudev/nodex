@@ -6,7 +6,7 @@ import path from "node:path";
 import { stageWindowsVcRuntime } from "./windows-vc-runtime.mjs";
 import { verifyWindowsArchitectureClosure } from "./windows-pe.mjs";
 
-import { assertPackagedAgentRuntimeNative } from "./agent-runtime-native-inventory.mjs";
+import { assertDesktopRuntimePayload } from "./desktop-runtime-payload.mjs";
 import { assertPackagedAppArchive } from "./packaged-app-archive.mjs";
 import { BROWSER_RUNTIME_SCHEMA_VERSION } from "../src/shared/browser-runtime-schema.mjs";
 
@@ -130,17 +130,16 @@ export default async function restorePackagedRuntimeClosure(context) {
       ? path.join(appPath, "Contents/Resources")
       : path.join(appPath, "resources");
   assertPackagedAppArchive(path.join(resourcesPath, "app.asar"));
-  assertPackagedAgentRuntimeNative({
-    sourceRoot: path.join(projectRoot, "out/agent-runtime/node_modules/node-pty"),
-    packagedRoot: path.join(
-      resourcesPath,
-      "app.asar.unpacked/out/agent-runtime/node_modules/node-pty",
-    ),
+  // electron-builder Arch: x64=1, arm64=3. Reject every other desktop target.
+  const arch = context.arch === 1 ? "x64" : context.arch === 3 ? "arm64" : null;
+  if (!arch) throw new Error(`Unsupported desktop package architecture: ${context.arch}`);
+  assertDesktopRuntimePayload({
+    sourceRoot: projectRoot,
+    resourcesPath,
+    platform: context.electronPlatformName,
+    arch,
   });
   if (context.electronPlatformName === "win32") {
-    // electron-builder Arch: x64=1, arm64=3. Reject every other target.
-    const arch = context.arch === 1 ? "x64" : context.arch === 3 ? "arm64" : null;
-    if (!arch) throw new Error(`Unsupported Windows package architecture: ${context.arch}`);
     stageWindowsVcRuntime(appPath, arch);
     const files = verifyWindowsArchitectureClosure(appPath, arch, {
       nodeHost: path.join(appPath, "Nodex.exe"),

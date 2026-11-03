@@ -18,13 +18,20 @@ files:
   - "!**/*.test.*"
   - "!**/*.spec.*"
   - "!node_modules/@types/**"
+  # The verified standalone execution closure owns the SDK and its only native CLI.
+  - "!node_modules/@anthropic-ai/claude-agent-sdk{,-*}/**"
   - "!node_modules/node-pty/deps/**"
   - "!node_modules/node-pty/scripts/**"
   - "!node_modules/node-pty/src/**"
   - "!node_modules/node-pty/third_party/**"
   - "!node_modules/node-pty/typings/**"
-  # Ship only the target's node-pty prebuilds; packaging always runs on the target platform.
-  - "!node_modules/node-pty/prebuilds/!(${platform}-${arch})/**"
+  # Electron rebuilds build/Release; prebuilds are a redundant fallback with debug symbols.
+  - "!node_modules/node-pty/prebuilds/**"
+  - "!node_modules/node-pty/bin/**"
+  - "!node_modules/node-pty/build/!(Release){,/**/*}"
+  - "!node_modules/node-pty/build/Release/obj*/**"
+  - "!node_modules/node-pty/build/Release/.forge-meta"
+  - "!node_modules/node-pty/**/*.{pdb,ipdb,iobj,lib,exp}"
 asarUnpack:
   - "**/*.node"
   - "node_modules/node-pty/**"

@@ -267,7 +267,7 @@ export function materializeAgentRuntimeNative(root: string): AgentRuntimeNative 
         },
       );
       mkdirSync(builtPackage, { recursive: true });
-      for (const name of ["package.json", "LICENSE", "lib", "third_party"]) {
+      for (const name of ["package.json", "LICENSE", "lib"]) {
         if (!existsSync(join(source, name))) continue;
         cpSync(join(source, name), join(builtPackage, name), {
           recursive: true,

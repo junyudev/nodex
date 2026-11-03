@@ -18,6 +18,8 @@ import { desktopBuildTarget } from "../desktop-build-target";
 import { terminateWindowsProcessTree } from "../../src/main/process-tree";
 import { verifyWindowsArchitectureClosure } from "../windows-pe.mjs";
 import { installedPayloadInventory } from "../installed-payload.mjs";
+import { assertDesktopRuntimePayload } from "../desktop-runtime-payload.mjs";
+import { claudeSdkModuleUrl } from "../../src/main/platform/node/ClaudeSdkModule";
 import {
   acquireIsolatedRunLease,
   ISOLATED_RUN_ID_ENV,
@@ -299,6 +301,15 @@ exit $uninstaller.ExitCode
       `${JSON.stringify(payload, null, 2)}\n`,
     );
     console.log(`Installed ${target.key}: ${payload.bytes} bytes in ${payload.fileCount} files.`);
+    const claudeExecutable = assertDesktopRuntimePayload({
+      resourcesPath: join(installRoot, "resources"),
+      platform: "win32",
+      arch: target.arch,
+    });
+    const claudeVersion = execFileSync(claudeExecutable, ["--version"], {
+      encoding: "utf8",
+      timeout: 30_000,
+    }).trim();
     const images = verifyWindowsArchitectureClosure(installRoot, target.arch, {
       installed: true,
       nodeHost: join(installRoot, "Nodex.exe"),
@@ -345,6 +356,22 @@ exit $uninstaller.ExitCode
       child = application.process();
       // Playwright wraps Electron in cmd.exe on Windows; claims identify Main.
       const hostPid = await application.evaluate(() => process.pid);
+      const sdkLoaded = await application.evaluate(
+        (_electron, url) => {
+          // Debugger evaluations have no ESM import callback; Node's loader uses the same file.
+          const require = process.getBuiltinModule("node:module").createRequire(url);
+          const sdk = require(
+            process.getBuiltinModule("node:url").fileURLToPath(url),
+          ) as typeof import("@anthropic-ai/claude-agent-sdk");
+          return typeof sdk.query === "function" && typeof sdk.listSessions === "function";
+        },
+        claudeSdkModuleUrl({
+          isPackaged: true,
+          resourcesPath: join(installRoot, "resources"),
+          projectRootPath: root,
+        }),
+      );
+      if (!sdkLoaded) throw new Error("Installed Main could not load the shared Claude SDK");
       desktopPid = hostPid;
       child.stdout?.on("data", (chunk: Buffer) => {
         output = `${output}${chunk.toString()}`.slice(-64_000);
@@ -403,6 +430,7 @@ exit $uninstaller.ExitCode
             coreSha256: expectedCoreSha256,
             authenticated: Boolean(client.handshake),
             agent,
+            claude: { version: claudeVersion, sharedSdkLoaded: sdkLoaded },
             listenerAddresses: installationListenerAddresses(installRoot),
           };
           break;

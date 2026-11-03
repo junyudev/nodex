@@ -61,8 +61,21 @@ Codex archive hashes, file inventories, entrypoint hashes and canonical runtime
 metadata digests are pinned separately for both Windows CPUs. Node's executable
 hash/size and license hash are pinned in `node-runtime.lock.json`. node-pty's
 matching N-API prebuild is copied to a private output and loaded by staged Node;
-the root dependency remains Electron's own rebuild. The after-pack hook compares
-the copied standalone dependency byte-for-byte and scans every PE image in the complete unpacked payload, including renamed images,
+the root dependency remains Electron's own rebuild. Only each runtime's required
+`build/Release` closure ships; fallback prebuilds, PTY debug symbols and application
+source maps are excluded.
+
+Both Windows and macOS ship one Claude Code executable, beside the standalone
+Agent Runtime's SDK under `app.asar.unpacked/out/agent-runtime/node_modules`.
+Main loads that SDK by its explicit unpacked module URL for discovery and isolated
+history workers. Source development and tests use the installed SDK. Configured
+Agent executables remain authoritative; sharing the SDK does not change executable
+or account selection.
+
+The after-pack hook compares the complete standalone dependency tree byte-for-byte,
+requires Electron's rebuilt PTY helpers, and rejects a second Claude executable
+(including inside ASAR), an extra SDK/platform package, redundant PTY prebuilds,
+debug symbols or application source maps. It also scans every PE image in the complete unpacked payload, including renamed images,
 for CPU identity and ordinary/delay-load dependency closure. A foreign CPU or
 unresolved dependency fails before an installer is emitted. The installed-app
 probe repeats the same static inspection.
