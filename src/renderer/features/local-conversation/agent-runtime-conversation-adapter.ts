@@ -107,6 +107,8 @@ import {
   useDefaultCodexAppServerManager,
 } from "./local-conversation-store";
 import { agentReadinessNotice, agentReadinessSetupHint } from "./agent-readiness-notice";
+import { useWindowsSandboxSetup } from "./use-windows-sandbox-setup";
+import { resolveCodexRendererOs } from "@/lib/codex-window-runtime";
 import { toastFailure } from "../../lib/failure-toast";
 import { useCodexAccountActions } from "../../lib/use-codex-account-actions";
 import { copyAgentRuntimeConversationMarkdown } from "./agent-runtime-markdown-export";
@@ -1154,6 +1156,15 @@ export function useAgentRuntimeConversationAdapter(input: {
     selected: selection.binding,
     openSettings: (instanceId) => openAgentSettings?.("acp", instanceId),
   });
+  const windowsSandboxNotice = useWindowsSandboxSetup(
+    selection.binding.kind === "codex" &&
+      provider?.enabled &&
+      provider.installed &&
+      provider.auth.status !== "unauthenticated" &&
+      (observed?.runtimeMode ?? draftRuntimeMode) !== "full-access"
+      ? provider.instanceId
+      : null,
+  );
   const agentSwitchRefusal = projection ? agentRuntimeAgentSwitchRefusal(projection) : null;
   const refusalFor = (candidate: Pick<AgentWire<ModelSelection>, "instanceId" | "model">) =>
     observed
@@ -1270,6 +1281,17 @@ export function useAgentRuntimeConversationAdapter(input: {
         provider = providers.find((entry) => entry.instanceId === instanceId);
       }
       const model = provider?.models.find((entry) => entry.slug === candidate.model);
+      if (
+        candidate.binding.kind === "codex" &&
+        resolveCodexRendererOs() === "win32" &&
+        (observed?.runtimeMode ?? draftRuntimeMode) !== "full-access" &&
+        provider
+      ) {
+        const sandbox = await agentRuntimeRuntime.readWindowsSandbox({
+          instanceId: provider.instanceId,
+        });
+        if (sandbox.status !== "ready") throw new Error("Set up Codex for Windows before sending.");
+      }
       return prepareAgentRuntimeMessage(
         {
           model,
@@ -1742,7 +1764,7 @@ export function useAgentRuntimeConversationAdapter(input: {
             detail: catalogState.error,
             actions: [{ label: "Retry", pendingLabel: "Retrying…", run: checkCatalogAgain }],
           }
-        : agentNotice;
+        : (agentNotice ?? windowsSandboxNotice);
   const presentation: ConversationProviderPresentation = {
     runtimeMode: resolveAgentRuntimeMode(
       observed?.runtimeMode ?? draftRuntimeMode,

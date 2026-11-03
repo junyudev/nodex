@@ -269,6 +269,24 @@ export const AgentRuntimeCatalogSchema = z
     instanceIds: z.array(z.string().trim().min(1).max(128)).max(32).optional(),
   })
   .strict();
+export const AgentWindowsSandboxReadSchema = z
+  .object({
+    instanceId: id,
+    refresh: z.boolean().optional(),
+  })
+  .strict();
+export const AgentWindowsSandboxSetupSchema = z
+  .object({
+    instanceId: id,
+    mode: z.enum(["elevated", "unelevated"]),
+  })
+  .strict();
+export const AgentWindowsSandboxCancelSchema = z
+  .object({
+    instanceId: id,
+    generation: z.string().min(1).max(128),
+  })
+  .strict();
 export const ClaudeUsageLogoutSchema = z
   .object({ instanceIds: z.array(z.string().trim().min(1).max(128)).min(1).max(32) })
   .strict();

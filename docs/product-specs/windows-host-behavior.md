@@ -78,6 +78,34 @@ architecture into the account's `.opencode\bin` directory. It verifies the versi
 before selecting it, refuses to replace an existing installation and cleans up a
 cancelled or failed download.
 
+## Codex sandbox
+
+Codex needs Windows sandbox setup before running a chat in Ask for approval or
+Approve for me. The Agent problem notice beside the composer shows when setup or
+an update is needed. **Set up** lets Codex's native helper request Windows
+administrator approval. If that setup is canceled, fails or times out, **Set up
+without admin** uses Codex's unelevated sandbox instead. Organization policy can
+limit these choices; when only the unelevated sandbox is allowed, **Set up** uses
+it. Nodex never falls back to another mode on its own.
+
+The notice shows setup progress and offers Cancel. A canceled, failed or timed-out
+setup leaves the chat waiting for setup and offers Try again.
+Setup waits at most twenty minutes for completion; readiness checks have a
+twenty-second bound. A fresh Codex process verifies readiness after completion.
+The selected Codex home retains successful setup across Nodex restarts.
+
+Setup belongs to the Agent instance and its endpoint generation. Replacing the
+Agent or closing its Runtime releases its setup endpoint and waiter. A late
+completion or Cancel from an earlier generation cannot finish or cancel the new
+one. Cancellation does not roll back Windows changes a helper has already made.
+Only setup status and classified failures reach the UI, never native helper errors
+or private paths.
+
+Restricted turns check their own execution endpoint before starting. Changing a
+Windows chat's permission mode reopens the Codex session, so the new turn uses
+the current sandbox configuration. Full access remains available without sandbox
+setup. Electron stays unelevated and renderer sandboxing is independent.
+
 ## Window chrome
 
 Each Workbench window has a 36 logical pixel application row above its workspace.

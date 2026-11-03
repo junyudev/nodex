@@ -1,4 +1,6 @@
 import { withSupportedRuntimeModes } from "./ProviderRuntimeModes.ts";
+import { CodexAppServerClientFactory } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
+import { WINDOWS_SANDBOX_NOT_APPLICABLE } from "../provider/CodexWindowsSandbox.ts";
 import { pendingUserQuestionIds } from "./PendingUserQuestions.ts";
 import * as SessionStop from "./SessionStop.ts";
 import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionManager.ts";
@@ -355,6 +357,27 @@ const AgentRequest = Schema.Union([
     }),
   ),
   request("providers.logout", Schema.Struct({ instanceIds: Schema.Array(ProviderInstanceId) })),
+  request(
+    "providers.windows-sandbox.read",
+    Schema.Struct({
+      instanceId: ProviderInstanceId,
+      refresh: Schema.optional(Schema.Boolean),
+    }),
+  ),
+  request(
+    "providers.windows-sandbox.setup",
+    Schema.Struct({
+      instanceId: ProviderInstanceId,
+      mode: Schema.Literals(["elevated", "unelevated"]),
+    }),
+  ),
+  request(
+    "providers.windows-sandbox.cancel",
+    Schema.Struct({
+      instanceId: ProviderInstanceId,
+      generation: Schema.String,
+    }),
+  ),
   request(
     "native-session.authority",
     Schema.Struct({
@@ -739,6 +762,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const identity = yield* readIdentity;
   const effectOutbox = yield* EffectOutboxV2;
   const providers = yield* Providers.ProviderRegistry;
+  const codexClients = yield* CodexAppServerClientFactory;
   const instances = yield* ProviderInstanceRegistry;
   const providerConfiguration = yield* ProviderConfiguration.make(
     yield* Schema.decodeUnknownEffect(ProviderInstanceConfigMap)(initialProviders),
@@ -1106,6 +1130,22 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           providerDriver:
             instance?.driverKind ?? configured[thread.providerInstanceId]?.driver ?? null,
         });
+      }
+      case "providers.windows-sandbox.read":
+      case "providers.windows-sandbox.setup":
+      case "providers.windows-sandbox.cancel": {
+        const instance = yield* instances.getInstance(
+          ProviderInstanceId.make(input.input.instanceId),
+        );
+        if (!instance?.enabled || instance.driverKind !== "codex")
+          return WINDOWS_SANDBOX_NOT_APPLICABLE;
+        const sandbox = codexClients.windowsSandbox;
+        if (!sandbox) return WINDOWS_SANDBOX_NOT_APPLICABLE;
+        if (input.method === "providers.windows-sandbox.setup")
+          return yield* sandbox.setup(input.input.instanceId, input.input.mode);
+        if (input.method === "providers.windows-sandbox.cancel")
+          return yield* sandbox.cancel(input.input.instanceId, input.input.generation);
+        return yield* sandbox.read(input.input.instanceId, input.input.refresh);
       }
       case "providers.read": {
         const policy = yield* providerPolicy.admission;

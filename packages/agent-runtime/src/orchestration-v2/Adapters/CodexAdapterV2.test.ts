@@ -1819,6 +1819,7 @@ describe("CodexAdapterV2 session initialize", () => {
   const openReplaySession = (
     transcript: CodexReplay.CodexAppServerReplayTranscript,
     beforeEmitInbound?: CodexReplay.CodexAppServerReplayDriver["beforeEmitInbound"],
+    runtimeMode = CODEX_TEST_RUNTIME_POLICY.runtimeMode,
   ) =>
     Effect.gen(function* () {
       const driver = yield* CodexReplay.makeReplayDriver(
@@ -1865,7 +1866,7 @@ describe("CodexAdapterV2 session initialize", () => {
         threadId: ThreadId.make(`thread-${transcript.scenario}`),
         providerSessionId: ProviderSessionId.make(`provider-session-${transcript.scenario}`),
         modelSelection: CODEX_TEST_MODEL_SELECTION,
-        runtimePolicy: CODEX_TEST_RUNTIME_POLICY,
+        runtimePolicy: { ...CODEX_TEST_RUNTIME_POLICY, runtimeMode },
       });
       return {
         ensureThread: (threadId: string) =>
@@ -1875,12 +1876,65 @@ describe("CodexAdapterV2 session initialize", () => {
             runtimePolicy: CODEX_TEST_RUNTIME_POLICY,
           }),
         initializeRequests: () => initializeRequests,
+        runtimeModeSwitch:
+          runtime.providerSession.capabilities.sessions.supportsRuntimeModeSwitchInSession,
         replayState: Ref.get(driver.state),
       };
     });
 
   const replayPreamble = (nativeThreadId: string) =>
     codexReplayPreamble({ nativeThreadId, nativeTurnId: "unused", prompt: "unused" });
+
+  for (const runtimeMode of ["approval-required", "auto"] as const) {
+    for (const status of ["ready", "notConfigured", "updateRequired"] as const) {
+      it.effect(
+        `checks Windows sandbox readiness after initialization in ${runtimeMode}: ${status}`,
+        () =>
+          Effect.scoped(
+            Effect.gen(function* () {
+              const transcript = makeCodexReplayTranscript({
+                scenario: `windows-${runtimeMode}-${status}`,
+                entries: [
+                  ...replayPreamble("unused").slice(0, 3),
+                  { type: "expect_outbound", frame: { id: 2, method: "windowsSandbox/readiness" } },
+                  { type: "emit_inbound", frame: { id: 2, result: { status } } },
+                ],
+              });
+              const result = yield* openReplaySession(transcript, undefined, runtimeMode).pipe(
+                Effect.result,
+              );
+              assert.strictEqual(result._tag, status === "ready" ? "Success" : "Failure");
+              if (result._tag === "Success") {
+                assert.strictEqual(result.success.initializeRequests(), 1);
+                assert.isFalse(result.success.runtimeModeSwitch);
+              }
+            }),
+          ).pipe(
+            Effect.provideService(HostProcess.Platform, "win32"),
+            Effect.provide(
+              Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+            ),
+          ),
+      );
+    }
+  }
+
+  it.effect("opens Full access on Windows without a sandbox setup or readiness request", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const session = yield* openReplaySession(
+          makeCodexReplayTranscript({ scenario: "windows-full-access", entries: [] }),
+        );
+        assert.strictEqual(session.initializeRequests(), 0);
+        assert.isFalse(session.runtimeModeSwitch);
+      }),
+    ).pipe(
+      Effect.provideService(HostProcess.Platform, "win32"),
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
 
   it.effect("sends one initialize when two threads start on a fresh session at once", () =>
     Effect.gen(function* () {
@@ -2097,7 +2151,10 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               ),
             ),
         },
-      });
+      }).pipe(
+        // These wire recordings report a macOS endpoint. Windows admission has dedicated replays.
+        Effect.provideService(HostProcess.Platform, "darwin"),
+      );
       const threadId = ThreadId.make(`thread-${transcript.scenario}`);
       const runtime = yield* adapter.openSession({
         threadId,

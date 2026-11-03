@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 - Nodex runs on Windows 11, on both x64 and Arm PCs. Download the installer from nodex.jyu.app: it installs for your account without administrator rights, and Nodex keeps itself up to date from Stable or Nightly as it does on macOS.
 
+- Codex sets up its Windows sandbox once before working in Ask for approval or Approve for me. The notice beside the composer offers Set up, which asks for administrator approval, and setup without it if that doesn't work; Full access needs no setup.
+
 - Sites in the built-in Browser can ask for your camera, microphone, location, notifications and other permissions. The request appears under the address bar, where you allow it while visiting, allow it this time or never allow it; Site information lists what each site may do and resets it, and a permission your system blocks offers to open System Settings.
 - Sort chats by Last updated or Manual order from the options menu in the sidebar's Projects header. Manual order keeps the chats you arrange where you put them, with new and never-arranged chats above them by activity, and switching between the two keeps your arrangement.
 - A Page's Files read as a file tree, and each File opens in a tab beside its Page. Folders, kinds and sizes sit across the Page's full width, with which chat or person attached each File and when. HTML reports render as the pages they are, with their images and data from the same Page, in an offline preview that cannot reach the network or your files; images, PDFs, Markdown and code open in their own viewers. A report an Agent attaches again updates the open tab.

@@ -1,4 +1,6 @@
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
+import type { AgentWindowsSandboxState } from "@nodex/agent-runtime/contracts";
+import type { WindowsSandboxSetupMode } from "@nodex/codex-app-server-protocol/v2";
 import type { ComposerNotice, ComposerNoticeAction } from "./thread-stage-types";
 
 type ProviderReadiness = Pick<
@@ -113,4 +115,65 @@ export function agentReadinessSetupHint(
     default:
       return null;
   }
+}
+
+/** Windows setup uses the same quiet Agent problem rail as installation and sign-in. */
+export function windowsSandboxReadinessNotice(
+  state: AgentWindowsSandboxState | undefined,
+  fixes: {
+    readonly checkAgain: () => Promise<void>;
+    readonly setup: (mode: WindowsSandboxSetupMode) => Promise<void>;
+    readonly cancel: (generation: string) => Promise<void>;
+  },
+  checkFailed = false,
+): ComposerNotice | null {
+  if (!checkFailed && (state?.status === "notApplicable" || state?.status === "ready")) return null;
+  const key = `windows-sandbox:${state?.generation ?? 0}:${state?.status ?? "checking"}`;
+  const check: ComposerNoticeAction = { label: "Check again", run: fixes.checkAgain };
+  if (checkFailed || state?.failure === "checkFailed") {
+    return { key, tone: "danger", title: "Couldn’t check Codex’s Windows setup", actions: [check] };
+  }
+  if (!state || state.status === "checking") {
+    return { key, tone: "warning", title: "Checking Codex’s Windows setup…" };
+  }
+  if (state.status === "settingUp") {
+    return {
+      key,
+      tone: "warning",
+      title: "Setting up Codex for Windows…",
+      actions: [{ label: "Cancel", run: () => fixes.cancel(state.generation) }],
+    };
+  }
+  const titles = {
+    cancelled: "Windows setup was canceled",
+    timeout: "Windows setup timed out",
+    setupFailed: "Codex’s Windows setup didn’t finish",
+    checkFailed: "Couldn’t check Codex’s Windows setup",
+  };
+  return {
+    key,
+    tone: state.failure ? "danger" : "warning",
+    title: state.failure
+      ? titles[state.failure]
+      : state.status === "updateRequired"
+        ? "Codex’s Windows setup needs an update"
+        : "Codex needs a one-time Windows setup to run safely",
+    actions: windowsSandboxSetupActions(state, fixes.setup, check),
+  };
+}
+
+// Setup asks for administrator approval when allowed; working without it is an explicit fallback.
+function windowsSandboxSetupActions(
+  state: AgentWindowsSandboxState,
+  setup: (mode: WindowsSandboxSetupMode) => Promise<void>,
+  check: ComposerNoticeAction,
+): ComposerNoticeAction[] {
+  const preferred = state.allowedModes.includes("elevated") ? "elevated" : state.allowedModes[0];
+  if (!preferred) return [check];
+  const primary = { label: state.failure ? "Try again" : "Set up", run: () => setup(preferred) };
+  const fallback =
+    state.failure && preferred === "elevated" && state.allowedModes.includes("unelevated")
+      ? [{ label: "Set up without admin", run: () => setup("unelevated") }]
+      : [];
+  return [primary, ...fallback];
 }

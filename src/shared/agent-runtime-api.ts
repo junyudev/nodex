@@ -502,6 +502,18 @@ export interface AgentRuntimeIpcApi {
     args: [input?: AgentRuntimeOperations["providers.read"]["input"]];
     result: AgentRuntimeOperations["providers.read"]["output"];
   };
+  "agent-runtime:windows-sandbox:read": {
+    args: [input: AgentRuntimeOperations["providers.windows-sandbox.read"]["input"]];
+    result: AgentRuntimeOperations["providers.windows-sandbox.read"]["output"];
+  };
+  "agent-runtime:windows-sandbox:setup": {
+    args: [input: AgentRuntimeOperations["providers.windows-sandbox.setup"]["input"]];
+    result: AgentRuntimeOperations["providers.windows-sandbox.setup"]["output"];
+  };
+  "agent-runtime:windows-sandbox:cancel": {
+    args: [input: AgentRuntimeOperations["providers.windows-sandbox.cancel"]["input"]];
+    result: AgentRuntimeOperations["providers.windows-sandbox.cancel"]["output"];
+  };
   /** The catalog Nodex already knows, never starting execution; null before the first live read. */
   "agent-runtime:providers:known": {
     args: [];
