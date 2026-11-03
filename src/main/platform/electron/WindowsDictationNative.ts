@@ -1,4 +1,4 @@
-import { killChildProcessTree } from "../../process-tree";
+import { terminateWindowsProcessTree } from "../../process-tree";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import { setTimeout } from "node:timers/promises";
@@ -130,13 +130,24 @@ export function observeWindowsDictationRelease(
   onReleased: () => void,
 ): WindowsDictationReleaseWatcher {
   let active = true;
+  let exited = child.exitCode !== null || child.signalCode !== null;
+  let release: Promise<void> | null = null;
   let pending = "";
+  let resolveClosed!: () => void;
+  // @effect-diagnostics-next-line newPromise:off -- ChildProcess close is a native callback boundary.
+  const closed = new Promise<void>((resolve) => {
+    resolveClosed = resolve;
+  });
   const stopped = (): void => {
     if (!active) return;
     active = false;
     onReleased();
   };
-  child.stdout?.on("data", (chunk: Buffer | string) => {
+  const handleExit = (): void => {
+    exited = true;
+    stopped();
+  };
+  const handleData = (chunk: Buffer | string): void => {
     if (!active) return;
     pending += chunk.toString();
     let newline = pending.indexOf("\n");
@@ -145,16 +156,37 @@ export function observeWindowsDictationRelease(
       pending = pending.slice(newline + 1);
       newline = pending.indexOf("\n");
     }
-  });
-  child.once("error", stopped);
-  child.once("exit", stopped);
+  };
+  const handleClose = (): void => {
+    exited = true;
+    stopped();
+    child.stdout?.off("data", handleData);
+    child.off("error", stopped);
+    child.off("exit", handleExit);
+    child.off("close", handleClose);
+    resolveClosed();
+  };
+  child.stdout?.on("data", handleData);
+  child.on("error", stopped);
+  child.once("exit", handleExit);
+  child.once("close", handleClose);
   return {
     get isActive() {
       return active;
     },
     dispose: () => {
+      if (release) return release;
       active = false;
-      killChildProcessTree(child, "SIGKILL", "win32");
+      // A failed native release remains observable immediately. The fenced data/error/close
+      // listeners keep draining and owning the child until its actual close event.
+      release = Promise.resolve()
+        .then(() => {
+          const pid = child.pid;
+          if (exited || !Number.isSafeInteger(pid) || !pid || pid <= 0) return;
+          return terminateWindowsProcessTree(pid, "SIGKILL");
+        })
+        .then(() => closed);
+      return release;
     },
   };
 }

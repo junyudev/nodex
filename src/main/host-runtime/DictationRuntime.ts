@@ -234,7 +234,10 @@ export const live = (options: {
                   helper: createWindowsDictationNativeHelperClient(config.platform),
                 },
           ),
-          ({ helper }) => Effect.sync(() => helper.dispose()),
+          ({ helper }) =>
+            attemptPromise("release-native-dictation-helper", () =>
+              Promise.resolve(helper.dispose()),
+            ).pipe(Effect.orDie),
         );
         const windowController = yield* Effect.acquireRelease(
           Effect.sync(

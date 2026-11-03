@@ -1,3 +1,4 @@
+import { deferredRelease } from "./dictation-release.test-fixtures";
 import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_KEYBOARD_LAYOUT_SNAPSHOT,
@@ -37,6 +38,9 @@ function harness() {
     active: boolean;
     groups: readonly (readonly number[])[];
     release: () => void;
+    stop: () => void;
+    disposal: Promise<void> | null;
+    disposalStarted: ReturnType<typeof deferredRelease>;
   }[] = [];
   const ports: WindowsDictationNativePorts = {
     clipboard: {
@@ -60,8 +64,15 @@ function harness() {
       const watcher = {
         active: true,
         groups,
+        disposal: null as Promise<void> | null,
+        disposalStarted: deferredRelease(),
         release: () => {
           if (watcher.active) onReleased();
+        },
+        stop: () => {
+          if (!watcher.active) return;
+          watcher.active = false;
+          onReleased();
         },
       };
       watchers.push(watcher);
@@ -71,6 +82,8 @@ function harness() {
         },
         dispose: () => {
           watcher.active = false;
+          watcher.disposalStarted.resolve();
+          return watcher.disposal ?? Promise.resolve();
         },
       };
     }),
@@ -102,6 +115,9 @@ function harness() {
     },
   };
 }
+
+const releaseCauses = (error: unknown): unknown[] =>
+  error instanceof AggregateError ? error.errors.flatMap(releaseCauses) : [error];
 
 describe("Windows global dictation", () => {
   it.each([
@@ -158,7 +174,7 @@ describe("Windows global dictation", () => {
     press();
     h.watchers[0]!.release();
     h.shortcuts.get("Alt+J")!();
-    h.client.dispose();
+    await h.client.dispose();
     expect(h.events.map((e) => e.type)).toEqual([
       "pressed",
       "released",
@@ -197,7 +213,7 @@ describe("Windows global dictation", () => {
       [[17], [32]],
       expect.any(Function),
     );
-    h.client.dispose();
+    await h.client.dispose();
   });
 
   it("retains working registrations when a replacement conflicts", async () => {
@@ -210,7 +226,13 @@ describe("Windows global dictation", () => {
     expect(h.shortcuts.has("Alt+Q")).toBe(false);
     h.shortcuts.get("Ctrl+Shift+K")!();
     expect(h.events[0]).toMatchObject({ type: "pressed", configurationGeneration: 1 });
-    h.client.dispose();
+    await h.client.replaceBindings({
+      generation: 3,
+      bindings: [binding("Ctrl+Shift+K", "accepted")],
+    });
+    h.shortcuts.get("Ctrl+Shift+K")!();
+    expect(h.events.at(-1)).toMatchObject({ bindingId: "accepted", configurationGeneration: 3 });
+    await h.client.dispose();
   });
 
   it("fences Escape callbacks across registrations and disposal", async () => {
@@ -222,9 +244,198 @@ describe("Windows global dictation", () => {
     const current = h.shortcuts.get("Escape")!;
     stale();
     current();
-    h.client.dispose();
+    await h.client.dispose();
     current();
     expect(h.events).toEqual([{ type: "escape", processGeneration: 1, sequence: 1 }]);
+  });
+
+  it("keeps a reused accelerator fenced until its previous watcher exits", async () => {
+    const h = harness();
+    await h.client.replaceBindings({ generation: 1, bindings: [binding()] });
+    const press = h.shortcuts.get("Ctrl+Shift+K")!;
+    press();
+    const watcher = h.watchers[0]!;
+    const released = deferredRelease();
+    watcher.disposal = released.promise;
+    const replacement = h.client.replaceBindings({
+      generation: 2,
+      bindings: [binding("Ctrl+Shift+K", "new")],
+    });
+    try {
+      await watcher.disposalStarted.promise;
+      press();
+      watcher.release();
+      expect(h.watchers).toHaveLength(1);
+      expect(h.events.map((event) => event.type)).toEqual(["pressed", "cancelled"]);
+      released.resolve();
+      await replacement;
+      press();
+      expect(h.watchers).toHaveLength(2);
+      expect(h.events.at(-1)).toMatchObject({
+        type: "pressed",
+        bindingId: "new",
+        configurationGeneration: 2,
+      });
+    } finally {
+      released.resolve();
+      await replacement;
+      await h.client.dispose();
+    }
+  });
+
+  it("joins a failing in-flight replacement before idempotent disposal can settle", async () => {
+    const h = harness();
+    await h.client.replaceBindings({ generation: 1, bindings: [binding()] });
+    h.shortcuts.get("Ctrl+Shift+K")!();
+    const watcher = h.watchers[0]!;
+    const released = deferredRelease();
+    const failure = new Error("release handle failed");
+    watcher.disposal = released.promise;
+    const replacement = h.client.replaceBindings({
+      generation: 2,
+      bindings: [binding("Alt+J", "new")],
+    });
+    const replacementResult = replacement.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await watcher.disposalStarted.promise;
+    const stale = h.shortcuts.get("Alt+J")!;
+    const disposal = h.client.dispose();
+    expect(h.client.dispose()).toBe(disposal);
+    const disposalResult = disposal.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    try {
+      expect(h.shortcuts.size).toBe(0);
+      stale();
+      watcher.release();
+      expect(h.watchers).toHaveLength(1);
+      expect(await h.client.capabilities()).toEqual({
+        inputMonitoring: false,
+        accessibility: false,
+      });
+    } finally {
+      released.reject(failure);
+    }
+    const failures = await Promise.all([replacementResult, disposalResult]);
+    for (const error of failures) expect(releaseCauses(error)).toContain(failure);
+    expect(h.events.map((event) => event.type)).toEqual(["pressed", "cancelled"]);
+  });
+
+  it("reaps an inactive watcher before a current registration can press again", async () => {
+    const h = harness();
+    await h.client.replaceBindings({ generation: 1, bindings: [binding()] });
+    const press = h.shortcuts.get("Ctrl+Shift+K")!;
+    press();
+    const watcher = h.watchers[0]!;
+    const released = deferredRelease();
+    watcher.disposal = released.promise;
+    watcher.stop();
+    expect(watcher.active).toBe(false);
+    const resumed = deferredRelease();
+    const unsubscribe = h.client.subscribe((event) => {
+      if (event.type === "pressed") resumed.resolve();
+    });
+    press();
+    try {
+      await watcher.disposalStarted.promise;
+      expect(h.watchers).toHaveLength(1);
+      expect(h.events.map((event) => event.type)).toEqual(["pressed", "released"]);
+      released.resolve();
+      await resumed.promise;
+      expect(h.watchers).toHaveLength(2);
+      expect(h.events.at(-1)).toMatchObject({ type: "pressed", configurationGeneration: 1 });
+    } finally {
+      released.resolve();
+      unsubscribe();
+      await h.client.dispose();
+    }
+  });
+
+  it("does not revive an inactive registration when replacement wins its pending rearm", async () => {
+    const h = harness();
+    await h.client.replaceBindings({ generation: 1, bindings: [binding()] });
+    const oldPress = h.shortcuts.get("Ctrl+Shift+K")!;
+    oldPress();
+    const watcher = h.watchers[0]!;
+    const released = deferredRelease();
+    watcher.disposal = released.promise;
+    watcher.stop();
+    oldPress();
+    await watcher.disposalStarted.promise;
+    const replacement = h.client.replaceBindings({
+      generation: 2,
+      bindings: [binding("Alt+J", "new")],
+    });
+    try {
+      released.resolve();
+      await replacement;
+      oldPress();
+      watcher.release();
+      expect(h.watchers).toHaveLength(1);
+      h.shortcuts.get("Alt+J")!();
+      expect(h.watchers).toHaveLength(2);
+      expect(h.events.map((event) => event.type)).toEqual(["pressed", "released", "pressed"]);
+      expect(h.events.at(-1)).toMatchObject({ bindingId: "new", configurationGeneration: 2 });
+    } finally {
+      released.resolve();
+      await replacement;
+      await h.client.dispose();
+    }
+  });
+
+  it("retains a callback-owned rearm failure for replacement and disposal", async () => {
+    const h = harness();
+    await h.client.replaceBindings({ generation: 1, bindings: [binding()] });
+    const press = h.shortcuts.get("Ctrl+Shift+K")!;
+    press();
+    const watcher = h.watchers[0]!;
+    const released = deferredRelease();
+    const failure = new Error("inactive watcher did not exit");
+    watcher.disposal = released.promise;
+    watcher.stop();
+    const crashed = deferredRelease();
+    const unsubscribe = h.client.subscribe((event) => {
+      if (event.type === "crashed") crashed.resolve();
+    });
+    press();
+    await watcher.disposalStarted.promise;
+    released.reject(failure);
+    await crashed.promise;
+    unsubscribe();
+    expect(h.events.at(-1)).toMatchObject({ type: "crashed", diagnostic: failure.message });
+    const replacementFailure = await h.client
+      .replaceBindings({
+        generation: 2,
+        bindings: [binding("Alt+J", "new")],
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(releaseCauses(replacementFailure)).toContain(failure);
+    // Recovery uses this same helper; an unknown native exit cannot admit another generation.
+    const recoveryFailure = await h.client
+      .replaceBindings({
+        generation: 3,
+        bindings: [binding("Alt+J", "recovered")],
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(releaseCauses(recoveryFailure)).toContain(failure);
+    h.shortcuts.get("Alt+J")!();
+    expect(h.watchers).toHaveLength(1);
+    const disposal = h.client.dispose();
+    expect(h.client.dispose()).toBe(disposal);
+    const disposalFailure = await disposal.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(releaseCauses(disposalFailure)).toContain(failure);
   });
 
   it("restores every original format after the foreground paste grace period", async () => {
