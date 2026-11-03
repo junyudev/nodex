@@ -60,12 +60,12 @@ jobs:
         env:
           RELEASE_ARCH: ${{ matrix.arch }}
         run: node -e "if (process.platform !== 'win32' || process.arch !== process.env.RELEASE_ARCH) throw new Error('Packaging requires native Windows Node')"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: inputs.release
         with:
           name: nodex-release-identity-${{ inputs.source_sha }}
           path: ${{ github.workspace }}/.generated/release-inputs/identity
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: inputs.release
         with:
           name: nodex-source-certification-${{ inputs.source_sha }}
@@ -105,7 +105,7 @@ jobs:
           compression-level: 0
       - name: Download existing installer for diagnosis
         if: inputs.installer_run_id != ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.installer_run_id }}
