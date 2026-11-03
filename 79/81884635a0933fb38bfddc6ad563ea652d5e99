@@ -30,6 +30,7 @@ src/main/platform/node/WindowsTerminalShells.test.ts
   s_a94b1e66dd2eef::t_1381c32c81148e 1-132
 src/main/platform/node/TerminalEnvironment.ts
   s_93b94841a913cf::t_51f329d59da476 6-15,33,59-60,67-70,80,90-97,105-106,108-114,117-135,149
+  s_3022e59a160914::t_eb24d6b00bdd03 116
 src/renderer/lib/terminal-shell-settings.test.tsx
   s_a94b1e66dd2eef::t_ecac8c273c923a 1-76
 src/main/terminal-runtime/TerminalSessions.ts
@@ -81,6 +82,14 @@ src/main/platform/node/TerminalEnvironment.test.ts
   "base_commit_sha": "7981884635a0933fb38bfddc6ad563ea652d5e99",
   "prompts": {},
   "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
     "s_93b94841a913cf": {
       "agent_id": {
         "tool": "codex",
