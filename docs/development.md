@@ -962,8 +962,16 @@ The test commands follow production boundaries:
   exercises the complete Electron/preload/IPC/Core chain. Do not invoke the
   Playwright config directly after changing Rust authority code; that can run
   against a stale `target/debug/nodex-core` binary.
-  Electron E2E is retained for deliberate local/agent diagnostics and is not
-  invoked by PR, Main, Nightly, Performance, or release-certification workflows.
+  `vp run test:e2e:nightly` runs the curated deterministic set used by Nightly CI
+  on a standard `macos-26` runner. The build stages the locked Agent runtime for
+  scripted loopback-model tests; Nightly fixes one worker to isolate native
+  clipboard and window interactions. Add specs to `NIGHTLY_E2E_SPECS` in
+  `scripts/run-playwright-e2e.ts`, the shared selection for local and CI runs.
+  Choose reliable core product workflows with disposable Profiles and no paid
+  Agent calls; keep the complete local rebuild and run near or below 20 minutes.
+  Paid-agent and `@performance` tests stay excluded. PR, Main, Performance, and
+  release certification do not run Electron E2E; the full suite remains available
+  for deliberate local/agent diagnostics.
   All Electron test launches, including standalone integration and clipboard
   fixtures, use `launchTestElectron` from `scripts/testing/launch-electron.ts`.
   Its windows run in the background: transparent, click-through, non-focusable,

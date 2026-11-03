@@ -29,6 +29,7 @@
     "test:stress": "vp run build-resources:prepare && tsx scripts/testing/run-tests.ts stress",
     "test:complete": "vp run test && vp run test:stress",
     "test:e2e": "tsx scripts/run-playwright-e2e.ts default",
+    "test:e2e:nightly": "tsx scripts/run-playwright-e2e.ts nightly",
     "test:e2e:performance": "tsx scripts/run-playwright-e2e.ts performance",
     "agent:smoke:scripted": "vp run stage:codex-runtime:mac:cached && vp run test:e2e tests/e2e/scripted-agent-runtime.spec.ts",
     "agent:smoke:paid": "tsx scripts/run-paid-agent-smoke.ts",

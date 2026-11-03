@@ -206,6 +206,12 @@ describe("CI change classification", () => {
       staticGroups: ["ci-contracts"],
       testMode: "none",
     });
+    expect(classifyChangedPaths([".github/workflows/ci-nightly.yml"])).toMatchObject({
+      appTestSuites: [],
+      rustFast: false,
+      staticGroups: ["ci-contracts"],
+      testMode: "none",
+    });
     expect(classifyChangedPaths([".github/workflows/_app-tests.yml"])).toMatchObject({
       appTestSuites: APP_TEST_SUITES,
       rustFast: false,
@@ -231,7 +237,7 @@ describe("CI change classification", () => {
     });
   });
 
-  test("keeps opt-in Electron E2E tooling outside automated test gates", () => {
+  test("keeps Electron E2E outside PR and Main test selection", () => {
     for (const path of ["playwright.e2e.config.ts", "tests/e2e/electron-smoke.spec.ts"]) {
       expect(classifyChangedPaths([path]), path).toMatchObject({
         allGates: false,

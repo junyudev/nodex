@@ -2,8 +2,8 @@
 
 Nodex separates merge feedback, deterministic reliability coverage, scale
 signals, and release certification. A test belongs to the cheapest layer that
-can prove its contract; Electron Playwright remains an opt-in local diagnostic
-tool and is never an automated quality gate.
+can prove its contract; a curated Electron Playwright set covers core product
+workflows in Nightly CI, with the full suite available for local diagnostics.
 
 ## Workflow tiers
 
@@ -14,8 +14,9 @@ tool and is never an automated quality gate.
 - `.github/workflows/ci-main.yml` applies the same targeted classifier to the
   exact landed diff. Main is a fast canary, not a second exhaustive PR run.
 - `.github/workflows/ci-nightly.yml` runs every deterministic static, Rust,
-  application, browser, stress, and macOS runtime contract. It contains no
-  Electron UI automation and no hardware-sensitive scale threshold.
+  application, browser, stress, and macOS runtime contract, plus a curated
+  Electron E2E set on standard `macos-26`. The `nightly complete` aggregate
+  requires that job. Paid-agent and UI performance tests remain excluded.
 - `.github/workflows/performance.yml` is the weekly owner for Core runtime
   benchmarks and explicitly ignored scale contracts. Performance regressions
   are diagnosed below Electron rather than through UI timings.
@@ -197,12 +198,17 @@ Every ignored Rust test is listed in `.config/ci/ignored-rust-tests.json` and
 must have a direct package-script owner. `vp run
 ci:verify-ignored-rust-tests` prevents silent drift.
 
-## Local Electron diagnostics
+## Electron E2E
 
-`vp run test:e2e` and `vp run test:e2e:performance` are retained for agents and developers who need to
-inspect the production Electron/preload/Main/Core composition. No scheduled,
-required, nightly, performance, or release workflow invokes these commands.
-They are diagnostic evidence, not a release certificate.
+`vp run test:e2e:nightly` rebuilds and runs the shared curated selection in
+Nightly CI and locally. The job stages the locked runtime for scripted Agent
+tests, uses one worker, retains failure traces and error contexts in
+`test-results/`, and uploads failure diagnostics and command timings. Selection
+and admission criteria live in [development documentation](development.md).
+
+`vp run test:e2e` and `vp run test:e2e:performance` remain local diagnostics for
+the production Electron/preload/Main/Core composition. PR, Main, Performance,
+and release certification do not run Electron E2E.
 
 The native PTY integration contract runs under Electron with a test-owned shell
 home and startup file. It registers its observation before process creation,

@@ -4,6 +4,7 @@ import { APP_TEST_SUITES, STATIC_GROUPS, type CiGatePlan } from "./ci-gate-plan"
 import {
   verifyAppTestMatrixContracts,
   verifyDirectNeedsContracts,
+  verifyElectronE2eWorkflowContracts,
   verifyFullCiContracts,
 } from "./verify-ci-matrix-contracts";
 
@@ -152,4 +153,52 @@ describe("CI matrix contracts", () => {
       ),
     ).toThrow("needs must be a job id or array of job ids");
   });
+});
+
+describe("Electron E2E workflow ownership", () => {
+  const workflow = ({
+    command = "vp exec tsx scripts/ci/run-timed.ts --name electron-e2e -- vp run test:e2e:nightly",
+    needs = ["electron-e2e"],
+    runner = "macos-26",
+  } = {}): Record<string, unknown> => ({
+    jobs: {
+      "electron-e2e": { "runs-on": runner, steps: [{ run: command }] },
+      complete: { if: "always()", needs },
+    },
+  });
+  const nightly = ".github/workflows/ci-nightly.yml";
+
+  test("requires the shared curated command on a standard macOS runner", () => {
+    expect(() => verifyElectronE2eWorkflowContracts(workflow(), nightly)).not.toThrow();
+    expect(() =>
+      verifyElectronE2eWorkflowContracts(workflow({ command: "vp run test:e2e" }), nightly),
+    ).toThrow("shared test:e2e:nightly selection");
+    expect(() =>
+      verifyElectronE2eWorkflowContracts(workflow({ runner: "macos-26-xlarge" }), nightly),
+    ).toThrow("standard macos-26 runner");
+  });
+
+  test("rejects a removed Electron job or an aggregate that omits it", () => {
+    expect(() => verifyElectronE2eWorkflowContracts({ jobs: {} }, nightly)).toThrow(
+      "Nightly CI Electron E2E jobs",
+    );
+    expect(() =>
+      verifyElectronE2eWorkflowContracts(workflow({ needs: ["app-tests"] }), nightly),
+    ).toThrow("complete must always require Electron E2E");
+  });
+
+  test.each(["ci.yml", "ci-main.yml", "performance.yml", "_certify-release-source.yml"])(
+    "keeps Electron UI automation out of %s",
+    (filename) => {
+      expect(() =>
+        verifyElectronE2eWorkflowContracts(workflow(), `.github/workflows/${filename}`),
+      ).toThrow("leave Electron E2E to Nightly CI");
+      expect(() =>
+        verifyElectronE2eWorkflowContracts(
+          { jobs: { test: { steps: [{ run: "vp run test:integration" }] } } },
+          `.github/workflows/${filename}`,
+        ),
+      ).not.toThrow();
+    },
+  );
 });

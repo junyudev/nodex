@@ -3,6 +3,7 @@ import path from "node:path";
 import { APP_TEST_SUITES, parseCiGatePlan, STATIC_GROUPS } from "./ci-gate-plan";
 import {
   readWorkflow,
+  relativeRepositoryPath,
   repositoryRoot,
   requireRecord,
   workflowFiles,
@@ -144,6 +145,54 @@ const declaredNeeds = (value: unknown, label: string): ReadonlySet<string> => {
   throw new Error(`${label} needs must be a job id or array of job ids.`);
 };
 
+/** Electron UI coverage belongs only to the curated Nightly job. */
+export const verifyElectronE2eWorkflowContracts = (
+  workflow: UnknownRecord,
+  workflowName: string,
+): void => {
+  const jobs = requireRecord(workflow.jobs, `${workflowName} jobs`);
+  const e2eJobs = Object.entries(jobs).filter(([, rawJob]) => {
+    const job = requireRecord(rawJob, `${workflowName} job`);
+    if (!Array.isArray(job.steps)) return false;
+    return job.steps.some(
+      (step) =>
+        typeof step === "object" &&
+        step !== null &&
+        typeof step.run === "string" &&
+        /\btest:e2e(?::[\w-]+)?\b/u.test(step.run),
+    );
+  });
+  if (workflowName !== ".github/workflows/ci-nightly.yml") {
+    if (e2eJobs.length > 0) {
+      throw new Error(`${workflowName} must leave Electron E2E to Nightly CI.`);
+    }
+    return;
+  }
+  requireExactEntries(
+    e2eJobs.map(([name]) => name),
+    ["electron-e2e"],
+    "Nightly CI Electron E2E jobs",
+  );
+  const job = requireRecord(jobs["electron-e2e"], "Nightly CI Electron E2E job");
+  if (job["runs-on"] !== "macos-26") {
+    throw new Error("Nightly CI Electron E2E must use the standard macos-26 runner.");
+  }
+  const steps = job.steps as readonly UnknownRecord[];
+  const commands = steps.flatMap((step) =>
+    typeof step.run === "string" && /\btest:e2e\b/u.test(step.run) ? [step.run] : [],
+  );
+  if (commands.length !== 1 || !/\bvp run test:e2e:nightly$/u.test(commands[0] ?? "")) {
+    throw new Error("Nightly CI Electron E2E must run the shared test:e2e:nightly selection.");
+  }
+  const complete = requireRecord(jobs.complete, "Nightly CI complete job");
+  if (
+    complete.if !== "always()" ||
+    !declaredNeeds(complete.needs, "Nightly CI complete").has("electron-e2e")
+  ) {
+    throw new Error("Nightly CI complete must always require Electron E2E.");
+  }
+};
+
 export const verifyDirectNeedsContracts = (workflow: UnknownRecord, workflowName: string): void => {
   const jobs = requireRecord(workflow.jobs, `${workflowName} jobs`);
   for (const [jobName, rawJob] of Object.entries(jobs)) {
@@ -170,10 +219,10 @@ const main = (): void => {
     readWorkflow(path.join(repositoryRoot, ".github/workflows/_app-tests.yml")),
   );
   for (const workflowPath of workflowFiles()) {
-    verifyDirectNeedsContracts(
-      readWorkflow(workflowPath),
-      path.relative(repositoryRoot, workflowPath),
-    );
+    const workflow = readWorkflow(workflowPath);
+    const workflowName = relativeRepositoryPath(workflowPath);
+    verifyElectronE2eWorkflowContracts(workflow, workflowName);
+    verifyDirectNeedsContracts(workflow, workflowName);
   }
   process.stdout.write("Verified CI matrix coverage and prerequisite isolation.\n");
 };

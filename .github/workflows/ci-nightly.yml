@@ -78,6 +78,43 @@ jobs:
       - if: always()
         run: sccache --show-stats || true
 
+  electron-e2e:
+    name: nightly electron e2e
+    runs-on: macos-26
+    timeout-minutes: 40
+    env:
+      CI_TIMING_JOB: nightly-electron-e2e
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-vite-plus
+      - run: vp install --frozen-lockfile
+      - uses: ./.github/actions/setup-rust-ci
+      - name: Run curated Electron E2E
+        run: vp exec tsx scripts/ci/run-timed.ts --name electron-e2e -- vp run test:e2e:nightly
+      - name: Upload Electron E2E diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-electron-e2e-failure-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Show Rust compiler cache statistics
+        if: always()
+        run: sccache --show-stats || true
+      - name: Upload Electron E2E timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: timings-nightly-electron-e2e-${{ github.run_attempt }}
+          path: .generated/ci-timings/
+          if-no-files-found: ignore
+          retention-days: 14
+
   complete:
     name: nightly complete
     if: always()
@@ -87,6 +124,7 @@ jobs:
       - app-tests
       - stress
       - runtime-contracts
+      - electron-e2e
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -5,12 +5,37 @@ import { pathToFileURL } from "node:url";
 const PERFORMANCE_GREP =
   "keeps representative large-content surfaces bounded|keeps Page ready and idle CPU bounded with 14k LocalCommit history|measures high-pressure nested Block transfer into a populated Board|keeps production-scale Database context menus inside the interaction budget";
 
+/** Deterministic product workflows shared by local runs and Nightly CI. */
+export const NIGHTLY_E2E_SPECS = [
+  "tests/e2e/electron-smoke.spec.ts",
+  "tests/e2e/workbench-shell-navigation.spec.ts",
+  "tests/e2e/new-chat-lifecycle.spec.ts",
+  "tests/e2e/scripted-agent-runtime.spec.ts",
+  "tests/e2e/side-chat-context.spec.ts",
+  "tests/e2e/subagents.spec.ts",
+  "tests/e2e/page-files.spec.ts",
+  "tests/e2e/library-files.spec.ts",
+  "tests/e2e/nfm-editor-lifecycle.spec.ts",
+  "tests/e2e/nfm-editor-history.spec.ts",
+  "tests/e2e/database-settings.spec.ts",
+  "tests/e2e/document-sync-recovery.spec.ts",
+  "tests/e2e/inbox-capture.spec.ts",
+  "tests/e2e/settings-authority.spec.ts",
+  "tests/e2e/composer-search.spec.ts",
+] as const;
+
 const modes = {
   default: {
     scriptName: "test:e2e",
     config: "playwright.e2e.config.ts",
     fixedArguments: [],
     environment: {},
+  },
+  nightly: {
+    scriptName: "test:e2e:nightly",
+    config: "playwright.e2e.config.ts",
+    fixedArguments: [...NIGHTLY_E2E_SPECS, "--workers=1"],
+    environment: { NODEX_E2E_INCLUDE_PERFORMANCE: "0" },
   },
   performance: {
     scriptName: "test:e2e:performance",

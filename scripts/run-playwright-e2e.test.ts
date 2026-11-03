@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { resolveElectronE2eGrepInvert } from "../playwright.e2e.config";
-import { resolvePlaywrightE2eInvocation } from "./run-playwright-e2e";
+import { NIGHTLY_E2E_SPECS, resolvePlaywrightE2eInvocation } from "./run-playwright-e2e";
 
 describe("Playwright E2E runner arguments", () => {
   test("rejects an npm-style standalone separator before doing any work", () => {
@@ -26,6 +26,16 @@ describe("Playwright E2E runner arguments", () => {
       config: "playwright.e2e.config.ts",
       environment: { NODEX_E2E_INCLUDE_PERFORMANCE: "1" },
       fixedArguments: ["--grep", expect.stringContaining("large-content surfaces")],
+    });
+  });
+
+  test("runs the curated Nightly selection serially and overrides performance opt-ins", () => {
+    expect(resolvePlaywrightE2eInvocation(["nightly"])).toEqual({
+      scriptName: "test:e2e:nightly",
+      config: "playwright.e2e.config.ts",
+      fixedArguments: [...NIGHTLY_E2E_SPECS, "--workers=1"],
+      additionalArguments: [],
+      environment: { NODEX_E2E_INCLUDE_PERFORMANCE: "0" },
     });
   });
 
