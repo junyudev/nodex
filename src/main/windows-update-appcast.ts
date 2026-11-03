@@ -1,5 +1,5 @@
 import { DOMParser, type Element } from "@xmldom/xmldom";
-import { APP_UPDATE_BUILD_VERSION, compareAppBuildVersions } from "./app-update-trust";
+import { APP_UPDATE_BUILD_VERSION_PATTERN, compareAppBuildVersions } from "./app-update-trust";
 
 export const MAX_APPCAST_BYTES = 1024 * 1024;
 export const MAX_INSTALLER_BYTES = 1024 * 1024 * 1024;
@@ -81,7 +81,7 @@ export function selectWindowsUpdate(
       const signature = enclosure.getAttributeNS(SPARKLE_NS, "edSignature") ?? "";
       if (
         !buildVersion ||
-        !APP_UPDATE_BUILD_VERSION.test(buildVersion) ||
+        !APP_UPDATE_BUILD_VERSION_PATTERN.test(buildVersion) ||
         !version ||
         version.length > 128 ||
         !/^[1-9]\d*$/u.test(length) ||

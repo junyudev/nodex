@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { APP_UPDATE_BUILD_VERSION, APP_UPDATE_PUBLIC_KEY } from "./app-update-trust";
+import { APP_UPDATE_BUILD_VERSION_PATTERN, APP_UPDATE_PUBLIC_KEY } from "./app-update-trust";
 
 export const windowsUpdateFeedUrls = (architecture: "x64" | "arm64") => ({
   stable: `https://nodex.jyu.app/updates/stable/windows-${architecture}/appcast.xml`,
@@ -11,7 +11,7 @@ const manifest = z
     schemaVersion: z.literal(1),
     architecture: z.enum(["x64", "arm64"]),
     buildChannel: z.enum(["disabled", "stable", "nightly"]),
-    buildVersion: z.string().regex(APP_UPDATE_BUILD_VERSION),
+    buildVersion: z.string().regex(APP_UPDATE_BUILD_VERSION_PATTERN),
     feedUrls: z.object({ stable: z.string(), nightly: z.string() }).strict().nullable(),
     publicKey: z.literal(APP_UPDATE_PUBLIC_KEY),
   })
