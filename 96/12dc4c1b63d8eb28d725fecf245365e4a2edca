@@ -1,0 +1,27 @@
+src/main/file-manager-windows.test.ts
+  s_4ecb22df858a2c::t_4d93d23147a45c 1-30
+  s_4ecb22df858a2c::t_8bcbc758755503 31-34
+src/main/ipc/handlers/NativeShellIpc.ts
+  s_4ecb22df858a2c::t_4d93d23147a45c 271
+  s_4ecb22df858a2c::t_33072f563f04eb 272-278,323-330
+src/main/file-link-opener.ts
+  s_4ecb22df858a2c::t_4d93d23147a45c 7,668-671,673-682
+docs/product-specs/windows-host-behavior.md
+  s_4ecb22df858a2c::t_4d93d23147a45c 12-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9612dc4c1b63d8eb28d725fecf245365e4a2edca",
+  "prompts": {},
+  "sessions": {
+    "s_4ecb22df858a2c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a055-207c-72a1-b1ad-e6102c15fab4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
