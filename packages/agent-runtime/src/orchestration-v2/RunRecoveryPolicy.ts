@@ -6,6 +6,7 @@ import type {
   OrchestrationV2RunRecoveryKind,
   OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
+import { providerFailureCause } from "@t3tools/provider-core/failureCause";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 
@@ -17,80 +18,37 @@ export type RunRecoveryStreak = Pick<OrchestrationV2RunRecovery, "streakStartedA
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const CONNECTION_DELAYS = [5_000, 10_000, 20_000, 40_000, MINUTE];
+/**
+ * Bounded schedules. A busy service is retried for about an hour, because capacity
+ * incidents outlast a few minutes and unattended work should outlast them too.
+ */
 const BOUNDED_DELAYS = {
-  overloaded: [10_000, 30_000, 2 * MINUTE, 5 * MINUTE],
-  rate_limit: [MINUTE, 5 * MINUTE, 15 * MINUTE],
-  process_lost: [5_000, 30_000, 2 * MINUTE],
+  overloaded: [10_000, 30_000, 2 * MINUTE, 5 * MINUTE, 10 * MINUTE, 15 * MINUTE, 30 * MINUTE],
+  rate_limit: [MINUTE, 5 * MINUTE, 15 * MINUTE, 30 * MINUTE],
+  process_lost: [5_000, 30_000, 2 * MINUTE, 10 * MINUTE],
 } as const;
 
-/** Structured evidence wins over generic transport codes; usage limits never auto-resume. */
+/**
+ * Whether a failed reply may continue on its own: only a cause the evidence names as
+ * transient. An unexplained failure ends the reply, so a delegating Agent or the user
+ * decides with the cause in hand instead of waiting on blind retries.
+ */
 export function classifyRunRecovery(failure: OrchestrationV2ProviderFailure): RunRecoveryKind {
-  if (
-    failure.class === "usage_limit" ||
-    failure.class === "permission_error" ||
-    failure.class === "validation_error" ||
-    failure.contextBudget !== undefined ||
-    failure.retryable === false
-  )
-    return "none";
-
-  const code = failure.code;
-  if (
-    code === "usageLimitExceeded" ||
-    code === "contextWindowExceeded" ||
-    code === "sessionBudgetExceeded" ||
-    code === "context_budget_exhausted" ||
-    code === "unauthorized" ||
-    code === "badRequest" ||
-    code === "cyberPolicy" ||
-    code === "misalignmentPolicyViolation" ||
-    code === "tooManyDenials" ||
-    code === "authentication_failed" ||
-    code === "invalid_request"
-  )
-    return "none";
-
-  const encodedStatus = /^api_error_(\d{3})$/u.exec(code ?? "");
-  const status = failure.httpStatusCode ?? (encodedStatus ? Number(encodedStatus[1]) : null);
-  if (status === 429) return "rate_limit";
-  // A gateway that cannot reach the provider (common behind a local proxy while offline)
-  // answers 502/504; that is lost connectivity, not a busy service.
-  if ((status === 502 || status === 504) && code !== "serverOverloaded") return "connection";
-  if (status !== null && status >= 500 && status <= 599) return "overloaded";
-  if (status !== null) return "none";
-
-  switch (code) {
-    case "rateLimitExceeded":
-    case "rate_limit":
-      return "rate_limit";
-    case "serverOverloaded":
-    case "internalServerError":
+  if (failure.retryable === false) return "none";
+  const cause = providerFailureCause(failure);
+  switch (cause) {
+    case "connection":
     case "overloaded":
-      return "overloaded";
-    case "provider_process_exited":
-    case "turn_start_unconfirmed":
-      return "process_lost";
-    case "httpConnectionFailed":
-    case "responseStreamConnectionFailed":
-    case "responseStreamDisconnected":
-    case "responseTooManyFailedAttempts":
-    case "observation_lost":
-      return "connection";
-    case "other": {
-      const details = `${failure.message}\n${failure.diagnostic ?? ""}`;
-      if (
-        /stream (?:ended|closed|disconnected)|(?:connection|stream) (?:reset|lost)|unexpected (?:eof|end of stream)|disconnected|disconnect(?:ion)?\b/iu.test(
-          details,
-        )
-      ) {
-        return "connection";
-      }
+    case "rate_limit":
+    case "process_lost":
+      return cause;
+    case "unknown":
+    case "usage_limit":
+    case "authentication":
+    case "context_budget":
+    case "refused":
+    case "unrecoverable":
       return "none";
-    }
-    default:
-      return failure.class === "transport_error" || code === "transport_error"
-        ? "connection"
-        : "none";
   }
 }
 

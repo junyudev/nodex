@@ -72,7 +72,10 @@ describe("classifyRunRecovery", () => {
     ...["rateLimitExceeded", "rate_limit", "api_error_429"].map(
       (code) => [code, { code }, "rate_limit"] as const,
     ),
-    ...["provider_process_exited", "turn_start_unconfirmed"].map(
+    ...["flexUnavailable", "policyCapacityUnavailable"].map(
+      (code) => [code, { code }, "overloaded"] as const,
+    ),
+    ...["provider_process_exited", "turn_start_unconfirmed", "provider_event_stream_lost"].map(
       (code) => [code, { code }, "process_lost"] as const,
     ),
     ...[
@@ -91,8 +94,15 @@ describe("classifyRunRecovery", () => {
       "api_error_401",
       "api_error_403",
       "api_error_404",
-      "something_new",
+      "modelNotFound",
+      "sandboxError",
+      "error_max_turns",
+      "error_max_budget_usd",
+      "context_handoff_delivery_uncertain",
+      "turn_ownership_conflict",
+      "native_session_unrecoverable",
     ].map((code) => [code, { code }, "none"] as const),
+    ["unnamed code", { code: "something_new" }, "none"],
     ["unknown class/cause", { class: "unknown" }, "none"],
     [
       "known Nodex code with unknown class",
@@ -137,13 +147,17 @@ describe("classifyRunRecovery", () => {
 describe("nextRunRecovery", () => {
   it.each([
     ["httpConnectionFailed", [5_000, 10_000, 20_000, 40_000, 60_000, 60_000, 60_000], null],
-    ["serverOverloaded", [10_000, 30_000, 120_000, 300_000], 4],
-    ["rateLimitExceeded", [60_000, 300_000, 900_000], 3],
-    ["provider_process_exited", [5_000, 30_000, 120_000], 3],
+    ["serverOverloaded", [10_000, 30_000, 120_000, 300_000, 600_000, 900_000, 1_800_000], 7],
+    ["rateLimitExceeded", [60_000, 300_000, 900_000, 1_800_000], 4],
+    ["provider_process_exited", [5_000, 30_000, 120_000, 600_000], 4],
   ] as const)("uses the complete %s schedule", (code, delays, maxAttempts) => {
     let streak: RunRecoveryStreak | null = null;
     for (const [index, delayMs] of delays.entries()) {
-      const result = nextRunRecovery({ failure: failure({ code }), now, streak });
+      const result = nextRunRecovery({
+        failure: failure({ code }),
+        now,
+        streak,
+      });
       assert.notEqual(result.kind, "none");
       assert.ok("status" in result && result.status === "scheduled");
       assert.equal(result.attempt, index + 1);
@@ -157,7 +171,11 @@ describe("nextRunRecovery", () => {
       streak = result;
     }
     if (maxAttempts !== null) {
-      const result = nextRunRecovery({ failure: failure({ code }), now, streak });
+      const result = nextRunRecovery({
+        failure: failure({ code }),
+        now,
+        streak,
+      });
       assert.ok("status" in result && result.status === "exhausted");
       assert.equal(result.maxAttempts, maxAttempts);
     }
@@ -206,7 +224,7 @@ describe("nextRunRecovery", () => {
     const result = nextRunRecovery({
       failure: failure({ code: "rateLimitExceeded", retryAfterMs: 1 }),
       now,
-      streak: { streakStartedAt: now, attempt: 3 },
+      streak: { streakStartedAt: now, attempt: 4 },
     });
     assert.ok("status" in result && result.status === "exhausted");
   });
@@ -231,7 +249,14 @@ describe("nextRunRecovery", () => {
     assert.ok("status" in restarted && restarted.status === "scheduled");
     assert.equal(restarted.attempt, 1);
     assert.equal(restarted.streakStartedAt, later);
-    assert.deepEqual(nextRunRecovery({ failure: failure(), streak, now }), { kind: "none" });
+    assert.deepEqual(
+      nextRunRecovery({
+        failure: failure({ code: "badRequest" }),
+        streak,
+        now,
+      }),
+      { kind: "none" },
+    );
   });
 
   it.each([

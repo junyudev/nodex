@@ -160,8 +160,10 @@ describe("Runtime request recovery", () => {
     [{ ...failure, code: "api_error_529" }, "overloaded"],
     [{ ...failure, code: "api_error_429" }, "rate_limit"],
     [{ ...failure, code: "authentication_failed" }, "authentication"],
-    [{ ...failure, class: "transport_error" }, "unknown"],
+    // The adapter's transport class is the evidence when its code names nothing more.
+    [{ ...failure, class: "transport_error" }, "connection"],
     [{ ...failure, code: null, class: "transport_error" }, "connection"],
+    [{ ...failure, code: "error_max_turns" }, "refused"],
     [{ ...failure, code: null, class: "usage_limit" }, "usage_limit"],
     [{ ...failure, code: "httpConnectionFailed", httpStatusCode: 429 }, "rate_limit"],
     [{ ...failure, code: "httpConnectionFailed", httpStatusCode: 502 }, "connection"],

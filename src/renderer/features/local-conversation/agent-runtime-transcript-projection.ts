@@ -41,8 +41,8 @@ import { agentBackendKindOfDriver } from "../../../shared/conversation-identity"
 import { agentMessageDisplayText } from "../../../shared/agent-prompt";
 import { getDisplayCommand } from "../../../shared/codex-command-execution";
 import type { CodexTranscriptTurnDetails } from "../../../shared/codex-transcript-projection";
+import { providerFailureCause } from "@nodex/agent-runtime/failure-cause";
 import {
-  conversationRecoveryReason,
   isWaitingForNetworkMessage,
   type ConversationRecovery,
 } from "../../../shared/conversation-recovery";
@@ -466,21 +466,6 @@ function runtimeRecoveryState(
   return "failed";
 }
 
-function runtimeRecoveryReason(
-  failure: Extract<AgentTurnItem, { type: "error" }>["failure"],
-): ConversationRecovery["reason"] {
-  // The upstream HTTP status is more precise than a broad connection wrapper.
-  if (failure.httpStatusCode != null) {
-    const statusReason = conversationRecoveryReason(`api_error_${failure.httpStatusCode}`);
-    if (statusReason !== "unknown") return statusReason;
-  }
-  // An unclassified provider code is not evidence of a connection failure.
-  if (failure.code !== null) return conversationRecoveryReason(failure.code);
-  if (failure.class === "transport_error") return "connection";
-  if (failure.class === "usage_limit") return "usage_limit";
-  return "unknown";
-}
-
 /** Retry metadata survives resolution; the item's current status owns recovery. */
 function projectRuntimeRecovery(
   item: Extract<AgentTurnItem, { type: "error" }>,
@@ -490,7 +475,7 @@ function projectRuntimeRecovery(
   const delay = item.retry?.retryDelayMs;
   return {
     state,
-    reason: runtimeRecoveryReason(item.failure),
+    reason: providerFailureCause(item.failure),
     attempt: item.retry?.attempt ?? null,
     maxAttempts: item.retry?.maxAttempts ?? null,
     retryAt: state === "retrying" && updatedAt !== null && delay != null ? updatedAt + delay : null,

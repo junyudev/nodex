@@ -426,7 +426,7 @@ it.effect("recovers an overloaded root inside one reply with an empty native con
       const retry = waiting.turnItems.find((item) => item.type === "error");
       assert.equal(retry?.status, "running");
       assert.ok(retry?.type === "error");
-      assert.deepEqual(retry.retry, { attempt: 1, maxAttempts: 4, retryDelayMs: 10_000 });
+      assert.deepEqual(retry.retry, { attempt: 1, maxAttempts: 7, retryDelayMs: 10_000 });
       assert.equal(waiting.attempts[0]!.status, "failed");
       yield* recover(first);
       assert.equal(started.length, 2);
@@ -774,7 +774,8 @@ it.effect(
         const overview =
           yield* (yield* ProjectionStore.ProjectionStoreV2).getThreadSubagentOverview({ threadId });
         assert.equal(overview.active.items[0]!.recovery?.attempt, 1);
-        for (let attempt = 1; attempt <= 4; attempt++) {
+        const maxAttempts = card.recovery!.maxAttempts!;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           const current = started.at(-1)!;
           const parentState = yield* orchestrator.getThreadProjection(threadId);
           assert.equal(
@@ -786,7 +787,7 @@ it.effect(
           const next = started.at(-1)!;
           assert.equal(next.runId, child.runId);
           yield* failTurn(emit, next);
-          if (attempt < 4) yield* waitRecovery(next);
+          if (attempt < maxAttempts) yield* waitRecovery(next);
         }
         yield* waitEvent(
           (event) =>
@@ -797,7 +798,7 @@ it.effect(
         const exhausted = yield* orchestrator.getThreadProjection(child.threadId);
         assert.equal(exhausted.runs.length, 1);
         assert.equal(exhausted.runs[0]!.status, "failed");
-        assert.equal(exhausted.attempts.length, 5);
+        assert.equal(exhausted.attempts.length, maxAttempts + 1);
         assert.isTrue(exhausted.attempts.every((attempt) => attempt.status === "failed"));
         assert.isFalse(
           exhausted.turnItems.some((item) => item.type === "error" && item.status === "running"),

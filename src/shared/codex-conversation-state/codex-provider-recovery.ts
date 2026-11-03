@@ -20,7 +20,7 @@ export function codexRecoveryFromError(input: {
   readonly previous?: ConversationRecovery;
 }): ConversationRecovery {
   const progress = parseConversationRetryProgress(input.message);
-  const reason = codexConversationRecoveryReason(input.errorInfo);
+  const reason = codexConversationRecoveryReason(input.errorInfo, input.message);
   return {
     state: input.willRetry ? "retrying" : "failed",
     reason: input.errorInfo === null ? (input.previous?.reason ?? reason) : reason,

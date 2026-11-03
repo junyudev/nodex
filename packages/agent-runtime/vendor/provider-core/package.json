@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     "./client": "./src/client.ts",
+    "./failureCause": "./src/failureCause.ts",
     "./server/adapterDriver": "./src/server/adapterDriver.ts",
     "./server/attachmentPrompt": "./src/server/attachmentPrompt.ts",
     "./server/auth": "./src/server/auth.ts",

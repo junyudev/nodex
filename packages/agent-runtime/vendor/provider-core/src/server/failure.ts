@@ -14,6 +14,7 @@ import { OrchestrationV2ContextBudget } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Cause from "effect/Cause";
 
+import { NODEX_FAILURE_CODES } from "../failureCause.ts";
 import * as IdAllocator from "./IdAllocator.ts";
 import * as Schema from "effect/Schema";
 
@@ -89,10 +90,16 @@ function findContextBudgetError(cause: unknown): ContextHandoffBudgetError | und
   return undefined;
 }
 
+/** A known error category: its user-facing message and, when Nodex observed it itself, its code. */
+interface KnownCause {
+  readonly message?: string | undefined;
+  readonly code?: string;
+}
+
 /** Translate known categories without exposing arbitrary provider defect text. */
-function causeMessage(cause: unknown): string | undefined {
+function knownCause(cause: unknown): KnownCause {
   const seen = new Set<unknown>();
-  let message: string | undefined;
+  let known: KnownCause = {};
   for (let depth = 0; depth < 16 && cause != null && !seen.has(cause); depth++) {
     seen.add(cause);
     try {
@@ -103,28 +110,56 @@ function causeMessage(cause: unknown): string | undefined {
       if (typeof cause !== "object") break;
       switch ((cause as Record<string, unknown>)._tag) {
         case "ContextHandoffBudgetError":
-          return new ContextHandoffBudgetError().message;
+          return { message: new ContextHandoffBudgetError().message };
         case "ClaudeBackgroundWorkBlocksQueryReplacementError":
-          return stringField(cause, "message");
+          return {
+            message: stringField(cause, "message"),
+            code: NODEX_FAILURE_CODES.backgroundWorkBlocks,
+          };
         case "ContextHandoffDeliveryUncertainError":
-          return "T3 could not confirm whether conversation history reached the provider. Retry the turn to recover the session.";
+          return {
+            message:
+              "Nodex could not confirm whether the conversation history reached the Agent. Retry the turn to recover the session.",
+            code: NODEX_FAILURE_CODES.deliveryUncertain,
+          };
         case "ProviderTurnOwnershipConflictError":
-          return stringField(cause, "message");
+          return {
+            message: stringField(cause, "message"),
+            code: NODEX_FAILURE_CODES.turnOwnershipConflict,
+          };
         case "ProviderAdapterTurnStartError":
-          message =
-            "The provider could not start this turn. Retry the turn; if it keeps failing, check the provider setup and server logs.";
+          known = {
+            message:
+              "The provider could not start this turn. Retry the turn; if it keeps failing, check the provider setup and server logs.",
+          };
+          break;
+        // A provider client's own transport report that its process is gone.
+        case "CodexAppServerProcessExitedError":
+        case "CodexAppServerInputStreamEndedError":
+        case "AcpProcessExitedError":
+        case "AcpInputStreamEndedError":
+          known = {
+            message: "The Agent stopped before finishing this reply.",
+            code: NODEX_FAILURE_CODES.processExited,
+          };
           break;
         case "ProviderAdapterEventStreamError":
-          message =
-            "The provider event stream closed unexpectedly. Retry the turn; if it keeps failing, check the provider and server logs.";
+          known = {
+            message: "The Agent's event stream closed before this reply finished.",
+            code: NODEX_FAILURE_CODES.eventStreamLost,
+          };
           break;
         case "ProviderAdapterOpenSessionError":
-          message =
-            "The provider session could not be opened. Check that the provider is installed and signed in, then retry the turn.";
+          known = {
+            message:
+              "The provider session could not be opened. Check that the provider is installed and signed in, then retry the turn.",
+          };
           break;
         case "ProviderAdapterResumeThreadError":
-          message =
-            "The provider conversation could not be resumed. Retry the turn; if it keeps failing, check the provider and server logs.";
+          known = {
+            message:
+              "The provider conversation could not be resumed. Retry the turn; if it keeps failing, check the provider and server logs.",
+          };
           break;
       }
       cause = (cause as Record<string, unknown>).cause;
@@ -132,7 +167,7 @@ function causeMessage(cause: unknown): string | undefined {
       break;
     }
   }
-  return message;
+  return known;
 }
 
 function stringField(value: unknown, key: "message" | "code"): string | undefined {
@@ -217,12 +252,13 @@ export function makeProviderFailure(input: {
   const budgetError = findContextBudgetError(input.cause);
   const budgetExhausted = budgetError !== undefined;
   const contextBudget = budgetError?.budget;
-  const rawMessage = input.message ?? causeMessage(input.cause) ?? DEFAULT_PROVIDER_FAILURE_MESSAGE;
+  const known = knownCause(input.cause);
+  const rawMessage = input.message ?? known.message ?? DEFAULT_PROVIDER_FAILURE_MESSAGE;
   const message = boundedText(rawMessage, MAX_PROVIDER_FAILURE_MESSAGE_LENGTH);
   const diagnostic = providerFailureDiagnostic(input.cause, message);
   const rawCode = budgetExhausted
     ? "context_budget_exhausted"
-    : (input.code ?? stringField(input.cause, "code") ?? null);
+    : (input.code ?? stringField(input.cause, "code") ?? known.code ?? null);
   const code =
     rawCode === null ? null : boundedText(rawCode, MAX_PROVIDER_FAILURE_CODE_LENGTH) || null;
 

@@ -55,13 +55,11 @@ import {
   makeProviderFailureTurnItem,
 } from "@t3tools/provider-core/server/failure";
 import {
-  eligibleRunRecovery,
-  recoveryEffectId,
-  recoveryCommandId,
+  settleFailedRunAttempt,
   withoutRunRecovery,
   type RunRecoveryContext,
 } from "./RunRecovery.ts";
-import { nextRunRecovery, recoveryStreakAfterItem } from "./RunRecoveryPolicy.ts";
+import { recoveryStreakAfterItem } from "./RunRecoveryPolicy.ts";
 import type { ThreadCommandExecutor } from "./ThreadCommandExecutor.ts";
 import * as RunFinalizationService from "./RunFinalization.ts";
 
@@ -1231,6 +1229,51 @@ export const layer: Layer.Layer<
               }
               const providerThread = yield* Ref.get(latestProviderThread);
               const openSubagents = yield* Ref.get(openRunOwnedSubagents);
+              const finishRun = Effect.gen(function* () {
+                yield* writeFinalRunEvents({
+                  run: runSnapshot,
+                  rootNode: input.rootNode,
+                  checkpointScope: input.checkpointScope,
+                  providerThread,
+                  attempt: { ...input.attempt, providerTurnId: boundProviderTurnId },
+                  ...(input.shouldFinalizeRun === undefined || skipOwnershipRead
+                    ? {}
+                    : {
+                        shouldFinalizeRun: input.shouldFinalizeRun,
+                        // Stop may commit between the ownership read and this
+                        // terminal write. Gate the events and checkpoint together.
+                        writeIfRunCurrent: {
+                          activeAttemptId: input.attempt.id,
+                          expectedStatus: "running" as const,
+                        },
+                      }),
+                  ...(input.hasUnpairedRunInterruptRequest === undefined
+                    ? {}
+                    : {
+                        hasUnpairedRunInterruptRequest: input.hasUnpairedRunInterruptRequest,
+                      }),
+                  openRunOwnedSubagents: openSubagents,
+                  terminal,
+                  failureItemPersisted,
+                  ...(skipOwnershipRead
+                    ? {
+                        writeIfRunCurrent: {
+                          activeAttemptId: input.attempt.id,
+                          expectedStatus: "running" as const,
+                        },
+                      }
+                    : {}),
+                  refreshAfterTurn,
+                }).pipe(
+                  Effect.mapError(
+                    (cause) => new RunExecutionIngestError({ runId: input.run.id, cause }),
+                  ),
+                );
+                if (isRunOwnedSubagentTerminalStatus(terminal.status)) {
+                  yield* Ref.set(openRunOwnedSubagents, emptyOpenRunOwnedSubagentProjection());
+                }
+                yield* Ref.set(rootRunFinalized, true);
+              });
               if (input.recoveryControls !== undefined) {
                 const context = yield* input.recoveryControls.read();
                 const current = context.runs.find((run) => run.id === input.run.id);
@@ -1264,213 +1307,106 @@ export const layer: Layer.Layer<
                 const failureEvent = normalized.find(
                   (event) => event.type === "turn-item.updated" && event.payload.type === "error",
                 );
-                if (terminal.status === "failed") {
-                  const failure =
-                    failureEvent?.type === "turn-item.updated" &&
-                    failureEvent.payload.type === "error"
-                      ? failureEvent.payload.failure
-                      : terminal.failure;
-                  terminal = { ...terminal, failure };
-                  const decision =
-                    !alreadyFailedAttempt && eligibleRunRecovery(context, current)
-                      ? nextRunRecovery({ failure, streak: current.recovery ?? null, now })
-                      : { kind: "none" as const };
-                  if (decision.kind !== "none" && decision.status === "scheduled") {
-                    const { status: _status, delayMs, ...recovery } = decision;
-                    const attemptOrdinal =
-                      Math.max(
-                        ...context.attempts
-                          .filter((attempt) => attempt.runId === current.id)
-                          .map((attempt) => attempt.attemptOrdinal),
-                      ) + 1;
-                    const item =
-                      failureEvent?.type === "turn-item.updated" &&
-                      failureEvent.payload.type === "error"
-                        ? failureEvent.payload
-                        : makeProviderFailureTurnItem({
-                            driver: terminal.driver,
-                            threadId: current.threadId,
-                            runId: current.id,
-                            nodeId: input.rootNode.id,
-                            providerThreadId: terminal.providerThreadId,
-                            providerTurnId: terminal.providerTurnId,
-                            itemOrdinal: terminal.failureItemOrdinal,
-                            failure,
-                            occurredAt: now,
-                          });
-                    const turn = context.providerTurns.find(
-                      (turn) => turn.id === terminal.providerTurnId,
-                    );
-                    const payloads = [
-                      ...normalized.filter((event) => event !== failureEvent),
-                      {
+                const finalize = Effect.gen(function* () {
+                  const retryRows = context.turnItems.filter(
+                    (item) =>
+                      item.runId === current.id &&
+                      item.type === "error" &&
+                      item.retry !== undefined &&
+                      item.status === "running",
+                  );
+                  const retryEvents = yield* Effect.forEach(retryRows, (item) =>
+                    Effect.gen(function* () {
+                      return {
+                        id: yield* idAllocator.allocate.event({ threadId: current.threadId }),
                         type: "turn-item.updated" as const,
+                        threadId: current.threadId,
+                        runId: current.id,
+                        ...(item.nodeId === null ? {} : { nodeId: item.nodeId }),
+                        providerInstanceId: current.providerInstanceId,
+                        occurredAt: now,
                         payload: {
                           ...item,
-                          status: "running" as const,
-                          completedAt: null,
+                          status:
+                            terminal.status === "completed"
+                              ? ("completed" as const)
+                              : terminal.status === "failed"
+                                ? ("failed" as const)
+                                : ("cancelled" as const),
+                          completedAt: now,
                           updatedAt: now,
-                          retry: {
-                            attempt: recovery.attempt,
-                            maxAttempts: recovery.maxAttempts,
-                            retryDelayMs: delayMs,
-                          },
                         },
-                      },
-                      {
-                        type: "run-attempt.updated" as const,
-                        payload: {
-                          ...input.attempt,
-                          providerTurnId: terminal.providerTurnId,
-                          status: "failed" as const,
-                          completedAt: now,
-                        },
-                      },
-                      {
-                        type: "node.updated" as const,
-                        payload: { ...input.rootNode, status: "failed" as const, completedAt: now },
-                      },
-                      {
-                        type: "provider-turn.updated" as const,
-                        payload: {
-                          id: terminal.providerTurnId,
-                          providerThreadId: terminal.providerThreadId,
-                          nodeId: input.rootNode.id,
-                          runAttemptId: input.attempt.id,
-                          nativeTurnRef: turn?.nativeTurnRef ?? null,
-                          ordinal: turn?.ordinal ?? input.providerTurnOrdinal,
-                          startedAt: turn?.startedAt ?? input.attempt.startedAt,
-                          status: "failed" as const,
-                          completedAt: now,
-                        },
-                      },
-                      {
-                        type: "provider-thread.updated" as const,
-                        payload: { ...providerThread, status: "idle" as const, updatedAt: now },
-                      },
-                      {
-                        type: "run.updated" as const,
-                        payload: { ...current, recovery, completedAt: null },
-                      },
-                    ];
-                    const events = yield* Effect.forEach(payloads, (event) =>
-                      Effect.gen(function* () {
-                        return {
-                          id: yield* idAllocator.allocate.event({ threadId: current.threadId }),
-                          threadId: current.threadId,
-                          runId: current.id,
-                          nodeId: input.rootNode.id,
-                          providerInstanceId: current.providerInstanceId,
-                          occurredAt: now,
-                          ...event,
-                        };
-                      }),
-                    );
-                    yield* eventSink.writeIfRunCurrent({
-                      threadId: current.threadId,
-                      runId: current.id,
-                      activeAttemptId: input.attempt.id,
-                      expectedStatus: "running",
-                      events,
-                      effects: [
-                        {
-                          id: recoveryEffectId(current.id, attemptOrdinal),
-                          commandId: recoveryCommandId(current.id, attemptOrdinal),
-                          threadId: current.threadId,
-                          availableAt: recovery.nextAttemptAt,
-                          request: { type: "run.recover", runId: current.id, attemptOrdinal },
-                        },
-                      ],
-                    });
-                    // The durable timer now owns liveness; the old native subscription must end.
-                    yield* Ref.set(rootRunFinalized, true);
-                    return;
-                  }
-                }
-                const retryRows = context.turnItems.filter(
-                  (item) =>
-                    item.runId === current.id &&
-                    item.type === "error" &&
-                    item.retry !== undefined &&
-                    item.status === "running",
-                );
-                const retryEvents = yield* Effect.forEach(retryRows, (item) =>
-                  Effect.gen(function* () {
-                    return {
-                      id: yield* idAllocator.allocate.event({ threadId: current.threadId }),
-                      type: "turn-item.updated" as const,
-                      threadId: current.threadId,
-                      runId: current.id,
-                      ...(item.nodeId === null ? {} : { nodeId: item.nodeId }),
-                      providerInstanceId: current.providerInstanceId,
-                      occurredAt: now,
-                      payload: {
-                        ...item,
-                        status:
-                          terminal.status === "completed"
-                            ? ("completed" as const)
-                            : terminal.status === "failed"
-                              ? ("failed" as const)
-                              : ("cancelled" as const),
-                        completedAt: now,
-                        updatedAt: now,
-                      },
-                    };
-                  }),
-                );
-                yield* eventSink.writeIfRunCurrent({
-                  threadId: current.threadId,
-                  runId: current.id,
-                  activeAttemptId: input.attempt.id,
-                  expectedStatus: "running",
-                  events: [...normalized, ...retryEvents],
+                      };
+                    }),
+                  );
+                  yield* eventSink.writeIfRunCurrent({
+                    threadId: current.threadId,
+                    runId: current.id,
+                    activeAttemptId: input.attempt.id,
+                    expectedStatus: "running",
+                    events: [...normalized, ...retryEvents],
+                  });
+                  failureItemPersisted = failureEvent !== undefined;
+                  runSnapshot = withoutRunRecovery(current);
+                  yield* finishRun;
                 });
-                failureItemPersisted = failureEvent !== undefined;
-                runSnapshot = withoutRunRecovery(current);
+                if (terminal.status !== "failed") {
+                  yield* finalize;
+                  return;
+                }
+                const failure =
+                  failureEvent?.type === "turn-item.updated" &&
+                  failureEvent.payload.type === "error"
+                    ? failureEvent.payload.failure
+                    : terminal.failure;
+                terminal = { ...terminal, failure };
+                const item =
+                  failureEvent?.type === "turn-item.updated" &&
+                  failureEvent.payload.type === "error"
+                    ? failureEvent.payload
+                    : makeProviderFailureTurnItem({
+                        driver: terminal.driver,
+                        threadId: current.threadId,
+                        runId: current.id,
+                        nodeId: input.rootNode.id,
+                        providerThreadId: terminal.providerThreadId,
+                        providerTurnId: terminal.providerTurnId,
+                        itemOrdinal: terminal.failureItemOrdinal,
+                        failure,
+                        occurredAt: now,
+                      });
+                const turn = context.providerTurns.find(
+                  (turn) => turn.id === terminal.providerTurnId,
+                );
+                yield* settleFailedRunAttempt({
+                  ids: idAllocator,
+                  sink: eventSink,
+                  context,
+                  run: current,
+                  attempt: { ...input.attempt, providerTurnId: terminal.providerTurnId },
+                  rootNode: input.rootNode,
+                  failureItem: item,
+                  now,
+                  events: normalized.filter((event) => event !== failureEvent),
+                  providerThread,
+                  providerTurn: {
+                    id: terminal.providerTurnId,
+                    providerThreadId: terminal.providerThreadId,
+                    nodeId: input.rootNode.id,
+                    runAttemptId: input.attempt.id,
+                    nativeTurnRef: turn?.nativeTurnRef ?? null,
+                    ordinal: turn?.ordinal ?? input.providerTurnOrdinal,
+                    startedAt: turn?.startedAt ?? input.attempt.startedAt,
+                    status: "failed",
+                    completedAt: now,
+                  },
+                  finalize,
+                });
+                // The durable timer or final outcome now owns liveness.
+                yield* Ref.set(rootRunFinalized, true);
+                return;
               }
-              yield* writeFinalRunEvents({
-                run: runSnapshot,
-                rootNode: input.rootNode,
-                checkpointScope: input.checkpointScope,
-                providerThread,
-                attempt: { ...input.attempt, providerTurnId: boundProviderTurnId },
-                ...(input.shouldFinalizeRun === undefined || skipOwnershipRead
-                  ? {}
-                  : {
-                      shouldFinalizeRun: input.shouldFinalizeRun,
-                      // Stop may commit between the ownership read and this
-                      // terminal write. Gate the events and checkpoint together.
-                      writeIfRunCurrent: {
-                        activeAttemptId: input.attempt.id,
-                        expectedStatus: "running" as const,
-                      },
-                    }),
-                ...(input.hasUnpairedRunInterruptRequest === undefined
-                  ? {}
-                  : {
-                      hasUnpairedRunInterruptRequest: input.hasUnpairedRunInterruptRequest,
-                    }),
-                openRunOwnedSubagents: openSubagents,
-                terminal,
-                failureItemPersisted,
-                ...(skipOwnershipRead
-                  ? {
-                      writeIfRunCurrent: {
-                        activeAttemptId: input.attempt.id,
-                        expectedStatus: "running" as const,
-                      },
-                    }
-                  : {}),
-                refreshAfterTurn,
-              }).pipe(
-                Effect.mapError(
-                  (cause) => new RunExecutionIngestError({ runId: input.run.id, cause }),
-                ),
-              );
-              if (isRunOwnedSubagentTerminalStatus(terminal.status)) {
-                yield* Ref.set(openRunOwnedSubagents, emptyOpenRunOwnedSubagentProjection());
-              }
-              yield* Ref.set(rootRunFinalized, true);
+              yield* finishRun;
             }).pipe(
               (effect) => input.recoveryControls?.withLock(input.run.threadId, effect) ?? effect,
             );

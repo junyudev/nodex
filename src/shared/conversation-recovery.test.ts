@@ -1,49 +1,11 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   codexConversationRecoveryReason,
-  conversationRecoveryReason,
   isWaitingForNetworkMessage,
   parseConversationRetryProgress,
 } from "./conversation-recovery";
 
 describe("conversation recovery reasons", () => {
-  test.each([
-    ["api_error_529", "overloaded"],
-    ["overloaded", "overloaded"],
-    ["serverOverloaded", "overloaded"],
-    ["api_error_429", "rate_limit"],
-    ["rate_limit", "rate_limit"],
-    ["rateLimitExceeded", "rate_limit"],
-    ["usageLimitExceeded", "usage_limit"],
-    ["billing_error", "usage_limit"],
-    ["blocking_limit", "usage_limit"],
-    ["unauthorized", "authentication"],
-    ["authentication_failed", "authentication"],
-    ["api_error_401", "authentication"],
-    ["httpConnectionFailed", "connection"],
-    ["responseStreamConnectionFailed", "connection"],
-    ["responseStreamDisconnected", "connection"],
-    ["responseTooManyFailedAttempts", "connection"],
-    ["observation_lost", "connection"],
-    ["provider_process_exited", "process_lost"],
-    ["turn_start_unconfirmed", "process_lost"],
-  ] as const)("classifies the provider's exact %s code as %s", (code, reason) => {
-    expect(conversationRecoveryReason(code)).toBe(reason);
-  });
-
-  test.each([
-    null,
-    "unknown",
-    "other",
-    "api_error_500",
-    "server_error",
-    "transport_error",
-    "Connection failed; retrying",
-    "future_provider_error",
-  ])("keeps an unclassified cause unknown: %s", (code) => {
-    expect(conversationRecoveryReason(code)).toBe("unknown");
-  });
-
   test.each([
     [429, "rate_limit"],
     [529, "overloaded"],
@@ -68,14 +30,19 @@ describe("conversation recovery reasons", () => {
 
   test("reads direct protocol codes without treating absent or future details as network evidence", () => {
     expect(codexConversationRecoveryReason("usageLimitExceeded")).toBe("usage_limit");
+    expect(codexConversationRecoveryReason("flexUnavailable")).toBe("overloaded");
     expect(codexConversationRecoveryReason(null)).toBe("unknown");
     expect(codexConversationRecoveryReason({})).toBe("unknown");
     expect(codexConversationRecoveryReason({ futureError: { httpStatusCode: null } })).toBe(
       "unknown",
     );
-    expect(codexConversationRecoveryReason({ futureError: { httpStatusCode: 500 } })).toBe(
-      "unknown",
+  });
+
+  test("reads disconnect evidence from the message the way the runtime does", () => {
+    expect(codexConversationRecoveryReason("other", "stream disconnected before completion")).toBe(
+      "connection",
     );
+    expect(codexConversationRecoveryReason("other", "Something broke.")).toBe("unknown");
   });
 });
 

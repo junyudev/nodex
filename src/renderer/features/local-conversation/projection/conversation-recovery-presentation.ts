@@ -40,6 +40,8 @@ export function recoveryStatusLabel(recovery: ConversationRecovery): string {
         return "Agent stopped unexpectedly";
       case "unrecoverable":
         return "Couldn't reopen this conversation";
+      case "refused":
+        return "Request declined";
       case "unknown":
         return "Request failed";
     }

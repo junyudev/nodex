@@ -1,18 +1,12 @@
 import type { CodexErrorInfo } from "@nodex/codex-app-server-protocol/v2";
+import {
+  providerFailureCause,
+  type ProviderFailureCause,
+} from "@nodex/agent-runtime/failure-cause";
 
 export type ConversationRecoveryState = "retrying" | "recovered" | "failed" | "stopped";
-export type ConversationRecoveryReason =
-  | "context_budget"
-  | "connection"
-  | "overloaded"
-  | "rate_limit"
-  | "usage_limit"
-  | "authentication"
-  /** The Agent's process ended mid-reply; Nodex resumes it in the same conversation. */
-  | "process_lost"
-  /** The provider can't reopen the captured conversation; retrying the same chat can't help. */
-  | "unrecoverable"
-  | "unknown";
+/** The cause the Agent runtime's recovery policy reads, so labels and retries never disagree. */
+export type ConversationRecoveryReason = ProviderFailureCause;
 
 /** Current request recovery, separate from the diagnostic event that started it. */
 export interface ConversationRecovery {
@@ -32,43 +26,27 @@ export function isWaitingForNetworkMessage(message: string | null | undefined): 
   return message != null && /\bwaiting for (?:the )?network\b/i.test(message);
 }
 
-export function conversationRecoveryReason(code: string | null): ConversationRecoveryReason {
-  if (code === null) return "unknown";
-  if (code === "context_budget_exhausted") return "context_budget";
-  if (code === "api_error_529" || code === "overloaded" || code === "serverOverloaded")
-    return "overloaded";
-  if (code === "api_error_429" || code === "rate_limit" || code === "rateLimitExceeded")
-    return "rate_limit";
-  if (code === "usageLimitExceeded" || code === "billing_error" || code === "blocking_limit")
-    return "usage_limit";
-  if (code === "unauthorized" || code === "authentication_failed" || code === "api_error_401")
-    return "authentication";
-  if (
-    code === "httpConnectionFailed" ||
-    code === "responseStreamConnectionFailed" ||
-    code === "responseStreamDisconnected" ||
-    code === "responseTooManyFailedAttempts" ||
-    // Nodex lost contact with the provider's turn and could not confirm how it ended.
-    code === "observation_lost"
-  )
-    return "connection";
-  if (code === "provider_process_exited" || code === "turn_start_unconfirmed")
-    return "process_lost";
-  if (code === "native_session_unrecoverable") return "unrecoverable";
-  return "unknown";
-}
-
+/** Codex's native error evidence, classified like the runtime classifies the same failure. */
 export function codexConversationRecoveryReason(
   errorInfo: CodexErrorInfo | null,
+  message = "",
 ): ConversationRecoveryReason {
   if (errorInfo === null) return "unknown";
-  if (typeof errorInfo === "string") return conversationRecoveryReason(errorInfo);
-  const [code, details] = Object.entries(errorInfo)[0] ?? [];
-  if (details && typeof details === "object" && "httpStatusCode" in details) {
-    const statusReason = conversationRecoveryReason(`api_error_${details.httpStatusCode}`);
-    if (statusReason !== "unknown") return statusReason;
-  }
-  return conversationRecoveryReason(code ?? null);
+  const [code, details] =
+    typeof errorInfo === "string" ? [errorInfo, null] : (Object.entries(errorInfo)[0] ?? []);
+  const httpStatusCode =
+    details !== null &&
+    typeof details === "object" &&
+    "httpStatusCode" in details &&
+    typeof details.httpStatusCode === "number"
+      ? details.httpStatusCode
+      : undefined;
+  return providerFailureCause({
+    class: "provider_error",
+    code: code ?? null,
+    message,
+    ...(httpStatusCode === undefined ? {} : { httpStatusCode }),
+  });
 }
 
 export function parseConversationRetryProgress(

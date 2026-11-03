@@ -1,8 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import {
-  conversationRecoveryReason,
-  type ConversationRecovery,
-} from "../../../../shared/conversation-recovery";
+import type { ConversationRecovery } from "../../../../shared/conversation-recovery";
 import type { CodexTranscriptEntry } from "../../../../shared/types";
 import {
   recoveryAction,
@@ -110,7 +107,7 @@ describe("conversation recovery presentation", () => {
     const unrecoverable = {
       ...retrying,
       state: "failed" as const,
-      reason: conversationRecoveryReason("native_session_unrecoverable"),
+      reason: "unrecoverable" as const,
     };
     expect(recoveryStatusLabel(unrecoverable)).toBe("Couldn't reopen this conversation");
     expect(recoveryAction(unrecoverable, true, false)).toBeNull();

@@ -1,4 +1,8 @@
-import { readRunRecoveryContext, withoutRunRecovery } from "./RunRecovery.ts";
+import {
+  readRunRecoveryContext,
+  settleFailedRunAttempt,
+  withoutRunRecovery,
+} from "./RunRecovery.ts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import { readExecutionHandoff } from "./ExecutionHandoff.ts";
@@ -90,7 +94,7 @@ export interface ProviderTurnStartServiceV2Shape {
   /**
    * Starts the run's provider turn. Retryable startup failures return to the
    * worker while `willRetry` is true. Known permanent recovery failures and
-   * exhausted retries settle the run as failed.
+   * exhausted retries consult the Run recovery policy before finalizing.
    */
   readonly start: (input: {
     readonly threadId: ThreadId;
@@ -658,29 +662,26 @@ export const layer: Layer.Layer<
               }),
         }),
       );
-      // The last start attempt fails the run with the provider's own reason
-      // instead of leaving it `starting` after the effect gives up. A run that
-      // already left `starting` is not overwritten, and a failed write returns
-      // its error to the effect worker.
-      const settleStartFailure = (failed: {
-        readonly signal: string;
-        readonly title: string;
-        readonly error: Error;
-      }) =>
-        Effect.gen(function* () {
-          const unrecoverableNativeSession =
-            providerThread.nativeThreadRef !== null && permanentNativeRecoveryFailure(failed.error);
-          const nestedCause = "cause" in failed.error ? failed.error.cause : undefined;
-          yield* settleRunBeforeStart({
-            signal: failed.signal,
-            status: "failed",
-            now: yield* DateTime.now,
-            providerInstanceId: run.providerInstanceId,
-            itemProviderThreadId: providerThread.id,
-            item: {
-              type: "error",
-              title: failed.title,
-              failure: makeProviderFailure({
+      // Exhausted transport retries settle through the same Run policy as a failed native turn.
+      const settleStartFailure = Effect.fn("orchestrationV2.providerTurnStart.settleStartFailure")(
+        function* (failed: {
+          readonly signal: string;
+          readonly title: string;
+          readonly error: Error;
+        }) {
+          yield* threadCommands.withLock(
+            projection.thread.id,
+            Effect.gen(function* () {
+              const context = yield* runControls.recoveryControls.read();
+              const current = context.runs.find((candidate) => candidate.id === run.id);
+              if (current?.activeAttemptId !== attempt.id || current.status !== "starting") return;
+              const now = yield* DateTime.now;
+              const signal = `${failed.signal}:${attempt.id}`;
+              const nonRetryable = permanentNativeRecoveryFailure(failed.error);
+              const unrecoverableNativeSession =
+                providerThread.nativeThreadRef !== null && nonRetryable;
+              const nestedCause = "cause" in failed.error ? failed.error.cause : undefined;
+              const failure = makeProviderFailure({
                 cause: failed.error,
                 message: unrecoverableNativeSession
                   ? "The Agent couldn't reopen this conversation"
@@ -689,17 +690,51 @@ export const layer: Layer.Layer<
                     : typeof nestedCause === "string"
                       ? nestedCause
                       : failed.error.message,
+                ...(nonRetryable ? { retryable: false } : {}),
                 ...(unrecoverableNativeSession
-                  ? {
-                      code: ORCHESTRATION_V2_NATIVE_SESSION_UNRECOVERABLE_FAILURE_CODE,
-                      retryable: false,
-                    }
+                  ? { code: ORCHESTRATION_V2_NATIVE_SESSION_UNRECOVERABLE_FAILURE_CODE }
                   : {}),
                 class: "provider_error",
-              }),
-            },
-          });
-        });
+              });
+              yield* settleFailedRunAttempt({
+                ids: idAllocator,
+                sink: eventSink,
+                context,
+                run: current,
+                attempt,
+                rootNode,
+                now,
+                failureItem: {
+                  id: idAllocator.derive.runSignalTurnItem({ runId, signal }),
+                  threadId: current.threadId,
+                  runId,
+                  nodeId: rootNode.id,
+                  providerThreadId: providerThread.id,
+                  providerTurnId: null,
+                  nativeItemRef: null,
+                  parentItemId: null,
+                  ordinal: projection.nextTurnItemOrdinal,
+                  type: "error",
+                  title: failed.title,
+                  failure,
+                  status: "failed",
+                  startedAt: now,
+                  completedAt: now,
+                  updatedAt: now,
+                },
+                finalize: settleRunBeforeStart({
+                  signal,
+                  status: "failed",
+                  now,
+                  providerInstanceId: current.providerInstanceId,
+                  itemProviderThreadId: providerThread.id,
+                  item: { type: "error", title: failed.title, failure },
+                }),
+              });
+            }),
+          );
+        },
+      );
       if (sessionResult._tag === "Failure") {
         if (input.willRetry === true && !permanentNativeRecoveryFailure(sessionResult.failure))
           return yield* sessionResult.failure;

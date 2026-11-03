@@ -116,14 +116,19 @@ conversation from where it stopped, without resending the original request; a re
 the Agent never received is sent again unchanged, and a delivery Nodex cannot confirm is
 never retried automatically. Lost connections, including gateway errors from a proxy
 while offline, retry after 5, 10, 20 and 40 seconds and then every minute, every five
-minutes after the first hour, for as long as it takes. A busy or overloaded service
-retries after 10 seconds, 30 seconds, 2 minutes and 5 minutes. A request rate limit waits
-for the reset time the Agent reports, up to an hour, or retries after 1, 5 and 15 minutes.
-An Agent process that stopped mid-reply resumes after 5 seconds, 30 seconds and 2
-minutes. Sign-in, usage limits, context allowance, policy and invalid requests never
-retry automatically. Each recovery streak has its own budget and ends when the Agent
-produces output again; a reply that runs out of budget fails with the last cause. The
-schedule survives restarting Nodex.
+minutes after the first hour, for as long as it takes. A busy or overloaded service,
+including a model at capacity, retries after 10 and 30 seconds and then 2, 5, 10, 15 and
+30 minutes, outlasting an hour-long incident. A request rate limit waits for the reset
+time the Agent reports, up to an hour, or retries after 1, 5, 15 and 30 minutes. An Agent
+process that stopped mid-reply, or whose event stream closed, resumes after 5 seconds,
+30 seconds, 2 minutes and 10 minutes. Sign-in, usage limits, context allowance, policy
+refusals, invalid requests, configured turn or budget limits and a conversation the Agent
+cannot reopen never retry automatically. Each recovery streak has its own budget and ends
+when the Agent produces output again; a reply that runs out of budget fails with the last
+cause. A failure no evidence explains ends the reply at once with its cause instead of
+retrying blindly, so the user or the delegating Agent decides what to do next. One
+classification of each failure's cause decides whether it retries and how the
+transcript, task cards and `task_status` name it. The schedule survives restarting Nodex.
 
 Stop ends a recovering reply immediately. A new message, a steer or a change of model or
 Agent while a reply is recovering starts the next attempt at once with that input,

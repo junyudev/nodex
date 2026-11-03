@@ -110,7 +110,9 @@ it("does not expose defect text nested inside a known error category", () => {
       ),
     },
   });
-  assert.include(failure.message, "provider event stream closed unexpectedly");
+  assert.equal(failure.message, "The Agent's event stream closed before this reply finished.");
+  // Nodex observed this loss itself, so the failure names it for recovery.
+  assert.equal(failure.code, "provider_event_stream_lost");
   assert.notInclude(failure.message, "Session rejected:");
   assert.notInclude(failure.message, "nested-secret");
   assert.notInclude(failure.message, "user:pass");
@@ -258,4 +260,26 @@ it("retains validated HTTP throttling evidence without treating it as usage exha
     assert.isUndefined(rejected.httpStatusCode); assert.isUndefined(rejected.retryAfterMs); assert.isUndefined(rejected.resetAt);
   }
   assert.isUndefined(makeProviderFailure({ httpStatusCode: 600 }).httpStatusCode);
+});
+
+it("names Nodex-observed losses so automatic recovery can recognize them", () => {
+  const exited = makeProviderFailure({
+    message: "The Agent couldn't start this reply.",
+    cause: Cause.fail(
+      new ProviderAdapter.ProviderAdapterTurnStartError({
+        driver: ProviderDriverKind.make("codex"),
+        threadId: ThreadId.make("thread:exit-during-start"),
+        providerThreadId: ProviderThreadId.make("provider-thread:exit-during-start"),
+        runId: RunId.make("run:exit-during-start"),
+        cause: { _tag: "CodexAppServerProcessExitedError", code: 0 },
+      }),
+    ),
+  });
+  // The innermost known category names the cause; the caller's message still leads.
+  assert.equal(exited.code, "provider_process_exited");
+  assert.equal(exited.message, "The Agent couldn't start this reply.");
+
+  const uncertain = makeProviderFailure({ cause: { _tag: "ContextHandoffDeliveryUncertainError" } });
+  assert.equal(uncertain.code, "context_handoff_delivery_uncertain");
+  assert.notInclude(uncertain.message, "T3");
 });
