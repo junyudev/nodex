@@ -99,7 +99,11 @@ test("review keeps export and Later separate from persisted discard, undo and re
   const exportDraft = vi.spyOn(module, "export").mockResolvedValue();
   await module.refresh();
   const close = vi.fn();
+  const inclusion = vi.spyOn(module, "setIncludeResolved");
   const view = renderWithMaitai(<RecoveryReview module={module} onClose={close} />);
+  await act(async () => {
+    await inclusion.mock.results[0]!.value;
+  });
   const click = async (name: string) => {
     await view.findByRole("button", { name });
     await waitFor(() =>
@@ -202,9 +206,13 @@ test("an issue opens its exact draft and retargeting the review resets the previ
   vi.spyOn(module, "connect").mockReturnValue(() => {});
   await module.refresh();
   const close = vi.fn();
+  const inclusion = vi.spyOn(module, "setIncludeResolved");
   const view = renderWithMaitai(
     <RecoveryReview module={module} initialDraftId="Second" onClose={close} />,
   );
+  await act(async () => {
+    await inclusion.mock.results[0]!.value;
+  });
   await waitFor(() =>
     expect(view.getByRole("article", { name: "Recovery preview" }).textContent).toBe("Second"),
   );
