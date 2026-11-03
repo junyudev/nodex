@@ -1,8 +1,10 @@
 /* @effect-diagnostics asyncFunction:off newPromise:off -- Exercises Electron Promise completion and lazy clipboard reads at the native adapter boundary. */
+import { deferredRelease } from "../../dictation/dictation-release.test-fixtures";
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
 import type { Clipboard, ClipboardItem } from "electron";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { terminateWindowsProcessTree } from "../../process-tree";
 import {
   buildWindowsDictationReleaseScript,
   createWindowsDictationClipboardPort,
@@ -11,6 +13,10 @@ import {
 } from "./WindowsDictationNative";
 
 vi.mock("electron", () => ({ clipboard: {}, ClipboardItem: class {}, globalShortcut: {} }));
+vi.mock("../../process-tree", () => ({ terminateWindowsProcessTree: vi.fn(async () => {}) }));
+beforeEach(() => {
+  vi.mocked(terminateWindowsProcessTree).mockReset().mockResolvedValue(undefined);
+});
 
 class MemoryItem {
   readonly types: string[];
@@ -33,6 +39,7 @@ function childProcess() {
   const child = new EventEmitter() as ChildProcess;
   Object.assign(child, {
     stdout: new EventEmitter(),
+    pid: 42_731,
     exitCode: null,
     signalCode: null,
     kill: vi.fn(),
@@ -112,7 +119,7 @@ describe("Windows native boundary", () => {
     await expect(broken.read()).rejects.toThrow("clipboard changed");
   });
 
-  it("parses split release lines and releases once on process termination", () => {
+  it("parses split release lines and releases once on process termination", async () => {
     const child = childProcess();
     const released = vi.fn();
     const watcher = observeWindowsDictationRelease(child, released);
@@ -121,21 +128,99 @@ describe("Windows native boundary", () => {
     expect(released).toHaveBeenCalledTimes(2);
     child.emit("error", new Error("PowerShell unavailable"));
     child.emit("exit", 1);
+    child.emit("close", 1);
     child.stdout!.emit("data", Buffer.from("up\n"));
     expect(released).toHaveBeenCalledTimes(3);
     expect(watcher.isActive).toBe(false);
-    watcher.dispose();
-    expect(child.kill).toHaveBeenCalledOnce();
+    await watcher.dispose();
+    expect(terminateWindowsProcessTree).not.toHaveBeenCalled();
   });
 
-  it("fences subsequent lines if released callback disposes during a chunk", () => {
+  it("fences subsequent lines if released callback disposes during a chunk", async () => {
     const child = childProcess();
     const released = vi.fn(() => watcher.dispose());
     const watcher = observeWindowsDictationRelease(child, released);
     child.stdout!.emit("data", "up\nup\n");
     child.emit("exit", 0);
+    child.emit("close", 0);
+    await watcher.dispose();
     expect(released).toHaveBeenCalledOnce();
-    expect(child.kill).toHaveBeenCalledOnce();
+    expect(terminateWindowsProcessTree).not.toHaveBeenCalled();
+  });
+
+  it("fences callbacks while one native release remains awaited", async () => {
+    const child = childProcess();
+    const released = vi.fn();
+    const nativeRelease = deferredRelease();
+    vi.mocked(terminateWindowsProcessTree).mockReturnValueOnce(nativeRelease.promise);
+    const watcher = observeWindowsDictationRelease(child, released);
+    const disposal = watcher.dispose();
+    expect(watcher.dispose()).toBe(disposal);
+    let completed = false;
+    const observed = disposal.then(() => {
+      completed = true;
+    });
+    child.stdout!.emit("data", "up\nup\n");
+    await Promise.resolve();
+    expect(terminateWindowsProcessTree).toHaveBeenCalledExactlyOnceWith(42_731, "SIGKILL");
+    expect(released).not.toHaveBeenCalled();
+    expect(completed).toBe(false);
+    nativeRelease.resolve();
+    await Promise.resolve();
+    child.emit("exit", 0);
+    await Promise.resolve();
+    expect(completed).toBe(false);
+    expect(child.listenerCount("error")).toBe(1);
+    expect(child.stdout!.listenerCount("data")).toBe(1);
+    child.emit("close", 0);
+    await observed;
+    expect(completed).toBe(true);
+    expect(child.listenerCount("error")).toBe(0);
+    expect(child.listenerCount("exit")).toBe(0);
+    expect(child.stdout!.listenerCount("data")).toBe(0);
+  });
+
+  it("joins native release even when the child stream closes first", async () => {
+    const child = childProcess();
+    const nativeRelease = deferredRelease();
+    vi.mocked(terminateWindowsProcessTree).mockReturnValueOnce(nativeRelease.promise);
+    const watcher = observeWindowsDictationRelease(child, () => {});
+    const disposal = watcher.dispose();
+    let completed = false;
+    const observed = disposal.then(() => {
+      completed = true;
+    });
+    await Promise.resolve();
+    expect(terminateWindowsProcessTree).toHaveBeenCalledOnce();
+    child.emit("exit", 0);
+    child.emit("close", 0);
+    await Promise.resolve();
+    expect(completed).toBe(false);
+    nativeRelease.resolve();
+    await observed;
+    expect(completed).toBe(true);
+  });
+
+  it("retains native release failure while draining and owning the child until close", async () => {
+    const child = childProcess();
+    const failure = new Error("native handle did not exit");
+    vi.mocked(terminateWindowsProcessTree).mockRejectedValueOnce(failure);
+    const released = vi.fn();
+    const watcher = observeWindowsDictationRelease(child, released);
+    const disposal = watcher.dispose();
+    await expect(disposal).rejects.toBe(failure);
+    expect(watcher.dispose()).toBe(disposal);
+    expect(child.listenerCount("error")).toBe(1);
+    expect(child.listenerCount("close")).toBe(1);
+    expect(child.stdout!.listenerCount("data")).toBe(1);
+    child.stdout!.emit("data", "up\n");
+    expect(() => child.emit("error", new Error("late child error"))).not.toThrow();
+    expect(released).not.toHaveBeenCalled();
+    child.emit("exit", 1);
+    child.emit("close", 1);
+    expect(child.listenerCount("error")).toBe(0);
+    expect(child.listenerCount("exit")).toBe(0);
+    expect(child.stdout!.listenerCount("data")).toBe(0);
   });
 
   it("rejects invalid virtual-key groups before starting a process", () => {

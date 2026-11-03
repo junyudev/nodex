@@ -118,7 +118,7 @@ export function compileWindowsDictationHotkey(input: {
 
 export interface WindowsDictationReleaseWatcher {
   readonly isActive: boolean;
-  dispose(): void;
+  dispose(): Promise<void>;
 }
 
 export interface WindowsDictationNativePorts {
@@ -139,6 +139,8 @@ interface Registration {
   generation: number;
   pressed: boolean;
   watcher: WindowsDictationReleaseWatcher | null;
+  accepting: boolean;
+  rearming: Promise<PromiseSettledResult<void>> | null;
 }
 
 export interface WindowsDictationClipboardFormat {
@@ -170,6 +172,13 @@ export function fingerprintWindowsDictationClipboard(
   return hash.digest("hex");
 }
 
+class WindowsDictationReleaseError extends AggregateError {
+  constructor(errors: Iterable<unknown>) {
+    super(errors, "Windows dictation release failed");
+    this.name = "WindowsDictationReleaseError";
+  }
+}
+
 /** Owns the native registrations and clipboard transaction within its enclosing desktop Scope. */
 export class WindowsDictationNativeHelperClient
   implements DictationNativeHelperPort<WindowsDictationHotkeyBinding>, DictationNativePastePort
@@ -181,6 +190,13 @@ export class WindowsDictationNativeHelperClient
   #disposed = false;
   #escapeEnabled = false;
   #escapeGeneration = 0;
+  #bindingUpdate: Promise<PromiseSettledResult<void>> = Promise.resolve<PromiseSettledResult<void>>(
+    {
+      status: "fulfilled",
+      value: undefined,
+    },
+  );
+  #disposal: Promise<void> | null = null;
 
   constructor(ports: WindowsDictationNativePorts) {
     this.#ports = ports;
@@ -211,6 +227,25 @@ export class WindowsDictationNativeHelperClient
     readonly bindings: readonly WindowsDictationHotkeyBinding[];
   }): Promise<void> {
     this.#assertAvailable();
+    const update = this.#bindingUpdate.then((previous) => {
+      // A failed native release cannot authorize another generation of shortcuts.
+      if (previous.status === "rejected" && previous.reason instanceof WindowsDictationReleaseError)
+        throw previous.reason;
+      if (this.#disposed) return;
+      return this.#replaceBindings(input);
+    });
+    this.#bindingUpdate = update.then<PromiseSettledResult<void>, PromiseSettledResult<void>>(
+      () => ({ status: "fulfilled", value: undefined }),
+      (reason) => ({ status: "rejected", reason }),
+    );
+    return update;
+  }
+
+  async #replaceBindings(input: {
+    readonly generation: number;
+    readonly bindings: readonly WindowsDictationHotkeyBinding[];
+  }): Promise<void> {
+    const previous = this.#registrations;
     const next = new Map<string, Registration>();
     const added: string[] = [];
     try {
@@ -227,6 +262,8 @@ export class WindowsDictationNativeHelperClient
           generation: input.generation,
           pressed: false,
           watcher: null,
+          accepting: false,
+          rearming: null,
         };
         if (!this.#ports.registerShortcut(binding.accelerator, () => this.#press(registration))) {
           throw new DictationNativeHelperRequestError("hotkey-conflict");
@@ -235,21 +272,51 @@ export class WindowsDictationNativeHelperClient
         next.set(binding.accelerator, registration);
       }
     } catch (error) {
-      for (const accelerator of added) this.#ports.unregisterShortcut(accelerator);
+      const failures: unknown[] = [error];
+      for (const accelerator of added) {
+        try {
+          this.#ports.unregisterShortcut(accelerator);
+        } catch (cleanup) {
+          // Keep a failed rollback's inert native shortcut owned for the next disposal.
+          this.#registrations.set(accelerator, next.get(accelerator)!);
+          failures.push(cleanup);
+        }
+      }
+      if (failures.length > 1)
+        throw new AggregateError(failures, "Dictation shortcut rollback failed", { cause: error });
       throw error;
     }
-    for (const [accelerator, registration] of this.#registrations) {
-      this.#cancel(registration);
-      registration.watcher?.dispose();
-      registration.watcher = null;
-      if (!next.has(accelerator)) this.#ports.unregisterShortcut(accelerator);
+    // Transfer physical registration ownership before any callback or asynchronous release.
+    // Both reused and new shortcuts remain fenced until the previous watchers have exited.
+    for (const registration of previous.values()) registration.accepting = false;
+    this.#registrations = next;
+    const failures: unknown[] = [];
+    for (const [accelerator, registration] of previous) {
+      try {
+        this.#cancel(registration);
+      } catch (error) {
+        failures.push(error);
+      }
+      if (next.has(accelerator)) continue;
+      try {
+        this.#ports.unregisterShortcut(accelerator);
+      } catch (error) {
+        next.set(accelerator, registration);
+        failures.push(error);
+      }
     }
+    const releases = await Promise.allSettled([this.#releaseRegistrations([...previous.values()])]);
+    failures.push(
+      ...releases.flatMap((result) => (result.status === "rejected" ? [result.reason] : [])),
+    );
+    if (failures.length) throw new WindowsDictationReleaseError(failures);
+    if (this.#disposed) return;
     for (const binding of input.bindings) {
       const registration = next.get(binding.accelerator)!;
       registration.binding = binding;
       registration.generation = input.generation;
+      registration.accepting = true;
     }
-    this.#registrations = next;
   }
 
   async setEscapeEnabled(enabled: boolean): Promise<void> {
@@ -346,32 +413,127 @@ export class WindowsDictationNativeHelperClient
     return { clipboardRestoreMs: Math.max(0, this.#ports.now() - restoreStartedAt) };
   }
 
-  dispose(): void {
-    if (this.#disposed) return;
-    for (const [accelerator, registration] of this.#registrations) {
-      this.#cancel(registration);
-      registration.watcher?.dispose();
-      this.#ports.unregisterShortcut(accelerator);
-    }
-    if (this.#escapeEnabled) this.#ports.unregisterShortcut("Escape");
-    this.#escapeEnabled = false;
-    this.#registrations.clear();
-    this.#listeners.clear();
+  dispose(): Promise<void> {
+    if (this.#disposal) return this.#disposal;
     this.#disposed = true;
+    const registrations = [...this.#registrations.values()];
+    const bindingUpdate = this.#bindingUpdate;
+    const failures: unknown[] = [];
+    const revoke = (operation: () => void) => {
+      try {
+        operation();
+      } catch (error) {
+        failures.push(error);
+      }
+    };
+    // Install the idempotent owner before cancelled-event subscribers can reenter disposal.
+    this.#disposal = Promise.resolve().then(async () => {
+      const update = await bindingUpdate;
+      const releases = await Promise.allSettled([
+        this.#releaseRegistrations([
+          ...new Set([...registrations, ...this.#registrations.values()]),
+        ]),
+      ]);
+      this.#registrations.clear();
+      failures.push(
+        ...releases.flatMap((result) => (result.status === "rejected" ? [result.reason] : [])),
+      );
+      if (update.status === "rejected" && update.reason instanceof WindowsDictationReleaseError)
+        failures.push(update.reason);
+      if (failures.length) throw new WindowsDictationReleaseError(failures);
+    });
+    for (const [accelerator, registration] of this.#registrations) {
+      registration.accepting = false;
+      revoke(() => this.#cancel(registration));
+      revoke(() => this.#ports.unregisterShortcut(accelerator));
+    }
+    if (this.#escapeEnabled) revoke(() => this.#ports.unregisterShortcut("Escape"));
+    this.#escapeEnabled = false;
+    this.#listeners.clear();
+    return this.#disposal;
+  }
+
+  async #releaseRegistrations(registrations: readonly Registration[]): Promise<void> {
+    const pending: Promise<void>[] = [];
+    for (const registration of registrations) {
+      if (registration.watcher) pending.push(registration.watcher.dispose());
+      if (registration.rearming)
+        pending.push(
+          registration.rearming.then((result) => {
+            if (result.status === "rejected") throw result.reason;
+          }),
+        );
+    }
+    const results = await Promise.allSettled(pending);
+    const failures = [
+      ...new Set(
+        results.flatMap((result) => (result.status === "rejected" ? [result.reason] : [])),
+      ),
+    ];
+    if (failures.length) throw new WindowsDictationReleaseError(failures);
+    for (const registration of registrations) {
+      registration.watcher = null;
+      registration.rearming = null;
+    }
   }
 
   #press(registration: Registration): void {
     if (
       this.#disposed ||
+      !registration.accepting ||
       this.#registrations.get(registration.binding.accelerator) !== registration ||
-      registration.pressed
+      registration.pressed ||
+      registration.rearming
     )
       return;
-    if (!registration.watcher?.isActive) {
-      registration.watcher?.dispose();
-      registration.watcher = this.#ports.watchRelease(registration.binding.releaseKeyGroups, () =>
-        this.#release(registration),
-      );
+    if (registration.watcher && !registration.watcher.isActive) {
+      registration.rearming = this.#rearm(registration, registration.generation);
+      return;
+    }
+    this.#beginPress(registration);
+  }
+
+  async #rearm(
+    registration: Registration,
+    generation: number,
+  ): Promise<PromiseSettledResult<void>> {
+    try {
+      await registration.watcher!.dispose();
+      if (
+        this.#disposed ||
+        !registration.accepting ||
+        registration.generation !== generation ||
+        this.#registrations.get(registration.binding.accelerator) !== registration
+      )
+        return { status: "fulfilled", value: undefined };
+      registration.watcher = null;
+      this.#beginPress(registration);
+      registration.rearming = null;
+      return { status: "fulfilled", value: undefined };
+    } catch (reason) {
+      try {
+        this.#emit({
+          type: "crashed",
+          processGeneration: 1,
+          exitCode: null,
+          signal: null,
+          diagnostic: reason instanceof Error ? reason.message : String(reason),
+        });
+      } catch (notificationFailure) {
+        return { status: "rejected", reason: new AggregateError([reason, notificationFailure]) };
+      }
+      return { status: "rejected", reason };
+    }
+  }
+
+  #beginPress(registration: Registration): void {
+    if (!registration.watcher) {
+      const generation = registration.generation;
+      const watcher = this.#ports.watchRelease(registration.binding.releaseKeyGroups, () => {
+        if (registration.watcher === watcher && registration.generation === generation)
+          this.#release(registration);
+      });
+      registration.watcher = watcher;
     }
     registration.pressed = true;
     this.#emitBinding("pressed", registration);
@@ -379,6 +541,7 @@ export class WindowsDictationNativeHelperClient
   #release(registration: Registration): void {
     if (
       this.#disposed ||
+      !registration.accepting ||
       this.#registrations.get(registration.binding.accelerator) !== registration ||
       !registration.pressed
     )
