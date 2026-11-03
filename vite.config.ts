@@ -71,6 +71,29 @@ const tanstackQueryRules = {
   "@tanstack/query/stable-query-client": "error",
 } as const;
 
+// React Compiler skips every renderer component or hook that breaks one of these
+// rules, so each violation is an unoptimized component rather than a style nit.
+const reactCompilerRules = {
+  "react/capitalized-calls": "error",
+  "react/error-boundaries": "error",
+  "react/exhaustive-effect-dependencies": "error",
+  "react/globals": "error",
+  "react/hooks": "error",
+  "react/immutability": "error",
+  "react/incompatible-library": "error",
+  "react/memo-dependencies": "error",
+  "react/no-deriving-state-in-effects": "error",
+  "react/no-object-type-as-default-prop": "error",
+  "react/preserve-manual-memoization": "error",
+  "react/purity": "error",
+  "react/refs": "error",
+  "react/set-state-in-effect": "error",
+  "react/set-state-in-render": "error",
+  "react/static-components": "error",
+  "react/use-memo": "error",
+  "react/void-use-memo": "error",
+} as const;
+
 const betterTailwindEnabled = process.env.ESLINT_BETTER_TAILWIND === "1";
 const betterTailwindOptions = {
   detectComponentClasses: true,
@@ -296,6 +319,7 @@ export default defineConfig({
           "no-restricted-imports": ["error", { paths: rendererRestrictedImportPaths }],
           "react/exhaustive-deps": "error",
           "react/rules-of-hooks": "error",
+          ...reactCompilerRules,
         },
       },
       {
