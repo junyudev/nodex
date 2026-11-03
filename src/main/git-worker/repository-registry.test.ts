@@ -22,7 +22,10 @@ afterEach(async () => {
   );
 });
 
-const makeRegistry = makeGitCommandRunner({ environment: process.env }).pipe(
+const makeRegistry = makeGitCommandRunner({
+  platform: process.platform,
+  environment: process.env,
+}).pipe(
   Effect.flatMap((runner) =>
     makeGitRepositoryRegistry(runner, new GitReviewRuntime({ commandRunner: runner })),
   ),

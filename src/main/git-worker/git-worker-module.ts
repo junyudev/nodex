@@ -116,6 +116,7 @@ export interface GitWorkerModule {
 }
 
 export interface GitWorkerModuleOptions {
+  readonly platform: string;
   readonly environment: NodeJS.ProcessEnv;
   readonly publish?: (event: GitWorkerLiveQueryEvent | GitWorkerPerformanceOperationEvent) => void;
 }
@@ -834,7 +835,8 @@ class GitWorkerModuleState implements GitWorkerModule {
           : commandErrorMessage(staged.stderr, "Could not inspect staged changes."),
       } satisfies GitActionMutationResult;
     }
-    const commit = yield* repository.runGit(["commit", "-m", input.message.trim()], {
+    const commit = yield* repository.runGit(["commit", "--file", "-"], {
+      stdin: input.message.trim(),
       timeoutMs: null,
     });
     if (!commit.success) {
@@ -954,7 +956,10 @@ export const makeGitWorkerModule = (
   options: GitWorkerModuleOptions,
 ): Effect.Effect<GitWorkerModule, never, GitCommandPlatform | Scope.Scope> =>
   Effect.gen(function* () {
-    const runner = yield* makeGitCommandRunner({ environment: options.environment });
+    const runner = yield* makeGitCommandRunner({
+      platform: options.platform,
+      environment: options.environment,
+    });
     const reviewRuntime = new GitReviewRuntime({ commandRunner: runner });
     const registry = yield* makeGitRepositoryRegistry(runner, reviewRuntime);
     const publish = options.publish ?? (() => undefined);

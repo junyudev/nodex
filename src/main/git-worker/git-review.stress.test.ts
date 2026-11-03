@@ -43,6 +43,7 @@ describe("Git review read wave stress", () => {
     Effect.gen(function* () {
       const metrics: GitPerformanceOperationMetric[] = [];
       const module = yield* makeGitWorkerModule({
+        platform: process.platform,
         environment: process.env,
         publish: (event) => {
           if (event.type === "git-performance-operation") metrics.push(event.metric);

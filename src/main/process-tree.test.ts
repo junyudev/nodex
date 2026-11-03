@@ -211,7 +211,12 @@ test.runIf(process.platform === "win32")(
     );
     try {
       const command = runCodexGitCommand(
-        ["-c", `alias.nodex-tree=!${quote(process.execPath)} ${quote(fixture)}`, "nodex-tree"],
+        [
+          "-c",
+          // This fixture selects Electron's Node mode explicitly; Git does not inherit it.
+          `alias.nodex-tree=!ELECTRON_RUN_AS_NODE=1 ${quote(process.execPath)} ${quote(fixture)}`,
+          "nodex-tree",
+        ],
         tmpdir(),
         {
           signal: controller.signal,

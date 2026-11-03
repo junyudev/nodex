@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { resolveGitLaunch } from "../platform/node/git-launch";
 import {
   hasWindowsProcessTreeReleaseFailure,
   signalPosixChildProcessTree,
@@ -75,7 +76,7 @@ export function throwIfCodexRequestAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw createCodexRequestCanceledError();
 }
 
-/** Runs Git without a shell and reaps its entire process group after cancel/timeout. */
+/** Runs native Git or a literal-argument Windows batch launcher, awaiting tree release. */
 export function runCodexGitCommand(
   args: readonly string[],
   cwd: string,
@@ -98,9 +99,11 @@ export function runCodexGitCommand(
   throwIfCodexRequestAborted(signal);
 
   return new Promise((resolve, reject) => {
-    const child = spawn("git", [...args], {
+    const launch = resolveGitLaunch(args, options?.env ?? process.env);
+    const child = spawn(launch.command, launch.args, {
       cwd,
-      env: options?.env ?? process.env,
+      env: launch.env,
+      shell: launch.shell,
       detached: process.platform !== "win32",
       windowsHide: true,
     });

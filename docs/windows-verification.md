@@ -113,8 +113,13 @@ Run the checklist with both the arm64 and the x64 installer.
 4. **Agents**: Codex, Claude Code, and OpenCode turns in a repository path containing
    spaces and non-ASCII characters; cancellation; worktree creation and removal; the
    agent reaches the bundled `nodex` CLI from PowerShell, cmd, and Git Bash.
-5. **Terminal**: PowerShell 7, Windows PowerShell, and cmd; resize; CJK input and
+5. **Terminal**: PowerShell 7 (also when installed outside PATH), Windows PowerShell,
+   and cmd; resize; CJK input and
    output; closing a busy terminal ends its process tree.
+   Launch Nodex with a mixed-case PATH override and inherited Electron/debug variables;
+   a terminal must run ordinary Node without entering Electron or opening an inspector.
+   Verify Git paths and arguments containing spaces, non-ASCII characters and shell
+   metacharacters with native Git and a batch launcher.
 6. **Editing**: CJK IME composition in Pages, the Composer, and Database cells;
    clipboard round trips with other applications; structural copy and paste between
    Nodex windows; drag and drop.

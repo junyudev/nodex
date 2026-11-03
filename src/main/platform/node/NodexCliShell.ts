@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as parseToml } from "smol-toml";
+import { mergeProcessEnvironments } from "./child-process-environment";
 
 export const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 
@@ -128,10 +129,8 @@ export async function composeNodexCliShellEnvironment(
   const configured = input.configuredEnvironment ?? {};
   const paths = nodexCliShellPaths(input.nodexHome);
   const windows = (input.platform ?? process.platform) === "win32";
-  const inheritedPath = Object.entries(inherited).find(([key]) =>
-    windows ? key.toUpperCase() === "PATH" : key === "PATH",
-  )?.[1];
-  const path = [paths.bin, ...input.searchPaths, configured.PATH ?? inheritedPath ?? ""]
+  const merged = mergeProcessEnvironments(windows ? "win32" : "posix", inherited, configured);
+  const path = [paths.bin, ...input.searchPaths, merged.PATH ?? ""]
     .filter(Boolean)
     .join(windows ? ";" : ":");
   if (windows) return { NODEX_HOME: input.nodexHome, PATH: path };

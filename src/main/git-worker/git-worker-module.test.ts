@@ -46,7 +46,7 @@ function request<Method extends GitWorkerMethod>(
 const withGitWorkerModule = <A>(
   run: (module: GitWorkerModule) => Effect.Effect<A, never, Scope.Scope>,
 ) =>
-  makeGitWorkerModule({ environment: process.env }).pipe(
+  makeGitWorkerModule({ platform: process.platform, environment: process.env }).pipe(
     Effect.flatMap(run),
     // the helper owns a fresh test application Scope.
     Effect.provide(GitCommandPlatformNode.nodeLive),
@@ -176,12 +176,16 @@ describe("GitWorkerModule", () => {
         const committed = (yield* module.execute(
           request("commit", {
             cwd: root,
-            message: "initial",
+            message: "initial\n\nBody with 汉字 & %PATH%",
             includeUnstaged: true,
             nextStep: "commit",
           }),
         )) as GitWorkerMethodMap["commit"]["result"];
         expect(committed).toMatchObject({ status: "success", branch: "main" });
+        const message = yield* Effect.promise(() =>
+          execFileAsync("git", ["-C", root, "log", "-1", "--format=%B"]),
+        );
+        expect(message.stdout.trim()).toBe("initial\n\nBody with 汉字 & %PATH%");
         const created = (yield* module.execute(
           request("create-branch", { cwd: root, branch: "feature/worker" }),
         )) as GitWorkerMethodMap["create-branch"]["result"];

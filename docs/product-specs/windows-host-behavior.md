@@ -41,9 +41,22 @@ committed text/HTML afterward. Structural authority still belongs to Core; nativ
 clipboard data supplies only its bounded descriptor.
 
 Terminals discover PowerShell 7, Windows PowerShell and cmd from the captured
-host environment. Windows executable discovery honors case-insensitive PATH and
-PATHEXT without launching a login shell. Owned child-process cancellation ends
+host environment. PowerShell 7 discovery also checks `%ProgramFiles%\PowerShell\7`
+and the user ZIP installer's `%LOCALAPPDATA%\Microsoft\PowerShell` directory
+when they are absent from PATH.
+Windows executable discovery honors case-insensitive PATH and
+PATHEXT without launching a login shell. Environment overlays replace names
+case-insensitively, including PATH, and explicit removals remove every case variant.
+Terminal, Codex and Git child environments omit inherited Electron runtime modes,
+Node debugger flags and desktop crash-reporting pipes while retaining user
+credentials, proxies, certificate settings and other Node options. Owned child-process cancellation ends
 the complete Windows process tree. ConPTY owns Terminal process-tree release.
+
+Git launches prefer a native `git.exe` from the selected PATH. A PATH containing
+only a `.cmd` or `.bat` Git launcher uses the captured ComSpec with escaped arguments;
+native Git does not acquire a command interpreter. Main and Git workers share this
+launch policy. Commit messages travel over stdin, preserving multiline text without
+shell evaluation. Batch launchers reject line breaks and NUL in command arguments.
 
 Task-bound `nodex` shell commands select the current build, Profile and Project
 in PowerShell, cmd and Git Bash. A child task can inherit its parent's binding;

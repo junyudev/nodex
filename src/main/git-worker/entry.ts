@@ -46,6 +46,7 @@ const program = Effect.scoped(
     const epoch = readEpoch();
     yield* Effect.addFinalizer(() => Effect.sync(() => port.close()));
     const worker = yield* makeGitWorkerModule({
+      platform: process.platform,
       environment: Object.fromEntries(
         Object.entries(process.env).filter(
           (entry): entry is [string, string] => entry[1] !== undefined,
