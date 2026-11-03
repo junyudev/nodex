@@ -516,6 +516,10 @@ test("edits an earlier message and continues from it without the later Turns", a
         const secondTurn = page.locator("[data-thread-turn-id]", {
           has: bubbles.filter({ hasText: second }),
         });
+        // A real scroll releases latest-submission placement before choosing an earlier Turn.
+        await page.getByRole("region", { name: "Conversation", exact: true }).hover();
+        await page.mouse.wheel(0, -600);
+        await expect(secondTurn.getByRole("button", { name: "Edit message" })).toBeInViewport();
         await secondTurn.locator("[data-user-message-bubble='true']").hover();
         await secondTurn.getByRole("button", { name: "Edit message" }).click();
         const editor = page.getByRole("textbox", { name: "Edit message" });
@@ -810,10 +814,12 @@ test("keeps a pasted image visible when steering a running Turn and after restar
         );
         const threadId = await sendAgentPrompt(page, draft.projectSessionId, prompt);
         const target = { sessionId: draft.projectSessionId, threadId };
+        // The first generation includes native Agent startup, rather than just a loopback hop.
         await modelServer.waitForRequest(
           (request) =>
             request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
             request.hasUserInputText(prompt),
+          30_000,
         );
         await expect
           .poll(
@@ -853,6 +859,7 @@ test("keeps a pasted image visible when steering a running Turn and after restar
           (request) =>
             request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
             request.hasUserInputText(steer),
+          30_000,
         );
         const active = await readRuntimeConversation(page, target);
         expect(active.snapshot.projection.runs).toHaveLength(1);
