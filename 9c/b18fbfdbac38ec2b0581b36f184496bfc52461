@@ -1,0 +1,19 @@
+AGENTS.md
+  s_3022e59a160914::t_6e45b91e197b46 213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9cb18fbfdbac38ec2b0581b36f184496bfc52461",
+  "prompts": {},
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
