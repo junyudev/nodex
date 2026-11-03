@@ -209,6 +209,15 @@ state, not render-time state. Derive display values directly, and let React
 state represent a render that must remember a previous input. Do not add
 manual memoization or opt-out directives to hide ownership problems.
 
+Remove existing `useMemo` or `useCallback` only when the containing function
+actually compiles. Compiler limitations such as `try/finally`, `try` without
+`catch`, `throw` inside `try`, and `??=` belong in plain helpers outside component
+and hook bodies, including their nested callbacks; release pending state through
+`runWithCleanup` or `runSyncWithCleanup` in `src/renderer/lib/run-with-cleanup.ts`. The compiler coverage ratchet
+(`vp run react-compiler:check`) rejects new or increased per-file counts of
+uncompiled functions; after fixing bailouts, `vp run react-compiler:baseline`
+records the lower counts. Oxlint's compiler rules alone do not cover these bailouts.
+
 Consume the value returned by `useSyncExternalStore`. Subscribing only to
 force a render and then reading an unrelated mutable registry is not a
 reactive dependency. If an owner intentionally exposes a revision rather

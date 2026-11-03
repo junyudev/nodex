@@ -16,6 +16,16 @@ or use `oxlint-disable-next-line <rule> -- <reason>` for a deliberate exception;
 never raise the baseline to admit new warnings. Do not add `--max-warnings 0` or
 `--deny-warnings` to the canonical commands.
 
+React Compiler coverage has a separate only-shrinks gate. Oxlint's compiler rules
+are errors, but do not report every unsupported compiler construct. The coverage
+checker runs the production renderer's client Babel hook with its shared compiler
+options, preset filters, and source boundary, excluding tests and fixtures. It
+does not use the development transform cache or infer coverage from lint success.
+`scripts/ci/react-compiler-baseline.json` stores each file's `uncompiled` function
+count. Multiple `CompileError` or `PipelineError` events for one function count
+once; a successful compiler retry does not count as a bailout. Regressions print
+source locations, function names, categories, and the compiler's reasons.
+
 ## Canonical commands
 
 ```bash
@@ -36,6 +46,15 @@ vp run verify:source-type-ownership
 # Lock in fixed warnings; refuses increases and leaves the baseline intact on errors
 vp run lint:baseline
 
+# Check renderer compiler coverage (also runs in CI's ui-contracts static group)
+vp run react-compiler:check
+
+# Lock in compiler coverage improvements; refuses baseline increases
+vp run react-compiler:baseline
+
+# Show every current compiler bailout, including those already baselined
+vp run react-compiler:check --all
+
 # Show every diagnostic through the ratchet
 vp exec tsx scripts/ci/lint-warning-ratchet.ts --all
 
@@ -51,16 +70,26 @@ are forwarded to its command. The canonical command is
 `tsc-rs --build --noEmit && tsx scripts/ci/lint-warning-ratchet.ts`;
 `vp lint` alone is a focused lint investigation. The wrapper runs Oxlint once,
 prints errors and warning regressions in full, and otherwise prints one warning
-summary. The wrapper and baseline are explicit semantic-task cache inputs.
+summary. The wrapper, shared ratchet core, and baseline are explicit semantic-task cache inputs.
 A cached success and compiler incremental analysis are different measurements.
 
-The gate and updater follow Git renames against the merge-base with `main`
+Compiler coverage runs separately because compiling the full renderer materially
+adds to semantic-check time. Its Vite Task caches success by renderer source,
+compiler configuration, checker, shared ratchet core, baseline, and toolchain
+inputs. The CI `ui-contracts` group includes it; renderer and compiler/ratchet
+input changes select that group without adding compilation to the semantic aliases.
+
+Both ratchets and their updaters share baseline validation, sorted writes,
+comparison, and stale-count policy. Lower counts fail until the corresponding
+baseline command records them. They follow Git renames against the merge-base with `main`
 (or `origin/main`) and staged or unstaged moves, including untracked destinations,
 using a temporary index that leaves the contributor's index unchanged. When no
 main reference is available, local moves are still detected against `HEAD`.
 For the exceptional case of enabling a new rule, maintainers can explicitly run
 `vp run lint:baseline --allow-baseline-growth`; it prints a warning and makes
-every added count visible for review.
+every added count visible for review. The compiler updater uses the same exceptional
+flag: `vp run react-compiler:baseline --allow-baseline-growth`. Ordinary updates
+only lower counts; failed checks and rejected growth leave the baseline intact.
 
 tsc-rs is the sole TypeScript and Effect diagnostic owner for semantic checks.
 `@effect/tsgo` independently prepares the TypeScript editor runtime through
@@ -73,6 +102,9 @@ Program using the real policy. Its typed fixtures prove compiler errors,
 type-aware rules, Effect scope, and suppressions. Ratchet fixtures prove accepted,
 new, and stale warning counts; lowering and refused growth; explicit new-rule
 baselines; rename carry-over; error output; and baseline/wrapper cache invalidation.
+Compiler fixtures exercise actual compilation, unsupported `try/finally`, source
+exclusions, new and increased function counts, stale baselines, lowering and
+refused growth, rename carry-over, and task input invalidation.
 Separate syntax fixtures outside the project graph still use fixture mode.
 
 Root lint and formatting exclude `.agents/worktrees/**` and `.codex/worktrees/**`.

@@ -1,0 +1,332 @@
+{
+  "src/renderer/components/block-documents/block-document-surface.tsx": {
+    "uncompiled": 2
+  },
+  "src/renderer/components/board/calendar/calendar-grid.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/board/editor/document-bearing-shell-block.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/board/editor/nfm-file-download-button.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/board/editor/nfm-slash-menu.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/board/editor/nfm-text-action-menu.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/board/history-panel.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/board/page-create-dialog.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/board/page-stage/page-files-row.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/board/page-stage/use-page-stage-properties.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/board/use-board-page-property-bindings.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/canvas/canvas-document-surface.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/canvas/canvas-file-preview.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/conversation-media/conversation-media.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/database/property-option-picker.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/library/library-files-dialog.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/library/library-new-menu.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/library/library-resource-action-modals.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/library/library-resource-actions.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/library/page-move-destination-picker.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/shared/agent-runtime/agent-model-picker.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/shared/content-issues-control.tsx": {
+    "uncompiled": 2
+  },
+  "src/renderer/components/shared/file-metadata.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/ui/file-tree.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/ui/hotkey-setting-control.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/agent-instance-settings-control.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/app-shell-tabs.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/archived-chats-settings-page.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/codex-home-settings-control.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/codex-setup-import-control.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/codex-sidebar.tsx": {
+    "uncompiled": 3
+  },
+  "src/renderer/components/workbench/command-palette-workspace-toolbar.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/command-palette.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/conversation-import-settings-page.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/database-list/database-list.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/database-list/use-database-list-window.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/database-settings/database-settings-rail.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/database-settings/use-database-settings-runtime.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/database-view-surface.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/git-settings-page.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/keyboard-shortcuts-settings-page.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/pending-worktree-route.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/project-archive-chats-dialog.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/project-edit-dialog.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/project-hover-card.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/project-remove-dialog.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/removed-projects-dialog.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/sidebar-pages-section.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/stable-worktree-create-dialog.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/workbench-agent-runtime-panels.tsx": {
+    "uncompiled": 2
+  },
+  "src/renderer/components/workbench/workbench-auxiliary-conversation-panels.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/workbench-command-palette-host.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/workbench-database-view-surface.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/workbench-db-view-panel.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/workbench-hooks-settings-page.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/workbench-library-page-surface.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/workbench-process-manager-dialog.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/workbench-rail-account-controls.tsx": {
+    "uncompiled": 2
+  },
+  "src/renderer/components/workbench/workbench-settings-controls.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/avatar-overlay/avatar-overlay-page.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/inbox/use-inbox-actions.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/inbox/use-inbox-capture.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/inbox/use-inbox-important.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/inbox/use-send-inbox-message.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/local-conversation/use-agent-model-catalog.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/local-conversation/use-claude-model-catalog.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/local-conversation/view/composer/composer-add-context-menu.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/local-conversation/view/composer/composer-context-controls.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/local-conversation/view/composer/local-conversation-composer-shell.tsx": {
+    "uncompiled": 2
+  },
+  "src/renderer/features/local-conversation/view/composer/local-conversation-thread-goal-status-row.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/auth-rate-limits.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/conversation-recovery-surface.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/local-conversation/view/shared/permission-mode-dropdown.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/local-conversation/view/use-local-conversation-prompt-rail.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/local-conversation/view/use-thread-output-opener.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/plugins/view/customize-header-actions.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/plugins/view/plugin-detail-page.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/plugins/view/plugin-includes.tsx": {
+    "uncompiled": 3
+  },
+  "src/renderer/features/plugins/view/plugin-settings-page.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/plugins/view/plugins-settings-marketplaces.tsx": {
+    "uncompiled": 2
+  },
+  "src/renderer/features/plugins/view/plugins-settings-mcps.tsx": {
+    "uncompiled": 3
+  },
+  "src/renderer/features/plugins/view/plugins-settings-page.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/plugins/view/skill-card.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/plugins/view/skills-page.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/plugins/view/use-plugin-row-actions.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/scheduled/scheduled-route.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/scheduled/scheduled-task-dialog.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/scheduled/scheduled-task-side-panel.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/scheduled/use-scheduled-tasks.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/user-attachment-image-editor/adapters/use-image-edit-submission.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/features/user-attachment-image-editor/view/single-image-editor.tsx": {
+    "uncompiled": 2
+  },
+  "src/renderer/lib/database-promotion-presentation.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/database-view-presentation.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/keyboard-layout.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/use-board.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/use-copy-feedback.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/use-page-create-description-draft.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/use-project-appearance-mutation.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/use-schedule-state.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/use-store-backup-runtime.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/use-terminal.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/use-thread-execution-location.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/use-typography-preferences.tsx": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/use-workbench-chrome-commands.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/use-workbench-panel-openers.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/use-workbench-session-catalog.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/use-workbench-session-commands.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/use-workbench-view-content.ts": {
+    "uncompiled": 1
+  },
+  "src/renderer/lib/workbench-new-tab-port.tsx": {
+    "uncompiled": 1
+  }
+}

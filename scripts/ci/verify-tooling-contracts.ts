@@ -1,6 +1,7 @@
 import { vitePlusCommand } from "../vite-plus-command";
 import {
   verifyLintWarningRatchet,
+  verifyReactCompilerRatchet,
   verifySemanticTaskCache,
   verifyTypedSemanticPolicy,
   verifyWorktreeToolingIsolation,
@@ -217,6 +218,10 @@ verifyInvalidFixtures([
     filename: "scripts/fixtures/tooling/nodex/webcontents-lifetime-invalid.ts",
   },
   {
+    code: "react(hooks)",
+    filename: "scripts/fixtures/tooling/renderer/hooks-invalid.tsx",
+  },
+  {
     code: "react-hooks(rules-of-hooks)",
     filename: "scripts/fixtures/tooling/renderer/hooks-invalid.tsx",
   },
@@ -290,8 +295,9 @@ verifyWorkspaceTaskGraph();
 verifyWorktreeToolingIsolation();
 verifySemanticTaskCache();
 verifyLintWarningRatchet();
+verifyReactCompilerRatchet();
 verifyTypedSemanticPolicy();
 
 console.log(
-  "Tooling contracts verified: package scripts, worktree isolation, typed diagnostic policy, lint warning ratchet, shared task cache, and the Vite+ workspace task graph.",
+  "Tooling contracts verified: package scripts, worktree isolation, typed diagnostic policy, lint and React Compiler ratchets, shared task cache, and the Vite+ workspace task graph.",
 );

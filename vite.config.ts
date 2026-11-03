@@ -405,6 +405,29 @@ export default defineConfig({
       tasks: true,
     },
     tasks: {
+      "react-compiler:check": {
+        command: "tsx scripts/ci/react-compiler-ratchet.ts",
+        cache: {
+          input: [
+            ".node-version",
+            "src/renderer/**",
+            "config/renderer-react-compiler.ts",
+            "config/renderer-vite-shared.ts",
+            "scripts/ci/react-compiler-ratchet.ts",
+            "scripts/ci/react-compiler-baseline.json",
+            "scripts/ci/count-ratchet.ts",
+            "package.json",
+            "pnpm-lock.yaml",
+            "pnpm-workspace.yaml",
+            "patches/**",
+            "!.cache/**",
+            "!**/*.tsbuildinfo",
+            "!cache.local",
+            "!cache.local/**",
+          ],
+          output: [],
+        },
+      },
       check: {
         command:
           "vp fmt --check && tsc-rs --build --noEmit && tsx scripts/ci/lint-warning-ratchet.ts",
@@ -413,6 +436,7 @@ export default defineConfig({
           input: [
             { auto: true },
             "scripts/ci/lint-warning-ratchet.ts",
+            "scripts/ci/count-ratchet.ts",
             "scripts/ci/lint-warning-baseline.json",
             "package.json",
             "pnpm-lock.yaml",
@@ -450,6 +474,7 @@ export default defineConfig({
           input: [
             { auto: true },
             "scripts/ci/lint-warning-ratchet.ts",
+            "scripts/ci/count-ratchet.ts",
             "scripts/ci/lint-warning-baseline.json",
             "package.json",
             "pnpm-lock.yaml",
@@ -470,6 +495,7 @@ export default defineConfig({
           input: [
             { auto: true },
             "scripts/ci/lint-warning-ratchet.ts",
+            "scripts/ci/count-ratchet.ts",
             "scripts/ci/lint-warning-baseline.json",
             "package.json",
             "pnpm-lock.yaml",
@@ -490,6 +516,7 @@ export default defineConfig({
           input: [
             { auto: true },
             "scripts/ci/lint-warning-ratchet.ts",
+            "scripts/ci/count-ratchet.ts",
             "scripts/ci/lint-warning-baseline.json",
             "package.json",
             "pnpm-lock.yaml",

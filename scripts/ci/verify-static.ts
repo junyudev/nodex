@@ -25,6 +25,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "TypeScript compiler project ownership",
   },
   {
+    command: ["run", "react-compiler:check"],
+    group: "ui-contracts",
+    id: "react-compiler-coverage",
+    name: "renderer React Compiler coverage",
+  },
+  {
     command: ["run", "semantic-theme:verify"],
     group: "ui-contracts",
     id: "semantic-theme",

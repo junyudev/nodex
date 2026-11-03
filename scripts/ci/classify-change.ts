@@ -18,6 +18,11 @@ export type { AppTestSuite, CiGatePlan, DependencyKind, StaticGroup } from "./ci
 
 const RELEASE_PATHS = new Set(["Cargo.lock", "Cargo.toml", "CHANGELOG.md", "package.json"]);
 
+const isRendererCompilerCheckPath = (path: string): boolean =>
+  path === "scripts/ci/react-compiler-ratchet.ts" ||
+  path === "scripts/ci/react-compiler-baseline.json" ||
+  path === "scripts/ci/count-ratchet.ts";
+
 const requiresSourceTypeOwnership = (path: string): boolean =>
   /\.(?:ts|tsx|mts|cts)$/u.test(path) || /(?:^|\/)tsconfig[^/]*\.json$/u.test(path);
 
@@ -336,7 +341,7 @@ const sourcePlan = (
   const protocol = paths.some(isProtocolPath);
   const appTestSuites = testSuitesForPaths(paths);
   const staticGroups = new Set<StaticGroup>(["types"]);
-  if (renderer) staticGroups.add("ui-contracts");
+  if (renderer || paths.some(isRendererCompilerCheckPath)) staticGroups.add("ui-contracts");
   if (electronMain || rust || protocol) staticGroups.add("repository-contracts");
   if (paths.some(isGeneratedResourcePath)) staticGroups.add("generated");
   if (paths.some(isJavaScriptDependencyPath)) staticGroups.add("dependency-security");
@@ -398,7 +403,13 @@ const classifyNormalizedPaths = (
     return createPlan({
       appTestSuites: ["unit"],
       dependencyKind: "source",
-      staticGroups: ["types", "ci-contracts"],
+      staticGroups: [
+        "types",
+        "ci-contracts",
+        ...(executablePaths.some(isRendererCompilerCheckPath)
+          ? ["ui-contracts" as const, "repository-contracts" as const]
+          : []),
+      ],
       testMode: "full",
     });
   }

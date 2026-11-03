@@ -35,6 +35,28 @@ describe("static CI groups", () => {
     }
   });
 
+  test("checks compiler coverage when renderer sources, compiler configuration or ratchet inputs change", () => {
+    for (const path of [
+      "src/renderer/new.tsx",
+      "config/renderer-react-compiler.ts",
+      "config/renderer-vite-shared.ts",
+      "scripts/ci/react-compiler-ratchet.ts",
+      "scripts/ci/react-compiler-baseline.json",
+      "scripts/ci/count-ratchet.ts",
+      "pnpm-lock.yaml",
+    ]) {
+      const execute = vi.fn();
+      runStaticChecks(
+        selectStaticChecks(STATIC_CHECKS, classifyChangedPaths([path]).staticGroups),
+        execute,
+      );
+      expect(execute, path).toHaveBeenCalledWith(process.platform === "win32" ? "vp.cmd" : "vp", [
+        "run",
+        "react-compiler:check",
+      ]);
+    }
+  });
+
   test("executes source ownership across independent change routes", () => {
     for (const path of [
       "packages/landing/auxiliary.mts",

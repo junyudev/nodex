@@ -1,4 +1,5 @@
 import type { LoggerEvent, PluginOptions } from "babel-plugin-react-compiler";
+import type { PluginItem } from "@babel/core";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -10,16 +11,51 @@ const compilerPackage: { readonly version: string } = createRequire(import.meta.
   "babel-plugin-react-compiler/package.json",
 );
 
+export const rendererCompilerSourceRoot = (root = process.cwd()) => resolve(root, "src/renderer");
+
 /** Compile application source, keeping fixtures and dependencies outside this boundary. */
 export function isRendererCompilerSource(filename: string, root = process.cwd()): boolean {
-  const source = relative(resolve(root, "src/renderer"), filename.split("?")[0]).replaceAll(
+  const source = relative(rendererCompilerSourceRoot(root), filename.split("?")[0]).replaceAll(
     "\\",
     "/",
   );
   if (source.startsWith("../") || source === ".." || source.startsWith("/")) return false;
   if (!/\.[cm]?[jt]sx?$/.test(source)) return false;
+  if (/\.d\.[cm]?ts$/.test(source)) return false;
   if (/(?:^|\/)(?:test|tests|fixtures|__tests__|__fixtures__)(?:\/|$)/.test(source)) return false;
   return !/\.(?:test|spec|stories|test-fixtures|fixture)\./.test(source);
+}
+
+/** Build and coverage checks share every compiler option, including source selection. */
+export function createRendererCompilerOptions(
+  root = process.cwd(),
+  logger: PluginOptions["logger"] = null,
+) {
+  return {
+    compilationMode: "infer",
+    target: "19",
+    noEmit: false,
+    sources: (filename) => isRendererCompilerSource(filename, root),
+    logger,
+  } satisfies PluginOptions;
+}
+
+/** Share Babel parsing, preset filters and client selection with standalone coverage checks. */
+export async function createRendererCompilerBabelPlugin(
+  root: string,
+  options: PluginOptions,
+  observers: PluginItem[] = [],
+): Promise<Plugin> {
+  // Preserve native ESM imports when tsx invokes this factory from a CommonJS entrypoint.
+  const [{ default: babel }, { reactCompilerPreset }] = await Promise.all([
+    import("@rolldown/plugin-babel"),
+    import("@vitejs/plugin-react"),
+  ]);
+  return (await babel({
+    include: (id) => !!id && isRendererCompilerSource(id, root),
+    plugins: observers,
+    presets: [reactCompilerPreset(options)],
+  })) as unknown as Plugin;
 }
 
 /** The public compiler logger includes class instances; persist only their diagnostic fields. */
@@ -104,18 +140,12 @@ export function createRendererCompilerIntegration(root = process.cwd()) {
   const cacheDirectory = resolve(root, ".generated/react-compiler/cache");
   const sourceKey = (filename: string) =>
     relative(root, filename.split("?")[0]).replaceAll("\\", "/");
-  const options = {
-    compilationMode: "infer",
-    target: "19",
-    noEmit: false,
-    sources: (filename) => isRendererCompilerSource(filename, root),
-    logger: {
-      logEvent(filename, event) {
-        if (!filename || !isRendererCompilerSource(filename, root)) return;
-        files.get(sourceKey(filename))?.events.push(projectCompilerEvent(event));
-      },
+  const options = createRendererCompilerOptions(root, {
+    logEvent(filename, event) {
+      if (!filename || !isRendererCompilerSource(filename, root)) return;
+      files.get(sourceKey(filename))?.events.push(projectCompilerEvent(event));
     },
-  } satisfies PluginOptions;
+  });
 
   const coverage: Plugin = {
     name: "nodex:renderer-compiler-coverage",

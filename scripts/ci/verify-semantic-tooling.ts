@@ -26,9 +26,18 @@ function fixtureWorkspace(run: (directory: string) => void): void {
     symlinkSync(path.join(root, "node_modules"), path.join(directory, "node_modules"), "junction");
     copyFileSync(path.join(root, ".node-version"), path.join(directory, ".node-version"));
     mkdirSync(path.join(directory, "scripts/ci"), { recursive: true });
-    for (const filename of ["scripts/ci/lint-warning-ratchet.ts", "scripts/vite-plus-command.ts"])
+    mkdirSync(path.join(directory, "config"));
+    for (const filename of [
+      "scripts/ci/count-ratchet.ts",
+      "scripts/ci/lint-warning-ratchet.ts",
+      "scripts/ci/react-compiler-ratchet.ts",
+      "scripts/vite-plus-command.ts",
+      "config/renderer-react-compiler.ts",
+      "config/renderer-vite-shared.ts",
+    ])
       copyFileSync(path.join(root, filename), path.join(directory, filename));
     writeFileSync(path.join(directory, "scripts/ci/lint-warning-baseline.json"), "{}\n");
+    writeFileSync(path.join(directory, "scripts/ci/react-compiler-baseline.json"), "{}\n");
     writeFileSync(
       path.join(directory, "package.json"),
       JSON.stringify({
@@ -36,7 +45,10 @@ function fixtureWorkspace(run: (directory: string) => void): void {
         private: true,
         type: "module",
         packageManager: "pnpm@12.15.0",
-        scripts: { "lint:baseline": "tsx scripts/ci/lint-warning-ratchet.ts --update" },
+        scripts: {
+          "lint:baseline": "tsx scripts/ci/lint-warning-ratchet.ts --update",
+          "react-compiler:baseline": "tsx scripts/ci/react-compiler-ratchet.ts --update",
+        },
       }),
     );
     run(directory);
@@ -276,6 +288,164 @@ export function verifyLintWarningRatchet(): void {
   });
 }
 
+/** Exercise production compiler bailouts and the only-shrinks policy through the CLI. */
+export function verifyReactCompilerRatchet(): void {
+  fixtureWorkspace((directory) => {
+    const baselinePath = path.join(directory, "scripts/ci/react-compiler-baseline.json");
+    const renderer = path.join(directory, "src/renderer");
+    mkdirSync(renderer, { recursive: true });
+    writeFileSync(
+      path.join(directory, "vite.config.ts"),
+      `import { defineConfig } from 'vite-plus'; export default defineConfig(${JSON.stringify({ run: rootConfiguration.run })});`,
+    );
+    const compiling =
+      "export function Greeting({ name }: { name: string }) { return <span>{name}</span>; }\n";
+    const bailout = `export function Finally({ name }: { name: string }) {
+  try { return <span>{name}</span>; }
+  finally { console.log(name); }
+}\n`;
+    const filename = "src/renderer/finally.tsx";
+    const compiler = ["run", "react-compiler:check"];
+    const update = ["run", "react-compiler:baseline"];
+    const expect = (args: readonly string[], status: number, ...messages: readonly string[]) => {
+      const result = command(directory, args);
+      if (result.status === status && messages.every((message) => result.output.includes(message)))
+        return result;
+      throw new Error(
+        `React Compiler ratchet contract failed for ${args.join(" ")}.\n${result.output}`,
+      );
+    };
+    writeFileSync(path.join(renderer, "greeting.tsx"), compiling);
+    const counter = path.join(directory, "compiler-executions.log");
+    appendFileSync(
+      path.join(directory, "scripts/ci/react-compiler-ratchet.ts"),
+      '\nimport { appendFileSync } from "node:fs"; appendFileSync("compiler-executions.log", "run\\n");\n',
+    );
+    // Invalid syntax must never enter Babel through excluded renderer tests/fixtures or other runtimes.
+    for (const excluded of [
+      "src/renderer/greeting.test.tsx",
+      "src/renderer/fixtures/broken.tsx",
+      "src/renderer/generated/kernel.d.ts",
+      "src/main/broken.tsx",
+    ]) {
+      mkdirSync(path.dirname(path.join(directory, excluded)), { recursive: true });
+      writeFileSync(path.join(directory, excluded), "this is not valid TypeScript !!!");
+    }
+    expect(
+      compiler,
+      0,
+      "1 renderer sources: 1 compiled functions",
+      "0 baseline uncompiled functions, 0 new.",
+    );
+    expect(compiler, 0, "0 baseline uncompiled functions, 0 new.");
+    if (readFileSync(counter, "utf8") !== "run\n")
+      throw new Error("An unchanged compiler task did not reuse its cached result.");
+    writeFileSync(path.join(directory, filename), bailout);
+    const before = readFileSync(baselinePath, "utf8");
+    expect(
+      compiler,
+      1,
+      `${filename}:2:3`,
+      "Todo (Finally)",
+      "finally",
+      "baseline 0, +1",
+      "New uncompiled renderer functions are forbidden.",
+    );
+    expect(update, 1, "Todo (Finally)");
+    if (readFileSync(baselinePath, "utf8") !== before)
+      throw new Error("A rejected compiler baseline update changed the file.");
+    expect([...compiler, "--allow-baseline-growth"], 1, "requires --update");
+    expect([...update, "--allow-baseline-growth"], 0, "WARNING:", "1 uncompiled functions.");
+    const initial = JSON.stringify({ [filename]: { uncompiled: 1 } }, null, 2) + "\n";
+    if (readFileSync(baselinePath, "utf8") !== initial)
+      throw new Error("The compiler baseline did not count one function deterministically.");
+    expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
+    expect([...compiler, "--all"], 0, "Todo (Finally)", "finally");
+    // Increasing an existing file count must fail too.
+    writeFileSync(
+      path.join(directory, filename),
+      bailout + bailout.replace("Finally", "AnotherFinally"),
+    );
+    expect(compiler, 1, "Todo (AnotherFinally)", "baseline 1, +1");
+    expect(update, 1, "baseline 1, +1");
+    writeFileSync(path.join(directory, filename), bailout);
+    expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
+    // A successful task must invalidate when either the baseline or shared checker changes.
+    writeFileSync(baselinePath, JSON.stringify({ [filename]: { uncompiled: 2 } }));
+    expect(compiler, 1, "stale baseline 2", "vp run react-compiler:baseline");
+    expect(update, 0, "1 uncompiled functions.");
+    expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
+    for (const source of [
+      "scripts/ci/count-ratchet.ts",
+      "scripts/ci/react-compiler-ratchet.ts",
+      "config/renderer-react-compiler.ts",
+    ]) {
+      appendFileSync(
+        path.join(directory, source),
+        '\nthrow new Error("compiler cache invalidation probe");\n',
+      );
+      expect(compiler, 1, "compiler cache invalidation probe");
+      copyFileSync(path.join(root, source), path.join(directory, source));
+      expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
+    }
+    // Rename allowance follows an unstaged move, without staging anything for the contributor.
+    const runGit = (args: readonly string[]) => {
+      const result = spawnSync("git", args, { cwd: directory, encoding: "utf8" });
+      if (result.status !== 0)
+        throw new Error(`Compiler rename fixture Git failed: ${result.stderr}`);
+    };
+    writeFileSync(path.join(directory, ".gitignore"), "node_modules/\n.cache/\n.vite-plus/\n");
+    runGit(["init", "--initial-branch=main"]);
+    runGit(["add", "."]);
+    runGit([
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "-m",
+      "fixture",
+    ]);
+    renameSync(path.join(directory, filename), path.join(renderer, "moved finally.tsx"));
+    expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
+    runGit(["diff", "--cached", "--exit-code"]);
+    expect(update, 0, "1 uncompiled functions.");
+    if (
+      readFileSync(baselinePath, "utf8") !==
+      JSON.stringify({ "src/renderer/moved finally.tsx": { uncompiled: 1 } }, null, 2) + "\n"
+    )
+      throw new Error("The compiler baseline did not follow the Git rename.");
+    writeFileSync(path.join(renderer, "moved finally.tsx"), compiling);
+    expect(compiler, 1, "stale baseline 1");
+    expect(update, 0, "0 uncompiled functions.");
+    if (readFileSync(baselinePath, "utf8") !== "{}\n")
+      throw new Error("The compiler updater did not remove a fixed file.");
+    expect(compiler, 0, "0 baseline uncompiled functions, 0 new.");
+    writeFileSync(
+      path.join(renderer, "multiple.tsx"),
+      `export function Multiple({ name }: { name: string }) {
+  const first = () => { try { console.log(name); } finally { console.log("first"); } };
+  const second = () => { try { console.log(name); } finally { console.log("second"); } };
+  return <button onClick={() => { first(); second(); }}>{name}</button>;
+}\n`,
+    );
+    const multiple = expect([...update, "--allow-baseline-growth"], 0, "Todo (Multiple)");
+    if ((multiple.output.match(/React Compiler Todo \(Multiple\)/g)?.length ?? 0) < 2)
+      throw new Error("The multiple-diagnostic compiler fixture did not exercise two errors.");
+    const counts = JSON.parse(readFileSync(baselinePath, "utf8")) as Record<
+      string,
+      Record<string, number>
+    >;
+    if (counts["src/renderer/multiple.tsx"]?.uncompiled !== 1)
+      throw new Error("Multiple compiler diagnostics counted the same function more than once.");
+    const beforeError = readFileSync(baselinePath, "utf8");
+    writeFileSync(path.join(renderer, "multiple.tsx"), "this is not valid TypeScript !!!");
+    expect([...update, "--allow-baseline-growth"], 1, "Cannot check React Compiler coverage");
+    if (readFileSync(baselinePath, "utf8") !== beforeError)
+      throw new Error("A failed compiler transform changed the baseline.");
+  });
+}
+
 /** Root checks own this checkout; nested worktrees keep independent lint and format policies. */
 export function verifyWorktreeToolingIsolation(): void {
   fixtureWorkspace((directory) => {
@@ -497,7 +667,7 @@ export function verifyTypedSemanticPolicy(): void {
         'import * as Effect from "effect/Effect";',
         'import * as Schema from "effect/Schema";',
         "export const decode = Schema.decodeUnknownSync(Schema.String);",
-        'export const insideEffect = Effect.gen(function* () { return Schema.decodeUnknownSync(Schema.String)("text"); });',
+        'export const insideEffect = Effect.gen(function* () { return yield* Effect.succeed(Schema.decodeUnknownSync(Schema.String)("text")); });',
         "",
       ].join("\n"),
       "unused-disable.ts": "// oxlint-disable-next-line no-debugger\nexport const answer = 42;\n",

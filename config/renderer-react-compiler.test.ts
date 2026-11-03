@@ -23,6 +23,9 @@ describe("renderer compiler source boundary", () => {
       "third_party/blocknote/view.tsx",
       "node_modules/package/view.tsx",
       "src/renderer/styles.css",
+      "src/renderer/env.d.ts",
+      "src/renderer/generated/kernel.d.mts",
+      "src/renderer/generated/kernel.d.cts",
     ])
       expect(isRendererCompilerSource(source(path), root)).toBe(false);
   });
