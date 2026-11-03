@@ -1,0 +1,21 @@
+scripts/windows-codex-sandbox-probe.py
+  s_93b94841a913cf::t_05741aeae9d1a9 1-128
+.github/workflows/windows-codex-sandbox-probe.yml
+  s_93b94841a913cf::t_05741aeae9d1a9 1-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e878a471a1ed79596962f1b57a3cffac6a0c21d1",
+  "prompts": {},
+  "sessions": {
+    "s_93b94841a913cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a12a-757d-76b3-8e36-e7c026a0b42f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
