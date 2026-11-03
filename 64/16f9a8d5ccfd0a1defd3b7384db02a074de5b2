@@ -1,0 +1,101 @@
+src/renderer/features/inbox/inbox-triage.tsx
+  s_4b31a91f87dc51::t_bcf36dc57ef3e5 1,467,484-485,720
+src/renderer/features/inbox/use-inbox-clock.test.tsx
+  s_3be7810364377d::t_1dc6250c0772cb 1-26
+src/renderer/features/dictation/global-dictation-page.tsx
+  s_4b31a91f87dc51::t_a98cf69ffeb3ec 2-9,160-182,186,190,199,218,228-230,232,317,358-410,412,446,457-459,469,473,476,481-482,484,494,503-524,528,535,540,545-546,556,559-560,563-564,568,575-576,583-587,597,600,605,607,615,619,622,630-631,636,638-640,644-645,648,659,661-662,665,670,690-691,693,702
+src/renderer/features/browser-sidebar/browser-profile-import-dialog.test.tsx
+  s_3be7810364377d::t_93a3500d085a6d 1-61
+src/renderer/features/inbox/inbox-composer.tsx
+  s_3be7810364377d::t_656b9f5886a1ce 65,67,69-70
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_3be7810364377d::t_71c7f5328cef98 10,220-226,264,281,404,542,566,568,570-571,574-580,588-590,592,730,758-761,763-766,816-818,835,853-880,882-883,895-932,935-941,944-947,949-951,953-963,965-992,994-998,1000-1030,1033-1036,1038,1041-1051,1070,1241-1243,1245,1265-1268,1271-1274,1277-1279,1282,1304-1357,1564,1587
+src/renderer/features/dictation/voice-settings-page.tsx
+  s_3be7810364377d::t_22052412606717 341,344,416,418,459-490,497,504-515,521-525,531-536,539-543,564,568,571,581,884-887
+src/renderer/features/inbox/inbox-message-editor.tsx
+  s_3be7810364377d::t_22a2a4eea41045 58
+src/renderer/features/review/data/use-review-path-diffs.ts
+  s_4b31a91f87dc51::t_e250d736f1a1be 2,143-145,171-172,176-177,179,184,186,196-214,219-222,229,309,376-416
+src/renderer/features/inbox/inbox-composer.test.tsx
+  s_3be7810364377d::t_75e7797aed98a9 388-425
+src/renderer/features/inbox/inbox-history.tsx
+  s_3be7810364377d::t_a59a42c2e3b53c 1,165
+src/renderer/features/content-search/content-search-surface.tsx
+  s_3be7810364377d::t_4f7cfb91d0f232 1,71-76,78-83,85-87
+src/renderer/features/content-search/content-search-surface.test.tsx
+  s_3be7810364377d::t_dd543b540c6876 1-44
+src/renderer/features/content-search/content-search-context.tsx
+  s_4b31a91f87dc51::t_2bed929539c1d8 148-150,306,311,344-346,350,360-395,397-398,451,456,477-478,502
+src/renderer/features/workspace-files/workspace-pierre-editor.tsx
+  s_3be7810364377d::t_4c950ced375ba1 200-202
+src/renderer/features/dictation/use-floating-window-pointer-interactivity.ts
+  s_4b31a91f87dc51::t_ee48de3d47de78 1,39-40,64-65,95-106,109,119-125
+src/renderer/features/dictation/use-floating-window-pointer-interactivity.test.tsx
+  s_4b31a91f87dc51::t_6257c05c84105e 1-67
+src/renderer/features/document-recovery/recovery-review.tsx
+  s_4b31a91f87dc51::t_e97d002b6ba761 85-91,93,118,120-132,134,152,157-169,175-183,189
+src/renderer/features/workspace-files/workspace-pdf-preview.tsx
+  s_4b31a91f87dc51::t_45884717b179e4 77-80,101,130,141,188,361,365-367,375,388,397-401,447,449-451,467,575-579,685
+src/renderer/features/inbox/use-inbox.ts
+  s_4b31a91f87dc51::t_5e5f9276f72b5d 1,44,48-49,51,58
+src/renderer/features/inbox/inbox-settings-page.tsx
+  s_3be7810364377d::t_71918a0bfbecd9 24,166
+src/renderer/features/browser-sidebar/browser-sidebar-hidden-webview-hosts.tsx
+  s_3be7810364377d::t_2d2281d76e38a4 1,194-196,206,263,273,298,300,304-305,308-316
+src/renderer/features/browser-sidebar/browser-profile-import-dialog.tsx
+  s_a952c1916f8b53::t_75bf2a16311b9b 76,84-92,120-136,144-155
+src/renderer/features/dictation/in-app-dictation-router.tsx
+  s_3be7810364377d::t_673c7d52c6b942 1-9,67,79,170,178-183,189-192
+src/renderer/features/dictation/in-app-dictation-router.test.tsx
+  s_3be7810364377d::t_e6088236689628 87-126
+src/renderer/features/inbox/inbox-viewport.browser.test.tsx
+  s_3be7810364377d::t_4968bcada490b8 17-18,25
+src/renderer/features/document-recovery/recovery-review.test.tsx
+  s_3be7810364377d::t_8cd8a7bc291615 104-107,114-119,211-214,217-219
+src/renderer/features/workspace-files/workspace-pdf-preview.test.tsx
+  s_4b31a91f87dc51::t_010d907dfae750 2,32,37,49-52,105-107,114-158
+src/renderer/features/browser-sidebar/browser-use-cursor-portal.tsx
+  s_3be7810364377d::t_138c54a8969301 1-8,79,148,154
+src/renderer/features/browser-sidebar/browser-settings-pages.tsx
+  s_4b31a91f87dc51::t_e668b7167ec8c3 475,478-479,893-902,980-989,991-992,1181,1183-1184
+src/renderer/features/inbox/use-inbox-clock.ts
+  s_3be7810364377d::t_2b1dbb677197cc 1-11
+src/renderer/features/inbox/inbox-route.tsx
+  s_3be7810364377d::t_9c1aa2d06d6256 1,337
+src/renderer/features/browser-sidebar/browser-sidebar-panel.tsx
+  s_a952c1916f8b53::t_624db056359d6e 54,311-314,316,368-372,374,393-402,458-460,504-525,527,529,539,554,740-744,785,806,890-891,897,901,910,915-918,920,973,976-980,1876-1888,3049-3060,3062,3064-3065,3079,3511-3518
+src/renderer/features/content-search/content-search-context.test.tsx
+  s_3be7810364377d::t_46a99b61f9c26c 3,28-31,108-111,181-184,237-240
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6416f9a8d5ccfd0a1defd3b7384db02a074de5b2",
+  "prompts": {},
+  "sessions": {
+    "s_3be7810364377d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f87-a1b4-7fe1-9fa1-806d4f5e39e1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_4b31a91f87dc51": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f87-6995-7b12-b477-3b52cc81cd67",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a952c1916f8b53": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19fe8-cda6-70b2-8e86-e5e5221a5cc6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
