@@ -24,6 +24,27 @@ fallback remains writable when that executable cannot load; normal private data
 still requires the native permission boundary. The typed suite owners prepare that Core
 executable before either host Node or Electron starts the tests.
 
+## Deterministic suite contracts
+
+Windows runners are slower and coarser than macOS hosts, so a test that only passes on
+timing luck fails there first. Suites follow these rules on every platform:
+
+- **Production deadlines are not debug-build benchmarks.** Bulk fixture setup runs under
+  an explicit test budget (Core's `with_test_request_budget`) or in its own serial CI
+  step; production defaults and the dedicated deadline and cancellation tests stay
+  unchanged. Scalability is asserted by counted work such as SQLite VM steps, with
+  latency recorded only as evidence.
+- **Order is set explicitly.** Rapid commands can share a Windows clock tick, so
+  timestamp-ordering tests seed distinct and tied values; keyset pagination must return
+  every row exactly once when timestamps tie.
+- **Readiness is an event.** Tests wait for a published process ID, a validated port, or
+  a writer's readiness line, never for a sleep or a poll that can fall through.
+- **Streams are accumulated.** Terminal output is matched against everything received
+  so far, never against a single chunk.
+- **Only cleanup retries.** After a child's exit is asserted, removing its temporary
+  files may back off while NTFS releases handles; startup, shutdown, and assertions are
+  never retried.
+
 ## What each layer cannot prove
 
 - **Hosted runners** run as an administrator with UAC disabled and Defender real-time
