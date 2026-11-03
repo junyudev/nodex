@@ -156,7 +156,10 @@ through the trusted bootstrap query `app:startup-failure-evidence` (preload
 The `Windows` workflow runs both native runner types. Its packaging cells upload:
 
 - `nodex-windows-<arch>-<source-sha>`: the architecture-qualified installer.
-- `nodex-windows-probe-<arch>-<source-sha>`: startup logs and probe result JSON.
+- `nodex-windows-probe-<arch>-<source-sha>`: startup logs, probe result JSON, and
+  `installed-payload.json` with total installed bytes, physical file count and
+  a per-file inventory measured from the clean installation before first launch.
+  ASAR counts as one physical file; totals include the NSIS uninstaller.
 
 The installed application must complete both authenticated Core startup and the
 Agent Runtime execution handshake using verified standalone Node. The explicit
