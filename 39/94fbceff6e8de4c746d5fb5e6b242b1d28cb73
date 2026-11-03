@@ -1,0 +1,33 @@
+scripts/semantic-theme/README.md
+  s_a6f2d35d07975f::t_877d5409423285 9,48
+scripts/semantic-theme/profile.ts
+  s_a6f2d35d07975f::t_d357c7336a1674 9,44
+src/renderer/styles/semantic-theme-contract.generated.json
+  s_a6f2d35d07975f::t_9eee858bc21ec5 3,13-16,2079-2112,5773-6516,6526-6527,6534,6544-6545,6552,6562-6563,6570,6580-6582,6589,6599-6600,6607,6617-6618,6625,6635-6636,6643,6653-6656,6663,6673,6680,6690-6691,6698,6708-6709,6716,6726-6727,6734,6744-6745,6752,6762-6767,6774,6784,6791,6801,6808,6818,6825,6835,6842,6852,6859,6869,6876,6886,6893,6903,6910,6920,6927,6937,6944,6954,6961,6971,6978,6988,6995,7005,7012,7022,7029,7039,7046,7056,7063,7073,7080,7090,7097,7107,7114,7124,7131,7141,7148,7158,7165,7175,7182,7192,7199,7209,7216,7226,7233,7243,7250,7260,7267,7277,7284,7294,7301,7311,7318,7328,7335,7345,7352,7362,7369,7379,7386,7396,7403,7413,7420,7430,7437,7447,10451,11052,11595,12398,13987,14236-14252,14301-14317
+src/renderer/styles/semantic-theme.provenance.json
+  s_a6f2d35d07975f::t_49ea714bf319c8 3-4,9,13,17,21,25
+src/renderer/styles/theme-extracted-foundation.generated.css
+  s_a6f2d35d07975f::t_123345288db1bd 2,4
+src/renderer/styles/theme-extracted-surfaces.generated.css
+  s_a6f2d35d07975f::t_1da0f470a5e195 2,4
+src/renderer/styles/theme-semantic-contract.generated.css
+  s_a6f2d35d07975f::t_be6833938d56a1 2,4,254-294,429,438,440,454,491-492,498,503,741,770-774,799-803,829-833,859-863,890-894,920-924,950-954,980-984,1333,1557,1828,1873-1879
+src/renderer/styles/theme-semantic-utilities.generated.css
+  s_a6f2d35d07975f::t_bfdfeeffc7130c 2,4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3994fbceff6e8de4c746d5fb5e6b242b1d28cb73",
+  "prompts": {},
+  "sessions": {
+    "s_a6f2d35d07975f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a2f0-d268-7110-a62f-92d56a95ced0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
