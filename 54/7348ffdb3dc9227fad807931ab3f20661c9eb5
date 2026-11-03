@@ -1,0 +1,30 @@
+crates/nodex-core/src/database/mod.rs
+  s_6c9891f66c664a::t_1f2fb18f9dcf3e 2531-2532,2544-2545,2551-2558
+scripts/fixtures/windows-deadline-baseline-15105.json
+  s_6c9891f66c664a::t_1f2fb18f9dcf3e 1-23
+scripts/ci/windows-deadline-resource-sampler.ps1
+  s_6c9891f66c664a::t_1f2fb18f9dcf3e 1-67
+scripts/scenarios/harness/core-scenario-harness.ts
+  s_6c9891f66c664a::t_1f2fb18f9dcf3e 115,126-132
+  s_6c9891f66c664a::t_fad3e4ee1b710d 133
+.github/workflows/windows.yml
+  s_6c9891f66c664a::t_416799acb4f563 1,10-11,14-16,21-23,28-41,45,48,51,53-58,60-75,79-82
+scripts/ci/windows-deadline-probe.ps1
+  s_6c9891f66c664a::t_4f468fb26dbbe9 1-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "547348ffdb3dc9227fad807931ab3f20661c9eb5",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
