@@ -1,0 +1,21 @@
+docs/product-specs/coordinator-behavior.md
+  s_39af2826685004::t_0a634b100d0dad 112-114
+docs/product-specs/inbox-behavior.md
+  s_39af2826685004::t_bc12a8dfb36b95 277-282
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c520302a5eac8b7ae174e3a4165628e15f6b1017",
+  "prompts": {},
+  "sessions": {
+    "s_39af2826685004": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6e56d2e-aae2-44a9-9afb-e48fc0c1ee5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
