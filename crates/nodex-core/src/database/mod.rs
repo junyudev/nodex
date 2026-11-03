@@ -2528,6 +2528,8 @@ mod tests {
                     Ok(())
                 })
                 .unwrap();
+            let writer_before = kernel.metrics();
+            let operation_label = operation_id.clone();
             let started = std::time::Instant::now();
             let result = module.apply(
                 &context(),
@@ -2539,14 +2541,23 @@ mod tests {
                 },
             );
             let elapsed = started.elapsed();
-            kernel
-                .writer()
-                .call(|connection| {
-                    connection.trace_v2(TraceEventCodes::empty(), None::<fn(TraceEvent<'_>)>)?;
-                    WORK.with(|work| *work.borrow_mut() = None);
-                    Ok(())
-                })
-                .unwrap();
+            let writer_at_return = kernel.metrics();
+            let vm_steps_at_return = ticks.load(Ordering::Relaxed);
+            let cleanup = kernel.writer().call(|connection| {
+                connection.trace_v2(TraceEventCodes::empty(), None::<fn(TraceEvent<'_>)>)?;
+                WORK.with(|work| *work.borrow_mut() = None);
+                Ok(())
+            });
+            if result.is_err() || cleanup.is_err() {
+                eprintln!(
+                    "manual_position_failure operation={operation_label} elapsed_ms={} vm_steps_at_return={vm_steps_at_return} vm_steps_after_drain={} writer_before={writer_before:?} writer_at_return={writer_at_return:?} writer_after_drain={:?} cleanup={cleanup:?} outcome={:?}",
+                    elapsed.as_millis(),
+                    ticks.load(Ordering::Relaxed),
+                    kernel.metrics(),
+                    result.as_ref().err(),
+                );
+            }
+            cleanup.unwrap();
             let result = result.expect("public position operation commits");
             let DatabaseOperationOutcome::DataEdit {
                 undo_recipe: Some(recipe),
