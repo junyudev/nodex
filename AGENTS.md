@@ -181,6 +181,7 @@ Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** 
   - Main/store tests: `vp run test:main <path-to-test>`
   - Electron integration tests: `vp run test:integration <path-to-test>`
   - Playwright Electron E2E: `vp run test:e2e tests/e2e/<spec>.spec.ts`
+- No CI workflow runs Electron E2E, so specs silently drift from the UI they drive. When you rename, move or remove a UI surface, accessible name or `data-*` hook, `git grep` `tests/e2e/` for it, then update and run every spec that uses it.
 - Pass a focused Playwright E2E file directly as a Vite+ `ADDITIONAL_ARGS` value. Do not insert a standalone `--` before the file: `vp run test:e2e -- tests/e2e/<spec>.spec.ts` expands to `playwright test ... -- tests/e2e/<spec>.spec.ts`, and Playwright collects the full suite instead of the requested file.
 - For a focused E2E run, verify Playwright's collection banner matches the intended test count (normally `Running 1 test`). If it starts collecting the full suite, interrupt it immediately and correct the invocation instead of waiting for unrelated E2Es.
 - Never invoke `vitest.main.config.ts` or `vitest.integration.config.ts` directly with host Node. Those suites must use the repository scripts so Electron-built native addons load under Electron's ABI.
