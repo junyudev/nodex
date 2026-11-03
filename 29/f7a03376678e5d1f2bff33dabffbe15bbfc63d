@@ -1,0 +1,103 @@
+crates/nodex-core/src/infrastructure/local_commit.rs
+  s_a33445b5936fa3::t_b078defd00b096 1531-1541
+crates/nodex-core/src/infrastructure/projection_requirement_extractor.rs
+  s_a33445b5936fa3::t_e8ccb3e37179b6 55,212,214-215
+src/shared/core-database-row-projection.ts
+  s_a33445b5936fa3::t_b688c08e005331 1,26
+src/shared/database-module-v2-transport.ts
+  s_a33445b5936fa3::t_b688c08e005331 1
+  s_a33445b5936fa3::t_97de3cf3e36835 2-6,2510,2512,2579
+src/shared/database-page-projection.ts
+  s_a33445b5936fa3::t_b688c08e005331 1,401,592
+crates/nodex-core/src/infrastructure/migration.rs
+  s_a33445b5936fa3::t_b078defd00b096 439-443,2678-2694,3704-3707,9750
+  s_a33445b5936fa3::t_b6b422fc774e25 8915-8916,9534,9738-9749,9751-9814
+crates/nodex-core/src/database/window.rs
+  s_a33445b5936fa3::t_e8ccb3e37179b6 3232
+crates/nodex-store-format/src/lib.rs
+  s_a33445b5936fa3::t_b078defd00b096 289-292
+src/shared/types.ts
+  s_a33445b5936fa3::t_b688c08e005331 1,285
+src/shared/work-graph.test.ts
+  s_a33445b5936fa3::t_b078defd00b096 2,10-20,25
+  s_a33445b5936fa3::t_f633098b6d3ddb 21-24
+crates/nodex-core-contracts/src/database.rs
+  s_a33445b5936fa3::t_e8ccb3e37179b6 12,1264-1279,1310
+src/shared/work-graph.ts
+  s_a33445b5936fa3::t_b688c08e005331 14-17,105-117,173-184
+  s_2fdb609b8be2fc::t_d6769042480ac0 185
+src/renderer/lib/database-view-render-model.ts
+  s_a33445b5936fa3::t_b688c08e005331 92-97,248-255
+crates/nodex-core/schema/current.sql
+  s_a33445b5936fa3::t_b078defd00b096 4565
+crates/nodex-core/src/document/integrity.rs
+  s_a33445b5936fa3::t_b078defd00b096 84
+src/renderer/lib/database-view-render-model.node.test.ts
+  s_a33445b5936fa3::t_1d937fa12c386c 17,163,181-217
+src/shared/database-module-v2.ts
+  s_a33445b5936fa3::t_b688c08e005331 216
+  s_a33445b5936fa3::t_7f84410449226d 1-6,217
+crates/nodex-core/src/database/work_graph.rs
+  s_a33445b5936fa3::t_e8ccb3e37179b6 10-11,161-163,169-194,196-199,207
+  s_a33445b5936fa3::t_c51d6e82ecc360 200-206
+crates/nodex-core/src/database/mod.rs
+  s_a33445b5936fa3::t_1f923860d9ccb2 8707,8713,8737-8746,8916-9008
+docs/product-specs/database-pages-and-views-behavior.md
+  s_a33445b5936fa3::t_2b0f7991b1bfc7 913-918
+packages/core-protocol/openapi.json
+  s_a33445b5936fa3::t_e5cf75ed262dfb 6874,7023-7025,13771,13920-13922,15349-15369,15397-15437
+packages/core-protocol/src/compatibility.generated.ts
+  s_a33445b5936fa3::t_0dd9f246f493ee 16,42
+packages/core-protocol/src/generated.ts
+  s_a33445b5936fa3::t_5794aa7e6b4e5a 1660,3414,3739-3743,3750-3757
+src/main/core-client/database-page-projection.node.test.ts
+  s_a33445b5936fa3::t_fa153b269f6e8f 142,217-219,273-275
+src/main/database-application/DatabaseModule.node.test.ts
+  s_a33445b5936fa3::t_8941aa379c6d6c 124
+src/renderer/components/workbench/database-board/database-board-drag-data.test.ts
+  s_a33445b5936fa3::t_7aa00747c3cacd 82
+src/renderer/components/workbench/database-board/database-board-model.test.ts
+  s_a33445b5936fa3::t_0764b96d2d46bb 86
+src/renderer/components/workbench/database-view-surface.test.tsx
+  s_a33445b5936fa3::t_cc92f6258015dc 245,463
+src/renderer/lib/board-store.node.test.ts
+  s_a33445b5936fa3::t_603e88c0f54d69 162,541
+src/renderer/lib/database-page-drag-runtime.node.test.ts
+  s_a33445b5936fa3::t_bd57ffc0a0712d 131
+src/renderer/lib/database-view-drag-operations.node.test.ts
+  s_a33445b5936fa3::t_570acac77546f5 65
+src/renderer/lib/database-view-operation-projection.node.test.ts
+  s_a33445b5936fa3::t_d864e61638e2e5 120
+src/renderer/lib/database-view-row-mutations.node.test.ts
+  s_a33445b5936fa3::t_2d1ad2b3579413 156
+src/renderer/lib/local-commit-ingress.test.ts
+  s_a33445b5936fa3::t_7feaf092672f5c 79
+src/renderer/lib/workbench-view-content.node.test.ts
+  s_a33445b5936fa3::t_bee1cb03f0e338 68
+src/shared/database-page-drag.test.ts
+  s_a33445b5936fa3::t_49fa4f5a3d863f 176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "29f7a03376678e5d1f2bff33dabffbe15bbfc63d",
+  "prompts": {},
+  "sessions": {
+    "s_2fdb609b8be2fc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19fae-e867-7e22-99c6-3c4c58f36a22",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a33445b5936fa3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f00-b917-74d3-9bf7-8a4af98b4a59",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
