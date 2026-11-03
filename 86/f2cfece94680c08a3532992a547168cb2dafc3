@@ -1,0 +1,94 @@
+tests/e2e/desktop-notification-content.spec.ts
+  s_bbde30ff38ad85::t_5ae2cc1686ed88 369-377,402-410,418-427,437,451
+  s_df23c42713edeb::t_1fd782777bd79c 357
+  s_df23c42713edeb::t_3ba9d5b3a5ad2d 1,8,73-85,134,279-289,295-313,315-346,349-355,358-368,378-387,391-401,411,415-417,428,430-436,438-450,452-453,459-476
+  s_df23c42713edeb::t_c97bd1afa0c3f4 290-294,314,388-390,412-414,454-458
+  s_df23c42713edeb::t_ca49e84b4848c6 347-348,356,429
+  s_3b30385b04dc37::t_9f77ae76201585 477-479
+src/renderer/lib/desktop-notification-action.ts
+  s_bbde30ff38ad85::t_40fb582dea8e74 32
+  s_bbde30ff38ad85::t_91425e6dff7273 2,22,42-62,64-67,69-78
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_bbde30ff38ad85::t_1cd178e4b02997 186,3566
+  s_bbde30ff38ad85::t_b56ecc91085cc0 1348-1349
+src/shared/side-chat-tab.ts
+  s_bbde30ff38ad85::t_8d33a690c73d2a 1-9,12-22
+  s_bbde30ff38ad85::t_40fb582dea8e74 10-11
+src/main/agent-runtime/AgentRuntimeSessionNotifications.ts
+  s_7e48a4dad93aa0::t_30aca5eb970508 123-126,133
+  s_bbde30ff38ad85::t_0316184e1180c3 18-21,61-63,117-119,122
+  s_7e48a4dad93aa0::t_f3b5c1a8c25738 22-25
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_bbde30ff38ad85::t_0316184e1180c3 366-367,369-373
+  s_7e48a4dad93aa0::t_f3b5c1a8c25738 71-72,349-356,363-365,368,374-381
+  s_7e48a4dad93aa0::t_60001caae66208 360-362
+docs/product-specs/desktop-notification-behavior.md
+  s_bbde30ff38ad85::t_0a011c520e19aa 211-217
+  s_bbde30ff38ad85::t_dceb8828ee26a3 318-324
+src/renderer/lib/use-workbench-panel-openers.ts
+  s_bbde30ff38ad85::t_6a584b64eca6c8 18,95-104,576,684,774,976
+  s_bbde30ff38ad85::t_b5169fab77f4fe 66
+  s_bbde30ff38ad85::t_2c9646337d8254 765,767,806,811
+  s_bbde30ff38ad85::t_833beadb1fdeaf 751,753,756-764,766,769-773,775-781,786-788,792,795-796,800-801,804
+  s_bbde30ff38ad85::t_40fb582dea8e74 797-799
+  s_bbde30ff38ad85::t_b56ecc91085cc0 754-755
+src/main/codex/codex-thread-notification-handler.ts
+  s_7e48a4dad93aa0::t_f3b5c1a8c25738 9,54,58-60
+src/main/agent-runtime/AgentRuntimeSessionNotifications.node.test.ts
+  s_7e48a4dad93aa0::t_04ab9e0fa8c3ea 398-401,420-430,436-438,461
+  s_bbde30ff38ad85::t_b18eb27f67db64 467-468,470-474
+  s_bbde30ff38ad85::t_5a29711fdc1950 469
+  s_7e48a4dad93aa0::t_54bb1975d86807 15,96-103
+  s_bbde30ff38ad85::t_c32251a8f4b618 431-435
+  s_7e48a4dad93aa0::t_60001caae66208 44,95,104-109,477-483,485,495
+  s_7e48a4dad93aa0::t_30aca5eb970508 18,43,94,392,394-396,403-419,439-460,462-466,475-476
+  s_bbde30ff38ad85::t_63786732140b45 402
+src/main/codex/codex-thread-notification-handler.test.ts
+  s_7e48a4dad93aa0::t_30aca5eb970508 308-344
+src/renderer/lib/desktop-notification-action.node.test.ts
+  s_bbde30ff38ad85::t_92ee5bac846dc9 6,31,33-39,47-68,121-126
+  s_bbde30ff38ad85::t_40fb582dea8e74 40-45
+CHANGELOG.md
+  s_bbde30ff38ad85::t_a636229581bf0c 87
+  s_bbde30ff38ad85::t_78da7a10e804e0 88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "86f2cfece94680c08a3532992a547168cb2dafc3",
+  "prompts": {},
+  "sessions": {
+    "s_3b30385b04dc37": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a158-2ca9-71b1-ad75-3f1a2d227382",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7e48a4dad93aa0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a133-bbb3-7280-8412-ff1c4ef51334",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_bbde30ff38ad85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "42d55929-18c0-485c-bbf7-9b9babc597d4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_df23c42713edeb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a149-9e95-72d1-abf0-c7639490ead0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
