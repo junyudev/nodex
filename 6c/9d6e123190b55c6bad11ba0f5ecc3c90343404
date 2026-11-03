@@ -1,0 +1,24 @@
+src/renderer/features/inbox/inbox-triage.tsx
+  s_39af2826685004::t_b564398aa8d862 24,434,439-440,950,959,963-964
+  s_39af2826685004::t_19d7a21e149478 965
+src/renderer/features/inbox/inbox-route.tsx
+  s_39af2826685004::t_b564398aa8d862 3,346-353,461-467,546-552
+src/renderer/features/inbox/inbox-triage.test.tsx
+  s_39af2826685004::t_c79b4beebc9d97 882-900
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6c9d6e123190b55c6bad11ba0f5ecc3c90343404",
+  "prompts": {},
+  "sessions": {
+    "s_39af2826685004": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6e56d2e-aae2-44a9-9afb-e48fc0c1ee5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

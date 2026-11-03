@@ -1,0 +1,19 @@
+docs/product-specs/coordinator-behavior.md
+  s_39af2826685004::t_f096611568d5cd 29,51,53-60,62,103-111,115-125,134-137,172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bfcb950f8caa23a1d4f4ae2b5133751d54ae0161",
+  "prompts": {},
+  "sessions": {
+    "s_39af2826685004": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6e56d2e-aae2-44a9-9afb-e48fc0c1ee5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+docs/product-specs/nfm-editor-ask-for-change-behavior.md
+  s_39af2826685004::t_753ee2052faf9d 47
+docs/product-specs/inbox-behavior.md
+  s_39af2826685004::t_c9df7a3e13562d 9-13,268-275,283-284,288-298,593-605,759
+  s_39af2826685004::t_b461a434b859f7 66,300,309,340,558,673,806-811,817-824
+  s_39af2826685004::t_e97c1d5b23d3b4 299
+docs/product-specs/agent-runtime-behavior.md
+  s_39af2826685004::t_66e2c30736d046 819-828
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "19f2abd8838260c442c7d32fce74a4964305264c",
+  "prompts": {},
+  "sessions": {
+    "s_39af2826685004": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6e56d2e-aae2-44a9-9afb-e48fc0c1ee5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
