@@ -13,7 +13,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - The macOS installer is about 30% smaller, so first-time downloads finish sooner, and Nodex uses about 250 MB less disk space. Opening the disk image and copying Nodex to Applications take a little longer on a first install.
-- The Windows installer is roughly a quarter smaller, and installing it takes less disk space.
+- The Windows installer is about a fifth smaller, and installing it takes less disk space.
 - Full macOS updates are about 40% smaller, so updating downloads much less when an incremental update isn't available.
 - Inbox suggestions no longer wait in line behind each other. Up to five run at once, or as many as 16 if you raise the limit in Settings → Inbox, so a message that takes a while to look into doesn't hold up the ones after it, and every message waiting for advice shows its own spinner instead of only the newest one.
 - `⌘K` (`Ctrl+K` on Windows and Linux) clears a focused Terminal. It opens the command palette everywhere else.
