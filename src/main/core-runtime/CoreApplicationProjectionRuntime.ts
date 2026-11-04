@@ -99,6 +99,9 @@ export const live: Layer.Layer<
 
       if (projected.kind === "library-navigation") {
         yield* notifications.notifyLibraryNavigationChanged(projected.value);
+        // Page lifecycle changes can withdraw pending Inbox work through Core's member fence.
+        if (projected.value.affectedPageIds.length > 0)
+          yield* notifications.notifyInboxChanged({ reason: "content" });
         return;
       }
 

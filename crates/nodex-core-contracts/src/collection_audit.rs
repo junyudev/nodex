@@ -58,6 +58,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         // Caller limits are clamped to a small fixed batch with bounded content per entry.
         ProjectWorkspaceRead::InboxPendingSuggestions { .. }
         | ProjectWorkspaceRead::InboxSuggestionRequests { .. }
+        | ProjectWorkspaceRead::InboxPendingSuggestionRequestIds { .. }
         | ProjectWorkspaceRead::InboxDispatchContext { .. }
         | ProjectWorkspaceRead::InboxDispatchOutbox { .. }
         | ProjectWorkspaceRead::InboxCounts => ReadBudgetPolicy::BoundedBatch,

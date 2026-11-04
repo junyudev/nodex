@@ -207,6 +207,8 @@ export class ApplicationSettings extends Context.Service<
     readonly usageMeterSettingsChanges: Stream.Stream<UsageMeterSettings>;
     /** Latest saved preference; slow observers may coalesce intermediate invalidations. */
     readonly composerPredictionSettingsChanges: Stream.Stream<ComposerPredictionSettings>;
+    /** Latest saved Inbox preferences, for work that waits on them. */
+    readonly inboxSettingsChanges: Stream.Stream<InboxSettings>;
     readonly acpLaunchConfiguration: (
       instanceId: string,
     ) => Effect.Effect<ReturnType<typeof getAcpLaunchConfiguration>, ApplicationSettingsError>;
@@ -412,6 +414,8 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   // Observers invalidate predictions and reread settings before admitting new work.
   const composerPredictionChanges = yield* PubSub.sliding<ComposerPredictionSettings>(1);
   yield* Effect.addFinalizer(() => PubSub.shutdown(composerPredictionChanges));
+  const inboxChanges = yield* PubSub.sliding<InboxSettings>(1);
+  yield* Effect.addFinalizer(() => PubSub.shutdown(inboxChanges));
   // The native runtime keeps one home for this Main lifetime; saved changes apply after restart.
   const activeCodexHome = yield* Ref.make<
     | {
@@ -470,6 +474,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     usageMeterSettingsChanges: SubscriptionRef.changes(usageMeters),
     linkOpeningSettingsChanges: SubscriptionRef.changes(linkOpening),
     composerPredictionSettingsChanges: Stream.fromPubSub(composerPredictionChanges),
+    inboxSettingsChanges: Stream.fromPubSub(inboxChanges),
     acpLaunchConfiguration: (instanceId) =>
       writes.withPermits(1)(
         attempt("acp-launch-configuration", () => getAcpLaunchConfiguration(source, instanceId)),
@@ -509,6 +514,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
           if (snapshot.composerPredictions.enabled !== previousComposerPredictions.enabled) {
             yield* PubSub.publish(composerPredictionChanges, snapshot.composerPredictions);
           }
+          if (command.type === "update-inbox") yield* PubSub.publish(inboxChanges, snapshot.inbox);
           return snapshot;
         }),
       ),

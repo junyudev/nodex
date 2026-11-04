@@ -3612,6 +3612,218 @@ fn keep_request(
     }
 }
 
+fn stop_suggestion(module: &ProjectWorkspaceModule, operation: &str, page_id: &str) {
+    apply_host(
+        module,
+        operation,
+        ProjectWorkspaceIntent::StopInboxSuggestion {
+            page_id: page_id.into(),
+        },
+    );
+}
+
+fn pending_request_ids(module: &ProjectWorkspaceModule, ids: &[&str]) -> Vec<String> {
+    let ProjectWorkspaceReadValue::InboxPendingSuggestionRequestIds { request_ids } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxPendingSuggestionRequestIds {
+            request_ids: ids.iter().map(|id| (*id).into()).collect(),
+        },
+    ) else {
+        panic!("pending suggestion request IDs")
+    };
+    request_ids
+}
+
+fn prepare_stop_test_batch(module: &ProjectWorkspaceModule, id: &str) {
+    apply_host(
+        module,
+        &format!("prepare:{id}"),
+        ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            automatic: true,
+            request_id: id.into(),
+            limit: 8,
+        },
+    );
+}
+
+#[test]
+fn stopping_a_waiting_message_releases_it_without_asking_automatically() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "waiting", "Stop before a request is made");
+    assert_eq!(
+        item(module, "page:waiting").suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Waiting
+    );
+    stop_suggestion(module, "stop:waiting", "page:waiting");
+    prepare_stop_test_batch(module, "request:unused");
+    let message = item(module, "page:waiting");
+    assert_eq!(
+        message.suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::None
+    );
+    assert!(message.proposal.is_none());
+    assert!(requests(module).is_empty());
+}
+
+#[test]
+fn stopping_a_sole_member_restores_prior_advice_if_present_and_fences_late_results() {
+    use nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionMode;
+
+    for refresh in [false, true] {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        send(module, "one", "Stop advice for this message");
+        if refresh {
+            prepare_stop_test_batch(module, "request:original");
+            apply_host(
+                module,
+                "settle:original",
+                keep_request(&requests(module)[0], None),
+            );
+        }
+        let before = item(module, "page:one");
+        apply_host(
+            module,
+            "ask:one",
+            ProjectWorkspaceIntent::RequestInboxSuggestion {
+                request_id: "request:one".into(),
+                mode: ProjectWorkspaceInboxSuggestionMode::Auto,
+                page_ids: vec!["page:one".into()],
+                basis: vec![before.basis],
+                proposal_id: None,
+                expected_revision: None,
+                correction: None,
+            },
+        );
+        let running = requests(module).remove(0);
+        assert_eq!(
+            pending_request_ids(module, &["request:one"]),
+            ["request:one"]
+        );
+        stop_suggestion(module, "stop:one", "page:one");
+        let stopped = item(module, "page:one");
+        assert_eq!(
+            stopped.suggestion_state,
+            before
+                .proposal
+                .as_ref()
+                .map_or(ProjectWorkspaceInboxSuggestionState::None, |_| {
+                    ProjectWorkspaceInboxSuggestionState::Settled
+                },)
+        );
+        assert_eq!(stopped.proposal, before.proposal);
+        assert!(pending_request_ids(module, &["request:one"]).is_empty());
+        assert_eq!(
+            apply_host_error(module, "late:one", keep_request(&running, None)),
+            CoreErrorCode::Conflict,
+        );
+        prepare_stop_test_batch(module, "request:unused");
+        assert!(requests(module).is_empty());
+    }
+}
+
+#[test]
+fn stopping_one_automatic_member_returns_only_its_neighbours_to_waiting() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    for id in ["first", "stop", "last"] {
+        send(module, id, &format!("Message {id}"));
+    }
+    prepare_stop_test_batch(module, "request:batch");
+    let old = requests(module).remove(0);
+    stop_suggestion(module, "stop:batch", "page:stop");
+    assert_eq!(
+        item(module, "page:stop").suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::None
+    );
+    for page in ["page:first", "page:last"] {
+        assert_eq!(
+            item(module, page).suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::Waiting
+        );
+    }
+    assert!(requests(module).is_empty());
+    assert_eq!(
+        apply_host_error(module, "late:batch", keep_request(&old, None)),
+        CoreErrorCode::Conflict
+    );
+    prepare_stop_test_batch(module, "request:neighbours");
+    assert_eq!(requests(module)[0].page_ids, ["page:first", "page:last"]);
+}
+
+#[test]
+fn stopping_a_grouped_or_refined_decision_stops_every_member() {
+    use nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionMode;
+
+    for refine in [false, true] {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        send(module, "a", "One grouped message");
+        send(module, "b", "Another grouped message");
+        let pages = vec!["page:a".into(), "page:b".into()];
+        grouped_request(module, "request:group", pages.clone());
+        let original = requests(module).remove(0);
+        let prior = if refine {
+            apply_host(module, "settle:group", keep_request(&original, None));
+            let proposal = item(module, "page:a").proposal.unwrap();
+            apply_host(
+                module,
+                "refine:group",
+                ProjectWorkspaceIntent::RequestInboxSuggestion {
+                    request_id: "request:refine".into(),
+                    mode: ProjectWorkspaceInboxSuggestionMode::Refine,
+                    basis: pages_basis(module, pages.clone()),
+                    page_ids: pages.clone(),
+                    proposal_id: Some(proposal.proposal_id.clone()),
+                    expected_revision: Some(proposal.revision),
+                    correction: Some("Try a different decision".into()),
+                },
+            );
+            Some(proposal)
+        } else {
+            None
+        };
+        let running = requests(module).remove(0);
+        stop_suggestion(module, "stop:group", "page:b");
+        for page in pages {
+            let stopped = item(module, &page);
+            assert_eq!(
+                stopped.suggestion_state,
+                if refine {
+                    ProjectWorkspaceInboxSuggestionState::Settled
+                } else {
+                    ProjectWorkspaceInboxSuggestionState::None
+                }
+            );
+            assert_eq!(stopped.proposal, prior);
+        }
+        assert_eq!(
+            apply_host_error(module, "late:group", keep_request(&running, None)),
+            CoreErrorCode::Conflict,
+        );
+        prepare_stop_test_batch(module, "request:unused");
+        assert!(requests(module).is_empty());
+    }
+}
+
+#[test]
+fn stopping_after_advice_landed_is_a_no_op() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "done", "Advice already landed");
+    prepare_stop_test_batch(module, "request:done");
+    apply_host(
+        module,
+        "settle:done",
+        keep_request(&requests(module)[0], None),
+    );
+    let before = item(module, "page:done");
+    stop_suggestion(module, "stop:done", "page:done");
+    stop_suggestion(module, "stop:done-again", "page:done");
+    assert_eq!(item(module, "page:done"), before);
+}
+
 #[test]
 fn unavailable_suggestion_members_never_block_later_requests_even_across_restart() {
     for change in ["archive", "delete"] {
@@ -3630,6 +3842,10 @@ fn unavailable_suggestion_members_never_block_later_requests_even_across_restart
 
         // The Page changes after the Agent received its request, outside the Inbox.
         change_message_lifecycle(&workspace, "page:a", change);
+        assert_eq!(
+            pending_request_ids(module, &["request:old", "request:later", "request:unknown"]),
+            ["request:later"],
+        );
         for (operation, error) in [
             ("late-success", None),
             ("late-failure", Some("Unavailable")),

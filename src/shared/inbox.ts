@@ -395,6 +395,10 @@ export interface InboxSuggestionRequestInput {
   readonly correction?: string | null;
 }
 
+export interface InboxSuggestionStopInput {
+  readonly pageId: string;
+}
+
 export interface InboxPageIdsInput {
   readonly pageIds: readonly string[];
 }
@@ -632,6 +636,8 @@ export interface InboxSettings {
   readonly suggestions: InboxSuggestionMode;
   /** What suggestions run on. */
   readonly suggestionAgent: InboxAgentChoice;
+  /** How many suggestion requests run at once; messages beyond it wait to be gathered together. */
+  readonly suggestionConcurrency: number;
   /** Durable routing preferences given to the suggestion Agent. */
   readonly instructions: string;
   /**
@@ -651,9 +657,20 @@ export type UpdateInboxSettingsInput = Partial<InboxSettings>;
 
 export const MAX_INBOX_INSTRUCTIONS_CHARS = 4_000;
 
+/**
+ * Core reads and checks at most this many suggestion requests at a time, and it leaves the Agent
+ * Runtime half its request slots for everything else.
+ */
+export const MAX_INBOX_SUGGESTION_CONCURRENCY = 16;
+
+/** A saved or requested limit as one the dispatcher can run. */
+export const clampInboxSuggestionConcurrency = (value: number): number =>
+  Math.min(Math.max(Math.round(value), 1), MAX_INBOX_SUGGESTION_CONCURRENCY);
+
 export const DEFAULT_INBOX_SETTINGS: InboxSettings = {
   suggestions: "automatic",
   suggestionAgent: { instanceId: "codex", model: null, reasoningEffort: null, serviceTier: null },
+  suggestionConcurrency: 5,
   instructions: "",
   chatAgent: { instanceId: "codex", model: null, reasoningEffort: null, serviceTier: null },
   suggestionsChooseModels: true,

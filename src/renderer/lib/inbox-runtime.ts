@@ -2,6 +2,7 @@ import type {
   InboxConfirmInput,
   InboxConfirmationDraft,
   InboxSuggestionRequestInput,
+  InboxSuggestionStopInput,
   InboxUndoInput,
   InboxChatTargetsInput,
   InboxDispatchInput,
@@ -47,6 +48,7 @@ type InboxCommandChannel =
   | "inbox:set-kind"
   | "inbox:set-important"
   | "inbox:request-suggestion"
+  | "inbox:stop-suggestion"
   | "inbox:retry-dispatch"
   | "inbox:undo";
 
@@ -63,6 +65,7 @@ const requestSuggestionCommand = inboxCommand(
   "inbox.request-suggestion",
   "inbox:request-suggestion",
 );
+const stopSuggestionCommand = inboxCommand("inbox.stop-suggestion", "inbox:stop-suggestion");
 const retryDispatchCommand = inboxCommand("inbox.retry-dispatch", "inbox:retry-dispatch");
 
 const undoCommand = inboxCommand("inbox.undo", "inbox:undo");
@@ -100,6 +103,8 @@ export const setInboxEntryImportant = (input: InboxSetImportantInput) =>
   invokeLocalCommitCommand(setImportantCommand, input);
 export const requestInboxSuggestion = (input: InboxSuggestionRequestInput) =>
   invokeLocalCommitCommand(requestSuggestionCommand, input);
+export const stopInboxSuggestion = (input: InboxSuggestionStopInput) =>
+  invokeLocalCommitCommand(stopSuggestionCommand, input);
 export const retryInboxDispatch = (input: InboxProposalInput) =>
   invokeLocalCommitCommand(retryDispatchCommand, input);
 export const readInboxSettings = () => invokeRendererQuery("settings:inbox:get");

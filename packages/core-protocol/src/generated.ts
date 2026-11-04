@@ -7605,6 +7605,10 @@ export interface components {
                 readonly proposal_id?: string | null;
                 readonly request_id: string;
             } | {
+                /** @enum {string} */
+                readonly kind: "stop_inbox_suggestion";
+                readonly page_id: string;
+            } | {
                 readonly error?: string | null;
                 /** Format: int64 */
                 readonly generation: number;
@@ -8745,6 +8749,10 @@ export interface components {
                 readonly kind: "inbox_suggestion_requests";
                 /** Format: int32 */
                 readonly limit: number;
+            } | {
+                /** @enum {string} */
+                readonly kind: "inbox_pending_suggestion_request_ids";
+                readonly request_ids: readonly string[];
             } | {
                 /** @enum {string} */
                 readonly kind: "inbox_pending_suggestions";
@@ -10241,6 +10249,10 @@ export interface components {
             readonly page_ids: readonly string[];
             readonly proposal_id?: string | null;
             readonly request_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "stop_inbox_suggestion";
+            readonly page_id: string;
         } | {
             readonly error?: string | null;
             /** Format: int64 */
@@ -12310,6 +12322,10 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "inbox_suggestion_requests";
                     readonly requests: readonly components["schemas"]["ProjectWorkspaceInboxSuggestionRequest"][];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "inbox_pending_suggestion_request_ids";
+                    readonly request_ids: readonly string[];
                 } | {
                     readonly entries: readonly components["schemas"]["ProjectWorkspaceInboxSuggestionInput"][];
                     /** @enum {string} */

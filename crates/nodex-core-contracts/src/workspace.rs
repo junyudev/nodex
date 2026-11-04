@@ -238,6 +238,10 @@ pub enum ProjectWorkspaceRead {
     InboxSuggestionRequests {
         limit: u32,
     },
+    /// The supplied request IDs still eligible for generation, without their inputs.
+    InboxPendingSuggestionRequestIds {
+        request_ids: Vec<String>,
+    },
     InboxPendingSuggestions {
         limit: u32,
     },
@@ -400,6 +404,9 @@ pub enum ProjectWorkspaceReadValue {
     },
     InboxSuggestionRequests {
         requests: Vec<ProjectWorkspaceInboxSuggestionRequest>,
+    },
+    InboxPendingSuggestionRequestIds {
+        request_ids: Vec<String>,
     },
     InboxPendingSuggestions {
         entries: Vec<ProjectWorkspaceInboxSuggestionInput>,
@@ -1990,6 +1997,9 @@ pub enum ProjectWorkspaceIntent {
         proposal_id: Option<String>,
         expected_revision: Option<i64>,
         correction: Option<String>,
+    },
+    StopInboxSuggestion {
+        page_id: String,
     },
     SettleInboxSuggestion {
         request_id: String,

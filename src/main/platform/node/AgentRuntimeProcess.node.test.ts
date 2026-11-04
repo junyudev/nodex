@@ -1,3 +1,4 @@
+import { watch } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -5,6 +6,9 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import type { AgentCommand } from "@nodex/agent-runtime/contracts";
@@ -74,6 +78,113 @@ it.live("withdraws an interrupted utility over the existing Runtime connection",
     assert.equal((yield* connection.request("runtime.identity", {})).runtimeId, "fixture-runtime");
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+
+for (const provider of ["codex", "claude CLI", "claude SDK"] as const) {
+  it.live.skipIf(process.platform === "win32")(
+    `interrupting a production structured RPC reaps the ${provider} child while the runtime stays live`,
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-utility-cancel-" });
+        const cwd = path.join(home, "utility-cwd");
+        yield* fs.makeDirectory(cwd);
+        const binary = path.join(home, "provider.mjs");
+        const marker = path.join(home, "started");
+        yield* fs.writeFileString(
+          binary,
+          `#!${process.execPath}
+import fs from "node:fs";
+import path from "node:path";
+if (path.basename(process.cwd()) !== "utility-cwd") process.exit(0);
+process.stdin.resume();
+fs.writeFileSync(${JSON.stringify(marker + ".tmp")}, String(process.pid));
+fs.renameSync(${JSON.stringify(marker + ".tmp")}, ${JSON.stringify(marker)});
+setInterval(() => {}, 1000);
+`,
+        );
+        yield* fs.chmod(binary, 0o700);
+        const started = yield* Deferred.make<void>();
+        yield* Effect.acquireRelease(
+          Effect.sync(() =>
+            watch(home, (_event, name) => {
+              if (name?.toString() === "started") Deferred.doneUnsafe(started, Effect.void);
+            }),
+          ),
+          (watcher) => Effect.sync(() => watcher.close()),
+        );
+
+        const driver = provider === "codex" ? "codex" : "claudeAgent";
+        const config = { binaryPath: binary, homePath: path.join(home, "provider-home") };
+        const connection = yield* acquireAgentRuntimeProcess({
+          executable: process.execPath,
+          entryPath: fileURLToPath(
+            new URL("../../../../packages/agent-runtime/src/nodex/entry.ts", import.meta.url),
+          ),
+          environment: { ...process.env, NODE_OPTIONS: `--import=${import.meta.resolve("tsx")}` },
+          configuration: {
+            home,
+            cwd: home,
+            providers:
+              driver === "codex"
+                ? { codex: { driver, config: { ...config, setupMode: "existing" } } }
+                : { claudeAgent: { driver, config } },
+          },
+          host: () => Effect.die("Structured generation should not call the host"),
+          // Compiling the Runtime at launch can take this long on a busy machine.
+          readinessTimeoutMs: 45_000,
+        });
+
+        const generating = yield* connection
+          .request("text.generate-structured", {
+            cwd,
+            prompt: "Never return an answer",
+            modelSelection: {
+              instanceId: driver,
+              model: driver === "codex" ? "gpt-6-luna" : "sonnet",
+            },
+            outputSchema: { type: "object", properties: {} },
+            ...(provider === "claude SDK"
+              ? { images: [{ mediaType: "image/png", data: "AQID" }] }
+              : {}),
+            timeoutMs: 60_000,
+          })
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(started).pipe(Effect.timeout("30 seconds"));
+        const pid = Number(yield* fs.readFileString(marker));
+        assert.isAbove(pid, 1);
+        let reaped = false;
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            if (reaped) return;
+            try {
+              process.kill(pid, "SIGKILL");
+            } catch {}
+          }),
+        );
+        const childExited = Effect.sync(() => {
+          try {
+            process.kill(pid, 0);
+            return false;
+          } catch {
+            return true;
+          }
+        });
+        assert.isFalse(yield* childExited);
+        yield* Fiber.interrupt(generating);
+        yield* childExited.pipe(
+          Effect.repeat({ until: Boolean, schedule: Schedule.spaced("20 millis") }),
+          Effect.timeout("30 seconds"),
+        );
+        reaped = true;
+        assert.strictEqual(
+          (yield* connection.request("runtime.identity", {})).runtimeId,
+          connection.identity.runtimeId,
+        );
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    120_000,
+  );
+}
 
 it.live("withdraws only the cancelled host wait and rejects stale-generation cancellation", () =>
   Effect.gen(function* () {

@@ -1,8 +1,14 @@
 import { useState } from "react";
-import { DEFAULT_INBOX_SETTINGS, MAX_INBOX_INSTRUCTIONS_CHARS } from "../../../shared/inbox";
+import {
+  DEFAULT_INBOX_SETTINGS,
+  MAX_INBOX_INSTRUCTIONS_CHARS,
+  MAX_INBOX_SUGGESTION_CONCURRENCY,
+  clampInboxSuggestionConcurrency,
+} from "../../../shared/inbox";
 import { INBOX_MODEL_GUIDE } from "../../../shared/inbox-model-guide";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import {
+  NodexSettingsNumberInput,
   NodexSettingsPageSurface as SettingsPageSurface,
   NodexSettingsRow as SettingRow,
   NodexSettingsSection as SectionBlock,
@@ -18,6 +24,44 @@ import {
 import { InboxSuggestionModePicker } from "./inbox-suggestion-mode-picker";
 import { INBOX_ROUTING_PREFERENCES_PLACEHOLDER } from "./inbox-presentation";
 
+/** Saved once it is left or confirmed, so typing 12 never first asks for 1. */
+function SuggestionConcurrencyInput({
+  value,
+  disabled,
+  onChange,
+}: {
+  readonly value: number;
+  readonly disabled: boolean;
+  readonly onChange: (next: number, settled: () => void) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft === null) return;
+    const parsed = Number(draft);
+    const next =
+      draft.trim() && Number.isFinite(parsed) ? clampInboxSuggestionConcurrency(parsed) : value;
+    if (next === value) return setDraft(null);
+    setDraft(String(next));
+    onChange(next, () => setDraft(null));
+  };
+  return (
+    <NodexSettingsNumberInput
+      aria-label="Suggestions at once"
+      className="w-16"
+      min={1}
+      max={MAX_INBOX_SUGGESTION_CONCURRENCY}
+      step={1}
+      disabled={disabled}
+      value={draft ?? value}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+      }}
+    />
+  );
+}
+
 export function InboxSettingsPage() {
   const settingsQuery = useInboxSettingsQuery();
   const settings = settingsQuery.data ?? DEFAULT_INBOX_SETTINGS;
@@ -29,13 +73,14 @@ export function InboxSettingsPage() {
   const agents = useInboxAgents();
   const ready = agents.state === "ready";
 
-  const save = (input: Parameters<typeof update.mutate>[0]) =>
+  const save = (input: Parameters<typeof update.mutate>[0], settled?: () => void) =>
     update.mutate(input, {
       onSuccess: () => {
         if (input.instructions !== undefined)
           setInstructionsDraft((current) => (current === input.instructions ? null : current));
       },
       onError: (error) => toast.danger(readableIpcError(error, "Inbox settings were not saved")),
+      onSettled: settled,
     });
 
   if (!settingsQuery.data)
@@ -93,6 +138,16 @@ export function InboxSettingsPage() {
               disabled={settings.suggestions === "off" || !ready}
             />
           </div>
+        </SettingRow>
+        <SettingRow
+          label="Suggestions at once"
+          description={`How many run at the same time, up to ${MAX_INBOX_SUGGESTION_CONCURRENCY}. More answers sooner and spends usage faster; messages beyond this wait and are suggested together.`}
+        >
+          <SuggestionConcurrencyInput
+            value={settings.suggestionConcurrency}
+            disabled={settings.suggestions === "off"}
+            onChange={(suggestionConcurrency, settled) => save({ suggestionConcurrency }, settled)}
+          />
         </SettingRow>
       </SectionBlock>
       <SectionBlock title="Routing preferences">

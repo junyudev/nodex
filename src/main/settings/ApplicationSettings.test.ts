@@ -501,6 +501,52 @@ describe("ApplicationSettings", () => {
     }),
   );
 
+  it.effect("keeps how many suggestions run at once within what the dispatcher can run", () =>
+    Effect.gen(function* () {
+      const read = Effect.fnUntraced(function* (configured: string) {
+        const { root, settingsPath } = fixture(`[server]\n${configured}`);
+        const settings = yield* makeApplicationSettings({
+          environment: {},
+          hostHomeDirectory: root,
+          settingsPath,
+        });
+        return (yield* settings.snapshot()).inbox.suggestionConcurrency;
+      });
+      assert.strictEqual(yield* read(""), 5);
+      assert.strictEqual(yield* read("inbox_suggestion_concurrency = 8\n"), 8);
+      assert.strictEqual(yield* read("inbox_suggestion_concurrency = 500\n"), 16);
+      assert.strictEqual(yield* read("inbox_suggestion_concurrency = 0\n"), 1);
+      assert.strictEqual(yield* read('inbox_suggestion_concurrency = "many"\n'), 5);
+
+      const { root, settingsPath } = fixture();
+      const settings = yield* makeApplicationSettings({
+        environment: {},
+        hostHomeDirectory: root,
+        settingsPath,
+      });
+      const saved = yield* settings.inboxSettingsChanges.pipe(
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild({ startImmediately: true }),
+      );
+      const updated = yield* settings.update({
+        type: "update-inbox",
+        input: { suggestionConcurrency: 12 },
+      });
+      assert.strictEqual(updated.inbox.suggestionConcurrency, 12);
+      assert.deepEqual(
+        [...(yield* Fiber.join(saved))].map((inbox) => inbox.suggestionConcurrency),
+        [12],
+      );
+      assert.strictEqual((yield* settings.snapshot()).inbox.suggestionConcurrency, 12);
+      const refused = yield* settings
+        .update({ type: "update-inbox", input: { suggestionConcurrency: 17 } })
+        .pipe(Effect.result);
+      assert.strictEqual(refused._tag, "Failure");
+      assert.strictEqual((yield* settings.snapshot()).inbox.suggestionConcurrency, 12);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("refuses invalid Inbox suggestion modes without changing the saved preference", () =>
     Effect.gen(function* () {
       const { root, settingsPath } = fixture();

@@ -1,5 +1,9 @@
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
+import * as FiberSet from "effect/FiberSet";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
@@ -24,7 +28,11 @@ import {
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
 import { getLogger } from "../logging/logger";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import { InboxApplication, type InboxSuggestionSettlement } from "./InboxApplication";
+import {
+  InboxApplication,
+  type InboxApplicationError,
+  type InboxSuggestionSettlement,
+} from "./InboxApplication";
 import {
   INBOX_SUGGESTION_BATCH,
   INBOX_SUGGESTION_MAX_OUTPUT_BYTES,
@@ -44,7 +52,6 @@ import { makeInboxImageLoader } from "./inbox-images";
 
 const SETTLE_DELAY_MS = 1_500;
 const SAFETY_POLL = "60 seconds";
-const MAX_BATCHES_PER_DRAIN = 8;
 
 /** A durable request fixes membership; Core atomically accepts all titles and decisions. */
 export const make = Effect.gen(function* () {
@@ -55,7 +62,10 @@ export const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const loadImages = yield* makeInboxImageLoader;
   const logger = getLogger({ component: "inbox-dispatcher" });
-  const lane = yield* Semaphore.make(1);
+  const admission = yield* Semaphore.make(1);
+  const fibers = yield* FiberSet.make<void, InboxApplicationError>();
+  const inFlight = new Map<string, Fiber.Fiber<void, InboxApplicationError>>();
+  const unsettled = new Set<string>();
   let previousPolicy: InboxSuggestionPolicy["kind"] | null = null;
 
   /** A Project's Inbox looks around from its primary source; anything else from the Profile. */
@@ -235,50 +245,144 @@ export const make = Effect.gen(function* () {
     return { current: snapshot.inbox, policy };
   });
 
-  const drain = lane.withPermits(1)(
-    Effect.gen(function* () {
-      for (let batch = 0; batch < MAX_BATCHES_PER_DRAIN; batch += 1) {
-        const preparation = yield* readSuggestionPolicy();
-        // Each send is considered once. Core releases waiting messages when automatic advice yields.
-        yield* inbox.prepareSuggestions(
-          INBOX_SUGGESTION_BATCH,
-          preparation.policy.kind === "automatic",
-        );
-        if (preparation.policy.kind === "off") return;
-        const [request] = yield* inbox.suggestionRequests(1);
-        if (!request) return;
-        const admission = yield* readSuggestionPolicy();
-        if (admission.policy.kind === "off") {
-          yield* inbox.prepareSuggestions(INBOX_SUGGESTION_BATCH, false);
-          return;
-        }
-        yield* suggest(admission.current, request);
-      }
-    }).pipe(
-      Effect.catchCause(() =>
-        Effect.sync(() => logger.warn("Inbox suggestion pass could not settle")),
-      ),
-    ),
+  // This runs under the admission permit, as do all changes to the request ID sets.
+  const nextRequest = Effect.gen(function* () {
+    const preparation = yield* readSuggestionPolicy();
+    if (preparation.policy.kind === "off") {
+      yield* inbox.prepareSuggestions(INBOX_SUGGESTION_BATCH, false);
+      return;
+    }
+    // Leave messages waiting while full so the next free lane can batch them.
+    if (inFlight.size >= preparation.current.suggestionConcurrency) return;
+    yield* inbox.prepareSuggestions(
+      INBOX_SUGGESTION_BATCH,
+      preparation.policy.kind === "automatic",
+    );
+
+    // Core returns the oldest pending requests, including ones already generating.
+    const requests = yield* inbox.suggestionRequests(inFlight.size + unsettled.size + 1);
+    const request = requests.find(
+      ({ request_id }) => !inFlight.has(request_id) && !unsettled.has(request_id),
+    );
+    if (!request) return;
+
+    const latest = yield* readSuggestionPolicy();
+    if (latest.policy.kind === "off") {
+      yield* inbox.prepareSuggestions(INBOX_SUGGESTION_BATCH, false);
+      return;
+    }
+    return { current: latest.current, request };
+  });
+
+  const warnUnsettled = Effect.sync(() => logger.warn("Inbox suggestion pass could not settle"));
+  const recoverPass = Effect.catchCause((cause) =>
+    Cause.hasInterruptsOnly(cause) ? Effect.interrupt : warnUnsettled,
   );
-  return { drain };
+  type AdmittedRequest = NonNullable<Effect.Success<typeof nextRequest>>;
+  const startRequest = Effect.fnUntraced(function* ({ current, request }: AdmittedRequest) {
+    const fiber = yield* FiberSet.run(fibers, suggest(current, request), {
+      startImmediately: false,
+    });
+    inFlight.set(request.request_id, fiber);
+    return { requestId: request.request_id, fiber };
+  }, Effect.uninterruptible);
+
+  // The lane owns refill independently of the cancellable request it is waiting on.
+  type RunningRequest = Effect.Success<ReturnType<typeof startRequest>>;
+  const runLane = Effect.fnUntraced(function* (first: RunningRequest) {
+    let next: RunningRequest | undefined = first;
+    while (next) {
+      const { requestId, fiber } = next;
+      const settled = yield* Fiber.await(fiber);
+      next = yield* admission.withPermit(
+        Effect.gen(function* () {
+          inFlight.delete(requestId);
+          if (Exit.isFailure(settled) && !Cause.hasInterrupts(settled.cause)) {
+            // Only an ordinary trigger may retry a request whose settlement could not commit.
+            unsettled.add(requestId);
+            yield* warnUnsettled;
+            return;
+          }
+          const admitted = yield* nextRequest;
+          if (admitted) return yield* startRequest(admitted);
+        }),
+      );
+    }
+  }, recoverPass);
+
+  const trigger = admission
+    .withPermit(
+      Effect.gen(function* () {
+        unsettled.clear();
+        let next = yield* nextRequest;
+        while (next) {
+          // Start both fibers together so interruption cannot strand the request.
+          yield* startRequest(next).pipe(
+            Effect.flatMap((running) =>
+              FiberSet.run(fibers, runLane(running), { startImmediately: false }),
+            ),
+            Effect.uninterruptible,
+          );
+          next = yield* nextRequest;
+        }
+      }),
+    )
+    .pipe(recoverPass);
+
+  const reconcile = admission
+    .withPermit(
+      Effect.gen(function* () {
+        if (inFlight.size === 0) return [];
+        const pending = new Set(yield* inbox.pendingSuggestionRequestIds([...inFlight.keys()]));
+        return [...inFlight].filter(([id]) => !pending.has(id)).map(([, fiber]) => fiber);
+      }),
+    )
+    .pipe(
+      // Request cleanup and lane refill can proceed without holding the admission permit.
+      Effect.flatMap(Fiber.interruptAll),
+      Effect.catchCause((cause) =>
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.interrupt
+          : Effect.sync(() => logger.warn("Inbox suggestions could not be reconciled")),
+      ),
+    );
+
+  const drain = trigger.pipe(Effect.andThen(FiberSet.awaitEmpty(fibers)));
+  return { trigger, reconcile, drain };
 });
 
 export const live = Layer.effectDiscard(
   Effect.gen(function* () {
-    const { drain } = yield* make;
+    const { trigger, reconcile } = yield* make;
     const notifier = yield* DatabaseNotifierRuntime;
-    const triggers = Stream.merge(
-      notifier.inboxInvalidations.pipe(
-        Stream.filter((event) => event.reason === "inbox"),
-        Stream.map(() => undefined),
-      ),
-      Stream.fromSchedule(Schedule.spaced(SAFETY_POLL)).pipe(Stream.map(() => undefined)),
+    const settings = yield* ApplicationSettings;
+    yield* notifier.inboxInvalidations.pipe(
+      Stream.runForEach(() => reconcile),
+      Effect.forkScoped,
+    );
+    const triggers = Stream.mergeAll(
+      [
+        notifier.inboxInvalidations.pipe(
+          Stream.filter((event) => event.reason === "inbox"),
+          Stream.map(() => undefined),
+        ),
+        // A raised limit admits waiting messages without waiting for another message.
+        settings.inboxSettingsChanges.pipe(Stream.map(() => undefined)),
+        Stream.fromSchedule(Schedule.spaced(SAFETY_POLL)).pipe(
+          Stream.tap(() => reconcile),
+          Stream.map(() => undefined),
+        ),
+      ],
+      { concurrency: "unbounded" },
     );
     yield* triggers.pipe(
       Stream.debounce(`${SETTLE_DELAY_MS} millis`),
-      Stream.runForEach(() => drain),
+      Stream.runForEach(() => trigger),
       Effect.forkScoped,
     );
-    yield* Effect.sleep(`${SETTLE_DELAY_MS} millis`).pipe(Effect.andThen(drain), Effect.forkScoped);
+    yield* Effect.sleep(`${SETTLE_DELAY_MS} millis`).pipe(
+      Effect.andThen(trigger),
+      Effect.forkScoped,
+    );
   }),
 );

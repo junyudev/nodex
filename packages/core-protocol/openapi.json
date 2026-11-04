@@ -31849,6 +31849,24 @@
               {
                 "type": "object",
                 "required": [
+                  "page_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "stop_inbox_suggestion"
+                    ]
+                  },
+                  "page_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "request_id",
                   "generation",
                   "titles",
@@ -36917,6 +36935,28 @@
                     "type": "integer",
                     "format": "int32",
                     "minimum": 0
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "The supplied request IDs still eligible for generation, without their inputs.",
+                "required": [
+                  "request_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "inbox_pending_suggestion_request_ids"
+                    ]
+                  },
+                  "request_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 }
               },
@@ -42934,6 +42974,24 @@
                 ]
               },
               "request_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "stop_inbox_suggestion"
+                ]
+              },
+              "page_id": {
                 "type": "string"
               }
             }
@@ -52669,6 +52727,27 @@
                             "type": "array",
                             "items": {
                               "$ref": "#/components/schemas/ProjectWorkspaceInboxSuggestionRequest"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "request_ids",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "inbox_pending_suggestion_request_ids"
+                            ]
+                          },
+                          "request_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
                             }
                           }
                         }

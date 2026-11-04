@@ -368,6 +368,10 @@ pub(super) fn apply(
                         produced_by: produced_by.as_deref(),
                     },
                 ),
+                ProjectWorkspaceIntent::StopInboxSuggestion { page_id } => super::inbox::stop_suggestion(
+                    transaction, &library_id, &context, &store_epoch, &request.operation_id,
+                    &request_hash, page_id,
+                ),
                 intent @ (ProjectWorkspaceIntent::ConfirmInboxDispatch { .. }
                     | ProjectWorkspaceIntent::DispatchInboxEntries { .. }
                     | ProjectWorkspaceIntent::EditInboxMessage { .. }

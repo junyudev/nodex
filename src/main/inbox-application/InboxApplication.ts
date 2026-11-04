@@ -10,6 +10,7 @@ import type {
   InboxPreparedConfirmation,
   InboxDecisionResult,
   InboxSuggestionRequestInput,
+  InboxSuggestionStopInput,
   InboxUndoInput,
   InboxCounts,
   InboxDispatchAction,
@@ -42,6 +43,7 @@ import {
   InboxSetKindInputSchema,
   InboxSetStateInputSchema,
   InboxSuggestionRequestInputSchema,
+  InboxSuggestionStopInputSchema,
   InboxSummaryInputSchema,
   InboxWindowInputSchema,
 } from "../../shared/schemas/inbox";
@@ -56,6 +58,7 @@ import {
   inboxDispatchActionToCore,
   inboxItemFromCore,
   inboxScopeToCore,
+  inboxStopSuggestionToCore,
   inboxSummaryFromCore,
   type CoreInboxDispatchContext,
   type CoreInboxDispatchWork,
@@ -149,6 +152,10 @@ export class InboxApplication extends Context.Service<
     readonly setKind: (input: InboxSetKindInput) => InboxMutation;
     readonly setImportant: (input: InboxSetImportantInput) => InboxMutation;
     readonly requestSuggestion: (input: InboxSuggestionRequestInput) => InboxMutation;
+    readonly stopSuggestion: (input: InboxSuggestionStopInput) => InboxMutation;
+    readonly pendingSuggestionRequestIds: (
+      requestIds: readonly string[],
+    ) => InboxEffect<readonly string[]>;
     readonly prepareSuggestions: (limit: number, automatic: boolean) => InboxEffect<void>;
     readonly suggestionRequests: (
       limit: number,
@@ -187,14 +194,16 @@ export class InboxApplication extends Context.Service<
 
 // A Core refusal is written for the user, so it explains itself; a runtime or transport failure
 // keeps its safe message.
-const isNotFound = (cause: unknown): boolean => {
+const coreRefusal = (cause: unknown) => {
   const refusal = Schema.is(CoreRuntimeError)(cause) ? cause.cause : cause;
-  return refusal instanceof CoreModuleResponseError && refusal.coreError.code === "not_found";
+  return refusal instanceof CoreModuleResponseError ? refusal.coreError : null;
 };
 
+const isNotFound = (cause: unknown): boolean => coreRefusal(cause)?.code === "not_found";
+
 const errorMessage = (cause: unknown): string => {
-  const refusal = Schema.is(CoreRuntimeError)(cause) ? cause.cause : cause;
-  if (refusal instanceof CoreModuleResponseError) return refusal.coreError.message;
+  const refusal = coreRefusal(cause);
+  if (refusal) return refusal.message;
   return cause instanceof Error && cause.message.trim()
     ? cause.message
     : "The Inbox operation failed";
@@ -532,6 +541,26 @@ export const make = Effect.gen(function* () {
       `inbox.request:${parsed.requestId}`,
     );
   });
+  const stopSuggestion = Effect.fn("InboxApplication.stopSuggestion")(function* (
+    input: InboxSuggestionStopInput,
+  ) {
+    const parsed = yield* parse("stop-suggestion", () =>
+      InboxSuggestionStopInputSchema.parse(input),
+    );
+    return yield* mutate("stop-suggestion", inboxStopSuggestionToCore(parsed));
+  });
+  const pendingSuggestionRequestIds = (requestIds: readonly string[]) =>
+    read("pending-suggestion-request-ids", {
+      kind: "inbox_pending_suggestion_request_ids",
+      request_ids: requestIds,
+    }).pipe(
+      Effect.flatMap((snapshot) =>
+        parse(
+          "pending-suggestion-request-ids",
+          () => expectVariant(snapshot, "inbox_pending_suggestion_request_ids").request_ids,
+        ),
+      ),
+    );
   const prepareSuggestions = (limit: number, automatic: boolean) =>
     apply("prepare-suggestions", {
       kind: "prepare_inbox_suggestions",
@@ -548,8 +577,49 @@ export const make = Effect.gen(function* () {
         ),
       ),
     );
-  const settleSuggestion = (input: InboxSuggestionSettlement) =>
+  const writeSettlement = (input: InboxSuggestionSettlement) =>
     apply("settle-suggestion", { kind: "settle_inbox_suggestion", ...input }).pipe(Effect.asVoid);
+  const settlementRefusal = (failure: InboxApplicationError) => {
+    const refusal = coreRefusal(failure.cause);
+    switch (refusal?.code) {
+      case "invalid_input":
+      case "not_found":
+      case "conflict":
+      case "revision_conflict":
+        return refusal;
+      default:
+        return null;
+    }
+  };
+  const settleSuggestion = Effect.fn("InboxApplication.settleSuggestion")(function* (
+    input: InboxSuggestionSettlement,
+  ) {
+    const result = yield* writeSettlement(input).pipe(Effect.result);
+    if (result._tag === "Success") return;
+    const refusal = settlementRefusal(result.failure);
+    if (!refusal) return yield* result.failure;
+
+    // A lost target can reject advice even when its request is still current.
+    const ids = [input.request_id];
+    if (!(yield* pendingSuggestionRequestIds(ids)).length) return;
+    if (input.error !== null) return yield* result.failure;
+    yield* writeSettlement({
+      request_id: input.request_id,
+      generation: input.generation,
+      titles: [],
+      suggestions: [],
+      produced_by: null,
+      error: refusal.message,
+    }).pipe(
+      Effect.catch((failure) => {
+        if (!settlementRefusal(failure)) return Effect.fail(failure);
+        // Stop or replacement can win between the pending check and this write.
+        return pendingSuggestionRequestIds(ids).pipe(
+          Effect.flatMap((pending) => (pending.length ? Effect.fail(failure) : Effect.void)),
+        );
+      }),
+    );
+  });
 
   const retryDispatch = Effect.fn("InboxApplication.retryDispatch")(function* (
     input: InboxProposalInput,
@@ -763,6 +833,8 @@ export const make = Effect.gen(function* () {
     setKind,
     setImportant,
     requestSuggestion,
+    stopSuggestion,
+    pendingSuggestionRequestIds,
     prepareSuggestions,
     suggestionRequests,
     settleSuggestion,

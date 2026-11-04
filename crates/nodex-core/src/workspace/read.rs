@@ -102,6 +102,16 @@ pub(super) fn read(
                 requests: super::inbox::read_requests(connection, context, library_id, limit)?,
             })
         }
+        ProjectWorkspaceRead::InboxPendingSuggestionRequestIds { request_ids } => Ok(
+            ProjectWorkspaceReadValue::InboxPendingSuggestionRequestIds {
+                request_ids: super::inbox::read_pending_request_ids(
+                    connection,
+                    context,
+                    library_id,
+                    &request_ids,
+                )?,
+            },
+        ),
         ProjectWorkspaceRead::InboxSummary { scope } => {
             Ok(ProjectWorkspaceReadValue::InboxSummary {
                 summary: super::inbox_read::read_summary(connection, context, library_id, &scope)?,

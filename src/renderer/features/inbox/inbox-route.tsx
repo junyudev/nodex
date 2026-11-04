@@ -53,7 +53,6 @@ import { InboxMessage, InboxMessageMenu } from "./inbox-message";
 import { INBOX_EASE_OUT, InboxStreamItem } from "./inbox-stream-item";
 import {
   INBOX_VIEW_LABELS,
-  inboxAwaitingIndicatorPageId,
   inboxBuriedImportant,
   inboxTimestampSeparators,
   type InboxOutcomeTarget,
@@ -339,10 +338,6 @@ export function InboxRoute({
   const suggestionsOffered = inboxSuggestionsOffered(policy);
   const entries = streamEntries(inboxItems, nowMs);
   const anchors = groupAnchors(inboxItems);
-  const awaitingPageId = inboxAwaitingIndicatorPageId(
-    inboxItems.filter((item) => !departures.outcomeOf(item.pageId)),
-    policy,
-  );
   const keysByPage = new Map(
     inboxItems.map((item) => [item.pageId, item.pageKey ?? "another message"]),
   );
@@ -472,7 +467,6 @@ export function InboxRoute({
         agents={agents}
         inboxProjectId={inboxProjectId}
         policy={policy}
-        awaitingIndicator={item.pageId === awaitingPageId}
         decided={departures.outcomeOf(item.pageId)}
         actions={actions}
         manualDraft={manualDrafts[item.pageId] ?? null}

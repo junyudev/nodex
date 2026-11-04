@@ -52,6 +52,7 @@ const choice = (
 const settings: InboxSettings = {
   suggestions: "automatic",
   suggestionAgent: choice(claude.instanceId),
+  suggestionConcurrency: 5,
   instructions: "Prefer existing chats when relevant.",
   chatAgent: choice("codex"),
   suggestionsChooseModels: true,

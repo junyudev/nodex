@@ -121,6 +121,7 @@ export const live: Layer.Layer<
     yield* command("inbox:request-suggestion", (_, input) =>
       committed(inbox.requestSuggestion(input)),
     );
+    yield* command("inbox:stop-suggestion", (_, input) => committed(inbox.stopSuggestion(input)));
     yield* command("inbox:retry-dispatch", (_, input) => committed(inbox.retryDispatch(input)));
     yield* command("inbox:undo", (_, input) => committed(inbox.undo(input)));
   }),

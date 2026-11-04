@@ -295,6 +295,23 @@ to sixteen, rather than being split by the automatic batch size. Each request
 and response is fenced by its identity; an old success or failure cannot
 replace a newer request.
 
+Up to five requests run at once, oldest first, so one slow suggestion never holds
+up the messages behind it. `Settings → Inbox` changes the limit, from one to
+sixteen. Raising it admits waiting messages at once; lowering it stops nothing
+already running, and new requests wait until fewer are. Messages sent while the
+limit is reached wait for the next free place and are gathered into one request
+then, which keeps a long burst from spending a request per message. Requests
+running at once do not see each other's advice.
+
+A running suggestion can be stopped from its spinner, which becomes a stop button
+under the pointer or keyboard focus. Stopping ends the work and the usage it
+spends at once, for a message still waiting its turn as well as one being read.
+The message keeps any advice it already had, or otherwise has none and offers
+`Suggest`; it is not asked again on its own. A message gathered with others stops
+alone, and the others are gathered again without it. A group asked about together
+is one decision, so it stops together. If advice lands as the user stops, the
+advice stays.
+
 Suggestions cover only open messages whose Pages are active. Archiving or
 deleting a Page withdraws the whole request or unconfirmed proposal that
 included it; its remaining open messages have no advice until the user asks. A
@@ -402,8 +419,10 @@ never invent a destination, and every Agent, model and effort it names must be
 one it was offered, since Nodex starts the chat on it exactly. An explicit group produces one concrete suggestion
 covering all its members. Generation and transport failures remain failures
 with Retry; they do not masquerade as completed advice. A failure names its own
-cause: a timeout, missing sign-in, a rate limit, or an answer too long or in a
-form Nodex cannot read. A suggestion's time budget is three minutes, the longest
+cause: a timeout, missing sign-in, a rate limit, an answer too long or in a form
+Nodex cannot read, or the Agent's own reason when it gives one. Advice Core will
+not accept is a failure too, so it is not generated again until the user retries;
+one message's failure never holds up the others. A suggestion's time budget is three minutes, the longest
 any utility request may run, and the Agent Runtime waits all of it, so a slow
 suggestion fails only as its own timeout.
 
@@ -439,9 +458,10 @@ asking for work, share a circle around a check or a question mark. The strip
 and its row show one of these:
 
 - **Suggestion running:** no strip. The `Handle manually` icon decides by hand
-  without waiting. Only the newest such message shows a small spinner at the end
-  of its row, the place where its decision appears once advice arrives. The spinner
-  ends where the card's bottom-right corner curve meets its bottom edge.
+  without waiting. Every message waiting for advice shows a small spinner at the
+  end of its row, the place where its decision appears once advice arrives. The
+  spinner ends where the card's bottom-right corner curve meets its bottom edge,
+  and is also how the suggestion is stopped.
 - **Suggestion:**
   - for a new chat or a send to a chat, the prompt it will send, read like the
     message above it: the same size and color, the card's full width, and
@@ -773,6 +793,7 @@ creates a second message, and does not count against the Agent budget again.
   - what suggestions run on, chosen with the composer's model menu among the
     Agents that can write suggestions: the Agent, its model, and the model's
     effort and speed;
+  - how many suggestions run at once, five by default;
   - free-text routing preferences: the user's standing instructions to the
     suggestion Agent, which outrank Nodex's own guidance;
   - whether a chat the Inbox starts opens with its message Pages in its right

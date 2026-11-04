@@ -799,6 +799,94 @@ fn invalidate(connection: &Connection, pages: &[String], now: &str) -> Result<()
     connection.execute("UPDATE inbox_entries SET suggestion_request_id=NULL,suggestion_state='none',suggestion_error=NULL,current_proposal_id=NULL,revision=revision+1,updated_at=?2 WHERE state='open' AND (page_id IN (SELECT value FROM json_each(?1)) OR suggestion_request_id IN (SELECT request_id FROM inbox_suggestion_requests WHERE state='superseded') OR current_proposal_id IN (SELECT proposal_id FROM inbox_proposal_pages WHERE page_id IN (SELECT value FROM json_each(?1))))",params![ids,now])?;
     supersede_open_proposals(connection, pages, "superseded", now)
 }
+fn supersede_request(connection: &Connection, id: &str, now: &str) -> Result<(), StoreError> {
+    connection.execute(
+        "UPDATE inbox_suggestion_requests SET state='superseded',generation=generation+1,updated_at=?2
+         WHERE request_id=?1 AND state IN ('pending','failed')",
+        params![id, now],
+    )?;
+    Ok(())
+}
+
+pub(in crate::workspace) fn stop_suggestion(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    page_id: &str,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    validate_id("page_id", page_id)?;
+    require_live_entries(connection, library_id, &[page_id.to_owned()])?;
+    let now = sqlite_now(connection)?;
+    let target: Option<(Option<String>, bool)> = connection
+        .query_row(
+            "SELECT request.request_id, COALESCE(request.mode='auto', FALSE)
+             FROM inbox_entries entry
+             LEFT JOIN inbox_suggestion_requests request
+               ON request.request_id=entry.suggestion_request_id
+               AND request.library_id=entry.library_id AND request.state='pending'
+             WHERE entry.library_id=?1 AND entry.page_id=?2 AND entry.state='open'
+               AND entry.suggestion_state IN ('waiting','pending')",
+            params![library_id, page_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((request_id, automatic)) = target else {
+        return super::super::mutation::finish_no_op(
+            connection,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            "inbox_stop_suggestion",
+            Vec::new(),
+            Vec::new(),
+            &now,
+        );
+    };
+    run_mutation(
+        connection,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        &now,
+        |_| {
+            if let Some(id) = &request_id {
+                supersede_request(connection, id, &now)?;
+            }
+            let mut effects = simple_effects("inbox_stop_suggestion", &now);
+            effects.page_ids = connection
+                .prepare(
+                    "UPDATE inbox_entries AS entry SET
+               suggestion_request_id=NULL, suggestion_error=NULL,
+               suggestion_state=CASE
+                 WHEN page_id<>?2 AND ?4 AND state='open' AND EXISTS (
+                   SELECT 1 FROM blocks WHERE id=entry.page_id AND lifecycle='active'
+                 ) THEN 'waiting'
+                 WHEN suggestion_state='pending' AND EXISTS (
+                   SELECT 1 FROM inbox_proposals
+                   WHERE proposal_id=entry.current_proposal_id AND state='open'
+                 ) THEN 'settled'
+                 ELSE 'none'
+               END,
+               revision=revision+1, updated_at=?5
+             WHERE library_id=?1 AND (page_id=?2 OR suggestion_request_id=?3)
+             RETURNING page_id",
+                )?
+                .query_map(
+                    params![library_id, page_id, request_id, automatic, now],
+                    |row| row.get(0),
+                )?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            effects.page_ids.sort();
+            Ok(effects)
+        },
+    )
+}
+
 /// A new request replaces prior work, while each member keeps its last visible advice.
 fn supersede_requests(
     connection: &Connection,
@@ -1013,9 +1101,40 @@ fn pending_requests(
     library_id: &str,
 ) -> Result<Vec<PendingRequest>, StoreError> {
     // Filter lifecycle changes before windowing; bad inputs are handled per request below.
-    Ok(connection.prepare(&format!("SELECT request_id,generation,mode,basis_json,proposal_id,expected_revision,correction FROM inbox_suggestion_requests WHERE library_id=?1 AND state='pending' AND request_id NOT IN ({STALE_REQUESTS}) ORDER BY created_at,request_id"))?.query_map([library_id],|row|Ok(PendingRequest {
+    let live = pending_request_filter();
+    Ok(connection.prepare(&format!("SELECT request_id,generation,mode,basis_json,proposal_id,expected_revision,correction FROM inbox_suggestion_requests WHERE {live} ORDER BY created_at,request_id"))?.query_map([library_id],|row|Ok(PendingRequest {
         id:row.get(0)?,generation:row.get(1)?,mode:row.get(2)?,basis:row.get(3)?,proposal_id:row.get(4)?,expected_revision:row.get(5)?,correction:row.get(6)?,
     }))?.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+fn pending_request_filter() -> String {
+    format!("library_id=?1 AND state='pending' AND request_id NOT IN ({STALE_REQUESTS})")
+}
+
+pub(in crate::workspace) fn read_pending_request_ids(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    request_ids: &[String],
+) -> Result<Vec<String>, StoreError> {
+    require_host(context)?;
+    if request_ids.len() > 16 {
+        return Err(invalid(
+            "At most 16 suggestion requests can be checked at once",
+        ));
+    }
+    for id in request_ids {
+        validate_id("request_id", id)?;
+    }
+    let live = pending_request_filter();
+    let ids = encode(request_ids)?;
+    Ok(connection
+        .prepare(&format!(
+            "SELECT request_id FROM inbox_suggestion_requests WHERE {live}
+         AND request_id IN (SELECT value FROM json_each(?2)) ORDER BY created_at,request_id"
+        ))?
+        .query_map(params![library_id, ids], |row| row.get(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
 fn pickup_request(
@@ -1237,12 +1356,7 @@ fn reconcile_advice(
         .collect::<rusqlite::Result<Vec<_>>>()?;
     for id in requests {
         invalidate(connection, &request_pages(connection, &id)?, now)?;
-        connection.execute(
-            "UPDATE inbox_suggestion_requests \
-             SET state='superseded',generation=generation+1,updated_at=?2 \
-             WHERE request_id=?1 AND state IN ('pending','failed')",
-            params![id, now],
-        )?;
+        supersede_request(connection, &id, now)?;
     }
     for (id, reason) in unreadable_requests(connection, library_id)? {
         fail_request(connection, &id, &reason, now)?;

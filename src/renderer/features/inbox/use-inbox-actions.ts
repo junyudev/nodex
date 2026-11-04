@@ -31,6 +31,7 @@ import {
   setInboxEntryImportant,
   setInboxEntryKind,
   setInboxEntryState,
+  stopInboxSuggestion,
   undoInboxDecision,
 } from "@/lib/inbox-runtime";
 import { CoreApiError } from "@/lib/core-api-error";
@@ -79,6 +80,7 @@ export interface InboxActions {
     basis: readonly InboxPageBasis[],
     refine?: { readonly proposal: InboxProposal; readonly correction: string },
   ) => Promise<boolean>;
+  readonly stopSuggestion: (pageId: string) => Promise<boolean>;
   readonly retryDispatch: (proposalId: string) => Promise<boolean>;
 }
 
@@ -413,6 +415,8 @@ export function useInboxActions(
             : {}),
         }),
       ),
+    stopSuggestion: (pageId) =>
+      run("The suggestion could not be stopped", () => stopInboxSuggestion({ pageId })),
     retryDispatch: (proposalId) =>
       run("The dispatch could not be retried", () => retryInboxDispatch({ proposalId })),
   };

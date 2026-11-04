@@ -10,7 +10,6 @@ import {
   formatInboxTime,
   formatInboxWhen,
   groupInboxItemsByDay,
-  inboxAwaitingIndicatorPageId,
   inboxBuriedImportant,
   inboxPageStatusMark,
   describeInboxSuggestionPause,
@@ -128,19 +127,6 @@ const PAUSED: InboxSuggestionPolicy = {
     resetsAt: "2026-10-16T10:00:00.000Z",
   },
 };
-
-describe("inboxAwaitingIndicatorPageId", () => {
-  it("marks only the newest message still waiting for advice", () => {
-    const waiting = (pageId: string) => item({ pageId, suggestionState: "pending" });
-    const advised = item({ pageId: "page:advised", proposal: proposal() });
-    expect(
-      inboxAwaitingIndicatorPageId([waiting("page:a"), waiting("page:b"), advised], AUTOMATIC),
-    ).toBe("page:b");
-    expect(inboxAwaitingIndicatorPageId([advised], AUTOMATIC)).toBeNull();
-    // Nothing is working on a message while suggestions are off.
-    expect(inboxAwaitingIndicatorPageId([waiting("page:a")], OFF)).toBeNull();
-  });
-});
 
 describe("inboxPageRoutingContext", () => {
   it("reads a message from where its Page lives now", () => {

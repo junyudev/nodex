@@ -466,6 +466,7 @@ type CoreLocalCommitCommandEndpointPolicy =
   | "inbox:set-kind"
   | "inbox:set-important"
   | "inbox:request-suggestion"
+  | "inbox:stop-suggestion"
   | "inbox:retry-dispatch"
   | "inbox:undo"
   | "document-recovery:apply"

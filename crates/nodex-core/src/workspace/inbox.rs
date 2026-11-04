@@ -12,7 +12,9 @@
 pub(super) mod reliable;
 #[path = "inbox_scheduled.rs"]
 pub(crate) mod scheduled;
-pub(super) use reliable::{apply_reliable, read_requests};
+pub(super) use reliable::{
+    apply_reliable, read_pending_request_ids, read_requests, stop_suggestion,
+};
 pub(super) use scheduled::{hold_scheduled_firing, refresh_scheduled_firing};
 use std::collections::BTreeSet;
 

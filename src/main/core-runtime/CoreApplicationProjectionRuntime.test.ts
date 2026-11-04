@@ -12,12 +12,13 @@ import { AutomationRoutingIndex } from "./AutomationRoutingIndex";
 import { CoreApplicationProjectionRuntime, live } from "./CoreApplicationProjectionRuntime";
 
 it.effect(
-  "projects Automation commits and full resynchronization through owning capabilities",
+  "projects Automation, Page, and resynchronization changes through owning capabilities",
   () =>
     Effect.gen(function* () {
       const scheduledEvents: unknown[] = [];
       const runEvents: unknown[] = [];
       const libraryEvents: unknown[] = [];
+      const inboxEvents: unknown[] = [];
       const projectEvents: unknown[] = [];
       const sessionEvents: unknown[] = [];
       let synchronizeCount = 0;
@@ -35,7 +36,10 @@ it.effect(
           Effect.sync(() => {
             sessionEvents.push(event);
           }),
-        notifyInboxChanged: () => Effect.void,
+        notifyInboxChanged: (event) =>
+          Effect.sync(() => {
+            inboxEvents.push(event);
+          }),
         projectSessionInvalidations: Stream.empty,
         inboxInvalidations: Stream.empty,
       });
@@ -103,17 +107,44 @@ it.effect(
         { automationId: "daily-report", runId: "thread:daily-report", reason: "settle" },
       ]);
 
-      yield* runtime.publishResync({
+      const pageChange = createCoreLocalCommitFixture({
         commitSeq: 9,
+        storeEpoch: "epoch:test",
+        payload: {
+          module: "library",
+          library_id: "library-1",
+          event: {
+            kind: "library_changed",
+            page_ids: ["page-1"],
+            database_ids: [],
+            view_ids: [],
+            parent_keys: [],
+            file_revisions: {},
+            page_file_manifest_invalidations: {},
+            page_file_body_usage_revisions: {},
+            page_file_content_invalidations: {},
+          },
+        },
+      });
+      yield* runtime.publish(
+        { transport_version: 4, packet: pageChange },
+        pageChange.atoms[0]!,
+        "library-1",
+      );
+      assert.deepEqual(inboxEvents, [{ reason: "content" }]);
+      assert.lengthOf(libraryEvents, 1);
+
+      yield* runtime.publishResync({
+        commitSeq: 10,
         libraryId: "library-1",
         storeEpoch: "epoch:test",
       });
-      assert.deepEqual(libraryEvents, [
+      assert.deepEqual(libraryEvents.slice(1), [
         {
           version: 1,
           libraryId: "library-1",
           storeEpoch: "epoch:test",
-          commitSeq: 9,
+          commitSeq: 10,
           changeKind: "content",
           affectedParentKeys: ["library", "catalog"],
           affectedPageIds: [],

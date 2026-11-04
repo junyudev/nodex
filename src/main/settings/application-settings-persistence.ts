@@ -107,6 +107,7 @@ import {
   DEFAULT_INBOX_SETTINGS,
   INBOX_SUGGESTION_MODES,
   MAX_INBOX_INSTRUCTIONS_CHARS,
+  clampInboxSuggestionConcurrency,
   decodeInboxAgentBinding,
   encodeInboxAgentBinding,
   type InboxAgentChoice,
@@ -151,6 +152,7 @@ interface ServerTomlConfig {
   inbox_suggestion_model?: string;
   inbox_suggestion_effort?: string;
   inbox_suggestion_speed?: string;
+  inbox_suggestion_concurrency?: number;
   inbox_instructions?: string;
   inbox_chat_agent?: string;
   inbox_chat_model?: string;
@@ -1355,6 +1357,11 @@ function inboxSettingsFromConfig(config: ServerTomlConfig): InboxSettings {
       },
       DEFAULT_INBOX_SETTINGS.suggestionAgent,
     ),
+    suggestionConcurrency:
+      typeof config.inbox_suggestion_concurrency === "number" &&
+      Number.isFinite(config.inbox_suggestion_concurrency)
+        ? clampInboxSuggestionConcurrency(config.inbox_suggestion_concurrency)
+        : DEFAULT_INBOX_SETTINGS.suggestionConcurrency,
     instructions:
       typeof config.inbox_instructions === "string"
         ? config.inbox_instructions.slice(0, MAX_INBOX_INSTRUCTIONS_CHARS)
@@ -1397,6 +1404,7 @@ export function updateInboxSettings(
     ...loadProfileServerTomlConfig(source),
     inbox_suggestions: next.suggestions,
     inbox_suggestion_agent: encodeInboxAgentBinding(next.suggestionAgent),
+    inbox_suggestion_concurrency: next.suggestionConcurrency,
     inbox_instructions: next.instructions,
     inbox_chat_agent: encodeInboxAgentBinding(next.chatAgent),
     inbox_suggestions_choose_models: next.suggestionsChooseModels,

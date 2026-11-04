@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import { openNodexMenu, render } from "@/test/dom";
@@ -86,6 +86,7 @@ const actions = (): InboxActions => ({
   setKind: vi.fn(async () => true),
   setImportant: vi.fn(async () => true),
   requestSuggestion: vi.fn(async () => true),
+  stopSuggestion: vi.fn(async () => true),
   retryDispatch: vi.fn(async () => true),
 });
 
@@ -170,7 +171,6 @@ describe("InboxTriage", () => {
           projects={[]}
           agents={inboxAgentsFixture()}
           policy={{ kind: "automatic" }}
-          awaitingIndicator
           actions={actions()}
           manualDraft={null}
           groupedWithKey={null}
@@ -194,9 +194,26 @@ describe("InboxTriage", () => {
     expect(onManualDraftChange).toHaveBeenCalledWith(draftForInboxItem(waiting, null));
     unmount();
 
-    renderTriage({ item: item({ suggestionState: "settled" }), awaitingIndicator: true });
+    renderTriage({ item: item({ suggestionState: "settled" }) });
     expect(screen.queryByRole("status", { name: "Finding where this goes" })).toBeNull();
     expect(screen.getByRole("button", { name: "New chat in Nodex" })).toBeTruthy();
+  });
+
+  test("stopping asks for that message, whether it is waiting or being advised again", async () => {
+    const commands = actions();
+    renderTriage(
+      { item: item({ kind: null, suggestionState: "pending", proposal: null }) },
+      commands,
+    );
+    await click("Stop suggesting");
+    expect(commands.stopSuggestion).toHaveBeenLastCalledWith("page:1");
+    cleanup();
+
+    // Its earlier advice stays beside the spinner, so stopping loses nothing.
+    renderTriage({ item: item({ suggestionState: "pending" }) }, commands);
+    expect(screen.getByRole("button", { name: "New chat in Nodex" })).toBeTruthy();
+    await click("Stop suggesting");
+    expect(commands.stopSuggestion).toHaveBeenCalledTimes(2);
   });
 
   test("a manual decision before advice arrives stays inside its Project Inbox", () => {

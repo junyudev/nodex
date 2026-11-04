@@ -353,6 +353,7 @@ const buildHarness = (input: {
                 terminalShellSettingsChanges: Stream.empty,
                 usageMeterSettingsChanges: Stream.empty,
                 composerPredictionSettingsChanges: Stream.empty,
+                inboxSettingsChanges: Stream.empty,
                 linkOpeningSettingsChanges: Stream.empty,
                 acpLaunchConfiguration: () => Effect.die("Unused ACP launch configuration"),
                 openCodeLaunchConfiguration: () =>

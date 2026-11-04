@@ -10,6 +10,7 @@ import type { PageChatActivitySummary } from "@/lib/types";
 import { installRendererThemeFixture } from "@/test/renderer-theme";
 import { inboxNewChatAction, type InboxItem, type InboxProposal } from "../../../shared/inbox";
 import { InboxMessage } from "./inbox-message";
+import type { InboxOutcome } from "./inbox-presentation";
 import { InboxStreamItem } from "./inbox-stream-item";
 import { inboxAgentsFixture } from "./inbox-agents.test-support";
 import { InboxTriage } from "./inbox-triage";
@@ -49,13 +50,13 @@ const actions = new Proxy({} as InboxActions, { get: () => vi.fn(async () => tru
 function StreamMessage({
   item,
   selected = false,
-  awaitingIndicator = true,
+  decided = null,
   linkedChats = null,
   onOpenPage = openNothing,
 }: {
   item: InboxItem;
   selected?: boolean;
-  awaitingIndicator?: boolean;
+  decided?: InboxOutcome | null;
   linkedChats?: PageChatActivitySummary | null;
   onOpenPage?: () => void;
 }) {
@@ -66,7 +67,8 @@ function StreamMessage({
         projects={[]}
         agents={inboxAgentsFixture()}
         policy={{ kind: "automatic" }}
-        awaitingIndicator={awaitingIndicator}
+        decided={decided}
+        onOpenSession={vi.fn()}
         actions={actions}
         manualDraft={null}
         groupedWithKey={null}
@@ -125,25 +127,71 @@ async function settleMessageLayout() {
   });
 }
 
-test("the waiting spinner ends where the bubble's bottom-right corner curve ends", async () => {
+test("the waiting spinner becomes Stop in place, ending where the bubble's corner curve ends", async () => {
   render(
     <Stream>
       <StreamMessage key="page:1" item={waiting} />
     </Stream>,
   );
   await settleMessageLayout();
-  const corner = cornerEnd();
-  const spinner = screen
-    .getByRole("status", { name: "Finding where this goes" })
-    .getBoundingClientRect();
-  expect(spinner.top).toBeGreaterThanOrEqual(corner.bubble.bottom);
-  expect(spinner.right).toBeCloseTo(corner.x, 0);
+  const stop = screen.getByRole("button", { name: "Stop suggesting" });
+  expect(stop.getBoundingClientRect().top).toBeGreaterThanOrEqual(cornerEnd().bubble.bottom);
+  const spinner = stop.querySelector("[data-activity-spinner]")!;
+  const square = stop.querySelector(":scope > svg")!;
+  expect(getComputedStyle(spinner).display).not.toBe("none");
+  expect(getComputedStyle(square).display).toBe("none");
+
+  await act(async () => {
+    await userEvent.hover(stop);
+    // Its tooltip opens and positions itself over the frames that follow.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+  await expect.poll(() => getComputedStyle(square).display).toBe("block");
+  expect(getComputedStyle(spinner).display).toBe("none");
+  // Only the still square can be measured: a spinning glyph's bounds change as it turns. Hovering
+  // scrolls the target into view, so the corner is read after it.
+  expect(Math.abs(square.getBoundingClientRect().right - cornerEnd().x)).toBeLessThanOrEqual(1);
+
+  // The pointer outlives this test, and would hover whatever the next one renders here.
+  await act(async () => {
+    await userEvent.unhover(stop);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+});
+
+test("every message waiting for advice shows its own spinner", async () => {
+  const another: InboxItem = {
+    ...waiting,
+    pageId: "page:2",
+    basis: { pageId: "page:2", contentHash: "content:2" },
+    pageKey: "IN-2",
+  };
+  render(
+    <Stream>
+      <StreamMessage key="page:1" item={waiting} />
+      <StreamMessage key="page:2" item={another} />
+    </Stream>,
+  );
+  await settleMessageLayout();
+  expect(screen.getAllByRole("status", { name: "Finding where this goes" })).toHaveLength(2);
 });
 
 test("a row of icons ends its last glyph where the bubble's corner curve ends", async () => {
   render(
     <Stream>
-      <StreamMessage key="page:1" item={waiting} awaitingIndicator={false} />
+      <StreamMessage
+        key="page:1"
+        item={waiting}
+        decided={{
+          icon: "chat",
+          label: "Sent to a new chat",
+          status: null,
+          open: { kind: "session", sessionId: "session:1" },
+          canReturn: false,
+          done: null,
+          inProgress: true,
+        }}
+      />
     </Stream>,
   );
   await settleMessageLayout();

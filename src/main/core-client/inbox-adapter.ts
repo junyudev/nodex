@@ -10,6 +10,7 @@ import type {
   InboxScope,
   InboxSource,
   InboxSummary,
+  InboxSuggestionStopInput,
   InboxThreadStatus,
   InboxPageBasis,
   InboxExecutionSelection,
@@ -126,6 +127,13 @@ export const inboxPageBasisToCore = (basis: InboxPageBasis): CoreInboxPageBasis 
   page_id: basis.pageId,
   content_hash: basis.contentHash,
 });
+export const inboxStopSuggestionToCore = (
+  input: InboxSuggestionStopInput,
+): Extract<Schemas["ProjectWorkspaceIntent"], { kind: "stop_inbox_suggestion" }> => ({
+  kind: "stop_inbox_suggestion",
+  page_id: input.pageId,
+});
+
 export const inboxExecutionSelectionToCore = (
   selection: InboxExecutionSelection | null | undefined,
 ): CoreInboxExecutionSelection | null =>

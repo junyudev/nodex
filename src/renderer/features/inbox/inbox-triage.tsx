@@ -23,6 +23,7 @@ import {
   EditIcon,
   RefreshIcon,
   RetryIcon,
+  StopIcon,
   ThreadIcon,
 } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
@@ -111,28 +112,37 @@ function Notice({
   );
 }
 
-/** Advice on its way, held in the place an icon or the decision takes once it arrives. */
+/** A spinner that becomes a stop square while the button holding it is hovered or focused. */
+function AdviceGlyph({ className }: { readonly className?: string }) {
+  return (
+    <>
+      <ActivitySpinnerIcon
+        className={className}
+        containerClassName="[button:focus-visible_&]:hidden [button:hover_&]:hidden"
+      />
+      <StopIcon
+        className={cn("hidden [button:focus-visible_&]:block [button:hover_&]:block", className)}
+      />
+    </>
+  );
+}
+
+/**
+ * Advice on its way, held in the place an icon or the decision takes once it arrives. It can take
+ * minutes and spends usage, so it is also how the user stops it.
+ */
 function AdviceSpinner({
-  className,
   solid = false,
+  onStop,
 }: {
-  readonly className?: string;
   /** Holds the place of the row's primary button, in its colors. */
   readonly solid?: boolean;
+  readonly onStop: () => void;
 }) {
+  const Action = solid ? SolidIconAction : InboxIconAction;
   return (
-    <span
-      role="status"
-      aria-label="Finding where this goes"
-      className={cn(
-        "flex",
-        solid
-          ? "size-6 items-center justify-center rounded-md bg-primary-solid text-primary-solid"
-          : "text-token-description-foreground",
-        className,
-      )}
-    >
-      <ActivitySpinnerIcon className="icon-xs" />
+    <span role="status" aria-label="Finding where this goes" className="flex">
+      <Action label="Stop suggesting" icon={AdviceGlyph} onClick={onStop} />
     </span>
   );
 }
@@ -426,7 +436,6 @@ export function InboxTriage({
   onOpenPage,
   onOpenSession,
   onOpenScheduledTask,
-  awaitingIndicator = false,
   decided = null,
 }: {
   readonly item: InboxItem;
@@ -435,8 +444,6 @@ export function InboxTriage({
    * until the message folds away, so a decision never makes a message simply vanish.
    */
   readonly decided?: InboxOutcome | null;
-  /** Shows the spinner of the newest message still waiting for advice. */
-  readonly awaitingIndicator?: boolean;
   readonly members?: readonly InboxGroupMember[];
   readonly onOpenPage?: (pageId: string) => void;
   readonly onOpenSession?: (sessionId: string) => void;
@@ -616,6 +623,8 @@ export function InboxTriage({
     };
   };
 
+  const stopAdvice = () => void actions.stopSuggestion(item.pageId);
+
   const parts = (): InboxRowParts => {
     if (decided) return outcomeParts(decided);
     if (manualDraft) {
@@ -677,12 +686,8 @@ export function InboxTriage({
                 {menuNode}
                 {doneAction}
                 {handleManuallyAction}
+                <AdviceSpinner onStop={stopAdvice} />
               </InboxIconActions>
-              {awaitingIndicator ? (
-                // Ends where the card's corner curve meets its bottom edge, not at the
-                // outer edge the curve has already left.
-                <AdviceSpinner className="mr-(--inbox-card-radius)" />
-              ) : null}
             </Row>
           ),
         };
@@ -728,7 +733,7 @@ export function InboxTriage({
               <InboxIconActions>
                 {menuNode}
                 {asksAgainFirst ? null : model.refreshing ? (
-                  <AdviceSpinner className="size-6 items-center justify-center" />
+                  <AdviceSpinner onStop={stopAdvice} />
                 ) : offers.suggest ? (
                   <InboxIconAction
                     label={model.refreshError ? "Retry" : "Suggest again"}
@@ -772,7 +777,7 @@ export function InboxTriage({
               />
               {asksAgainFirst ? (
                 model.refreshing ? (
-                  <AdviceSpinner solid />
+                  <AdviceSpinner solid onStop={stopAdvice} />
                 ) : (
                   <SolidIconAction
                     label={model.refreshError ? "Retry" : "Suggest again"}

@@ -426,9 +426,9 @@ const model = {
   description: "Queue parity scenario model",
   modelSpecialty: null,
   hidden: false,
-  supportedReasoningEfforts: [
-    { reasoningEffort: "medium", description: "Balanced test reasoning" },
-  ],
+  supportedReasoningEfforts: (process.env.NODEX_FAKE_CODEX_REASONING_EFFORTS ?? "medium")
+    .split(",")
+    .map((reasoningEffort) => ({ reasoningEffort, description: "Test reasoning" })),
   defaultReasoningEffort: "medium",
   inputModalities: ["text", "image"],
   supportsPersonality: false,

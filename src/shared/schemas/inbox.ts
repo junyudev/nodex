@@ -4,6 +4,7 @@ import {
   MAX_INBOX_ADDITION_CHARS,
   MAX_INBOX_ADDITIONS,
   MAX_INBOX_INSTRUCTIONS_CHARS,
+  MAX_INBOX_SUGGESTION_CONCURRENCY,
   type InboxAgentChoice,
   type UpdateInboxSettingsInput,
 } from "../inbox";
@@ -13,6 +14,7 @@ import type {
   InboxPreparedConfirmation,
   InboxExecutionSelection,
   InboxSuggestionRequestInput,
+  InboxSuggestionStopInput,
   InboxUndoInput,
   InboxPageBasis,
   InboxChatTargetsInput,
@@ -276,6 +278,10 @@ export const InboxSuggestionRequestInputSchema = z
       });
   }) satisfies z.ZodType<InboxSuggestionRequestInput>;
 
+export const InboxSuggestionStopInputSchema = z
+  .object({ pageId: id })
+  .strict() satisfies z.ZodType<InboxSuggestionStopInput>;
+
 export const InboxSetStateInputSchema = z
   .object({ pageIds: pageIds(MAX_INBOX_BULK_PAGES), state: InboxEntryStateSchema })
   .strict() satisfies z.ZodType<InboxSetStateInput>;
@@ -292,6 +298,7 @@ export const UpdateInboxSettingsInputSchema = z
   .object({
     suggestions: z.enum(INBOX_SUGGESTION_MODES).optional(),
     suggestionAgent: InboxAgentChoiceSchema.optional(),
+    suggestionConcurrency: z.number().int().min(1).max(MAX_INBOX_SUGGESTION_CONCURRENCY).optional(),
     instructions: z.string().max(MAX_INBOX_INSTRUCTIONS_CHARS).optional(),
     chatAgent: InboxAgentChoiceSchema.optional(),
     suggestionsChooseModels: z.boolean().optional(),

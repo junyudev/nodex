@@ -1116,6 +1116,10 @@ export interface IpcApi
     args: [input: import("./inbox").InboxSuggestionRequestInput];
     result: CoreLocalCommitResult<void>;
   };
+  "inbox:stop-suggestion": {
+    args: [input: import("./inbox").InboxSuggestionStopInput];
+    result: CoreLocalCommitResult<void>;
+  };
   "inbox:retry-dispatch": {
     args: [input: import("./inbox").InboxProposalInput];
     result: CoreLocalCommitResult<void>;

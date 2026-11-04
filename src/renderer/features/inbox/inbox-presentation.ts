@@ -185,16 +185,6 @@ export function inboxRowOffers(
   }
 }
 
-/** One quiet indicator is enough: only the newest message still waiting for advice shows it. */
-export function inboxAwaitingIndicatorPageId(
-  items: readonly InboxItem[],
-  policy: InboxSuggestionPolicy,
-): string | null {
-  return (
-    items.findLast((item) => inboxTriageModel(item, policy).kind === "suggesting")?.pageId ?? null
-  );
-}
-
 /**
  * Which usage ran short, in a few words: how much is left, or that it is used up, and when it
  * comes back.

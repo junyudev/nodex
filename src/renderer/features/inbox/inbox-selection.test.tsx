@@ -235,6 +235,45 @@ describe("Inbox destination and Agent selection", () => {
     );
   });
 
+  test("saves how many suggestions run at once only when the number is left", async () => {
+    vi.mocked(readInboxSettings).mockResolvedValue(DEFAULT_INBOX_SETTINGS);
+    renderQuery(<InboxSettingsPage />);
+    const limit = await screen.findByRole<HTMLInputElement>("spinbutton", {
+      name: "Suggestions at once",
+    });
+    expect(limit.value).toBe("5");
+    const type = async (value: string) => {
+      await act(async () => {
+        fireEvent.change(limit, { target: { value } });
+        await settleAsyncRender();
+      });
+    };
+    const leave = async () => {
+      await act(async () => {
+        fireEvent.blur(limit);
+        await settleAsyncRender();
+      });
+    };
+
+    await type("1");
+    await type("12");
+    expect(updateInboxSettings).not.toHaveBeenCalled();
+    await leave();
+    expect(updateInboxSettings).toHaveBeenLastCalledWith({ suggestionConcurrency: 12 });
+    await waitFor(() => expect(limit.value).toBe("12"));
+
+    // More than Nodex can run becomes the most it can, and an emptied field keeps what was saved.
+    await type("40");
+    await leave();
+    expect(updateInboxSettings).toHaveBeenLastCalledWith({ suggestionConcurrency: 16 });
+    await waitFor(() => expect(limit.value).toBe("16"));
+    vi.mocked(updateInboxSettings).mockClear();
+    await type("");
+    await leave();
+    expect(updateInboxSettings).not.toHaveBeenCalled();
+    expect(limit.value).toBe("16");
+  });
+
   test("keeps an unavailable suggestion choice explicit and offers only Agents that can suggest", async () => {
     vi.mocked(readInboxSettings).mockResolvedValue({
       ...DEFAULT_INBOX_SETTINGS,
