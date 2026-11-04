@@ -1,0 +1,132 @@
+crates/nodex-cli/src/inbox.rs
+  s_fb1830c3f67295::t_47c84f323489c7 68
+crates/nodex-core/schema/current.sql
+  s_fb1830c3f67295::t_47c84f323489c7 4465-4466,4492-4494,4573
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_fb1830c3f67295::t_47c84f323489c7 876,878-879,1438-1440,1442,1624
+  s_fb1830c3f67295::t_e0fde3a02e32eb 877,1441
+crates/nodex-core/src/workspace/inbox_reply.rs
+  s_fb1830c3f67295::t_7962e4e4ab1244 1-2,4-22,24-56,58-82,84-91,93-98,100-102
+  s_fb1830c3f67295::t_f8bae16be8d588 3,23,57,83,92,99
+crates/nodex-core/src/workspace/inbox_reliable.rs
+  s_fb1830c3f67295::t_47c84f323489c7 52-53,183,186-189,191-204,1337
+  s_fb1830c3f67295::t_973c44bf19daeb 51,190
+crates/nodex-core/tests/fixtures/schema-v207.sql
+  s_fb1830c3f67295::t_47c84f323489c7 1-5079
+crates/nodex-core/src/workspace/inbox.rs
+  s_fb1830c3f67295::t_47c84f323489c7 721,766-776,778-790
+  s_fb1830c3f67295::t_395217847f00b1 17-18,777
+crates/nodex-core-contracts/src/inbox.rs
+  s_fb1830c3f67295::t_47c84f323489c7 239-256,260-261,329,522
+src/main/inbox-application/inbox-suggestions.ts
+  s_fb1830c3f67295::t_7962e4e4ab1244 2,14,17-26,33-39,147,236-239,241-242
+  s_fb1830c3f67295::t_9b3d7bc7fe88dd 1,240
+src/main/inbox-application/InboxDispatcher.ts
+  s_fb1830c3f67295::t_7962e4e4ab1244 30,92-93,118-123,125-131
+  s_fb1830c3f67295::t_7a2fd2c1ad3b36 28,98-117,124
+packages/agent-runtime/src/orchestration-v2/ProjectionControlReads.test.ts
+  s_fb1830c3f67295::t_05af3edfd5c0ae 1359-1367,1370-1373,1375-1377,1379-1381,1383-1386
+  s_fb1830c3f67295::t_a0a74d0a69cd24 582,611,728,1368-1369,1374,1378,1382
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_fb1830c3f67295::t_7962e4e4ab1244 4133-4135,4138,4146-4148,4170,4174
+  s_fb1830c3f67295::t_2b313511d302ce 4136-4137,4149-4152,4168-4169,4171-4173,4175-4189
+crates/nodex-core/src/library/navigation.rs
+  s_fb1830c3f67295::t_47c84f323489c7 3823
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_fb1830c3f67295::t_47c84f323489c7 100,275,1008,1096,1503,1854,1874,3074,4208,6138
+crates/nodex-core/src/workspace/inbox_nodex_tests.rs
+  s_fb1830c3f67295::t_47c84f323489c7 267,310,399
+  s_fb1830c3f67295::t_35b30a4f5711bf 547-549
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_fb1830c3f67295::t_7962e4e4ab1244 700,9859,9863,9903,11720
+src/main/inbox-application/CoordinatorInbox.node.test.ts
+  s_fb1830c3f67295::t_05af3edfd5c0ae 331-332,354-355,358-359,369-374,379-384,386-387,389,392-396,399-405
+  s_fb1830c3f67295::t_598e19ad7fa103 9-10,185-189,195,310-314,329-330,333-353,356-357,360-368,375-378,385,388,390-391,397-398
+crates/nodex-core/src/infrastructure/migration.rs
+  s_fb1830c3f67295::t_47c84f323489c7 454-458,2710-2711,2713-2724,3774-3777,3815-3816,3839-3840,8330,8530,8850,8913,10090-10091
+  s_fb1830c3f67295::t_a0ef719d121b2c 2712,9017-9018,10064-10089
+crates/nodex-core/schema/migrations/v207_to_v208.sql
+  s_fb1830c3f67295::t_47c84f323489c7 1-5
+crates/nodex-core/src/workspace/mutation.rs
+  s_fb1830c3f67295::t_47c84f323489c7 244-250,323,353,387
+crates/nodex-core-contracts/src/workspace.rs
+  s_fb1830c3f67295::t_47c84f323489c7 2138-2143,2145-2147
+src/main/inbox-application/InboxApplication.ts
+  s_fb1830c3f67295::t_7962e4e4ab1244 188-189,1051
+  s_fb1830c3f67295::t_185040cb82f762 1,146-149,190-191,360-402,405-407,416,711-724,1030
+crates/nodex-core/src/workspace/inbox_reply_tests.rs
+  s_fb1830c3f67295::t_05af3edfd5c0ae 15,23,25,27,30,34,36,38,41,46,49,56,59,63,65,68,74-76,81,85,88,90,93-94,102,104,107-108,110,158-172,175-187,189-218
+  s_fb1830c3f67295::t_66c9740a0aea0f 1-14,16-22,24,26,28-29,31-33,35,37,39-40,42-45,47-48,50-55,57-58,60-62,64,66-67,69-73,77-80,82-84,86-87,89,91-92,95-101,103,105-106,109,111-157,173-174,188
+crates/nodex-core/src/document/integrity.rs
+  s_fb1830c3f67295::t_51d2e6e4a95f16 84
+crates/nodex-store-format/src/lib.rs
+  s_fb1830c3f67295::t_24c7fe8b590e66 301-304
+docs/product-specs/coordinator-behavior.md
+  s_fb1830c3f67295::t_8f80fd7e148415 40-43,48,52-53,124-131
+docs/product-specs/inbox-behavior.md
+  s_fb1830c3f67295::t_53ce597902e68d 282-300,304-307,313-317,477-478
+packages/agent-runtime/src/orchestration-v2/RunLivenessService.test.ts
+  s_fb1830c3f67295::t_2b2d315a461e7f 242
+packages/core-protocol/openapi.json
+  s_fb1830c3f67295::t_48c4490bac4f14 17459-17484,17522-17558,17582,17585,17591,17594-17600,32387-32418,32456-32466,41205-41214,41726,41744-41746,44662-44693,44731-44741
+packages/core-protocol/src/compatibility.generated.ts
+  s_fb1830c3f67295::t_df57f5dad104fc 42-43
+packages/core-protocol/src/generated.ts
+  s_fb1830c3f67295::t_bc662d2c2e2640 4265-4271,4279-4287,4295,4299-4301,7746-7754,7767,9850,10002,10648-10656,10669
+src/main/app-tools/CoordinatorAppTools.ts
+  s_fb1830c3f67295::t_b7e7f073d624dc 1,18-19,54,139-152
+src/main/core-client/inbox-adapter.ts
+  s_fb1830c3f67295::t_59e62bb9d539bf 264
+src/main/inbox-application/InboxDispatchRuntime.ts
+  s_fb1830c3f67295::t_dc60c0762a0acb 98-118,158-175,301-303
+src/main/inbox-application/InboxDispatcher.node.test.ts
+  s_fb1830c3f67295::t_04c40b2b4e61e8 34-35
+src/main/inbox-application/InboxRuntime.node.test.ts
+  s_fb1830c3f67295::t_6edba46da91283 880-943
+src/main/inbox-application/coordinator-inbox.test-support.ts
+  s_fb1830c3f67295::t_d301ec8031ee77 119,144-148,151-163,225-232,309-311
+src/main/inbox-application/inbox-replies.node.test.ts
+  s_fb1830c3f67295::t_5282cde03b71ea 1-83
+src/main/inbox-application/inbox-replies.ts
+  s_fb1830c3f67295::t_9a1b523950be53 1-52
+src/main/inbox-application/inbox-suggestions.node.test.ts
+  s_fb1830c3f67295::t_b828be4a79b7de 692-720
+src/main/inbox-application/scheduled-firing.node.test.ts
+  s_fb1830c3f67295::t_889093417c9261 61
+src/main/ipc/handlers/InboxIpc.ts
+  s_fb1830c3f67295::t_b416fb0dfd980a 111-113
+src/renderer/features/inbox/inbox-composer.test.tsx
+  s_fb1830c3f67295::t_fbdea5636777b4 16-17,37,461-486
+src/renderer/features/inbox/inbox-composer.tsx
+  s_fb1830c3f67295::t_7aedbb99dfb154 1,51,146-152
+src/renderer/features/inbox/inbox-presentation.ts
+  s_fb1830c3f67295::t_ba7da5fd52e3ee 365-373
+src/renderer/features/inbox/use-inbox-reply-destination.ts
+  s_fb1830c3f67295::t_f0aeb195be448e 1-30
+src/renderer/lib/inbox-runtime.ts
+  s_fb1830c3f67295::t_1d9368f0f519d2 140-142
+src/shared/inbox.ts
+  s_fb1830c3f67295::t_e4f62742f5371c 204,338-342
+src/shared/ipc-api.ts
+  s_fb1830c3f67295::t_4fce6b6cafe6a8 1081-1084
+src/shared/ipc-endpoint-policy.ts
+  s_fb1830c3f67295::t_94a87d70ca119c 256
+src/shared/prompt-turn.test.ts
+  s_fb1830c3f67295::t_d23edadd8f84a6 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1ec67ee3d8c6bfe4a1eeece5b5aacfe9b72a6b28",
+  "prompts": {},
+  "sessions": {
+    "s_fb1830c3f67295": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a6af-6d75-7e62-8485-4467159151d7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
