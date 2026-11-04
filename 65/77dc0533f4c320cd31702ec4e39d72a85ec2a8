@@ -1,0 +1,31 @@
+src/main/inbox-application/inbox-suggestions.node.test.ts
+  s_18cb32652a1c4b::t_c563bef50d2e77 335-340,342-351,356-357
+  s_18cb32652a1c4b::t_ead85765ad53a8 341,352-355
+packages/agent-runtime/src/textGeneration/ClaudeTextGeneration.test.ts
+  s_18cb32652a1c4b::t_ead85765ad53a8 17-18,79-87,114-121,138-144
+  s_18cb32652a1c4b::t_214f976b0b3a59 1-16,19-78,88-113,122-137,145-148
+packages/agent-runtime/src/textGeneration/ClaudeTextGeneration.ts
+  s_18cb32652a1c4b::t_795f2f62a35d5c 45-50,53,64-70,75-78,83-84,86-99,162,221,224,228,280-284,288,291,293,296,298,300-304,373-374,383,396,403-406,419
+  s_18cb32652a1c4b::t_254aa9784e7ea5 54-58,61-63,79-82,85,375,377,379-382,384-387,390,393
+  s_18cb32652a1c4b::t_ead85765ad53a8 71-74,413
+CHANGELOG.md
+  s_18cb32652a1c4b::t_f96383da163eef 16-17
+src/main/inbox-application/inbox-suggestions.ts
+  s_18cb32652a1c4b::t_c6af90c273e69c 444
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6577dc0533f4c320cd31702ec4e39d72a85ec2a8",
+  "prompts": {},
+  "sessions": {
+    "s_18cb32652a1c4b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a4a9-955a-7923-bc83-194c41d865c3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

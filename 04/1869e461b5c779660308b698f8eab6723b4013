@@ -1,0 +1,111 @@
+tests/e2e/terminal-fidelity.spec.ts
+  s_53caa49dc108ed::t_a5481d4d438f50 1-5,8-72,74-76,80-152,158-160,166-400,435,437-513
+  s_53caa49dc108ed::t_0e1603ecd139cd 6,78,157,161-163
+  s_53caa49dc108ed::t_b9ac19acbeb52f 7,77,153-156,164-165
+  s_1c5a591c56d44c::t_dc551cc1cbdb8a 73,79,401-434,436
+src/renderer/features/acp-agents/acp-auth-terminal.tsx
+  s_1c5a591c56d44c::t_7bd7775e96c650 32-33
+  s_5f3b952dcb5dbb::t_fa7d0978b28992 3-6,23,37,41,43-53,68-71,76-77,80-81
+src/renderer/lib/terminal-renderer.browser.test.ts
+  s_5f3b952dcb5dbb::t_5823c4e6072092 1-43,66-73,85-91,93-104,107-111,115-145,149-174,183-186,192-204,207-213,221-232
+  s_1c5a591c56d44c::t_9e0e3d9c719ccf 44-65
+  s_5f3b952dcb5dbb::t_389872623dbb8d 74-84,92,105-106,112-114,146-148,175-182,187-191,205-206,214-220
+src/renderer/lib/terminal-link-opening.ts
+  s_5f3b952dcb5dbb::t_389872623dbb8d 1-26
+src/renderer/lib/terminal-session-store.ts
+  s_5f3b952dcb5dbb::t_c961a5f2022c13 462,471,483-486
+  s_1c5a591c56d44c::t_1573e346904864 337-338,359-360,472-477,481-482
+  s_5f3b952dcb5dbb::t_b1fb51860dad56 18,72-77,84,86-91,151-162,167-173,179-182,185-191,193-202,209-210,258,265,299-309,311,313-315,317-319,322-330,332-335,339-353,356-358,395-399,425,428-429,438-440,444,447,451-452,455-461,463,465,478-479,488,492-494,498,500,515,517-522,532-559,562,570-573,578-580,586-589,591-593,597,602-613,615,625-634,638-639,643-646,649-661,666,668-669,674-685,691-694,698-699,703-706,711-715,731,734,736,739,749,751
+  s_5f3b952dcb5dbb::t_389872623dbb8d 85,133-136,163-166,174-178,183-184,192,254,312,336,354-355,361-383,387-389,418-421,426-427,480,487,496-497,516,566-569,574-577,581-582,590,594-596,598-601,614,617-620,622-624,667,686-690,707-710,716,718-720,725-729
+src/renderer/lib/terminal-renderer.ts
+  s_5f3b952dcb5dbb::t_c977e93f45d980 2-12,15,17-23,26-33,36-37,40-65,71-74,78-87,89-96,98-109,111-140
+  s_5f3b952dcb5dbb::t_c961a5f2022c13 16,39
+  s_1c5a591c56d44c::t_460f2e562c1cd1 13-14,88,110
+  s_1c5a591c56d44c::t_d8f783c513ada7 1,24
+  s_1c5a591c56d44c::t_7bd7775e96c650 25,34-35,38
+  s_5f3b952dcb5dbb::t_b1fb51860dad56 66-70,77,97
+  s_5f3b952dcb5dbb::t_389872623dbb8d 75-76
+docs/product-specs/renderer-view-state-ownership.md
+  s_1c5a591c56d44c::t_f9d3f8e22bab76 119
+src/renderer/lib/use-terminal.test.tsx
+  s_5f3b952dcb5dbb::t_563909c0612e49 11,17,19
+src/renderer/lib/terminal-keyboard.ts
+  s_1c5a591c56d44c::t_7bd7775e96c650 79
+  s_1c5a591c56d44c::t_c8eb9ca895353c 70,72-73
+  s_5f3b952dcb5dbb::t_58684da5a23fa1 1-5,9-11,19-21,29-68,74-78,84-89,94-95,102-110
+  s_5f3b952dcb5dbb::t_389872623dbb8d 6-8,12-18,22-28,69,71,80-83,90-93,96-101
+  s_5f3b952dcb5dbb::t_fa7d0978b28992 111-150
+CHANGELOG.md
+  s_1c5a591c56d44c::t_cb40046f024058 11,18,24,26
+src/renderer/lib/terminal-theme.browser.test.ts
+  s_5f3b952dcb5dbb::t_5823c4e6072092 7-9,12,16-75,79,82-83,88-108
+  s_5f3b952dcb5dbb::t_389872623dbb8d 76-78,84-87
+src/renderer/globals.css
+  s_1c5a591c56d44c::t_7bd7775e96c650 1494-1497
+docs/product-specs/workbench-shell.md
+  s_1c5a591c56d44c::t_cb40046f024058 146-147
+src/renderer/lib/terminal-writer.jsdom.test.ts
+  s_5f3b952dcb5dbb::t_389872623dbb8d 106-110,112-116,123-134,143-147
+  s_5f3b952dcb5dbb::t_563909c0612e49 1-105,111,117-122,135-142,148-152
+docs/KEYBOARD_SHORTCUTS.md
+  s_1c5a591c56d44c::t_f9d3f8e22bab76 19,283-291
+  s_1c5a591c56d44c::t_cb40046f024058 281-282
+src/renderer/lib/use-terminal.ts
+  s_1c5a591c56d44c::t_f9d3f8e22bab76 148-149
+  s_5f3b952dcb5dbb::t_389872623dbb8d 10,82-86,88
+  s_5f3b952dcb5dbb::t_fa7d0978b28992 1,4-5,7-9,11-12,19-20,44-47,50,60,62,65-69,71-74,78-81,89-90,92-93,96-103,107-117,120-138,142-143,145,151-171,173-175,177-196,198-200,203,205-207,211-212,215-217,224-225,227-232,234,236,238,245-247
+  s_1c5a591c56d44c::t_7bd7775e96c650 87,146-147,150
+  s_1c5a591c56d44c::t_460f2e562c1cd1 139-140,233
+src/renderer/lib/terminal-link-opening.jsdom.test.ts
+  s_5f3b952dcb5dbb::t_389872623dbb8d 3
+tests/e2e/fixtures/terminal-fidelity.mjs
+  s_53caa49dc108ed::t_64c0e6a65aa929 1
+  s_53caa49dc108ed::t_a5481d4d438f50 2-90
+src/renderer/lib/terminal-appearance.ts
+  s_5f3b952dcb5dbb::t_389872623dbb8d 31-32,52-55
+  s_5f3b952dcb5dbb::t_c977e93f45d980 1-30,33-51,56-58
+src/renderer/lib/terminal-window-zoom.ts
+  s_5f3b952dcb5dbb::t_58684da5a23fa1 1-56
+src/renderer/lib/terminal-session-store.jsdom.test.ts
+  s_5f3b952dcb5dbb::t_563909c0612e49 1,3,8,80-85,89-97,107,111,118-121,133-135,169,251,253-255,258-259,328-329,332-334,337-348,353,355-362,368-375,377-381,384-401,403-409,416-443
+  s_5f3b952dcb5dbb::t_389872623dbb8d 86-88,335-336,349-352,363-367,382-383,410-414
+  s_5f3b952dcb5dbb::t_c961a5f2022c13 250,256
+  s_5f3b952dcb5dbb::t_ff9c69e00d1e5e 257,415
+src/renderer/components/board/terminal-panel.tsx
+  s_1c5a591c56d44c::t_7bd7775e96c650 64
+src/renderer/lib/terminal-writer.ts
+  s_5f3b952dcb5dbb::t_c977e93f45d980 1-34,36-230
+  s_1c5a591c56d44c::t_7bd7775e96c650 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "041869e461b5c779660308b698f8eab6723b4013",
+  "prompts": {},
+  "sessions": {
+    "s_1c5a591c56d44c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9641fde6-60ad-48b0-8ca0-95c389da72d1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    },
+    "s_53caa49dc108ed": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a4fb-2a44-7123-90bd-d2a10f30fea8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5f3b952dcb5dbb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a4e4-1f78-7f30-a118-cdee457cf8a4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
