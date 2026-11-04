@@ -1,0 +1,23 @@
+crates/nodex-core/src/infrastructure/migration.rs
+  s_2b421f5f98d895::t_e1f10b36fdc416 9554
+crates/nodex-store-format/src/lib.rs
+  s_2b421f5f98d895::t_9b34072dfebb97 284
+packages/core-protocol/openapi.json
+  s_2b421f5f98d895::t_fdf47ac05ef0ed 50058-50062
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3deb6878fb30e7360675923be316e82298531566",
+  "prompts": {},
+  "sessions": {
+    "s_2b421f5f98d895": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19fae-bb7a-7332-9cd7-9d77cc1fecc0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
