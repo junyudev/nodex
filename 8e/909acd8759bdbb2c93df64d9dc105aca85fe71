@@ -1,0 +1,36 @@
+docs/product-specs/mobile-companion-behavior.md
+  s_1406096ae8699b::t_8ff9f632ccd34b 68-69
+src/main/mobile-gateway/files.node.test.ts
+  s_1406096ae8699b::t_710488c8c19cd1 1,32-33,60-72,74-77,81,84-92,96-105,107,110-116,118-120,261-263,293,366-367
+  s_1406096ae8699b::t_0483e4a4b590db 12,21-22,56-58,144,192,230,260,264-273,275-277,279-285,287-292,297-365,368-381
+  s_9c72cf791afc7e::t_bf4768e1cc034a 23-31,34-55,59,121-140
+  s_1406096ae8699b::t_3759d85a007cc7 78-80,93-95,106,108,117,294-296,386-387
+src/main/mobile-gateway/files.ts
+  s_1406096ae8699b::t_75dab69c8f6d3e 15,264-265,267-272,274-276,280-282,284-286,288-292,294-324,326-327,403-421,434,446
+src/main/platform/node/MobileProfileFiles.ts
+  s_1406096ae8699b::t_4dcf1e8eafcee2 31-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8e909acd8759bdbb2c93df64d9dc105aca85fe71",
+  "prompts": {},
+  "sessions": {
+    "s_1406096ae8699b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8bc-a30f-7ef1-88b0-c163946dd472",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

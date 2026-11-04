@@ -1,0 +1,40 @@
+packages/mobile/src/runtime/runtime.test.ts
+  s_1406096ae8699b::t_39ac5c5a2d5661 220,250,252-264
+  s_1406096ae8699b::t_9d6ec1831d05d6 265-291
+  s_1406096ae8699b::t_58a9a7c5d6daaf 292-306,308-309
+packages/mobile/src/runtime/connection.ts
+  s_1406096ae8699b::t_58a9a7c5d6daaf 497-498,517,560-572,574-581,583-603
+  s_1406096ae8699b::t_4de8be35b3ad23 496
+docs/product-specs/mobile-companion-behavior.md
+  s_1406096ae8699b::t_fb2a178fa3853c 22-23,25
+docs/SECURITY.md
+  s_9c72cf791afc7e::t_bf4768e1cc034a 81-84
+src/main/host-runtime/DatabaseNotifierRuntime.ts
+  s_1406096ae8699b::t_9d6ec1831d05d6 97-100
+src/main/mobile-gateway/project-invalidations.node.test.ts
+  s_1406096ae8699b::t_6d55b059ee279a 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e6a87be4a3cd65bc80210cb8506c8e7247c37343",
+  "prompts": {},
+  "sessions": {
+    "s_1406096ae8699b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8bc-a30f-7ef1-88b0-c163946dd472",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    },
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

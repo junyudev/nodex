@@ -1,0 +1,51 @@
+src/main/inbox-application/InboxApplication.ts
+  s_1406096ae8699b::t_21b3423ce6f7f8 154-156,222-244,465-476
+  s_1406096ae8699b::t_9681314ac83d4f 36,153,477,490,503,896
+src/main/mobile-gateway/inbox-over-core.node.test.ts
+  s_1406096ae8699b::t_d2668b707fdd64 86
+  s_1406096ae8699b::t_21b3423ce6f7f8 108-109
+  s_1406096ae8699b::t_c47d285cb2101d 107
+  s_1406096ae8699b::t_b4cf794bd37b03 3-5,24-26,31,57-85,87-106,110-118
+src/main/mobile-gateway/inbox.ts
+  s_1406096ae8699b::t_b4cf794bd37b03 2,4,17-18,136-142,149-151,155-181,183-186,228,240,301,303-304
+  s_1406096ae8699b::t_14f8d270059516 305
+src/main/platform/node/MobileProfileFiles.ts
+  s_1406096ae8699b::t_b4cf794bd37b03 2,9,25-44,80-85,87-88,90,92,95-99
+  s_1406096ae8699b::t_b48384c31cdcc0 100
+src/main/mobile-gateway/inbox-replay.node.test.ts
+  s_1406096ae8699b::t_bd277b51a59ca2 9-13,24-44,46-47,50-52,56-58,63-68,74-78,83-100,108-111
+  s_1406096ae8699b::t_028181b29018c4 48-49
+  s_1406096ae8699b::t_2dae4251cac75e 1-3,5-8,14-18,21-23,53-55,59-62,69-73,79-82,101-107,112-114
+  s_1406096ae8699b::t_984322c7ec0ca0 4
+  s_1406096ae8699b::t_9e890e79dc8626 19-20
+  s_1406096ae8699b::t_eed562b3d401bd 45
+docs/product-specs/mobile-companion-behavior.md
+  s_1406096ae8699b::t_7e9cef97d703b6 73-74
+  s_1406096ae8699b::t_e47ecbb613559f 24
+src/main/mobile-gateway/files.node.test.ts
+  s_1406096ae8699b::t_952d2a516e0c56 274,286,382
+  s_1406096ae8699b::t_4bd2465c6081b2 383-385
+  s_1406096ae8699b::t_a1825065703486 73
+src/main/mobile-gateway/files.ts
+  s_1406096ae8699b::t_dc4e9abddb5d45 277-279
+packages/mobile/src/runtime/connection.ts
+  s_1406096ae8699b::t_e47ecbb613559f 74-76,533-534,573
+packages/mobile/src/runtime/runtime.test.ts
+  s_1406096ae8699b::t_e47ecbb613559f 191-217
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "159b48778eb04e3100b2cda05ecc50212dafc0a7",
+  "prompts": {},
+  "sessions": {
+    "s_1406096ae8699b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8bc-a30f-7ef1-88b0-c163946dd472",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
