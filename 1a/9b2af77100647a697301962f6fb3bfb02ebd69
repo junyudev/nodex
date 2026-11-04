@@ -1,0 +1,29 @@
+config/renderer-manual-chunks.ts
+  s_9ced4fe7288eca::t_86605a33a4ebf3 2-5
+electron.vite.config.ts
+  s_1b17aa0abf2902::t_6830bd43092ac3 184-198
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1a9b2af77100647a697301962f6fb3bfb02ebd69",
+  "prompts": {},
+  "sessions": {
+    "s_1b17aa0abf2902": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63d-6297-7152-a184-42890eef73be",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9ced4fe7288eca": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63c-c608-7be0-99f9-506a816a762b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
