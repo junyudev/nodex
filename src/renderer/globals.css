@@ -1491,6 +1491,10 @@
   background: transparent !important;
 }
 
+[data-codex-xterm] .xterm-decoration-overview-ruler {
+  display: none;
+}
+
 .terminal-fallback-surface {
   background: var(--color-codex-terminal-background);
   color: var(--color-codex-terminal-foreground);

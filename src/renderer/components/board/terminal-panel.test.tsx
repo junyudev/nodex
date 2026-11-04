@@ -66,7 +66,6 @@ describe("TerminalPanel", () => {
     expect(JSON.stringify(useTerminalCalls[0])).toBe(
       JSON.stringify({
         terminalId: "terminal-test",
-        visible: true,
         cwd: "/Users/asc/repo/nodex",
         conversationId: "thread-1",
         projectSessionId: "session-1",

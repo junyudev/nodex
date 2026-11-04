@@ -1,9 +1,11 @@
-import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { TERMINAL_RENDERER_BUFFER_LIMIT, TerminalSessionStore } from "./terminal-session-store";
+import type { TerminalRenderer } from "./terminal-renderer";
 import type {
   TerminalAttachedEvent,
   TerminalDataEvent,
   TerminalExitEvent,
+  TerminalInitLogEvent,
   TerminalSessionSnapshot,
 } from "../../shared/types";
 
@@ -75,6 +77,24 @@ function installTerminalApiMock(
   return { calls, listeners };
 }
 
+function makeRenderer() {
+  let onTitle: ((value: string) => void) | undefined;
+  const replaceOutput = vi.fn();
+  const dispose = vi.fn();
+  const renderer = {
+    terminal: {
+      onTitleChange: (listener: (value: string) => void) => {
+        onTitle = listener;
+      },
+    },
+    replaceOutput,
+    write: vi.fn(),
+    clear: vi.fn(),
+    dispose,
+  } as unknown as TerminalRenderer;
+  return { renderer, replaceOutput, dispose, title: (value: string) => onTitle?.(value) };
+}
+
 describe("TerminalSessionStore", () => {
   beforeEach(() => {
     window.api = originalApi;
@@ -84,18 +104,21 @@ describe("TerminalSessionStore", () => {
     window.api = originalApi;
   });
 
-  test("queues writes until the terminal is attached", async () => {
+  test("queues writes until the terminal is attached and registered", async () => {
     const { calls, listeners } = installTerminalApiMock();
     const store = new TerminalSessionStore();
 
-    await store.createOrAttach({
+    const attaching = store.createOrAttach({
       sessionId: "session:one:terminal:1",
       conversationId: "thread-1",
       projectSessionId: "session-1",
       cwd: "/repo",
       size: { cols: 80, rows: 24 },
     });
-    store.write("session:one:terminal:1", "pwd\r");
+    store.write("session:one:terminal:1", "pwd\r", "user");
+    expect(calls).toHaveLength(1);
+    await attaching;
+    expect(calls).toHaveLength(1);
 
     listeners["terminal-attached"]?.({
       sessionId: "session:one:terminal:1",
@@ -107,6 +130,9 @@ describe("TerminalSessionStore", () => {
       }),
     } satisfies TerminalAttachedEvent);
 
+    const onAttach = vi.fn();
+    store.register("session:one:terminal:1", { onAttach });
+    expect(onAttach).toHaveBeenCalledWith("/repo", "/bin/zsh");
     expect(JSON.stringify(calls)).toBe(
       JSON.stringify([
         [
@@ -140,7 +166,7 @@ describe("TerminalSessionStore", () => {
     expect(store.resolveTitle("session:one:terminal:2", "Terminal", 2)).toBe("nodex");
   });
 
-  test("keeps the latest renderer terminal buffer within the Codex limit", () => {
+  test("keeps the latest renderer terminal buffer within the retained output limit", () => {
     const { listeners } = installTerminalApiMock();
     const store = new TerminalSessionStore();
     store.ensureEventSubscriptions();
@@ -221,13 +247,16 @@ describe("TerminalSessionStore", () => {
     );
   });
 
-  test("kills a terminal only through the explicit destructive command", () => {
-    const { calls } = installTerminalApiMock();
+  test("kills a terminal only through the explicit destructive command", async () => {
+    const { calls, listeners } = installTerminalApiMock();
     const store = new TerminalSessionStore();
-
-    store.kill("session:one:terminal:kill");
-
-    expect(calls).toEqual([["terminal-kill", "session:one:terminal:kill"]]);
+    store.ensureEventSubscriptions();
+    const sessionId = "session:one:terminal:kill";
+    listeners["terminal-data"]?.({ sessionId, data: "\x1b[?1049h" });
+    store.kill(sessionId);
+    await expect.poll(() => store.getPreservedAlternateScreenMode(sessionId)).toBeNull();
+    expect(store.getSnapshot(sessionId).buffer).toBe("");
+    expect(calls).toEqual([["terminal-kill", sessionId]]);
   });
 
   test("surfaces a lease conflict and takes over with its generation", async () => {
@@ -296,30 +325,122 @@ describe("TerminalSessionStore", () => {
     ]);
   });
 
-  test("preserves session buffer while renderer subscribers detach and reattach", () => {
+  test("replays the retained output and rebases clear offsets after tail trimming", () => {
+    const { listeners } = installTerminalApiMock();
+    const store = new TerminalSessionStore();
+    store.ensureEventSubscriptions();
+    const sessionId = "retained";
+    const before = makeRenderer();
+    store.getOrCreateRenderer(sessionId, () => before.renderer);
+    const emit = (data: string) =>
+      listeners["terminal-data"]?.({ sessionId, data } satisfies TerminalDataEvent);
+
+    emit("evicted");
+    store.clearSession(sessionId);
+    emit("0123456789");
+    store.clearSession(sessionId);
+    emit("x".repeat(TERMINAL_RENDERER_BUFFER_LIMIT - 5));
+    store.release(sessionId);
+
+    expect(before.dispose).toHaveBeenCalledOnce();
+    const after = makeRenderer();
+    store.getOrCreateRenderer(sessionId, () => after.renderer);
+    store.clearSession(sessionId);
+    expect(after.replaceOutput).toHaveBeenCalledWith(
+      "56789" + "x".repeat(TERMINAL_RENDERER_BUFFER_LIMIT - 5),
+      [5],
+    );
+  });
+
+  test("restores only the init event data, even when the lease snapshot contains historical queries", () => {
+    const { listeners } = installTerminalApiMock();
+    const store = new TerminalSessionStore();
+    store.ensureEventSubscriptions();
+    const sessionId = "sanitized";
+    const mounted = makeRenderer();
+    store.getOrCreateRenderer(sessionId, () => mounted.renderer);
+    const snapshot = makeSnapshot({ sessionId, buffer: "\x1b[6nraw" });
+    listeners["terminal-init-log"]?.({
+      sessionId,
+      data: "raw",
+      snapshot,
+    } satisfies TerminalInitLogEvent);
+    listeners["terminal-attached"]?.({ sessionId, snapshot } satisfies TerminalAttachedEvent);
+    store.release(sessionId);
+
+    const remounted = makeRenderer();
+    store.getOrCreateRenderer(sessionId, () => remounted.renderer);
+    expect(mounted.replaceOutput).toHaveBeenCalledWith("raw", [], undefined);
+    expect(remounted.replaceOutput).toHaveBeenCalledWith("raw", []);
+  });
+
+  test("scans split DEC modes and RIS, bounding incomplete sequences", () => {
+    const { listeners } = installTerminalApiMock();
+    const store = new TerminalSessionStore();
+    store.ensureEventSubscriptions();
+    const sessionId = "alternate";
+    const emit = (data: string) =>
+      listeners["terminal-data"]?.({ sessionId, data } satisfies TerminalDataEvent);
+
+    emit("\x1b[?");
+    emit("25;47h");
+    expect(store.getPreservedAlternateScreenMode(sessionId)).toBe(47);
+    emit("\x1b[?104");
+    emit("7;1049h");
+    expect(store.getPreservedAlternateScreenMode(sessionId)).toBe(1049);
+    emit("\x1b");
+    emit("c");
+    expect(store.getPreservedAlternateScreenMode(sessionId)).toBeNull();
+    emit("\x1b[?" + "0;".repeat(512));
+    emit("1049h");
+    expect(store.getPreservedAlternateScreenMode(sessionId)).toBeNull();
+    emit("\x1bc\x1b[?1047h");
+    expect(store.getPreservedAlternateScreenMode(sessionId)).toBe(1047);
+    emit("\x1b[?1047l");
+    expect(store.getPreservedAlternateScreenMode(sessionId)).toBeNull();
+  });
+
+  test("derives a shell title from its cwd and gives a fixed title priority", () => {
+    const { listeners } = installTerminalApiMock();
+    const store = new TerminalSessionStore();
+    store.ensureEventSubscriptions();
+    const sessionId = "title";
+    const { renderer, title } = makeRenderer();
+    store.getOrCreateRenderer(sessionId, () => renderer);
+    const attach = (cwd: string, fixedTitle: string | null = null) =>
+      listeners["terminal-attached"]?.({
+        sessionId,
+        snapshot: makeSnapshot({ sessionId, cwd, title: fixedTitle }),
+      } satisfies TerminalAttachedEvent);
+
+    attach("/work/repo");
+    title(" \x07repo — vim\x7f ");
+    expect(store.resolveTitle(sessionId, "Terminal", 1)).toBe("vim");
+    attach("/work/other");
+    expect(store.resolveTitle(sessionId, "Terminal", 1)).toBe("repo — vim");
+    attach("/work/repo", "Build");
+    title("/work/repo");
+    expect(store.resolveTitle(sessionId, "Terminal", 1)).toBe("Build");
+    attach("/work/repo");
+    expect(store.resolveTitle(sessionId, "Terminal", 1)).toBe("repo");
+  });
+
+  test("deduplicates fitted dimensions and forwards a same-size repaint", () => {
     const { calls, listeners } = installTerminalApiMock();
     const store = new TerminalSessionStore();
     store.ensureEventSubscriptions();
+    const sessionId = "resize";
+    const size = { cols: 90, rows: 25 };
+    store.resize(sessionId, size);
+    listeners["terminal-attached"]?.({ sessionId, snapshot: makeSnapshot({ sessionId }) });
+    store.resize(sessionId, size);
+    store.resize(sessionId, size);
+    store.resize(sessionId, size, true);
 
-    listeners["terminal-attached"]?.({
-      sessionId: "session:one:terminal:reattach",
-      snapshot: makeSnapshot({
-        sessionId: "session:one:terminal:reattach",
-        buffer: "before detach\n",
-      }),
-    } satisfies TerminalAttachedEvent);
-    const unsubscribe = store.subscribe("session:one:terminal:reattach", () => undefined);
-    unsubscribe();
-
-    listeners["terminal-data"]?.({
-      sessionId: "session:one:terminal:reattach",
-      data: "while detached\n",
-    } satisfies TerminalDataEvent);
-
-    expect(store.getSnapshot("session:one:terminal:reattach").buffer).toBe(
-      "before detach\nwhile detached\n",
-    );
-    expect(calls.some((call) => (call as unknown[])[0] === "terminal-kill")).toBe(false);
+    expect(calls).toEqual([
+      ["terminal-resize", sessionId, size, false],
+      ["terminal-resize", sessionId, size, true],
+    ]);
   });
 
   test("notifies exit subscribers and removes renderer session state", () => {

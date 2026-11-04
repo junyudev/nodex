@@ -53,7 +53,6 @@ function ConnectedTerminalPanel({
   const { containerRef, isUnavailable, error, leaseConflict, reconnect, takeOver, kill } =
     useTerminal({
       terminalId,
-      visible: true,
       cwd,
       conversationId,
       projectSessionId,
@@ -62,7 +61,7 @@ function ConnectedTerminalPanel({
 
   return (
     <TerminalSurface terminalId={terminalId}>
-      <div className="h-full w-full pb-3 pl-4 tracking-normal">
+      <div className="h-full w-full ps-4 pt-2 pb-3 tracking-normal">
         {isUnavailable ? (
           <div className="terminal-fallback-surface flex h-full w-full items-center justify-center text-sm text-token-text-secondary">
             Terminal requires the Electron desktop app

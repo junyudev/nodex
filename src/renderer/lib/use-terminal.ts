@@ -1,295 +1,27 @@
-import { observeCodexDocumentAppearance } from "./codex-theme-variant";
-import { useCallback, useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
+import { useEffect, useEffectEvent, useRef, useSyncExternalStore, type RefObject } from "react";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
-import { snapshotLinkActivation } from "./link-activation";
-import { openLink } from "./link-opening";
-import type { LinkOpenRequest } from "../../shared/link-opening";
-import { useLinkOpening } from "./web-link-navigation";
+import { observeCodexDocumentAppearance } from "./codex-theme-variant";
+import { resolveCodexRendererOs } from "./codex-window-runtime";
 import { useFileReferenceRouter } from "./file-reference-router";
-import { WebLinksAddon } from "@xterm/addon-web-links";
-import { Terminal, type IDisposable, type ITheme } from "@xterm/xterm";
-import {
-  isTerminalRuntimeAvailable,
-  terminalSessionStore,
-  type TerminalStoreEvent,
-} from "./terminal-session-store";
+import { openLink } from "./link-opening";
+import { applyTerminalTheme, readTerminalTheme } from "./terminal-appearance";
+import { bindTerminalInput, handleKey } from "./terminal-keyboard";
+import { installTerminalLinkOpening } from "./terminal-link-opening";
+import { TerminalRenderer } from "./terminal-renderer";
+import { isTerminalRuntimeAvailable, terminalSessionStore } from "./terminal-session-store";
 import {
   ensureTerminalTypographyLoaded,
   resolveTerminalTypography,
   sameTerminalTypography,
   type TerminalTypography,
 } from "./terminal-typography";
-import type { TerminalSize } from "../../shared/types";
-
-type XtermWithPrivateCore = Terminal & {
-  _core?: {
-    _mouseService?: {
-      getCoords?: (...args: unknown[]) => unknown;
-      getMouseReportCoords?: (...args: unknown[]) => unknown;
-    };
-    _selectionService?: {
-      _getMouseEventScrollAmount?: (...args: unknown[]) => unknown;
-      _screenElement?: HTMLElement;
-    };
-  };
-};
-
-interface TerminalCssVars {
-  background: string;
-  foreground: string;
-}
-
-function readCssVar(styles: CSSStyleDeclaration, name: string, fallback: string): string {
-  const value = styles.getPropertyValue(name).trim();
-  return value.length > 0 ? value : fallback;
-}
-
-/** Resolves the active semantic palette for xterm's canvas renderer. */
-export function readTerminalTheme(element: HTMLElement): ITheme & TerminalCssVars {
-  const styles = getComputedStyle(element);
-  const background = readCssVar(styles, "--color-codex-terminal-background", "transparent");
-  const foreground = readCssVar(styles, "--color-codex-terminal-foreground", "#f0efed");
-
-  return {
-    background,
-    foreground,
-    cursor: foreground,
-    selectionBackground: readCssVar(
-      styles,
-      "--color-codex-terminal-selection",
-      "rgba(94, 159, 232, 0.35)",
-    ),
-    selectionInactiveBackground: readCssVar(
-      styles,
-      "--color-codex-terminal-selection-inactive",
-      "rgba(94, 159, 232, 0.2)",
-    ),
-    black: readCssVar(styles, "--color-codex-terminal-ansi-black", "#181818"),
-    red: readCssVar(styles, "--color-codex-terminal-ansi-red", "#ff6b6b"),
-    green: readCssVar(styles, "--color-codex-terminal-ansi-green", "#46a171"),
-    yellow: readCssVar(styles, "--color-codex-terminal-ansi-yellow", "#e5a942"),
-    blue: readCssVar(styles, "--color-codex-terminal-ansi-blue", "#5e9fe8"),
-    magenta: readCssVar(styles, "--color-codex-terminal-ansi-magenta", "#b577d6"),
-    cyan: readCssVar(styles, "--color-codex-terminal-ansi-cyan", "#56b6c2"),
-    white: readCssVar(styles, "--color-codex-terminal-ansi-white", "#f0efed"),
-    brightBlack: readCssVar(styles, "--color-codex-terminal-ansi-bright-black", "#555555"),
-    brightRed: readCssVar(styles, "--color-codex-terminal-ansi-bright-red", "#ff8787"),
-    brightGreen: readCssVar(styles, "--color-codex-terminal-ansi-bright-green", "#5fd7a3"),
-    brightYellow: readCssVar(styles, "--color-codex-terminal-ansi-bright-yellow", "#ffd75f"),
-    brightBlue: readCssVar(styles, "--color-codex-terminal-ansi-bright-blue", "#87afff"),
-    brightMagenta: readCssVar(styles, "--color-codex-terminal-ansi-bright-magenta", "#d7afff"),
-    brightCyan: readCssVar(styles, "--color-codex-terminal-ansi-bright-cyan", "#87d7ff"),
-    brightWhite: readCssVar(styles, "--color-codex-terminal-ansi-bright-white", "#ffffff"),
-  };
-}
-
-function normalizeLineEndingsForXterm(input: string): string {
-  return input.replace(/\r?\n/gu, "\r\n");
-}
-
-function getWindowZoom(): number {
-  if (typeof window === "undefined") return 1;
-
-  const value = getComputedStyle(document.documentElement)
-    .getPropertyValue("--codex-window-zoom")
-    .trim();
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-}
-
-function scaleMouseEventCoordinates(event: unknown, rect: DOMRect, zoom: number): unknown {
-  if (zoom === 1 || !(event instanceof MouseEvent)) return event;
-  const clientX = rect.left + (event.clientX - rect.left) / zoom;
-  const clientY = rect.top + (event.clientY - rect.top) / zoom;
-
-  return new Proxy(event, {
-    get(target, property) {
-      if (property === "clientX") return clientX;
-      if (property === "clientY") return clientY;
-      const value = Reflect.get(target, property, target);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
-}
-
-function patchXtermWindowZoomMouseCoordinates(term: Terminal): () => void {
-  const core = (term as XtermWithPrivateCore)._core;
-  const mouseService = core?._mouseService;
-  if (!mouseService?.getCoords || !mouseService.getMouseReportCoords) return () => {};
-
-  const originalGetCoords = mouseService.getCoords;
-  const originalGetMouseReportCoords = mouseService.getMouseReportCoords;
-  const selectionService = core?._selectionService;
-  const originalGetMouseEventScrollAmount = selectionService?._getMouseEventScrollAmount;
-  const screenElement = selectionService?._screenElement;
-
-  const scaledEvent = (event: unknown, element: unknown): unknown => {
-    if (!(element instanceof HTMLElement)) return event;
-    return scaleMouseEventCoordinates(event, element.getBoundingClientRect(), getWindowZoom());
-  };
-
-  mouseService.getCoords = function patchedGetCoords(
-    this: unknown,
-    event: unknown,
-    element: unknown,
-    ...args: unknown[]
-  ) {
-    return originalGetCoords.call(this, scaledEvent(event, element), element, ...args);
-  };
-  mouseService.getMouseReportCoords = function patchedGetMouseReportCoords(
-    this: unknown,
-    event: unknown,
-    element: unknown,
-  ) {
-    return originalGetMouseReportCoords.call(this, scaledEvent(event, element), element);
-  };
-
-  if (selectionService && originalGetMouseEventScrollAmount && screenElement) {
-    selectionService._getMouseEventScrollAmount = function patchedGetMouseEventScrollAmount(
-      this: unknown,
-      event: unknown,
-    ) {
-      return originalGetMouseEventScrollAmount.call(this, scaledEvent(event, screenElement));
-    };
-  }
-
-  return () => {
-    mouseService.getCoords = originalGetCoords;
-    mouseService.getMouseReportCoords = originalGetMouseReportCoords;
-    if (selectionService && originalGetMouseEventScrollAmount) {
-      selectionService._getMouseEventScrollAmount = originalGetMouseEventScrollAmount;
-    }
-  };
-}
-
-async function writeClipboardText(text: string): Promise<void> {
-  if (!navigator.clipboard?.writeText) return;
-  await navigator.clipboard.writeText(text);
-}
-
-async function readClipboardText(): Promise<string | null> {
-  if (!navigator.clipboard?.readText) return null;
-  try {
-    return await navigator.clipboard.readText();
-  } catch {
-    return null;
-  }
-}
-
-function isMacPlatform(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /mac/i.test(navigator.platform);
-}
-
-function installCodexKeyHandler(
-  term: Terminal,
-  terminalId: string,
-  onNewTerminalTab: (() => void) | undefined,
-): void {
-  term.attachCustomKeyEventHandler((event) => {
-    if (event.type !== "keydown") return true;
-
-    const isMac = isMacPlatform();
-    const key = event.key.toLowerCase();
-    const primaryModifier = isMac ? event.metaKey : event.ctrlKey;
-
-    if (primaryModifier && key === "t" && !event.shiftKey && !event.altKey) {
-      onNewTerminalTab?.();
-      event.preventDefault();
-      return false;
-    }
-
-    const selectedText = term.getSelection();
-    if (selectedText && primaryModifier && key === "c" && !event.altKey) {
-      void writeClipboardText(selectedText);
-      event.preventDefault();
-      return false;
-    }
-
-    const shouldPaste =
-      (primaryModifier && key === "v" && (!isMac || event.shiftKey)) ||
-      (event.shiftKey && event.key === "Insert");
-    if (shouldPaste) {
-      void readClipboardText().then((text) => {
-        if (text) terminalSessionStore.write(terminalId, text);
-      });
-      event.preventDefault();
-      return false;
-    }
-
-    if (isMac && event.metaKey && !event.ctrlKey && !event.altKey) {
-      if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-        terminalSessionStore.write(terminalId, "\x01");
-        event.preventDefault();
-        return false;
-      }
-      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
-        terminalSessionStore.write(terminalId, "\x05");
-        event.preventDefault();
-        return false;
-      }
-      if (event.key === "Backspace") {
-        terminalSessionStore.write(terminalId, "\x15");
-        event.preventDefault();
-        return false;
-      }
-      if (event.key === "Delete") {
-        terminalSessionStore.write(terminalId, "\x0b");
-        event.preventDefault();
-        return false;
-      }
-    }
-
-    if (event.key === "Enter") {
-      window.dispatchEvent(
-        new CustomEvent("nodex:terminal-enter", {
-          detail: { terminalId },
-        }),
-      );
-    }
-
-    return true;
-  });
-}
-
-function fitAndResize(terminalId: string, term: Terminal, fit: FitAddon): TerminalSize | null {
-  try {
-    fit.fit();
-    const size = { cols: term.cols, rows: term.rows };
-    terminalSessionStore.resize(terminalId, size);
-    return size;
-  } catch {
-    return null;
-  }
-}
-
-/** OSC 8 and detected web links share the same activation and host snapshot. */
-export function installTerminalLinkOpening(
-  terminal: Pick<Terminal, "options" | "loadAddon">,
-  readOwner: () => {
-    readonly hostId: string;
-    readonly openLink: (request: LinkOpenRequest) => Promise<boolean>;
-  },
-): void {
-  const activate = (event: MouseEvent, url: string) => {
-    event.preventDefault();
-    const owner = readOwner();
-    void owner.openLink({
-      url,
-      hostId: owner.hostId,
-      initiator: "terminal_link_click",
-      activation: snapshotLinkActivation(event),
-    });
-  };
-  terminal.options.linkHandler = { activate };
-  terminal.loadAddon(new WebLinksAddon(activate));
-}
+import { patchXtermWindowZoomMouseCoordinates } from "./terminal-window-zoom";
+import { useLinkOpening } from "./web-link-navigation";
 
 export interface UseTerminalOptions {
   terminalId: string;
   hostId?: string;
-  visible: boolean;
   cwd: string;
   conversationId?: string | null;
   projectSessionId?: string | null;
@@ -298,9 +30,6 @@ export interface UseTerminalOptions {
 
 export interface UseTerminalReturn {
   containerRef: RefObject<HTMLDivElement | null>;
-  isConnected: boolean;
-  isExited: boolean;
-  exitCode: number | null;
   isUnavailable: boolean;
   error: string | null;
   leaseConflict: {
@@ -312,10 +41,13 @@ export interface UseTerminalReturn {
   kill: () => void;
 }
 
+function subscribeTerminalStatus(listener: () => void): () => void {
+  return terminalSessionStore.subscribeAll(listener);
+}
+
 export function useTerminal({
   terminalId,
-  hostId: explicitHostId,
-  visible,
+  hostId,
   cwd,
   conversationId,
   projectSessionId,
@@ -325,287 +57,193 @@ export function useTerminal({
   const files = useFileReferenceRouter();
   const readLinkOwner = useEffectEvent(() => ({
     openLink: links?.openLink ?? openLink,
-    hostId: explicitHostId ?? files.hostId,
+    hostId: hostId ?? files.hostId,
   }));
+  const readNewTerminalAction = useEffectEvent(() => onNewTerminalTab);
   const normalizedCwd = cwd.trim();
-  const hasValidCwd = normalizedCwd.length > 0;
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const termRef = useRef<Terminal | null>(null);
-  const fitRef = useRef<FitAddon | null>(null);
-  // Keep xterm mounted across WorkbenchShell rerenders; tab callbacks often change identity.
-  const createTerminalTab = useEffectEvent(() => onNewTerminalTab?.());
-  const [isConnected, setIsConnected] = useState(false);
-  const [isExited, setIsExited] = useState(
-    () => terminalSessionStore.getSnapshot(terminalId).exited,
+  const view = useRef<{ reconnect: () => void; takeOver: () => void } | null>(null);
+  const error = useSyncExternalStore(
+    subscribeTerminalStatus,
+    () => terminalSessionStore.getError(terminalId),
+    () => null,
   );
-  const [exitCode, setExitCode] = useState<number | null>(
-    () => terminalSessionStore.getSnapshot(terminalId).exitCode,
+  const leaseConflict = useSyncExternalStore(
+    subscribeTerminalStatus,
+    () => terminalSessionStore.getLeaseConflict(terminalId),
+    () => null,
   );
-  const [error, setError] = useState<string | null>(() =>
-    terminalSessionStore.getError(terminalId),
-  );
-  const [leaseConflict, setLeaseConflict] = useState<{
-    generation: number;
-    ownerWindowSessionId: string;
-  } | null>(() => terminalSessionStore.getLeaseConflict(terminalId));
-
-  const [observedTerminalId, setObservedTerminalId] = useState(terminalId);
-  if (observedTerminalId !== terminalId) {
-    setObservedTerminalId(terminalId);
-    setIsExited(() => terminalSessionStore.getSnapshot(terminalId).exited);
-    setExitCode(() => terminalSessionStore.getSnapshot(terminalId).exitCode);
-    setError(() => terminalSessionStore.getError(terminalId));
-    setLeaseConflict(() => terminalSessionStore.getLeaseConflict(terminalId));
-  }
-
-  const reconnect = useCallback(() => {
-    const term = termRef.current;
-    const fit = fitRef.current;
-    if (!term || !fit || !hasValidCwd || !isTerminalRuntimeAvailable()) return;
-
-    term.clear();
-    setError(null);
-    setIsExited(false);
-    setExitCode(null);
-    const size = fitAndResize(terminalId, term, fit) ?? {
-      cols: term.cols,
-      rows: term.rows,
-    };
-    void terminalSessionStore.createOrAttach({
-      sessionId: terminalId,
-      conversationId: conversationId,
-      projectSessionId: projectSessionId,
-      cwd: normalizedCwd,
-      size,
-    });
-  }, [conversationId, hasValidCwd, normalizedCwd, projectSessionId, terminalId]);
-
-  const takeOver = useCallback(() => {
-    const conflict = terminalSessionStore.getLeaseConflict(terminalId);
-    const term = termRef.current;
-    const fit = fitRef.current;
-    if (!conflict || !term || !fit || !isTerminalRuntimeAvailable()) return;
-
-    const size = fitAndResize(terminalId, term, fit) ?? {
-      cols: term.cols,
-      rows: term.rows,
-    };
-    void terminalSessionStore.takeOver({
-      sessionId: terminalId,
-      expectedGeneration: conflict.generation,
-      size,
-    });
-  }, [terminalId]);
-
-  const kill = useCallback(() => {
-    terminalSessionStore.kill(terminalId);
-  }, [terminalId]);
 
   useEffect(() => {
-    if (!visible || !hasValidCwd || !containerRef.current || !isTerminalRuntimeAvailable()) return;
-
-    const container = containerRef.current;
-    const theme = readTerminalTheme(container);
-    const initialTypography = resolveTerminalTypography(container);
-    const term = new Terminal({
-      allowTransparency: true,
-      allowProposedApi: true,
-      cursorBlink: true,
-      cursorStyle: "bar",
-      fontFamily: initialTypography.fontFamily,
-      fontSize: initialTypography.fontSize,
-      letterSpacing: 0,
-      lineHeight: 1.2,
-      scrollback: 2_000,
-      theme,
-    });
-    const fit = new FitAddon();
-    const disposables: IDisposable[] = [];
+    const host = containerRef.current;
+    if (!normalizedCwd || !host || !isTerminalRuntimeAvailable()) return;
+    const platform = resolveCodexRendererOs();
+    const initialTypography = resolveTerminalTypography(host);
+    const renderer = terminalSessionStore.getOrCreateRenderer(
+      terminalId,
+      () =>
+        new TerminalRenderer(
+          { ...initialTypography, theme: readTerminalTheme(host) },
+          terminalSessionStore.getPreservedAlternateScreenMode(terminalId) ?? undefined,
+        ),
+    );
+    const term = renderer.terminal;
     let disposed = false;
-    let resizeRaf = 0;
-    let initRaf = 0;
+    let attached = false;
+    let scrollFrame: number | null = null;
     let typographyGeneration = 0;
 
-    termRef.current = term;
-    fitRef.current = fit;
-
+    const scheduleBottom = () => {
+      if (disposed || scrollFrame !== null) return;
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = null;
+        term.scrollToBottom();
+      });
+    };
+    const fit = new FitAddon();
     term.loadAddon(new ClipboardAddon());
     term.loadAddon(fit);
     installTerminalLinkOpening(term, () => readLinkOwner());
-    term.open(container);
-    installCodexKeyHandler(term, terminalId, () => {
-      createTerminalTab();
-    });
-    const restoreMouseCoordinates = patchXtermWindowZoomMouseCoordinates(term);
-    const writeDisplayData = (data: string) => {
-      const displayData = normalizeLineEndingsForXterm(data);
-      if (!displayData) return;
-
-      term.write(displayData);
-    };
-    const replayDisplayLog = (data: string) => {
-      term.reset();
-      writeDisplayData(data);
-    };
-
-    const handleStoreEvent = (event: TerminalStoreEvent) => {
-      if (disposed || event.sessionId !== terminalId) return;
-
-      if (event.type === "data") {
-        writeDisplayData(event.data);
-        return;
-      }
-
-      if (event.type === "init-log") {
-        replayDisplayLog(event.data);
-        setIsExited(event.snapshot.exited);
-        setExitCode(event.snapshot.exitCode);
-        return;
-      }
-
-      if (event.type === "attached") {
-        setIsConnected(true);
-        setIsExited(event.snapshot.exited);
-        setExitCode(event.snapshot.exitCode);
-        setError(null);
-        setLeaseConflict(null);
-        return;
-      }
-
-      if (event.type === "error") {
-        setError(event.message);
-        term.write(`\r\n\x1b[31mError: ${event.message}\x1b[0m\r\n`);
-        return;
-      }
-
-      if (event.type === "lease-conflict") {
-        const snapshot = terminalSessionStore.getSnapshot(terminalId);
-        replayDisplayLog(snapshot.buffer);
-        setIsConnected(false);
-        setIsExited(snapshot.exited);
-        setExitCode(snapshot.exitCode);
-        setError(null);
-        setLeaseConflict({
-          generation: event.generation,
-          ownerWindowSessionId: event.ownerWindowSessionId,
-        });
-        return;
-      }
-
-      if (event.type === "lease-acquired") {
-        setIsConnected(true);
-        setError(null);
-        setLeaseConflict(null);
-        return;
-      }
-
-      setIsConnected(false);
-      setIsExited(true);
-      setExitCode(event.exitCode);
-      setLeaseConflict(null);
-    };
-
-    const unsubscribe = terminalSessionStore.subscribe(terminalId, handleStoreEvent);
-    disposables.push(
-      term.onData((data) => {
-        terminalSessionStore.write(terminalId, data);
+    let markUser = () => false;
+    term.attachCustomKeyEventHandler((event) =>
+      handleKey({
+        event,
+        term,
+        platform,
+        clipboard: platform === "darwin" ? undefined : navigator.clipboard,
+        onNewTerminalTab: readNewTerminalAction(),
+        onPaste: () => markUser(),
+        clearSession: () => terminalSessionStore.clearSession(terminalId),
+        sendText: (data) => terminalSessionStore.write(terminalId, data, "user"),
       }),
     );
+    term.open(host);
+    const undoZoom = patchXtermWindowZoomMouseCoordinates(term);
 
-    const observer = new ResizeObserver(() => {
-      window.cancelAnimationFrame(resizeRaf);
-      resizeRaf = window.requestAnimationFrame(() => {
-        if (disposed) return;
-        fitAndResize(terminalId, term, fit);
+    const size = () => ({ cols: term.cols, rows: term.rows });
+    const scheduleFit = (repaint = false) => {
+      if (disposed || !host.isConnected) return;
+      requestAnimationFrame(() => {
+        if (disposed || !host.isConnected) return;
+        fit.fit();
+        if (attached) terminalSessionStore.resize(terminalId, size(), repaint);
       });
-    });
-    observer.observe(container);
+    };
+    scheduleFit();
+    const isAlternate = () =>
+      renderer.isRestoringAlternateScreen || term.buffer.active.type === "alternate";
+    renderer.onOutput = () => {
+      const buffer = term.buffer.active;
+      if (buffer.viewportY >= buffer.baseY) scheduleBottom();
+    };
+    // Reopening replays the local tail and then the PTY's, so this outlives any single replay.
+    renderer.onReplay = scheduleBottom;
 
-    const applyTypography = (nextTypography: TerminalTypography) => {
+    const unregister = terminalSessionStore.register(terminalId, {
+      onAttach: () => {
+        if (disposed) return;
+        attached = true;
+        // A full-screen program missed output while detached and must redraw to be trustworthy.
+        scheduleFit(
+          isAlternate() ||
+            terminalSessionStore.getPreservedAlternateScreenMode(terminalId) !== null,
+        );
+      },
+      onDetach: () => {
+        attached = false;
+      },
+    });
+    const terminalInput = bindTerminalInput(
+      term,
+      host,
+      () => renderer.isReplayingInitLog,
+      (data, source) => terminalSessionStore.write(terminalId, data, source),
+      () => terminalSessionStore.recordUserInteraction(terminalId),
+    );
+    markUser = terminalInput.markUser;
+
+    const createOrAttach = () => {
+      void terminalSessionStore.createOrAttach({
+        sessionId: terminalId,
+        conversationId,
+        projectSessionId,
+        cwd: normalizedCwd,
+        size: size(),
+      });
+    };
+    const attachFrame = requestAnimationFrame(() => {
+      if (!disposed && host.isConnected) createOrAttach();
+    });
+    const observer = new ResizeObserver(() => scheduleFit());
+    observer.observe(host);
+
+    view.current = {
+      reconnect: () => {
+        terminalSessionStore.clearSession(terminalId);
+        fit.fit();
+        createOrAttach();
+      },
+      takeOver: () => {
+        const conflict = terminalSessionStore.getLeaseConflict(terminalId);
+        if (!conflict) return;
+        fit.fit();
+        void terminalSessionStore.takeOver({
+          sessionId: terminalId,
+          expectedGeneration: conflict.generation,
+          size: size(),
+        });
+      },
+    };
+
+    let currentTypography = initialTypography;
+    const applyTypography = (next: TerminalTypography) => {
+      currentTypography = next;
       typographyGeneration += 1;
       const generation = typographyGeneration;
-      void ensureTerminalTypographyLoaded(nextTypography).then(() => {
+      void ensureTerminalTypographyLoaded(next).then(() => {
         if (disposed || generation !== typographyGeneration) return;
-
-        term.options.fontFamily = nextTypography.fontFamily;
-        term.options.fontSize = nextTypography.fontSize;
-        window.cancelAnimationFrame(resizeRaf);
-        resizeRaf = window.requestAnimationFrame(() => {
-          if (disposed) return;
-          fitAndResize(terminalId, term, fit);
-        });
+        term.options.fontFamily = next.fontFamily;
+        term.options.fontSize = next.fontSize;
+        scheduleFit();
       });
     };
     applyTypography(initialTypography);
-
-    initRaf = window.requestAnimationFrame(() => {
-      if (disposed) return;
-
-      const size = fitAndResize(terminalId, term, fit) ?? {
-        cols: term.cols,
-        rows: term.rows,
-      };
-      void terminalSessionStore
-        .createOrAttach({
-          sessionId: terminalId,
-          conversationId,
-          projectSessionId,
-          cwd: normalizedCwd,
-          size,
-        })
-        .catch((reason: unknown) => {
-          if (disposed) return;
-          const message = reason instanceof Error ? reason.message : "Failed to attach terminal.";
-          setError(message);
-        });
-    });
-
-    const stopThemeObserver = observeCodexDocumentAppearance(
-      document,
+    const stopAppearanceObserver = observeCodexDocumentAppearance(
+      host.ownerDocument,
       () => {
         if (disposed) return;
-        term.options.theme = readTerminalTheme(container);
-        const nextTypography = resolveTerminalTypography(container);
-        const currentTypography = {
-          fontFamily: term.options.fontFamily ?? "",
-          fontSize: term.options.fontSize ?? 0,
-        };
-        if (!sameTerminalTypography(currentTypography, nextTypography)) {
-          applyTypography(nextTypography);
-        }
+        applyTerminalTheme(term, host);
+        const next = resolveTerminalTypography(host);
+        if (!sameTerminalTypography(currentTypography, next)) applyTypography(next);
       },
       { observeBody: true },
     );
 
     return () => {
       disposed = true;
-      window.cancelAnimationFrame(resizeRaf);
-      window.cancelAnimationFrame(initRaf);
+      if (scrollFrame !== null) cancelAnimationFrame(scrollFrame);
+      cancelAnimationFrame(attachFrame);
       observer.disconnect();
-      stopThemeObserver();
-      unsubscribe();
-      restoreMouseCoordinates();
-      for (const disposable of disposables) {
-        disposable.dispose();
-      }
+      stopAppearanceObserver();
+      terminalInput.dispose();
+      terminalSessionStore.preserveAlternateScreen(terminalId, isAlternate());
+      unregister();
+      undoZoom();
+      renderer.onOutput = null;
+      renderer.onReplay = null;
+      terminalSessionStore.releaseRenderer(terminalId, renderer);
       terminalSessionStore.release(terminalId);
-      term.dispose();
-      termRef.current = null;
-      fitRef.current = null;
-      setIsConnected(false);
+      view.current = null;
     };
-  }, [conversationId, hasValidCwd, normalizedCwd, projectSessionId, terminalId, visible]);
+  }, [conversationId, normalizedCwd, projectSessionId, terminalId]);
 
   return {
     containerRef,
-    isConnected,
-    isExited,
-    exitCode,
     isUnavailable: !isTerminalRuntimeAvailable(),
     error,
     leaseConflict,
-    reconnect,
-    takeOver,
-    kill,
+    reconnect: () => view.current?.reconnect(),
+    takeOver: () => view.current?.takeOver(),
+    kill: () => terminalSessionStore.kill(terminalId),
   };
 }

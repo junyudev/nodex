@@ -1,7 +1,9 @@
 import { useEffect, useEffectEvent, useRef } from "react";
 import { FitAddon } from "@xterm/addon-fit";
-import { Terminal } from "@xterm/xterm";
-import { readTerminalTheme } from "../../lib/use-terminal";
+import { observeCodexDocumentAppearance } from "../../lib/codex-theme-variant";
+import { applyTerminalTheme, readTerminalTheme } from "../../lib/terminal-appearance";
+import { bindTerminalInput } from "../../lib/terminal-keyboard";
+import { TerminalRenderer } from "../../lib/terminal-renderer";
 import { resolveTerminalTypography } from "../../lib/terminal-typography";
 import { acpTerminalDelta } from "./acp-agent-model";
 
@@ -18,7 +20,7 @@ export default function AcpAuthTerminal({
   readonly onResize: (size: { cols: number; rows: number }) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
-  const terminal = useRef<Terminal | null>(null);
+  const renderer = useRef<TerminalRenderer | null>(null);
   const written = useRef(0);
   const input = useEffectEvent(onInput);
   const resize = useEffectEvent(onResize);
@@ -27,23 +29,28 @@ export default function AcpAuthTerminal({
     const element = container.current;
     if (!element) return;
     const typography = resolveTerminalTypography(element);
-    const term = new Terminal({
-      allowTransparency: true,
-      convertEol: true,
-      cursorBlink: true,
-      fontFamily: typography.fontFamily,
-      fontSize: typography.fontSize,
-      lineHeight: 1.2,
+    const display = new TerminalRenderer({
+      ...typography,
       rows: 12,
-      scrollback: 1_000,
       theme: readTerminalTheme(element),
     });
+    const term = display.terminal;
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(element);
-    terminal.current = term;
+    renderer.current = display;
     written.current = 0;
-    const dataListener = term.onData((data) => input(data));
+    const terminalInput = bindTerminalInput(
+      term,
+      element,
+      () => display.isReplayingInitLog,
+      (data) => input(data),
+    );
+    const stopAppearanceObserver = observeCodexDocumentAppearance(
+      element.ownerDocument,
+      () => applyTerminalTheme(term, element),
+      { observeBody: true },
+    );
     const fitToContainer = () => {
       try {
         fit.fit();
@@ -58,19 +65,20 @@ export default function AcpAuthTerminal({
     term.focus();
     return () => {
       observer.disconnect();
-      dataListener.dispose();
-      term.dispose();
-      terminal.current = null;
+      stopAppearanceObserver();
+      terminalInput.dispose();
+      display.dispose();
+      renderer.current = null;
     };
   }, []);
 
   useEffect(() => {
-    const term = terminal.current;
-    if (!term) return;
+    const display = renderer.current;
+    if (!display) return;
     const offset = outputOffset ?? output.length;
     const delta = acpTerminalDelta(written.current, output, offset);
-    if (delta.reset) term.reset();
-    if (delta.data) term.write(delta.data);
+    if (delta.reset || written.current === 0) display.replaceOutput(delta.data);
+    else if (delta.data) display.write(delta.data);
     written.current = offset;
   }, [output, outputOffset]);
 

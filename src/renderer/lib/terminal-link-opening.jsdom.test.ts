@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vite-plus/test";
 import type { Terminal, ITerminalAddon } from "@xterm/xterm";
-import { installTerminalLinkOpening } from "./use-terminal";
+import { installTerminalLinkOpening } from "./terminal-link-opening";
 const addon = vi.hoisted(() => ({
   activate: null as null | ((event: MouseEvent, uri: string) => void),
 }));

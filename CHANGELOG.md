@@ -8,18 +8,22 @@ All notable changes to this project will be documented in this file.
 
 - You can stop an Inbox suggestion that is taking too long. Hover its spinner and click stop: the work ends at once, no more usage is spent, and the message keeps any advice it had or offers Suggest.
 - You choose the reasoning effort and speed Inbox suggestions run at, in the same model menu new chats use. Until you do, they stay at high on Codex and medium on Claude.
+- A Terminal's tab names the program running in it. The title a program sets replaces the folder name while it runs, unless it only repeats the working directory.
 
 ### Changed
 
 - The macOS installer is about 30% smaller, so first-time downloads finish sooner, and Nodex uses about 250 MB less disk space. Opening the disk image and copying Nodex to Applications take a little longer on a first install.
 - The Windows installer is roughly a quarter smaller, and installing it takes less disk space.
 - Inbox suggestions no longer wait in line behind each other. Up to five run at once, or as many as 16 if you raise the limit in Settings → Inbox, so a message that takes a while to look into doesn't hold up the ones after it, and every message waiting for advice shows its own spinner instead of only the newest one.
+- `⌘K` (`Ctrl+K` on Windows and Linux) clears a focused Terminal. It opens the command palette everywhere else.
 
 ### Fixed
 
 - A suggestion that fails on Claude now says why. Claude's own reason, such as a usage limit or an unavailable model, shows beside the message instead of "Claude CLI returned unexpected output format."
 - Terminal programs keep their colors however Nodex was started. Launching Nodex from an Agent or another terminal could pass along settings such as `NO_COLOR`, which left full-screen programs like lazygit without any color.
+- Full-screen terminal programs come back intact when you reopen their tab. They return to their own screen and redraw, instead of leaving stale output or receiving stray replies as keyboard input.
 - Terminal output is no longer lost under heavy load, and programs that move the cursor with bare line feeds draw in the right place.
+- Pasting into a Terminal on Windows and Linux uses bracketed paste, so a multi-line paste no longer runs line by line in shells that support it.
 
 ## [0.5.1] - 2026-11-04
 
