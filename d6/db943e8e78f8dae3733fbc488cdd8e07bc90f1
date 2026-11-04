@@ -1,0 +1,39 @@
+packages/agent-runtime/package.json
+  s_1b17aa0abf2902::t_7e6f86cf24581e 19
+packages/agent-runtime/vendor/contracts/src/chatAttachment.ts
+  s_1b17aa0abf2902::t_cef0f0145f0eb3 13-14
+packages/agent-runtime/vendor/contracts/src/index.ts
+  s_1b17aa0abf2902::t_967deff730cd61 26
+packages/agent-runtime/vendor/contracts/src/providerPolicy.ts
+  s_1b17aa0abf2902::t_3f199fae435926 5
+packages/agent-runtime/vendor/contracts/src/providerTurnLimits.ts
+  s_1b17aa0abf2902::t_8967155d4207cd 1-2
+packages/agent-runtime/vendor/shared/src/git.test.ts
+  s_1b17aa0abf2902::t_ec53144b4ffa17 17
+packages/agent-runtime/vendor/shared/src/git.ts
+  s_1b17aa0abf2902::t_0c8fdee6162eb3 13
+packages/agent-runtime/vendor/shared/src/paletteSearch.ts
+  s_1b17aa0abf2902::t_c2ddb6f12ebe98 3
+packages/agent-runtime/vendor/shared/src/worktreeBranchName.ts
+  s_1b17aa0abf2902::t_1b54da2f449220 1-2
+src/shared/nodex-app-tools/session-message-schema.test.ts
+  s_1b17aa0abf2902::t_3892e038c2f211 1-16
+src/shared/nodex-app-tools/session-message-schema.ts
+  s_1b17aa0abf2902::t_26cf74948d6baf 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d6db943e8e78f8dae3733fbc488cdd8e07bc90f1",
+  "prompts": {},
+  "sessions": {
+    "s_1b17aa0abf2902": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63d-6297-7152-a184-42890eef73be",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
