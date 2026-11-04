@@ -1,0 +1,54 @@
+crates/nodex-core/src/infrastructure/migration.rs
+  s_2b421f5f98d895::t_e1f10b36fdc416 9554
+  s_b60e05965fb1be::t_4440b5b7692889 429-433,2638-2652,3625-3632,3637,8755-8756,9364-9458
+crates/nodex-store-format/src/lib.rs
+  s_2b421f5f98d895::t_9b34072dfebb97 284
+  s_b60e05965fb1be::t_4440b5b7692889 281-283
+packages/core-protocol/openapi.json
+  s_2b421f5f98d895::t_fdf47ac05ef0ed 50058-50062
+  s_b60e05965fb1be::t_92bd2cc55cd875 7674-7683,8908-9079,29654-29830,30604-30607,36276-36347,38282-38305,38551-38597,41110-41286,42060-42063,44464,44516-44518,52550-52635,54555-54563
+packages/agent-runtime/src/orchestration-v2/QueuedRunKind.ts
+  s_b60e05965fb1be::t_a6271b1ca9f57d 13-16,20-21,23,33-34,36
+src/main/app/MainApplicationLive.ts
+  s_b60e05965fb1be::t_4440b5b7692889 47-48,161-165
+crates/nodex-core/src/document/integrity.rs
+  s_b60e05965fb1be::t_4440b5b7692889 84
+crates/nodex-core/src/infrastructure/migration_derivation_tests.rs
+  s_b60e05965fb1be::t_4440b5b7692889 166-172
+crates/nodex-core/tests/fixtures/schema-v202.sql
+  s_b60e05965fb1be::t_4440b5b7692889 1-4996
+crates/nodex-core/src/infrastructure/migration_serializer_tests.rs
+  s_b60e05965fb1be::t_4440b5b7692889 132-133,137,141-146,148,156,162
+packages/agent-runtime/src/orchestration-v2/QueuedRunOrder.test.ts
+  s_b60e05965fb1be::t_a6271b1ca9f57d 20,23-29,66
+packages/core-protocol/src/generated.ts
+  s_b60e05965fb1be::t_92bd2cc55cd875 1802,2114-2156,7148-7185,7348-7349,8620-8636,9079-9085,9138-9149,9869-9906,10069-10070,10609,12299-12314,12752-12753
+crates/nodex-core/schema/current.sql
+  s_b60e05965fb1be::t_4440b5b7692889 1063-1067,4518-4551
+crates/nodex-core/tests/fixtures/rewind-v203-to-v202.sql
+  s_b60e05965fb1be::t_4440b5b7692889 1-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3af4497d27a7ecb259d0612e428172c5b8d10ecb",
+  "prompts": {},
+  "sessions": {
+    "s_2b421f5f98d895": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19fae-bb7a-7332-9cd7-9d77cc1fecc0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b60e05965fb1be": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a61f-2ce1-7742-9c82-704cd7dfb5c3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
