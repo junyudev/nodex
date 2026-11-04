@@ -35,6 +35,7 @@ packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
 crates/nodex-core/src/infrastructure/migration.rs
   s_fb1830c3f67295::t_51cd0075fa6c5e 454-458,2721-2723,2725-2734,3810,3812,10095-10096,10098-10099,10101-10105,10107-10112,10114-10120
   s_fb1830c3f67295::t_c3d4460e07f577 9046,10121,10202-10203
+  s_fb1830c3f67295::t_006504bac8afdd 2724,10178-10180,10182-10183,10185,10187,10189-10190,10193,10196-10200
 crates/nodex-core-contracts/src/workspace.rs
   s_fb1830c3f67295::t_b8a4db8f0796fc 2147-2152
 docs/product-specs/coordinator-behavior.md
