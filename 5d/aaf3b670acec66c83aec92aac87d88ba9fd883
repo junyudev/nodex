@@ -1,0 +1,51 @@
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_b8b9338452580c::t_596c74537c426e 8027-8029,8046,8050
+  s_b8b9338452580c::t_a4b37e8eab5279 7957-7960,7962-7973,7978,7981-7983,7985-7987,7989-7991,7994,8008-8012,8014-8026,8030-8045,8047-8049,8051-8060,9074-9076
+  s_b8b9338452580c::t_17a0a5b9643e7f 7961
+  s_b8b9338452580c::t_d48c522a4497e4 8013
+  s_1b17aa0abf2902::t_44e376a99d6ebc 1,4901-4905,4918-4936
+packages/agent-runtime/src/persistence/Migrations.ts
+  s_b8b9338452580c::t_a4b37e8eab5279 108,213
+docs/product-specs/agent-runtime-behavior.md
+  s_b8b9338452580c::t_596c74537c426e 258-260
+packages/agent-runtime/src/persistence/Migrations/091_ResidentRewind.ts
+  s_b8b9338452580c::t_a4b37e8eab5279 1-40,85-93
+  s_b8b9338452580c::t_97c4c11ddb8acd 41-43,82-84
+  s_b8b9338452580c::t_2dd79582b14d27 44-81
+packages/agent-runtime/src/orchestration-v2/ProjectionControlReads.test.ts
+  s_1b17aa0abf2902::t_cfcb8801c1b38a 5-7,22,30-31,1362-1587
+packages/agent-runtime/src/orchestration-v2/checkpointRewindSql.ts
+  s_c9908ad600d631::t_f155b724cfce62 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5daaf3b670acec66c83aec92aac87d88ba9fd883",
+  "prompts": {},
+  "sessions": {
+    "s_1b17aa0abf2902": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63d-6297-7152-a184-42890eef73be",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b8b9338452580c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63c-6779-7322-9335-f40fc4bb8b3b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c9908ad600d631": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63b-d8f9-7910-ac1a-db902a712c02",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
