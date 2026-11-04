@@ -68,7 +68,7 @@ test("source tests and development use the installed SDK without requiring a sta
   const url = claudeSdkModuleUrl({
     isPackaged: false,
     resourcesPath: "/unused",
-    projectRootPath: "/unused",
+    projectRootPath: process.cwd(),
   });
   expect(typeof (await import(url)).query).toBe("function");
 });

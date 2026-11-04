@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 
 import { runVitePlus } from "./vite-plus-command";
 import { inspectOfficialAgentSkillsArtifact } from "./official-agent-skills-artifact.mjs";
-import { BUNDLED_ELECTRON_MAIN_DEPENDENCIES } from "../config/electron-main-runtime-closure";
+import { assertElectronRuntimeDependencies } from "./lib/electron-runtime-dependencies";
 import { NODEX_ACCOUNT_BUILD_VARIABLES } from "../config/nodex-account-build";
 import { resolveAgentRuntimeNode, type AgentRuntimeNode } from "./agent-runtime-native";
 import { buildAgentRuntime } from "./build-agent-runtime";
@@ -120,30 +120,6 @@ interface PreparedAgentSkills {
   readonly manifestSha256: string;
   readonly treeSha256: string;
 }
-
-const escapeRegularExpression = (value: string): string =>
-  value.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-
-const assertMainDependenciesAreBundled = (root: string, outputs: readonly FileDigest[]): void => {
-  const mainJavaScriptOutputs = outputs.filter(
-    ({ path: outputPath }) =>
-      outputPath.startsWith("out/main/") && /\.(?:c|m)?js$/u.test(outputPath),
-  );
-  for (const dependency of BUNDLED_ELECTRON_MAIN_DEPENDENCIES) {
-    const escapedDependency = escapeRegularExpression(dependency);
-    const runtimeLoad = new RegExp(
-      String.raw`\brequire\s*\(\s*["']${escapedDependency}(?:/[^"']*)?["']\s*\)`,
-      "u",
-    );
-    for (const output of mainJavaScriptOutputs) {
-      const source = readFileSync(path.join(root, output.path), "utf8");
-      if (!runtimeLoad.test(source)) continue;
-      throw new Error(
-        `Prepared Electron Main output externalizes required bundled dependency ${dependency}; bundle it before packaging.`,
-      );
-    }
-  }
-};
 
 export interface PreparedElectronBuildManifest {
   readonly agentSkills: PreparedAgentSkills;
@@ -412,7 +388,10 @@ const outputInventory = (root: string): FileDigest[] => {
       throw new Error(
         "Prepared execution native dependency targets a different staged Node; rebuild before packaging.",
       );
-  assertMainDependenciesAreBundled(root, files);
+  assertElectronRuntimeDependencies(
+    root,
+    files.map((file) => file.path),
+  );
   return files;
 };
 

@@ -4,7 +4,6 @@ import type { BuildEnvironmentOptions, Plugin, Rollup } from "vite";
 import { createExcalidrawFontAssetPlugins } from "./config/excalidraw-font-assets";
 import { createStartupShellHtmlPlugin } from "./config/startup-shell-html";
 import { createTypographyBootstrapHtmlPlugin } from "./config/typography-bootstrap";
-import { BUNDLED_ELECTRON_MAIN_DEPENDENCIES } from "./config/electron-main-runtime-closure";
 import { resolveNodexAccountBuildConfiguration } from "./config/nodex-account-build";
 import {
   resolveRendererChunkFileName,
@@ -117,9 +116,6 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
       },
       plugins: createSentryPlugins(),
       build: {
-        externalizeDeps: {
-          exclude: [...BUNDLED_ELECTRON_MAIN_DEPENDENCIES],
-        },
         ...buildOptimization,
         rollupOptions: {
           input: {

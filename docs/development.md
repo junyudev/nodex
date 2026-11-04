@@ -91,6 +91,22 @@ The install lifecycle prepares pinned Electron, then runs `electron-builder inst
 Electron-compatible binary with a host-Node binary. SQLite and collaborative
 Document authority are native Rust code and do not use a Node addon.
 
+Root `package.json#dependencies` lists packages that emitted Electron Main or
+preload JavaScript loads through Node package resolution. Keep the rest in
+`devDependencies`, including libraries bundled into Main, preload, and the
+renderer. Prepared builds check the emitted JavaScript against this contract.
+
+- `node-pty` loads an Electron-compatible native addon and a platform helper
+  from its package. The install lifecycle rebuilds it for Electron.
+- `@sentry/electron` stays external because bundling its Main entry fails in
+  the production linker. Its separate bundler entry points pull in build-only
+  tooling, which is filtered from the application archive. Source-map upload
+  still runs from the full build installation.
+
+Third-party notices cover both dependency classes, including libraries compiled
+into application bundles. The standalone Agent Runtime has its own verified
+dependency payload. Its SDK and PTY addon are staged separately from Main.
+
 Optional dependencies are installed for the current operating system and CPU.
 Prepare additional architectures explicitly in a dedicated checkout by setting
 `supportedArchitectures` before installation; this installs optional packages,

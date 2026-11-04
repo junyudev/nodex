@@ -18,9 +18,12 @@ files:
   - "!**/tests/**"
   - "!**/*.test.*"
   - "!**/*.spec.*"
-  - "!node_modules/@types/**"
-  # The verified standalone execution closure owns the SDK and its only native CLI.
-  - "!node_modules/@anthropic-ai/claude-agent-sdk{,-*}/**"
+  - "!node_modules/**/*.d.{ts,cts,mts}"
+  # Sentry's bundler entry points are separate from its Electron runtime.
+  - "!**/node_modules/sentry/**"
+  - "!**/node_modules/@sentry/bundler-plugins/**"
+  - "!**/node_modules/oxc-parser/**"
+  - "!**/node_modules/@oxc-parser/**"
   - "!node_modules/node-pty/deps/**"
   - "!node_modules/node-pty/scripts/**"
   - "!node_modules/node-pty/src/**"

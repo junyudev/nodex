@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- The macOS installer is about 30% smaller, so first-time downloads finish sooner, and Nodex uses about 250 MB less disk space. Opening the disk image and copying Nodex to Applications take a little longer on a first install.
+- The Windows installer is roughly a quarter smaller, and installing it takes less disk space.
+
 ### Fixed
 
 ## [0.5.1] - 2026-11-04

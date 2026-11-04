@@ -163,7 +163,7 @@ const makeFixture = (): {
   for (const relativePath of requiredInputs) {
     const absolutePath = path.join(repositoryRoot, relativePath);
     fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
-    fs.writeFileSync(absolutePath, `${relativePath}\n`, "utf8");
+    fs.writeFileSync(absolutePath, `// ${relativePath}\n`, "utf8");
   }
   fs.writeFileSync(
     path.join(repositoryRoot, "package.json"),
@@ -328,25 +328,52 @@ describe("prepared Electron build", () => {
   });
 
   test.each([
-    {
-      dependency: "@nodex/effect-codex-app-server",
-      specifier: "@nodex/effect-codex-app-server/client",
-    },
-    { dependency: "@opencode-ai/sdk", specifier: "@opencode-ai/sdk/v2" },
-  ])(
-    "rejects external runtime loading of $specifier in Electron Main",
-    ({ dependency, specifier }) => {
-      const fixture = makeFixture();
-      fs.writeFileSync(
-        path.join(fixture.repositoryRoot, "out/main/bootstrap.js"),
-        `require(${JSON.stringify(specifier)});\n`,
-      );
+    ["out/main/bootstrap.js", 'require("@workspace/unbundled/entry")'],
+    ["out/main/bootstrap.js", 'export { value } from "@workspace/unbundled/entry"'],
+    ["out/preload/index.js", 'import("@workspace/unbundled/entry")'],
+    ["out/preload/index.js", 'import "@workspace/unbundled/entry"'],
+    [
+      "out/main/bootstrap.js",
+      'const load = (0, require("node:module").createRequire)(__filename); load.resolve(`@workspace/unbundled/entry`)',
+    ],
+  ])("rejects undeclared runtime package loads in %s", (output, expression) => {
+    const fixture = makeFixture();
+    fs.writeFileSync(path.join(fixture.repositoryRoot, output), expression);
 
-      expect(() => recordPreparedElectronBuild(fixture)).toThrow(
-        `externalizes required bundled dependency ${dependency}`,
-      );
-    },
-  );
+    expect(() => recordPreparedElectronBuild(fixture)).toThrow(
+      `${output} loads undeclared runtime package "@workspace/unbundled/entry"`,
+    );
+  });
+
+  test("accepts the declared runtime closure and rejects unused declarations", () => {
+    const fixture = makeFixture();
+    const manifest = path.join(fixture.repositoryRoot, "package.json");
+    const product = { name: "nodex", version: "1.2.3" };
+    fs.writeFileSync(
+      manifest,
+      JSON.stringify({ ...product, dependencies: { "@scope/addon": "1.0.0" } }),
+    );
+    fs.writeFileSync(
+      path.join(fixture.repositoryRoot, "out/main/bootstrap.js"),
+      `
+        // require("ignored-comment");
+        const embeddedSource = 'require("ignored-string")';
+        require("node:fs"); require("fs/promises"); require("electron");
+        require("./bundled.cjs"); require("/absolute/native.node");
+        import("file:///staged/entry.mjs");
+        require("@scope/addon/entry");
+      `,
+    );
+    expect(() => recordPreparedElectronBuild(fixture)).not.toThrow();
+
+    fs.writeFileSync(
+      manifest,
+      JSON.stringify({ ...product, dependencies: { "@scope/addon": "1.0.0", unused: "1.0.0" } }),
+    );
+    expect(() => recordPreparedElectronBuild(fixture)).toThrow(
+      "Electron runtime dependencies are unused: unused",
+    );
+  });
 
   test("binds the exact generated Agent Skills artifact", () => {
     const fixture = makeFixture();
