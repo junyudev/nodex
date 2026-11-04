@@ -1,0 +1,77 @@
+src/main/coordinator/CoordinatorDeliveryRuntime.ts
+  s_0ea5fa27e831e2::t_eb8552493ec022 46-67
+packages/core-protocol/openapi.json
+  s_0ea5fa27e831e2::t_eb8552493ec022 9038-9043,9079,9090-9095,30272-30289,37056-37073,42532-42549,54199-54219
+  s_0ea5fa27e831e2::t_ee7215c4a7ca31 54220-54222
+src/main/coordinator/managed-chat-observation.ts
+  s_0ea5fa27e831e2::t_eb8552493ec022 93,127-130,190
+src/main/coordinator/ManagedChatFacts.ts
+  s_0ea5fa27e831e2::t_eb8552493ec022 68-72,148
+crates/nodex-core/tests/fixtures/schema-v208.sql
+  s_0ea5fa27e831e2::t_eb8552493ec022 1-5084
+docs/product-specs/coordinator-behavior.md
+  s_0ea5fa27e831e2::t_eb8552493ec022 114-118
+crates/nodex-core/src/workspace/inbox_nodex.rs
+  s_0ea5fa27e831e2::t_eb8552493ec022 84-111,119,144,280-284
+  s_0ea5fa27e831e2::t_ee4265d6853f14 285
+crates/nodex-core/tests/fixtures/rewind-v209-to-v208.sql
+  s_0ea5fa27e831e2::t_eb8552493ec022 1-7
+crates/nodex-core/src/workspace/mutation.rs
+  s_0ea5fa27e831e2::t_eb8552493ec022 308
+crates/nodex-core/schema/migrations/v208_to_v209.sql
+  s_0ea5fa27e831e2::t_eb8552493ec022 1-5
+src/main/coordinator/ManagedChatFacts.node.test.ts
+  s_0ea5fa27e831e2::t_eb8552493ec022 192-222
+crates/nodex-core/src/infrastructure/migration.rs
+  s_0ea5fa27e831e2::t_eb8552493ec022 459-463,2715-2724,3784-3786,9024-9025,10120-10151
+src/main/coordinator/managed-chat-observation.node.test.ts
+  s_0ea5fa27e831e2::t_eb8552493ec022 193-206
+crates/nodex-core/src/workspace/coordinator_tests.rs
+  s_0ea5fa27e831e2::t_eb8552493ec022 386
+crates/nodex-core/src/workspace/coordinator.rs
+  s_0ea5fa27e831e2::t_eb8552493ec022 90,98-116,121,171,268-281,333,336-343,355,369-373,420-428
+crates/nodex-core/src/document/integrity.rs
+  s_0ea5fa27e831e2::t_eb8552493ec022 84
+crates/nodex-core/schema/current.sql
+  s_0ea5fa27e831e2::t_eb8552493ec022 4555,4565-4566,4569
+crates/nodex-core/src/workspace/page_work.rs
+  s_0ea5fa27e831e2::t_eb8552493ec022 200-201,216-242
+crates/nodex-core/src/workspace/read.rs
+  s_0ea5fa27e831e2::t_eb8552493ec022 95-99
+crates/nodex-store-format/src/lib.rs
+  s_0ea5fa27e831e2::t_eb8552493ec022 305-308
+crates/nodex-core-contracts/src/workspace.rs
+  s_0ea5fa27e831e2::t_eb8552493ec022 19,74-76,321-323,1437,1465,1755-1757
+packages/core-protocol/src/generated.ts
+  s_0ea5fa27e831e2::t_eb8552493ec022 2143,2158,7286-7289,8796-8799,10186-10189,12660-12663
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_0ea5fa27e831e2::t_eb8552493ec022 38-40
+docs/adr/0075-nodex-coordinates-managed-work.md
+  s_0ea5fa27e831e2::t_eb8552493ec022 44
+src/main/coordinator/CoordinatorDeliveryRuntime.node.test.ts
+  s_0ea5fa27e831e2::t_eb8552493ec022 40-47,187-246
+src/main/coordinator/CoordinatorMonitor.node.test.ts
+  s_0ea5fa27e831e2::t_eb8552493ec022 41,73,119
+src/main/coordinator/CoordinatorMonitor.ts
+  s_0ea5fa27e831e2::t_eb8552493ec022 30-33,62
+crates/nodex-core/src/workspace/inbox_nodex_tests.rs
+  s_0ea5fa27e831e2::t_eb8552493ec022 6-8,1050-1354
+packages/core-protocol/src/compatibility.generated.ts
+  s_0ea5fa27e831e2::t_68e0ede41e85a3 24,42-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f25b1db83354466f917a98ac93e6f52d23358f95",
+  "prompts": {},
+  "sessions": {
+    "s_0ea5fa27e831e2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a6af-14d8-7532-a45c-6332939fbdf3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
