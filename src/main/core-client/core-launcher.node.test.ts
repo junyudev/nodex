@@ -336,26 +336,27 @@ describe("native Core launcher", () => {
     );
     chmodSync(executable, 0o700);
     const controller = new AbortController();
-    const abort = setTimeout(() => controller.abort(), 50);
+    const outcome = connectOrStartCore({
+      buildId: "core-launcher-abort-test",
+      environment: {
+        NODEX_CORE_EXECUTABLE: executable,
+        NODEX_TEST_CANDIDATE_PID_PATH: pidPath,
+      },
+      isPackaged: false,
+      nodexHome: directory,
+      signal: controller.signal,
+      startupTimeoutMs: 2_000,
+    }).catch((error: unknown) => error);
 
     try {
-      await expect(
-        connectOrStartCore({
-          buildId: "core-launcher-abort-test",
-          environment: {
-            NODEX_CORE_EXECUTABLE: executable,
-            NODEX_TEST_CANDIDATE_PID_PATH: pidPath,
-          },
-          isPackaged: false,
-          nodexHome: directory,
-          signal: controller.signal,
-          startupTimeoutMs: 2_000,
-        }),
-      ).rejects.toMatchObject({ name: "AbortError" });
+      await waitUntil(() => existsSync(pidPath), "candidate did not publish its PID");
+      controller.abort();
+      await expect(outcome).resolves.toMatchObject({ name: "AbortError" });
       const pid = Number.parseInt(readFileSync(pidPath, "utf8"), 10);
       expect(processExists(pid)).toBe(false);
     } finally {
-      clearTimeout(abort);
+      controller.abort();
+      await outcome;
       rmSync(directory, { recursive: true, force: true });
     }
   });
