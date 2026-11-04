@@ -1,0 +1,22 @@
+Cargo.toml
+  s_fd4aca34d2386d::t_b630e347a83d8c 115-120
+CHANGELOG.md
+  s_fd4aca34d2386d::t_ac10853bc871ae 11-12
+  s_fd4aca34d2386d::t_3779ca67f650fb 11-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "13a9efe61195a8592332d744c4a96840013aff0a",
+  "prompts": {},
+  "sessions": {
+    "s_fd4aca34d2386d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9638a4c9-f419-4bc1-81d9-3762efbfacb0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
