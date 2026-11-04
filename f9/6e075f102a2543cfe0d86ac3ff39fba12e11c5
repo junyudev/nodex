@@ -1,0 +1,36 @@
+tests/e2e/inbox-composer-layout.spec.ts
+  s_84ee3ee69e70b0::t_084964e12d7288 23-40
+  s_84ee3ee69e70b0::t_3f1a8f9aec8d37 168,176-187,201-207,209-210
+  s_84ee3ee69e70b0::t_b48309bee79016 1-22,41-70,73-164,166-167,169-175,229-231
+  s_84ee3ee69e70b0::t_57387c1e823bd4 71-72
+  s_84ee3ee69e70b0::t_2e11754d474c14 165,188-200,208,211-228
+src/renderer/features/inbox/inbox-composer.browser.test.tsx
+  s_84ee3ee69e70b0::t_5e79bf7f51f8b9 1-98
+src/renderer/features/inbox/inbox-composer.test.tsx
+  s_84ee3ee69e70b0::t_3a2d5722f09dbc 389
+docs/product-specs/inbox-behavior.md
+  s_84ee3ee69e70b0::t_05575be1858a30 73-76
+src/renderer/features/inbox/inbox-message-editor.tsx
+  s_84ee3ee69e70b0::t_47b5fa0ee76e45 113
+src/renderer/features/inbox/inbox-composer.tsx
+  s_84ee3ee69e70b0::t_736a9821781d05 26,180
+  s_84ee3ee69e70b0::t_9b3f3e68c70d3e 6-11,25,33-35,124,126,139-166,168-169,171-172,174-179,181-183,185-204
+  s_84ee3ee69e70b0::t_19807d1b4a5b3b 3-5
+  s_84ee3ee69e70b0::t_e44b53a52f1f10 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f96e075f102a2543cfe0d86ac3ff39fba12e11c5",
+  "prompts": {},
+  "sessions": {
+    "s_84ee3ee69e70b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9846df37-ce55-441b-af89-6ab87afc12c3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
