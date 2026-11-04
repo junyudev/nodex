@@ -1,0 +1,47 @@
+packages/mobile/src/ui/BottomAnchoredList.tsx
+  s_9c72cf791afc7e::t_2c219e7fcdd589 28,37-39
+packages/mobile/src/runtime/connection.ts
+  s_9c72cf791afc7e::t_1a9f4e76381bb4 526
+packages/mobile/src/ui/use-now.ts
+  s_9c72cf791afc7e::t_2c219e7fcdd589 1-13
+packages/mobile/src/features/pair/PairScreen.tsx
+  s_9c72cf791afc7e::t_2c219e7fcdd589 56
+scripts/ci/icon-inline-svg-baseline.json
+  s_9c72cf791afc7e::t_53a8f9aea9e22b 38-41
+packages/mobile/src/features/inbox/InboxPane.tsx
+  s_9c72cf791afc7e::t_2c219e7fcdd589 22,248
+packages/mobile/src/features/chats/ChatsPane.tsx
+  s_9c72cf791afc7e::t_2c219e7fcdd589 12,62
+packages/mobile/src/runtime/rpc-client.ts
+  s_9c72cf791afc7e::t_1a9f4e76381bb4 100,110-114
+src/main/mobile-gateway/transcript-projection.node.test.ts
+  s_9c72cf791afc7e::t_5c1ef25a406795 100
+src/main/mobile-gateway/transcript.node.test.ts
+  s_9c72cf791afc7e::t_5c1ef25a406795 62
+packages/mobile/src/Root.tsx
+  s_9c72cf791afc7e::t_2c219e7fcdd589 16
+packages/mobile/package.json
+  s_9c72cf791afc7e::t_1a9f4e76381bb4 70-73
+src/main/platform/node/MobileProfileFiles.node.test.ts
+  s_9c72cf791afc7e::t_2c219e7fcdd589 1,3,6-14
+packages/mobile/src/features/inbox/MessageScreen.tsx
+  s_9c72cf791afc7e::t_22dbfe95ac4f20 17,24,82
+src/main/mobile-gateway/transcript.ts
+  s_9c72cf791afc7e::t_1a9f4e76381bb4 163-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0c2a55c295ce43805124d0c4e6a41ad9158467d9",
+  "prompts": {},
+  "sessions": {
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
