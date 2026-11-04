@@ -1,0 +1,41 @@
+src/renderer/lib/markdown/markdown-segments.ts
+  s_c709cab53bd58e::t_b935b51fb434d1 46-65
+  s_c709cab53bd58e::t_b3fd66ae223f13 11-12,14-43,45,66,68-70
+src/renderer/lib/markdown/conversation-tokens.node.test.ts
+  s_c709cab53bd58e::t_b935b51fb434d1 51-82
+src/renderer/lib/markdown/conversation-document.ts
+  s_c709cab53bd58e::t_b935b51fb434d1 59-63,68,74-78,86,94-97,204-214
+  s_c709cab53bd58e::t_22c02b88c5417b 6,10-11,52-53,221,225,242-243
+src/renderer/lib/markdown/markdown-document.ts
+  s_c709cab53bd58e::t_b935b51fb434d1 60-63
+  s_c709cab53bd58e::t_4bfaa75446c3f6 13-14,37,54,73,133,135-137,196,209,220-223
+src/renderer/lib/markdown/markdown-segments.node.test.ts
+  s_c709cab53bd58e::t_b935b51fb434d1 18-19,23-25,28-29,31-36,39-65
+src/renderer/lib/markdown/conversation-tokens.ts
+  s_c709cab53bd58e::t_b935b51fb434d1 302-312,317,319,324,326
+  s_b8b9338452580c::t_861906eca7c7cf 12,33-43,241,246-255,258,277,282-291,299,336,341,343,346
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62192a88cc5df04e5a8a56cd7235af1a99277476",
+  "prompts": {},
+  "sessions": {
+    "s_b8b9338452580c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63c-6779-7322-9335-f40fc4bb8b3b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c709cab53bd58e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63d-3057-7013-94d3-655a991c69e9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
