@@ -18,7 +18,7 @@ import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { live as shellEnvironmentLive } from "../../host-runtime/WorktreeShellEnvironmentRuntime";
 
 const sdkLayer = live.pipe(
-  Layer.provide(mainConfigLayer({ platform: process.platform })),
+  Layer.provide(mainConfigLayer({ platform: process.platform, projectRootPath: process.cwd() })),
   Layer.provide(
     shellEnvironmentLive({
       baseEnvironment: { PATH: "/usr/bin:/bin" },

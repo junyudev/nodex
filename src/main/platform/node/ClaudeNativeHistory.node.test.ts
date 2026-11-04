@@ -14,7 +14,7 @@ import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
 import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 const ambientNativeConfiguration = () => process.env.CLAUDE_CONFIG_DIR;
 const sdkLayer = live.pipe(
-  Layer.provide(mainConfigLayer()),
+  Layer.provide(mainConfigLayer({ projectRootPath: process.cwd() })),
   Layer.provide(
     Layer.succeed(WorktreeShellEnvironmentRuntime, {
       load: Effect.die("History reads must not discover the executable PATH"),
