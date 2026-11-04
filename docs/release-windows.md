@@ -50,11 +50,13 @@ builds and extraction needs a 256 MiB dictionary in memory.
 NSIS runs installation-scoped process shutdown before replacing or removing any
 payload files. Before install-over, it refreshes the installed maintenance
 uninstaller from the incoming installer, so older process checks cannot run.
-It extracts its own maintenance Core and PowerShell script outside the installation
-and runs maintenance from the temporary directory, keeping working-directory
-handles outside the files being replaced or removed.
+It extracts its PowerShell script outside the installation and runs maintenance
+from the temporary directory, keeping working-directory handles outside the files
+being replaced or removed.
 The desktop gets a short ordinary-close window, then each detached Core receives
-an authenticated shutdown for the PID discovered under that installation. Core
+an authenticated shutdown for the PID discovered under that installation, sent by a
+temporary copy of that same executable, so the installer carries no Core of its own
+and the client always matches the running Core. Core
 gets eight seconds to drain; a bounded forced pass rechecks each remaining image
 path using the same native handle used for termination. No process-name-wide or
 descendant-tree termination is used. A sibling directory with the same prefix is

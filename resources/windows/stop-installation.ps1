@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)][string]$InstallationDirectory,
-    [Parameter(Mandatory = $true)][string]$CoreHelper,
+    [Parameter(Mandatory = $true)][string]$HelperDirectory,
     [Parameter(Mandatory = $true)][int]$InstallerPid
 )
 $ErrorActionPreference = 'Stop'
@@ -101,6 +101,7 @@ foreach ($image in (Get-InstallationProcesses | Where-Object { $_.Name -ieq 'Nod
 }
 
 $helpers = @()
+$coreHelper = $null
 try {
     foreach ($image in (Get-InstallationProcesses | Where-Object { $_.Name -ieq 'nodex-core.exe' })) {
         $arguments = [NodexMaintenance]::Arguments($image.CommandLine)
@@ -109,8 +110,14 @@ try {
         $coreHome = $arguments[$homeIndex + 1]
         # Windows paths cannot contain quotes; double trailing slashes before a closing quote.
         $quotedHome = '"' + [regex]::Replace($coreHome, '(\\+)$', '$1$1') + '"'
+        # Each Core drains through a copy of its own executable, so the client always speaks
+        # its protocol and nothing keeps the file being replaced or removed open.
+        if (!$coreHelper) {
+            $coreHelper = Join-Path $HelperDirectory 'nodex-core-maintenance.exe'
+            Copy-Item -LiteralPath $image.ExecutablePath -Destination $coreHelper
+        }
         $start = New-Object Diagnostics.ProcessStartInfo
-        $start.FileName = $CoreHelper
+        $start.FileName = $coreHelper
         $start.Arguments = '--shutdown --home ' + $quotedHome + ' --expected-pid ' + $image.ProcessId
         $start.UseShellExecute = $false
         $start.CreateNoWindow = $true
