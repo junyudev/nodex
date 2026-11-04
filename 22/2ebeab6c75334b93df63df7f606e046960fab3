@@ -1,0 +1,24 @@
+docs/release-windows.md
+  s_fd4aca34d2386d::t_49f7cea9ecfe92 46-48
+  s_fd4aca34d2386d::t_2f065c169bb2df 44-45,49
+electron-builder.yml
+  s_fd4aca34d2386d::t_0d7ef10a85ea2a 193-194
+scripts/electron-builder-config.test.ts
+  s_fd4aca34d2386d::t_f13e0efc1f57e4 103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "222ebeab6c75334b93df63df7f606e046960fab3",
+  "prompts": {},
+  "sessions": {
+    "s_fd4aca34d2386d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9638a4c9-f419-4bc1-81d9-3762efbfacb0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
