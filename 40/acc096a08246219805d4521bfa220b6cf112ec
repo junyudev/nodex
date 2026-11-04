@@ -1,0 +1,21 @@
+src/main/terminal-runtime/TerminalRuntimeMap.node.test.ts
+  s_1b17aa0abf2902::t_36949fb44b1a4b 19-23,159-199
+src/main/terminal-runtime/TerminalRuntimeMap.ts
+  s_1b17aa0abf2902::t_9c0f33db470727 1,126-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "40acc096a08246219805d4521bfa220b6cf112ec",
+  "prompts": {},
+  "sessions": {
+    "s_1b17aa0abf2902": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63d-6297-7152-a184-42890eef73be",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
