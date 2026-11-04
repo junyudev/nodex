@@ -8,7 +8,11 @@ import {
 import { ChildProcessSpawner } from "effect/process";
 import { reapAgentRuntimeServers } from "@nodex/agent-runtime/process-lifecycle";
 import { watch } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { afterEach, beforeEach } from "vite-plus/test";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Deferred from "effect/Deferred";
@@ -23,6 +27,14 @@ import * as Stream from "effect/Stream";
 import type { AgentCommand } from "@nodex/agent-runtime/contracts";
 import { acquireAgentRuntimeProcess, AGENT_RUNTIME_NODE_FLAGS } from "./AgentRuntimeProcess";
 
+let fixtureHome: string;
+beforeEach(async () => {
+  fixtureHome = await mkdtemp(join(tmpdir(), "nodex-runtime-process-"));
+});
+afterEach(async () => {
+  await rm(fixtureHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+});
+
 const entryPath = fileURLToPath(
   new URL("../../../../tests/fixtures/agent-runtime-stdio.mjs", import.meta.url),
 );
@@ -34,7 +46,7 @@ const acquire = (
   acquireAgentRuntimeProcess({
     executable: process.execPath,
     entryPath,
-    configuration: { home: "/tmp", cwd: "/tmp", providers: {} },
+    configuration: { home: fixtureHome, cwd: fixtureHome, providers: {} },
     host,
     livenessTickMs,
   });
@@ -44,7 +56,7 @@ it.effect("waits for startup work without a transport readiness deadline", () =>
     const starting = yield* acquireAgentRuntimeProcess({
       executable: process.execPath,
       entryPath,
-      configuration: { home: "/tmp", cwd: "/tmp", providers: {} },
+      configuration: { home: fixtureHome, cwd: fixtureHome, providers: {} },
       environment: { ...process.env, NODEX_FIXTURE_READY_DELAY_MS: "500" },
       host: () => Effect.succeed({ sequence: 9 }),
     }).pipe(Effect.forkScoped({ startImmediately: true }));
@@ -60,7 +72,7 @@ it.live("withdraws an interrupted utility over the existing Runtime connection",
     const connection = yield* acquire();
     const task = yield* Effect.forkChild(
       connection.request("text.generate-structured", {
-        cwd: "/tmp",
+        cwd: fixtureHome,
         prompt: "Rewrite",
         modelSelection: { instanceId: "codex", model: "gpt-6-luna" },
         outputSchema: {},
@@ -403,12 +415,12 @@ it.live("waits for model work's own deadline rather than cutting it at the trans
     const connection = yield* acquireAgentRuntimeProcess({
       executable: process.execPath,
       entryPath,
-      configuration: { home: "/tmp", cwd: "/tmp", providers: {} },
+      configuration: { home: fixtureHome, cwd: fixtureHome, providers: {} },
       host: () => Effect.succeed({ sequence: 9 }),
     });
     // The engine owns this model-work budget; transport waits for its result.
     const output = yield* connection.request("text.generate-structured", {
-      cwd: "/tmp",
+      cwd: fixtureHome,
       prompt: "Name this",
       modelSelection: { instanceId: "codex", model: "gpt-6.1-sol" },
       outputSchema: { type: "object" },
@@ -455,7 +467,7 @@ it.live("awaits the history import result", () =>
     const connection = yield* acquireAgentRuntimeProcess({
       executable: process.execPath,
       entryPath,
-      configuration: { home: "/tmp", cwd: "/tmp", providers: {} },
+      configuration: { home: fixtureHome, cwd: fixtureHome, providers: {} },
       host: () => Effect.succeed({ sequence: 9 }),
     });
     const result = yield* connection.request("thread.import-native", {
@@ -466,7 +478,7 @@ it.live("awaits the history import result", () =>
       backendKind: "codex",
       sourceHome: "/native/codex",
       sourceNativeThreadId: "native:one",
-      cwd: "/tmp",
+      cwd: fixtureHome,
       modelSelection: { instanceId: "codex", model: "model" },
     });
     assert.deepEqual(result, { threadId: "thread:one" });
@@ -534,8 +546,8 @@ it.live("configures providers over stdin so credentials never enter the process 
       executable: process.execPath,
       entryPath,
       configuration: {
-        home: "/tmp",
-        cwd: "/tmp",
+        home: fixtureHome,
+        cwd: fixtureHome,
         providers: {
           claude: {
             driver: "claudeAgent",
