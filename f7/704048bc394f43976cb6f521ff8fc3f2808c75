@@ -1,0 +1,22 @@
+packages/agent-runtime/src/nodex/Daemon.test.ts
+  s_1406096ae8699b::t_58a9a7c5d6daaf 375-414
+  s_1406096ae8699b::t_ee97aacc9a4637 2,374
+packages/agent-runtime/src/nodex/Daemon.ts
+  s_1406096ae8699b::t_c9b5551c94534a 119-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f7704048bc394f43976cb6f521ff8fc3f2808c75",
+  "prompts": {},
+  "sessions": {
+    "s_1406096ae8699b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8bc-a30f-7ef1-88b0-c163946dd472",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
