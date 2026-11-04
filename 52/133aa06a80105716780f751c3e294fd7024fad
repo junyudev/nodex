@@ -1,0 +1,164 @@
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_1264d6ed783515::t_270b4ac923851d 186-187
+src/main/codex-application/CodexRealtimeVoice.ts
+  s_209b740a679484::t_193633d4bc508b 56-60,499,703
+docs/product-specs/nodex-account-and-subscription-behavior.md
+  s_209b740a679484::t_193633d4bc508b 127
+src/main/project-application/ProjectLifecycleCommands.test.ts
+  s_209b740a679484::t_193633d4bc508b 184,186-200
+  s_209b740a679484::t_e91ff1b2ea5fc6 3,5,185
+  s_209b740a679484::t_4166bd953d467f 182-183
+src/main/agent-runtime/AgentRuntimeProviderConfiguration.node.test.ts
+  s_209b740a679484::t_193633d4bc508b 10-13,128-154
+  s_1264d6ed783515::t_270b4ac923851d 113-122,125-127,155-156
+  s_1264d6ed783515::t_5578f9bf80675d 3,123-124
+src/main/agent-runtime/AgentRuntimeSupervisor.ts
+  s_1264d6ed783515::t_270b4ac923851d 236-269,272-276,278-280,282-354,379-402
+  s_209b740a679484::t_db34ab964a629f 357-362,365-375
+  s_209b740a679484::t_40055a7efe277d 64-65,88,141,232,355,378,461
+tests/e2e/agent-runtime-starvation.spec.ts
+  s_209b740a679484::t_72cf426ef0d71f 12,123-126,149-155
+  s_209b740a679484::t_eb9d0a4e3d9f1b 1-11,13-122,127-148,156-167
+src/renderer/components/agent-runtime-status-notice.tsx
+  s_209b740a679484::t_db34ab964a629f 19-39
+  s_209b740a679484::t_2f1c4b9822448d 44
+  s_209b740a679484::t_3763ff925eb7c9 1-18,40-43,45-49
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_209b740a679484::t_193633d4bc508b 68,297,710-719
+src/renderer/components/core-authority-status.tsx
+  s_209b740a679484::t_0e6e5574456cb0 3,44-57,61-65
+src/main/platform/node/agent-runtime-liveness.ts
+  s_209b740a679484::t_db34ab964a629f 1-9
+src/main/codex-application/CodexRealtimeVoice.node.test.ts
+  s_209b740a679484::t_193633d4bc508b 954-971,973,976,978,980,982-983,985
+  s_209b740a679484::t_9413f8cd547689 3-4,953,972,974-975,977,979,981,984
+tests/fixtures/agent-runtime-stdio.mjs
+  s_1264d6ed783515::t_8e88ea0ae1033e 11,16-19,22,35-39,45,56
+  s_209b740a679484::t_d61d45863e9c92 71-74,134-138,185
+src/shared/agent-runtime-api.ts
+  s_209b740a679484::t_db34ab964a629f 359
+  s_209b740a679484::t_8e18356b889ec7 353-354
+src/renderer/components/app-status-notice.tsx
+  s_209b740a679484::t_0e6e5574456cb0 1-2,4-35,37-46,48-52,54,56-68,76-77
+  s_209b740a679484::t_72cf426ef0d71f 36
+  s_209b740a679484::t_db34ab964a629f 3,47,53,55,69-75
+src/renderer/app.tsx
+  s_209b740a679484::t_0e6e5574456cb0 3-4,94-105
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_1264d6ed783515::t_270b4ac923851d 19,3157-3161
+  s_1264d6ed783515::t_e6b5bef3949cc0 3162
+docs/RELIABILITY.md
+  s_209b740a679484::t_193633d4bc508b 437-441
+  s_209b740a679484::t_72cf426ef0d71f 752
+  s_209b740a679484::t_ef5356e0be5079 433-436,442-446
+src/main/platform/node/AgentRuntimeProcess.node.test.ts
+  s_209b740a679484::t_193633d4bc508b 36,38-49,649-652,667-671,751
+  s_1264d6ed783515::t_1d05853a5b36b3 116-117,120,172-173,179,185,187
+  s_209b740a679484::t_e91ff1b2ea5fc6 653-659
+  s_1264d6ed783515::t_270b4ac923851d 18,134-154,174-178,180-184,383-384,601-622,624,626-642,645-648,660-662,664-666,673-725,727-747,752
+  s_209b740a679484::t_e3ac68fa1a036a 1-3,26,33,186,385-386,391,403,415,447,600,623,625,643-644,663,672,726,748-750
+src/renderer/components/workbench/workbench-agent-runtime-panels.tsx
+  s_209b740a679484::t_0e6e5574456cb0 346-350,358-359
+src/renderer/components/agent-runtime-status-notice.test.tsx
+  s_209b740a679484::t_db34ab964a629f 14-57
+  s_209b740a679484::t_72cf426ef0d71f 4-7
+  s_209b740a679484::t_d3c801fc225d14 1-3,8-13,58-79
+docs/product-specs/realtime-voice-behavior.md
+  s_209b740a679484::t_193633d4bc508b 20
+src/main/project-application/ProjectLifecycleCommands.ts
+  s_209b740a679484::t_193633d4bc508b 57-60,138-140
+src/main/agent-runtime/AgentRuntimePresentationRelease.ts
+  s_1264d6ed783515::t_270b4ac923851d 31-33
+  s_1264d6ed783515::t_0496f8859f1292 7-9
+src/main/agent-runtime/AgentRuntimeSupervisor.node.test.ts
+  s_1264d6ed783515::t_1d05853a5b36b3 2,24,29-30,44,437,491-498,502-504,506-517,522-526,528,531,537,541,544,547,560
+  s_1264d6ed783515::t_270b4ac923851d 438-447,449-460,473-490,499-501,518-521,533,536,549,551,553
+  s_209b740a679484::t_db34ab964a629f 448,461-472
+  s_209b740a679484::t_3243db078adf5b 505,527,529-530,532,534-535,538-540,542-543,545-546,548,550,552,554-559
+src/main/agent-runtime/AgentRuntimeProviderConfiguration.ts
+  s_209b740a679484::t_193633d4bc508b 59-77
+  s_1264d6ed783515::t_270b4ac923851d 95-100,102
+  s_209b740a679484::t_07848b175a2bad 1
+src/main/platform/node/AgentRuntimeProcess.ts
+  s_1264d6ed783515::t_aea503168eef38 677
+  s_209b740a679484::t_db34ab964a629f 15-18,708
+  s_209b740a679484::t_2f1c4b9822448d 614-617
+  s_1264d6ed783515::t_270b4ac923851d 210-217,236-237,249-250,289-306,308-315,341,345-352,403-420,628-631,633-666,668-676,678-689,691-693,697-706
+  s_209b740a679484::t_257b0c9b6d6c84 13-14,41-45,56,421,423-429,436,438,442,517,622,624-627,632,707,709-713,716,726,730
+src/renderer/lib/agent-runtime-runtime.ts
+  s_209b740a679484::t_db34ab964a629f 232,333
+src/shared/schemas/agent-runtime-api.ts
+  s_209b740a679484::t_db34ab964a629f 266
+src/main/ipc/handlers/AgentRuntimeIpc.node.test.ts
+  s_209b740a679484::t_db34ab964a629f 128-131,422,426-428,430-431
+  s_1264d6ed783515::t_270b4ac923851d 126-127,132
+  s_1264d6ed783515::t_1d05853a5b36b3 8,421,423-425,429,432
+  s_209b740a679484::t_26f791354fa57f 48,433
+src/main/ipc/handlers/AgentRuntimeIpc.ts
+  s_209b740a679484::t_db34ab964a629f 118-121
+  s_209b740a679484::t_1faf0b42b08d18 122
+CHANGELOG.md
+  s_209b740a679484::t_8bce00be29aa26 22
+docs/product-specs/agent-runtime-behavior.md
+  s_209b740a679484::t_d9b83f0252d5d3 1091-1092,1099-1117
+packages/agent-runtime/src/nodex/Daemon.ts
+  s_fb1830c3f67295::t_c2ea93f1c97684 148-152
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_1264d6ed783515::t_93a78e7a036a80 5032
+src/main/agent-runtime/AgentRuntimeExecutionChanges.node.test.ts
+  s_209b740a679484::t_27e3e9a79e9271 21
+src/main/agent-runtime/AgentRuntimeHost.node.test.ts
+  s_209b740a679484::t_5da146629e36d1 109
+src/main/agent-runtime/AgentRuntimePresentationRelease.node.test.ts
+  s_1264d6ed783515::t_91a0190b1b97e2 7-10,39,45-67,81,126-128,219-229
+src/main/agent-runtime/AgentRuntimeSessionActivity.node.test.ts
+  s_209b740a679484::t_2d8ad5b19b0e24 60
+src/main/agent-runtime/AgentRuntimeUserInputAutoResolution.node.test.ts
+  s_209b740a679484::t_8f799eaa5124ea 64
+src/main/app-tools/SessionWaiter.node.test.ts
+  s_209b740a679484::t_66d897d87c4b34 54
+src/main/automation-application/AutomationExecution.node.test.ts
+  s_209b740a679484::t_558fedec89d093 324
+src/main/codex-application/CodexRuntimeNative.node.test.ts
+  s_1264d6ed783515::t_fcdf125ada8da4 2,13,41-44,46-62,108-110
+src/main/codex-application/CodexRuntimeNative.ts
+  s_1264d6ed783515::t_da864a2a77af79 16-18,137-141
+src/renderer/components/workbench/workbench-agent-runtime-panels.test.tsx
+  s_209b740a679484::t_694d2da08d127b 10-13,30-36,243,502-523
+src/renderer/lib/agent-runtime-session-activity.node.test.ts
+  s_1264d6ed783515::t_5ef9b09cbe1dee 115-120
+src/shared/ipc-endpoint-policy.ts
+  s_209b740a679484::t_e44cc5e44d7f12 329
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "52133aa06a80105716780f751c3e294fd7024fad",
+  "prompts": {},
+  "sessions": {
+    "s_1264d6ed783515": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a6c8-a885-7e03-a1ee-2b3497307594",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_209b740a679484": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5d04f804-1df5-4b17-8b7b-f6f33e4affe1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fb1830c3f67295": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a6af-6d75-7e62-8485-4467159151d7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
