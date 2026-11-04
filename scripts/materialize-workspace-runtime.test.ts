@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
+  existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -27,18 +28,65 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function createWorkspaceFixture(root: string) {
+function writeFixtureFile(root: string, relativePath: string, content = "fixture\n") {
+  const absolute = path.join(root, relativePath);
+  mkdirSync(path.dirname(absolute), { recursive: true });
+  writeFileSync(absolute, content);
+}
+
+function createWorkspaceFixture(root: string, missingPythonPath?: string) {
   const source = path.join(root, "source");
   mkdirSync(path.join(source, "python/bin"), { recursive: true });
   writeFileSync(path.join(source, "python/bin/python3.13"), "python executable\n");
   chmodSync(path.join(source, "python/bin/python3.13"), 0o755);
-  symlinkSync("python3.13", path.join(source, "python/bin/python3"));
+  for (const alias of ["python", "python3"]) {
+    symlinkSync("python3.13", path.join(source, "python/bin", alias));
+  }
+  writeFixtureFile(source, "python/bin/pydoc3.13");
+  symlinkSync("pydoc3.13", path.join(source, "python/bin/pydoc3"));
+  const pythonFiles = [
+    "bin/idle3",
+    "bin/idle3.13",
+    "bin/pip",
+    "bin/pip3",
+    "bin/pip3.13",
+    "bin/python3-config",
+    "bin/python3.13-config",
+    "include/python3.13/Python.h",
+    "lib/itcl4.3.8/pkgIndex.tcl",
+    "lib/libpython3.13.dylib",
+    "lib/libtcl9.0.dylib",
+    "lib/libtcl9tk9.0.dylib",
+    "lib/pkgconfig/python-3.13.pc",
+    "lib/tcl9/pkgIndex.tcl",
+    "lib/tcl9.0/init.tcl",
+    "lib/thread3.0.6/pkgIndex.tcl",
+    "lib/tk9.0/tk.tcl",
+    "lib/python3.13/config-3.13-darwin/Makefile",
+    "lib/python3.13/ensurepip/__init__.py",
+    "lib/python3.13/idlelib/__init__.py",
+    "lib/python3.13/lib-dynload/_tkinter.cpython-313-darwin.so",
+    "lib/python3.13/site-packages/pip/__init__.py",
+    "lib/python3.13/site-packages/pip-26.2.1.dist-info/METADATA",
+    "lib/python3.13/tkinter/__init__.py",
+    "lib/python3.13/turtle.py",
+    "lib/python3.13/turtledemo/__init__.py",
+  ];
+  for (const file of pythonFiles) {
+    if (file !== missingPythonPath) writeFixtureFile(source, `python/${file}`);
+  }
   const wheelSource = path.join(root, "wheel");
-  mkdirSync(wheelSource);
-  writeFileSync(path.join(wheelSource, "example.py"), "example = True\n");
+  writeFixtureFile(wheelSource, "example/__init__.py", "example = True\n");
+  writeFixtureFile(wheelSource, "example/include/example.h");
+  writeFixtureFile(wheelSource, "example-1.0.0.dist-info/licenses/LICENSE");
+  writeFixtureFile(wheelSource, "example-1.0.0.dist-info/licenses/notice.h");
   const assets = [
     { name: "python.tar.gz", source, members: ["python"] },
-    { name: "example.whl", source: wheelSource, members: ["example.py"] },
+    {
+      name: "example.whl",
+      source: wheelSource,
+      members: ["example", "example-1.0.0.dist-info"],
+    },
   ].map((input) => {
     const archive = path.join(root, input.name);
     execFileSync("tar", ["-czf", archive, "-C", input.source, ...input.members]);
@@ -121,7 +169,25 @@ test.skipIf(process.platform === "win32")(
       await materializeWorkspaceRuntime({ ...options, outputPath: second });
       const executable = "python/bin/python3.13";
       expect(readFileSync(path.join(second, executable), "utf8")).toBe("python executable\n");
-      expect(lstatSync(path.join(second, "python/bin/python3")).isSymbolicLink()).toBe(false);
+      expect(lstatSync(path.join(second, "python/bin/pydoc3")).isFile()).toBe(true);
+      const sitePackages = path.join(second, "python/lib/python3.13/site-packages");
+      for (const removed of [
+        "python/bin/python",
+        "python/bin/python3",
+        "python/lib/libpython3.13.dylib",
+        "python/lib/tk9.0",
+        "python/include",
+      ]) {
+        expect(existsSync(path.join(second, removed)), removed).toBe(false);
+      }
+      expect(existsSync(path.join(sitePackages, "pip"))).toBe(false);
+      expect(existsSync(path.join(sitePackages, "example/include/example.h"))).toBe(false);
+      expect(readFileSync(path.join(sitePackages, "example/__init__.py"), "utf8")).toBe(
+        "example = True\n",
+      );
+      expect(
+        readFileSync(path.join(sitePackages, "example-1.0.0.dist-info/licenses/notice.h"), "utf8"),
+      ).toBe("fixture\n");
       expect(lstatSync(path.join(first, executable), { bigint: true }).ino).not.toBe(
         lstatSync(path.join(second, executable), { bigint: true }).ino,
       );
@@ -160,6 +226,28 @@ test.skipIf(process.platform === "win32")(
       expect(readFileSync(path.join(previousNoticeOutput, "licenses/python/LICENSE"), "utf8")).toBe(
         "Python license\n",
       );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.skipIf(process.platform === "win32")(
+  "refuses to publish a runtime when the pinned Python layout changes",
+  async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "nodex-workspace-prune-"));
+    try {
+      const { lockPath } = createWorkspaceFixture(root, "bin/pip3");
+      const outputPath = path.join(root, "output");
+      await expect(
+        materializeWorkspaceRuntime({
+          projectRoot: root,
+          lockPath,
+          targetArch: "arm64",
+          outputPath,
+        }),
+      ).rejects.toThrow("Workspace Python prune path is missing: python/bin/pip3");
+      expect(existsSync(outputPath)).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

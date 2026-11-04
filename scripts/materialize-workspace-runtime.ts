@@ -4,12 +4,14 @@ import {
   chmodSync,
   cpSync,
   existsSync,
+  globSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -49,6 +51,69 @@ export const workspaceRuntimeLockSchema = z.strictObject({
   pythonRelease: z.string(),
   targets: z.strictObject({ arm64: targetSchema }),
 });
+const pythonStdlib = "python/lib/python3.13";
+const sitePackages = `${pythonStdlib}/site-packages`;
+
+// A change to the staging recipe requires a new distribution ID in the lock.
+const pythonPrunePatterns = [
+  "python/bin/python",
+  "python/bin/python3",
+  "python/lib/libpython*.dylib",
+  "python/bin/pip",
+  "python/bin/pip3",
+  "python/bin/pip3.13",
+  `${sitePackages}/pip`,
+  `${sitePackages}/pip-*.dist-info`,
+  `${pythonStdlib}/ensurepip`,
+  "python/bin/idle3",
+  "python/bin/idle3.13",
+  "python/lib/itcl4.3.8",
+  "python/lib/tcl9",
+  "python/lib/tcl9.0",
+  "python/lib/tk9.0",
+  "python/lib/thread3.0.6",
+  "python/lib/libtcl9.0.dylib",
+  "python/lib/libtcl9tk9.0.dylib",
+  `${pythonStdlib}/tkinter`,
+  `${pythonStdlib}/idlelib`,
+  `${pythonStdlib}/turtledemo`,
+  `${pythonStdlib}/turtle.py`,
+  `${pythonStdlib}/lib-dynload/_tkinter*.so`,
+  "python/include",
+  "python/lib/pkgconfig",
+  `${pythonStdlib}/config-3.13-darwin`,
+  "python/bin/python3-config",
+  "python/bin/python3.13-config",
+  `${sitePackages}/**/*.{pyi,pyx,pxd,h,c}`,
+] as const;
+
+function prunePythonRuntime(bundle: string): void {
+  for (const pattern of pythonPrunePatterns) {
+    const entries = globSync(pattern, {
+      cwd: bundle,
+      exclude: ["**/*.dist-info/**", "**/{license,licenses,LICENSE,LICENSES}/**"],
+    });
+    if (entries.length === 0) throw new Error(`Workspace Python prune path is missing: ${pattern}`);
+    for (const entry of entries) rmSync(path.join(bundle, entry), { recursive: true });
+  }
+}
+
+function thinWheelBinaries(bundle: string, arch: "arm64"): void {
+  for (const entry of globSync(`${sitePackages}/**/*.{so,dylib}`, { cwd: bundle })) {
+    const binary = path.join(bundle, entry);
+    const architectures = execFileSync("lipo", ["-archs", binary], { encoding: "utf8" })
+      .trim()
+      .split(/\s+/u);
+    if (!architectures.includes(arch))
+      throw new Error(`Workspace wheel binary lacks ${arch}: ${entry}`);
+    if (architectures.length === 1) continue;
+    const thin = `${binary}.thin`;
+    execFileSync("lipo", [binary, "-thin", arch, "-output", thin]);
+    chmodSync(thin, lstatSync(binary).mode & 0o777);
+    renameSync(thin, binary);
+  }
+}
+
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const digest = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
 const contained = (root: string, target: string) => {
@@ -99,7 +164,7 @@ function verifySourceLinks(root: string, directory = root): void {
 }
 
 function materializeRuntimeAliases(source: string, destination: string): void {
-  for (const entry of readdirSync(source, { withFileTypes: true })) {
+  for (const entry of readdirSync(destination, { withFileTypes: true })) {
     const from = path.join(source, entry.name);
     const to = path.join(destination, entry.name);
     if (entry.isDirectory()) {
@@ -219,9 +284,10 @@ export async function materializeWorkspaceRuntime(options: {
           unpack(pythonArchive, source);
           verifySourceLinks(realpathSync(source));
           cloneImmutableDirectory(source, bundle);
-          materializeRuntimeAliases(source, bundle);
-          const sitePackages = "python/lib/python3.13/site-packages";
           for (const wheel of wheels) unpack(wheel, path.join(bundle, sitePackages));
+          prunePythonRuntime(bundle);
+          materializeRuntimeAliases(source, bundle);
+          thinWheelBinaries(bundle, options.targetArch);
           cpSync(licenseRoot, path.join(bundle, "licenses/python"), { recursive: true });
           const manifest = workspaceRuntimeManifestSchema.parse({
             schemaVersion: 1,

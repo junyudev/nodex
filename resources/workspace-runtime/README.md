@@ -11,9 +11,11 @@ transitive wheel, download sizes and SHA-256 digests. Stage an architecture with
 bundles use the [shared third-party runtime cache](../../docs/development.md#machine-local-artifact-cache).
 Materialization atomically replaces `.generated/workspace-runtime/<arch>` with an
 independent copy, using copy-on-write where available. A staged manifest records the source lock digest
-and every regular file. Python file aliases are materialized as regular files, so the
-installation contains no symlink-dependent executable paths. Wheel command-line scripts
-are retained as package data; only Python imports and the reported interpreter are public.
+and every regular file. Staging keeps `python/bin/python3.13` and omits interpreter aliases,
+the embedding library, package installation tools, Tk and IDLE, and build inputs. Retained
+aliases are materialized as regular files and wheel binaries contain only Apple silicon
+code. Wheel command-line scripts are retained as package data. Only Python imports and
+the reported interpreter are public.
 
 The macOS packaging tasks include this closure outside ASAR. The signing hook updates
 file digests after signing Python and native extensions, before sealing the outer app.
@@ -26,7 +28,9 @@ security sandbox. Write generated artifacts to the task workspace, never the run
 
 Resolve wheel-only distributions for CPython 3.13 on Apple silicon macOS.
 Retain every library's full transitive closure. Fetch artifact URLs and hashes from the exact Python release and PyPI release
-metadata, update the distribution ID and lock, and restage the runtime. Do not
+metadata, update the distribution ID and lock, and restage the runtime. Staging fails if a
+prune rule matches no path. Review the upstream layout before updating the rules, and
+change the distribution ID whenever the staging recipe changes. Do not
 replace a missing binary wheel with a local source build or omit a dependency silently.
 
 Run each staged interpreter with `-I -B scripts/fixtures/workspace-runtime/documents.py
@@ -41,7 +45,7 @@ Its source release is [python-build-standalone 20260901](https://github.com/astr
 The notices in `python-licenses/` are copied unchanged from that release's license set
 (commit `4bb01f09aaf362c71e891be4a41cb6d6ddf830b3`) and accompany the packaged runtime.
 That upstream set includes notices for optional components beyond the selected archive.
-CPython's own installed license and pip's bundled notices are retained as well.
+CPython's own installed license is retained as well.
 
 Each wheel retains its `.dist-info` license files and any package-level third-party
 notices, including native PDF, XML, image and cryptography dependencies. Exact wheel source
