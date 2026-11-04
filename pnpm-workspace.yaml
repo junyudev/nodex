@@ -21,6 +21,7 @@ patchedDependencies:
   glob@7.2.3: patches/glob@7.2.3.patch
   app-builder-lib@26.18.0: patches/app-builder-lib@26.18.0.patch
   "@effect/platform-node-shared@4.0.6": patches/@effect__platform-node-shared@4.0.6.patch
+  "@streamdown/code@2.0.0": patches/@streamdown__code@2.0.0.patch
 
 supportedArchitectures:
   os:

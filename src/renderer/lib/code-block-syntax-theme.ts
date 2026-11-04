@@ -108,3 +108,6 @@ export const CODE_BLOCK_SYNTAX_THEME = {
     { scope: ["markup.bold"], settings: { fontStyle: "bold" } },
   ],
 };
+
+/** Shiki asks for a light and a dark theme; the shared palette resolves both from CSS. */
+export const CODE_BLOCK_THEME_PAIR = [CODE_BLOCK_SYNTAX_THEME, CODE_BLOCK_SYNTAX_THEME] as const;

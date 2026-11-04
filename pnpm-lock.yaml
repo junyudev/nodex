@@ -235,6 +235,7 @@ patchedDependencies:
   '@electron/asar@3.4.1': 66237c8809f62aa78f1522622a6f31b17560ecfb7a21fc67593c9fc74e261fdd
   '@pierre/diffs@1.6.1': 1511e2107430a490948c1e29eb5738d1dedde3986d557b5e92d7e79cbc38ac7a
   '@redocly/openapi-core@1.34.17': 2ce4959e1555cddcaa3ace4fa90cf5c75c71412b92b632497c2344ea137ebef1
+  '@streamdown/code@2.0.0': 94a109954255d82fbe65e6c13738f35dd70221a4cfc2f5e88d1786eb1d15fcfd
   '@vitest/browser@5.0.5': 64e14351a6576d6d5a07faa82b017cd4d15fb6523f3620dcfaa43290b2a78f67
   '@voidzero-dev/vite-plus-core@1.4.0': 80e4a2746abf3bc3d69f88d603008fd01c5c3b901a78dad0f57e0caf75535b04
   '@y/prosemirror@2.0.0-6': 0571932eed7c6e4ffb73defa770d0e67e7b37168f173eecaf8ec49378a7f767e
@@ -394,7 +395,7 @@ importers:
         version: 1.0.4(@types/mdast@4.0.4)(micromark-util-types@2.0.3)(micromark@4.0.2(supports-color@10.2.2))(react@19.3.1)(supports-color@10.2.2)(unified@11.0.5)
       '@streamdown/code':
         specifier: 2.0.0
-        version: 2.0.0(react@19.3.1)
+        version: 2.0.0(patch_hash=94a109954255d82fbe65e6c13738f35dd70221a4cfc2f5e88d1786eb1d15fcfd)(react@19.3.1)
       '@streamdown/math':
         specifier: 1.0.3
         version: 1.0.3(react@19.3.1)(supports-color@10.2.2)
@@ -15873,7 +15874,7 @@ snapshots:
       - supports-color
       - unified
 
-  '@streamdown/code@2.0.0(react@19.3.1)':
+  '@streamdown/code@2.0.0(patch_hash=94a109954255d82fbe65e6c13738f35dd70221a4cfc2f5e88d1786eb1d15fcfd)(react@19.3.1)':
     dependencies:
       react: 19.3.1
       shiki: 4.5.0

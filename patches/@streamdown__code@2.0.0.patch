@@ -1,0 +1,23 @@
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 562cb8312c9d941abbb11a727b888d5bf26d7f9e..8aa563097605c19a51f21078d3d70cc5fde995dd 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -35,7 +35,7 @@ interface CodeHighlighterPlugin {
+      * Returns null if highlighting not ready yet (async loading)
+      * Use callback for async result
+      */
+-    highlight: (options: HighlightOptions, callback?: (result: HighlightResult) => void) => HighlightResult | null;
++    highlight: (options: HighlightOptions, callback?: (result: HighlightResult) => void, onError?: (error: unknown) => void) => HighlightResult | null;
+     name: "shiki";
+     /**
+      * Check if language is supported
+diff --git a/dist/index.js b/dist/index.js
+index 827cae9214746638720eb55fe54c3a0ed4ca9030..591fcedf03d538139b3cd5960b68dbb86fc8aca8 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1,3 +1,3 @@
+ import {bundledLanguagesInfo,bundledLanguages,createHighlighter}from'shiki';import {createJavaScriptRegexEngine}from'shiki/engine/javascript';var O=createJavaScriptRegexEngine({forgiving:true}),b=Object.fromEntries(bundledLanguagesInfo.flatMap(n=>{var e;return ((e=n.aliases)!=null?e:[]).map(t=>[t,n.id])})),T=new Set(Object.keys(bundledLanguages)),C=n=>{let t=n.trim().toLowerCase(),g=b[t];return g||(T.has(t),t)},L=new Map,P=3e5,M=5e3,_=64,o=new Map,B=0,$=(n,e)=>{let t=e.tokens.length+Math.ceil(n.length/_);for(let g of e.tokens)t+=g.length;return t},I=n=>{let e=o.get(n);return e&&(o.delete(n),o.set(n,e)),e==null?void 0:e.result},R=n=>{let e=o.get(n);e&&(o.delete(n),B-=e.cost);},G=(n,e)=>{R(n);let t=$(n,e);for(o.set(n,{cost:t,result:e}),B+=t;(B>P||o.size>M)&&o.size>1;)R(o.keys().next().value);},S=new Map,z=4,N=(n,e)=>{let t=S.get(n);if(!t)return;let g=t.findIndex(r=>e.startsWith(r.prefix));return g===-1?void 0:t.splice(g,1)[0]},H=(n,e)=>{let t=S.get(n);t||(t=[],S.set(n,t)),t.unshift(e),t.length>z&&t.pop();},x=(n,e)=>{if(e!==0)for(let t of n)for(let g of t)g.offset+=e;},j=(n,e,t,g,r)=>{let s=N(t,e),l=s?s.prefix:"",u=s?s.rows:[],a=s==null?void 0:s.grammarState,i=e.lastIndexOf(`
+ `)+1;if(i>l.length){let c=n.codeToTokens(e.slice(l.length,i),{lang:g,themes:r,grammarState:a}),h=c.tokens;h.pop(),x(h,l.length),u=u.concat(h),a=c.grammarState,l=e.slice(0,i),H(t,{grammarState:a,prefix:l,rows:u});}else s&&H(t,s);let d=n.codeToTokens(e.slice(i),{lang:g,themes:r,grammarState:a});return x(d.tokens,i),{...d,tokens:u.concat(d.tokens)}},f=n=>{var e;return typeof n=="string"?n:(e=n.name)!=null?e:"custom"},w=(n,e)=>`${n}-${f(e[0])}-${f(e[1])}`,X=(n,e,t)=>`${e}:${t[0]}:${t[1]}
+-${n}`,D=(n,e)=>{let t=w(n,e);if(L.has(t))return L.get(t);let g=createHighlighter({themes:e,langs:[n],engine:O});return L.set(t,g),g};function U(n={}){var t;let e=(t=n.themes)!=null?t:["github-light","github-dark"];return {name:"shiki",type:"code-highlighter",supportsLanguage(g){let r=C(g);return T.has(r)},getSupportedLanguages(){return Array.from(T)},getThemes(){return e},highlight({code:g,language:r,themes:s,isIncomplete:l=false},u){let a=C(r),i=[f(s[0]),f(s[1])],d=T.has(a)?a:"text",c=X(g,d,i),h=I(c);return h||(D(d,s).then(m=>{let k=m.getLoadedLanguages().includes(a)?a:"text",p=I(c);p||(p=j(m,g,`${w(d,s)}:${k}`,k,{light:i[0],dark:i[1]}),l||G(c,p)),u==null||u(p);}).catch(m=>{console.error("[Streamdown Code] Failed to highlight code:",m);}),null)}}}var W=U();export{W as code,U as createCodePlugin};
+\ No newline at end of file
++${n}`,D=(n,e)=>{let t=w(n,e);if(L.has(t))return L.get(t);let g=createHighlighter({themes:e,langs:[n],engine:O});return L.set(t,g),g};function U(n={}){var t;let e=(t=n.themes)!=null?t:["github-light","github-dark"];return {name:"shiki",type:"code-highlighter",supportsLanguage(g){let r=C(g);return T.has(r)},getSupportedLanguages(){return Array.from(T)},getThemes(){return e},highlight({code:g,language:r,themes:s,isIncomplete:l=false},u,E){let a=C(r),i=[f(s[0]),f(s[1])],d=T.has(a)?a:"text",c=X(g,d,i),h=I(c);return h||(D(d,s).then(m=>{let k=m.getLoadedLanguages().includes(a)?a:"text",p=I(c);p||(p=j(m,g,`${w(d,s)}:${k}`,k,{light:i[0],dark:i[1]}),l||G(c,p)),u==null||u(p);}).catch(m=>{E?E(m):console.error("[Streamdown Code] Failed to highlight code:",m);}),null)}}}var W=U();export{W as code,U as createCodePlugin};
