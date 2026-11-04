@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { Editor } from "@pierre/diffs/edit";
 import { StrictMode, createRef, useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
@@ -52,19 +52,7 @@ function shadow(container: HTMLElement): ShadowRoot {
 }
 
 async function settle<T>(read: () => T): Promise<T> {
-  const deadline = performance.now() + 10_000;
-  let lastError: unknown;
-  while (performance.now() < deadline) {
-    try {
-      return read();
-    } catch (error) {
-      lastError = error;
-    }
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    });
-  }
-  throw lastError;
+  return waitFor(read, { timeout: 10_000 });
 }
 
 function spyOnEditor() {

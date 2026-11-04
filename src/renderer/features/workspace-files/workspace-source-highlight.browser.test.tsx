@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { getSharedHighlighter } from "@pierre/diffs";
 import { Editor } from "@pierre/diffs/edit";
 import { useState } from "react";
@@ -47,18 +47,7 @@ function HtmlEditor(props: Partial<WorkspacePierreEditorProps>) {
 }
 
 async function settle(assert: () => void) {
-  const deadline = performance.now() + 15_000;
-  for (;;) {
-    try {
-      assert();
-      return;
-    } catch (error) {
-      if (performance.now() > deadline) throw error;
-    }
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    });
-  }
+  return waitFor(assert, { timeout: 15_000 });
 }
 
 function expectHighlightedEditor(container: HTMLElement) {

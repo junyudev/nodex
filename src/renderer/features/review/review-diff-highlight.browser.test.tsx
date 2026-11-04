@@ -1,5 +1,5 @@
 import { getSharedHighlighter, parseDiffFromFile, parsePatchFiles } from "@pierre/diffs";
-import { act, render } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { FileDiff as ReviewFileDiff } from "@/components/workbench/review-diff-panel-deps";
 import { InlineFileDiff } from "@/features/local-conversation/view/shared/tools/inline-file-diff";
@@ -28,18 +28,7 @@ const diff = parseDiffFromFile(
 const reviewOptions = getNodexReviewDiffOptions("light", true, { diffStyle: "unified" });
 
 async function settle(assert: () => void) {
-  const deadline = performance.now() + 15_000;
-  for (;;) {
-    try {
-      assert();
-      return;
-    } catch (error) {
-      if (performance.now() > deadline) throw error;
-    }
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    });
-  }
+  return waitFor(assert, { timeout: 15_000 });
 }
 function highlighted(container: HTMLElement) {
   const root = container.querySelector("diffs-container")?.shadowRoot;

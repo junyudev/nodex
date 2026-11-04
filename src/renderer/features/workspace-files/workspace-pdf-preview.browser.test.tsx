@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import "@/globals.css";
 import { WorkspacePdfPreview } from "./workspace-pdf-preview";
@@ -17,65 +17,56 @@ describe("WorkspacePdfPreview browser runtime", () => {
       </div>,
     );
 
-    const preview = await waitForAct(() =>
-      view.getByLabelText("PDF preview for runtime-check.pdf"),
-    );
-    await waitForAct(() => {
-      const canvas = preview.querySelector("canvas");
-      expect(canvas).not.toBeNull();
-      expect(canvas?.width ?? 0).toBeGreaterThan(0);
-      expect(canvas?.height ?? 0).toBeGreaterThan(0);
-      expect(preview.querySelector(".textLayer")?.textContent).toContain("Nodex PDF Preview");
-      const text = preview.querySelector<HTMLElement>('.textLayer span[role="presentation"]');
-      if (text === null) throw new Error("Expected selectable PDF text");
-      const page = text.closest<HTMLElement>("[data-workspace-pdf-page]")!;
-      const scale = page.getBoundingClientRect().width / 612;
-      expect(Number.parseFloat(getComputedStyle(text).fontSize)).toBeCloseTo(24 * scale, 1);
-      expect(text.getBoundingClientRect().width).toBeGreaterThan(100 * scale);
-      expect(
-        preview.querySelector<HTMLAnchorElement>(
-          '.annotationLayer a[href="https://example.com/spec"]',
-        ),
-      ).not.toBeNull();
-    });
+    try {
+      const preview = await view.findByLabelText("PDF preview for runtime-check.pdf", undefined, {
+        timeout: 10_000,
+      });
+      await waitFor(
+        () => {
+          const canvas = preview.querySelector("canvas");
+          expect(canvas).not.toBeNull();
+          expect(canvas?.width ?? 0).toBeGreaterThan(0);
+          expect(canvas?.height ?? 0).toBeGreaterThan(0);
+          expect(preview.querySelector(".textLayer")?.textContent).toContain("Nodex PDF Preview");
+          const text = preview.querySelector<HTMLElement>('.textLayer span[role="presentation"]');
+          if (text === null) throw new Error("Expected selectable PDF text");
+          const page = text.closest<HTMLElement>("[data-workspace-pdf-page]")!;
+          const scale = page.getBoundingClientRect().width / 612;
+          expect(Number.parseFloat(getComputedStyle(text).fontSize)).toBeCloseTo(24 * scale, 1);
+          expect(text.getBoundingClientRect().width).toBeGreaterThan(100 * scale);
+          expect(
+            preview.querySelector<HTMLAnchorElement>(
+              '.annotationLayer a[href="https://example.com/spec"]',
+            ),
+          ).not.toBeNull();
+        },
+        { timeout: 10_000 },
+      );
 
-    const externalLink = preview.querySelector<HTMLAnchorElement>(
-      '.annotationLayer a[href="https://example.com/spec"]',
-    );
-    if (externalLink === null) throw new Error("Expected the PDF annotation link");
-    await act(async () => {
-      fireEvent.click(externalLink);
-      await Promise.resolve();
-    });
-    expect(openExternalLink).toHaveBeenCalledWith("https://example.com/spec");
+      const externalLink = preview.querySelector<HTMLAnchorElement>(
+        '.annotationLayer a[href="https://example.com/spec"]',
+      );
+      if (externalLink === null) throw new Error("Expected the PDF annotation link");
+      await act(async () => {
+        fireEvent.click(externalLink);
+        await Promise.resolve();
+      });
+      expect(openExternalLink).toHaveBeenCalledWith("https://example.com/spec");
 
-    const pageLink = preview.querySelector<HTMLAnchorElement>(
-      '.annotationLayer a:not([target="_blank"])',
-    );
-    if (pageLink === null) throw new Error("Expected the PDF page destination link");
-    await act(async () => {
-      fireEvent.click(pageLink);
-      await Promise.resolve();
-    });
-    await waitForAct(() => expect(view.getByText("2/2")).not.toBeNull());
+      const pageLink = preview.querySelector<HTMLAnchorElement>(
+        '.annotationLayer a:not([target="_blank"])',
+      );
+      if (pageLink === null) throw new Error("Expected the PDF page destination link");
+      await act(async () => {
+        fireEvent.click(pageLink);
+        await Promise.resolve();
+      });
+      expect(await view.findByText("2/2", undefined, { timeout: 10_000 })).not.toBeNull();
+    } finally {
+      view.unmount();
+    }
   });
 });
-
-async function waitForAct<T>(read: () => T, timeout = 10_000): Promise<T> {
-  const deadline = performance.now() + timeout;
-  let lastError: unknown = new Error("Timed out waiting for the PDF preview");
-  while (performance.now() < deadline) {
-    try {
-      return read();
-    } catch (error) {
-      lastError = error;
-    }
-    await act(async () => {
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 25));
-    });
-  }
-  throw lastError;
-}
 
 function buildPdfDataUrl(text: string): string {
   const content = `BT\n/F1 24 Tf\n72 720 Td\n(${text}) Tj\nET\n`;
