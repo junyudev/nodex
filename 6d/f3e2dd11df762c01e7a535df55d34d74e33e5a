@@ -1,0 +1,71 @@
+docs/ARCHITECTURE.md
+  s_f2cbcc24faded8::t_8407498bb026a8 133-137
+docs/release-windows.md
+  s_f2cbcc24faded8::t_1307fd846afc76 92-94
+  s_f2cbcc24faded8::t_8407498bb026a8 80-86,91,95-99
+docs/release.md
+  s_f2cbcc24faded8::t_8407498bb026a8 424-426,445-451
+  s_f2cbcc24faded8::t_daaea0f1b34385 452
+docs/development.md
+  s_f2cbcc24faded8::t_2252abb167b4d6 704-713
+electron-builder.yml
+  s_f2cbcc24faded8::t_2f50935ed5048f 10-11,45-52,54,57-60
+scripts/packaged-pty-probe.test.ts
+  s_d93605f3a1c816::t_15c244fe9f715c 1-71
+scripts/release/windows-distribution.test.ts
+  s_d93605f3a1c816::t_930ce325c3ce9b 1-47
+scripts/release/windows-distribution.ts
+  s_d93605f3a1c816::t_ebfce92e9f7172 16,39-77,162
+scripts/verify-native-runtime.test.ts
+  s_d93605f3a1c816::t_70ae04033fd6f2 1,13,348,351-355
+scripts/ci/probe-windows-installer.ts
+  s_d93605f3a1c816::t_856a66bd8e6c79 27,223,360,371-374
+scripts/packaged-app-archive.mjs
+  s_fd4aca34d2386d::t_463ccfeb9cc00f 64-68
+scripts/packaged-pty-probe.d.mts
+  s_d93605f3a1c816::t_9b0d65aa5f9772 1-17
+scripts/prepared-electron-build.test.ts
+  s_fd4aca34d2386d::t_d5cf9dc5864e47 144
+scripts/prepared-electron-build.ts
+  s_fd4aca34d2386d::t_84a1dfe8e37fae 362
+scripts/sign-macos-runtime.test.ts
+  s_fd4aca34d2386d::t_ead27f2ff33426 418
+src/main/codex/app-tools-launch-config.ts
+  s_fd4aca34d2386d::t_dd642c4723529e 12-14
+src/main/platform/node/AgentRuntimeEntrypoint.ts
+  s_fd4aca34d2386d::t_1bcdf6e622ee50 18,24-26
+src/main/platform/node/ClaudeSdkModule.node.test.ts
+  s_fd4aca34d2386d::t_7e52fc3db99027 24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6df3e2dd11df762c01e7a535df55d34d74e33e5a",
+  "prompts": {},
+  "sessions": {
+    "s_d93605f3a1c816": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a38a360f-884c-4c2b-a4cb-40c01decc3a9",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f2cbcc24faded8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a612-6368-70d1-9f9b-f7268a757708",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fd4aca34d2386d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9638a4c9-f419-4bc1-81d9-3762efbfacb0",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
