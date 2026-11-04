@@ -1,0 +1,53 @@
+docs/product-specs/composer-prediction-behavior.md
+  s_1b17aa0abf2902::t_0208e24e20cf57 40-42
+packages/agent-runtime/src/nodex/NativeInteraction.test.ts
+  s_1b17aa0abf2902::t_c48fa9a620da17 16,22-28,39,53,111-117,119,257,386-432
+packages/agent-runtime/src/nodex/NativeInteraction.ts
+  s_1b17aa0abf2902::t_5051d7dbacf88c 17-21,457,460,463-466,476
+src/main/automation-application/AutomationArchiveExcerpt.node.test.ts
+  s_1b17aa0abf2902::t_46a31d22be0ac8 75
+src/main/codex-application/CodexComposerPrediction.node.test.ts
+  s_1b17aa0abf2902::t_583ff294831ab9 498-539
+src/main/codex-application/CodexComposerPrediction.ts
+  s_1b17aa0abf2902::t_edd15e316cbdc8 297-299
+src/main/codex-application/CodexConversationArchive.node.test.ts
+  s_1b17aa0abf2902::t_9a10a8f8e67cea 86
+src/main/codex-application/CodexConversationHistoryExport.node.test.ts
+  s_1b17aa0abf2902::t_5244a896263ca0 106
+src/main/codex-application/CodexHistorySearchAdapter.node.test.ts
+  s_1b17aa0abf2902::t_49a3a14ff04e55 72
+src/main/codex-application/CodexSubagentDirectory.node.test.ts
+  s_1b17aa0abf2902::t_315c7eabdad5a3 56
+src/main/codex-runtime/CodexAppServerCapabilities.node.test.ts
+  s_1b17aa0abf2902::t_09dcd5f374e61e 176,210
+src/main/core-client/CodexSubagentParityPerformance.stress.test.ts
+  s_1b17aa0abf2902::t_a1b79d78945d28 221
+src/shared/codex-app-server-version.ts
+  s_1b17aa0abf2902::t_46b9e1e7476881 17
+src/main/codex-runtime/CodexAppServerCapabilities.ts
+  s_fab41626a3a5b7::t_055be1c1941a82 9,35,45-46,64,84,156-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5dc4042488dac6020d67eeee37e42fd1c59f4475",
+  "prompts": {},
+  "sessions": {
+    "s_1b17aa0abf2902": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63d-6297-7152-a184-42890eef73be",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fab41626a3a5b7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63c-2882-7fe2-8ac7-abca1f363e49",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
