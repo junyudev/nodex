@@ -1,0 +1,26 @@
+CHANGELOG.md
+  s_6c9891f66c664a::t_86155f68c924e0 9-12,14-15
+  s_6c9891f66c664a::t_621cb6ef3bc8e8 13,16,160,183-184
+Cargo.toml
+  s_6c9891f66c664a::t_86155f68c924e0 19
+package.json
+  s_6c9891f66c664a::t_86155f68c924e0 3
+Cargo.lock
+  s_6c9891f66c664a::t_d46ea5c9f6db8a 1102,1119,1144,1177,1188,1204,1233,1246,1258,1272,1288,1295
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "98e34f7d298a084aa165642fd27571b3ffe59d45",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
