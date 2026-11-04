@@ -1,0 +1,54 @@
+docs/release.md
+  s_4bfbd442e24138::t_4f56d429c96287 92-95,97,127,306-307,323-325
+  s_4bfbd442e24138::t_b74cc46d0bacbf 40,56,72,79-91,337-339,389,468,745-749
+.github/workflows/_macos-distribution.yml
+  s_d93605f3a1c816::t_2e269ba3cdcd69 121-126
+scripts/release/bundle.test.ts
+  s_e191e03773aa47::t_3a6cf1bf713ead 18,22,51,111,211,273,282,287-330,333,385
+scripts/release/github-release.ts
+  s_e191e03773aa47::t_f8b8985b38f6ca 7-12,67,232-239,241,254,342,346,556
+scripts/release/retention.test.ts
+  s_d93605f3a1c816::t_fdd76f96d8df95 53-54
+scripts/release/retention.ts
+  s_e191e03773aa47::t_3ffa0463bb7ae8 2,5,163-165
+scripts/release/sparkle-archive.ts
+  s_d93605f3a1c816::t_a004d5b6bbfacc 1-75
+scripts/release/windows-release.fixture.ts
+  s_d93605f3a1c816::t_5ee54f204e41d0 136,153,155
+scripts/release/distribution.ts
+  s_d93605f3a1c816::t_e3728e431a14bc 1-5,12,280,284,288,292-298,327,329,334
+scripts/release/sparkle-archive.test.ts
+  s_d93605f3a1c816::t_ec9d7f3d7d6763 1-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "99ea98e0ebf2168d500552fb78a3f01bb48f8814",
+  "prompts": {},
+  "sessions": {
+    "s_4bfbd442e24138": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a611-fa5f-71c1-b7f1-272c421d4300",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_d93605f3a1c816": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a38a360f-884c-4c2b-a4cb-40c01decc3a9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e191e03773aa47": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a604-8017-74f2-9ed7-67a7a9e7ed71",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
