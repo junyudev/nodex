@@ -1,0 +1,87 @@
+src/renderer/styles/text-field-scrollbar.browser.test.tsx
+  s_84ee3ee69e70b0::t_281b39ddb4461d 1-8,10-12,15
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.browser.test.tsx
+  s_84ee3ee69e70b0::t_fe9c0a701f8ef8 54-56
+  s_27284345f59052::t_28ad9c2b29ffcf 1-53,57-93
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.browser.test.tsx
+  s_27284345f59052::t_28ad9c2b29ffcf 1-57,59,61-78
+  s_84ee3ee69e70b0::t_fe9c0a701f8ef8 58,60
+src/renderer/styles/theme-surface.css
+  s_84ee3ee69e70b0::t_f4dbf7c47f9e5c 142-143,153-154,165-166,247,257,267
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx
+  s_27284345f59052::t_e15fcfeb76dffb 450-452,462
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_27284345f59052::t_e15fcfeb76dffb 877,879
+docs/FRONTEND.md
+  s_84ee3ee69e70b0::t_78ada1aecd2e17 412-414
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_84ee3ee69e70b0::t_296d0acd9f743d 207-211,2933-2939,2941-2942,2945,2984,4404,4408,4502,4710
+  s_84ee3ee69e70b0::t_78ada1aecd2e17 212,1586
+src/renderer/components/board/page-stage/page-files-row.tsx
+  s_84ee3ee69e70b0::t_9439a72f305b93 66
+  s_84ee3ee69e70b0::t_78ada1aecd2e17 136,280,295,302,381,395
+  s_84ee3ee69e70b0::t_fe9c0a701f8ef8 393
+src/renderer/features/inbox/inbox-composer.tsx
+  s_84ee3ee69e70b0::t_296d0acd9f743d 6,9,124-130,132,144
+scripts/run-playwright-e2e.ts
+  s_84ee3ee69e70b0::t_296d0acd9f743d 23
+tests/e2e/inbox-composer-layout.spec.ts
+  s_84ee3ee69e70b0::t_296d0acd9f743d 41-75,110-111,238-239,243,250-254,260-266
+  s_84ee3ee69e70b0::t_5ae17e0b9c379c 255-259
+  s_84ee3ee69e70b0::t_95bf6d03c8a18b 276-286
+src/renderer/features/inbox/inbox-composer.test.tsx
+  s_84ee3ee69e70b0::t_e9a3a0d98eae27 473-475
+  s_84ee3ee69e70b0::t_95bf6d03c8a18b 389-391,420-458
+  s_84ee3ee69e70b0::t_78ada1aecd2e17 392-419,459-472,476-480
+src/renderer/features/local-conversation/view/composer/image-attachments/composer-image-attachment-row.tsx
+  s_84ee3ee69e70b0::t_296d0acd9f743d 2,141
+  s_84ee3ee69e70b0::t_f4dbf7c47f9e5c 97-98,116
+src/renderer/components/composer/composer-attachments.tsx
+  s_84ee3ee69e70b0::t_e5e2c33d3ca6d8 1-22
+src/renderer/components/message/message-images-input.tsx
+  s_84ee3ee69e70b0::t_296d0acd9f743d 27,68-70,74-75,166-170,172-178,181-188,235,250-251
+  s_84ee3ee69e70b0::t_95bf6d03c8a18b 32-35,63-67,71-73,171,179-180
+  s_84ee3ee69e70b0::t_78ada1aecd2e17 29,89
+  s_84ee3ee69e70b0::t_f4dbf7c47f9e5c 216-217
+  s_fb1830c3f67295::t_9526d818693cb2 218-234,236-249
+src/renderer/features/inbox/inbox-message-editor.tsx
+  s_84ee3ee69e70b0::t_296d0acd9f743d 87,112
+src/renderer/lib/use-drag-depth.ts
+  s_84ee3ee69e70b0::t_78ada1aecd2e17 1-28
+src/renderer/components/composer/composer-surface.ts
+  s_84ee3ee69e70b0::t_c8fd42e4f3cba2 17-23
+docs/product-specs/inbox-behavior.md
+  s_84ee3ee69e70b0::t_78ada1aecd2e17 76-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a23e58436b661bfad1730d66162d0acb5054de79",
+  "prompts": {},
+  "sessions": {
+    "s_27284345f59052": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a6fa-a800-7321-9883-4e016edb0870",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_84ee3ee69e70b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9846df37-ce55-441b-af89-6ab87afc12c3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fb1830c3f67295": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a6af-6d75-7e62-8485-4467159151d7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
