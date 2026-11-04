@@ -1,0 +1,21 @@
+src/renderer/lib/markdown/markdown-code-highlight-queue.node.test.ts
+  s_fab41626a3a5b7::t_13bda6b4cfb19a 25,28,34,95
+src/renderer/lib/markdown/markdown-code-highlight-queue.ts
+  s_fab41626a3a5b7::t_c7792e364024a0 19,42,49,51,110-128,130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fe5e1627e9dd18bde5c56e257598ec06184f0d93",
+  "prompts": {},
+  "sessions": {
+    "s_fab41626a3a5b7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63c-2882-7fe2-8ac7-abca1f363e49",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
