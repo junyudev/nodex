@@ -1,0 +1,21 @@
+src/renderer/features/inbox/inbox-capture-state.test.tsx
+  s_e67086ccd52885::t_241c03a1f02a09 230,272-273,303
+src/renderer/features/inbox/use-inbox-capture.ts
+  s_e67086ccd52885::t_c954d6da26ddcc 114,116-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6ca1bb31cb39f922955b87b22f057f0c5f7056cf",
+  "prompts": {},
+  "sessions": {
+    "s_e67086ccd52885": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a732-afe5-78a0-a8ca-d0875411921a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
