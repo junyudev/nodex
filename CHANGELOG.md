@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - A suggestion that fails on Claude now says why. Claude's own reason, such as a usage limit or an unavailable model, shows beside the message instead of "Claude CLI returned unexpected output format."
+- Terminal programs keep their colors however Nodex was started. Launching Nodex from an Agent or another terminal could pass along settings such as `NO_COLOR`, which left full-screen programs like lazygit without any color.
 
 ## [0.5.1] - 2026-11-04
 

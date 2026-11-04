@@ -2096,7 +2096,12 @@ test.describe("parallel functional Electron smoke", () => {
 
   test("New Chat reuses its default draft and opens a pre-thread Terminal", async () => {
     test.setTimeout(120_000);
-    const harness = await ElectronScenarioHarness.create({ label: "new-chat" });
+    // This types at the first prompt, so the account's startup files must not ask anything first.
+    const startupDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-terminal-startup-"));
+    const harness = await ElectronScenarioHarness.create({
+      label: "new-chat",
+      environment: { ZDOTDIR: startupDirectory },
+    });
     try {
       const page = await harness.launch();
       await expect
@@ -2160,6 +2165,7 @@ test.describe("parallel functional Electron smoke", () => {
         .toContain(project.primaryWorkspaceRoot);
     } finally {
       await harness.close();
+      fs.rmSync(startupDirectory, { recursive: true, force: true });
     }
   });
 

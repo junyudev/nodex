@@ -9,7 +9,10 @@ import { assert, it } from "@effect/vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { TerminalEnvironment } from "../platform/node/TerminalEnvironment";
+import {
+  buildTerminalEnvironment,
+  TerminalEnvironment,
+} from "../platform/node/TerminalEnvironment";
 import * as TerminalProcessMetrics from "../platform/node/TerminalProcessMetrics";
 import * as TerminalPty from "../platform/node/TerminalPty";
 import { TerminalSessions } from "./TerminalSessions";
@@ -41,18 +44,17 @@ it.live.skipIf(process.platform === "win32")(
               args: [
                 "-c",
                 [
-                  "printf '__NODEX_PTY_STARTING__\\n'",
+                  "printf '__NODEX_PTY_STARTING__:%s\\n' \"${NO_COLOR-unset}\"",
                   "IFS= read -r startup",
                   '[ "$startup" = "__NODEX_PTY_CONTINUE__" ] || exit 64',
                   'exec /bin/bash --noprofile --rcfile "$HOME/shellrc" -i',
                 ].join("\n"),
               ],
               cwd,
-              env: {
-                HOME: cwd,
-                PATH: "/usr/bin:/bin",
-                TERM: "xterm-256color",
-              },
+              env: buildTerminalEnvironment(
+                { HOME: cwd, PATH: "/usr/bin:/bin", TERM: "dumb", NO_COLOR: "1" },
+                process.platform,
+              ),
               cols: 80,
               rows: 24,
             }),
@@ -137,6 +139,7 @@ it.live.skipIf(process.platform === "win32")(
       assert.isNumber(created.snapshot.osPid);
 
       yield* waitForNative(starting, "PTY startup");
+      assert.include(yield* Ref.get(output), "__NODEX_PTY_STARTING__:unset");
       assert.isFalse(yield* Deferred.isDone(ready));
       yield* sessions.write(owner, sessionId, "__NODEX_PTY_CONTINUE__\r");
       yield* waitForNative(ready, "interactive shell readiness");
