@@ -59,6 +59,22 @@ describe("committed Markdown segments", () => {
     );
     expect(new Set(extended.segments.map((value) => value.key)).size).toBe(4);
   });
+  test("does not index an append or tail extension, and protects unchanged repeated text", () => {
+    const owner = createMarkdownSegmentOwner();
+    const initial = owner.prepare(["same ", "same ", "tail"]);
+    owner.commit(initial);
+    const keys = (candidate: typeof initial) => candidate.segments.map((segment) => segment.key);
+    const extended = owner.prepare(["same ", "same ", "tail revised"]);
+    expect(keys(extended)).toEqual(keys(initial));
+    owner.commit(extended);
+    const appended = owner.prepare(["same ", "same ", "tail revised", "new"]);
+    expect(keys(appended).slice(0, 3)).toEqual(keys(initial));
+    expect(owner.getMeasurements().contentIndexesBuilt).toBe(0);
+    const inserted = owner.prepare(["same extended ", "same ", "same ", "tail revised"]);
+    expect(keys(inserted).slice(1)).toEqual(keys(initial));
+    expect(keys(inserted)[0]).toBe(keys(appended)[3]);
+    expect(owner.getMeasurements().contentIndexesBuilt).toBe(1);
+  });
   test("timing persists by key, settlement admits only current own targets, and disposal fences late events", () => {
     let time = 100;
     const timeline = createMarkdownSegmentTimeline(() => time);

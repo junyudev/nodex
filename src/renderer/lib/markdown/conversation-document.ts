@@ -52,6 +52,7 @@ export function createConversationDocumentOwner(
   const timeline = createMarkdownSegmentTimeline();
   let committed: readonly Identity[] = [];
   let nextId = 0;
+  let contentIndexesBuilt = 0;
   const plan = (token: ConversationToken, identity: Identity): ConversationRenderNode => {
     const key = identity.key;
     const previous = plans.get(identity);
@@ -105,11 +106,56 @@ export function createConversationDocumentOwner(
         tokens: readonly ConversationToken[],
         previous: readonly Identity[],
       ): Identity[] => {
-        const unused = new Set(previous.map((_identity, index) => index));
+        function identify(token: ConversationToken, old: Identity | undefined): Identity {
+          if (old?.token === token) return old;
+          const value = seed(token);
+          const key = old?.key ?? `conversation-node-${candidateNextId++}`;
+          const children = matchSiblings(conversationTokenChildren(token), old?.children ?? []);
+          const items = token.type === "list" ? matchSiblings(token.items, old?.items ?? []) : [];
+          const cells =
+            token.type === "table"
+              ? [...token.header, ...token.rows.flat()].map((cell, cellIndex) =>
+                  matchSiblings(cell.tokens as ConversationToken[], old?.cells[cellIndex] ?? []),
+                )
+              : [];
+          return { token, seed: value, key, children, items, cells };
+        }
+
+        const isUnchanged = (token: ConversationToken, identity: Identity) =>
+          token === identity.token ||
+          (token.type === identity.token.type && token.raw === identity.token.raw);
+        let prefix = 0;
+        while (
+          prefix < previous.length &&
+          prefix < tokens.length &&
+          isUnchanged(tokens[prefix]!, previous[prefix]!)
+        )
+          prefix += 1;
+
+        // After the unchanged prefix, a single revised tail can keep its positional
+        // key only if no later sibling needs that key for its unchanged content.
+        const priorTail = previous[prefix];
+        const nextTail = tokens[prefix];
+        if (
+          prefix === previous.length ||
+          prefix === tokens.length ||
+          (prefix === previous.length - 1 &&
+            priorTail &&
+            nextTail &&
+            seed(nextTail).startsWith(priorTail.seed) &&
+            (prefix + 1 === tokens.length ||
+              !tokens.slice(prefix + 1).some((token) => isUnchanged(token, priorTail))))
+        ) {
+          return tokens.map((token, index) => identify(token, previous[index]));
+        }
+
+        contentIndexesBuilt += 1;
+        const unused = new Set<number>();
         const equal = new Map<string, number[]>();
         const unchanged = new Map<string, Map<string, number[]>>();
-        for (let index = previous.length - 1; index >= 0; index -= 1) {
+        for (let index = previous.length - 1; index >= prefix; index -= 1) {
           const identity = previous[index]!;
+          unused.add(index);
           const indexes = equal.get(identity.seed) ?? [];
           indexes.push(index);
           equal.set(identity.seed, indexes);
@@ -121,49 +167,26 @@ export function createConversationDocumentOwner(
         }
         // Reserve unchanged siblings before allowing a revised block to reuse a positional key.
         // Otherwise an insertion can take the key and focused controls of the following block.
-        const reserved = tokens.map((token) => {
+        const reserved = tokens.slice(prefix).map((token) => {
           const candidate = unchanged.get(token.type)?.get(token.raw)?.pop();
           if (candidate !== undefined) unused.delete(candidate);
           return candidate;
         });
         return tokens.map((token, index) => {
+          if (index < prefix) return identify(token, previous[index]);
           const value = seed(token);
           const indexed = previous[index];
-          let match =
-            reserved[index] ??
-            (indexed &&
-            unused.has(index) &&
-            (indexed.seed === value || value.startsWith(indexed.seed))
-              ? index
-              : undefined);
+          let match = reserved[index - prefix];
+          if (match === undefined && indexed && unused.has(index) && value.startsWith(indexed.seed))
+            match = index;
           const matches = equal.get(value);
-          for (;;) {
-            if (match !== undefined) break;
+          while (match === undefined) {
             const candidate = matches?.pop();
             if (candidate === undefined) break;
             if (unused.has(candidate)) match = candidate;
           }
           if (match !== undefined) unused.delete(match);
-          const old = match === undefined ? undefined : previous[match];
-          const key = old?.key ?? `conversation-node-${candidateNextId++}`;
-          const children = matchSiblings(conversationTokenChildren(token), old?.children ?? []);
-          const items = token.type === "list" ? matchSiblings(token.items, old?.items ?? []) : [];
-          const cells =
-            token.type === "table"
-              ? [...token.header, ...token.rows.flat()].map((cell, cellIndex) =>
-                  matchSiblings(cell.tokens as ConversationToken[], old?.cells[cellIndex] ?? []),
-                )
-              : [];
-          if (
-            old?.token === token &&
-            children.every((child, childIndex) => child === old.children[childIndex]) &&
-            items.every((item, itemIndex) => item === old.items[itemIndex]) &&
-            cells.every((cell, cellIndex) =>
-              cell.every((child, childIndex) => child === old.cells[cellIndex]?.[childIndex]),
-            )
-          )
-            return old;
-          return { token, seed: value, key, children, items, cells };
+          return identify(token, match === undefined ? undefined : previous[match]);
         });
       };
       const identities = matchSiblings(document.tokens, committed);
@@ -191,6 +214,7 @@ export function createConversationDocumentOwner(
       timeline.commit(keys, animate);
     },
     timeline,
+    getMeasurements: () => ({ contentIndexesBuilt }),
     dispose() {
       timeline.dispose();
     },

@@ -65,40 +65,66 @@ export interface MarkdownSegmentCandidate {
 /** Render may prepare many candidates; only the committed one owns subsequent IDs. */
 export function createMarkdownSegmentOwner() {
   let committed: MarkdownSegmentCandidate = { segments: [], nextId: 0 };
+  let contentIndexesBuilt = 0;
   return {
     prepare(contents: readonly string[]): MarkdownSegmentCandidate {
-      const unused = new Set(committed.segments.map((_value, index) => index));
+      const previous = committed.segments;
+      let nextId = committed.nextId;
+      const identify = (content: string, old?: MarkdownSegment) =>
+        old?.content === content ? old : { content, key: old?.key ?? `fade-segment-${nextId++}` };
+      let prefix = 0;
+      while (prefix < contents.length && previous[prefix]?.content === contents[prefix])
+        prefix += 1;
+
+      const tail = previous[prefix];
+      if (prefix === contents.length || !tail) {
+        return {
+          segments: contents.map((content, index) => identify(content, previous[index])),
+          nextId,
+        };
+      }
+      if (prefix === previous.length - 1) {
+        const unchanged = contents.indexOf(tail.content, prefix);
+        const match =
+          unchanged >= 0
+            ? unchanged
+            : tail.content && contents[prefix]!.startsWith(tail.content)
+              ? prefix
+              : -1;
+        const segments = contents.map((content, index) =>
+          identify(content, index < prefix ? previous[index] : index === match ? tail : undefined),
+        );
+        return { segments, nextId };
+      }
+
+      contentIndexesBuilt += 1;
+      const unused = new Set<number>();
       const equal = new Map<string, number[]>();
-      for (let index = committed.segments.length - 1; index >= 0; index -= 1) {
-        const value = committed.segments[index]!;
+      for (let index = previous.length - 1; index >= prefix; index -= 1) {
+        const value = previous[index]!;
+        unused.add(index);
         const indexes = equal.get(value.content) ?? [];
         indexes.push(index);
         equal.set(value.content, indexes);
       }
-      let nextId = committed.nextId;
+      const reserved = contents.slice(prefix).map((content) => {
+        const match = equal.get(content)?.pop();
+        if (match !== undefined) unused.delete(match);
+        return match;
+      });
       const segments = contents.map((content, index) => {
-        const previous = committed.segments[index];
-        if (
-          previous &&
-          unused.has(index) &&
-          (previous.content === content ||
-            (previous.content.length > 0 && content.startsWith(previous.content)))
-        ) {
-          unused.delete(index);
-          return { content, key: previous.key };
-        }
-        const matches = equal.get(content);
-        let matchedIndex = matches?.pop();
-        while (matchedIndex !== undefined && !unused.has(matchedIndex))
-          matchedIndex = matches?.pop();
-        if (matchedIndex !== undefined) {
-          unused.delete(matchedIndex);
-          return { content, key: committed.segments[matchedIndex]!.key };
-        }
-        return { content, key: `fade-segment-${nextId++}` };
+        if (index < prefix) return previous[index]!;
+        const unchanged = reserved[index - prefix];
+        if (unchanged !== undefined) return previous[unchanged]!;
+        const prior = previous[index];
+        if (!prior?.content || !unused.has(index) || !content.startsWith(prior.content))
+          return identify(content);
+        unused.delete(index);
+        return identify(content, prior);
       });
       return { segments, nextId };
     },
+    getMeasurements: () => ({ contentIndexesBuilt }),
     commit(candidate: MarkdownSegmentCandidate): void {
       committed = candidate;
     },
