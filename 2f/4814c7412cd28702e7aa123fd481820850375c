@@ -10,13 +10,21 @@ src/main/app-tools/CoordinatorAppTools.ts
 src/main/inbox-application/coordinator-inbox.test-support.ts
   s_9addb2486df823::t_e3d40e20c8df9d 1-105,111-132,134-308
   s_9addb2486df823::t_93385d14fb8158 309-310
+  s_b60e05965fb1be::t_0e6ab0321e05e3 133
+  s_b60e05965fb1be::t_75107ce5c4d072 106-110
 src/main/inbox-application/InboxDispatcher.ts
   s_9addb2486df823::t_c44a11c59639db 163
   s_9addb2486df823::t_e3d40e20c8df9d 115-117,162
   s_9addb2486df823::t_0f8194fdc8b6f0 1,12,21-22,29-30,35-36,40-48,50,55-56,58,65-67,69-82,86,88-89,94-96,98-114,119-161,164-173,177-183,189,293
+  s_b60e05965fb1be::t_30413359d62252 3,7,26,90-93,193-194,197-201,203-206,208-210,216-217,230-231,234-240,286
+  s_b60e05965fb1be::t_0e6ab0321e05e3 252-265
+  s_b60e05965fb1be::t_75107ce5c4d072 211-212,232-233
 src/main/inbox-application/InboxApplication.ts
   s_9addb2486df823::t_1b8205d8a51fb3 6-9,140,148,155-158,176-187,340-347,357,410,447-448,460-463,473-478,483,623-637,639-641,687-731,733-734,737-739,960,962-964
   s_9addb2486df823::t_ea2f2e1d838b6e 732,735-736
+  s_b60e05965fb1be::t_75107ce5c4d072 602-603
+  s_b60e05965fb1be::t_0e6ab0321e05e3 1,169-171,596,954-957
+  s_b60e05965fb1be::t_30413359d62252 638,656,658-659,676
 crates/nodex-core/src/workspace/inbox_content.rs
   s_9addb2486df823::t_b53ad4433a1357 111
 crates/nodex-core/src/infrastructure/migration.rs
@@ -25,10 +33,13 @@ crates/nodex-core/src/infrastructure/migration.rs
   s_9addb2486df823::t_b53ad4433a1357 429-433,2644-2646,2648-2657,2997,3039-3047,3050,3052-3054,3064-3065,3073-3077,3079-3085,3692,3695-3696,3698-3740,3754,8095,8100,8204,8403,8678,8721,8783,8839,9490-9495,9497,9502-9511
   s_a33445b5936fa3::t_14f4dada7414b5 2659-2661,2678-2681,2683-2687,8879
   s_a33445b5936fa3::t_c1915ed11dac2f 2670-2672,3754
+  s_b60e05965fb1be::t_fd57beb54e50df 3743,8881-8882
 crates/nodex-core/src/workspace/inbox_tests.rs
   s_9addb2486df823::t_756bc3876f2233 100,274,337,471,658,953,1006,1093,1499,1693,1849,1868,1899,2831,2839,3067,3255,3270,3275,3320,3335,3391,3405,3636,3644,4200,4896,5208-5221
   s_9addb2486df823::t_b99b2ded8fc6fa 5222-5225,5655,6129,6375,7513,7613-7614
   s_39af2826685004::t_398dc9bb9ce643 7612
+  s_b60e05965fb1be::t_0e6ab0321e05e3 3669
+  s_b60e05965fb1be::t_fd57beb54e50df 7546
 src/renderer/features/inbox/inbox-route.tsx
   s_9addb2486df823::t_1b8205d8a51fb3 2,277,379-391
 crates/nodex-core/src/workspace/mod.rs
@@ -39,14 +50,17 @@ src/main/inbox-application/inbox-suggestions.ts
 CHANGELOG.md
   s_9addb2486df823::t_06c937387da0bb 9,13,80
   s_a33445b5936fa3::t_2c886d92fdc171 13
+  s_b60e05965fb1be::t_75107ce5c4d072 18
 crates/nodex-cli/src/inbox.rs
   s_098df3235fa721::t_b3300bbcb3e480 68
 crates/nodex-core-contracts/src/collection_audit.rs
   s_9addb2486df823::t_19e9fe116c2fc0 68,94-95
 crates/nodex-core-contracts/src/inbox.rs
   s_098df3235fa721::t_438f427c24d3b0 150-154,178-211,282-283,327,408-409,546,564
+  s_b60e05965fb1be::t_0e6ab0321e05e3 212-219
 crates/nodex-core-contracts/src/workspace.rs
   s_098df3235fa721::t_abba54353ebedc 19,236-238,256-261,432-434,447-452,2093-2108,2110-2111,2143-2144,2199-2200
+  s_b60e05965fb1be::t_0e6ab0321e05e3 458
 crates/nodex-core/schema/current.sql
   s_9addb2486df823::t_301d569af7298b 4367,4372,4394-4401,4403,4431,4481-4486
 crates/nodex-core/schema/migrations/v202_to_v203.sql
@@ -73,30 +87,39 @@ crates/nodex-core/src/workspace/inbox_read.rs
   s_098df3235fa721::t_f99de24c1e104f 15,87,339-342,388,415,581-592,616-643,685-686,740-760,889-904,1015,1054-1074,1076,1081,1601
 crates/nodex-core/src/workspace/inbox_reliable.rs
   s_9addb2486df823::t_36c1f9df405306 160-176,179-182,184,209-218,232-234,329,346,349,402-408,445,468-472,1121-1124,1279,1293-1336,1426
+  s_b60e05965fb1be::t_c604c0e3ff6dca 177-178
+  s_b60e05965fb1be::t_0e6ab0321e05e3 1171,1182-1206
 crates/nodex-core/src/workspace/mutation.rs
   s_9addb2486df823::t_008ab7aeaa3059 315,317,345,379-380
 crates/nodex-core/src/workspace/read.rs
   s_098df3235fa721::t_24218f96a0b58c 128-144,164-166
+  s_b60e05965fb1be::t_fd57beb54e50df 148
+  s_b60e05965fb1be::t_0e6ab0321e05e3 149-154,156-160,162-163
 crates/nodex-core/tests/fixtures/schema-v202.sql
   s_9addb2486df823::t_09ad82c447479e 1-1062,1063-4512,4513-4996
 crates/nodex-store-format/src/lib.rs
   s_9addb2486df823::t_a48a0883990567 281-282,287-288
   s_861e195a25a694::t_8b85128a0345bb 277-278,288
   s_a33445b5936fa3::t_b078defd00b096 288
+  s_b60e05965fb1be::t_fd57beb54e50df 285
 docs/ARCHITECTURE.md
   s_9addb2486df823::t_b5c937088768e2 921-928
 docs/product-specs/desktop-notification-behavior.md
   s_9addb2486df823::t_594eceb0770978 15,17,33-39
 docs/product-specs/inbox-behavior.md
   s_9addb2486df823::t_f404ba12c6d639 9-10,14,263-279,282-285,287-292,366-367,380-385,413-415,603-616,770
+  s_b60e05965fb1be::t_30413359d62252 286,448-451
+  s_b60e05965fb1be::t_75107ce5c4d072 326-327,330
 packages/core-protocol/openapi.json
   s_098df3235fa721::t_aca071c0945dde 7513-7518,17181-17224,17246-17262,31878-31962,31998-32003,32124-32126,32428-32430,37488-37505,37592-37629,38034-38043,40617-40752,40973,41006-41015,41019-41021,41172-41201,41309,41329-41331,41398-41407,41457-41466,43728-43812,43848-43853,43974-43976,44278-44280,54024-54047,54120-54164
   s_861e195a25a694::t_403a22e0455c0b 55237
   s_a33445b5936fa3::t_73b7a94d1bbc8f 52901-52903,52910-52912,52914-52915,52980-52981,52983-52993,52995-53000,53002-53003,53050-53052
+  s_b60e05965fb1be::t_fd57beb54e50df 17225-17245,54190,54194-54195,54197-54199
 packages/core-protocol/src/compatibility.generated.ts
   s_098df3235fa721::t_dd85a4860f1f69 24,43
 packages/core-protocol/src/generated.ts
   s_098df3235fa721::t_8b6efb5200332a 1767,4201-4208,4216-4222,7629-7647,7660,7680,7741,8881-8884,8904-8912,9003-9007,9735-9768,9837,9839,9877-9882,9909,9924,9937,10441-10459,10472,10492,10553,12623-12626,12643-12650
+  s_b60e05965fb1be::t_fd57beb54e50df 4209-4215
 scripts/evals/inbox-routing.ts
   s_9addb2486df823::t_cbba49603f55fa 11,362,472
 src/main/agent-runtime/AgentRuntimeHostTools.ts
@@ -123,8 +146,12 @@ src/main/inbox-application/InboxDispatchRuntime.ts
   s_9addb2486df823::t_64db72d5ae218f 21,90
 src/main/inbox-application/InboxDispatcher.node.test.ts
   s_9addb2486df823::t_806b8072fe116a 27,31-33,87-94,96,98-143,156-159,165,167,398,401-412
+  s_b60e05965fb1be::t_75107ce5c4d072 34,146,166,191-192,210,553-564,575,610-617
+  s_b60e05965fb1be::t_30413359d62252 24,40-41,95,97
 src/main/inbox-application/InboxRoutingContext.ts
   s_54f698eea1a2c7::t_94ed51f7cb4a50 1-2,4-11,13-38
+  s_b60e05965fb1be::t_75107ce5c4d072 12
+  s_b60e05965fb1be::t_30413359d62252 3
 src/main/inbox-application/InboxRuntime.node.test.ts
   s_9addb2486df823::t_d616275907f079 24,42
 src/main/inbox-application/inbox-images.ts
@@ -141,6 +168,7 @@ src/main/settings/application-settings-persistence.ts
   s_9addb2486df823::t_f6f48e65a9b086 149,1352,1408
 src/renderer/components/workbench/workbench-runtime.tsx
   s_54f698eea1a2c7::t_dea6e0e0529904 2-3
+  s_b60e05965fb1be::t_30413359d62252 3557-3567
 src/renderer/features/inbox/inbox-copy-action.test.tsx
   s_9addb2486df823::t_cb22996df17413 27
 src/renderer/features/inbox/inbox-message.browser.test.tsx
@@ -198,6 +226,9 @@ src/main/host-runtime/CodexThreadNotificationRuntime.test.ts
 src/main/host-runtime/CodexThreadNotificationRuntime.ts
   s_39af2826685004::t_dab4dd075b483b 19-38,114
   s_39af2826685004::t_f035e49ef9854e 4
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_b60e05965fb1be::t_0e6ab0321e05e3 2781-2784,2789-2819,4369-4370
+  s_b60e05965fb1be::t_75107ce5c4d072 2785-2788
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -297,6 +328,14 @@ src/main/host-runtime/CodexThreadNotificationRuntime.ts
       "agent_id": {
         "tool": "codex",
         "id": "01a19f00-b917-74d3-9bf7-8a4af98b4a59",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b60e05965fb1be": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a61f-2ce1-7742-9c82-704cd7dfb5c3",
         "model": "gpt-6.1-sol"
       },
       "human_author": "Jun Yu <junyu.dev@gmail.com>"
