@@ -1,0 +1,19 @@
+src/main/core-client/core-launcher.node.test.ts
+  s_a11f4687fd3c1d::t_ef09817de3f997 339-349,352-354,358-359
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e6099fd5019d2b49fb1b1c46e0dc9a17e8c173c4",
+  "prompts": {},
+  "sessions": {
+    "s_a11f4687fd3c1d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8b1-e99a-7d42-9095-84eeffc5dcd4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
