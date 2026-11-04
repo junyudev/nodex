@@ -1,5 +1,15 @@
 import { useLayoutEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 import {
+  ComposerAdaptiveFooter,
+  ComposerInput,
+} from "@/components/composer/composer-adaptive-footer";
+import { COMPOSER_PRIMARY_ACTION_BUTTON_CLASS_NAME } from "@/components/composer/composer-footer-controls";
+import {
+  COMPOSER_PROMPT_SCROLL_CLASS_NAME,
+  COMPOSER_PROMPT_TEXT_CLASS_NAME,
+  COMPOSER_SURFACE_CLASS_NAME,
+} from "@/components/composer/composer-surface";
+import {
   MessageImagePicker,
   MessageImageRow,
   useMessageImageInput,
@@ -12,13 +22,17 @@ import { cn } from "@/lib/utils";
 import { isEmptyInboxDraft, type InboxDraft } from "./inbox-capture-state";
 import { MAX_INBOX_TITLE_LENGTH } from "../../../shared/schemas/inbox";
 
-const MAX_TEXTAREA_HEIGHT_PX = 240;
+const FIELD_CLASS_NAME =
+  "block w-full bg-transparent outline-none placeholder:text-token-input-placeholder-foreground placeholder:opacity-50";
 
 /**
  * The capture owner persists drafts and each submission before clearing this input. Images
  * pasted, dropped, or picked are imported as Library Files and attached after the text. A
  * message is named for it unless its sender gives a title, on a line above the text that its
  * host opens; a title already in the draft always shows, so it is never sent unseen.
+ *
+ * It has a chat composer's rows: the text above, the controls beneath. The text area sizes to
+ * what it holds and scrolls by itself once full, so a title stays in view above it.
  */
 export function InboxComposer({
   onSend,
@@ -56,13 +70,6 @@ export function InboxComposer({
       onDraftChange((current) => ({ ...current, images: [...current.images, ...added] })),
   });
   const canSend = !disabled && !input.importing && !isEmptyInboxDraft(draft);
-
-  useLayoutEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = "0px";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT_PX)}px`;
-  });
 
   const focusedTokenRef = useRef<{ token: number | undefined } | null>(null);
   useLayoutEffect(() => {
@@ -108,17 +115,15 @@ export function InboxComposer({
     }
   };
 
-  // Controls are 28px tall and the text's line box 34px, so each sits 3px up to share the
-  // centre of the line it is beside.
   return (
     <form
       data-testid="inbox-composer"
       onSubmit={(event) => void submit(event)}
       onDragOver={input.onDragOver}
       onDrop={input.onDrop}
-      className="flex flex-col gap-2 rounded-3xl bg-token-input-background p-2 text-token-foreground electron:elevation-prominent extension:border extension:border-token-border"
+      className={cn("relative flex flex-col", COMPOSER_SURFACE_CLASS_NAME)}
     >
-      <div className="empty:hidden px-1 pt-1">
+      <div className="composer-attachments" data-composer-spacing="default">
         <MessageImageRow
           images={draft.images}
           input={input}
@@ -131,59 +136,72 @@ export function InboxComposer({
           }
         />
       </div>
-      <div className="flex items-end gap-1">
-        {images ? (
-          <div className="mb-[3px] flex shrink-0">
-            <MessageImagePicker onFiles={input.add} disabled={readOnly} />
-          </div>
-        ) : null}
-        <div className={cn("flex min-w-0 flex-1 flex-col", !images && "pl-2")}>
-          {showTitle ? (
-            <input
-              ref={titleRef}
-              aria-label="Message title"
-              placeholder="Title"
+      <ComposerAdaptiveFooter
+        layout="multiline"
+        input={
+          <ComposerInput layout="multiline">
+            {showTitle ? (
+              <input
+                ref={titleRef}
+                aria-label="Message title"
+                placeholder="Title"
+                readOnly={readOnly}
+                value={draft.title}
+                maxLength={MAX_INBOX_TITLE_LENGTH}
+                onChange={(event) => {
+                  const title = event.currentTarget.value;
+                  onDraftChange((current) => ({ ...current, title }));
+                }}
+                onKeyDown={handleTitleKeyDown}
+                className={cn(
+                  COMPOSER_PROMPT_TEXT_CLASS_NAME,
+                  FIELD_CLASS_NAME,
+                  "pb-1 font-semibold placeholder:font-normal",
+                )}
+              />
+            ) : null}
+            <textarea
+              ref={textareaRef}
+              aria-label="Message your Inbox"
+              rows={1}
               readOnly={readOnly}
-              value={draft.title}
-              maxLength={MAX_INBOX_TITLE_LENGTH}
+              value={draft.text}
+              placeholder={placeholder}
               onChange={(event) => {
-                const title = event.currentTarget.value;
-                onDraftChange((current) => ({ ...current, title }));
+                const text = event.currentTarget.value;
+                onDraftChange((current) => ({ ...current, text }));
               }}
-              onKeyDown={handleTitleKeyDown}
-              className="min-w-0 bg-transparent pt-[7px] text-size-chat leading-[20px] font-semibold outline-none placeholder:font-normal placeholder:text-token-input-placeholder-foreground"
+              onPaste={input.onPaste}
+              onKeyDown={handleKeyDown}
+              className={cn(
+                COMPOSER_PROMPT_TEXT_CLASS_NAME,
+                COMPOSER_PROMPT_SCROLL_CLASS_NAME,
+                FIELD_CLASS_NAME,
+                "resize-none [field-sizing:content]",
+                // Opening a title takes the room of the text's second line, not the page's.
+                showTitle ? "min-h-5" : "min-h-11",
+              )}
             />
-          ) : null}
-          <textarea
-            ref={textareaRef}
-            aria-label="Message your Inbox"
-            rows={1}
-            readOnly={readOnly}
-            value={draft.text}
-            placeholder={placeholder}
-            onChange={(event) => {
-              const text = event.currentTarget.value;
-              onDraftChange((current) => ({ ...current, text }));
-            }}
-            onPaste={input.onPaste}
-            onKeyDown={handleKeyDown}
-            className="min-h-[34px] resize-none bg-transparent py-[7px] text-size-chat leading-[20px] outline-none placeholder:text-token-input-placeholder-foreground"
-          />
-        </div>
-        <NodexTooltip tooltipContent="Send to Inbox" shortcutLabel="↵" side="top">
-          <button
-            type="submit"
-            aria-label="Send to Inbox"
-            disabled={!canSend}
-            className={cn(
-              "cursor-interaction mb-[3px] flex h-token-button-composer aspect-square shrink-0 items-center justify-center rounded-full bg-background-composer-primary p-0.5 text-text-composer-primary",
-              !canSend && "opacity-50",
-            )}
-          >
-            <UpArrowIcon className="icon-sm" />
-          </button>
-        </NodexTooltip>
-      </div>
+          </ComposerInput>
+        }
+        leadingControls={
+          images ? <MessageImagePicker onFiles={input.add} disabled={readOnly} /> : null
+        }
+        trailingControls={
+          <div className="flex justify-end">
+            <NodexTooltip tooltipContent="Send to Inbox" shortcutLabel="↵" side="top">
+              <button
+                type="submit"
+                aria-label="Send to Inbox"
+                disabled={!canSend}
+                className={cn(COMPOSER_PRIMARY_ACTION_BUTTON_CLASS_NAME, !canSend && "opacity-50")}
+              >
+                <UpArrowIcon className="icon-sm" />
+              </button>
+            </NodexTooltip>
+          </div>
+        }
+      />
     </form>
   );
 }

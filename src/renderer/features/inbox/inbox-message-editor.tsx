@@ -11,8 +11,6 @@ import { readMarkdown } from "../../../shared/nodex-markdown";
 import { inboxDraftBody, isEmptyInboxDraft, type InboxDraft } from "./inbox-capture-state";
 import { useInboxImageAccess } from "./use-inbox-image-access";
 
-const MAX_TEXTAREA_HEIGHT_PX = 320;
-
 /**
  * Rewrites a message in its own bubble with the composer's text and images, keyed like the
  * Inbox composer: Enter saves, Shift+Enter breaks the line, and Escape puts the message back.
@@ -49,13 +47,6 @@ export function InboxMessageEditor({
   const next = inboxDraftBody(draft);
   // The draft shows text plainly, so it is compared with how it started rather than with `body`.
   const changed = !isEmptyInboxDraft(draft) && next !== inboxDraftBody(initial) && !input.importing;
-
-  useLayoutEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = "0px";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT_PX)}px`;
-  });
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -119,7 +110,7 @@ export function InboxMessageEditor({
         }}
         onPaste={input.onPaste}
         onKeyDown={handleKeyDown}
-        className="w-full resize-none bg-transparent text-size-chat leading-relaxed text-inherit outline-none"
+        className="max-h-80 w-full resize-none overflow-y-auto bg-transparent text-size-chat leading-relaxed text-inherit outline-none [field-sizing:content]"
       />
       {currentBody !== body ? (
         <details className="text-xs text-token-description-foreground">

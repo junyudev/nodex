@@ -70,6 +70,10 @@ intents, and selection.
   the text in whichever composer holds the draft, so it is never sent unseen;
   `Enter` there returns to the text, and `Backspace` or `Escape` in an empty
   title closes it.
+- The composer has a chat composer's rows: the text above, and beneath it
+  `Add photos` at the left and send at the right. The text grows with what it
+  holds up to a quarter of the window's height, then scrolls by itself, so the
+  controls and any title stay in place.
 - Each image becomes a Library File as soon as it is added and shows in the row
   above the text; the message is sent once every image is in. A sent message is
   its images followed by its text, so its Page opens with them as the stream
