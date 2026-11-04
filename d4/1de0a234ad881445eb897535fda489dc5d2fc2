@@ -1,0 +1,75 @@
+packages/mobile/src/features/composer/Composer.tsx
+  s_9c72cf791afc7e::t_27c29c539409c4 37-40,107-109
+src/renderer/lib/mobile-access-runtime.ts
+  s_9c72cf791afc7e::t_27c29c539409c4 18-21
+packages/mobile/src/markdown/Markdown.tsx
+  s_9c72cf791afc7e::t_27c29c539409c4 216-218
+src/shared/agent-approval-options.ts
+  s_9c72cf791afc7e::t_f578662ca832e9 1-74
+packages/mobile/src/features/pair/PairScreen.tsx
+  s_9c72cf791afc7e::t_27c29c539409c4 81
+  s_9c72cf791afc7e::t_cffe1edf331f02 71-75
+src/main/mobile-gateway/transcript-projection.node.test.ts
+  s_9c72cf791afc7e::t_98e59fca0165a9 114,149
+  s_9c72cf791afc7e::t_bd75c897e61be7 1,10,202-305
+packages/mobile/src/features/chat/request-answers.test.ts
+  s_9c72cf791afc7e::t_27c29c539409c4 38-42
+docs/product-specs/index.md
+  s_9c72cf791afc7e::t_27c29c539409c4 42
+src/main/mobile-gateway/catalog.ts
+  s_9c72cf791afc7e::t_27c29c539409c4 37-38
+src/main/mobile-gateway/transcript.ts
+  s_9c72cf791afc7e::t_98e59fca0165a9 162-163,169-173,234-241,264-266
+  s_9c72cf791afc7e::t_34ba47a22d3323 363-376
+packages/mobile/src/runtime/connection.ts
+  s_9c72cf791afc7e::t_27c29c539409c4 454-455
+packages/mobile/src/ui/icons.tsx
+  s_9c72cf791afc7e::t_27c29c539409c4 24,31-34,57-62,82-84
+packages/mobile/src/features/pickers/agent-choice.ts
+  s_9c72cf791afc7e::t_27c29c539409c4 21-24
+packages/mobile/src/features/chat/transcript-rows.ts
+  s_9c72cf791afc7e::t_27c29c539409c4 6-10
+packages/mobile/src/features/pickers/PickerScreens.tsx
+  s_9c72cf791afc7e::t_27c29c539409c4 38
+src/renderer/features/mobile-access/mobile-access-presentation.node.test.ts
+  s_9c72cf791afc7e::t_27c29c539409c4 64-66
+packages/mobile/src/runtime/runtime.test.ts
+  s_9c72cf791afc7e::t_27c29c539409c4 205-222,224-242,581-616,618-649,727-731,812-816,914-947,949-962,964-985,987-1014,1040-1043
+src/renderer/features/mobile-access/mobile-access-settings-page.tsx
+  s_9c72cf791afc7e::t_27c29c539409c4 220-224
+packages/mobile/src/ui/primitives.tsx
+  s_9c72cf791afc7e::t_27c29c539409c4 31-33,96-101,222-226
+src/renderer/features/local-conversation/agent-approval.ts
+  s_9c72cf791afc7e::t_98e59fca0165a9 1-4
+  s_9c72cf791afc7e::t_f578662ca832e9 5-15
+packages/mobile/src/features/inbox/MessageScreen.tsx
+  s_9c72cf791afc7e::t_27c29c539409c4 109
+packages/mobile/src/features/chat/ChatScreen.tsx
+  s_9c72cf791afc7e::t_27c29c539409c4 186-187,219-221
+packages/mobile/src/markdown/parse.test.ts
+  s_9c72cf791afc7e::t_27c29c539409c4 33
+packages/mobile/src/features/home/HomeScreen.tsx
+  s_9c72cf791afc7e::t_27c29c539409c4 49-52,141-142
+src/main/mobile-gateway/transcript-projection.ts
+  s_9c72cf791afc7e::t_f578662ca832e9 108,225-228,232-234,383-385,399,409-414,423
+  s_9c72cf791afc7e::t_98e59fca0165a9 2-6,431-434
+src/main/mobile-gateway/chat-commands.ts
+  s_9c72cf791afc7e::t_27c29c539409c4 88-96,193,226-228
+  s_9c72cf791afc7e::t_98e59fca0165a9 12,167,169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d41de0a234ad881445eb897535fda489dc5d2fc2",
+  "prompts": {},
+  "sessions": {
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
