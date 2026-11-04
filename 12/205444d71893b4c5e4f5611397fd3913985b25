@@ -1,0 +1,21 @@
+scripts/scenarios/runtime/scripted-model-server.test.ts
+  s_d93605f3a1c816::t_0cdf66881f6b81 73-74,88,92,594-778
+scripts/scenarios/runtime/scripted-model-server.ts
+  s_d93605f3a1c816::t_36278b885370a8 12-16,162,169,178,198,203-207,214,218,376,615,624-632,634-637,640,642-643,650-652,659,719,723-724,952,957-958,965
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "12205444d71893b4c5e4f5611397fd3913985b25",
+  "prompts": {},
+  "sessions": {
+    "s_d93605f3a1c816": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a38a360f-884c-4c2b-a4cb-40c01decc3a9",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
