@@ -1,0 +1,52 @@
+packages/mobile/src/features/chat/ChatScreen.tsx
+  s_9c72cf791afc7e::t_be3a5515942bec 5,14
+  s_9c72cf791afc7e::t_862767e29900ea 143
+  s_9c72cf791afc7e::t_2b6ef67a7584ef 174,251
+packages/mobile/src/ui/primitives.tsx
+  s_9c72cf791afc7e::t_be3a5515942bec 4,15,238-241
+  s_9c72cf791afc7e::t_0da94898573b13 242
+packages/mobile/src/navigation/RootNavigator.tsx
+  s_9c72cf791afc7e::t_c8ad2af16dcb51 41-45,53-54,62-64,71,102-103
+  s_9c72cf791afc7e::t_2475ba1069dd8c 48-51
+  s_9c72cf791afc7e::t_0c42fb8f77050f 13,52
+packages/mobile/src/ui/BottomAnchoredList.tsx
+  s_9c72cf791afc7e::t_c8531a72ffb0b1 25-27,30-32,35-40,59-60
+  s_9c72cf791afc7e::t_eec097041b7325 61
+docs/product-specs/mobile-companion-behavior.md
+  s_9c72cf791afc7e::t_58689a90cced70 41-44,60,84-89
+packages/mobile/src/features/pair/PairScreen.tsx
+  s_9c72cf791afc7e::t_be3a5515942bec 5,11
+  s_9c72cf791afc7e::t_cfb12684591af8 24,116
+packages/mobile/src/markdown/Markdown.tsx
+  s_9c72cf791afc7e::t_04f9e751232414 35-36,89
+packages/mobile/README.md
+  s_9c72cf791afc7e::t_ad1bbfa324bb9f 44-49
+docs/development.md
+  s_9c72cf791afc7e::t_e203f5d76d1120 1288
+packages/mobile/src/navigation/types.ts
+  s_c30dbf45d2af5b::t_7560cd2b7a2264 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7abbb8e96bea65b099582efeaeb235b98bcc0798",
+  "prompts": {},
+  "sessions": {
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c30dbf45d2af5b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a758-0612-75c1-9b51-607b9500348b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
