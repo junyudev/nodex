@@ -45,8 +45,19 @@ import {
 const delay = (ms: number) => new Promise<void>((resolveDelay) => setTimeout(resolveDelay, ms));
 // Maintenance must let the host drain owned pipes and release exited process handles.
 const runMaintenance = promisify(execFile);
-const failureDetails = (error: unknown): string =>
-  error instanceof Error ? (error.stack ?? error.message) : String(error);
+const failureDetails = (error: unknown): string => {
+  if (!(error instanceof Error)) return String(error);
+  const processFailure = Object.fromEntries(
+    ["code", "signal", "killed", "stdout", "stderr"].flatMap((key) => {
+      const value = Reflect.get(error, key);
+      return value === undefined ? [] : [[key, String(value).slice(-16_000)]];
+    }),
+  );
+  return [
+    error.stack ?? error.message,
+    ...(Object.keys(processFailure).length ? [JSON.stringify(processFailure)] : []),
+  ].join("\n");
+};
 const protocolKey = "HKCU\\Software\\Classes\\nodex";
 const startupRunKey = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 const startupApprovedKey =
@@ -162,12 +173,19 @@ async function main(): Promise<void> {
   for (let index = 0; index < args.length; index += 2) {
     const key = args[index];
     const value = args[index + 1];
-    if (!key || !["--arch", "--artifacts"].includes(key) || !value)
+    if (!key || !["--arch", "--artifacts", "--installer-timeout-ms"].includes(key) || !value)
       throw new Error(
-        "Usage: probe-windows-installer.ts --arch <x64|arm64> --artifacts <directory>",
+        "Usage: probe-windows-installer.ts --arch <x64|arm64> --artifacts <directory> [--installer-timeout-ms <milliseconds>]",
       );
     options.set(key, value);
   }
+  const installerTimeoutMs = Number(options.get("--installer-timeout-ms") ?? 180_000);
+  if (
+    !Number.isSafeInteger(installerTimeoutMs) ||
+    installerTimeoutMs < 45_000 ||
+    installerTimeoutMs > 1_800_000
+  )
+    throw new Error("Installer probe timeout must be between 45000 and 1800000 milliseconds");
   const target = desktopBuildTarget("win32", options.get("--arch"));
   if (process.platform !== "win32" || process.arch !== target.arch)
     throw new Error("Run the installer probe natively on the matching Windows runner");
@@ -187,6 +205,13 @@ async function main(): Promise<void> {
   const appData = process.env.APPDATA;
   if (!localAppData || !appData) throw new Error("LOCALAPPDATA and APPDATA are required");
   const installRoot = join(localAppData, "Programs", "nodex");
+  const maintenanceLog = join(localAppData, "Nodex", "installer-maintenance.log");
+  const captureMaintenanceLog = (operation: string): string => {
+    if (!existsSync(maintenanceLog)) return "No installer maintenance log was written.";
+    const details = readFileSync(maintenanceLog, "utf8").slice(-16_000);
+    writeFileSync(join(artifacts, `maintenance-${operation}.log`), details);
+    return details;
+  };
   const startMenuShortcut = join(appData, "Microsoft/Windows/Start Menu/Programs/Nodex.lnk");
   if (
     existsSync(installRoot) ||
@@ -215,6 +240,7 @@ async function main(): Promise<void> {
   let desktopPid: number | undefined;
   const desktopCloses: Promise<void>[] = [];
   let normalQuitEvidence: unknown;
+  let installationEvidence: unknown;
   let upgradeEvidence: unknown;
   let updateHandoffEvidence: unknown;
   let detachedCoreBeforeUninstall: number | undefined;
@@ -246,14 +272,16 @@ async function main(): Promise<void> {
           /^Uninstall.*\.exe$/iu.test(name),
         );
         if (uninstallers.length !== 1) throw new Error("Installed NSIS uninstaller is missing");
-        // Start-Process -Wait waits for descendants too, including NSIS's relocated
-        // TEMP uninstaller. The install directory disappears before shortcut cleanup.
+        // Join NSIS's descendants, including its relocated TEMP uninstaller.
+        // A successful bootstrap status alone does not prove uninstall finished;
+        // require installation removal below before asserting Core exit.
         const command = `
 $ErrorActionPreference = 'Stop'
 $uninstaller = Start-Process -FilePath $env:NODEX_PROBE_UNINSTALLER -ArgumentList '/S', '/currentuser' -Wait -PassThru
 exit $uninstaller.ExitCode
 `;
         const uninstallStarted = Date.now();
+        rmSync(maintenanceLog, { force: true });
         await runMaintenance(
           "powershell.exe",
           [
@@ -267,13 +295,14 @@ exit $uninstaller.ExitCode
             timeout: 30_000,
           },
         );
-        if (detachedCoreBeforeUninstall !== undefined)
-          assertProcessStopped(detachedCoreBeforeUninstall);
+        captureMaintenanceLog("uninstall");
         // Windows can retain an empty delete-pending directory briefly after NSIS
         // exits. Require filesystem convergence within the original uninstall budget.
         while (existsSync(installRoot) && Date.now() - uninstallStarted < 30_000) {
           await delay(50);
         }
+        if (detachedCoreBeforeUninstall !== undefined)
+          assertProcessStopped(detachedCoreBeforeUninstall);
         const shortcuts = [
           startMenuShortcut,
           join(process.env.USERPROFILE!, "Desktop/Nodex.lnk"),
@@ -311,7 +340,9 @@ exit $uninstaller.ExitCode
         if (!profilePreserved) throw new Error("Uninstall removed the Profile");
         uninstallCompleted = true;
       } catch (error) {
-        failures.push(error);
+        failures.push(
+          new Error(`${failureDetails(error)}\n${captureMaintenanceLog("uninstall-failed")}`),
+        );
       }
     }
     if (!uninstallCompleted) {
@@ -357,13 +388,22 @@ exit $uninstaller.ExitCode
         writeFileSync(join(artifacts, name), readFileSync(join(logRoot, name)));
     writeFileSync(
       join(artifacts, "result.json"),
-      `${JSON.stringify({ evidence, packagedPty, normalQuit: normalQuitEvidence, upgrade: upgradeEvidence, updateHandoff: updateHandoffEvidence, uninstall: uninstallEvidence, failures: failures.map(failureDetails) }, null, 2)}\n`,
+      `${JSON.stringify({ installation: installationEvidence, evidence, packagedPty, normalQuit: normalQuitEvidence, upgrade: upgradeEvidence, updateHandoff: updateHandoffEvidence, uninstall: uninstallEvidence, failures: failures.map(failureDetails) }, null, 2)}\n`,
     );
   };
   try {
+    const installStarted = Date.now();
+    rmSync(maintenanceLog, { force: true });
     await runMaintenance(resolve("dist", installers[0]!), ["/S", "/currentuser"], {
-      timeout: 180_000,
+      timeout: installerTimeoutMs,
     });
+    captureMaintenanceLog("install");
+    installationEvidence = {
+      completed: true,
+      elapsedMs: Date.now() - installStarted,
+      installerBytes: statSync(resolve("dist", installers[0]!)).size,
+      timeoutMs: installerTimeoutMs,
+    };
     installed = true;
     const executable = join(installRoot, "Nodex.exe");
     if (!existsSync(executable))
@@ -650,9 +690,11 @@ exit $uninstaller.ExitCode
     const disabledApproval = queryStartupValue(startupApprovedKey);
     startupDisabled = true;
     const upgradeStarted = Date.now();
+    rmSync(maintenanceLog, { force: true });
     await runMaintenance(resolve("dist", installers[0]!), ["/S", "/currentuser"], {
-      timeout: 180_000,
+      timeout: installerTimeoutMs,
     });
+    captureMaintenanceLog("upgrade");
     assertProcessStopped(oldCorePid);
     if (!isProfilePreserved()) throw new Error("Upgrade removed Profile content");
     if (
@@ -676,13 +718,15 @@ exit $uninstaller.ExitCode
     renewHostClaim();
     const command = windowsUpdateInstallerCommand(resolve("dist", installers[0]!), true);
     const updateStarted = Date.now();
+    rmSync(maintenanceLog, { force: true });
     const updaterInstaller = spawn(command.executable, command.args, {
       ...command.options,
       env: installedEnvironment(),
     });
     const [installerExitCode] = await once(updaterInstaller, "exit", {
-      signal: AbortSignal.timeout(180_000),
+      signal: AbortSignal.timeout(installerTimeoutMs),
     });
+    captureMaintenanceLog("update");
     if (installerExitCode !== 0)
       throw new Error(`Silent update installer failed (${installerExitCode})`);
     const updateDeadline = Date.now() + 60_000;
@@ -756,7 +800,7 @@ exit $uninstaller.ExitCode
     }
     detachedCoreBeforeUninstall = await forceDesktopLeavingCore();
   } catch (error) {
-    failures.push(error);
+    failures.push(new Error(`${failureDetails(error)}\n${captureMaintenanceLog("failed")}`));
   } finally {
     await cleanup();
   }

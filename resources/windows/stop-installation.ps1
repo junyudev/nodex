@@ -1,15 +1,31 @@
 param(
     [Parameter(Mandatory = $true)][string]$InstallationDirectory,
     [Parameter(Mandatory = $true)][string]$HelperDirectory,
-    [Parameter(Mandatory = $true)][int]$InstallerPid
+    [Parameter(Mandatory = $true)][int]$InstallerPid,
+    [string]$LogPath
 )
 $ErrorActionPreference = 'Stop'
-if (!(Test-Path -LiteralPath $InstallationDirectory -PathType Container)) { exit 0 }
+$clock = [Diagnostics.Stopwatch]::StartNew()
+$step = 'initialize'
+function Write-MaintenanceLog([string]$message) {
+    $line = "maintenance elapsedMs=$($clock.ElapsedMilliseconds) step=$step $message"
+    if ($LogPath) { [IO.File]::AppendAllText($LogPath, $line + [Environment]::NewLine) }
+    # Do not emit progress: nsExec's timeout resets whenever it receives output.
+}
+try {
+    Write-MaintenanceLog 'started'
+    if (!(Test-Path -LiteralPath $InstallationDirectory -PathType Container)) {
+        Write-MaintenanceLog 'skipped: installation does not exist'
+        exit 0
+    }
 
-# Native argument parsing handles quoted spaces, Unicode and trailing backslashes.
-# Forced termination holds one process handle across the image check and kill,
-# so PID reuse cannot redirect termination to another installation.
-Add-Type -TypeDefinition @'
+    $step = 'native-boundary'
+    Write-MaintenanceLog 'started'
+
+    # Native argument parsing handles quoted spaces, Unicode and trailing backslashes.
+    # Forced termination holds one process handle across the image check and kill,
+    # so PID reuse cannot redirect termination to another installation.
+    Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
@@ -74,74 +90,91 @@ public static class NodexMaintenance {
             if (!QueryFullProcessImageNameW(process, 0, path, ref size)) throw new Win32Exception();
             if (!Contains(root, path.ToString())) return;
             if (!TerminateProcess(process, 0)) throw new Win32Exception();
-            if (WaitForSingleObject(process, 2000) != 0) throw new TimeoutException("Installation process did not stop");
+            if (WaitForSingleObject(process, 2000) != 0) throw new TimeoutException("Installation process " + pid + " did not stop within 2000 ms");
         } finally { CloseHandle(process); }
     }
 }
 '@
-$root = [NodexMaintenance]::InstallationRoot($InstallationDirectory)
-if ([IO.Path]::GetPathRoot($root) -eq $root) { throw 'Refusing a drive root as an installation' }
+    $root = [NodexMaintenance]::InstallationRoot($InstallationDirectory)
+    if ([IO.Path]::GetPathRoot($root) -eq $root) { throw 'Refusing a drive root as an installation' }
 
-function Get-InstallationProcesses {
-    @(Get-CimInstance Win32_Process | Where-Object {
-        $_.ProcessId -ne $InstallerPid -and $_.ExecutablePath -and
-        [NodexMaintenance]::Contains($root, $_.ExecutablePath)
-    })
-}
+    function Get-InstallationProcesses {
+        @(Get-CimInstance Win32_Process | Where-Object {
+            $_.ProcessId -ne $InstallerPid -and $_.ExecutablePath -and
+            [NodexMaintenance]::Contains($root, $_.ExecutablePath)
+        })
+    }
 
-# Let the desktop release its supervised runtimes before draining detached Core.
-$desktop = @(Get-InstallationProcesses | Where-Object { $_.Name -ieq 'Nodex.exe' })
-foreach ($image in $desktop) {
-    $process = Get-Process -Id $image.ProcessId -ErrorAction SilentlyContinue
-    if ($process) { [void]$process.CloseMainWindow(); $process.Dispose() }
-}
-if ($desktop.Count) { Start-Sleep -Milliseconds 1500 }
-foreach ($image in (Get-InstallationProcesses | Where-Object { $_.Name -ieq 'Nodex.exe' })) {
-    [NodexMaintenance]::Stop($image.ProcessId, $root)
-}
+    $step = 'desktop-close'
+    Write-MaintenanceLog 'started'
 
-$helpers = @()
-$coreHelper = $null
-try {
-    foreach ($image in (Get-InstallationProcesses | Where-Object { $_.Name -ieq 'nodex-core.exe' })) {
-        $arguments = [NodexMaintenance]::Arguments($image.CommandLine)
-        $homeIndex = [Array]::IndexOf($arguments, '--home')
-        if ($homeIndex -lt 0 -or $homeIndex + 1 -ge $arguments.Count) { continue }
-        $coreHome = $arguments[$homeIndex + 1]
-        # Windows paths cannot contain quotes; double trailing slashes before a closing quote.
-        $quotedHome = '"' + [regex]::Replace($coreHome, '(\\+)$', '$1$1') + '"'
-        # Each Core drains through a copy of its own executable, so the client always speaks
-        # its protocol and nothing keeps the file being replaced or removed open.
-        if (!$coreHelper) {
-            $coreHelper = Join-Path $HelperDirectory 'nodex-core-maintenance.exe'
-            Copy-Item -LiteralPath $image.ExecutablePath -Destination $coreHelper
+    # Let the desktop release its supervised runtimes before draining detached Core.
+    $desktop = @(Get-InstallationProcesses | Where-Object { $_.Name -ieq 'Nodex.exe' })
+    foreach ($image in $desktop) {
+        $process = Get-Process -Id $image.ProcessId -ErrorAction SilentlyContinue
+        if ($process) { [void]$process.CloseMainWindow(); $process.Dispose() }
+    }
+    if ($desktop.Count) { Start-Sleep -Milliseconds 1500 }
+    $step = 'desktop-stop'
+    Write-MaintenanceLog 'started'
+    foreach ($image in (Get-InstallationProcesses | Where-Object { $_.Name -ieq 'Nodex.exe' })) {
+        [NodexMaintenance]::Stop($image.ProcessId, $root)
+    }
+
+    $step = 'core-shutdown'
+    Write-MaintenanceLog 'started'
+    $helpers = @()
+    $coreHelper = $null
+    try {
+        foreach ($image in (Get-InstallationProcesses | Where-Object { $_.Name -ieq 'nodex-core.exe' })) {
+            $arguments = [NodexMaintenance]::Arguments($image.CommandLine)
+            $homeIndex = [Array]::IndexOf($arguments, '--home')
+            if ($homeIndex -lt 0 -or $homeIndex + 1 -ge $arguments.Count) { continue }
+            $coreHome = $arguments[$homeIndex + 1]
+            # Windows paths cannot contain quotes; double trailing slashes before a closing quote.
+            $quotedHome = '"' + [regex]::Replace($coreHome, '(\\+)$', '$1$1') + '"'
+            # Each Core drains through a copy of its own executable, so the client always speaks
+            # its protocol and nothing keeps the file being replaced or removed open.
+            if (!$coreHelper) {
+                $coreHelper = Join-Path $HelperDirectory 'nodex-core-maintenance.exe'
+                Write-MaintenanceLog 'copying shutdown client'
+                Copy-Item -LiteralPath $image.ExecutablePath -Destination $coreHelper
+                Write-MaintenanceLog 'shutdown client copied'
+            }
+            $start = New-Object Diagnostics.ProcessStartInfo
+            $start.FileName = $coreHelper
+            $start.Arguments = '--shutdown --home ' + $quotedHome + ' --expected-pid ' + $image.ProcessId
+            $start.UseShellExecute = $false
+            $start.CreateNoWindow = $true
+            $helpers += [Diagnostics.Process]::Start($start)
         }
-        $start = New-Object Diagnostics.ProcessStartInfo
-        $start.FileName = $coreHelper
-        $start.Arguments = '--shutdown --home ' + $quotedHome + ' --expected-pid ' + $image.ProcessId
-        $start.UseShellExecute = $false
-        $start.CreateNoWindow = $true
-        $helpers += [Diagnostics.Process]::Start($start)
+        $graceDeadline = [DateTime]::UtcNow.AddSeconds(8)
+        do {
+            $cores = @(Get-InstallationProcesses | Where-Object { $_.Name -ieq 'nodex-core.exe' })
+            if (!$cores.Count) { break }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $graceDeadline)
+    } finally {
+        foreach ($helper in $helpers) {
+            if (!$helper.HasExited) { $helper.Kill(); [void]$helper.WaitForExit(2000) }
+            $helper.Dispose()
+        }
     }
-    $graceDeadline = [DateTime]::UtcNow.AddSeconds(8)
-    do {
-        $cores = @(Get-InstallationProcesses | Where-Object { $_.Name -ieq 'nodex-core.exe' })
-        if (!$cores.Count) { break }
-        Start-Sleep -Milliseconds 100
-    } while ([DateTime]::UtcNow -lt $graceDeadline)
-} finally {
-    foreach ($helper in $helpers) {
-        if (!$helper.HasExited) { $helper.Kill(); [void]$helper.WaitForExit(2000) }
-        $helper.Dispose()
-    }
-}
 
-# Include CLI, standalone Node, Agent and search executables, without name-wide kills
-# or following children into another installation or a system runtime.
-$forceDeadline = [DateTime]::UtcNow.AddSeconds(5)
-do {
-    $remaining = @(Get-InstallationProcesses)
-    if (!$remaining.Count) { exit 0 }
-    foreach ($image in $remaining) { [NodexMaintenance]::Stop($image.ProcessId, $root) }
-} while ([DateTime]::UtcNow -lt $forceDeadline)
-if (@(Get-InstallationProcesses).Count) { throw 'Installation still has running processes' }
+    # Include CLI, standalone Node, Agent and search executables, without name-wide kills
+    # or following children into another installation or a system runtime.
+    $step = 'force-stop'
+    Write-MaintenanceLog 'started'
+    $forceDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $remaining = @(Get-InstallationProcesses)
+        if (!$remaining.Count) { Write-MaintenanceLog 'completed'; exit 0 }
+        foreach ($image in $remaining) { [NodexMaintenance]::Stop($image.ProcessId, $root) }
+    } while ([DateTime]::UtcNow -lt $forceDeadline)
+    if (@(Get-InstallationProcesses).Count) { throw 'Installation still has running processes' }
+    Write-MaintenanceLog 'completed'
+} catch {
+    Write-MaintenanceLog ("failed: " + $_.Exception.Message + " [" + $_.FullyQualifiedErrorId + "]")
+    Write-Error -ErrorAction Continue $_
+    exit 1
+}

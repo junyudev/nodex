@@ -2,12 +2,46 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { copyFile, mkdtemp, mkdir, rm, writeFile, readFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, parse, resolve } from "node:path";
 import { promisify } from "node:util";
 import { expect, test } from "vite-plus/test";
 import { installationListenerAddresses } from "./ci/probe-windows-installer";
 
 const execute = promisify(execFile);
+
+test.skipIf(process.platform !== "win32")(
+  "maintenance records why an unsafe installation root was refused",
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), "nodex-maintenance-refusal-"));
+    const log = join(root, "maintenance.log");
+    try {
+      await expect(
+        execute("powershell.exe", [
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          resolve("resources/windows/stop-installation.ps1"),
+          "-InstallationDirectory",
+          parse(root).root,
+          "-HelperDirectory",
+          root,
+          "-InstallerPid",
+          String(process.pid),
+          "-LogPath",
+          log,
+        ]),
+      ).rejects.toMatchObject({ code: 1 });
+      expect(await readFile(log, "utf8")).toMatch(
+        /step=native-boundary failed: Refusing a drive root as an installation/,
+      );
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  },
+  30_000,
+);
 
 test.skipIf(process.platform !== "win32")(
   "maintenance stops only images within its installation",

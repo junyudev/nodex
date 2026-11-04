@@ -1,6 +1,17 @@
 !define NODEX_PROTOCOL_KEY "Software\Classes\nodex"
 !define NODEX_RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
 !define NODEX_STARTUP_APPROVED_KEY "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
+!define NODEX_MAINTENANCE_LOG "$LOCALAPPDATA\Nodex\installer-maintenance.log"
+
+!macro nodexMaintenanceLog message
+  Push $R9
+  FileOpen $R9 "${NODEX_MAINTENANCE_LOG}" a
+  ; NSIS preserves contents in append mode but still opens at byte zero.
+  FileSeek $R9 0 END
+  FileWrite $R9 "${message}$\r$\n"
+  FileClose $R9
+  Pop $R9
+!macroend
 
 !macro customCheckAppRunning
   ; Run the incoming maintenance before an older uninstaller can try to rename busy files.
@@ -8,18 +19,32 @@
   InitPluginsDir
   ; Maintenance must not inherit an installation-directory handle through its cwd.
   SetOutPath "$TEMP"
+  CreateDirectory "$LOCALAPPDATA\Nodex"
+  !ifdef BUILD_UNINSTALLER
+    ; Install-over's nested uninstaller must retain the incoming shutdown evidence.
+    ${IfNot} ${isUpdated}
+      Delete "${NODEX_MAINTENANCE_LOG}"
+    ${EndIf}
+    !insertmacro nodexMaintenanceLog "operation=uninstall"
+  !else
+    Delete "${NODEX_MAINTENANCE_LOG}"
+    !insertmacro nodexMaintenanceLog "operation=install"
+  !endif
+  !insertmacro nodexMaintenanceLog "step=process-shutdown started"
   File /oname=$PLUGINSDIR\stop-installation.ps1 "${BUILD_RESOURCES_DIR}\windows\stop-installation.ps1"
   StrCpy $R0 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
   IfFileExists "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" 0 +2
     StrCpy $R0 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
   System::Call 'kernel32::GetCurrentProcessId() i .r1'
-  nsExec::ExecToLog /TIMEOUT=45000 '"$R0" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\stop-installation.ps1" -InstallationDirectory "$INSTDIR" -HelperDirectory "$PLUGINSDIR" -InstallerPid $1'
+  nsExec::ExecToLog /TIMEOUT=45000 '"$R0" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\stop-installation.ps1" -InstallationDirectory "$INSTDIR" -HelperDirectory "$PLUGINSDIR" -InstallerPid $1 -LogPath "${NODEX_MAINTENANCE_LOG}"'
   Pop $R0
   ${If} $R0 != 0
+    !insertmacro nodexMaintenanceLog "step=process-shutdown failed exit=$R0"
     DetailPrint "Nodex could not release this installation (exit $R0)."
     SetErrorLevel 2
     Abort "Close Nodex processes from this installation and try again."
   ${EndIf}
+  !insertmacro nodexMaintenanceLog "step=process-shutdown completed"
   !ifndef BUILD_UNINSTALLER
     ; Older uninstallers can use name-wide or prefix-only process checks.
     ; Keep install-over maintenance under the incoming installer's scoped rules.
@@ -28,9 +53,11 @@
       ClearErrors
       File "/oname=$INSTDIR\${UNINSTALL_FILENAME}" "${UNINSTALLER_OUT_FILE}"
       ${If} ${Errors}
+        !insertmacro nodexMaintenanceLog "step=refresh-uninstaller failed"
         SetErrorLevel 2
         Abort "Nodex could not prepare installation maintenance."
       ${EndIf}
+      !insertmacro nodexMaintenanceLog "step=refresh-uninstaller completed"
     ${EndIf}
   !endif
 !macroend
@@ -55,9 +82,11 @@
     ClearErrors
     Exec '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --updated'
     ${If} ${Errors}
+      !insertmacro nodexMaintenanceLog "step=relaunch failed"
       SetErrorLevel 2
       Abort "Nodex was updated but could not restart. Open Nodex to continue."
     ${EndIf}
+    !insertmacro nodexMaintenanceLog "step=relaunch completed"
     ; Skip electron-builder's ShellExecuteAsUser relaunch: one update, one host.
     !insertmacro quitSuccess
   ${EndIf}
