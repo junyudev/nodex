@@ -21,7 +21,7 @@ import {
   COMPOSER_FOOTER_COMPACT_GHOST_BUTTON_CLASS_NAME,
   COMPOSER_FOOTER_GHOST_ICON_BUTTON_CLASS_NAME,
   COMPOSER_FOOTER_LABEL_WIDE_CLASS_NAME,
-} from "./composer-footer-controls";
+} from "@/components/composer/composer-footer-controls";
 import { FullAccessPermissionConfirmationDialog } from "./full-access-permission-confirmation-dialog";
 import {
   isAgentRuntimeModeSupported,

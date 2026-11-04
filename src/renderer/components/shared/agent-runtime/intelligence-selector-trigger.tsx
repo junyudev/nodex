@@ -19,7 +19,7 @@ import {
   intelligenceEffortEmphasis,
   type IntelligenceModeIndicator,
 } from "./intelligence-controls";
-import { COMPOSER_FOOTER_GHOST_BUTTON_CLASS_NAME } from "../../../features/local-conversation/view/shared/composer-footer-controls";
+import { COMPOSER_FOOTER_GHOST_BUTTON_CLASS_NAME } from "@/components/composer/composer-footer-controls";
 
 export const INTELLIGENCE_SELECTOR_MENU_WIDTH_PX = 224;
 export const INTELLIGENCE_SELECTOR_FAST_SLOT_WIDTH_PX = 18;

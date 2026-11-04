@@ -44,10 +44,7 @@ interface ComposerInputProps {
 
 export function ComposerInput({ children, layout }: ComposerInputProps) {
   return (
-    <div
-      data-composer-input="true"
-      className={layout === "single-line" ? "min-w-0" : "mb-1 flex-grow overflow-y-auto px-3"}
-    >
+    <div data-composer-input="true" className={layout === "single-line" ? "min-w-0" : "mb-1 px-3"}>
       {children}
     </div>
   );

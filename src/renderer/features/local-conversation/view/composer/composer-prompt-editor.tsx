@@ -8,6 +8,10 @@ import {
   useMemo,
   useRef,
 } from "react";
+import {
+  COMPOSER_PROMPT_SCROLL_CLASS_NAME,
+  COMPOSER_PROMPT_TEXT_CLASS_NAME,
+} from "@/components/composer/composer-surface";
 import { baseKeymap } from "@tiptap/pm/commands";
 import type { CodexComposerPredictionResult } from "../../../../../shared/codex-composer-prediction";
 import {
@@ -1746,10 +1750,11 @@ export const ComposerPromptEditor = forwardRef<
       data-nodex-keyboard-context={dataComposerPromptFrame ? "composer" : undefined}
       data-single-line={singleLine ? "true" : "false"}
       className={[
-        "font-sans text-size-chat leading-(--composer-prompt-line-height,1.25rem) [&_.ProseMirror]:focus-visible:outline-none text-token-foreground h-auto [&_.ProseMirror]:h-auto [&_.ProseMirror]:resize-none [&_.ProseMirror_p]:m-0 [&_.ProseMirror]:leading-(--composer-prompt-line-height,1.25rem)",
+        COMPOSER_PROMPT_TEXT_CLASS_NAME,
+        "[&_.ProseMirror]:focus-visible:outline-none h-auto [&_.ProseMirror]:h-auto [&_.ProseMirror]:resize-none [&_.ProseMirror_p]:m-0 [&_.ProseMirror]:leading-(--composer-prompt-line-height,1.25rem)",
         singleLine
           ? "max-h-5 overflow-hidden [&_.ProseMirror]:min-h-5"
-          : "max-h-[25dvh] overflow-y-auto [&_.ProseMirror]:min-h-[2rem]",
+          : `${COMPOSER_PROMPT_SCROLL_CLASS_NAME} [&_.ProseMirror]:min-h-[2rem]`,
         disabled ? "opacity-60" : null,
         className,
       ]

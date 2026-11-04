@@ -24,7 +24,7 @@ import {
   takeComposerLibraryImagePaste,
   type ComposerPastedFiles,
 } from "@/features/local-conversation/view/composer/image-attachments";
-import { COMPOSER_FOOTER_GHOST_ICON_BUTTON_CLASS_NAME } from "@/features/local-conversation/view/shared/composer-footer-controls";
+import { COMPOSER_FOOTER_GHOST_ICON_BUTTON_CLASS_NAME } from "@/components/composer/composer-footer-controls";
 import type { FileReadAuthority } from "@/lib/library-file-resources";
 import { insertTyped, pasteMarkdownSource } from "@/lib/text-field-paste";
 import { COMPOSER_IMAGE_MIME_TYPES } from "../../../shared/composer-image-input";

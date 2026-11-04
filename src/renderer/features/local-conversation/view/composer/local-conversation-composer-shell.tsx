@@ -64,7 +64,7 @@ import type {
 } from "../../thread-stage-types";
 import { getThreadGoalMessage } from "../../thread-goal-copy";
 import { ModelSelectorDropdown, ThreadComposer } from "./local-conversation-thread-composer";
-import { ComposerAdaptiveFooter } from "./composer-adaptive-footer";
+import { ComposerAdaptiveFooter } from "@/components/composer/composer-adaptive-footer";
 import {
   useComposerIntelligenceController,
   type ComposerIntelligenceController,

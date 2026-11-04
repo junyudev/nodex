@@ -57,7 +57,7 @@ import type {
   ProtocolAppInfo,
 } from "@/lib/types";
 import { useFileSearch } from "../../../../lib/use-file-search";
-import { COMPOSER_FOOTER_GHOST_ICON_BUTTON_CLASS_NAME } from "../shared/composer-footer-controls";
+import { COMPOSER_FOOTER_GHOST_ICON_BUTTON_CLASS_NAME } from "@/components/composer/composer-footer-controls";
 import type {
   NewChatProjectSelectorModel,
   ThreadComposerShellBackgroundAgentRowModel,

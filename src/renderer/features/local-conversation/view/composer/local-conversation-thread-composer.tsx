@@ -153,7 +153,7 @@ import {
   ComposerAdaptiveFooter,
   ComposerInput,
   resolveComposerAdaptiveLayout,
-} from "./composer-adaptive-footer";
+} from "@/components/composer/composer-adaptive-footer";
 import { useThreadComposerPromptHistoryRecall } from "./thread-composer-prompt-history";
 import { InlineSlashCommandMenu } from "./slash-command-menu/inline-slash-command-menu";
 import { ExpandedSlashCommandDialog } from "./slash-command-menu/expanded-slash-command-dialog";
@@ -201,8 +201,10 @@ import {
   COMPOSER_FOOTER_LABEL_NARROW_CLASS_NAME,
   COMPOSER_FOOTER_LABEL_WIDE_CLASS_NAME,
   COMPOSER_FOOTER_PLAN_ACCESSORY_BUTTON_CLASS_NAME,
+  COMPOSER_PRIMARY_ACTION_BUTTON_CLASS_NAME,
   ComposerFooterAccessoryDivider,
-} from "../shared/composer-footer-controls";
+} from "@/components/composer/composer-footer-controls";
+import { COMPOSER_SURFACE_CLASS_NAME } from "@/components/composer/composer-surface";
 import { PermissionModeDropdown } from "../shared/permission-mode-dropdown";
 import { AgentIntelligenceDropdown } from "@/components/shared/agent-runtime/agent-intelligence-dropdown";
 import {
@@ -4140,7 +4142,7 @@ function HydratedThreadComposer({
       <button
         type="button"
         className={cn(
-          "focus-visible:outline-background-composer-primary cursor-interaction flex h-token-button-composer aspect-square items-center justify-center rounded-full bg-composer-primary p-0.5 text-composer-primary transition-opacity focus-visible:outline-2",
+          COMPOSER_PRIMARY_ACTION_BUTTON_CLASS_NAME,
           (composerActionState.disabled ||
             (composerActionState.action === "send" && !canRunPrimaryAction)) &&
             !isPrimaryActionPending &&
@@ -4182,7 +4184,7 @@ function HydratedThreadComposer({
       <NodexTooltip tooltipContent="Send" side="top">
         <button
           type="button"
-          className="flex h-token-button-composer aspect-square items-center justify-center rounded-full bg-composer-primary p-0.5 text-composer-primary disabled:opacity-50"
+          className={cn(COMPOSER_PRIMARY_ACTION_BUTTON_CLASS_NAME, "disabled:opacity-50")}
           aria-label="Send"
           aria-busy={transcriptionAction === "send"}
           disabled={transcriptionAction === "send"}
@@ -4491,10 +4493,8 @@ function HydratedThreadComposer({
           className={cn(
             "relative flex flex-col",
             // A floating composer's frame draws the surface.
-            !isFloatingComposer && "composer-surface-chrome bg-background-composer-surface",
-            floatingComposerSingleLine
-              ? "overflow-visible rounded-full"
-              : cn("overflow-y-auto", !isFloatingComposer && "composer-multiline-surface"),
+            !isFloatingComposer && COMPOSER_SURFACE_CLASS_NAME,
+            floatingComposerSingleLine ? "overflow-visible rounded-full" : "overflow-y-auto",
             (showExternalFooter || composerNotice) && "z-10",
           )}
         >
