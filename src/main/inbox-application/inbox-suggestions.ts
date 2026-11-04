@@ -441,7 +441,7 @@ export const describeInboxRuntimeFailure = (
   if (/exceeded (?:its|their) .*budget/i.test(message)) {
     return `${capitalize(agent)} answered at more length than Nodex reads`;
   }
-  if (/invalid (?:structured output|suggestion)/i.test(message)) {
+  if (/invalid (?:structured output|suggestion)|without a structured answer/i.test(message)) {
     return `${capitalize(agent)} answered in a form Nodex couldn’t read`;
   }
   const firstLine = loggableInboxRuntimeFailure(message);

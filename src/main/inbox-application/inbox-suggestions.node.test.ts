@@ -332,6 +332,29 @@ describe("describeInboxRuntimeFailure", () => {
       "Text generation failed in generateStructured: Codex CLI command failed: OpenAI Codex\nuser\nMy salary review notes";
     expect(loggableInboxRuntimeFailure(endsInText)).toBe("Codex CLI command failed");
   });
+
+  it.each([
+    [
+      "There's an issue with the selected model. It may not exist or you may not have access to it.",
+      "There's an issue with the selected model. It may not exist or you may not have access to it.",
+    ],
+    ["You've hit your limit. (HTTP 429)", "The suggestion agent is rate limited"],
+    [
+      "Claude is temporarily overloaded. Try again shortly.",
+      "Claude is temporarily overloaded. Try again shortly.",
+    ],
+    [
+      "Claude finished without a structured answer.",
+      "The suggestion agent answered in a form Nodex couldn’t read",
+    ],
+  ])("presents Claude’s reason %s beside a suggestion", (detail, expected) => {
+    expect(
+      describeInboxRuntimeFailure(
+        `Text generation failed in generateStructured: ${detail}`,
+        "suggestion",
+      ),
+    ).toBe(expected);
+  });
 });
 
 describe("inbox suggestion prompts", () => {

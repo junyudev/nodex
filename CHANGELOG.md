@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- A suggestion that fails on Claude now says why. Claude's own reason, such as a usage limit or an unavailable model, shows beside the message instead of "Claude CLI returned unexpected output format."
+
 ## [0.5.1] - 2026-11-04
 
 ### Added

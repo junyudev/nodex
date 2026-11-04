@@ -42,23 +42,60 @@ const CLAUDE_TIMEOUT_MS = 180_000;
 const READ_ONLY_TOOLS = ["Read", "Grep", "Glob"];
 /** Reading the web changes nothing either, so a request that asks for it may also search. */
 const WEB_READ_TOOLS = ["WebSearch", "WebFetch"];
-/**
- * Schema for the wrapper JSON returned by `claude -p --output-format json`.
- * Verbose mode wraps the result in an array of conversation messages.
- */
-const ClaudeOutputEnvelope = Schema.Struct({
-  structured_output: Schema.Unknown,
-});
-const ClaudeOutputMessage = Schema.Struct({
-  type: Schema.String,
+const ClaudeResult = Schema.Struct({
+  subtype: Schema.optionalKey(Schema.String),
+  is_error: Schema.optionalKey(Schema.Boolean),
+  result: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  errors: Schema.optionalKey(Schema.Array(Schema.String)),
+  api_error_status: Schema.optionalKey(Schema.NullOr(Schema.Number)),
   structured_output: Schema.optionalKey(Schema.Unknown),
 });
-const isClaudeOutputEnvelope = Schema.is(ClaudeOutputEnvelope);
-
-const encodeJsonString = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
-const decodeClaudeOutput = Schema.decodeEffect(
-  Schema.fromJsonString(Schema.Union([ClaudeOutputEnvelope, Schema.Array(ClaudeOutputMessage)])),
+const isClaudeResultMessage = Schema.is(Schema.Struct({ type: Schema.Literal("result") }));
+const decodeClaudeResult = Schema.decodeUnknownOption(
+  Schema.Union([
+    Schema.Struct({ ...ClaudeResult.fields, type: Schema.Literal("result") }),
+    Schema.Struct({ ...ClaudeResult.fields, structured_output: Schema.Unknown }),
+  ]),
 );
+
+const JsonString = Schema.fromJsonString(Schema.Unknown);
+const encodeJsonString = Schema.encodeEffect(JsonString);
+const decodeClaudeStdout = Schema.decodeOption(JsonString);
+
+const readClaudeResult = Effect.fn("readClaudeResult")(function* (
+  operation: TextGenerationOperations.Operation,
+  result: typeof ClaudeResult.Type | undefined,
+  transportFailure?: string,
+) {
+  // Claude can label an API error "success" and put the reason in result.
+  if (
+    result &&
+    (result.is_error || (result.subtype !== undefined && result.subtype !== "success"))
+  ) {
+    const reason = result.result?.trim() || result.errors?.join("\n").trim();
+    const status = result.api_error_status;
+    // These statuses drive the sign-in and rate-limit messages in callers.
+    const statusLabel = status === 401 || status === 429 ? ` (HTTP ${status})` : "";
+    const fallback =
+      status == null
+        ? (transportFailure ?? "Claude request failed.")
+        : `Claude request failed (HTTP ${status}).`;
+    return yield* new TextGenerationError({
+      operation,
+      detail: reason ? reason + statusLabel : fallback,
+    });
+  }
+  if (transportFailure) {
+    return yield* new TextGenerationError({ operation, detail: transportFailure });
+  }
+  if (result?.structured_output === undefined) {
+    return yield* new TextGenerationError({
+      operation,
+      detail: "Claude finished without a structured answer.",
+    });
+  }
+  return result.structured_output;
+});
 
 /**
  * The Claude CLI validates `--json-schema` in its own JSON Schema dialect and refuses a schema
@@ -122,8 +159,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     );
 
   /**
-   * Spawn the Claude CLI with structured JSON output and return the parsed,
-   * schema-validated result.
+   * Run a Claude utility query and return its schema-validated result.
    */
   const runClaudeJson = Effect.fn("runClaudeJson")(function* <S extends Schema.Top>({
     operation,
@@ -182,18 +218,14 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
       ...(fastMode ? { fastMode: true } : {}),
     };
-    const settingsJson = yield* encodeJsonForOperation(
-      operation,
-      settings,
-      "Failed to encode Claude CLI settings.",
-    );
+    const useSdk = Boolean(images?.length || claudeSettings.isolated);
 
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
-      if (images?.length || claudeSettings.isolated) {
+      if (useSdk) {
         const sdk = yield* Effect.tryPromise({
           try: loadClaudeAgentSdk,
           catch: (cause) =>
-            normalizeCliError("claude", operation, cause, "Failed to load Claude SDK"),
+            new TextGenerationError({ operation, detail: "Failed to load Claude SDK.", cause }),
         });
         const binaryPath =
           claudeSettings.binaryPath && !claudeSettings.isolated
@@ -245,23 +277,31 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
                 },
               }),
             catch: (cause) =>
-              normalizeCliError("claude", operation, cause, "Failed to start Claude SDK query"),
+              new TextGenerationError({
+                operation,
+                detail: "Failed to start Claude SDK query.",
+                cause,
+              }),
           }),
           (query) => Effect.sync(() => query.close()),
         );
-        return yield* Effect.tryPromise({
+        const result = yield* Effect.tryPromise({
           try: async () => {
             for await (const message of query) {
-              if (message.type !== "result") continue;
-              if (message.subtype !== "success") throw new Error(message.errors.join("\n"));
-              return JSON.stringify({ structured_output: message.structured_output });
+              if (message.type === "result") return message;
             }
-            throw new Error("Claude returned no structured result.");
+            return undefined;
           },
           catch: (cause) =>
-            normalizeCliError("claude", operation, cause, "Claude image generation failed"),
+            new TextGenerationError({ operation, detail: "Claude SDK query failed.", cause }),
         });
+        return yield* readClaudeResult(operation, result);
       }
+      const settingsJson = yield* encodeJsonForOperation(
+        operation,
+        settings,
+        "Failed to encode Claude CLI settings.",
+      );
       // Titles need only the supplied prompt, not configuration from the checkout.
       const workingDirectory =
         operation === "generateThreadTitle"
@@ -330,62 +370,53 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
         { concurrency: "unbounded" },
       );
 
+      const output = Option.getOrUndefined(decodeClaudeStdout(stdout));
+      const envelope = Array.isArray(output) ? output.findLast(isClaudeResultMessage) : output;
+      const result = Option.getOrUndefined(decodeClaudeResult(envelope));
       if (exitCode !== 0) {
+        // Stdout may contain the entire conversation, including the prompt.
         const stderrDetail = stderr.trim();
-        const stdoutDetail = stdout.trim();
-        const detail = stderrDetail.length > 0 ? stderrDetail : stdoutDetail;
+        return yield* readClaudeResult(
+          operation,
+          result,
+          stderrDetail
+            ? `Claude CLI command failed: ${stderrDetail}`
+            : `Claude CLI command failed with code ${exitCode}.`,
+        );
+      }
+      if (result === undefined) {
         return yield* new TextGenerationError({
           operation,
-          detail:
-            detail.length > 0
-              ? `Claude CLI command failed: ${detail}`
-              : `Claude CLI command failed with code ${exitCode}.`,
+          detail: "Claude CLI returned unexpected output format.",
         });
       }
-
-      return stdout;
+      return yield* readClaudeResult(operation, result);
     });
 
-    const rawStdout = yield* runClaudeCommand().pipe(
+    const structuredOutput = yield* runClaudeCommand().pipe(
       Effect.scoped,
       Effect.timeoutOption(timeoutMs ?? investigate?.timeoutMs ?? CLAUDE_TIMEOUT_MS),
       Effect.flatMap(
         Option.match({
           onNone: () =>
             Effect.fail(
-              new TextGenerationError({ operation, detail: "Claude CLI request timed out." }),
+              new TextGenerationError({
+                operation,
+                detail: `Claude ${useSdk ? "SDK" : "CLI"} request timed out.`,
+              }),
             ),
           onSome: (value) => Effect.succeed(value),
         }),
       ),
     );
 
-    const output = yield* decodeClaudeOutput(rawStdout).pipe(
-      Effect.catchTags({
-        SchemaError: (cause) =>
-          Effect.fail(
-            new TextGenerationError({
-              operation,
-              detail: "Claude CLI returned unexpected output format.",
-              cause,
-            }),
-          ),
-      }),
-    );
-    const envelope = isClaudeOutputEnvelope(output)
-      ? output
-      : output.findLast((message) => message.type === "result");
-
-    if (
-      Buffer.byteLength(JSON.stringify(envelope?.structured_output) ?? "") >
-      (maxOutputBytes ?? 1024 * 1024)
-    )
+    if (Buffer.byteLength(JSON.stringify(structuredOutput) ?? "") > (maxOutputBytes ?? 1024 * 1024))
       return yield* new TextGenerationError({
         operation,
         detail: "Structured output exceeded its byte budget.",
       });
     const decodeOutput = Schema.decodeEffect(outputSchemaJson);
-    return yield* decodeOutput(envelope?.structured_output).pipe(
+    return yield* decodeOutput(structuredOutput).pipe(
       Effect.catchTags({
         SchemaError: (cause) =>
           Effect.fail(
