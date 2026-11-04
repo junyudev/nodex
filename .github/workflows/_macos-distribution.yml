@@ -118,6 +118,12 @@ jobs:
           fi
           vp exec tsx scripts/ci/macos-signing-keychain.ts prepare
 
+      - name: Ensure full-update compressor
+        shell: bash
+        run: |
+          command -v xz >/dev/null || HOMEBREW_NO_AUTO_UPDATE=1 brew install xz
+          xz --version
+
       - name: Build and verify signed distribution
         env:
           APPLE_API_ISSUER: ${{ secrets.apple_api_issuer }}

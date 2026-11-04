@@ -133,7 +133,7 @@ export function makeReleaseFixture(root: string, channel: "stable" | "nightly" =
   const artifacts = (
     [
       [`Nodex-${identity.version}-arm64.dmg`, "dmg"],
-      [`Nodex-${identity.version}-arm64.zip`, "sparkle-full"],
+      [`Nodex-${identity.version}-arm64.tar.xz`, "sparkle-full"],
     ] as const
   ).map(([name, role]) => {
     writeFileSync(join(arm64Directory, name), `macos:${name}`);
@@ -150,9 +150,9 @@ export function makeReleaseFixture(root: string, channel: "stable" | "nightly" =
     }),
   );
   const full = {
-    ...fileIdentity(arm64Directory, `Nodex-${identity.version}-arm64.zip`),
+    ...fileIdentity(arm64Directory, `Nodex-${identity.version}-arm64.tar.xz`),
     edSignature: signature,
-    url: `https://github.com/junyudev/nodex/releases/download/${identity.tag}/Nodex-${identity.version}-arm64.zip`,
+    url: `https://github.com/junyudev/nodex/releases/download/${identity.tag}/Nodex-${identity.version}-arm64.tar.xz`,
   };
   const appcastName = `Nodex-${identity.version}-appcast-arm64.xml`;
   writeFileSync(

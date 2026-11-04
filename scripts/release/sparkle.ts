@@ -1,3 +1,4 @@
+import { extractSparkleArchive, sparkleFullArchiveName } from "./sparkle-archive";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   copyFileSync,
@@ -17,6 +18,7 @@ import path from "node:path";
 import { type Element, DOMParser, XMLSerializer } from "@xmldom/xmldom";
 
 import { PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION } from "../package-provenance.mjs";
+import { immutableDirectoryDigest } from "../immutable-artifact-cache";
 import { materializeSparkleRuntime } from "../materialize-sparkle-runtime";
 import {
   compareStableVersions,
@@ -89,14 +91,6 @@ const run = (command: string, args: readonly string[], cwd?: string): string =>
     stdio: ["ignore", "pipe", "inherit"],
   }).trim();
 
-const appAtRoot = (root: string): string => {
-  const apps = readdirSync(root, { withFileTypes: true }).filter(
-    (entry) => entry.isDirectory() && !entry.isSymbolicLink() && entry.name.endsWith(".app"),
-  );
-  if (apps.length !== 1) throw new Error(`Expected exactly one app in ${root}.`);
-  return path.join(root, apps[0].name);
-};
-
 const readAppIdentity = (appPath: string): AppIdentity => {
   const infoPlist = path.join(appPath, "Contents", "Info.plist");
   const readPlist = (key: string): string =>
@@ -132,12 +126,6 @@ const readAppIdentity = (appPath: string): AppIdentity => {
     teamIdentifier,
     version: readPlist("CFBundleShortVersionString"),
   };
-};
-
-const extractZip = (zipPath: string, outputDirectory: string): string => {
-  mkdirSync(outputDirectory, { recursive: true });
-  run("/usr/bin/ditto", ["-x", "-k", zipPath, outputDirectory]);
-  return appAtRoot(outputDirectory);
 };
 
 const findFileRecursively = (root: string, name: string): string | null => {
@@ -293,24 +281,29 @@ const normalizeGeneratedAppcast = (options: {
   };
 };
 
-const verifyDeltaRoundTrip = (options: {
+export const verifySparkleDeltaRoundTrip = (options: {
   readonly binaryDelta: string;
   readonly currentAppPath: string;
   readonly delta: SparkleDeltaIdentity;
   readonly workingDirectory: string;
+  readonly sourceArchivePath: string | undefined;
 }): void => {
-  const sourceZipName = `Nodex-${options.delta.fromVersion}-arm64.zip`;
-  const sourceZip = findFileRecursively(options.workingDirectory, sourceZipName);
+  const sourceArchive = options.sourceArchivePath
+    ? findFileRecursively(options.workingDirectory, path.basename(options.sourceArchivePath))
+    : null;
   const deltaPath = findFileRecursively(options.workingDirectory, options.delta.name);
-  if (!sourceZip || !deltaPath)
+  if (!sourceArchive || !deltaPath)
     throw new Error(`Cannot verify delta from ${options.delta.fromVersion}.`);
   const verificationRoot = mkdtempSync(path.join(tmpdir(), "nodex-sparkle-delta-verify-"));
   try {
-    const sourceApp = extractZip(sourceZip, path.join(verificationRoot, "source"));
+    const sourceApp = extractSparkleArchive(sourceArchive, path.join(verificationRoot, "source"));
     const outputApp = path.join(verificationRoot, "Nodex.app");
-    run(options.binaryDelta, ["apply", sourceApp, deltaPath, outputApp]);
+    // Both BinaryDelta subcommands take before-tree, after-tree, patch-file.
+    run(options.binaryDelta, ["apply", sourceApp, outputApp, deltaPath]);
     run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", outputApp]);
-    run("/usr/bin/diff", ["-qr", outputApp, options.currentAppPath]);
+    if (immutableDirectoryDigest(outputApp) !== immutableDirectoryDigest(options.currentAppPath)) {
+      throw new Error("Sparkle delta changed target app contents, modes, or symlinks.");
+    }
   } finally {
     rmSync(verificationRoot, { force: true, recursive: true });
   }
@@ -352,13 +345,26 @@ export function selectLatestSparkleHistoryAppcast(paths: readonly string[]): str
   );
 }
 
-const copyHistory = (directories: readonly string[], workingDirectory: string): void => {
+export const copySparkleHistory = (
+  directories: readonly string[],
+  workingDirectory: string,
+): ReadonlyMap<string, string> => {
   const candidatePaths: string[] = [];
+  const archives = new Map<string, string>();
   for (const directory of directories) {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       if (!entry.isFile()) continue;
-      if (entry.name.endsWith(".zip") || entry.name.includes("appcast")) {
+      const archiveMatch = /^Nodex-(.+)-arm64\.(?:tar\.xz|zip)$/u.exec(entry.name);
+      if (archiveMatch || entry.name.includes("appcast")) {
         const destination = path.join(workingDirectory, entry.name);
+        if (archiveMatch) {
+          const version = normalizeReleaseVersion(archiveMatch[1]);
+          const previous = archives.get(version);
+          if (previous && previous !== destination) {
+            throw new Error(`Duplicate Sparkle history archives for ${version}.`);
+          }
+          archives.set(version, destination);
+        }
         if (!existsSync(destination)) copyFileSync(path.join(directory, entry.name), destination);
         if (entry.name.includes("appcast") && entry.name.endsWith(".xml")) {
           candidatePaths.push(destination);
@@ -370,6 +376,7 @@ const copyHistory = (directories: readonly string[], workingDirectory: string): 
   if (latestAppcast) {
     copyFileSync(latestAppcast, path.join(workingDirectory, "appcast.xml"));
   }
+  return archives;
 };
 
 export async function finalizeSparkleArchitectureUpdate(
@@ -381,7 +388,7 @@ export async function finalizeSparkleArchitectureUpdate(
   if (!/^[a-f0-9]{40}$/u.test(options.sourceSha)) throw new Error("Sparkle source SHA is invalid.");
   if (!options.privateKey.trim()) throw new Error("Sparkle private key is required.");
   const architectureRoot = path.resolve(options.architectureDirectory);
-  const fullName = `Nodex-${version}-${options.architecture}.zip`;
+  const fullName = sparkleFullArchiveName(version, options.architecture);
   const fullSourcePath = path.join(architectureRoot, fullName);
   const output = path.resolve(options.outputDirectory);
   ensureEmptyDirectory(output);
@@ -398,10 +405,11 @@ export async function finalizeSparkleArchitectureUpdate(
     copyFileSync(fullSourcePath, fullPath);
     copyFileSync(
       options.releaseNotesPath,
-      path.join(workingRoot, `${path.parse(fullName).name}.md`),
+      // Sparkle removes both extensions when locating a tar archive's notes.
+      path.join(workingRoot, `Nodex-${version}-${options.architecture}.md`),
     );
-    copyHistory(options.historyDirectories ?? [], workingRoot);
-    const currentAppPath = extractZip(fullPath, path.join(workingRoot, "current-app"));
+    const historyArchives = copySparkleHistory(options.historyDirectories ?? [], workingRoot);
+    const currentAppPath = extractSparkleArchive(fullPath, path.join(workingRoot, "current-app"));
     const identity = readAppIdentity(currentAppPath);
     if (
       identity.version !== version ||
@@ -449,7 +457,13 @@ export async function finalizeSparkleArchitectureUpdate(
       workingDirectory: workingRoot,
     });
     for (const delta of normalized.deltas) {
-      verifyDeltaRoundTrip({ binaryDelta, currentAppPath, delta, workingDirectory: workingRoot });
+      verifySparkleDeltaRoundTrip({
+        binaryDelta,
+        currentAppPath,
+        delta,
+        workingDirectory: workingRoot,
+        sourceArchivePath: historyArchives.get(delta.fromVersion),
+      });
     }
     const appcastName = `Nodex-${version}-appcast-${options.architecture}.xml`;
     const outputAppcastPath = path.join(output, appcastName);

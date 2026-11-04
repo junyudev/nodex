@@ -15,10 +15,11 @@ import {
   assembleReleaseBundle,
   parseArchitectureBuildManifest,
   parseReleaseBundleManifest,
+  parseReleaseHistoryBundle,
   type ArchitectureBuildManifest,
   type MacArchitecture,
 } from "./bundle";
-import { releaseAssetPaths, remoteReleaseAssetIdentities } from "./github-release";
+import { readPublishedReleaseIndex, releaseAssetPaths } from "./github-release";
 import { sha256File } from "./model";
 import { projectReleaseAppcasts } from "./pages";
 import {
@@ -47,7 +48,7 @@ const makeArchitecture = (architecture: MacArchitecture, sourceSha = SOURCE_SHA)
   mkdirSync(root);
   const artifactSpecs = [
     [`Nodex-${VERSION}-${architecture}.dmg`, "dmg"],
-    [`Nodex-${VERSION}-${architecture}.zip`, "sparkle-full"],
+    [`Nodex-${VERSION}-${architecture}.tar.xz`, "sparkle-full"],
   ] as const;
   const artifacts = artifactSpecs.map(([name, role]) => {
     const filePath = join(root, name);
@@ -107,7 +108,7 @@ const makeUpdate = (
   const root = join(fixture, `update-${architecture}`);
   rmSync(root, { force: true, recursive: true });
   mkdirSync(root);
-  const fullName = `Nodex-${VERSION}-${architecture}.zip`;
+  const fullName = `Nodex-${VERSION}-${architecture}.tar.xz`;
   const fullPath = join(architectureRoot, fullName);
   const fullUrl = `https://github.com/junyudev/nodex/releases/download/v${VERSION}/${fullName}`;
   const deltaName = `Nodex-${PREVIOUS_VERSION}-to-${VERSION}-${architecture}.delta`;
@@ -207,7 +208,7 @@ test("assembles the complete macOS and Windows signed release closure", () => {
   expect(bundle.assets.map(({ name }) => name).sort()).toEqual(
     [
       `Nodex-${VERSION}-appcast-arm64.xml`,
-      `Nodex-${VERSION}-arm64.zip`,
+      `Nodex-${VERSION}-arm64.tar.xz`,
       `Nodex-${VERSION}-update-arm64.json`,
       `Nodex-${PREVIOUS_VERSION}-to-${VERSION}-arm64.delta`,
       "Nodex-latest-arm64.dmg",
@@ -269,7 +270,7 @@ test("derives remote release identities without local copies of the full assets"
   });
   for (const asset of bundle.assets) rmSync(join(output, asset.name));
 
-  const identities = remoteReleaseAssetIdentities(join(output, "release-bundle.json"));
+  const { assets: identities } = readPublishedReleaseIndex(join(output, "release-bundle.json"));
   expect([...identities.keys()].sort()).toEqual(
     [...bundle.assets.map(({ name }) => name), "release-bundle.json", "SHA256SUMS"].sort(),
   );
@@ -278,15 +279,58 @@ test("derives remote release identities without local copies of the full assets"
   }
 
   appendFileSync(join(output, "SHA256SUMS"), "tampered\n");
-  expect(() => remoteReleaseAssetIdentities(join(output, "release-bundle.json"))).toThrow(
+  expect(() => readPublishedReleaseIndex(join(output, "release-bundle.json"))).toThrow(
     "SHA256SUMS does not match",
   );
 });
 
-test("rejects a Sparkle full update that does not match the architecture ZIP", () => {
+test("reads a published ZIP index and rejects ZIP for new releases", () => {
+  const arm64 = makeArchitecture("arm64");
+  const output = join(fixture, "output");
+  const bundle = assembleReleaseBundle({
+    ...windows,
+    arm64Directory: arm64,
+    arm64UpdateDirectory: makeUpdate("arm64", arm64),
+    outputDirectory: output,
+    sourceSha: SOURCE_SHA,
+    version: VERSION,
+  });
+  const zipAsset = {
+    ...bundle.assets.find(({ role }) => role === "sparkle-full")!,
+    name: `Nodex-${VERSION}-arm64.zip`,
+  };
+  const history = {
+    ...bundle,
+    assets: bundle.assets.map((asset) => (asset.role === "sparkle-full" ? zipAsset : asset)),
+  };
+  const bundlePath = join(output, "release-bundle.json");
+  writeFileSync(bundlePath, JSON.stringify(history));
+  const checksums = [
+    ...history.assets,
+    { name: "release-bundle.json", sha256: sha256File(bundlePath) },
+  ].sort((left, right) => left.name.localeCompare(right.name));
+  writeFileSync(
+    join(output, "SHA256SUMS"),
+    checksums.map(({ name, sha256 }) => `${sha256}  ${name}\n`).join(""),
+  );
+
+  expect(parseReleaseHistoryBundle(history).assets).toContainEqual(zipAsset);
+  expect(readPublishedReleaseIndex(bundlePath).assets.get(zipAsset.name)).toEqual({
+    bytes: zipAsset.bytes,
+    sha256: zipAsset.sha256,
+  });
+  expect(() => releaseAssetPaths(bundlePath)).toThrow("missing a required");
+  for (const parse of [parseReleaseBundleManifest, parseReleaseHistoryBundle]) {
+    expect(() => parse({ ...bundle, assets: [...bundle.assets, zipAsset] })).toThrow(
+      "unsupported asset",
+    );
+  }
+});
+
+test("rejects a Sparkle full update that does not match the architecture archive", () => {
   const arm64 = makeArchitecture("arm64");
   const armUpdate = makeUpdate("arm64", arm64);
-  appendFileSync(join(arm64, `Nodex-${VERSION}-arm64.zip`), "tampered");
+  appendFileSync(join(arm64, `Nodex-${VERSION}-arm64.tar.xz`), "tampered");
 
   expect(() =>
     assembleReleaseBundle({
@@ -338,7 +382,7 @@ test("rejects appcast enclosure metadata that diverges from the update manifest"
   const armUpdate = makeUpdate("arm64", arm64);
   const appcastPath = join(armUpdate, `Nodex-${VERSION}-appcast-arm64.xml`);
   const appcast = readFileSync(appcastPath, "utf8");
-  const expectedLength = readFileSync(join(arm64, `Nodex-${VERSION}-arm64.zip`)).byteLength;
+  const expectedLength = readFileSync(join(arm64, `Nodex-${VERSION}-arm64.tar.xz`)).byteLength;
   writeFileSync(
     appcastPath,
     appcast.replace(`length="${expectedLength}"`, `length="${expectedLength + 1}"`),

@@ -1,3 +1,4 @@
+import { isSparkleHistoryArchiveName, sparkleFullArchiveName } from "./sparkle-archive";
 import { basename } from "node:path";
 
 import { PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION } from "../package-provenance.mjs";
@@ -172,6 +173,13 @@ const parseDelta = (value: unknown, tag: string): SparkleDeltaIdentity => {
 export function parseSparkleArchitectureUpdateManifest(
   value: unknown,
 ): SparkleArchitectureUpdateManifest {
+  return parseUpdateManifest(value, false);
+}
+
+function parseUpdateManifest(
+  value: unknown,
+  allowZipHistory: boolean,
+): SparkleArchitectureUpdateManifest {
   if (!isRecord(value)) throw new Error("Sparkle architecture update manifest is invalid.");
   const legacyStable = value.schemaVersion === 1;
   assertExactKeys(
@@ -229,7 +237,11 @@ export function parseSparkleArchitectureUpdateManifest(
     throw new Error("Sparkle appcast projection identity is invalid.");
   }
   const full = parseSparkleFileIdentity(value.full, tag, "Sparkle full update");
-  if (full.name !== `Nodex-${version}-${value.architecture}.zip`) {
+  if (
+    !(allowZipHistory
+      ? isSparkleHistoryArchiveName(full.name, version, value.architecture)
+      : full.name === sparkleFullArchiveName(version, value.architecture))
+  ) {
     throw new Error("Sparkle full update name is invalid.");
   }
   const deltas = value.deltas.map((delta) => parseDelta(delta, tag));
@@ -283,5 +295,5 @@ export function parseCompatibleSparkleHistoryUpdateManifest(
   ) {
     return null;
   }
-  return parseSparkleArchitectureUpdateManifest(value);
+  return parseUpdateManifest(value, true);
 }

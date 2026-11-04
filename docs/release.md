@@ -37,7 +37,7 @@ runner/toolchain versions, and artifact hashes. The assembler verifies this
 manifest and its signed update against one release identity, then emits:
 
 - `Nodex-latest-arm64.dmg`
-- the versioned arm64 full-update ZIP
+- the versioned arm64 full-update `.tar.xz` archive
 - the signed arm64 appcast snapshot and closed update manifest
 - any architecture-qualified deltas the official Sparkle generator retained
 - `Nodex-<displayVersion>-windows-x64.exe` and `Nodex-<displayVersion>-windows-arm64.exe`
@@ -53,7 +53,7 @@ A failed or missing native build, installed-app probe, or finalizer blocks assem
 and publication. Stable includes the Windows aliases; Nightly carries only
 versioned installers, matching its versioned macOS DMG policy. Delta history must
 pass the bundle and packaged-provenance contracts; releases without compatible
-history publish a full ZIP update. Windows feeds carry one full installer and no
+history publish a full archive update. Windows feeds carry one full installer and no
 deltas. Nightly retention leaves unverified bundles intact.
 
 `_windows-distribution.yml` is the single Windows packaging implementation for
@@ -69,15 +69,32 @@ The tag is created only after this bundle passes. A published release is never
 rebuilt in place, and an existing tag is never moved.
 
 The macOS DMG uses LZMA (`ULMO`) because it is only the first-install download:
-every later update goes through Sparkle, whose ZIP this format does not affect. On
+every later update goes through Sparkle, whose full-update archive is independent. On
 the v0.5.1 App, LZMA cut the DMG from 831 MiB to 618 MiB and added about 40 seconds
 of verification and copying on an M4 Max. A 2 MiB/s download saves almost two
 minutes; above about 5 MiB/s the first install takes slightly longer overall, once.
 bzip2 (`UDBZ`) is both larger and slower to open than LZMA, and LZFSE (`ULFO`) saves
 only 13 MiB.
 
+macOS full updates use one `.tar.xz` archive, signed over its exact compressed
+bytes with Ed25519. Archive creation preserves bundle files, executable modes,
+and symlinks, orders entries deterministically, and excludes AppleDouble metadata
+with `COPYFILE_DISABLE=1`. Distribution extracts it with the pinned updater's
+piped `/usr/bin/tar -zxC` command before signature, provenance, and runtime checks.
+Each new release publishes a single full archive. Verification of published
+releases and delta generation use the exact archive name recorded in each
+release. Compatible releases with ZIP archives remain delta sources.
+
+Compression uses `xz -9 -T3 --memlimit-compress=4GiB --no-adjust`. Three workers
+match the standard hosted Apple silicon runner's three CPUs and fit its 7 GiB
+RAM. The memory limit prevents unbounded worker allocation without lowering the
+compression preset. Build processes finish before compression starts. The macOS
+Distribution job retains GitHub's default six-hour timeout. Allow extra time for
+compression in Distribution and background extraction on clients. Measure archive
+bytes, encoding time, and updater-equivalent extraction time when the bundle changes.
+
 Distribution executes the stateful packaged runtime
-smoke once against the extracted notarized ZIP App, including launch and the
+smoke once against the extracted notarized full-update App, including launch and the
 symlinked CLI/Core/ripgrep workflow. The mounted DMG receives structural,
 signature, notarization, and provenance verification only; matching sealed
 provenance proves it contains the same App without repeating stateful smoke.
@@ -107,7 +124,7 @@ non-pipe stdio; it never depends on another installed app or a PATH lookup.
 The probe runner uses a temporary LaunchServices background app so helper stdio
 matches an ordinary desktop launch instead of inheriting CI pipe fd guards.
 Distribution runs this probe again against the extracted notarized
-ZIP App's exact `Contents/Resources` closure with packaged native peer
+full-update App's exact `Contents/Resources` closure with packaged native peer
 authorization enabled; a successful staging probe cannot substitute for it.
 
 ## Release Identity
@@ -286,7 +303,8 @@ signed-distribution gates.
 
 Sparkle 2.9.4 and its command-line tools are pinned by
 `resources/sparkle/sparkle.lock.json`. Production apps carry the public key in
-both their signed runtime identity and `Info.plist`. The stable feeds are:
+both their signed runtime identity and `Info.plist`. macOS clients require a signed
+feed and verify the update signature before extraction. The stable feeds are:
 
 ```text
 https://nodex.jyu.app/updates/stable/arm64/appcast.xml
@@ -302,9 +320,9 @@ https://nodex.jyu.app/updates/nightly/windows-x64/appcast.xml
 https://nodex.jyu.app/updates/nightly/windows-arm64/appcast.xml
 ```
 
-GitHub Release is the immutable data plane for full ZIPs, Windows installers, deltas, update
-manifests, and signed appcast snapshots. Stable releases are Latest; Nightly
-releases are prereleases and never update Homebrew or official Agent Skills.
+GitHub Release stores immutable macOS full-update archives, Windows installers,
+deltas, update manifests, and signed appcast snapshots. Stable releases are Latest.
+Nightly releases are prereleases and never update Homebrew or official Agent Skills.
 Stable site deploys replace only `updates/stable/`; Nightly publication stages
 and commits only `updates/nightly/`, so neither channel can delete the other.
 Every enclosure URL uses its exact tag; no feed
@@ -316,9 +334,9 @@ must also use the pinned Developer ID Team ID `8HGUT3HC4Z`.
 
 Update targets use the package-provenance module’s current format. History selection
 verifies the immutable Release Bundle and update-manifest digests before checking
-package-format compatibility. Older package formats are excluded before downloading
-full ZIPs; malformed or invalid current candidates fail closed. An empty compatible
-history publishes a full update without deltas.
+package-format compatibility. The finalizer skips older package formats before
+downloading the full archives and rejects malformed or invalid candidates. An empty
+compatible history publishes a full update without deltas.
 
 Compatible history moves between fetch and finalization as a JSON manifest of
 absolute directory paths. Task-runner stdout is diagnostic output, never the
@@ -368,7 +386,7 @@ Never paste the private key into a workflow file, release artifact, command
 argument, cache, appcast, issue, or log. If both Keychain and offline copies are
 lost, stop ordinary feed publication and follow Sparkle's signed-feed recovery
 procedure with a higher-version Developer ID signed and notarized recovery
-image; do not upload an unsigned replacement ZIP or rewrite an immutable
+image; do not upload an unsigned replacement archive or rewrite an immutable
 release.
 
 ### Windows signed update contract
@@ -456,7 +474,7 @@ Node, Node REPL native dependencies, native PiP bridge, `sky.node`, and nested
 Computer Use helper. Run deep strict `codesign` verification after restoring
 that closure and resealing Nodex, then require Gatekeeper assessment,
 notarization, stapling, and the architecture-specific runtime probe from the
-extracted final ZIP. Do not replace the vendor teams with the outer Nodex team.
+extracted final full-update archive. Do not replace the vendor teams with the outer Nodex team.
 The Codex package executables, including `codex-path/rg`, are verified against
 the release lock's upstream team by the Codex runtime verifier. The native
 verifier's Nodex signature and entitlement inventory contains only the native
@@ -733,9 +751,8 @@ landing download link. Confirm `npx skills@latest add NodexApp/skills`
 discovers exactly the `nodex` Skill. `releases/latest` must be `v0.2.1`, never
 a Browser runtime tag.
 
-The next 0.2.2 rehearsal is the first incremental acceptance gate. It must use
-the public 0.2.1 Apple silicon full ZIP, record the emitted delta size,
-prove `BinaryDelta apply` produces the exact 0.2.2 app, and exercise one real
-installed update. Corrupt-delta/full-ZIP fallback remains a
-release-candidate/manual check; a unit fixture alone is not sufficient
-evidence.
+An incremental rehearsal must consume a compatible published Apple silicon full
+archive, record the emitted delta size, prove `BinaryDelta apply` produces the
+exact target app, and exercise one real installed update. Corrupt-delta/full-archive
+fallback remains a release-candidate/manual check; a unit fixture alone is not
+sufficient evidence.

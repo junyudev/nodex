@@ -6,6 +6,7 @@ import path from "node:path";
 import { load as parse } from "js-yaml";
 
 import {
+  copySparkleHistory,
   isEligibleSparkleHistoryRelease,
   selectLatestSparkleHistoryAppcast,
   readSparkleHistoryManifest,
@@ -139,4 +140,31 @@ test("accepts only immutable published releases as delta history", () => {
       prerelease: false,
     }),
   ).toBe(false);
+});
+
+test("keeps actual archive names when preparing mixed ZIP and tar.xz delta history", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sparkle-mixed-history-"));
+  try {
+    const history = path.join(root, "history");
+    const output = path.join(root, "output");
+    mkdirSync(history);
+    mkdirSync(output);
+    const oldName = "Nodex-0.5.1-arm64.zip";
+    const newName = "Nodex-0.5.2-arm64.tar.xz";
+    for (const name of [oldName, newName, "unrelated.zip"]) {
+      writeFileSync(path.join(history, name), name);
+    }
+    const archives = copySparkleHistory([history], output);
+    expect([...archives.entries()].sort()).toEqual([
+      ["0.5.1", path.join(output, oldName)],
+      ["0.5.2", path.join(output, newName)],
+    ]);
+    for (const archive of archives.values()) {
+      expect(readFileSync(archive, "utf8")).toBe(path.basename(archive));
+    }
+    writeFileSync(path.join(history, "Nodex-0.5.1-arm64.tar.xz"), "duplicate");
+    expect(() => copySparkleHistory([history], output)).toThrow("Duplicate Sparkle history");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

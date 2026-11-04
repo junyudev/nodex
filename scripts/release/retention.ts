@@ -1,9 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseReleaseBundleManifest } from "./bundle";
-import { remoteReleaseAssetIdentities } from "./github-release";
+import { readPublishedReleaseIndex } from "./github-release";
 
 interface RemoteAsset {
   readonly digest?: string | null;
@@ -161,11 +160,11 @@ const verifyReleaseBundleIndex = (repo: string, release: RemoteRelease): boolean
         directory,
       ]);
     }
-    const bundlePath = join(directory, "release-bundle.json");
-    const bundle = parseReleaseBundleManifest(JSON.parse(readFileSync(bundlePath, "utf8")));
+    const { assets: expected, bundle } = readPublishedReleaseIndex(
+      join(directory, "release-bundle.json"),
+    );
     if (bundle.releaseIdentity.channel !== "nightly" || bundle.tag !== release.tag_name)
       return false;
-    const expected = remoteReleaseAssetIdentities(bundlePath);
     const actual = new Map((release.assets ?? []).map((asset) => [asset.name, asset]));
     if (actual.size !== expected.size) return false;
     for (const [name, identity] of expected) {

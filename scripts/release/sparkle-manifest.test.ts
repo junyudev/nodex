@@ -35,9 +35,9 @@ const manifest = () => ({
   full: {
     bytes: 456,
     edSignature: SIGNATURE,
-    name: `Nodex-${VERSION}-arm64.zip`,
+    name: `Nodex-${VERSION}-arm64.tar.xz`,
     sha256: "c".repeat(64),
-    url: `https://github.com/junyudev/nodex/releases/download/v${VERSION}/Nodex-${VERSION}-arm64.zip`,
+    url: `https://github.com/junyudev/nodex/releases/download/v${VERSION}/Nodex-${VERSION}-arm64.tar.xz`,
   },
   schemaVersion: 2,
   sourceSha: "d".repeat(40),
@@ -87,7 +87,7 @@ test("accepts a nightly feed identity and rejects a stable feed path", () => {
   nightly.tag = `v${nightly.target.version}`;
   nightly.appcast.name = `Nodex-${nightly.target.version}-appcast-arm64.xml`;
   nightly.appcast.feedPath = "updates/nightly/arm64/appcast.xml";
-  nightly.full.name = `Nodex-${nightly.target.version}-arm64.zip`;
+  nightly.full.name = `Nodex-${nightly.target.version}-arm64.tar.xz`;
   nightly.full.url = `https://github.com/junyudev/nodex/releases/download/${nightly.tag}/${nightly.full.name}`;
   nightly.deltas[0]!.toBuildVersion = "1.8.42";
   nightly.deltas[0]!.toVersion = nightly.target.version;
@@ -134,4 +134,13 @@ test("fails closed on malformed, future, and invalid current history identities"
   const candidate = manifest();
   candidate.target.teamIdentifier = "OTHERTEAM1";
   expect(() => parseCompatibleSparkleHistoryUpdateManifest(candidate)).toThrow("target identity");
+});
+
+test("requires tar.xz for new updates while admitting the exact published ZIP in history", () => {
+  const update = manifest();
+  expect(parseSparkleArchitectureUpdateManifest(update).full.name).toMatch(/\.tar\.xz$/u);
+  update.full.name = update.full.name.replace(/\.tar\.xz$/u, ".zip");
+  update.full.url = update.full.url.replace(/\.tar\.xz$/u, ".zip");
+  expect(() => parseSparkleArchitectureUpdateManifest(update)).toThrow("full update name");
+  expect(parseCompatibleSparkleHistoryUpdateManifest(update)?.full).toEqual(update.full);
 });

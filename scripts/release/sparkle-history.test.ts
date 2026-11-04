@@ -12,10 +12,16 @@ const TAG = `v${VERSION}`;
 const SHA = "a".repeat(40);
 const DIGEST = "b".repeat(64);
 
-const makeHistory = (root: string, schema: number, corruptDigest: boolean, bundleSchema: 2 | 3) => {
+const makeHistory = (
+  root: string,
+  schema: number,
+  corruptDigest: boolean,
+  bundleSchema: 2 | 3,
+  extension = "zip",
+) => {
   const source = path.join(root, "source");
   mkdirSync(source);
-  const fullName = `Nodex-${VERSION}-arm64.zip`;
+  const fullName = `Nodex-${VERSION}-arm64.${extension}`;
   const appcastName = `Nodex-${VERSION}-appcast-arm64.xml`;
   const updateName = `Nodex-${VERSION}-update-arm64.json`;
   const fullUrl = `https://github.com/junyudev/nodex/releases/download/${TAG}/${fullName}`;
@@ -61,7 +67,7 @@ const makeHistory = (root: string, schema: number, corruptDigest: boolean, bundl
       (architecture) =>
         [
           [`Nodex-${VERSION}-${architecture}.dmg`, "dmg"],
-          [`Nodex-${VERSION}-${architecture}.zip`, "sparkle-full"],
+          [`Nodex-${VERSION}-${architecture}.${extension}`, "sparkle-full"],
           [`Nodex-${VERSION}-appcast-${architecture}.xml`, "sparkle-appcast"],
           [`Nodex-${VERSION}-update-${architecture}.json`, "sparkle-update-manifest"],
         ].map(([name, role]) => ({
@@ -144,7 +150,13 @@ if (args[0] === "api") {
 };
 
 test.skipIf(process.platform === "win32").each([
-  { schema: 4, corruptDigest: false, bundleSchema: 3 as const },
+  { schema: 4, corruptDigest: false, bundleSchema: 3 as const, extension: "zip" },
+  {
+    schema: PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION,
+    corruptDigest: false,
+    bundleSchema: 3 as const,
+    extension: "tar.xz",
+  },
   {
     schema: PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION,
     corruptDigest: false,
@@ -157,12 +169,12 @@ test.skipIf(process.platform === "win32").each([
   },
   { schema: 4, corruptDigest: true, bundleSchema: 3 as const },
 ])(
-  "fetches only compatible, digest-verified history: $schema / $corruptDigest / bundle $bundleSchema",
-  ({ schema, corruptDigest, bundleSchema }) => {
+  "fetches only compatible, digest-verified history: $schema / $corruptDigest / bundle $bundleSchema / $extension",
+  ({ schema, corruptDigest, bundleSchema, extension }) => {
     const root = mkdtempSync(path.join(tmpdir(), "nodex-sparkle-history-"));
     const previousPath = process.env.PATH;
     try {
-      const fixture = makeHistory(root, schema, corruptDigest, bundleSchema);
+      const fixture = makeHistory(root, schema, corruptDigest, bundleSchema, extension);
       process.env.PATH = `${fixture.bin}${path.delimiter}${previousPath}`;
       const output = path.join(root, "history");
       const fetch = () =>

@@ -50,8 +50,8 @@ test("nightly retention requires age, verified immutable bytes, and no live feed
 test("extracts only strict Nightly tags referenced by appcast enclosures", () => {
   expect([
     ...extractNightlyTagsFromAppcasts([
-      '<enclosure url="https://github.com/NodexApp/Nodex/releases/download/v0.2.2-nightly.20260818.3/Nodex.zip"/>',
-      '<enclosure url="https://github.com/NodexApp/Nodex/releases/download/v0.2.2/Nodex.zip"/>',
+      '<enclosure url="https://github.com/NodexApp/Nodex/releases/download/v0.2.2-nightly.20260818.3/Nodex.tar.xz"/>',
+      '<enclosure url="https://github.com/NodexApp/Nodex/releases/download/v0.2.2/Nodex.tar.xz"/>',
     ]),
   ]).toEqual(["v0.2.2-nightly.20260818.3"]);
 });

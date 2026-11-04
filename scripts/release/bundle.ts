@@ -1,3 +1,4 @@
+import { isSparkleHistoryArchiveName, sparkleFullArchiveName } from "./sparkle-archive";
 import { execFileSync } from "node:child_process";
 import {
   copyFileSync,
@@ -283,10 +284,10 @@ export function parseReleaseBundleManifest(value: unknown): ReleaseBundleManifes
   return parseBundleManifest(value, false) as ReleaseBundleManifest;
 }
 
-function parseBundleManifest(value: unknown, allowMacOnlyHistory: boolean): ReleaseHistoryBundle {
+function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHistoryBundle {
   if (!isRecord(value)) throw new Error("Release Bundle manifest is invalid.");
   const candidate = value as Partial<ReleaseHistoryBundle>;
-  const macOnlyHistory = allowMacOnlyHistory && candidate.schemaVersion === 3;
+  const macOnlyHistory = allowHistory && candidate.schemaVersion === 3;
   const architectures = macOnlyHistory ? (["arm64"] as const) : RELEASE_ARCHITECTURES;
   if (
     (!macOnlyHistory && candidate.schemaVersion !== RELEASE_BUNDLE_SCHEMA_VERSION) ||
@@ -355,7 +356,18 @@ function parseBundleManifest(value: unknown, allowMacOnlyHistory: boolean): Rele
     ...(releaseIdentity.channel === "stable"
       ? ([["Nodex-latest-arm64.dmg", "dmg", "arm64"]] as const)
       : ([[`Nodex-${version}-arm64.dmg`, "dmg", "arm64"]] as const)),
-    [`Nodex-${version}-arm64.zip`, "sparkle-full", "arm64"],
+    [
+      allowHistory
+        ? (assets.find(
+            (asset) =>
+              asset.role === "sparkle-full" &&
+              asset.architecture === "arm64" &&
+              isSparkleHistoryArchiveName(asset.name, version, "arm64"),
+          )?.name ?? sparkleFullArchiveName(version, "arm64"))
+        : sparkleFullArchiveName(version, "arm64"),
+      "sparkle-full",
+      "arm64",
+    ],
     [`Nodex-${version}-appcast-arm64.xml`, "sparkle-appcast", "arm64"],
     [`Nodex-${version}-update-arm64.json`, "sparkle-update-manifest", "arm64"],
     ...(macOnlyHistory
@@ -492,7 +504,7 @@ export function recordArchitectureBuild(options: {
   const artifacts = (
     [
       [`Nodex-${version}-${options.architecture}.dmg`, "dmg"],
-      [`Nodex-${version}-${options.architecture}.zip`, "sparkle-full"],
+      [sparkleFullArchiveName(version, options.architecture), "sparkle-full"],
     ] as const
   ).map(([name, role]) => {
     const target = join(output, name);
@@ -570,7 +582,7 @@ export const readArchitectureDirectory = (directory: string): ArchitectureBuildM
     manifest.architecture === "arm64"
       ? [
           [`Nodex-${manifest.version}-${manifest.architecture}.dmg`, "dmg"],
-          [`Nodex-${manifest.version}-${manifest.architecture}.zip`, "sparkle-full"],
+          [sparkleFullArchiveName(manifest.version, manifest.architecture), "sparkle-full"],
         ]
       : [[`Nodex-${manifest.version}-${manifest.architecture}.exe`, "windows-installer"]];
   if (manifest.architecture !== "arm64") {
@@ -715,7 +727,7 @@ export function assembleReleaseBundle(options: {
   for (const [architecture, architectureRoot, update] of [
     ["arm64", arm64Root, arm64Update],
   ] as const) {
-    const fullName = `Nodex-${version}-${architecture}.zip`;
+    const fullName = sparkleFullArchiveName(version, architecture);
     const fullPath = join(architectureRoot, fullName);
     if (
       lstatSync(fullPath).size !== update.manifest.full.bytes ||

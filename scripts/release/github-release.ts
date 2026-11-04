@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { verifyWindowsReleaseAssets } from "./windows-updates";
-import { parseReleaseBundleManifest } from "./bundle";
+import {
+  parseReleaseBundleManifest,
+  parseReleaseHistoryBundle,
+  RELEASE_BUNDLE_SCHEMA_VERSION,
+  type ReleaseBundleManifest,
+} from "./bundle";
 import {
   compareStableVersions,
   latestStableAppVersion,
@@ -59,7 +64,7 @@ const readBundle = (bundlePath: string) => {
 
 const verifyChecksumAllowlist = (
   resolvedBundle: string,
-  bundle: ReturnType<typeof parseReleaseBundleManifest>,
+  bundle: Pick<ReleaseBundleManifest, "assets">,
 ): string => {
   const checksumPath = join(dirname(resolvedBundle), "SHA256SUMS");
   assertRegularFile(checksumPath);
@@ -224,12 +229,16 @@ const expectedLocalAssets = (bundlePath: string): ReadonlyMap<string, ReleaseAss
     ]),
   );
 
-export const remoteReleaseAssetIdentities = (
-  bundlePath: string,
-): ReadonlyMap<string, ReleaseAssetIdentity> => {
-  const { bundle, resolvedBundle } = readBundle(bundlePath);
+/** Read the exact asset index for an existing release, including ZIP-era full updates. */
+export const readPublishedReleaseIndex = (bundlePath: string) => {
+  const resolvedBundle = resolve(bundlePath);
+  assertRegularFile(resolvedBundle);
+  const bundle = parseReleaseHistoryBundle(JSON.parse(readFileSync(resolvedBundle, "utf8")));
+  if (bundle.schemaVersion !== RELEASE_BUNDLE_SCHEMA_VERSION) {
+    throw new Error("Published release verification requires a complete Release Bundle.");
+  }
   const checksumPath = verifyChecksumAllowlist(resolvedBundle, bundle);
-  return new Map([
+  const assets = new Map<string, ReleaseAssetIdentity>([
     ...bundle.assets.map(
       (asset) => [asset.name, { bytes: asset.bytes, sha256: asset.sha256 }] as const,
     ),
@@ -242,6 +251,7 @@ export const remoteReleaseAssetIdentities = (
       { bytes: lstatSync(checksumPath).size, sha256: sha256File(checksumPath) },
     ],
   ]);
+  return { assets, bundle };
 };
 
 export function planPublication(
@@ -329,12 +339,11 @@ const verifyPublishedReleaseIndex = (
         directory,
       ]);
     }
-    const bundlePath = join(directory, "release-bundle.json");
-    const bundle = parseReleaseBundleManifest(JSON.parse(readFileSync(bundlePath, "utf8")));
+    const { assets, bundle } = readPublishedReleaseIndex(join(directory, "release-bundle.json"));
     if (!isDeepStrictEqual(bundle.releaseIdentity, identity)) {
       throw new Error("Published Nightly Bundle has a different Release Identity.");
     }
-    const plan = planPublication(release, remoteReleaseAssetIdentities(bundlePath), true);
+    const plan = planPublication(release, assets, true);
     if (plan.kind !== "verify-published") {
       throw new Error("Published Nightly release is incomplete.");
     }
@@ -544,10 +553,8 @@ export async function verifyRemoteRelease(options: {
   readonly repo: string;
   readonly requireImmutable?: boolean;
 }): Promise<void> {
-  const bundlePath = resolve(options.bundlePath);
-  const bundle = parseReleaseBundleManifest(JSON.parse(readFileSync(bundlePath, "utf8")));
+  const { assets: expected, bundle } = readPublishedReleaseIndex(options.bundlePath);
   const release = readRelease(options.repo, bundle.tag);
-  const expected = remoteReleaseAssetIdentities(bundlePath);
   const prerelease = bundle.releaseIdentity.channel === "nightly";
   const plan = planPublication(release, expected, prerelease);
   if (plan.kind !== "verify-published" || !release)

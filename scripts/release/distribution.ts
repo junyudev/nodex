@@ -1,9 +1,15 @@
+import {
+  createSparkleArchive,
+  extractSparkleArchive,
+  sparkleFullArchiveName,
+} from "./sparkle-archive";
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { verifyPackagedBuildProvenance } from "../package-provenance.mjs";
+import { immutableDirectoryDigest } from "../immutable-artifact-cache";
 import { verifyCodexRuntime } from "../verify-codex-runtime";
 import { verifyPackagedNativeRuntimeStructure } from "../verify-native-runtime";
 import {
@@ -271,30 +277,25 @@ export async function buildMacDistribution(options: {
   assertSourceIdentity(cwd, identity);
 
   const distDirectory = join(cwd, "dist");
-  const zipPath = join(distDirectory, `Nodex-${version}-${options.architecture}.zip`);
+  const archivePath = join(distDirectory, sparkleFullArchiveName(version, options.architecture));
   const dmgPath = join(distDirectory, `Nodex-${version}-${options.architecture}.dmg`);
   const packagedAppDirectory = join(distDirectory, "mac-arm64");
   const packagedAppPath = appAtRoot(packagedAppDirectory);
-  rmSync(zipPath, { force: true });
-  runTask(cwd, "/usr/bin/ditto", [
-    "-c",
-    "-k",
-    "--sequesterRsrc",
-    "--keepParent",
-    packagedAppPath,
-    zipPath,
-  ]);
+  createSparkleArchive(packagedAppPath, archivePath);
   notarizeDmg(cwd, dmgPath);
   const preparedManifestPath = join(cwd, ".generated/prepared-electron-build.json");
   const temporaryRoot = mkdtempSync(join(tmpdir(), `nodex-distribution-${options.architecture}-`));
-  const zipRoot = join(temporaryRoot, "zip");
+  const archiveRoot = join(temporaryRoot, "archive");
   const mountRoot = join(temporaryRoot, "dmg");
   let mounted = false;
   try {
-    run(cwd, "/usr/bin/ditto", ["-x", "-k", zipPath, zipRoot]);
-    const zipAppPath = appAtRoot(zipRoot);
-    const zipProvenance = await verifyApp({
-      appPath: zipAppPath,
+    const archiveAppPath = extractSparkleArchive(archivePath, archiveRoot);
+    runTask(cwd, "/usr/bin/codesign", ["--verify", "--deep", "--strict", archiveAppPath]);
+    if (immutableDirectoryDigest(packagedAppPath) !== immutableDirectoryDigest(archiveAppPath)) {
+      throw new Error("Full update extraction changed app contents, modes, or symlinks.");
+    }
+    const archiveProvenance = await verifyApp({
+      appPath: archiveAppPath,
       architecture: options.architecture,
       preparedManifestPath,
       runtimeCheck: { kind: "smoke", launchApp: true },
@@ -323,14 +324,14 @@ export async function buildMacDistribution(options: {
       buildVersion: identity.buildVersion,
       channel: identity.channel,
     });
-    if (JSON.stringify(zipProvenance) !== JSON.stringify(dmgProvenance)) {
+    if (JSON.stringify(archiveProvenance) !== JSON.stringify(dmgProvenance)) {
       throw new Error(
-        "ZIP and DMG apps do not share one version, bundle, team, and package provenance identity.",
+        "Full update and DMG apps do not share one version, bundle, team, and package provenance identity.",
       );
     }
 
     return recordArchitectureBuild({
-      appPath: zipAppPath,
+      appPath: archiveAppPath,
       architecture: options.architecture,
       cwd,
       distDirectory,
