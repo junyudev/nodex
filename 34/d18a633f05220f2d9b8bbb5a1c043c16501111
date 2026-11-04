@@ -1,0 +1,26 @@
+src/renderer/features/inbox/use-inbox-reply-destination.ts
+  s_b6c984883307b1::t_7286a0cbe93bf5 4,6-12,14,22,24,27,33-34
+src/renderer/features/inbox/inbox-composer.test.tsx
+  s_b6c984883307b1::t_bcb41f5db5a98e 489-513
+  s_b6c984883307b1::t_b9e317982908b6 480-484
+src/renderer/features/inbox/inbox-composer.tsx
+  s_b6c984883307b1::t_7286a0cbe93bf5 13,148-149,233-241
+  s_b6c984883307b1::t_b9e317982908b6 14
+  s_b6c984883307b1::t_4a61b5d224ea44 242
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "34d18a633f05220f2d9b8bbb5a1c043c16501111",
+  "prompts": {},
+  "sessions": {
+    "s_b6c984883307b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2dc6247d-3cd5-4c0f-8a1e-4811850a8588",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
