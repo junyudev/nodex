@@ -4,6 +4,10 @@ import type {
   AgentRuntimeOperations,
   AgentThreadAuthority,
 } from "@nodex/agent-runtime/contracts";
+import * as Scope from "effect/Scope";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
+import * as TestClock from "effect/testing/TestClock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";
@@ -32,32 +36,35 @@ const fixture = Effect.gen(function* () {
   const finished: unknown[][] = [];
   const observations: string[] = [];
   let subscriptions = 0;
+  let hangingUnobserve = false;
   let unobserved: string[] = [];
   const request: AgentRuntimeProcessConnection["request"] = <M extends AgentRuntimeMethod>(
     method: M,
     input: AgentRuntimeOperations[M]["input"],
   ) =>
-    Effect.sync(() => {
-      if (method === "execution.observe")
-        return {
-          subscribed: true,
-          subscriptionId: `lifecycle:${++subscriptions}`,
-          afterSequence: 0,
-        } as AgentRuntimeOperations[M]["output"];
-      if (method === "events.unobserve") {
-        unobserved = [
-          ...unobserved,
-          (input as AgentRuntimeOperations["events.unobserve"]["input"]).subscriptionId,
-        ];
-        return { unsubscribed: true } as AgentRuntimeOperations[M]["output"];
-      }
-      if (method !== "thread.authority") throw Error(`Unexpected runtime request ${method}`);
-      const thread = (input as AgentRuntimeOperations["thread.authority"]["input"]).threadId;
-      reads.push(thread);
-      return (
-        live.has(thread) ? { runtimeId: "runtime", runtimeGeneration: "generation" } : null
-      ) as AgentRuntimeOperations[M]["output"];
-    });
+    method === "events.unobserve" && hangingUnobserve
+      ? Effect.never
+      : Effect.sync(() => {
+          if (method === "execution.observe")
+            return {
+              subscribed: true,
+              subscriptionId: `lifecycle:${++subscriptions}`,
+              afterSequence: 0,
+            } as AgentRuntimeOperations[M]["output"];
+          if (method === "events.unobserve") {
+            unobserved = [
+              ...unobserved,
+              (input as AgentRuntimeOperations["events.unobserve"]["input"]).subscriptionId,
+            ];
+            return { unsubscribed: true } as AgentRuntimeOperations[M]["output"];
+          }
+          if (method !== "thread.authority") throw Error(`Unexpected runtime request ${method}`);
+          const thread = (input as AgentRuntimeOperations["thread.authority"]["input"]).threadId;
+          reads.push(thread);
+          return (
+            live.has(thread) ? { runtimeId: "runtime", runtimeGeneration: "generation" } : null
+          ) as AgentRuntimeOperations[M]["output"];
+        });
   const connection: AgentRuntimeProcessConnection = {
     identity: {
       runtimeId: "runtime",
@@ -71,6 +78,7 @@ const fixture = Effect.gen(function* () {
     terminated: Deferred.await(ended),
     notifications: Stream.fromPubSub(events),
     subscribeNotifications: PubSub.subscribe(events).pipe(Effect.map(Stream.fromSubscription)),
+    responsive: Stream.make(true),
     subscribeExecutionNotifications: PubSub.subscribe(events).pipe(
       Effect.map(Stream.fromSubscription),
     ),
@@ -115,6 +123,9 @@ const fixture = Effect.gen(function* () {
     lifecycle,
     settle,
     settled,
+    hangUnobserve: () => {
+      hangingUnobserve = true;
+    },
     unobserved: () => unobserved,
   };
 });
@@ -204,4 +215,15 @@ it.live(
       yield* Deferred.await(f.settled).pipe(Effect.timeout("2 seconds"));
       assert.deepEqual(f.finished.at(-1), ["lease", "runtime", "generation"]);
     }).pipe(Effect.scoped),
+);
+
+it.effect("a lost unobserve reply cannot hold up presentation teardown", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const f = yield* fixture.pipe(Effect.provideService(Scope.Scope, scope));
+    f.hangUnobserve();
+    const closing = yield* Scope.close(scope, Exit.void).pipe(Effect.forkChild);
+    yield* TestClock.adjust("2 seconds");
+    yield* Fiber.join(closing);
+  }),
 );

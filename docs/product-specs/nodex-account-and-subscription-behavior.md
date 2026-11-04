@@ -124,7 +124,7 @@ hold it while executing; the gateway remains responsible for remote key
 revocation and spending enforcement. Account retirement first closes request
 admission, stops managed Runs and native sessions, then removes instances and
 private credentials. If retirement cannot be confirmed through the execution
-connection, Main stops that process before releasing the key. Old-generation
+connection within 30 seconds, Main stops that process before releasing the key. Old-generation
 OAuth, key, Checkout or balance responses cannot restore retired access or overwrite a
 new account's observation. Local conversation history remains readable.
 

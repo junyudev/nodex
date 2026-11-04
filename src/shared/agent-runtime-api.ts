@@ -350,10 +350,13 @@ export type AgentRuntimeConnectionState =
   | { readonly status: "idle" }
   | { readonly status: "starting" }
   | { readonly status: "ready"; readonly generation: string }
+  /** The process is connected but has not answered while requests remain pending. */
+  | { readonly status: "unresponsive"; readonly generation: string }
   | { readonly status: "restarting"; readonly attempt: number }
   | { readonly status: "failed"; readonly message: string };
 
 export interface AgentRuntimeIpcApi {
+  "agent-runtime:restart": { args: [input: { readonly generation: string }]; result: void };
   "agent-runtime:activity:read": {
     args: [];
     result: AgentRuntimeSessionActivitySnapshot;

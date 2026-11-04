@@ -65,6 +65,7 @@ import { AgentRuntimeSessionActivity } from "../agent-runtime/AgentRuntimeSessio
 import {
   AgentRuntimeProviderConfiguration,
   AgentRuntimeProviderConfigurationError,
+  confirmModelRetirement,
   makeProviderSettingsRefresh,
 } from "../agent-runtime/AgentRuntimeProviderConfiguration";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
@@ -109,8 +110,6 @@ import {
 
 /** A quiet execution process with no live or pending work stops after this period. */
 const AGENT_RUNTIME_IDLE_AFTER = "3 minutes";
-/** An imported execution store is transformed before the process reports readiness. */
-const IMPORTED_EXECUTION_READINESS_MS = 10 * 60_000;
 
 /** Custom capabilities use the execution catalog's option IDs. */
 export function runtimeClaudeModels(instance: ClaudeAgentInstanceConfig) {
@@ -295,7 +294,7 @@ const supervisor = Layer.effectContext(
           Effect.flatMap((runtime) =>
             runtime.retained(
               Effect.gen(function* () {
-                if ((yield* runtime.inspect) === null) return null;
+                if ((yield* runtime.connectionState).status !== "ready") return null;
                 return yield* effect;
               }),
             ),
@@ -611,14 +610,12 @@ const supervisor = Layer.effectContext(
                 `Agent execution is not built: ${entryPath} is missing (vp run build:agent-runtime)`,
               ),
             );
-          const importing = yield* fs.exists(join(configuration.home, "imported-execution.json"));
           const connection = yield* acquireAgentRuntimeProcess({
             executable,
             entryPath,
             configuration,
             environment,
             host,
-            ...(importing ? { readinessTimeoutMs: IMPORTED_EXECUTION_READINESS_MS } : {}),
           });
           prepared.set(connection.identity, configuration);
           preparedEnvironment.set(connection.identity, environment);
@@ -710,18 +707,16 @@ const supervisor = Layer.effectContext(
     );
     yield* Deferred.succeed(ready, runtime);
     yield* nodexAccount.onModelsChanged(
-      refresh.pipe(
-        Effect.asVoid,
-        Effect.catchCause(() =>
-          runtime
-            .withStopped(
-              Effect.logWarning(
-                "Agent execution stopped because Nodex model retirement could not be confirmed",
-              ),
-            )
-            .pipe(Effect.orDie),
-        ),
-      ),
+      confirmModelRetirement({
+        refresh,
+        stop: runtime
+          .withStopped(
+            Effect.logWarning(
+              "Agent execution stopped because Nodex model retirement could not be confirmed",
+            ),
+          )
+          .pipe(Effect.orDie),
+      }),
     );
     const claudeUsage = yield* makeClaudeUsage({
       meterEnabled: (yield* settings.snapshot()).usageMeters.claude,

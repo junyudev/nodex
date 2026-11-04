@@ -54,6 +54,10 @@ interface ProjectOwnershipSnapshot {
   readonly sessions: readonly ProjectSessionSummary[];
 }
 
+// The archive has committed and execution finishes closing on its own; waiting on a silent process
+// must not hold the Project's lifecycle gate against every later operation.
+const EXECUTION_CLOSE_WAIT = "30 seconds";
+
 export const live: Layer.Layer<
   ProjectLifecycleCommands,
   never,
@@ -131,7 +135,9 @@ export const live: Layer.Layer<
           ? [
               {
                 label: `agent-execution:${ownership.project.id}`,
-                effect: execution.closeProjectExecution(ownership.project.id),
+                effect: execution
+                  .closeProjectExecution(ownership.project.id)
+                  .pipe(Effect.timeout(EXECUTION_CLOSE_WAIT)),
               },
             ]
           : []),

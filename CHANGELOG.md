@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- A busy computer no longer breaks your chats. When CPU and memory were nearly exhausted, opening a chat or the Subagents panel could fail with "Operation timed out after '30s'" and stay failed until you clicked Retry. Nodex now waits for Agent execution to answer and catches up on its own; if that takes too long, a notice says so and offers Restart.
 - A suggestion that fails on Claude now says why. Claude's own reason, such as a usage limit or an unavailable model, shows beside the message instead of "Claude CLI returned unexpected output format."
 - Terminal programs keep their colors however Nodex was started. Launching Nodex from an Agent or another terminal could pass along settings such as `NO_COLOR`, which left full-screen programs like lazygit without any color.
 - Full-screen terminal programs come back intact when you reopen their tab. They return to their own screen and redraw, instead of leaving stale output or receiving stray replies as keyboard input.

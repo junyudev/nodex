@@ -1,3 +1,11 @@
+import * as TestClock from "effect/testing/TestClock";
+import {
+  AGENT_RUNTIME_STALLED_READ_TICKS,
+  AGENT_RUNTIME_UNRESPONSIVE_SILENT_TICKS,
+  isAgentRuntimeResponsive,
+  nextAgentRuntimeSilentTicks,
+} from "./agent-runtime-liveness";
+import { ChildProcessSpawner } from "effect/process";
 import { watch } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { assert, it } from "@effect/vitest";
@@ -12,12 +20,7 @@ import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import type { AgentCommand } from "@nodex/agent-runtime/contracts";
-import {
-  acquireAgentRuntimeProcess,
-  AGENT_RUNTIME_NODE_FLAGS,
-  AgentRuntimeProcessError,
-} from "./AgentRuntimeProcess";
-import * as Schema from "effect/Schema";
+import { acquireAgentRuntimeProcess, AGENT_RUNTIME_NODE_FLAGS } from "./AgentRuntimeProcess";
 
 const entryPath = fileURLToPath(
   new URL("../../../../tests/fixtures/agent-runtime-stdio.mjs", import.meta.url),
@@ -25,31 +28,30 @@ const entryPath = fileURLToPath(
 const acquire = (
   host: Parameters<typeof acquireAgentRuntimeProcess>[0]["host"] = () =>
     Effect.succeed({ sequence: 9 }),
+  livenessTickMs?: number,
 ) =>
   acquireAgentRuntimeProcess({
     executable: process.execPath,
     entryPath,
     configuration: { home: "/tmp", cwd: "/tmp", providers: {} },
-    requestTimeoutMs: 5_000,
     host,
+    livenessTickMs,
   });
 
-it.live("waits for startup work within the requested readiness budget", () =>
+it.effect("waits for startup work without a transport readiness deadline", () =>
   Effect.gen(function* () {
-    const start = (readinessTimeoutMs: number) =>
-      acquireAgentRuntimeProcess({
-        executable: process.execPath,
-        entryPath,
-        configuration: { home: "/tmp", cwd: "/tmp", providers: {} },
-        environment: { ...process.env, NODEX_FIXTURE_READY_DELAY_MS: "300" },
-        readinessTimeoutMs,
-        host: () => Effect.succeed({ sequence: 9 }),
-      }).pipe(Effect.scoped, Effect.exit);
-    const tooShort = yield* start(50);
-    assert.isTrue(Exit.isFailure(tooShort));
-    const enough = yield* start(5_000);
-    assert.isTrue(Exit.isSuccess(enough));
-  }).pipe(Effect.provide(NodeServices.layer)),
+    const starting = yield* acquireAgentRuntimeProcess({
+      executable: process.execPath,
+      entryPath,
+      configuration: { home: "/tmp", cwd: "/tmp", providers: {} },
+      environment: { ...process.env, NODEX_FIXTURE_READY_DELAY_MS: "500" },
+      host: () => Effect.succeed({ sequence: 9 }),
+    }).pipe(Effect.forkScoped({ startImmediately: true }));
+    // The child is still working through this virtual time; the Supervisor owns the start budget.
+    yield* TestClock.adjust("5 minutes");
+    assert.isUndefined(starting.pollUnsafe());
+    assert.equal((yield* Fiber.join(starting)).identity.runtimeId, "fixture-runtime");
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
 it.live("withdraws an interrupted utility over the existing Runtime connection", () =>
@@ -116,8 +118,11 @@ setInterval(() => {}, 1000);
 
         const driver = provider === "codex" ? "codex" : "claudeAgent";
         const config = { binaryPath: binary, homePath: path.join(home, "provider-home") };
+        let runtimePid = 0;
+        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
         const connection = yield* acquireAgentRuntimeProcess({
           executable: process.execPath,
+          livenessTickMs: 100,
           entryPath: fileURLToPath(
             new URL("../../../../packages/agent-runtime/src/nodex/entry.ts", import.meta.url),
           ),
@@ -131,9 +136,27 @@ setInterval(() => {}, 1000);
                 : { claudeAgent: { driver, config } },
           },
           host: () => Effect.die("Structured generation should not call the host"),
-          // Compiling the Runtime at launch can take this long on a busy machine.
-          readinessTimeoutMs: 45_000,
-        });
+        }).pipe(
+          Effect.provideService(
+            ChildProcessSpawner.ChildProcessSpawner,
+            ChildProcessSpawner.make((command) =>
+              spawner.spawn(command).pipe(
+                Effect.tap((handle) =>
+                  Effect.sync(() => {
+                    runtimePid = Number(handle.pid);
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            try {
+              process.kill(runtimePid, "SIGCONT");
+            } catch {}
+          }),
+        );
 
         const generating = yield* connection
           .request("text.generate-structured", {
@@ -151,6 +174,22 @@ setInterval(() => {}, 1000);
           })
           .pipe(Effect.forkChild);
         yield* Deferred.await(started).pipe(Effect.timeout("30 seconds"));
+        if (provider === "codex") {
+          process.kill(runtimePid, "SIGSTOP");
+          yield* connection.responsive.pipe(
+            Stream.filter((value) => !value),
+            Stream.runHead,
+            Effect.timeout("3 seconds"),
+          );
+          process.kill(runtimePid, "SIGCONT");
+          yield* connection.responsive.pipe(
+            Stream.filter(Boolean),
+            Stream.runHead,
+            Effect.timeout("3 seconds"),
+          );
+          // The model child is still held, so only the production Daemon's pong can recover.
+          assert.isUndefined(generating.pollUnsafe());
+        }
         const pid = Number(yield* fs.readFileString(marker));
         assert.isAbove(pid, 1);
         let reaped = false;
@@ -346,13 +385,15 @@ it.live("shutdown remains admitted with every normal request slot occupied", () 
           .pipe(Effect.forkScoped({ startImmediately: true })),
     );
     yield* Stream.runHead(notifications).pipe(Effect.timeout("2 seconds"));
-    const refused = yield* connection.request("runtime.identity", {}).pipe(Effect.flip);
-    assert.isTrue(Schema.is(AgentRuntimeProcessError)(refused));
-    assert.strictEqual(refused.reason, "pressure");
+    const waiting = yield* connection
+      .request("runtime.identity", {})
+      .pipe(Effect.flip, Effect.forkScoped({ startImmediately: true }));
+    assert.isUndefined(waiting.pollUnsafe());
     assert.deepEqual(yield* connection.request("shutdown", {}), {
       stopped: true,
     });
     yield* Effect.forEach(pending, (fiber) => Fiber.await(fiber));
+    assert.equal((yield* Fiber.join(waiting)).reason, "closed");
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
@@ -362,10 +403,9 @@ it.live("waits for model work's own deadline rather than cutting it at the trans
       executable: process.execPath,
       entryPath,
       configuration: { home: "/tmp", cwd: "/tmp", providers: {} },
-      requestTimeoutMs: 200,
       host: () => Effect.succeed({ sequence: 9 }),
     });
-    // The fixture replies 200ms before this budget ends, well after the 200ms default.
+    // The engine owns this model-work budget; transport waits for its result.
     const output = yield* connection.request("text.generate-structured", {
       cwd: "/tmp",
       prompt: "Name this",
@@ -377,7 +417,7 @@ it.live("waits for model work's own deadline rather than cutting it at the trans
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-it.live("distinguishes a known remote refusal from an uncertain transport timeout", () =>
+it.live("preserves a known remote refusal without closing the transport", () =>
   Effect.gen(function* () {
     const connection = yield* acquire();
     const rejected = yield* connection
@@ -409,13 +449,12 @@ it.live("preserves typed ACP recovery metadata while discarding untrusted failur
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-it.live("awaits a history import past the ordinary request timeout", () =>
+it.live("awaits the history import result", () =>
   Effect.gen(function* () {
     const connection = yield* acquireAgentRuntimeProcess({
       executable: process.execPath,
       entryPath,
       configuration: { home: "/tmp", cwd: "/tmp", providers: {} },
-      requestTimeoutMs: 200,
       host: () => Effect.succeed({ sequence: 9 }),
     });
     const result = yield* connection.request("thread.import-native", {
@@ -506,7 +545,6 @@ it.live("configures providers over stdin so credentials never enter the process 
         host: { tools: [{ name: "read_page", inputSchema: { type: "object" } }] },
       },
       environment: { FIXTURE_VISIBLE: "1" },
-      requestTimeoutMs: 5_000,
       host: () => Effect.succeed(null),
     });
     const received = (yield* connection.request("project.read", {
@@ -562,5 +600,264 @@ it.live("preserves structured search continuation failures across the Runtime st
       assert.equal(error.engineTag, "SessionSearchError");
       assert.equal(error.engineReason, reason);
     }
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect("counts silence in scheduler ticks and resets at both activity boundaries", () =>
+  Effect.sync(() => {
+    const silent = AGENT_RUNTIME_UNRESPONSIVE_SILENT_TICKS;
+    assert.equal(nextAgentRuntimeSilentTicks(0, true, false), 1);
+    assert.equal(nextAgentRuntimeSilentTicks(silent - 1, true, false), silent);
+    assert.equal(nextAgentRuntimeSilentTicks(silent, true, false), silent);
+    assert.equal(nextAgentRuntimeSilentTicks(silent, false, false), 0);
+    assert.equal(nextAgentRuntimeSilentTicks(silent, true, true), 0);
+  }),
+);
+
+it.effect("either long silence or one stalled read makes the process unresponsive", () =>
+  Effect.sync(() => {
+    const silent = AGENT_RUNTIME_UNRESPONSIVE_SILENT_TICKS;
+    const stalled = AGENT_RUNTIME_STALLED_READ_TICKS;
+    assert.isTrue(isAgentRuntimeResponsive(0, 0));
+    assert.isTrue(isAgentRuntimeResponsive(silent - 1, stalled - 1));
+    assert.isFalse(isAgentRuntimeResponsive(silent, 0));
+    assert.isFalse(isAgentRuntimeResponsive(0, stalled));
+  }),
+);
+
+it.effect.skipIf(process.platform === "win32")(
+  "a held reply still resolves after five minutes of Main clock time",
+  () =>
+    Effect.gen(function* () {
+      const connection = yield* acquire();
+      const deliveries = yield* connection.subscribeNotifications;
+      const reply = yield* connection
+        .request("project.read", { projectId: "held" })
+        .pipe(Effect.forkScoped);
+      yield* Stream.runHead(deliveries);
+      yield* TestClock.adjust("5 minutes");
+      assert.isUndefined(reply.pollUnsafe());
+      process.kill(Number(connection.identity.runtimeGeneration), "SIGUSR1");
+      assert.equal((yield* Fiber.join(reply))?.id, "released");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live.skipIf(process.platform === "win32")(
+  "waits FIFO past 64 slots, removes interrupted waiters, and rejects only beyond 1024 waiters",
+  () =>
+    Effect.gen(function* () {
+      const connection = yield* acquire();
+      const notifications = yield* connection.subscribeNotifications;
+      const active = yield* Effect.forEach(
+        Array.from({ length: 64 }, (_, i) => i),
+        (i) =>
+          connection
+            .request("project.read", { projectId: `blocked:${i}` })
+            .pipe(Effect.exit, Effect.forkScoped({ startImmediately: true })),
+      );
+      yield* Stream.runHead(notifications);
+      // Caller cancellation cannot free capacity while durable engine work is still held.
+      yield* Fiber.interrupt(active[0]!);
+      const cancelled = yield* connection
+        .request("runtime.identity", {})
+        .pipe(Effect.forkScoped({ startImmediately: true }));
+      yield* Fiber.interrupt(cancelled);
+      const settled: number[] = [];
+      const queued = yield* Effect.forEach(
+        Array.from({ length: 1024 }, (_, i) => i),
+        (i) =>
+          connection
+            .request("runtime.identity", {})
+            .pipe(
+              Effect.ensuring(Effect.sync(() => settled.push(i))),
+              Effect.exit,
+              Effect.forkScoped({ startImmediately: true }),
+            ),
+      );
+      const refused = yield* connection.request("runtime.identity", {}).pipe(Effect.flip);
+      assert.equal(refused.reason, "pressure");
+      assert.isUndefined(queued[0]!.pollUnsafe());
+      process.kill(Number(connection.identity.runtimeGeneration), "SIGUSR1");
+      assert.isTrue(Exit.isSuccess(yield* Fiber.join(queued[0]!)));
+      assert.isTrue(Exit.isSuccess(yield* Fiber.join(queued[1023]!)));
+      // One freed slot admits one waiter at a time, so the order below is admission order.
+      assert.deepEqual(
+        settled,
+        queued.map((_, i) => i),
+      );
+
+      yield* connection.request("shutdown", {});
+      yield* Effect.forEach(active, (fiber) => Fiber.await(fiber));
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("does not wake an idle process with pings", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquire(undefined, 20);
+    yield* Effect.sleep(200);
+    assert.equal(
+      (yield* connection.request("project.read", { projectId: "ping-count" }))?.title,
+      "0",
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live.skipIf(process.platform === "win32")(
+  "SIGSTOP reports unresponsive and SIGCONT restores responsiveness before held work answers",
+  () =>
+    Effect.gen(function* () {
+      const connection = yield* acquire(undefined, 30);
+      const pid = Number(connection.identity.runtimeGeneration);
+      const states: boolean[] = [];
+      yield* connection.responsive.pipe(
+        Stream.runForEach((value) => Effect.sync(() => states.push(value))),
+        Effect.forkScoped({ startImmediately: true }),
+      );
+      const deliveries = yield* connection.subscribeNotifications;
+      const reply = yield* connection
+        .request("project.read", { projectId: "held" })
+        .pipe(Effect.forkScoped);
+      yield* Stream.runHead(deliveries);
+      // Registered last, so even a failed assertion resumes the child before process teardown.
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          try {
+            process.kill(pid, "SIGCONT");
+          } catch {}
+        }),
+      );
+      process.kill(pid, "SIGSTOP");
+      yield* connection.responsive.pipe(
+        Stream.filter((value) => !value),
+        Stream.runHead,
+        Effect.timeout("3 seconds"),
+      );
+      process.kill(pid, "SIGCONT");
+      yield* connection.responsive.pipe(
+        Stream.filter(Boolean),
+        Stream.runHead,
+        Effect.timeout("3 seconds"),
+      );
+      assert.deepEqual(states, [true, false, true]);
+      assert.isUndefined(reply.pollUnsafe());
+      process.kill(pid, "SIGUSR1");
+      yield* Fiber.join(reply);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+const observeResponsive = (connection: Effect.Success<ReturnType<typeof acquire>>) =>
+  Effect.gen(function* () {
+    const states: boolean[] = [];
+    yield* connection.responsive.pipe(
+      Stream.runForEach((value) => Effect.sync(() => states.push(value))),
+      Effect.forkScoped({ startImmediately: true }),
+    );
+    return states;
+  });
+
+it.live.skipIf(process.platform === "win32")(
+  "a watched read stuck while the process answers is unresponsive until its own reply",
+  () =>
+    Effect.gen(function* () {
+      const connection = yield* acquire(undefined, 10);
+      const states = yield* observeResponsive(connection);
+      const deliveries = yield* connection.subscribeNotifications;
+      const read = yield* connection
+        .request("thread.snapshot", { threadId: "thread" })
+        .pipe(Effect.forkScoped);
+      yield* Stream.runHead(deliveries);
+      yield* connection.responsive.pipe(
+        Stream.filter((value) => !value),
+        Stream.runHead,
+        Effect.timeout("3 seconds"),
+      );
+      // The process keeps answering checks and other requests, and that does not clear the stall.
+      assert.equal(
+        (yield* connection.request("runtime.identity", {})).runtimeId,
+        "fixture-runtime",
+      );
+      yield* Effect.sleep(50);
+      assert.deepEqual(states, [true, false]);
+      assert.isUndefined(read.pollUnsafe());
+      process.kill(Number(connection.identity.runtimeGeneration), "SIGUSR1");
+      yield* Fiber.join(read);
+      yield* Effect.sleep(0);
+      assert.deepEqual(states, [true, false, true]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live.skipIf(process.platform === "win32")(
+  "a read nobody waits for anymore stops counting even while its reply is still owed",
+  () =>
+    Effect.gen(function* () {
+      const connection = yield* acquire(undefined, 10);
+      const states = yield* observeResponsive(connection);
+      const deliveries = yield* connection.subscribeNotifications;
+      const read = yield* connection
+        .request("thread.snapshot", { threadId: "thread" })
+        .pipe(Effect.forkScoped);
+      yield* Stream.runHead(deliveries);
+      yield* connection.responsive.pipe(
+        Stream.filter((value) => !value),
+        Stream.runHead,
+        Effect.timeout("3 seconds"),
+      );
+      yield* Fiber.interrupt(read);
+      assert.deepEqual(states, [true, false, true]);
+      yield* Effect.sleep(10 * (AGENT_RUNTIME_STALLED_READ_TICKS + 10));
+      assert.deepEqual(states, [true, false, true]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("work outside the watched reads may take as long as it needs", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquire(undefined, 5);
+    const states = yield* observeResponsive(connection);
+    const deliveries = yield* connection.subscribeNotifications;
+    yield* connection.request("project.read", { projectId: "held" }).pipe(Effect.forkScoped);
+    yield* Stream.runHead(deliveries);
+    yield* Effect.sleep(5 * (AGENT_RUNTIME_STALLED_READ_TICKS + 10));
+    assert.deepEqual(states, [true]);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("a Main stall does not age a watched read", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquire(undefined, 30);
+    const states = yield* observeResponsive(connection);
+    const deliveries = yield* connection.subscribeNotifications;
+    yield* connection.request("thread.snapshot", { threadId: "thread" }).pipe(Effect.forkScoped);
+    yield* Stream.runHead(deliveries);
+    yield* Effect.sync(() => {
+      // Longer than the whole stalled-read budget at this tick.
+      const until = performance.now() + 30 * (AGENT_RUNTIME_STALLED_READ_TICKS + 5);
+      while (performance.now() < until) {
+        /* Simulate Main being unscheduled. */
+      }
+    });
+    yield* Effect.sleep(90);
+    assert.deepEqual(states, [true]);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("a Main event loop stall counts as one silent tick", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquire(undefined, 30);
+    const states: boolean[] = [];
+    yield* connection.responsive.pipe(
+      Stream.runForEach((value) => Effect.sync(() => states.push(value))),
+      Effect.forkScoped({ startImmediately: true }),
+    );
+    const deliveries = yield* connection.subscribeNotifications;
+    yield* connection.request("project.read", { projectId: "held" }).pipe(Effect.forkScoped);
+    yield* Stream.runHead(deliveries);
+    yield* Effect.sync(() => {
+      const until = performance.now() + 250;
+      while (performance.now() < until) {
+        /* Simulate Main being unscheduled. */
+      }
+    });
+    yield* Effect.sleep(200);
+    assert.deepEqual(states, [true]);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );

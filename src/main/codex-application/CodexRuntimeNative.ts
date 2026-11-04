@@ -13,6 +13,9 @@ import { createCodexAppServerCapabilitySnapshot } from "../codex-runtime/CodexAp
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 
+// Releasing a voice claim must not hold Scope teardown when execution cannot answer.
+const VOICE_RELEASE_TIMEOUT = "2 seconds";
+
 export const runtimeThread = Effect.fn("CodexRuntimeNative.thread")(function* (
   threadId: string,
   application: Option.Option<AgentRuntimeApplication["Service"]>,
@@ -131,7 +134,11 @@ export const captureVoice = Effect.fn("CodexRuntimeNative.captureVoice")(functio
       active = false;
       return found.connection
         .request("native.voice.release", { claimId })
-        .pipe(Effect.ignore, Effect.ensuring(Scope.close(scope, Exit.void)));
+        .pipe(
+          Effect.timeout(VOICE_RELEASE_TIMEOUT),
+          Effect.ignoreCause,
+          Effect.ensuring(Scope.close(scope, Exit.void)),
+        );
     }),
   };
 });

@@ -1,8 +1,6 @@
 import { decodeAgentAcpFailure, type AgentAcpFailure } from "@nodex/agent-runtime/contracts";
 import { randomUUID } from "node:crypto";
 import {
-  AGENT_RUNTIME_NATIVE_IMPORT_MAX_TIMEOUT_MS,
-  AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS,
   type AgentRuntimeBootstrap,
   type AgentHostRequest,
   type AgentHostResult,
@@ -12,6 +10,9 @@ import {
   type AgentRuntimeNotification,
   type AgentRuntimeOperations,
 } from "@nodex/agent-runtime/contracts";
+import * as Clock from "effect/Clock";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+import { isAgentRuntimeResponsive, nextAgentRuntimeSilentTicks } from "./agent-runtime-liveness";
 import * as Deferred from "effect/Deferred";
 import type { Done } from "effect/Cause";
 import * as Duration from "effect/Duration";
@@ -34,28 +35,35 @@ const MAXIMUM_FRAME_BYTES = 16 * 1024 * 1024;
  */
 export const AGENT_RUNTIME_NODE_FLAGS = ["--max-semi-space-size=8"] as const;
 const MAXIMUM_PENDING_REQUESTS = 64;
-const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
-/** Time for a reply to arrive after the work it reports has reached its own deadline. */
-const REPLY_GRACE_MS = 5_000;
+const MAXIMUM_WAITING_REQUESTS = 1024;
+const LIVENESS_TICK_MS = 5_000;
+const SLOW_REQUEST_MS = 10_000;
+// Scope release must finish even when the engine cannot answer shutdown.
+const SHUTDOWN_TIMEOUT = Duration.seconds(2);
 
-/**
- * Runtime operations with their own deadline need enough time to deliver their result. This
- * preserves their recoverable failure instead of replacing it with an earlier transport timeout.
- */
-export const agentRuntimeRequestTimeoutMs = <M extends AgentRuntimeMethod>(
-  method: M,
-  payload: AgentRuntimeOperations[M]["input"],
-  defaultMs: number = DEFAULT_REQUEST_TIMEOUT_MS,
-): number => {
-  if (method === "thread.import-native")
-    return Math.max(defaultMs, AGENT_RUNTIME_NATIVE_IMPORT_MAX_TIMEOUT_MS + REPLY_GRACE_MS);
-  if (method !== "text.generate-structured") return defaultMs;
-  const budget =
-    (payload as AgentRuntimeOperations["text.generate-structured"]["input"]).timeoutMs ??
-    AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS;
-  return Math.max(defaultMs, budget + REPLY_GRACE_MS);
-};
 const MAXIMUM_PENDING_HOST_REQUESTS = 128;
+/**
+ * Reads someone is looking at a blank surface for, answered from the execution store alone. Work
+ * that is slow by nature, such as generating text or importing history, is deliberately absent.
+ */
+const WATCHED_READS: ReadonlySet<AgentRuntimeMethod> = new Set<AgentRuntimeMethod>([
+  "thread.read",
+  "thread.snapshot",
+  "thread.control",
+  "thread.history",
+  "thread.timeline",
+  "thread.queue",
+  "thread.queued-preview",
+  "thread.run-message",
+  "thread.questions.list",
+  "thread.prompt-index",
+  "thread.item",
+  "thread.item.full",
+  "thread.item.content",
+  "thread.attachment",
+  "tasks.overview",
+  "events.observe",
+]);
 const identitySchema = z.object({
   runtimeId: z.string().min(1),
   runtimeGeneration: z.string().min(1),
@@ -64,6 +72,7 @@ const identitySchema = z.object({
   mcpEndpoint: z.string().url(),
   lastSequence: z.number().int().nonnegative(),
 });
+const pongSchema = z.object({ type: z.literal("pong") });
 const replySchema = z.discriminatedUnion("success", [
   z.object({ id: z.string(), success: z.literal(true), output: z.unknown() }),
   z.object({
@@ -217,7 +226,14 @@ const notificationSchema = z.discriminatedUnion("type", [
 export class AgentRuntimeProcessError extends Schema.TaggedError<AgentRuntimeProcessError>()(
   "AgentRuntimeProcessError",
   {
-    reason: Schema.Literals(["closed", "protocol", "pressure", "request", "rejected", "start"]),
+    reason: Schema.Literals([
+      "closed",
+      "protocol",
+      "pressure",
+      "host-deadline",
+      "rejected",
+      "start",
+    ]),
     message: Schema.String,
     /** The engine failure's tag when the engine rejected a request. */
     engineTag: Schema.optional(Schema.String),
@@ -236,9 +252,8 @@ export interface AgentRuntimeProcessOptions {
   readonly entryPath: string;
   readonly configuration: AgentRuntimeConfiguration;
   readonly environment?: Readonly<Record<string, string | undefined>>;
-  readonly requestTimeoutMs?: number;
-  /** Startup work that must finish before admission, such as an execution store import. */
-  readonly readinessTimeoutMs?: number;
+  /** Internal scheduler interval; production uses the default. */
+  readonly livenessTickMs?: number;
   readonly host: (request: AgentHostRequest) => Effect.Effect<unknown, Error>;
 }
 
@@ -250,6 +265,8 @@ export interface AgentRuntimeProcessDelivery {
 export interface AgentRuntimeProcessConnection {
   readonly identity: AgentRuntimeIdentity;
   readonly terminated: Effect.Effect<AgentRuntimeProcessError>;
+  /** Current responsiveness followed by changes; silence never retires the process. */
+  readonly responsive: Stream.Stream<boolean>;
   readonly request: <M extends AgentRuntimeMethod>(
     method: M,
     input: AgentRuntimeOperations[M]["input"],
@@ -288,10 +305,51 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
   const hostRequests = yield* Ref.make<ReadonlyMap<string, Deferred.Deferred<void>>>(new Map());
   const ready = yield* Deferred.make<AgentRuntimeIdentity, AgentRuntimeProcessError>();
   const terminated = yield* Deferred.make<AgentRuntimeProcessError>();
-  const state = yield* Ref.make<{
+  type Pending = {
+    readonly reply: Deferred.Deferred<unknown, AgentRuntimeProcessError>;
+    readonly admitted: Deferred.Deferred<void, AgentRuntimeProcessError>;
+    readonly bypass: boolean;
+    /**
+     * The tick a watched read began, including its time waiting for admission. Cleared when its
+     * caller stops waiting: its slot stays until the reply, but nobody is looking at it anymore.
+     */
+    readStartedTick: number | null;
+  };
+  const responsiveness = yield* SubscriptionRef.make(true);
+  let receivedFrame = false;
+  let silentTicks = 0;
+  let tick = 0;
+  let pingOutstanding = false;
+  const reportResponsive = (value: boolean) =>
+    Effect.gen(function* () {
+      if ((yield* SubscriptionRef.get(responsiveness)) === value) return;
+      yield* SubscriptionRef.set(responsiveness, value);
+      yield* Effect.logWarning(
+        value ? "Agent Runtime became responsive" : "Agent Runtime became unresponsive",
+      );
+    });
+  interface ProcessState {
     readonly closed: AgentRuntimeProcessError | null;
-    readonly pending: ReadonlyMap<string, Deferred.Deferred<unknown, AgentRuntimeProcessError>>;
-  }>({ closed: null, pending: new Map() });
+    readonly pending: ReadonlyMap<string, Pending>;
+    readonly waiting: ReadonlyMap<string, Pending>;
+  }
+  const state = yield* Ref.make<ProcessState>({
+    closed: null,
+    pending: new Map(),
+    waiting: new Map(),
+  });
+  const reportLiveness = Effect.gen(function* () {
+    const current = yield* Ref.get(state);
+    let oldestReadAgeTicks = 0;
+    for (const entry of [...current.pending.values(), ...current.waiting.values()])
+      if (entry.readStartedTick !== null)
+        oldestReadAgeTicks = Math.max(oldestReadAgeTicks, tick - entry.readStartedTick);
+    yield* reportResponsive(isAgentRuntimeResponsive(silentTicks, oldestReadAgeTicks));
+  });
+  /** A frame can only restore responsiveness, so the common responsive path stays free. */
+  const recheckLiveness = SubscriptionRef.get(responsiveness).pipe(
+    Effect.flatMap((responsive) => (responsive ? Effect.void : reportLiveness)),
+  );
   const scope = yield* Effect.scope;
   const encode = (value: unknown) => {
     const bytes = new TextEncoder().encode(`${JSON.stringify(value)}\n`);
@@ -317,12 +375,18 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     const previous = yield* Ref.getAndUpdate(state, (current) => ({
       closed: current.closed ?? error,
       pending: new Map(),
+      waiting: new Map(),
     }));
     yield* Deferred.fail(ready, error);
     yield* Deferred.succeed(terminated, previous.closed ?? error);
-    yield* Effect.forEach(previous.pending.values(), (reply) => Deferred.fail(reply, error), {
-      discard: true,
-    });
+    yield* Effect.forEach(
+      [...previous.pending.values(), ...previous.waiting.values()],
+      (entry) =>
+        Deferred.fail(entry.admitted, error).pipe(
+          Effect.andThen(Deferred.fail(entry.reply, error)),
+        ),
+      { discard: true },
+    );
     yield* Effect.forEach(
       (yield* Ref.get(hostRequests)).values(),
       (cancelled) => Deferred.succeed(cancelled, undefined),
@@ -373,19 +437,47 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       ),
     );
 
+  // A slot belongs to engine work until its reply, even if its caller stops waiting.
+  const release = (id: string) =>
+    Effect.gen(function* () {
+      const promoted = yield* Ref.modify(state, (current) => {
+        const entry = current.pending.get(id);
+        const pending = new Map(current.pending);
+        const waiting = new Map(current.waiting);
+        pending.delete(id);
+        waiting.delete(id);
+        const next = entry && !entry.bypass ? waiting.entries().next().value : undefined;
+        if (next) {
+          waiting.delete(next[0]);
+          pending.set(...next);
+        }
+        return [next?.[1], { ...current, pending, waiting }] as const;
+      });
+      if (promoted) yield* Deferred.succeed(promoted.admitted, undefined);
+    });
+
   const accept = Effect.fn("AgentRuntimeProcess.accept")(function* (value: unknown) {
+    receivedFrame = true;
+    silentTicks = 0;
+    yield* recheckLiveness;
+    if (pongSchema.safeParse(value).success) {
+      pingOutstanding = false;
+      return;
+    }
     const reply = replySchema.safeParse(value);
     if (reply.success) {
       const waiter = yield* Ref.get(state).pipe(
         Effect.map((current) => current.pending.get(reply.data.id)),
       );
       if (!waiter) return;
+      yield* release(reply.data.id);
+      yield* recheckLiveness;
       if (reply.data.success) {
-        yield* Deferred.succeed(waiter, reply.data.output);
+        yield* Deferred.succeed(waiter.reply, reply.data.output);
         return;
       }
       yield* Deferred.fail(
-        waiter,
+        waiter.reply,
         new AgentRuntimeProcessError({
           reason: "rejected",
           message: reply.data.error.message,
@@ -460,7 +552,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
               orElse: () =>
                 Effect.fail(
                   new AgentRuntimeProcessError({
-                    reason: "request",
+                    reason: "host-deadline",
                     message: "Application tool host deadline elapsed",
                   }),
                 ),
@@ -557,61 +649,117 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     Effect.forkIn(scope),
   );
 
+  /**
+   * Settles on its reply or on the end of the process. A local pipe does not lose frames, so elapsed
+   * time cannot tell slow from stuck here; a caller that needs a bound applies its own.
+   */
   const request = Effect.fn("AgentRuntimeProcess.request")(function* <M extends AgentRuntimeMethod>(
     method: M,
     payload: AgentRuntimeOperations[M]["input"],
   ) {
+    const startedAt = yield* Clock.currentTimeMillis;
     const id = yield* Effect.sync(randomUUID);
-    const waiter = yield* Deferred.make<unknown, AgentRuntimeProcessError>();
-    const refused = yield* Ref.modify(state, (current) => {
-      if (current.closed) return [current.closed, current] as const;
-      const capacity =
-        method === "shutdown" ? MAXIMUM_PENDING_REQUESTS + 1 : MAXIMUM_PENDING_REQUESTS;
-      if (current.pending.size >= capacity)
-        return [
-          new AgentRuntimeProcessError({
-            reason: "pressure",
-            message: "Agent Runtime request capacity is exhausted",
+    const reply = yield* Deferred.make<unknown, AgentRuntimeProcessError>();
+    const admitted = yield* Deferred.make<void, AgentRuntimeProcessError>();
+    const entry: Pending = {
+      reply,
+      admitted,
+      bypass: method === "shutdown",
+      readStartedTick: WATCHED_READS.has(method) ? tick : null,
+    };
+    let sent = false;
+    return yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const admission = yield* Ref.modify(
+          state,
+          (current): readonly [boolean | AgentRuntimeProcessError, ProcessState] => {
+            if (current.closed) return [current.closed, current] as const;
+            const active = [...current.pending.values()].filter((value) => !value.bypass).length;
+            if (entry.bypass || active < MAXIMUM_PENDING_REQUESTS)
+              return [
+                true,
+                { ...current, pending: new Map(current.pending).set(id, entry) },
+              ] as const;
+            if (current.waiting.size >= MAXIMUM_WAITING_REQUESTS)
+              return [
+                new AgentRuntimeProcessError({
+                  reason: "pressure",
+                  message: "Agent Runtime request capacity is exhausted",
+                }),
+                current,
+              ] as const;
+            return [
+              false,
+              { ...current, waiting: new Map(current.waiting).set(id, entry) },
+            ] as const;
+          },
+        );
+        if (admission instanceof AgentRuntimeProcessError) return yield* admission;
+        const work = Effect.uninterruptibleMask((resume) =>
+          Effect.gen(function* () {
+            if (!admission) yield* resume(Deferred.await(admitted));
+            // Queue admission and the sent flag are atomic with respect to caller interruption.
+            yield* resume(send({ id, method, input: payload })).pipe(
+              Effect.andThen(
+                Effect.sync(() => {
+                  sent = true;
+                }),
+              ),
+            );
+            return yield* resume(Deferred.await(reply));
           }),
-          current,
-        ] as const;
-      return [null, { ...current, pending: new Map(current.pending).set(id, waiter) }] as const;
-    });
-    if (refused) return yield* refused;
-    return yield* send({ id, method, input: payload }).pipe(
-      Effect.andThen(Deferred.await(waiter)),
-      Effect.timeout(
-        Duration.millis(agentRuntimeRequestTimeoutMs(method, payload, options.requestTimeoutMs)),
-      ),
-      Effect.mapError((cause) =>
-        cause instanceof AgentRuntimeProcessError
-          ? cause
-          : new AgentRuntimeProcessError({
-              reason: "request",
-              message: "Agent Runtime request timed out",
-              cause,
+        );
+        return yield* restore(
+          Effect.raceFirst(work, Deferred.await(terminated).pipe(Effect.flatMap(Effect.fail))),
+        ).pipe(
+          Effect.map((output) => output as AgentRuntimeOperations[M]["output"]),
+          Effect.onInterrupt(() =>
+            sent && method === "text.generate-structured"
+              ? send({ type: "request.cancel", id }).pipe(
+                  Effect.catchCause(() => Effect.void),
+                  Effect.forkIn(scope, { startImmediately: true }),
+                  Effect.asVoid,
+                )
+              : Effect.void,
+          ),
+          Effect.ensuring(
+            Effect.gen(function* () {
+              entry.readStartedTick = null;
+              if (!sent) yield* release(id);
+              yield* recheckLiveness;
+              const elapsedMs = (yield* Clock.currentTimeMillis) - startedAt;
+              if (elapsedMs >= SLOW_REQUEST_MS)
+                yield* Effect.logWarning("Agent Runtime request settled slowly").pipe(
+                  Effect.annotateLogs({ method, elapsedMs }),
+                );
             }),
-      ),
-      Effect.map((output) => output as AgentRuntimeOperations[M]["output"]),
-      // Only ephemeral utilities are withdrawable; durable commands retain their receipt semantics.
-      Effect.onInterrupt(() =>
-        method === "text.generate-structured"
-          ? send({ type: "request.cancel", id }).pipe(Effect.catchCause(() => Effect.void))
-          : Effect.void,
-      ),
-      Effect.ensuring(
-        Ref.update(state, (current) => {
-          const next = new Map(current.pending);
-          next.delete(id);
-          return { ...current, pending: next };
-        }),
-      ),
+          ),
+        );
+      }),
     );
   });
 
+  yield* Effect.gen(function* () {
+    while (true) {
+      yield* Effect.sleep(options.livenessTickMs ?? LIVENESS_TICK_MS);
+      const current = yield* Ref.get(state);
+      if (current.closed) return;
+      tick += 1;
+      silentTicks = nextAgentRuntimeSilentTicks(
+        silentTicks,
+        current.pending.size > 0,
+        receivedFrame,
+      );
+      receivedFrame = false;
+      yield* reportLiveness;
+      if (current.pending.size === 0 || pingOutstanding) continue;
+      pingOutstanding = Queue.offerUnsafe(input, encode({ type: "ping" }));
+    }
+  }).pipe(Effect.forkIn(scope));
+
   yield* Effect.addFinalizer(() =>
     request("shutdown", {}).pipe(
-      Effect.timeout(Duration.seconds(2)),
+      Effect.timeout(SHUTDOWN_TIMEOUT),
       Effect.catchCause(() => Effect.void),
       Effect.andThen(
         close(new AgentRuntimeProcessError({ reason: "closed", message: "Runtime Scope closed" })),
@@ -621,21 +769,11 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       Effect.andThen(PubSub.shutdown(executionNotifications)),
     ),
   );
-  const identity = yield* Deferred.await(ready).pipe(
-    Effect.timeout(Duration.millis(options.readinessTimeoutMs ?? 30_000)),
-    Effect.mapError((cause) =>
-      cause instanceof AgentRuntimeProcessError
-        ? cause
-        : new AgentRuntimeProcessError({
-            reason: "start",
-            message: "Agent Runtime readiness timed out",
-            cause,
-          }),
-    ),
-  );
+  const identity = yield* Deferred.await(ready);
   return {
     identity,
     terminated: Deferred.await(terminated),
+    responsive: SubscriptionRef.changes(responsiveness),
     request,
     notifications: Stream.fromPubSub(notifications),
     subscribeNotifications: PubSub.subscribe(notifications).pipe(

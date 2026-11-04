@@ -57,6 +57,7 @@ const fakeRuntime = (generation: string) =>
       terminated: Effect.never,
       notifications: Stream.empty,
       subscribeNotifications: Effect.succeed(Stream.empty),
+      responsive: Stream.make(true),
       subscribeExecutionNotifications: PubSub.subscribe(notifications).pipe(
         Effect.map(Stream.fromSubscription),
       ),

@@ -263,6 +263,7 @@ export const AgentRuntimeObserveSchema = AgentRuntimeTargetSchema.extend({
     .optional(),
 });
 export const AgentRuntimeUnobserveSchema = z.object({ subscriptionId: id }).strict();
+export const AgentRuntimeRestartSchema = z.object({ generation: id }).strict();
 export const AgentRuntimeCatalogSchema = z
   .object({
     refresh: z.boolean().optional(),

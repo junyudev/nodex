@@ -53,6 +53,11 @@ import {
   type CodexPreparedRealtimeVoicePolicy,
 } from "./CodexRealtimeVoicePolicy";
 
+// Ending a call must never leave the microphone live because the native side cannot answer. A Stop
+// that goes unanswered settles so the window releases its media; Scope cleanup tries once more.
+const VOICE_STOP_TIMEOUT = "5 seconds";
+const VOICE_STOP_CLEANUP_TIMEOUT = "2 seconds";
+
 export class CodexRealtimeVoiceError extends Schema.TaggedError<CodexRealtimeVoiceError>()(
   "CodexRealtimeVoiceError",
   {
@@ -491,6 +496,7 @@ export const make = Effect.gen(function* () {
                     ? nativeRequest(attempt, "thread/realtime/stop", {
                         threadId: attempt.grant.threadId,
                       }).pipe(
+                        Effect.timeout(VOICE_STOP_CLEANUP_TIMEOUT),
                         Effect.catch(() =>
                           Effect.logWarning("Voice transport cleanup did not complete"),
                         ),
@@ -694,6 +700,7 @@ export const make = Effect.gen(function* () {
             attempt.nativeStopped = true;
           }),
         ),
+        Effect.timeoutOption(VOICE_STOP_TIMEOUT),
         Effect.asVoid,
         Effect.mapError(failure),
         Effect.tapError((error) =>

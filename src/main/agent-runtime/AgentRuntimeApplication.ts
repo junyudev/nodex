@@ -31,6 +31,7 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as Option from "effect/Option";
 import * as RcMap from "effect/RcMap";
@@ -47,6 +48,9 @@ import {
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import type { ProjectWorkspaceApplyInput } from "../core-client/types";
 import { CoreModuleResponseError } from "../core-client/core-client";
+import { isRetryableCoreTransportError } from "../core-client/document-session-error";
+import { CoreTransportError } from "../core-client/local-http";
+import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
 import type {
@@ -273,6 +277,23 @@ const importRefusal = (message: string) =>
     admissionRejected: true,
   });
 const AGENT_OPERATION_FAILED = "Agent operation could not be completed";
+// Brief Core overloads and Runtime replacement should keep an opening view connecting.
+const OPEN_READ_MAX_ATTEMPTS = 5;
+const OPEN_READ_RETRY_BASE_DELAY_MS = 750;
+const OPEN_READ_MAX_CAUSE_DEPTH = 8;
+
+const isTransientOpenReadFailure = (error: unknown): boolean => {
+  let cause = error;
+  for (let depth = 0; depth < OPEN_READ_MAX_CAUSE_DEPTH; depth += 1) {
+    if (cause instanceof CoreModuleResponseError) return cause.coreError.retryable;
+    if (cause instanceof CoreTransportError) return isRetryableCoreTransportError(cause);
+    if (Schema.is(AgentRuntimeProcessError)(cause))
+      return cause.reason === "closed" || cause.reason === "pressure";
+    if (!Schema.is(CoreRuntimeError)(cause)) return false;
+    cause = cause.cause;
+  }
+  return false;
+};
 const NATIVE_IMPORT_LAUNCH_PREFIX = NATIVE_THREAD_IMPORT_OPERATION_PREFIX;
 
 /**
@@ -379,6 +400,17 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
                 cause.engineReason === "interaction_mode_escalation_denied")
             ? failure(operation, cause.engineReason, cause)
             : failure(operation, AGENT_OPERATION_FAILED, cause),
+      ),
+    );
+  const ownedOpenRead = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
+    owned(
+      operation,
+      effect.pipe(
+        Effect.retry({
+          while: isTransientOpenReadFailure,
+          times: OPEN_READ_MAX_ATTEMPTS - 1,
+          schedule: Schedule.exponential(OPEN_READ_RETRY_BASE_DELAY_MS),
+        }),
       ),
     );
   const ownedWrite = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
@@ -3543,7 +3575,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       ),
     resolveTarget: (target: AgentRuntimeSessionTarget) =>
-      owned(
+      ownedOpenRead(
         "resolve-target",
         Effect.gen(function* () {
           const connection = yield* options.connect;
@@ -3863,7 +3895,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     fork: (input: Parameters<typeof fork>[0]) =>
       ownedWrite("fork", fork(input).pipe(Effect.scoped)),
     read: (target: AgentRuntimeSessionTarget) =>
-      owned(
+      ownedOpenRead(
         "read",
         options.connect.pipe(
           Effect.flatMap((connection) => load(connection, target)),
@@ -3880,7 +3912,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       ),
     control: (target: AgentRuntimeControlInput) =>
-      owned(
+      ownedOpenRead(
         "control",
         Effect.gen(function* () {
           if (target.runId !== undefined && !validId(target.runId))
@@ -4513,7 +4545,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       input: AgentRuntimeSessionTarget &
         Omit<AgentRuntimeOperations["tasks.overview"]["input"], "threadId">,
     ) =>
-      owned(
+      ownedOpenRead(
         "overview",
         Effect.gen(function* () {
           const connection = yield* options.connect;

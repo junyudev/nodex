@@ -326,6 +326,7 @@ type QueryEndpointPolicy =
   | "worktrees:thread:availability";
 
 type ControlEndpointPolicy =
+  | "agent-runtime:restart"
   | "agent-runtime:windows-sandbox:setup"
   | "agent-runtime:windows-sandbox:cancel"
   | "page-file-html:admit"

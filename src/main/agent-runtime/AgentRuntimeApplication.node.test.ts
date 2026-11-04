@@ -19,6 +19,9 @@ import {
 } from "@nodex/agent-runtime/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
+import * as Clock from "effect/Clock";
+import * as Cause from "effect/Cause";
+import * as Exit from "effect/Exit";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import * as Deferred from "effect/Deferred";
@@ -37,12 +40,17 @@ import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../../scripts/scenarios/s
 import { createOperationId } from "../core-runtime/operation-identity";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreModuleResponseError } from "../core-client/core-client";
+import { CoreTransportError } from "../core-client/local-http";
+import { AgentRuntimeSupervisorError } from "./AgentRuntimeSupervisor";
 import { coreRuntimeError, type CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import type { ProjectWorkspaceApplyInput, ProjectWorkspaceRead } from "../core-client/types";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { ProjectWorkspace, ProjectWorkspaceError } from "../project-application/ProjectWorkspace";
 import type { ProjectSession } from "../../shared/types";
-import type { AgentRuntimeTaskCancelInput } from "../../shared/agent-runtime-api";
+import type {
+  AgentRuntimeSessionTarget,
+  AgentRuntimeTaskCancelInput,
+} from "../../shared/agent-runtime-api";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import type { NativeConversationImportInput } from "../../shared/native-session-catalog";
 import { agentRuntimeSnapshotFixture } from "../../shared/testing/agent-runtime-snapshot";
@@ -267,6 +275,8 @@ const setup = (
     failCoreAcknowledgment: false,
     failBindingProof: false,
     missingSessionLookupError: null as CoreRuntimeError | null,
+    beforeCoreRead: (_input: ProjectWorkspaceRead): Effect.Effect<void, CoreRuntimeError> =>
+      Effect.void,
     archiveAfterThreadCreate: false,
     replaceBindingProof: false,
     gateDepth: 0,
@@ -283,7 +293,7 @@ const setup = (
     messageReplay: null as AgentRuntimeOperations["thread.message-replay"]["output"],
     nativeReceipt: null as AgentRuntimeOperations["native-message.receipt"]["output"],
   };
-  const read = (input: ProjectWorkspaceRead) =>
+  const readValue = (input: ProjectWorkspaceRead) =>
     (input.kind === "agent_session" || input.kind === "agent_authority") && state.denyAgent
       ? Effect.fail(new Error("Session is outside the admitted Project"))
       : input.kind === "agent_runtime_session_binding_by_execution" && state.failBindingProof
@@ -392,6 +402,8 @@ const setup = (
               }
               throw new Error("Unexpected Core read");
             });
+  const read = (input: ProjectWorkspaceRead) =>
+    state.beforeCoreRead(input).pipe(Effect.andThen(readValue(input)));
   const apply = (input: ProjectWorkspaceApplyInput) =>
     Effect.gen(function* () {
       actors.push(yield* CoreApplicationAgent);
@@ -1349,6 +1361,303 @@ const setup = (
     cleanups,
   };
 };
+
+const openReads: ReadonlyArray<{
+  readonly operation: string;
+  readonly method: AgentRuntimeMethod;
+  readonly run: (
+    owner: AgentRuntimeApplication["Service"],
+    target: AgentRuntimeSessionTarget,
+  ) => Effect.Effect<unknown, AgentRuntimeApplicationError>;
+}> = [
+  { operation: "read", method: "thread.snapshot", run: (owner, target) => owner.read(target) },
+  {
+    operation: "control",
+    method: "thread.control",
+    run: (owner, target) => owner.control({ ...target, requireActive: true }),
+  },
+  {
+    operation: "overview",
+    method: "tasks.overview",
+    run: (owner, target) => owner.overview(target),
+  },
+  {
+    operation: "resolve-target",
+    method: "thread.read",
+    run: (owner, target) => owner.resolveTarget(target),
+  },
+];
+
+const openReadTarget = { sessionId: launch.sessionId };
+const setupOpenRead = () => {
+  const attempts: number[] = [];
+  let connection: AgentRuntimeApplicationConnection;
+  const fixture = setup({
+    connect: Effect.gen(function* () {
+      attempts.push(yield* Clock.currentTimeMillis);
+      return connection;
+    }),
+  });
+  connection = fixture.connection();
+  fixture.bindings.set(launch.sessionId, {
+    session_id: launch.sessionId,
+    project_id: launch.projectId,
+    runtime_id: connection.identity.runtimeId,
+    runtime_thread_id: "thread:open",
+    launch_request_id: launch.launchId,
+    bound_at: "2026-10-14T00:00:00Z",
+  });
+  fixture.snapshots.set("thread:open", snapshot("thread:open"));
+  return {
+    ...fixture,
+    attempts,
+    replaceConnection: (replacement: AgentRuntimeApplicationConnection) => {
+      connection = replacement;
+    },
+  };
+};
+const openReadCoreFailure = (retryable: boolean) =>
+  classifyCoreOperationFailure(
+    "workspace.read",
+    new CoreModuleResponseError({
+      code: "deadline_exceeded",
+      message: "Core read failed",
+      retryable,
+      recovery: { kind: "none" },
+    }),
+  );
+
+it.effect.each(openReads)(
+  "$operation retries transient Core reads after each full backoff",
+  ({ run }) =>
+    Effect.gen(function* () {
+      const fixture = setupOpenRead();
+      const owner = yield* fixture.owner;
+      const expected = yield* run(owner, openReadTarget);
+      fixture.attempts.length = 0;
+      let remaining = 2;
+      const error = openReadCoreFailure(true);
+      fixture.state.beforeCoreRead = (input) =>
+        input.kind === "project" && remaining-- > 0 ? Effect.fail(error) : Effect.void;
+      const reading = yield* run(owner, openReadTarget).pipe(Effect.forkScoped);
+      yield* TestClock.adjust(0);
+      assert.deepEqual(fixture.attempts, [0]);
+      assert.equal(fixture.state.gateDepth, 0);
+      yield* TestClock.adjust(749);
+      assert.deepEqual(fixture.attempts, [0]);
+      assert.isUndefined(reading.pollUnsafe());
+      yield* TestClock.adjust(1);
+      assert.deepEqual(fixture.attempts, [0, 750]);
+      yield* TestClock.adjust(1499);
+      assert.deepEqual(fixture.attempts, [0, 750]);
+      assert.isUndefined(reading.pollUnsafe());
+      yield* TestClock.adjust(1);
+      assert.deepEqual(fixture.attempts, [0, 750, 2250]);
+      assert.deepEqual(yield* Fiber.join(reading), expected);
+    }),
+);
+
+it.effect.each(openReads)(
+  "$operation stops after five attempts and preserves the Core failure",
+  ({ operation, run }) =>
+    Effect.gen(function* () {
+      const fixture = setupOpenRead();
+      const owner = yield* fixture.owner;
+      const error = openReadCoreFailure(true);
+      fixture.state.beforeCoreRead = () => Effect.fail(error);
+      const reading = yield* run(owner, openReadTarget).pipe(Effect.result, Effect.forkScoped);
+      yield* TestClock.adjust(0);
+      const expectedTimes = [0];
+      for (const wait of [750, 1500, 3000, 6000]) {
+        yield* TestClock.adjust(wait - 1);
+        assert.deepEqual(fixture.attempts, expectedTimes);
+        assert.isUndefined(reading.pollUnsafe());
+        assert.equal(fixture.state.gateDepth, 0);
+        yield* TestClock.adjust(1);
+        expectedTimes.push(expectedTimes.at(-1)! + wait);
+        assert.deepEqual(fixture.attempts, expectedTimes);
+      }
+      const result = yield* Fiber.join(reading);
+      assert.equal(result._tag, "Failure");
+      if (result._tag !== "Failure") return;
+      assert.instanceOf(result.failure, AgentRuntimeApplicationError);
+      assert.equal(result.failure.operation, operation);
+      assert.equal(result.failure.message, "Agent operation could not be completed");
+      assert.strictEqual(result.failure.cause, error);
+      yield* TestClock.adjust("1 minute");
+      assert.deepEqual(fixture.attempts, [0, 750, 2250, 5250, 11250]);
+    }),
+);
+
+const immediateOpenReadFailures = [
+  { name: "non-retryable Core", error: openReadCoreFailure(false) },
+  ...(["aborted", "unknown"] as const).map((kind) => ({
+    name: `Core transport ${kind}`,
+    error: classifyCoreOperationFailure(
+      "workspace.read",
+      new CoreTransportError(kind, "response", null, undefined),
+    ),
+  })),
+  ...(["rejected", "protocol", "start", "host-deadline"] as const).map((reason) => ({
+    name: `engine ${reason}`,
+    error: new AgentRuntimeProcessError({
+      reason,
+      message: "Engine request failed",
+      cause: openReadCoreFailure(true),
+    }),
+  })),
+  ...(["start", "recovery-exhausted"] as const).map((operation) => ({
+    name: `Supervisor ${operation}`,
+    error: new AgentRuntimeSupervisorError({ operation, cause: openReadCoreFailure(true) }),
+  })),
+];
+
+it.effect.each(
+  openReads.flatMap((read) =>
+    immediateOpenReadFailures.map((failure) => ({ ...read, ...failure })),
+  ),
+)("$operation immediately surfaces $name failures", ({ operation, run, error }) =>
+  Effect.gen(function* () {
+    const fixture = setupOpenRead();
+    const connection = fixture.connection();
+    fixture.replaceConnection({ ...connection, request: () => Effect.fail(error) });
+    const owner = yield* fixture.owner;
+    const result = yield* run(owner, openReadTarget).pipe(Effect.result);
+    assert.equal(result._tag, "Failure");
+    if (result._tag !== "Failure") return;
+    assert.equal(result.failure.operation, operation);
+    assert.strictEqual(result.failure.cause, error);
+    assert.deepEqual(fixture.attempts, [0]);
+    assert.equal(yield* Clock.currentTimeMillis, 0);
+    yield* TestClock.adjust("1 minute");
+    assert.deepEqual(fixture.attempts, [0]);
+  }),
+);
+
+it.effect.each(openReads)(
+  "$operation immediately surfaces a definitive Session failure",
+  ({ run }) =>
+    Effect.gen(function* () {
+      const fixture = setupOpenRead();
+      const current = fixture.snapshots.get("thread:open")!;
+      fixture.snapshots.set("thread:open", {
+        ...current,
+        projection: {
+          ...current.projection,
+          thread: {
+            ...current.projection.thread,
+            lineage: {
+              rootThreadId: "thread:other",
+              parentThreadId: null,
+              relationshipToParent: null,
+            },
+          },
+        },
+      });
+      const owner = yield* fixture.owner;
+      const result = yield* run(owner, openReadTarget).pipe(Effect.result);
+      assert.equal(result._tag, "Failure");
+      if (result._tag !== "Failure") return;
+      assert.equal(result.failure.operation, "thread");
+      assert.equal(result.failure.message, "Thread does not belong to this Session");
+      assert.isUndefined(result.failure.cause);
+      assert.deepEqual(fixture.attempts, [0]);
+      assert.equal(yield* Clock.currentTimeMillis, 0);
+    }),
+);
+
+it.effect.each(
+  openReads.flatMap((read) =>
+    (["connection_lost", "timeout", "unreachable"] as const).map((kind) => ({ ...read, kind })),
+  ),
+)("$operation retries a Core transport $kind failure", ({ run, kind }) =>
+  Effect.gen(function* () {
+    const fixture = setupOpenRead();
+    const owner = yield* fixture.owner;
+    const expected = yield* run(owner, openReadTarget);
+    fixture.attempts.length = 0;
+    const error = classifyCoreOperationFailure(
+      "workspace.read",
+      new CoreTransportError(kind, "response", null, undefined),
+    );
+    let failed = false;
+    fixture.state.beforeCoreRead = () => {
+      if (failed) return Effect.void;
+      failed = true;
+      return Effect.fail(error);
+    };
+    const reading = yield* run(owner, openReadTarget).pipe(Effect.forkScoped);
+    yield* TestClock.adjust(749);
+    assert.deepEqual(fixture.attempts, [0]);
+    yield* TestClock.adjust(1);
+    assert.deepEqual(yield* Fiber.join(reading), expected);
+    assert.deepEqual(fixture.attempts, [0, 750]);
+  }),
+);
+
+it.effect.each(
+  openReads.flatMap((read) =>
+    (["closed", "pressure"] as const).map((reason) => ({ ...read, reason })),
+  ),
+)(
+  "$operation reconnects after an engine $reason failure",
+  ({ run, method: failingMethod, reason }) =>
+    Effect.gen(function* () {
+      const fixture = setupOpenRead();
+      const owner = yield* fixture.owner;
+      const expected = yield* run(owner, openReadTarget);
+      fixture.attempts.length = 0;
+      const original = fixture.connection();
+      let originalFailures = 0;
+      fixture.replaceConnection({
+        ...original,
+        request: (method, input) => {
+          if (method !== failingMethod) return original.request(method, input);
+          originalFailures += 1;
+          return Effect.fail(
+            new AgentRuntimeProcessError({ reason, message: "Runtime unavailable" }),
+          );
+        },
+      });
+      const reading = yield* run(owner, openReadTarget).pipe(Effect.forkScoped);
+      yield* TestClock.adjust(0);
+      assert.equal(originalFailures, 1);
+      assert.equal(fixture.state.gateDepth, 0);
+      const replacement = fixture.connection();
+      const replacementCalls: AgentRuntimeMethod[] = [];
+      fixture.replaceConnection({
+        ...replacement,
+        identity: { ...replacement.identity, runtimeGeneration: "replacement" },
+        request: (method, input) => {
+          replacementCalls.push(method);
+          return replacement.request(method, input);
+        },
+      });
+      yield* TestClock.adjust(749);
+      assert.deepEqual(replacementCalls, []);
+      yield* TestClock.adjust(1);
+      assert.deepEqual(yield* Fiber.join(reading), expected);
+      assert.include(replacementCalls, failingMethod);
+      assert.equal(originalFailures, 1);
+      assert.deepEqual(fixture.attempts, [0, 750]);
+    }),
+);
+
+it.effect.each(openReads)("$operation stops retrying when interrupted during backoff", ({ run }) =>
+  Effect.gen(function* () {
+    const fixture = setupOpenRead();
+    const owner = yield* fixture.owner;
+    fixture.state.beforeCoreRead = () => Effect.fail(openReadCoreFailure(true));
+    const reading = yield* run(owner, openReadTarget).pipe(Effect.forkScoped);
+    yield* TestClock.adjust(749);
+    assert.deepEqual(fixture.attempts, [0]);
+    yield* Fiber.interrupt(reading);
+    const exit = yield* Fiber.await(reading);
+    assert.isTrue(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause));
+    yield* TestClock.adjust("1 minute");
+    assert.deepEqual(fixture.attempts, [0]);
+  }),
+);
 
 it.effect("resolves busy execution roots to their existing product Sessions without new work", () =>
   Effect.gen(function* () {
@@ -5029,7 +5338,7 @@ it.effect(
           expected: "invalid_cursor",
         },
         {
-          reason: "request",
+          reason: "closed",
           tag: "SessionSearchError",
           engineReason: "cursor_stale",
           expected: undefined,

@@ -112,6 +112,12 @@ describe("Agent Runtime Session activity store", () => {
     fake.pushConnection({ status: "ready", generation: "g2" });
     expect(fake.reads).toHaveLength(3);
     expect(store.readConnection()).toEqual({ status: "ready", generation: "g2" });
+    fake.reads[2]!({ sequence: 4, items: [], complete: true });
+    await settle();
+    fake.pushConnection({ status: "unresponsive", generation: "g2" });
+    expect(fake.reads).toHaveLength(3);
+    fake.pushConnection({ status: "ready", generation: "g2" });
+    expect(fake.reads).toHaveLength(4);
     release();
   });
 

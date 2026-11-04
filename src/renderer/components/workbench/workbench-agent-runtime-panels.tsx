@@ -343,6 +343,11 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
     agentRuntimeDelegatedTasks.subscribe,
     agentRuntimeDelegatedTasks.readStopping,
   );
+  const retryFailedAttachment = useEffectEvent(() => {
+    if (state.error === null) return;
+    setState((current) => ({ ...current, error: null }));
+    setAttachment((current) => current + 1);
+  });
   // A replacement Runtime process has no memory of earlier subscriptions; attach again.
   const attachedGeneration = useRef<string | null>(null);
   useEffect(() => {
@@ -350,6 +355,8 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
     const previous = attachedGeneration.current;
     attachedGeneration.current = readyGeneration;
     if (previous !== null && previous !== readyGeneration) setAttachment((current) => current + 1);
+    // The same process answered again; what failed while it could not gets another try.
+    else retryFailedAttachment();
   }, [readyGeneration]);
   useEffect(() => {
     let active = true;

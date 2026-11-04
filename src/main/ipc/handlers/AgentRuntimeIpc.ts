@@ -115,6 +115,11 @@ export const live = Layer.effectDiscard(
     yield* ipc.handleQuery("agent-runtime:activity:read", (event) =>
       authorize(event).pipe(Effect.andThen(activity.read)),
     );
+    yield* ipc.handleControl("agent-runtime:restart", (event, value) =>
+      handle(event, Inputs.AgentRuntimeRestartSchema, value, (input) =>
+        supervisor.restart(input.generation),
+      ),
+    );
     yield* ipc.handleQuery("agent-runtime:connection:read", (event) =>
       authorize(event).pipe(Effect.andThen(activity.connection)),
     );

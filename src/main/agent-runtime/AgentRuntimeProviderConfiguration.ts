@@ -1,3 +1,4 @@
+import * as Option from "effect/Option";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -55,6 +56,25 @@ export class AgentRuntimeProviderConfiguration extends Context.Service<
   }
 >()("nodex/main/agent-runtime/AgentRuntimeProviderConfiguration") {}
 
+/** How long an account change waits for execution to confirm it dropped retired models. */
+const MODEL_RETIREMENT_TIMEOUT = "30 seconds";
+
+/**
+ * Account changes wait here inside their uninterruptible lane, and credentials are released only
+ * afterwards, so a silent process cannot hold sign-out open: retirement that execution does not
+ * confirm in time stops the process instead. The refresh itself stays interruptible for the bound.
+ */
+export const confirmModelRetirement = <E, R, E2, R2>(input: {
+  readonly refresh: Effect.Effect<unknown, E, R>;
+  readonly stop: Effect.Effect<void, E2, R2>;
+}): Effect.Effect<void, E2, R | R2> =>
+  input.refresh.pipe(
+    Effect.interruptible,
+    Effect.timeout(MODEL_RETIREMENT_TIMEOUT),
+    Effect.asVoid,
+    Effect.catchCause(() => input.stop),
+  );
+
 /**
  * Applies changed provider settings to the execution process. A process that is starting read
  * its configuration before the change, so it is configured once it is ready rather than left
@@ -72,10 +92,11 @@ export const makeProviderSettingsRefresh = <Connection, A, E, R>(input: {
     Effect.map((lane) =>
       lane.withPermit(
         input.states.pipe(
+          // Unresponsive is not excluded: its process may be healthy apart from one stuck read, and
+          // a silent one simply holds this request until it answers or the bound above stops it.
           Stream.filter((state) => state.status !== "starting" && state.status !== "restarting"),
           Stream.runHead,
-          Effect.timeoutOption("1 minute"),
-          Effect.andThen(input.current),
+          Effect.flatMap((state) => (Option.isNone(state) ? Effect.succeed(null) : input.current)),
           Effect.flatMap((connection) =>
             connection === null ? Effect.succeed(undefined) : input.apply(connection),
           ),

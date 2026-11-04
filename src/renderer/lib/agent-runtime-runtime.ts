@@ -229,6 +229,7 @@ const logoutClaude = defineRendererCommand({
 });
 
 export interface AgentRuntimeRendererTransport {
+  readonly restart: (input: { readonly generation: string }) => Promise<void>;
   readonly launch: (input: AgentRuntimeLaunch) => Promise<AgentRuntimeLaunchResult>;
   readonly read: (target: AgentRuntimeSessionTarget) => Promise<AgentRuntimeConversation>;
   readonly control: (target: AgentRuntimeControlInput) => Promise<AgentRuntimeConversation>;
@@ -329,6 +330,7 @@ export interface AgentRuntimeRendererTransport {
 
 /** Typed Session operations; renderer consumers never dispatch engine commands directly. */
 export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
+  restart: (input) => invokeRendererControl("agent-runtime:restart", input),
   launch: (input) => invokePlainCommand(launch, input),
   read: (input) => invokeRendererQuery("agent-runtime:session:read", input),
   control: (input) => invokeRendererQuery("agent-runtime:session:control", input),

@@ -1,5 +1,7 @@
 import { RealtimeVoiceWindowProvider } from "@/features/realtime-voice/realtime-voice-window";
 import { useEffect, useState } from "react";
+import { AgentRuntimeStatusNotice } from "@/components/agent-runtime-status-notice";
+import { AppStatusNoticeStack } from "@/components/app-status-notice";
 import { CoreAuthorityStatusNotice } from "@/components/core-authority-status";
 import { NodexToastProvider } from "@/components/ui/toast";
 import { WorkbenchShell } from "@/components/workbench/workbench-shell";
@@ -89,15 +91,18 @@ export default function App({ windowSessionBootstrap }: AppProps) {
             <LocalConversationViewStateCleanupController />
             <HeartbeatAutomationController />
             <WorkbenchShell windowSessionBootstrap={windowSessionBootstrap} />
-            <CoreAuthorityStatusNotice
-              status={
-                coreAuthorityStatus.kind === "recovering" && !showRecoveringCoreAuthority
-                  ? READY_CORE_AUTHORITY_STATUS
-                  : coreAuthorityStatus
-              }
-              onRetry={retryCoreAuthority}
-              onRelaunch={relaunchForCoreAuthority}
-            />
+            <AppStatusNoticeStack>
+              <AgentRuntimeStatusNotice />
+              <CoreAuthorityStatusNotice
+                status={
+                  coreAuthorityStatus.kind === "recovering" && !showRecoveringCoreAuthority
+                    ? READY_CORE_AUTHORITY_STATUS
+                    : coreAuthorityStatus
+                }
+                onRetry={retryCoreAuthority}
+                onRelaunch={relaunchForCoreAuthority}
+              />
+            </AppStatusNoticeStack>
             {appUpdateStatus?.status === "downloaded" &&
             dismissedUpdateVersion !== appUpdateStatus.availableVersion ? (
               <div className="pointer-events-none fixed inset-x-3 bottom-14 z-[61] flex justify-center">

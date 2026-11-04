@@ -1,5 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import type { Thread, TurnCompletedNotification } from "@nodex/codex-app-server-protocol/v2";
+import * as TestClock from "effect/testing/TestClock";
+import * as Exit from "effect/Exit";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -947,4 +949,37 @@ it.effect("reads the Profile claim independently of another Thread's availabilit
     yield* f.voice.release(1, grant.claimId);
     assert.isNull(f.voice.readSession());
   }).pipe(Effect.scoped),
+);
+
+it.effect("an unanswered Stop still ends the call and releases the microphone", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const grant = yield* f.voice.prepare(1, target);
+    yield* f.voice.start(1, grant.claimId, "offer");
+    f.stopWith(Effect.never);
+    const stopping = yield* f.voice.stop(1, grant.claimId).pipe(Effect.forkChild);
+    yield* TestClock.adjust("5 seconds");
+    yield* Fiber.join(stopping);
+    assert.strictEqual(f.voice.readSession()?.phase, "stopping");
+    const releasing = yield* f.voice.release(1, grant.claimId).pipe(Effect.forkChild);
+    yield* TestClock.adjust("2 seconds");
+    assert.isTrue(yield* Fiber.join(releasing));
+    assert.isNull(f.voice.readSession());
+    assert.isNull(f.microphone.readOwner());
+  }).pipe(Effect.scoped),
+);
+
+it.effect("Scope teardown releases voice authority when native stop never answers", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const f = yield* fixture().pipe(Effect.provideService(Scope.Scope, scope));
+    const grant = yield* f.voice.prepare(1, target);
+    yield* f.voice.start(1, grant.claimId, "sdp");
+    f.stopWith(Effect.never);
+    const closing = yield* Scope.close(scope, Exit.void).pipe(Effect.forkChild);
+    yield* TestClock.adjust("2 seconds");
+    yield* Fiber.join(closing);
+    assert.isNull(f.voice.readSession());
+    assert.isNull(f.microphone.readOwner());
+  }),
 );

@@ -4,6 +4,9 @@ import * as Stream from "effect/Stream";
 import type { AgentRuntimeProcessConnection } from "../platform/node/AgentRuntimeProcess";
 import type { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
 
+// Observer teardown must not hold up process retirement or application quit.
+const UNOBSERVE_TIMEOUT = "2 seconds";
+
 const isRevokedRun = (status: string) =>
   status === "cancelled" || status === "interrupted" || status === "rolled_back";
 
@@ -25,7 +28,9 @@ export const make = Effect.fn("AgentRuntimePresentationRelease.make")(function* 
     afterSequence: connection.identity.lastSequence,
   })).subscriptionId;
   yield* Effect.addFinalizer(() =>
-    connection.request("events.unobserve", { subscriptionId }).pipe(Effect.ignore),
+    connection
+      .request("events.unobserve", { subscriptionId })
+      .pipe(Effect.timeout(UNOBSERVE_TIMEOUT), Effect.ignoreCause),
   );
   const tracked = new Map<string, { readonly threadId: string; readonly runId: string }>();
   const keyOf = (threadId: string, runId: string) => JSON.stringify([threadId, runId]);

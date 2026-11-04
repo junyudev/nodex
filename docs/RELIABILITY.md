@@ -430,6 +430,23 @@ a launch skips starting it only with durable evidence, bound to the exact store 
 last stopped with no live or pending work. Unexpected exits restart it within a bounded
 sliding-window budget rather than once per user action.
 
+Main never fails a request to the execution process on elapsed time. It waits on a local pipe
+that does not lose frames, so a timer there cannot tell slow from stuck: it would end only Main's
+wait while the work continues, report commands that may still commit as failed, and turn a busy
+computer into retries that add load. A request settles on its reply or on the end of the process,
+and a caller that needs a bound applies one with its own meaning. A caller needs one when it holds
+something others wait for or owes the person a prompt outcome: a lock such as a Project lifecycle
+gate, sign-out, quit, or ending a voice call. Reaching that bound decides what happens next, such
+as stopping the process or releasing the microphone, and does not report a false failure of the
+work itself. Being unresponsive is what the person sees, and it never makes a request wait: a
+process with one stuck read still serves everything else. Reads that open a chat or the Subagents panel retry temporary failures in Main, where
+their types are still known, because the failures that remain, such as Core's own deadline, are
+real but brief. Starting is the one transport
+phase with a budget, because nothing depends on a process that has not started. Liveness is a
+separate, visible state: silence is counted in scheduler ticks, so a stall of Main or a sleeping
+computer counts once, and it never ends a process on its own. See
+[Execution process supervision](product-specs/agent-runtime-behavior.md#execution-process-supervision).
+
 ### Inbox confirmation handoff
 
 Inbox confirmations retain complete dispatch text, the reviewed Page revisions,
@@ -735,6 +752,7 @@ and [Desktop Notification Behavior](product-specs/desktop-notification-behavior.
 | Resource lifecycle or Profile retired  | Evict stale presentations and reject old handles before publishing post-state; later operations bind the current Profile, Store and resource lifecycle                                                                                                                                       |
 | Core transport generation lost         | Single-flight reconnect to the same Profile/Library/Store epoch                                                                                                                                                                                                                              |
 | Repeated Core losses                   | Open bounded circuit and show one app-wide Retry/Restart state                                                                                                                                                                                                                               |
+| Agent Runtime slow or silent           | Keep requests pending and show one app-wide unresponsive state that clears once the process answers and no read someone waits on is stuck; replace the process only on an explicit Restart, then let replies recover and reattach                                                            |
 | Codex app-server session lost          | Reject that session's pending requests, retire its child, then reconnect with one bounded supervisor; never carry pending RPC state into the replacement generation                                                                                                                          |
 | Thread resume/start buffer saturated   | Fail the exact Codex generation and canonically read the Thread after replacement; never apply a later occurrence ahead of a dropped predecessor                                                                                                                                             |
 | Subagent discovery interrupted         | Preserve verified positive descendants and the durable continuation as incomplete; never infer a missing child is Done, and resume only under the matching host/source generation                                                                                                            |

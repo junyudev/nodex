@@ -1,4 +1,5 @@
 import { assert, it } from "@effect/vitest";
+import * as TestClock from "effect/testing/TestClock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
@@ -9,7 +10,7 @@ import type { AgentRuntimeApplicationConnection } from "../agent-runtime/AgentRu
 import type { AgentRuntimeProcessDelivery } from "../platform/node/AgentRuntimeProcess";
 import { captureVoice } from "./CodexRuntimeNative";
 
-it.effect("routes voice controls and observations through their captured Runtime source", () =>
+it.effect("routes voice through its captured Runtime source and bounds lost release replies", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const incoming = yield* PubSub.unbounded<AgentRuntimeProcessDelivery>();
@@ -37,22 +38,28 @@ it.effect("routes voice controls and observations through their captured Runtime
           return Stream.fromSubscription(subscription);
         }),
         request: (method: string, input: unknown) =>
-          Effect.sync(() => {
-            calls.push({ method, input });
-            if (method === "native.voice.prepare") {
-              assert.isTrue(subscribed);
-              assert.deepEqual((input as { threadId: string }).threadId, "product-thread");
-              claimId = (input as { claimId: string }).claimId;
-              return {
-                source,
-                userAgent: "codex/0.162.0-alpha.20",
-                voices: { v1: ["arbor"], defaultV1: "arbor" },
-                features: [],
-                history: [],
-              };
+          Effect.suspend(() => {
+            if (method === "native.voice.release") {
+              calls.push({ method, input });
+              return Effect.never;
             }
-            if (method === "native.voice.current") return true;
-            return null;
+            return Effect.sync(() => {
+              calls.push({ method, input });
+              if (method === "native.voice.prepare") {
+                assert.isTrue(subscribed);
+                assert.deepEqual((input as { threadId: string }).threadId, "product-thread");
+                claimId = (input as { claimId: string }).claimId;
+                return {
+                  source,
+                  userAgent: "codex/0.162.0-alpha.20",
+                  voices: { v1: ["arbor"], defaultV1: "arbor" },
+                  features: [],
+                  history: [],
+                };
+              }
+              if (method === "native.voice.current") return true;
+              return null;
+            });
           }),
       } as unknown as AgentRuntimeApplicationConnection;
       const capture = yield* captureVoice(
@@ -98,7 +105,9 @@ it.effect("routes voice controls and observations through their captured Runtime
       });
       assert.equal((yield* Fiber.join(gap))._tag, "Failure");
       assert.isFalse(yield* voice.current);
-      yield* voice.release;
+      const releasing = yield* voice.release.pipe(Effect.forkScoped);
+      yield* TestClock.adjust("2 seconds");
+      yield* Fiber.join(releasing);
       assert.isTrue(released);
       assert.isFalse(yield* voice.current);
       assert.equal(calls.at(-1)?.method, "native.voice.release");

@@ -18,6 +18,7 @@ const fixture = Effect.gen(function* () {
   let subscriptions = 0;
   const connection = {
     terminated: Deferred.await(closed),
+    responsive: Stream.make(true),
     subscribeExecutionNotifications: PubSub.subscribe(events).pipe(
       Effect.tap(() =>
         Effect.sync(() => {

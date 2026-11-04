@@ -1,6 +1,8 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 import { vi } from "vite-plus/test";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../shared/project-appearance";
@@ -176,6 +178,25 @@ it.effect("blocks archive before durable mutation or runtime cleanup", () => {
     assert.strictEqual(runtime.closeBrowserConversation.mock.calls.length, 0);
     assert.strictEqual(runtime.closeBrowserProject.mock.calls.length, 0);
     // this test owns the complete ProjectLifecycleCommands application layer.
+  }).pipe(Effect.provide(runtime.layer));
+});
+
+it.effect("a silent execution process cannot hold the Project gate after archive commits", () => {
+  const runtime = testRuntime([[], []]);
+  runtime.closeAgentSession.mockReturnValue(Effect.never as never);
+  return Effect.gen(function* () {
+    const commands = yield* ProjectLifecycleCommands;
+    const archiving = yield* commands
+      .setLifecycle(lifecycleCommand("archived"))
+      .pipe(Effect.forkChild);
+    yield* Effect.yieldNow;
+    yield* Effect.yieldNow;
+    assert.strictEqual(runtime.closeAgentSession.mock.calls.length, 1);
+    yield* TestClock.adjust("30 seconds");
+    assert.strictEqual((yield* Fiber.join(archiving)).kind, "committed");
+    // A later operation can take the gate the archive released.
+    const restored = yield* commands.setLifecycle(lifecycleCommand("active"));
+    assert.strictEqual(restored.kind, "committed");
   }).pipe(Effect.provide(runtime.layer));
 });
 

@@ -1,12 +1,16 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as TestClock from "effect/testing/TestClock";
 import * as Deferred from "effect/Deferred";
 import * as Stream from "effect/Stream";
 import * as Fiber from "effect/Fiber";
 import * as Ref from "effect/Ref";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { AgentRuntimeConnectionState } from "../../shared/agent-runtime-api";
-import { makeProviderSettingsRefresh } from "./AgentRuntimeProviderConfiguration";
+import {
+  confirmModelRetirement,
+  makeProviderSettingsRefresh,
+} from "./AgentRuntimeProviderConfiguration";
 
 const harness = (initial: AgentRuntimeConnectionState) =>
   Effect.gen(function* () {
@@ -15,7 +19,10 @@ const harness = (initial: AgentRuntimeConnectionState) =>
     const settle = yield* makeProviderSettingsRefresh({
       states: SubscriptionRef.changes(state),
       current: SubscriptionRef.get(state).pipe(
-        Effect.map((current) => (current.status === "ready" ? current : null)),
+        // The Supervisor's current connection stays available through both of these.
+        Effect.map((current) =>
+          current.status === "ready" || current.status === "unresponsive" ? current : null,
+        ),
       ),
       apply: () => Ref.update(applied, (count) => count + 1),
     });
@@ -105,4 +112,39 @@ it.effect(
       assert.isUndefined(yield* refresh);
       assert.isFalse(applied);
     }),
+);
+
+it.effect("reaches an unresponsive process, which may be healthy apart from one stuck read", () =>
+  Effect.gen(function* () {
+    const { applied, settle } = yield* harness({ status: "unresponsive", generation: "one" });
+    yield* settle;
+    assert.equal(yield* Ref.get(applied), 1);
+  }),
+);
+
+it.effect("a silent process cannot hold an account change: unconfirmed retirement stops it", () =>
+  Effect.gen(function* () {
+    const stopped = yield* Ref.make(0);
+    // Account mutations wait inside their uninterruptible lane.
+    const fiber = yield* confirmModelRetirement({
+      refresh: Effect.never,
+      stop: Ref.update(stopped, (count) => count + 1),
+    }).pipe(Effect.uninterruptible, Effect.forkChild);
+    yield* Effect.yieldNow;
+    assert.equal(yield* Ref.get(stopped), 0);
+    yield* TestClock.adjust("30 seconds");
+    yield* Fiber.join(fiber);
+    assert.equal(yield* Ref.get(stopped), 1);
+  }),
+);
+
+it.effect("confirmed retirement leaves the process running", () =>
+  Effect.gen(function* () {
+    const stopped = yield* Ref.make(0);
+    yield* confirmModelRetirement({
+      refresh: Effect.succeed({ applied: true }),
+      stop: Ref.update(stopped, (count) => count + 1),
+    });
+    assert.equal(yield* Ref.get(stopped), 0);
+  }),
 );

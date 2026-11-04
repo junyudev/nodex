@@ -5,6 +5,7 @@ import type { AgentRuntimeSessionEvent } from "../../../shared/agent-runtime-api
 import type { AgentEvent, AgentRuntimeNotification } from "@nodex/agent-runtime/contracts";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
+import * as Exit from "effect/Exit";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
@@ -44,6 +45,7 @@ const setup = Effect.gen(function* () {
     identity: { runtimeId: "engine" },
     notifications: Stream.fromPubSub(bus),
     subscribeNotifications: PubSub.subscribe(bus).pipe(Effect.map(Stream.fromSubscription)),
+    responsive: Stream.make(true),
     subscribeExecutionNotifications: PubSub.subscribe(bus).pipe(
       Effect.map(Stream.fromSubscription),
     ),
@@ -121,7 +123,13 @@ const setup = Effect.gen(function* () {
       Layer.provide(
         Layer.mergeAll(
           Layer.succeed(AgentRuntimeApplication, application),
-          Layer.succeed(AgentRuntimeSupervisor, { get: () => Effect.succeed(connection) } as never),
+          Layer.succeed(AgentRuntimeSupervisor, {
+            get: () => Effect.succeed(connection),
+            restart: (generation: string) =>
+              Effect.sync(() => {
+                calls.push(`restart:${generation}`);
+              }),
+          } as never),
           Layer.succeed(AgentRuntimeSessionActivity, SessionActivity.inactive),
           Layer.succeed(
             ElectronIpc,
@@ -409,4 +417,17 @@ it.effect(
       );
       assert.equal(fixture.calls.length, 1);
     }).pipe(Effect.scoped),
+);
+
+it.effect("authorizes and validates a restart before delegating to the Supervisor", () =>
+  Effect.gen(function* () {
+    const f = yield* setup;
+    const restart = f.handlers.get("agent-runtime:restart")!;
+    const input = { generation: "one" };
+    assert.isTrue(Exit.isFailure(yield* restart(f.event(99), input).pipe(Effect.exit)));
+    assert.isTrue(Exit.isFailure(yield* restart(f.event(1), undefined).pipe(Effect.exit)));
+    assert.deepEqual(f.calls, []);
+    yield* restart(f.event(1), input);
+    assert.deepEqual(f.calls, ["restart:one"]);
+  }).pipe(Effect.scoped),
 );

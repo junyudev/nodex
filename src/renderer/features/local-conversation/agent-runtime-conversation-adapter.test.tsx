@@ -16,6 +16,7 @@ import {
 import { workspaceSessionCommands } from "../../lib/workspace-catalog-commands";
 import {
   createAgentRuntimeConversationRuntime,
+  projectAgentRuntimeConnection,
   useAgentRuntimeConversationAdapter,
   type AgentRuntimeProvider,
 } from "./agent-runtime-conversation-adapter";
@@ -3152,4 +3153,10 @@ it("changes a started chat's execution mode through Main without changing its st
   } finally {
     unmount();
   }
+});
+
+it("keeps the composer connected while execution is unresponsive", () => {
+  expect(projectAgentRuntimeConnection({ status: "unresponsive", generation: "slow" })).toEqual(
+    projectAgentRuntimeConnection({ status: "ready", generation: "slow" }),
+  );
 });

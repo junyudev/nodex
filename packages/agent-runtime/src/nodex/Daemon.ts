@@ -145,6 +145,11 @@ export async function runAgentRuntimeProcess(): Promise<void> {
           await write({ id: "", success: false, error: { message: String(error) } });
           continue;
         }
+        if (request?.type === "ping") {
+          // Never let stdout backpressure hold up stdin control frames.
+          void write({ type: "pong" }).catch(() => {});
+          continue;
+        }
         // Replies bypass the bounded command queue; commands may be waiting for these replies.
         if (request?.type === "host.result") {
           try {

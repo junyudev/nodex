@@ -7,7 +7,10 @@ import type {
   AgentSubagentOverviewItem,
 } from "@nodex/agent-runtime/contracts";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
-import type { AgentRuntimeSessionEvent } from "../../../shared/agent-runtime-api";
+import type {
+  AgentRuntimeConnectionState,
+  AgentRuntimeSessionEvent,
+} from "../../../shared/agent-runtime-api";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 import { makeTestWorkbenchSession } from "./workbench-testkit/panel-fixtures";
 import { composerDraftIntents } from "@/lib/composer-draft-intents";
@@ -23,6 +26,13 @@ const render = (ui: ReactElement) => renderDom(ui, { wrapper: TestQueryProvider 
 const childAdapter = vi.hoisted(() => vi.fn());
 vi.mock("@/features/local-conversation/agent-runtime-conversation-adapter", () => ({
   useAgentRuntimeConversationAdapter: childAdapter,
+}));
+const runtimeConnection = vi.hoisted(() => ({
+  current: { status: "ready", generation: "generation" } as AgentRuntimeConnectionState,
+}));
+vi.mock("@/lib/agent-runtime-session-activity", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/agent-runtime-session-activity")>()),
+  useAgentRuntimeConnectionState: () => runtimeConnection.current,
 }));
 vi.mock("@/features/local-conversation/use-agent-instances", () => ({
   useAgentInstances: () => ({ instances: [] }),
@@ -230,6 +240,7 @@ const task = (id: string): AgentSubagentOverviewItem => ({
   resultAvailable: false,
 });
 beforeEach(() => {
+  runtimeConnection.current = { status: "ready", generation: "generation" };
   vi.spyOn(agentRuntimeRuntime, "connection").mockResolvedValue({
     status: "ready",
     generation: "generation",
@@ -485,6 +496,28 @@ it("keeps loaded pages across task events and attaches again after a delivery ga
   await screen.findByRole("button", { name: "Open subagent Review three" });
   expect(screen.queryByRole("alert")).toBeNull();
   expect(subscribe).toHaveBeenCalledTimes(3);
+  view.unmount();
+});
+
+it("attaches again on its own once the same process answers after a failed attachment", async () => {
+  vi.spyOn(agentRuntimeRuntime, "overview")
+    .mockRejectedValueOnce(new Error("Nodex Core is busy"))
+    .mockResolvedValueOnce(overviewOf([task("one")]));
+  const { subscribe, releases } = observe();
+  runtimeConnection.current = { status: "unresponsive", generation: "generation" };
+  const panel = (
+    <AgentRuntimeSubagentsOverviewPanel sessionId="session" threadId="root" onSelect={vi.fn()} />
+  );
+  const view = render(panel);
+  await screen.findByRole("alert");
+
+  runtimeConnection.current = { status: "ready", generation: "generation" };
+  view.rerender(panel);
+
+  await screen.findByRole("button", { name: "Open subagent Review one" });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(subscribe).toHaveBeenCalledTimes(2);
+  expect(releases[0]).toHaveBeenCalledOnce();
   view.unmount();
 });
 

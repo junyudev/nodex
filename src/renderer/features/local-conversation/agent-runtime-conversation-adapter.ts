@@ -183,7 +183,8 @@ export function failedWorkspacePreparation(
 export function projectAgentRuntimeConnection(
   state: AgentRuntimeConnectionState,
 ): CodexConnectionState {
-  if (state.status === "idle" || state.status === "ready") return connected;
+  if (state.status === "idle" || state.status === "ready" || state.status === "unresponsive")
+    return connected;
   if (state.status === "starting") return starting;
   const cached = connectionViews.get(state);
   if (cached) return cached;

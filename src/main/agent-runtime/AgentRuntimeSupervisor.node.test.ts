@@ -1,4 +1,5 @@
 import { assert, it } from "@effect/vitest";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -20,11 +21,13 @@ const fixture = Effect.gen(function* () {
   const generations: Array<{
     readonly terminated: Deferred.Deferred<AgentRuntimeProcessError>;
     readonly released: Deferred.Deferred<void>;
+    readonly responsive: SubscriptionRef.SubscriptionRef<boolean>;
   }> = [];
   const acquire = Effect.gen(function* () {
     const terminated = yield* Deferred.make<AgentRuntimeProcessError>();
     const released = yield* Deferred.make<void>();
-    generations.push({ terminated, released });
+    const responsive = yield* SubscriptionRef.make(true);
+    generations.push({ terminated, released, responsive });
     yield* Effect.addFinalizer(() => Deferred.succeed(released, undefined));
     const connection: AgentRuntimeProcessConnection = {
       identity: {
@@ -38,6 +41,7 @@ const fixture = Effect.gen(function* () {
       terminated: Deferred.await(terminated),
       notifications: Stream.empty,
       subscribeNotifications: Effect.succeed(Stream.empty),
+      responsive: SubscriptionRef.changes(responsive),
       subscribeExecutionNotifications: Effect.succeed(Stream.empty),
       request: (method) =>
         Effect.sync(() => requests.push(method)).pipe(
@@ -428,5 +432,129 @@ it.effect("activation and callers share the acquired generation's identity objec
     const acquired = yield* Queue.take(f.started);
     assert.strictEqual(activated[0]?.identity, acquired.identity);
     assert.strictEqual(connection.identity, acquired.identity);
+  }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "publishes responsiveness only for the current generation and explicit restarts preserve crash allowance",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      const supervisor = yield* make({
+        acquire: () => f.acquire,
+        activate: () => Effect.succeed(() => Effect.void),
+        restarts: { limit: 1, window: "5 minutes" },
+      });
+      yield* supervisor.restart("1");
+      assert.equal(f.generations.length, 0);
+      yield* supervisor.get();
+      const first = f.generations[0]!;
+      yield* SubscriptionRef.set(first.responsive, false);
+      yield* Effect.yieldNow;
+      assert.deepEqual(yield* supervisor.connectionState, {
+        status: "unresponsive",
+        generation: "1",
+      });
+      yield* SubscriptionRef.set(first.responsive, true);
+      yield* Effect.yieldNow;
+      assert.deepEqual(yield* supervisor.connectionState, { status: "ready", generation: "1" });
+      // A process that answered again keeps serving its Agents.
+      yield* supervisor.restart("1");
+      assert.equal(f.generations.length, 1);
+      for (let i = 1; i <= 3; i++) {
+        yield* SubscriptionRef.set(f.generations.at(-1)!.responsive, false);
+        yield* Effect.yieldNow;
+        // A stale click, such as from a second window, cannot replace the current process.
+        yield* supervisor.restart("stale");
+        assert.equal(f.generations.length, i);
+        yield* supervisor.restart(String(i));
+        assert.equal(f.generations.length, i + 1);
+      }
+      assert.equal(f.generations.length, 4);
+      assert.isTrue(yield* Deferred.isDone(first.released));
+      yield* SubscriptionRef.set(first.responsive, false);
+      yield* Deferred.succeed(
+        first.terminated,
+        new AgentRuntimeProcessError({ reason: "closed", message: "Late old exit" }),
+      );
+      yield* Effect.yieldNow;
+      assert.deepEqual(yield* supervisor.connectionState, { status: "ready", generation: "4" });
+      const last = f.generations[3]!;
+      yield* Deferred.succeed(
+        last.terminated,
+        new AgentRuntimeProcessError({ reason: "closed", message: "Crash" }),
+      );
+      yield* Deferred.await(last.released);
+      yield* TestClock.adjust("250 millis");
+      assert.equal((yield* supervisor.get()).identity.runtimeGeneration, "5");
+    }).pipe(Effect.scoped),
+);
+
+for (const stage of ["acquire", "activate"] as const) {
+  it.effect(`the combined start budget includes hung ${stage} and releases the gate`, () =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      let hang = true;
+      const supervisor = yield* make({
+        acquire: () => (stage === "acquire" && hang ? Effect.never : f.acquire),
+        activate: () =>
+          stage === "activate" && hang ? Effect.never : Effect.succeed(() => Effect.void),
+      });
+      const starting = yield* supervisor.get().pipe(Effect.exit, Effect.forkScoped);
+      yield* TestClock.adjust("9 minutes");
+      assert.isUndefined(starting.pollUnsafe());
+      yield* TestClock.adjust("1 minute");
+      assert.isTrue(Exit.isFailure(yield* Fiber.join(starting)));
+      assert.equal((yield* supervisor.connectionState).status, "failed");
+      hang = false;
+      yield* supervisor.get();
+      assert.equal((yield* supervisor.connectionState).status, "ready");
+    }).pipe(Effect.scoped),
+  );
+}
+
+it.effect("quit interrupts a hung start before waiting for the lifecycle gate", () =>
+  Effect.gen(function* () {
+    const supervisor = yield* make({
+      acquire: () => Effect.never,
+      activate: () => Effect.succeed(() => Effect.void),
+    });
+    const starting = yield* supervisor.get().pipe(Effect.exit, Effect.forkScoped);
+    yield* Effect.yieldNow;
+    yield* supervisor.close;
+    assert.isTrue(Exit.isFailure(yield* Fiber.join(starting)));
+    assert.equal((yield* supervisor.connectionState).status, "idle");
+  }).pipe(Effect.scoped),
+);
+
+it.effect("acquisition and activation spend one shared ten-minute budget", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const supervisor = yield* make({
+      acquire: () => Effect.sleep("6 minutes").pipe(Effect.andThen(f.acquire)),
+      activate: () => Effect.sleep("6 minutes").pipe(Effect.as(() => Effect.void)),
+    });
+    const starting = yield* supervisor.get().pipe(Effect.exit, Effect.forkScoped);
+    yield* TestClock.adjust("9 minutes");
+    assert.isUndefined(starting.pollUnsafe());
+    yield* TestClock.adjust("1 minute");
+    assert.isTrue(Exit.isFailure(yield* Fiber.join(starting)));
+    assert.isTrue(yield* Deferred.isDone(f.generations[0]!.released));
+  }).pipe(Effect.scoped),
+);
+
+it.effect("quit bounds quiescence even when the engine stops answering", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const supervisor = yield* make({
+      acquire: () => f.acquire,
+      activate: () => Effect.succeed(() => Effect.void),
+      idle: { after: "3 minutes", quiescent: () => Effect.never },
+    });
+    yield* supervisor.get();
+    const closing = yield* supervisor.close.pipe(Effect.forkScoped);
+    yield* TestClock.adjust("5 seconds");
+    yield* Fiber.join(closing);
+    assert.isTrue(yield* Deferred.isDone(f.generations[0]!.released));
   }).pipe(Effect.scoped),
 );

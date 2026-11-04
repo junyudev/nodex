@@ -60,6 +60,9 @@ export const rethrowCoreTransportFailure = (error: unknown): void => {
   if (error instanceof CoreTransportError || error instanceof CoreHttpError) throw error;
 };
 
+export const isRetryableCoreTransportError = (error: CoreTransportError): boolean =>
+  error.kind !== "aborted" && error.kind !== "unknown";
+
 /** One projection for direct and Desktop document commands. Unknown defects never retry. */
 export const documentSessionError = (failure: unknown): DocumentSyncCommandError => {
   const error = unwrapDocumentSessionFailure(failure);
@@ -88,7 +91,7 @@ export const documentSessionError = (failure: unknown): DocumentSyncCommandError
             ? "request_timeout"
             : "transport_unavailable",
       message: error.message,
-      retryable: error.kind !== "aborted" && error.kind !== "unknown",
+      retryable: isRetryableCoreTransportError(error),
       resetRequired: false,
     };
   }

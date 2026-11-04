@@ -8,13 +8,18 @@ const identity = {
   mcpEndpoint: "http://127.0.0.1:1/mcp",
   lastSequence: 7,
 };
-const send = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
+const send = (value, onWritten) => process.stdout.write(`${JSON.stringify(value)}\n`, onWritten);
 const success = (id, output) => send({ id, success: true, output });
 const pendingHosts = new Map();
 let executionSubscription;
 const blocked = [];
+process.on("SIGUSR1", () => {
+  const id = blocked.shift();
+  if (id) success(id, { id: "released", title: "released", workspaceRoot: "/tmp" });
+});
 const utilityTimers = new Map();
 let cancelledUtilities = 0;
+let pings = 0;
 const lines = createInterface({ input: process.stdin })[Symbol.asyncIterator]();
 const first = await lines.next();
 const bootstrap = first.done ? null : JSON.parse(first.value);
@@ -27,11 +32,17 @@ send({ type: "ready", identity });
 
 for await (const line of { [Symbol.asyncIterator]: () => lines }) {
   const request = JSON.parse(line);
+  if (request.type === "ping") {
+    pings++;
+    send({ type: "pong" });
+    continue;
+  }
   if (request.type === "request.cancel") {
     if (utilityTimers.has(request.id)) {
       clearTimeout(utilityTimers.get(request.id));
       utilityTimers.delete(request.id);
       cancelledUtilities++;
+      send({ id: request.id, success: false, error: { message: "Cancelled" } });
     }
     continue;
   }
@@ -42,8 +53,7 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
     continue;
   }
   if (request.method === "shutdown") {
-    success(request.id, { stopped: true });
-    process.exitCode = 0;
+    send({ id: request.id, success: true, output: { stopped: true } }, () => process.exit(0));
     break;
   }
   if(request.method === "sessions.search"){
@@ -58,6 +68,10 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
     continue;
   }
   if (request.method === "project.read") {
+    if (request.input.projectId === "ping-count") {
+      success(request.id, { id: "ping-count", title: String(pings), workspaceRoot: "/tmp" });
+      continue;
+    }
     if (request.input.projectId === "cancelled-utilities") {
       success(request.id, { cancelledUtilities, activeUtilities: utilityTimers.size });
       continue;
@@ -117,6 +131,11 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
       });
       continue;
     }
+    if (request.input.projectId === "held") {
+      blocked.push(request.id);
+      send({ type: "event", subscriptionId: "held", event: { sequence: 1, event: {} } });
+      continue;
+    }
     if (request.input.projectId.startsWith("blocked:")) {
       blocked.push(request.id);
       if (blocked.length === 64) send({ type: "event", subscriptionId: "pressure-ready", event: { sequence: 1, event: {} } });
@@ -163,12 +182,17 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
     continue;
   }
   if (request.method === "text.generate-structured") {
-    // Model work answers well after the transport default but inside its own budget.
+    // Model work answers inside its own budget.
     const timer = setTimeout(() => {
       utilityTimers.delete(request.id);
       success(request.id, { title: "Generated" });
     }, request.input.timeoutMs - 200);
     utilityTimers.set(request.id, timer);
+    continue;
+  }
+  if (request.method === "thread.snapshot") {
+    blocked.push(request.id);
+    send({ type: "event", subscriptionId: "held", event: { sequence: 1, event: {} } });
     continue;
   }
   if (request.method === "runtime.identity") success(request.id, identity);
