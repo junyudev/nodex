@@ -1,0 +1,41 @@
+src/renderer/features/inbox/inbox-message-editor.tsx
+  s_84ee3ee69e70b0::t_47b5fa0ee76e45 113
+docs/FRONTEND.md
+  s_9c72cf791afc7e::t_9c29adea9e7f51 412-414
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.browser.test.tsx
+  s_9c72cf791afc7e::t_f4cfe5e9fded1c 1-93
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_9c72cf791afc7e::t_4df21dbbdd6576 877,879
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.browser.test.tsx
+  s_9c72cf791afc7e::t_437b75c9e5eda9 1-78
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx
+  s_9c72cf791afc7e::t_f2ffb2dda76aac 450-452,462
+src/renderer/styles/text-field-scrollbar.browser.test.tsx
+  s_9c72cf791afc7e::t_29909c22d86f07 1-15
+src/renderer/styles/theme-surface.css
+  s_9c72cf791afc7e::t_96ab4f4364b427 142-143,153-154,165-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "24002b9d0e2a8505169261493fa280ab4ffc3efc",
+  "prompts": {},
+  "sessions": {
+    "s_84ee3ee69e70b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9846df37-ce55-441b-af89-6ab87afc12c3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
