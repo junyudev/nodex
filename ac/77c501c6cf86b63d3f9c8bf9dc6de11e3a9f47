@@ -1,0 +1,75 @@
+src/main/platform/node/TerminalPty.test.ts
+  s_ac07764467a613::t_8517d0edcdbe35 3,5,7,11,14,16-46,80-138
+src/main/terminal-runtime/TerminalReplay.node.test.ts
+  s_ac07764467a613::t_1d76ee65040df5 7-16,19-23
+  s_ac07764467a613::t_63e6d0fd686ae1 1-6,17-18,24-27
+src/main/platform/node/TerminalAction.node.test.ts
+  s_ac07764467a613::t_1d76ee65040df5 13,20,26,33
+  s_ac07764467a613::t_63e6d0fd686ae1 3-12,21-25,34
+  s_ac07764467a613::t_de6953273d35f4 1,14-19,27-32,40
+  s_ac07764467a613::t_2fb2c2b62c7f16 2,35-39,41-44
+docs/product-specs/workbench-shell.md
+  s_1c5a591c56d44c::t_cb40046f024058 145
+src/shared/ipc-api.ts
+  s_ac07764467a613::t_492876641a903e 2071
+src/main/terminal-runtime/TerminalReplay.ts
+  s_ac07764467a613::t_1f8801888f5724 1-48
+src/main/runtime-limits.ts
+  s_ac07764467a613::t_c091e6996fb687 2-3,9
+CHANGELOG.md
+  s_1c5a591c56d44c::t_cb40046f024058 16
+src/main/terminal-runtime/TerminalRuntimeMap.ts
+  s_ac07764467a613::t_176382b7719dec 56,74,115,134-135,149,195
+  s_ac07764467a613::t_c091e6996fb687 114
+docs/RELIABILITY.md
+  s_1c5a591c56d44c::t_cb40046f024058 487-489
+src/main/platform/node/TerminalPty.ts
+  s_ac07764467a613::t_1d76ee65040df5 135-137,140-141,153-166,168-176,227-229
+  s_ac07764467a613::t_c091e6996fb687 16,103-104,130-131,134,202-215
+  s_1c5a591c56d44c::t_6042e59fdf609b 98,101,116-129
+  s_ac07764467a613::t_176382b7719dec 3,14-15,17,40,46,60-83,102,115,132-133,142-143,167
+src/main/terminal-runtime/TerminalRuntimeMap.node.test.ts
+  s_ac07764467a613::t_63e6d0fd686ae1 1,23,31,43,54-58,110,128
+src/main/terminal-runtime/TerminalSessions.ts
+  s_ac07764467a613::t_2cc1ae4000ee27 257
+  s_ac07764467a613::t_1d76ee65040df5 347-351,618-620,637-639
+  s_ac07764467a613::t_c091e6996fb687 197
+  s_ac07764467a613::t_1f8801888f5724 5,30,38,130,161,165-166,608,612-613,616-617,621-626,629-636,640-645,647,667,669-672,707
+src/main/platform/node/TerminalPty.windows.test.ts
+  s_ac07764467a613::t_c091e6996fb687 123
+src/main/terminal-runtime/TerminalSessions.node.test.ts
+  s_ac07764467a613::t_c091e6996fb687 337
+  s_ac07764467a613::t_63e6d0fd686ae1 1,6-7,30,38,50,61-65,235,278,310,323-328,333-336,342,344-386,390-395,400-410,414-417,422,426-429,435-437
+  s_ac07764467a613::t_1d76ee65040df5 329-332,338-341,343,387-389,396-399,411-413,418-421,423-425,430-434
+src/main/platform/node/TerminalAction.ts
+  s_ac07764467a613::t_de6953273d35f4 11-12
+  s_ac07764467a613::t_1f8801888f5724 2-10,17-26
+  s_ac07764467a613::t_1d76ee65040df5 13-16
+  s_ac07764467a613::t_1e94f3ad4e280b 1
+src/main/ipc/handlers/TerminalIpc.ts
+  s_ac07764467a613::t_1f8801888f5724 237,240
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ac77c501c6cf86b63d3f9c8bf9dc6de11e3a9f47",
+  "prompts": {},
+  "sessions": {
+    "s_1c5a591c56d44c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9641fde6-60ad-48b0-8ca0-95c389da72d1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_ac07764467a613": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a4e3-89a9-74c2-91dd-a233cd12b6a2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
