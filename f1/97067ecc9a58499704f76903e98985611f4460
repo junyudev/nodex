@@ -1,0 +1,25 @@
+packages/mobile/package.json
+  s_9c72cf791afc7e::t_cb59e1f4adee57 17,19,26,51,78-80,83-86
+pnpm-workspace.yaml
+  s_9c72cf791afc7e::t_207b022859c554 110-111
+packages/mobile/deps/README.md
+  s_9c72cf791afc7e::t_0e4a61732cbb4c 1-9
+pnpm-lock.yaml
+  s_9c72cf791afc7e::t_56e9ea2164de87 1474-1476,1480-1482,1501-1503,1576-1578,2717-2723,3612-3623,10413-10423,12906-12911,13953-13960,21037-21043
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f197067ecc9a58499704f76903e98985611f4460",
+  "prompts": {},
+  "sessions": {
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
