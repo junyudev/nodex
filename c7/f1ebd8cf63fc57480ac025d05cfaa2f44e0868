@@ -1,0 +1,19 @@
+src/renderer/components/shared/readonly-code-block.tsx
+  s_c709cab53bd58e::t_ab436352852bea 59,73,79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c7f1ebd8cf63fc57480ac025d05cfaa2f44e0868",
+  "prompts": {},
+  "sessions": {
+    "s_c709cab53bd58e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63d-3057-7013-94d3-655a991c69e9",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
