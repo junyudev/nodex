@@ -38,6 +38,41 @@ const pasteImage = async (field: Locator, name: string) => {
   );
 };
 
+const attachmentGeometry = async (surface: Locator) => {
+  await expect(surface.locator("[data-composer-image-attachment-id]").first()).toBeVisible();
+  return await surface.evaluate((surface) => {
+    const edge = surface.getBoundingClientRect();
+    const element = surface.querySelector("[data-composer-image-attachment-id]")!;
+    const box = element.getBoundingClientRect();
+    return {
+      top: Math.round(box.top - edge.top),
+      left: Math.round(box.left - edge.left),
+      size: Math.round(box.width),
+      radius: getComputedStyle(element).borderTopLeftRadius,
+      surfaceHeight: Math.round(edge.height),
+    };
+  });
+};
+
+/** Starts a real drag's events over the target, then captures it with room for the mark. */
+const dragImageOver = async (page: Page, target: Locator, screenshot: string) => {
+  const transfer = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array([137])], "dragged.png", { type: "image/png" }));
+    return transfer;
+  });
+  await target.dispatchEvent("dragenter", { dataTransfer: transfer });
+  await expect(target).toHaveAttribute("data-file-drop-active", "true");
+  await page.mouse.move(4, 4);
+  const box = (await target.boundingBox())!;
+  await page.screenshot({
+    path: screenshot,
+    clip: { x: box.x - 8, y: box.y - 8, width: box.width + 16, height: box.height + 16 },
+  });
+  await target.dispatchEvent("dragleave", { dataTransfer: transfer });
+  await expect(target).toHaveAttribute("data-file-drop-active", "false");
+};
+
 const composerGeometry = async (parts: ComposerParts) => {
   const surface = await parts.surface.elementHandle();
   const prompt = await parts.prompt.elementHandle();
@@ -200,15 +235,35 @@ test("the Inbox composer shares a chat composer's layout, and long text scrolls 
         ),
       ).toBeGreaterThan(0);
 
+      await dragImageOver(page, inboxSurface, path.join(artifacts, "inbox-drop.png"));
+
       await inboxField.fill(SHORT_DRAFT);
       await pasteImage(inboxField, "pasted.png");
       await expect(inboxSurface.getByRole("button", { name: "pasted.png" })).toBeVisible();
+      const inboxAttachment = await attachmentGeometry(inboxSurface);
       await page.mouse.move(4, 4);
       await inboxSurface.screenshot({ path: path.join(artifacts, "inbox-image.png") });
       await inboxField.fill(LONG_DRAFT);
 
       await page.getByRole("button", { name: "New chat", exact: true }).first().click();
       await expect(threadField).toBeVisible();
+      await dragImageOver(
+        page,
+        page.locator("[data-file-drop-active]").filter({ has: threadField }),
+        path.join(artifacts, "thread-drop.png"),
+      );
+      // A chat takes images once its Agent is known.
+      await expect(page.locator('[data-composer-footer-trailing="true"]')).not.toContainText(
+        "Choose model",
+        { timeout: 30_000 },
+      );
+      await threadField.fill(SHORT_DRAFT);
+      await pasteImage(threadField, "pasted.png");
+      const threadSurface = page.locator(".composer-surface-chrome").filter({ has: threadField });
+      expect(inboxAttachment).toEqual(await attachmentGeometry(threadSurface));
+      await page.mouse.move(4, 4);
+      await threadSurface.screenshot({ path: path.join(artifacts, "thread-image.png") });
+
       // Over the current place, the capture keeps its title above text that scrolls.
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       await page.keyboard.press("c");

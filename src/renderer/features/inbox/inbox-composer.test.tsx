@@ -386,6 +386,98 @@ test("a rewrite shows the message's text as typed and saves only a change", asyn
   expect(onSave).toHaveBeenCalledWith("Keep a < b and C:\\Users, please");
 });
 
+const dragOf = (type: string) => ({
+  dataTransfer: { items: [{ kind: "file", type }], types: ["Files"] },
+});
+
+test("an image dragged over the composer marks it until it leaves, past elements inside it", async () => {
+  const view = render(
+    <TestQueryProvider>
+      <Composer onSend={vi.fn()} />
+    </TestQueryProvider>,
+  );
+  const form = view.getByTestId("inbox-composer");
+  const marked = () => form.getAttribute("data-file-drop-active");
+  const fire = async (run: () => void) => {
+    await act(async () => {
+      run();
+      await Promise.resolve();
+    });
+  };
+
+  await fire(() => fireEvent.dragEnter(form, dragOf("image/png")));
+  expect(marked()).toBe("true");
+  // Moving onto a child enters it before leaving the parent.
+  await fire(() => fireEvent.dragEnter(form, dragOf("image/png")));
+  await fire(() => fireEvent.dragLeave(form, dragOf("image/png")));
+  expect(marked()).toBe("true");
+  await fire(() => fireEvent.dragLeave(form, dragOf("image/png")));
+  expect(marked()).toBe("false");
+
+  // The composer takes only images, so another file does not mark it.
+  await fire(() => fireEvent.dragEnter(form, dragOf("application/pdf")));
+  expect(marked()).toBe("false");
+});
+
+test("a supported image whose type says nothing can still be dragged in and dropped", async () => {
+  const view = render(
+    <TestQueryProvider>
+      <Composer onSend={vi.fn()} />
+    </TestQueryProvider>,
+  );
+  const form = view.getByTestId("inbox-composer");
+  await act(async () => {
+    fireEvent.dragEnter(form, dragOf("application/octet-stream"));
+    await Promise.resolve();
+  });
+  expect(form.getAttribute("data-file-drop-active")).toBe("true");
+  // An event that stays uncancelled here would make the browser refuse the drop.
+  let notCancelled = true;
+  await act(async () => {
+    notCancelled = fireEvent.dragOver(form, dragOf("application/octet-stream"));
+    await Promise.resolve();
+  });
+  expect(notCancelled).toBe(false);
+
+  const photo = new File([new Uint8Array([137])], "photo.png", {
+    type: "application/octet-stream",
+  });
+  await act(async () => {
+    fireEvent.drop(form, {
+      dataTransfer: {
+        files: [photo],
+        items: [{ kind: "file", type: photo.type, getAsFile: () => photo }],
+        types: ["Files"],
+        getData: () => "",
+      },
+    });
+    await Promise.resolve();
+  });
+  await waitFor(() => expect(files.importFile).toHaveBeenCalledOnce());
+  await view.findByRole("button", { name: "shot.png" });
+  expect(form.getAttribute("data-file-drop-active")).toBe("false");
+});
+
+test("dropping ends the mark, whatever the drop held", async () => {
+  const view = render(
+    <TestQueryProvider>
+      <Composer onSend={vi.fn()} />
+    </TestQueryProvider>,
+  );
+  const form = view.getByTestId("inbox-composer");
+  await act(async () => {
+    fireEvent.dragEnter(form, dragOf("image/png"));
+    await Promise.resolve();
+  });
+  await act(async () => {
+    fireEvent.drop(form, {
+      dataTransfer: { files: [], items: [], types: [], getData: () => "" },
+    });
+    await Promise.resolve();
+  });
+  expect(form.getAttribute("data-file-drop-active")).toBe("false");
+});
+
 test("focus requests keep the composer mounted", async () => {
   const onSend = async () => undefined;
   const onDraftChange = () => undefined;

@@ -63,6 +63,7 @@ import {
 import { buildPageFileTree, type PageFileTreeProvenance } from "@/lib/page-file-tree";
 import { toPageFileTreeFile } from "@/lib/page-file-provenance";
 import { openModal, type ModalCloseProps } from "@/lib/modal-registry";
+import { useDragDepth } from "@/lib/use-drag-depth";
 import { useLibraryMetadata } from "@/lib/use-library-navigation";
 import { usePageFile } from "@/lib/use-library-files";
 import { usePageFiles, type PageFilesReadModel } from "@/lib/use-page-files";
@@ -132,8 +133,7 @@ function PageFilesDialogContent({
   const [editingPath, setEditingPath] = useState(false);
   const [path, setPath] = useState("");
   const [pathRevision, setPathRevision] = useState<number | null>(null);
-  const [fileDragActive, setFileDragActive] = useState(false);
-  const fileDragDepthRef = useRef(0);
+  const fileDrag = useDragDepth();
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const inventory = usePageFiles(routingContext, pageId, { query });
   const value = inventory.inventory ?? EMPTY_INVENTORY(pageId);
@@ -269,11 +269,6 @@ function PageFilesDialogContent({
     );
   };
 
-  const resetFileDrag = (): void => {
-    fileDragDepthRef.current = 0;
-    setFileDragActive(false);
-  };
-
   const handleFileDragEnter = (event: DragEvent<HTMLElement>): void => {
     if (!isSystemFileDrag(event.dataTransfer)) return;
     event.preventDefault();
@@ -282,9 +277,8 @@ function PageFilesDialogContent({
       event.dataTransfer.dropEffect = "none";
       return;
     }
-    fileDragDepthRef.current += 1;
+    fileDrag.enter();
     event.dataTransfer.dropEffect = "copy";
-    setFileDragActive(true);
   };
 
   const handleFileDragOver = (event: DragEvent<HTMLElement>): void => {
@@ -298,15 +292,14 @@ function PageFilesDialogContent({
     if (!isSystemFileDrag(event.dataTransfer)) return;
     event.preventDefault();
     event.stopPropagation();
-    fileDragDepthRef.current = Math.max(0, fileDragDepthRef.current - 1);
-    if (fileDragDepthRef.current === 0) setFileDragActive(false);
+    fileDrag.leave();
   };
 
   const handleFileDrop = (event: DragEvent<HTMLElement>): void => {
     if (!isSystemFileDrag(event.dataTransfer)) return;
     event.preventDefault();
     event.stopPropagation();
-    resetFileDrag();
+    fileDrag.end();
     if (mutating || !authority || !inventoryReady) return;
     const operationId = createUuidV7();
     void prepareDroppedFiles(routingContext, operationId, Array.from(event.dataTransfer.files))
@@ -385,7 +378,7 @@ function PageFilesDialogContent({
       open
       onOpenChange={(open) => {
         if (open) return;
-        resetFileDrag();
+        fileDrag.end();
         onClose();
       }}
     >
@@ -397,9 +390,9 @@ function PageFilesDialogContent({
           onDragOver={handleFileDragOver}
           onDragLeave={handleFileDragLeave}
           onDrop={handleFileDrop}
-          onDragEnd={resetFileDrag}
+          onDragEnd={fileDrag.end}
         >
-          {fileDragActive ? (
+          {fileDrag.active ? (
             <div
               data-page-files-drop-indicator="true"
               role="status"

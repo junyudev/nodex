@@ -244,7 +244,7 @@ textarea {
   border-radius: var(--composer-border-radius);
 }
 
-.composer-attachments[data-composer-spacing="default"] {
+.composer-attachments {
   --composer-attachment-inset: calc(var(--spacing) * 2);
   --composer-attachment-border-radius: max(
     0px,
@@ -254,11 +254,7 @@ textarea {
   padding-bottom: calc(var(--spacing) * 1.5);
 }
 
-.composer-attachments[data-composer-spacing="flush"][data-visible-attachments] {
-  margin-bottom: 5px;
-}
-
-.composer-attachments[data-composer-spacing="default"] .composer-attachment-surface {
+.composer-attachments .composer-attachment-surface {
   border-radius: var(--composer-attachment-border-radius);
 }
 
@@ -268,7 +264,7 @@ textarea {
 
 @supports (corner-shape: superellipse(1.5)) {
   .composer-multiline-surface,
-  .composer-attachments[data-composer-spacing="default"] .composer-attachment-surface {
+  .composer-attachments .composer-attachment-surface {
     corner-shape: var(--codex-corner-shape);
   }
 }

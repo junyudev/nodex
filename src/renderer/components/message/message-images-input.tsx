@@ -24,10 +24,15 @@ import {
   takeComposerLibraryImagePaste,
   type ComposerPastedFiles,
 } from "@/features/local-conversation/view/composer/image-attachments";
+import { ComposerAttachmentStrip } from "@/components/composer/composer-attachments";
 import { COMPOSER_FOOTER_GHOST_ICON_BUTTON_CLASS_NAME } from "@/components/composer/composer-footer-controls";
+import { useDragDepth } from "@/lib/use-drag-depth";
 import type { FileReadAuthority } from "@/lib/library-file-resources";
 import { insertTyped, pasteMarkdownSource } from "@/lib/text-field-paste";
-import { COMPOSER_IMAGE_MIME_TYPES } from "../../../shared/composer-image-input";
+import {
+  COMPOSER_IMAGE_MIME_TYPES,
+  isSupportedComposerImageMimeType,
+} from "../../../shared/composer-image-input";
 import { fileSource } from "../../../shared/file-resources";
 import { messageImageBlock } from "../../../shared/message-content";
 import { createUuidV7 } from "../../../shared/uuid-v7";
@@ -56,6 +61,19 @@ interface MessageImageUpload {
 }
 
 /**
+ * Whether a drag may hold an image, which marks the Composer for it. Only a drop names its files,
+ * and a name decides, so a type that says nothing could still be an image.
+ */
+const dragMayHoldImage = (transfer: DataTransfer): boolean =>
+  Array.from(transfer.items ?? []).some(
+    (item) =>
+      item.kind === "file" &&
+      (item.type === "" ||
+        item.type === "application/octet-stream" ||
+        isSupportedComposerImageMimeType(item.type)),
+  );
+
+/**
  * Takes images pasted, dropped, or picked into a Composer and imports each as a Library File;
  * `onImported` attaches them to the draft. A local preview stands in while each one imports.
  * An image the draft imported and then let go of, before it was sent, goes to Trash.
@@ -68,6 +86,7 @@ export function useMessageImageInput({
   readonly onImported: (images: readonly MessageDraftImage[]) => void;
 }) {
   const [uploads, setUploads] = useState<readonly MessageImageUpload[]>([]);
+  const drag = useDragDepth();
   const cancelled = useRef(new Set<string>());
   const previews = useRef(new Map<string, string>());
   useEffect(() => {
@@ -144,13 +163,29 @@ export function useMessageImageInput({
       event.preventDefault();
       if (library.text) insertTyped(event.currentTarget, library.text);
     },
-    onDragOver: (event: DragEvent<HTMLElement>) => {
-      if (!access || !event.dataTransfer.types.includes("Files")) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "copy";
-    },
-    onDrop: (event: DragEvent<HTMLElement>) => {
-      if (add(classifyComposerDataTransfer(event.dataTransfer).imageFiles)) event.preventDefault();
+    /** True while a drag this Composer takes is over its drop target. */
+    dropActive: drag.active,
+    /** Spread on the element that takes dropped images. */
+    dropTarget: {
+      onDragEnter: (event: DragEvent<HTMLElement>) => {
+        if (!access || !dragMayHoldImage(event.dataTransfer)) return;
+        event.preventDefault();
+        drag.enter();
+      },
+      onDragLeave: () => {
+        drag.leave();
+      },
+      onDragOver: (event: DragEvent<HTMLElement>) => {
+        // Stays open to every file: refusing one here would refuse an image the drop would take.
+        if (!access || !event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      },
+      onDrop: (event: DragEvent<HTMLElement>) => {
+        drag.end();
+        if (add(classifyComposerDataTransfer(event.dataTransfer).imageFiles))
+          event.preventDefault();
+      },
     },
   };
 }
@@ -178,44 +213,42 @@ export function MessageImageRow({
   const viewed = images.map((image) => messageImageBlock(image.fileId));
   return (
     <FileReadBoundary authority={readAuthority}>
-      <div className="hide-scrollbar w-full overflow-x-auto p-px">
-        <div className="flex min-w-max items-end gap-2">
-          {images.map((image, index) => (
-            <DraftImageThumbnail
-              key={image.fileId}
-              image={image}
-              size={size}
-              previewUrl={input.previewUrl(image.fileId)}
-              onOpen={() =>
-                setPreview({
-                  index,
-                  finalFocus:
-                    document.activeElement instanceof HTMLElement ? document.activeElement : null,
-                })
-              }
-              onRemove={() => {
-                onRemove(image.fileId);
-                input.discard([image]);
-              }}
-            />
-          ))}
-          {input.uploads.map((upload) => (
-            <ComposerImageAttachmentThumbnail
-              key={upload.id}
-              attachment={{
-                id: upload.id,
-                filename: upload.name,
-                src: upload.url,
-                uploadStatus: "uploading",
-              }}
-              previewEnabled={false}
-              size={size}
-              onOpen={() => undefined}
-              onRemove={input.cancel}
-            />
-          ))}
-        </div>
-      </div>
+      <ComposerAttachmentStrip>
+        {images.map((image, index) => (
+          <DraftImageThumbnail
+            key={image.fileId}
+            image={image}
+            size={size}
+            previewUrl={input.previewUrl(image.fileId)}
+            onOpen={() =>
+              setPreview({
+                index,
+                finalFocus:
+                  document.activeElement instanceof HTMLElement ? document.activeElement : null,
+              })
+            }
+            onRemove={() => {
+              onRemove(image.fileId);
+              input.discard([image]);
+            }}
+          />
+        ))}
+        {input.uploads.map((upload) => (
+          <ComposerImageAttachmentThumbnail
+            key={upload.id}
+            attachment={{
+              id: upload.id,
+              filename: upload.name,
+              src: upload.url,
+              uploadStatus: "uploading",
+            }}
+            previewEnabled={false}
+            size={size}
+            onOpen={() => undefined}
+            onRemove={input.cancel}
+          />
+        ))}
+      </ComposerAttachmentStrip>
       {preview && viewed[preview.index] ? (
         <MessageImagePreview
           images={viewed}

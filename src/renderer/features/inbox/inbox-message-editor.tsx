@@ -84,8 +84,7 @@ export function InboxMessageEditor({
         event.preventDefault();
         void save();
       }}
-      onDragOver={input.onDragOver}
-      onDrop={input.onDrop}
+      {...input.dropTarget}
     >
       <MessageImageRow
         images={draft.images}

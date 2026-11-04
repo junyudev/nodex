@@ -73,7 +73,8 @@ intents, and selection.
 - The composer has a chat composer's rows: the text above, and beneath it
   `Add photos` at the left and send at the right. The text grows with what it
   holds up to a quarter of the window's height, then scrolls by itself, so the
-  controls and any title stay in place.
+  controls and any title stay in place. An image dragged over the composer marks
+  it as the place to drop.
 - Each image becomes a Library File as soon as it is added and shows in the row
   above the text; the message is sent once every image is in. A sent message is
   its images followed by its text, so its Page opens with them as the stream

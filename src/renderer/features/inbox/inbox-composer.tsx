@@ -3,8 +3,10 @@ import {
   ComposerAdaptiveFooter,
   ComposerInput,
 } from "@/components/composer/composer-adaptive-footer";
+import { ComposerAttachments } from "@/components/composer/composer-attachments";
 import { COMPOSER_PRIMARY_ACTION_BUTTON_CLASS_NAME } from "@/components/composer/composer-footer-controls";
 import {
+  COMPOSER_DROP_TARGET_CLASS_NAME,
   COMPOSER_PROMPT_SCROLL_CLASS_NAME,
   COMPOSER_PROMPT_TEXT_CLASS_NAME,
   COMPOSER_SURFACE_CLASS_NAME,
@@ -119,11 +121,15 @@ export function InboxComposer({
     <form
       data-testid="inbox-composer"
       onSubmit={(event) => void submit(event)}
-      onDragOver={input.onDragOver}
-      onDrop={input.onDrop}
-      className={cn("relative flex flex-col", COMPOSER_SURFACE_CLASS_NAME)}
+      data-file-drop-active={input.dropActive ? "true" : "false"}
+      {...input.dropTarget}
+      className={cn(
+        "relative flex flex-col",
+        COMPOSER_SURFACE_CLASS_NAME,
+        input.dropActive && COMPOSER_DROP_TARGET_CLASS_NAME,
+      )}
     >
-      <div className="composer-attachments" data-composer-spacing="default">
+      <ComposerAttachments>
         <MessageImageRow
           images={draft.images}
           input={input}
@@ -135,7 +141,7 @@ export function InboxComposer({
             }))
           }
         />
-      </div>
+      </ComposerAttachments>
       <ComposerAdaptiveFooter
         layout="multiline"
         input={

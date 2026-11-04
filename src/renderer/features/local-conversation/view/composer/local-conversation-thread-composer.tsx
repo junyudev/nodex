@@ -204,7 +204,12 @@ import {
   COMPOSER_PRIMARY_ACTION_BUTTON_CLASS_NAME,
   ComposerFooterAccessoryDivider,
 } from "@/components/composer/composer-footer-controls";
-import { COMPOSER_SURFACE_CLASS_NAME } from "@/components/composer/composer-surface";
+import { ComposerAttachments } from "@/components/composer/composer-attachments";
+import {
+  COMPOSER_DROP_TARGET_CLASS_NAME,
+  COMPOSER_SURFACE_CLASS_NAME,
+} from "@/components/composer/composer-surface";
+import { useDragDepth } from "@/lib/use-drag-depth";
 import { PermissionModeDropdown } from "../shared/permission-mode-dropdown";
 import { AgentIntelligenceDropdown } from "@/components/shared/agent-runtime/agent-intelligence-dropdown";
 import {
@@ -1578,7 +1583,7 @@ function HydratedThreadComposer({
   const [pausedQueueSendDialogOpen, setPausedQueueSendDialogOpen] = useState(false);
   const [promptIntrinsicWidthPx, setPromptIntrinsicWidthPx] = useState<number | null>(null);
   const [compactInputWidthPx, setCompactInputWidthPx] = useState<number | null>(null);
-  const [isFileDragActive, setFileDragActive] = useState(false);
+  const fileDrag = useDragDepth();
   if (
     pausedQueueSendDialogOpen &&
     model.composerShell.queuedFollowUpStatus === "ready" &&
@@ -1611,7 +1616,6 @@ function HydratedThreadComposer({
   const appendPromptToHistoryRef = useRef<(text: string) => void>(() => {});
   const resetPromptHistorySelectionRef = useRef<() => void>(() => {});
   const dictationShortcutActiveRef = useRef(false);
-  const fileDragDepthRef = useRef(0);
   const attachmentGenerationRef = useRef(0);
   const pastedTextSourcesRef = useRef(new Map<string, string>());
   const pastedTextOperationGenerationRef = useRef(new Map<string, number>());
@@ -2926,25 +2930,19 @@ function HydratedThreadComposer({
     [setAppshotContexts],
   );
 
-  const handleComposerDragEnter = useCallback(
-    (event: DragEvent<HTMLDivElement>) => {
-      if (!browserImageDrag && !hasComposerFileDataTransfer(event.dataTransfer)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      event.dataTransfer.dropEffect = "copy";
-      fileDragDepthRef.current += 1;
-      setFileDragActive(true);
-    },
-    [browserImageDrag],
-  );
-
-  const handleComposerDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
-    if (fileDragDepthRef.current === 0) return;
+  const handleComposerDragEnter = (event: DragEvent<HTMLDivElement>) => {
+    if (!browserImageDrag && !hasComposerFileDataTransfer(event.dataTransfer)) return;
     event.preventDefault();
     event.stopPropagation();
-    fileDragDepthRef.current = Math.max(0, fileDragDepthRef.current - 1);
-    if (fileDragDepthRef.current === 0) setFileDragActive(false);
-  }, []);
+    event.dataTransfer.dropEffect = "copy";
+    fileDrag.enter();
+  };
+
+  const handleComposerDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (!fileDrag.leave()) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   const handleComposerDragOver = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
@@ -2983,8 +2981,7 @@ function HydratedThreadComposer({
   };
 
   const handleComposerDrop = (event: DragEvent<HTMLDivElement>) => {
-    fileDragDepthRef.current = 0;
-    setFileDragActive(false);
+    fileDrag.end();
     if (browserImageDrag) {
       void handleBrowserImageDrop(event);
       return;
@@ -4404,12 +4401,11 @@ function HydratedThreadComposer({
         inert={draftCaptureLocked}
         className={cn(
           "relative",
-          (browserImageDrag || isFileDragActive) &&
-            "rounded-[20px] ring-2 ring-token-focus-border ring-offset-2 ring-offset-transparent",
+          (browserImageDrag || fileDrag.active) && COMPOSER_DROP_TARGET_CLASS_NAME,
         )}
         data-composer-context-suggestions={contextSuggestionOpen ? "true" : undefined}
         data-browser-image-drop-active={browserImageDrag ? "true" : "false"}
-        data-file-drop-active={isFileDragActive ? "true" : "false"}
+        data-file-drop-active={fileDrag.active ? "true" : "false"}
         onDragEnter={handleComposerDragEnter}
         onDragLeave={handleComposerDragLeave}
         onDragOver={handleComposerDragOver}
@@ -4503,12 +4499,7 @@ function HydratedThreadComposer({
               <ComposerNoticeRail notice={composerNotice} placement="inset" />
             ) : null}
             {!floatingComposerSingleLine ? (
-              <div
-                className="composer-attachments"
-                data-composer-attachments="true"
-                data-composer-spacing="default"
-                data-visible-attachments={hasVisibleAttachments ? "true" : undefined}
-              >
+              <ComposerAttachments>
                 {hasVisibleAttachments ? (
                   <ComposerImageAttachmentRow
                     attachments={imageAttachments}
@@ -4716,7 +4707,7 @@ function HydratedThreadComposer({
                     })}
                   </ComposerImageAttachmentRow>
                 ) : null}
-              </div>
+              </ComposerAttachments>
             ) : null}
 
             {dictationRecovery ? (

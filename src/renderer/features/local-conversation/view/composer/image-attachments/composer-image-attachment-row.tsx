@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { ComposerAttachmentStrip } from "@/components/composer/composer-attachments";
 import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
 import {
   openUserAttachmentImagePreview,
@@ -93,8 +94,8 @@ export function ComposerImageAttachmentRow({
   };
 
   return (
-    <div className="hide-scrollbar w-full overflow-x-auto p-px">
-      <div className="flex min-w-max items-end gap-2">
+    <>
+      <ComposerAttachmentStrip>
         {attachments.map((attachment) => (
           <ComposerImageAttachmentThumbnail
             key={attachment.id}
@@ -112,7 +113,7 @@ export function ComposerImageAttachmentRow({
           />
         ))}
         {children}
-      </div>
+      </ComposerAttachmentStrip>
       {preview && previewed ? (
         <ImagePreviewDialog
           open
@@ -137,6 +138,6 @@ export function ComposerImageAttachmentRow({
           onEditImage={onEdit ? () => onEdit(previewed) : undefined}
         />
       ) : null}
-    </div>
+    </>
   );
 }
