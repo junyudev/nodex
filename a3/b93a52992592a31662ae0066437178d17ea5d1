@@ -1,0 +1,22 @@
+docs/release-windows.md
+  h_6a6ac0c07fcd37 65-74
+resources/windows/installer.nsh
+  h_6a6ac0c07fcd37 4-12,20-22,28,31,36,45,49,74,78
+resources/windows/stop-installation.ps1
+  h_6a6ac0c07fcd37 4-5,8-23,25-28,98-99,101-106,108-109,111-160,163-168,170-179
+scripts/ci/probe-windows-installer.ts
+  h_6a6ac0c07fcd37 189-195,224,263,277,322-324,370,374-375,379-384,667,671,695,703,777
+scripts/windows-installation-processes.test.ts
+  h_6a6ac0c07fcd37 5,12-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a3b93a52992592a31662ae0066437178d17ea5d1",
+  "prompts": {},
+  "humans": {
+    "h_6a6ac0c07fcd37": {
+      "author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
