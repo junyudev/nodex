@@ -1,0 +1,27 @@
+scripts/materialize-workspace-runtime.test.ts
+  s_b5c1b7231468a9::t_c2f4dd2f7aff7f 6,31-37,42-77,79-82,85-89,172-190,234-250
+  s_b5c1b7231468a9::t_da31a5914d830b 251-255
+scripts/materialize-workspace-runtime.ts
+  s_b5c1b7231468a9::t_c2f4dd2f7aff7f 107-108
+  s_b5c1b7231468a9::t_81aac3c0bae0d5 7,14,54-106,109-116,167,288-290
+resources/workspace-runtime/workspace-runtime.lock.json
+  s_b5c1b7231468a9::t_514551bd78f942 3,9-12
+resources/workspace-runtime/README.md
+  s_b5c1b7231468a9::t_9f2c2b0288240e 14-18,31-33,48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "37dd6e30e10c4f3efe25d5bbb872921e5cf98206",
+  "prompts": {},
+  "sessions": {
+    "s_b5c1b7231468a9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a4b4-8bb8-7e70-8bd2-e189458331ca",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

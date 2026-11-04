@@ -1,0 +1,36 @@
+scripts/prepared-electron-build.test.ts
+  s_292583b4730281::t_0091f59b62768d 166,331-376
+package.json
+  s_292583b4730281::t_6091b0f1fc7a07 212,215-216,230,244,249,292,295,298,302,307,311-312,320-321,323,326-329,332,335,337,341,350,353-355,365,370,372
+docs/development.md
+  s_292583b4730281::t_0091f59b62768d 94-109
+scripts/lib/electron-runtime-dependencies.ts
+  s_292583b4730281::t_0091f59b62768d 1-27,33-130
+  s_292583b4730281::t_dbbc2b786d1d59 28-32
+src/main/platform/node/ClaudeSdkModule.node.test.ts
+  s_292583b4730281::t_0091f59b62768d 71
+pnpm-lock.yaml
+  s_292583b4730281::t_2891440f3a7f1d 258-263,303-305,345-347,360-362,489-491,498-500,507-509,519-521,534-536,546-551,573-578,582-584,591-602,609-611,618-620,624-626,636-638,663-665,672-680,708-710,723-725,729-731
+src/main/platform/node/ClaudeSdkModule.ts
+  s_292583b4730281::t_dbbc2b786d1d59 7-8
+electron-builder.yml
+  s_292583b4730281::t_9cbba4f7b41bc2 21-26
+scripts/prepared-electron-build.ts
+  s_292583b4730281::t_0091f59b62768d 21,391-394
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c101c32eb04285c0ffc9509103492f5b9625e17d",
+  "prompts": {},
+  "sessions": {
+    "s_292583b4730281": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a4b4-3a0d-78b3-9c76-9a1436a1927b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
