@@ -1,0 +1,79 @@
+src/renderer/lib/code-block-syntax-theme.ts
+  s_c709cab53bd58e::t_b380c2b600eedd 111-113
+src/renderer/lib/markdown/markdown-code-highlight-client.ts
+  s_c709cab53bd58e::t_b380c2b600eedd 2-3,5-6,8-20,22-23
+  s_c709cab53bd58e::t_6f59b63fad7d92 1
+  s_c709cab53bd58e::t_e0d6b3471ae864 4
+  s_c709cab53bd58e::t_b95f8fb09c966e 7
+  s_c709cab53bd58e::t_e292aedc4cd425 21
+src/renderer/lib/markdown/markdown-code-highlight-queue.ts
+  s_c709cab53bd58e::t_b380c2b600eedd 1-5,7-176
+  s_fab41626a3a5b7::t_baaacc31af85a6 6
+src/renderer/lib/markdown/markdown-code-highlight.worker.ts
+  s_c709cab53bd58e::t_b380c2b600eedd 1-13
+src/renderer/lib/markdown/markdown-code-highlight-engine.ts
+  s_c709cab53bd58e::t_b380c2b600eedd 1-8,10-24
+  s_c709cab53bd58e::t_fc29f36fa8ab6c 9
+patches/@streamdown__code@2.0.0.patch
+  s_c709cab53bd58e::t_fa7cf3d5a10ba7 1-23
+pnpm-workspace.yaml
+  s_c709cab53bd58e::t_d9e7d24205aac2 22
+src/renderer/lib/markdown/markdown-code-highlight-queue.node.test.ts
+  s_c709cab53bd58e::t_77d7e830ff5a3b 1-154
+pnpm-lock.yaml
+  s_1b17aa0abf2902::t_4e6fd43ed1a38f 236,384,12192
+scripts/generate-code-language-artifacts.mjs
+  s_c9908ad600d631::t_4bb7d65fe7efaa 4,112-135
+src/renderer/lib/markdown/markdown-code-highlight-engine.node.test.ts
+  s_1b17aa0abf2902::t_c6744be02789b0 1-25
+src/renderer/lib/markdown/markdown-code-highlight-languages.ts
+  s_b8b9338452580c::t_8d12832be6dffd 1-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3f0f106a3d638310b6102e88227327a6135a70f7",
+  "prompts": {},
+  "sessions": {
+    "s_1b17aa0abf2902": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63d-6297-7152-a184-42890eef73be",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b8b9338452580c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63c-6779-7322-9335-f40fc4bb8b3b",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c709cab53bd58e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63d-3057-7013-94d3-655a991c69e9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c9908ad600d631": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63b-d8f9-7910-ac1a-db902a712c02",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fab41626a3a5b7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63c-2882-7fe2-8ac7-abca1f363e49",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
