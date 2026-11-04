@@ -1,0 +1,37 @@
+tests/e2e/nodex-app-tools-session-long-wait.spec.ts
+  s_8e6fbab6480499::t_fa63246a5dbb13 140-151
+tests/e2e/nodex-app-tools-session.spec.ts
+  s_8e6fbab6480499::t_6e4f045f474757 56-59,92,94,97,99,102-103,110-111,114,116,122-123,237,240,249,342,344,347-350
+tests/e2e/nodex-app-tools-automation.spec.ts
+  s_6388ea79d34ee6::t_84f8a6be310ad2 65,67,69,71-72,74-75,84,86-87,89,125-128,139-142,151-154,171-179
+tests/e2e/nodex-app-tools-presentation.spec.ts
+  s_6388ea79d34ee6::t_31a022e2e4cdf1 67-72,74-75,80-81
+tests/e2e/nodex-app-tools-session-reading.spec.ts
+  s_6388ea79d34ee6::t_7e716a89f24acb 170,333,364,766,776,878,881,894,898
+tests/e2e/nodex-app-tools-sidebar.spec.ts
+  s_6388ea79d34ee6::t_0d2dadff34190c 80,91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d94d0b97fae05681ccc2dfeb16a35452f7d665ee",
+  "prompts": {},
+  "sessions": {
+    "s_6388ea79d34ee6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a5f9-2e36-77a1-8fb4-05e759e96ff0",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8e6fbab6480499": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a5e9-2c11-7b23-ab41-f04ec74c8d05",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
