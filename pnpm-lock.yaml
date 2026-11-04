@@ -236,6 +236,7 @@ patchedDependencies:
   '@vitest/browser@5.0.5': 64e14351a6576d6d5a07faa82b017cd4d15fb6523f3620dcfaa43290b2a78f67
   '@voidzero-dev/vite-plus-core@1.4.0': 80e4a2746abf3bc3d69f88d603008fd01c5c3b901a78dad0f57e0caf75535b04
   '@y/prosemirror@2.0.0-6': 0571932eed7c6e4ffb73defa770d0e67e7b37168f173eecaf8ec49378a7f767e
+  app-builder-lib@26.18.0: d0a40971e84633bcb8035b3951c5c7b4a370069517e0028e61d8893c4a794a15
   dir-compare@4.2.0: 05212fc3bdbbe99ae7894b4da9ef8d917ce6e75999449766af26212c9323fdd2
   glob@7.2.3: dc9d0060a3c6a105658695875f885c6c85af2b98d0383704b05c426971bab12e
   prosemirror-view@1.42.8: 76f963e8b097c73ce4c166572f1bbaab9d5aca1e321f5974069edd9bd78fecef
@@ -13235,7 +13236,7 @@ snapshots:
       normalize-path: 3.0.0
       picomatch: 4.0.4
 
-  app-builder-lib@26.18.0(dmg-builder@26.18.0)(electron-builder-squirrel-windows@26.18.0)(supports-color@10.2.2):
+  app-builder-lib@26.18.0(patch_hash=d0a40971e84633bcb8035b3951c5c7b4a370069517e0028e61d8893c4a794a15)(dmg-builder@26.18.0)(electron-builder-squirrel-windows@26.18.0)(supports-color@10.2.2):
     dependencies:
       '@electron/asar': 3.4.1(patch_hash=66237c8809f62aa78f1522622a6f31b17560ecfb7a21fc67593c9fc74e261fdd)
       '@electron/fuses': 1.8.0
@@ -13998,7 +13999,7 @@ snapshots:
 
   dmg-builder@26.18.0(electron-builder-squirrel-windows@26.18.0)(supports-color@10.2.2):
     dependencies:
-      app-builder-lib: 26.18.0(dmg-builder@26.18.0)(electron-builder-squirrel-windows@26.18.0)(supports-color@10.2.2)
+      app-builder-lib: 26.18.0(patch_hash=d0a40971e84633bcb8035b3951c5c7b4a370069517e0028e61d8893c4a794a15)(dmg-builder@26.18.0)(electron-builder-squirrel-windows@26.18.0)(supports-color@10.2.2)
       builder-util: 26.16.0(supports-color@10.2.2)
       fs-extra: 10.1.0
       js-yaml: 4.3.2
@@ -14060,7 +14061,7 @@ snapshots:
 
   electron-builder-squirrel-windows@26.18.0(dmg-builder@26.18.0)(supports-color@10.2.2):
     dependencies:
-      app-builder-lib: 26.18.0(dmg-builder@26.18.0)(electron-builder-squirrel-windows@26.18.0)(supports-color@10.2.2)
+      app-builder-lib: 26.18.0(patch_hash=d0a40971e84633bcb8035b3951c5c7b4a370069517e0028e61d8893c4a794a15)(dmg-builder@26.18.0)(electron-builder-squirrel-windows@26.18.0)(supports-color@10.2.2)
       builder-util: 26.16.0(supports-color@10.2.2)
       electron-winstaller: 5.4.0(supports-color@10.2.2)
     transitivePeerDependencies:
@@ -14069,7 +14070,7 @@ snapshots:
 
   electron-builder@26.18.0(electron-builder-squirrel-windows@26.18.0)(supports-color@10.2.2):
     dependencies:
-      app-builder-lib: 26.18.0(dmg-builder@26.18.0)(electron-builder-squirrel-windows@26.18.0)(supports-color@10.2.2)
+      app-builder-lib: 26.18.0(patch_hash=d0a40971e84633bcb8035b3951c5c7b4a370069517e0028e61d8893c4a794a15)(dmg-builder@26.18.0)(electron-builder-squirrel-windows@26.18.0)(supports-color@10.2.2)
       builder-util: 26.16.0(supports-color@10.2.2)
       builder-util-runtime: 9.7.0(supports-color@10.2.2)
       chalk: 4.1.2

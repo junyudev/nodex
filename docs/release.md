@@ -68,6 +68,14 @@ and final installer hash. See [Windows distribution](release-windows.md).
 The tag is created only after this bundle passes. A published release is never
 rebuilt in place, and an existing tag is never moved.
 
+The macOS DMG uses LZMA (`ULMO`) because it is only the first-install download:
+every later update goes through Sparkle, whose ZIP this format does not affect. On
+the v0.5.1 App, LZMA cut the DMG from 831 MiB to 618 MiB and added about 40 seconds
+of verification and copying on an M4 Max. A 2 MiB/s download saves almost two
+minutes; above about 5 MiB/s the first install takes slightly longer overall, once.
+bzip2 (`UDBZ`) is both larger and slower to open than LZMA, and LZFSE (`ULFO`) saves
+only 13 MiB.
+
 Distribution executes the stateful packaged runtime
 smoke once against the extracted notarized ZIP App, including launch and the
 symlinked CLI/Core/ripgrep workflow. The mounted DMG receives structural,

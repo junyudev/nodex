@@ -84,7 +84,7 @@ describe("electron-builder runtime resources", () => {
       SURequireSignedFeed: true,
       SUVerifyUpdateBeforeExtraction: true,
     });
-    expect(config.dmg).toMatchObject({ sign: true, writeUpdateInfo: false });
+    expect(config.dmg).toMatchObject({ format: "ULMO", sign: true, writeUpdateInfo: false });
     expect(config.publish).toBeUndefined();
   });
 

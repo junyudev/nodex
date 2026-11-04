@@ -144,6 +144,8 @@ mac:
   notarize: true
 
 dmg:
+  # A quarter smaller first-install download for a slower first open; see docs/release.md.
+  format: ULMO
   sign: true
   writeUpdateInfo: false
   title: "${productName}"
