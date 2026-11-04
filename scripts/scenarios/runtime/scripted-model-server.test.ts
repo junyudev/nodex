@@ -70,6 +70,8 @@ const sendWebSocketRequest = async (
       cleanup();
       reject(error);
     };
+    const onClose = (code: number, reason: Buffer): void =>
+      onError(new Error(`WebSocket closed before response.completed: ${code} ${reason}`));
     const onMessage = (data: Buffer): void => {
       const parsed: unknown = JSON.parse(data.toString("utf8"));
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return;
@@ -83,9 +85,11 @@ const sendWebSocketRequest = async (
     const cleanup = (): void => {
       webSocket.off("error", onError);
       webSocket.off("message", onMessage);
+      webSocket.off("close", onClose);
     };
     webSocket.on("error", onError);
     webSocket.on("message", onMessage);
+    webSocket.on("close", onClose);
     webSocket.send(JSON.stringify(body));
   });
 
@@ -585,6 +589,191 @@ describe("ScriptedModelServer", () => {
         }
       },
     );
+  });
+
+  test.each([
+    { transport: "http", history: "incremental" },
+    { transport: "http", history: "full" },
+    { transport: "websocket", history: "incremental" },
+    { transport: "websocket", history: "full" },
+  ])(
+    "matches $history conversation input over $transport without changing new tool outputs",
+    async ({ transport, history }) => {
+      const prompt = { type: "message", role: "user", content: "DEPENDENCIES" };
+      const toolCall = responses.functionCall("dependencies", "load_dependencies", {});
+      const commentary = responses.assistantMessage("context-note", "Looking up dependencies");
+      const toolOutput = {
+        type: "custom_tool_call_output",
+        call_id: "dependencies",
+        output: "available",
+      };
+      await withScriptedModelServer(
+        {
+          exchanges: [
+            {
+              name: "dependencies",
+              match: (request) => request.hasUserInputText("DEPENDENCIES"),
+              expectedCalls: 2,
+              respond: (request, index) => {
+                if (index === 1) {
+                  expect(request.hasInputText("DEPENDENCIES")).toBe(true);
+                  expect(request.hasInputText("Looking up dependencies")).toBe(true);
+                  expect(request.effectiveInputItems()).toEqual([
+                    prompt,
+                    toolCall.item,
+                    commentary.item,
+                    toolOutput,
+                  ]);
+                  expect(request.inputItems()).toEqual(
+                    history === "incremental"
+                      ? [toolOutput]
+                      : [prompt, toolCall.item, commentary.item, toolOutput],
+                  );
+                  expect(request.toolCallOutput("dependencies")).toEqual(toolOutput);
+                  expect(request.functionCallOutput("dependencies")).toEqual(toolOutput);
+                }
+                const id = `dependencies-${index}`;
+                return responses.stream([
+                  responses.created(id),
+                  ...(index === 0 ? [toolCall, commentary] : []),
+                  responses.completed(id),
+                ]);
+              },
+            },
+          ],
+        },
+        async (server) => {
+          const webSocket =
+            transport === "websocket"
+              ? await openWebSocket(`${server.baseUrl.replace(/^http/u, "ws")}/v1/responses`)
+              : null;
+          const send = async (body: Record<string, unknown>) => {
+            if (webSocket !== null) {
+              await sendWebSocketRequest(webSocket, { type: "response.create", ...body });
+            } else {
+              expect((await postJson(`${server.baseUrl}/v1/responses`, body)).status).toBe(200);
+            }
+          };
+          try {
+            await send({ input: [prompt] });
+            await send(
+              history === "incremental"
+                ? { previous_response_id: "dependencies-0", input: [toolOutput] }
+                : { input: [prompt, toolCall.item, commentary.item, toolOutput] },
+            );
+          } finally {
+            webSocket?.close();
+          }
+        },
+      );
+    },
+  );
+
+  test("keeps inherited tool outputs out of new-input predicates", () => {
+    const inherited = [
+      { type: "function_call_output", call_id: "old-function", output: "done" },
+      { type: "mcp_tool_call_output", call_id: "old-mcp", output: "done" },
+      { type: "tool_search_output", call_id: "old-search", tools: [] },
+    ];
+    const request = new ScriptedModelRequest({
+      body: { input: [] },
+      inheritedInput: inherited,
+      headers: {},
+      method: "POST",
+      path: "/v1/responses",
+    });
+    expect(request.effectiveInputItems()).toEqual(inherited);
+    expect(request.inputItems()).toEqual([]);
+    expect(request.hasInputText("done")).toBe(true);
+    expect(request.functionCallOutput("old-function")).toBeNull();
+    expect(request.toolCallOutput("old-mcp")).toBeNull();
+    expect(request.toolSearchOutput("old-search")).toBeNull();
+  });
+
+  test("does not consume a conversation exchange for unknown context or unrelated input", async () => {
+    const calls: number[] = [];
+    const server = await ScriptedModelServer.start({
+      exchanges: [
+        {
+          name: "dependencies",
+          expectedCalls: 2,
+          match: (request) => request.hasUserInputText("DEPENDENCIES"),
+          respond: (_request, index) => {
+            calls.push(index);
+            return responses.stream([
+              responses.created(`dependencies-${index}`),
+              responses.completed(`dependencies-${index}`),
+            ]);
+          },
+        },
+      ],
+    });
+    const post = (body: unknown) => postJson(`${server.baseUrl}/v1/responses`, body);
+    try {
+      expect(
+        (await post({ input: [{ type: "message", role: "user", content: "DEPENDENCIES" }] }))
+          .status,
+      ).toBe(200);
+      const output = { type: "function_call_output", call_id: "dependencies", output: "available" };
+      expect((await post({ previous_response_id: "unknown", input: [output] })).status).toBe(500);
+      expect(
+        (await post({ input: [{ type: "message", role: "user", content: "unrelated" }] })).status,
+      ).toBe(500);
+      expect(calls).toEqual([0]);
+      expect((await post({ previous_response_id: "dependencies-0", input: [output] })).status).toBe(
+        200,
+      );
+      expect(calls).toEqual([0, 1]);
+      expect((await post({ previous_response_id: "dependencies-1", input: [output] })).status).toBe(
+        500,
+      );
+      expect(calls).toEqual([0, 1]);
+      expect(() => server.verify()).toThrow(/Unexpected model request/u);
+      expect(server.transcript().match(/UNMATCHED/gu)).toHaveLength(3);
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("expires inherited input and tools together at the response-context bound", async () => {
+    const server = await ScriptedModelServer.start({
+      exchanges: [
+        {
+          name: "context seeds",
+          expectedCalls: 1_026,
+          match: (request) => request.hasUserInputText("context seed"),
+          respond: (_request, index) =>
+            responses.stream([
+              responses.created(`context-${index}`),
+              responses.completed(`context-${index}`),
+            ]),
+        },
+      ],
+    });
+    const post = (body: unknown) => postJson(`${server.baseUrl}/v1/responses`, body);
+    try {
+      for (let index = 0; index < 1_025; index += 1) {
+        expect(
+          (
+            await post({
+              input: [{ type: "message", role: "user", content: `context seed ${index}` }],
+              tools: [{ type: "function", name: "seed_tool" }],
+            })
+          ).status,
+        ).toBe(200);
+      }
+      expect((await post({ previous_response_id: "context-1024", input: [] })).status).toBe(200);
+      const retained = server.requests().at(-1)!;
+      expect(retained.hasUserInputText("context seed 1024")).toBe(true);
+      expect(retained.hasToolType("function")).toBe(true);
+      expect((await post({ previous_response_id: "context-0", input: [] })).status).toBe(500);
+      const expired = server.requests().at(-1)!;
+      expect(expired.hasInputText("context seed")).toBe(false);
+      expect(expired.hasToolType("function")).toBe(false);
+      expect(() => server.verify()).toThrow(/Unexpected model request/u);
+    } finally {
+      await server.close();
+    }
   });
 
   test("runs different WebSocket stream lanes concurrently while preserving stream identity", async () => {

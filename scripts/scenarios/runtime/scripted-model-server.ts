@@ -9,6 +9,11 @@ const DEFAULT_MAXIMUM_TRANSCRIPT_CHARACTERS = 24_000;
 
 export type JsonObject = Record<string, unknown>;
 
+interface ResponseContext {
+  readonly input: readonly unknown[];
+  readonly tools: readonly unknown[];
+}
+
 export interface ScriptedModelProviderConfig {
   readonly base_url: string;
   readonly name: string;
@@ -154,12 +159,14 @@ export class ScriptedModelRequest {
   readonly method: string;
   readonly path: string;
   readonly signal: AbortSignal;
+  readonly #inheritedInput: readonly unknown[];
   readonly #inheritedTools: readonly unknown[];
 
   constructor(input: {
     readonly body: JsonObject;
     readonly connectionId?: string;
     readonly headers: IncomingHttpHeaders;
+    readonly inheritedInput?: readonly unknown[];
     readonly inheritedTools?: readonly unknown[];
     readonly method: string;
     readonly path: string;
@@ -168,6 +175,7 @@ export class ScriptedModelRequest {
     this.body = input.body;
     this.connectionId = input.connectionId ?? null;
     this.headers = input.headers;
+    this.#inheritedInput = input.inheritedInput ?? [];
     this.#inheritedTools = input.inheritedTools ?? [];
     this.method = input.method;
     this.path = input.path;
@@ -187,8 +195,14 @@ export class ScriptedModelRequest {
     return normalizeHeader(this.headers[name.toLowerCase()]);
   }
 
+  /** Only newly submitted items; tool-output predicates must not replay inherited outputs. */
   inputItems(): readonly unknown[] {
     return Array.isArray(this.body.input) ? this.body.input : [];
+  }
+
+  /** The same conversation a full-history request supplies, including prior model output. */
+  effectiveInputItems(): readonly unknown[] {
+    return [...this.#inheritedInput, ...this.inputItems()];
   }
 
   /** Distinguishes a model generation from Responses WebSocket transport prewarming. */
@@ -197,11 +211,11 @@ export class ScriptedModelRequest {
   }
 
   hasInputText(text: string): boolean {
-    return JSON.stringify(this.inputItems()).includes(text);
+    return JSON.stringify(this.effectiveInputItems()).includes(text);
   }
 
   hasUserInputText(text: string): boolean {
-    return this.inputItems().some((item) => {
+    return this.effectiveInputItems().some((item) => {
       if (!isObject(item) || item.type !== "message" || item.role !== "user") return false;
       return JSON.stringify(item.content).includes(text);
     });
@@ -359,6 +373,7 @@ export class ScriptedModelRequest {
       generate: this.body.generate ?? true,
       clientMetadata: this.body.client_metadata ?? null,
       model: this.body.model ?? null,
+      inputInheritedFromPreviousResponse: this.#inheritedInput.length > 0,
       toolsInheritedFromPreviousResponse: this.#inheritedTools.length > 0,
       tools: this.effectiveTools().map((tool) =>
         isObject(tool)
@@ -597,7 +612,7 @@ export class ScriptedModelServer {
   readonly #maximumTranscriptCharacters: number;
   readonly #records: RequestRecord[] = [];
   readonly #requestWaiters = new Set<RequestWaiter>();
-  readonly #responseTools = new Map<string, readonly unknown[]>();
+  readonly #responseContexts = new Map<string, ResponseContext>();
   readonly #failures: string[] = [];
   readonly #server: ReturnType<typeof createServer>;
   readonly #sockets = new Set<Socket>();
@@ -606,31 +621,42 @@ export class ScriptedModelServer {
   #closed = false;
   #nextWebSocketConnectionId = 1;
 
-  #rememberResponseTools(responseId: string, request: ScriptedModelRequest): void {
-    if (this.#responseTools.size >= DEFAULT_MAXIMUM_RESPONSE_CONTEXTS) {
-      const oldestResponseId = this.#responseTools.keys().next().value;
-      if (typeof oldestResponseId === "string") this.#responseTools.delete(oldestResponseId);
+  #rememberResponseContext(
+    responseId: string,
+    request: ScriptedModelRequest,
+    output: readonly unknown[] = [],
+  ): void {
+    this.#responseContexts.delete(responseId);
+    if (this.#responseContexts.size >= DEFAULT_MAXIMUM_RESPONSE_CONTEXTS) {
+      const oldestResponseId = this.#responseContexts.keys().next().value;
+      if (typeof oldestResponseId === "string") this.#responseContexts.delete(oldestResponseId);
     }
-    this.#responseTools.set(responseId, request.effectiveTools());
+    this.#responseContexts.set(responseId, {
+      input: [...request.effectiveInputItems(), ...output],
+      tools: request.effectiveTools(),
+    });
   }
 
-  #inheritedTools(body: JsonObject): readonly unknown[] {
+  #inheritedContext(body: JsonObject): ResponseContext | undefined {
     const previousResponseId = body.previous_response_id;
-    if (typeof previousResponseId !== "string") return [];
-    return this.#responseTools.get(previousResponseId) ?? [];
+    if (typeof previousResponseId !== "string") return undefined;
+    return this.#responseContexts.get(previousResponseId);
   }
 
   #rememberResponseEvents(
     response: ScriptedModelHttpResponse,
     request: ScriptedModelRequest,
   ): void {
+    const output = (response.websocketEvents ?? []).flatMap((event) =>
+      event.type === "response.output_item.done" && isObject(event.item) ? [event.item] : [],
+    );
     for (const event of response.websocketEvents ?? []) {
       if (
         event.type === "response.created" &&
         isObject(event.response) &&
         typeof event.response.id === "string"
       ) {
-        this.#rememberResponseTools(event.response.id, request);
+        this.#rememberResponseContext(event.response.id, request, output);
       }
     }
   }
@@ -690,10 +716,12 @@ export class ScriptedModelServer {
         const decodedBody = decodeRequestBody(encodedBody, request.headers);
         const parsed: unknown = JSON.parse(decodedBody.toString("utf8"));
         if (!isObject(parsed)) throw new Error("Model request body must be a JSON object");
+        const inherited = runtime.#inheritedContext(parsed);
         const modelRequest = new ScriptedModelRequest({
           body: parsed,
           headers: request.headers,
-          inheritedTools: runtime.#inheritedTools(parsed),
+          inheritedInput: inherited?.input,
+          inheritedTools: inherited?.tools,
           method: request.method,
           path,
           signal: abortController.signal,
@@ -921,18 +949,20 @@ export class ScriptedModelServer {
       const laneKey = streamId ?? "\0default";
       const previous = laneQueues.get(laneKey) ?? Promise.resolve();
       const current = previous.then(async () => {
+        const inherited = this.#inheritedContext(parsed);
         const request = new ScriptedModelRequest({
           body: parsed,
           connectionId,
           headers: upgradeRequest.headers,
-          inheritedTools: this.#inheritedTools(parsed),
+          inheritedInput: inherited?.input,
+          inheritedTools: inherited?.tools,
           method: "WEBSOCKET",
           path: new URL(upgradeRequest.url ?? "/", "http://127.0.0.1").pathname,
         });
         if (request.body.generate === false) {
           const responseId = `scripted-prewarm-${this.#records.length + 1}`;
           this.#recordRequest(request, "automatic websocket prewarm");
-          this.#rememberResponseTools(responseId, request);
+          this.#rememberResponseContext(responseId, request);
           sendForStream(responses.created(responseId), streamId);
           sendForStream(responses.completed(responseId), streamId);
           return;
