@@ -1,0 +1,19 @@
+src/renderer/lib/markdown/conversation-document.ts
+  s_b60e05965fb1be::t_4ea74d0feae8f4 195-197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f0e0f59861c0b2956ccccf40d6d5594582a179d8",
+  "prompts": {},
+  "sessions": {
+    "s_b60e05965fb1be": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a61f-2ce1-7742-9c82-704cd7dfb5c3",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
