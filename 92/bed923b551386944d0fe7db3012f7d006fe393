@@ -1,0 +1,75 @@
+crates/nodex-core-contracts/src/workspace.rs
+  s_0ea5fa27e831e2::t_cb7a27261be8d9 19,2128,2385-2390,2393-2394
+crates/nodex-core/schema/current.sql
+  s_0ea5fa27e831e2::t_dff38e94e6d8f0 4404-4405,4565,4569,5078-5084
+crates/nodex-core/schema/migrations/v207_to_v208.sql
+  s_0ea5fa27e831e2::t_6be3c8a498f9d0 1-57
+crates/nodex-core/src/document/integrity.rs
+  s_0ea5fa27e831e2::t_c27d9f50f0a121 84
+crates/nodex-core/src/infrastructure/migration.rs
+  s_0ea5fa27e831e2::t_482107c9ac43e4 454-458,2710-2719,3769-3771,9005-9006,10052-10100
+crates/nodex-core/src/workspace/inbox.rs
+  s_0ea5fa27e831e2::t_9f361f70e1f0f4 828-829
+crates/nodex-core/src/workspace/inbox_nodex.rs
+  s_0ea5fa27e831e2::t_e22d5dfc9e29fa 84-93,95-156,158,178,190-195,198-249,251-261,267-268,286-302
+crates/nodex-core/src/workspace/inbox_nodex_tests.rs
+  s_0ea5fa27e831e2::t_3e50230d2f5492 6-7,53-56,59-112,123,128-153,165,171,227,255,280,327,364,380-441,452-459,506,698-1048
+crates/nodex-core/src/workspace/mutation.rs
+  s_0ea5fa27e831e2::t_ddfc538fcd96a2 1551,1714-1726
+crates/nodex-core/tests/fixtures/rewind-v208-to-v207.sql
+  s_0ea5fa27e831e2::t_a3bb887c222ea6 1-53
+crates/nodex-core/tests/fixtures/schema-v207.sql
+  s_0ea5fa27e831e2::t_7ad724c462eb49 1-5079
+crates/nodex-store-format/src/lib.rs
+  s_0ea5fa27e831e2::t_c3def448793e63 301-304
+docs/adr/0075-nodex-coordinates-managed-work.md
+  s_0ea5fa27e831e2::t_fd5123dedd8117 43-44
+docs/product-specs/coordinator-behavior.md
+  s_0ea5fa27e831e2::t_9211daed7761db 112-115,194-201
+packages/core-protocol/openapi.json
+  s_0ea5fa27e831e2::t_b92500516c421b 32239,32249-32253,38523-38537,44463,44473-44477,51342-51351,51450-51459
+packages/core-protocol/src/compatibility.generated.ts
+  s_0ea5fa27e831e2::t_4903bf284c89d1 24,42-43
+packages/core-protocol/src/generated.ts
+  s_0ea5fa27e831e2::t_2bf2d656d7b7a5 7712,9115-9118,10604,12054,12071
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_0ea5fa27e831e2::t_778358fe7f650c 153-210,217-218
+src/main/app-tools/CoordinatorAppTools.node.test.ts
+  s_0ea5fa27e831e2::t_031556cc721922 1-37
+src/main/app-tools/CoordinatorAppTools.ts
+  s_0ea5fa27e831e2::t_447ff18ebd5eaa 3,69-74,101,112-116,120,129,131
+src/main/coordinator/CoordinatorDeliveryRuntime.node.test.ts
+  s_0ea5fa27e831e2::t_4cf834cf7ad43a 12,122,124-130,153,164-165,169-184
+src/main/coordinator/CoordinatorDeliveryRuntime.ts
+  s_0ea5fa27e831e2::t_1d1f52c4f2dc43 15,86,97
+src/main/coordinator/coordinator-instructions.ts
+  s_0ea5fa27e831e2::t_cf687877ba6c6b 49
+src/main/coordinator/managed-chat-observation.node.test.ts
+  s_0ea5fa27e831e2::t_e3502cd58f15a9 53,170-192
+src/main/coordinator/managed-chat-observation.ts
+  s_0ea5fa27e831e2::t_487cc4820ef94e 48-80,136
+src/main/coordinator/work-event-message.ts
+  s_0ea5fa27e831e2::t_a7f01f85dcf873 3,12,29,32-44
+src/main/inbox-application/CoordinatorInbox.node.test.ts
+  s_0ea5fa27e831e2::t_218a3f53253e4b 147,166,175
+src/main/inbox-application/coordinator-inbox.test-support.ts
+  s_0ea5fa27e831e2::t_5735cb88a8c987 156,165-179
+src/shared/nodex-app-tools/coordinator-schema.ts
+  s_0ea5fa27e831e2::t_07d15e4e0a97b0 82,90-117,129-133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "92bed923b551386944d0fe7db3012f7d006fe393",
+  "prompts": {},
+  "sessions": {
+    "s_0ea5fa27e831e2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a6af-14d8-7532-a45c-6332939fbdf3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
