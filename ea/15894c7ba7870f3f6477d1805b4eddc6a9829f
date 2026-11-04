@@ -1,0 +1,46 @@
+src/main/inbox-application/inbox-replies.node.test.ts
+  s_c30dbf45d2af5b::t_4e1cc3b5cb1833 105
+src/main/coordinator/ManagedChatFacts.node.test.ts
+  s_c30dbf45d2af5b::t_e623342a56acc7 5-7,14,198,220,231-236,243-245,285-287,289-291
+  s_c30dbf45d2af5b::t_0a6db62003c6ce 320-323,325
+  s_c30dbf45d2af5b::t_46107f73f76afb 318-319
+  s_c30dbf45d2af5b::t_4eff854124d6b7 237-242,246-250,252-284,288,292-317,326-335
+packages/agent-runtime/src/orchestration-v2/SessionReadDetails.test.ts
+  s_c30dbf45d2af5b::t_4e1cc3b5cb1833 59-65,68-69
+docs/product-specs/coordinator-behavior.md
+  s_c30dbf45d2af5b::t_4e1cc3b5cb1833 81-82,87-89
+  s_c30dbf45d2af5b::t_ded98466840bbd 90
+src/main/coordinator/managed-chat-observation.ts
+  s_c30dbf45d2af5b::t_4e1cc3b5cb1833 163
+packages/agent-runtime/src/orchestration-v2/SessionAttention.ts
+  s_c30dbf45d2af5b::t_4e1cc3b5cb1833 28-31
+src/main/coordinator/managed-chat-observation.node.test.ts
+  s_c30dbf45d2af5b::t_e623342a56acc7 102,109
+packages/agent-runtime/src/nodex/ExecutionRead.test.ts
+  s_c30dbf45d2af5b::t_4e1cc3b5cb1833 306
+src/main/coordinator/ManagedChatFacts.ts
+  s_c30dbf45d2af5b::t_4e1cc3b5cb1833 68
+src/renderer/features/inbox/use-inbox-capture.ts
+  s_c30dbf45d2af5b::t_6dc775622968c4 17-20,43-46,51,99-100
+  s_c30dbf45d2af5b::t_d0da97ec898865 47-50
+src/renderer/features/inbox/inbox-capture-state.test.tsx
+  s_c30dbf45d2af5b::t_e5550a0f7fb631 162,168-170,174
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_c30dbf45d2af5b::t_b060b01da06c5e 374,391,649,667-685,689-690
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ea15894c7ba7870f3f6477d1805b4eddc6a9829f",
+  "prompts": {},
+  "sessions": {
+    "s_c30dbf45d2af5b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a758-0612-75c1-9b51-607b9500348b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
