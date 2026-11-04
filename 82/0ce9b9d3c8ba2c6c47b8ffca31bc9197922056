@@ -1,0 +1,39 @@
+src/renderer/features/inbox/inbox-capture-recovery.tsx
+  s_c30dbf45d2af5b::t_2151cc10092784 20-52
+  s_c30dbf45d2af5b::t_27d0c955fc3774 1-19,53-55
+src/renderer/features/inbox/use-inbox-capture.ts
+  s_c30dbf45d2af5b::t_2151cc10092784 133
+  s_c30dbf45d2af5b::t_4068d05567ae1d 5-9,86-91,93-94,98-103,128,164,171-172,194,213,221,224
+  s_c30dbf45d2af5b::t_5fd144e67475cd 95-97,138-142,208,222
+  s_c30dbf45d2af5b::t_18ca00424c4cf0 179-182,195,197-207,209-211
+  s_c30dbf45d2af5b::t_a31d2a89f87afd 92
+  s_c30dbf45d2af5b::t_4c356235124b81 4
+src/renderer/features/inbox/inbox-capture-state.test.tsx
+  s_c30dbf45d2af5b::t_9dc71336f5b3ce 1,44-47,160,245
+  s_c30dbf45d2af5b::t_29c704849b4858 132-148,150-159,161-192,194-199,201,204,209-244
+  s_c30dbf45d2af5b::t_a31d2a89f87afd 149,200,202-203,205
+  s_c30dbf45d2af5b::t_2151cc10092784 193,206-208
+src/renderer/features/inbox/inbox-route.tsx
+  s_c30dbf45d2af5b::t_27d0c955fc3774 72,854-860
+  s_c30dbf45d2af5b::t_5fd144e67475cd 886-887
+src/renderer/features/inbox/inbox-quick-capture.tsx
+  s_c30dbf45d2af5b::t_5fd144e67475cd 133-134
+docs/product-specs/inbox-behavior.md
+  s_c30dbf45d2af5b::t_5fd144e67475cd 89-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "820ce9b9d3c8ba2c6c47b8ffca31bc9197922056",
+  "prompts": {},
+  "sessions": {
+    "s_c30dbf45d2af5b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a758-0612-75c1-9b51-607b9500348b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
