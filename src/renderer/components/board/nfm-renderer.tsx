@@ -735,6 +735,7 @@ function HighlightedCodeBlock({
   }
   return (
     <ReadonlyCodeBlock
+      deferUntilVisible
       code={code}
       language={languageId}
       revealActions={message ? "hover" : "always"}

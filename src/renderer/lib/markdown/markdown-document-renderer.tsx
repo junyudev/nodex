@@ -25,7 +25,6 @@ import {
 import { type MarkdownSyntaxPolicy } from "./markdown-syntax";
 import { MarkdownCodeBlock, markdownPublicLeafComponents } from "./markdown-public-leaves";
 import { markdownDocumentPlugins } from "./markdown-document-plugins";
-import { CODE_BLOCK_THEME_PAIR } from "../syntax-highlighting";
 import { useResolvedReducedMotion } from "../use-reduced-motion";
 
 type DocumentOwner = ReturnType<typeof createMarkdownDocumentOwner>;
@@ -40,9 +39,6 @@ const DocumentContext = createContext<MarkdownDocumentValue | null>(null);
 const DOCUMENT_SLOT = "markdown-document";
 const splitDocumentSlot = () => [DOCUMENT_SLOT];
 const noAnimation = false;
-const codeThemes: [(typeof CODE_BLOCK_THEME_PAIR)[0], (typeof CODE_BLOCK_THEME_PAIR)[1]] = [
-  ...CODE_BLOCK_THEME_PAIR,
-];
 
 function MarkdownFadeSegment({ children, node }: ComponentProps<"span"> & { node?: Element }) {
   const document = useContext(DocumentContext);
@@ -252,7 +248,6 @@ function MarkdownDocumentHost({
         animated={noAnimation}
         isAnimating={shouldAnimate}
         plugins={markdownDocumentPlugins}
-        shikiTheme={codeThemes}
         BlockComponent={TypedMarkdownBlock}
         parseMarkdownIntoBlocksFn={splitDocumentSlot}
         lineNumbers={false}

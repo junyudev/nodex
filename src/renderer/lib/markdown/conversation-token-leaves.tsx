@@ -13,7 +13,9 @@ export function ConversationCode({
   readonly incomplete: boolean;
 }) {
   if (language === "mermaid") return <MarkdownMermaid source={text} incomplete={incomplete} />;
-  return <ReadonlyCodeBlock code={text} language={language} incomplete={incomplete} />;
+  return (
+    <ReadonlyCodeBlock code={text} language={language} incomplete={incomplete} deferUntilVisible />
+  );
 }
 
 type Katex = typeof import("katex");

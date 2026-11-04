@@ -1,6 +1,5 @@
-import { act, configure, fireEvent, getConfig, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vite-plus/test";
-import type { HighlightResult } from "@streamdown/code";
 import {
   NodexDropdownRoot,
   NodexDropdownTrigger,
@@ -15,50 +14,52 @@ import { openNodexMenu, render, waitForCodeHighlight } from "./dom";
 
 const CODE_READINESS_PROBE_TIMEOUT_MS = 1_000;
 
-test("code readiness waits for the plugin beyond the DOM polling budget", async () => {
-  const { streamdownCodePlugin } = await import("@/lib/markdown/markdown-code-highlighter");
-  const actualHighlight = streamdownCodePlugin.highlight;
+test("code readiness waits for the queued token result", async () => {
+  const client = await import("@/lib/markdown/markdown-code-highlight-client");
   let release!: () => void;
   const released = new Promise<void>((resolve) => {
     release = resolve;
   });
-  let settled = false;
-  let settledBeforeRelease: boolean | undefined;
-  let releaseTask: ReturnType<typeof setTimeout> | undefined;
   let view: ReturnType<typeof renderWithAppMaitai> | undefined;
   const highlight = vi
-    .spyOn(streamdownCodePlugin, "highlight")
-    .mockImplementation((options, callback) => {
-      const accept = (result: HighlightResult) => {
-        void released.then(() => callback?.(result));
+    .spyOn(client, "requestCodeHighlight")
+    .mockImplementation((input, onResult) => {
+      let active = true;
+      void released.then(() => {
+        if (!active) return;
+        onResult({
+          ...input,
+          paint: { tokens: [[{ content: input.code, offset: 0, color: "var(--foreground)" }]] },
+        });
+      });
+      return () => {
+        active = false;
       };
-      const immediate = actualHighlight(options, accept);
-      if (immediate) accept(immediate);
-      return null;
     });
-  const { asyncUtilTimeout } = getConfig();
-  // Exercise the contrast with ordinary DOM polling without tying the delay to the suite budget.
-  configure({ asyncUtilTimeout: CODE_READINESS_PROBE_TIMEOUT_MS });
   try {
     view = renderWithAppMaitai(
       <ReadonlyCodeBlock code="const delayedGrammarProbe = 42;" language="typescript" />,
     );
     expect(view.container.querySelector("code span")).toBeNull();
-    // The real token results arrive after the ordinary DOM polling deadline.
-    releaseTask = setTimeout(() => {
-      settledBeforeRelease = settled;
+    let settled = false;
+    const ready = waitForCodeHighlight(view.container).then(() => {
+      settled = true;
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // The plain code is on screen, but readiness holds until its tokens arrive.
+    expect(settled).toBe(false);
+    await act(async () => {
       release();
-    }, getConfig().asyncUtilTimeout * 2);
-    await waitForCodeHighlight(view.container);
-    settled = true;
-    expect(settledBeforeRelease).toBe(false);
+      await released;
+    });
+    await ready;
     expect(view.container.querySelector("code")?.textContent).toBe(
       "const delayedGrammarProbe = 42;",
     );
   } finally {
-    configure({ asyncUtilTimeout });
     view?.unmount();
-    if (releaseTask !== undefined) clearTimeout(releaseTask);
     release();
     highlight.mockRestore();
   }

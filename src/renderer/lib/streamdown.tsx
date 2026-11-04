@@ -13,7 +13,6 @@ import {
   resolveOrderedListMargin,
   resolveOrderedListPadding,
 } from "./ordered-list-groups";
-export { streamdownCodePlugin } from "./markdown/markdown-code-highlighter";
 import { cn } from "./utils";
 
 function createHeadingComponent(

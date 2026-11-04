@@ -4,7 +4,6 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import "streamdown/styles.css";
 import { renderWithMaitai as render } from "../../../test/thread-maitai";
-import { streamdownCodePlugin } from "../../../lib/streamdown";
 import { NodexTooltipProvider } from "../../../components/ui/tooltip";
 import {
   CodexTranscriptReadOwnerContext,
@@ -174,7 +173,6 @@ describe("compiled assistant display and native Find", () => {
     async (family) => {
       const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
       const writeText = vi.fn(async (_value: string) => undefined);
-      const highlight = vi.spyOn(streamdownCodePlugin, "highlight");
       Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
       const native = nativeFamily(family);
       const view = render(native.rows(true), { wrapper: LocalConversationTestQueryProvider });
@@ -192,15 +190,10 @@ describe("compiled assistant display and native Find", () => {
           expect(paragraphs?.[1]?.textContent).toBe('::unknown{file="raw &amp; declaration"}');
         });
         expect(root.querySelector("kbd")).toBeNull();
-        // Plain text keeps inherited colors; its synchronous result proves the lazy body mounted.
         await waitFor(() => {
-          const call = highlight.mock.calls.findIndex(
-            ([options]) => options.code === payload && String(options.language) === "text",
-          );
-          expect(highlight.mock.results[call]).toMatchObject({
-            type: "return",
-            value: { tokens: expect.any(Array) },
-          });
+          const code = root.querySelector("[data-readonly-code-block] code");
+          expect(code?.textContent).toBe(payload);
+          expect(code?.querySelector("span")).toBeNull();
         });
         const units = native.source.findMatches("needle");
         const result = projectLocalConversationResidentSearchResult({
@@ -249,7 +242,6 @@ describe("compiled assistant display and native Find", () => {
       } finally {
         highlights.clear();
         view.unmount();
-        highlight.mockRestore();
         native.retain();
         if (originalClipboard) Object.defineProperty(navigator, "clipboard", originalClipboard);
         else Reflect.deleteProperty(navigator, "clipboard");

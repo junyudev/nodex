@@ -3,17 +3,19 @@ import { measureMainPreWindowClosure, measureWorkbenchClosure } from "./lib/star
 
 // Budgets sit about 2% above the measured closure. Raising one is a deliberate decision
 // recorded with the change that needs the bytes, never a reaction to a failed build.
-const MAX_WORKBENCH_JAVASCRIPT_BYTES = Math.round(14.37 * 1024 * 1024);
+const MAX_WORKBENCH_JAVASCRIPT_BYTES = Math.round(14.26 * 1024 * 1024);
 const MAX_WORKBENCH_CSS_BYTES = 712 * 1024;
 
 // Packages whose surfaces load them on demand. None may enter the ordinary Workbench.
 const ON_DEMAND_PACKAGES = [
   "@excalidraw/excalidraw",
+  "@streamdown/code",
   "@xterm/xterm",
   "cytoscape",
   "elkjs",
   "mermaid",
   "pdfjs-dist",
+  "shiki",
 ] as const;
 
 const workbench = measureWorkbenchClosure({

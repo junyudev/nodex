@@ -2,7 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { act, waitFor } from "@testing-library/react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { renderWithMaitai as render } from "../../../../../test/thread-maitai";
-import { settleAsyncRender, waitForCodeHighlight } from "../../../../../test/dom";
+import { settleAsyncRender } from "../../../../../test/dom";
 import { MarkdownRenderer } from "./markdown-renderer";
 
 const FENCED_TYPESCRIPT_CODE = [
@@ -115,16 +115,17 @@ describe("MarkdownRenderer", () => {
     expect(link?.textContent).toBe("/tmp/example.ts#L12");
   });
 
-  test("keeps fenced code blocks on the highlighted code-block renderer path", async () => {
+  test("uses the shared read-only code block for fenced code", async () => {
     const { container } = render(<MarkdownRenderer content={FENCED_TYPESCRIPT_MARKDOWN} />);
 
-    await waitForCodeHighlight(container);
+    await waitFor(() =>
+      expect(container.querySelector("[data-readonly-code-block] code")).not.toBeNull(),
+    );
 
     expect(container.querySelector("[data-readonly-code-block]") !== null).toBe(true);
     const code = container.querySelector("[data-readonly-code-block] code");
     expect(code !== null).toBe(true);
-    expect(code?.querySelectorAll(":scope > span").length).toBe(6);
-    expect(code?.querySelector(':scope > span > span[style*="--shiki-light"]') !== null).toBe(true);
+    expect(code?.textContent).toBe(FENCED_TYPESCRIPT_CODE);
     expect(container.querySelector("[data-readonly-code-block] .inline-markdown") === null).toBe(
       true,
     );
@@ -161,7 +162,9 @@ describe("MarkdownRenderer", () => {
     try {
       const { container } = render(<MarkdownRenderer content={FENCED_TYPESCRIPT_MARKDOWN} />);
 
-      await waitForCodeHighlight(container);
+      await waitFor(() =>
+        expect(container.querySelector("[data-readonly-code-block] code")).not.toBeNull(),
+      );
 
       const copyButton = container.querySelector<HTMLButtonElement>(
         '[data-code-block-action="copy"]',

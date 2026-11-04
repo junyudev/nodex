@@ -19,7 +19,7 @@ describe("resolveRendererManualChunk", () => {
   test("keeps editor and markdown dependencies in one chunk", () => {
     expect(
       resolveRendererManualChunk(
-        "/Users/asc/repo/nodex/node_modules/@streamdown/code/dist/index.js",
+        "/Users/asc/repo/nodex/node_modules/@streamdown/cjk/dist/index.js",
       ),
     ).toBe("vendor-editor-markdown");
     expect(
@@ -35,6 +35,12 @@ describe("resolveRendererManualChunk", () => {
         "/Users/asc/repo/nodex/third_party/blocknote/packages/core/src/index.ts",
       ),
     ).toBe("vendor-editor-markdown");
+  });
+
+  test("keeps the read-only snippet engine out of the shared editor chunk", () => {
+    expect(
+      resolveRendererManualChunk("/repo/node_modules/@streamdown/code/dist/index.js"),
+    ).toBeUndefined();
   });
 
   test("groups canvas dependencies together", () => {

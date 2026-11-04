@@ -74,7 +74,9 @@ export function MarkdownCodeBlock({
     )?.[1] ?? "text";
   const text = htmlText(code).replace(/\n$/u, "");
   if (language === "mermaid") return <MarkdownMermaid source={text} incomplete={incomplete} />;
-  return <ReadonlyCodeBlock code={text} language={language} incomplete={incomplete} />;
+  return (
+    <ReadonlyCodeBlock code={text} language={language} incomplete={incomplete} deferUntilVisible />
+  );
 }
 
 export function MarkdownMermaid({

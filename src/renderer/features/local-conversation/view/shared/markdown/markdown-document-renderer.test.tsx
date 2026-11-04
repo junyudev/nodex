@@ -3,7 +3,7 @@ import { act, fireEvent, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { renderWithMaitai as render } from "@/test/thread-maitai";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import { settleLazyRender, waitForCodeHighlight } from "@/test/dom";
+import { settleLazyRender } from "@/test/dom";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { markdownSyntaxEngine } from "@/lib/markdown/markdown-syntax";
 
@@ -140,7 +140,7 @@ describe("typed Markdown document through the public rich provider", () => {
     expect(view.container.querySelector('[data-code-block-action="copy"]')).toBe(codeButton);
     expect(document.activeElement).toBe(codeButton);
   });
-  test("uses the public highlight provider, explicit incomplete code and immediate diagram boundary", async () => {
+  test("preserves unfinished code and uses the immediate diagram boundary", async () => {
     mermaid.render.mockClear();
     const view = render(
       <NodexTooltipProvider>
@@ -164,7 +164,9 @@ describe("typed Markdown document through the public rich provider", () => {
         <MarkdownRenderer content={"```ts\nconst answer = 42"} parseIncompleteMarkdown />
       </NodexTooltipProvider>,
     );
-    await waitForCodeHighlight(view.container);
+    await waitFor(() =>
+      expect(view.container.querySelector("[data-readonly-code-block] code")).not.toBeNull(),
+    );
     expect(view.getByRole("button", { name: "Copy code to clipboard" })).toHaveProperty(
       "disabled",
       true,

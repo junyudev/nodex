@@ -26,7 +26,7 @@ export function resolveReadonlyCodeLanguage(authored: string): ReadonlyCodeLangu
       highlightLanguage: language.shikiLanguage ?? "text",
     };
   }
-  return { id: token, label: token, highlightLanguage: token };
+  return { id: token, label: token, highlightLanguage: token.toLowerCase() };
 }
 
 export interface CodeTokenPaint {

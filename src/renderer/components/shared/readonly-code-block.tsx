@@ -1,50 +1,122 @@
-import { useEffect, useState, type CSSProperties } from "react";
-import type { HighlightOptions, HighlightResult } from "@streamdown/code";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { CodeBlockReadOnlyHeader } from "@/components/shared/code-block-readonly-header";
 import {
   CODE_TOKEN_CLASS_NAME,
   projectCodeTokenStyle,
   resolveReadonlyCodeLanguage,
 } from "@/lib/code-block-presentation";
+import { CODE_BLOCK_SYNTAX_THEME_NAME } from "@/lib/code-block-syntax-theme";
 import { useCodeBlockWordWrap } from "@/lib/code-block-word-wrap";
-import { streamdownCodePlugin } from "@/lib/markdown/markdown-code-highlighter";
-import { CODE_BLOCK_THEME_PAIR } from "@/lib/syntax-highlighting";
+import {
+  requestCodeHighlight,
+  supportsCodeHighlight,
+} from "@/lib/markdown/markdown-code-highlight-client";
+import {
+  CODE_HIGHLIGHT_VIEWPORT_MARGIN,
+  createCodeHighlightScheduler,
+  MAX_WORKER_CODE_UNITS,
+  type CodeHighlightResult,
+} from "@/lib/markdown/markdown-code-highlight-queue";
 import { cn } from "@/lib/utils";
-
-const themes: HighlightOptions["themes"] = [...CODE_BLOCK_THEME_PAIR];
 
 function useHighlightedCode(
   code: string,
   language: string,
   incomplete: boolean,
-): HighlightResult | null {
-  const [highlighted, setHighlighted] = useState<{
-    code: string;
-    language: string;
-    result: HighlightResult;
-  } | null>(null);
+  deferUntilVisible: boolean,
+) {
+  const figure = useRef<HTMLElement>(null);
+  const [admitted, setAdmitted] = useState(false);
+  const [highlighted, setHighlighted] = useState<CodeHighlightResult | null>(null);
+  const [scheduler] = useState(() =>
+    createCodeHighlightScheduler(requestCodeHighlight, setHighlighted),
+  );
+  const supported = code.length > 0 && supportsCodeHighlight(language);
+  const inBudget = code.length <= MAX_WORKER_CODE_UNITS;
+  const deferred = deferUntilVisible && !admitted && typeof IntersectionObserver !== "undefined";
+
   useEffect(() => {
-    let active = true;
-    const accept = (result: HighlightResult) => {
-      if (active) setHighlighted({ code, language, result });
-    };
-    const result = streamdownCodePlugin.highlight(
-      {
-        code,
-        language: language as HighlightOptions["language"],
-        themes,
-        isIncomplete: incomplete,
+    const target = figure.current;
+    if (!deferred || !supported || !inBudget || !target) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        setAdmitted(true);
       },
-      accept,
+      { rootMargin: `${CODE_HIGHLIGHT_VIEWPORT_MARGIN}px 0px` },
     );
-    if (result) accept(result);
-    return () => {
-      active = false;
-    };
-  }, [code, language, incomplete]);
-  return highlighted?.code === code && highlighted.language === language
-    ? highlighted.result
-    : null;
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [deferred, supported, inBudget]);
+
+  useEffect(() => () => scheduler.cancel(), [scheduler]);
+  useEffect(() => {
+    if (deferred || !supported || !inBudget) {
+      scheduler.cancel();
+      return;
+    }
+    scheduler.update({ code, language, incomplete, theme: CODE_BLOCK_SYNTAX_THEME_NAME }, () => {
+      const element = figure.current;
+      const viewport = element?.ownerDocument.defaultView;
+      if (!element?.isConnected || !viewport) return false;
+      if (typeof viewport.IntersectionObserver === "undefined") return true;
+      if (!element.checkVisibility()) return false;
+      const { bottom, top, left, right } = element.getBoundingClientRect();
+      return (
+        bottom > -CODE_HIGHLIGHT_VIEWPORT_MARGIN &&
+        top < viewport.innerHeight + CODE_HIGHLIGHT_VIEWPORT_MARGIN &&
+        right > 0 &&
+        left < viewport.innerWidth
+      );
+    });
+  }, [scheduler, deferred, supported, inBudget, code, language, incomplete]);
+
+  const prefix =
+    supported &&
+    inBudget &&
+    highlighted?.language === language &&
+    highlighted.theme === CODE_BLOCK_SYNTAX_THEME_NAME &&
+    code.startsWith(highlighted.code)
+      ? highlighted
+      : null;
+  return { figure, prefix };
+}
+
+function HighlightedCode({
+  prefix,
+  suffix,
+}: {
+  readonly prefix: CodeHighlightResult;
+  readonly suffix: string;
+}) {
+  // Keep the mapped tokens independent of the raw suffix while the stream advances.
+  const rows = prefix.paint.tokens.map((line) =>
+    line.map((token, index) => (
+      <span
+        key={index}
+        className={CODE_TOKEN_CLASS_NAME}
+        style={projectCodeTokenStyle(token) as CSSProperties}
+      >
+        {token.content}
+      </span>
+    )),
+  );
+  const completed = rows.slice(0, -1).map((line, index) => (
+    <span key={index} className="block min-h-lh">
+      {line}
+      {"\n"}
+    </span>
+  ));
+  return (
+    <>
+      {completed}
+      <span className="block min-h-lh">
+        {rows.at(-1)}
+        {suffix}
+      </span>
+    </>
+  );
 }
 
 /**
@@ -55,6 +127,7 @@ export function ReadonlyCodeBlock({
   code,
   language,
   incomplete = false,
+  deferUntilVisible = false,
   revealActions = "hover",
   className,
 }: {
@@ -63,15 +136,23 @@ export function ReadonlyCodeBlock({
   readonly language: string;
   /** A streaming fence that has not closed yet. */
   readonly incomplete?: boolean;
+  /** Delay the first highlight until the block nears the viewport. */
+  readonly deferUntilVisible?: boolean;
   /** Reading surfaces keep controls out of the way until the pointer or focus arrives. */
   readonly revealActions?: "hover" | "always";
   readonly className?: string;
 }) {
   const { id, highlightLanguage } = resolveReadonlyCodeLanguage(language);
-  const result = useHighlightedCode(code, highlightLanguage, incomplete);
+  const { figure, prefix } = useHighlightedCode(
+    code,
+    highlightLanguage,
+    incomplete,
+    deferUntilVisible,
+  );
   const wrap = useCodeBlockWordWrap();
   return (
     <figure
+      ref={figure}
       data-readonly-code-block
       data-language={id}
       data-wrapped={wrap.wrapped}
@@ -97,22 +178,11 @@ export function ReadonlyCodeBlock({
       </div>
       <pre className="m-0 overflow-x-auto px-[22px] py-6 font-mono text-size-code leading-[max(1.5em,20px)] [tab-size:2]">
         <code className={wrap.wrapped ? "wrap-break-word whitespace-pre-wrap" : "whitespace-pre"}>
-          {result
-            ? result.tokens.map((line, lineIndex) => (
-                <span key={lineIndex} className="block min-h-lh">
-                  {line.map((token, index) => (
-                    <span
-                      key={index}
-                      className={CODE_TOKEN_CLASS_NAME}
-                      style={projectCodeTokenStyle(token) as CSSProperties}
-                    >
-                      {token.content}
-                    </span>
-                  ))}
-                  {lineIndex < result.tokens.length - 1 ? "\n" : ""}
-                </span>
-              ))
-            : code}
+          {prefix ? (
+            <HighlightedCode prefix={prefix} suffix={code.slice(prefix.code.length)} />
+          ) : (
+            code
+          )}
         </code>
       </pre>
     </figure>

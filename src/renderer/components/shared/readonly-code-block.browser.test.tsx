@@ -1,6 +1,8 @@
 import { act, waitFor } from "@testing-library/react";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import "@/globals.css";
+import { ReadonlyCodeBlock } from "./readonly-code-block";
+import { MAX_WORKER_CODE_UNITS } from "@/lib/markdown/markdown-code-highlight-queue";
 import { NfmDocument } from "@/components/board/nfm-renderer";
 import { MarkdownRenderer } from "@/features/local-conversation/view/shared/markdown/markdown-renderer";
 import { readMarkdown } from "../../../shared/nodex-markdown";
@@ -131,5 +133,136 @@ test("one Wrap toggle rewraps every read-only code block without changing its so
     await waitFor(() => expect(blocks().every(overflows)).toBe(true));
   } finally {
     view.unmount();
+  }
+});
+
+const blockCode = (container: ParentNode) => container.querySelector<HTMLElement>("figure code")!;
+const tokenPaint = (code: HTMLElement) => code.querySelector<HTMLElement>("span > span");
+const waitForTokens = (code: HTMLElement) => waitFor(() => expect(tokenPaint(code)).not.toBeNull());
+
+test("conversation code first requests tokens near the viewport", async () => {
+  const post = vi.spyOn(Worker.prototype, "postMessage");
+  const content = 'const nearViewport = "ready";';
+  const view = render(
+    <div style={{ paddingTop: window.innerHeight + 1_500 }}>
+      <MarkdownRenderer content={"```ts\n" + content + "\n```"} dialect="conversation" />
+    </div>,
+  );
+  try {
+    const code = await waitFor(() => {
+      const element = blockCode(view.container);
+      expect(element?.textContent).toBe(content);
+      return element;
+    });
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        const observer = new IntersectionObserver(
+          () => {
+            observer.disconnect();
+            resolve();
+          },
+          { rootMargin: "600px 0px" },
+        );
+        observer.observe(code);
+      });
+    });
+    expect(code.getBoundingClientRect().top).toBeGreaterThan(window.innerHeight + 600);
+    expect(post).not.toHaveBeenCalled();
+    expect(tokenPaint(code)).toBeNull();
+
+    await act(async () => {
+      code.scrollIntoView();
+    });
+    await waitForTokens(code);
+    expect(post).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ code: content }));
+  } finally {
+    view.unmount();
+    post.mockRestore();
+  }
+});
+
+test("streaming retains matching tokens, repaints for theme, and discards rewritten or retyped code", async () => {
+  applyRendererThemeForTest("light");
+  const post = vi.spyOn(Worker.prototype, "postMessage");
+  const code = 'const prefix = "value";';
+  const suffix = "\n  console.log(prefix);";
+  const view = render(<ReadonlyCodeBlock code={code} language="ts" incomplete />);
+  const displayed = blockCode(view.container);
+  try {
+    await waitForTokens(displayed);
+    const colored = tokenPaint(displayed)!;
+    const light = getComputedStyle(colored).color;
+    const requests = post.mock.calls.length;
+    applyRendererThemeForTest("dark");
+    expect(tokenPaint(displayed)).toBe(colored);
+    expect(getComputedStyle(colored).color).not.toBe(light);
+    expect(post).toHaveBeenCalledTimes(requests);
+
+    view.rerender(<ReadonlyCodeBlock code={code + suffix} language="ts" incomplete />);
+    expect(displayed.textContent).toBe(code + suffix);
+    expect(tokenPaint(displayed)).toBe(colored);
+    expect(colored.parentElement?.lastChild).toMatchObject({ nodeValue: suffix });
+
+    const rewritten = "let rewritten = 7;";
+    view.rerender(<ReadonlyCodeBlock code={rewritten} language="ts" />);
+    expect(displayed.textContent).toBe(rewritten);
+    expect(tokenPaint(displayed)).toBeNull();
+    await waitForTokens(displayed);
+
+    view.rerender(<ReadonlyCodeBlock code={rewritten} language="bash" />);
+    expect(displayed.textContent).toBe(rewritten);
+    expect(tokenPaint(displayed)).toBeNull();
+    await waitForTokens(displayed);
+    expect(post).toHaveBeenLastCalledWith(expect.objectContaining({ language: "bash" }));
+  } finally {
+    view.unmount();
+    post.mockRestore();
+  }
+});
+
+test("plain and oversized blocks skip the worker and Copy preserves the source", async () => {
+  const post = vi.spyOn(Worker.prototype, "postMessage");
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  const writeText = vi.fn(async () => undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  const source = "  first\n\tsecond\n";
+  const view = render(
+    <>
+      <ReadonlyCodeBlock code={source} language="made-up" />
+      <ReadonlyCodeBlock code={"x".repeat(MAX_WORKER_CODE_UNITS + 1)} language="ts" />
+      <ReadonlyCodeBlock code="plain" language="plaintext" incomplete />
+    </>,
+  );
+  try {
+    const [copy, , disabled] = view.getAllByRole("button", { name: "Copy code to clipboard" });
+    expect(disabled).toBeDisabled();
+    await act(async () => copy!.click());
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(source);
+    expect(blockCode(view.container).textContent).toBe(source);
+    expect(post).not.toHaveBeenCalled();
+  } finally {
+    view.unmount();
+    post.mockRestore();
+    if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+    else Reflect.deleteProperty(navigator, "clipboard");
+  }
+});
+
+test("worker failure leaves text readable and falls back for a small visible block", async () => {
+  const post = vi.spyOn(Worker.prototype, "postMessage").mockImplementationOnce(() => {
+    throw new DOMException("Worker unavailable", "InvalidStateError");
+  });
+  const source = 'const useFallback = "small snippet";';
+  const view = render(<ReadonlyCodeBlock code={source} language="ts" />);
+  try {
+    const code = blockCode(view.container);
+    expect(code.textContent).toBe(source);
+    expect(tokenPaint(code)).toBeNull();
+    await waitForTokens(code);
+    expect(code.textContent).toBe(source);
+    expect(post).toHaveBeenCalledOnce();
+  } finally {
+    view.unmount();
+    post.mockRestore();
   }
 });

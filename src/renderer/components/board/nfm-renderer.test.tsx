@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import { act, fireEvent } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import {
   createDateMentionClockStore,
   setDateMentionClockStoreForTest,
 } from "@/lib/editor-model/date-mention-clock";
 import { renderWithMaitai as render } from "../../test/thread-maitai";
-import { settleAsyncRender, textContent, waitForCodeHighlight } from "../../test/dom";
+import { settleAsyncRender, textContent } from "../../test/dom";
 import { TestQueryProvider } from "../../test/query";
 import { NfmDocument } from "./nfm-renderer";
 import { readMarkdown } from "../../../shared/nodex-markdown";
@@ -90,7 +90,9 @@ describe("NfmRenderer", () => {
 
   test("renders code blocks through the shared read-only code block", async () => {
     const { container } = render(<NfmRenderer content={"```ts\nconst answer = 42\n```"} />);
-    await waitForCodeHighlight(container);
+    await waitFor(() =>
+      expect(container.querySelector("[data-readonly-code-block] code")).not.toBeNull(),
+    );
 
     expect(
       container.querySelector('[data-readonly-code-block][data-language="typescript"]'),

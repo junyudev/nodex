@@ -62,6 +62,8 @@ function resolveFeatureChunk(id: string): string | undefined {
   // Pinning it prevents large feature manual chunks from absorbing the helper
   // and becoming an eager dependency of the lightweight renderer entry.
   if (id === "\0vite/preload-helper.js") return "renderer-bootstrap-runtime";
+  // The snippet engine is a lazy failure path in the window. Its worker has its own graph.
+  if (id.replaceAll("\\", "/").includes("/node_modules/@streamdown/code/")) return undefined;
   return featureChunkRules.find((rule) => matchesRule(rule, id))?.chunkName;
 }
 

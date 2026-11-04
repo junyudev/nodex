@@ -3,9 +3,6 @@ import { createCodeBlockHighlighter } from "@blocknote/code-block";
 import { createParser } from "prosemirror-highlight/shiki";
 import { CODE_BLOCK_SYNTAX_THEME, CODE_BLOCK_SYNTAX_THEME_NAME } from "./code-block-syntax-theme";
 
-/** Shiki asks for a light and a dark theme; the shared palette resolves both from CSS. */
-export const CODE_BLOCK_THEME_PAIR = [CODE_BLOCK_SYNTAX_THEME, CODE_BLOCK_SYNTAX_THEME] as const;
-
 const shikiParserSymbol = Symbol.for("blocknote.shikiParser");
 const shikiHighlighterPromiseSymbol = Symbol.for("blocknote.shikiHighlighterPromise");
 
