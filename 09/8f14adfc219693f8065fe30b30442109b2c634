@@ -2,6 +2,10 @@ src/renderer/lib/page-work-state.ts
   s_39af2826685004::t_3deb810360e3c0 1-74
 src/renderer/lib/page-work-state.node.test.ts
   s_39af2826685004::t_74642b6f2a37fe 1-73
+crates/nodex-core/src/infrastructure/migration.rs
+  s_861e195a25a694::t_48bc185194e925 2629-2631,2633-2636,2638-2642
+packages/core-protocol/openapi.json
+  s_8c62977aa6fb11::t_dc18581f784a2f 51511-51516,51518-51519,51621,51625-51630,51632-51634,51639-51641,51643-51644,51646-51647,51649-51659,51661-51663,51669,51680-51682,51684,51688-51693,51695-51697,51707-51710,51712,51716-51718
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -9,11 +13,43 @@ src/renderer/lib/page-work-state.node.test.ts
   "base_commit_sha": "098f14adfc219693f8065fe30b30442109b2c634",
   "prompts": {},
   "sessions": {
+    "s_098df3235fa721": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19eb9-df69-7222-adba-8eb488f30462",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
     "s_39af2826685004": {
       "agent_id": {
         "tool": "claude",
         "id": "d6e56d2e-aae2-44a9-9afb-e48fc0c1ee5c",
         "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_861e195a25a694": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f00-6774-7220-894e-a1a31770d0e3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8c62977aa6fb11": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19eca-da45-7583-a0bd-2b995907eee9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_cb3e022ee09d1e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19f10-83da-79e1-8002-21edccb7e7aa",
+        "model": "gpt-6.1-sol"
       },
       "human_author": "Jun Yu <junyu.dev@gmail.com>"
     }

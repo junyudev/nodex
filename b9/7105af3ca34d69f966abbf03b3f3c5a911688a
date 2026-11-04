@@ -4,14 +4,18 @@ crates/nodex-core-contracts/src/workspace.rs
   s_8c62977aa6fb11::t_55dcbdecc02717 19,56-65,276-287,1332-1419,1422,1438,1656-1686,1822-1824
 crates/nodex-core/schema/current.sql
   s_098df3235fa721::t_0e0f8457d96137 1063-1067,4518-4551
+  s_b60e05965fb1be::t_4440b5b7692889 1063-1067,4518-4550
 crates/nodex-core/schema/migrations/v201_to_v202.sql
   s_861e195a25a694::t_8906a9cc301671 1-37
 crates/nodex-core/src/document/integrity.rs
   s_861e195a25a694::t_b3dfc373d275d0 84
 crates/nodex-core/src/infrastructure/migration.rs
   s_861e195a25a694::t_48bc185194e925 424-428,2633-2647,3594-3596,8713-8714,9322-9417
+  s_2b421f5f98d895::t_e1f10b36fdc416 9512
+  s_b60e05965fb1be::t_4440b5b7692889 2634-2636,2638-2647,9322-9329,9331-9333,9335,9337-9338,9340-9370,9372-9380,9382,9384,9386,9388-9389,9392,9395-9399,9401-9408,9410-9416
 crates/nodex-core/src/infrastructure/migration_serializer_tests.rs
   s_861e195a25a694::t_dcb675ada81e08 132-133,137,141-146,148,156,162
+  s_b60e05965fb1be::t_4440b5b7692889 132-133,137,142-146,148,156,162
 crates/nodex-core/src/infrastructure/store_validation.rs
   s_8c62977aa6fb11::t_b6691491fd9ded 34-35
 crates/nodex-core/src/workspace/agent_command.rs
@@ -52,20 +56,27 @@ crates/nodex-core/src/workspace/task_window.rs
   s_861e195a25a694::t_0d36afd39d3624 199
 crates/nodex-core/tests/fixtures/rewind-v202-to-v201.sql
   s_861e195a25a694::t_0ec4e9a3ed8649 1-12
+  s_b60e05965fb1be::t_4440b5b7692889 2-10
 crates/nodex-core/tests/fixtures/schema-v201.sql
   s_861e195a25a694::t_d3a53c5aaf5916 1-4996
+  s_b60e05965fb1be::t_4440b5b7692889 1-4512,4514-4996
 crates/nodex-store-format/src/lib.rs
   s_8c62977aa6fb11::t_7b281733018308 277-280
+  s_2b421f5f98d895::t_9b34072dfebb97 280
+  s_b60e05965fb1be::t_4440b5b7692889 279
 packages/agent-runtime/src/nodex/Interface.ts
   s_8c62977aa6fb11::t_78c6efa12b3fec 457
 packages/agent-runtime/src/nodex/Service.ts
   s_8c62977aa6fb11::t_0af5182742246c 312,1020-1025
 packages/core-protocol/openapi.json
   s_8c62977aa6fb11::t_dc18581f784a2f 7674-7683,8908-9079,29654-29830,30604-30607,36258-36329,38242-38265,38511-38557,41070-41246,42020-42023,44406,44458-44460,52492-52577,54476-54484
+  s_2b421f5f98d895::t_fdf47ac05ef0ed 50000-50004
+  s_b60e05965fb1be::t_92bd2cc55cd875 7674-7683,8908-9079,29654-29830,30604-30607,36258-36329,38242-38265,38511-38557,41070-41246,42020-42023,44406,44458-44460,52492-52577,54476-54484
 packages/core-protocol/src/compatibility.generated.ts
   s_8c62977aa6fb11::t_c029214a931242 24,42-43
 packages/core-protocol/src/generated.ts
   s_8c62977aa6fb11::t_32a2708f941165 1802,2114-2156,7148-7185,7348-7349,8616-8632,9071-9077,9130-9141,9861-9898,10061-10062,10597,12287-12302,12736-12737
+  s_b60e05965fb1be::t_92bd2cc55cd875 1802,2114-2156,7148-7185,7348-7349,8616-8632,9071-9077,9130-9141,9861-9898,10061-10062,10597,12287-12302,12736-12737
 src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
   s_8c62977aa6fb11::t_34247c813932ab 7347-7393
 src/main/agent-runtime/AgentRuntimeApplication.ts
@@ -86,6 +97,7 @@ src/main/app-tools/WorkAppTools.ts
   s_8c62977aa6fb11::t_a539f5fdd0e4b5 1-78
 src/main/app/MainApplicationLive.ts
   s_8c62977aa6fb11::t_b9fc7f4af3d15a 48-49,156-160
+  s_b60e05965fb1be::t_4440b5b7692889 48-49,156-160
 src/main/coordinator/CoordinatorDeliveryRuntime.node.test.ts
   s_861e195a25a694::t_641ff6b6bc1497 1-137
 src/main/coordinator/CoordinatorDeliveryRuntime.ts
@@ -153,6 +165,14 @@ src/shared/types.ts
       },
       "human_author": "Jun Yu <junyu.dev@gmail.com>"
     },
+    "s_2b421f5f98d895": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19fae-bb7a-7332-9cd7-9d77cc1fecc0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
     "s_861e195a25a694": {
       "agent_id": {
         "tool": "codex",
@@ -165,6 +185,14 @@ src/shared/types.ts
       "agent_id": {
         "tool": "codex",
         "id": "01a19eca-da45-7583-a0bd-2b995907eee9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b60e05965fb1be": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a61f-2ce1-7742-9c82-704cd7dfb5c3",
         "model": "gpt-6.1-sol"
       },
       "human_author": "Jun Yu <junyu.dev@gmail.com>"
