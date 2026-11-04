@@ -1,0 +1,19 @@
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_c30dbf45d2af5b::t_b060b01da06c5e 374,391,649,667-685,689-690
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7de496ac5368ccb4707fbf1e5f2265a113eac3f7",
+  "prompts": {},
+  "sessions": {
+    "s_c30dbf45d2af5b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a758-0612-75c1-9b51-607b9500348b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
