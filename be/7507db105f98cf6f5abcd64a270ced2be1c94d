@@ -1,0 +1,19 @@
+packages/agent-runtime/src/orchestration-v2/QueuedRunKind.ts
+  s_b60e05965fb1be::t_0c987c659aafa8 12,18,22,35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "be7507db105f98cf6f5abcd64a270ced2be1c94d",
+  "prompts": {},
+  "sessions": {
+    "s_b60e05965fb1be": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a61f-2ce1-7742-9c82-704cd7dfb5c3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
