@@ -1,0 +1,19 @@
+crates/nodex-core/src/workspace/inbox_nodex_tests.rs
+  s_b60e05965fb1be::t_df230bfd2dd791 508,512,521,527-528,535,537
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "24267d5d357817b455c0191109174d7ac658cdb5",
+  "prompts": {},
+  "sessions": {
+    "s_b60e05965fb1be": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a61f-2ce1-7742-9c82-704cd7dfb5c3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
