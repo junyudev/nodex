@@ -1,0 +1,25 @@
+src/renderer/lib/markdown/conversation-document.node.test.ts
+  s_c709cab53bd58e::t_e4ad29cbbeeb32 1-33
+src/renderer/lib/markdown/conversation-document.ts
+  s_c709cab53bd58e::t_01c8a63730b1f6 55,109-153,156,158,170,176,179-181,183-184,188,216
+src/renderer/lib/markdown/markdown-segments.node.test.ts
+  s_c709cab53bd58e::t_b1c213562ba1c6 62-77
+src/renderer/lib/markdown/markdown-segments.ts
+  s_c709cab53bd58e::t_2273211d868740 68,71-101,103-105,110-114,116-123,127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4aff7fc3264b3ae01933ddc60d36538bebc0be09",
+  "prompts": {},
+  "sessions": {
+    "s_c709cab53bd58e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63d-3057-7013-94d3-655a991c69e9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
