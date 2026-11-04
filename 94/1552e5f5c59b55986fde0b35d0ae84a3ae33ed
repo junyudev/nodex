@@ -1,0 +1,21 @@
+src/shared/codex-conversation-state/codex-active-history-eviction.ts
+  s_1b17aa0abf2902::t_eaaccc9ef3328f 100,150
+src/shared/codex-conversation-state/codex-active-history-eviction.test.ts
+  s_1b17aa0abf2902::t_eaaccc9ef3328f 322-333
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "941552e5f5c59b55986fde0b35d0ae84a3ae33ed",
+  "prompts": {},
+  "sessions": {
+    "s_1b17aa0abf2902": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63d-6297-7152-a184-42890eef73be",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
