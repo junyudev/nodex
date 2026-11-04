@@ -1,0 +1,36 @@
+docs/product-specs/inbox-behavior.md
+  s_60a150c6c03fef::t_1d5a003fb108c1 429-431,438
+  s_60a150c6c03fef::t_34fb9f7feabd64 439-442
+CHANGELOG.md
+  s_60a150c6c03fef::t_1d5a003fb108c1 22
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_60a150c6c03fef::t_e1b19787ffa430 2791-2809,2821-2838,2846-2847,2852-2860,2873-2875
+  s_60a150c6c03fef::t_dfbaf7d2d890f1 2810-2820,2839-2845,2848-2851,2861-2872
+  s_60a150c6c03fef::t_292cfd74b8c0cb 2790
+src/main/inbox-application/InboxDispatcher.node.test.ts
+  s_60a150c6c03fef::t_73ea08d06a25ef 23,748-752,769
+  s_60a150c6c03fef::t_09f05b112c4f70 754-768,770-784
+  s_60a150c6c03fef::t_34fb9f7feabd64 753
+  s_60a150c6c03fef::t_e1b19787ffa430 734
+  s_60a150c6c03fef::t_e003845c107678 785-786
+crates/nodex-core/src/document/attached_edit.rs
+  s_60a150c6c03fef::t_e0d598668dfd63 91-104
+src/main/inbox-application/InboxApplication.ts
+  s_60a150c6c03fef::t_8696a95bcbc3d7 195,581,585,587,590,600-601,613,616
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a1e1ed7ca1105c546514d479bfa7cdd139b5bcde",
+  "prompts": {},
+  "sessions": {
+    "s_60a150c6c03fef": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a892-ef36-7de2-97ed-1ac881d4dcc8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
