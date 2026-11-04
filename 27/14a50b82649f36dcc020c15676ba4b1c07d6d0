@@ -1,0 +1,48 @@
+src/main/platform/node/TerminalEnvironment.test.ts
+  s_ac07764467a613::t_8517d0edcdbe35 4-5,365-405,407
+  s_1c5a591c56d44c::t_f9d3f8e22bab76 350-353
+  s_ac07764467a613::t_1d76ee65040df5 9,26-31,56-164,263-266,296,304-349,354-364,406
+src/main/terminal-runtime/TerminalRuntime.integration.ts
+  s_ac07764467a613::t_1d76ee65040df5 12-15,47,54-57,142
+tests/e2e/electron-smoke.spec.ts
+  s_1c5a591c56d44c::t_f9d3f8e22bab76 2099-2104,2168
+CHANGELOG.md
+  s_1c5a591c56d44c::t_cb40046f024058 9,12,15
+  s_1c5a591c56d44c::t_16b4a5bf97ec56 16
+docs/product-specs/workbench-shell.md
+  s_1c5a591c56d44c::t_cb40046f024058 144
+src/main/terminal-runtime/TerminalRuntimeLive.ts
+  s_ac07764467a613::t_7fb8dd4fd1988c 3-4,6-11,20-23,33-54
+  s_ac07764467a613::t_1d76ee65040df5 24-32,64
+src/main/platform/node/TerminalEnvironment.ts
+  s_ac07764467a613::t_7fb8dd4fd1988c 3,6,8-15,65-71,93-100,109-147,155-168,173,175,177-180,196,200-209,222,237,243
+  s_ac07764467a613::t_1d76ee65040df5 78-80,181-184,186-194,211-221,223-236,238-242,244-300
+  s_1c5a591c56d44c::t_f9d3f8e22bab76 63-64,149-152,185
+  s_ac07764467a613::t_2cc1ae4000ee27 148,153-154
+  s_1c5a591c56d44c::t_3a40723f6620cd 103-108
+  s_1c5a591c56d44c::t_2e4fd9ea9f85fd 72,210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2714a50b82649f36dcc020c15676ba4b1c07d6d0",
+  "prompts": {},
+  "sessions": {
+    "s_1c5a591c56d44c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9641fde6-60ad-48b0-8ca0-95c389da72d1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_ac07764467a613": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a4e3-89a9-74c2-91dd-a233cd12b6a2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
