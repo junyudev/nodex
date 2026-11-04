@@ -148,7 +148,8 @@ dmg:
   format: ULMO
   sign: true
   writeUpdateInfo: false
-  title: "${productName}"
+  # Finder caches layout and background by volume name, so each version gets its own.
+  title: "${productName} ${version}"
   background: dmg-background.png
   iconSize: 128
   iconTextSize: 16
