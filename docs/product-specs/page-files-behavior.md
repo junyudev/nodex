@@ -151,6 +151,8 @@ Each File presents as itself:
   app is dark.
 - Markdown renders; images show with their dimensions and size; PDFs, audio and
   video play in their viewers.
+- PDF zoom controls reflect the rendered page scale. Until the preview has a
+  positive available width, Fit width uses the document's current zoom.
 - Text, JSON and code show as source with line numbers. Single-line JSON is
   indented for reading; Save keeps the original bytes.
 - Text and source views read at most 2 MiB. Other formats say they can't be

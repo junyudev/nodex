@@ -35,6 +35,29 @@ describe("workspace PDF preview model", () => {
     ).toBe(50);
   });
 
+  test.each([null, 0, -20])(
+    "keeps the zoom label aligned with an unmeasurable page width (%s)",
+    (availableWidth) => {
+      const baseSize = { width: 612, height: 792 };
+      const zoom = 1.25;
+      const size = resolveWorkspacePdfPageSize({
+        baseSize,
+        availableWidth,
+        fitToWidth: true,
+        zoom,
+      });
+      expect(size).toEqual({ width: 765, height: 990 });
+      expect(
+        resolveWorkspacePdfZoomPercent({
+          baseWidth: baseSize.width,
+          pageWidth: availableWidth,
+          fitToWidth: true,
+          zoom,
+        }),
+      ).toBe(125);
+    },
+  );
+
   test("selects the most visible page, then falls back to the nearest page top", () => {
     expect(
       selectWorkspacePdfCurrentPage({

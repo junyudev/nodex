@@ -132,9 +132,11 @@ describe("WorkspacePdfPreview", () => {
       />,
     );
     await view.findByText("1/2");
-    const initialZoomLabel = view
-      .getByRole("button", { name: /^Zoom, / })
-      .getAttribute("aria-label")!;
+    // Wait for the first page's layout and render effects, including a zero-width container.
+    await waitFor(() => {
+      expect(view.container.querySelector("canvas")?.width).toBe(612);
+      expect(view.getByRole("button", { name: "Zoom, 100%" })).toBeTruthy();
+    });
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Next page" }));
       fireEvent.click(view.getByRole("button", { name: "Zoom in" }));
@@ -150,7 +152,10 @@ describe("WorkspacePdfPreview", () => {
       );
     });
     expect(await view.findByText("1/1")).toBeTruthy();
-    expect(view.getByRole("button", { name: initialZoomLabel })).toBeTruthy();
+    await waitFor(() => {
+      expect(view.container.querySelector("canvas")?.width).toBe(612);
+      expect(view.getByRole("button", { name: "Zoom, 100%" })).toBeTruthy();
+    });
     expect(first.destroy).toHaveBeenCalledOnce();
     view.unmount();
     expect(second.destroy).toHaveBeenCalledOnce();

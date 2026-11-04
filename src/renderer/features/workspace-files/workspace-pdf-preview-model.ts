@@ -68,9 +68,13 @@ export function resolveWorkspacePdfPageSize(input: {
   const { baseSize, availableWidth, fitToWidth } = input;
   const ratio = baseSize.width / baseSize.height;
   const fittedWidth =
-    fitToWidth && availableWidth !== null && availableWidth > 0
-      ? availableWidth
-      : baseSize.width * clampWorkspacePdfZoom(input.zoom);
+    baseSize.width *
+    resolveWorkspacePdfScale({
+      baseWidth: baseSize.width,
+      pageWidth: availableWidth,
+      fitToWidth,
+      zoom: input.zoom,
+    });
   return {
     width: Math.round(fittedWidth),
     height: Math.round(fittedWidth / ratio),
@@ -83,11 +87,15 @@ export function resolveWorkspacePdfZoomPercent(input: {
   fitToWidth: boolean;
   zoom: number;
 }): number {
-  const resolvedZoom =
-    input.fitToWidth && input.pageWidth !== null && input.baseWidth > 0
-      ? input.pageWidth / input.baseWidth
-      : clampWorkspacePdfZoom(input.zoom);
-  return Math.round(resolvedZoom * 100);
+  return Math.round(resolveWorkspacePdfScale(input) * 100);
+}
+
+function resolveWorkspacePdfScale(
+  input: Parameters<typeof resolveWorkspacePdfZoomPercent>[0],
+): number {
+  return input.fitToWidth && input.pageWidth !== null && input.pageWidth > 0 && input.baseWidth > 0
+    ? input.pageWidth / input.baseWidth
+    : clampWorkspacePdfZoom(input.zoom);
 }
 
 export function clampWorkspacePdfPage(page: number, totalPages: number): number {
