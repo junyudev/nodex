@@ -1,0 +1,28 @@
+src/main/inbox-application/inbox-replies.node.test.ts
+  s_e67086ccd52885::t_dac3ee950cc28b 30,42-45,48,50,57,59,71,73,81-86,88-90,92-93
+  s_e67086ccd52885::t_680ccf66990910 96-98,100-121,123
+  s_e67086ccd52885::t_081f8fa9d017b0 1-7,99,125
+  s_e67086ccd52885::t_9e5d3bb51d8a0e 49,58,72,74-75,77-80,87,122,124
+src/main/inbox-application/inbox-replies.ts
+  s_e67086ccd52885::t_081f8fa9d017b0 8-12
+  s_e67086ccd52885::t_dac3ee950cc28b 20,22,29-32,34-35
+src/main/inbox-application/InboxApplication.ts
+  s_e67086ccd52885::t_081f8fa9d017b0 399-401
+  s_e67086ccd52885::t_dac3ee950cc28b 398,402-404
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2eff8fd1ad79ceec1a8ab1ca37b52f3a6b70bf08",
+  "prompts": {},
+  "sessions": {
+    "s_e67086ccd52885": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a732-afe5-78a0-a8ca-d0875411921a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
