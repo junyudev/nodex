@@ -1,0 +1,21 @@
+src/main/host-runtime/DatabaseNotifierRuntime.ts
+  s_1406096ae8699b::t_9d6ec1831d05d6 97-100
+src/main/mobile-gateway/project-invalidations.node.test.ts
+  s_1406096ae8699b::t_6d55b059ee279a 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c10fbf06fa5b8abc665c2aa30eb8932246c85bc3",
+  "prompts": {},
+  "sessions": {
+    "s_1406096ae8699b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8bc-a30f-7ef1-88b0-c163946dd472",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
