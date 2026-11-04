@@ -21,10 +21,12 @@ src/main/core-client/inbox-adapter.ts
   s_fb1830c3f67295::t_a92830d557b661 264
 crates/nodex-store-format/src/lib.rs
   s_fb1830c3f67295::t_a92830d557b661 305-306,316
+  s_fb1830c3f67295::t_f89ea5c93b6581 313-315
 src/main/inbox-application/InboxRuntime.node.test.ts
   s_fb1830c3f67295::t_a92830d557b661 880-943
 docs/product-specs/coordinator-behavior.md
   s_fb1830c3f67295::t_a92830d557b661 48,135-140,143
+  s_fb1830c3f67295::t_11b82fc75de259 141-142
 crates/nodex-core/src/workspace/inbox_reliable.rs
   s_fb1830c3f67295::t_a92830d557b661 51-53
 src/main/inbox-application/inbox-replies.node.test.ts
@@ -46,6 +48,7 @@ src/renderer/features/inbox/inbox-composer.tsx
   s_fb1830c3f67295::t_a92830d557b661 1,51,146-152
 crates/nodex-core/src/infrastructure/migration.rs
   s_fb1830c3f67295::t_a92830d557b661 459-463,2726-2728,2730-2739,3830,3832,3873-3874,3897-3898,8388,8588,8908,8971,9076,10174-10175,10177-10178,10180-10184,10187-10192,10194-10201,10260-10261
+  s_fb1830c3f67295::t_af311f95f4bf00 10234-10238,10240-10241,10243,10245,10247-10248,10251,10254-10258
 crates/nodex-core/src/workspace/inbox_reply.rs
   s_fb1830c3f67295::t_a92830d557b661 1-102
 src/renderer/features/inbox/inbox-presentation.ts
@@ -60,6 +63,9 @@ crates/nodex-core-contracts/src/workspace.rs
   s_fb1830c3f67295::t_a92830d557b661 2154-2156
 crates/nodex-core/src/workspace/inbox_reply_tests.rs
   s_fb1830c3f67295::t_a92830d557b661 1-29,33-35,44-119,215-263
+  s_fb1830c3f67295::t_af311f95f4bf00 32,120
+  s_fb1830c3f67295::t_a6aa6f0147fb04 121-198,210-214
+  s_fb1830c3f67295::t_f89ea5c93b6581 36-43,199-209
 packages/core-protocol/openapi.json
   s_fb1830c3f67295::t_a92830d557b661 17472-17497,17535-17571,32478-32488,41260-41269,41781,41799-41801,44795-44805
 src/renderer/features/inbox/inbox-composer.test.tsx
