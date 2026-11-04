@@ -1,0 +1,21 @@
+.github/workflows/_promote-release.yml
+  s_94a5cbbff0d935::t_3cac38ed98bf3a 195
+docs/release.md
+  s_94a5cbbff0d935::t_287b93c23b74cf 222-223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "09575a7ed65cc1ed29bd44f61a44ded507558719",
+  "prompts": {},
+  "sessions": {
+    "s_94a5cbbff0d935": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a46f-ba13-7722-815f-6bdefd81ae4b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
