@@ -1,7 +1,10 @@
+import type * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
+import { TestClock } from "effect/testing";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Result from "effect/Result";
@@ -24,7 +27,7 @@ import { TerminalSessions, live as terminalSessionsLive } from "./TerminalSessio
 
 interface FakePty {
   readonly layer: Layer.Layer<TerminalPty>;
-  readonly outputs: Queue.Queue<string>[];
+  readonly outputs: Queue.Queue<string, Cause.Done>[];
   readonly exits: Deferred.Deferred<TerminalPtyExit>[];
   readonly writes: string[];
   readonly resizes: Array<readonly [number, number]>;
@@ -32,7 +35,7 @@ interface FakePty {
 }
 
 const fakePty = (): FakePty => {
-  const outputs: Queue.Queue<string>[] = [];
+  const outputs: Queue.Queue<string, Cause.Done>[] = [];
   const exits: Deferred.Deferred<TerminalPtyExit>[] = [];
   const writes: string[] = [];
   const resizes: Array<readonly [number, number]> = [];
@@ -44,7 +47,7 @@ const fakePty = (): FakePty => {
       spawn: () =>
         Effect.acquireRelease(
           Effect.gen(function* () {
-            const output = yield* Queue.unbounded<string>();
+            const output = yield* Queue.unbounded<string, Cause.Done>();
             const exit = yield* Deferred.make<TerminalPtyExit>();
             outputs.push(output);
             exits.push(exit);
@@ -55,7 +58,11 @@ const fakePty = (): FakePty => {
               write: (data) => Effect.sync(() => writes.push(data)).pipe(Effect.asVoid),
               resize: (cols, rows) =>
                 Effect.sync(() => resizes.push([cols, rows])).pipe(Effect.asVoid),
-              kill: Deferred.succeed(exit, { exitCode: null, signal: 15 }).pipe(Effect.asVoid),
+              kill: Queue.end(output).pipe(
+                Effect.andThen(Deferred.succeed(exit, { exitCode: null, signal: 15 })),
+                Effect.asVoid,
+              ),
+              prepareForRestart: Effect.void,
             };
             return handle;
           }),
@@ -225,6 +232,7 @@ it.effect("retires the PTY on exit while retaining an inspectable terminal snaps
     yield* sessions.create(ownerA, request);
     yield* Queue.offer(fake.outputs[0]!, "hello");
     yield* waitFor(() => fake.outputs.length === 1);
+    yield* Queue.end(fake.outputs[0]!);
     yield* Deferred.succeed(fake.exits[0]!, { exitCode: 7, signal: null });
     let snapshot = yield* sessions.getSessionSnapshot(request.sessionId);
     for (let attempt = 0; attempt < 100 && !snapshot?.exited; attempt += 1) {
@@ -267,6 +275,7 @@ it.effect("retires a process that has already exited before session acquisition 
     const { fake, scope, sessions } = yield* makeHarness(exiting, (runtime) =>
       Effect.gen(function* () {
         const events = yield* runtime.subscribe;
+        yield* Queue.end(exiting.outputs[0]!);
         yield* Deferred.succeed(exiting.exits[0]!, { exitCode: 7, signal: null });
         yield* events.pipe(
           Stream.filter((event) => event.kind === "exit"),
@@ -298,7 +307,7 @@ it.effect(
         size: { cols: 120, rows: 50 },
       });
       assert.deepEqual(fake.releases, [200]);
-      assert.deepEqual(fake.writes, ["vp run check\r"]);
+      assert.deepEqual(fake.writes, ["cd /tmp && vp run check\n"]);
       yield* sessions.refreshSessionProcessMetrics([request.sessionId]);
       const snapshot = yield* sessions.getSessionSnapshot(request.sessionId);
       assert.strictEqual(snapshot?.osPid, 201);
@@ -310,4 +319,119 @@ it.effect(
       yield* Scope.close(scope, Exit.void);
       assert.deepEqual(fake.releases, [200, 201]);
     }),
+);
+
+it.effect("delivers an entire output burst in order before publishing process exit", () =>
+  Effect.gen(function* () {
+    const { fake, scope, sessions } = yield* makeHarness();
+    const events = yield* sessions.subscribe;
+    yield* sessions.create(ownerA, request);
+    const chunks = [
+      "A".repeat(70_000),
+      ...Array.from({ length: 1_100 }, (_, index) => `chunk ${index}\r\n`),
+    ];
+    yield* Queue.offerAll(fake.outputs[0]!, chunks);
+    yield* Queue.end(fake.outputs[0]!);
+    yield* Deferred.succeed(fake.exits[0]!, { exitCode: 0, signal: null });
+    const observed = yield* events.pipe(Stream.take(chunks.length + 3), Stream.runCollect);
+    yield* waitFor(() => fake.releases.length === 1);
+    assert.deepEqual(
+      observed.slice(0, 2).map((event) => event.channel),
+      ["terminal-init-log", "terminal-attached"],
+    );
+    assert.deepEqual(
+      observed.flatMap((event) => (event.channel === "terminal-data" ? [event.payload.data] : [])),
+      chunks,
+    );
+    assert.strictEqual(observed.at(-1)?.channel, "terminal-exit");
+    const snapshot = yield* sessions.getSessionSnapshot(request.sessionId);
+    assert.strictEqual(snapshot?.buffer, chunks.join("").slice(-16_000));
+    assert.isTrue(snapshot?.truncated);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("sanitizes replay data while keeping the raw snapshot and live data", () =>
+  Effect.gen(function* () {
+    const { fake, scope, sessions } = yield* makeHarness();
+    const events = yield* sessions.subscribe;
+    yield* sessions.create(ownerA, request);
+    const raw = "\x1b[6n\x1b[31mred\x1b]10;?\x07";
+    yield* Queue.offer(fake.outputs[0]!, raw);
+    const live = yield* events.pipe(Stream.take(3), Stream.runCollect);
+    const data = live[2];
+    assert.strictEqual(data?.channel, "terminal-data");
+    if (data?.channel === "terminal-data") assert.strictEqual(data.payload.data, raw);
+    yield* sessions.acquireViewLease(ownerA, request);
+    const replay = yield* events.pipe(Stream.runHead);
+    assert.strictEqual(replay._tag, "Some");
+    if (replay._tag === "Some" && replay.value.channel === "terminal-init-log") {
+      assert.strictEqual(replay.value.payload.data, "\x1b[31mred");
+      assert.strictEqual(replay.value.payload.snapshot.buffer, raw);
+    } else {
+      assert.fail("Expected a terminal init log");
+    }
+    assert.strictEqual((yield* sessions.getSessionSnapshot(request.sessionId))?.buffer, raw);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("repaints a one-column terminal after 100 ms while allowing writes", () =>
+  Effect.gen(function* () {
+    const { fake, scope, sessions } = yield* makeHarness();
+    const size = { cols: 1, rows: 24 };
+    yield* sessions.create(ownerA, { ...request, size });
+    fake.resizes.length = 0;
+    yield* sessions.resize(ownerA, request.sessionId, size);
+    assert.deepEqual(fake.resizes, []);
+    const repaint = yield* sessions
+      .resize(ownerA, request.sessionId, size, true)
+      .pipe(Effect.forkScoped);
+    yield* waitFor(() => fake.resizes.length === 1);
+    yield* sessions.write(ownerA, request.sessionId, "input during repaint");
+    yield* TestClock.adjust("99 millis");
+    assert.deepEqual(fake.resizes, [[2, 24]]);
+    yield* TestClock.adjust("1 millis");
+    yield* Fiber.join(repaint);
+    assert.deepEqual(fake.resizes, [
+      [2, 24],
+      [1, 24],
+    ]);
+    assert.deepEqual(fake.writes, ["input during repaint"]);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("does not restore a repaint after the target size or process changes", () =>
+  Effect.gen(function* () {
+    const { fake, scope, sessions } = yield* makeHarness();
+    yield* sessions.create(ownerA, request);
+    fake.resizes.length = 0;
+    const size = { cols: 100, rows: 30 };
+    const old = yield* sessions
+      .resize(ownerA, request.sessionId, request.size, true)
+      .pipe(Effect.forkScoped);
+    yield* waitFor(() => fake.resizes.length === 1);
+    yield* sessions.resize(ownerA, request.sessionId, size, true);
+    yield* TestClock.adjust("100 millis");
+    yield* Fiber.join(old);
+    assert.deepEqual(fake.resizes, [
+      [79, 24],
+      [100, 30],
+    ]);
+
+    const replaced = yield* sessions
+      .resize(ownerA, request.sessionId, size, true)
+      .pipe(Effect.forkScoped);
+    yield* waitFor(() => fake.resizes.length === 3);
+    yield* sessions.runAction(ownerA, { ...request, size, command: "pwd" });
+    yield* TestClock.adjust("100 millis");
+    yield* Fiber.join(replaced);
+    assert.deepEqual(fake.resizes, [
+      [79, 24],
+      [100, 30],
+      [99, 30],
+    ]);
+    yield* Scope.close(scope, Exit.void);
+  }),
 );

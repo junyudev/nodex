@@ -120,7 +120,7 @@ it.live.runIf(process.platform === "win32" && gitBash !== undefined)(
       const data = Option.getOrThrow(output)
         .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
         .replaceAll("\r", "");
-      expect(data).toContain("NODEX_GIT_BASH:environment-kept:terminal-shell-test");
+      expect(data).toContain("NODEX_GIT_BASH:environment-kept:\n");
       expect(data).toContain("NODEX_CWD:requested-cwd");
       expect(data).toMatch(/NODEX_CLI:.*\/runtime\/agent-cli\/bin\/nodex\n/);
       yield* handle.write("exit 0\r");

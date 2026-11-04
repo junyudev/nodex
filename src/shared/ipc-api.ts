@@ -2072,7 +2072,7 @@ export interface IpcApi
     result: TerminalSessionSnapshot | null;
   };
   "terminal-resize": {
-    args: [sessionId: string, size: TerminalSize];
+    args: [sessionId: string, size: TerminalSize, repaint?: boolean];
     result: void;
   };
   "terminal-kill": { args: [sessionId: string]; result: void };

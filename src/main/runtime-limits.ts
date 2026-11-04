@@ -1,11 +1,10 @@
 /**
- * Count budgets for Main-owned ingress. Observation channels are sliding because consumers can
- * reread their canonical owner; reliable command channels backpressure producers instead.
+ * Count budgets for Main-owned ingress. Reconstructible observations can use sliding channels.
+ * Commands and terminal streams backpressure producers to preserve ordered delivery.
  * Payload owners must additionally cap variable-size bodies before publication.
  */
 export const MAIN_OBSERVATION_EVENT_CAPACITY = 1_024;
 export const MAIN_RELIABLE_COMMAND_CAPACITY = 512;
 
-/** Terminal chunks are capped before entering a sliding queue, bounding retained output bytes. */
+/** The native PTY pauses at this many pending chunks and resumes as they drain. */
 export const TERMINAL_OUTPUT_CHUNK_CAPACITY = 512;
-export const TERMINAL_OUTPUT_CHUNK_CHAR_LIMIT = 64 * 1_024;

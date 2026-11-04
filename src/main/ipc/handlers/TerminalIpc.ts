@@ -10,7 +10,6 @@ import type {
   TerminalAttachRequest,
   TerminalCreateRequest,
   TerminalRunActionRequest,
-  TerminalSize,
   TerminalTakeOverViewRequest,
   TerminalViewLeaseResult,
 } from "../../../shared/types";
@@ -235,10 +234,10 @@ export const live: Layer.Layer<
     yield* ipc.handleQuery("terminal-session:snapshot", (_event, sessionId: string) =>
       sessions.getSessionSnapshot(sessionId),
     );
-    yield* ipc.handleControl("terminal-resize", (event, sessionId: string, size: TerminalSize) =>
+    yield* ipc.handleControl("terminal-resize", (event, sessionId, size, repaint) =>
       ownerFor(event).pipe(
         Effect.andThen((owner) =>
-          recoverCommand(event.sender, sessionId, sessions.resize(owner, sessionId, size)),
+          recoverCommand(event.sender, sessionId, sessions.resize(owner, sessionId, size, repaint)),
         ),
       ),
     );

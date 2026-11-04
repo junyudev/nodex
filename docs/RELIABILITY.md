@@ -484,8 +484,9 @@ Explicit protocol capacity limits, when configured, terminate that exact endpoin
 than silently dropping a command. Ordinary decoded history pages are admitted by their protocol page
 boundaries; excerpt consumers may request a separate byte budget without advancing a rejected cursor.
 Main observation hubs use bounded sliding publication
-only where subscribers can reread the canonical owner. Variable terminal output is truncated before
-publication, while reliable command queues use bounded backpressure and surface admission failure.
+only where subscribers can reread the canonical owner. Terminal output stays complete and ordered
+through its active consumer: a full queue pauses the PTY rather than dropping or truncating output,
+and reliable command queues likewise use bounded backpressure and surface admission failure.
 Before semantic routing, the application Inbox also applies process-wide admission of 4,096
 occurrences / 16 MiB and rejects any single occurrence above 2 MiB. Queue and pending-request
 references share one reservation ledger, so settlement releases bytes exactly once.

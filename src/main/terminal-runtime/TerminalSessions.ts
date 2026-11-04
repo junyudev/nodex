@@ -2,6 +2,7 @@ import type { WindowsTerminalShell } from "../../shared/terminal-shell-settings"
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
@@ -26,6 +27,7 @@ import type {
   TerminalViewLeaseResult,
   TerminalViewLeaseRevokedEvent,
 } from "../../shared/types";
+import { formatTerminalAction } from "../platform/node/TerminalAction";
 import { TerminalEnvironment } from "../platform/node/TerminalEnvironment";
 import { TerminalProcessMetricsReader } from "../platform/node/TerminalProcessMetrics";
 import {
@@ -33,6 +35,7 @@ import {
   type TerminalRuntime,
   type TerminalRuntimeConfig,
 } from "./TerminalRuntimeMap";
+import { terminalReplayData } from "./TerminalReplay";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 
 export interface TerminalOwner {
@@ -124,6 +127,7 @@ export class TerminalSessions extends Context.Service<
       owner: TerminalOwner,
       sessionId: string,
       size: TerminalSize,
+      repaint?: boolean,
     ) => Effect.Effect<void, TerminalSessionError>;
     readonly runAction: (
       owner: TerminalOwner,
@@ -154,12 +158,12 @@ const sessionError = (operation: string, sessionId: string, cause: unknown) =>
   new TerminalSessionError({ operation, sessionId, cause });
 
 const normalizeSize = (size: TerminalSize | null | undefined): TerminalSize => ({
-  cols: Math.max(2, Math.floor(size?.cols ?? 80)),
+  cols: Math.max(1, Math.floor(size?.cols ?? 80)),
   rows: Math.max(1, Math.floor(size?.rows ?? 24)),
 });
 
-const withNewline = (command: string): string =>
-  command.endsWith("\n") || command.endsWith("\r") ? command : `${command}\r`;
+const sameSize = (a: TerminalSize, b: TerminalSize): boolean =>
+  a.cols === b.cols && a.rows === b.rows;
 
 const isOwner = (lease: TerminalLease | null, owner: TerminalOwner): boolean =>
   lease?.webContentsId === owner.webContentsId && lease.windowSessionId === owner.windowSessionId;
@@ -190,7 +194,7 @@ export const live: Layer.Layer<
     const metrics = yield* TerminalProcessMetricsReader;
     const runtimes = yield* TerminalRuntimeMap;
     const records = yield* Ref.make<ReadonlyMap<string, TerminalSessionRecord>>(new Map());
-    const events = yield* PubSub.sliding<TerminalSessionEvent>(MAIN_OBSERVATION_EVENT_CAPACITY);
+    const events = yield* PubSub.bounded<TerminalSessionEvent>(MAIN_OBSERVATION_EVENT_CAPACITY);
     const watchers = yield* FiberSet.make<void, never>();
     const ownerScope = yield* Effect.scope;
     yield* Effect.addFinalizer(() => PubSub.shutdown(events));
@@ -250,12 +254,12 @@ export const live: Layer.Layer<
         lease: null,
       };
       yield* replaceRecord(sessionId, current, () => exitedRecord);
+      yield* runtimes.close(sessionId);
       yield* publish({
         channel: "terminal-exit",
         target: { kind: "broadcast" },
         payload: { sessionId, exitCode: event.exit.exitCode, reason: "exited" },
       });
-      yield* runtimes.close(sessionId);
     });
 
     const watchRuntime = Effect.fn("TerminalSessions.watchRuntime")(
@@ -340,7 +344,11 @@ export const live: Layer.Layer<
         yield* publish({
           channel: "terminal-init-log",
           target: { kind: "web-contents", webContentsId: owner.webContentsId },
-          payload: { sessionId: snapshot.sessionId, data: snapshot.buffer, snapshot },
+          payload: {
+            sessionId: snapshot.sessionId,
+            data: terminalReplayData(snapshot.buffer),
+            snapshot,
+          },
         });
       }
       yield* publish({
@@ -597,29 +605,46 @@ export const live: Layer.Layer<
             ),
           );
         }),
-      resize: (owner, sessionId, size) =>
+      resize: (owner, sessionId, size, repaint = false) =>
         Effect.gen(function* () {
           const record = yield* getRecord(sessionId);
           if (record === null) return;
-          yield* record.access.withPermits(1)(
+          const target = normalizeSize(size);
+          const restore = yield* record.access.withPermits(1)(
             Effect.gen(function* () {
               const owned = yield* requireOwnedRecord(owner, sessionId);
-              const normalized = normalizeSize(size);
-              if (
-                owned.lease?.size.cols === normalized.cols &&
-                owned.lease.size.rows === normalized.rows
-              ) {
+              const runtime = owned.runtime!;
+              const resize = (dimensions: TerminalSize) =>
+                runtime
+                  .resize(dimensions)
+                  .pipe(Effect.mapError((cause) => sessionError("resize", sessionId, cause)));
+              if (!owned.lease || !sameSize(owned.lease.size, target)) {
+                yield* resize(target);
+                yield* replaceRecord(sessionId, owned, (current) => ({
+                  ...current,
+                  lease: current.lease === null ? null : { ...current.lease, size: target },
+                }));
                 return;
               }
-              yield* owned
-                .runtime!.resize(normalized)
-                .pipe(Effect.mapError((cause) => sessionError("resize", sessionId, cause)));
-              yield* replaceRecord(sessionId, owned, (current) => ({
-                ...current,
-                lease: current.lease === null ? null : { ...current.lease, size: normalized },
-              }));
-            }),
+              if (!repaint) return;
+
+              yield* resize({ ...target, cols: target.cols === 1 ? 2 : target.cols - 1 });
+              // The terminal owns the restore once the native size has changed.
+              return yield* Effect.sleep("100 millis").pipe(
+                Effect.andThen(
+                  owned.access.withPermits(1)(
+                    getRecord(sessionId).pipe(
+                      Effect.andThen((current) =>
+                        current === owned ? resize(target) : Effect.void,
+                      ),
+                    ),
+                  ),
+                ),
+                Effect.forkIn(ownerScope, { uninterruptible: false }),
+              );
+            }).pipe(Effect.uninterruptible),
           );
+          if (restore) yield* Fiber.join(restore);
         }),
       runAction: (owner, request) =>
         Effect.gen(function* () {
@@ -639,8 +664,12 @@ export const live: Layer.Layer<
               const current = yield* requireOwnedRecord(owner, request.sessionId);
               const size = normalizeSize(request.size ?? current.lease?.size);
               const config = yield* environment.resolve({ ...request, size });
+              if ((yield* getRecord(request.sessionId)) !== current) return;
               const previousSnapshot = yield* readSnapshot(current);
-              yield* runtimes.close(request.sessionId);
+              yield* current.runtime!.prepareForRestart.pipe(
+                Effect.andThen(runtimes.close(request.sessionId)),
+                Effect.uninterruptible,
+              );
               const runtime = yield* runtimes.open(config).pipe(
                 Effect.mapError((cause) => sessionError("spawn", request.sessionId, cause)),
                 Effect.onError(() =>
@@ -675,7 +704,7 @@ export const live: Layer.Layer<
               yield* watchRuntime(request.sessionId, nextRecord.generation, runtime);
               yield* publishAttached(owner, nextRecord, true);
               yield* runtime
-                .write(withNewline(request.command))
+                .write(formatTerminalAction(config.command, config.cwd, request.command))
                 .pipe(Effect.mapError((cause) => sessionError("write", request.sessionId, cause)));
             }),
           );

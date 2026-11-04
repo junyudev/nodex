@@ -53,6 +53,7 @@ export class TerminalRuntime extends Context.Service<
     readonly write: (data: string) => Effect.Effect<void, TerminalRuntimeError>;
     readonly resize: (size: TerminalSize) => Effect.Effect<void, TerminalRuntimeError>;
     readonly kill: Effect.Effect<void, TerminalRuntimeError>;
+    readonly prepareForRestart: Effect.Effect<void>;
   }
 >()("nodex/main/terminal-runtime/TerminalRuntime") {}
 
@@ -70,7 +71,7 @@ export class TerminalRuntimeMap extends Context.Service<
 >()("nodex/main/terminal-runtime/TerminalRuntimeMap") {}
 
 const normalizeSize = (size: TerminalSize): TerminalSize => ({
-  cols: Math.max(2, Math.floor(size.cols)),
+  cols: Math.max(1, Math.floor(size.cols)),
   rows: Math.max(1, Math.floor(size.rows)),
 });
 
@@ -110,8 +111,8 @@ const runtimeLayer = (
         exitCode: null,
         viewLease: null,
       });
-      const events = yield* PubSub.sliding<TerminalRuntimeEvent>(MAIN_OBSERVATION_EVENT_CAPACITY);
-      const outputFiber = handle.output.pipe(
+      const events = yield* PubSub.bounded<TerminalRuntimeEvent>(MAIN_OBSERVATION_EVENT_CAPACITY);
+      const observe = handle.output.pipe(
         Stream.runForEach((data) =>
           SubscriptionRef.update(snapshot, (current) => {
             const next = appendTextTail({
@@ -130,8 +131,8 @@ const runtimeLayer = (
             ),
           ),
         ),
-      );
-      const exitFiber = handle.exit.pipe(
+        // Natural exit follows the final queued data through the same observation lane.
+        Effect.andThen(handle.exit),
         Effect.tap((exit) =>
           SubscriptionRef.update(snapshot, (current) => ({
             ...current,
@@ -145,8 +146,7 @@ const runtimeLayer = (
           ),
         ),
       );
-      yield* Effect.forkScoped(outputFiber);
-      yield* Effect.forkScoped(exitFiber);
+      yield* Effect.forkScoped(observe);
       yield* Effect.addFinalizer(() => PubSub.shutdown(events));
 
       const requireRunning = Effect.fn("TerminalRuntime.requireRunning")(function* () {
@@ -192,6 +192,7 @@ const runtimeLayer = (
             ),
           );
         },
+        prepareForRestart: handle.prepareForRestart,
         kill: requireRunning().pipe(
           Effect.andThen(handle.kill),
           Effect.mapError((cause) =>

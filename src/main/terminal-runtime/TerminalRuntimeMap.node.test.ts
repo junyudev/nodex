@@ -1,3 +1,4 @@
+import type * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -19,7 +20,7 @@ import { TerminalRuntimeMap, live as terminalRuntimeMapLive } from "./TerminalRu
 
 interface FakePty {
   readonly layer: Layer.Layer<TerminalPty>;
-  readonly outputs: Queue.Queue<string>[];
+  readonly outputs: Queue.Queue<string, Cause.Done>[];
   readonly exits: Deferred.Deferred<TerminalPtyExit>[];
   readonly writes: string[];
   readonly resizes: Array<readonly [number, number]>;
@@ -27,7 +28,7 @@ interface FakePty {
 }
 
 const fakePty = (): FakePty => {
-  const outputs: Queue.Queue<string>[] = [];
+  const outputs: Queue.Queue<string, Cause.Done>[] = [];
   const exits: Deferred.Deferred<TerminalPtyExit>[] = [];
   const writes: string[] = [];
   const resizes: Array<readonly [number, number]> = [];
@@ -39,7 +40,7 @@ const fakePty = (): FakePty => {
       spawn: () =>
         Effect.acquireRelease(
           Effect.gen(function* () {
-            const output = yield* Queue.unbounded<string>();
+            const output = yield* Queue.unbounded<string, Cause.Done>();
             const exit = yield* Deferred.make<TerminalPtyExit>();
             outputs.push(output);
             exits.push(exit);
@@ -50,7 +51,11 @@ const fakePty = (): FakePty => {
               write: (data) => Effect.sync(() => writes.push(data)).pipe(Effect.asVoid),
               resize: (cols, rows) =>
                 Effect.sync(() => resizes.push([cols, rows])).pipe(Effect.asVoid),
-              kill: Deferred.succeed(exit, { exitCode: null, signal: 15 }).pipe(Effect.asVoid),
+              kill: Queue.end(output).pipe(
+                Effect.andThen(Deferred.succeed(exit, { exitCode: null, signal: 15 })),
+                Effect.asVoid,
+              ),
+              prepareForRestart: Effect.void,
             };
             return handle;
           }),
@@ -102,7 +107,7 @@ it.effect("coalesces terminal acquisition and releases the owned PTY on invalida
     yield* waitFor(() => SubscriptionRef.getUnsafe(first.snapshot).buffer === "hello");
     yield* first.resize({ cols: 1, rows: 0 });
     yield* first.write("pwd\r");
-    assert.deepEqual(fake.resizes, [[2, 1]]);
+    assert.deepEqual(fake.resizes, [[1, 1]]);
     assert.deepEqual(fake.writes, ["pwd\r"]);
 
     yield* runtimes.close(config.sessionId);
@@ -120,6 +125,7 @@ it.effect("records process exit and rejects later terminal writes", () =>
       scope,
     );
     const runtime = yield* Context.get(context, TerminalRuntimeMap).open(config);
+    yield* Queue.end(fake.outputs[0]!);
     yield* Deferred.succeed(fake.exits[0]!, { exitCode: 7, signal: null });
     yield* waitFor(() => SubscriptionRef.getUnsafe(runtime.snapshot).exited);
     const result = yield* Effect.result(runtime.write("late"));
