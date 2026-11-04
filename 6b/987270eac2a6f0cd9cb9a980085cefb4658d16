@@ -1,0 +1,55 @@
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_fab41626a3a5b7::t_de9050309e7912 1-2,605,613-614
+src/main/ipc/handlers/AgentRuntimeIpc.ts
+  s_fab41626a3a5b7::t_31c3a4c89e669c 1-6,51,100-116,313,317-320,322-329
+src/main/platform/node/agent-runtime-framing.node.test.ts
+  s_fab41626a3a5b7::t_665572c06aa109 8-9,14-17
+src/main/platform/node/agent-runtime-framing.ts
+  s_fab41626a3a5b7::t_1e30eec704c380 4-7,36-39
+src/renderer/features/local-conversation/normalized-transcript-read-owner.ts
+  s_fab41626a3a5b7::t_a6a885702981b1 215,1191-1193
+src/shared/agent-runtime-api.ts
+  s_fab41626a3a5b7::t_b931ffa790016c 78-79
+src/shared/schemas/agent-runtime-api.ts
+  s_fab41626a3a5b7::t_b4bc768efba826 14-18
+src/main/agent-runtime/AgentRuntimeDiagnostics.ts
+  s_1b17aa0abf2902::t_1690c5ea108b71 1-30
+src/main/platform/node/AgentRuntimeProcess.ts
+  s_1b17aa0abf2902::t_5c80d5f832a32a 1-8,304-313,520-575,654-668,692-696
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_b8b9338452580c::t_570fb265f41e1e 1-4,319-320,362-367,568,735-741,796,863-871,980-984,1001
+src/renderer/lib/runtime-performance.ts
+  s_b8b9338452580c::t_865cd132cd0f68 6,12-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6b987270eac2a6f0cd9cb9a980085cefb4658d16",
+  "prompts": {},
+  "sessions": {
+    "s_1b17aa0abf2902": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63d-6297-7152-a184-42890eef73be",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b8b9338452580c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63c-6779-7322-9335-f40fc4bb8b3b",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fab41626a3a5b7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63c-2882-7fe2-8ac7-abca1f363e49",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
