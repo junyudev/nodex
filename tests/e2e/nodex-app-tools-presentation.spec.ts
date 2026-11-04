@@ -64,21 +64,21 @@ test("native presentation tools preserve Session ownership and reveal exact file
                 ? [
                     ...common,
                     "text({initial:unwrap(await app.get_session_context({}))});",
-                    `text({browser:await invoke("open_in_nodex",{operationId:"open-browser",target:{kind:"browser",url:${JSON.stringify(browserUrl)}}})});`,
-                    'let context=unwrap(await app.get_session_context({mode:"refresh"}));let tabs=unwrap(await app.list_session_tabs({observationId:context.presentation.observationId}));const browser=tabs.items.find(t=>t.browserTabId);text({browserAgain:await invoke("open_in_nodex",{operationId:"reuse-browser",target:{kind:"browser",tabId:browser.browserTabId}})});',
-                    'text({terminal:await invoke("open_in_nodex",{operationId:"open-terminal",placement:"bottom",target:{kind:"terminal"}})});',
-                    'context=unwrap(await app.get_session_context({mode:"refresh"}));tabs=unwrap(await app.list_session_tabs({observationId:context.presentation.observationId}));text({terminalTabs:tabs});const terminal=tabs.items.find(t=>t.terminalId);text({terminalAgain:await invoke("open_in_nodex",{operationId:"reuse-terminal",placement:"bottom",target:{kind:"terminal",terminalId:terminal.terminalId}})});',
-                    `text({hidden:await invoke("open_in_nodex",{operationId:"hidden-file",sessionId:${JSON.stringify(otherSessionId)},target:{kind:"file",path:${JSON.stringify(filePath)},line:12}})});`,
-                    `text({navigated:await invoke("navigate_to_session",{operationId:"navigate-other",sessionId:${JSON.stringify(otherSessionId)}})});`,
+                    `text({browser:await invoke("open_in_nodex",{idempotencyKey:"open-browser",target:{kind:"browser",url:${JSON.stringify(browserUrl)}}})});`,
+                    'let context=unwrap(await app.get_session_context({mode:"refresh"}));let tabs=unwrap(await app.list_session_tabs({observationId:context.presentation.observationId}));const browser=tabs.items.find(t=>t.browserTabId);text({browserAgain:await invoke("open_in_nodex",{idempotencyKey:"reuse-browser",target:{kind:"browser",tabId:browser.browserTabId}})});',
+                    'text({terminal:await invoke("open_in_nodex",{idempotencyKey:"open-terminal",placement:"bottom",target:{kind:"terminal"}})});',
+                    'context=unwrap(await app.get_session_context({mode:"refresh"}));tabs=unwrap(await app.list_session_tabs({observationId:context.presentation.observationId}));text({terminalTabs:tabs});const terminal=tabs.items.find(t=>t.terminalId);text({terminalAgain:await invoke("open_in_nodex",{idempotencyKey:"reuse-terminal",placement:"bottom",target:{kind:"terminal",terminalId:terminal.terminalId}})});',
+                    `text({hidden:await invoke("open_in_nodex",{idempotencyKey:"hidden-file",sessionId:${JSON.stringify(otherSessionId)},target:{kind:"file",path:${JSON.stringify(filePath)},line:12}})});`,
+                    `text({navigated:await invoke("navigate_to_session",{idempotencyKey:"navigate-other",sessionId:${JSON.stringify(otherSessionId)}})});`,
                     'text({otherContext:unwrap(await app.get_session_context({mode:"refresh"}))});',
-                    `text({returned:await invoke("navigate_to_session",{operationId:"navigate-caller",sessionId:${JSON.stringify(callerSessionId)}})});`,
-                    'text({review:await invoke("open_in_nodex",{operationId:"open-staged",target:{kind:"review",view:"staged",path:"review.ts"}})});',
+                    `text({returned:await invoke("navigate_to_session",{idempotencyKey:"navigate-caller",sessionId:${JSON.stringify(callerSessionId)}})});`,
+                    'text({review:await invoke("open_in_nodex",{idempotencyKey:"open-staged",target:{kind:"review",view:"staged",path:"review.ts"}})});',
                     "text({terminalContent:unwrap(await app.read_session_terminal({terminalId:terminal.terminalId,maxChars:1024}))});",
                   ]
                 : [
                     ...common,
-                    `text({file:await invoke("open_in_nodex",{operationId:"show-line",target:{kind:"file",path:${JSON.stringify(filePath)},line:12}})});`,
-                    `text({fileAgain:await invoke("open_in_nodex",{operationId:"show-line",target:{kind:"file",path:${JSON.stringify(filePath)},line:12}})});`,
+                    `text({file:await invoke("open_in_nodex",{idempotencyKey:"show-line",target:{kind:"file",path:${JSON.stringify(filePath)},line:12}})});`,
+                    `text({fileAgain:await invoke("open_in_nodex",{idempotencyKey:"show-line",target:{kind:"file",path:${JSON.stringify(filePath)},line:12}})});`,
                   ];
             return responses.stream([
               responses.created(callId),

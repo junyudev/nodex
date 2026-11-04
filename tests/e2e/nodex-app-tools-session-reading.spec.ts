@@ -5,7 +5,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
-import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
@@ -168,7 +167,7 @@ test("reads a long Session exactly through native MCP without losing typed activ
   let attachmentDraftId = "";
   let reviewerSessionId = "";
   const attachmentFileId = createUuidV7();
-  const retryOperationId = createBoundedOperationId("session-mcp-review");
+  const retryKey = createUuidV7();
   let recording: Page | null = null;
   let activePage: Page | null = null;
   let status: "passed" | "failed" = "failed";
@@ -331,7 +330,7 @@ test("reads a long Session exactly through native MCP without losing typed activ
                     attachmentDraftId,
                     attachmentFileId,
                     reviewerSessionId,
-                    retryOperationId,
+                    retryKey,
                   ),
                   tool.namespace,
                 ),
@@ -362,7 +361,7 @@ test("reads a long Session exactly through native MCP without losing typed activ
                 nativeAppToolCall(
                   "delegate_long_child",
                   tool.name,
-                  delegateChildScript(reviewerSessionId, retryOperationId),
+                  delegateChildScript(reviewerSessionId, retryKey),
                   tool.namespace,
                 ),
                 responses.completed("delegate_long_child"),
@@ -764,7 +763,7 @@ const reviewScript = (
   attachmentDraftId: string,
   attachmentFileId: string,
   reviewerSessionId: string,
-  retryOperationId: string,
+  retryKey: string,
 ): string =>
   [
     '// @exec: {"yield_time_ms": 120000, "max_output_tokens": 4000}',
@@ -774,7 +773,7 @@ const reviewScript = (
     `const attachmentDraftId = ${JSON.stringify(attachmentDraftId)};`,
     `const attachmentFileId = ${JSON.stringify(attachmentFileId)};`,
     `const reviewerSessionId = ${JSON.stringify(reviewerSessionId)};`,
-    `const retryOperationId = ${JSON.stringify(retryOperationId)};`,
+    `const retryKey = ${JSON.stringify(retryKey)};`,
     `const expectedReply = ${JSON.stringify(LONG_REPLY)};`,
     `const expectedCommandOutput = ${JSON.stringify(COMMAND_OUTPUT)};`,
     "const claims = [];",
@@ -876,10 +875,10 @@ const reviewScript = (
     "const draftSent=(await call('send_message_to_session',{sessionId:attachmentDraftId,attachments:[{type:'library_file',fileId:attachmentFileId}]})).value; const draftWait=(await call('wait_sessions',{targets:[{sessionId:attachmentDraftId,runId:draftSent.runId}],timeoutMs:10000})).value.targets[0]; claim('An attachment-only draft starts in place and exposes its exact Run', {sessionId:attachmentDraftId,delivery:'started',complete:true}, {sessionId:draftSent.sessionId,delivery:draftSent.deliveryState,complete:typeof draftSent.runId === 'string' && draftWait.disposition === 'complete'});",
     "const draftHistory=await readPage({sessionId:attachmentDraftId,view:'activity',limit:20,maxCharsPerItem:8000}); const resourceEntry=draftHistory.items.find(item=>item.type==='user_message'); const resourceMessage=(await recover(resourceEntry,8000,attachmentDraftId)).item; const resource=resourceMessage.attachments[0];",
     `claim('The authorized Library File becomes a durable canonical message attachment', {text:'',name:${JSON.stringify(ATTACHMENT_NAME)},mimeType:'text/plain',sizeBytes:${ATTACHMENT_BYTES.byteLength}}, {text:resourceMessage.text,name:resource.name,mimeType:resource.mimeType,sizeBytes:resource.sizeBytes});`,
-    `const forwardArgs={sessionId,prompt:${JSON.stringify(FORWARD_PROMPT)},operationId:retryOperationId,attachments:[{type:'session_attachment',sessionId:attachmentDraftId,sourceThreadId:resourceEntry.sourceThreadId,itemId:resourceEntry.id,attachmentId:resource.id}]}; const forwardedSend=(await call('send_message_to_session',forwardArgs)).value; const replayedSend=(await call('send_message_to_session',forwardArgs)).value; await call('wait_sessions',{targets:[{sessionId,runId:forwardedSend.runId}],timeoutMs:10000});`,
+    `const forwardArgs={sessionId,prompt:${JSON.stringify(FORWARD_PROMPT)},idempotencyKey:retryKey,attachments:[{type:'session_attachment',sessionId:attachmentDraftId,sourceThreadId:resourceEntry.sourceThreadId,itemId:resourceEntry.id,attachmentId:resource.id}]}; const forwardedSend=(await call('send_message_to_session',forwardArgs)).value; const replayedSend=(await call('send_message_to_session',forwardArgs)).value; await call('wait_sessions',{targets:[{sessionId,runId:forwardedSend.runId}],timeoutMs:10000});`,
     "const forwardHistory=await readPage({view:'activity',limit:20,maxCharsPerItem:8000}); const forwardedEntries=forwardHistory.items.filter(item=>item.type==='user_message' && item.messageId===forwardedSend.messageId); const forwardedMessage=(await recover(forwardedEntries[0],8000)).item; claim('Session attachment references forward through their resource owner with correct author', {author:'agent',name:resource.name,sizeBytes:resource.sizeBytes}, {author:forwardedEntries[0].createdBy,name:forwardedMessage.attachments[0].name,sizeBytes:forwardedMessage.attachments[0].sizeBytes});",
     "claim('Retrying an identical attachment send creates exactly one canonical message and Run', {sameMessage:true,sameRun:true,count:1}, {sameMessage:replayedSend.messageId===forwardedSend.messageId,sameRun:replayedSend.runId===forwardedSend.runId,count:forwardedEntries.length});",
-    `const selfArgs={sessionId:reviewerSessionId,prompt:${JSON.stringify(SELF_PROMPT)},mode:'queue',operationId:retryOperationId.replace('session-mcp-review','session-mcp-self')}; const selfSent=(await call('send_message_to_session',selfArgs)).value; const selfRetry=(await call('send_message_to_session',selfArgs)).value; claim('The calling Session can queue a message with stable retry and exact execution identity', {delivery:'queued',message:true,run:true}, {delivery:selfSent.deliveryState,message:typeof selfSent.messageId==='string' && selfSent.messageId===selfRetry.messageId,run:typeof selfSent.runId==='string' && selfSent.runId===selfRetry.runId});`,
+    `const selfArgs={sessionId:reviewerSessionId,prompt:${JSON.stringify(SELF_PROMPT)},mode:'queue',idempotencyKey:retryKey+':self'}; const selfSent=(await call('send_message_to_session',selfArgs)).value; const selfRetry=(await call('send_message_to_session',selfArgs)).value; claim('The calling Session can queue a message with stable retry and exact execution identity', {delivery:'queued',message:true,run:true}, {delivery:selfSent.deliveryState,message:typeof selfSent.messageId==='string' && selfSent.messageId===selfRetry.messageId,run:typeof selfSent.runId==='string' && selfSent.runId===selfRetry.runId});`,
     "const invalid = await call('read_session', {sessionId,cursor:'invalid-cursor'}, true);",
     "claim('Invalid history cursors have an actionable error', 'session_invalid_cursor', invalid.value.error?.code);",
     "claim('Every history envelope stays inside the unchanged 24 KiB budget', true, maxReadBytes <= 24576);",
@@ -892,11 +891,11 @@ const taskScriptPrelude = [
   "const bytes = text => [...text].reduce((size, char) => size + (char.codePointAt(0) <= 127 ? 1 : char.codePointAt(0) <= 2047 ? 2 : char.codePointAt(0) <= 65535 ? 3 : 4), 0);",
 ];
 
-const delegateChildScript = (sessionId: string, operationId: string) =>
+const delegateChildScript = (sessionId: string, idempotencyKey: string) =>
   [
     ...taskScriptPrelude,
     `const sessionId=${JSON.stringify(sessionId)};`,
-    `const delegated=await call('delegate_task',{task:${JSON.stringify(CHILD_PROMPT)},title:${JSON.stringify(CHILD_TITLE)},mode:'async',clientRequestId:${JSON.stringify(operationId + ":long-child")}});`,
+    `const delegated=await call('delegate_task',{task:${JSON.stringify(CHILD_PROMPT)},title:${JSON.stringify(CHILD_TITLE)},mode:'async',idempotencyKey:${JSON.stringify(idempotencyKey + ":long-child")}});`,
     "const listed=await call('list_sessions',{includeSubagents:true,limit:50}); const children=listed.sessions.filter(item=>item.sessionId===sessionId && item.relationshipToParent==='subagent' && item.execution); if(children.length!==1) throw new Error('Expected one canonical delegated child: '+JSON.stringify(children)); const child=children[0];",
     "text({stage:'child-started',taskId:delegated.taskId,parentThreadId:child.parentThreadId,childThreadId:child.execution.threadId,runId:child.latestRunId});",
   ].join("\n");

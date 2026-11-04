@@ -137,7 +137,18 @@ test("keeps a real provider MCP wait alive beyond 185 seconds and cancels its ex
         const target = await createAgentSmokeDraft(page, targetWorkspace, "Long wait target");
         targetSessionId = target.projectSessionId;
         await sendAgentPrompt(page, targetSessionId, TARGET_PROMPT);
-        await model.waitForRequest((request) => request.hasUserInputText(TARGET_PROMPT));
+        try {
+          await model.waitForRequest((request) => request.hasUserInputText(TARGET_PROMPT));
+        } catch (error) {
+          const state = await invokeIpc(page, "agent-runtime:session:read", {
+            sessionId: targetSessionId,
+          });
+          await testInfo.attach("target-session.json", {
+            body: JSON.stringify(state, null, 2),
+            contentType: "application/json",
+          });
+          throw error;
+        }
         const caller = await createAgentSmokeDraft(page, callerWorkspace, "Long wait caller");
         await sendAgentPrompt(page, caller.projectSessionId, CALLER_PROMPT);
         await expect

@@ -77,7 +77,7 @@ test("native Sidebar commands converge across two windows with mixed and built-i
         `await call("move_session_to_sidebar_section",{sessionId:${JSON.stringify(draftOne)},sectionId});`,
         `await call("move_session_to_sidebar_section",{sessionId:${JSON.stringify(draftTwo)},sectionId});`,
         'let after; let items=[]; for(let page=0;page<10;page++){const w=await call("list_sidebar_section_items",{sectionId,first:1,...(after?{after}:{})}); items.push(...w.items); after=w.nextCursor; if(!after) break;}',
-        'const desired=[items[2],items[0],items[1]]; const args={sectionId,items:desired.map(item=>({placementId:item.placementId,expectedRevision:item.revision,expectedRankKey:item.rankKey}))}; const reordered=await call("reorder_section",args); const replay=await call("reorder_section",{...args,operationId:reordered.operationId});',
+        'const desired=[items[2],items[0],items[1]]; const args={idempotencyKey:"sidebar-mixed-order",sectionId,items:desired.map(item=>({placementId:item.placementId,expectedRevision:item.revision,expectedRankKey:item.rankKey}))}; const reordered=await call("reorder_section",args); const replay=await call("reorder_section",args); if(replay.operationId!==reordered.operationId) throw Error("Reorder retry changed operation identity");',
         'const renamed=await call("rename_sidebar_section",{sectionId,name:"Sidebar Ordered",expectedRevision:created.section.revision}); text({phase:"mixed",section:renamed.section,attachedSessionId:attached.sessionId,replay});',
       ];
     if (phase === "pinned")
@@ -88,7 +88,7 @@ test("native Sidebar commands converge across two windows with mixed and built-i
         `await call("move_session_to_sidebar_section",{sessionId:${JSON.stringify(draftTwo)},sectionId:canonical("pinned")});`,
         `await call("set_session_pinned",{sessionId:${JSON.stringify(attachedId)},pinned:true});`,
         'const pins=await readOrder(canonical("pinned"),"session");',
-        `const args={sectionId:canonical("pinned"),sessionIds:${JSON.stringify([draftTwo, attachedId, draftOne])},expectedOrderRevision:pins.orderRevision}; const reordered=await call("reorder_section",args); const replay=await call("reorder_section",{...args,operationId:reordered.operationId});`,
+        `const args={idempotencyKey:"sidebar-pinned-order",sectionId:canonical("pinned"),sessionIds:${JSON.stringify([draftTwo, attachedId, draftOne])},expectedOrderRevision:pins.orderRevision}; const reordered=await call("reorder_section",args); const replay=await call("reorder_section",args); if(replay.operationId!==reordered.operationId) throw Error("Reorder retry changed operation identity");`,
         'const current=await readOrder(canonical("pinned"),"session"); const incomplete=await call("reorder_section",{sectionId:canonical("pinned"),sessionIds:[current.items[0].sessionId],expectedOrderRevision:current.orderRevision});',
         'const projects=await readOrder(canonical("projects"),"project"); const desired=projects.items.slice().reverse(); await call("reorder_sidebar_projects",{sectionId:canonical("projects"),projectIds:desired.map(item=>item.projectId),expectedOrderRevision:projects.orderRevision}); text({phase:"pinned",projectOrder:desired.map(item=>item.title),pins:current,replay,incomplete});',
       ];

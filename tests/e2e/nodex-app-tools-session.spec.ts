@@ -53,7 +53,10 @@ test("reads its Session through native MCP before and after restarting Nodex", a
   let sessionId = "";
   let projectId = "";
   const forkContexts = new Map<string, Record<string, unknown>>();
-  let retainedHandoff: { sessionId: string; operationId: string } | null = null;
+  let retainedHandoff: {
+    status: { sessionId: string; operationId: string };
+    retry: { sessionId: string; idempotencyKey: string };
+  } | null = null;
   const threadlessSessionId = createUuidV7();
   await withScriptedModelServer(
     {
@@ -86,38 +89,38 @@ test("reads its Session through native MCP before and after restarting Nodex", a
                     'const emit = value => text(JSON.parse(JSON.stringify(value, (key, value) => ["receipt","execution","nextCursor","tailCursor"].includes(key) ? undefined : value)));',
                     'emit(unwrap(await app.get_session_context({}))); emit(unwrap(await app.list_projects({}))); emit(unwrap(await app.get_app_capabilities({}))); emit(unwrap(await app.describe_content_schema({scope:{},relation:"pages"}))); emit(unwrap(await app.query_content({scope:{},sql:"SELECT count(*) AS page_count FROM pages"})));',
                     "emit(unwrap(await app.read_session({limit:1,maxCharsPerItem:100})));",
-                    `const launchArgs = {prompt:"APP_CHILD_${phase}",title:"MCP child ${phase}",target:{type:"project",projectId:${JSON.stringify(projectId)},environment:{type:"local"}},model:"gpt-5.6-sol"};`,
+                    `const launchArgs = {idempotencyKey:"session-create-${phase}",prompt:"APP_CHILD_${phase}",title:"MCP child ${phase}",target:{type:"project",projectId:${JSON.stringify(projectId)},environment:{type:"local"}},model:"gpt-5.6-sol"};`,
                     'const rawChild = await app.create_session(launchArgs); const childOutput=typeof rawChild==="string"?JSON.parse(rawChild):rawChild; if(childOutput.isError) emit({childFailure:childOutput}); const child=unwrap(childOutput); emit({createdChild:child});',
-                    "emit({replayedChild:unwrap(await app.create_session({...launchArgs,operationId:child.operationId}))});",
+                    "emit({replayedChild:unwrap(await app.create_session(launchArgs))});",
                     "emit({childWait:unwrap(await app.wait_sessions({targets:[{sessionId:child.sessionId,runId:child.runId}],timeoutMs:30000}))});",
                     "emit({childHistory:unwrap(await app.read_session({sessionId:child.sessionId}))});",
-                    `const messageArgs = {sessionId:child.sessionId,prompt:"APP_FOLLOWUP_${phase}"};`,
+                    `const messageArgs = {idempotencyKey:"session-message-${phase}",sessionId:child.sessionId,prompt:"APP_FOLLOWUP_${phase}"};`,
                     "const sent = unwrap(await app.send_message_to_session(messageArgs)); emit({sentMessage:sent});",
-                    "emit({replayedMessage:unwrap(await app.send_message_to_session({...messageArgs,operationId:sent.operationId}))});",
+                    "emit({replayedMessage:unwrap(await app.send_message_to_session(messageArgs))});",
                     "emit({followupWait:unwrap(await app.wait_sessions({targets:[{sessionId:child.sessionId,runId:sent.runId}],timeoutMs:30000}))});",
                     "emit({followupHistory:unwrap(await app.read_session({sessionId:child.sessionId}))});",
-                    "const forkArgs = {sessionId:child.sessionId}; const forked = unwrap(await app.fork_session(forkArgs)); emit({forkedChild:forked});",
-                    "emit({replayedFork:unwrap(await app.fork_session({...forkArgs,operationId:forked.operationId}))});",
+                    `const forkArgs = {sessionId:child.sessionId,idempotencyKey:"session-fork-${phase}"}; const forked = unwrap(await app.fork_session(forkArgs)); emit({forkedChild:forked});`,
+                    "emit({replayedFork:unwrap(await app.fork_session(forkArgs))});",
                     `emit({forkMessage:unwrap(await app.send_message_to_session({sessionId:forked.sessionId,prompt:"APP_FORK_${phase}"}))});`,
                     "emit({forkWait:unwrap(await app.wait_sessions({targets:[{sessionId:forked.sessionId}],timeoutMs:30000}))});",
                     "emit({forkHistory:unwrap(await app.read_session({sessionId:forked.sessionId,limit:2}))});",
 
                     ...(retainedHandoff
                       ? [
-                          `emit({retainedHandoff:unwrap(await app.get_handoff_status(${JSON.stringify(retainedHandoff)}))});`,
-                          `emit({retainedReplay:unwrap(await app.handoff_session(${JSON.stringify(retainedHandoff)}))});`,
+                          `emit({retainedHandoff:unwrap(await app.get_handoff_status(${JSON.stringify(retainedHandoff.status)}))});`,
+                          `emit({retainedReplay:unwrap(await app.handoff_session(${JSON.stringify(retainedHandoff.retry)}))});`,
                         ]
                       : []),
-                    "const moved = unwrap(await app.handoff_session({sessionId:child.sessionId})); emit({startedHandoff:moved});",
+                    `const handoffArgs = {sessionId:child.sessionId,idempotencyKey:"session-handoff-${phase}"}; const moved = unwrap(await app.handoff_session(handoffArgs)); emit({startedHandoff:moved});`,
                     "let progress = moved.operation; for (let attempt = 0; attempt < 20 && progress?.status === 'running'; attempt++) { const observed = unwrap(await app.get_handoff_status({sessionId:child.sessionId,operationId:moved.operationId,afterRevision:progress.revision,waitMs:30000})); progress = observed.operation; } emit({handoffOutcome:progress});",
-                    "emit({replayedHandoff:unwrap(await app.handoff_session({sessionId:child.sessionId,operationId:moved.operationId}))});",
+                    "emit({replayedHandoff:unwrap(await app.handoff_session(handoffArgs))});",
 
                     `const created = unwrap(await app.create_sidebar_section({name:${JSON.stringify(`MCP section ${phase}`)}})); emit(created);`,
                     `emit(unwrap(await app.move_session_to_sidebar_section({sessionId:${JSON.stringify(threadlessSessionId)},sectionId:created.section.sectionId})));`,
                     `emit(unwrap(await app.move_project_to_sidebar_section({projectId:${JSON.stringify(projectId)},sectionId:created.section.sectionId})));`,
                     "const placementWindow = unwrap(await app.list_sidebar_section_items({sectionId:created.section.sectionId})); emit({mixedBefore:placementWindow});",
-                    "const orderArgs = {sectionId:created.section.sectionId,items:placementWindow.items.slice().reverse().map(item => ({placementId:item.placementId,expectedRevision:item.revision,expectedRankKey:item.rankKey}))}; const reordered = unwrap(await app.reorder_section(orderArgs)); emit({mixedReorder:reordered});",
-                    "emit({mixedReplay:unwrap(await app.reorder_section({...orderArgs,operationId:reordered.operationId}))});",
+                    `const orderArgs = {idempotencyKey:"session-order-${phase}",sectionId:created.section.sectionId,items:placementWindow.items.slice().reverse().map(item => ({placementId:item.placementId,expectedRevision:item.revision,expectedRankKey:item.rankKey}))}; const reordered = unwrap(await app.reorder_section(orderArgs)); emit({mixedReorder:reordered});`,
+                    "emit({mixedReplay:unwrap(await app.reorder_section(orderArgs))});",
                     "emit({mixedAfter:unwrap(await app.list_sidebar_section_items({sectionId:created.section.sectionId}))});",
                     `emit(unwrap(await app.set_session_title({sessionId:${JSON.stringify(threadlessSessionId)},title:"MCP draft ${phase}"})));`,
                     `emit(unwrap(await app.read_session({sessionId:${JSON.stringify(threadlessSessionId)}})));`,
@@ -231,10 +234,10 @@ test("reads its Session through native MCP before and after restarting Nodex", a
             expect(childRunIds).toHaveLength(1);
             const sentMessage = requireRecord(
               records.find((record) => record.sentMessage)?.sentMessage,
-              "Accepted message",
+              "Started message",
             );
             expect(sentMessage).toMatchObject({
-              deliveryState: "accepted",
+              deliveryState: "started",
               sessionId: createdChild.sessionId,
               threadId: createdChild.threadId,
               operationId: expect.any(String),
@@ -243,7 +246,7 @@ test("reads its Session through native MCP before and after restarting Nodex", a
             });
             expect(records.find((record) => record.replayedMessage)?.replayedMessage).toMatchObject(
               {
-                deliveryState: "accepted",
+                deliveryState: "started",
                 sessionId: createdChild.sessionId,
                 threadId: createdChild.threadId,
                 operationId: sentMessage.operationId,
@@ -336,12 +339,15 @@ test("reads its Session through native MCP before and after restarting Nodex", a
             if (phase === "restored") {
               expect(
                 records.find((record) => record.retainedHandoff)?.retainedHandoff,
-              ).toMatchObject({ ...retainedHandoff, operation: { status: "success" } });
+              ).toMatchObject({ ...retainedHandoff?.status, operation: { status: "success" } });
               expect(records.find((record) => record.retainedReplay)?.retainedReplay).toMatchObject(
-                { ...retainedHandoff, replay: true, operation: { status: "success" } },
+                { ...retainedHandoff?.status, replay: true, operation: { status: "success" } },
               );
             }
-            retainedHandoff = { sessionId: moved.sessionId, operationId: moved.operationId };
+            retainedHandoff = {
+              status: { sessionId: moved.sessionId, operationId: moved.operationId },
+              retry: { sessionId: moved.sessionId, idempotencyKey: `session-handoff-${phase}` },
+            };
             expect(records.some((record) => record.isError === true)).toBe(false);
             expect(records.filter((record) => record.error != null)).toEqual([]);
             expect(records).toContainEqual(

@@ -62,17 +62,17 @@ test("manages durable Automation definitions through native MCP across a restart
             expect(tool).not.toBeNull();
             const initialScript = [
               "text({projects:unwrap(await app.list_projects({}))});",
-              `const cronArgs = {mode:"create",kind:"cron",name:"MCP scheduled review",prompt:"Review the selected Project",rrule:"FREQ=YEARLY",projectId:${JSON.stringify(selectedProjectId)},cwds:[${JSON.stringify(workspaceRoot)}],executionEnvironment:"local",notificationPolicy:"failed_runs_only"};`,
+              `const cronArgs = {idempotencyKey:"automation-cron-create",mode:"create",kind:"cron",name:"MCP scheduled review",prompt:"Review the selected Project",rrule:"FREQ=YEARLY",projectId:${JSON.stringify(selectedProjectId)},cwds:[${JSON.stringify(workspaceRoot)}],executionEnvironment:"local",notificationPolicy:"failed_runs_only"};`,
               "const created = unwrap(await app.automation_update(cronArgs)); text({created});",
-              "text({createReplay:unwrap(await app.automation_update({...cronArgs,operationId:created.operationId}))});",
+              "text({createReplay:unwrap(await app.automation_update(cronArgs))});",
               "const viewed = unwrap(await app.automation_update({mode:'view',id:created.item.id})); text({viewed});",
-              "const updateArgs = {...cronArgs,mode:'update',id:viewed.item.id,expectedRevision:viewed.item.definitionRevision,status:'PAUSED',name:'MCP paused review',notificationPolicy:null};",
+              "const updateArgs = {...cronArgs,idempotencyKey:'automation-cron-update',mode:'update',id:viewed.item.id,expectedRevision:viewed.item.definitionRevision,status:'PAUSED',name:'MCP paused review',notificationPolicy:null};",
               "const updated = unwrap(await app.automation_update(updateArgs)); text({updated});",
-              "text({updateReplay:unwrap(await app.automation_update({...updateArgs,operationId:updated.operationId}))});",
-              "const heartbeatArgs = {mode:'create',kind:'heartbeat',name:'MCP follow-up',prompt:'Check this Session for progress',rrule:'FREQ=YEARLY',notificationPolicy:'failed_runs_only'};",
+              "text({updateReplay:unwrap(await app.automation_update(updateArgs))});",
+              "const heartbeatArgs = {idempotencyKey:'automation-heartbeat-create',mode:'create',kind:'heartbeat',name:'MCP follow-up',prompt:'Check this Session for progress',rrule:'FREQ=YEARLY',notificationPolicy:'failed_runs_only'};",
               "const heartbeat = unwrap(await app.automation_update(heartbeatArgs)); text({heartbeat});",
-              "text({heartbeatReplay:unwrap(await app.automation_update({...heartbeatArgs,operationId:heartbeat.operationId}))});",
-              "text({retained:{cronCreateArgs:{...cronArgs,operationId:created.operationId},cronUpdateArgs:{...updateArgs,operationId:updated.operationId},cronId:updated.item.id,cronRevision:updated.item.definitionRevision,heartbeatCreateArgs:{...heartbeatArgs,operationId:heartbeat.operationId},heartbeatId:heartbeat.item.id,heartbeatRevision:heartbeat.item.definitionRevision}});",
+              "text({heartbeatReplay:unwrap(await app.automation_update(heartbeatArgs))});",
+              "text({retained:{cronCreateArgs:cronArgs,cronUpdateArgs:updateArgs,cronId:updated.item.id,cronRevision:updated.item.definitionRevision,cronCreateOperationId:created.operationId,cronUpdateOperationId:updated.operationId,heartbeatCreateArgs:heartbeatArgs,heartbeatId:heartbeat.item.id,heartbeatRevision:heartbeat.item.definitionRevision,heartbeatCreateOperationId:heartbeat.operationId}});",
             ];
             const restoredScript = [
               `const retained = ${JSON.stringify(retained)};`,
@@ -81,12 +81,12 @@ test("manages durable Automation definitions through native MCP across a restart
               "text({restoredCreateReplay:unwrap(await app.automation_update(retained.cronCreateArgs))});",
               "text({restoredUpdateReplay:unwrap(await app.automation_update(retained.cronUpdateArgs))});",
               "text({restoredHeartbeatReplay:unwrap(await app.automation_update(retained.heartbeatCreateArgs))});",
-              "const deleteArgs = {mode:'delete',id:retained.cronId,expectedRevision:retained.cronRevision};",
+              "const deleteArgs = {idempotencyKey:'automation-cron-delete',mode:'delete',id:retained.cronId,expectedRevision:retained.cronRevision};",
               "const deleted = unwrap(await app.automation_update(deleteArgs)); text({deleted});",
-              "text({deleteReplay:unwrap(await app.automation_update({...deleteArgs,operationId:deleted.operationId}))});",
-              "const heartbeatDeleteArgs = {mode:'delete',id:retained.heartbeatId,expectedRevision:retained.heartbeatRevision};",
+              "text({deleteReplay:unwrap(await app.automation_update(deleteArgs))});",
+              "const heartbeatDeleteArgs = {idempotencyKey:'automation-heartbeat-delete',mode:'delete',id:retained.heartbeatId,expectedRevision:retained.heartbeatRevision};",
               "const heartbeatDeleted = unwrap(await app.automation_update(heartbeatDeleteArgs)); text({heartbeatDeleted});",
-              "text({heartbeatDeleteReplay:unwrap(await app.automation_update({...heartbeatDeleteArgs,operationId:heartbeatDeleted.operationId}))});",
+              "text({heartbeatDeleteReplay:unwrap(await app.automation_update(heartbeatDeleteArgs))});",
             ];
             return responses.stream([
               responses.created(`${phase}_call`),
@@ -122,7 +122,10 @@ test("manages durable Automation definitions through native MCP across a restart
               notificationPolicy: "failed_runs_only",
               definitionRevision: 1,
             });
-            expect(labeledResult(records, "createReplay").item).toEqual(created.item);
+            expect(labeledResult(records, "createReplay")).toMatchObject({
+              operationId: created.operationId,
+              item: created.item,
+            });
             expect(labeledResult(records, "viewed").item).toEqual(created.item);
             const updated = labeledResult(records, "updated");
             expect(updated.item).toMatchObject({
@@ -133,7 +136,10 @@ test("manages durable Automation definitions through native MCP across a restart
               notificationPolicy: null,
               definitionRevision: 2,
             });
-            expect(labeledResult(records, "updateReplay").item).toEqual(updated.item);
+            expect(labeledResult(records, "updateReplay")).toMatchObject({
+              operationId: updated.operationId,
+              item: updated.item,
+            });
             const heartbeat = labeledResult(records, "heartbeat");
             expect(heartbeat.item).toMatchObject({
               kind: "heartbeat",
@@ -142,7 +148,10 @@ test("manages durable Automation definitions through native MCP across a restart
               notificationPolicy: "failed_runs_only",
               definitionRevision: 1,
             });
-            expect(labeledResult(records, "heartbeatReplay").item).toEqual(heartbeat.item);
+            expect(labeledResult(records, "heartbeatReplay")).toMatchObject({
+              operationId: heartbeat.operationId,
+              item: heartbeat.item,
+            });
             retained = labeledResult(records, "retained");
           } else {
             if (!retained) throw new Error("Initial Automation receipts were not retained");
@@ -159,6 +168,15 @@ test("manages durable Automation definitions through native MCP across a restart
               targetSessionId: callerSessionId,
               definitionRevision: retained.heartbeatRevision,
             });
+            expect(labeledResult(records, "restoredCreateReplay").operationId).toBe(
+              retained.cronCreateOperationId,
+            );
+            expect(labeledResult(records, "restoredUpdateReplay").operationId).toBe(
+              retained.cronUpdateOperationId,
+            );
+            expect(labeledResult(records, "restoredHeartbeatReplay").operationId).toBe(
+              retained.heartbeatCreateOperationId,
+            );
             expect(labeledResult(records, "restoredCreateReplay").item).toMatchObject({
               id: retained.cronId,
               definitionRevision: 1,
