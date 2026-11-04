@@ -1,0 +1,23 @@
+src/main/mobile-gateway/files.ts
+  s_9c72cf791afc7e::t_dc9ab3693f7c22 65,265,275,277-280,286-287,291-328,405,416,428
+src/main/mobile-gateway/files.node.test.ts
+  s_9c72cf791afc7e::t_dc9ab3693f7c22 261-263,265-266,269,271,279-280,298-299,302-304,307-308,328,330-335,337-348,350
+docs/product-specs/mobile-companion-behavior.md
+  s_9c72cf791afc7e::t_dc9ab3693f7c22 26-28,71-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0518ba44aad2339bd1887c10af98c71caf2ad485",
+  "prompts": {},
+  "sessions": {
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
