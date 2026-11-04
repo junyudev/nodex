@@ -4,7 +4,7 @@ import {
   inboxOfferedModels,
   isInboxChatCandidate,
   resolveInboxModel,
-  type InboxChatAgent,
+  type InboxAgentChoice,
 } from "../../shared/inbox";
 import { inboxModelGuideNote } from "../../shared/inbox-model-guide";
 import { inboxUsageReading, type InboxBudgetPace } from "../../shared/inbox-suggestion-policy";
@@ -109,7 +109,7 @@ export function inboxAgentCandidates(
 /** The Inbox's own choice as the suggestion reads it, so null visibly means something. */
 export function inboxDefaultChatCandidate(
   providers: readonly Provider[],
-  chatAgent: InboxChatAgent,
+  chatAgent: InboxAgentChoice,
 ): { readonly instance_id: string; readonly model: string; readonly effort: string | null } | null {
   const resolution = resolveInboxModel(providers, chatAgent, "chat");
   if (resolution.kind !== "ready") return null;

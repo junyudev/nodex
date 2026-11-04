@@ -238,8 +238,12 @@ describe("Inbox destination and Agent selection", () => {
   test("keeps an unavailable suggestion choice explicit and offers only Agents that can suggest", async () => {
     vi.mocked(readInboxSettings).mockResolvedValue({
       ...DEFAULT_INBOX_SETTINGS,
-      suggestionAgent: { instanceId: "removed:account" },
-      suggestionModel: "retired-model",
+      suggestionAgent: {
+        instanceId: "removed:account",
+        model: "retired-model",
+        reasoningEffort: null,
+        serviceTier: null,
+      },
     });
     const opencode = provider(OPENCODE_INSTANCE_ID, "opencode", "OpenCode");
     vi.mocked(agentRuntimeRuntime.catalog).mockResolvedValue([
@@ -259,8 +263,12 @@ describe("Inbox destination and Agent selection", () => {
       await settleAsyncRender();
     });
     expect(updateInboxSettings).toHaveBeenLastCalledWith({
-      suggestionAgent: { instanceId: CLAUDE_INSTANCE_ID },
-      suggestionModel: "precise-model",
+      suggestionAgent: {
+        instanceId: CLAUDE_INSTANCE_ID,
+        model: "precise-model",
+        reasoningEffort: null,
+        serviceTier: null,
+      },
     });
     await waitFor(() => expect(suggestion.textContent).toBe("Work · Precise model"));
     // Any Agent can run the chats the Inbox starts.
@@ -314,7 +322,7 @@ describe("Inbox destination and Agent selection", () => {
     vi.mocked(agentRuntimeRuntime.catalog).mockReturnValue(pending.promise);
     vi.mocked(readInboxSettings).mockResolvedValue({
       ...DEFAULT_INBOX_SETTINGS,
-      suggestionModel: "precise-model",
+      suggestionAgent: { ...DEFAULT_INBOX_SETTINGS.suggestionAgent, model: "precise-model" },
     });
     renderQuery(<InboxSettingsPage />);
     const model = await screen.findByRole("button", { name: "Suggestion model" });
@@ -380,7 +388,7 @@ describe("Inbox destination and Agent selection", () => {
     vi.mocked(agentRuntimeRuntime.catalog).mockRejectedValue(new Error("offline"));
     vi.mocked(readInboxSettings).mockResolvedValue({
       ...DEFAULT_INBOX_SETTINGS,
-      suggestionModel: "precise-model",
+      suggestionAgent: { ...DEFAULT_INBOX_SETTINGS.suggestionAgent, model: "precise-model" },
     });
     renderQuery(<InboxSettingsPage />);
     await screen.findByRole("button", { name: "Retry" });

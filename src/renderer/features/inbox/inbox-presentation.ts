@@ -1,7 +1,7 @@
 import { CoreApiError } from "@/lib/core-api-error";
 import type {
   InboxChat,
-  InboxChatAgent,
+  InboxAgentChoice,
   InboxDispatchAction,
   InboxEntryKind,
   InboxFiring,
@@ -54,7 +54,7 @@ export const isChatAction = (
  */
 export interface InboxRowEdit {
   readonly proposalId: string;
-  readonly agent?: InboxChatAgent | null;
+  readonly agent?: InboxAgentChoice | null;
   readonly dropped: readonly number[];
 }
 

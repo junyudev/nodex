@@ -11,9 +11,11 @@ import {
 import {
   inboxDefaultChatModel,
   inboxDefaultSuggestionModel,
+  inboxModelEffort,
+  inboxRequestedEffort,
   resolveInboxModel,
   supportsInboxStructuredGeneration,
-  type InboxChatAgent,
+  type InboxAgentChoice,
 } from "../../../shared/inbox";
 import type { AgentModelOption, CodexReasoningEffort } from "../../../shared/types";
 import { agentRuntimeQualifier } from "@/lib/agent-model-selection";
@@ -77,23 +79,13 @@ export function inboxAgentIdentity(
 const effortDescriptor = (model: ProviderModel | undefined) =>
   model?.capabilities?.optionDescriptors?.find(isAgentRuntimeEffortOption);
 
-/** The effort a model runs at: the chosen one it offers, else its own default. */
-const effectiveEffort = (model: ProviderModel, chosen: string | null): string | null => {
-  const descriptor = effortDescriptor(model);
-  if (descriptor?.type !== "select") return null;
-  if (chosen && descriptor.options.some((option) => option.id === chosen)) return chosen;
-  return (
-    descriptor.currentValue ?? descriptor.options.find((option) => option.isDefault)?.id ?? null
-  );
-};
-
 const selectedEffort = (
   model: ProviderModel,
   selection: AgentRuntimeLaunch["modelSelection"],
 ): string | null => {
   const id = effortDescriptor(model)?.id;
   const value = selection.options?.find((option) => option.id === id)?.value;
-  return effectiveEffort(model, typeof value === "string" ? value : null);
+  return inboxModelEffort(model, typeof value === "string" ? value : null);
 };
 
 const offersServiceTier = (model: ProviderModel | undefined, tier: string) =>
@@ -110,7 +102,7 @@ const offersServiceTier = (model: ProviderModel | undefined, tier: string) =>
  */
 export function describeInboxAgent(
   catalog: InboxAgentCatalog,
-  choice: InboxChatAgent,
+  choice: InboxAgentChoice,
   purpose: InboxAgentPurpose = "chat",
 ): InboxAgentPresentation {
   const { agent, kind, named } = inboxAgentIdentity(catalog, choice.instanceId);
@@ -167,7 +159,7 @@ export const inboxAgentShortLine = (presentation: InboxAgentPresentation): strin
     : presentation.detail;
 
 /** Whether two choices run the same way; unset and explicit defaults are not merged. */
-export const sameInboxChatAgent = (left: InboxChatAgent, right: InboxChatAgent): boolean =>
+export const sameInboxAgentChoice = (left: InboxAgentChoice, right: InboxAgentChoice): boolean =>
   left.instanceId === right.instanceId &&
   left.model === right.model &&
   left.reasoningEffort === right.reasoningEffort &&
@@ -194,7 +186,7 @@ export interface InboxAgentPickerModel {
 /** Projects a choice onto the shared model picker, which lists concrete models only. */
 export function inboxAgentPickerModel(
   catalog: InboxAgentCatalog,
-  choice: InboxChatAgent,
+  choice: InboxAgentChoice,
   purpose: InboxAgentPurpose = "chat",
 ): InboxAgentPickerModel {
   const entries = catalog.providers.flatMap((provider) => {
@@ -225,7 +217,10 @@ export function inboxAgentPickerModel(
         ? inboxDefaultSuggestionModel(provider)
         : inboxDefaultChatModel(provider)
     : undefined;
-  const effort = model ? effectiveEffort(model, choice.reasoningEffort) : null;
+  const effort =
+    provider && model
+      ? inboxModelEffort(model, inboxRequestedEffort(provider, choice, purpose))
+      : null;
   const descriptor = effortDescriptor(model);
   return {
     entries,
@@ -266,9 +261,9 @@ export function inboxAgentPickerModel(
  */
 export function chooseInboxModel(
   catalog: InboxAgentCatalog,
-  choice: InboxChatAgent,
+  choice: InboxAgentChoice,
   next: AgentModelSelection,
-): InboxChatAgent {
+): InboxAgentChoice {
   const instanceId = agentRuntimeProviderId(next.binding);
   if (!instanceId) return choice;
   const model = catalog.providers
@@ -293,9 +288,9 @@ export function chooseInboxModel(
 
 /** An effort or speed change keeps the chosen Agent and model. */
 export const chooseInboxChatOptions = (
-  choice: InboxChatAgent,
+  choice: InboxAgentChoice,
   change: { readonly reasoningEffort?: CodexReasoningEffort | string; readonly fast?: boolean },
-): InboxChatAgent => ({
+): InboxAgentChoice => ({
   ...choice,
   ...(change.reasoningEffort !== undefined ? { reasoningEffort: change.reasoningEffort } : {}),
   ...(change.fast !== undefined ? { serviceTier: change.fast ? "fast" : null } : {}),

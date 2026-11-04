@@ -4,7 +4,7 @@ import { toast } from "@/components/ui/toast";
 import { useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import type {
-  InboxChatAgent,
+  InboxAgentChoice,
   InboxItem,
   InboxProposal,
   InboxPageBasis,
@@ -66,7 +66,7 @@ import type { InboxActions } from "./use-inbox-actions";
 import { InboxAgentLabel, InboxAgentPicker, type InboxAgents } from "./inbox-agent-picker";
 import {
   describeInboxAgent,
-  sameInboxChatAgent,
+  sameInboxAgentChoice,
   type InboxAgentPresentation,
 } from "./inbox-agent-model";
 
@@ -275,12 +275,12 @@ function ChatAgentMenu({
   onChange,
 }: {
   readonly agents: InboxAgents;
-  readonly value: InboxChatAgent;
+  readonly value: InboxAgentChoice;
   readonly changed: boolean;
   readonly label?: string;
   /** Matches the decision it completes. */
   readonly variant: DecisionVariant;
-  readonly onChange: (next: InboxChatAgent) => void;
+  readonly onChange: (next: InboxAgentChoice) => void;
 }) {
   return (
     <InboxAgentPicker
@@ -491,10 +491,10 @@ export function InboxTriage({
     (edit?.agent !== undefined ? edit.agent : suggested?.agent) ??
     baseAgent ??
     agents.settings.chatAgent;
-  const chooseAgent = (proposalId: string, agent: InboxChatAgent) =>
+  const chooseAgent = (proposalId: string, agent: InboxAgentChoice) =>
     setRowEdit((current) => ({
       proposalId,
-      agent: baseAgent && sameInboxChatAgent(agent, baseAgent) ? null : agent,
+      agent: baseAgent && sameInboxAgentChoice(agent, baseAgent) ? null : agent,
       dropped: current?.proposalId === proposalId ? current.dropped : [],
     }));
   const toggleAddition = (proposalId: string, index: number) =>
@@ -756,7 +756,7 @@ export function InboxTriage({
                       agents={agents}
                       value={chatAgent}
                       changed={
-                        !sameInboxChatAgent(chatAgent, baseAgent ?? agents.settings.chatAgent)
+                        !sameInboxAgentChoice(chatAgent, baseAgent ?? agents.settings.chatAgent)
                       }
                       label={runTask ? "Choose the model for this run" : undefined}
                       variant={variant}

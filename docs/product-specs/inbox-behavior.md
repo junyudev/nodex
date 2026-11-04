@@ -770,10 +770,9 @@ creates a second message, and does not count against the Agent budget again.
 
 - `Settings → Inbox` holds these Profile preferences:
   - when suggestions run: automatically, when the user asks, or never;
-  - the suggestion Agent and model, chosen with the composer's model menu among
-    the Agents that can write suggestions. Suggestions run each model at a fixed
-    effort, high on Codex and medium on Claude, so the menu offers no effort or
-    speed;
+  - what suggestions run on, chosen with the composer's model menu among the
+    Agents that can write suggestions: the Agent, its model, and the model's
+    effort and speed;
   - free-text routing preferences: the user's standing instructions to the
     suggestion Agent, which outrank Nodex's own guidance;
   - whether a chat the Inbox starts opens with its message Pages in its right
@@ -795,7 +794,9 @@ creates a second message, and does not count against the Agent budget again.
   An unavailable instance retains its real name rather than appearing as another Agent.
   Suggestions run often, so an omitted suggestion model resolves to
   GPT-6.1 Sol on Codex, and otherwise, or when the catalog lacks it, to that
-  instance's catalog default. Until a chat model is chosen, chats the Inbox
+  instance's catalog default. They look things up and choose models as well as
+  routing, so an omitted suggestion effort is high on Codex and medium on Claude.
+  Until a chat model is chosen, chats the Inbox
   starts use the Agent's catalog default model at that model's own effort and
   speed. A chosen effort or speed the model does not offer falls back to the
   model's own; choosing another model keeps the ones it also offers. Messages

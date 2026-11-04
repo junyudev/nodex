@@ -227,8 +227,6 @@ export function AgentModelPicker(
     readonly catalog: AgentModelCatalogPresentation;
     /** Replaces the composer or settings trigger, such as a split button's menu half. */
     readonly triggerButton?: ReactElement;
-    /** Lists models alone, for a caller that runs every model at its own fixed options. */
-    readonly modelOnly?: boolean;
   },
 ) {
   const { triggerRef } = props;
@@ -457,17 +455,15 @@ export function AgentModelPicker(
       ? []
       : (catalog.configOptions?.filter((option) => option.category !== "model") ?? []);
   const runtimeOptions = catalog.runtimeOptions ?? [];
-  const hasOptions =
-    props.modelOnly !== true &&
-    (nativeControls
-      ? effortStops.length > 1 ||
-        thinkingSwitch ||
-        isCodex ||
-        native?.capabilities.fastMode ||
-        native?.capabilities.ultracode ||
-        native?.capabilities.ultracodeUnavailableReason ||
-        contextWindows.length > 1
-      : genericOptions.length > 0 || Boolean(catalog.modes?.availableModes.length));
+  const hasOptions = nativeControls
+    ? effortStops.length > 1 ||
+      thinkingSwitch ||
+      isCodex ||
+      native?.capabilities.fastMode ||
+      native?.capabilities.ultracode ||
+      native?.capabilities.ultracodeUnavailableReason ||
+      contextWindows.length > 1
+    : genericOptions.length > 0 || Boolean(catalog.modes?.availableModes.length);
   return (
     <NodexOptionPicker
       search="filter"
@@ -617,91 +613,83 @@ export function AgentModelPicker(
             </NodexDropdownActionRow>
           ))}
           {hasOptions ? <NodexDropdownSeparator /> : null}
-          {props.modelOnly ? null : (
-            <>
-              {effortStops.length > 1 ? (
-                <IntelligenceEffortSlider
-                  stops={effortStops}
-                  value={effortPosition.value}
-                  isDefault={effortPosition.isDefault}
-                  flowing={fastOn}
-                  disabled={disabled}
-                  accessory={modeToggles}
-                  onChange={(value) => {
-                    if (native && value === THINKING_OFF_EFFORT_STOP)
-                      return changeNative({ thinking: false }, { effort: value });
-                    if (native && isClaudeEffortLevel(value))
-                      return changeNative({ effort: value, thinking: true }, { effort: value });
-                    props.onSelectionChange(
-                      { ...selection, reasoningEffort: value },
-                      "reasoningEffort",
-                    );
-                  }}
-                />
-              ) : modeToggles ? (
-                <div className="px-[var(--padding-row-x)]">
-                  <IntelligenceControlsHeader accessory={modeToggles} />
-                </div>
-              ) : null}
-              {native && contextWindows.length > 1 ? (
-                <OptionRow
-                  label="Context"
-                  value={
-                    native.selected.contextInherited ? "default" : (native.selected.context ?? "")
-                  }
-                  options={[
-                    { value: "default", label: "Default" },
-                    ...contextWindows.map((value) => ({ value, label: value })),
-                  ]}
-                  disabled={optionsDisabled}
-                  onChange={(value) =>
-                    changeNative({ context: value === "default" ? null : value })
-                  }
-                />
-              ) : null}
-              {genericOptions.map((option) => (
-                <OptionRow
-                  key={option.id}
-                  label={option.name}
-                  value={String(option.currentValue)}
-                  disabled={optionsDisabled || !catalog.changeConfig}
-                  options={
-                    option.type === "boolean"
-                      ? [
-                          { value: "true", label: "On" },
-                          { value: "false", label: "Off" },
-                        ]
-                      : flattenAgentConfigOptions(option).map((entry) => ({
-                          value: entry.value,
-                          label: entry.name,
-                          tooltipText: entry.description,
-                        }))
-                  }
-                  onChange={(value) =>
-                    void run(() =>
-                      catalog.changeConfig?.(
-                        option.id,
-                        option.type === "boolean" ? value === "true" : value,
-                      ),
-                    )
-                  }
-                />
-              ))}
-              {catalog.modes && catalog.modes.availableModes.length > 0 && catalog.changeMode ? (
-                <OptionRow
-                  label="Mode"
-                  value={catalog.modes.currentModeId}
-                  options={catalog.modes.availableModes.map((mode) => ({
-                    value: mode.id,
-                    label: mode.name,
-                    tooltipText: mode.description,
-                  }))}
-                  disabled={optionsDisabled}
-                  onChange={(value) => void run(() => catalog.changeMode?.(value))}
-                />
-              ) : null}
-            </>
-          )}
+          {effortStops.length > 1 ? (
+            <IntelligenceEffortSlider
+              stops={effortStops}
+              value={effortPosition.value}
+              isDefault={effortPosition.isDefault}
+              flowing={fastOn}
+              disabled={disabled}
+              accessory={modeToggles}
+              onChange={(value) => {
+                if (native && value === THINKING_OFF_EFFORT_STOP)
+                  return changeNative({ thinking: false }, { effort: value });
+                if (native && isClaudeEffortLevel(value))
+                  return changeNative({ effort: value, thinking: true }, { effort: value });
+                props.onSelectionChange(
+                  { ...selection, reasoningEffort: value },
+                  "reasoningEffort",
+                );
+              }}
+            />
+          ) : modeToggles ? (
+            <div className="px-[var(--padding-row-x)]">
+              <IntelligenceControlsHeader accessory={modeToggles} />
+            </div>
+          ) : null}
+          {native && contextWindows.length > 1 ? (
+            <OptionRow
+              label="Context"
+              value={native.selected.contextInherited ? "default" : (native.selected.context ?? "")}
+              options={[
+                { value: "default", label: "Default" },
+                ...contextWindows.map((value) => ({ value, label: value })),
+              ]}
+              disabled={optionsDisabled}
+              onChange={(value) => changeNative({ context: value === "default" ? null : value })}
+            />
+          ) : null}
+          {genericOptions.map((option) => (
+            <OptionRow
+              key={option.id}
+              label={option.name}
+              value={String(option.currentValue)}
+              disabled={optionsDisabled || !catalog.changeConfig}
+              options={
+                option.type === "boolean"
+                  ? [
+                      { value: "true", label: "On" },
+                      { value: "false", label: "Off" },
+                    ]
+                  : flattenAgentConfigOptions(option).map((entry) => ({
+                      value: entry.value,
+                      label: entry.name,
+                      tooltipText: entry.description,
+                    }))
+              }
+              onChange={(value) =>
+                void run(() =>
+                  catalog.changeConfig?.(
+                    option.id,
+                    option.type === "boolean" ? value === "true" : value,
+                  ),
+                )
+              }
+            />
+          ))}
+          {catalog.modes && catalog.modes.availableModes.length > 0 && catalog.changeMode ? (
+            <OptionRow
+              label="Mode"
+              value={catalog.modes.currentModeId}
+              options={catalog.modes.availableModes.map((mode) => ({
+                value: mode.id,
+                label: mode.name,
+                tooltipText: mode.description,
+              }))}
+              disabled={optionsDisabled}
+              onChange={(value) => void run(() => catalog.changeMode?.(value))}
+            />
+          ) : null}
           {catalog.actions?.length ? <NodexDropdownSeparator /> : null}
           {catalog.actions?.map((action) => (
             <NodexDropdownActionRow

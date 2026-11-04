@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { InboxChatAgent, InboxItem } from "../../../shared/inbox";
+import type { InboxAgentChoice, InboxItem } from "../../../shared/inbox";
 import type { CodexScheduledAutomation } from "../../../shared/types";
 import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import { codexScheduledAutomationsListQueryOptions } from "@/lib/query-options";
@@ -14,7 +14,7 @@ export function scheduledTaskChatAgent(
     CodexScheduledAutomation,
     "backendBinding" | "model" | "reasoningEffort" | "serviceTier"
   >,
-): InboxChatAgent | null {
+): InboxAgentChoice | null {
   const instanceId = agentRuntimeProviderId(task.backendBinding);
   if (!instanceId) return null;
   return {

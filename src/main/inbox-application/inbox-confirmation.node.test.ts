@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import type { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import {
   inboxNewChatAction,
-  type InboxChatAgent,
+  type InboxAgentChoice,
   type InboxDispatchAction,
 } from "../../shared/inbox";
 import { InboxPreparedConfirmationSchema } from "../../shared/schemas/inbox";
@@ -47,7 +47,7 @@ const codex: Provider = {
   slashCommands: [],
   skills: [],
 };
-const deep: InboxChatAgent = {
+const deep: InboxAgentChoice = {
   instanceId: "codex",
   model: "deep-model",
   reasoningEffort: "high",

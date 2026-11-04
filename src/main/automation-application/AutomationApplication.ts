@@ -19,7 +19,7 @@ import type {
   PageOccurrenceMutationResult,
   PageOccurrenceUpdateInput,
 } from "../../shared/types";
-import type { InboxChatAgent } from "../../shared/inbox";
+import type { InboxAgentChoice } from "../../shared/inbox";
 import { inboxChatAgentFromCore } from "../core-client/inbox-adapter";
 import { getLogger } from "../logging/logger";
 import type {
@@ -74,7 +74,7 @@ export interface AutomationDefinitionClaim {
 export interface AutomationFiringAdmission {
   readonly pageId: string;
   readonly prompt: string;
-  readonly agent: InboxChatAgent | null;
+  readonly agent: InboxAgentChoice | null;
   readonly admittedAt: number;
 }
 

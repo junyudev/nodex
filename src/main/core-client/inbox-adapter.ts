@@ -1,7 +1,7 @@
 import type { components } from "@nodex/core-protocol";
 import type {
   InboxChat,
-  InboxChatAgent,
+  InboxAgentChoice,
   InboxCounts,
   InboxDispatchAction,
   InboxItem,
@@ -70,14 +70,14 @@ export const inboxDispatchActionFromCore = (
   }
 };
 
-export const inboxChatAgentFromCore = (agent: CoreInboxChatAgent): InboxChatAgent => ({
+export const inboxChatAgentFromCore = (agent: CoreInboxChatAgent): InboxAgentChoice => ({
   instanceId: agent.instance_id,
   model: agent.model ?? null,
   reasoningEffort: agent.reasoning_effort ?? null,
   serviceTier: agent.service_tier ?? null,
 });
 
-const chatAgentToCore = (agent: InboxChatAgent): CoreInboxChatAgent => ({
+const chatAgentToCore = (agent: InboxAgentChoice): CoreInboxChatAgent => ({
   instance_id: agent.instanceId,
   model: agent.model,
   reasoning_effort: agent.reasoningEffort,

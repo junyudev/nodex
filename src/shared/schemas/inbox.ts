@@ -4,8 +4,7 @@ import {
   MAX_INBOX_ADDITION_CHARS,
   MAX_INBOX_ADDITIONS,
   MAX_INBOX_INSTRUCTIONS_CHARS,
-  type InboxAgentBinding,
-  type InboxChatAgent,
+  type InboxAgentChoice,
   type UpdateInboxSettingsInput,
 } from "../inbox";
 import type {
@@ -68,14 +67,14 @@ export const InboxWindowFilterSchema = z.enum(["inbox", "processed"]);
 
 const choiceValue = z.string().trim().min(1).max(256).nullable();
 
-export const InboxChatAgentSchema = z
+export const InboxAgentChoiceSchema = z
   .object({
     instanceId: id,
     model: choiceValue,
     reasoningEffort: choiceValue,
     serviceTier: choiceValue,
   })
-  .strict() satisfies z.ZodType<InboxChatAgent>;
+  .strict() satisfies z.ZodType<InboxAgentChoice>;
 
 const additions = z
   .array(z.string().trim().min(1).max(MAX_INBOX_ADDITION_CHARS))
@@ -88,7 +87,7 @@ export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
       type: z.literal("run_task"),
       automationId: id,
       dispatchId: id,
-      agent: InboxChatAgentSchema.nullable(),
+      agent: InboxAgentChoiceSchema.nullable(),
     })
     .strict(),
   z.object({ type: z.literal("keep") }).strict(),
@@ -97,7 +96,7 @@ export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
       type: z.literal("new_chat"),
       projectId: id.nullable(),
       prompt,
-      agent: InboxChatAgentSchema.nullable().default(null),
+      agent: InboxAgentChoiceSchema.nullable().default(null),
       additions,
     })
     .strict(),
@@ -206,10 +205,6 @@ export const InboxDispatchInputSchema = z
   })
   .strict() satisfies z.ZodType<InboxDispatchInput>;
 
-export const InboxAgentBindingSchema = z
-  .object({ instanceId: id })
-  .strict() satisfies z.ZodType<InboxAgentBinding>;
-
 export const InboxConfirmationDraftSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -296,10 +291,9 @@ export const InboxSetImportantInputSchema = z
 export const UpdateInboxSettingsInputSchema = z
   .object({
     suggestions: z.enum(INBOX_SUGGESTION_MODES).optional(),
-    suggestionAgent: InboxAgentBindingSchema.optional(),
-    suggestionModel: z.string().trim().max(256).nullable().optional(),
+    suggestionAgent: InboxAgentChoiceSchema.optional(),
     instructions: z.string().max(MAX_INBOX_INSTRUCTIONS_CHARS).optional(),
-    chatAgent: InboxChatAgentSchema.optional(),
+    chatAgent: InboxAgentChoiceSchema.optional(),
     suggestionsChooseModels: z.boolean().optional(),
     useModelGuide: z.boolean().optional(),
     showPageBesideNewChats: z.boolean().optional(),

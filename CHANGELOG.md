@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- You choose the reasoning effort and speed Inbox suggestions run at, in the same model menu new chats use. Until you do, they stay at high on Codex and medium on Claude.
+
 ### Changed
 
 - The macOS installer is about 30% smaller, so first-time downloads finish sooner, and Nodex uses about 250 MB less disk space. Opening the disk image and copying Nodex to Applications take a little longer on a first install.

@@ -19,16 +19,32 @@ describe("the Inbox's settings panel", () => {
     render(<InboxAgentsPopover agents={agents} onOpenSettings={onOpenSettings} />);
     await click(screen.getByRole("button", { name: "Inbox settings" }));
 
-    // Suggestions run every model at their own economical effort, so only the model is chosen.
-    // Suggestions also look things up and choose models, so Codex suggests at High.
+    // Suggestions look things up and choose models, so Codex suggests at High until told otherwise.
     const suggestion = await screen.findByRole("button", { name: "Suggestion model" });
     expect(suggestion.textContent).toBe("GPT-6 Astra · High");
     await click(suggestion);
-    expect(screen.queryByRole("button", { name: /^Effort/ })).toBeNull();
+    const suggestionEffort = screen.getByRole("slider", { name: "Effort" });
+    expect(suggestionEffort.getAttribute("aria-valuetext")).toBe("High");
+    await act(async () => {
+      fireEvent.keyDown(suggestionEffort, { key: "ArrowLeft" });
+      await settleAsyncRender();
+    });
+    expect(agents.save).toHaveBeenLastCalledWith({
+      suggestionAgent: {
+        instanceId: "codex",
+        model: null,
+        reasoningEffort: "medium",
+        serviceTier: null,
+      },
+    });
     await click(screen.getByRole("option", { name: /Opus 5\.5/ }));
     expect(agents.save).toHaveBeenLastCalledWith({
-      suggestionAgent: { instanceId: CLAUDE_INSTANCE_ID },
-      suggestionModel: "claude-opus-5-5",
+      suggestionAgent: {
+        instanceId: CLAUDE_INSTANCE_ID,
+        model: "claude-opus-5-5",
+        reasoningEffort: null,
+        serviceTier: null,
+      },
     });
 
     const chat = screen.getByRole("button", { name: "New chat model" });

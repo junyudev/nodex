@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode, type ComponentProps } from "react";
 import type {
   InboxDispatchAction,
   InboxChat,
-  InboxChatAgent,
+  InboxAgentChoice,
   InboxItem,
   InboxProposal,
   InboxPageBasis,
@@ -22,7 +22,7 @@ import { useInboxChatTargets } from "./use-inbox";
 import { cn } from "@/lib/utils";
 import { INBOX_ACTION_ICONS } from "./inbox-icon-action";
 import { InboxAgentPicker, type InboxAgents } from "./inbox-agent-picker";
-import { sameInboxChatAgent } from "./inbox-agent-model";
+import { sameInboxAgentChoice } from "./inbox-agent-model";
 
 type ActionType = InboxDispatchAction["type"];
 
@@ -47,7 +47,7 @@ export interface InboxDispatchFiring {
   readonly automationId: string;
   readonly dispatchId: string;
   /** What the task runs on; a run may use another Agent for this time only. */
-  readonly taskAgent: InboxChatAgent | null;
+  readonly taskAgent: InboxAgentChoice | null;
   /** A Heartbeat continues its own chat on its own Agent. */
   readonly heartbeat: boolean;
 }
@@ -70,7 +70,7 @@ export interface InboxDispatchDraft {
   readonly sessionId: string | null;
   readonly prompt: string;
   /** What a new chat runs on when chosen for this decision; the Inbox's own when unset. */
-  readonly agent?: InboxChatAgent | null;
+  readonly agent?: InboxAgentChoice | null;
   /** Present for a scheduled task's waiting run, which can run its task. */
   readonly firing?: InboxDispatchFiring | null;
 }
@@ -437,7 +437,7 @@ export function InboxDispatchEditor({
               setDraft((current) => ({
                 ...current,
                 agent:
-                  current.firing?.taskAgent && sameInboxChatAgent(next, current.firing.taskAgent)
+                  current.firing?.taskAgent && sameInboxAgentChoice(next, current.firing.taskAgent)
                     ? null
                     : next,
               }))
@@ -455,7 +455,7 @@ export function InboxDispatchEditor({
             onChange={(next) =>
               setDraft((current) => ({
                 ...current,
-                agent: sameInboxChatAgent(next, agents.settings.chatAgent) ? null : next,
+                agent: sameInboxAgentChoice(next, agents.settings.chatAgent) ? null : next,
               }))
             }
           />

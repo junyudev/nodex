@@ -53,7 +53,9 @@ const provider = (overrides: Partial<Provider> = {}): Provider =>
     skills: [],
     ...overrides,
   }) as Provider;
-const preference = { suggestionAgent: { instanceId: "codex" }, suggestionModel: null };
+const preference = {
+  suggestionAgent: { instanceId: "codex", model: null, reasoningEffort: null, serviceTier: null },
+};
 const input = {
   markdown: "A **long** [sentence](https://example.com).",
   instruction: "Make it concise",
@@ -110,7 +112,9 @@ it("chooses only usable utility providers and respects explicit utility models",
     options: [{ id: "reasoningEffort", value: "low" }],
   });
   expect(
-    selectPageTextRewriteModel([codex], { ...preference, suggestionModel: "gpt-6.1-sol" })?.model,
+    selectPageTextRewriteModel([codex], {
+      suggestionAgent: { ...preference.suggestionAgent, model: "gpt-6.1-sol" },
+    })?.model,
   ).toBe("gpt-6.1-sol");
   expect(
     selectPageTextRewriteModel([provider({ models: codex.models.slice(0, 1) })], preference)?.model,

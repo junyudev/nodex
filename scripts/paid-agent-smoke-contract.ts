@@ -42,7 +42,7 @@ export const PAID_AGENT_SMOKE_DEFINITIONS: Readonly<
     id: "inbox-image",
     grep: "@paid-agent-inbox-image",
     modelId: "gpt-6-luna",
-    // resolveInboxModel fixes Codex suggestion effort at high, independently of chat settings.
+    // An unchosen Codex suggestion effort is high, independently of chat settings.
     reasoningEffort: "high",
     expectedLogicalExecutions: 1,
   },

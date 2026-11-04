@@ -109,6 +109,7 @@ import {
   MAX_INBOX_INSTRUCTIONS_CHARS,
   decodeInboxAgentBinding,
   encodeInboxAgentBinding,
+  type InboxAgentChoice,
   type InboxSettings,
   type InboxSuggestionMode,
   type UpdateInboxSettingsInput,
@@ -148,6 +149,8 @@ interface ServerTomlConfig {
   inbox_suggestions_enabled?: boolean;
   inbox_suggestion_agent?: string;
   inbox_suggestion_model?: string;
+  inbox_suggestion_effort?: string;
+  inbox_suggestion_speed?: string;
   inbox_instructions?: string;
   inbox_chat_agent?: string;
   inbox_chat_model?: string;
@@ -1301,7 +1304,13 @@ const inboxChoiceFromConfig = (value: unknown): string | null => {
 
 const writeInboxChoice = (
   server: ServerTomlConfig,
-  key: "inbox_suggestion_model" | "inbox_chat_model" | "inbox_chat_effort" | "inbox_chat_speed",
+  key:
+    | "inbox_suggestion_model"
+    | "inbox_suggestion_effort"
+    | "inbox_suggestion_speed"
+    | "inbox_chat_model"
+    | "inbox_chat_effort"
+    | "inbox_chat_speed",
   value: string | null,
 ) => {
   const trimmed = value?.trim();
@@ -1317,27 +1326,48 @@ const inboxSuggestionModeFromConfig = (config: ServerTomlConfig): InboxSuggestio
   return DEFAULT_INBOX_SETTINGS.suggestions;
 };
 
+/** Model, effort and speed belong to the Agent they were chosen for. */
+const inboxAgentChoiceFromConfig = (
+  agent: unknown,
+  choices: { readonly model: unknown; readonly effort: unknown; readonly speed: unknown },
+  fallback: InboxAgentChoice,
+): InboxAgentChoice => {
+  const binding = decodeInboxAgentBinding(agent);
+  return binding
+    ? {
+        instanceId: binding.instanceId,
+        model: inboxChoiceFromConfig(choices.model),
+        reasoningEffort: inboxChoiceFromConfig(choices.effort),
+        serviceTier: inboxChoiceFromConfig(choices.speed),
+      }
+    : fallback;
+};
+
 function inboxSettingsFromConfig(config: ServerTomlConfig): InboxSettings {
-  const chatAgent = decodeInboxAgentBinding(config.inbox_chat_agent);
   return {
     suggestions: inboxSuggestionModeFromConfig(config),
-    suggestionAgent:
-      decodeInboxAgentBinding(config.inbox_suggestion_agent) ??
+    suggestionAgent: inboxAgentChoiceFromConfig(
+      config.inbox_suggestion_agent,
+      {
+        model: config.inbox_suggestion_model,
+        effort: config.inbox_suggestion_effort,
+        speed: config.inbox_suggestion_speed,
+      },
       DEFAULT_INBOX_SETTINGS.suggestionAgent,
-    suggestionModel: inboxChoiceFromConfig(config.inbox_suggestion_model),
+    ),
     instructions:
       typeof config.inbox_instructions === "string"
         ? config.inbox_instructions.slice(0, MAX_INBOX_INSTRUCTIONS_CHARS)
         : DEFAULT_INBOX_SETTINGS.instructions,
-    // Model, effort and speed belong to the Agent they were chosen for.
-    chatAgent: chatAgent
-      ? {
-          instanceId: chatAgent.instanceId,
-          model: inboxChoiceFromConfig(config.inbox_chat_model),
-          reasoningEffort: inboxChoiceFromConfig(config.inbox_chat_effort),
-          serviceTier: inboxChoiceFromConfig(config.inbox_chat_speed),
-        }
-      : DEFAULT_INBOX_SETTINGS.chatAgent,
+    chatAgent: inboxAgentChoiceFromConfig(
+      config.inbox_chat_agent,
+      {
+        model: config.inbox_chat_model,
+        effort: config.inbox_chat_effort,
+        speed: config.inbox_chat_speed,
+      },
+      DEFAULT_INBOX_SETTINGS.chatAgent,
+    ),
     suggestionsChooseModels:
       typeof config.inbox_suggestions_choose_models === "boolean"
         ? config.inbox_suggestions_choose_models
@@ -1374,7 +1404,9 @@ export function updateInboxSettings(
     inbox_show_page_beside_new_chats: next.showPageBesideNewChats,
   };
   delete server.inbox_suggestions_enabled;
-  writeInboxChoice(server, "inbox_suggestion_model", next.suggestionModel);
+  writeInboxChoice(server, "inbox_suggestion_model", next.suggestionAgent.model);
+  writeInboxChoice(server, "inbox_suggestion_effort", next.suggestionAgent.reasoningEffort);
+  writeInboxChoice(server, "inbox_suggestion_speed", next.suggestionAgent.serviceTier);
   writeInboxChoice(server, "inbox_chat_model", next.chatAgent.model);
   writeInboxChoice(server, "inbox_chat_effort", next.chatAgent.reasoningEffort);
   writeInboxChoice(server, "inbox_chat_speed", next.chatAgent.serviceTier);

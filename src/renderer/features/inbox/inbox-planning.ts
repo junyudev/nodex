@@ -1,7 +1,6 @@
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import {
   inboxOfferedModels,
-  inboxSuggestionChoice,
   isInboxChatCandidate,
   type InboxSettings,
 } from "../../../shared/inbox";
@@ -155,7 +154,7 @@ export function describeInboxPlanning(
   return {
     kind: "suggests",
     when: policy.kind,
-    suggestedBy: describeInboxAgent(catalog, inboxSuggestionChoice(settings), "suggestion"),
+    suggestedBy: describeInboxAgent(catalog, settings.suggestionAgent, "suggestion"),
     models: settings.suggestionsChooseModels
       ? {
           kind: "chosen",

@@ -2,8 +2,7 @@ import { forwardRef, type ComponentPropsWithoutRef, type ReactElement } from "re
 import { useQueryClient } from "@tanstack/react-query";
 import {
   DEFAULT_INBOX_SETTINGS,
-  inboxSuggestionChoice,
-  type InboxChatAgent,
+  type InboxAgentChoice,
   type InboxSettings,
   type UpdateInboxSettingsInput,
 } from "../../../shared/inbox";
@@ -26,7 +25,7 @@ import {
   inboxAgentLine,
   inboxAgentPickerModel,
   inboxAgentShortLine,
-  sameInboxChatAgent,
+  sameInboxAgentChoice,
   type InboxAgentCatalog,
   type InboxAgentPresentation,
   type InboxAgentPurpose,
@@ -134,10 +133,7 @@ const PURPOSE_LABELS: Readonly<Record<InboxAgentPurpose, string>> = {
   suggestion: "Suggestion model",
 };
 
-/**
- * Chooses what an Inbox Agent runs on, with the same model menu as the composer. Chats choose
- * effort and speed too; suggestions run each model at a fixed, economical effort.
- */
+/** Chooses what an Inbox Agent runs on, with the same model menu as the composer. */
 export function InboxAgentPicker({
   agents,
   purpose,
@@ -154,8 +150,8 @@ export function InboxAgentPicker({
    * Inbox's.
    */
   readonly scope: "inbox" | "message";
-  readonly value: InboxChatAgent;
-  readonly onChange: (next: InboxChatAgent) => void;
+  readonly value: InboxAgentChoice;
+  readonly onChange: (next: InboxAgentChoice) => void;
   /** `field` fills a form or panel row, `inline` sits beside a send button, or a caller's trigger. */
   readonly trigger: "field" | "inline" | ReactElement;
   readonly disabled?: boolean;
@@ -166,7 +162,7 @@ export function InboxAgentPicker({
   const differs =
     scope === "message" &&
     purpose === "chat" &&
-    !sameInboxChatAgent(value, agents.settings.chatAgent);
+    !sameInboxAgentChoice(value, agents.settings.chatAgent);
   const triggerButton =
     trigger === "field" ? (
       <NodexSettingsDropdownTrigger
@@ -186,7 +182,6 @@ export function InboxAgentPicker({
   return (
     <AgentModelPicker
       disabled={disabled}
-      modelOnly={purpose === "suggestion"}
       triggerStyle={trigger === "field" ? "settings" : "composer"}
       triggerButton={triggerButton}
       models={model.models}
@@ -230,7 +225,7 @@ export function InboxAgentPicker({
   );
 }
 
-/** The suggestion Agent and model as a picker reads and writes them. */
+/** What the Inbox's suggestions run on. */
 export function InboxSuggestionAgentPicker({
   agents,
   trigger,
@@ -245,15 +240,10 @@ export function InboxSuggestionAgentPicker({
       agents={agents}
       purpose="suggestion"
       scope="inbox"
-      value={inboxSuggestionChoice(agents.settings)}
+      value={agents.settings.suggestionAgent}
       trigger={trigger}
       disabled={disabled}
-      onChange={(next) =>
-        void agents.save({
-          suggestionAgent: { instanceId: next.instanceId },
-          suggestionModel: next.model,
-        })
-      }
+      onChange={(suggestionAgent) => void agents.save({ suggestionAgent })}
     />
   );
 }

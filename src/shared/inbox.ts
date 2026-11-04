@@ -1,6 +1,10 @@
 import type { CodexThreadActiveFlag, CodexThreadStatusType } from "./types";
 import type { AgentRuntimeLaunch } from "./agent-runtime-api";
-import { agentRuntimeProviderId, applyAgentRuntimeOptionIntent } from "./agent-runtime-provider";
+import {
+  agentRuntimeProviderId,
+  applyAgentRuntimeOptionIntent,
+  isAgentRuntimeEffortOption,
+} from "./agent-runtime-provider";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import { inboxModelGuideEntry } from "./inbox-model-guide";
 
@@ -57,7 +61,7 @@ export type InboxDispatchAction =
       readonly projectId: string | null;
       readonly prompt: string;
       /** What the chat runs on when chosen for this decision; the Inbox's own when null. */
-      readonly agent: InboxChatAgent | null;
+      readonly agent: InboxAgentChoice | null;
       readonly additions: readonly string[];
     }
   | {
@@ -73,7 +77,7 @@ export type InboxDispatchAction =
       readonly automationId: string;
       readonly dispatchId: string;
       /** What this run uses instead of the task's own Agent selection. */
-      readonly agent: InboxChatAgent | null;
+      readonly agent: InboxAgentChoice | null;
     };
 
 /** A new chat with nothing chosen beyond its destination and prompt. */
@@ -441,11 +445,11 @@ export interface InboxAgentBinding {
 }
 
 /**
- * What a chat the Inbox starts runs on: an Agent and, when chosen, its model, effort and speed.
- * A null model is the Agent's catalog default. A null effort or speed, or one the model does not
- * offer, is the model's own default.
+ * What the Inbox's suggestions or the chats it starts run on: an Agent and, when chosen, its
+ * model, effort and speed. A null model or effort is the purpose's default; a null speed, or an
+ * effort or speed the model does not offer, is the model's own.
  */
-export interface InboxChatAgent extends InboxAgentBinding {
+export interface InboxAgentChoice extends InboxAgentBinding {
   readonly model: string | null;
   readonly reasoningEffort: string | null;
   /** A non-standard speed tier such as `fast`; null runs at the model's default speed. */
@@ -491,11 +495,32 @@ export const inboxDefaultChatModel = <
 }): Model | undefined => provider.models.find((model) => model.isDefault) ?? provider.models[0];
 
 /**
- * Suggestions look things up and choose models as well as routing, so they reason at a steady
- * effort that does not follow any chat preference.
+ * Suggestions look things up and choose models as well as routing, so until the user chooses an
+ * effort they reason at a steady one that does not follow any chat preference.
  */
 const inboxSuggestionEffort = (provider: Pick<InboxProvider, "driver">) =>
   provider.driver === "claudeAgent" ? "medium" : "high";
+
+/** The effort a choice asks its model for, which the model may not offer. */
+export const inboxRequestedEffort = (
+  provider: Pick<InboxProvider, "driver">,
+  choice: Pick<InboxAgentChoice, "reasoningEffort">,
+  purpose: "chat" | "suggestion",
+): string | null =>
+  choice.reasoningEffort ?? (purpose === "suggestion" ? inboxSuggestionEffort(provider) : null);
+
+/** The effort a model runs at: the chosen one it offers, else its own default. */
+export const inboxModelEffort = (
+  model: InboxProviderModel,
+  chosen: string | null,
+): string | null => {
+  const descriptor = model.capabilities?.optionDescriptors?.find(isAgentRuntimeEffortOption);
+  if (descriptor?.type !== "select") return null;
+  if (chosen && descriptor.options.some((option) => option.id === chosen)) return chosen;
+  return (
+    descriptor.currentValue ?? descriptor.options.find((option) => option.isDefault)?.id ?? null
+  );
+};
 
 export const isInboxProviderUsable = (provider: InboxProvider): boolean =>
   provider.enabled &&
@@ -545,7 +570,7 @@ export type InboxModelResolution =
  */
 export function resolveInboxModel(
   providers: readonly InboxProvider[],
-  choice: InboxChatAgent,
+  choice: InboxAgentChoice,
   purpose: "chat" | "suggestion",
 ): InboxModelResolution {
   const provider = providers.find((candidate) => candidate.instanceId === choice.instanceId);
@@ -564,10 +589,12 @@ export function resolveInboxModel(
       ? inboxDefaultSuggestionModel(provider)
       : inboxDefaultChatModel(provider);
   if (!model) return { kind: "unavailable", message: "The selected model is unavailable" };
-  const reasoningEffort =
-    purpose === "suggestion" ? inboxSuggestionEffort(provider) : choice.reasoningEffort;
-  const serviceTier = purpose === "suggestion" ? null : choice.serviceTier;
-  // An effort or speed the model does not offer falls back to the model's own.
+  // Named outright, since a utility generation left without an effort picks its own, and what the
+  // Inbox shows is what runs. An unchosen chat effort stays unset, for the model to decide.
+  const requested = inboxRequestedEffort(provider, choice, purpose);
+  const reasoningEffort = requested && inboxModelEffort(model, requested);
+  const { serviceTier } = choice;
+  // A speed the model does not offer falls back to the model's own.
   const options = applyAgentRuntimeOptionIntent(
     model.capabilities?.optionDescriptors ?? [],
     undefined,
@@ -588,16 +615,6 @@ export function resolveInboxModel(
   };
 }
 
-/** The suggestion Agent and model as a choice the shared resolver reads. */
-export const inboxSuggestionChoice = (
-  settings: Pick<InboxSettings, "suggestionAgent" | "suggestionModel">,
-): InboxChatAgent => ({
-  instanceId: settings.suggestionAgent.instanceId,
-  model: settings.suggestionModel,
-  reasoningEffort: null,
-  serviceTier: null,
-});
-
 /**
  * When suggestions run: `automatic` advises each message as it is sent or rewritten, unless the
  * suggestion Agent's usage runs short; `on_request` only when the user asks; `off` never, leaving
@@ -613,16 +630,15 @@ export const INBOX_SUGGESTION_MODES: readonly InboxSuggestionMode[] = [
 
 export interface InboxSettings {
   readonly suggestions: InboxSuggestionMode;
-  readonly suggestionAgent: InboxAgentBinding;
-  /** Optional exact model for suggestions; the runtime default applies when null. */
-  readonly suggestionModel: string | null;
+  /** What suggestions run on. */
+  readonly suggestionAgent: InboxAgentChoice;
   /** Durable routing preferences given to the suggestion Agent. */
   readonly instructions: string;
   /**
    * What chats the Inbox starts run on, unless their decision chooses otherwise. With
    * `suggestionsChooseModels`, it is what a suggestion falls back to.
    */
-  readonly chatAgent: InboxChatAgent;
+  readonly chatAgent: InboxAgentChoice;
   /** Suggestions choose each new chat's Agent, model and effort, and which Agents help it. */
   readonly suggestionsChooseModels: boolean;
   /** Suggestions read Nodex's guide to what each model does well, under the user's preferences. */
@@ -637,8 +653,7 @@ export const MAX_INBOX_INSTRUCTIONS_CHARS = 4_000;
 
 export const DEFAULT_INBOX_SETTINGS: InboxSettings = {
   suggestions: "automatic",
-  suggestionAgent: { instanceId: "codex" },
-  suggestionModel: null,
+  suggestionAgent: { instanceId: "codex", model: null, reasoningEffort: null, serviceTier: null },
   instructions: "",
   chatAgent: { instanceId: "codex", model: null, reasoningEffort: null, serviceTier: null },
   suggestionsChooseModels: true,

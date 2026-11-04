@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
-import { resolveInboxModel, type InboxChatAgent } from "../../../shared/inbox";
+import { resolveInboxModel, type InboxAgentChoice } from "../../../shared/inbox";
 import {
   chooseInboxModel,
   describeInboxAgent,
@@ -15,7 +15,7 @@ import {
   inboxAgentsFixture,
 } from "./inbox-agents.test-support";
 
-const codex = (overrides: Partial<InboxChatAgent> = {}): InboxChatAgent => ({
+const codex = (overrides: Partial<InboxAgentChoice> = {}): InboxAgentChoice => ({
   instanceId: "codex",
   model: null,
   reasoningEffort: null,
@@ -93,7 +93,7 @@ describe("what an Inbox chat runs on", () => {
     expect(shown).toMatchObject({ status: "checking", agent: "Codex", detail: "Loading…" });
   });
 
-  test("shows suggestions on their own economical model and effort, which no chat choice moves", () => {
+  test("suggestions default to their own economical model and steady effort until chosen", () => {
     const catalog = inboxAgentsFixture();
     const sol = {
       ...codexProvider().models[0]!,
@@ -105,12 +105,28 @@ describe("what an Inbox chat runs on", () => {
       ...catalog,
       providers: [{ ...codexProvider(), models: [...codexProvider().models, sol] }],
     };
-    const chosen = codex({ reasoningEffort: "high" });
-    expect(inboxAgentLine(describeInboxAgent(withSol, chosen, "suggestion"))).toBe(
+    expect(inboxAgentLine(describeInboxAgent(withSol, codex(), "suggestion"))).toBe(
       "Codex · GPT-6.1 Sol · High",
     );
-    expect(inboxAgentLine(describeInboxAgent(withSol, chosen, "chat"))).toBe(
-      "Codex · GPT-6 Astra · High",
+    expect(inboxAgentLine(describeInboxAgent(withSol, codex(), "chat"))).toBe(
+      "Codex · GPT-6 Astra · Medium",
+    );
+    expect(
+      inboxAgentLine(describeInboxAgent(withSol, codex({ reasoningEffort: "low" }), "suggestion")),
+    ).toBe("Codex · GPT-6.1 Sol · Light");
+  });
+
+  test("an effort the model does not offer runs at the model's own, as the Inbox says", () => {
+    const catalog = inboxAgentsFixture();
+    // Suggestions ask Claude for medium, which this Opus does not offer. Left unset, a utility
+    // generation would pick its own effort while the Inbox showed the model's.
+    const opus = codex({ instanceId: CLAUDE_INSTANCE_ID });
+    const resolved = resolveInboxModel(catalog.providers, opus, "suggestion");
+    expect(resolved.kind === "ready" && resolved.selection.options).toEqual([
+      { id: "effort", value: "high" },
+    ]);
+    expect(inboxAgentLine(describeInboxAgent(catalog, opus, "suggestion"))).toBe(
+      "Work · Opus 5.5 · High",
     );
   });
 });

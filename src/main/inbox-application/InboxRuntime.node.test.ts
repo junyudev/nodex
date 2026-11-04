@@ -8,7 +8,7 @@ import { vi } from "vitest";
 import type { LibraryModuleReadRequest } from "../../shared/library-module";
 import type { ReadFileBytesInput } from "../../shared/library-files";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
-import type { InboxAgentBinding, InboxChatAgent, InboxSettings } from "../../shared/inbox";
+import type { InboxAgentBinding, InboxAgentChoice, InboxSettings } from "../../shared/inbox";
 import type { Project, ProjectSession } from "../../shared/types";
 import {
   AgentRuntimeApplication,
@@ -48,11 +48,10 @@ const choice = (
   instanceId: string,
   model: string | null = null,
   reasoningEffort: string | null = null,
-): InboxChatAgent => ({ instanceId, model, reasoningEffort, serviceTier: null });
+): InboxAgentChoice => ({ instanceId, model, reasoningEffort, serviceTier: null });
 const settings: InboxSettings = {
   suggestions: "automatic",
-  suggestionAgent: claude,
-  suggestionModel: null,
+  suggestionAgent: choice(claude.instanceId),
   instructions: "Prefer existing chats when relevant.",
   chatAgent: choice("codex"),
   suggestionsChooseModels: true,

@@ -9,7 +9,7 @@ import {
 import { lightUtilityModelSelection } from "../../shared/agent-runtime-utility-model";
 
 type Providers = AgentRuntimeOperations["providers.read"]["output"];
-type Preference = Pick<InboxSettings, "suggestionAgent" | "suggestionModel">;
+type Preference = Pick<InboxSettings, "suggestionAgent">;
 
 /** Reuse the utility Agent preference, with an economical model and the lightest offered effort. */
 export const selectPageTextRewriteModel = (
@@ -31,8 +31,8 @@ export const selectPageTextRewriteModel = (
   const provider = preferred ?? usable[0];
   if (!provider) return null;
   const configured =
-    preferred && preference.suggestionModel
-      ? provider.models.find((model) => model.slug === preference.suggestionModel)
+    preferred && preference.suggestionAgent.model
+      ? provider.models.find((model) => model.slug === preference.suggestionAgent.model)
       : undefined;
   const economical =
     provider.driver === "codex"

@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import { inboxSuggestionChoice, type InboxSettings } from "../../shared/inbox";
+import type { InboxSettings } from "../../shared/inbox";
 import {
   inboxSuggestionPolicy,
   type InboxSuggestionPolicy,
@@ -100,7 +100,7 @@ export const make = Effect.gen(function* () {
     const outcome = yield* Effect.gen(function* () {
       const modelSelection = yield* resolveInboxModel(
         runtime,
-        inboxSuggestionChoice(current),
+        current.suggestionAgent,
         "suggestion",
       );
       const providers = yield* runtime.catalog();

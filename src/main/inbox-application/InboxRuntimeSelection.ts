@@ -1,14 +1,14 @@
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
-import { resolveInboxModel as resolveFromCatalog, type InboxChatAgent } from "../../shared/inbox";
+import { resolveInboxModel as resolveFromCatalog, type InboxAgentChoice } from "../../shared/inbox";
 import type { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { InboxRuntimeError } from "./InboxRuntimeError";
 
 /** Explicit Inbox work waits for the configured Runtime's bounded model metadata. */
 export const resolveInboxModel = Effect.fn("InboxRuntimeSelection.resolve")(function* (
   runtime: Pick<AgentRuntimeApplication["Service"], "catalog">,
-  choice: InboxChatAgent,
+  choice: InboxAgentChoice,
   purpose: "chat" | "suggestion" = "chat",
 ): Effect.fn.Return<AgentRuntimeLaunch["modelSelection"], InboxRuntimeError> {
   if (!choice.instanceId)

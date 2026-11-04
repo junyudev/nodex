@@ -17,7 +17,7 @@ import {
 import { readPaidAgentRolloutEvidence } from "../../scripts/paid-agent-rollout-evidence";
 import type { CodexExecutionProfile } from "../../src/shared/codex-execution-profile";
 import type { CodexModelOption } from "../../src/shared/types";
-import { inboxSuggestionChoice, resolveInboxModel, type InboxItem } from "../../src/shared/inbox";
+import { resolveInboxModel, type InboxItem } from "../../src/shared/inbox";
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
 import { invokeIpc as invokeTypedIpc } from "./support/editor-scenario";
 import {
@@ -719,19 +719,19 @@ test("reads the image in an explicit Inbox suggestion @paid-agent-inbox-image", 
     });
     const settings = await invokeTypedIpc(page, "settings:inbox:update", {
       suggestions: "on_request",
-      suggestionAgent: { instanceId: "codex" },
-      suggestionModel: definition.modelId,
+      suggestionAgent: {
+        instanceId: "codex",
+        model: definition.modelId,
+        reasoningEffort: null,
+        serviceTier: null,
+      },
       suggestionsChooseModels: false,
     });
     const readProviders = async () => {
       const providers = await invokeTypedIpc(harness.page, "agent-runtime:providers:read", {
         refresh: true,
       });
-      const resolution = resolveInboxModel(
-        providers,
-        inboxSuggestionChoice(settings),
-        "suggestion",
-      );
+      const resolution = resolveInboxModel(providers, settings.suggestionAgent, "suggestion");
       providerPreflight = {
         resolution: resolution.kind,
         reason: resolution.kind === "unavailable" ? resolution.message : null,
@@ -739,6 +739,7 @@ test("reads the image in an explicit Inbox suggestion @paid-agent-inbox-image", 
           instanceId: provider.instanceId,
           enabled: provider.enabled,
           status: provider.status,
+          message: provider.message,
           availability: provider.availability,
           installed: provider.installed,
           models: provider.models.map((model) => model.slug),
@@ -754,19 +755,15 @@ test("reads the image in an explicit Inbox suggestion @paid-agent-inbox-image", 
     await expect
       .poll(
         async () => {
-          const resolution = resolveInboxModel(
-            providers,
-            inboxSuggestionChoice(settings),
-            "suggestion",
-          );
+          const resolution = resolveInboxModel(providers, settings.suggestionAgent, "suggestion");
           if (resolution.kind === "ready") return resolution.kind;
           providers = await readProviders();
-          return resolveInboxModel(providers, inboxSuggestionChoice(settings), "suggestion").kind;
+          return resolveInboxModel(providers, settings.suggestionAgent, "suggestion").kind;
         },
         { timeout: 45_000 },
       )
       .toBe("ready");
-    const resolved = resolveInboxModel(providers, inboxSuggestionChoice(settings), "suggestion");
+    const resolved = resolveInboxModel(providers, settings.suggestionAgent, "suggestion");
     if (resolved.kind !== "ready") throw new Error(`Inbox model is ${resolved.kind}`);
     selection = resolved.selection;
     expect(resolved.selection.model).toBe(definition.modelId);
@@ -885,7 +882,11 @@ test("reads the image in an explicit Inbox suggestion @paid-agent-inbox-image", 
     claim("One production codex exec process ran", 1, executions.length);
     const execution = requireRecord(executions[0], "Codex exec evidence");
     claim("Codex exec uses the authorized model", definition.modelId, execution.model);
-    claim("Codex exec uses the Inbox's fixed effort", definition.reasoningEffort, execution.effort);
+    claim(
+      "Codex exec uses the Inbox's default effort",
+      definition.reasoningEffort,
+      execution.effort,
+    );
     claim("Codex exec receives one --image argument", 1, execution.imageArgumentCount);
     const fixture = fs.readFileSync(fixturePath);
     claim(

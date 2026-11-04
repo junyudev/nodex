@@ -33,7 +33,7 @@ import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AgentBackendRegistry } from "../agent-backend/AgentBackendRegistry";
 import { AutomationApplication } from "./AutomationApplication";
 import type { AutomationFiringAdmission } from "./AutomationApplication";
-import type { InboxChatAgent } from "../../shared/inbox";
+import type { InboxAgentChoice } from "../../shared/inbox";
 import { resolveInboxModel } from "../inbox-application/InboxRuntimeSelection";
 import { InboxApplication } from "../inbox-application/InboxApplication";
 import { CoreModules } from "../core-runtime/CoreModules";
@@ -134,7 +134,7 @@ export const live: Layer.Layer<
         CodexScheduledAutomation,
         "backendBinding" | "model" | "reasoningEffort" | "serviceTier"
       >,
-      override?: InboxChatAgent | null,
+      override?: InboxAgentChoice | null,
     ) {
       if (override) return yield* resolveInboxModel(application, override);
       yield* backends.resolve(definition.backendBinding);

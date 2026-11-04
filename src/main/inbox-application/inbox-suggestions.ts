@@ -3,7 +3,7 @@ import { z } from "zod";
 import {
   MAX_INBOX_ADDITION_CHARS,
   MAX_INBOX_ADDITIONS,
-  type InboxChatAgent,
+  type InboxAgentChoice,
   type InboxDispatchAction,
   type InboxEntryKind,
 } from "../../shared/inbox";
@@ -311,7 +311,12 @@ export const validateInboxSuggestions = (
   const claimed = new Set<string>();
   const suggestions: ValidatedInboxSuggestion[] = [];
   const offered = (instanceId: string, model: string | null, effort: string | null) => {
-    const agent: InboxChatAgent = { instanceId, model, reasoningEffort: effort, serviceTier: null };
+    const agent: InboxAgentChoice = {
+      instanceId,
+      model,
+      reasoningEffort: effort,
+      serviceTier: null,
+    };
     if (!isOfferedInboxChoice(candidates, agent))
       reject("an Agent, model or effort was not offered");
     return agent;
