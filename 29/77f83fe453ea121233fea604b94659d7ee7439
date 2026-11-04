@@ -1,0 +1,31 @@
+docs/product-specs/coordinator-behavior.md
+  s_0ea5fa27e831e2::t_493a2a1dab852b 92-93
+packages/agent-runtime/src/orchestration-v2/SessionReadDetails.test.ts
+  s_0ea5fa27e831e2::t_1b27e1a10dc985 18-19,26,35
+packages/agent-runtime/src/orchestration-v2/SessionReadDetails.ts
+  s_0ea5fa27e831e2::t_cad00a71ba1138 12,41-45,82-84
+src/main/coordinator/ManagedChatFacts.node.test.ts
+  s_0ea5fa27e831e2::t_d1a52cddaa474b 193-226
+src/main/coordinator/ManagedChatFacts.ts
+  s_0ea5fa27e831e2::t_bf4460f2d6eddf 87
+src/main/coordinator/managed-chat-observation.node.test.ts
+  s_0ea5fa27e831e2::t_4450e93e0a5c9c 186-195
+src/main/coordinator/managed-chat-observation.ts
+  s_0ea5fa27e831e2::t_be5b401a03d8a1 34,104,150,161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2977f83fe453ea121233fea604b94659d7ee7439",
+  "prompts": {},
+  "sessions": {
+    "s_0ea5fa27e831e2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a6af-14d8-7532-a45c-6332939fbdf3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
