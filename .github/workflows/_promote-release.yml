@@ -192,6 +192,7 @@ jobs:
             --output "${generated}"
           gh auth setup-git
           brew tap "${HOMEBREW_TAP}" "https://github.com/${HOMEBREW_TAP_REPO}.git"
+          brew trust --cask "${HOMEBREW_TAP}/nodex"
           tap="$(brew --repository "${HOMEBREW_TAP}")"
           current="${tap}/Casks/nodex.rb"
           previous="${RUNNER_TEMP}/previous-nodex.rb"
