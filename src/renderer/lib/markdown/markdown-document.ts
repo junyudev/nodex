@@ -10,7 +10,8 @@ import {
 import {
   createMarkdownSegmentOwner,
   createMarkdownSegmentTimeline,
-  markdownTextSegmentCache,
+  createMarkdownTextSegmentCache,
+  type ReadMarkdownTextSegments,
   type MarkdownSegmentCandidate,
   type MarkdownSegmenter,
 } from "./markdown-segments";
@@ -33,6 +34,7 @@ export interface MarkdownDocumentCandidate {
   readonly elementKeys: MarkdownElementKeyCandidate;
   readonly animationKeys: WeakMap<object, string>;
   readonly segments: MarkdownSegmentCandidate | null;
+  readonly commitTextSegments: () => void;
   readonly animate: boolean;
   readonly openCodeFence: Element | null;
 }
@@ -49,12 +51,16 @@ export function createMarkdownDocumentOwner(
     Map<string, ReturnType<typeof createMarkdownPrefixCache>>
   >();
   const plans = new WeakMap<object, HtmlPlan>();
+  const textSegments = createMarkdownTextSegmentCache(segmenter);
   let sourceIdentity: string | null = null;
   let segments = createMarkdownSegmentOwner();
   let timeline = createMarkdownSegmentTimeline(now);
   let committedKeys: readonly string[] = [];
   let elementKeys = createMarkdownElementKeyOwner();
-  const plan = (root: ImmutableMarkdown<HtmlRoot>): HtmlPlan => {
+  const plan = (
+    root: ImmutableMarkdown<HtmlRoot>,
+    readSegments: ReadMarkdownTextSegments,
+  ): HtmlPlan => {
     const previous = plans.get(root);
     if (previous) return previous;
     const textNodes: { node: Element; text: string }[] = [];
@@ -64,7 +70,7 @@ export function createMarkdownDocumentOwner(
       decorated: boolean,
     ): RootContent[] => {
       if (node.type === "text" && segmentText && node.value.trim()) {
-        return markdownTextSegmentCache.read(node.value, decorated, segmenter).map((text) => {
+        return readSegments(node.value, decorated).map((text) => {
           const element: Element = {
             type: "element",
             tagName: MARKDOWN_FADE_TAG,
@@ -124,8 +130,11 @@ export function createMarkdownDocumentOwner(
       const syntax = input.streaming
         ? engine.readStreaming(input.source, input.policy, prefix)
         : engine.readFull(input.source, input.policy, "terminal");
+      const candidateSegments = textSegments.prepare();
       const blocks = syntax.blocks.map((block) =>
-        input.animate ? plan(block.html) : { html: block.html as HtmlRoot, textNodes: [] },
+        input.animate
+          ? plan(block.html, candidateSegments.read)
+          : { html: block.html as HtmlRoot, textNodes: [] },
       );
       const text = blocks.flatMap((block) => block.textNodes);
       // A new native leaf receives an independent candidate without mutating the mounted owner.
@@ -184,6 +193,7 @@ export function createMarkdownDocumentOwner(
         elementKeys: keyCandidate,
         animationKeys,
         segments: candidate,
+        commitTextSegments: candidateSegments.commit,
         animate: input.animate,
         openCodeFence,
       };
@@ -196,6 +206,7 @@ export function createMarkdownDocumentOwner(
         committedKeys = [];
         elementKeys = createMarkdownElementKeyOwner();
       }
+      candidate.commitTextSegments();
       sourceIdentity = candidate.sourceIdentity;
       elementKeys.commit(candidate.elementKeys);
       if (candidate.segments) {
@@ -206,6 +217,9 @@ export function createMarkdownDocumentOwner(
       timeline.commit(committedKeys, candidate.animate);
     },
     getTimeline: () => timeline,
-    dispose: () => timeline.dispose(),
+    dispose() {
+      timeline.dispose();
+      textSegments.clear();
+    },
   };
 }

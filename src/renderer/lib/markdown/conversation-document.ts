@@ -3,10 +3,12 @@ import {
   conversationTokenEngine,
   decodeConversationText,
   type ConversationToken,
+  type ConversationStreamingPrefix,
 } from "./conversation-tokens";
 import {
   createMarkdownSegmentTimeline,
-  markdownTextSegmentCache,
+  createMarkdownTextSegmentCache,
+  type ReadMarkdownTextSegments,
   type MarkdownSegmenter,
 } from "./markdown-segments";
 
@@ -47,24 +49,33 @@ export function createConversationDocumentOwner(
   segmenter: MarkdownSegmenter | null,
   engine = conversationTokenEngine,
 ) {
-  const prefix = { source: "", length: 0, document: null as ReturnType<typeof engine.read> | null };
+  const prefix: ConversationStreamingPrefix = { source: "", length: 0, document: null };
+  const textSegments = createMarkdownTextSegmentCache(segmenter);
   const plans = new WeakMap<Identity, ConversationRenderNode>();
   const timeline = createMarkdownSegmentTimeline();
   let committed: readonly Identity[] = [];
   let nextId = 0;
   let contentIndexesBuilt = 0;
-  const plan = (token: ConversationToken, identity: Identity): ConversationRenderNode => {
+  const plan = (
+    token: ConversationToken,
+    identity: Identity,
+    readSegments: ReadMarkdownTextSegments,
+  ): ConversationRenderNode => {
     const key = identity.key;
     const previous = plans.get(identity);
     if (previous) return previous;
     const children = conversationTokenChildren(token).map((child, index) =>
-      plan(child, identity.children[index]!),
+      plan(child, identity.children[index]!, readSegments),
     );
     const items =
       token.type === "list"
         ? token.items.map((item, index) =>
             item.tokens.map((child, childIndex) =>
-              plan(child as ConversationToken, identity.items[index]!.children[childIndex]!),
+              plan(
+                child as ConversationToken,
+                identity.items[index]!.children[childIndex]!,
+                readSegments,
+              ),
             ),
           )
         : [];
@@ -72,7 +83,7 @@ export function createConversationDocumentOwner(
       token.type === "table"
         ? [...token.header, ...token.rows.flat()].map((cell, index) =>
             cell.tokens.map((child, childIndex) =>
-              plan(child as ConversationToken, identity.cells[index]![childIndex]!),
+              plan(child as ConversationToken, identity.cells[index]![childIndex]!, readSegments),
             ),
           )
         : [];
@@ -80,9 +91,10 @@ export function createConversationDocumentOwner(
       token.type === "text" || token.type === "escape" ? decodeConversationText(text(token)) : "";
     const segments =
       content && children.length === 0
-        ? markdownTextSegmentCache
-            .read(content, true, segmenter)
-            .map((value, index) => ({ key: `${key}:word:${index}`, text: value }))
+        ? readSegments(content, true).map((value, index) => ({
+            key: `${key}:word:${index}`,
+            text: value,
+          }))
         : [];
     const value = {
       token,
@@ -190,17 +202,28 @@ export function createConversationDocumentOwner(
         });
       };
       const identities = matchSiblings(document.tokens, committed);
-      const nodes = document.tokens.map((token, index) => plan(token, identities[index]!));
-      return { document, nodes, identities, nextId: candidateNextId };
+      const candidateSegments = textSegments.prepare();
+      const nodes = document.tokens.map((token, index) =>
+        plan(token, identities[index]!, candidateSegments.read),
+      );
+      return {
+        document,
+        nodes,
+        identities,
+        nextId: candidateNextId,
+        commitTextSegments: candidateSegments.commit,
+      };
     },
     commit(
       candidate: {
         readonly identities: readonly Identity[];
         readonly nodes: readonly ConversationRenderNode[];
         readonly nextId: number;
+        readonly commitTextSegments: () => void;
       },
       animate: boolean,
     ) {
+      candidate.commitTextSegments();
       committed = candidate.identities;
       nextId = candidate.nextId;
       const keys: string[] = [];
@@ -217,6 +240,8 @@ export function createConversationDocumentOwner(
     getMeasurements: () => ({ contentIndexesBuilt }),
     dispose() {
       timeline.dispose();
+      textSegments.clear();
+      prefix.tail = undefined;
     },
   };
 }

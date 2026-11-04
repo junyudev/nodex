@@ -9,6 +9,7 @@ import {
 } from "./conversation-directives";
 import {
   createMarkdownCache,
+  type MarkdownCache,
   type ImmutableMarkdown,
   MARKDOWN_SYNTAX_CACHE_MAX_KEYS,
   MARKDOWN_SYNTAX_CACHE_MAX_KEY_UNITS,
@@ -28,6 +29,17 @@ export interface ConversationTokenDocument {
   readonly tokens: readonly ConversationToken[];
   readonly fullDocument: boolean;
 }
+
+export interface ConversationStreamingPrefix {
+  source: string;
+  length: number;
+  document: ConversationTokenDocument | null;
+  /** Only the last transient parse is retained by a mounted stream. */
+  tail?: ConversationTokenDocument;
+}
+
+const MAX_LOCAL_TAIL_UNITS = 64 * 1024;
+const MAX_REUSABLE_TAIL_UNITS = 256;
 
 export function decodeConversationText(source: string): string {
   return source.replace(/&(#(?:x[\da-f]+|\d+)|[\da-z]+);/giu, (raw, entity: string) => {
@@ -226,19 +238,24 @@ function createLexer() {
 /** Parsed values are immutable and bounded; neither callbacks nor source authority enter this cache. */
 export function createConversationTokenEngine() {
   const lexer = createLexer();
-  const caches = [false, true].map(() =>
+  const createSyntaxCache = () =>
     createMarkdownCache<ConversationTokenDocument>({
       maxKeys: MARKDOWN_SYNTAX_CACHE_MAX_KEYS,
       maxKeyUnits: MARKDOWN_SYNTAX_CACHE_MAX_KEY_UNITS,
       refreshOnRead: true,
-    }),
-  );
+    });
+  const settledCache = createSyntaxCache();
+  const streamingCache = createSyntaxCache();
+  // Short repeated fragments can save lexing. Keep their small working set
+  // separate so transient traffic cannot evict stable syntax.
+  const shortTails = createMarkdownCache<ConversationTokenDocument>({
+    maxKeys: MARKDOWN_SYNTAX_CACHE_MAX_KEYS,
+    maxKeyUnits: 16 * 1024,
+    refreshOnRead: true,
+  });
   let parsedUnits = 0;
   let parseCalls = 0;
-  const readPrepared = (source: string, streaming: boolean): ConversationTokenDocument => {
-    const cache = caches[streaming ? 1 : 0]!;
-    const previous = cache.get(source);
-    if (previous) return previous;
+  const parsePrepared = (source: string): ConversationTokenDocument => {
     const tokens = lexer.lexer(prepareConversationDirectiveClosings(source));
     parsedUnits += source.length;
     parseCalls += 1;
@@ -257,12 +274,21 @@ export function createConversationTokenEngine() {
     if (source.includes("](")) normalizeConversationTargetTokens(tokens);
     normalizeLists(tokens);
     mergeImages(tokens);
-    const value = freeze({
+    return freeze({
       source,
       tokens: tokens as ConversationToken[],
       fullDocument: Object.keys(tokens.links).length > 0,
     });
-    if (source.length <= MARKDOWN_SYNTAX_CACHE_MAX_SOURCE_UNITS) cache.set(source, value);
+  };
+  const readPrepared = (
+    source: string,
+    cache: MarkdownCache<ConversationTokenDocument> | undefined,
+    reuse?: MarkdownCache<ConversationTokenDocument>,
+  ): ConversationTokenDocument => {
+    const previous = cache?.get(source);
+    if (previous) return previous;
+    const value = reuse?.get(source) ?? parsePrepared(source);
+    if (source.length <= MARKDOWN_SYNTAX_CACHE_MAX_SOURCE_UNITS) cache?.set(source, value);
     return value;
   };
   return {
@@ -270,29 +296,34 @@ export function createConversationTokenEngine() {
       return readPrepared(
         prepareConversationMarkdownDisplay(source, { streaming, inlineVisualizations: true })
           .source,
-        streaming,
+        streaming ? streamingCache : settledCache,
       );
     },
-    readStreaming(
-      source: string,
-      prefix: { source: string; length: number; document: ConversationTokenDocument | null },
-    ): ConversationTokenDocument {
+    readStreaming(source: string, prefix: ConversationStreamingPrefix): ConversationTokenDocument {
+      const readTail = (tail: string) => {
+        if (prefix.tail?.source === tail) return prefix.tail;
+        const document = readPrepared(
+          tail,
+          tail.length <= MAX_REUSABLE_TAIL_UNITS ? shortTails : undefined,
+          streamingCache,
+        );
+        prefix.tail = tail.length <= MAX_LOCAL_TAIL_UNITS ? document : undefined;
+        return document;
+      };
       const prepared = prepareConversationMarkdownDisplay(source, {
         streaming: true,
         inlineVisualizations: true,
       }).source;
-      if (/(?:^|\n) {0,3}(?:\[[^\n]+\]:|<[A-Za-z!/])/u.test(prepared))
-        return readPrepared(prepared, true);
+      if (/(?:^|\n) {0,3}(?:\[[^\n]+\]:|<[A-Za-z!/])/u.test(prepared)) return readTail(prepared);
       const length = findMarkdownStablePrefix(prepared);
-      if (length === 0) return readPrepared(prepared, true);
+      if (length === 0) return readTail(prepared);
       const stable = prepared.slice(0, length);
       if (prefix.source !== stable || prefix.length !== length || !prefix.document) {
         const extension =
           prefix.document && stable.startsWith(prefix.source)
-            ? readPrepared(stable.slice(prefix.length), true)
+            ? readPrepared(stable.slice(prefix.length), streamingCache, shortTails)
             : null;
-        if (prefix.document?.fullDocument || extension?.fullDocument)
-          return readPrepared(prepared, true);
+        if (prefix.document?.fullDocument || extension?.fullDocument) return readTail(prepared);
         const document =
           extension &&
           prefix.document &&
@@ -302,17 +333,17 @@ export function createConversationTokenEngine() {
                 tokens: [...prefix.document.tokens, ...extension.tokens],
                 fullDocument: false,
               })
-            : readPrepared(stable, true);
+            : readPrepared(stable, streamingCache, shortTails);
         prefix.source = stable;
         prefix.length = length;
         prefix.document = document;
       }
-      const tail = readPrepared(prepared.slice(length), true);
+      const tail = readTail(prepared.slice(length));
       // References can be declared inside containers; lexer metadata is authoritative.
-      if (prefix.document.fullDocument || tail.fullDocument) return readPrepared(prepared, true);
+      if (prefix.document.fullDocument || tail.fullDocument) return readTail(prepared);
       // Adjacent media and continued lists may not straddle the committed prefix.
       if (needsBoundaryNormalization(prefix.document.tokens, tail.tokens))
-        return readPrepared(prepared, true);
+        return readTail(prepared);
       return {
         source: prepared,
         tokens: [...prefix.document.tokens, ...tail.tokens],

@@ -8,7 +8,6 @@ import {
 
 describe("committed Markdown segments", () => {
   test("preserves exact ASCII punctuation and CJK/emoji text with segmenter identity and admission budgets", () => {
-    const cache = createMarkdownTextSegmentCache();
     let calls = 0;
     const segmenter: MarkdownSegmenter = {
       segment(text) {
@@ -16,28 +15,54 @@ describe("committed Markdown segments", () => {
         return [{ segment: text, isWordLike: true }];
       },
     };
-    const first = cache.read(" Hello, world! abc_def-123", true, segmenter);
+    const cache = createMarkdownTextSegmentCache(segmenter).prepare();
+    const first = cache.read(" Hello, world! abc_def-123", true);
     expect(first).toEqual([" ", "Hello, ", "world! ", "abc_", "def-", "123"]);
     const cjk = new Intl.Segmenter("zh", { granularity: "word" });
     const text = "你好，世界 👋🏽！";
-    expect(cache.read(text, true, cjk).join("")).toBe(text);
-    const cached = cache.read("中".repeat(4096), true, segmenter);
-    expect(cache.read("中".repeat(4096), true, segmenter)).toBe(cached);
+    expect(createMarkdownTextSegmentCache(cjk).prepare().read(text, true).join("")).toBe(text);
+    const cached = cache.read("中".repeat(4096), true);
+    expect(cache.read("中".repeat(4096), true)).toBe(cached);
     expect(calls).toBe(1);
     const long = "中".repeat(4097);
-    expect(cache.read(long, true, segmenter).join("")).toBe(long);
-    cache.read(long, true, segmenter);
+    expect(cache.read(long, true).join("")).toBe(long);
+    cache.read(long, true);
     expect(calls).toBe(3);
-    expect(cache.read("中".repeat(4096), false, segmenter)).not.toBe(cached);
-    expect(cache.read("中".repeat(4096), true, { segment: segmenter.segment })).not.toBe(cached);
+    expect(cache.read("中".repeat(4096), false)).not.toBe(cached);
+    expect(
+      createMarkdownTextSegmentCache({ segment: segmenter.segment })
+        .prepare()
+        .read("中".repeat(4096), true),
+    ).not.toBe(cached);
   });
   test("text cache hits do not refresh its 500-entry insertion order", () => {
-    const cache = createMarkdownTextSegmentCache();
-    const first = cache.read("text0", true, null);
-    for (let index = 1; index < 500; index += 1) cache.read(`text${index}`, true, null);
-    expect(cache.read("text0", true, null)).toBe(first);
-    cache.read("text500", true, null);
-    expect(cache.read("text0", true, null)).not.toBe(first);
+    const cache = createMarkdownTextSegmentCache(null).prepare();
+    const first = cache.read("text0", true);
+    for (let index = 1; index < 500; index += 1) cache.read(`text${index}`, true);
+    expect(cache.read("text0", true)).toBe(first);
+    cache.read("text500", true);
+    expect(cache.read("text0", true)).not.toBe(first);
+  });
+  test("keeps only committed text parts read this round, scoped to the mounted document", () => {
+    const segment = (text: string) => [{ segment: text, isWordLike: true }];
+    const cache = createMarkdownTextSegmentCache({ segment });
+    const first = cache.prepare();
+    const steady = first.read("固定", true);
+    const stale = first.read("旧文本", true);
+    first.commit();
+
+    const discarded = cache.prepare();
+    const abandoned = discarded.read("未提交", true);
+    const actual = cache.prepare();
+    expect(actual.read("固定", true)).toBe(steady);
+    expect(actual.read("未提交", true)).not.toBe(abandoned);
+    actual.commit();
+    const next = cache.prepare();
+    expect(next.read("固定", true)).toBe(steady);
+    expect(next.read("旧文本", true)).not.toBe(stale);
+    expect(createMarkdownTextSegmentCache({ segment }).prepare().read("固定", true)).not.toBe(
+      steady,
+    );
   });
   test("discarded concurrent candidates never consume IDs and repeated/reordered words remain unique", () => {
     const owner = createMarkdownSegmentOwner();

@@ -48,6 +48,38 @@ describe("conversation token grammar", () => {
   test.each(boundaries)("preserves the grammar and payload of $source", ({ source, tokens }) => {
     expect(semantic(engine.read(source, false).tokens)).toEqual(tokens);
   });
+  test("keeps the latest transient parse local and admits stable blocks to the shared cache", () => {
+    const syntax = createConversationTokenEngine();
+    const stream = () => ({ source: "", length: 0, document: null });
+    const first = stream();
+    const second = stream();
+    const a = "A durable opening paragraph.\n\n";
+    const tail = "A transient closing paragraph. ".repeat(12);
+    const prepared = syntax.readStreaming(a + tail, first);
+    const afterFirst = syntax.getMeasurements().parseCalls;
+    const repeated = syntax.readStreaming(a + tail, first);
+    expect(repeated.tokens.at(-1)).toBe(prepared.tokens.at(-1));
+    expect(syntax.getMeasurements().parseCalls).toBe(afterFirst);
+    const another = syntax.readStreaming(a + tail, second);
+    expect(another.tokens[0]).toBe(prepared.tokens[0]);
+    expect(another.tokens.at(-1)).not.toBe(prepared.tokens.at(-1));
+    expect(syntax.getMeasurements().parseCalls).toBe(afterFirst + 1);
+  });
+  test("reuses short transient parses across streams without evicting stable syntax", () => {
+    const syntax = createConversationTokenEngine();
+    const stream = () => ({ source: "", length: 0, document: null });
+    const stable = "The original stable paragraph.\n\n";
+    const first = syntax.readStreaming(stable + "original tail", stream());
+    for (let index = 0; index < 110; index += 1) {
+      syntax.readStreaming("Transient #" + index, stream());
+    }
+    const second = syntax.readStreaming(stable + "Transient #109", stream());
+    expect(second.tokens[0]).toBe(first.tokens[0]);
+    const before = syntax.getMeasurements().parseCalls;
+    const another = syntax.readStreaming(stable + "Transient #109", stream());
+    expect(another.tokens.at(-1)).toBe(second.tokens.at(-1));
+    expect(syntax.getMeasurements().parseCalls).toBe(before);
+  });
   test("keeps artifact addresses literal without changing explicit links or ordinary email", () => {
     const result = engine.read(
       "logo@2x.png [explicit](mailto:logo@2x.png) normal@example.com",

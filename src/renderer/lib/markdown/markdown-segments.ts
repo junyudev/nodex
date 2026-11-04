@@ -8,47 +8,66 @@ export interface MarkdownSegmenter {
   segment(value: string): Iterable<{ readonly segment: string; readonly isWordLike?: boolean }>;
 }
 
+export type ReadMarkdownTextSegments = (text: string, decorated: boolean) => readonly string[];
+
 /** Word punctuation and spaces remain attached, preserving the exact text surface for Find. */
-export function createMarkdownTextSegmentCache() {
-  const fallback = createMarkdownCache<readonly string[]>({
-    maxKeys: MARKDOWN_SEGMENT_CACHE_MAX_KEYS,
-    refreshOnRead: false,
-  });
-  const bySegmenter = new WeakMap<MarkdownSegmenter, typeof fallback>();
+function splitMarkdownText(text: string, segmenter: MarkdownSegmenter | null): readonly string[] {
+  const segments: string[] = [];
+  const append = (value: string) => {
+    const index = Math.max(segments.length - 1, 0);
+    segments[index] = (segments[index] ?? "") + value;
+  };
+  if (/^[\x00-\x7f]*$/u.test(text)) {
+    for (const part of text.matchAll(/[a-zA-Z0-9]+|[^a-zA-Z0-9]+/gu)) {
+      if (/^[a-zA-Z0-9]/u.test(part[0])) segments.push(part[0]);
+      else append(part[0]);
+    }
+  } else if (segmenter) {
+    for (const { segment, isWordLike } of segmenter.segment(text)) {
+      if (isWordLike && !/^\s*$/u.test(segment)) segments.push(segment);
+      else append(segment);
+    }
+  } else {
+    segments.push(...(text.match(/\s*\S+(?:\s+|$)/gu) ?? (text ? [text] : [])));
+  }
+  return Object.freeze(segments);
+}
+
+/** A mounted document owns one Segmenter bucket, including when Intl.Segmenter is unavailable. */
+export function createMarkdownTextSegmentCache(segmenter: MarkdownSegmenter | null) {
+  const newBucket = () =>
+    createMarkdownCache<readonly string[]>({
+      maxKeys: MARKDOWN_SEGMENT_CACHE_MAX_KEYS,
+      refreshOnRead: false,
+    });
+  let retained: ReturnType<typeof newBucket> | undefined;
   return {
-    read(text: string, decorated: boolean, segmenter: MarkdownSegmenter | null): readonly string[] {
-      let cache = segmenter ? bySegmenter.get(segmenter) : fallback;
-      if (!cache) {
-        cache = createMarkdownCache({
-          maxKeys: MARKDOWN_SEGMENT_CACHE_MAX_KEYS,
-          refreshOnRead: false,
-        });
-        if (segmenter) bySegmenter.set(segmenter, cache);
-      }
-      const key = `${decorated ? "decorated" : "plain"}:${text}`;
-      const previous = cache.get(key);
-      if (previous) return previous;
-      const segments: string[] = [];
-      const append = (value: string) => {
-        const index = Math.max(segments.length - 1, 0);
-        segments[index] = (segments[index] ?? "") + value;
+    prepare() {
+      let previous = retained;
+      let next: ReturnType<typeof newBucket> | undefined;
+      const read: ReadMarkdownTextSegments = (text, decorated) => {
+        if (text.length > MARKDOWN_SEGMENT_CACHE_MAX_TEXT_UNITS)
+          return splitMarkdownText(text, segmenter);
+        const key = `${decorated ? "decorated" : "plain"}:${text}`;
+        next ??= newBucket();
+        const seen = next.get(key);
+        if (seen) return seen;
+        const value = previous?.get(key) ?? splitMarkdownText(text, segmenter);
+        next.set(key, value);
+        return value;
       };
-      if (/^[\x00-\x7f]*$/u.test(text)) {
-        for (const part of text.matchAll(/[a-zA-Z0-9]+|[^a-zA-Z0-9]+/gu)) {
-          if (/^[a-zA-Z0-9]/u.test(part[0])) segments.push(part[0]);
-          else append(part[0]);
-        }
-      } else if (segmenter) {
-        for (const { segment, isWordLike } of segmenter.segment(text)) {
-          if (isWordLike && !/^\s*$/u.test(segment)) segments.push(segment);
-          else append(segment);
-        }
-      } else {
-        segments.push(...(text.match(/\s*\S+(?:\s+|$)/gu) ?? (text ? [text] : [])));
-      }
-      const value = Object.freeze(segments);
-      if (text.length <= MARKDOWN_SEGMENT_CACHE_MAX_TEXT_UNITS) cache.set(key, value);
-      return value;
+      return {
+        read,
+        // Keep only the text parts used by this committed render. Cached AST
+        // plans already own their segments and don't need another cache entry.
+        commit() {
+          retained = next;
+          previous = undefined;
+        },
+      };
+    },
+    clear() {
+      retained = undefined;
     },
   };
 }
@@ -179,5 +198,3 @@ export function createMarkdownSegmentTimeline(now: () => number = () => performa
     },
   };
 }
-
-export const markdownTextSegmentCache = createMarkdownTextSegmentCache();
