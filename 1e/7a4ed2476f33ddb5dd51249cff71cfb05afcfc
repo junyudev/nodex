@@ -1,0 +1,19 @@
+src/main/coordinator/coordinator-instructions.ts
+  s_b6c984883307b1::t_5df21aa189444b 40,56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1e7a4ed2476f33ddb5dd51249cff71cfb05afcfc",
+  "prompts": {},
+  "sessions": {
+    "s_b6c984883307b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2dc6247d-3cd5-4c0f-8a1e-4811850a8588",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
