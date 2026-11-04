@@ -1,0 +1,19 @@
+docs/product-specs/inbox-behavior.md
+  s_b6c984883307b1::t_7aa98d1aaa9370 284-288
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "37783bfde15fc25ba44d468e083b742e3946dc23",
+  "prompts": {},
+  "sessions": {
+    "s_b6c984883307b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2dc6247d-3cd5-4c0f-8a1e-4811850a8588",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
