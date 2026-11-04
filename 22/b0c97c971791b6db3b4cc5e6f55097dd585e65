@@ -1,0 +1,39 @@
+crates/nodex-core-contracts/src/workspace.rs
+  s_3188629e0e41eb::t_158899309fc387 226-228,402-404
+packages/core-protocol/openapi.json
+  s_3188629e0e41eb::t_d1c952c161afa0 36868-36885,39845-39974,52825-52842
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_3188629e0e41eb::t_d0f29d59eaef5f 604-644
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_a866fad3d032b5::t_607b3b89e0b44e 138-162
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_3188629e0e41eb::t_73fe4bf8de204a 37-39
+packages/core-protocol/src/generated.ts
+  s_3188629e0e41eb::t_f5725cd56bbe21 8735-8738,9549-9581,12350-12353
+crates/nodex-core/src/workspace/read.rs
+  s_3188629e0e41eb::t_a4b5594168b6c0 123-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "22b0c97c971791b6db3b4cc5e6f55097dd585e65",
+  "prompts": {},
+  "sessions": {
+    "s_3188629e0e41eb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a5fa-2b29-7872-ad8c-df1d90bade89",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a866fad3d032b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a5f8-6004-7451-81ec-14661fb034d5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
