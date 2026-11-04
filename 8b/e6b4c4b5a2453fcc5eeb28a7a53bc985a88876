@@ -1,0 +1,62 @@
+src/renderer/features/inbox/inbox-presentation.ts
+  s_c30dbf45d2af5b::t_9d6bd8a0f8e42c 270-276,325-326
+src/renderer/features/inbox/inbox-presentation.node.test.ts
+  s_c30dbf45d2af5b::t_423dbd45afd46a 27,503-508,515-530
+  s_c30dbf45d2af5b::t_2b451a81272e11 509-514
+crates/nodex-core-contracts/src/workspace.rs
+  s_c30dbf45d2af5b::t_9d6bd8a0f8e42c 19
+packages/core-protocol/src/generated.ts
+  s_c30dbf45d2af5b::t_5e28763698ea3c 1766,9158-9162,9931
+docs/product-specs/coordinator-behavior.md
+  s_c30dbf45d2af5b::t_4b96621cd4200b 121-122,124-126
+  s_c30dbf45d2af5b::t_9d6bd8a0f8e42c 123
+packages/core-protocol/openapi.json
+  s_c30dbf45d2af5b::t_5e28763698ea3c 7524-7534,38723-38730,41502-41512
+crates/nodex-core/src/workspace/inbox_nodex_tests.rs
+  s_c30dbf45d2af5b::t_423dbd45afd46a 3-4,1117-1120,1130-1140,1150-1157,1166-1206,1272-1273,1275-1276
+  s_c30dbf45d2af5b::t_2b451a81272e11 1158-1165
+  s_c30dbf45d2af5b::t_1356485a8fd1b6 1141-1149
+src/renderer/features/inbox/inbox-message.browser.test.tsx
+  s_c30dbf45d2af5b::t_0086bdf8b2694f 23
+src/main/core-client/inbox-adapter.ts
+  s_c30dbf45d2af5b::t_9d6bd8a0f8e42c 288
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_c30dbf45d2af5b::t_9d6bd8a0f8e42c 16-17,341,391-395,422-428,680
+  s_9c72cf791afc7e::t_41bd6874769360 15
+src/renderer/features/inbox/inbox-triage.test.tsx
+  s_c30dbf45d2af5b::t_0086bdf8b2694f 54
+src/renderer/features/inbox/inbox-copy-action.test.tsx
+  s_c30dbf45d2af5b::t_0086bdf8b2694f 17
+src/renderer/features/inbox/use-inbox-departures.test.tsx
+  s_c30dbf45d2af5b::t_0086bdf8b2694f 13
+crates/nodex-core-contracts/src/inbox.rs
+  s_c30dbf45d2af5b::t_9d6bd8a0f8e42c 54-61,379-380
+src/shared/inbox.ts
+  s_c30dbf45d2af5b::t_9d6bd8a0f8e42c 2,242
+packages/core-protocol/src/compatibility.generated.ts
+  s_c30dbf45d2af5b::t_32a08d65f9e262 24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8be6b4c4b5a2453fcc5eeb28a7a53bc985a88876",
+  "prompts": {},
+  "sessions": {
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c30dbf45d2af5b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a758-0612-75c1-9b51-607b9500348b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
