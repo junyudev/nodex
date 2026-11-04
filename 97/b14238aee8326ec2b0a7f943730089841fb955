@@ -1,0 +1,19 @@
+src/main/inbox-application/InboxRuntime.node.test.ts
+  s_b15a8429b68582::t_fad3334dc901fd 55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "97b14238aee8326ec2b0a7f943730089841fb955",
+  "prompts": {},
+  "sessions": {
+    "s_b15a8429b68582": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7028e54e-eeb1-41c1-8394-6ea72fa24c4d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
