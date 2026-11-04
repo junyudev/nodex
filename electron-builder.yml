@@ -190,6 +190,8 @@ win:
         - "**/*"
 
 nsis:
+  # Updates use signed full installers, so block-level differential archives only cost size.
+  differentialPackage: false
   include: resources/windows/installer.nsh
   oneClick: true
   perMachine: false

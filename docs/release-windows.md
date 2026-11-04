@@ -41,6 +41,12 @@ to this installation. The installed Profile defaults to `%USERPROFILE%\.nodex`;
 uninstall preserves it. `vp run sync:icons` derives `resources/icon.ico` from
 the committed PNG icon through the pinned packager's icon tooling.
 
+The installer packs its payload as one solid LZMA2 archive. Updates use signed full
+installers, so nothing consumes block-level differential downloads, and the archive
+settings those need (a 1 MiB dictionary and per-file blocks) would cost 61 MiB on the
+v0.5.1 arm64 payload. In exchange, compression takes about eight times longer in release
+builds and extraction needs a 256 MiB dictionary in memory.
+
 NSIS runs installation-scoped process shutdown before replacing or removing any
 payload files. Before install-over, it refreshes the installed maintenance
 uninstaller from the incoming installer, so older process checks cannot run.

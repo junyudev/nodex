@@ -100,6 +100,7 @@ describe("electron-builder runtime resources", () => {
       target: [{ target: "nsis", arch: ["x64", "arm64"] }],
     });
     expect(config.nsis).toMatchObject({
+      differentialPackage: false,
       oneClick: true,
       perMachine: false,
       allowElevation: false,
