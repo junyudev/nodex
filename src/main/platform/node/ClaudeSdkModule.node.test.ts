@@ -21,7 +21,7 @@ it.effect("packaged Main and history workers share the standalone SDK through Un
     const url = claudeSdkModuleUrl({ isPackaged: true, resourcesPath, projectRootPath: "/unused" });
     const modulePath = join(
       resourcesPath,
-      "app.asar.unpacked/out/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs",
+      "agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs",
     );
     expect(fileURLToPath(url)).toBe(modulePath);
     yield* Effect.promise(() => mkdir(dirname(modulePath), { recursive: true }));

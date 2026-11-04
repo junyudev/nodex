@@ -1,0 +1,47 @@
+import { randomUUID } from "node:crypto";
+import { expect, test } from "vite-plus/test";
+import { assertWindowsInstalledProbe } from "./windows-distribution";
+
+const fixture = () => {
+  const marker = `NODEX_PTY_${randomUUID()}`;
+  return {
+    failures: [],
+    evidence: {},
+    normalQuit: {},
+    upgrade: {},
+    uninstall: {},
+    packagedPty: {
+      schemaVersion: 1,
+      nodeExecutable: "/installed/resources/node-runtime/node.exe",
+      addonPath: "/installed/resources/agent-runtime/node_modules/node-pty",
+      platform: "win32",
+      architecture: "arm64",
+      marker,
+      output: marker,
+      exitCode: 73,
+      ptyPid: 123,
+    },
+  };
+};
+test("requires installed stock-Node PTY evidence before emitting a Windows bundle", () => {
+  expect(() => assertWindowsInstalledProbe(fixture(), "arm64")).not.toThrow();
+  expect(() =>
+    assertWindowsInstalledProbe({ ...fixture(), packagedPty: undefined }, "arm64"),
+  ).toThrow("receipt");
+  const probe = fixture();
+  probe.packagedPty.exitCode = 0;
+  expect(() => assertWindowsInstalledProbe(probe, "arm64")).toThrow("receipt");
+});
+test("rejects evidence from a foreign CPU or the Electron archive companion", () => {
+  expect(() => assertWindowsInstalledProbe(fixture(), "x64")).toThrow("installed runtime");
+  const probe = fixture();
+  probe.packagedPty.addonPath =
+    "/installed/resources/app.asar.unpacked/out/agent-runtime/node_modules/node-pty";
+  expect(() => assertWindowsInstalledProbe(probe, "arm64")).toThrow("installed runtime");
+});
+
+test("requires the Node host and addon to belong to the same installation", () => {
+  const probe = fixture();
+  probe.packagedPty.nodeExecutable = "/another/resources/node-runtime/node.exe";
+  expect(() => assertWindowsInstalledProbe(probe, "arm64")).toThrow("installed runtime");
+});

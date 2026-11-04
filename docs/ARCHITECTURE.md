@@ -130,9 +130,11 @@ handoff journal, while Core retains product Session placement and binding. See
 [Agent Runtime behavior](product-specs/agent-runtime-behavior.md) and
 [ADR 0068](adr/0068-agent-runtime-execution-authority.md).
 
-The standalone Agent Runtime owns the packaged Claude SDK and its native executable.
-Main's native discovery and history adapters load that same verified dependency closure;
-configured Agent executables remain authoritative. Packaging invariants live in
+Stock-Node programs and their dependencies live as detached Resources, outside
+Electron ASAR and its unpacked companion. The standalone Agent Runtime owns the
+bundled SDK and native executable for the Claude provider. Main's native discovery
+and history adapters load that same verified dependency closure. Configured Agent
+executables remain authoritative. Packaging invariants live in
 [the desktop runtime documentation](release-windows.md#runtime-closure).
 
 The Session set follows the execution store's conversations. The Store and the execution

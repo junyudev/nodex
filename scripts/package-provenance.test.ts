@@ -1,3 +1,7 @@
+import {
+  packagedStockNodeFixtureOutputs,
+  writePackagedStockNodeFixture,
+} from "./testing/packaged-stock-node-fixture";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -90,6 +94,7 @@ const makePreparedManifest = (
     buildContext: { arch: "arm64", platform: "darwin" },
     inputDigest,
     outputs: [
+      ...packagedStockNodeFixtureOutputs,
       {
         executable: false,
         path: "out/main/bootstrap.js",
@@ -366,7 +371,7 @@ const makeApp = (
   const appPath = path.join(root, "Nodex.app");
   const resources = path.join(appPath, "Contents/Resources");
   fs.mkdirSync(path.join(resources, "bin"), { recursive: true });
-  fs.writeFileSync(path.join(resources, "app.asar"), "current app payload\n");
+  writePackagedStockNodeFixture(resources);
   writeSparkleRuntime(appPath);
   fs.writeFileSync(path.join(resources, "native/nodex-clipboard.node"), "clipboard bridge", {
     mode: 0o755,
@@ -463,7 +468,7 @@ describe.skipIf(process.platform === "win32")("packaged build provenance", () =>
 
     expect(() =>
       verifyPackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture)),
-    ).toThrow("does not match the packaged provenance");
+    ).toThrow(/does not match the packaged provenance|differs from the prepared build/u);
   });
 
   test("rejects an untested Browser and app-server artifact pair before sealing provenance", () => {
@@ -521,6 +526,8 @@ describe.skipIf(process.platform === "win32")("packaged build provenance", () =>
 
   test.each([
     "app.asar",
+    "agent-runtime/entry.mjs",
+    "app-tools/server.mjs",
     "bin/rust-core-runtime.json",
     "agent-runtime.json",
     "native/nodex-sparkle.node",
@@ -536,7 +543,7 @@ describe.skipIf(process.platform === "win32")("packaged build provenance", () =>
       verifyPackagedBuildProvenance(fixture.appPath, {
         ...provenanceOptions(fixture),
       }),
-    ).toThrow("does not match the packaged provenance");
+    ).toThrow(/does not match the packaged provenance|differs from the prepared build/u);
   });
 
   test("rejects a mutated packaged official Agent Skill", () => {

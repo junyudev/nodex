@@ -359,6 +359,7 @@ const outputInventory = (root: string): FileDigest[] => {
     throw new Error("Prepared Electron output is empty; run the normal build first.");
   }
   const requiredExecutionOutputs = [
+    "out/main/app-tools/server.mjs",
     "out/agent-runtime/entry.mjs",
     "out/agent-runtime/native-dependencies.json",
     "out/agent-runtime/node_modules/node-pty/package.json",

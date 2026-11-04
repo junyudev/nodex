@@ -701,13 +701,16 @@ The production build prepares that pinned runtime from the verified cache first.
 `build:agent-runtime` materializes it under
 `.generated/agent-runtime-native/<platform>-<arch>/` from a private source copy and
 packages its JavaScript, native addon and helpers inside
-`out/agent-runtime/node_modules/node-pty/`. Packaging copies this verified dependency
-through `extraResources` into the unpacked Agent Runtime, preserving its package metadata
-without Electron dependency rewriting. The after-pack inventory checks every file, byte
-and executable bit before signing. Its receipt includes source, dependency,
-Node ABI, toolchain and artifact identities. The root Electron dependency is never
-rebuilt or shared with this execution process. macOS packaging verifies the copied
-closure before signing and reseals its separate manifest afterward.
+`out/agent-runtime/node_modules/node-pty/`. A dedicated `extraResources` file set
+copies the dependency tree to `Resources/agent-runtime/node_modules`
+(`resources/agent-runtime/node_modules` on Windows) and preserves its package
+metadata. The Agent Runtime ships without source maps, and app-tools ships as a
+single bundle at `Resources/app-tools/server.mjs`. Both stock-Node programs live
+outside ASAR and its unpacked companion. Development uses the corresponding
+paths under `out/`. The after-pack inventory checks dependency bytes and executable
+bits before signing. Its receipt records the source, dependency, Node ABI, toolchain
+and artifact identities. Electron Main uses its separately rebuilt addon. macOS
+packaging reseals the Agent Runtime native manifest after signing.
 
 After staging the runtime and building the bundle, verify terminal sign-in through
 its public management protocol with a disposable home:

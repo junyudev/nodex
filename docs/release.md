@@ -421,8 +421,9 @@ bare runtime load of such a package before packaging begins.
 
 The application MCP transport is bundled separately at
 `out/main/app-tools/server.mjs` and included in the prepared output inventory.
-Packaging unpacks that directory from ASAR so the bundled Node runtime can
-execute it without Electron's module loader or a development dependency tree.
+Packaging copies only that bundle to `Resources/app-tools/server.mjs` through
+`extraResources` so bundled stock Node can execute it independently of Electron's
+archive and a development dependency tree.
 The transport bundle test exercises initialization and a complete tool call
 from a temporary directory outside the repository.
 
@@ -440,6 +441,14 @@ Electron upgrade, rebuild the Apple silicon app and inspect the resulting Mach-O
 minimum versions; an environment variable alone does not enforce this contract.
 Bridge builders verify the compiled minimum before publishing or reusing an output,
 so an incompatible local binary cannot reach signing and notarization.
+
+Stock Node runs `agent-runtime/entry.mjs` and the `app-tools/server.mjs` bundle
+directly from Resources. Their files stay outside ASAR and its unpacked companion.
+Prepared output hashes verify both entrypoints, and the after-pack gate compares
+Agent Runtime dependencies byte-for-byte before signing. Electron Main loads its
+own PTY dependency through ASAR. The macOS packaged smoke spawns a PTY with
+`browser-runtime/bin/node` and the detached addon on every run, including headless
+runs. The probe requires its output marker and exact exit status within the deadline.
 
 The signed package gate must preserve the complete vendor signature closure
 under `Contents/Resources/browser-runtime`, including the signed Codex CLI,

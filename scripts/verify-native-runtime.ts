@@ -18,6 +18,8 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertDetachedRuntimeResources } from "./desktop-runtime-payload.mjs";
+import { runPackagedPtyProbe } from "./packaged-pty-probe.mjs";
 import { initializeNodeMarkdown } from "./node-markdown";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
@@ -636,11 +638,9 @@ export const removePrivateTemporaryDirectory = (directory: string): void => {
   });
 };
 
-export const assertLegacyPackagedRuntimePathsAbsent = (contentsPath: string): void => {
-  const legacyPaths = [
-    join(contentsPath, "Resources/agent-runtime"),
-    join(contentsPath, "Resources/bin/rg"),
-  ];
+export const assertPackagedStockNodeLayout = (contentsPath: string): void => {
+  assertDetachedRuntimeResources(join(contentsPath, "Resources"));
+  const legacyPaths = [join(contentsPath, "Resources/bin/rg")];
   for (const legacyPath of legacyPaths) {
     let exists = false;
     try {
@@ -1461,7 +1461,7 @@ export function verifyPackagedNativeRuntimeStructure(
       "Packaged Computer Use app",
     );
   }
-  assertLegacyPackagedRuntimePathsAbsent(contentsPath);
+  assertPackagedStockNodeLayout(contentsPath);
   const resourcesService = join(contentsPath, "Resources/bin/nodex-service");
   if (existsSync(resourcesService)) {
     throw new Error("ServiceManagement adapter must only exist inside its nested helper app");
@@ -1509,6 +1509,14 @@ const verifyPackagedNativeRuntimeSmoke = (
     const identity = yield* attempt("verify-runtime-structure", () =>
       verifyPackagedNativeRuntimeStructure(options),
     );
+    yield* attempt("verify-packaged-pty", () => {
+      const resources = join(identity.appPath, "Contents/Resources");
+      const receipt = runPackagedPtyProbe({
+        nodeExecutable: join(resources, "browser-runtime/bin/node"),
+        addonPath: join(resources, "agent-runtime/node_modules/node-pty"),
+      });
+      process.stdout.write(`Packaged PTY: ${JSON.stringify(receipt)}\n`);
+    });
     yield* smokeNativeRuntime(identity.appPath, identity.coreSha256, identity.expectedVersion);
     yield* attemptPromise("verify-store-migration", () =>
       smokePreviousStoreMigration(

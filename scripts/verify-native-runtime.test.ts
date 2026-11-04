@@ -1,3 +1,4 @@
+import { writePackagedStockNodeFixture } from "./testing/packaged-stock-node-fixture";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -9,7 +10,7 @@ import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
   assertPackagedMacCodeObjectEntitlements,
   assertContentAddressedStoreMigrationBackup,
-  assertLegacyPackagedRuntimePathsAbsent,
+  assertPackagedStockNodeLayout,
   isPackagedAppReady,
   parseMacCodeSigningEntitlements,
   removePrivateTemporaryDirectory,
@@ -344,14 +345,14 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       lease.release();
     }
   });
-  test("rejects the obsolete nested Agent runtime even when canonical resources exist", () => {
+  test("validates detached stock Node resources and rejects obsolete ripgrep", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-native-runtime-layout-"));
     temporaryDirectories.push(directory);
-    fs.mkdirSync(path.join(directory, "Resources", "agent-runtime"), { recursive: true });
-
-    expect(() => assertLegacyPackagedRuntimePathsAbsent(directory)).toThrow(
-      "obsolete duplicate path",
-    );
+    writePackagedStockNodeFixture(path.join(directory, "Resources"));
+    expect(() => assertPackagedStockNodeLayout(directory)).not.toThrow();
+    fs.mkdirSync(path.join(directory, "Resources/bin"), { recursive: true });
+    fs.writeFileSync(path.join(directory, "Resources/bin/rg"), "obsolete");
+    expect(() => assertPackagedStockNodeLayout(directory)).toThrow("obsolete duplicate path");
   });
 
   test("removes Core search caches with read-only directories", () => {

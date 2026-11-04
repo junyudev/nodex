@@ -61,5 +61,10 @@ export function assertPackagedAppArchive(archivePath) {
     );
   if (!entries.includes("out") || !entries.includes("package.json"))
     throw new Error("Packaged app archive is missing the application output");
+  const detached = readAppArchiveFilePaths(archivePath).filter((file) =>
+    /^(?:out\/agent-runtime|out\/main\/app-tools|agent-runtime|app-tools)(?:\/|$)/u.test(file),
+  );
+  if (detached.length)
+    throw new Error(`Stock Node programs must be detached from ASAR: ${detached.join(", ")}`);
   return entries;
 }

@@ -13,6 +13,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertDetachedRuntimeResources } from "./desktop-runtime-payload.mjs";
 import { inspectOfficialAgentSkillsArtifact } from "./official-agent-skills-artifact.mjs";
 import {
   isTestedBrowserAppServerPair,
@@ -419,6 +420,7 @@ const parseSparkleRuntimeManifest = (value) => {
 
 export const writePackagedBuildProvenance = (appPath, options = {}) => {
   const resolvedAppPath = path.resolve(appPath);
+  assertDetachedRuntimeResources(path.join(resolvedAppPath, resourcesRelativePath));
   const preparedPath = path.join(resolvedAppPath, ...preparedRelativePath.split("/"));
   const prepared = parsePreparedManifest(
     readJson(preparedPath, "Packaged prepared Electron manifest"),
@@ -556,6 +558,7 @@ export const writePackagedBuildProvenance = (appPath, options = {}) => {
 
 export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
   const resolvedAppPath = path.resolve(appPath);
+  assertDetachedRuntimeResources(path.join(resolvedAppPath, resourcesRelativePath));
   const provenancePath = path.join(resolvedAppPath, ...provenanceRelativePath.split("/"));
   const value = readJson(provenancePath, "Packaged build provenance");
   assertExactKeys(

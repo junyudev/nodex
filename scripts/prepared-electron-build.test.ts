@@ -141,6 +141,7 @@ const makeFixture = (): {
     "tsconfig.node.json",
     "tsconfig.web.json",
     "out/main/bootstrap.js",
+    "out/main/app-tools/server.mjs",
     "out/agent-runtime/entry.mjs",
     "out/agent-runtime/native-dependencies.json",
     "out/agent-runtime/node_modules/node-pty/package.json",

@@ -21,6 +21,7 @@ it("launches the packaged MCP layout through its private generation descriptor",
     projectRootPath: "/unavailable-development-checkout",
     resourcesPath: join(directory, "Resources with spaces"),
   });
+  expect(entrypoint).toBe(join(directory, "Resources with spaces", "app-tools/server.mjs"));
   const pipe = {
     path: appToolsPipePath(directory, process.platform),
     instanceId: randomUUID(),
@@ -79,4 +80,14 @@ it("launches the packaged MCP layout through its private generation descriptor",
     await host.close();
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+it("resolves development app-tools from the existing build output", () => {
+  expect(
+    appToolsEntrypoint({
+      isPackaged: false,
+      resourcesPath: "/unused",
+      projectRootPath: "/checkout",
+    }),
+  ).toBe(join("/checkout", "out/main/app-tools/server.mjs"));
 });

@@ -9,10 +9,9 @@ export function appToolsEntrypoint(input: {
   projectRootPath: string;
   resourcesPath: string;
 }): string {
-  const root = input.isPackaged
-    ? path.join(input.resourcesPath, "app.asar.unpacked")
-    : input.projectRootPath;
-  return path.join(root, "out", "main", "app-tools", "server.mjs");
+  return input.isPackaged
+    ? path.join(input.resourcesPath, "app-tools", "server.mjs")
+    : path.join(input.projectRootPath, "out", "main", "app-tools", "server.mjs");
 }
 
 export function appToolsServerConfig(input: {

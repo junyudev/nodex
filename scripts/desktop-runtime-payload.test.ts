@@ -1,3 +1,4 @@
+import { writePackagedStockNodeFixture } from "./testing/packaged-stock-node-fixture";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -38,12 +39,12 @@ function fixture(platform: string, arch: string) {
   roots.push(root);
   const resourcesPath = join(root, "resources");
   const sourceRoot = join(root, "source");
-  const dependency = "out/agent-runtime/node_modules";
+  const dependency = "agent-runtime/node_modules";
   const binary = `${dependency}/@anthropic-ai/claude-agent-sdk-${platform}-${arch}/${platform === "win32" ? "claude.exe" : "claude"}`;
-  write(join(sourceRoot, binary));
-  write(join(sourceRoot, dependency, "@anthropic-ai/claude-agent-sdk/sdk.mjs"));
+  write(join(sourceRoot, "out", binary));
+  write(join(sourceRoot, "out", dependency, "@anthropic-ai/claude-agent-sdk/sdk.mjs"));
   mkdirSync(resourcesPath);
-  cpSync(join(sourceRoot, "out"), join(resourcesPath, "app.asar.unpacked/out"), {
+  cpSync(join(sourceRoot, "out/agent-runtime"), join(resourcesPath, "agent-runtime"), {
     recursive: true,
   });
   for (const file of platform === "win32"
@@ -57,6 +58,7 @@ function fixture(platform: string, arch: string) {
     : ["pty.node", "spawn-helper"])
     write(join(resourcesPath, "app.asar.unpacked/node_modules/node-pty/build/Release", file));
   archive(join(resourcesPath, "app.asar"), ["out/main/bootstrap.js", "package.json"]);
+  writePackagedStockNodeFixture(resourcesPath);
   return { resourcesPath, sourceRoot, platform, arch, binary };
 }
 test.each([
@@ -65,10 +67,8 @@ test.each([
   ["darwin", "arm64"],
 ])("%s %s ships one verified Claude closure", (platform, arch) => {
   const input = fixture(platform, arch);
-  expect(assertDesktopRuntimePayload(input)).toBe(
-    join(input.resourcesPath, "app.asar.unpacked", input.binary),
-  );
-  write(join(input.resourcesPath, "app.asar.unpacked", input.binary), "damaged");
+  expect(assertDesktopRuntimePayload(input)).toBe(join(input.resourcesPath, input.binary));
+  write(join(input.resourcesPath, input.binary), "damaged");
   expect(() => assertDesktopRuntimePayload(input)).toThrow("differs");
 });
 test.each([
@@ -82,6 +82,8 @@ test.each([
 test("rejects a second Claude hidden inside ASAR", () => {
   const input = fixture("win32", "x64");
   archive(join(input.resourcesPath, "app.asar"), [
+    "out/main/bootstrap.js",
+    "package.json",
     "node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe",
   ]);
   expect(() => assertDesktopRuntimePayload(input)).toThrow("exactly one Claude");
@@ -90,15 +92,17 @@ test.each([
   "node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs",
   "node_modules/@anthropic-ai/claude-agent-sdk-darwin-x64/package.json",
   "node_modules/node-pty/prebuilds/win32-x64/pty.node",
-  "out/agent-runtime/node_modules/node-pty/third_party/conpty/win10-x64/OpenConsole.exe",
+  "agent-runtime/node_modules/node-pty/third_party/conpty/win10-x64/OpenConsole.exe",
   "node_modules/node-pty/build/Release/conpty.pdb",
   "node_modules/node-pty/build/Release/conpty.ipdb",
   "node_modules/node-pty/build/Release/conpty.iobj",
   "node_modules/node-pty/build/deps/winpty/src/Release/winpty.dll",
-  "out/agent-runtime/entry.mjs.map",
+  "agent-runtime/entry.mjs.map",
 ])("rejects unused payload at %s", (file) => {
   const input = fixture("win32", "x64");
-  write(join(input.resourcesPath, "app.asar.unpacked", file));
+  write(
+    join(input.resourcesPath, file.startsWith("agent-runtime/") ? "" : "app.asar.unpacked", file),
+  );
   expect(() => assertDesktopRuntimePayload(input)).toThrow(
     /Main must share|Unexpected Claude|Unused desktop/,
   );
@@ -112,6 +116,28 @@ test("requires the rebuilt Electron PTY before removing its fallback prebuilds",
 });
 test("checks archived maps and redundant native payload too", () => {
   const input = fixture("darwin", "arm64");
-  archive(join(input.resourcesPath, "app.asar"), ["out/main/bootstrap.js.map"]);
+  archive(join(input.resourcesPath, "app.asar"), ["package.json", "out/main/bootstrap.js.map"]);
   expect(() => assertDesktopRuntimePayload(input)).toThrow("Unused desktop");
 });
+
+test.each(["agent-runtime/entry.mjs", "app-tools/server.mjs"])(
+  "requires the prepared bytes for %s",
+  (file) => {
+    const input = fixture("darwin", "arm64");
+    write(join(input.resourcesPath, file), "changed");
+    expect(() => assertDesktopRuntimePayload(input)).toThrow("differs from the prepared build");
+    rmSync(join(input.resourcesPath, file));
+    expect(() => assertDesktopRuntimePayload(input)).toThrow("ENOENT");
+  },
+);
+test.each(["out/agent-runtime/entry.mjs", "out/main/app-tools/server.mjs"])(
+  "rejects stock Node programs in ASAR or its companion: %s",
+  (file) => {
+    const input = fixture("darwin", "arm64");
+    write(join(input.resourcesPath, "app.asar.unpacked", file));
+    expect(() => assertDesktopRuntimePayload(input)).toThrow("must be detached");
+    rmSync(join(input.resourcesPath, "app.asar.unpacked/out"), { recursive: true });
+    archive(join(input.resourcesPath, "app.asar"), ["out/main/bootstrap.js", "package.json", file]);
+    expect(() => assertDesktopRuntimePayload(input)).toThrow("must be detached");
+  },
+);

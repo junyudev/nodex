@@ -18,10 +18,10 @@ it("keeps packaged execution outside ASAR and ignores every test executable over
   expect(
     agentRuntimeEntrypoint({
       isPackaged: true,
-      resourcesPath: "/resources",
+      resourcesPath: "/Nodex App/Contents/Resources",
       projectRootPath: "/repo",
     }),
-  ).toBe(path.join("/resources", "app.asar.unpacked", "out/agent-runtime/entry.mjs"));
+  ).toBe(path.join("/Nodex App/Contents/Resources", "agent-runtime/entry.mjs"));
   expect(
     agentRuntimeNodeExecutable({
       isPackaged: true,
@@ -97,4 +97,14 @@ it("admits an explicit absolute Node only inside an identified disposable test r
       environment: { ...environment, NODEX_TEST_AGENT_RUNTIME_NODE_EXECUTABLE: "node" },
     }),
   ).toThrow("absolute executable");
+});
+
+it("resolves development Agent Runtime from the existing build output", () => {
+  expect(
+    agentRuntimeEntrypoint({
+      isPackaged: false,
+      resourcesPath: "/unused",
+      projectRootPath: "/checkout",
+    }),
+  ).toBe(path.join("/checkout", "out/agent-runtime/entry.mjs"));
 });

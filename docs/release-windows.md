@@ -77,20 +77,26 @@ the root dependency remains Electron's own rebuild. Only each runtime's required
 `build/Release` closure ships; fallback prebuilds, PTY debug symbols and application
 source maps are excluded.
 
-Both Windows and macOS ship one Claude Code executable, beside the standalone
-Agent Runtime's SDK under `app.asar.unpacked/out/agent-runtime/node_modules`.
-Main loads that SDK by its explicit unpacked module URL for discovery and isolated
-history workers. Source development and tests use the installed SDK. Configured
-Agent executables remain authoritative; sharing the SDK does not change executable
-or account selection.
+Windows and macOS ship one SDK and one native executable for the Claude provider
+under `agent-runtime/node_modules` in the application resources. Stock-Node
+entrypoints are `agent-runtime/entry.mjs` and `app-tools/server.mjs`. The
+`extraResources` configuration places both outside ASAR and its unpacked companion.
+Main loads the bundled SDK by its module URL for discovery and isolated history
+workers. Source development and tests use the installed SDK. Configured Agent
+executables remain authoritative.
 
 The after-pack hook compares the complete standalone dependency tree byte-for-byte,
 requires Electron's rebuilt PTY helpers, and rejects a second Claude executable
 (including inside ASAR), an extra SDK/platform package, redundant PTY prebuilds,
-debug symbols or application source maps. It also scans every PE image in the complete unpacked payload, including renamed images,
-for CPU identity and ordinary/delay-load dependency closure. A foreign CPU or
-unresolved dependency fails before an installer is emitted. The installed-app
-probe repeats the same static inspection.
+debug symbols or application source maps. It also scans every PE image in the
+complete unpacked payload, including renamed images, for CPU identity and
+ordinary and delay-load dependencies. A foreign CPU or unresolved dependency
+fails before an installer is emitted. The installed-app
+probe repeats the same static inspection and spawns a PTY under installed
+`resources/node-runtime/node.exe`, loading the detached Agent Runtime addon by
+absolute path with the production default ConPTY backend. The probe requires a
+unique output marker and exact sentinel exit code within a bounded deadline.
+Distribution assembly requires its receipt before emitting the architecture bundle.
 
 Manual architecture checks are available independently:
 

@@ -7,7 +7,8 @@ directories:
   output: dist
 files:
   - out/**/*
-  - "!out/agent-runtime/node_modules/**/*"
+  - "!out/agent-runtime{,/**/*}"
+  - "!out/main/app-tools{,/**/*}"
   - package.json
   - "!**/*.map"
   - "!**/*.tsbuildinfo"
@@ -39,15 +40,24 @@ files:
 asarUnpack:
   - "**/*.node"
   - "node_modules/node-pty/**"
-  - "out/main/app-tools/**"
-  - "out/agent-runtime/**"
 npmRebuild: true
 extraResources:
-  # Preserve the verified Node dependency without Electron metadata rewriting.
-  - from: out/agent-runtime/node_modules
-    to: app.asar.unpacked/out/agent-runtime/node_modules
+  # Stock-Node programs and their verified dependencies live outside Electron ASAR.
+  - from: out/agent-runtime
+    to: agent-runtime
     filter:
       - "**/*"
+      - "!node_modules{,/**/*}"
+      - "!**/*.map"
+  # The resource matcher skips a child directory named node_modules at its root.
+  - from: out/agent-runtime/node_modules
+    to: agent-runtime/node_modules
+    filter:
+      - "**/*"
+  - from: out/main/app-tools
+    to: app-tools
+    filter:
+      - server.mjs
   - from: .generated/prepared-electron-build.json
     to: prepared-electron-build.json
   - from: .generated/official-agent-skills

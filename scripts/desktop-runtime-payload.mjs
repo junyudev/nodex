@@ -1,15 +1,53 @@
 // Keep this Node-only boundary available to afterPack and installed-app probes.
-import { existsSync, lstatSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { assertPackagedAgentRuntimeNative } from "./agent-runtime-native-inventory.mjs";
-import { readAppArchiveFilePaths } from "./packaged-app-archive.mjs";
+import { assertPackagedAppArchive, readAppArchiveFilePaths } from "./packaged-app-archive.mjs";
+
+/** Detached stock-Node entrypoints must match the exact prepared output. */
+export function assertDetachedRuntimeResources(resourcesPath) {
+  assertPackagedAppArchive(join(resourcesPath, "app.asar"));
+  for (const obsolete of [
+    "app.asar.unpacked/out/agent-runtime",
+    "app.asar.unpacked/out/main/app-tools",
+    "app.asar.unpacked/agent-runtime",
+    "app.asar.unpacked/app-tools",
+  ]) {
+    if (existsSync(join(resourcesPath, obsolete)))
+      throw new Error(`Stock Node programs must be detached from ASAR: ${obsolete}`);
+  }
+  const prepared = JSON.parse(
+    readFileSync(join(resourcesPath, "prepared-electron-build.json"), "utf8"),
+  );
+  for (const [source, destination] of [
+    ["out/agent-runtime/entry.mjs", "agent-runtime/entry.mjs"],
+    ["out/main/app-tools/server.mjs", "app-tools/server.mjs"],
+  ]) {
+    const recorded = prepared.outputs?.find((file) => file.path === source);
+    const filePath = join(resourcesPath, destination);
+    const metadata = lstatSync(filePath);
+    if (
+      !recorded ||
+      !metadata.isFile() ||
+      metadata.isSymbolicLink() ||
+      metadata.size === 0 ||
+      metadata.size !== recorded.size ||
+      createHash("sha256").update(readFileSync(filePath)).digest("hex") !== recorded.sha256
+    )
+      throw new Error(
+        `Detached runtime entrypoint differs from the prepared build: ${destination}`,
+      );
+  }
+}
 
 /** Reject duplicate SDKs, foreign platform packages and redundant native/debug payload. */
 export function assertDesktopRuntimePayload({ resourcesPath, platform, arch, sourceRoot }) {
-  const dependencyRoot = "out/agent-runtime/node_modules";
+  assertDetachedRuntimeResources(resourcesPath);
+  const dependencyRoot = "agent-runtime/node_modules";
   const platformPackage = `@anthropic-ai/claude-agent-sdk-${platform}-${arch}`;
   const executable = `${dependencyRoot}/${platformPackage}/${platform === "win32" ? "claude.exe" : "claude"}`;
-  const expected = `app.asar.unpacked/${executable}`;
+  const expected = executable;
   const physical = readdirSync(resourcesPath, { recursive: true, withFileTypes: true })
     .filter((entry) => !entry.isDirectory())
     .map((entry) =>
@@ -36,7 +74,13 @@ export function assertDesktopRuntimePayload({ resourcesPath, platform, arch, sou
   const unpacked = physical
     .filter((file) => file.startsWith("app.asar.unpacked/"))
     .map((file) => file.slice("app.asar.unpacked/".length));
-  for (const file of [...unpacked, ...archived]) {
+  for (const file of [
+    ...unpacked,
+    ...archived,
+    ...physical.filter(
+      (file) => file.startsWith("agent-runtime/") || file.startsWith("app-tools/"),
+    ),
+  ]) {
     const ptyBuildPath = /(?:^|\/)node_modules\/node-pty\/build\/(.*)/u.exec(file)?.[1];
     const platformMatch = /(?:^|\/)node_modules\/(@anthropic-ai\/claude-agent-sdk-[^/]+)\//u.exec(
       file,
@@ -69,8 +113,8 @@ export function assertDesktopRuntimePayload({ resourcesPath, platform, arch, sou
   }
   if (sourceRoot)
     assertPackagedAgentRuntimeNative({
-      sourceRoot: join(sourceRoot, dependencyRoot),
-      packagedRoot: join(resourcesPath, "app.asar.unpacked", dependencyRoot),
+      sourceRoot: join(sourceRoot, "out", dependencyRoot),
+      packagedRoot: join(resourcesPath, dependencyRoot),
     });
   return join(resourcesPath, expected);
 }

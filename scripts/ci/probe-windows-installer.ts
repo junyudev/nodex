@@ -24,6 +24,7 @@ import { desktopBuildTarget } from "../desktop-build-target";
 import { terminateWindowsProcessTree } from "../../src/main/process-tree";
 import { verifyWindowsArchitectureClosure } from "../windows-pe.mjs";
 import { installedPayloadInventory } from "../installed-payload.mjs";
+import { runPackagedPtyProbe, type PackagedPtyReceipt } from "../packaged-pty-probe.mjs";
 import { assertDesktopRuntimePayload } from "../desktop-runtime-payload.mjs";
 import { claudeSdkModuleUrl } from "../../src/main/platform/node/ClaudeSdkModule";
 import {
@@ -219,6 +220,7 @@ async function main(): Promise<void> {
   let detachedCoreBeforeUninstall: number | undefined;
   let output = "";
   let evidence: unknown;
+  let packagedPty: PackagedPtyReceipt | undefined;
   let uninstallEvidence: unknown;
   const cleanup = async (): Promise<void> => {
     let uninstallCompleted = false;
@@ -355,7 +357,7 @@ exit $uninstaller.ExitCode
         writeFileSync(join(artifacts, name), readFileSync(join(logRoot, name)));
     writeFileSync(
       join(artifacts, "result.json"),
-      `${JSON.stringify({ evidence, normalQuit: normalQuitEvidence, upgrade: upgradeEvidence, updateHandoff: updateHandoffEvidence, uninstall: uninstallEvidence, failures: failures.map(failureDetails) }, null, 2)}\n`,
+      `${JSON.stringify({ evidence, packagedPty, normalQuit: normalQuitEvidence, upgrade: upgradeEvidence, updateHandoff: updateHandoffEvidence, uninstall: uninstallEvidence, failures: failures.map(failureDetails) }, null, 2)}\n`,
     );
   };
   try {
@@ -366,6 +368,10 @@ exit $uninstaller.ExitCode
     const executable = join(installRoot, "Nodex.exe");
     if (!existsSync(executable))
       throw new Error(`NSIS did not install Nodex per-user: ${executable}`);
+    packagedPty = runPackagedPtyProbe({
+      nodeExecutable: join(installRoot, "resources/node-runtime/node.exe"),
+      addonPath: join(installRoot, "resources/agent-runtime/node_modules/node-pty"),
+    });
     const payload = installedPayloadInventory(installRoot);
     writeFileSync(
       join(artifacts, "installed-payload.json"),

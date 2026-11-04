@@ -15,16 +15,15 @@ export const scenarioAgentRuntimeProjectRoot = (input: {
   );
 };
 
-/** Standalone Node cannot read an Electron ASAR; the execution closure is unpacked. */
+/** Stock Node programs live in Resources, independently of Electron ASAR. */
 export const agentRuntimeEntrypoint = (input: {
   readonly isPackaged: boolean;
   readonly resourcesPath: string;
   readonly projectRootPath: string;
 }) =>
-  join(
-    input.isPackaged ? join(input.resourcesPath, "app.asar.unpacked") : input.projectRootPath,
-    "out/agent-runtime/entry.mjs",
-  );
+  input.isPackaged
+    ? join(input.resourcesPath, "agent-runtime/entry.mjs")
+    : join(input.projectRootPath, "out/agent-runtime/entry.mjs");
 
 /** Disposable scenarios may select their own Node; packaged execution always uses verified assets. */
 export function agentRuntimeNodeExecutable(input: {

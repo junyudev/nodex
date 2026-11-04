@@ -130,6 +130,12 @@ export default async function restorePackagedRuntimeClosure(context) {
       ? path.join(appPath, "Contents/Resources")
       : path.join(appPath, "resources");
   assertPackagedAppArchive(path.join(resourcesPath, "app.asar"));
+  if (
+    !readFileSync(path.join(resourcesPath, "prepared-electron-build.json")).equals(
+      readFileSync(path.join(projectRoot, ".generated/prepared-electron-build.json")),
+    )
+  )
+    throw new Error("Packaged prepared manifest differs from the verified build");
   // electron-builder Arch: x64=1, arm64=3. Reject every other desktop target.
   const arch = context.arch === 1 ? "x64" : context.arch === 3 ? "arm64" : null;
   if (!arch) throw new Error(`Unsupported desktop package architecture: ${context.arch}`);

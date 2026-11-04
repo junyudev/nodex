@@ -415,7 +415,7 @@ describe.skipIf(process.platform === "win32")("refreshSignedBrowserRuntimeManife
 test("reseals the separate execution PTY dependency after signing", () => {
   const app = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-execution-sign-"));
   temporaryRoots.push(app);
-  const root = path.join(app, "Contents/Resources/app.asar.unpacked/out/agent-runtime");
+  const root = path.join(app, "Contents/Resources/agent-runtime");
   fs.mkdirSync(path.join(root, "node_modules/node-pty"), { recursive: true });
   fs.writeFileSync(path.join(root, "node_modules/node-pty/pty.node"), "signed-native-bytes");
   const manifestPath = path.join(root, "native-dependencies.json");

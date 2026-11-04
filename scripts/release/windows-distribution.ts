@@ -13,6 +13,7 @@ import { createRequire } from "node:module";
 import type { WindowsArchitecture } from "../desktop-build-target";
 import type { PreparedElectronBuildManifest } from "../prepared-electron-build";
 import { inspectOfficialAgentSkillsArtifact } from "../official-agent-skills-artifact.mjs";
+import { assertPackagedPtyReceipt } from "../packaged-pty-probe.mjs";
 import { installedPayloadInventory } from "../installed-payload.mjs";
 import { runVitePlus } from "../vite-plus-command";
 import { assertSourceIdentity } from "./distribution";
@@ -33,6 +34,45 @@ export function verifyWindowsPreparedIdentity(
   ) {
     throw new Error("Windows prepared build does not match the exact clean Release Identity.");
   }
+}
+
+/** Installed runtime execution is mandatory before any installer enters a bundle. */
+export function assertWindowsInstalledProbe(
+  value: unknown,
+  architecture: WindowsArchitecture,
+): void {
+  const probe = value as {
+    failures?: unknown[];
+    evidence?: unknown;
+    upgrade?: unknown;
+    uninstall?: unknown;
+    normalQuit?: unknown;
+    packagedPty?: unknown;
+  } | null;
+  if (
+    !probe ||
+    !Array.isArray(probe.failures) ||
+    probe.failures.length ||
+    !probe.evidence ||
+    !probe.upgrade ||
+    !probe.uninstall ||
+    !probe.normalQuit
+  )
+    throw new Error("Windows installed-app probe did not complete all maintenance checks.");
+  const pty = assertPackagedPtyReceipt(probe.packagedPty);
+  const addon = pty.addonPath.replaceAll("\\", "/");
+  const node = pty.nodeExecutable.replaceAll("\\", "/");
+  if (
+    addon.slice(0, -"/agent-runtime/node_modules/node-pty".length).toLowerCase() !==
+      node.slice(0, -"/node-runtime/node.exe".length).toLowerCase() ||
+    pty.platform !== "win32" ||
+    pty.architecture !== architecture ||
+    !pty.addonPath
+      .replaceAll("\\", "/")
+      .endsWith("/resources/agent-runtime/node_modules/node-pty") ||
+    !pty.nodeExecutable.replaceAll("\\", "/").endsWith("/resources/node-runtime/node.exe")
+  )
+    throw new Error("Windows PTY probe did not execute the installed runtime closure.");
 }
 
 const toolVersion = (command: string, args: string[]): string => {
@@ -119,22 +159,7 @@ export function buildWindowsDistribution(options: {
     ".generated/windows-probe",
   );
   const probePath = join(cwd, ".generated/windows-probe/artifacts/result.json");
-  const probe = JSON.parse(readFileSync(probePath, "utf8")) as {
-    failures?: unknown[];
-    evidence?: unknown;
-    upgrade?: unknown;
-    uninstall?: unknown;
-    normalQuit?: unknown;
-  };
-  if (
-    !Array.isArray(probe.failures) ||
-    probe.failures.length ||
-    !probe.evidence ||
-    !probe.upgrade ||
-    !probe.uninstall ||
-    !probe.normalQuit
-  )
-    throw new Error("Windows installed-app probe did not complete all maintenance checks.");
+  assertWindowsInstalledProbe(JSON.parse(readFileSync(probePath, "utf8")), options.architecture);
   mkdirSync(output, { recursive: true });
   const name = windowsInstallerName(identity.version, options.architecture);
   const installerPath = join(output, name);
