@@ -1,0 +1,27 @@
+docs/product-specs/inbox-behavior.md
+  s_fb1830c3f67295::t_1252bdeb6bea54 288-291
+src/main/inbox-application/inbox-suggestions.ts
+  s_fb1830c3f67295::t_1252bdeb6bea54 1,128,217-223
+src/main/inbox-application/inbox-suggestions.node.test.ts
+  s_fb1830c3f67295::t_1252bdeb6bea54 692-720
+docs/product-specs/coordinator-behavior.md
+  s_fb1830c3f67295::t_1252bdeb6bea54 49-50
+src/main/inbox-application/CoordinatorInbox.node.test.ts
+  s_fb1830c3f67295::t_1252bdeb6bea54 321-355
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7f977a0476e7976691a32b30db9cf9ef1bca3ac5",
+  "prompts": {},
+  "sessions": {
+    "s_fb1830c3f67295": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a6af-6d75-7e62-8485-4467159151d7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
