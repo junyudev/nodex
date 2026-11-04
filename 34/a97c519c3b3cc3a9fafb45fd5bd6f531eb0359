@@ -1,0 +1,25 @@
+docs/SECURITY.md
+  s_9c72cf791afc7e::t_d6e3aba7bfacd3 87-89,92-93
+docs/product-specs/mobile-companion-behavior.md
+  s_9c72cf791afc7e::t_5e72239f64b741 19-21
+packages/mobile/app.config.ts
+  s_9c72cf791afc7e::t_dc7af2ed433213 44-45
+packages/mobile/src/features/pair/PairScreen.tsx
+  s_9c72cf791afc7e::t_29e3062027e8a9 5,62,64-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "34a97c519c3b3cc3a9fafb45fd5bd6f531eb0359",
+  "prompts": {},
+  "sessions": {
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
