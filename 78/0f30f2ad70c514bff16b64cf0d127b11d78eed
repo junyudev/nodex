@@ -1,0 +1,27 @@
+docs/product-specs/coordinator-behavior.md
+  s_0ea5fa27e831e2::t_77014d06aad197 87-91
+src/main/coordinator/CoordinatorMonitor.node.test.ts
+  s_0ea5fa27e831e2::t_a2a8d71b490067 127,138,193-244
+src/main/coordinator/CoordinatorMonitor.ts
+  s_0ea5fa27e831e2::t_670fdd0879abb7 40
+src/main/coordinator/managed-chat-observation.node.test.ts
+  s_0ea5fa27e831e2::t_076b5d10d4c508 23-24,35,41-43,61,86-87,173-185
+src/main/coordinator/managed-chat-observation.ts
+  s_0ea5fa27e831e2::t_b7cdd55740edb5 88-89,96,102,111,127-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "780f30f2ad70c514bff16b64cf0d127b11d78eed",
+  "prompts": {},
+  "sessions": {
+    "s_0ea5fa27e831e2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a6af-14d8-7532-a45c-6332939fbdf3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
