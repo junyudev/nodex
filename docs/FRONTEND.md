@@ -409,6 +409,9 @@ work follows [Page Stage rich-editor performance](product-specs/card-stage-rich-
 - Give visual roles an explicit semantic class or data attribute at their owning
   module. Do not style controls through localized accessibility copy such as
   `aria-label`, or through interaction mechanics such as `draggable`.
+- Grow a text field with `[field-sizing:content]` and its min and max heights.
+  Measuring `scrollHeight` in JavaScript resets the field on each render and
+  repeats what the browser already does.
 - Let shared primitives own ordinary radius, padding, focus treatment,
   collision behavior, motion, and overlay chrome. A feature should provide
   content and semantic variants, not a second visual system.

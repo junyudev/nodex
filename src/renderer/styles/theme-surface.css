@@ -139,7 +139,8 @@ mark.codex-thread-find-active {
 .overflow-x-auto,
 .overflow-y-auto,
 .overflow-x-scroll,
-.overflow-y-scroll {
+.overflow-y-scroll,
+textarea {
   scrollbar-color: var(--color-token-scrollbar-slider-background) transparent;
 }
 
@@ -149,7 +150,8 @@ mark.codex-thread-find-active {
   .overflow-x-auto,
   .overflow-y-auto,
   .overflow-x-scroll,
-  .overflow-y-scroll
+  .overflow-y-scroll,
+  textarea
 ):hover {
   scrollbar-color: var(--color-token-scrollbar-slider-hover-background) transparent;
 }
@@ -160,7 +162,8 @@ mark.codex-thread-find-active {
   .overflow-x-auto,
   .overflow-y-auto,
   .overflow-x-scroll,
-  .overflow-y-scroll
+  .overflow-y-scroll,
+  textarea
 ):active {
   scrollbar-color: var(--color-token-scrollbar-slider-active-background) transparent;
 }

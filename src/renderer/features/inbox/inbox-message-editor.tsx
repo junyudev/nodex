@@ -110,7 +110,7 @@ export function InboxMessageEditor({
         }}
         onPaste={input.onPaste}
         onKeyDown={handleKeyDown}
-        className="max-h-80 w-full resize-none overflow-y-auto bg-transparent text-size-chat leading-relaxed text-inherit outline-none [field-sizing:content]"
+        className="max-h-80 w-full resize-none bg-transparent text-size-chat leading-relaxed text-inherit outline-none [field-sizing:content]"
       />
       {currentBody !== body ? (
         <details className="text-xs text-token-description-foreground">

@@ -292,26 +292,11 @@ function humanizeBlockType(type: ThreadBlockModel["type"]): string {
   }
 }
 
-const EDIT_MESSAGE_MIN_ROWS = 2;
-const EDIT_MESSAGE_MAX_ROWS = 6;
-
 /** Opens the editor ready to continue typing at the end of the message. */
 function focusEditMessageTextareaOnMount(element: HTMLTextAreaElement | null): void {
   if (!element || element.ownerDocument.activeElement === element) return;
-  resizeEditMessageTextarea(element);
   element.focus();
   element.setSelectionRange(element.value.length, element.value.length);
-}
-
-function resizeEditMessageTextarea(element: HTMLTextAreaElement): void {
-  const lineHeightPx = Number.parseFloat(window.getComputedStyle(element).lineHeight);
-  if (!Number.isFinite(lineHeightPx)) return;
-
-  const minHeightPx = lineHeightPx * EDIT_MESSAGE_MIN_ROWS;
-  const maxHeightPx = lineHeightPx * EDIT_MESSAGE_MAX_ROWS;
-  element.style.height = "auto";
-  element.style.height = `${Math.min(Math.max(element.scrollHeight, minHeightPx), maxHeightPx)}px`;
-  element.style.overflowY = element.scrollHeight > maxHeightPx ? "auto" : "hidden";
 }
 
 function renderCollapsedActivityEntry({
@@ -889,17 +874,15 @@ function UserMessageEditForm({
     >
       <textarea
         aria-label={footerText("Edit message")}
-        className="w-full resize-none bg-transparent p-0 font-content text-size-chat leading-5 text-token-foreground outline-none placeholder:text-token-description-foreground"
+        className="max-h-30 min-h-10 w-full resize-none bg-transparent p-0 font-content text-size-chat leading-5 text-token-foreground outline-none [field-sizing:content] placeholder:text-token-description-foreground"
         placeholder={footerText("Edit message")}
-        rows={EDIT_MESSAGE_MIN_ROWS}
+        rows={2}
         value={draft}
         onChange={(event) => {
-          resizeEditMessageTextarea(event.currentTarget);
           onDraftChange(event.currentTarget.value);
         }}
         // Programmatic value writes such as dictation bypass React's change tracking.
         onInput={(event) => {
-          resizeEditMessageTextarea(event.currentTarget);
           onDraftChange(event.currentTarget.value);
         }}
         onKeyDown={(event) => {

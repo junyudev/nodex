@@ -9,7 +9,6 @@ import {
 import {
   useCallback,
   useEffect,
-  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -33,7 +32,6 @@ import type { CodexTranscriptEntry } from "../../../../../lib/types";
 import type { ThreadStageActions } from "../../../thread-stage-types";
 import { ConversationAttribution } from "../conversation-attribution";
 import { buildCodexCanonicalRequestIdentityKey } from "../../../../../../shared/codex-conversation-state/codex-conversation-state";
-import { resolvePromptTextareaSize } from "../prompt-textarea-size";
 import { CODEX_THREAD_ACCORDION_TRANSITION } from "../thread-motion";
 import { useMeasuredElementHeight } from "../use-measured-element-height";
 import { CodexShimmerText } from "../codex-shimmer-text";
@@ -58,8 +56,6 @@ import {
   resolveUserInputQuestionFocusTarget,
   type UserInputFocusTarget,
 } from "./request-card-focus";
-
-const USER_INPUT_TEXTAREA_MAX_HEIGHT_PX = 160;
 
 const USER_INPUT_FOCUS_TARGET_ATTRIBUTE = "data-user-input-focus-target";
 
@@ -264,66 +260,6 @@ function ArrowKeysIndicator({
   );
 }
 
-function resolveUserInputTextareaMaxHeightPx(): number {
-  return USER_INPUT_TEXTAREA_MAX_HEIGHT_PX;
-}
-
-function AutoSizingTextarea({
-  value,
-  className,
-  textareaRef,
-  ...props
-}: React.ComponentProps<"textarea"> & {
-  textareaRef?: (element: HTMLTextAreaElement | null) => void;
-}) {
-  const innerTextareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const setTextareaRef = (element: HTMLTextAreaElement | null) => {
-    innerTextareaRef.current = element;
-    textareaRef?.(element);
-  };
-
-  const resizeTextarea = useEffectEvent(() => {
-    const textarea = innerTextareaRef.current;
-    if (!textarea) return;
-
-    textarea.style.height = "auto";
-
-    const { heightPx, hasOverflow } = resolvePromptTextareaSize({
-      scrollHeight: textarea.scrollHeight,
-      maxHeightPx: resolveUserInputTextareaMaxHeightPx(),
-    });
-
-    if (heightPx <= 0) {
-      textarea.style.height = "";
-      textarea.style.overflowY = "hidden";
-      return;
-    }
-
-    textarea.style.height = `${heightPx}px`;
-    textarea.style.overflowY = hasOverflow ? "auto" : "hidden";
-  });
-
-  useLayoutEffect(() => {
-    resizeTextarea();
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const handleResize = () => {
-      resizeTextarea();
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => {
-      window.removeEventListener("resize", handleResize);
-    };
-  }, []);
-
-  return <textarea {...props} ref={setTextareaRef} value={value} rows={1} className={className} />;
-}
-
 function UserInputQuestionSection({
   question,
   answer,
@@ -511,10 +447,9 @@ function UserInputQuestionSection({
                         {otherLabel}
                       </span>
                     ) : null}
-                    <AutoSizingTextarea
-                      textareaRef={(element) => {
-                        otherTextareaRef.current = element;
-                      }}
+                    <textarea
+                      ref={otherTextareaRef}
+                      rows={1}
                       aria-label={question.question || question.header}
                       aria-required={question.required || undefined}
                       value={answer.freeformText ?? ""}
@@ -524,7 +459,7 @@ function UserInputQuestionSection({
                       onKeyDown={handleOtherTextareaKeyDown}
                       placeholder={otherLabel}
                       data-user-input-focus-target="other"
-                      className="request-input-panel__inline-freeform block w-full min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-base leading-[1.35] text-token-foreground shadow-none outline-none placeholder:text-transparent"
+                      className="block max-h-40 min-h-[1lh] w-full min-w-0 flex-1 resize-none bg-transparent text-base leading-[1.35] text-token-foreground shadow-none outline-none [field-sizing:content] placeholder:text-transparent"
                     />
                   </span>
                 </div>

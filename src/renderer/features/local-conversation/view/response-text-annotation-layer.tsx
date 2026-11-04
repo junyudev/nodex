@@ -312,8 +312,6 @@ function AnnotationCommentEditor({
           className="max-h-40 min-h-6 min-w-0 flex-1 resize-none bg-transparent py-0 text-sm leading-6 [field-sizing:content] text-default outline-none placeholder:text-tertiary"
           onChange={(event) => {
             controller.updateAnnotation(annotation.id, event.target.value);
-            event.target.style.height = "24px";
-            event.target.style.height = `${Math.min(160, event.target.scrollHeight)}px`;
           }}
           onKeyDown={(event) => {
             if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
