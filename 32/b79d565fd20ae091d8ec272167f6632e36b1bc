@@ -1,0 +1,23 @@
+src/main/mobile-gateway/files.node.test.ts
+  s_1406096ae8699b::t_952d2a516e0c56 274,286,382
+  s_1406096ae8699b::t_4bd2465c6081b2 383-385
+  s_1406096ae8699b::t_a1825065703486 73
+src/main/mobile-gateway/files.ts
+  s_1406096ae8699b::t_dc4e9abddb5d45 277-279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "32b79d565fd20ae091d8ec272167f6632e36b1bc",
+  "prompts": {},
+  "sessions": {
+    "s_1406096ae8699b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8bc-a30f-7ef1-88b0-c163946dd472",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
