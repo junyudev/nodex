@@ -1,0 +1,19 @@
+CHANGELOG.md
+  s_a11f4687fd3c1d::t_da2bdb2088ff5b 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7ddea98af00b525548d3cf378ada8df68d8c6448",
+  "prompts": {},
+  "sessions": {
+    "s_a11f4687fd3c1d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8b1-e99a-7d42-9095-84eeffc5dcd4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
