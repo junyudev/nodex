@@ -1,0 +1,14 @@
+src/main/platform/node/AgentRuntimeProcess.node.test.ts
+  h_6a6ac0c07fcd37 2-4,6,26-33,44,55,72,376,382,429,441,509-510
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "56cd34dee3232db45ed3058cdc4363381e5930a9",
+  "prompts": {},
+  "humans": {
+    "h_6a6ac0c07fcd37": {
+      "author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
