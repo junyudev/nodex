@@ -1,0 +1,71 @@
+src/renderer/features/local-conversation/view/shared/markdown/markdown-renderer.test.tsx
+  s_c709cab53bd58e::t_b935b51fb434d1 121-123,128,165-167
+  s_c709cab53bd58e::t_5a26026d4f46c8 5,118
+src/renderer/features/local-conversation/view/shared/markdown/markdown-document-renderer.test.tsx
+  s_c709cab53bd58e::t_b935b51fb434d1 167-169
+  s_c709cab53bd58e::t_3efbcb06f2ea2d 6,143
+src/renderer/components/shared/readonly-code-block.browser.test.tsx
+  s_c709cab53bd58e::t_b935b51fb434d1 160-166,174-176
+  s_c709cab53bd58e::t_641d2f185f3d1a 2,4-5,138-159,167-173,177-269
+config/renderer-manual-chunks.test.ts
+  s_c709cab53bd58e::t_b935b51fb434d1 36-38
+  s_c709cab53bd58e::t_c9a3269cc15671 17,35,39-40
+src/renderer/components/board/nfm-renderer.test.tsx
+  s_c709cab53bd58e::t_b935b51fb434d1 87-89
+  s_c709cab53bd58e::t_60294b57ccef66 9
+src/renderer/test/dom.test.tsx
+  s_c709cab53bd58e::t_b935b51fb434d1 26-37
+  s_c709cab53bd58e::t_14f91a3f8ee10c 15-16,45,69
+config/renderer-manual-chunks.ts
+  s_fab41626a3a5b7::t_323ca45784bd38 43-45
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_1b17aa0abf2902::t_c8c18012254ff6 379
+docs/product-specs/nfm-editor-code-block-behavior.md
+  s_1b17aa0abf2902::t_10835baf7ecde4 90
+src/renderer/components/board/nfm-renderer.tsx
+  s_fab41626a3a5b7::t_acbfdcbdc3d3be 658
+src/renderer/features/local-conversation/view/conversation-markdown-dialect.browser.test.tsx
+  s_1b17aa0abf2902::t_0ef0f46545dc9b 194-196
+src/renderer/lib/code-block-presentation.ts
+  s_fab41626a3a5b7::t_7a3d3866c5546b 29
+src/renderer/lib/markdown/conversation-token-leaves.tsx
+  s_fab41626a3a5b7::t_70209971ae60c4 15-19
+src/renderer/lib/markdown/markdown-public-leaves.tsx
+  s_fab41626a3a5b7::t_1ffe6f318cded7 75-79
+src/renderer/test/dom.tsx
+  s_fab41626a3a5b7::t_5347cba677d124 59,61-74
+src/renderer/components/shared/readonly-code-block.tsx
+  s_fab41626a3a5b7::t_5e592daeb23039 1,8,10-19,26-38,40-46,48,50-120,131,140-141,147-152,156,182-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d2d702cf3e2392983d89d2ccb50622d588092f2a",
+  "prompts": {},
+  "sessions": {
+    "s_1b17aa0abf2902": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63d-6297-7152-a184-42890eef73be",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c709cab53bd58e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63d-3057-7013-94d3-655a991c69e9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fab41626a3a5b7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a63c-2882-7fe2-8ac7-abca1f363e49",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
