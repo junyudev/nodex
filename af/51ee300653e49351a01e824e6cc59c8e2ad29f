@@ -1,0 +1,32 @@
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_b60e05965fb1be::t_f2bfd4dc0839a9 700,9859,9862-9868,9897-9899,11707-11709
+  s_b60e05965fb1be::t_a24a0e351978c8 11710-11713,11715
+src/main/inbox-application/coordinator-inbox.test-support.ts
+  s_b60e05965fb1be::t_f2bfd4dc0839a9 206
+  s_b60e05965fb1be::t_20bd3f374a81b7 118,207,294-296
+src/main/inbox-application/InboxDispatcher.node.test.ts
+  s_b60e05965fb1be::t_f2bfd4dc0839a9 167
+src/main/inbox-application/InboxDispatcher.ts
+  s_b60e05965fb1be::t_f2bfd4dc0839a9 171-177
+  s_b60e05965fb1be::t_d8ac18317ffe2e 178-179
+src/renderer/features/inbox/inbox-route.tsx
+  s_b60e05965fb1be::t_f2bfd4dc0839a9 303-308,405
+src/main/inbox-application/CoordinatorInbox.node.test.ts
+  s_b60e05965fb1be::t_61d24558fb390c 66-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "af51ee300653e49351a01e824e6cc59c8e2ad29f",
+  "prompts": {},
+  "sessions": {
+    "s_b60e05965fb1be": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a61f-2ce1-7742-9c82-704cd7dfb5c3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
