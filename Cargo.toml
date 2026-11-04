@@ -112,6 +112,12 @@ opt-level = "s"
 lto = true
 codegen-units = 1
 panic = "abort"
+strip = "debuginfo"
+
+[profile.release]
+# Release builds ship no symbol files and enable no backtraces; panics keep their source location.
+# Keep unwinding: SQLite maintenance resumes the runtime before rethrowing a panic.
+strip = "symbols"
 
 [profile.release.build-override]
 # Proc-macro libraries are loaded by the host compiler, never shipped. Stripping
