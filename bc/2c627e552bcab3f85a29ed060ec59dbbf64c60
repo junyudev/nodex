@@ -1,0 +1,28 @@
+scripts/run-playwright-e2e.ts
+  s_9c72cf791afc7e::t_460b76abd5eeee 23
+scripts/scenarios/runtime/scripted-acp-agent.ts
+  s_9c72cf791afc7e::t_9d8d9d4a771926 53-54,483-484
+tests/e2e/mobile-gateway.spec.ts
+  s_9c72cf791afc7e::t_61632efb97e2f1 1-372
+tests/e2e/support/mobile-phone.ts
+  s_9c72cf791afc7e::t_9aa03e34a6a093 1-303
+packages/mobile/src/markdown/Markdown.tsx
+  s_9c72cf791afc7e::t_df4660dda79b7a 76,111-116,147,160
+  s_9c72cf791afc7e::t_bdaed04db0a7f5 2,97-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bc2c627e552bcab3f85a29ed060ec59dbbf64c60",
+  "prompts": {},
+  "sessions": {
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
