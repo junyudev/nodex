@@ -1,0 +1,21 @@
+packages/mobile/src/Root.tsx
+  s_9c72cf791afc7e::t_1eb298b50e8bec 8,28-30
+packages/mobile/src/ui/ErrorBoundary.tsx
+  s_9c72cf791afc7e::t_1eb298b50e8bec 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "77f7125ec327f0611f92e1922b93ab380ad83ded",
+  "prompts": {},
+  "sessions": {
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
