@@ -120,6 +120,13 @@ pub(super) fn read(
         ProjectWorkspaceRead::InboxCounts => Ok(ProjectWorkspaceReadValue::InboxCounts {
             counts: super::inbox_read::read_counts(connection, context, library_id)?,
         }),
+        ProjectWorkspaceRead::InboxMessage { page_id } => {
+            Ok(ProjectWorkspaceReadValue::InboxMessage {
+                item: Box::new(super::inbox_read::read_message(
+                    connection, library_id, &page_id,
+                )?),
+            })
+        }
         ProjectWorkspaceRead::InboxWindow {
             scope,
             filter,

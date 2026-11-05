@@ -223,6 +223,9 @@ pub enum ProjectWorkspaceRead {
     },
     /// Messages still waiting in the Library Inbox and in each Project's Inbox.
     InboxCounts,
+    InboxMessage {
+        page_id: String,
+    },
     InboxWindow {
         scope: ProjectWorkspaceInboxScope,
         filter: ProjectWorkspaceInboxWindowFilter,
@@ -395,6 +398,9 @@ pub enum ProjectWorkspaceReadValue {
     },
     InboxCounts {
         counts: ProjectWorkspaceInboxCounts,
+    },
+    InboxMessage {
+        item: Box<ProjectWorkspaceInboxItem>,
     },
     InboxWindow {
         items: CollectionWindow<ProjectWorkspaceInboxItem>,

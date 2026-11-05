@@ -601,6 +601,47 @@ fn source(row: &EntryRow) -> ProjectWorkspaceInboxSource {
     }
 }
 
+pub(super) fn read_message(
+    connection: &Connection,
+    library_id: &str,
+    page_id: &str,
+) -> Result<ProjectWorkspaceInboxItem, StoreError> {
+    super::session_mutation::validate_id("page_id", page_id)?;
+    let project_id = connection
+        .query_row(
+            "SELECT entry.scope_project_id FROM inbox_entries entry \
+             JOIN blocks block ON block.id = entry.page_id AND block.lifecycle = 'active' \
+             WHERE entry.library_id = ?1 AND entry.page_id = ?2",
+            params![library_id, page_id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .ok_or_else(|| super::inbox::not_found("Inbox message is unavailable"))?;
+    let home = scope_home(connection, library_id, project_id.as_deref())?;
+    let (mut item, _) = read_item(
+        connection,
+        library_id,
+        home.as_ref(),
+        page_id,
+        &mut InboxReadCache::default(),
+    )?;
+    if item.body_truncated {
+        // Keep room for the view model and JSON string escaping on a remote channel.
+        let markdown = connection.query_row(
+            "SELECT CASE WHEN octet_length(body.markdown) <= 512 * 1024 THEN body.markdown END \
+             FROM pages page LEFT JOIN document_materializations body ON body.document_id = page.document_id \
+             WHERE page.block_id = ?1",
+            [page_id],
+            |row| row.get::<_, Option<String>>(0),
+        )?;
+        if let Some(markdown) = markdown {
+            item.body = markdown;
+            item.body_truncated = false;
+        }
+    }
+    Ok(item)
+}
+
 /// `home` is the Database of the Inbox the message belongs to.
 fn read_item(
     connection: &Connection,

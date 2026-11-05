@@ -8733,6 +8733,10 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "inbox_counts";
             } | {
+                /** @enum {string} */
+                readonly kind: "inbox_message";
+                readonly page_id: string;
+            } | {
                 readonly filter: components["schemas"]["ProjectWorkspaceInboxWindowFilter"];
                 /** @enum {string} */
                 readonly kind: "inbox_window";
@@ -9542,6 +9546,39 @@ export interface components {
         };
         /** @enum {string} */
         readonly ProjectWorkspaceInboxInteractionMode: "default" | "plan";
+        readonly ProjectWorkspaceInboxItem: {
+            readonly basis: components["schemas"]["ProjectWorkspaceInboxPageBasis"];
+            /**
+             * @description The message as the stream shows it, in Nodex Markdown: the Page body when it
+             *     fits the stream budget, otherwise the opening of its text as paragraphs.
+             */
+            readonly body: string;
+            /**
+             * @description The stream shows the whole body and it still has the message shape, text followed
+             *     by images, so the user can rewrite it in place. Other bodies are edited as their Page.
+             */
+            readonly body_editable: boolean;
+            readonly body_truncated: boolean;
+            readonly firing?: components["schemas"]["ProjectWorkspaceInboxFiring"] | null;
+            /** @description The user marked the message important, so it stays in view while it waits. */
+            readonly important: boolean;
+            readonly kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
+            readonly location: components["schemas"]["ProjectWorkspaceInboxLocation"];
+            readonly outcome?: components["schemas"]["ProjectWorkspaceInboxOutcome"] | null;
+            readonly page_id: string;
+            readonly page_key?: string | null;
+            readonly page_status?: components["schemas"]["ProjectWorkspaceInboxPageStatus"] | null;
+            readonly proposal?: components["schemas"]["ProjectWorkspaceInboxProposal"] | null;
+            /** Format: int64 */
+            readonly revision: number;
+            readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
+            readonly source: components["schemas"]["ProjectWorkspaceInboxSource"];
+            readonly state: components["schemas"]["ProjectWorkspaceInboxEntryState"];
+            readonly submitted_at: string;
+            readonly suggestion_error?: string | null;
+            readonly suggestion_state: components["schemas"]["ProjectWorkspaceInboxSuggestionState"];
+            readonly title: string;
+        };
         /** @description Where a message's Page lives, relative to the Inbox that received it. */
         readonly ProjectWorkspaceInboxLocation: {
             /** @enum {string} */
@@ -12310,6 +12347,10 @@ export interface components {
                     readonly counts: components["schemas"]["ProjectWorkspaceInboxCounts"];
                     /** @enum {string} */
                     readonly kind: "inbox_counts";
+                } | {
+                    readonly item: components["schemas"]["ProjectWorkspaceInboxItem"];
+                    /** @enum {string} */
+                    readonly kind: "inbox_message";
                 } | {
                     readonly items: components["schemas"]["CollectionWindow_ProjectWorkspaceInboxItem"];
                     /** @enum {string} */

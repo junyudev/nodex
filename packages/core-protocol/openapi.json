@@ -36868,6 +36868,24 @@
               {
                 "type": "object",
                 "required": [
+                  "page_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "inbox_message"
+                    ]
+                  },
+                  "page_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "scope",
                   "filter",
                   "window",
@@ -39823,6 +39841,136 @@
           "default",
           "plan"
         ]
+      },
+      "ProjectWorkspaceInboxItem": {
+        "type": "object",
+        "required": [
+          "basis",
+          "page_id",
+          "title",
+          "body",
+          "body_truncated",
+          "body_editable",
+          "submitted_at",
+          "source",
+          "important",
+          "state",
+          "suggestion_state",
+          "scope",
+          "location",
+          "revision"
+        ],
+        "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxPageBasis"
+          },
+          "body": {
+            "type": "string",
+            "description": "The message as the stream shows it, in Nodex Markdown: the Page body when it\nfits the stream budget, otherwise the opening of its text as paragraphs."
+          },
+          "body_editable": {
+            "type": "boolean",
+            "description": "The stream shows the whole body and it still has the message shape, text followed\nby images, so the user can rewrite it in place. Other bodies are edited as their Page."
+          },
+          "body_truncated": {
+            "type": "boolean"
+          },
+          "firing": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxFiring",
+                "description": "Present for a scheduled task's firing."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "important": {
+            "type": "boolean",
+            "description": "The user marked the message important, so it stays in view while it waits."
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "location": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxLocation"
+          },
+          "outcome": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "page_id": {
+            "type": "string"
+          },
+          "page_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page_status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxPageStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "proposal": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxProposal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxScope"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxSource"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryState"
+          },
+          "submitted_at": {
+            "type": "string"
+          },
+          "suggestion_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "suggestion_state": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxSuggestionState"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
       },
       "ProjectWorkspaceInboxLocation": {
         "oneOf": [
@@ -52670,6 +52818,24 @@
                             "type": "string",
                             "enum": [
                               "inbox_counts"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "item",
+                          "kind"
+                        ],
+                        "properties": {
+                          "item": {
+                            "$ref": "#/components/schemas/ProjectWorkspaceInboxItem"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "inbox_message"
                             ]
                           }
                         }

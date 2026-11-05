@@ -135,6 +135,31 @@ fn window_in(
     items.items
 }
 
+#[test]
+fn inbox_message_point_read_preserves_the_complete_body() {
+    let workspace = seeded_workspace();
+    let body = "x".repeat(12 * 1024);
+    send_to(&workspace.module, "point-read", &body, Some(PROJECT));
+    let stream = window_in(
+        &workspace.module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Inbox,
+    );
+    assert!(stream[0].body_truncated);
+
+    let ProjectWorkspaceReadValue::InboxMessage { item } = read_host(
+        &workspace.module,
+        ProjectWorkspaceRead::InboxMessage {
+            page_id: "page:point-read".into(),
+        },
+    ) else {
+        panic!("Inbox point read");
+    };
+    assert_eq!(item.body, body);
+    assert!(!item.body_truncated);
+    assert_eq!(item.basis, stream[0].basis);
+}
+
 fn summary(module: &ProjectWorkspaceModule) -> ProjectWorkspaceInboxSummary {
     summary_in(module, ProjectWorkspaceInboxScope::Library)
 }
