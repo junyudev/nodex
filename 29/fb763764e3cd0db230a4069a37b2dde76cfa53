@@ -1,0 +1,54 @@
+crates/nodex-platform/src/bin/nodex-maintenance/windows.rs
+  s_a11f4687fd3c1d::t_f68d2c95657573 20-514
+  s_a11f4687fd3c1d::t_3e93f1d1afb0de 1-19,515-571
+scripts/ci/probe-windows-installer.ts
+  s_a11f4687fd3c1d::t_9f6b3cc2b1070b 214-219,274,400,473,695,724,812
+scripts/ci/app-test-suite.test.ts
+  s_a11f4687fd3c1d::t_f68d2c95657573 93
+scripts/windows-installation-processes.test.ts
+  s_a11f4687fd3c1d::t_b8312c8b7cb9ba 7,12-55,57,59,61,63,65-66,68-91,93
+  s_a11f4687fd3c1d::t_959c8c09a8b87c 5,56,58,60,62,64,67,92,102-103,105,107,109,171,173,175,177,180,201
+resources/windows/installer.nsh
+  s_a11f4687fd3c1d::t_8e33ae548b49ef 67-82
+  s_a11f4687fd3c1d::t_a48ee40e405de3 7,9,13,16,37,39-41
+docs/release-windows.md
+  s_a11f4687fd3c1d::t_c6b4e93a0a0048 60-64
+  s_a11f4687fd3c1d::t_8e33ae548b49ef 88
+  s_a11f4687fd3c1d::t_6b02282af093cc 53-57,59,65-77,79-81,85-87,92
+.github/workflows/_windows-distribution.yml
+  s_a11f4687fd3c1d::t_c2858d7b5bd89e 120
+config/test-suites.test.ts
+  s_a11f4687fd3c1d::t_ec02c76a463812 64-68,90-107,112-114
+config/test-suites.ts
+  s_a11f4687fd3c1d::t_43de29877e3fbc 16,230-237,241,243,247
+crates/nodex-platform/Cargo.toml
+  s_a11f4687fd3c1d::t_b9f25fffe6dcae 25-28
+crates/nodex-platform/src/bin/nodex-maintenance/main.rs
+  s_a11f4687fd3c1d::t_d29acacee92f22 1-17
+scripts/desktop-build-target.ts
+  s_a11f4687fd3c1d::t_bd9042dc7ff411 47
+scripts/stage-rust-core.ts
+  s_a11f4687fd3c1d::t_8577e4a947ff9d 151-163
+scripts/testing/native-artifacts.ts
+  s_a11f4687fd3c1d::t_7293f7ce5ee027 12-18
+scripts/windows-pe.test.ts
+  s_a11f4687fd3c1d::t_c0bafd2fe74cb3 73
+src/main/core-client/core-client.node.test.ts
+  s_a11f4687fd3c1d::t_5ee9447c527a47 167,169,171,173,176,197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "29fb763764e3cd0db230a4069a37b2dde76cfa53",
+  "prompts": {},
+  "sessions": {
+    "s_a11f4687fd3c1d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8b1-e99a-7d42-9095-84eeffc5dcd4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
