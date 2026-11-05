@@ -1,0 +1,540 @@
+scripts/ci/icon-inline-svg-baseline.json
+  s_9c72cf791afc7e::t_bf4768e1cc034a 38-41
+docs/adr/0075-phone-access-through-an-encrypted-gateway.md
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-54
+packages/mobile/src/markdown/Markdown.tsx
+  s_9c72cf791afc7e::t_01f5ca2036d9d6 6
+  s_9c72cf791afc7e::t_2f096147608deb 1-5,7-199
+src/main/mobile-gateway/MobileAccessIpc.node.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-103
+src/renderer/features/mobile-access/mobile-access-presentation.node.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-72
+packages/mobile/babel.config.js
+  s_9c72cf791afc7e::t_6eb4d874bfd41f 1-4
+src/main/platform/node/AgentRuntimeProcess.node.test.ts
+  s_9c72cf791afc7e::t_3abff495c2876e 449
+  s_9c72cf791afc7e::t_219aa2199e34ac 18,401-448
+packages/agent-runtime/src/nodex/Daemon.ts
+  s_9c72cf791afc7e::t_f9a247f3211dbe 114
+  s_1406096ae8699b::t_c9b5551c94534a 119-126
+  s_9c72cf791afc7e::t_4d2b0610450d31 212-213
+  s_9c72cf791afc7e::t_bf4768e1cc034a 97-99,101-105,112-113,115-118,127-133,162-163,209-211
+packages/mobile/src/ui/format.test.ts
+  s_9c72cf791afc7e::t_6c5b760cbd8598 1-34
+packages/mobile/.gitignore
+  s_9c72cf791afc7e::t_6c99d87de56ee5 1-5
+packages/mobile-protocol/src/pairing.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-76
+tsconfig.json
+  s_9c72cf791afc7e::t_bf4768e1cc034a 21-22
+  s_9c72cf791afc7e::t_c0d8f2828236b4 20
+  s_9c72cf791afc7e::t_fe5111d208603c 17-19
+src/main/mobile-gateway/inbox-files.node.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-90
+scripts/ci/effect-boundaries.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 33-37,69,83,126-130,168-169,196-197,224
+packages/mobile/app.config.ts
+  s_9c72cf791afc7e::t_4d6a7d0f1e9447 1-31,33-44,47-54,57-79
+  s_9c72cf791afc7e::t_89c6745d0d2456 32
+  s_9c72cf791afc7e::t_dc7af2ed433213 45-46
+  s_9c72cf791afc7e::t_eec60c85e49eee 55-56
+packages/mobile/src/ui/format.ts
+  s_9c72cf791afc7e::t_6e05e8ea3af7e6 1-35
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_3188629e0e41eb::t_73fe4bf8de204a 37-39
+src/main/mobile-gateway/routes.ts
+  s_9c72cf791afc7e::t_35798614dcc875 34-36
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-33,37-71
+packages/mobile/src/features/home/home-state.ts
+  s_9c72cf791afc7e::t_777f3fbd4fa399 1-58
+packages/mobile-protocol/src/noise.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-50
+packages/mobile/metro.config.js
+  s_9c72cf791afc7e::t_6e88589aed9552 1-18
+packages/mobile/src/runtime/instance.native.ts
+  s_9c72cf791afc7e::t_1820ff6d32fb44 1-5
+packages/mobile/src/ui/cn.ts
+  s_9c72cf791afc7e::t_0cfccd2d60112f 1-4
+packages/mobile/src/runtime/index.ts
+  s_9c72cf791afc7e::t_70cfc548ed3146 1-43
+packages/mobile/src/features/pickers/agent-choice.ts
+  s_9c72cf791afc7e::t_5cd209a26b4874 1-30
+packages/mobile/assets/generate.sh
+  s_9c72cf791afc7e::t_7604600233433c 1-25
+CONTEXT.md
+  s_9c72cf791afc7e::t_bf4768e1cc034a 52-57
+crates/nodex-core-contracts/src/workspace.rs
+  s_3188629e0e41eb::t_158899309fc387 226-228,402-404
+packages/mobile/src/ui/ErrorBoundary.tsx
+  s_9c72cf791afc7e::t_1eb298b50e8bec 1-33
+packages/mobile/src/runtime/hooks.ts
+  s_9c72cf791afc7e::t_e37180dad7c011 1-107
+packages/mobile/src/ui/icons.tsx
+  s_9c72cf791afc7e::t_940bbfcfc04018 1-160
+packages/mobile/src/runtime/rpc-client.ts
+  s_9c72cf791afc7e::t_14b233be8a20fa 1-144
+src/renderer/components/workbench/workbench-settings-sections.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 10,36,219-225
+  s_9c72cf791afc7e::t_dc1634fa522fee 226
+packages/mobile/src/navigation/RootNavigator.tsx
+  s_9c72cf791afc7e::t_f68cd5391ac8fd 1-108
+packages/mobile/src/runtime/runtime.ts
+  s_9c72cf791afc7e::t_c254e18d8d3006 1-358
+packages/mobile/src/features/chat/request-answers.ts
+  s_9c72cf791afc7e::t_8701e0c051c7b1 1-28
+src/main/mobile-gateway/rpc.ts
+  s_9c72cf791afc7e::t_219aa2199e34ac 23
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-19,26-68
+  s_9c72cf791afc7e::t_f9a247f3211dbe 20-22,24-25
+packages/mobile/src/features/inbox/inbox-presentation.test.ts
+  s_9c72cf791afc7e::t_665d41ff31458d 1-3,10-109
+  s_9c72cf791afc7e::t_191a7976595de0 4-9,110-121
+  s_9c72cf791afc7e::t_b8ffa4049415ea 122
+packages/mobile/src/features/home/HomeScreen.tsx
+  s_9c72cf791afc7e::t_45c95c91c45e01 1,3-19,21-139,141-275
+  s_9c72cf791afc7e::t_eec60c85e49eee 2,20
+  s_9c72cf791afc7e::t_6d7008f0e68b3b 140
+src/main/mobile-gateway/MobileApplication.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-126
+packages/mobile/src/ui/BottomAnchoredList.tsx
+  s_9c72cf791afc7e::t_3ef7b7dc8f2f45 1-83
+src/renderer/features/local-conversation/agent-approval.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-15
+src/renderer/components/workbench/workbench-settings-sections.node.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 13
+packages/core-protocol/src/generated.ts
+  s_3188629e0e41eb::t_f5725cd56bbe21 8735-8738,9549-9581,12350-12353
+packages/mobile/src/ui/use-now.ts
+  s_9c72cf791afc7e::t_dfbee888b8e612 1-13
+src/main/settings/ApplicationSettings.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 102-103,146,192,317,397-398
+  s_9c72cf791afc7e::t_3e66b8ea2125df 399
+packages/mobile/global.css
+  s_9c72cf791afc7e::t_3c5e5a7c433502 1-3
+packages/mobile/src/runtime/lists.ts
+  s_9c72cf791afc7e::t_5d92e01cdf7f0c 1-450
+docs/product-specs/inbox-behavior.md
+  s_9c72cf791afc7e::t_bf4768e1cc034a 40-41
+  s_60a150c6c03fef::t_1d5a003fb108c1 429-431,438
+  s_60a150c6c03fef::t_34fb9f7feabd64 439-442
+src/main/mobile-gateway/chat-commands.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-265
+packages/mobile/src/App.tsx
+  s_9c72cf791afc7e::t_cb8ee49d7569cf 1
+src/main/mobile-gateway/transcript-projection.node.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-320
+src/main/mobile-gateway/transcript-projection.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-472
+src/shared/mobile-access.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-19
+packages/mobile/src/features/chat/ChatItemScreen.tsx
+  s_9c72cf791afc7e::t_53df2153ae00a0 1-7,10-15,25,27,29-31,33,35-78
+  s_9c72cf791afc7e::t_01f5ca2036d9d6 8-9,16-24,26,28,32,34
+packages/mobile/src/features/inbox/inbox-presentation.ts
+  s_9c72cf791afc7e::t_191a7976595de0 1-6
+  s_9c72cf791afc7e::t_4e666a103b174e 7-9,14-91
+  s_9c72cf791afc7e::t_eec60c85e49eee 10-13
+packages/mobile/src/runtime/runtime.test.ts
+  s_9c72cf791afc7e::t_f14f498041e306 402,404-410,412-414,416,418,420-425,599,618-619,621-622,659-693,771-777,790-796,806
+  s_1406096ae8699b::t_699e99f27be554 1015
+  s_9c72cf791afc7e::t_1b0e0dbe8ee43d 1-401,428-598,600-617,620,623-658,694-770,778-789,797-805,807-975,977-983,1020-1075,1077-1692
+  s_1406096ae8699b::t_47fb841c6c1593 1017-1018
+  s_9c72cf791afc7e::t_7105e74ed0b76a 419
+  s_9c72cf791afc7e::t_1085345cc57c6d 403,415,426-427
+  s_9c72cf791afc7e::t_6d7008f0e68b3b 411,417
+  s_1406096ae8699b::t_a0c7b50a67ad88 976,984-1014,1016,1019,1076
+packages/mobile/src/features/chats/chat-sections.ts
+  s_9c72cf791afc7e::t_1e3c70a7a8c8bf 1-55
+packages/mobile/src/features/chats/ChatsPane.tsx
+  s_9c72cf791afc7e::t_78ede34ef51d8d 1-99
+packages/mobile/src/features/chat/request-answers.test.ts
+  s_9c72cf791afc7e::t_7e1db52852cf9b 1-45
+src/main/mobile-gateway/attachment-read.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-40
+src/main/inbox-application/InboxApplication.ts
+  s_60a150c6c03fef::t_8696a95bcbc3d7 199,612,616,618,621,631-632,644,647
+  s_9c72cf791afc7e::t_bf4768e1cc034a 139-142,154-155,157,168,170,303-310,493-496,498-502,505-508,510-518,532,535-543,658,661-668,671-674,676-683,869
+packages/mobile-protocol/src/rpc.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-248
+packages/mobile/src/runtime/encoding.ts
+  s_9c72cf791afc7e::t_d71ad082eaa50d 1-63
+docs/SECURITY.md
+  s_9c72cf791afc7e::t_bf4768e1cc034a 64-89,93-94,97-108
+  s_9c72cf791afc7e::t_d6e3aba7bfacd3 90-92,95-96
+src/main/mobile-gateway/inbox.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-361
+packages/mobile/src/features/pickers/agent-choice.test.ts
+  s_9c72cf791afc7e::t_490cfee98fdb4f 1-61
+packages/mobile/src/runtime/expo-platform.ts
+  s_9c72cf791afc7e::t_6d7008f0e68b3b 127-128,130-132
+  s_9c72cf791afc7e::t_43a7871291497f 1-126,129,133-135
+src/main/mobile-gateway/transcript.node.test.ts
+  s_9c72cf791afc7e::t_219aa2199e34ac 76
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-75,77-115,150,185,196-197,199,218,224
+  s_9c72cf791afc7e::t_e89bfabe58bdbf 116-149,151-184,186-195,198,200-217,219-223
+packages/mobile-protocol/src/noise.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-261
+docs/effect-external-frontiers.md
+  s_9c72cf791afc7e::t_0fbd8d83e4d46f 35-37
+packages/mobile-protocol/src/uuid.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-17
+src/main/platform/node/MobileSocket.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-154
+src/renderer/components/shared/icons/canonical-icons.tsx
+  s_9c72cf791afc7e::t_7d033813b62056 403-404
+  s_9c72cf791afc7e::t_bf4768e1cc034a 357-361,400-402
+src/main/chat-search/ChatSearch.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 77-81,149-152,155,192,199,205,210-213,215-216,261,593-603
+src/main/mobile-gateway/files.ts
+  s_9c72cf791afc7e::t_dc9ab3693f7c22 264-286,291-326,403,414,426
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-263,327-402,404-413,415-425,427-442
+  s_9c72cf791afc7e::t_d48f61c1ff4661 290
+  s_9c72cf791afc7e::t_20531f6ed4ae84 287-289
+packages/mobile/src/markdown/parse.test.ts
+  s_9c72cf791afc7e::t_e6514236cefa06 1-60
+packages/mobile/src/features/chat/ChatScreen.tsx
+  s_9c72cf791afc7e::t_5032f0c4281b8a 1-299
+packages/mobile/src/ui/snackbar.tsx
+  s_9c72cf791afc7e::t_671ad62806d7b4 1-65
+src/main/codex-application/CodexAppProtocolTools.node.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 220
+packages/mobile-protocol/src/noise-vectors.json
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-82
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_a866fad3d032b5::t_607b3b89e0b44e 138-162
+  s_60a150c6c03fef::t_e1b19787ffa430 2816-2834,2846-2863,2871-2872,2877-2885,2898-2900
+  s_60a150c6c03fef::t_dfbaf7d2d890f1 2835-2845,2864-2870,2873-2876,2886-2897
+  s_60a150c6c03fef::t_292cfd74b8c0cb 2815
+package.json
+  s_9c72cf791afc7e::t_bf4768e1cc034a 243,366
+packages/mobile/src/markdown/parse.ts
+  s_9c72cf791afc7e::t_8831c17d7ba54a 1-73
+packages/mobile/src/features/chat/transcript-rows.ts
+  s_9c72cf791afc7e::t_dc623abc6e30bf 1-93
+packages/mobile/src/runtime/connection.ts
+  s_9c72cf791afc7e::t_e8e04a0a93cf35 1-48,50-310,312-500,502-519,521-545,548,552-689
+  s_9c72cf791afc7e::t_8363b4a60d9492 49,311,501,520,546-547,549-551
+src/renderer/lib/electron-renderer-transport.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 355-357
+src/main/mobile-gateway/routes.node.test.ts
+  s_9c72cf791afc7e::t_e8a44fb05cd8c5 2,5-13
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1,3-4,14-68
+src/main/platform/node/MobileProfileFiles.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-94
+packages/mobile-protocol/src/index.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-5
+src/renderer/lib/query-keys.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 173-175
+packages/core-protocol/openapi.json
+  s_3188629e0e41eb::t_d1c952c161afa0 36868-36885,39845-39974,52825-52842
+packages/mobile/src/ui/primitives.tsx
+  s_9c72cf791afc7e::t_01f5ca2036d9d6 5,39-43
+  s_9c72cf791afc7e::t_6d7008f0e68b3b 8,11,253-271
+  s_9c72cf791afc7e::t_e3e37522e20d88 44-45
+  s_9c72cf791afc7e::t_26f6e903bbda5e 1-4,6-7,9-10,12-38,46-252
+docs/product-specs/index.md
+  s_9c72cf791afc7e::t_bf4768e1cc034a 42
+src/main/settings/application-settings-persistence.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 148,1567-1580
+packages/mobile/src/runtime/lifecycle.test.ts
+  s_9c72cf791afc7e::t_9ac4c5b3e678d4 1-66
+packages/agent-runtime/src/nodex/Daemon.test.ts
+  s_1406096ae8699b::t_58a9a7c5d6daaf 375-414
+  s_1406096ae8699b::t_ee97aacc9a4637 2,374
+src/main/agent-runtime/AgentRuntimeSessionObservation.node.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-12,76
+  s_9c72cf791afc7e::t_219aa2199e34ac 13-75
+packages/mobile/plugins/withAndroidAccent.cjs
+  s_9c72cf791afc7e::t_eec60c85e49eee 1-27
+pnpm-lock.yaml
+  s_9c72cf791afc7e::t_740638121c4d34 177,312,343-345,369,456,459,528,534,666,712-714,720,723,726,753,843,875,878,897,903,925,931,956,965,993,1005,1027,1033,1067,1076,1098,1104,1162,1171,1196,1205,1227,1233,1249,1255,1277,1286,1308,1317,1342,1351,1370,1379,1430,1439,1442,1455,1470-1639,1896-1904,2099-2102,2107-2110,2115-2131,2136-2139,2150-2153,2158-2177,2190-2193,2198-2202,2208-2209,2214-2215,2217-2218,2220-2221,2223-2224,2226-2232,2234-2235,2237-2238,2240-2241,2243-2245,2247,2249-2250,2252,2254-2257,2259-2263,2265-2269,2271-2275,2277-2281,2283-2287,2289-2293,2295-2299,2301-2305,2307-2311,2313-2317,2319-2323,2325-2329,2331-2335,2337-2341,2343-2347,2349-2353,2355-2359,2361-2598,2702-2708,3066-3080,3082-3084,3086-3087,3089-3090,3092-3093,3095-3096,3098-3110,3112-3117,3119-3316,3556-3567,3578-3580,3597-3608,3716-3719,3736-3787,4066-4068,4880-5019,5463-5465,6002-6004,6026-6034,6070-6072,6103-6108,6713-6716,6739-6743,6773-6775,6780-6787,6796-6799,6823-6825,6843-6845,6878-6880,6888-6902,6906-6907,6909-6910,6912-6913,6915-6944,6951-6954,6972-6982,6987-6990,6999-7001,7044-7047,7064-7067,7113-7116,7128-7135,7147-7150,7163-7165,7170-7172,7176-7182,7205-7207,7228-7239,7274-7277,7316-7319,7343-7346,7513-7528,7551-7553,7562-7565,7591-7594,7622-7624,7736-7739,7774-7776,7828-7831,7920-8168,8228-8235,8245-8247,8265-8272,8292-8318,8352-8355,8431-8434,8483-8486,8566-8574,8583-8586,8678-8680,8698-8704,8708-8712,8737-8740,8755-8758,8789-8807,8866-8868,8929-8936,8950-8953,8980-8985,8998-9003,9016-9021,9034-9039,9052-9058,9073-9080,9094-9100,9115-9121,9136-9141,9154-9159,9172-9175,9203-9206,9210-9213,9218-9220,9257-9259,9353-9355,9369-9371,9376-9378,9383-9498,9618-9621,9638-9642,9648-9651,9700-9702,9709-9711,9720-9727,9765-9768,9816-9823,9827-9829,9846-9853,9873-9876,9881-9884,9888-9891,9901-9904,9915-9918,10003-10006,10036-10038,10111-10114,10158-10161,10166-10169,10193-10199,10337-10340,10365-10372,10378-10383,10392-10475,10506-10509,10532-10541,10554-10564,10642-10645,10649-10656,10660-10663,10745-10747,10751-10755,10803-10806,10816-10819,10834-10837,10845-10848,10866-10869,10915-10920,10950-10953,11004-11007,11018-11029,11037-11040,11048-11051,11082-11085,11102-11104,11126-11129,11138-11145,11162-11165,11196-11207,11255-11261,11270-11272,11348-11355,11360-11363,11409-11424,11460-11476,11556-11558,11575-11579,11606-11609,11622-11625,11708-11710,11738-11746,11769-11771,11776-11778,11822-11833,11846-11849,11854-11861,11972-11976,11979-11982,12128,12133,12138,12205-12212,12221-12224,12233-12263,12266-12272,12289-12292,12295-12321,12328-12335,12341-12344,12349,12352,12354-12356,12358,12360-12361,12363,12365-12366,12368,12370-12371,12373,12375-12376,12378,12380-12381,12383-12386,12388-12391,12393-12396,12398-12401,12403,12405-12406,12408-12415,12417-12424,12426-12429,12431-12437,12439-12445,12447-12457,12459,12461-12465,12467-12470,12472-12476,12478,12480-12484,12486,12488-12489,12491,12493-12497,12499,12501-12503,12505,12507-12508,12510-12519,12521-12524,12526-12788,12873-12878,12937,12940-12941,13131-13511,13513-13545,13547,13550,13553,13556,13559-13561,13563-13570,13572,13574,13576-13578,13580,13582-13587,13589-13591,13594,13596,13598-13604,13606,13608-13616,13618,13620,13622,13624,13626,13628,13630-13632,13634-13638,13859-13873,13886-13890,13920-13927,14033-14034,14045-14068,14213-14214,14772-14961,14963-14971,14973-14977,14979-14982,14986,14988-15018,15020,15022-15029,15031-15033,15125,15131,15133,15397-15398,15590,15595,15974-15975,15996-16005,16045-16048,16076-16081,16208,16211,16213,16216,16218-16219,16222,16229,16233-16234,16241,16244,16251,16259,16266,16289,16297,16318,16509-16513,16529-16530,16558-16559,16562-16567,16572-16575,16637-16638,16653-16654,16663,16712-16713,16769-16770,16775-16798,16803-16866,16871-16876,16885-16886,16910-16921,16926-16929,16940-16943,17002-17003,17014-17019,17069-17070,17079-17084,17100-17101,17108-17111,17116-17117,17120-17129,17144-17145,17157-17182,17201-17204,17255-17259,17280-17281,17477-17488,17507-17510,17520-17521,17543-17544,17575-17576,17684,17692,17724-17725,17749-17752,17816-17817,17822,17835,17888-18076,18078-18079,18081,18083-18090,18092,18094-18095,18097-18105,18107-18109,18111-18118,18120,18122,18124-18134,18136-18144,18146-18151,18153,18155-18157,18159-18214,18296-18301,18306-18307,18341-18356,18382-18401,18433-18434,18517-18518,18594-18595,18785-18792,18799-18802,18894-18897,18911-18916,18919-18920,18935-18936,18945-18948,18969-18997,19033-19034,19104-19107,19122-19123,19141-19143,19150-19152,19159-19161,19168-19170,19177-19179,19186-19188,19195-19197,19204-19206,19213-19215,19222-19224,19231-19245,19292-19295,19298-19301,19304-19305,19340-19343,19564-19565,19574-19575,19578-19579,19606-19937,20181-20185,20198-20199,20202-20203,20241-20242,20250-20251,20256-20259,20290-20291,20349-20369,20374-20375,20407-20414,20430-20433,20438-20439,20444-20447,20458-20463,20483-20491,20542,20566,20577,20599,20644-20647,20668-20669,20739-20740,20779-20784,20787-20788,20804-20812,20948-20949,20972-20984,20990-20993,21000-21125,21153-21154,21188-21195,21208-21222,21341-21342,21345-21353,21358-21362,21408,21412,21414,21416,21420,21488-21489,21492-21493,21544-21561,21580-21581,21593-21601,21613-21614,21655-21656,21735-21744,21774-21775,21830-21831,21839-21848,21856-21857,21862-21863,21915-21918,21933-21934,21957-21960,21969-21975,22009-22010,22037-22050,22086-22091,22100-22101,22179-22182,22185-22188,22239-22249,22304-22318,22351-22352,22366-22369,22382-22385,22394-22395,22402-22403,22423,22428-22430,22435-22436,22438-22439,22441,22486,22488,22490,22493,22504,22509-22510,22516-22517,22541-22550,22571-22572,22575-22576,22618-22619,22622-22625,22628-22634,22730-22734
+packages/mobile/src/runtime/instance.ts
+  s_9c72cf791afc7e::t_69d1023d12fee9 1-6
+src/renderer/lib/renderer-transport.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 148
+packages/mobile-protocol/src/secure-channel.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-285
+packages/mobile-protocol/src/uuid.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-27
+packages/mobile/src/Root.tsx
+  s_9c72cf791afc7e::t_4eb925d9a351d9 1,3,26-40
+  s_9c72cf791afc7e::t_6f5f234424a149 2,4-9,11-25
+  s_9c72cf791afc7e::t_1eb298b50e8bec 10
+CHANGELOG.md
+  s_9c72cf791afc7e::t_9e7df3c65189d4 9
+  s_60a150c6c03fef::t_1d5a003fb108c1 23
+src/main/platform/node/MobileProfileFiles.node.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-14
+packages/mobile/src/ui/tokens.ts
+  s_9c72cf791afc7e::t_dd7c7d3c894a1b 1-21
+docs/development.md
+  s_9c72cf791afc7e::t_81adbeff1b9d40 1288
+src/renderer/components/workbench/workbench-settings-page-registry.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 19
+packages/mobile/tsconfig.json
+  s_9c72cf791afc7e::t_ec1e87626c4b0e 1-15
+tests/e2e/support/mobile-phone.ts
+  s_c74ca134d4a730::t_b71def672d1f8a 279-283
+  s_c74ca134d4a730::t_7c3a5038f5f4ec 1-13,15-28,39-44,46-59,69-73,83,85-98,110-161,166-197,200-212,214-220,223-229,235-240,245-246,248-277,286-303
+  s_c74ca134d4a730::t_d6821d95333a2d 60-68,76-82,99-109,162-165,221-222,230-234,241-244
+  s_c74ca134d4a730::t_715c07a3d8ef0a 278,284-285
+  s_c74ca134d4a730::t_717277c5db7400 29-38,74-75,247
+  s_c74ca134d4a730::t_f548497bfa59cf 14,45,84,213
+  s_c74ca134d4a730::t_f97bff8c4852b1 198-199
+packages/mobile/src/features/composer/Composer.tsx
+  s_9c72cf791afc7e::t_5116efdf6d5e5e 1-3,5-11,14-110,122-158,160-168,174-186,188-218
+  s_9c72cf791afc7e::t_0335507d1494e9 13,111-121
+  s_9c72cf791afc7e::t_6d7008f0e68b3b 4,12,159,169-173,187
+packages/mobile/src/runtime/outbox.ts
+  s_9c72cf791afc7e::t_8363b4a60d9492 159-161
+  s_9c72cf791afc7e::t_8a3bf66495cfe7 1-158,162-330
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 165,4370-4387
+packages/mobile-protocol/package.json
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-19
+packages/mobile/src/runtime/projection.test.ts
+  s_9c72cf791afc7e::t_d8898d79682881 1-27
+src/renderer/lib/mobile-access-runtime.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-41
+packages/mobile/deps/README.md
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-9
+tests/e2e/mobile-gateway.spec.ts
+  s_c74ca134d4a730::t_8d298a89ebfdc4 125
+  s_c74ca134d4a730::t_99862dae96615d 104-105,112,347,349,362
+  s_c74ca134d4a730::t_7851c4d0b03f4c 148,158-161
+  s_c74ca134d4a730::t_923761beffb016 162-169
+  s_c74ca134d4a730::t_715c07a3d8ef0a 34-39,172-174,350-356
+  s_c74ca134d4a730::t_1166e7133edf85 171,357,359,369
+  s_c74ca134d4a730::t_fe5131e8a785e9 1-2,4-6,8-23,26-28,30-33,40-47,49-50,54-60,84-91,94-96,100-103,106-107,110-111,113-116,127-129,157,170,175-190,194-197,201-211,219-223,231-232,236-239,247-250,257-260,263-264,269-272,278,282-286,299-303,309-310,316-320,335-342,346,348,368,370-372
+  s_c74ca134d4a730::t_72fe4de1559f5e 48
+  s_c74ca134d4a730::t_eec1c0d990113a 3,7,29
+  s_c74ca134d4a730::t_7c23c68574d99b 92-93
+  s_c74ca134d4a730::t_d6821d95333a2d 24-25,51-53,61-83,97-99,108-109,117-124,126,130-147,149-156,191-193,198-200,212-218,224-230,233-235,240-246,251-256,261-262,265-268,273-277,279-281,287-298,304-308,311-315,321-334,343-345,358,360-361,363-367
+packages/mobile/src/features/chat/RequestCard.tsx
+  s_9c72cf791afc7e::t_e85ffc7858b59c 1-2,4-6,8-40,42,44-106,108-188
+  s_9c72cf791afc7e::t_01f5ca2036d9d6 7,41,43
+  s_9c72cf791afc7e::t_6d7008f0e68b3b 107
+  s_9c72cf791afc7e::t_eec60c85e49eee 3
+packages/mobile/src/features/pair/pairing-copy.ts
+  s_9c72cf791afc7e::t_356cf8de3ae962 1-11,14-25
+  s_9c72cf791afc7e::t_8363b4a60d9492 12-13
+src/shared/ipc-api.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1062-1075,3138
+src/main/agent-runtime/AgentRuntimeSessionObservation.ts
+  s_9c72cf791afc7e::t_f9a247f3211dbe 26-27,29-31,33-35
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-25,28,32,36-59
+packages/mobile/src/ui/theme.css
+  s_9c72cf791afc7e::t_c0c4023ff7f38e 1-52
+packages/mobile/src/features/inbox/MessageScreen.tsx
+  s_9c72cf791afc7e::t_b12242c1a2083b 1-95,97-173
+  s_9c72cf791afc7e::t_ef5f2013f946d7 96
+packages/mobile/src/features/chat/transcript-rows.test.ts
+  s_9c72cf791afc7e::t_9cee937b781abd 1-104
+packages/mobile/src/runtime/platform.ts
+  s_9c72cf791afc7e::t_94001d29b38ab4 1-120
+src/main/host-runtime/DatabaseNotifierRuntime.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 54,69-71,79,97-100,171
+src/renderer/lib/api.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 958-961
+src/main/mobile-gateway/catalog.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-328
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 553-579,995-997
+src/main/app/MainApplicationLive.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-5,167-176
+src/main/ipc/handlers/ChatSearchIpc.node.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 60
+src/main/inbox-application/InboxDispatcher.node.test.ts
+  s_60a150c6c03fef::t_09f05b112c4f70 754-768,770-784
+  s_60a150c6c03fef::t_e1b19787ffa430 734
+  s_60a150c6c03fef::t_e003845c107678 785-786
+  s_60a150c6c03fef::t_73ea08d06a25ef 23,748-752,769
+  s_60a150c6c03fef::t_34fb9f7feabd64 753
+packages/mobile/src/features/pickers/PickerScreens.tsx
+  s_9c72cf791afc7e::t_ef5f2013f946d7 3,75-76
+  s_9c72cf791afc7e::t_2f9841782940dd 1-2,4-74,77-104,107-110,112-118,123-128,133-189
+  s_9c72cf791afc7e::t_2154bd07f2fbcc 105,119-122,129-132
+  s_9c72cf791afc7e::t_4de8164603ec0a 106,111
+packages/mobile-protocol/src/models.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-393
+packages/mobile/src/runtime/chats.ts
+  s_9c72cf791afc7e::t_7c69cdcc089dfe 1-108,110-133,138-510
+  s_1406096ae8699b::t_6a6d356722ab6f 109,134-137
+src/main/mobile-gateway/MobileGateway.node.test.ts
+  s_9c72cf791afc7e::t_219aa2199e34ac 122,156-171,180-182,391-431
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-121,123-155,172-179,183-390,432-453
+src/main/core-runtime/CoreApplicationProjectionRuntime.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 45
+src/main/mobile-gateway/files.node.test.ts
+  s_9c72cf791afc7e::t_dc9ab3693f7c22 261-350
+  s_9c72cf791afc7e::t_d48f61c1ff4661 351-357
+  s_9c72cf791afc7e::t_bf4768e1cc034a 2-259,359
+  s_9c72cf791afc7e::t_927f07b11d7543 1,260,358
+packages/mobile/src/ui/local-store.ts
+  s_9c72cf791afc7e::t_65b798aeaba2f7 1-23
+packages/mobile/src/runtime/storage.ts
+  s_9c72cf791afc7e::t_07e73e51c2eeb3 1-15
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_3188629e0e41eb::t_d0f29d59eaef5f 604-644
+scripts/ci/effect-boundaries.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 141
+src/shared/ipc-endpoint-policy.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 76,526-529
+tests/fixtures/agent-runtime-stdio.mjs
+  s_9c72cf791afc7e::t_50aaadb0ca8de3 73,159,163
+  s_9c72cf791afc7e::t_219aa2199e34ac 16,71-72,74,156-158,160-162,164
+packages/mobile-protocol/tsconfig.json
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-18
+packages/mobile/index.ts
+  s_9c72cf791afc7e::t_f1159559d7852e 1-7
+src/renderer/components/workbench/workbench-settings-section-pages.tsx
+  s_9c72cf791afc7e::t_bf4768e1cc034a 35-38
+docs/product-specs/mobile-companion-behavior.md
+  s_9c72cf791afc7e::t_32d8ba62762ed6 23,89-90
+  s_9c72cf791afc7e::t_dc9ab3693f7c22 26-28,72-74
+  s_9c72cf791afc7e::t_2164ad2b1d6bac 69-70
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-18,22,29-56,58-68,71,75-88,91-118
+  s_9c72cf791afc7e::t_666ac037e756ba 57
+  s_9c72cf791afc7e::t_5e72239f64b741 19-21
+  s_9c72cf791afc7e::t_85eb0705a4b621 24-25
+config/test-suites.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 79
+  s_9c72cf791afc7e::t_268427a711e62f 78
+packages/mobile/src/features/inbox/InboxPane.tsx
+  s_9c72cf791afc7e::t_fcaee31b268563 1-27,29-46,53-54,56-59,61-283
+  s_9c72cf791afc7e::t_eec60c85e49eee 47,50-51
+  s_9c72cf791afc7e::t_6d7008f0e68b3b 28,48-49,52,55,60
+src/main/mobile-gateway/MobileGateway.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-10,12-33,35-60,63,66,68-125,127-447,449-469,471-472,476-477,506,508-693
+  s_9c72cf791afc7e::t_f9a247f3211dbe 61-62,64-65,67,448,470,473-475,478-493,497-505,507
+  s_9c72cf791afc7e::t_993ba85d944174 34,126
+  s_9c72cf791afc7e::t_219aa2199e34ac 11,494-496
+src/main/platform/node/AgentRuntimeProcess.ts
+  s_9c72cf791afc7e::t_f9a247f3211dbe 667-668,717-731,736-737
+packages/mobile/src/features/chats/chat-sections.test.ts
+  s_9c72cf791afc7e::t_f547e1d289b47d 1-80
+src/main/ipc/handlers/MobileAccessIpc.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-56
+packages/mobile/src/features/pair/PairScreen.tsx
+  s_9c72cf791afc7e::t_6d7008f0e68b3b 31,45,52-54,56,90-91,143-155
+  s_9c72cf791afc7e::t_29e3062027e8a9 5,62,64-74
+  s_9c72cf791afc7e::t_bcc3c9a2ef2650 1-4,6-29,32-44,46-51,57-61,63,75-89,92-142,156-177
+  s_9c72cf791afc7e::t_8363b4a60d9492 30,55
+crates/nodex-core/src/workspace/read.rs
+  s_3188629e0e41eb::t_a4b5594168b6c0 123-129
+packages/mobile-protocol/src/secure-channel.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-235
+packages/mobile/plugins/withAndroidCleartext.cjs
+  s_9c72cf791afc7e::t_8032801a53537c 1-34
+scripts/run-playwright-e2e.ts
+  s_c74ca134d4a730::t_1c66b8a9aa94a5 23
+src/shared/agent-approval-options.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-74
+src/main/mobile-gateway/catalog.node.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-14
+packages/mobile/src/runtime/socket.ts
+  s_9c72cf791afc7e::t_26191486a5a636 1-51
+packages/mobile/src/runtime/files.ts
+  s_9c72cf791afc7e::t_c0986240a132ff 1-452
+docs/adr/0076-mobile-runtime-effect-boundary.md
+  s_9c72cf791afc7e::t_542aa23f87eedd 1-46
+packages/mobile/src/features/home/ConnectionNotice.tsx
+  s_9c72cf791afc7e::t_983f372a070641 1-61
+packages/mobile/src/runtime/projection.ts
+  s_9c72cf791afc7e::t_6a051fe0b9151f 1-62
+packages/mobile/package.json
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-83
+crates/nodex-core/src/document/attached_edit.rs
+  s_60a150c6c03fef::t_e0d598668dfd63 91-104
+packages/mobile/src/runtime/fake-host.test-support.ts
+  s_9c72cf791afc7e::t_bbae06d0ac7a73 1-348
+scripts/scenarios/runtime/scripted-acp-agent.ts
+  s_c74ca134d4a730::t_8d298a89ebfdc4 53-54,483-484
+src/main/chat-search/ChatCatalogProjection.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 34,37
+packages/mobile/src/features/settings/SettingsScreen.tsx
+  s_9c72cf791afc7e::t_01cb736d6fced7 1-123
+src/renderer/features/mobile-access/mobile-access-presentation.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-41
+packages/mobile-protocol/src/pairing.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-41
+packages/mobile/README.md
+  s_9c72cf791afc7e::t_9ffa626aa3d3b9 1-71
+packages/mobile/eas.json
+  s_9c72cf791afc7e::t_be63040a9271a9 1-12
+packages/mobile/src/runtime/operations.ts
+  s_9c72cf791afc7e::t_b5377fd09860c3 1-60
+src/main/mobile-gateway/inbox-over-core.node.test.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-51
+packages/mobile/src/navigation/types.ts
+  s_9c72cf791afc7e::t_744bd8bf149eb9 1-15,18-24
+  s_9c72cf791afc7e::t_4de8164603ec0a 16-17
+src/main/mobile-gateway/transcript.ts
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-305,308-310,312-320,371,384,407-430
+  s_9c72cf791afc7e::t_f9a247f3211dbe 306-307,311,321-370,372-383,385-406
+docs/ARCHITECTURE.md
+  s_9c72cf791afc7e::t_78c58faad61528 82-83
+  s_9c72cf791afc7e::t_bf4768e1cc034a 29-30,73-81,84,234
+src/renderer/features/mobile-access/mobile-access-settings-page.tsx
+  s_9c72cf791afc7e::t_bf4768e1cc034a 1-238
+pnpm-workspace.yaml
+  s_9c72cf791afc7e::t_bf4768e1cc034a 44-45,110-111,147-162
+src/main/mobile-gateway/project-invalidations.node.test.ts
+  s_9c72cf791afc7e::t_edb8b50cec35a5 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "568774560b55cffa9f8507be06d305ee01b7de0c",
+  "prompts": {},
+  "sessions": {
+    "s_1406096ae8699b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8bc-a30f-7ef1-88b0-c163946dd472",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3188629e0e41eb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a5fa-2b29-7872-ad8c-df1d90bade89",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_60a150c6c03fef": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a892-ef36-7de2-97ed-1ac881d4dcc8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a866fad3d032b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a5f8-6004-7451-81ec-14661fb034d5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c74ca134d4a730": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a893-30de-76b1-9162-a7acefa67853",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
