@@ -1,0 +1,42 @@
+src/main/platform/node/OpenCodeSdk.ts
+  s_e076d342a7b8d9::t_443e03c25016e0 178,203,212,217,228
+  s_e076d342a7b8d9::t_1b939186de7ff5 185,187
+docs/RELIABILITY.md
+  s_e076d342a7b8d9::t_a8efe731fca43b 773-775
+packages/agent-runtime/vendor/provider-opencode/src/server/OpenCodeRuntime.ts
+  s_a11f4687fd3c1d::t_f9b44e47e55931 684-685,714-715
+packages/agent-runtime/vendor/provider-opencode/src/server/OpenCodeServerOwner.ts
+  s_593e4ec7a1ef71::t_48c1c3058b7918 42,89-94,106,141,167-180,187-202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "85671ae2c2ca6f1c817f47e5d6b440a8698841f3",
+  "prompts": {},
+  "sessions": {
+    "s_593e4ec7a1ef71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a605-5bc7-7df1-888d-da9414617001",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a11f4687fd3c1d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8b1-e99a-7d42-9095-84eeffc5dcd4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e076d342a7b8d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a612-b6c2-7180-aa4d-81219e2f2dd4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
