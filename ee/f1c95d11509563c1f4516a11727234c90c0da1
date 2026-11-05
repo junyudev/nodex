@@ -1,0 +1,30 @@
+docs/ARCHITECTURE.md
+  s_e076d342a7b8d9::t_a8efe731fca43b 275-278
+src/main/platform/electron/ElectronIpc.node.test.ts
+  s_86ec236c56b404::t_7847b22cd2462c 1-2,111-172
+  s_86ec236c56b404::t_7f7026d1c20009 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eef1c95d11509563c1f4516a11727234c90c0da1",
+  "prompts": {},
+  "sessions": {
+    "s_86ec236c56b404": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8b1-262e-7fa0-84c9-f4b678e50e23",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e076d342a7b8d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a612-b6c2-7180-aa4d-81219e2f2dd4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
