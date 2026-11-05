@@ -379,8 +379,11 @@ export const makePageFileHtmlHost = (options: {
         );
         return { status: "admitted", admission: claim } as const;
       }).pipe(
-        Effect.catch(() =>
-          Effect.succeed({ status: "refused", message: "The Page File is unavailable" } as const),
+        Effect.catch((error) =>
+          Effect.logWarning("Page File preview admission failed").pipe(
+            Effect.annotateLogs({ error: String(error) }),
+            Effect.as({ status: "refused", message: "The Page File is unavailable" } as const),
+          ),
         ),
       );
     return {
