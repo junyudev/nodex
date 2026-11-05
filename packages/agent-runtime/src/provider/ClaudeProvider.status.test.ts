@@ -3,6 +3,7 @@ import { assert, it } from "@effect/vitest";
 import { ClaudeSettings } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
+import * as Logger from "effect/Logger";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
 import * as NodePath from "node:path";
@@ -141,4 +142,35 @@ it.effect.skipIf(windowsHost)(
         assert.isUndefined(ultracodeOf(on)?.unavailableReason);
       }),
     ),
+);
+
+it.live.skipIf(windowsHost)(
+  "a missing configured command stays visible without a warning or private diagnostics",
+  () => {
+    const logs: Array<{ level: string; message: unknown }> = [];
+    const logger = Logger.make<unknown, void>(({ logLevel, message }) => {
+      logs.push({ level: logLevel, message });
+    });
+    return withFakeClaude(({ cwd }) =>
+      Effect.gen(function* () {
+        const settings = Schema.decodeSync(ClaudeSettings)({
+          binaryPath: "claude",
+          homePath: NodePath.join(cwd, "private-home"),
+        });
+        const status = yield* checkClaudeProviderStatus(
+          settings,
+          undefined,
+          { PATH: "/usr/bin:/bin", PRIVATE_VALUE: "environment-secret" },
+          cwd,
+        );
+        assert.strictEqual(status.installed, false);
+        assert.strictEqual(status.status, "error");
+        assert.match(status.message ?? "", /not found on PATH/);
+        assert.isFalse(logs.some(({ level }) => level === "Warn" || level === "Error"));
+        assert.isFalse(JSON.stringify(logs).includes("environment-secret"));
+        assert.isFalse(JSON.stringify(logs).includes("--version"));
+        assert.isFalse(JSON.stringify(logs).includes("private-home"));
+      }).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false }))),
+    );
+  },
 );

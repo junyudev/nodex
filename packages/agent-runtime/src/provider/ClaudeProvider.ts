@@ -633,9 +633,10 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
 
   if (Result.isFailure(versionProbe)) {
     const error = versionProbe.failure;
-    yield* Effect.logWarning("Claude Agent CLI health check failed.", {
-      errorTag: error._tag,
-    });
+    // Absence is an ordinary provider status. Never log command arguments,
+    // environment values, or raw probe output from a failed health check.
+    const log = isCommandMissingCause(error) ? Effect.logDebug : Effect.logWarning;
+    yield* log("Claude Agent CLI health check failed.", { errorTag: error._tag });
     return buildServerProvider({
       presentation: CLAUDE_PRESENTATION,
       enabled: claudeSettings.enabled,
