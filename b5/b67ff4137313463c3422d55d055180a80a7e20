@@ -1,0 +1,34 @@
+packages/mobile/src/runtime/runtime.test.ts
+  s_9c72cf791afc7e::t_7105e74ed0b76a 419
+  s_9c72cf791afc7e::t_f14f498041e306 402,404-410,412-414,416,418,420-425,599,618-619,621-622,659-693,771-777,790-796,806
+packages/mobile/src/runtime/connection.ts
+  s_9c72cf791afc7e::t_8363b4a60d9492 49,311,501,520,546-547,549-551
+packages/mobile/src/runtime/outbox.ts
+  s_9c72cf791afc7e::t_8363b4a60d9492 159-161
+packages/mobile/src/features/pair/PairScreen.tsx
+  s_9c72cf791afc7e::t_8363b4a60d9492 30,55
+src/main/mobile-gateway/files.ts
+  s_9c72cf791afc7e::t_d48f61c1ff4661 290
+packages/mobile/src/features/pair/pairing-copy.ts
+  s_9c72cf791afc7e::t_8363b4a60d9492 12-13
+src/main/mobile-gateway/files.node.test.ts
+  s_9c72cf791afc7e::t_d48f61c1ff4661 351-357
+docs/product-specs/mobile-companion-behavior.md
+  s_9c72cf791afc7e::t_2164ad2b1d6bac 69-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b5b67ff4137313463c3422d55d055180a80a7e20",
+  "prompts": {},
+  "sessions": {
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
