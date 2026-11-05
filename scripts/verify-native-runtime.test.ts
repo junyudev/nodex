@@ -1,5 +1,5 @@
 import { writePackagedStockNodeFixture } from "./testing/packaged-stock-node-fixture";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -9,6 +9,8 @@ import { afterEach, describe, expect, test } from "vite-plus/test";
 
 import {
   assertPackagedMacCodeObjectEntitlements,
+  assertPackagedRunStopped,
+  readPackagedRunProcesses,
   assertContentAddressedStoreMigrationBackup,
   assertPackagedStockNodeLayout,
   isPackagedAppReady,
@@ -374,3 +376,51 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     expect(fs.existsSync(directory)).toBe(false);
   });
 });
+
+test.skipIf(process.platform !== "darwin")(
+  "the shutdown gate finds an owned helper outside the bundle after its Main exits",
+  async () => {
+    const home = fs.mkdtempSync("/tmp/ndx-gate-");
+    temporaryDirectories.push(home);
+    const helperSource = "setInterval(() => {}, 1000)";
+    const launcher = spawn(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `
+    import { spawn } from 'node:child_process';
+    const helper = spawn(process.execPath, ['--eval', ${JSON.stringify(helperSource)}], {
+      detached: true, stdio: 'ignore', env: { PATH: '/usr/bin:/bin', HOME: ${JSON.stringify(home)}, PRIVATE_VALUE: 'must-not-be-logged' },
+    });
+    console.log(helper.pid);
+    helper.unref();
+  `,
+      ],
+      { stdio: ["ignore", "pipe", "inherit"] },
+    );
+    let output = "";
+    launcher.stdout!.on("data", (chunk) => {
+      output += String(chunk);
+    });
+    const pid = await new Promise<number>((resolve, reject) => {
+      launcher.once("error", reject);
+      launcher.once("close", (code) =>
+        code === 0 ? resolve(Number(output.trim())) : reject(new Error(`Launcher exited ${code}`)),
+      );
+    });
+    try {
+      expect(pid).toBeGreaterThan(1);
+      expect(readPackagedRunProcesses(home).map((p) => p.pid)).toContain(pid);
+      const failure = await assertPackagedRunStopped(home, 100).catch((error) => error as Error);
+      expect(failure).toBeInstanceOf(Error);
+      expect(String(failure)).toContain(`${pid} `);
+      expect(String(failure)).toContain(path.basename(process.execPath));
+      expect(String(failure)).not.toContain("must-not-be-logged");
+    } finally {
+      // Reconfirm marker ownership before signalling this test's reparented helper.
+      if (readPackagedRunProcesses(home).some((p) => p.pid === pid)) process.kill(pid, "SIGKILL");
+      await assertPackagedRunStopped(home);
+    }
+  },
+);

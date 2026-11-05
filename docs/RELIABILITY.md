@@ -778,6 +778,10 @@ After an execution process exits, Desktop reclaims its recorded servers through
 the identity-checked ledger used for crash recovery. Entries that belong to a
 live owner stay in the ledger.
 
+Packaged runtime verification checks the entire isolated run after shutdown,
+including reparented processes outside the application bundle. It also checks
+for renderer query errors caused by the Agent Runtime closing.
+
 ## Operational evidence
 
 Testing commands and suite selection live in [AGENTS.md](../AGENTS.md) and

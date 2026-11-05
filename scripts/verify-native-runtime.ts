@@ -1171,7 +1171,7 @@ const runWithEnvironment = (
 };
 
 const PACKAGED_APP_STARTUP_TIMEOUT_MS = 60_000;
-const PACKAGED_APP_TERMINATION_TIMEOUT_MS = 10_000;
+const PACKAGED_APP_TERMINATION_TIMEOUT_MS = 20_000;
 const PACKAGED_APP_KILL_TIMEOUT_MS = 5_000;
 const MAX_PACKAGED_APP_DIAGNOSTIC_CHARS = 32_768;
 
@@ -1209,35 +1209,16 @@ const readPackagedAppRuntimeLogs = (nodexHome: string): string => {
 const waitForChildExit = async (child: ChildProcess, timeoutMs: number): Promise<boolean> => {
   if (child.exitCode !== null || child.signalCode !== null) return true;
   return await new Promise<boolean>((resolvePromise) => {
-    const onClose = (): void => {
+    const onExit = (): void => {
       clearTimeout(timer);
       resolvePromise(true);
     };
     const timer = setTimeout(() => {
-      child.off("close", onClose);
+      child.off("exit", onExit);
       resolvePromise(false);
     }, timeoutMs);
-    child.once("close", onClose);
+    child.once("exit", onExit);
   });
-};
-
-const signalProcessGroup = (child: ChildProcess, signal: NodeJS.Signals): void => {
-  if (!child.pid) return;
-  try {
-    process.kill(-child.pid, signal);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
-    child.kill(signal);
-  }
-};
-
-const stopPackagedApp = async (child: ChildProcess): Promise<void> => {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  signalProcessGroup(child, "SIGTERM");
-  if (await waitForChildExit(child, PACKAGED_APP_TERMINATION_TIMEOUT_MS)) return;
-  signalProcessGroup(child, "SIGKILL");
-  if (await waitForChildExit(child, PACKAGED_APP_KILL_TIMEOUT_MS)) return;
-  throw new Error("Packaged Nodex.app process group did not exit after SIGKILL");
 };
 
 const waitForPackagedAppReadiness = async (options: {
@@ -1291,6 +1272,66 @@ const waitForPackagedAppReadiness = async (options: {
   }
 };
 
+export interface PackagedRunProcess {
+  readonly pid: number;
+  readonly state: string;
+  readonly started: string;
+  readonly command: string;
+}
+
+/** The disposable HOME survives exec and reparenting. Main consumes the lease ID at startup. */
+export const readPackagedRunProcesses = (home: string): readonly PackagedRunProcess[] => {
+  if (!home.startsWith("/") || /\s/u.test(home)) throw new Error("Invalid packaged run home");
+  const result = spawnSync("/bin/ps", ["-axwwE", "-o", "pid=,stat=,lstart=,command="], {
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+    timeout: 5_000,
+    env: { PATH: "/usr/bin:/bin", LC_ALL: "C" },
+  });
+  if (result.error || result.status !== 0)
+    throw new Error("Could not inspect packaged run processes", { cause: result.error });
+  const marker = `HOME=${home}`;
+  return result.stdout.split("\n").flatMap((line) => {
+    if (!line.split(/\s+/).includes(marker)) return [];
+    const match = /^\s*(\d+)\s+(\S+)\s+(.{24})\s+(.*)$/.exec(line);
+    if (!match) throw new Error("Could not identify a process in the packaged run");
+    const [, pid, state, started, invocation] = match;
+    if (state!.startsWith("Z")) return [];
+    // Keep the process name without flags or inherited environment.
+    const command = invocation!.split(/\s+(?:-|[A-Za-z_][A-Za-z0-9_]*=)/, 1)[0]!;
+    return [{ pid: Number(pid), state: state!, started: started!, command }];
+  });
+};
+
+const describePackagedRun = (processes: readonly PackagedRunProcess[]): string =>
+  processes.map(({ pid, state, command }) => `${pid} ${state} ${command}`).join("\n");
+
+/** Capture leaks before fallback cleanup so a successful kill cannot turn the gate green. */
+export const assertPackagedRunStopped = async (home: string, timeoutMs = 5_000): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  let survivors = readPackagedRunProcesses(home);
+  while (survivors.length > 0 && Date.now() < deadline) {
+    await delay(Math.min(50, Math.max(0, deadline - Date.now())));
+    survivors = readPackagedRunProcesses(home);
+  }
+  if (survivors.length === 0) return;
+  throw new Error(
+    `Packaged Nodex left processes running after shutdown:\n${describePackagedRun(survivors)}`,
+  );
+};
+
+const killPackagedRunSurvivors = (home: string): void => {
+  for (const candidate of readPackagedRunProcesses(home)) {
+    const current = readPackagedRunProcesses(home).find(({ pid }) => pid === candidate.pid);
+    if (current?.started !== candidate.started || current.command !== candidate.command) continue;
+    try {
+      process.kill(candidate.pid, "SIGKILL");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+    }
+  }
+};
+
 const launchAppSmoke = async (appPath: string, expectedCoreSha256: string): Promise<void> => {
   const directory = mkdtempSync("/tmp/ndx-app-");
   const userData = join(directory, "electron-user-data");
@@ -1325,13 +1366,31 @@ const launchAppSmoke = async (appPath: string, expectedCoreSha256: string): Prom
 
   let applicationExited = false;
   try {
-    await stopPackagedApp(child);
-    applicationExited = true;
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    applicationExited = await waitForChildExit(child, PACKAGED_APP_TERMINATION_TIMEOUT_MS);
+    if (!applicationExited) {
+      throw new Error(
+        `Packaged Nodex did not exit after SIGTERM:\n${describePackagedRun(readPackagedRunProcesses(directory))}`,
+      );
+    }
+    if (child.exitCode !== 0) {
+      throw new Error(`Packaged Nodex exited with ${child.signalCode ?? child.exitCode}`);
+    }
   } catch (error) {
     cleanupErrors.push(error);
   }
+  if (!applicationExited) {
+    child.kill("SIGKILL");
+    applicationExited = await waitForChildExit(child, PACKAGED_APP_KILL_TIMEOUT_MS);
+  }
 
   const runtimeLogs = readPackagedAppRuntimeLogs(nodexHome);
+  if (
+    runtimeLogs.includes("Runtime Scope closed") ||
+    output.stderr.includes("Runtime Scope closed")
+  ) {
+    cleanupErrors.push(new Error("Packaged Nodex reported a runtime closure error during quit"));
+  }
   let safeToRemove = false;
   if (applicationExited) {
     const coreCleanup = await cleanupIsolatedCore({ lease, nodexHome, runId });
@@ -1343,6 +1402,19 @@ const launchAppSmoke = async (appPath: string, expectedCoreSha256: string): Prom
             (coreCleanup.reason ?? "no reason reported"),
         ),
       );
+    }
+  }
+
+  try {
+    await assertPackagedRunStopped(directory);
+  } catch (error) {
+    cleanupErrors.push(error);
+    try {
+      killPackagedRunSurvivors(directory);
+      await assertPackagedRunStopped(directory);
+    } catch (fallbackError) {
+      cleanupErrors.push(fallbackError);
+      safeToRemove = false;
     }
   }
 
