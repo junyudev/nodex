@@ -200,10 +200,16 @@ export const make = Effect.fn("OpenCodeServerLedger.make")(function* (input: {
 
   const isRunning = (identity: ProcessIdentity) =>
     observe(identity.pid).pipe(
-      Effect.map(
-        (observed) =>
-          observed !== undefined && !observed.zombie && observed.startTime === identity.startTime,
-      ),
+      Effect.map((observed) => {
+        if (observed) return !observed.zombie && observed.startTime === identity.startTime;
+        // A failed identity probe cannot establish that a reachable owner is dead.
+        try {
+          process.kill(identity.pid, 0);
+          return true;
+        } catch (cause) {
+          return (cause as NodeJS.ErrnoException | undefined)?.code !== "ESRCH";
+        }
+      }),
     );
 
   const ownerPid = input.ownerPid ?? process.pid;
@@ -294,10 +300,11 @@ export const make = Effect.fn("OpenCodeServerLedger.make")(function* (input: {
       if (groupExists(entry.pgid)) signalGroup(entry.pgid, "SIGKILL");
     });
 
-  const reapEntry = (entryPath: string) =>
+  const reapEntry = (entryPath: string, ownerPid?: number) =>
     Effect.gen(function* () {
       const entry = decodeEntry(yield* fs.readFileString(entryPath));
       if (Option.isSome(entry) && entry.value.stateDir === input.stateDir) {
+        if (ownerPid !== undefined && entry.value.owner.pid !== ownerPid) return;
         if (yield* isRunning(entry.value.owner)) return;
         yield* stopOrphan(entry.value);
       }
@@ -309,11 +316,11 @@ export const make = Effect.fn("OpenCodeServerLedger.make")(function* (input: {
     );
 
   /** Stops recorded servers whose owning T3 server is gone and drops stale entries. */
-  const reapOrphans = Effect.gen(function* () {
+  const reapOrphans = (options?: { readonly ownerPid: number }) => Effect.gen(function* () {
     const names = yield* fs.readDirectory(directory).pipe(Effect.orElseSucceed(() => []));
     yield* Effect.forEach(
       names.filter((name) => ENTRY_FILE.test(name)),
-      (name) => reapEntry(path.join(directory, name)),
+      (name) => reapEntry(path.join(directory, name), options?.ownerPid),
       { concurrency: "unbounded", discard: true },
     );
   });
@@ -328,7 +335,7 @@ export const layer = (input: { readonly stateDir: string }) =>
     Effect.gen(function* () {
       const ledger = yield* make(input);
       // Reaping waits for orphans to exit, so it must not hold up startup.
-      yield* ledger.reapOrphans.pipe(Effect.forkScoped);
+      yield* ledger.reapOrphans().pipe(Effect.forkScoped);
       return OpenCodeServerLedger.of({ track: ledger.track });
     }),
   );

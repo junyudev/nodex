@@ -14,6 +14,7 @@
     "./side-chat": "./src/nodex/SideChat.ts",
     "./contracts": "./src/nodex/contracts.ts",
     "./codex-conventions": "./src/nodex/CodexConventions.ts",
+    "./process-lifecycle": "./src/nodex/ProcessLifecycle.ts",
     "./opencode-catalog": "./src/nodex/OpenCodeCatalog.ts",
     "./orchestration/*": "./src/orchestration-v2/*.ts",
     "./palette-search": "./vendor/shared/src/paletteSearch.ts",

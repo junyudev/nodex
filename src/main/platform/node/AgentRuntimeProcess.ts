@@ -1,3 +1,9 @@
+import {
+  AGENT_RUNTIME_SHUTDOWN_TIMEOUT_MS,
+  AGENT_RUNTIME_FORCE_KILL_AFTER_MS,
+  reapAgentRuntimeServers,
+} from "@nodex/agent-runtime/process-lifecycle";
+import * as Exit from "effect/Exit";
 import { decodeAgentAcpFailure, type AgentAcpFailure } from "@nodex/agent-runtime/contracts";
 import { randomUUID } from "node:crypto";
 import {
@@ -22,7 +28,7 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import type * as Scope from "effect/Scope";
+import * as Scope from "effect/Scope";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { z } from "zod";
 import { createAgentRuntimeFrameDecoder } from "./agent-runtime-framing";
@@ -39,7 +45,7 @@ const MAXIMUM_WAITING_REQUESTS = 1024;
 const LIVENESS_TICK_MS = 5_000;
 const SLOW_REQUEST_MS = 10_000;
 // Scope release must finish even when the engine cannot answer shutdown.
-const SHUTDOWN_TIMEOUT = Duration.seconds(2);
+const SHUTDOWN_TIMEOUT = Duration.millis(AGENT_RUNTIME_SHUTDOWN_TIMEOUT_MS);
 
 const MAXIMUM_PENDING_HOST_REQUESTS = 128;
 /**
@@ -400,6 +406,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     providers: options.configuration.providers,
     ...(options.configuration.host ? { hostTools: options.configuration.host.tools } : {}),
   } satisfies AgentRuntimeBootstrap);
+  const processScope = yield* Scope.fork(scope);
   const process = yield* spawner
     .spawn(
       ChildProcess.make(
@@ -416,7 +423,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
           cwd: options.configuration.cwd,
           detached: true,
           killSignal: "SIGTERM",
-          forceKillAfter: Duration.seconds(5),
+          forceKillAfter: Duration.millis(AGENT_RUNTIME_FORCE_KILL_AFTER_MS),
           // Exactly the composed environment; provider credentials arrive over stdin instead.
           env: { ...options.environment },
           extendEnv: false,
@@ -427,6 +434,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       ),
     )
     .pipe(
+      Effect.provideService(Scope.Scope, processScope),
       Effect.mapError(
         (cause) =>
           new AgentRuntimeProcessError({
@@ -628,22 +636,19 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     ),
     Effect.forkIn(scope),
   );
-  yield* process.exitCode.pipe(
-    Effect.flatMap(() =>
-      close(
-        new AgentRuntimeProcessError({
-          reason: "closed",
-          message: "Agent Runtime process exited",
-        }),
-      ),
-    ),
-    Effect.catchCause((cause) =>
-      close(
-        new AgentRuntimeProcessError({
-          reason: "closed",
-          message: "Agent Runtime process became unavailable",
-          cause,
-        }),
+  const reapServers = reapAgentRuntimeServers(options.configuration.home, Number(process.pid));
+  yield* Effect.exit(process.exitCode).pipe(
+    Effect.flatMap((exit) =>
+      reapServers.pipe(
+        Effect.andThen(
+          close(
+            new AgentRuntimeProcessError({
+              reason: "closed",
+              message: "Agent Runtime process exited",
+              ...(Exit.isFailure(exit) ? { cause: exit.cause } : {}),
+            }),
+          ),
+        ),
       ),
     ),
     Effect.forkIn(scope),
@@ -765,6 +770,8 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
         close(new AgentRuntimeProcessError({ reason: "closed", message: "Runtime Scope closed" })),
       ),
       Effect.andThen(Queue.end(input)),
+      Effect.andThen(Scope.close(processScope, Exit.void)),
+      Effect.andThen(reapServers),
       Effect.andThen(PubSub.shutdown(notifications)),
       Effect.andThen(PubSub.shutdown(executionNotifications)),
     ),

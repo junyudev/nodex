@@ -89,7 +89,7 @@ describe.each(observedPlatforms)("OpenCodeServerLedger observing as %s", (platfo
       expect(yield* fs.readDirectory(path.join(stateDir, "opencode-servers"))).toHaveLength(1);
 
       const restarted = yield* OpenCodeServerLedger.make({ stateDir });
-      yield* restarted.reapOrphans;
+      yield* restarted.reapOrphans();
 
       expect(yield* orphan.exited).toBe("SIGTERM");
       expect(groupExists(orphan.pid)).toBe(false);
@@ -114,7 +114,7 @@ describe.each(observedPlatforms)("OpenCodeServerLedger observing as %s", (platfo
       expect(yield* fs.readDirectory(path.join(stateDir, "opencode-servers"))).toHaveLength(1);
 
       const restarted = yield* OpenCodeServerLedger.make({ stateDir });
-      yield* restarted.reapOrphans;
+      yield* restarted.reapOrphans();
 
       expect(groupExists(wrapper.pid)).toBe(false);
       expect(yield* fs.readDirectory(path.join(stateDir, "opencode-servers"))).toEqual([]);
@@ -134,7 +134,7 @@ describe.each(observedPlatforms)("OpenCodeServerLedger observing as %s", (platfo
       yield* fs.writeFileString(entryPath, entry.replace(/"startTime":"[^"]+"/, '"startTime":"1"'));
 
       const restarted = yield* OpenCodeServerLedger.make({ stateDir });
-      yield* restarted.reapOrphans;
+      yield* restarted.reapOrphans();
 
       expect(groupExists(unrelated.pid)).toBe(true);
       expect(yield* fs.exists(entryPath)).toBe(false);
@@ -154,7 +154,7 @@ describe.each(observedPlatforms)("OpenCodeServerLedger observing as %s", (platfo
       yield* fs.writeFileString(entryPath, entry.replace("--port=4096", "--port=4097"));
 
       const restarted = yield* OpenCodeServerLedger.make({ stateDir });
-      yield* restarted.reapOrphans;
+      yield* restarted.reapOrphans();
 
       expect(groupExists(unrelated.pid)).toBe(true);
       expect(yield* fs.exists(entryPath)).toBe(false);
@@ -171,7 +171,7 @@ describe.each(observedPlatforms)("OpenCodeServerLedger observing as %s", (platfo
       const forget = yield* running.track({ pid: server.pid, port: 4096, args: SERVE_ARGS });
 
       const other = yield* OpenCodeServerLedger.make({ stateDir });
-      yield* other.reapOrphans;
+      yield* other.reapOrphans();
       expect(groupExists(server.pid)).toBe(true);
 
       yield* forget;

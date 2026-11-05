@@ -6,6 +6,7 @@ import {
   nextAgentRuntimeSilentTicks,
 } from "./agent-runtime-liveness";
 import { ChildProcessSpawner } from "effect/process";
+import { reapAgentRuntimeServers } from "@nodex/agent-runtime/process-lifecycle";
 import { watch } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { assert, it } from "@effect/vitest";
@@ -861,3 +862,47 @@ it.live("a Main event loop stall counts as one silent tick", () =>
     assert.deepEqual(states, [true]);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+for (const unexpected of [false, true]) {
+  it.live.skipIf(process.platform === "win32")(
+    `reclaims the exited Runtime owner's recorded servers after ${unexpected ? "unexpected exit" : "shutdown"}`,
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-runtime-reap-" });
+        const scope = yield* Scope.fork(yield* Scope.Scope);
+        const connection = yield* acquireAgentRuntimeProcess({
+          executable: process.execPath,
+          entryPath: fileURLToPath(
+            new URL("../../../../tests/fixtures/agent-runtime-orphan.mts", import.meta.url),
+          ),
+          configuration: { home, cwd: home, providers: {} },
+          environment: { ...process.env, NODE_OPTIONS: `--import=${import.meta.resolve("tsx")}` },
+          host: () => Effect.void,
+        }).pipe(Effect.provideService(Scope.Scope, scope));
+        const pid = Number(yield* fs.readFileString(`${home}/server-pid`));
+        // The ledger test fixture owns this PID from spawn; retain fallback for a failing assertion.
+        yield* Effect.addFinalizer(() =>
+          Scope.close(scope, Exit.void).pipe(
+            Effect.andThen(
+              reapAgentRuntimeServers(home, Number(connection.identity.runtimeGeneration)),
+            ),
+          ),
+        );
+        const running = () => {
+          try {
+            process.kill(pid, 0);
+            return true;
+          } catch {
+            return false;
+          }
+        };
+        assert.isTrue(running());
+        if (unexpected) {
+          yield* Effect.exit(connection.request("project.read", { projectId: "exit" }));
+          yield* connection.terminated;
+        } else yield* Scope.close(scope, Exit.void);
+        assert.isFalse(running());
+        assert.deepEqual(yield* fs.readDirectory(`${home}/userdata/opencode-servers`), []);
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+}

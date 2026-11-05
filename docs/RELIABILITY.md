@@ -772,6 +772,9 @@ and [Desktop Notification Behavior](product-specs/desktop-notification-behavior.
 
 Desktop shutdown fences provider-server admission, interrupts and awaits pending
 startup, and stops owned process groups within the enclosing shutdown budget.
+After an execution process exits, Desktop reclaims its recorded servers through
+the identity-checked ledger used for crash recovery. Entries that belong to a
+live owner stay in the ledger.
 
 ## Operational evidence
 
