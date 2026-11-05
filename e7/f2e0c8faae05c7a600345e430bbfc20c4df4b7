@@ -1,0 +1,45 @@
+scripts/verify-native-runtime.test.ts
+  s_e076d342a7b8d9::t_3f9725b8b63b6b 383-384,394,414-415,422-423
+  s_e076d342a7b8d9::t_0c40bbd28ba48e 2,12-13,379-382,385-393,395-413,416-421,424-426
+scripts/verify-native-runtime.ts
+  s_e076d342a7b8d9::t_3f9725b8b63b6b 1282-1284,1288,1293,1297,1299,1310,1312,1315,1323-1325,1373,1385,1388-1393,1409,1413-1414,1419
+  s_e076d342a7b8d9::t_368605878774f4 1174,1212,1217,1220,1275-1281,1285-1287,1289-1292,1294-1296,1298,1300-1309,1311,1313-1314,1316-1322,1326-1334,1369-1372,1374-1378,1382-1384,1408,1410-1412,1415-1418
+  s_e076d342a7b8d9::t_786d8e99c26c53 1420
+docs/RELIABILITY.md
+  s_e076d342a7b8d9::t_a8efe731fca43b 781-783
+  s_86ec236c56b404::t_64de29ef3e955c 784
+CHANGELOG.md
+  s_fd4aca34d2386d::t_e0f1215412884a 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e7f2e0c8faae05c7a600345e430bbfc20c4df4b7",
+  "prompts": {},
+  "sessions": {
+    "s_86ec236c56b404": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8b1-262e-7fa0-84c9-f4b678e50e23",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e076d342a7b8d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a612-b6c2-7180-aa4d-81219e2f2dd4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fd4aca34d2386d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9638a4c9-f419-4bc1-81d9-3762efbfacb0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
