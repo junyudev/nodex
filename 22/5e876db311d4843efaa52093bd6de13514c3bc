@@ -1,0 +1,58 @@
+src/main/platform/node/AgentRuntimeProcess.node.test.ts
+  h_6a6ac0c07fcd37 11-13,15,30-37,49,75,418,423,470,481,549-550
+resources/windows/stop-installation.ps1
+  h_6a6ac0c07fcd37 102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "225e876db311d4843efaa52093bd6de13514c3bc",
+  "prompts": {},
+  "humans": {
+    "h_6a6ac0c07fcd37": {
+      "author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_3022e59a160914": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1def126e-fd62-476f-9393-67b0835f01b6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_583cc45f239209": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a228-8cfd-76e3-9adf-63d4b5eaa9d8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_92df0f2cd1e678": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a5e8-78b2-7a31-99d4-9650017da63f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a11f4687fd3c1d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8b1-e99a-7d42-9095-84eeffc5dcd4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    },
+    "s_cae0faeeeffd2e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a5e8-3ed5-7933-b558-7d6cb92475cf",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
