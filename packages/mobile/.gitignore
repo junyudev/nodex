@@ -1,0 +1,5 @@
+.expo/
+ios/
+android/
+*.tsbuildinfo
+uniwind-types.d.ts

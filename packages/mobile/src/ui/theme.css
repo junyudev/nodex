@@ -1,0 +1,52 @@
+/*
+ * Nodex Mobile's semantic tokens, derived from the desktop's default palette: pure surface and
+ * ink, neighboring surfaces close in value, and three levels of text. Components use only these.
+ */
+@theme {
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 14px;
+  --text-sm--line-height: 19px;
+  --text-base: 16px;
+  --text-base--line-height: 23px;
+  --text-lg: 17px;
+  --text-lg--line-height: 23px;
+  --text-xl: 20px;
+  --text-xl--line-height: 26px;
+}
+
+@layer theme {
+  :root {
+    @variant light {
+      --color-surface: #ffffff;
+      --color-surface-2: #f7f7f6;
+      --color-surface-3: #eeeeec;
+      --color-ink: #0d0d0d;
+      --color-ink-2: #5c5c59;
+      --color-ink-3: #8f8f8b;
+      --color-line: rgba(13, 13, 13, 0.14);
+      --color-accent: #2c67c5;
+      --color-on-accent: #ffffff;
+      --color-danger: #c6352c;
+      --color-danger-soft: #fbecea;
+      --color-warning: #b8801b;
+      --color-success: #3a843f;
+    }
+
+    @variant dark {
+      --color-surface: #111111;
+      --color-surface-2: #1b1b1b;
+      --color-surface-3: #282828;
+      --color-ink: #fcfcfc;
+      --color-ink-2: #b4b4b0;
+      --color-ink-3: #7f7f7b;
+      --color-line: rgba(252, 252, 252, 0.16);
+      --color-accent: #63a8f8;
+      --color-on-accent: #0d0d0d;
+      --color-danger: #f0776c;
+      --color-danger-soft: #3a1f1c;
+      --color-warning: #e3b34f;
+      --color-success: #6bc67f;
+    }
+  }
+}

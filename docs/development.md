@@ -1288,5 +1288,6 @@ paths; the execution runtime builds its independent copy as described above. Rus
 - [Reliability model](RELIABILITY.md)
 - [Security model](SECURITY.md)
 - [Application release CI](release.md)
+- [Nodex Mobile development](../packages/mobile/README.md)
 - [Landing site operations](landing-site.md)
 - [CI architecture and tier ownership](CI.md)

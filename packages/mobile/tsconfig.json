@@ -1,0 +1,15 @@
+{
+  "extends": "expo/tsconfig.base.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "skipLibCheck": true,
+    "incremental": true,
+    "tsBuildInfoFile": "../../.cache/typescript/mobile.tsbuildinfo",
+    "types": ["node", "expo/types", "uniwind/types"]
+  },
+  "include": ["index.ts", "app.config.ts", "src", "uniwind-types.d.ts"],
+  "exclude": ["node_modules", "ios", "android", ".expo"]
+}

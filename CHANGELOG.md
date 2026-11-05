@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Nodex now has an iOS and Android app. Drop a thought into the Inbox, start a chat, follow a running chat live, and answer its approvals and questions from your phone. Turn it on and pair a phone in Settings > Mobile. It connects directly to your computer over your local network or a tailnet, encrypted end to end, and captures made offline send when your computer is back.
 - You can stop an Inbox suggestion that is taking too long. Hover its spinner and click stop: the work ends at once, no more usage is spent, and the message keeps any advice it had or offers Suggest.
 - You choose the reasoning effort and speed Inbox suggestions run at, in the same model menu new chats use. Until you do, they stay at high on Codex and medium on Claude.
 - A Terminal's tab names the program running in it. The title a program sets replaces the folder name while it runs, unless it only repeats the working directory.

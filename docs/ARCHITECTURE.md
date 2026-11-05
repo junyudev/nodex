@@ -79,6 +79,8 @@ belongs to the Profile's Main Scope, so it stays available with every window clo
 Desktop Host runs. See
 [Nodex Mobile Behavior](product-specs/mobile-companion-behavior.md),
 [Security](SECURITY.md#mobile-gateway) and [ADR 0075](adr/0075-phone-access-through-an-encrypted-gateway.md).
+The phone's own runtime is an Effect application behind a presentation edge; see
+[ADR 0076](adr/0076-mobile-runtime-effect-boundary.md).
 
 ### Optional Nodex account connection
 

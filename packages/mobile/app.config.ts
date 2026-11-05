@@ -1,0 +1,90 @@
+import type { ExpoConfig } from "expo/config";
+
+const pairingScheme = "nodex-mobile";
+const cameraPermission = "Allow Nodex to scan a pairing code from your desktop.";
+
+const variants = {
+  development: {
+    name: "Nodex Dev",
+    identifier: "app.jyu.nodex.mobile.dev",
+    schemes: ["nodex-mobile-dev", pairingScheme],
+  },
+  production: {
+    name: "Nodex",
+    identifier: "app.jyu.nodex.mobile",
+    schemes: [pairingScheme],
+  },
+} as const;
+
+const variant = process.env.APP_VARIANT ?? "development";
+if (variant !== "development" && variant !== "production") {
+  throw new Error("APP_VARIANT must be development or production.");
+}
+const { name, identifier, schemes } = variants[variant];
+
+export default {
+  name,
+  slug: "nodex-mobile",
+  version: "0.1.0",
+  platforms: ["ios", "android"],
+  scheme: [...schemes],
+  userInterfaceStyle: "automatic",
+  orientation: "portrait",
+  icon: "./assets/icon.png",
+  ios: {
+    bundleIdentifier: identifier,
+    appleTeamId: process.env.APPLE_TEAM_ID,
+    infoPlist: {
+      NSLocalNetworkUsageDescription:
+        "Allow Nodex to connect to your desktop on the local network.",
+      NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
+    },
+  },
+  android: {
+    package: identifier,
+    // Unsent captures and what a phone last saw stay on the phone, and its keys cannot be restored.
+    allowBackup: false,
+    adaptiveIcon: {
+      foregroundImage: "./assets/adaptive-foreground.png",
+      monochromeImage: "./assets/adaptive-monochrome.png",
+      backgroundColor: "#eaeaea",
+    },
+  },
+  plugins: [
+    "./plugins/withAndroidCleartext.cjs",
+    [
+      "expo-build-properties",
+      {
+        android: {
+          // The Markdown renderer reflects on this class, but its own rules name another package.
+          // Without this, block math silently disappears from minified builds.
+          extraProguardRules:
+            "-keep class com.swmansion.enriched.markdown.segments.MathContainerView { *; }",
+        },
+      },
+    ],
+    // The accent tokens in src/ui/theme.css.
+    ["./plugins/withAndroidAccent.cjs", { light: "#2c67c5", dark: "#63a8f8" }],
+    ["expo-dev-client", { addGeneratedScheme: false }],
+    ["expo-camera", { cameraPermission, microphonePermission: false, recordAudioAndroid: false }],
+    [
+      "expo-image-picker",
+      {
+        photosPermission: "Allow Nodex to attach photos from your library.",
+        cameraPermission,
+        microphonePermission: false,
+      },
+    ],
+    [
+      "expo-splash-screen",
+      {
+        image: "./assets/splash.png",
+        imageWidth: 128,
+        backgroundColor: "#f5f5f5",
+        dark: { backgroundColor: "#171717" },
+      },
+    ],
+    ["expo-secure-store", { faceIDPermission: false }],
+  ],
+  experiments: { onDemandFilesystem: true },
+} satisfies ExpoConfig;
