@@ -1,0 +1,59 @@
+.github/workflows/_windows-distribution.yml
+  s_fd4aca34d2386d::t_1abe16e30d07ad 120
+CHANGELOG.md
+  s_fd4aca34d2386d::t_5bca940176246d 23
+Cargo.lock
+  s_fd4aca34d2386d::t_c6c8220fd34a54 1264-1265
+config/test-suites.test.ts
+  s_fd4aca34d2386d::t_8799a729646b18 64-68,90-107,112-114
+config/test-suites.ts
+  s_fd4aca34d2386d::t_795ec90f5c4722 16,230-237,241,243,247
+crates/nodex-platform/Cargo.toml
+  s_fd4aca34d2386d::t_3f39827a651f55 23-24,27-32
+crates/nodex-platform/src/bin/nodex-maintenance/main.rs
+  s_fd4aca34d2386d::t_2f584ca4e063a1 1-17
+crates/nodex-platform/src/bin/nodex-maintenance/windows.rs
+  s_fd4aca34d2386d::t_fa19108d033bd3 1-727
+docs/release-windows.md
+  s_fd4aca34d2386d::t_6af3006f432cdb 53-77,79-81,85-90,94,261,266,268-272,276-278
+resources/windows/installer.nsh
+  s_fd4aca34d2386d::t_6f8ace4e76da9e 7,9,13,16,37,39-41,67-82
+scripts/ci/app-test-suite.test.ts
+  s_fd4aca34d2386d::t_a5343eb067c119 93
+scripts/ci/classify-change.test.ts
+  s_fd4aca34d2386d::t_c75470b785ff36 132,159
+scripts/ci/classify-change.ts
+  s_fd4aca34d2386d::t_52a0150e52f4c8 120-122
+scripts/ci/probe-windows-installer.ts
+  s_fd4aca34d2386d::t_c17b40f2ed0e36 45-46,99-105,107-108,111,114-117,120,123,125,177-180,188-193,249,255-256,259-262,265,357,428,434,656,685,773
+scripts/desktop-build-target.ts
+  s_fd4aca34d2386d::t_08e2dd41e5d2f4 47
+scripts/stage-rust-core.ts
+  s_fd4aca34d2386d::t_99b9931a421adb 151-163
+scripts/testing/native-artifacts.ts
+  s_fd4aca34d2386d::t_d3f33785e87484 12-18,176
+scripts/testing/run-tests.test.ts
+  s_fd4aca34d2386d::t_54e5d56beae70b 68
+scripts/windows-installation-processes.test.ts
+  s_fd4aca34d2386d::t_0dc43fdb712ce4 5,7,12,15-108,114-117,119,121,126,129,183,185,187,189,192,210,213
+scripts/windows-pe.test.ts
+  s_fd4aca34d2386d::t_bc0b696b9554b5 73
+src/main/core-client/core-client.node.test.ts
+  s_fd4aca34d2386d::t_12f6721a8e9135 167,169,171,173,176,197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "42fba4bbdbd8a503729ecfe3b530805fe67ee509",
+  "prompts": {},
+  "sessions": {
+    "s_fd4aca34d2386d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9638a4c9-f419-4bc1-81d9-3762efbfacb0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
