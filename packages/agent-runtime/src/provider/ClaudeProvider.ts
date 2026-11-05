@@ -525,6 +525,8 @@ const runClaudeCommand = Effect.fn("runClaudeCommand")(function* (
     env: claudeEnvironment,
   });
   const command = ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+    detached: false,
+    forceKillAfter: "1 second",
     env: claudeEnvironment,
     shell: spawnCommand.shell,
   });

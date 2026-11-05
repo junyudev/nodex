@@ -213,9 +213,9 @@ export const make = Effect.fn("OpenCodeInstallPlatform.make")(function* (
         ? ChildProcess.make(
             escapeWindowsShellArg(binaryPath),
             sanitizeShellModeArgsForPlatform(["--version"], "win32"),
-            { ...processOptions, shell: true },
+            { ...processOptions, detached: false, shell: true },
           )
-        : ChildProcess.make(binaryPath, ["--version"], processOptions),
+        : ChildProcess.make(binaryPath, ["--version"], { ...processOptions, detached: false }),
       MAXIMUM_VERSION_OUTPUT_BYTES,
       ({ stream, data }) =>
         Effect.sync(() => {

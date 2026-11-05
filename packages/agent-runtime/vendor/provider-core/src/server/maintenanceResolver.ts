@@ -337,8 +337,12 @@ const runHomebrew = Effect.fn("runHomebrew")(function* (
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const collect = Effect.gen(function* () {
-    const child = yield* spawner.spawn(ChildProcess.make(brewPath, args, { env, extendEnv: true }));
-    yield* Effect.addFinalizer(() => child.kill().pipe(Effect.ignore));
+    const child = yield* spawner.spawn(ChildProcess.make(brewPath, args, {
+      detached: false,
+      forceKillAfter: "1 second",
+      env,
+      extendEnv: true,
+    }));
     // stderr is drained so a chatty brew cannot block on a full pipe.
     const [stdout, exitCode] = yield* Effect.all(
       [

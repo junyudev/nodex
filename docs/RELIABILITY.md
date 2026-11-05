@@ -772,6 +772,8 @@ and [Desktop Notification Behavior](product-specs/desktop-notification-behavior.
 
 Desktop shutdown fences provider-server admission, interrupts and awaits pending
 startup, and stops owned process groups within the enclosing shutdown budget.
+Short-lived CLI probes and catalog commands share their execution owner's process
+group. A separately supervised server or session owns its group and complete release.
 After an execution process exits, Desktop reclaims its recorded servers through
 the identity-checked ledger used for crash recovery. Entries that belong to a
 live owner stay in the ledger.

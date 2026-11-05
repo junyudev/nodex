@@ -502,6 +502,9 @@ export const withCodexAppServerClient = Effect.fn("withCodexAppServerClient")(fu
         cwd: input.cwd,
         env: environment,
         extendEnv: true,
+        // These short-lived probes have no independent lifetime. Keep them in
+        // the Runtime's process group so Main can still stop them if it exits.
+        detached: false,
         forceKillAfter: CODEX_APP_SERVER_PROBE_FORCE_KILL_AFTER,
         shell: spawnCommand.shell,
       }),

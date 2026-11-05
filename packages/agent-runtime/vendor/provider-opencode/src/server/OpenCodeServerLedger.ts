@@ -154,6 +154,8 @@ export const make = Effect.fn("OpenCodeServerLedger.make")(function* (input: {
           "/bin/ps",
           ["-ww", "-o", "pid=,pgid=,stat=,lstart=,args=", ...selection],
           {
+            detached: false,
+            forceKillAfter: "1 second",
             env: { LC_ALL: "C", TZ: "UTC" },
             extendEnv: true,
             stdin: "ignore",

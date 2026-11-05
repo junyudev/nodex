@@ -1,6 +1,10 @@
+import { execFileSync } from "node:child_process";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
+import * as Schedule from "effect/Schedule";
 import * as TestClock from "effect/testing/TestClock";
 import type * as CodexClient from "effect-codex-app-server/client";
 
@@ -10,7 +14,35 @@ import {
   codexProbeStepBudgetMs,
   mapCodexModelCapabilities,
   requestCodexChatGptModels,
+  withCodexAppServerClient,
 } from "./CodexProvider.ts";
+
+it.live.skipIf(process.platform === "win32")(
+  "keeps an app-server probe in the execution process group while startup is pending",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-probe-" });
+      const binaryPath = `${home}/probe`;
+      yield* fs.writeFileString(
+        binaryPath,
+        '#!/bin/sh\nprintf "%s" "$$" > probe-pid\nexec /bin/sleep 30\n',
+      );
+      yield* fs.chmod(binaryPath, 0o700);
+      const probe = yield* withCodexAppServerClient({
+        binaryPath,
+        cwd: home,
+        environment: { HOME: home },
+      }).pipe(Effect.scoped, Effect.forkChild);
+      const pid = yield* fs
+        .readFileString(`${home}/probe-pid`)
+        .pipe(Effect.retry(Schedule.spaced("20 millis")), Effect.timeout("5 seconds"));
+      const group = (id: string) =>
+        execFileSync("/bin/ps", ["-o", "pgid=", "-p", id], { encoding: "utf8" }).trim();
+      assert.strictEqual(group(pid), group(String(process.pid)));
+      yield* Fiber.interrupt(probe);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
 
 it("labels the current academic research plans", () => {
   assert.equal(codexPlanLabel("sci"), "ChatGPT Academic Researchers Subscription");

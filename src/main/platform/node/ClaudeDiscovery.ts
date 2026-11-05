@@ -118,13 +118,20 @@ export const probeClaudeVersion = (
         cwd,
         env: { ...environment, ...(js ? { ELECTRON_RUN_AS_NODE: "1" } : {}) },
         timeout: 5000,
+        killSignal: "SIGKILL",
         maxBuffer: 8192,
         windowsHide: true,
       },
       (error, stdout) => resume(Effect.succeed(error ? null : stdout.trim().slice(0, 256))),
     );
-    return Effect.sync(() => {
-      child.kill();
+    return Effect.callback<void>((released) => {
+      if (!child.pid || child.exitCode !== null || child.signalCode !== null) {
+        released(Effect.void);
+        return;
+      }
+      // Interruption must finish the physical read before its caller releases.
+      child.once("close", () => released(Effect.void));
+      child.kill("SIGKILL");
     });
   });
 };

@@ -297,7 +297,11 @@ export const makeCodexInstallation = Effect.fn("makeCodexInstallation")(function
       Effect.provideService(HostProcess.Platform, platform),
     );
     const child = yield* spawner.spawn(
-      ChildProcess.make(resolved.command, resolved.args, { shell: resolved.shell }),
+      ChildProcess.make(resolved.command, resolved.args, {
+        detached: false,
+        forceKillAfter: "1 second",
+        shell: resolved.shell,
+      }),
     );
     const [output, , exitCode] = yield* Effect.all(
       [

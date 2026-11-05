@@ -1,9 +1,21 @@
-import { mkdtemp, mkdir, writeFile, chmod, realpath, rm, symlink } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  readFile,
+  chmod,
+  realpath,
+  rm,
+  symlink,
+} from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "@effect/vitest";
 import { expect, test } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Schedule from "effect/Schedule";
 import {
   claudeDiscoveryFingerprint,
   discoverClaudeSkills,
@@ -11,6 +23,48 @@ import {
   probeClaudeVersion,
 } from "./ClaudeDiscovery";
 import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
+
+it.live.skipIf(process.platform === "win32")(
+  "native version cancellation awaits a child that ignores TERM",
+  () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-claude-probe-"))),
+        (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
+      );
+      const executable = join(root, "probe.cjs");
+      const pidPath = join(root, "pid");
+      yield* Effect.promise(() =>
+        writeFile(
+          executable,
+          `process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(${JSON.stringify(pidPath)}, String(process.pid)); setInterval(() => {}, 1000);`,
+        ),
+      );
+      const probe = yield* probeClaudeVersion(executable, { HOME: root }, root).pipe(
+        Effect.forkChild,
+      );
+      const pid = Number(
+        yield* Effect.tryPromise(() => readFile(pidPath, "utf8")).pipe(
+          Effect.retry(Schedule.spaced("20 millis")),
+          Effect.timeout("5 seconds"),
+        ),
+      );
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          try {
+            const args = execFileSync("/bin/ps", ["-p", String(pid), "-o", "args="], {
+              encoding: "utf8",
+            });
+            if (args.trim().split(/\s+/u).includes(executable)) process.kill(pid, "SIGKILL");
+          } catch {
+            /* Already released by the probe. */
+          }
+        }),
+      );
+      yield* Fiber.interrupt(probe);
+      expect(() => process.kill(pid, 0)).toThrow();
+    }).pipe(Effect.scoped),
+);
 
 test("native skill frontmatter accepts YAML booleans and skips invalid metadata", () => {
   expect(

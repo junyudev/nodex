@@ -996,12 +996,13 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
       );
       const child = yield* spawner.spawn(
         ChildProcess.make(resolved.command, resolved.args, {
+          detached: false,
+          forceKillAfter: "1 second",
           ...(options.cwd ? { cwd: options.cwd } : {}),
           ...(options.env === undefined ? {} : { env: options.env }),
           shell: resolved.shell,
         }),
       );
-      yield* Effect.addFinalizer(() => child.kill().pipe(Effect.ignore));
       const [stdout, stderr, exitCode] = yield* Effect.all(
         [
           collectUint8StreamText({ stream: child.stdout, maxBytes: 1024 * 1024 }),
