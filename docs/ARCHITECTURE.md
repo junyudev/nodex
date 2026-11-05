@@ -274,6 +274,10 @@ Main's scoped [WebContents destruction owner](../src/main/platform/electron/WebC
 shares one native `destroyed` listener per WebContents across renderer requests, subscriptions,
 and sandbox guests. Consumers release their registration when their own lifetime ends;
 request and subscription Effects bind that release to cancellation or Scope finalization.
+Renderer queries belong to their requesting WebContents and their IPC registration.
+When either owner ends, Main interrupts and awaits the query before releasing its dependencies,
+and the physical invocation settles normally. A dependency that fails while its caller remains
+alive still rejects the invocation.
 Direct native destruction listeners outside this owner are forbidden by the Main lint boundary.
 
 [`src/main`](../src/main) owns the non-transactional desktop boundary:

@@ -1,3 +1,6 @@
+import * as Fiber from "effect/Fiber";
+import * as Exit from "effect/Exit";
+import { WebContentsDestructionSubscriptions } from "./WebContentsDestructionSubscriptions";
 import * as Context from "effect/Context";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -160,10 +163,15 @@ export class ElectronSyncIpc extends Context.Service<
   }
 >()("nodex/main/platform/electron/ElectronSyncIpc") {}
 
-const asyncLive: Layer.Layer<ElectronIpc, never, ScopedCallbackRuntime> = Layer.effect(
+const asyncLive: Layer.Layer<
+  ElectronIpc,
+  never,
+  ScopedCallbackRuntime | WebContentsDestructionSubscriptions
+> = Layer.effect(
   ElectronIpc,
   Effect.gen(function* () {
     const callbacks = yield* ScopedCallbackRuntime;
+    const destruction = yield* WebContentsDestructionSubscriptions;
     const handle = <
       Channel extends keyof IpcApi,
       Result extends ElectronIpcWireResult<IpcApi[Channel]["result"]>,
@@ -171,35 +179,55 @@ const asyncLive: Layer.Layer<ElectronIpc, never, ScopedCallbackRuntime> = Layer.
       channel: Channel,
       handler: ElectronIpcHandler<Channel, Result>,
       delivery?: ElectronIpcResultDelivery<Channel, Result>,
+      query = false,
     ): Effect.Effect<void, never, Scope.Scope> =>
-      Effect.acquireRelease(
-        Effect.sync(() => {
-          ipcMain.handle(channel, (event, ...args) => {
-            const task = Reflect.apply(handler, undefined, [event, ...args]) as Effect.Effect<
-              unknown,
-              unknown
-            >;
-            return callbacks.runPromise(
-              task.pipe(
-                Effect.flatMap((result) =>
-                  delivery
-                    ? delivery.deliver(event, args as IpcApi[Channel]["args"], result as Result)
-                    : Effect.succeed(result),
-                ),
-                Effect.catchCause((cause) =>
-                  Effect.logError("Electron IPC handler failed").pipe(
-                    Effect.annotateLogs({ channel, cause: Cause.pretty(cause) }),
-                    Effect.andThen(Effect.fail(toElectronIpcRendererError(Cause.squash(cause)))),
+      Effect.gen(function* () {
+        const queryScope = query ? yield* Scope.fork(yield* Scope.Scope) : undefined;
+        let closing = false;
+        yield* Effect.acquireRelease(
+          Effect.sync(() => {
+            ipcMain.handle(channel, (event, ...args) => {
+              const task = Reflect.apply(handler, undefined, [event, ...args]) as Effect.Effect<
+                unknown,
+                unknown
+              >;
+              return callbacks.runPromise(
+                Effect.gen(function* () {
+                  if (!queryScope) return yield* task;
+                  // The registration owns pending reads, so they drain before its dependencies.
+                  // raceFirst interrupts and awaits the query when its renderer disappears.
+                  const fiber = yield* Effect.raceFirst(task, destruction.wait(event.sender)).pipe(
+                    Effect.forkIn(queryScope),
+                  );
+                  const exit = yield* Fiber.await(fiber);
+                  if (event.sender.isDestroyed() || closing) return undefined;
+                  if (Exit.isFailure(exit)) return yield* Effect.failCause(exit.cause);
+                  return exit.value;
+                }).pipe(
+                  Effect.flatMap((result) =>
+                    delivery
+                      ? delivery.deliver(event, args as IpcApi[Channel]["args"], result as Result)
+                      : Effect.succeed(result),
+                  ),
+                  Effect.catchCause((cause) =>
+                    Effect.logError("Electron IPC handler failed").pipe(
+                      Effect.annotateLogs({ channel, cause: Cause.pretty(cause) }),
+                      Effect.andThen(Effect.fail(toElectronIpcRendererError(Cause.squash(cause)))),
+                    ),
                   ),
                 ),
-              ),
-            );
-          });
-        }),
-        () => Effect.sync(() => ipcMain.removeHandler(channel)),
-      );
+              );
+            });
+          }),
+          () =>
+            Effect.sync(() => {
+              closing = true;
+              ipcMain.removeHandler(channel);
+            }).pipe(Effect.andThen(queryScope ? Scope.close(queryScope, Exit.void) : Effect.void)),
+        );
+      });
     return ElectronIpc.of({
-      handleQuery: handle,
+      handleQuery: (channel, handler) => handle(channel, handler, undefined, true),
       handleControl: handle,
       handleLocalCommitCommand: handle,
       handleRevisionedCommand: handle,
@@ -234,4 +262,4 @@ const syncLive: Layer.Layer<ElectronSyncIpc> = Layer.succeed(
 );
 
 export const live: Layer.Layer<ElectronIpc | ElectronSyncIpc, never, ScopedCallbackRuntime> =
-  Layer.merge(asyncLive, syncLive);
+  Layer.merge(asyncLive, syncLive).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));
