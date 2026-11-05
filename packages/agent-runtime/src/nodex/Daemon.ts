@@ -105,8 +105,8 @@ export async function runAgentRuntimeProcess(): Promise<void> {
           const output = await runtime.runPromise(service.handle(request), {
             signal: abort?.signal,
           });
-          await write({ id: envelope?.id ?? "", success: true, output });
           if (envelope?.method === "shutdown") await dispose();
+          await write({ id: envelope?.id ?? "", success: true, output });
         } catch (error) {
           const identity = errorIdentity(error);
           const acp = envelope?.method?.startsWith("acp.") ? acpFailure(error) : undefined;
@@ -181,6 +181,14 @@ export async function runAgentRuntimeProcess(): Promise<void> {
         if (request?.method === "shutdown") {
           closing = true;
           launch(request);
+          continue;
+        }
+        if (closing) {
+          await write({
+            id: request?.id ?? "",
+            success: false,
+            error: { message: "Agent Runtime is shutting down." },
+          });
           continue;
         }
         if (active.size < MAX_ACTIVE_REQUESTS) {

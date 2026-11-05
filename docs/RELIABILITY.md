@@ -770,6 +770,9 @@ and [Desktop Notification Behavior](product-specs/desktop-notification-behavior.
 | Unsupported/corrupt Store              | Fail closed after preserving diagnostic/backup evidence where safe                                                                                                                                                                                                                           |
 | Packaged runtime missing/tampered      | Disable the dependent capability; never fall back to ambient binaries                                                                                                                                                                                                                        |
 
+Desktop shutdown fences provider-server admission, interrupts and awaits pending
+startup, and stops owned process groups within the enclosing shutdown budget.
+
 ## Operational evidence
 
 Testing commands and suite selection live in [AGENTS.md](../AGENTS.md) and

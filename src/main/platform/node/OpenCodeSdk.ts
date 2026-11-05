@@ -175,15 +175,16 @@ export const live = Layer.effect(
             password ??
             environment.OPENCODE_SERVER_PASSWORD ??
             randomBytes(24).toString("base64url");
-          const process = yield* spawner
+          const child = yield* spawner
             .spawn(
               ChildProcess.make(input.binaryPath, ["serve", "--hostname=127.0.0.1", "--port=0"], {
                 cwd: input.cwd,
                 env: { ...environment, OPENCODE_SERVER_PASSWORD: password },
                 extendEnv: false,
                 shell: false,
+                detached: process.platform !== "win32",
                 killSignal: "SIGTERM",
-                forceKillAfter: "3 seconds",
+                forceKillAfter: "1 second",
               }),
             )
             .pipe(
@@ -199,7 +200,7 @@ export const live = Layer.effect(
               ),
             );
           const ready = yield* Deferred.make<string, AgentRuntimeError>();
-          termination = process.exitCode.pipe(
+          termination = child.exitCode.pipe(
             Effect.mapError((cause) => openCodeSdkFailure("wait", cause)),
             Effect.flatMap((code) =>
               Effect.fail(
@@ -208,12 +209,12 @@ export const live = Layer.effect(
                   operation: "opencode.exit",
                   reason: "session-lost",
                   retryable: true,
-                  pid: Number(process.pid),
+                  pid: Number(child.pid),
                 }),
               ),
             ),
           );
-          yield* process.stdout.pipe(
+          yield* child.stdout.pipe(
             Stream.decodeText(),
             Stream.splitLines,
             Stream.runForEach((line) => {
@@ -224,7 +225,7 @@ export const live = Layer.effect(
             }),
             Effect.forkScoped,
           );
-          yield* process.stderr.pipe(Stream.runDrain, Effect.forkScoped);
+          yield* child.stderr.pipe(Stream.runDrain, Effect.forkScoped);
           baseUrl = yield* Effect.raceFirst(Deferred.await(ready), termination).pipe(
             Effect.timeout("20 seconds"),
             Effect.mapError((cause) => openCodeSdkFailure("startup", cause)),

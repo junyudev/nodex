@@ -681,6 +681,8 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         .spawn(
           ChildProcess.make(spawnCommand.command, spawnCommand.args, {
             detached: hostPlatform !== "win32",
+            killSignal: "SIGTERM",
+            forceKillAfter: "1 second",
             shell: spawnCommand.shell,
             env: {
               ...input.environment,
@@ -709,26 +711,8 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
           ),
         );
 
-      const killOpenCodeProcessGroup = (signal: NodeJS.Signals) =>
-        hostPlatform === "win32"
-          ? child.kill({ killSignal: signal, forceKillAfter: "1 second" }).pipe(Effect.asVoid)
-          : Effect.sync(() => {
-              try {
-                signalProcessGroup(Number(child.pid), signal);
-              } catch {
-                // The direct child may already have exited after starting the
-                // server; the process group kill is best-effort cleanup for
-                // any serve process left in that group.
-              }
-            });
-      const terminateChild = killOpenCodeProcessGroup("SIGTERM").pipe(
-        Effect.andThen(Effect.sleep("1 second")),
-        Effect.andThen(killOpenCodeProcessGroup("SIGKILL")),
-        Effect.ignore,
-      );
-      // Registered before recording, so an interrupt while the ledger writes
-      // still stops the group.
-      yield* Scope.addFinalizer(runtimeScope, terminateChild);
+      // The spawner owns group termination from acquisition onward, including an
+      // interrupted spawn. Its bounded release completes before the ledger forgets.
       const forgetServer = yield* serverLedger.track({ pid: Number(child.pid), port, args });
       yield* Scope.addFinalizer(ledgerScope, forgetServer);
 

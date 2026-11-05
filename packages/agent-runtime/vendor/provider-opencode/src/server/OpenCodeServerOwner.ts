@@ -39,6 +39,7 @@ export const make = Effect.fn("OpenCodeServerOwner.make")(function* (input: {
     Scope.close(scope, Exit.void),
   );
   const mutex = yield* Semaphore.make(1);
+  let closed = false;
   const state: OpenCodeServerOwnerState = {
     server: null,
     serverScope: null,
@@ -85,6 +86,12 @@ export const make = Effect.fn("OpenCodeServerOwner.make")(function* (input: {
 
   const acquireServer = mutex.withPermit(
     Effect.gen(function* () {
+      if (closed) {
+        return yield* new OpenCodeRuntime.OpenCodeRuntimeError({
+          operation: "startOpenCodeServerProcess",
+          detail: "The provider server owner is closed.",
+        });
+      }
       yield* cancelIdleClose();
       if (state.server !== null) {
         if (yield* state.server.isRunning) {
@@ -96,7 +103,7 @@ export const make = Effect.fn("OpenCodeServerOwner.make")(function* (input: {
 
       return yield* Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
-          const serverScope = yield* Scope.make();
+          const serverScope = yield* Scope.fork(ownerScope);
           const started = yield* Effect.exit(
             restore(
               runtime
@@ -131,7 +138,7 @@ export const make = Effect.fn("OpenCodeServerOwner.make")(function* (input: {
   const releaseServer = (server: OpenCodeRuntime.OpenCodeServerProcess) =>
     mutex.withPermit(
       Effect.gen(function* () {
-        if (state.server !== server) {
+        if (closed || state.server !== server) {
           return;
         }
         state.borrowers = Math.max(0, state.borrowers - 1);
@@ -157,23 +164,42 @@ export const make = Effect.fn("OpenCodeServerOwner.make")(function* (input: {
     );
 
   yield* Effect.addFinalizer(() =>
-    mutex.withPermit(
-      Effect.gen(function* () {
-        yield* cancelIdleClose();
-        state.borrowers = 0;
-        yield* closeServer();
-      }),
+    Effect.sync(() => {
+      closed = true;
+    }).pipe(
+      // Startup fibers and their child Scopes end before waiting for the startup mutex.
+      Effect.andThen(Scope.close(ownerScope, Exit.void)),
+      Effect.andThen(
+        mutex.withPermit(
+          Effect.gen(function* () {
+            state.borrowers = 0;
+            state.idleCloseFiber = null;
+            yield* closeServer();
+          }),
+        ),
+      ),
     ),
   );
 
   return OpenCodeServerOwner.of({
     withServer: (use) =>
       Effect.uninterruptibleMask((restore) =>
-        restore(acquireServer).pipe(
-          Effect.flatMap((server) =>
-            restore(use(server)).pipe(Effect.ensuring(releaseServer(server))),
-          ),
-        ),
+        Effect.gen(function* () {
+          const startup = yield* acquireServer.pipe(
+            Effect.forkIn(ownerScope, { uninterruptible: false }),
+          );
+          const server = yield* restore(Fiber.join(startup)).pipe(
+            Effect.onInterrupt(() =>
+              Fiber.interrupt(startup).pipe(
+                Effect.andThen(Fiber.await(startup)),
+                Effect.flatMap((exit) =>
+                  Exit.isSuccess(exit) ? releaseServer(exit.value) : Effect.void,
+                ),
+              ),
+            ),
+          );
+          return yield* restore(use(server)).pipe(Effect.ensuring(releaseServer(server)));
+        }),
       ),
   });
 });
