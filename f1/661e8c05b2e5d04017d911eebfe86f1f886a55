@@ -1,0 +1,198 @@
+CHANGELOG.md
+  s_9c72cf791afc7e::t_e996dc1b032987 9
+config/test-suites.ts
+  s_9c72cf791afc7e::t_5f997e82762b65 78
+docs/ARCHITECTURE.md
+  s_9c72cf791afc7e::t_ef99682e853bb8 82-83
+docs/adr/0076-mobile-runtime-effect-boundary.md
+  s_9c72cf791afc7e::t_6f60e7e54de30e 1-46
+docs/development.md
+  s_9c72cf791afc7e::t_7564ee49a23f64 1291
+docs/effect-external-frontiers.md
+  s_9c72cf791afc7e::t_fa206286a89ac8 35-37
+packages/mobile/.gitignore
+  s_9c72cf791afc7e::t_c466b495e94875 1-5
+packages/mobile/README.md
+  s_9c72cf791afc7e::t_50648ee2704396 1-71
+packages/mobile/app.config.ts
+  s_9c72cf791afc7e::t_a1e7ecfe685a22 1-54,66-90
+  s_9c72cf791afc7e::t_6ffb566c9dc2e5 55-65
+packages/mobile/assets/generate.sh
+  s_9c72cf791afc7e::t_4bce166c970f53 1-25
+packages/mobile/babel.config.js
+  s_9c72cf791afc7e::t_892b2f62397785 1-4
+packages/mobile/eas.json
+  s_9c72cf791afc7e::t_9f748ca6580c2f 1-12
+packages/mobile/global.css
+  s_9c72cf791afc7e::t_16d8669dbc5a94 1-3
+packages/mobile/index.ts
+  s_9c72cf791afc7e::t_1c8f2787fd2a7f 1-7
+packages/mobile/metro.config.js
+  s_9c72cf791afc7e::t_0eb2d69f7f41f7 1-18
+packages/mobile/plugins/withAndroidAccent.cjs
+  s_9c72cf791afc7e::t_4ed466d2da753e 1-27
+packages/mobile/plugins/withAndroidCleartext.cjs
+  s_9c72cf791afc7e::t_ec42a9a63c74b7 1-34
+packages/mobile/src/App.tsx
+  s_9c72cf791afc7e::t_7ca34bfa504bc0 1
+packages/mobile/src/Root.tsx
+  s_9c72cf791afc7e::t_2f4d8c9055c606 1-40
+packages/mobile/src/features/chat/ChatItemScreen.tsx
+  s_9c72cf791afc7e::t_010315ee361837 1-78
+packages/mobile/src/features/chat/ChatScreen.tsx
+  s_9c72cf791afc7e::t_30c582a16c52d7 1-299
+packages/mobile/src/features/chat/RequestCard.tsx
+  s_9c72cf791afc7e::t_97dffd4829d165 1-188
+packages/mobile/src/features/chat/request-answers.test.ts
+  s_9c72cf791afc7e::t_be879d839e84be 1-45
+packages/mobile/src/features/chat/request-answers.ts
+  s_9c72cf791afc7e::t_9c409fcb73d9f1 1-28
+packages/mobile/src/features/chat/transcript-rows.test.ts
+  s_9c72cf791afc7e::t_24bab6eb1ddaa6 1-104
+packages/mobile/src/features/chat/transcript-rows.ts
+  s_9c72cf791afc7e::t_71dc1de3153daf 1-93
+packages/mobile/src/features/chats/ChatsPane.tsx
+  s_9c72cf791afc7e::t_8960c504a438f8 1-99
+packages/mobile/src/features/chats/chat-sections.test.ts
+  s_9c72cf791afc7e::t_4c71c206956e68 1-80
+packages/mobile/src/features/chats/chat-sections.ts
+  s_9c72cf791afc7e::t_9b2313aaf00d0a 1-55
+packages/mobile/src/features/composer/Composer.tsx
+  s_9c72cf791afc7e::t_4e6411c8d56731 1-218
+packages/mobile/src/features/home/ConnectionNotice.tsx
+  s_9c72cf791afc7e::t_317f581e4919ea 1-61
+packages/mobile/src/features/home/HomeScreen.tsx
+  s_9c72cf791afc7e::t_c8a2e3b989606f 1-275
+packages/mobile/src/features/home/home-state.ts
+  s_9c72cf791afc7e::t_02458df1a5809a 1-58
+packages/mobile/src/features/inbox/InboxPane.tsx
+  s_9c72cf791afc7e::t_eccfac3d41c7e0 1-283
+packages/mobile/src/features/inbox/MessageScreen.tsx
+  s_9c72cf791afc7e::t_b045508c11fdd2 1-173
+packages/mobile/src/features/inbox/inbox-presentation.test.ts
+  s_9c72cf791afc7e::t_79d198a1cec901 1-122
+packages/mobile/src/features/inbox/inbox-presentation.ts
+  s_9c72cf791afc7e::t_191bd863fcedbd 1-91
+packages/mobile/src/features/pair/PairScreen.tsx
+  s_9c72cf791afc7e::t_48df0009fa791b 1-177
+packages/mobile/src/features/pair/pairing-copy.ts
+  s_9c72cf791afc7e::t_a33f82b311a3f7 1-25
+packages/mobile/src/features/pickers/PickerScreens.tsx
+  s_9c72cf791afc7e::t_0997a85c69769f 1-189
+packages/mobile/src/features/pickers/agent-choice.test.ts
+  s_9c72cf791afc7e::t_2599c6d8044bce 1-61
+packages/mobile/src/features/pickers/agent-choice.ts
+  s_9c72cf791afc7e::t_256cc520c3bef8 1-30
+packages/mobile/src/features/settings/SettingsScreen.tsx
+  s_9c72cf791afc7e::t_fededaac1a5ddb 1-123
+packages/mobile/src/markdown/Markdown.tsx
+  s_9c72cf791afc7e::t_7fd91801a33ad6 1,3-75,77-96,99-110,117-146,148-159,161-208
+  s_9c72cf791afc7e::t_df4660dda79b7a 76,111-116,147,160
+  s_9c72cf791afc7e::t_bdaed04db0a7f5 2,97-98
+packages/mobile/src/markdown/parse.test.ts
+  s_9c72cf791afc7e::t_defd76dd97f45a 1-60
+packages/mobile/src/markdown/parse.ts
+  s_9c72cf791afc7e::t_4db29dbe65d238 1-73
+packages/mobile/src/navigation/RootNavigator.tsx
+  s_9c72cf791afc7e::t_17eca9443dd44f 1-108
+packages/mobile/src/navigation/types.ts
+  s_9c72cf791afc7e::t_d15b344e4ee5c9 1-24
+packages/mobile/src/runtime/chats.ts
+  s_9c72cf791afc7e::t_db64211fc0152b 1-510
+packages/mobile/src/runtime/connection.ts
+  s_9c72cf791afc7e::t_f04d6a6638cc77 1-689
+packages/mobile/src/runtime/encoding.ts
+  s_9c72cf791afc7e::t_703de4f4de621e 1-63
+packages/mobile/src/runtime/expo-platform.ts
+  s_9c72cf791afc7e::t_a00f87b71dfada 1-135
+packages/mobile/src/runtime/fake-host.test-support.ts
+  s_9c72cf791afc7e::t_95877624e71680 1-348
+packages/mobile/src/runtime/files.ts
+  s_9c72cf791afc7e::t_fe56eda05876a6 1-452
+packages/mobile/src/runtime/hooks.ts
+  s_9c72cf791afc7e::t_d513ecdef828f2 1-107
+packages/mobile/src/runtime/index.ts
+  s_9c72cf791afc7e::t_5cc5e4d57a6746 1-43
+packages/mobile/src/runtime/instance.native.ts
+  s_9c72cf791afc7e::t_14db8b6da222cf 1-5
+packages/mobile/src/runtime/instance.ts
+  s_9c72cf791afc7e::t_db558276c1bbcb 1-6
+packages/mobile/src/runtime/lifecycle.test.ts
+  s_9c72cf791afc7e::t_03def18515ee7f 1-66
+packages/mobile/src/runtime/lists.ts
+  s_9c72cf791afc7e::t_12b6ede2b42960 1-450
+packages/mobile/src/runtime/operations.ts
+  s_9c72cf791afc7e::t_3c630737b8dada 1-60
+packages/mobile/src/runtime/outbox.ts
+  s_9c72cf791afc7e::t_15667d5b09571a 1-330
+packages/mobile/src/runtime/platform.ts
+  s_9c72cf791afc7e::t_7827ec55f6135d 1-120
+packages/mobile/src/runtime/projection.test.ts
+  s_9c72cf791afc7e::t_f65f9035942692 1-27
+packages/mobile/src/runtime/projection.ts
+  s_9c72cf791afc7e::t_a3768a5cd4f302 1-62
+packages/mobile/src/runtime/rpc-client.ts
+  s_9c72cf791afc7e::t_c1c76071895e8b 1-144
+packages/mobile/src/runtime/runtime.test.ts
+  s_9c72cf791afc7e::t_e757981c66b7db 1-1692
+packages/mobile/src/runtime/runtime.ts
+  s_9c72cf791afc7e::t_035caa154d27e7 1-358
+packages/mobile/src/runtime/socket.ts
+  s_9c72cf791afc7e::t_8f8db5d5f0eacb 1-51
+packages/mobile/src/runtime/storage.ts
+  s_9c72cf791afc7e::t_f852405438ac37 1-15
+packages/mobile/src/ui/BottomAnchoredList.tsx
+  s_9c72cf791afc7e::t_2bb0e9df56ba1e 1-83
+packages/mobile/src/ui/ErrorBoundary.tsx
+  s_9c72cf791afc7e::t_a19bc298f78f19 1-33
+packages/mobile/src/ui/cn.ts
+  s_9c72cf791afc7e::t_5e216583e21e1e 1-4
+packages/mobile/src/ui/format.test.ts
+  s_9c72cf791afc7e::t_2f5bf47c458b3a 1-34
+packages/mobile/src/ui/format.ts
+  s_9c72cf791afc7e::t_93fc9bd78d74c4 1-35
+packages/mobile/src/ui/icons.tsx
+  s_9c72cf791afc7e::t_137701bf68c72a 1-160
+packages/mobile/src/ui/local-store.ts
+  s_9c72cf791afc7e::t_abd700b644ccc8 1-23
+packages/mobile/src/ui/primitives.tsx
+  s_9c72cf791afc7e::t_941c62974eac13 1-271
+packages/mobile/src/ui/snackbar.tsx
+  s_9c72cf791afc7e::t_c3ccba357586b1 1-65
+packages/mobile/src/ui/theme.css
+  s_9c72cf791afc7e::t_2bd61cf28a1d8b 1-52
+packages/mobile/src/ui/tokens.ts
+  s_9c72cf791afc7e::t_c67108ca95a2d6 1-21
+packages/mobile/src/ui/use-now.ts
+  s_9c72cf791afc7e::t_0ecc48d356b905 1-13
+packages/mobile/tsconfig.json
+  s_9c72cf791afc7e::t_aa82f2b300866c 1-15
+tsconfig.json
+  s_9c72cf791afc7e::t_e880a5f6596d48 17-19
+scripts/run-playwright-e2e.ts
+  s_9c72cf791afc7e::t_460b76abd5eeee 23
+scripts/scenarios/runtime/scripted-acp-agent.ts
+  s_9c72cf791afc7e::t_9d8d9d4a771926 53-54,483-484
+tests/e2e/mobile-gateway.spec.ts
+  s_9c72cf791afc7e::t_61632efb97e2f1 1-372
+tests/e2e/support/mobile-phone.ts
+  s_9c72cf791afc7e::t_9aa03e34a6a093 1-303
+packages/mobile/deps/README.md
+  s_9c72cf791afc7e::t_122976b5c06d90 10-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f1661e8c05b2e5d04017d911eebfe86f1f886a55",
+  "prompts": {},
+  "sessions": {
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
