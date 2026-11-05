@@ -50,6 +50,8 @@ const scenarioSchema = z.object({
   foreignSessionUpdates: z.array(z.string()).default([]),
   replayUpdate: z.object({ text: z.string(), count: z.number().int().min(1).max(32) }).optional(),
   requestPermission: z.boolean().default(false),
+  /** Let a permission response finish the Run instead of holding it for a cancellation test. */
+  completeAfterPermission: z.boolean().default(false),
   authMethodId: z.string().min(1).optional(),
   authMethodIds: z.array(z.string().min(1)).min(1).optional(),
   requireAuthenticationBeforeSession: z.boolean().default(false),
@@ -478,7 +480,8 @@ export const runScriptedAcpAgent = (): void => {
         });
       }
 
-      const waitForCancel = scenario.waitForCancel || scenario.requestPermission;
+      const waitForCancel =
+        scenario.waitForCancel || (scenario.requestPermission && !scenario.completeAfterPermission);
       if (waitForCancel) turn = turn.then(() => cancellation);
       return turn
         .then(() => sendAll(context.client, context.params.sessionId, scenario.afterCancel))
