@@ -1,0 +1,27 @@
+docs/product-specs/mobile-companion-behavior.md
+  s_9c72cf791afc7e::t_666ac037e756ba 57
+packages/mobile/app.config.ts
+  s_9c72cf791afc7e::t_89c6745d0d2456 32
+src/main/mobile-gateway/MobileGateway.ts
+  s_9c72cf791afc7e::t_993ba85d944174 34,126
+src/main/mobile-gateway/routes.node.test.ts
+  s_9c72cf791afc7e::t_e8a44fb05cd8c5 2,5-13
+src/main/mobile-gateway/routes.ts
+  s_9c72cf791afc7e::t_35798614dcc875 34-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "571e67072b7681e00e0a1a37e7b627f57f974071",
+  "prompts": {},
+  "sessions": {
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
