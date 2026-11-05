@@ -192,8 +192,7 @@ export class InboxApplication extends Context.Service<
   }
 >()("nodex/main/inbox-application/InboxApplication") {}
 
-// A Core refusal is written for the user, so it explains itself; a runtime or transport failure
-// keeps its safe message.
+// Core refusals may contain diagnostics; each workflow chooses its public failure reason.
 const coreRefusal = (cause: unknown) => {
   const refusal = Schema.is(CoreRuntimeError)(cause) ? cause.cause : cause;
   return refusal instanceof CoreModuleResponseError ? refusal.coreError : null;
@@ -579,14 +578,16 @@ export const make = Effect.gen(function* () {
     );
   const writeSettlement = (input: InboxSuggestionSettlement) =>
     apply("settle-suggestion", { kind: "settle_inbox_suggestion", ...input }).pipe(Effect.asVoid);
-  const settlementRefusal = (failure: InboxApplicationError) => {
+  const settlementRefusalReason = (failure: InboxApplicationError): string | null => {
     const refusal = coreRefusal(failure.cause);
     switch (refusal?.code) {
       case "invalid_input":
+        return "The Agent returned a suggestion Nodex couldn’t save. Try again.";
       case "not_found":
+        return "The message or suggestion destination is no longer available.";
       case "conflict":
       case "revision_conflict":
-        return refusal;
+        return "The message or suggestion destination changed. Suggest again.";
       default:
         return null;
     }
@@ -596,8 +597,8 @@ export const make = Effect.gen(function* () {
   ) {
     const result = yield* writeSettlement(input).pipe(Effect.result);
     if (result._tag === "Success") return;
-    const refusal = settlementRefusal(result.failure);
-    if (!refusal) return yield* result.failure;
+    const reason = settlementRefusalReason(result.failure);
+    if (!reason) return yield* result.failure;
 
     // A lost target can reject advice even when its request is still current.
     const ids = [input.request_id];
@@ -609,10 +610,10 @@ export const make = Effect.gen(function* () {
       titles: [],
       suggestions: [],
       produced_by: null,
-      error: refusal.message,
+      error: reason,
     }).pipe(
       Effect.catch((failure) => {
-        if (!settlementRefusal(failure)) return Effect.fail(failure);
+        if (!settlementRefusalReason(failure)) return Effect.fail(failure);
         // Stop or replacement can win between the pending check and this write.
         return pendingSuggestionRequestIds(ids).pipe(
           Effect.flatMap((pending) => (pending.length ? Effect.fail(failure) : Effect.void)),

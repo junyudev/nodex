@@ -426,16 +426,20 @@ covering all its members. Generation and transport failures remain failures
 with Retry; they do not masquerade as completed advice. A failure names its own
 cause: a timeout, missing sign-in, a rate limit, an answer too long or in a form
 Nodex cannot read, or the Agent's own reason when it gives one. Advice Core will
-not accept is a failure too, so it is not generated again until the user retries;
+not accept is a failure too, explained as advice that could not be saved or a
+message or destination that changed or became unavailable, without internal
+operation details. It is not generated again until the user retries;
 one message's failure never holds up the others. A suggestion's time budget is three minutes, the longest
 any utility request may run, and the Agent Runtime waits all of it, so a slow
 suggestion fails only as its own timeout.
 
 In the same pass, the Agent names each message that still has its provisional
 title. Core atomically applies all titles, concrete proposals, and request
-settlement. A message edited while its request ran still receives its
-suggestion, outdated at once, so advice already paid for is never discarded and
-asked for again; only the title of a message whose text is unchanged is applied.
+settlement. Keeping the existing provisional title finalizes that name and saves
+the advice without changing the Page's saved revision. A message edited while
+its request ran still receives its suggestion, outdated at once, so advice
+already paid for is never discarded and asked for again; only the title of a
+message whose text is unchanged is applied.
 
 What Nodex made of a message is not a reply. It is a strip joined to the
 message itself: the message fills the top of one rounded object, and the strip

@@ -20,6 +20,7 @@ import {
 } from "../agent-runtime/AgentRuntimeApplication";
 import { testLayer as configLayer } from "../app/MainConfig";
 import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
+import { CoreModuleResponseError } from "../core-client/core-client";
 import { subscribeToBackendLogs, type BackendLogEntry } from "../logging/logger";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { InboxApplication, InboxApplicationError } from "./InboxApplication";
@@ -730,7 +731,7 @@ it.effect("records a Core validation refusal as failed advice and waits for expl
       assert.strictEqual(failed.suggestionState, "failed");
       assert.strictEqual(
         failed.suggestionError,
-        "Every requested message needs a concrete suggestion",
+        "The Agent returned a suggestion Nodex couldn’t save. Try again.",
       );
       assert.deepEqual(yield* inbox.suggestionRequests(8), []);
 
@@ -740,6 +741,45 @@ it.effect("records a Core validation refusal as failed advice and waits for expl
       yield* drain;
       assert.strictEqual(generated.mock.calls.length, 2);
       assert.strictEqual((yield* item(pageId)).suggestionState, "settled");
+    }),
+  ),
+);
+
+it.effect.each([
+  ["invalid_input", "The Agent returned a suggestion Nodex couldn’t save. Try again."],
+  ["not_found", "The message or suggestion destination is no longer available."],
+  ["conflict", "The message or suggestion destination changed. Suggest again."],
+  ["revision_conflict", "The message or suggestion destination changed. Suggest again."],
+] as const)("explains %s settlement refusals without exposing Core diagnostics", ([code, reason]) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { inbox, client } = yield* inboxOverRealCore();
+      const { pageId } = yield* captureInbox(inbox, "A message whose advice cannot be saved");
+      yield* inbox.prepareSuggestions(8, true);
+      const [request] = yield* inbox.suggestionRequests(8);
+      if (!request) return assert.fail("Missing suggestion request");
+      vi.spyOn(client, "workspaceApply").mockRejectedValueOnce(
+        new CoreModuleResponseError({
+          code,
+          message: "document operation InvalidOperation: internal diagnostic",
+          retryable: false,
+          recovery: { kind: "none" },
+        }),
+      );
+
+      yield* inbox.settleSuggestion({
+        request_id: request.request_id,
+        generation: request.generation,
+        titles: [],
+        suggestions: [],
+        produced_by: null,
+        error: null,
+      });
+      const { items } = yield* inbox.window({ scope: LIBRARY_INBOX, filter: "inbox" });
+      const failed = items.find((entry) => entry.pageId === pageId);
+      assert.strictEqual(failed?.suggestionState, "failed");
+      assert.strictEqual(failed?.suggestionError, reason);
+      assert.deepEqual(yield* inbox.suggestionRequests(8), []);
     }),
   ),
 );

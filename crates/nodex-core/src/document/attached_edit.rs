@@ -88,8 +88,20 @@ pub(crate) fn edit_page_in_scope(
                 )
             },
         )
-    }
-    .map_err(|e| StoreError::new(StoreErrorCode::InvalidInput, e.to_string(), false))?;
+    };
+    let update = match update {
+        Ok(update) => update,
+        // The enclosing domain mutation can still change state, such as finalizing a title.
+        // An unchanged Document needs no append, history entry, or write fence.
+        Err(error) if error.code() == DocumentOperationErrorCode::NoChange => return Ok(head_seq),
+        Err(error) => {
+            return Err(StoreError::new(
+                StoreErrorCode::InvalidInput,
+                error.to_string(),
+                false,
+            ));
+        }
+    };
     let candidate = engine
         .prepare_update_v1(&update.update_v1)
         .map_err(|e| StoreError::new(StoreErrorCode::InvalidInput, e.to_string(), false))?;

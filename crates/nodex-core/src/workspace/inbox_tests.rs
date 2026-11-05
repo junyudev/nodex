@@ -2788,6 +2788,92 @@ fn replacing_a_failed_group_member_retires_its_delivery_and_reopens_the_rest() {
 }
 
 #[test]
+fn unchanged_suggestion_titles_settle_without_document_edits() {
+    use nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionTitle;
+
+    for restart in [false, true] {
+        let workspace = seeded_workspace();
+        send(&workspace.module, "a", "Android online capture");
+        send(&workspace.module, "b", "Capture works offline");
+        grouped_request(
+            &workspace.module,
+            "request:titles",
+            vec!["page:a".into(), "page:b".into()],
+        );
+        let workspace = if restart {
+            reopen_inbox_workspace(workspace)
+        } else {
+            workspace
+        };
+        let module = &workspace.module;
+        let input = requests(module).remove(0);
+        assert!(
+            input
+                .context
+                .entries
+                .iter()
+                .all(|entry| entry.title_provisional)
+        );
+        let head = count(
+            &workspace,
+            "SELECT head_seq FROM documents WHERE id='document:a'",
+        );
+        let mut settlement = keep_request(&input, None);
+        let ProjectWorkspaceIntent::SettleInboxSuggestion { titles, .. } = &mut settlement else {
+            unreachable!()
+        };
+        *titles = vec![
+            ProjectWorkspaceInboxSuggestionTitle {
+                page_id: "page:a".into(),
+                title: "Android online capture".into(),
+            },
+            ProjectWorkspaceInboxSuggestionTitle {
+                page_id: "page:b".into(),
+                title: "Android offline capture".into(),
+            },
+        ];
+        apply_host(module, "settle:titles", settlement.clone());
+        apply_host(module, "settle:titles", settlement);
+
+        assert!(requests(module).is_empty());
+        assert_eq!(
+            count(
+                &workspace,
+                "SELECT head_seq FROM documents WHERE id='document:a'"
+            ),
+            head
+        );
+        for page in ["page:a", "page:b"] {
+            let entry = item(module, page);
+            assert_eq!(
+                entry.suggestion_state,
+                ProjectWorkspaceInboxSuggestionState::Settled
+            );
+            assert!(entry.suggestion_error.is_none());
+            let proposal = entry.proposal.unwrap();
+            assert_eq!(proposal.state, ProjectWorkspaceInboxProposalState::Open);
+            assert!(!proposal.outdated);
+        }
+        assert_eq!(item(module, "page:a").title, "Android online capture");
+        assert_eq!(item(module, "page:b").title, "Android offline capture");
+
+        // Accepting the existing title still finalizes it: later advice cannot rename it.
+        grouped_request(
+            module,
+            "request:again",
+            vec!["page:a".into(), "page:b".into()],
+        );
+        assert!(
+            requests(module)[0]
+                .context
+                .entries
+                .iter()
+                .all(|entry| !entry.title_provisional)
+        );
+    }
+}
+
+#[test]
 fn grouped_settlement_is_atomic_and_refine_preserves_explicit_membership() {
     use nodex_core_contracts::inbox::*;
     let workspace = seeded_workspace();
