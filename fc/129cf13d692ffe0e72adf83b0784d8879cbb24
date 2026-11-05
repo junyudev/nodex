@@ -1,0 +1,31 @@
+docs/RELIABILITY.md
+  s_e076d342a7b8d9::t_a8efe731fca43b 757-759
+src/main/platform/node/AgentRuntimeProcess.ts
+  s_e076d342a7b8d9::t_1b939186de7ff5 1-6,30,345,362,373,547-559,589-593,623,629-630
+packages/agent-runtime/vendor/provider-opencode/src/server/OpenCodeServerLedger.ts
+  s_86ec236c56b404::t_6808b18fb8663d 203-212,303,307,319,323,338
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fc129cf13d692ffe0e72adf83b0784d8879cbb24",
+  "prompts": {},
+  "sessions": {
+    "s_86ec236c56b404": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8b1-262e-7fa0-84c9-f4b678e50e23",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e076d342a7b8d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a612-b6c2-7180-aa4d-81219e2f2dd4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
