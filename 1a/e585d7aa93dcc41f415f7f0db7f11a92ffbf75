@@ -1,0 +1,31 @@
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_9c72cf791afc7e::t_96afc0ddaf988f 37-39
+crates/nodex-core-contracts/src/workspace.rs
+  s_9c72cf791afc7e::t_e77e217ee063c5 226-228,402-404
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_9c72cf791afc7e::t_c4e8a592f8f73a 604-644
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_9c72cf791afc7e::t_5dcba753b6d5b3 138-162
+crates/nodex-core/src/workspace/read.rs
+  s_9c72cf791afc7e::t_566012139ecc13 123-129
+packages/core-protocol/openapi.json
+  s_9c72cf791afc7e::t_d17a713b0669f5 36868-36885,39845-39974,52825-52842
+packages/core-protocol/src/generated.ts
+  s_9c72cf791afc7e::t_65660f97a99a5a 8735-8738,9549-9581,12350-12353
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1ae585d7aa93dcc41f415f7f0db7f11a92ffbf75",
+  "prompts": {},
+  "sessions": {
+    "s_9c72cf791afc7e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f60befb-2dce-47e5-b785-5d81c9b7ef5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
