@@ -44,7 +44,7 @@ export function desktopBuildTarget(
       rustTarget: arch === "x64" ? "x86_64-pc-windows-msvc" : "aarch64-pc-windows-msvc",
       executableSuffix: ".exe",
       runtime: "windows",
-      rustPackages: ["nodex-core-server", "nodex-cli"],
+      rustPackages: ["nodex-core-server", "nodex-cli", "nodex-platform"],
     };
   throw new Error(`Unsupported Nodex desktop target: ${platform}-${arch}`);
 }

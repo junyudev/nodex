@@ -70,6 +70,7 @@ test("Windows targets select native Rust triples and omit macOS helpers", () => 
   expect(desktopBuildTarget("win32", "arm64").rustPackages).toEqual([
     "nodex-core-server",
     "nodex-cli",
+    "nodex-platform",
   ]);
   expect(() => desktopBuildTarget("win32", "ia32")).toThrow("Unsupported Nodex desktop target");
 });

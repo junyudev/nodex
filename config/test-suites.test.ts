@@ -61,7 +61,11 @@ describe("application test ownership", () => {
   });
 
   test("distinguishes full, empty and bridge-only native preparation", () => {
-    expect(nativeRequirements("core-client")).toEqual(["core-server", "yjs-yrs-bridge", "cli"]);
+    expect(nativeRequirements("core-client", undefined, "darwin")).toEqual([
+      "core-server",
+      "yjs-yrs-bridge",
+      "cli",
+    ]);
     expect(nativeRequirements("core-client", [])).toEqual([]);
     expect(nativeRequirements("core-client", [NODEX_CLI_BOOTSTRAP_TEST])).toEqual([
       "core-server",
@@ -83,11 +87,31 @@ describe("application test ownership", () => {
     expect(filesForSuite("effect-codex", "live").include).toEqual([]);
   });
 
+  test("prepares native maintenance only for Windows installation boundaries", () => {
+    expect(
+      nativeRequirements("unit", ["scripts/windows-installation-processes.test.ts"], "win32"),
+    ).toEqual(["windows-maintenance"]);
+    expect(
+      nativeRequirements("unit", ["scripts/windows-installation-processes.test.ts"], "darwin"),
+    ).toEqual([]);
+    expect(
+      nativeRequirements("core-client", ["src/main/core-client/core-client.node.test.ts"], "win32"),
+    ).toEqual(["windows-maintenance", "core-server"]);
+    expect(nativeRequirements("core-client", undefined, "win32")).toEqual([
+      "core-server",
+      "yjs-yrs-bridge",
+      "cli",
+      "windows-maintenance",
+    ]);
+  });
+
   test.each(["darwin", "linux", "win32"] as const)(
     "prepares the production PiP addon only for its macOS test on %s",
     (platform) => {
       const expected = platform === "darwin" ? ["agent-runtime"] : [];
-      expect(nativeRequirements("unit", undefined, platform)).toEqual(expected);
+      expect(nativeRequirements("unit", undefined, platform)).toEqual(
+        platform === "win32" ? ["windows-maintenance"] : expected,
+      );
       expect(nativeRequirements("unit", [NATIVE_PIP_PROBE_TEST], platform)).toEqual(expected);
       expect(nativeRequirements("unit", [], platform)).toEqual([]);
       expect(nativeRequirements("unit", ["scripts/testing/run-tests.test.ts"], platform)).toEqual(

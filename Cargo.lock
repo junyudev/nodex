@@ -1261,6 +1261,8 @@ dependencies = [
  "getrandom 0.4.3",
  "hex",
  "rustix",
+ "serde",
+ "serde_json",
  "signal-hook",
  "tempfile",
  "tokio",

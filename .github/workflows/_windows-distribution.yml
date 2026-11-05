@@ -117,7 +117,7 @@ jobs:
         run: vp run test:core-client src/main/core-client/core-client.node.test.ts -t 'Windows maintenance gracefully drains installed Core'
       - name: Verify installer process and listener boundaries
         if: inputs.installer_run_id != ''
-        run: vp test run --config vitest.node.config.ts scripts/windows-installation-processes.test.ts
+        run: vp run test:unit scripts/windows-installation-processes.test.ts
       - name: Reprobe the installed application
         if: inputs.installer_run_id != ''
         run: vp exec tsx scripts/ci/probe-windows-installer.ts --arch ${{ matrix.arch }} --artifacts .generated/windows-probe

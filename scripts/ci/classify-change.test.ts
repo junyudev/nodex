@@ -129,7 +129,7 @@ describe("CI change classification", () => {
     expect(
       classifyChangedPaths(["crates/nodex-core/src/database/relation_projection.rs"]),
     ).toMatchObject({
-      appTestSuites: ["core-client", "main", "integration"],
+      appTestSuites: ["unit", "core-client", "main", "integration"],
       rustFast: true,
       rustMigration: false,
       testMode: "full",
@@ -156,7 +156,7 @@ describe("CI change classification", () => {
       testMode: "full",
     });
     expect(classifyChangedPaths(["Cargo.lock", "crates/nodex-core/Cargo.toml"])).toMatchObject({
-      appTestSuites: ["core-client", "main", "integration"],
+      appTestSuites: ["unit", "core-client", "main", "integration"],
       dependencyKind: "rust",
       rustFast: true,
       rustMigration: true,

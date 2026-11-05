@@ -4,13 +4,16 @@
 !define NODEX_MAINTENANCE_LOG "$LOCALAPPDATA\Nodex\installer-maintenance.log"
 
 !macro nodexMaintenanceLog message
+  Push $8
   Push $R9
+  System::Call 'kernel32::GetTickCount() i .r8'
   FileOpen $R9 "${NODEX_MAINTENANCE_LOG}" a
   ; NSIS preserves contents in append mode but still opens at byte zero.
   FileSeek $R9 0 END
-  FileWrite $R9 "${message}$\r$\n"
+  FileWrite $R9 "${message} uptimeMs=$8$\r$\n"
   FileClose $R9
   Pop $R9
+  Pop $8
 !macroend
 
 !macro customCheckAppRunning
@@ -31,12 +34,11 @@
     !insertmacro nodexMaintenanceLog "operation=install"
   !endif
   !insertmacro nodexMaintenanceLog "step=process-shutdown started"
-  File /oname=$PLUGINSDIR\stop-installation.ps1 "${BUILD_RESOURCES_DIR}\windows\stop-installation.ps1"
-  StrCpy $R0 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
-  IfFileExists "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" 0 +2
-    StrCpy $R0 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  File /oname=$PLUGINSDIR\nodex-maintenance.exe "${PROJECT_DIR}\.generated\codex-runtime\maintenance\nodex-maintenance.exe"
   System::Call 'kernel32::GetCurrentProcessId() i .r1'
-  nsExec::ExecToLog /TIMEOUT=45000 '"$R0" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\stop-installation.ps1" -InstallationDirectory "$INSTDIR" -HelperDirectory "$PLUGINSDIR" -InstallerPid $1 -LogPath "${NODEX_MAINTENANCE_LOG}"'
+  ; The helper bounds confirmed shutdown itself. Startup and client preparation
+  ; must not consume an inactivity timeout before shutdown can even begin.
+  nsExec::ExecToLog '"$PLUGINSDIR\nodex-maintenance.exe" --installation-directory "$INSTDIR" --helper-directory "$PLUGINSDIR" --installer-pid $1 --log-path "${NODEX_MAINTENANCE_LOG}"'
   Pop $R0
   ${If} $R0 != 0
     !insertmacro nodexMaintenanceLog "step=process-shutdown failed exit=$R0"
@@ -60,6 +62,22 @@
       !insertmacro nodexMaintenanceLog "step=refresh-uninstaller completed"
     ${EndIf}
   !endif
+!macroend
+
+!macro customUnInstallCheck
+  ; Preserve the nested uninstaller's result before installer result handling exits.
+  ${If} ${Errors}
+    !insertmacro nodexMaintenanceLog "step=remove-previous-installation failed launch"
+    DetailPrint "Uninstall was not successful. Not able to launch uninstaller!"
+    SetErrors
+  ${ElseIf} $R0 != 0
+    !insertmacro nodexMaintenanceLog "step=remove-previous-installation failed exit=$R0"
+    MessageBox MB_OK|MB_ICONEXCLAMATION "$(uninstallFailed): $R0" /SD IDOK
+    SetErrorLevel 2
+    Quit
+  ${Else}
+    !insertmacro nodexMaintenanceLog "step=remove-previous-installation completed"
+  ${EndIf}
 !macroend
 
 !macro customInstall

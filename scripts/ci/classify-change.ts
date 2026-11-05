@@ -117,7 +117,9 @@ const owningTestSuite = (path: string): AppTestSuite | undefined => {
 };
 
 const nativeTestSuites = APP_TEST_SUITES.filter((suite) =>
-  nativeRequirements(suite).some(isNativeExecutable),
+  (["darwin", "linux", "win32"] as const).some((platform) =>
+    nativeRequirements(suite, undefined, platform).some(isNativeExecutable),
+  ),
 );
 
 // Rust and fixture files are external inputs that Vitest's module graph cannot follow.

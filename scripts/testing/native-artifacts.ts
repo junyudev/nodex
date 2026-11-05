@@ -9,6 +9,13 @@ import {
 import { runCommand, type Command } from "../tooling/process.ts";
 
 const targets = {
+  "windows-maintenance": {
+    package: "nodex-platform",
+    name: "nodex-maintenance",
+    kind: "bin",
+    source: "crates/nodex-platform/src/bin/nodex-maintenance/main.rs",
+    environment: "NODEX_TEST_WINDOWS_MAINTENANCE_EXECUTABLE",
+  },
   cli: {
     package: "nodex-cli",
     name: "nodex",
@@ -166,6 +173,6 @@ export function requiredNativeExecutable(
   throw new Error(
     "Missing prepared " +
       artifact +
-      "; run vp run test:core-client, test:main, or test:integration.",
+      "; run vp run test:unit, test:core-client, test:main, or test:integration.",
   );
 }

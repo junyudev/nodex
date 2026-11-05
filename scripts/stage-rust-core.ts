@@ -148,6 +148,19 @@ const stage = ({ target: buildTarget, outputRoot, signIdentity }: Arguments): vo
           2,
         )}\n`,
       );
+      const maintenanceSource = path.join(
+        repositoryRoot,
+        "target",
+        target,
+        "release",
+        "nodex-maintenance.exe",
+      );
+      assertPeArchitecture(maintenanceSource, buildTarget.arch);
+      assertPeDependencies(maintenanceSource, buildTarget.arch, { systemOnly: true });
+      const maintenanceDirectory = path.join(stagingRoot, "maintenance");
+      mkdirSync(maintenanceDirectory);
+      copyFileSync(maintenanceSource, path.join(maintenanceDirectory, "nodex-maintenance.exe"));
+      replaceOwnedDirectory(maintenanceDirectory, path.join(resolvedOutput, "maintenance"));
       replaceOwnedDirectory(binDirectory, path.join(resolvedOutput, "bin"));
       return;
     }

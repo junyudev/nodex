@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Windows updates install reliably while Nodex is running. An update could stop with an error when a Nodex process was exiting at the same moment, or on a busy computer. A failed update now records why.
 - Quitting Nodex no longer leaves background processes running. An OpenCode server or provider check that was starting as you quit could keep running until the next launch, and windows could log `Runtime Scope closed` errors while closing.
 - Terminals that Agents start work again in the macOS app. They could fail immediately with `posix_spawnp failed`, because the packaged Agent Runtime looked for its terminal helper in the wrong place.
 - A busy computer no longer breaks your chats. When CPU and memory were nearly exhausted, opening a chat or the Subagents panel could fail with "Operation timed out after '30s'" and stay failed until you clicked Retry. Nodex now waits for Agent execution to answer and catches up on its own; if that takes too long, a notice says so and offers Restart.

@@ -164,22 +164,16 @@ describe("CoreClient over a private local endpoint", () => {
       try {
         const descriptor = await readDescriptor(child);
         execFileSync(
-          "powershell.exe",
+          requiredNativeExecutable("windows-maintenance"),
           [
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            path.resolve("resources/windows/stop-installation.ps1"),
-            "-InstallationDirectory",
+            "--installation-directory",
             installation,
-            "-HelperDirectory",
+            "--helper-directory",
             fixture,
-            "-InstallerPid",
+            "--installer-pid",
             String(process.pid),
           ],
-          { stdio: "pipe", timeout: 25_000 },
+          { stdio: "pipe", timeout: 60_000 },
         );
         await expect(waitForExit(child)).resolves.toBe(0);
         expect(existsSync(path.join(nodexHome, "nodex.db"))).toBe(true);
@@ -200,7 +194,7 @@ describe("CoreClient over a private local endpoint", () => {
         rmSync(fixture, { recursive: true, force: true });
       }
     },
-    45_000,
+    120_000,
   );
 
   test("installer shutdown authenticates an existing Core and fences the expected process", async () => {

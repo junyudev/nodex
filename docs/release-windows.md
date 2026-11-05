@@ -50,31 +50,48 @@ builds and extraction needs a 256 MiB dictionary in memory.
 NSIS runs installation-scoped process shutdown before replacing or removing any
 payload files. Before install-over, it refreshes the installed maintenance
 uninstaller from the incoming installer, so older process checks cannot run.
-It extracts its PowerShell script outside the installation and runs maintenance
-from the temporary directory, keeping working-directory handles outside the files
-being replaced or removed.
-The desktop gets a short ordinary-close window, then each detached Core receives
-an authenticated shutdown for the PID discovered under that installation, sent by a
-temporary copy of that same executable, so the installer carries no Core of its own
-and the client always matches the running Core. Core
-gets eight seconds to drain; a bounded forced pass rechecks each remaining image
-path using the same native handle used for termination. No process-name-wide or
-descendant-tree termination is used. A sibling directory with the same prefix is
-outside the installation. Failure aborts maintenance before file replacement.
+It extracts a small native maintenance executable outside the installation and
+runs it from the temporary directory, keeping working-directory handles outside
+the files being replaced or removed. Maintenance uses native process enumeration
+and image handles; it does not start a shell, compile code, or load management
+modules.
 
-Silent maintenance retains its latest stage and timed PowerShell diagnostics in
+Before stopping processes, maintenance prepares each detached Core's shutdown
+client from that Core's own executable. The client authenticates the selected
+Profile and fences the discovered PID, so it always matches the running Core.
+The desktop gets a short ordinary-close window. Maintenance then requests
+termination of the installation's other processes together, drains Core through
+its authenticated client, and confirms exit on every retained process handle.
+Windows can return access denied when a process exits concurrently; that result
+still requires confirmation that the same process has exited. A live inaccessible
+process blocks installation.
+
+The collective exit wait is bounded at 45 seconds, starting after preparation and
+shutdown requests. Slow startup, enumeration, and client copying do not spend the
+shutdown budget. Core is never forcibly terminated to satisfy this deadline. If
+shutdown cannot complete, the installer stops before replacing payload files and
+asks the user to close Nodex and retry. No process-name-wide or descendant-tree
+termination is used. A sibling directory with the same prefix is outside the
+installation; filesystem aliases resolve to the installation's physical path.
+
+Silent maintenance retains its latest stage and timed maintenance diagnostics in
 `%LOCALAPPDATA%\Nodex\installer-maintenance.log`, outside the Profile and installed
-payload. It records shutdown errors, the maintenance-uninstaller refresh, and an
-update relaunch failure before returning a failed installer status. The installer
+payload. It records shutdown errors, the maintenance-uninstaller refresh, nested
+uninstaller failures, and an update relaunch failure before returning a failed
+installer status. The installer
 probe preserves this log for each operation and includes its failure reason in
 the probe result before cleanup can replace it. Probe results also record the
 installer's byte size and initial installation time.
-The maintenance process retains its 45-second no-output timeout. Timed diagnostic
-stages append directly to the file so they do not reset that timeout.
+`phase.json` records the current probe operation and its start time, allowing
+controlled contention to target the running-desktop update operation independently. The probe's process and loopback-listener audits use the same native
+installation boundary, avoiding shell startup and management-module loading on
+busy machines.
+Timed stages distinguish native startup, inventory, matching-client copying,
+desktop termination, Core shutdown, and confirmed process exit.
 The probe's separate installer wall-clock limit defaults to 180 seconds in CI.
 On slower verification machines, `--installer-timeout-ms <milliseconds>` permits
 up to 30 minutes for extraction and installation. This does not change the
-installer's maintenance timeout; retain the measured install duration with the
+installer's bounded exit wait; retain the measured install duration with the
 verification evidence when using this option.
 
 ## Runtime closure
@@ -241,22 +258,24 @@ relaunches Desktop and force-terminates only Main, proving the same detached Cor
 still answers authenticated health requests without Desktop. It installs over
 that running generation within three minutes, relaunches the installed app, and
 force-terminates Main again before silently uninstalling with Core still running,
-with a 30-second budget. Core's idle window is ten minutes so the probe cannot
+using the same installer budget. Core's idle window exceeds that budget so the probe cannot
 pass by waiting for idle shutdown. It checks the stopped Core PIDs, installation,
 shortcut and protocol cleanup, and preservation of the Profile database and a
 content marker through both maintenance operations. Its finally path attempts
 uninstall before fallback Core cleanup, including after startup failure. After
-PowerShell `Start-Process -Wait` returns, the probe requires installation-directory
+the uninstall bootstrap returns, the probe requires installation-directory
 removal before checking Core exit. A successful bootstrap status alone does not
-complete uninstall; both conditions must settle within the same 30-second budget.
-The separate TCP-listener audit queries the local
-[CIM provider](https://learn.microsoft.com/en-us/windows/win32/fwp/wmi/nettcpipprov/msft-nettcpconnection) directly, without
-networking-module auto-loading. Its provider operation is bounded to 15 seconds
-and the whole query to 30 seconds; neither extends the uninstall budget.
+complete uninstall; both conditions must settle within the same installer budget.
+The separate TCP-listener audit reads the native
+[process-owned listener tables](https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getextendedtcptable)
+for IPv4 and IPv6. Its read-only inspection uses the same physical installation
+boundary as maintenance and is bounded to 60 seconds.
 Playwright's wrapper/stream cleanup settles after maintenance stops Core; it is
 not the Desktop-exit signal and must not stop Core before the uninstall check.
 Diagnostic reprobes run the focused real-Core shutdown and process/listener
-fixtures before the installed application. They prepare the native test Core
+fixtures before the installed application. Run the process fixtures with
+`vp run test:unit scripts/windows-installation-processes.test.ts`; the wrapper
+prepares the native maintenance executable. Diagnostic reprobes prepare the native test Core
 with the pinned Rust toolchain while reusing the existing installer payloads.
 The probe retains its disposable Profile locally for diagnosis; CI uploads only
 the fresh probe's logs and result. It never uses credentials or a real Profile.

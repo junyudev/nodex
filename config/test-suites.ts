@@ -13,7 +13,7 @@ export const APP_TEST_SUITES = [
 ] as const;
 export type SuiteId = (typeof APP_TEST_SUITES)[number];
 export type TestRuntime = "host-node" | "electron-node" | "jsdom" | "chromium";
-export type NativeExecutableId = "core-server" | "yjs-yrs-bridge" | "cli";
+export type NativeExecutableId = "core-server" | "yjs-yrs-bridge" | "cli" | "windows-maintenance";
 export type NativeArtifactId = NativeExecutableId | "agent-runtime";
 export const isNativeExecutable = (artifact: NativeArtifactId): artifact is NativeExecutableId =>
   artifact !== "agent-runtime";
@@ -227,15 +227,24 @@ export function nativeRequirements(
   files?: readonly string[],
   platform: NodeJS.Platform = process.platform,
 ): readonly NativeArtifactId[] {
+  const maintenance =
+    platform === "win32" &&
+    ((suite === "unit" &&
+      (!files || files.includes("scripts/windows-installation-processes.test.ts"))) ||
+      (suite === "core-client" &&
+        (!files || files.includes("src/main/core-client/core-client.node.test.ts"))))
+      ? ["windows-maintenance" as const]
+      : [];
   if (suite === "unit") {
     return platform === "darwin" && (!files || files.includes(NATIVE_PIP_PROBE_TEST))
       ? suites[suite].native
-      : [];
+      : maintenance;
   }
-  if (!files) return suites[suite].native;
+  if (!files) return [...suites[suite].native, ...maintenance];
   if (files.length === 0) return [];
   if (suite !== "core-client") return suites[suite].native;
   return [
+    ...maintenance,
     ...(files.some((file) => file !== YJS_YRS_TEST) ? ["core-server" as const] : []),
     ...(files.includes(YJS_YRS_TEST) ? ["yjs-yrs-bridge" as const] : []),
     ...(files.some(

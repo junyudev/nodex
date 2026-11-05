@@ -90,7 +90,7 @@ describe("application CI suite planning", () => {
   });
 
   test.each(["win32", "darwin"] as const)("uses the native desktop on %s", (platform) => {
-    expect(planAppTestSuite("unit", platform).needsRust).toBe(false);
+    expect(planAppTestSuite("unit", platform).needsRust).toBe(platform === "win32");
     for (const suite of ["main", "integration"] as const) {
       expect(planAppTestSuite(suite, platform)).toMatchObject({
         needsRust: true,

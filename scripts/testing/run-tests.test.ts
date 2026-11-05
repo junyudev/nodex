@@ -65,6 +65,7 @@ describe("test execution", () => {
       prepare: async (artifacts) => {
         expect(artifacts).toEqual([
           ...(process.platform === "darwin" ? ["agent-runtime"] : []),
+          ...(process.platform === "win32" ? ["windows-maintenance"] : []),
           "core-server",
           "yjs-yrs-bridge",
           "cli",

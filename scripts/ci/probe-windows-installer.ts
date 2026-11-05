@@ -42,6 +42,8 @@ import {
   parseAgentRuntimeStartupEvidence,
 } from "../../src/shared/agent-runtime-startup-evidence";
 
+import { prepareNativeArtifacts, requiredNativeExecutable } from "../testing/native-artifacts";
+
 const delay = (ms: number) => new Promise<void>((resolveDelay) => setTimeout(resolveDelay, ms));
 // Maintenance must let the host drain owned pipes and release exited process handles.
 const runMaintenance = promisify(execFile);
@@ -94,66 +96,33 @@ const waitForProcessStopped = async (pid: number, timeoutMs: number): Promise<vo
   }
 };
 
-export const installationListenerAddresses = (installation: string): string[] => {
-  const command = `
-$ErrorActionPreference = 'Stop'
-$ProgressPreference = 'SilentlyContinue'
-$root = $env:NODEX_PROBE_INSTALL_ROOT.TrimEnd('\\') + '\\'
-$images = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) }).ProcessId
-# MSFT_NetTCPConnection State=2 is Listen. Avoid NetTCPIP module auto-loading.
-$addresses = @(Get-CimInstance -Namespace 'root\\StandardCimv2' -ClassName MSFT_NetTCPConnection -Filter 'State = 2' -OperationTimeoutSec 15 | Where-Object { $images -contains $_.OwningProcess } | Select-Object -ExpandProperty LocalAddress -Unique)
-ConvertTo-Json -InputObject $addresses -Compress
-`;
-  const addresses: unknown = JSON.parse(
+interface InstallationInspection {
+  readonly processes: { pid: number; commandLine: string; createdAt: string }[];
+  readonly listenerAddresses: string[];
+}
+let inspectionExecutable: string | undefined;
+const inspectInstallation = (installation: string): InstallationInspection =>
+  JSON.parse(
     execFileSync(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-EncodedCommand",
-        Buffer.from(command, "utf16le").toString("base64"),
-      ],
+      inspectionExecutable ?? requiredNativeExecutable("windows-maintenance"),
+      ["--inspect", installation],
       {
-        env: { ...process.env, NODEX_PROBE_INSTALL_ROOT: installation },
         encoding: "utf8",
-        // The bounded local CIM audit is separate from uninstall acceptance.
-        timeout: 30_000,
+        timeout: 60_000,
       },
     ),
-  );
+  ) as InstallationInspection;
+
+export const installationListenerAddresses = (installation: string): string[] => {
+  const addresses = inspectInstallation(installation).listenerAddresses;
   if (
-    !Array.isArray(addresses) ||
     !addresses.length ||
-    addresses.some((address: unknown) => address !== "127.0.0.1" && address !== "::1")
+    addresses.some((address) => address !== "127.0.0.1" && address !== "::1")
   )
     throw new Error("Installed Nodex listeners must all use loopback");
-  return addresses as string[];
+  return addresses;
 };
-const installationProcesses = (
-  installation: string,
-): { pid: number; commandLine: string; createdAt: string }[] => {
-  const command = `
-$root = $env:NODEX_PROBE_INSTALL_ROOT.TrimEnd('\\') + '\\'
-$images = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { @{ pid = [int]$_.ProcessId; commandLine = [string]$_.CommandLine; createdAt = $_.CreationDate.ToUniversalTime().Ticks.ToString() } })
-ConvertTo-Json -InputObject $images -Compress
-`;
-  return JSON.parse(
-    execFileSync(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-EncodedCommand",
-        Buffer.from(command, "utf16le").toString("base64"),
-      ],
-      {
-        env: { ...process.env, NODEX_PROBE_INSTALL_ROOT: installation },
-        encoding: "utf8",
-        timeout: 30_000,
-      },
-    ),
-  ) as { pid: number; commandLine: string; createdAt: string }[];
-};
+const installationProcesses = (installation: string) => inspectInstallation(installation).processes;
 
 const queryProtocol = (): string | null => {
   try {
@@ -205,12 +174,22 @@ async function main(): Promise<void> {
   const appData = process.env.APPDATA;
   if (!localAppData || !appData) throw new Error("LOCALAPPDATA and APPDATA are required");
   const installRoot = join(localAppData, "Programs", "nodex");
+  inspectionExecutable = process.env.NODEX_TEST_WINDOWS_MAINTENANCE_EXECUTABLE
+    ? requiredNativeExecutable("windows-maintenance")
+    : (await prepareNativeArtifacts(["windows-maintenance"], { repositoryRoot: process.cwd() }))
+        .executables["windows-maintenance"];
   const maintenanceLog = join(localAppData, "Nodex", "installer-maintenance.log");
   const captureMaintenanceLog = (operation: string): string => {
     if (!existsSync(maintenanceLog)) return "No installer maintenance log was written.";
     const details = readFileSync(maintenanceLog, "utf8").slice(-16_000);
     writeFileSync(join(artifacts, `maintenance-${operation}.log`), details);
     return details;
+  };
+  const recordPhase = (phase: string): void => {
+    writeFileSync(
+      join(artifacts, "phase.json"),
+      JSON.stringify({ phase, startedAt: new Date().toISOString() }),
+    );
   };
   const startMenuShortcut = join(appData, "Microsoft/Windows/Start Menu/Programs/Nodex.lnk");
   if (
@@ -267,54 +246,45 @@ async function main(): Promise<void> {
       }
     }
     if (installed || existsSync(installRoot)) {
+      recordPhase("uninstall");
       try {
         const uninstallers = readdirSync(installRoot).filter((name) =>
           /^Uninstall.*\.exe$/iu.test(name),
         );
         if (uninstallers.length !== 1) throw new Error("Installed NSIS uninstaller is missing");
-        // Join NSIS's descendants, including its relocated TEMP uninstaller.
-        // A successful bootstrap status alone does not prove uninstall finished;
-        // require installation removal below before asserting Core exit.
-        const command = `
-$ErrorActionPreference = 'Stop'
-$uninstaller = Start-Process -FilePath $env:NODEX_PROBE_UNINSTALLER -ArgumentList '/S', '/currentuser' -Wait -PassThru
-exit $uninstaller.ExitCode
-`;
+        // NSIS relocates its uninstaller to TEMP and its bootstrap exits first. That process
+        // removes files before shortcuts and registrations, so wait for the whole end state.
         const uninstallStarted = Date.now();
+        const remainingShortcuts = () =>
+          [startMenuShortcut, join(process.env.USERPROFILE!, "Desktop/Nodex.lnk")].filter(
+            existsSync,
+          );
+        const startupValuesRemoved = () =>
+          queryStartupValue(startupRunKey) === null &&
+          queryStartupValue(startupApprovedKey) === null;
         rmSync(maintenanceLog, { force: true });
-        await runMaintenance(
-          "powershell.exe",
-          [
-            "-NoProfile",
-            "-NonInteractive",
-            "-EncodedCommand",
-            Buffer.from(command, "utf16le").toString("base64"),
-          ],
-          {
-            env: { ...process.env, NODEX_PROBE_UNINSTALLER: join(installRoot, uninstallers[0]!) },
-            timeout: 30_000,
-          },
-        );
-        captureMaintenanceLog("uninstall");
-        // Windows can retain an empty delete-pending directory briefly after NSIS
-        // exits. Require filesystem convergence within the original uninstall budget.
-        while (existsSync(installRoot) && Date.now() - uninstallStarted < 30_000) {
-          await delay(50);
+        await runMaintenance(join(installRoot, uninstallers[0]!), ["/S", "/currentuser"], {
+          timeout: installerTimeoutMs,
+        });
+        while (
+          (existsSync(installRoot) ||
+            remainingShortcuts().length > 0 ||
+            queryProtocol() !== null ||
+            !startupValuesRemoved()) &&
+          Date.now() - uninstallStarted < installerTimeoutMs
+        ) {
+          await delay(250);
         }
+        captureMaintenanceLog("uninstall");
         if (detachedCoreBeforeUninstall !== undefined)
           assertProcessStopped(detachedCoreBeforeUninstall);
-        const shortcuts = [
-          startMenuShortcut,
-          join(process.env.USERPROFILE!, "Desktop/Nodex.lnk"),
-        ].filter(existsSync);
+        const shortcuts = remainingShortcuts();
         const remainingProtocol = queryProtocol();
         const filesRemoved = !existsSync(installRoot);
         const protocolRemoved = remainingProtocol === null;
         const shortcutsRemoved = shortcuts.length === 0;
         const profilePreserved = isProfilePreserved();
-        const startupRemoved =
-          queryStartupValue(startupRunKey) === null &&
-          queryStartupValue(startupApprovedKey) === null;
+        const startupRemoved = startupValuesRemoved();
         uninstallEvidence = {
           completed:
             filesRemoved &&
@@ -392,6 +362,7 @@ exit $uninstaller.ExitCode
     );
   };
   try {
+    recordPhase("install");
     const installStarted = Date.now();
     rmSync(maintenanceLog, { force: true });
     await runMaintenance(resolve("dist", installers[0]!), ["/S", "/currentuser"], {
@@ -462,12 +433,13 @@ exit $uninstaller.ExitCode
       NODEX_INITIAL_PROJECTS_DIR: join(root, "workspace"),
       NODEX_SENTRY_ENABLED: "false",
       NODEX_TELEMETRY_ENABLED: "false",
-      NODEX_CORE_IDLE_TIMEOUT_MS: "600000",
+      NODEX_CORE_IDLE_TIMEOUT_MS: String(Math.max(600_000, installerTimeoutMs * 2)),
       [ISOLATED_RUN_ID_ENV]: runId,
       [AGENT_RUNTIME_STARTUP_PROBE_ENV]: "1",
     });
     let startupDisabled = false;
     const launchInstalled = async (startup = false): Promise<void> => {
+      recordPhase("startup");
       application = await _electron.launch({
         executablePath: executable,
         args: [
@@ -689,6 +661,7 @@ exit $uninstaller.ExitCode
     ]);
     const disabledApproval = queryStartupValue(startupApprovedKey);
     startupDisabled = true;
+    recordPhase("upgrade");
     const upgradeStarted = Date.now();
     rmSync(maintenanceLog, { force: true });
     await runMaintenance(resolve("dist", installers[0]!), ["/S", "/currentuser"], {
@@ -717,6 +690,7 @@ exit $uninstaller.ExitCode
     const oldProcesses = installationProcesses(installRoot);
     renewHostClaim();
     const command = windowsUpdateInstallerCommand(resolve("dist", installers[0]!), true);
+    recordPhase("update");
     const updateStarted = Date.now();
     rmSync(maintenanceLog, { force: true });
     const updaterInstaller = spawn(command.executable, command.args, {
@@ -804,6 +778,7 @@ exit $uninstaller.ExitCode
   } finally {
     await cleanup();
   }
+  recordPhase("finished");
   if (failures.length) throw new AggregateError(failures, failures.map(failureDetails).join("\n"));
   process.stdout.write(
     `Installed ${target.key} Nodex, verified authenticated Core and Agent Runtime readiness, and removed the installation.\n`,
