@@ -57,6 +57,7 @@ it.effect("validates bounded chat queries and rejects callers without an active 
                     calls.push(input);
                     return { matches: [], sources: [] };
                   }),
+                rankSessionIds: () => Effect.succeed([]),
               }),
             ),
           ),

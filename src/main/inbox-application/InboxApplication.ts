@@ -136,6 +136,10 @@ export class InboxApplication extends Context.Service<
     /** Messages waiting in the Library Inbox and in each Project's Inbox. */
     readonly counts: InboxEffect<InboxCounts>;
     readonly window: (input: InboxWindowInput) => InboxEffect<InboxWindow>;
+    readonly message: (pageId: string) => InboxEffect<{
+      readonly item: InboxWindow["items"][number];
+      readonly storeEpoch: string;
+    }>;
     readonly send: (input: InboxSendInput) => InboxMutation<InboxSendResult>;
     readonly prepareConfirmation: (
       input: InboxConfirmationDraft,
@@ -147,10 +151,10 @@ export class InboxApplication extends Context.Service<
     readonly edit: (input: InboxEditInput) => InboxMutation;
     readonly confirm: (input: InboxConfirmInput) => InboxMutation<InboxDecisionResult>;
     readonly dispatch: (input: InboxDispatchInput) => InboxMutation<InboxDecisionResult>;
-    readonly keep: (input: InboxPageIdsInput) => InboxMutation;
-    readonly setState: (input: InboxSetStateInput) => InboxMutation;
+    readonly keep: (input: InboxPageIdsInput, operationId?: string) => InboxMutation;
+    readonly setState: (input: InboxSetStateInput, operationId?: string) => InboxMutation;
     readonly setKind: (input: InboxSetKindInput) => InboxMutation;
-    readonly setImportant: (input: InboxSetImportantInput) => InboxMutation;
+    readonly setImportant: (input: InboxSetImportantInput, operationId?: string) => InboxMutation;
     readonly requestSuggestion: (input: InboxSuggestionRequestInput) => InboxMutation;
     readonly stopSuggestion: (input: InboxSuggestionStopInput) => InboxMutation;
     readonly pendingSuggestionRequestIds: (
@@ -161,9 +165,9 @@ export class InboxApplication extends Context.Service<
       limit: number,
     ) => InboxEffect<readonly CoreInboxSuggestionRequest[]>;
     readonly settleSuggestion: (input: InboxSuggestionSettlement) => InboxEffect<void>;
-    readonly retryDispatch: (input: InboxProposalInput) => InboxMutation;
+    readonly retryDispatch: (input: InboxProposalInput, operationId?: string) => InboxMutation;
     /** Erases messages: the Inbox forgets them now and Store maintenance collects their Pages. */
-    readonly delete: (input: InboxPageIdsInput) => InboxMutation;
+    readonly delete: (input: InboxPageIdsInput, operationId?: string) => InboxMutation;
     readonly pendingSuggestions: (
       limit: number,
     ) => InboxEffect<readonly CoreInboxSuggestionInput[]>;
@@ -294,6 +298,14 @@ export const make = Effect.gen(function* () {
         storeEpoch: snapshot.store_epoch,
       } satisfies InboxWindow;
     });
+  });
+
+  const message = Effect.fn("InboxApplication.message")(function* (pageId: string) {
+    const snapshot = yield* read("message", { kind: "inbox_message", page_id: pageId });
+    return yield* parse("message", () => ({
+      item: inboxItemFromCore(expectVariant(snapshot, "inbox_message").item),
+      storeEpoch: snapshot.store_epoch,
+    }));
   });
 
   const chatTargets = Effect.fn("InboxApplication.chatTargets")(function* (
@@ -478,18 +490,32 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  const keep = Effect.fn("InboxApplication.keep")(function* (input: InboxPageIdsInput) {
+  const keep = Effect.fn("InboxApplication.keep")(function* (
+    input: InboxPageIdsInput,
+    operationId?: string,
+  ) {
     const parsed = yield* parse("keep", () => InboxPageIdsInputSchema.parse(input));
-    return yield* mutate("keep", { kind: "keep_inbox_entries", page_ids: [...parsed.pageIds] });
+    return yield* mutate(
+      "keep",
+      { kind: "keep_inbox_entries", page_ids: [...parsed.pageIds] },
+      operationId,
+    );
   });
 
-  const setState = Effect.fn("InboxApplication.setState")(function* (input: InboxSetStateInput) {
+  const setState = Effect.fn("InboxApplication.setState")(function* (
+    input: InboxSetStateInput,
+    operationId?: string,
+  ) {
     const parsed = yield* parse("set-state", () => InboxSetStateInputSchema.parse(input));
-    return yield* mutate("set-state", {
-      kind: "set_inbox_entry_state",
-      page_ids: [...parsed.pageIds],
-      state: parsed.state,
-    });
+    return yield* mutate(
+      "set-state",
+      {
+        kind: "set_inbox_entry_state",
+        page_ids: [...parsed.pageIds],
+        state: parsed.state,
+      },
+      operationId,
+    );
   });
 
   const setKind = Effect.fn("InboxApplication.setKind")(function* (input: InboxSetKindInput) {
@@ -503,13 +529,18 @@ export const make = Effect.gen(function* () {
 
   const setImportant = Effect.fn("InboxApplication.setImportant")(function* (
     input: InboxSetImportantInput,
+    operationId?: string,
   ) {
     const parsed = yield* parse("set-important", () => InboxSetImportantInputSchema.parse(input));
-    return yield* mutate("set-important", {
-      kind: "set_inbox_entry_important",
-      page_id: parsed.pageId,
-      important: parsed.important,
-    });
+    return yield* mutate(
+      "set-important",
+      {
+        kind: "set_inbox_entry_important",
+        page_id: parsed.pageId,
+        important: parsed.important,
+      },
+      operationId,
+    );
   });
 
   const requestSuggestion = Effect.fn("InboxApplication.requestSuggestion")(function* (
@@ -624,20 +655,32 @@ export const make = Effect.gen(function* () {
 
   const retryDispatch = Effect.fn("InboxApplication.retryDispatch")(function* (
     input: InboxProposalInput,
+    operationId?: string,
   ) {
     const parsed = yield* parse("retry-dispatch", () => InboxProposalInputSchema.parse(input));
-    return yield* mutate("retry-dispatch", {
-      kind: "retry_inbox_dispatch",
-      proposal_id: parsed.proposalId,
-    });
+    return yield* mutate(
+      "retry-dispatch",
+      {
+        kind: "retry_inbox_dispatch",
+        proposal_id: parsed.proposalId,
+      },
+      operationId,
+    );
   });
 
-  const deleteMessages = Effect.fn("InboxApplication.delete")(function* (input: InboxPageIdsInput) {
+  const deleteMessages = Effect.fn("InboxApplication.delete")(function* (
+    input: InboxPageIdsInput,
+    operationId?: string,
+  ) {
     const parsed = yield* parse("delete", () => InboxPageIdsInputSchema.parse(input));
-    const result = yield* mutate("delete", {
-      kind: "delete_inbox_messages",
-      page_ids: parsed.pageIds,
-    });
+    const result = yield* mutate(
+      "delete",
+      {
+        kind: "delete_inbox_messages",
+        page_ids: parsed.pageIds,
+      },
+      operationId,
+    );
     yield* administration.requestErasure;
     return result;
   });
@@ -823,6 +866,7 @@ export const make = Effect.gen(function* () {
     chatTargets,
     counts,
     window,
+    message,
     send,
     edit,
     prepareConfirmation,

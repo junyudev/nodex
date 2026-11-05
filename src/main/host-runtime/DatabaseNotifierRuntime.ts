@@ -51,6 +51,7 @@ export class DatabaseNotifierRuntime extends Context.Service<
   DatabaseNotificationPublisher & {
     readonly projectSessionInvalidations: Stream.Stream<ProjectSessionsChangeEvent>;
     readonly inboxInvalidations: Stream.Stream<InboxChangedEvent>;
+    readonly projectInvalidations: Stream.Stream<ProjectsChangeEvent>;
   }
 >()("nodex/main/host-runtime/DatabaseNotifierRuntime") {}
 
@@ -65,6 +66,9 @@ export const live: Layer.Layer<DatabaseNotifierRuntime, never, WindowRuntime> = 
     const inboxInvalidations = yield* PubSub.sliding<InboxChangedEvent>(
       MAIN_OBSERVATION_EVENT_CAPACITY,
     );
+    const projectInvalidations = yield* PubSub.sliding<ProjectsChangeEvent>(
+      MAIN_OBSERVATION_EVENT_CAPACITY,
+    );
     let accepting = true;
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
@@ -72,6 +76,7 @@ export const live: Layer.Layer<DatabaseNotifierRuntime, never, WindowRuntime> = 
       }).pipe(
         Effect.andThen(PubSub.shutdown(projectSessionInvalidations)),
         Effect.andThen(PubSub.shutdown(inboxInvalidations)),
+        Effect.andThen(PubSub.shutdown(projectInvalidations)),
       ),
     );
 
@@ -89,10 +94,10 @@ export const live: Layer.Layer<DatabaseNotifierRuntime, never, WindowRuntime> = 
     });
     const notifyProjectsChanged = Effect.fn("DatabaseNotifierRuntime.notifyProjectsChanged")(
       function* (changeType: ProjectChangeType, projectId?: string) {
-        yield* broadcast("projects-changed", {
-          projectId,
-          changeType,
-        } satisfies ProjectsChangeEvent);
+        if (!accepting) return;
+        const event = { projectId, changeType } satisfies ProjectsChangeEvent;
+        yield* broadcast("projects-changed", event);
+        yield* PubSub.publish(projectInvalidations, event);
       },
     );
     const notifyProjectSessionInvalidation = Effect.fn(
@@ -163,6 +168,7 @@ export const live: Layer.Layer<DatabaseNotifierRuntime, never, WindowRuntime> = 
       notifyInboxChanged,
       projectSessionInvalidations: Stream.fromPubSub(projectSessionInvalidations),
       inboxInvalidations: Stream.fromPubSub(inboxInvalidations),
+      projectInvalidations: Stream.fromPubSub(projectInvalidations),
     });
   }),
 );

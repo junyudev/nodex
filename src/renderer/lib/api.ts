@@ -955,6 +955,10 @@ export function subscribeInboxChanges(
   return resolveRendererTransport().subscribeInboxChanges?.(callback) ?? (() => {});
 }
 
+export function subscribeMobileAccessChanges(callback: () => void): () => void {
+  return resolveRendererTransport().subscribeMobileAccessChanges?.(callback) ?? (() => {});
+}
+
 export function subscribeProjectChanges(
   callback: (event: import("../../shared/ipc-api").ProjectsChangeEvent) => void,
 ): () => void {

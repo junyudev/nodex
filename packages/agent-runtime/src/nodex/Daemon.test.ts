@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -371,3 +371,44 @@ it("starts only from a stdin bootstrap whose provider instances stay out of the 
     await fs.rm(unconfigured, { recursive: true, force: true });
   }
 });
+
+it.skipIf(process.platform === "win32")(
+  "replies to an observation cancelled while queued behind active requests",
+  async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-queued-observer-"));
+    const fifo = path.join(home, "held-attachment");
+    execFileSync("mkfifo", [fifo]);
+    const runtime = await startProcess(home);
+    const held = Array.from({ length: 32 }, (_, index) =>
+      runtime.request("attachments.import", {
+        threadId: `thread-${index}`,
+        messageId: `message-${index}`,
+        attachments: [{ name: "held.txt", mimeType: "text/plain", sizeBytes: 1, source: fifo }],
+      }),
+    );
+    let reply: AgentRuntimeResponse | undefined;
+    const observing = runtime.request("events.observe", {}, "queued-observation");
+    void observing.then(
+      (response) => {
+        reply = response;
+      },
+      () => {},
+    );
+    try {
+      expect(
+        await runtime.request("events.unobserve", { subscriptionId: "queued-observation" }),
+      ).toMatchObject({ success: true, output: { unsubscribed: true } });
+      expect(reply).toMatchObject({ id: "queued-observation", success: false });
+    } finally {
+      // Opening both ends releases the filesystem reads without starting any Agent processes.
+      const release = await fs.open(fifo, "r+");
+      try {
+        await Promise.all(held);
+      } finally {
+        await release.close();
+      }
+      await runtime.close();
+      await fs.rm(home, { recursive: true, force: true });
+    }
+  },
+);

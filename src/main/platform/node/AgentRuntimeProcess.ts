@@ -669,7 +669,8 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     const entry: Pending = {
       reply,
       admitted,
-      bypass: method === "shutdown",
+      // Releasing an observer frees engine work, so it must not wait behind that work.
+      bypass: method === "shutdown" || method === "events.unobserve",
       readStartedTick: WATCHED_READS.has(method) ? tick : null,
     };
     let sent = false;
@@ -718,15 +719,27 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
           Effect.raceFirst(work, Deferred.await(terminated).pipe(Effect.flatMap(Effect.fail))),
         ).pipe(
           Effect.map((output) => output as AgentRuntimeOperations[M]["output"]),
-          Effect.onInterrupt(() =>
-            sent && method === "text.generate-structured"
-              ? send({ type: "request.cancel", id }).pipe(
+          Effect.onInterrupt(() => {
+            if (!sent) return Effect.void;
+            const abandon =
+              method === "text.generate-structured"
+                ? send({ type: "request.cancel", id })
+                : method === "events.observe"
+                  ? // An observer's subscription is its request ID, known even without the reply.
+                    send({
+                      id: randomUUID(),
+                      method: "events.unobserve",
+                      input: { subscriptionId: id },
+                    })
+                  : null;
+            return abandon
+              ? abandon.pipe(
                   Effect.catchCause(() => Effect.void),
                   Effect.forkIn(scope, { startImmediately: true }),
                   Effect.asVoid,
                 )
-              : Effect.void,
-          ),
+              : Effect.void;
+          }),
           Effect.ensuring(
             Effect.gen(function* () {
               entry.readStartedTick = null;

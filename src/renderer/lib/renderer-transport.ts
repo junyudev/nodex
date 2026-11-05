@@ -145,6 +145,7 @@ export interface RendererTransport {
   subscribeInboxChanges?: (
     callback: (event: import("../../shared/inbox").InboxChangedEvent) => void,
   ) => () => void;
+  subscribeMobileAccessChanges?: (callback: () => void) => () => void;
   subscribeProjectChanges: (
     callback: (event: import("../../shared/ipc-api").ProjectsChangeEvent) => void,
   ) => () => void;

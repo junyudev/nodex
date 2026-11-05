@@ -61,6 +61,51 @@ an alias never replaces a receipt or execution identity.
 
 Nodex is local-first. Main risks are malformed local inputs, accidental data loss, renderer capability abuse, and stale or incorrectly attributed Agent execution. Native execution follows each chat's permission mode: narrower modes keep the Agent inside its workspace boundary and route native permission requests to the person, while Full access requires explicit confirmation. Agents can never answer execution approvals, and delegated work cannot exceed its caller's mode. Content access through Nodex tools is Profile-wide in every mode; connection and execution identity remain enforced.
 
+## Mobile Gateway
+
+The Mobile Gateway is Nodex's only network listener. A paired phone can do what a person at a trusted
+window can, including starting Agents, so the gateway treats the network as hostile and a device as
+fully trusted once proven. [ADR 0075](adr/0075-phone-access-through-an-encrypted-gateway.md) records
+why it is built this way.
+
+- **Off by default.** Nothing listens until a person enables it for the Profile; disabling closes the
+  listener and every channel.
+- **Peers.** The listener binds IPv4 and destroys a connection whose remote address is not loopback,
+  RFC 1918, CGNAT `100.64.0.0/10` or link-local before reading any bytes. This limits exposure; it is
+  not authentication, since a proxy or port forward can present a private address.
+- **Channel.** All traffic is Noise over one WebSocket: `IKpsk1` to pair, `IK` afterwards, with
+  X25519, ChaCha20-Poly1305 and SHA-256, verified against published vectors. The first handshake
+  message can be replayed, so nothing is granted, consumed, registered or executed until an
+  authenticated transport frame arrives: the phone must first send an encrypted ping. Any frame that
+  fails authentication closes the connection.
+  WebSocket close codes are unauthenticated hints. Paired keys survive them. During unfinished
+  pairing, an unknown-device or pairing-rejected hint clears the pending identity, so a forged hint
+  can force a new pairing code. Route racing still prefers any successful authenticated connection
+  over those hints.
+- **Pairing.** An offer has a fresh 32-byte secret, is held only in memory, works once and lasts five
+  minutes. Failed attempts do not count against it: guessing 256 random bits is not feasible, and a
+  limit would let anyone on the network cancel someone else's pairing. It reaches a window only as the
+  answer to that window's own request, never in a broadcast, and leaves the computer only as a QR code
+  or a link a person chooses to show or copy. Anyone who obtains it within that time can pair.
+  Going the other way, a pairing link that opens the phone app from outside could point at someone
+  else's machine, so the app names that desktop and asks before connecting; scanning or pasting a
+  code in the app is already a deliberate choice.
+- **Keys.** The Host's static key and the device list live in one private Profile file encrypted with
+  the operating system's secret storage. If that is unavailable, enabling fails; there is no plaintext
+  fallback. Phones keep their static keys in the Keychain or Keystore, and Android backups are off so unsent
+  captures and cached content stay on the phone. Revoking forgets a device's key
+  and closes its channels immediately.
+- **Admission.** Handshakes have a deadline. Unauthenticated sockets, channels per device, total
+  channels, frame and message sizes, upload sizes and per-channel queues are all bounded. An overflowed
+  queue resets to a fresh snapshot rather than growing.
+- **Authority.** Calls pass through the same application Interfaces as a trusted window and carry no
+  Agent provenance. There are no per-phone permissions, so a lost unlocked phone holds this Profile's
+  access until it is removed in Settings.
+- **Files.** File references are opaque and resolved through authenticated Library and attachment
+  reads; they are never filesystem paths. Uploads are held in a private temporary directory, verified
+  against their declared size, and released when the channel closes.
+- **Logging.** Secrets, keys and message content are never logged.
+
 ## Library File boundaries
 
 The Library owns File metadata, lifecycle and immutable versions. A Page owns

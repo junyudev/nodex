@@ -73,6 +73,7 @@ export type IpcCommand<
 
 /** Exact owner-audited groups. Never replace one group with an `Exclude<keyof IpcApi, ...>` remainder. */
 type QueryEndpointPolicy =
+  | "mobile-access:status"
   | "windows-startup:status"
   | "codex:plugins:marketplaces"
   | "codex:plugins:apps"
@@ -522,6 +523,10 @@ type MainRevisionCommandEndpointPolicy =
   | "codex:visualization:interaction:write";
 
 type PlainResultCommandEndpointPolicy =
+  | "mobile-access:set-enabled"
+  | "mobile-access:begin-pairing"
+  | "mobile-access:cancel-pairing"
+  | "mobile-access:revoke-device"
   | "windows-startup:open-settings"
   | "page-text-rewrite:start"
   | "mcp-app:data:clear"

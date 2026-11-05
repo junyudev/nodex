@@ -352,6 +352,9 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(payload);
       });
     },
+    subscribeMobileAccessChanges(callback) {
+      return bridge.on("mobile-access-changed", () => callback());
+    },
     subscribeProjectSessionChanges(callback: (event: ProjectSessionsChangeEvent) => void) {
       return bridge.on("project-sessions-changed", (...args: unknown[]) => {
         const payload = args[0] as ProjectSessionsChangeEvent | undefined;

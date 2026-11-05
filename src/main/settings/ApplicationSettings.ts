@@ -99,6 +99,8 @@ import {
   updateLinkOpeningSettings,
   updateUsageMeterSettings,
   getInboxSettings,
+  getMobileAccessEnabled,
+  updateMobileAccessEnabled,
   resetCommandKeybindings,
   updateAppUpdateSettings,
   updateAcpAgentSettings,
@@ -141,6 +143,7 @@ export interface ApplicationSettingsSnapshot {
   readonly terminalShell: TerminalShellSettings;
   readonly windowRestore: WindowRestoreSettings;
   readonly inbox: InboxSettings;
+  readonly mobileAccessEnabled?: boolean;
   readonly composerPredictions: ComposerPredictionSettings;
   readonly agentRuntime: AgentRuntimeSettings;
   readonly usageMeters: UsageMeterSettings;
@@ -186,6 +189,7 @@ export type ApplicationSettingsCommand =
   | { readonly type: "update-composer-predictions"; readonly input: ComposerPredictionSettings }
   | { readonly type: "update-link-opening"; readonly input: LinkOpeningSettings }
   | { readonly type: "update-usage-meters"; readonly input: UsageMeterSettings }
+  | { readonly type: "update-mobile-access"; readonly enabled: boolean }
   | { readonly type: "update-inbox"; readonly input: UpdateInboxSettingsInput };
 
 export class ApplicationSettingsError extends Schema.TaggedError<ApplicationSettingsError>()(
@@ -310,6 +314,7 @@ function makeSnapshot(
     windowRestore: getWindowRestoreSettings(snapshotSource),
     terminalShell: getTerminalShellSettings(snapshotSource),
     inbox: getInboxSettings(snapshotSource),
+    mobileAccessEnabled: getMobileAccessEnabled(snapshotSource),
     composerPredictions: getComposerPredictionSettings(snapshotSource),
     agentRuntime: getAgentRuntimeSettings(snapshotSource),
     usageMeters: getUsageMeterSettings(snapshotSource),
@@ -388,6 +393,9 @@ function applyCommand(
       return;
     case "update-usage-meters":
       updateUsageMeterSettings(command.input, source);
+      return;
+    case "update-mobile-access":
+      updateMobileAccessEnabled(command.enabled, source);
       return;
     case "update-inbox":
       updateInboxSettings(command.input, source);

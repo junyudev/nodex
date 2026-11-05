@@ -49,6 +49,12 @@ Session activity is when a chat was created, when the person last sent it a mess
 when its reminder came due. It orders chat lists; Agent replies, messages from other
 Agents, reading and organizing a chat never change it.
 
+### Mobile Gateway
+
+The Mobile Gateway is the Desktop Host's network ingress for Nodex Mobile. A Paired Device is a phone
+whose static key the gateway has authorized for this Profile; removing it forgets that key. A phone
+owns no Nodex data.
+
 ### Thread
 
 A Thread is an execution conversation with its own history, model selection and Runs.

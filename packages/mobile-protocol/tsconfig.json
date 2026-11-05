@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": false,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "lib": ["ES2022"],
+    "types": [],
+    "incremental": true,
+    "tsBuildInfoFile": "../../.cache/typescript/mobile-protocol.tsbuildinfo"
+  },
+  "include": ["src"]
+}

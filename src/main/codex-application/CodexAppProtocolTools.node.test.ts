@@ -217,6 +217,7 @@ const buildTools = (
     Effect.provideService(ChatSearch, {
       search: listing.search ?? (() => Effect.succeed({ matches: [], complete: true })),
       searchMessages: () => Effect.succeed({ matches: [], sources: [] }),
+      rankSessionIds: () => Effect.succeed([]),
     }),
     Effect.provideService(CodexWaitThreads, { execute: () => Effect.die("unused wait tool") }),
     Effect.provideService(TerminalSessions, {} as TerminalSessions["Service"]),

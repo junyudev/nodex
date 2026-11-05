@@ -20,6 +20,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
@@ -407,6 +408,55 @@ it.live("shutdown remains admitted with every normal request slot occupied", () 
     });
     yield* Effect.forEach(pending, (fiber) => Fiber.await(fiber));
     assert.equal((yield* Fiber.join(waiting)).reason, "closed");
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("an observer's release is admitted with every normal request slot occupied", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquire();
+    const notifications = yield* connection.subscribeNotifications;
+    yield* Effect.forEach(
+      Array.from({ length: 64 }, (_, index) => index),
+      (index) =>
+        connection
+          .request("project.read", { projectId: `blocked:${index}` })
+          .pipe(Effect.forkScoped({ startImmediately: true })),
+    );
+    yield* Stream.runHead(notifications).pipe(Effect.timeout("2 seconds"));
+    assert.deepEqual(
+      yield* connection
+        .request("events.unobserve", { subscriptionId: "observer" })
+        .pipe(Effect.timeout("2 seconds")),
+      { unsubscribed: true },
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("releases an observer abandoned before its reply", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquire();
+    const notifications = yield* connection.subscribeNotifications;
+    const observing = yield* connection
+      .request("events.observe", { threadId: "held-observe" })
+      .pipe(Effect.forkChild({ startImmediately: true }));
+    const delivered = yield* Stream.runHead(notifications).pipe(Effect.timeout("2 seconds"));
+    const notification = Option.getOrThrow(delivered).notification;
+    assert.equal(notification.type, "event");
+    const subscriptionId = notification.type === "event" ? notification.subscriptionId : "";
+    yield* Fiber.interrupt(observing);
+    const released = () =>
+      connection.request("project.read", {
+        projectId: "released-observers",
+      }) as unknown as Effect.Effect<{
+        readonly releasedObservers: readonly string[];
+      }>;
+    const { releasedObservers } = yield* Effect.suspend(released).pipe(
+      Effect.repeat({
+        times: 100,
+        until: (value) => value.releasedObservers.includes(subscriptionId),
+      }),
+    );
+    assert.include(releasedObservers, subscriptionId);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 

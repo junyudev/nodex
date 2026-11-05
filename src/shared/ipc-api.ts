@@ -1059,6 +1059,20 @@ export interface IpcApi
     args: [sessionId: string, input: PageChatLinkInput];
     result: void;
   };
+  "mobile-access:status": { args: []; result: import("./mobile-access").MobileAccessStatus };
+  "mobile-access:set-enabled": {
+    args: [input: { enabled: boolean }];
+    result: import("./mobile-access").MobileAccessStatus;
+  };
+  "mobile-access:begin-pairing": { args: []; result: import("./mobile-access").MobileAccessStatus };
+  "mobile-access:cancel-pairing": {
+    args: [];
+    result: import("./mobile-access").MobileAccessStatus;
+  };
+  "mobile-access:revoke-device": {
+    args: [input: { deviceId: string }];
+    result: import("./mobile-access").MobileAccessStatus;
+  };
   "inbox:summary": {
     args: [input: import("./inbox").InboxSummaryInput];
     result: import("./inbox").InboxSummary;
@@ -3121,6 +3135,7 @@ export interface IpcEvents {
   "projects-changed": ProjectsChangeEvent;
   "project-sessions-changed": ProjectSessionsChangeEvent;
   "inbox-changed": import("./inbox").InboxChangedEvent;
+  "mobile-access-changed": void;
   "reminder:open": {
     projectId: string;
     pageId: string;

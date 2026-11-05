@@ -32,6 +32,10 @@ export const SETTINGS_PAGE_COMPONENTS: SettingsPageComponentRegistry = {
   inbox: lazy(async () => ({
     default: (await import("@/features/inbox/inbox-settings-page")).InboxSettingsPage,
   })),
+  mobile: lazy(async () => ({
+    default: (await import("@/features/mobile-access/mobile-access-settings-page"))
+      .MobileAccessSettingsPage,
+  })),
   agent: lazy(async () => ({
     default: (await import("./agent-settings-page")).AgentSettingsPage,
   })),

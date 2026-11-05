@@ -354,6 +354,11 @@ const NOTE_PATHS = lineGlyphPaths(
   "M11.5 16.5v-2.5a2.5 2.5 0 0 1 2.5-2.5h2.5",
 );
 
+const MOBILE_PATHS = lineGlyphPaths(
+  "M7 3h6a1.5 1.5 0 0 1 1.5 1.5v11A1.5 1.5 0 0 1 13 17H7a1.5 1.5 0 0 1-1.5-1.5v-11A1.5 1.5 0 0 1 7 3z",
+  "M9.25 14.5h1.5",
+);
+
 const TODO_PATHS = lineGlyphPaths(KIND_CIRCLE, "M6.75 10.25 9 12.5l4.25-4.75");
 
 const QUESTION_PATHS = [
@@ -390,6 +395,11 @@ export function ImportantIcon(props: CanonicalIconProps) {
 /** Something the user marked important: the same star, filled. */
 export function ImportantFilledIcon(props: CanonicalIconProps) {
   return <CanonicalGlyph {...props} paths={IMPORTANT_FILLED_PATHS} />;
+}
+
+/** A phone paired with this Profile. */
+export function MobileIcon(props: CanonicalIconProps) {
+  return <CanonicalGlyph {...props} paths={MOBILE_PATHS} />;
 }
 
 /** A thought kept for later: a sheet with its corner turned. */

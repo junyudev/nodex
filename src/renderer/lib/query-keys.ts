@@ -170,6 +170,9 @@ export const queryKeys = {
     summaries: (projectIds: readonly string[]) =>
       ["projectActivity", "summaries", ...[...projectIds].sort()] as const,
   },
+  mobileAccess: {
+    status: () => ["mobile-access", "status"] as const,
+  },
   inbox: {
     all: () => ["inbox"] as const,
     summary: (scope: string) => ["inbox", "summary", scope] as const,

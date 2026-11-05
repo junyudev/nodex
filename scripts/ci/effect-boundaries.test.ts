@@ -138,6 +138,7 @@ describe("Effect architecture boundaries", () => {
     ]);
 
     const applicationRoots = [
+      "packages/mobile/src/runtime/connection.ts",
       "src/main/automation-application/AutomationApplication.ts",
       "src/main/browser-application/BrowserApplication.ts",
       "src/main/codex-runtime/CodexEndpoint.ts",

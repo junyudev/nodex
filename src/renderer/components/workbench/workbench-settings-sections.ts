@@ -7,6 +7,7 @@ import {
   InboxIcon,
   KeyboardShortcutsIcon,
   MicIcon,
+  MobileIcon,
   PageIcon,
   PluginsIcon,
   SettingsAgentIcon,
@@ -32,6 +33,7 @@ export type SettingsSectionId =
   | "agent"
   | "keyboard-shortcuts"
   | "inbox-settings"
+  | "mobile-settings"
   | "plugins-settings"
   | "browser"
   | "computer-use"
@@ -213,6 +215,14 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     icon: InboxIcon,
     groupKey: "workspace",
     searchMessages: SETTINGS_SEARCH_CATALOG["inbox-settings"].messages,
+  },
+  {
+    id: "mobile-settings",
+    label: "Mobile",
+    pageKey: "mobile",
+    icon: MobileIcon,
+    groupKey: "workspace",
+    searchMessages: SETTINGS_SEARCH_CATALOG["mobile-settings"].messages,
   },
   {
     id: "data-controls",

@@ -162,6 +162,7 @@ export interface AgentRuntimeApplicationOptions {
     ) => Effect.Effect<AgentRuntimeOperations["providers.read"]["output"]>;
     readonly lastKnown: Effect.Effect<AgentRuntimeOperations["providers.read"]["output"] | null>;
     readonly saved: Effect.Effect<AgentRuntimeOperations["providers.read"]["output"] | null>;
+    readonly served?: Stream.Stream<AgentRuntimeOperations["providers.read"]["output"]>;
     readonly record: (
       providers: AgentRuntimeOperations["providers.read"]["output"],
     ) => Effect.Effect<void>;
@@ -4366,6 +4367,24 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           connection.request("providers.windows-sandbox.cancel", input),
         ),
       ),
+    catalogChanges: (options.providerCatalog?.served ?? Stream.never).pipe(
+      Stream.map((providers) =>
+        JSON.stringify(
+          providers.map((provider) => [
+            provider.instanceId,
+            provider.displayName,
+            provider.enabled,
+            provider.installed,
+            provider.auth.status,
+            provider.status,
+            provider.availability,
+            provider.models.map(({ slug, name, isDefault }) => [slug, name, isDefault]),
+          ]),
+        ),
+      ),
+      Stream.changes,
+      Stream.map(() => undefined),
+    ),
     catalog: (input: AgentRuntimeOperations["providers.read"]["input"] = {}) =>
       owned(
         "catalog",

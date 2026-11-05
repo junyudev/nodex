@@ -30,6 +30,11 @@ interface EffectBoundaryInput {
 const effectFreeRoots = [
   "packages/codex-app-server-protocol/",
   "packages/core-protocol/",
+  "packages/mobile-protocol/",
+  "packages/mobile/src/features/",
+  "packages/mobile/src/markdown/",
+  "packages/mobile/src/navigation/",
+  "packages/mobile/src/ui/",
   "src/preload/",
   "src/renderer/",
   "src/shared/",
@@ -61,6 +66,7 @@ const effectAdapterAreas = new Set([
 
 const effectApplicationRoots = [
   "packages/agent-runtime/src/nodex/",
+  "packages/mobile/src/runtime/",
   "src/main/agent-runtime/",
   "src/main/app/",
   "src/main/automation-application/",
@@ -74,6 +80,7 @@ const effectApplicationRoots = [
   "src/main/initial-project/",
   "src/main/ipc/handlers/",
   "src/main/library-application/",
+  "src/main/mobile-gateway/",
   "src/main/nodex-agent-application/",
   "src/main/project-application/",
   "src/main/terminal-runtime/",
@@ -116,6 +123,11 @@ const testOnlyUnboundedChannelAdapters = new Set([
 // These qualified operations preserve synchronous external ingress. Queue admission
 // and completion never suspend; interruption and resource release remain Effect-owned.
 const synchronousIngressUnsafeCalls = new Map<string, ReadonlySet<string>>([
+  // Native callbacks publish into scoped, bounded ingress. Overflow closes the socket.
+  ["packages/mobile/src/runtime/socket.ts", new Set(["Queue.offerUnsafe", "Deferred.doneUnsafe"])],
+  ["packages/mobile/src/runtime/platform.ts", new Set(["Queue.offerUnsafe"])],
+  // Presentation snapshots replace queued values; lifecycle policy stays in services.
+  ["packages/mobile/src/runtime/projection.ts", new Set(["Queue.offerUnsafe"])],
   [
     "src/main/core-runtime/ProjectionLiveRuntime.ts",
     new Set(["Deferred.doneUnsafe", "Queue.offerUnsafe"]),
@@ -153,6 +165,8 @@ function isEffectFreePath(path: string): boolean {
 
 function isEffectApplicationModule(path: string): boolean {
   if (isTestModule(path) || isNodeRuntimeEntry(path)) return false;
+  // Expo, React Native, and WebSocket APIs require native callback/Promise shapes.
+  if (path === "packages/mobile/src/runtime/expo-platform.ts") return false;
   return effectApplicationRoots.some((root) => path.startsWith(root));
 }
 
@@ -179,6 +193,8 @@ function canImportConversationInternals(path: string): boolean {
 
 function isEffectAdapter(path: string): boolean {
   return (
+    path === "packages/mobile/src/runtime/projection.ts" ||
+    path === "packages/mobile/src/runtime/projection.test.ts" ||
     path.startsWith("src/main/platform/") ||
     path.startsWith("packages/effect-codex-app-server/") ||
     path.startsWith("packages/agent-runtime/") ||
@@ -205,6 +221,7 @@ const nodeRuntimeEntries = new Set([
 
 const effectRunBoundaries = new Set([
   ...nodeRuntimeEntries,
+  "packages/mobile/src/runtime/runtime.ts",
   "scripts/scenarios/adapters/core-client-seed-runtime.ts",
 ]);
 

@@ -550,6 +550,33 @@ export const SETTINGS_SEARCH_PANELS = {
       },
     ],
   },
+  "mobile-settings": {
+    title: "Mobile",
+    subtitle: "Capture to the Inbox and follow your chats from your phone.",
+    groups: [
+      {
+        title: "Mobile",
+        entries: [
+          entry(
+            "Allow phones to connect",
+            "Only phones you pair can connect, encrypted end to end.",
+            ["phone", "ios", "android", "iphone", "remote", "network", "tailnet", "app"],
+          ),
+          entry("Pair a phone", "Show a code to scan with Nodex Mobile.", [
+            "qr",
+            "pairing",
+            "scan",
+            "phone",
+          ]),
+          entry("Paired phones", "See and remove the phones connected to this Profile.", [
+            "devices",
+            "revoke",
+            "phone",
+          ]),
+        ],
+      },
+    ],
+  },
   "inbox-settings": {
     title: "Inbox",
     subtitle: "How messages you capture are suggested and dispatched.",
@@ -964,6 +991,9 @@ export const SETTINGS_SEARCH_CATALOG = {
   },
   "inbox-settings": {
     messages: materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["inbox-settings"]),
+  },
+  "mobile-settings": {
+    messages: materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["mobile-settings"]),
   },
   page: {
     messages: materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.page),

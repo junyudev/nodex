@@ -145,6 +145,7 @@ interface ServerTomlConfig {
   open_link_in_target?: LinkOpeningSettings["openLinkInTarget"];
   open_local_url_in_target?: LinkOpeningSettings["openLocalUrlInTarget"];
   external_browser_link_shortcut?: LinkOpeningSettings["externalBrowserLinkShortcut"];
+  mobile_access_enabled?: boolean;
   inbox_suggestions?: InboxSuggestionMode;
   /** Read only to migrate the former boolean preference. */
   inbox_suggestions_enabled?: boolean;
@@ -1562,4 +1563,18 @@ export function updateTerminalShellSettings(
     terminal_shell: settings.windowsShell,
   });
   return getTerminalShellSettings(source);
+}
+
+export function getMobileAccessEnabled(source: ApplicationSettingsDocumentSource): boolean {
+  return loadProfileServerTomlConfig(source).mobile_access_enabled === true;
+}
+
+export function updateMobileAccessEnabled(
+  enabled: boolean,
+  source: ApplicationSettingsDocumentSource,
+): void {
+  writeProfileServerTomlConfig(source, {
+    ...loadProfileServerTomlConfig(source),
+    mobile_access_enabled: enabled,
+  });
 }

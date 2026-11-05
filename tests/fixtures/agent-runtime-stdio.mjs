@@ -13,6 +13,7 @@ const success = (id, output) => send({ id, success: true, output });
 const pendingHosts = new Map();
 let executionSubscription;
 const blocked = [];
+const releasedObservers = [];
 process.on("SIGUSR1", () => {
   const id = blocked.shift();
   if (id) success(id, { id: "released", title: "released", workspaceRoot: "/tmp" });
@@ -65,6 +66,10 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
       message: "Stop active work first.", tag: "AcpManagementError",
       acp: { reason: "busy", message: "Stop active work first.", affectedThreadIds: ["thread:root"], cause: "must-not-cross-transport" },
     } });
+    continue;
+  }
+  if (request.method === "project.read" && request.input.projectId === "released-observers") {
+    success(request.id, { releasedObservers });
     continue;
   }
   if (request.method === "project.read") {
@@ -146,6 +151,15 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
       title: request.input.projectId,
       workspaceRoot: "/tmp",
     }), request.input.projectId === "first" ? 30 : 1);
+    continue;
+  }
+  if (request.method === "events.unobserve") {
+    releasedObservers.push(request.input.subscriptionId);
+    success(request.id, { unsubscribed: true });
+    continue;
+  }
+  if (request.method === "events.observe" && request.input.threadId === "held-observe") {
+    send({ type: "event", subscriptionId: request.id, event: { sequence: 1, event: {} } });
     continue;
   }
   if (request.method === "events.observe") {

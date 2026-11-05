@@ -94,16 +94,43 @@ export async function runAgentRuntimeProcess(): Promise<void> {
       const service = await runtime.runPromise(AgentRuntime);
       const bridge = await runtime.runPromise(HostBridge);
       await write({ type: "ready", identity: service.identity });
+      const observing = new Map<string, Promise<unknown>>();
+      const isObservation = (method: string | undefined) =>
+        method === "events.observe" || method === "execution.observe";
       const execute = async (request: unknown) => {
-        const envelope = request as { readonly id?: string; readonly method?: string };
+        const envelope = request as {
+          readonly id?: string;
+          readonly method?: string;
+          readonly input?: { readonly subscriptionId?: unknown };
+        };
         const abort =
           envelope?.method === "text.generate-structured" && typeof envelope.id === "string"
             ? new AbortController()
             : undefined;
         if (abort) utilityRequests.set(envelope.id!, abort);
         try {
-          const output = await runtime.runPromise(service.handle(request), {
-            signal: abort?.signal,
+          const subscriptionId = envelope?.input?.subscriptionId;
+          if (envelope?.method === "events.unobserve" && typeof subscriptionId === "string") {
+            // An abandoned observe can still be queued or running when its release arrives.
+            const queued = waiting.findIndex((value) => {
+              const candidate = value as { readonly id?: string; readonly method?: string } | null;
+              return candidate?.id === subscriptionId && isObservation(candidate.method);
+            });
+            if (queued >= 0) {
+              waiting.splice(queued, 1);
+              await write({
+                id: subscriptionId,
+                success: false,
+                error: { message: "Observation cancelled" },
+              });
+            }
+            await observing.get(subscriptionId)?.catch(() => {});
+          }
+          const operation = runtime.runPromise(service.handle(request), { signal: abort?.signal });
+          const observeId = isObservation(envelope?.method) ? envelope.id : undefined;
+          if (observeId !== undefined) observing.set(observeId, operation);
+          const output = await operation.finally(() => {
+            if (observeId !== undefined) observing.delete(observeId);
           });
           if (envelope?.method === "shutdown") await dispose();
           await write({ id: envelope?.id ?? "", success: true, output });
@@ -132,7 +159,8 @@ export async function runAgentRuntimeProcess(): Promise<void> {
           })
           .finally(() => {
             active.delete(task);
-            const next = closing ? undefined : waiting.shift();
+            const next =
+              closing || active.size >= MAX_ACTIVE_REQUESTS ? undefined : waiting.shift();
             if (next !== undefined) launch(next);
           });
         active.add(task);
@@ -176,6 +204,11 @@ export async function runAgentRuntimeProcess(): Promise<void> {
               error: { message: "Text generation cancelled" },
             });
           }
+          continue;
+        }
+        // Observer release cannot be refused by the work queue, even when normal slots are full.
+        if (request?.method === "events.unobserve") {
+          launch(request);
           continue;
         }
         if (request?.method === "shutdown") {

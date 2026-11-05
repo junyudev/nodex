@@ -35,6 +35,10 @@
     "src/renderer/features/local-conversation/view/composer/image-attachments/composer-image-data-transfer.jsdom.test.ts": 1,
     "src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx": 2,
     "src/renderer/features/local-conversation/view/shared/context-window.tsx": 1,
+    "src/renderer/features/mobile-access/mobile-access-settings-page.tsx": {
+      "count": 1,
+      "reason": "The pairing QR code is a data mark drawn module by module from its secret; it is not reusable icon artwork."
+    },
     "src/renderer/features/local-conversation/view/shared/image-view-surface.browser.test.tsx": {
       "count": 1,
       "reason": "Browser test fixture supplies SVG image bytes with fixed dimensions to verify decoding and shared preview identity after the source file disappears."

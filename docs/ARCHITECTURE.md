@@ -26,6 +26,8 @@ flowchart LR
     Agent --> Claude["Native Claude Code via Agent SDK"]
     Agent --> OpenCode["Native OpenCode via HTTP/SSE SDK"]
     Main --> Accounts["Native account and host capabilities"]
+    Phone["Nodex Mobile"] --> Gateway["Mobile Gateway in Main"]
+    Gateway --> Main
     Main --> NodexAccount["Optional Nodex account connection"]
     NodexAccount --> Clerk["Clerk OAuth identity"]
     Main --> Host["OS, filesystem, Browser, Terminal, Git"]
@@ -67,6 +69,16 @@ Renderer -> SQLite / Node / Core internals
 Electron Main -> nodex.db / Yrs transaction reconstruction
 Core Modules -> Electron / renderer / transport presentation
 ```
+
+### Nodex Mobile
+
+The Main-owned Mobile Gateway is Nodex's only network ingress and is off by default. A paired phone
+reaches semantic Main Interfaces as a human ingress over one end-to-end encrypted channel; the
+gateway holds pairing state and adapts view models, and adds no data authority. Its listener
+belongs to the Profile's Main Scope, so it stays available with every window closed while the
+Desktop Host runs. See
+[Nodex Mobile Behavior](product-specs/mobile-companion-behavior.md),
+[Security](SECURITY.md#mobile-gateway) and [ADR 0075](adr/0075-phone-access-through-an-encrypted-gateway.md).
 
 ### Optional Nodex account connection
 
@@ -219,6 +231,7 @@ nor content-retention roots. See [ADR 0059](adr/0059-complete-view-order-and-sem
 | Git repository live-read state                                                                            | Main-owned Git worker process                                                | Typed Main/preload bus and renderer query projections                                                                                                                                |
 | Structural clipboard preparing/ready/superseded lifecycle and native slot ownership                       | Electron Main Structural Clipboard Runtime                                   | Private MIME routes trusted windows; standard HTML/text stays portable; Core retains durable bundle and cut authority                                                                |
 | Durable File, Canvas, queue, and submitted-input bytes                                                    | Rust Core Blob infrastructure and concrete domain retention roots            | Authenticated streams and transaction-bound publication receipts; each domain authorizes its own references                                                                          |
+| Phone pairing, device keys and the network listener                                                       | Electron Main Mobile Gateway                                                 | Phones hold their own keys and caches; settings project status; content and execution stay with Core and Agent Runtime                                                               |
 | Preferences, temporary media, logs, OS notifications                                                      | Electron Main local/OS adapters                                              | Typed renderer IPC and private media caches; persistent content is published through Core                                                                                            |
 
 Retained document edits and their resolution belong to Core's Owned Document Module.

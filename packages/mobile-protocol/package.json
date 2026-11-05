@@ -1,0 +1,19 @@
+{
+  "name": "@nodex/mobile-protocol",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Wire contract and encrypted channel between Nodex Mobile and a Desktop Host",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc-rs --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@noble/ciphers": "2.4.0",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "zod": "4.6.7"
+  }
+}

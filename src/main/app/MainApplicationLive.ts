@@ -1,3 +1,8 @@
+import * as MobileGateway from "../mobile-gateway/MobileGateway";
+import * as MobileApplication from "../mobile-gateway/MobileApplication";
+import * as MobileProfileFiles from "../platform/node/MobileProfileFiles";
+import * as MobileAccessIpc from "../ipc/handlers/MobileAccessIpc";
+import * as SecretEncryption from "../platform/electron/SecretEncryption";
 import { SessionReminderRuntime } from "../host-runtime/SessionReminderRuntime";
 import { live as chatSearchLive } from "../chat-search/ChatSearch";
 import * as Effect from "effect/Effect";
@@ -159,7 +164,16 @@ const hostGraph = AgentRuntimeApplicationLive.hostTools.pipe(Layer.provideMerge(
 const inboxWorkersGraph = Layer.merge(inboxDispatcherLive, inboxDispatchRuntimeLive).pipe(
   Layer.provideMerge(hostGraph),
 );
-const applicationGraph = Layer.merge(RendererIngressLive.live, windowsTrayIntegrationLive).pipe(
+const mobileAccess = MobileAccessIpc.live.pipe(
+  Layer.provide(MobileGateway.live),
+  Layer.provide(MobileApplication.live),
+  Layer.provide(Layer.merge(MobileProfileFiles.live, SecretEncryption.live)),
+);
+const applicationGraph = Layer.mergeAll(
+  RendererIngressLive.live,
+  windowsTrayIntegrationLive,
+  mobileAccess,
+).pipe(
   Layer.provideMerge(inboxWorkersGraph),
   Layer.provide(CodexConversationPeerRuntime.live),
   Layer.provideMerge(shellEnvironment),

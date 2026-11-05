@@ -16,6 +16,7 @@ export type SettingsPageKey =
   | "import"
   | "keyboard-shortcuts"
   | "inbox"
+  | "mobile"
   | "plugins"
   | "browser"
   | "computer-use"

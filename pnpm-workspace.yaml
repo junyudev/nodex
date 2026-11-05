@@ -41,6 +41,8 @@ overrides:
   remark-breaks: 4.0.0
   "@types/node": 24.19.2
   "@babel/core": 7.29.7
+  # Expo 58.0.20 supports React Native 0.88.0. Later Core builds use 0.88.1 symbols.
+  "expo@58.0.20>expo-modules-core": 58.0.27
   # plist omits the MIME type required by xmldom 0.9; keep its patched 0.8 API.
   "plist>@xmldom/xmldom": 0.8.15
   dompurify: 3.4.17
@@ -105,6 +107,8 @@ audit:
 
 allowBuilds:
   "@parcel/watcher": true
+  # Its install script fetches the pinned native grammars and math renderer Nodex Mobile ships.
+  "react-native-enriched-markdown@file:packages/mobile/deps/react-native-enriched-markdown-1.2.0.tgz": true
   "@sentry/cli": true
   # The repository prepares a verified, independent dist from the shared extraction cache.
   electron: false
@@ -140,3 +144,19 @@ minimumReleaseAgeExclude:
   - "@vitest/spy@5.0.5"
   - "@vitest/ui@5.0.5"
   - "@vitest/utils@5.0.5"
+  # Recently published tooling in the Expo SDK 58 lockfile.
+  - "@expo/cli@58.1.19"
+  - "@expo/config-plugins@58.0.12"
+  - "@expo/config@58.0.11"
+  - "@expo/env@2.5.4"
+  - "@expo/fingerprint@0.21.9"
+  - "@expo/inline-modules@0.2.9"
+  - "@expo/local-build-cache-provider@58.0.11"
+  - "@expo/log-box@58.0.15"
+  - "@expo/metro-config@58.0.21"
+  - "@expo/prebuild-config@58.0.19"
+  - "@expo/router-server@58.0.21"
+  - expo-asset@58.0.20
+  - expo-constants@58.0.15
+  - expo-modules-autolinking@58.0.17
+  - expo-modules-jsi@58.0.22

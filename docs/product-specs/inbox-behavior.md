@@ -37,8 +37,8 @@ intents, and selection.
   needs the width.
 - The Inbox composer sends to the Inbox it shows. Agent Turns send to their
   chat's Project Inbox, and the command line to its Project's Inbox; both use
-  the Library Inbox outside a Project. Only the desktop app chooses an Inbox
-  explicitly.
+  the Library Inbox outside a Project. Only the desktop app and
+  [Nodex Mobile](./mobile-companion-behavior.md) choose an Inbox explicitly.
 - The sidebar's `Inbox` row counts the Library Inbox. Each Project row shows its
   own Inbox count, muted, in place of nothing when the count is zero.
 

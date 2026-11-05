@@ -74,6 +74,11 @@ export const ChatMessageSearchInputSchema = ChatSearchInputSchema.omit({
 export class ChatSearch extends Context.Service<
   ChatSearch,
   {
+    readonly rankSessionIds: (input: {
+      readonly query: string;
+      readonly archived: boolean;
+      readonly projectId?: string | null;
+    }) => Effect.Effect<readonly string[], ChatSearchError>;
     readonly search: (input: ChatSearchInput) => Effect.Effect<ChatSearchResult, ChatSearchError>;
     readonly searchMessages: (
       input: ChatMessageSearchInput,
@@ -141,10 +146,13 @@ export const make = Effect.gen(function* () {
       Effect.forkScoped({ startImmediately: true }),
     );
 
-  const placement = Effect.fn("ChatSearch.placement")(function* (after: string | null) {
+  const placement = Effect.fn("ChatSearch.placement")(function* (
+    after: string | null,
+    archived: boolean,
+  ) {
     const response = yield* core.workspace.read({
       kind: "session_window",
-      archived: false,
+      archived,
       order: "conversation",
       window: { first: 100, after },
     });
@@ -181,25 +189,31 @@ export const make = Effect.gen(function* () {
   const project = (
     items: readonly ChatListingItem[],
     metadata: ReadonlyMap<string, ChatRuntimeMetadata>,
+    archived: boolean,
   ) =>
     items.flatMap((item) => {
       const ref = item.task.session.execution_ref;
       const chat = projectChat(
         item,
         ref ? metadata.get(`${ref.runtime_id}\0${ref.thread_id}`) : undefined,
+        archived,
       );
       return chat ? [chat] : [];
     });
 
   const readCatalog = Effect.fn("ChatSearch.catalog")(
-    function* () {
+    function* (archived: boolean) {
       const entries = new Map<string, ChatCatalogItem>();
       let after: string | null = null;
       const cursors = new Set<string>();
       do {
-        const page: Effect.Success<ReturnType<typeof placement>> = yield* placement(after);
+        const page: Effect.Success<ReturnType<typeof placement>> = yield* placement(
+          after,
+          archived,
+        );
         const metadata = yield* metadataFor(page.items);
-        for (const chat of project(page.items, metadata)) entries.set(chat.sessionId, chat);
+        for (const chat of project(page.items, metadata, archived))
+          entries.set(chat.sessionId, chat);
         after = page.next_cursor ?? null;
         if (entries.size > CHAT_CATALOG_MAX_ENTRIES)
           return {
@@ -244,7 +258,7 @@ export const make = Effect.gen(function* () {
           current ?? fresh,
         ]);
         if (flight === fresh)
-          yield* readCatalog().pipe(
+          yield* readCatalog(false).pipe(
             Effect.tap((value) =>
               Ref.set(warm, { catalog: value, revision: currentRevision, builtAt: now }).pipe(
                 Effect.andThen(Ref.update(catalogGeneration, (value) => value + 1)),
@@ -576,7 +590,17 @@ export const make = Effect.gen(function* () {
       JSON.stringify({ input: normalized, revision: currentRevision, generation }),
     );
   });
-  return ChatSearch.of({ search, searchMessages });
+  const rankSessionIds: ChatSearch["Service"]["rankSessionIds"] = (input) =>
+    Effect.gen(function* () {
+      const admitted = yield* input.archived ? readCatalog(true) : catalog;
+      const candidates =
+        input.projectId === undefined
+          ? admitted.entries
+          : admitted.entries.filter((entry) => entry.projectId === input.projectId);
+      const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+      return rankCatalog(candidates, input.query, now).map(({ entry }) => entry.sessionId);
+    });
+  return ChatSearch.of({ search, searchMessages, rankSessionIds });
 });
 
 export const live = Layer.effect(ChatSearch, make);

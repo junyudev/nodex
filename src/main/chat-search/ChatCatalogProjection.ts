@@ -31,10 +31,10 @@ const activityOf = (status: string, flags: readonly string[]): ChatActivity => {
 export const projectChat = (
   item: ChatListingItem,
   metadata?: ChatRuntimeMetadata,
+  includeArchived = false,
 ): ChatCatalogItem | null => {
   if (
-    item.task.session.archived ||
-    item.task.thread?.archived ||
+    (!includeArchived && (item.task.session.archived || item.task.thread?.archived)) ||
     item.task.thread?.parent_thread_id ||
     metadata?.relationshipToParent === "subagent"
   )
