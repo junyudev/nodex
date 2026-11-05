@@ -1,0 +1,64 @@
+packages/agent-runtime/src/provider/ProviderProbe.lifecycle.test.ts
+  s_86ec236c56b404::t_7847b22cd2462c 1-13,15-34,40-86
+  s_86ec236c56b404::t_392399e406178d 35-39
+  s_86ec236c56b404::t_af50f9bf9fcd81 14
+packages/agent-runtime/src/provider/CodexProvider.test.ts
+  s_e076d342a7b8d9::t_5aa52e98d9f518 1,5-7,17,20-45
+  s_e076d342a7b8d9::t_b99aec1d20bba9 46
+packages/agent-runtime/src/provider/ClaudeProvider.ts
+  s_86ec236c56b404::t_886e70c54ff10d 528-529
+src/main/platform/node/OpenCodeInstallPlatform.ts
+  s_86ec236c56b404::t_886e70c54ff10d 216,218
+src/main/platform/node/ClaudeDiscovery.node.test.ts
+  s_86ec236c56b404::t_fd97e7f8e2dd4b 1,8-11,17,27-30
+  s_86ec236c56b404::t_6c76900c15fa69 2,18
+  s_86ec236c56b404::t_4e7a56e85e4b75 3-7,31-68
+packages/agent-runtime/src/provider/CodexInstallation.ts
+  s_86ec236c56b404::t_886e70c54ff10d 300-304
+packages/agent-runtime/src/provider/CodexProvider.ts
+  s_e076d342a7b8d9::t_f076e669cdbc69 505-507
+docs/RELIABILITY.md
+  s_86ec236c56b404::t_afa8f09cceb177 757-758
+src/main/platform/node/ClaudeDiscovery.ts
+  s_86ec236c56b404::t_6c76900c15fa69 121,127-134
+packages/agent-runtime/vendor/provider-opencode/src/server/OpenCodeRuntime.ts
+  s_a11f4687fd3c1d::t_0e9e6c192c5ffd 573-574
+packages/agent-runtime/vendor/provider-acp-registry/src/server/AcpRegistrySupport.ts
+  s_86ec236c56b404::t_1f63a23204c7ca 999-1000
+packages/agent-runtime/vendor/provider-core/src/server/maintenanceResolver.ts
+  s_86ec236c56b404::t_3fce534f52a54c 340-345
+packages/agent-runtime/vendor/provider-opencode/src/server/OpenCodeServerLedger.ts
+  s_86ec236c56b404::t_e971e3ad954faf 157-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f95f3d24002140f8d356072d369c95768395cec5",
+  "prompts": {},
+  "sessions": {
+    "s_86ec236c56b404": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8b1-262e-7fa0-84c9-f4b678e50e23",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a11f4687fd3c1d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a8b1-e99a-7d42-9095-84eeffc5dcd4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e076d342a7b8d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a612-b6c2-7180-aa4d-81219e2f2dd4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
