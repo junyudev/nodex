@@ -61,8 +61,9 @@ command, file changes, access or app action, the Agent's reason, and its choices
 stays visible until it is answered, even when earlier work is collapsed.
 
 - **Approve** allows this request once.
-- **Allow for this chat** allows similar requests for the rest of the Agent's current session,
-  until the permission mode changes. It is not durable: a restarted Agent asks again.
+- **Allow for this chat** allows similar requests for the rest of the chat, including after
+  Stop, a model change, or restarting Nodex. Changing the permission mode ends it, and a forked
+  chat starts without it.
 - **Decline** refuses the request. The Agent continues and may try another approach.
 - **Decline and stop** refuses the request and stops the turn.
 

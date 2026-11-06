@@ -1108,6 +1108,17 @@ export const OrchestrationV2ProviderGoal = Schema.Struct({
 });
 export type OrchestrationV2ProviderGoal = typeof OrchestrationV2ProviderGoal.Type;
 
+/**
+ * What a person allowed for a whole chat, in the provider's own rule syntax. A restarted native
+ * process forgets these, so they live here. Changing the permission mode ends them.
+ */
+export const OrchestrationV2ProviderChatGrants = Schema.Struct({
+  runtimeMode: RuntimeMode,
+  rules: Schema.Array(TrimmedNonEmptyString),
+  directories: Schema.Array(TrimmedNonEmptyString),
+});
+export type OrchestrationV2ProviderChatGrants = typeof OrchestrationV2ProviderChatGrants.Type;
+
 export const OrchestrationV2ProviderThread = Schema.Struct({
   id: ProviderThreadId,
   driver: ProviderDriverKind,
@@ -1144,6 +1155,7 @@ export const OrchestrationV2ProviderThread = Schema.Struct({
   goal: Schema.optional(Schema.NullOr(OrchestrationV2ProviderGoal)).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
+  chatGrants: Schema.optional(OrchestrationV2ProviderChatGrants),
   createdAt: Schema.DateTimeUtc,
   updatedAt: Schema.DateTimeUtc,
 });

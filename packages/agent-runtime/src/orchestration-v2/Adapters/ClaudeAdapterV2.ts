@@ -90,6 +90,7 @@ import {
   type OrchestrationV2ProviderCapabilities,
   type OrchestrationV2ProviderFailure,
   OrchestrationV2ProviderGoal,
+  type OrchestrationV2ProviderChatGrants,
   type OrchestrationV2PlanArtifact,
   type OrchestrationV2PlanStep,
   type OrchestrationV2PendingBackgroundTask,
@@ -420,8 +421,8 @@ export interface ClaudeAgentSdkQuerySession {
     selection: ClaudeLiveSelection,
   ) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   /** Replace the host's current Project Sources without restarting the native process. */
-  readonly setSourceRoots: (
-    sourceRoots: readonly string[],
+  readonly setHostPermissions: (
+    permissions: ClaudeHostPermissions,
   ) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   /** What Claude Code reports it is actually running with. */
   readonly readAppliedSettings: Effect.Effect<
@@ -991,24 +992,30 @@ export const layerQueryRunner: Layer.Layer<
                 }),
               ),
             ),
-          setSourceRoots: (sourceRoots) => {
+          setHostPermissions: (host) => {
             // Flag settings shallow-merge permissions. Preserve the caller's own
-            // inline rules and directories while replacing only the host's roots.
+            // inline rules and directories while replacing only the host's.
             const permissions =
               typeof queryOptions.settings === "object"
                 ? queryOptions.settings.permissions
                 : undefined;
+            const allow = [...new Set([...(permissions?.allow ?? []), ...host.allow])];
             const settings = {
               permissions: {
                 ...permissions,
+                ...(allow.length === 0 ? {} : { allow }),
                 additionalDirectories: [
-                  ...new Set([...(permissions?.additionalDirectories ?? []), ...sourceRoots]),
+                  ...new Set([
+                    ...(permissions?.additionalDirectories ?? []),
+                    ...host.sourceRoots,
+                    ...host.directories,
+                  ]),
                 ],
               },
             };
             return Effect.tryPromise({
               try: () => queryRuntime.applyFlagSettings(settings),
-              catch: (cause) => queryRunnerError(cause, "setSourceRoots"),
+              catch: (cause) => queryRunnerError(cause, "setHostPermissions"),
             }).pipe(
               Effect.tap(() =>
                 logProtocolEvent({
@@ -3263,7 +3270,7 @@ interface ClaudeLiveQueryContext {
   // Null after an unconfirmed native change; the next prompt must resynchronize every choice.
   confirmedLiveSelection: ClaudeLiveSelection | null;
   // A failed acknowledgement may have changed native state; retry the complete set.
-  confirmedSourceRoots: readonly string[] | null;
+  confirmedHostPermissions: ClaudeHostPermissions | null;
   // Ultracode was asked for and Claude Code has not yet confirmed it runs.
   verifyUltracode: boolean;
   readonly closed: Deferred.Deferred<void>;
@@ -3402,6 +3409,17 @@ function rememberClaudeSubagentLaunch(
   ) {
     rememberPendingClaudeSubagentLaunch(pending, toolUseId, launch);
   }
+}
+
+/**
+ * What the host keeps in the CLI's flag settings: the Project's source roots and a chat's standing
+ * allows. They travel over stdin as a list, so rule text never meets the CLI's `--allowedTools`
+ * parser, which ends a rule at the first `)` it sees and would cut one that contains a space.
+ */
+export interface ClaudeHostPermissions {
+  readonly sourceRoots: readonly string[];
+  readonly allow: readonly string[];
+  readonly directories: readonly string[];
 }
 
 interface ClaudeApprovalResponse {
@@ -3570,6 +3588,45 @@ export function permissionResultFromDecision(input: {
     decisionClassification: "user_reject",
     ...(input.decision === "cancel" ? { interrupt: true } : {}),
   };
+}
+
+/** A rule as the CLI's settings read it; its parser unescapes these inside rule content. */
+function claudePermissionRuleString(rule: {
+  readonly toolName: string;
+  readonly ruleContent?: string;
+}): string {
+  if (!rule.ruleContent) return rule.toolName;
+  const content = rule.ruleContent
+    .replaceAll("\\", "\\\\")
+    .replaceAll("(", "\\(")
+    .replaceAll(")", "\\)");
+  return `${rule.toolName}(${content})`;
+}
+
+/** A mode suggestion is not a standing allow: the Session owns the mode. */
+function isClaudeChatGrantUpdate(update: PermissionUpdate): boolean {
+  return (
+    update.type === "addDirectories" ||
+    ((update.type === "addRules" || update.type === "replaceRules") && update.behavior === "allow")
+  );
+}
+
+export function claudeChatGrantsWith(
+  current: OrchestrationV2ProviderChatGrants | undefined,
+  runtimeMode: OrchestrationV2ProviderChatGrants["runtimeMode"],
+  updates: ReadonlyArray<PermissionUpdate>,
+): OrchestrationV2ProviderChatGrants {
+  const kept = current?.runtimeMode === runtimeMode ? current : undefined;
+  const rules = new Set(kept?.rules);
+  const directories = new Set(kept?.directories);
+  for (const update of updates) {
+    if (!isClaudeChatGrantUpdate(update)) continue;
+    if (update.type === "addDirectories")
+      for (const directory of update.directories) directories.add(directory);
+    else if (update.type === "addRules" || update.type === "replaceRules")
+      for (const rule of update.rules) rules.add(claudePermissionRuleString(rule));
+  }
+  return { runtimeMode, rules: [...rules], directories: [...directories] };
 }
 
 function toSessionPermissionUpdates(
@@ -4048,6 +4105,27 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         );
         // Native `/goal` per session, seeded from the persisted provider thread.
         const goalsByNativeThread = new Map<string, OrchestrationV2ProviderGoal | null>();
+        // What this session changed; null means it ended them. Otherwise the thread's copy stands.
+        const chatGrantsByNativeThread = new Map<
+          string,
+          OrchestrationV2ProviderChatGrants | null
+        >();
+        const readChatGrants = (
+          providerThread: OrchestrationV2ProviderThread,
+          nativeThreadId: string,
+        ) => {
+          const changed = chatGrantsByNativeThread.get(nativeThreadId);
+          return changed === undefined ? providerThread.chatGrants : (changed ?? undefined);
+        };
+        const withCurrentChatGrants = (
+          providerThread: OrchestrationV2ProviderThread,
+          nativeThreadId: string,
+        ): OrchestrationV2ProviderThread => {
+          const changed = chatGrantsByNativeThread.get(nativeThreadId);
+          if (changed === undefined) return providerThread;
+          const { chatGrants: _previous, ...rest } = providerThread;
+          return changed === null ? rest : { ...rest, chatGrants: changed };
+        };
         // Turns whose model output met an active goal's Stop hook check at its end.
         const goalCheckedTurns = new Set<string>();
         // Subagent registry that survives turn settle: a background subagent
@@ -4460,7 +4538,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           );
           const now = yield* DateTime.now;
           const providerThread: OrchestrationV2ProviderThread = {
-            ...input.providerThread,
+            ...withCurrentChatGrants(input.providerThread, input.nativeThreadId),
             providerSessionId: session.id,
             ...(input.status === undefined ? {} : { status: input.status }),
             pendingBackgroundTasks: claudePendingBackgroundTasksFromRoster(roster),
@@ -4474,6 +4552,44 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             type: "provider_thread.updated",
             driver: CLAUDE_PROVIDER,
             providerThread,
+          });
+        });
+
+        /** Records a chat's standing allows at once, so a Stop right after cannot lose them. */
+        const writeChatGrants = Effect.fnUntraced(function* (input: {
+          readonly nativeThreadId: string;
+          readonly providerThread: OrchestrationV2ProviderThread;
+          readonly grants: OrchestrationV2ProviderChatGrants | null;
+        }) {
+          chatGrantsByNativeThread.set(input.nativeThreadId, input.grants);
+          const updated = {
+            ...withCurrentChatGrants(
+              (yield* Ref.get(lastProviderThreadByNativeThread)).get(input.nativeThreadId) ??
+                input.providerThread,
+              input.nativeThreadId,
+            ),
+            updatedAt: yield* DateTime.now,
+          };
+          yield* rememberProviderThread(updated);
+          yield* emitProviderEvent({
+            type: "provider_thread.updated",
+            driver: CLAUDE_PROVIDER,
+            providerThread: updated,
+          });
+        });
+
+        /** Changing the permission mode is how a person takes these back. */
+        const endChatGrantsOnModeChange = Effect.fnUntraced(function* (
+          turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
+          nativeThreadId: string,
+        ) {
+          const grants = readChatGrants(turnInput.providerThread, nativeThreadId);
+          if (grants === undefined || grants.runtimeMode === turnInput.runtimePolicy.runtimeMode)
+            return;
+          yield* writeChatGrants({
+            nativeThreadId,
+            providerThread: turnInput.providerThread,
+            grants: null,
           });
         });
 
@@ -6639,7 +6755,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   });
                 }
                 const providerThread: OrchestrationV2ProviderThread = {
-                  ...input.context.input.providerThread,
+                  ...withCurrentChatGrants(
+                    input.context.input.providerThread,
+                    input.context.nativeThreadId,
+                  ),
                   providerSessionId: session.id,
                   ...(clearConversationHead ? { nativeConversationHeadRef: null } : {}),
                   ...(nativeThreadId !== null && goalsByNativeThread.has(nativeThreadId)
@@ -8910,7 +9029,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             ),
           );
 
-          return permissionResultFromDecision({
+          const permission = permissionResultFromDecision({
             toolName,
             ...resolvedDecision,
             toolInput,
@@ -8919,6 +9038,34 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               ? {}
               : { suggestions: callbackOptions.suggestions }),
           });
+          if (resolvedDecision.decision !== "acceptForSession" || permission.behavior !== "allow")
+            return permission;
+          const updates = permission.updatedPermissions ?? [];
+          yield* writeChatGrants({
+            nativeThreadId: context.nativeThreadId,
+            providerThread: context.input.providerThread,
+            grants: claudeChatGrantsWith(
+              readChatGrants(context.input.providerThread, context.nativeThreadId),
+              context.input.runtimePolicy.runtimeMode,
+              updates,
+            ),
+          });
+          const live = yield* Ref.get(queryContext);
+          if (live === null) return permission;
+          // Host permissions can be replaced later, which lets a mode change take these back.
+          // A process that did not take them still honours this answer through its session rules.
+          return yield* syncHostPermissions(live, context.input.providerThread, undefined).pipe(
+            Effect.timeout("10 seconds"),
+            Effect.as({
+              ...permission,
+              updatedPermissions: updates.filter((update) => !isClaudeChatGrantUpdate(update)),
+            }),
+            Effect.catch((cause) =>
+              Effect.logWarning("Claude Code could not take a chat's standing allows.", {
+                cause,
+              }).pipe(Effect.as(permission)),
+            ),
+          );
         });
 
         const canUseTool: CanUseTool = (toolName, toolInput, callbackOptions) =>
@@ -9395,22 +9542,28 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           },
         );
 
-        const syncSourceRoots = Effect.fn("ClaudeAdapterV2.syncSourceRoots")(function* (
+        const syncHostPermissions = Effect.fn("ClaudeAdapterV2.syncHostPermissions")(function* (
           context: ClaudeLiveQueryContext,
+          providerThread: OrchestrationV2ProviderThread,
           sourceRoots: readonly string[] | undefined,
         ) {
-          if (sourceRoots === undefined) return;
-          const roots = [...new Set(sourceRoots)].sort();
-          if (
-            context.confirmedSourceRoots?.length === roots.length &&
-            context.confirmedSourceRoots.every((root, index) => root === roots[index])
-          )
-            return;
-          context.confirmedSourceRoots = null;
-          // Launch-time directory grants cannot be fully withdrawn. Apply the
-          // first set after initialization, then replace it on this same process.
-          yield* context.query.setSourceRoots(roots);
-          context.confirmedSourceRoots = roots;
+          const grants = readChatGrants(providerThread, context.nativeThreadId);
+          const confirmed = context.confirmedHostPermissions;
+          if (sourceRoots === undefined && grants === undefined && confirmed === null) return;
+          const next: ClaudeHostPermissions = {
+            sourceRoots:
+              sourceRoots === undefined
+                ? (confirmed?.sourceRoots ?? [])
+                : [...new Set(sourceRoots)].sort(),
+            allow: grants?.rules ?? [],
+            directories: grants?.directories ?? [],
+          };
+          if (JSON.stringify(confirmed) === JSON.stringify(next)) return;
+          context.confirmedHostPermissions = null;
+          // Launch-time grants cannot be fully withdrawn. Apply the first set after
+          // initialization, then replace it on this same process.
+          yield* context.query.setHostPermissions(next);
+          context.confirmedHostPermissions = next;
         });
 
         const openQuery = Effect.fnUntraced(function* (
@@ -9441,6 +9594,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           ) {
             return existing;
           }
+          yield* endChatGrantsOnModeChange(turnInput, nativeThreadId);
           if (
             existing !== null &&
             existing.nativeThreadId === nativeThreadId &&
@@ -9615,7 +9769,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             queryPolicyKey,
             launchKey: compiledSelection.launchIdentity,
             confirmedLiveSelection: compiledSelection.live,
-            confirmedSourceRoots: null,
+            confirmedHostPermissions: null,
             verifyUltracode: compiledSelection.live.ultracode,
             closed,
             lastTurn: null,
@@ -9797,7 +9951,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   );
             const querySession = yield* openQuery(turnInput, nativeThreadId);
             if (userMessage !== null)
-              yield* syncSourceRoots(querySession, turnInput.hostSourceRoots);
+              yield* syncHostPermissions(
+                querySession,
+                turnInput.providerThread,
+                turnInput.hostSourceRoots,
+              );
             const attachTurn = Effect.gen(function* () {
               querySession.lastTurn = context;
               yield* Ref.set(activeTurn, context);
@@ -10448,6 +10606,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                       now,
                     }),
                     handoffIds: rollbackInput.providerThread.handoffIds,
+                    ...(rollbackInput.providerThread.chatGrants === undefined
+                      ? {}
+                      : { chatGrants: rollbackInput.providerThread.chatGrants }),
                   },
                   providerTurns: [],
                   messages: [],

@@ -727,3 +727,287 @@ test("Claude completes a Turn when Desktop Tools are unavailable", async () => {
     await model.close();
   }
 });
+
+test("Claude chat grants survive Stop and restart, and end on a permission mode change", async () => {
+  // Multiple native lifetimes include their bounded shutdown budgets.
+  test.setTimeout(360_000);
+  const results: Record<string, unknown> = {};
+  const measurements: Record<string, unknown> = {};
+  const server = await startScriptedAnthropicServer((request) => {
+    const background = backgroundTitleResponse(request);
+    if (background) return background;
+    const prompt = request.messages
+      .filter((message) => message.role === "user")
+      .flatMap((message) =>
+        typeof message.content === "string"
+          ? [message.content]
+          : message.content.flatMap((block) => (block.type === "text" ? [block.text ?? ""] : [])),
+      )
+      .findLast((content) => content.includes("CHAT_GRANTS_"));
+    const phase = prompt ? /CHAT_GRANTS_(\w+)/u.exec(prompt)?.[1] : undefined;
+    if (!phase) throw new Error("Missing chat-grant prompt marker");
+    const id = `grant_${phase}`;
+    const result = anthropicToolResult(request, id);
+    if (result) {
+      results[id] = result;
+      return { type: "text", text: `CHAT_GRANTS_DONE_${phase}` };
+    }
+    if (phase === "bash" || phase === "bash_again")
+      return tool(id, "Bash", { command: bashCommand, description: "Run the punctuation fixture" });
+    return js(
+      id,
+      `${phase === "initial" ? 'nodeRepl.write("TOOL_STARTED_AT=" + Date.now());' : ""} await new Promise(resolve => setTimeout(resolve, ${phase.startsWith("stop") ? 120_000 : 2500})); nodeRepl.write(${JSON.stringify(id)});`,
+      `Chat grant ${phase}`,
+      phase.startsWith("stop") ? 150_000 : 30_000,
+    );
+  });
+  const harness = await ElectronScenarioHarness.create({
+    label: "cdt-chat-grants",
+    prepareAgentRuntime: false,
+    environment: {
+      ...server.environment,
+      NODEX_LOG_FILE: "1",
+      NODEX_LOG_FILE_LEVEL: "debug",
+      NODEX_LOG_CONSOLE: "0",
+    },
+  });
+  // A real executable prefix forces the CLI to suggest a rule containing punctuation.
+  const executable = path.join(harness.profile.initialProjectsDirectory, "say (a, b)");
+  fs.mkdirSync(path.dirname(executable), { recursive: true });
+  fs.writeFileSync(executable, "#!/bin/sh\nprintf 'CHAT_GRANTS_BASH_OK\\n'\n", { mode: 0o755 });
+  const bashCommand = `${JSON.stringify(executable)} hello`;
+  let page: Page | undefined;
+  let target: { sessionId: string; threadId: string } | undefined;
+  const state = () => readRuntimeConversation(page!, target!);
+  const cliPid = async () => {
+    const nativeId = (await state()).snapshot.projection.providerThreads.at(-1)?.nativeThreadRef
+      ?.nativeId;
+    expect(nativeId).toBeTruthy();
+    // Select only the CLI belonging to this disposable conversation, never another Nodex window.
+    const processes = execFileSync("ps", ["-axo", "pid=,command="], { encoding: "utf8" })
+      .split("\n")
+      .filter((line) => line.includes(nativeId!) && /\/claude(?:\s|$)/u.test(line));
+    expect(processes).toHaveLength(1);
+    const pid = Number(processes[0]!.trim().split(/\s+/u)[0]);
+    expect(alive(pid)).toBe(true);
+    return pid;
+  };
+  const assertNoCommand = async () => {
+    const conversation = await state();
+    expect(
+      conversation.snapshot.projection.runtimeRequests.filter(
+        (request) => request.kind === "command" && request.status === "pending",
+      ),
+    ).toEqual([]);
+    return conversation;
+  };
+  const awaitExecution = async () => {
+    await expect
+      .poll(
+        async () => {
+          await assertNoCommand();
+          return activeExecs(harness.profile.codexHome).length;
+        },
+        { timeout: 30_000 },
+      )
+      .toBeGreaterThan(0);
+  };
+  const stop = async () => {
+    await page!.getByRole("button", { name: "Stop", exact: true }).click();
+    await expect
+      .poll(async () => (await state()).snapshot.projection.runs.at(-1)?.status, {
+        timeout: 10_000,
+      })
+      .toBe("interrupted");
+    await expect.poll(() => activeExecs(harness.profile.codexHome), { timeout: 5000 }).toEqual([]);
+  };
+  const answerApproval = async (choose: () => Promise<void>) => {
+    const pending = (await state()).snapshot.projection.runtimeRequests.find(
+      (request) => request.kind === "command" && request.status === "pending",
+    );
+    expect(pending).toBeDefined();
+    const clickedAt = Date.now();
+    await choose();
+    await expect
+      .poll(
+        async () =>
+          (await state()).snapshot.projection.runtimeRequests.find(
+            (request) => request.id === pending!.id,
+          )?.status,
+      )
+      .toBe("resolved");
+    return clickedAt;
+  };
+  const allowForChat = async (name: RegExp) => {
+    await page!
+      .getByRole("button", { name: "More approval options", exact: true })
+      .click({ timeout: 30_000 });
+    await expect(page!.getByRole("menuitem", { name })).toBeVisible();
+    saveEvidence("chat-grants-approval.json", await state());
+    return answerApproval(() => page!.getByRole("menuitem", { name }).click());
+  };
+  const followUp = async (phase: string) => sendAgentFollowUp(page!, `CHAT_GRANTS_${phase}`);
+  const finish = async (phase: string) => {
+    await expect
+      .poll(
+        async () => {
+          await assertNoCommand();
+          return results[`grant_${phase}`];
+        },
+        { timeout: 30_000 },
+      )
+      .toBeDefined();
+    expect(text(results[`grant_${phase}`])).toContain(
+      phase.startsWith("bash") ? "CHAT_GRANTS_BASH_OK" : `grant_${phase}`,
+    );
+    expect(results[`grant_${phase}`]).not.toMatchObject({ is_error: true });
+    await waitForRuntimeCompletedAgentTurn(page!, target!, 30_000);
+  };
+  try {
+    page = await harness.launch();
+    await configureClaude(page, harness, server.environment);
+    const draft = await createAgentSmokeDraft(
+      page,
+      harness.profile.initialProjectsDirectory,
+      "Claude chat grants",
+    );
+    await refreshComposerModels(page);
+    await chooseComposerModel(page, "Claude Sonnet 5.5", "Claude Sonnet 5.5");
+    await page.keyboard.press("Escape");
+    if (
+      !(await page
+        .getByRole("button", { name: "Permissions: Ask for approval", exact: true })
+        .count())
+    ) {
+      await page.getByRole("button", { name: /^Permissions:/ }).click();
+      await page.getByRole("menuitem", { name: /Ask for approval/ }).click();
+    }
+    const threadId = await sendAgentPrompt(page, draft.projectSessionId, "CHAT_GRANTS_initial");
+    target = { sessionId: draft.projectSessionId, threadId };
+    const clickedAt = await allowForChat(/^Allow JavaScript for this chat$/u);
+    await awaitExecution();
+    await finish("initial");
+    const toolStartedAt = Number(/TOOL_STARTED_AT=(\d+)/u.exec(text(results.grant_initial))?.[1]);
+    measurements.liveGrant = { clickedAt, toolStartedAt, clickToToolMs: toolStartedAt - clickedAt };
+    saveEvidence("chat-grants-measurements.json", measurements);
+    expect(toolStartedAt - clickedAt).toBeGreaterThanOrEqual(0);
+    expect(
+      toolStartedAt - clickedAt,
+      "The live apply must finish without the 10-second fallback",
+    ).toBeLessThan(8000);
+    saveEvidence("chat-grants-live-applied.json", await assertNoCommand());
+    const pidBeforeModeChange = await cliPid();
+    // A prompted Turn crosses the adapter boundary that revokes standing grants.
+    await page.getByRole("button", { name: /^Permissions:/ }).click();
+    await page.getByRole("menuitem", { name: /Full access/ }).click();
+    await page.getByRole("button", { name: "Turn on", exact: true }).click();
+    await followUp("modechanged");
+    await finish("modechanged");
+    expect((await state()).snapshot.projection.providerThreads.at(-1)?.chatGrants).toBeUndefined();
+    const pidInFullAccess = await cliPid();
+    measurements.modeChange = { pidBeforeModeChange, pidInFullAccess };
+    saveEvidence("chat-grants-measurements.json", measurements);
+    expect(pidInFullAccess).toBe(pidBeforeModeChange);
+    await page.getByRole("button", { name: /^Permissions:/ }).click();
+    await page.getByRole("menuitem", { name: /Ask for approval/ }).click();
+    await followUp("revoked");
+    await expect(
+      page.getByRole("button", { name: "More approval options", exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect
+      .poll(
+        async () =>
+          (await state()).snapshot.projection.runtimeRequests.filter(
+            (request) => request.kind === "command" && request.status === "pending",
+          ).length,
+      )
+      .toBe(1);
+    const pidBackInAsk = await cliPid();
+    measurements.modeChange = { pidBeforeModeChange, pidInFullAccess, pidBackInAsk };
+    saveEvidence("chat-grants-measurements.json", measurements);
+    expect(pidBackInAsk).toBe(pidBeforeModeChange);
+    expect((await state()).snapshot.projection.providerThreads.at(-1)?.chatGrants).toBeUndefined();
+    saveEvidence("chat-grants-revoked.json", await state());
+    await screenshot(page, "chat-grants-revoked.png");
+    // Approve once must still produce an ordinary completed transcript tool row.
+    await answerApproval(() => page!.getByRole("button", { name: "Approve", exact: true }).click());
+    await finish("revoked");
+    const once = await state();
+    const row = once.snapshot.projection.visibleTurnItems
+      .map(({ item }) => item)
+      .find((item) => item.type === "dynamic_tool" && item.mcpToolCall?.id === "grant_revoked");
+    expect(row).toMatchObject({ type: "dynamic_tool", mcpToolCall: { status: "completed" } });
+    expect(once.snapshot.projection.providerThreads.at(-1)?.chatGrants).toBeUndefined();
+    const activity = page.getByRole("button", { name: /^Worked for/u }).last();
+    if ((await activity.count()) && (await activity.getAttribute("aria-expanded")) !== "true")
+      await activity.click();
+    const groupBody = page.getByTestId("agent-activity-group-body").last();
+    if ((await groupBody.count()) && (await groupBody.getAttribute("aria-hidden")) === "true")
+      await groupBody.locator("..").getByRole("button").first().click();
+    await expect(
+      page.getByRole("button", { name: "Chat grant revoked", exact: true }),
+    ).toBeVisible();
+    saveEvidence("chat-grants-approved-once.json", once);
+    await screenshot(page, "chat-grants-approved-once.png");
+    await followUp("regrant");
+    await allowForChat(/^Allow JavaScript for this chat$/u);
+    await finish("regrant");
+    await followUp("bash");
+    await allowForChat(/for this chat$/u);
+    await finish("bash");
+    const withBoth = await state();
+    saveEvidence("chat-grants-bash-rule.json", { command: bashCommand, conversation: withBoth });
+    const grants = withBoth.snapshot.projection.providerThreads.at(-1)?.chatGrants;
+    expect(grants?.rules).toContain("mcp__node_repl__js");
+    expect(
+      grants?.rules.some(
+        (rule) =>
+          rule.startsWith("Bash(") && rule.includes("a, b") && rule.includes(String.raw`\(`),
+      ),
+    ).toBe(true);
+    await followUp("stop_again");
+    await awaitExecution();
+    await stop();
+    await followUp("both");
+    await awaitExecution();
+    saveEvidence("chat-grants-post-stop-running.json", await assertNoCommand());
+    await screenshot(page, "chat-grants-post-stop-running.png");
+    await finish("both");
+    saveEvidence("chat-grants-combined-bare-rule.json", await assertNoCommand());
+    await followUp("bash_again");
+    await finish("bash_again");
+    saveEvidence("chat-grants-punctuation-after-stop.json", await assertNoCommand());
+
+    page = await harness.restart();
+    await expect(page.getByRole("button", { name: "Send prompt", exact: true })).toBeVisible({
+      timeout: 30_000,
+    });
+    await followUp("restarted");
+    await awaitExecution();
+    await finish("restarted");
+    saveEvidence("chat-grants-restarted.json", await assertNoCommand());
+    expect(server.errors).toEqual([]);
+    saveEvidence("chat-grants-results.json", { results, measurements });
+    saveEvidence("chat-grants-success.json", {
+      requests: server.requests,
+      errors: server.errors,
+      conversation: await state(),
+      logs: await readBoundedElectronRuntimeLogs(harness.profile, 90_000),
+    });
+  } catch (error) {
+    if (page) await screenshot(page, "chat-grants-failure.png").catch(() => {});
+    saveEvidence("chat-grants-failure.json", {
+      error: String(error),
+      results,
+      measurements,
+      requests: server.requests,
+      errors: server.errors,
+      conversation: page && target ? await state().catch(() => null) : null,
+      logs: await readBoundedElectronRuntimeLogs(harness.profile, 90_000),
+    });
+    throw error;
+  } finally {
+    await server.close();
+    await harness.close();
+  }
+});

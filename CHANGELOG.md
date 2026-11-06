@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - MCP tool images and rich results now appear in Claude Code chats, both live and in saved conversations. They used to show as raw JSON.
+- “Allow for this chat” in Claude Code chats now lasts for the whole chat. Claude used to ask again after you pressed Stop, changed models, or restarted Nodex.
 - Windows updates install reliably while Nodex is running. An update could stop with an error when a Nodex process was exiting at the same moment, or on a busy computer. A failed update now records why.
 - Quitting Nodex no longer leaves background processes running. An OpenCode server or provider check that was starting as you quit could keep running until the next launch, and windows could log `Runtime Scope closed` errors while closing.
 - Terminals that Agents start work again in the macOS app. They could fail immediately with `posix_spawnp failed`, because the packaged Agent Runtime looked for its terminal helper in the wrong place.

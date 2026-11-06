@@ -33,6 +33,7 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk/sdk-tools";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
+  CheckpointId,
   ChatAttachmentId,
   ChatFileAttachment,
   ChatImageAttachment,
@@ -102,6 +103,84 @@ import {
   materializeFixtureInput,
   projectionFor,
 } from "../testkit/fixtures/shared.ts";
+
+describe("claudeChatGrantsWith", () => {
+  it("collects only standing allows and directories, deduplicating without granting mode changes or removals", () => {
+    const grants = ClaudeAdapterV2.claudeChatGrantsWith(
+      {
+        runtimeMode: "approval-required",
+        rules: ["Read"],
+        directories: ["/reference"],
+      },
+      "approval-required",
+      [
+        {
+          type: "addRules",
+          behavior: "allow",
+          rules: [
+            { toolName: "Read" },
+            { toolName: "Bash", ruleContent: String.raw`echo (a, b) \path` },
+          ],
+          destination: "session",
+        },
+        {
+          type: "replaceRules",
+          behavior: "allow",
+          rules: [{ toolName: "Write" }],
+          destination: "session",
+        },
+        {
+          type: "addDirectories",
+          directories: ["/reference", "/extra", "/extra"],
+          destination: "session",
+        },
+        { type: "setMode", mode: "bypassPermissions", destination: "session" },
+        {
+          type: "addRules",
+          behavior: "deny",
+          rules: [{ toolName: "Denied" }],
+          destination: "session",
+        },
+        {
+          type: "replaceRules",
+          behavior: "ask",
+          rules: [{ toolName: "Ask" }],
+          destination: "session",
+        },
+        {
+          type: "removeRules",
+          behavior: "allow",
+          rules: [{ toolName: "Read" }],
+          destination: "session",
+        },
+        { type: "removeDirectories", directories: ["/reference"], destination: "session" },
+      ],
+    );
+    assert.deepEqual(grants, {
+      runtimeMode: "approval-required",
+      rules: ["Read", String.raw`Bash(echo \(a, b\) \\path)`, "Write"],
+      directories: ["/reference", "/extra"],
+    });
+  });
+
+  it("drops grants from another runtime mode before adding new ones", () => {
+    assert.deepEqual(
+      ClaudeAdapterV2.claudeChatGrantsWith(
+        { runtimeMode: "full-access", rules: ["Bash"], directories: ["/old"] },
+        "approval-required",
+        [
+          {
+            type: "addRules",
+            behavior: "allow",
+            rules: [{ toolName: "Read" }],
+            destination: "session",
+          },
+        ],
+      ),
+      { runtimeMode: "approval-required", rules: ["Read"], directories: [] },
+    );
+  });
+});
 
 const DEFAULT_CLAUDE_SETTINGS = Schema.decodeSync(ClaudeSettings)({});
 const AUTO_COMPACT_CLAUDE_SETTINGS = Schema.decodeSync(ClaudeSettings)({
@@ -997,7 +1076,7 @@ describe("ClaudeAdapterV2 full execution access", () => {
                     }),
 
                   applySelection: () => Effect.void,
-                  setSourceRoots: () => Effect.void,
+                  setHostPermissions: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -1128,7 +1207,7 @@ const captureSdkExecutablePaths = Effect.fn("captureSdkExecutablePaths")(functio
             offer: () => Effect.void,
 
             applySelection: () => Effect.void,
-            setSourceRoots: () => Effect.void,
+            setHostPermissions: () => Effect.void,
             readAppliedSettings: Effect.succeed(null),
             setPermissionMode: () => Effect.void,
             stopTask: () => Effect.void,
@@ -1252,7 +1331,7 @@ describe("ClaudeAdapterV2 resume compaction", () => {
                   offer: () => Effect.void,
 
                   applySelection: () => Effect.void,
-                  setSourceRoots: () => Effect.void,
+                  setHostPermissions: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -1465,7 +1544,7 @@ describe("ClaudeAdapterV2 attachments", () => {
                   }),
 
                 applySelection: () => Effect.void,
-                setSourceRoots: () => Effect.void,
+                setHostPermissions: () => Effect.void,
                 readAppliedSettings: Effect.succeed(null),
                 setPermissionMode: () => Effect.void,
                 stopTask: () => Effect.void,
@@ -1614,7 +1693,7 @@ describe("ClaudeAdapterV2 attachments", () => {
                   offer: () => Effect.void,
 
                   applySelection: () => Effect.void,
-                  setSourceRoots: () => Effect.void,
+                  setHostPermissions: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -1738,7 +1817,7 @@ describe("ClaudeAdapterV2 native fork", () => {
                     }),
 
                   applySelection: () => Effect.void,
-                  setSourceRoots: () => Effect.void,
+                  setHostPermissions: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -1794,7 +1873,14 @@ describe("ClaudeAdapterV2 native fork", () => {
         const now = yield* DateTime.now;
         const providerTurnId = ProviderTurnId.make("provider-turn-claude-source");
         const forkedProviderThread = yield* runtime.forkThread({
-          sourceProviderThread,
+          sourceProviderThread: {
+            ...sourceProviderThread,
+            chatGrants: {
+              runtimeMode: "full-access",
+              rules: ["Bash"],
+              directories: ["/reference"],
+            },
+          },
           sourceProviderTurns: [
             {
               id: providerTurnId,
@@ -1827,6 +1913,10 @@ describe("ClaudeAdapterV2 native fork", () => {
             providerSessionId,
           },
         ]);
+        assert.isUndefined(
+          forkedProviderThread.chatGrants,
+          "Forks start without the source chat grants",
+        );
         assert.equal(forkedProviderThread.nativeThreadRef?.nativeId, "forked-native-session");
         assert.equal(forkedProviderThread.forkedFrom?.providerThreadId, sourceProviderThread.id);
         assert.equal(forkedProviderThread.forkedFrom?.providerTurnId, providerTurnId);
@@ -2050,22 +2140,26 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
     }),
   );
 
-  it.effect("replaces Project Source grants while preserving the caller's inline permissions", () =>
+  it.effect("replaces host grants and roots while preserving inline launch permissions", () =>
     Effect.gen(function* () {
       const cli = makeFakeClaudeCli();
       const session = yield* openWith(cli, {
         permissions: { allow: ["Read(/reference/**)"], additionalDirectories: ["/reference"] },
       });
       const initialRequests = cli.controlRequests.length;
-      yield* session.setSourceRoots(["/source-a", "/source-b"]);
-      yield* session.setSourceRoots(["/source-b"]);
+      yield* session.setHostPermissions({
+        sourceRoots: ["/source-a", "/source-b"],
+        allow: ["Bash(echo:*)"],
+        directories: ["/granted"],
+      });
+      yield* session.setHostPermissions({ sourceRoots: ["/source-b"], allow: [], directories: [] });
       assert.deepEqual(cli.controlRequests.slice(initialRequests), [
         {
           subtype: "apply_flag_settings",
           settings: {
             permissions: {
-              allow: ["Read(/reference/**)"],
-              additionalDirectories: ["/reference", "/source-a", "/source-b"],
+              allow: ["Read(/reference/**)", "Bash(echo:*)"],
+              additionalDirectories: ["/reference", "/source-a", "/source-b", "/granted"],
             },
           },
         },
@@ -2077,6 +2171,36 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
               additionalDirectories: ["/reference", "/source-b"],
             },
           },
+        },
+      ]);
+      yield* session.close;
+    }),
+  );
+
+  it.effect("clearing host grants sends a replacement permissions object without their rules", () =>
+    Effect.gen(function* () {
+      const cli = makeFakeClaudeCli();
+      const session = yield* openWith(cli);
+      const initialRequests = cli.controlRequests.length;
+      yield* session.setHostPermissions({
+        sourceRoots: ["/source"],
+        allow: ["Bash(echo:*)"],
+        directories: ["/granted"],
+      });
+      yield* session.setHostPermissions({ sourceRoots: ["/source"], allow: [], directories: [] });
+      assert.deepEqual(cli.controlRequests.slice(initialRequests), [
+        {
+          subtype: "apply_flag_settings",
+          settings: {
+            permissions: {
+              allow: ["Bash(echo:*)"],
+              additionalDirectories: ["/source", "/granted"],
+            },
+          },
+        },
+        {
+          subtype: "apply_flag_settings",
+          settings: { permissions: { additionalDirectories: ["/source"] } },
         },
       ]);
       yield* session.close;
@@ -2125,7 +2249,7 @@ describe("ClaudeAdapterV2 native session identity", () => {
                   offer: () => Effect.void,
 
                   applySelection: () => Effect.void,
-                  setSourceRoots: () => Effect.void,
+                  setHostPermissions: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -2400,6 +2524,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly contextUsage?: { readonly usedTokens: number; readonly maxTokens: number };
     readonly refuseLiveSelectionOnce?: boolean;
     readonly refuseSourceRootsOnce?: boolean;
+    readonly onHostPermissions?: ClaudeAdapterV2.ClaudeAgentSdkQuerySession["setHostPermissions"];
     readonly startupFrames?: ReadonlyArray<SDKMessage>;
     readonly resolveSettings?: (typeof import("@anthropic-ai/claude-agent-sdk"))["resolveSettings"];
   }) =>
@@ -2427,16 +2552,22 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       let actualNativeModel = "";
       let refuseLiveSelection = options?.refuseLiveSelectionOnce === true;
       const nativeModelsAtOffer: string[] = [];
+      const hostPermissionChanges: ClaudeAdapterV2.ClaudeHostPermissions[] = [];
+      const hostPermissionsAtOffer: Array<ClaudeAdapterV2.ClaudeHostPermissions | null> = [];
+      let nativeHostPermissions: ClaudeAdapterV2.ClaudeHostPermissions | null = null;
       const sourceRootChanges: string[][] = [];
       const sourceRootsAtOffer: string[][] = [];
       let nativeSourceRoots: string[] = [];
       let refuseSourceRoots = options?.refuseSourceRootsOnce === true;
       let startupFrames = options?.startupFrames ?? [];
       const liveQuery = {
-        setSourceRoots: (roots: readonly string[]) =>
+        setHostPermissions: (permissions: ClaudeAdapterV2.ClaudeHostPermissions) =>
           Effect.suspend(() => {
-            nativeSourceRoots = [...roots];
-            sourceRootChanges.push([...roots]);
+            nativeSourceRoots = [...permissions.sourceRoots];
+            nativeHostPermissions = permissions;
+            hostPermissionChanges.push(permissions);
+            sourceRootChanges.push([...permissions.sourceRoots]);
+            if (options?.onHostPermissions) return options.onHostPermissions(permissions);
             const frames = startupFrames;
             startupFrames = [];
             if (!refuseSourceRoots)
@@ -2444,7 +2575,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             refuseSourceRoots = false;
             return Effect.fail(
               new ClaudeAdapterV2.ClaudeAgentSdkQueryRunnerError({
-                method: "setSourceRoots",
+                method: "setHostPermissions",
                 cause: "The native process could not confirm its directories.",
               }),
             );
@@ -2519,6 +2650,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           open: (input) =>
             Effect.gen(function* () {
               openedOptions = input.options;
+              nativeHostPermissions = null;
+              nativeSourceRoots = [];
               nativeMode = input.options.permissionMode;
               actualNativeModel = input.options.model;
               if (options?.freshQueueOnReopen === true && processQueues.length > 0) {
@@ -2532,6 +2665,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                       offeredMessages.push(message);
                       nativeModesAtOffer.push(nativeMode);
                       sourceRootsAtOffer.push([...nativeSourceRoots]);
+                      hostPermissionsAtOffer.push(nativeHostPermissions);
                       nativeModelsAtOffer.push(actualNativeModel);
                     }),
                   ...liveQuery,
@@ -2569,6 +2703,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     offeredMessages.push(message);
                     nativeModesAtOffer.push(nativeMode);
                     sourceRootsAtOffer.push([...nativeSourceRoots]);
+                    hostPermissionsAtOffer.push(nativeHostPermissions);
                     nativeModelsAtOffer.push(actualNativeModel);
                   }),
                 ...liveQuery,
@@ -2663,6 +2798,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         getOpenedOptions: () => openedOptions,
         liveChanges,
         nativeModelsAtOffer,
+        hostPermissionChanges,
+        hostPermissionsAtOffer,
         sourceRootChanges,
         sourceRootsAtOffer,
         terminalEvents,
@@ -3096,22 +3233,421 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           decision,
           ...(decision === "decline" ? { feedback: "Run npm pack first." } : {}),
         });
-        assert.deepEqual(
-          yield* Fiber.join(result),
-          ClaudeAdapterV2.permissionResultFromDecision({
+        assert.deepEqual(yield* Fiber.join(result), {
+          ...ClaudeAdapterV2.permissionResultFromDecision({
             toolName: "Bash",
             toolInput: { command: "npm publish" },
             toolUseID: "publish",
             decision,
             ...(decision === "decline" ? { feedback: "Run npm pack first." } : {}),
           }),
-        );
+          ...(decision === "acceptForSession" ? { updatedPermissions: [] } : {}),
+        });
       }).pipe(
         Effect.scoped,
         Effect.provide(
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
         ),
       ),
+  );
+
+  const chatGrants = {
+    runtimeMode: "approval-required" as const,
+    rules: ["Bash(echo:*)"],
+    directories: ["/reference"],
+  };
+  const makeChatGrantHarness = Effect.fnUntraced(function* (
+    onHostPermissions?: ClaudeAdapterV2.ClaudeAgentSdkQuerySession["setHostPermissions"],
+  ) {
+    const harness = yield* makeWakeHarnessWithOptions({
+      freshQueueOnReopen: true,
+      close: (messages) => Queue.shutdown(messages),
+      ...(onHostPermissions === undefined ? {} : { onHostPermissions }),
+    });
+    const input = (
+      ordinal: number,
+      providerThread = harness.providerThread,
+      runtimeMode: ProviderAdapter.ProviderAdapterV2RuntimePolicy["runtimeMode"] = "approval-required",
+    ) => ({
+      ...makeClaudeTestTurnInput({
+        threadId: harness.threadId,
+        providerThread,
+        now: DateTime.makeUnsafe("2026-11-06T00:00:00Z"),
+        attemptId: RunAttemptId.make(`chat-grant-${ordinal}`),
+        providerTurnOrdinal: ordinal,
+        text: "Continue",
+        attachments: [],
+        runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          ...CLAUDE_TEST_RUNTIME_POLICY,
+          runtimeMode,
+        }),
+      }),
+      hostSourceRoots: ["/source"],
+    });
+    const latestThread = () =>
+      harness.events.findLast((event) => event.type === "provider_thread.updated")
+        ?.providerThread ?? harness.providerThread;
+    const finish = Effect.fnUntraced(function* (ordinal: number) {
+      yield* Queue.offer(
+        harness.processQueues.at(-1)!,
+        makeResultFrame({
+          uuid: `chat-grant-result-${ordinal}`,
+          result: "Done",
+        }),
+      );
+      yield* Queue.take(harness.terminalReceipts);
+      return latestThread();
+    });
+    const approve = Effect.fnUntraced(function* (decision: ProviderApprovalDecision) {
+      const pending = yield* Effect.promise(() =>
+        harness.getOpenedOptions()!.canUseTool!(
+          "Bash",
+          { command: "echo hello" },
+          {
+            signal: new AbortController().signal,
+            toolUseID: "chat-grant-tool",
+            requestId: "chat-grant-request",
+            suggestions: [
+              {
+                type: "addRules",
+                behavior: "allow",
+                rules: [{ toolName: "Bash", ruleContent: "echo:*" }],
+                destination: "session",
+              },
+              { type: "addDirectories", directories: ["/reference"], destination: "session" },
+              { type: "setMode", mode: "default", destination: "session" },
+            ],
+          },
+        ),
+      ).pipe(Effect.forkScoped);
+      const { turnItem } = yield* Queue.take(harness.approvalReceipts);
+      if (turnItem.type !== "approval_request") return yield* Effect.die("Expected approval");
+      yield* harness.runtime.respondToRuntimeRequest({ requestId: turnItem.requestId, decision });
+      return yield* Fiber.join(pending);
+    });
+    return { ...harness, input, latestThread, finish, approve };
+  });
+  const withChatGrantServices = Effect.provide(
+    Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+  );
+
+  it.effect(
+    "persists chat grants before Turn end, preserves them at terminal, and reuses the live process",
+    () =>
+      Effect.gen(function* () {
+        const applied = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const harness = yield* makeChatGrantHarness((permissions) =>
+          permissions.allow.length === 0
+            ? Effect.void
+            : Deferred.succeed(applied, undefined).pipe(Effect.andThen(Deferred.await(release))),
+        );
+        yield* harness.runtime.startTurn(harness.input(1));
+        let answered = false;
+        const approval = yield* harness.approve("acceptForSession").pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              answered = true;
+            }),
+          ),
+          Effect.forkScoped,
+        );
+        yield* Deferred.await(applied);
+        assert.isFalse(answered, "The permission answer waits for the live apply acknowledgement");
+        assert.deepEqual(harness.hostPermissionChanges.at(-1), {
+          sourceRoots: ["/source"],
+          allow: chatGrants.rules,
+          directories: chatGrants.directories,
+        });
+        yield* awaitUntil(
+          () => harness.latestThread().chatGrants !== undefined,
+          "immediate chat grants",
+        );
+        assert.deepEqual(harness.latestThread().chatGrants, chatGrants);
+        assert.lengthOf(
+          harness.terminalEvents(),
+          0,
+          "The grant must be durable before any terminal frame",
+        );
+        yield* Deferred.succeed(release, undefined);
+        const result = yield* Fiber.join(approval);
+        assert.equal(result?.behavior, "allow");
+        if (result?.behavior !== "allow") return;
+        assert.deepEqual(result.updatedPermissions, [
+          { type: "setMode", mode: "default", destination: "session" },
+        ]);
+        const persisted = yield* harness.finish(1);
+        assert.deepEqual(
+          persisted.chatGrants,
+          chatGrants,
+          "Terminal updates must not spread a stale grant snapshot",
+        );
+        yield* harness.runtime.startTurn(harness.input(2, persisted));
+        assert.lengthOf(harness.processQueues, 1, "A new grant must not change launch identity");
+        assert.deepEqual((yield* harness.finish(2)).chatGrants, chatGrants);
+      }).pipe(Effect.scoped, withChatGrantServices),
+  );
+
+  it.effect(
+    "applies chat grants before the post-Stop prompt, keeping them out of launch options",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeChatGrantHarness();
+        const sessions = yield* McpProviderSessions.McpProviderSessions;
+        yield* sessions.set({
+          threadId: harness.threadId,
+          environmentId: EnvironmentId.make("local"),
+          providerSessionId: "provider-session-claude-wake",
+          registeredToolNames: ["read_page"],
+          providerInstanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+          browserToolsAvailable: false,
+          endpoint: "http://127.0.0.1:43123/mcp",
+          authorizationHeader: "Bearer test",
+        });
+        const input = harness.input(1);
+        yield* harness.runtime.startTurn(input);
+        const allocator = yield* IdAllocator.IdAllocatorV2;
+        yield* harness.approve("acceptForSession");
+        yield* harness.runtime.interruptTurn({
+          providerThread: harness.latestThread(),
+          providerTurnId: allocator.derive.providerTurn({
+            driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
+            nativeTurnId: `turn:${input.attemptId}`,
+          }),
+          requestRuntimeRestart: true,
+        });
+        yield* Queue.take(harness.terminalReceipts);
+        yield* harness.runtime.startTurn(harness.input(2, harness.latestThread()));
+        assert.lengthOf(harness.processQueues, 2);
+        assert.deepEqual(harness.hostPermissionsAtOffer.at(-1), {
+          sourceRoots: ["/source"],
+          allow: chatGrants.rules,
+          directories: chatGrants.directories,
+        });
+        assert.deepEqual(harness.getOpenedOptions()?.allowedTools, ["mcp__nodex_app__read_page"]);
+        assert.isDefined(harness.getOpenedOptions()?.mcpServers?.nodex_app);
+        const contentPermission = yield* Effect.promise(() =>
+          harness.getOpenedOptions()!.canUseTool!(
+            "mcp__nodex_app__read_page",
+            {},
+            {
+              signal: new AbortController().signal,
+              toolUseID: "content-after-stop",
+              requestId: "content-after-stop",
+              mcpServer: { name: "nodex_app", source: "sdk" },
+            },
+          ),
+        );
+        assert.equal(contentPermission?.behavior, "allow");
+        assert.equal(Queue.sizeUnsafe(harness.approvalReceipts), 0);
+        assert.notInclude(harness.getOpenedOptions()?.additionalDirectories ?? [], "/reference");
+        const persisted = yield* harness.finish(2);
+        yield* harness.runtime.startTurn({
+          ...harness.input(3, persisted),
+          hostSourceRoots: ["/new-source"],
+        });
+        assert.lengthOf(harness.processQueues, 2);
+        assert.deepEqual(harness.hostPermissionsAtOffer.at(-1), {
+          sourceRoots: ["/new-source"],
+          allow: chatGrants.rules,
+          directories: chatGrants.directories,
+        });
+        yield* harness.finish(3);
+      }).pipe(Effect.scoped, withChatGrantServices),
+  );
+
+  it.effect("restores persisted chat grants in a fresh adapter session", () =>
+    Effect.gen(function* () {
+      const original = yield* makeChatGrantHarness();
+      yield* original.runtime.startTurn(original.input(1));
+      yield* original.approve("acceptForSession");
+      const persisted = yield* original.finish(1);
+      const restarted = yield* makeChatGrantHarness();
+      yield* restarted.runtime.startTurn(restarted.input(2, persisted));
+      assert.deepEqual(restarted.hostPermissionsAtOffer, [
+        { sourceRoots: ["/source"], allow: chatGrants.rules, directories: chatGrants.directories },
+      ]);
+      assert.isUndefined(restarted.getOpenedOptions()?.allowedTools);
+      assert.notInclude(restarted.getOpenedOptions()?.additionalDirectories ?? [], "/reference");
+      assert.equal(restarted.getOpenedOptions()?.resume, persisted.nativeThreadRef?.nativeId);
+      yield* restarted.finish(2);
+    }).pipe(Effect.scoped, withChatGrantServices),
+  );
+
+  it.effect.each(["accept", "decline"] as const)(
+    "does not persist a chat grant for %s",
+    (decision) =>
+      Effect.gen(function* () {
+        const harness = yield* makeChatGrantHarness();
+        yield* harness.runtime.startTurn(harness.input(1));
+        const calls = harness.hostPermissionChanges.length;
+        yield* harness.approve(decision);
+        assert.lengthOf(harness.hostPermissionChanges, calls);
+        assert.isUndefined((yield* harness.finish(1)).chatGrants);
+        assert.isFalse(
+          harness.events.some(
+            (event) =>
+              event.type === "provider_thread.updated" &&
+              event.providerThread.chatGrants !== undefined,
+          ),
+        );
+      }).pipe(Effect.scoped, withChatGrantServices),
+  );
+
+  it.effect.each([
+    { background: false, mode: "full-access" },
+    { background: true, mode: "full-access" },
+    { background: false, mode: "auto" },
+    { background: true, mode: "auto" },
+  ] as const)(
+    "durably ends grants on the same process after a mode change: %j",
+    ({ background, mode }) =>
+      Effect.gen(function* () {
+        const harness = yield* makeChatGrantHarness();
+        yield* harness.runtime.startTurn(harness.input(1));
+        yield* harness.approve("acceptForSession");
+        if (background) yield* harness.offerAndWait(wakeTaskStarted);
+        const persisted = yield* harness.finish(1);
+        const boundary = harness.events.length;
+        yield* harness.runtime.startTurn(harness.input(2, persisted, mode));
+        yield* awaitUntil(
+          () =>
+            harness.events
+              .slice(boundary)
+              .some(
+                (event) =>
+                  event.type === "provider_thread.updated" &&
+                  event.providerThread.chatGrants === undefined,
+              ),
+          "durable grant removal",
+        );
+        assert.lengthOf(harness.processQueues, 1);
+        assert.deepEqual(harness.hostPermissionChanges.at(-1), {
+          sourceRoots: ["/source"],
+          allow: [],
+          directories: [],
+        });
+        assert.deepEqual(
+          harness.hostPermissionsAtOffer.at(-1),
+          harness.hostPermissionChanges.at(-1),
+        );
+        if (background) assert.isTrue(yield* harness.hasPendingBackgroundWork);
+        assert.isUndefined((yield* harness.finish(2)).chatGrants);
+        // Even a stale caller snapshot cannot resurrect grants on return to the original mode.
+        yield* harness.runtime.startTurn(harness.input(3, persisted));
+        yield* harness.finish(3);
+        assert.isUndefined(harness.latestThread().chatGrants);
+        assert.deepEqual(harness.hostPermissionsAtOffer.at(-1), {
+          sourceRoots: ["/source"],
+          allow: [],
+          directories: [],
+        });
+        assert.lengthOf(harness.processQueues, 1);
+      }).pipe(Effect.scoped, withChatGrantServices),
+  );
+
+  it.effect.each(["failure", "timeout"] as const)(
+    "keeps durable grants and returns session rules when live apply has a %s",
+    (failure) =>
+      Effect.gen(function* () {
+        const applying = yield* Deferred.make<void>();
+        const harness = yield* makeChatGrantHarness((permissions) => {
+          if (permissions.allow.length === 0) return Effect.void;
+          return Deferred.succeed(applying, undefined).pipe(
+            Effect.andThen(
+              failure === "timeout"
+                ? Effect.never
+                : Effect.fail(
+                    new ClaudeAdapterV2.ClaudeAgentSdkQueryRunnerError({
+                      method: "setHostPermissions",
+                      cause: "Apply rejected",
+                    }),
+                  ),
+            ),
+          );
+        });
+        yield* harness.runtime.startTurn(harness.input(1));
+        const answered = yield* Deferred.make<void>();
+        const approval = yield* harness.approve("acceptForSession").pipe(
+          Effect.tap(() => Deferred.succeed(answered, undefined)),
+          Effect.forkScoped,
+        );
+        yield* Deferred.await(applying);
+        if (failure === "timeout") {
+          yield* TestClock.adjust("9 seconds");
+          assert.isFalse(
+            yield* Deferred.isDone(answered),
+            "The apply gets its full 10-second window",
+          );
+          yield* TestClock.adjust("1 second");
+        }
+        const result = yield* Fiber.join(approval);
+        assert.deepEqual(
+          result,
+          ClaudeAdapterV2.permissionResultFromDecision({
+            toolName: "Bash",
+            toolInput: { command: "echo hello" },
+            toolUseID: "chat-grant-tool",
+            decision: "acceptForSession",
+            suggestions: [
+              {
+                type: "addRules",
+                behavior: "allow",
+                rules: [{ toolName: "Bash", ruleContent: "echo:*" }],
+                destination: "session",
+              },
+              { type: "addDirectories", directories: ["/reference"], destination: "session" },
+              { type: "setMode", mode: "default", destination: "session" },
+            ],
+          }),
+        );
+        yield* awaitUntil(
+          () => harness.latestThread().chatGrants !== undefined,
+          "fallback grant emission",
+        );
+        assert.deepEqual(harness.latestThread().chatGrants, chatGrants);
+        assert.lengthOf(harness.terminalEvents(), 0);
+        assert.deepEqual((yield* harness.finish(1)).chatGrants, chatGrants);
+      }).pipe(Effect.scoped, withChatGrantServices),
+  );
+
+  it.effect("does not send another host permissions update on a mode change without grants", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeChatGrantHarness();
+      yield* harness.runtime.startTurn(harness.input(1));
+      const persisted = yield* harness.finish(1);
+      const calls = harness.hostPermissionChanges.length;
+      yield* harness.runtime.startTurn(harness.input(2, persisted, "full-access"));
+      assert.lengthOf(harness.hostPermissionChanges, calls);
+      assert.lengthOf(harness.processQueues, 1);
+      yield* harness.finish(2);
+    }).pipe(Effect.scoped, withChatGrantServices),
+  );
+
+  it.effect("keeps chat grants when rollback resets the provider thread to its start", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeChatGrantHarness();
+      yield* harness.runtime.startTurn(harness.input(1));
+      yield* harness.approve("acceptForSession");
+      const persisted = yield* harness.finish(1);
+      const reset = yield* harness.runtime.rollbackThread({
+        providerThread: persisted,
+        providerThreadTurns: [],
+        target: {
+          type: "thread_start",
+          checkpointId: CheckpointId.make("chat-grant-reset"),
+          appRunOrdinal: 0,
+        },
+      });
+      assert.deepEqual(reset.providerThread.chatGrants, chatGrants);
+      yield* harness.runtime.startTurn(harness.input(2, reset.providerThread));
+      assert.deepEqual(harness.hostPermissionsAtOffer.at(-1), {
+        sourceRoots: ["/source"],
+        allow: chatGrants.rules,
+        directories: chatGrants.directories,
+      });
+      yield* harness.finish(2);
+    }).pipe(Effect.scoped, withChatGrantServices),
   );
 
   it.effect("restores the managed fallback after Claude enters native Plan mode", () =>
@@ -6951,7 +7487,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   offer: () => Effect.void,
 
                   applySelection: () => Effect.void,
-                  setSourceRoots: () => Effect.void,
+                  setHostPermissions: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -7212,7 +7748,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     offer: () => Effect.void,
 
                     applySelection: () => Effect.void,
-                    setSourceRoots: () => Effect.void,
+                    setHostPermissions: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
@@ -12116,7 +12652,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   offer: () => Effect.void,
 
                   applySelection: () => Effect.void,
-                  setSourceRoots: () => Effect.void,
+                  setHostPermissions: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -12307,7 +12843,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     offer: () => Effect.void,
 
                     applySelection: () => Effect.void,
-                    setSourceRoots: () => Effect.void,
+                    setHostPermissions: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
@@ -12550,7 +13086,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     offer: () => Effect.void,
 
                     applySelection: () => Effect.void,
-                    setSourceRoots: () => Effect.void,
+                    setHostPermissions: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
@@ -12750,7 +13286,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   offer: () => Effect.void,
 
                   applySelection: () => Effect.void,
-                  setSourceRoots: () => Effect.void,
+                  setHostPermissions: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -12934,7 +13470,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     offer: () => Effect.void,
 
                     applySelection: () => Effect.void,
-                    setSourceRoots: () => Effect.void,
+                    setHostPermissions: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
@@ -13074,7 +13610,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     offer: () => Effect.void,
 
                     applySelection: () => Effect.void,
-                    setSourceRoots: () => Effect.void,
+                    setHostPermissions: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,

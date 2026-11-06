@@ -825,11 +825,16 @@ function makeReplayQueryRunner(
           replayEffect(() => {
             assertNextOutboundFrame({ type: "query.apply_flag_settings", settings });
           }),
-        setSourceRoots: (sourceRoots) =>
+        setHostPermissions: ({ sourceRoots, allow, directories }) =>
           replayEffect(() => {
             assertNextOutboundFrame({
               type: "query.apply_flag_settings",
-              settings: { permissions: { additionalDirectories: [...sourceRoots] } },
+              settings: {
+                permissions: {
+                  ...(allow.length === 0 ? {} : { allow: [...allow] }),
+                  additionalDirectories: [...sourceRoots, ...directories],
+                },
+              },
             });
           }),
         readAppliedSettings: Effect.succeed(null),

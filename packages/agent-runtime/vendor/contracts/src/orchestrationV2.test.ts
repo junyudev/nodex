@@ -1226,6 +1226,40 @@ describe("orchestration V2 contracts", () => {
     expect(ContextTransferId.make("context-transfer-1")).toBe("context-transfer-1");
   });
 
+  it.each([
+    undefined,
+    {
+      runtimeMode: "approval-required",
+      rules: ["mcp__node_repl__js", String.raw`Bash(echo \(a, b\))`],
+      directories: ["/reference"],
+    },
+  ])("round-trips provider thread chat grants through JSON: %j", (chatGrants) => {
+    const wire = {
+      id: "provider-thread-grants",
+      driver: "claude",
+      providerInstanceId: "claudeAgent",
+      providerSessionId: "provider-session-grants",
+      appThreadId: "thread-grants",
+      ownerNodeId: null,
+      nativeThreadRef: { driver: "claude", nativeId: "native-grants", strength: "strong" },
+      nativeConversationHeadRef: null,
+      status: "idle",
+      firstRunOrdinal: 1,
+      lastRunOrdinal: 1,
+      handoffIds: [],
+      forkedFrom: null,
+      createdAt: "2026-04-20T00:00:00.000Z",
+      updatedAt: "2026-04-20T00:00:00.000Z",
+      ...(chatGrants === undefined ? {} : { chatGrants }),
+    };
+    const decoded = decodeOrchestrationV2ProviderThreadJson(wire);
+    expect(decoded.chatGrants).toEqual(chatGrants);
+    const encoded = encodeOrchestrationV2ProviderThreadJson(decoded);
+    expect(encoded.chatGrants).toEqual(chatGrants);
+    expect(decodeOrchestrationV2ProviderThreadJson(encoded)).toEqual(decoded);
+    if (chatGrants === undefined) expect(encoded).not.toHaveProperty("chatGrants");
+  });
+
   it("decodes historical provider-thread JSON without pendingBackgroundTasks as empty roster", () => {
     const providerThread = decodeOrchestrationV2ProviderThreadJson({
       id: "provider-thread-1",
