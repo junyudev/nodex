@@ -27,6 +27,13 @@ test("launches the scenario build independently of the parent development render
   expect(environment).toMatchObject({ NODEX_HOME: fixture.nodexHome, NODE_ENV: "test" });
 });
 
+test("keeps native host registration out of the real browsers", async () => {
+  await launchNodexElectronApplication(fixture);
+  expect(launch.mock.calls[0]?.[0].env.NODEX_INTERNAL_BROWSER_HOST_HOME).toBe(
+    `${fixture.nodexHome}/browser-host-home`,
+  );
+});
+
 test("preserves an explicitly requested development renderer for the scenario", async () => {
   vi.stubEnv("ELECTRON_RENDERER_URL", "http://localhost:45958");
   await launchNodexElectronApplication({
