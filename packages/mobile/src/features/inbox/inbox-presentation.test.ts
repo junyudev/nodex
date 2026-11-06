@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   decisionReversal,
+  proposalAcceptance,
+  proposalAttribution,
   proposalDestination,
+  proposalHeadline,
   sourceLabel,
   suggestionView,
 } from "./inbox-presentation";
@@ -15,7 +18,16 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
   outdated: false,
   summary: "Start a chat",
   rationale: null,
-  action: { type: "new_chat", projectId: null, projectName: null, prompt: "Do it" },
+  origin: "agent",
+  producedBy: null,
+  action: {
+    type: "new_chat",
+    projectId: null,
+    projectName: null,
+    prompt: "Do it",
+    additions: [],
+    agent: null,
+  },
   failureMessage: null,
   ...overrides,
 });
@@ -87,7 +99,14 @@ describe("suggestionView", () => {
 describe("proposalDestination", () => {
   it("names the Library for a new chat outside any Project", () => {
     expect(
-      proposalDestination({ type: "new_chat", projectId: null, projectName: null, prompt: "x" }),
+      proposalDestination({
+        type: "new_chat",
+        projectId: null,
+        projectName: null,
+        prompt: "x",
+        additions: [],
+        agent: null,
+      }),
     ).toBe("Library");
   });
 
@@ -118,5 +137,53 @@ describe("decisionReversal", () => {
     expect(decisionReversal({ type: "delete" })).toBeNull();
     expect(decisionReversal({ type: "reopen" })).toBeNull();
     expect(decisionReversal({ type: "important", important: true })).toBeNull();
+  });
+});
+
+describe("proposalHeadline", () => {
+  it("says what accepting will do, and where when that is known", () => {
+    const newChat = {
+      type: "new_chat",
+      projectId: null,
+      projectName: null,
+      prompt: "x",
+      additions: [] as string[],
+      agent: null,
+    } as const;
+    expect(proposalHeadline(newChat)).toBe("Start a chat");
+    expect(proposalHeadline({ ...newChat, projectId: "p", projectName: "nodex" })).toBe(
+      "Start a chat in nodex",
+    );
+    expect(
+      proposalHeadline({
+        type: "send_to_chat",
+        sessionId: "s",
+        chatTitle: "Refactor",
+        prompt: "x",
+        additions: [],
+      }),
+    ).toBe("Send to Refactor");
+    expect(proposalHeadline({ type: "run_task", name: null })).toBe("Run this task");
+  });
+});
+
+describe("proposalAttribution", () => {
+  it("names a scheduled task over whoever wrote the text", () => {
+    expect(proposalAttribution({ origin: "schedule", producedBy: "GPT" })).toBe(
+      "From your scheduled task",
+    );
+    expect(proposalAttribution({ origin: "agent", producedBy: "GPT" })).toBe("Suggested by GPT");
+    expect(proposalAttribution({ origin: "agent", producedBy: null })).toBe("Suggestion");
+  });
+});
+
+describe("proposalAcceptance", () => {
+  it("authorizes the exact revision that was shown", () => {
+    const shown = proposal({ proposalId: "p", revision: 7 });
+    expect(proposalAcceptance(shown)).toEqual({
+      decision: { type: "accept", proposalId: "p", revision: 7 },
+      done: "Done",
+    });
+    expect(proposalAcceptance(proposal({ action: { type: "keep" } })).done).toBe("Kept");
   });
 });

@@ -45,6 +45,39 @@ export const proposalDestination = (action: InboxProposalAction): string | null 
   }
 };
 
+/** What accepting a suggestion will do, in one line. */
+export const proposalHeadline = (action: InboxProposalAction): string => {
+  switch (action.type) {
+    case "new_chat":
+      return action.projectName ? `Start a chat in ${action.projectName}` : "Start a chat";
+    case "send_to_chat":
+      return action.chatTitle ? `Send to ${action.chatTitle}` : "Send to a chat";
+    case "move_to_project":
+      return action.projectName ? `Move to ${action.projectName}` : "Move to a Project";
+    case "run_task":
+      return action.name ? `Run ${action.name}` : "Run this task";
+    case "keep":
+      return "Keep as a Page";
+  }
+};
+
+/** Who a suggestion comes from, for the line that labels it. */
+export const proposalAttribution = ({
+  origin,
+  producedBy,
+}: Pick<InboxProposal, "origin" | "producedBy">): string => {
+  if (origin === "schedule") return "From your scheduled task";
+  return producedBy ? `Suggested by ${producedBy}` : "Suggestion";
+};
+
+/** The decision that authorizes a suggestion exactly as it was shown, and how it is confirmed. */
+export const proposalAcceptance = (
+  proposal: InboxProposal,
+): { readonly decision: InboxDecision; readonly done: string } => ({
+  decision: { type: "accept", proposalId: proposal.proposalId, revision: proposal.revision },
+  done: proposal.action.type === "keep" ? "Kept" : "Done",
+});
+
 export type SuggestionView =
   | { readonly kind: "none" }
   | { readonly kind: "thinking" }

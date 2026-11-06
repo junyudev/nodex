@@ -94,12 +94,17 @@ export const InboxProposalActionSchema = z.discriminatedUnion("type", [
     projectId: z.string().nullable(),
     projectName: z.string().nullable(),
     prompt: z.string(),
+    /** What the suggestion adds of its own, sent after the prompt. */
+    additions: z.array(z.string()).default([]),
+    /** What the chat runs on when the suggestion chose it; the Inbox's own when null. */
+    agent: AgentChoiceSchema.nullable().default(null),
   }),
   z.looseObject({
     type: z.literal("send_to_chat"),
     sessionId: z.string(),
     chatTitle: z.string().nullable(),
     prompt: z.string(),
+    additions: z.array(z.string()).default([]),
   }),
   z.looseObject({
     type: z.literal("move_to_project"),
@@ -118,6 +123,10 @@ export const InboxProposalSchema = z.looseObject({
   outdated: z.boolean(),
   summary: z.string(),
   rationale: z.string().nullable(),
+  // A phone and its desktop update separately, so what a suggestion adds has defaults to read as.
+  origin: z.enum(["agent", "user", "schedule"]).default("agent"),
+  /** Who wrote it, when that is known. */
+  producedBy: z.string().nullable().default(null),
   action: InboxProposalActionSchema,
   failureMessage: z.string().nullable(),
 });

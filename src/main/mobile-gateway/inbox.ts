@@ -44,6 +44,10 @@ const projectAction = (
         projectId: action.projectId,
         projectName: targetProjectName,
         prompt: action.prompt,
+        additions: [...action.additions],
+        agent: action.agent?.model
+          ? { providerInstanceId: action.agent.instanceId, model: action.agent.model }
+          : null,
       };
     case "send_to_chat":
       return {
@@ -51,6 +55,7 @@ const projectAction = (
         sessionId: action.sessionId,
         chatTitle: chat?.displayTitle ?? null,
         prompt: action.prompt,
+        additions: [...action.additions],
       };
     case "move_to_project":
       return { type: action.type, projectId: action.projectId, projectName: targetProjectName };
@@ -82,6 +87,8 @@ export const projectInboxMessage = (item: InboxItem): InboxMessage => ({
         outdated: item.proposal.outdated,
         summary: item.proposal.summary,
         rationale: item.proposal.rationale,
+        origin: item.proposal.origin,
+        producedBy: item.proposal.producedBy,
         action: projectAction(item.proposal, item),
         failureMessage: item.proposal.failureMessage,
       }
