@@ -261,9 +261,8 @@ to OpenCode's official installer. Nodex installs native permission rules for the
 permission mode; OpenCode offers Ask for approval and Full access. Unsupported metadata produces a compatibility error with the native
 version when available. An incompatible local executable includes an upgrade hint.
 
-The composer's model menu initially shows OpenCode models with native IDs ending in `-free`
-and keeps the current selection visible. **Show all models** reveals the other OpenCode models.
-Model availability follows the instance's native catalog. Upgrading the executable alone
+OpenCode models with native IDs ending in `-free` start on and the rest start off; see
+[Model policy](product-specs/model-policy-behavior.md). Model availability follows the instance's native catalog. Upgrading the executable alone
 does not replace cached model data; use **Refresh models** when a newly offered model is missing.
 Selecting a model selects
 its instance and exposes only its native variants and primary agents. An optional Server

@@ -31,6 +31,32 @@ Runtime title and source-control utilities resolve their automatic defaults from
 non-credit models, including when a Project's default is off.
 A saved exact model remains an explicit choice, including when it has been switched off.
 
+## Settings and pickers
+
+Settings → Models lists Nodex first and open, then one closed card per other provider with
+its count (`8 of 13 on`). Each card has a provider switch; opening one shows its models with
+their own switches and whole-list moves (All on, All off, and Free only for OpenCode). A
+filter field narrows every card and opens those it matches. A discounted Nodex model carries
+its rate mark, as in Model prices. Nodex also offers **Let Agents choose Nodex models**, and
+links to its prices and Top up.
+
+An off provider is one quiet line, and turning it back on restores each model's own switch.
+With Nodex off the card reads `Off. Nothing on this computer can spend your credits.`
+
+A model picker lists only models that are on. The composer's picker adds a row counting what
+is off, which opens Settings → Models, and its gear opens the same page. Searching also finds
+off models, dimmed and marked `Off`: choosing one turns it on and selects it, except that a
+Nodex model opens its Settings card instead, because spending credits is a deliberate choice.
+A whole provider that is off returns only from Settings. Other pickers, such as Inbox,
+scheduled tasks and a Page's agent configuration, list on models and keep a saved choice visible.
+
+A chat whose model is off keeps showing it, marked `Off`, and raises a composer notice naming
+the model with **Choose model**, and **Turn on** or, for Nodex and an off provider, **Manage**.
+
+When a change would stop running work, Settings asks first, naming the models and how many
+chats stop. The confirmation also says so when a Claude chat on an allowed model stops,
+because Nodex Claude chats restart together.
+
 ## Execution authority
 
 Main persists the policy in the Profile's `config.toml` and broadcasts canonical changes

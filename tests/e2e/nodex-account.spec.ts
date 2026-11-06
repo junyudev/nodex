@@ -16,43 +16,15 @@ import {
 } from "../../scripts/scenarios/scenarios/board-dense";
 import {
   captureNodexBrowserHandoff,
+  completeNodexLogin as completeLogin,
   expectNodexAccount,
   openNodexAccount,
   readNativeAccount,
   readNodexAccount,
   refreshNodexAccount,
+  startNodexLogin as startLogin,
 } from "./fixtures/nodex-account-ui";
-import {
-  startNodexOAuthHttpFixture,
-  type NodexOAuthHttpFixture,
-} from "./fixtures/nodex-oauth-http";
-
-const startLogin = async (
-  harness: ElectronScenarioHarness,
-  readHandoffs: () => Promise<string[]>,
-  buttonName = "Sign in",
-): Promise<string> => {
-  const before = (await readHandoffs()).length;
-  await harness.page.getByRole("button", { name: buttonName, exact: true }).click();
-  await expectNodexAccount(harness.page, { status: "signing-in" });
-  await expect.poll(async () => (await readHandoffs()).length).toBe(before + 1);
-  return (await readHandoffs())[before]!;
-};
-
-const completeLogin = async (
-  harness: ElectronScenarioHarness,
-  oauth: NodexOAuthHttpFixture,
-  readHandoffs: () => Promise<string[]>,
-): Promise<void> => {
-  const callback = await oauth.authorize(await startLogin(harness, readHandoffs));
-  expect((await fetch(callback)).status).toBe(200);
-  await expectNodexAccount(harness.page, {
-    status: "signed-in",
-    connection: "available",
-    error: null,
-  });
-  await expect(harness.page.getByText(oauth.email, { exact: true })).toBeVisible();
-};
+import { startNodexOAuthHttpFixture } from "./fixtures/nodex-oauth-http";
 
 test("keeps native and local state while Nodex login refreshes, survives restart and signs out", async () => {
   test.setTimeout(180_000);

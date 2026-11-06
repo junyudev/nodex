@@ -89,8 +89,6 @@ test("expands OpenCode models and chooses the exact paid instance, model and adv
   );
   await view.findByRole("option", { name: /GLM Flash Free.*Local/ });
   await view.findByRole("option", { name: /Kimi K3.*Local/ });
-  expect(view.queryByRole("option", { name: /Kimi K3.*Work/ })).toBeNull();
-  await click(await view.findByRole("button", { name: "Show all models" }));
   await view.findByRole("option", { name: /Kimi K3.*Work/ });
   expect(choose).not.toHaveBeenCalled();
   // Async queries manage their own act environment; resolve before entering the interaction.
@@ -314,7 +312,6 @@ test("returns from OpenCode setup to a fresh free-model view without changing th
       })}
     />,
   );
-  await click(await view.findByRole("button", { name: "Show all models" }));
   await view.findByRole("option", { name: /Kimi K3.*Work/ });
   const search = view.getByRole("combobox", { name: "Search models" });
   await act(async () => {
@@ -337,8 +334,7 @@ test("returns from OpenCode setup to a fresh free-model view without changing th
   expect(view.getByRole("option", { name: /Kimi K3.*Local/ }).getAttribute("aria-selected")).toBe(
     "true",
   );
-  expect(view.queryByRole("option", { name: /Kimi K3.*Work/ })).toBeNull();
-  expect(view.getByRole("button", { name: "Show all models" })).toBeTruthy();
+  expect(view.getByRole("option", { name: /Kimi K3.*Work/ })).toBeTruthy();
   expect(choose).not.toHaveBeenCalled();
 });
 
@@ -589,4 +585,96 @@ test("keeps an unavailable Nodex model visible and prevents choosing it", async 
   expect(within(option).getByText(/Unavailable/u)).toBeDefined();
   await click(option);
   expect(choose).not.toHaveBeenCalled();
+});
+
+const search = async (view: ReturnType<typeof renderPicker>, value: string) => {
+  const input = await view.findByRole("combobox", { name: "Search models" });
+  await act(async () => {
+    fireEvent.change(input, { target: { value } });
+    await Promise.resolve();
+  });
+};
+
+const offModels = (patch: { readonly choose?: () => Promise<void>; readonly credit?: boolean }) => {
+  const paid = catalogModel("google/gemini-3.5-flash", "Gemini 3.5 Flash");
+  const sol = catalogModel("gpt-6.1-sol", "GPT-6.1 Sol");
+  const nodex = { kind: "codex", runtimeInstanceId: `nodex_codex_${"a".repeat(32)}` } as const;
+  return {
+    count: 7,
+    choose: patch.choose ?? vi.fn(async () => {}),
+    entries: [
+      {
+        binding: selected.binding,
+        label: "Local",
+        model: paid,
+        selection: { binding: selected.binding, model: paid.id },
+      },
+      {
+        binding: nodex,
+        label: "Nodex",
+        spendsCredit: true,
+        model: sol,
+        selection: { binding: nodex, model: sol.id },
+      },
+    ],
+  };
+};
+
+test("keeps off models out of the list and counts them, until a search asks for them", async () => {
+  const manageModels = vi.fn();
+  const view = renderWithMaitai(
+    <MenuPicker catalog={presentation({ manageModels, off: offModels({}) })} />,
+  );
+  await view.findByRole("option", { name: /Kimi K3/ });
+  expect(view.queryByRole("option", { name: /Gemini/ })).toBeNull();
+  await search(view, "gemini");
+  const row = await view.findByRole("option", { name: /Gemini 3\.5 Flash.*Off/ });
+  expect(row.textContent).toContain("Local · Off");
+  await search(view, "");
+  expect(view.queryByRole("option", { name: /Gemini/ })).toBeNull();
+  await click(await view.findByRole("button", { name: "7 models off" }));
+  await waitFor(() => expect(manageModels).toHaveBeenCalledOnce());
+});
+
+test("choosing an off model turns it on, but credit only ever turns on in Settings", async () => {
+  const choose = vi.fn(async () => {});
+  const manageModels = vi.fn();
+  const view = renderPicker(presentation({ manageModels, off: offModels({ choose }) }));
+  await search(view, "gemini");
+  await click(await view.findByRole("option", { name: /Gemini 3\.5 Flash/ }));
+  await waitFor(() => expect(choose).toHaveBeenCalledOnce());
+  expect(manageModels).not.toHaveBeenCalled();
+  await search(view, "sol");
+  await click(await view.findByRole("option", { name: /GPT-6\.1 Sol.*Nodex.*Off/ }));
+  await waitFor(() => expect(manageModels).toHaveBeenCalledWith("nodex"));
+  expect(choose).toHaveBeenCalledOnce();
+});
+
+test("names this chat's own model as off instead of swapping it", async () => {
+  const view = renderPicker(
+    presentation({
+      entries: [
+        {
+          binding: selected.binding,
+          label: "Local",
+          model,
+          selection: selected,
+          unavailableLabel: "Off",
+          unavailableReason: "Kimi K3 is off in Settings → Models.",
+        },
+      ],
+    }),
+  );
+  const row = await view.findByRole("option", { name: /Kimi K3/ });
+  expect(row.textContent).toContain("Off");
+  expect((row as HTMLButtonElement).disabled).toBe(true);
+});
+
+test("leads its gear to Models when the catalog can, and setup rows to their Agent", async () => {
+  const manage = vi.fn();
+  const manageModels = vi.fn();
+  const view = renderPicker(presentation({ manage, manageModels }));
+  await click(await view.findByRole("button", { name: "Manage models" }));
+  await waitFor(() => expect(manageModels).toHaveBeenCalledOnce());
+  expect(manage).not.toHaveBeenCalled();
 });

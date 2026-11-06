@@ -120,3 +120,13 @@ export function readAgentRuntimeServiceTier(
   if (typeof value !== "string") return undefined;
   return value === STANDARD_SERVICE_TIER ? null : value;
 }
+
+/** Enough of a binding's provider to ask whether a model is on, before its catalog has loaded. */
+export function agentRuntimePolicyProvider(
+  binding: AgentBackendBinding,
+): { readonly instanceId: string; readonly driver: string } | null {
+  const instanceId = agentRuntimeProviderId(binding);
+  return instanceId
+    ? { instanceId, driver: binding.kind === "claude" ? "claudeAgent" : binding.kind }
+    : null;
+}

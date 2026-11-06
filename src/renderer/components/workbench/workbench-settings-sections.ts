@@ -19,6 +19,7 @@ import {
   SettingsImportIcon,
   SettingsLocalEnvironmentsIcon,
   SettingsWorktreeIcon,
+  SlashModelIcon,
 } from "../shared/icons";
 import { UserRound } from "../shared/icons/generic-icons";
 import { SETTINGS_SEARCH_CATALOG, settingsSearchAnchor } from "./workbench-settings-search-catalog";
@@ -31,6 +32,7 @@ export type SettingsSectionId =
   | "appearance"
   | "voice"
   | "agent"
+  | "models"
   | "keyboard-shortcuts"
   | "inbox-settings"
   | "mobile-settings"
@@ -133,6 +135,14 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     groupKey: "agents",
     searchMessages: SETTINGS_SEARCH_CATALOG.agent.messages,
     searchTerms: SETTINGS_SEARCH_CATALOG.agent.searchTerms,
+  },
+  {
+    id: "models",
+    label: "Models",
+    pageKey: "models",
+    icon: SlashModelIcon,
+    groupKey: "agents",
+    searchMessages: SETTINGS_SEARCH_CATALOG.models.messages,
   },
   {
     id: "agent-import",

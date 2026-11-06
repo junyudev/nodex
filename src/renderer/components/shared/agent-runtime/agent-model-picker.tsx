@@ -22,7 +22,6 @@ import {
   agentModelKey,
   agentRuntimeQualifier,
   flattenAgentConfigOptions,
-  visibleAgentModelPickerEntries,
 } from "@/lib/agent-model-selection";
 import {
   formatCodexModelLabel,
@@ -80,6 +79,8 @@ export interface AgentModelPickerEntry {
   readonly selection: AgentModelSelection;
   /** Why this chat cannot use the model now; the model stays listed but cannot be chosen. */
   readonly unavailableReason?: string;
+  /** The word beside an unavailable model; `Unavailable` unless the reason has a better name. */
+  readonly unavailableLabel?: string;
 }
 
 /** A runtime whose models become available after setup, offered beside the model list. */
@@ -100,15 +101,24 @@ export interface AgentModelSetupPresentation {
 
 /** The composer chooses one complete runtime/model tuple; options belong to the selected runtime. */
 export interface AgentModelCatalogPresentation {
+  /** This chat's own model is off, so it can't run until the person chooses or turns it on. */
   readonly currentModelOff?: {
     readonly code: "model_off" | "credit_requires_person";
     readonly message: string;
+    /** Names the condition in the person's words. */
+    readonly title: string;
+    /** Absent when turning it on takes a deliberate visit to Settings, as credit does. */
+    readonly turnOn?: () => Promise<void>;
   } | null;
+  /** Models that are off: gone from the list, found again only by searching for them. */
   readonly off?: {
+    /** What a search can bring back; narrower than `count` while a whole provider is off. */
     readonly entries: readonly AgentModelPickerEntry[];
     readonly count: number;
     readonly choose: (selection: AgentModelSelection) => Promise<void>;
   };
+  /** Opens Settings → Models, at one provider's card when named. */
+  readonly manageModels?: (providerKey?: string) => void;
   readonly entries: readonly AgentModelPickerEntry[];
   readonly selected: AgentModelSelection;
   readonly loading: boolean;
@@ -242,7 +252,7 @@ export function AgentModelPicker(
   const { triggerRef } = props;
   const { catalog, selection, models, provider } = props;
   const [pending, setPending] = useState(false);
-  const [showAllModels, setShowAllModels] = useState(false);
+  const [offQuery, setOffQuery] = useState("");
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   // A footer action that opens another surface waits until this menu has closed.
   const afterClose = useRef<(() => void) | null>(null);
@@ -255,7 +265,9 @@ export function AgentModelPicker(
     requestOpenChange(next);
   };
   const setups = catalog.setups ?? [];
-  const { refresh, manage } = catalog;
+  const { refresh } = catalog;
+  // The gear leads to what this menu lists; a provider's setup row keeps going to its Agent.
+  const manage = catalog.manageModels ?? catalog.manage;
   const isCodex = selection.kind === "codex";
   const native = provider?.nativeIntelligence;
   const active = catalog.entries.find(
@@ -367,12 +379,7 @@ export function AgentModelPicker(
   const thinkingSwitch =
     native?.capabilities.disableThinking === true && reasoningOptions.length === 0;
   const contextWindows = [...new Set(native?.capabilities.contextWindows ?? [])];
-  const visibleEntries = visibleAgentModelPickerEntries(
-    catalog.entries,
-    catalog.selected,
-    showAllModels,
-  );
-  const hasHiddenModels = visibleEntries.length < catalog.entries.length;
+  const offCount = catalog.off?.count ?? 0;
   const inherited = props.allowInherit === true && props.inheritance === "inherited";
   // An inherited choice names no modes of its own.
   const settingsIndicators = inherited ? [] : indicators;
@@ -386,22 +393,26 @@ export function AgentModelPicker(
         },
       ]
     : [];
-  const modelOptions: readonly NodexOptionPickerOption[] = visibleEntries.map((entry) => {
+  const providerMark = (entry: AgentModelPickerEntry, className: string) =>
+    entry.binding.runtimeInstanceId && isNodexProviderId(entry.binding.runtimeInstanceId) ? (
+      <NodexLogoMarkIcon monochrome className={className} />
+    ) : (
+      <AgentProviderIcon kind={entry.binding.kind} className={className} />
+    );
+  const modelOptions: readonly NodexOptionPickerOption[] = catalog.entries.map((entry) => {
     const qualifier = agentRuntimeQualifier(entry.binding, entry.label);
     return {
       value: agentModelKey(entry.binding, entry.model.id),
-      leftSlot:
-        entry.binding.runtimeInstanceId && isNodexProviderId(entry.binding.runtimeInstanceId) ? (
-          <NodexLogoMarkIcon monochrome className="size-3.5" />
-        ) : (
-          <AgentProviderIcon kind={entry.binding.kind} className="size-3.5" />
-        ),
+      leftSlot: providerMark(entry, "size-3.5"),
       label:
         qualifier || entry.unavailableReason ? (
           <span className="flex min-w-0 items-baseline gap-1.5">
             <span className="truncate">{entry.model.displayName}</span>
             <span className="min-w-0 truncate text-xs text-token-description-foreground">
-              {[qualifier, entry.unavailableReason ? "Unavailable" : null]
+              {[
+                qualifier,
+                entry.unavailableReason ? (entry.unavailableLabel ?? "Unavailable") : null,
+              ]
                 .filter(Boolean)
                 .join(" · ")}
             </span>
@@ -414,6 +425,29 @@ export function AgentModelPicker(
       disabled: entry.unavailableReason !== undefined,
     };
   });
+  // Off models answer a search and nothing else, so the list stays what the person kept.
+  const offOptions: readonly NodexOptionPickerOption[] =
+    offQuery.trim() === ""
+      ? []
+      : (catalog.off?.entries ?? []).map((entry) => {
+          const qualifier = agentRuntimeQualifier(entry.binding, entry.label);
+          return {
+            value: `off:${agentModelKey(entry.binding, entry.model.id)}`,
+            leftSlot: providerMark(entry, "size-3.5 opacity-60"),
+            label: (
+              <span className="flex min-w-0 items-baseline gap-1.5">
+                <span className="truncate text-token-description-foreground">
+                  {entry.model.displayName}
+                </span>
+                <span className="min-w-0 truncate text-xs text-token-description-foreground">
+                  {[qualifier, "Off"].filter(Boolean).join(" · ")}
+                </span>
+              </span>
+            ),
+            searchText: `${entry.model.displayName} ${entry.model.id} ${entry.label} ${entry.binding.kind}`,
+            tooltipText: entry.spendsCredit ? "Turn on in Settings" : "Turn on and use",
+          };
+        });
   // Effort and modes are optimistic, so a pending write never dims them; option menus that
   // wait on their Agent stay locked until it answers.
   const disabled = props.disabled === true;
@@ -495,7 +529,7 @@ export function AgentModelPicker(
             {manage ? (
               <NodexIconButton
                 size="xs"
-                ariaLabel="Manage providers"
+                ariaLabel={catalog.manageModels ? "Manage models" : "Manage providers"}
                 icon={SettingsGeneralIcon}
                 onClick={() => {
                   changeOpen(false);
@@ -511,7 +545,8 @@ export function AgentModelPicker(
           ? INHERIT_OPTION_VALUE
           : agentModelKey(catalog.selected.binding, catalog.selected.model)
       }
-      options={[...inheritOptions, ...modelOptions]}
+      options={[...inheritOptions, ...modelOptions, ...offOptions]}
+      {...(catalog.off ? { onSearchChange: setOffQuery } : {})}
       emptyMessage={catalog.loading ? "Loading models…" : "No models available"}
       noResultsMessage="No matching models"
       disabled={props.disabled}
@@ -575,6 +610,16 @@ export function AgentModelPicker(
       }
       onValueChange={(value) => {
         if (value === INHERIT_OPTION_VALUE) return props.onInherit?.();
+        if (value.startsWith("off:")) {
+          const offEntry = catalog.off?.entries.find(
+            (candidate) => `off:${agentModelKey(candidate.binding, candidate.model.id)}` === value,
+          );
+          if (!offEntry) return;
+          // Credit is only ever turned on deliberately, where its consequences are stated.
+          if (offEntry.spendsCredit) return catalog.manageModels?.("nodex");
+          void run(() => catalog.off?.choose(offEntry.selection));
+          return;
+        }
         const entry = catalog.entries.find(
           (candidate) => agentModelKey(candidate.binding, candidate.model.id) === value,
         );
@@ -583,10 +628,18 @@ export function AgentModelPicker(
       }}
       footer={
         <>
-          {hasHiddenModels || setups.length > 0 ? <NodexDropdownSeparator /> : null}
-          {hasHiddenModels ? (
-            <NodexDropdownActionRow disabled={pending} onClick={() => setShowAllModels(true)}>
-              Show all models
+          {offCount > 0 || setups.length > 0 ? <NodexDropdownSeparator /> : null}
+          {offCount > 0 && catalog.manageModels ? (
+            <NodexDropdownActionRow
+              disabled={pending}
+              onClick={() => {
+                afterClose.current = () => catalog.manageModels?.();
+                changeOpen(false);
+              }}
+            >
+              <span className="text-token-description-foreground">
+                {offCount === 1 ? "1 model off" : `${offCount} models off`}
+              </span>
             </NodexDropdownActionRow>
           ) : null}
           {setups.map((setup) => (
@@ -598,14 +651,11 @@ export function AgentModelPicker(
                 const { action } = setup;
                 afterClose.current =
                   action.kind === "settings"
-                    ? (manage ?? null)
+                    ? (catalog.manage ?? null)
                     : () =>
                         action.open({
-                          // Setup returns to the default free-model view; the choice is unchanged.
-                          showModels: () => {
-                            setShowAllModels(false);
-                            changeOpen(true);
-                          },
+                          // Setup returns to the model list; the choice is unchanged.
+                          showModels: () => changeOpen(true),
                         });
                 changeOpen(false);
               }}

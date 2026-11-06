@@ -153,9 +153,8 @@ for (const kind of ["claude", "opencode"] as const) {
         // The initial catalog update may replace the open picker while Agent instances load.
         await expect(async () => {
           const search = await openComposerModelPicker(page);
-          const showAll = page.getByRole("button", { name: "Show all models", exact: true });
-          if (await showAll.isVisible()) await showAll.click({ timeout: 1_000 });
           await search.fill("Kimi K3", { timeout: 1_000 });
+          // Paid OpenCode models start off; search finds one and choosing it turns it on.
           await page.getByRole("option", { name: /Kimi K3.*OpenCode/u }).click({ timeout: 1_000 });
           await expect(search).toBeHidden({ timeout: 1_000 });
         }).toPass({ timeout: 30_000 });

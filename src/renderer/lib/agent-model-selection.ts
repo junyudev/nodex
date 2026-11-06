@@ -17,15 +17,6 @@ export const agentBindingKey = (binding: AgentBackendBinding): string =>
 export const agentModelKey = (binding: AgentBackendBinding, model: string): string =>
   JSON.stringify([agentBindingKey(binding), model]);
 
-/** Catalog owners provide only models that are on; a picker cannot override execution policy. */
-export function visibleAgentModelPickerEntries<Entry>(
-  entries: readonly Entry[],
-  _selected: AgentModelSelection,
-  _showAllModels: boolean,
-): readonly Entry[] {
-  return entries;
-}
-
 const BRANDED_RUNTIME_NAMES: Partial<Record<AgentBackendBinding["kind"], readonly string[]>> = {
   codex: ["codex"],
   claude: ["claude", "claude code"],

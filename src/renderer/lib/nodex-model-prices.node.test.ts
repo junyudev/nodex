@@ -66,6 +66,14 @@ describe("nodexModelPriceRows", () => {
     ]);
   });
 
+  it("leaves out a model the server has no price for", () => {
+    const unpriced = { input: null, cacheRead: null, cacheWrite: null, output: null };
+    const rows = nodexModelPriceRows(
+      pricing(group("nodex", offer("sol", LIST), { ...offer("luna", LIST), effective: unpriced })),
+    );
+    expect(rows.map(({ id }) => id)).toEqual(["sol"]);
+  });
+
   it("claims no rate when no single factor explains the prices", () => {
     const uneven = { ...HALF, output: 30 };
     const rows = nodexModelPriceRows(pricing(group("nodex", offer("sol", LIST, uneven, null))));

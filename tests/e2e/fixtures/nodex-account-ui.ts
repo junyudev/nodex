@@ -1,3 +1,5 @@
+import type { ElectronScenarioHarness } from "../../../scripts/scenarios/harness/electron-e2e-harness";
+import type { NodexOAuthHttpFixture } from "./nodex-oauth-http";
 import { openWorkbenchSettings } from "../support/workbench-settings";
 import { expect, type ElectronApplication, type Page } from "@playwright/test";
 import type { IpcApi } from "../../../src/shared/ipc-api";
@@ -52,4 +54,31 @@ export const captureNodexBrowserHandoff = async (
 
 export const refreshNodexAccount = async (page: Page): Promise<void> => {
   await page.evaluate(() => window.api!.invoke("nodex-account:refresh"));
+};
+
+export const startNodexLogin = async (
+  harness: ElectronScenarioHarness,
+  readHandoffs: () => Promise<string[]>,
+  buttonName = "Sign in",
+): Promise<string> => {
+  const before = (await readHandoffs()).length;
+  await harness.page.getByRole("button", { name: buttonName, exact: true }).click();
+  await expectNodexAccount(harness.page, { status: "signing-in" });
+  await expect.poll(async () => (await readHandoffs()).length).toBe(before + 1);
+  return (await readHandoffs())[before]!;
+};
+
+export const completeNodexLogin = async (
+  harness: ElectronScenarioHarness,
+  oauth: NodexOAuthHttpFixture,
+  readHandoffs: () => Promise<string[]>,
+): Promise<void> => {
+  const callback = await oauth.authorize(await startNodexLogin(harness, readHandoffs));
+  expect((await fetch(callback)).status).toBe(200);
+  await expectNodexAccount(harness.page, {
+    status: "signed-in",
+    connection: "available",
+    error: null,
+  });
+  await expect(harness.page.getByText(oauth.email, { exact: true })).toBeVisible();
 };

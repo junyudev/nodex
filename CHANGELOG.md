@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- You choose which models Nodex can use in Settings → Models. An off model leaves every model menu, and nothing in Nodex can start it. Nodex credits are protected by default: only what you start can spend them, so an Agent on another provider can't start a Nodex subagent unless you allow it, and turning Nodex off means nothing on this computer can spend them.
 - Account settings now show what each Nodex model costs. Model prices lists input, cache and output prices per million tokens in credits, always current with what the service charges, so you can see what a top-up buys before you pay.
 - You can add and remove images when you edit a sent message. Its images move into the editor, where you can paste, drop or pick more and remove any of them, so a wrong screenshot no longer means starting over. An image whose file was lost shows as failed, and removing it lets the edit through.
 - Claude Code chats can now use the built-in Browser, your Chrome, and Computer Use. Ask Claude to open a page, test your local app, or work in a Mac app, and it asks before it runs code or reaches a new site or app.
@@ -25,6 +26,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Automatic choices no longer pick a prepaid Nodex model. A subagent that named only a type of Agent, Inbox suggestions, the mobile app and Refine could land on one and spend your credits without you choosing it.
 - Editing a message no longer loses your conversation when one of its images can't be read. The edit now stops before anything is rewound, keeps your draft open, and says the image can't be read instead of showing a system error.
 - MCP tool images and rich results now appear in Claude Code chats, both live and in saved conversations. They used to show as raw JSON.
 - “Allow for this chat” in Claude Code chats now lasts for the whole chat. Claude used to ask again after you pressed Stop, changed models, or restarted Nodex.

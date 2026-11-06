@@ -1,3 +1,4 @@
+import { modelIsOn } from "../../../shared/model-policy";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import type { AgentSessionConfigOption } from "../../../shared/agent-conversation";
@@ -198,12 +199,19 @@ export function inboxAgentPickerModel(
     )
       return [];
     const label = agentRuntimeProviderLabel(provider, catalog.instances);
-    return provider.models.map((model) => ({
-      binding,
-      label,
-      model: projectAgentRuntimeModel(provider, model),
-      selection: { binding, model: model.slug },
-    }));
+    return provider.models
+      .filter(
+        // A saved choice stays visible, so turning it off never changes it silently.
+        (model) =>
+          modelIsOn(model) ||
+          (provider.instanceId === choice.instanceId && model.slug === choice.model),
+      )
+      .map((model) => ({
+        binding,
+        label,
+        model: projectAgentRuntimeModel(provider, model),
+        selection: { binding, model: model.slug },
+      }));
   });
   const provider = catalog.providers.find(
     (candidate) => candidate.instanceId === choice.instanceId,

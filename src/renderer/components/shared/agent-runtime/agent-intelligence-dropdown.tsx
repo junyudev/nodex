@@ -1,5 +1,9 @@
-import type { Ref } from "react";
+import { QueryClientContext } from "@tanstack/react-query";
+import { useContext, type Ref } from "react";
+import { useModelPolicy } from "@/features/model-policy/model-policy";
 import { listedModelCatalog } from "@/lib/listed-agent-model-catalog";
+import { agentRuntimePolicyProvider } from "../../../../shared/agent-runtime-provider";
+import { isModelOn } from "../../../../shared/model-policy";
 import type { AgentBackendBinding } from "../../../../shared/agent-backend";
 import type { CodexExecutionProfileChange } from "../../../../shared/codex-execution-profile";
 import type { ClaudeEffortLevel } from "../../../../shared/claude-models";
@@ -75,17 +79,37 @@ export interface AgentIntelligenceDropdownProps {
 
 const CODEX_AGENT = { binding: { kind: "codex" }, label: "Codex" } as const;
 
-/** Every model choice uses the one picker; a plain model list becomes a catalog for one Agent. */
-export function AgentIntelligenceDropdown(props: AgentIntelligenceDropdownProps) {
+/** A plain model list becomes a catalog for one Agent. */
+function ListedAgentModelPicker(props: AgentIntelligenceDropdownProps) {
   const agent = props.agent ?? CODEX_AGENT;
-  const catalog =
-    props.provider?.modelCatalog ??
-    listedModelCatalog({
-      binding: agent.binding,
-      label: agent.label,
-      models: props.models,
-      selection: props.selection,
-      onSelectionChange: props.onSelectionChange,
-    });
+  const catalog = listedModelCatalog({
+    binding: agent.binding,
+    label: agent.label,
+    models: props.models,
+    selection: props.selection,
+    onSelectionChange: props.onSelectionChange,
+  });
   return <AgentModelPicker {...props} catalog={catalog} />;
+}
+
+/** The list without the models the person turned off. */
+function OnAgentModelPicker(props: AgentIntelligenceDropdownProps) {
+  const { settings: policy } = useModelPolicy();
+  const provider = agentRuntimePolicyProvider((props.agent ?? CODEX_AGENT).binding);
+  const models = provider
+    ? props.models.filter(
+        // A saved choice stays visible, so turning it off never changes it silently.
+        (model) => isModelOn(policy, provider, model.id) || model.id === props.selection.model,
+      )
+    : props.models;
+  return <ListedAgentModelPicker {...props} models={models} />;
+}
+
+/** Every model choice uses the one picker. */
+export function AgentIntelligenceDropdown(props: AgentIntelligenceDropdownProps) {
+  // A surface rendered outside the app's query owner lists everything; the Runtime still refuses.
+  const queries = useContext(QueryClientContext);
+  const catalog = props.provider?.modelCatalog;
+  if (catalog) return <AgentModelPicker {...props} catalog={catalog} />;
+  return queries ? <OnAgentModelPicker {...props} /> : <ListedAgentModelPicker {...props} />;
 }

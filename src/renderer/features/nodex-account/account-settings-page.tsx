@@ -5,6 +5,7 @@ import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { NodexSettingsPageSurface, NodexSettingsSection } from "@/components/ui/settings";
+import { buildSettingsPath } from "@/components/workbench/workbench-settings-routes";
 import { cn } from "@/lib/utils";
 import { NodexAccountAvatar, resolveNodexAccountView } from "./nodex-account-identity";
 import {
@@ -17,12 +18,22 @@ import { NodexModelPrices } from "./nodex-model-prices";
 import { NodexTopUpTiers } from "./nodex-top-up";
 import { useNodexAccount, useNodexCreditRefreshOnFocus } from "./use-nodex-account";
 
-export function AccountSettingsPage({ open }: { open: boolean }) {
+export function AccountSettingsPage({
+  open,
+  onPathChange,
+}: {
+  open: boolean;
+  onPathChange?: (path: string) => void;
+}) {
   if (!open) return null;
-  return <AccountSettingsContent />;
+  return <AccountSettingsContent onPathChange={onPathChange} />;
 }
 
-function AccountSettingsContent() {
+function AccountSettingsContent({
+  onPathChange,
+}: {
+  readonly onPathChange: ((path: string) => void) | undefined;
+}) {
   const account = useNodexAccount(true);
   const view = resolveNodexAccountView(account);
   const { refreshModels } = account;
@@ -189,7 +200,9 @@ function AccountSettingsContent() {
           ) : null}
         </div>
       </NodexSettingsSection>
-      {view.signedIn ? <AccountCredit account={account} modelNotice={modelNotice} /> : null}
+      {view.signedIn ? (
+        <AccountCredit account={account} modelNotice={modelNotice} onPathChange={onPathChange} />
+      ) : null}
     </NodexSettingsPageSurface>
   );
 }
@@ -198,9 +211,11 @@ function AccountSettingsContent() {
 function AccountCredit({
   account,
   modelNotice,
+  onPathChange,
 }: {
   readonly account: ReturnType<typeof useNodexAccount>;
   readonly modelNotice: string | null;
+  readonly onPathChange: ((path: string) => void) | undefined;
 }) {
   const { gauge } = useNodexCreditGauge(account);
   const level = gauge ? describeCreditGauge(gauge) : null;
@@ -247,6 +262,7 @@ function AccountCredit({
           pricing={status.pricing}
           creditsPerUsd={status.creditsPerUsd}
           unavailableModels={status.models.filter((model) => !model.available).map(({ id }) => id)}
+          onManageModels={onPathChange && (() => onPathChange(buildSettingsPath("models")))}
         />
       ) : null}
     </>

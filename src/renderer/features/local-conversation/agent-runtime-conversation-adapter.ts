@@ -1,5 +1,11 @@
 import { useModelPolicy } from "../model-policy/model-policy";
 import {
+  buildSettingsAnchorPath,
+  buildSettingsPath,
+} from "@/components/workbench/workbench-settings-routes";
+import { agentModelKey } from "@/lib/agent-model-selection";
+import { formatNodexMultiplier } from "@/lib/nodex-model-prices";
+import {
   isModelOn,
   isProviderOn,
   spendsNodexCredit,
@@ -53,6 +59,7 @@ import type {
 import {
   agentRuntimeModelSelection,
   agentRuntimeModelSelectionsEqual,
+  agentRuntimePolicyProvider,
   agentRuntimeProviderId,
   applyAgentRuntimeOptionIntent,
   readAgentRuntimeServiceTier,
@@ -1074,6 +1081,15 @@ export function useAgentRuntimeConversationAdapter(input: {
     if (nativeSessions?.length) reloadCatalog();
   }
   const observed = projection?.thread;
+  /** A discounted Nodex model says so wherever it's chosen, the same way its price row does. */
+  const withNodexRate = (label: string, provider: AgentRuntimeProvider, model: string) => {
+    const rate = spendsNodexCredit(provider)
+      ? nodexAccount.snapshot?.modelStatus?.pricing?.groups[0]?.models.find(
+          ({ id }) => id === model,
+        )?.multiplier
+      : null;
+    return rate && rate !== 1 ? `${label} ${formatNodexMultiplier(rate)}` : label;
+  };
   const entriesFor = (
     providers: readonly AgentRuntimeProvider[],
   ): readonly AgentModelPickerEntry[] =>
@@ -1083,7 +1099,11 @@ export function useAgentRuntimeConversationAdapter(input: {
       return provider.models.map((model) => ({
         binding,
         spendsCredit: spendsNodexCredit(provider),
-        label: agentRuntimeProviderLabel(provider, input.instances),
+        label: withNodexRate(
+          agentRuntimeProviderLabel(provider, input.instances),
+          provider,
+          model.slug,
+        ),
         model: projectAgentRuntimeModel(provider, model),
         selection: { binding, model: model.slug },
       }));
@@ -1211,34 +1231,55 @@ export function useAgentRuntimeConversationAdapter(input: {
     const provider = policyForEntry(entry);
     return provider !== undefined && isModelOn(modelPolicyState.settings, provider, entry.model.id);
   };
-  const entries = allEntries.filter(entryIsOn);
+  const isCurrentEntry = (entry: AgentModelPickerEntry) =>
+    agentModelKey(entry.binding, entry.model.id) ===
+    agentModelKey(selection.binding, selection.model);
   const offEntries = allEntries.filter((entry) => {
     const provider = policyForEntry(entry);
     return (
       provider !== undefined &&
       isProviderOn(modelPolicyState.settings, provider) &&
-      !entryIsOn(entry)
+      !entryIsOn(entry) &&
+      !isCurrentEntry(entry)
     );
   });
-  const selectionInstanceId = agentRuntimeProviderId(selection.binding);
-  const policyProvider =
-    provider ??
-    (selectionInstanceId
-      ? {
-          instanceId: selectionInstanceId,
-          driver: selection.binding.kind === "claude" ? "claudeAgent" : selection.binding.kind,
-        }
-      : undefined);
+  const policyProvider = provider ?? agentRuntimePolicyProvider(selection.binding) ?? undefined;
+  const currentModelLabel =
+    provider?.models.find((model) => model.slug === selection.model)?.name ??
+    NODEX_MODELS.find((model) => model.id === selection.model)?.label ??
+    selection.model;
+  const currentModelSpendsCredit = policyProvider ? spendsNodexCredit(policyProvider) : false;
   const currentModelFailure = policyProvider
     ? modelPolicyFailure(
         modelPolicyState.settings,
         policyProvider,
         selection.model,
         "person",
-        provider?.models.find((model) => model.slug === selection.model)?.name ??
-          NODEX_MODELS.find((model) => model.id === selection.model)?.label,
+        currentModelLabel,
       )
     : null;
+  const currentModelOff = currentModelFailure?.code === "model_off" ? currentModelFailure : null;
+  // A chat keeps showing its own choice, marked off, so nothing changes under it silently.
+  const currentOffEntry = currentModelOff ? allEntries.find(isCurrentEntry) : undefined;
+  const entries = [
+    ...(currentOffEntry && currentModelOff
+      ? [
+          {
+            ...currentOffEntry,
+            unavailableLabel: "Off",
+            unavailableReason: currentModelOff.message,
+          },
+        ]
+      : []),
+    ...allEntries.filter(entryIsOn),
+  ];
+  const openModelSettings = (providerKey?: string) =>
+    workbenchOwner.openRoute({
+      kind: "settings",
+      path: providerKey
+        ? buildSettingsAnchorPath("models", providerKey)
+        : buildSettingsPath("models"),
+    });
   // Editing rewinds the Run the chat's own Agent ran; the edited message may then change Agent.
   const canRollback =
     (observedSelection ? providerOf(observedSelection) : provider)?.supportsConversationRollback ===
@@ -1762,7 +1803,7 @@ export function useAgentRuntimeConversationAdapter(input: {
   // model and the account rail already offers sign-in.
   const agentNotice =
     acpSetup.notice ??
-    (observed || selection.model
+    ((observed || selection.model) && !currentModelOff
       ? agentReadinessNotice(
           provider ? agentRuntimeProviderLabel(provider, input.instances) : "The Agent",
           provider,
@@ -1862,7 +1903,24 @@ export function useAgentRuntimeConversationAdapter(input: {
     selection: agentRuntimeProviderId(selection.binding) ?? "",
     modelCatalog: {
       entries,
-      currentModelOff: currentModelFailure?.code === "model_off" ? currentModelFailure : null,
+      currentModelOff: currentModelOff
+        ? {
+            ...currentModelOff,
+            title: `${currentModelLabel}${currentModelSpendsCredit ? " on Nodex" : ""} is off`,
+            ...(policyProvider &&
+            !currentModelSpendsCredit &&
+            isProviderOn(modelPolicyState.settings, policyProvider)
+              ? {
+                  turnOn: async () => {
+                    await modelPolicyState.updateSettings(
+                      setModelOn(modelPolicyState.settings, policyProvider, selection.model, true),
+                    );
+                  },
+                }
+              : {}),
+          }
+        : null,
+      manageModels: openModelSettings,
       off: {
         entries: offEntries,
         count: catalogState.providers.reduce(

@@ -59,7 +59,7 @@ version, with update status and actions only on hosts that support app updates.
 The desktop groups are:
 
 - Personal: Account, General, Appearance, Voice, Keyboard shortcuts.
-- AI: Agents, Conversations, Hooks.
+- AI: Agents, Models, Conversations, Hooks.
 - Integrations: Browser, Computer use.
 - Coding: Git, Environments, Worktrees.
 - Workspace: Pages, Inbox.
@@ -76,6 +76,9 @@ for root preferences, automatic retention, grouped inventory, and safe removal.
 
 Browser subsections and detail pages remain children of Browser and do not
 become independent rail entries.
+
+Models owns which models are on, as described in
+[Model policy](model-policy-behavior.md), and Agents owns how each one starts and signs in.
 
 Conversations owns source discovery, destination selection and independent conversation imports
 for Codex and Claude, as described in

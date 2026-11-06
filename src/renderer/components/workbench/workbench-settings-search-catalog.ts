@@ -391,6 +391,36 @@ export const SETTINGS_SEARCH_PANELS = {
       },
     ],
   },
+  models: {
+    title: "Models",
+    subtitle: "Off models leave every picker, and nothing in Nodex can start them.",
+    groups: [
+      {
+        anchor: "nodex",
+        title: "Nodex",
+        entries: [
+          entry("Let Agents choose Nodex models", "Whether an Agent can spend your credits.", [
+            "subagent",
+            "credit",
+            "credits",
+            "spend",
+          ]),
+        ],
+      },
+      {
+        title: "Models",
+        entries: [
+          entry("Turn models off", "Remove models you don't use from every picker.", [
+            "opt out",
+            "hide",
+            "disable",
+            "model picker",
+            "free models",
+          ]),
+        ],
+      },
+    ],
+  },
   agent: {
     title: "Agents",
     subtitle: "The coding agents Nodex can run. Open one to change how it starts and signs in.",
@@ -991,6 +1021,9 @@ export const SETTINGS_SEARCH_CATALOG = {
       "Picture in picture",
       "Always hide picture in picture",
     ],
+  },
+  models: {
+    messages: materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.models),
   },
   agent: {
     messages: materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.agent),

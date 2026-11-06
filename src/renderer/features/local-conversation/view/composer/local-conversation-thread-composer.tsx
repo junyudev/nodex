@@ -3712,7 +3712,23 @@ function HydratedThreadComposer({
         : widthPx,
     );
   }, []);
-  const composerNotice = model.provider?.notice ?? null;
+  const modelCatalog = model.provider?.modelCatalog;
+  const currentModelOff = modelCatalog?.currentModelOff;
+  const composerNotice =
+    model.provider?.notice ??
+    (currentModelOff
+      ? {
+          key: "model-off",
+          tone: "warning" as const,
+          title: currentModelOff.title,
+          actions: [
+            { label: "Choose model", run: () => intelligenceController.open() },
+            currentModelOff.turnOn
+              ? { label: "Turn on", pendingLabel: "Turning on…", run: currentModelOff.turnOn }
+              : { label: "Manage", run: () => modelCatalog?.manageModels?.() },
+          ],
+        }
+      : null);
   const composerLayout = resolveComposerAdaptiveLayout({
     isFloatingComposer,
     hasAttachments,

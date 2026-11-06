@@ -39,6 +39,9 @@ export const SETTINGS_PAGE_COMPONENTS: SettingsPageComponentRegistry = {
   agent: lazy(async () => ({
     default: (await import("./agent-settings-page")).AgentSettingsPage,
   })),
+  models: lazy(async () => ({
+    default: (await import("@/features/model-policy/models-settings-page")).ModelsSettingsPage,
+  })),
   import: lazy(async () => ({
     default: (await import("./conversation-import-settings-page")).ConversationImportSettingsPage,
   })),

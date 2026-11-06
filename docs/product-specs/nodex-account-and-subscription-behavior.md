@@ -13,8 +13,8 @@ driver; Claude uses the existing Claude Agent SDK driver and its bundled runtime
 They run with the same conversation, tool and workspace behavior as those drivers.
 
 Signed-out users see no Nodex models. Native Codex, Claude, OpenCode and ACP
-setups remain independent. Automatic defaults never select a prepaid model.
-An unavailable saved choice fails explicitly rather than spending through a
+setups remain independent. Automatic defaults never select a prepaid model, and
+[Model policy](model-policy-behavior.md) decides who may start one. An unavailable saved choice fails explicitly rather than spending through a
 different account or silently choosing another provider.
 
 People spend Nodex credits, not dollars. A credit balance is a whole number with

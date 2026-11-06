@@ -13,6 +13,7 @@ export type SettingsPageKey =
   | "appearance"
   | "voice"
   | "agent"
+  | "models"
   | "import"
   | "keyboard-shortcuts"
   | "inbox"

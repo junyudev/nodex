@@ -88,10 +88,12 @@ export function NodexModelPrices({
   pricing,
   creditsPerUsd,
   unavailableModels,
+  onManageModels,
 }: {
   readonly pricing: NodexModelPricing;
   readonly creditsPerUsd: number;
   readonly unavailableModels: readonly string[];
+  readonly onManageModels: (() => void) | undefined;
 }) {
   const columns = visibleNodexPriceColumns(pricing);
   const gridStyle = {
@@ -193,6 +195,18 @@ export function NodexModelPrices({
         <p className="m-0">
           Charged to your credits as you use each model.
           {pricing.notes.length > 0 ? ` ${pricing.notes.join(" ")}` : ""}
+          {onManageModels ? (
+            <>
+              {" "}
+              <button
+                type="button"
+                onClick={onManageModels}
+                className="cursor-interaction text-token-text-secondary underline-offset-2 hover:text-token-text-primary hover:underline"
+              >
+                Choose which models can spend credits
+              </button>
+            </>
+          ) : null}
         </p>
       </div>
     </section>

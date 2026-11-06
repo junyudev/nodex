@@ -113,7 +113,7 @@ test("chooses an OpenCode model with native options before its first prompt and 
     await search.fill("Kimi");
     const kimi = page.getByRole("option", { name: /Kimi K3.*OpenCode/u });
     await expect(kimi).toBeVisible();
-    await expect(page.getByRole("button", { name: "Manage providers", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Manage models", exact: true })).toBeVisible();
     expect(
       observations().filter(({ kind }) => kind === "createSession" || kind === "prompt"),
     ).toEqual([]);
