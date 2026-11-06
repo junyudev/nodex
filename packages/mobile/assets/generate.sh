@@ -8,8 +8,19 @@ trap 'rm -rf "$scratch"' EXIT
 
 rsvg-convert -w 1024 -h 1024 "$resources/nodex-icon.svg" -o "$scratch/mark.png"
 
-magick "$resources/nodex-icon_3200x3200.png" -resize 780x780 \
-  -background '#eaeaea' -gravity center -extent 1024x1024 \
+# iOS composes its icon from these layers, one per appearance in app-icon.icon/icon.json: a solid
+# block beneath, and the outline and prompt above it, so a tinted or clear Home Screen keeps its contrast.
+layers="$assets/app-icon.icon/Assets"
+open='<svg width="800" height="800" viewBox="0 0 800 800" fill="none" xmlns="http://www.w3.org/2000/svg">'
+{ echo "$open"; grep 'fill="white"' "$resources/nodex-icon.svg"; echo '</svg>'; } > "$layers/nodex-body.svg"
+{
+  echo "$open"
+  grep '<path' "$resources/nodex-icon.svg" | grep -v 'fill="white"' | sed 's/#262626/#000000/g'
+  echo '</svg>'
+} > "$layers/nodex-lines.svg"
+
+magick "$scratch/mark.png" -resize 780x780 \
+  -background white -gravity center -extent 1024x1024 \
   -alpha remove -alpha off -strip "$assets/icon.png"
 
 # A 440 px canvas keeps the full mark within the central 66 dp adaptive icon circle.

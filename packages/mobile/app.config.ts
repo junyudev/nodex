@@ -32,6 +32,7 @@ export default {
   orientation: "portrait",
   icon: "./assets/icon.png",
   ios: {
+    icon: "./assets/app-icon.icon",
     bundleIdentifier: identifier,
     appleTeamId: process.env.APPLE_TEAM_ID,
     infoPlist: {
@@ -47,7 +48,7 @@ export default {
     adaptiveIcon: {
       foregroundImage: "./assets/adaptive-foreground.png",
       monochromeImage: "./assets/adaptive-monochrome.png",
-      backgroundColor: "#eaeaea",
+      backgroundColor: "#ffffff",
     },
   },
   plugins: [
@@ -64,7 +65,7 @@ export default {
       },
     ],
     // The accent tokens in src/ui/theme.css.
-    ["./plugins/withAndroidAccent.cjs", { light: "#2c67c5", dark: "#63a8f8" }],
+    ["./plugins/withAndroidAccent.cjs", { light: "#3560e0", dark: "#4d72ee" }],
     ["expo-dev-client", { addGeneratedScheme: false }],
     ["expo-camera", { cameraPermission, microphonePermission: false, recordAudioAndroid: false }],
     [
@@ -80,8 +81,8 @@ export default {
       {
         image: "./assets/splash.png",
         imageWidth: 128,
-        backgroundColor: "#f5f5f5",
-        dark: { backgroundColor: "#171717" },
+        backgroundColor: "#ffffff",
+        dark: { backgroundColor: "#000000" },
       },
     ],
     ["expo-secure-store", { faceIDPermission: false }],
