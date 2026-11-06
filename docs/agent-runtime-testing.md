@@ -45,6 +45,31 @@ request matching, and bounded unexpected/unused-exchange diagnostics. Keep
 wire-level edge cases there unless their outcome depends on the complete
 Electron composition.
 
+## Claude Desktop Tool smoke
+
+Run the real bundled Claude CLI against a loopback Anthropic Messages server:
+
+```bash
+vp run stage:codex-runtime:mac:cached
+vp run test:e2e tests/e2e/claude-desktop-tools.spec.ts
+vp run test:agent-runtime packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+```
+
+This exercises the CLI's SDK MCP handling, the signed Desktop Tool process chain,
+and the Session Browser surface in a disposable Profile without provider charges.
+The Messages server never forwards traffic; unexpected requests fail closed.
+The test loads the Browser skill through the CLI and resolves its bootstrap path
+from the skill result. Title-generation requests share the Messages endpoint and
+must be handled separately from the first Session request. Browser verification
+captures the actual page; synthetic images prove only image transport. Computer
+Use is checked only for capability advertisement;
+no desktop applications are controlled.
+
+Set `NODEX_CDT_EVIDENCE_DIR` to an absolute local artifacts directory to retain
+model requests, tool results, approval cards, and screenshots after Profile cleanup.
+The separate CLI output-limit case measures persistence and tool metadata with
+text pressure fixtures; it does not claim to exercise Browser execution.
+
 ## Agent runtime conformance probes
 
 Release-lock tests verify that the committed Agent and Browser artifacts form an
