@@ -509,6 +509,31 @@ describe("BrowserUseIabApi", () => {
     }),
   );
 
+  it.effect("resolves screenshot target information within the current controlled tab", () =>
+    withApi(async ({ api }) => {
+      const tab = (await api.dispatch("createTab", {
+        session_id: "thread-1",
+        turn_id: "turn-1",
+      })) as { id: number };
+      const call = (targetId?: string) =>
+        api.dispatch("executeCdp", {
+          session_id: "thread-1",
+          target: { tabId: tab.id },
+          method: "Target.getTargetInfo",
+          commandParams: targetId ? { targetId } : {},
+        });
+      expect(await call()).toMatchObject({
+        targetInfo: { targetId: "browser-use-iab-tab:1", type: "page", tabId: tab.id },
+      });
+      expect(await call("frame-target-1")).toMatchObject({
+        targetInfo: { targetId: "frame-target-1", type: "iframe", tabId: tab.id },
+      });
+      await api.dispatch("createTab", { session_id: "thread-1", turn_id: "turn-1" });
+      await expect(call("browser-use-iab-tab:2")).rejects.toThrow("not part of the current");
+      await expect(call("foreign-target")).rejects.toThrow("not part of the current");
+    }),
+  );
+
   it.effect("maps top-level and frame CDP targets and restores capture surface", () =>
     withApi(async ({ api, service }) => {
       const tab = (await api.dispatch("createTab", {

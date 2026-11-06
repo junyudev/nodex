@@ -653,6 +653,23 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
     if (params.method === "Target.getTargets") {
       return await this.getTargetInfos(tab);
     }
+    if (params.method === "Target.getTargetInfo") {
+      const command = z
+        .object({ targetId: z.string().min(1).optional() })
+        .parse(params.commandParams ?? {});
+      const targetId =
+        command.targetId ??
+        params.target.targetId ??
+        (params.target.sessionId
+          ? this.debuggerTargetIdsBySessionId.get(params.target.sessionId)
+          : this.topLevelTargetId(tab));
+      const { targetInfos } = await this.getTargetInfos(tab);
+      const targetInfo = targetInfos.find(
+        (info) => info.targetId === targetId && info.tabId === tab.id,
+      );
+      if (!targetInfo) throw new Error("Target is not part of the current in-app browser tab");
+      return { targetInfo };
+    }
     if (params.method === "Target.closeTarget") {
       const targetId =
         isRecord(params.commandParams) && typeof params.commandParams.targetId === "string"
