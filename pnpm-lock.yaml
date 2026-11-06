@@ -10396,7 +10396,7 @@ packages:
     resolution: {integrity: sha512-RRieF6IyxQBkcK6pP8xOHprLTPW6QjRkbGdImtqNme+/hYVwCZkLQLdlZGOhUqXwkS9IEynaGvPJtv6XB/cz0Q==}
 
   react-native-enriched-markdown@file:packages/mobile/deps/react-native-enriched-markdown-1.2.0.tgz:
-    resolution: {integrity: sha512-Ru0Uuhq4QBphcC73ney0fgNnvr6Lfv+31H2Ij1qxvDejwVyFh/Romc1a1ot9i8/jnmgvAzTZzbPQcdGtQNFayw==, tarball: file:packages/mobile/deps/react-native-enriched-markdown-1.2.0.tgz}
+    resolution: {integrity: sha512-LZGSoc7hEP3OepJrSYBKDYXS6RpK/XNv4b52CVXqwbF5JjMiGlgRQrjuYdgsn12cGqoAUA4ryyMWx6MBBTDgpQ==, tarball: file:packages/mobile/deps/react-native-enriched-markdown-1.2.0.tgz}
     version: 1.2.0-t3.16
     peerDependencies:
       katex: 0.19.1

@@ -144,7 +144,6 @@ const useMarkdownStyle = (): MarkdownStyle => {
       image: { borderRadius: 12, marginTop: 2, marginBottom: 12 },
       table: {
         ...block,
-        borderRadius: 0,
         fontSize: 14,
         lineHeight: 19,
         color: ink,
