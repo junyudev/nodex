@@ -30,6 +30,14 @@ const fixture = (options: {
     });
   const tools = make({
     tools: {
+      desktopTools: Effect.succeed({
+        server: {
+          command: "/desktop/node",
+          args: ["signed-launcher"],
+          env: { CODEX_HOME: "/desktop/codex" },
+        },
+        pluginRoots: ["/materialized/browser"],
+      }),
       threadConfig: (cwd) =>
         Effect.succeed({
           "mcp_servers.node_repl": { command: "/desktop/node", cwd },
@@ -147,5 +155,40 @@ it.effect("Codex threads get the Desktop features beneath the host's own tool co
     });
     assert.equal(config["features.image_generation"], false);
     assert.equal(config["features.collaboration_modes"], true);
+  }),
+);
+
+it.effect("Claude native ids follow and release the same Browser route", () =>
+  Effect.gen(function* () {
+    const { tools, calls } = fixture({ anchors: { "thread:root/run:claude": "window-b" } });
+    const nativeThreadId = "c40ae828-c6b0-47fe-b5a4-eaf624a1f9f4";
+    const nativeTurnId = "turn:attempt:claude";
+    yield* tools.observeNativeTurn({ ...started("run:claude", nativeTurnId), nativeThreadId });
+    yield* tools.observeNativeTurn({ phase: "ended", nativeThreadId, nativeTurnId });
+    yield* tools.releaseSession("session");
+    assert.deepEqual(calls, [
+      {
+        method: "captureRoute",
+        input: {
+          browserConversationId: "session",
+          browserViewScopeId: "window-b",
+          codexSessionId: nativeThreadId,
+          ownerWebContentsId: 12,
+          projectId: "project",
+        },
+      },
+      { method: "turnStarted", input: { sessionId: nativeThreadId, turnId: nativeTurnId } },
+      { method: "turnEnded", input: { sessionId: nativeThreadId, turnId: nativeTurnId } },
+      { method: "endSessionActivity", input: nativeThreadId },
+      { method: "releaseSession", input: nativeThreadId },
+    ]);
+    assert.deepEqual(yield* tools.desktopTools, {
+      server: {
+        command: "/desktop/node",
+        args: ["signed-launcher"],
+        env: { CODEX_HOME: "/desktop/codex" },
+      },
+      pluginRoots: ["/materialized/browser"],
+    });
   }),
 );

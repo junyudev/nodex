@@ -1,4 +1,6 @@
 import path from "node:path";
+import type { HostDesktopTools } from "@nodex/agent-runtime/contracts";
+import type { BrowserPluginReconcileResult } from "./browser-plugin-reconciler";
 import type { ThreadStartParams } from "@nodex/codex-app-server-protocol/v2/ThreadStartParams";
 import type {
   BrowserRuntimeAvailability,
@@ -44,14 +46,13 @@ type BrowserUseThreadConfigBuilderOptions = {
   runtimeStateHome: string;
 };
 
-function buildAvailableConfig(
+function buildNodeReplServer(
   bundle: VerifiedBrowserRuntimeBundle,
   runtimeStateHome: string,
   codexHome: string,
-  disabledDesktopPluginIds: readonly string[],
   availableBackends: readonly BrowserRuntimeBackend[],
   computerUseRuntime: Extract<ComputerUseRuntimeResult, { status: "available" }> | null,
-): BrowserUseThreadConfig {
+) {
   const availableBackendsValue = availableBackends.join(",");
   // app-server installs local marketplace plugins into versioned directories
   // beneath CODEX_HOME/plugins/cache and exposes skill paths from that cache.
@@ -102,33 +103,23 @@ function buildAvailableConfig(
     env.SKY_CUA_SERVICE_PATH = computerUseRuntime.appPath;
   }
 
-  const config: BrowserUseThreadConfig = {
-    ...buildDesktopToolPluginOverrides(disabledDesktopPluginIds),
-    ...Object.fromEntries(
-      [
-        ["browser", availableBackends.length > 0],
-        ["chrome", availableBackends.includes("chrome")],
-        ["computer-use", computerUseRuntime !== null],
-      ].map(([name, enabled]) => [
-        `plugins.${name}@${nodexDesktopToolMarketplaceName(runtimeStateHome)}.enabled`,
-        enabled,
-      ]),
-    ),
-    "features.js_repl": false,
-    "mcp_servers.node_repl": nodeReplServerDefinition({
-      codexCliPath: bundle.paths.codexCli,
-      env,
-      nodePath: bundle.paths.node,
-      nodeReplPath: bundle.paths.nodeRepl,
-    }),
-  };
-  if (bundle.manifest.targetPlatform !== "darwin") return config;
-  return {
-    ...config,
-    "shell_environment_policy.set.BROWSER_USE_AVAILABLE_BACKENDS": availableBackendsValue,
-    "shell_environment_policy.set.NODE_REPL_TRUSTED_CODE_PATHS": trustedCodePaths,
-  };
+  return nodeReplServerDefinition({
+    codexCliPath: bundle.paths.codexCli,
+    env,
+    nodePath: bundle.paths.node,
+    nodeReplPath: bundle.paths.nodeRepl,
+  });
 }
+
+type AvailableDesktopRuntime = {
+  status: "available";
+  server: ReturnType<typeof nodeReplServerDefinition>;
+  availableBackends: readonly BrowserRuntimeBackend[];
+  computerUseAvailable: boolean;
+};
+type DesktopRuntimeResult =
+  | AvailableDesktopRuntime
+  | Extract<BrowserUseThreadConfigResult, { status: "unavailable" }>;
 
 export class BrowserUseThreadConfigBuilder {
   private readonly availableBackends: () => readonly BrowserRuntimeBackend[];
@@ -149,7 +140,9 @@ export class BrowserUseThreadConfigBuilder {
     this.runtimeStateHome = path.resolve(options.runtimeStateHome);
   }
 
-  buildResult(): BrowserUseThreadConfigResult {
+  private resolveRuntime(
+    plugins?: Extract<BrowserPluginReconcileResult, { status: "ready" }>,
+  ): DesktopRuntimeResult {
     if (this.browserRuntime.status === "unavailable") return this.browserRuntime;
 
     let requestedBackends: readonly BrowserRuntimeBackend[];
@@ -165,11 +158,21 @@ export class BrowserUseThreadConfigBuilder {
         status: "unavailable",
       };
     }
+    if (plugins) {
+      requestedBackends = requestedBackends.filter((backend) =>
+        backend === "chrome"
+          ? plugins.chrome.status === "ready" && plugins.chrome.enabled
+          : plugins.enabled,
+      );
+    }
     const availableBackends = resolveAvailableBrowserUseBackends(
       this.browserRuntime.bundle.manifest.supportedBackends,
       requestedBackends,
     );
-    const computerUseRuntime = this.computerUsePluginReady() ? this.computerUseRuntime() : null;
+    const computerUseReady =
+      this.computerUsePluginReady() &&
+      (!plugins || (plugins.computerUse.status === "ready" && plugins.computerUse.enabled));
+    const computerUseRuntime = computerUseReady ? this.computerUseRuntime() : null;
     const availableComputerUseRuntime =
       computerUseRuntime?.status === "available" ? computerUseRuntime : null;
     if (availableBackends.length === 0 && !availableComputerUseRuntime) {
@@ -181,15 +184,68 @@ export class BrowserUseThreadConfigBuilder {
     }
 
     return {
-      config: buildAvailableConfig(
+      server: buildNodeReplServer(
         this.browserRuntime.bundle,
         this.runtimeStateHome,
         this.codexHome,
-        this.disabledDesktopPluginIds,
         availableBackends,
         availableComputerUseRuntime,
       ),
+      availableBackends,
+      computerUseAvailable: availableComputerUseRuntime !== null,
       status: "available",
+    };
+  }
+
+  buildResult(): BrowserUseThreadConfigResult {
+    const runtime = this.resolveRuntime();
+    if (runtime.status === "unavailable") return runtime;
+    const config: BrowserUseThreadConfig = {
+      ...buildDesktopToolPluginOverrides(this.disabledDesktopPluginIds),
+      ...Object.fromEntries(
+        [
+          ["browser", runtime.availableBackends.length > 0],
+          ["chrome", runtime.availableBackends.includes("chrome")],
+          ["computer-use", runtime.computerUseAvailable],
+        ].map(([name, enabled]) => [
+          `plugins.${name}@${nodexDesktopToolMarketplaceName(this.runtimeStateHome)}.enabled`,
+          enabled,
+        ]),
+      ),
+      "features.js_repl": false,
+      "mcp_servers.node_repl": runtime.server,
+    };
+    if (
+      this.browserRuntime.status === "available" &&
+      this.browserRuntime.bundle.manifest.targetPlatform === "darwin"
+    ) {
+      config["shell_environment_policy.set.BROWSER_USE_AVAILABLE_BACKENDS"] =
+        runtime.server.env.BROWSER_USE_AVAILABLE_BACKENDS;
+      config["shell_environment_policy.set.NODE_REPL_TRUSTED_CODE_PATHS"] =
+        runtime.server.env.NODE_REPL_TRUSTED_CODE_PATHS;
+    }
+    return { status: "available", config };
+  }
+
+  /** Session plugins must use the reconciled materialization, never the sealed source bundle. */
+  buildDesktopTools(plugins: BrowserPluginReconcileResult | null): HostDesktopTools | null {
+    if (plugins?.status !== "ready") return null;
+    const runtime = this.resolveRuntime(plugins);
+    if (runtime.status === "unavailable") return null;
+    const { command, args, env } = runtime.server;
+    return {
+      server: { command, args, env },
+      pluginRoots: [
+        ...(runtime.availableBackends.includes("iab")
+          ? [path.join(plugins.marketplaceRoot, "plugins", "browser")]
+          : []),
+        ...(runtime.availableBackends.includes("chrome") && plugins.chrome.status === "ready"
+          ? [plugins.chrome.pluginRoot]
+          : []),
+        ...(runtime.computerUseAvailable && plugins.computerUse.status === "ready"
+          ? [plugins.computerUse.pluginRoot]
+          : []),
+      ],
     };
   }
 

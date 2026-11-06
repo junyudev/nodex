@@ -8,7 +8,13 @@ The built-in Browser is available when its verified runtime is ready. Control of
 
 Computer Use is available only when its verified helper and operating-system requirements are ready. Its service uses the bundled Agent runtime and the owning Profile without requiring a separately installed Codex app or sharing another Profile’s configuration. A failure in one control backend does not weaken or implicitly enable another. ACP tasks and remote Codex executions do not acquire local desktop-control surfaces.
 
-Local Codex chats receive the desktop tools and Desktop features each time their thread starts, resumes, or forks, alongside the user's own MCP servers. When desktop tools cannot be prepared, the chat continues without them. The built-in Browser opens in the window that sent the message. A turn that no window sent, such as a queued, scheduled, or Agent-started turn, keeps the Browser window the chat already had. Archiving or deleting a chat releases its Browser pages.
+Local Codex and Claude Code chats receive the desktop tools each time their thread starts, resumes, or forks, alongside the user's own MCP servers; Codex chats also receive Desktop features. When desktop tools cannot be prepared, the chat continues without them. The built-in Browser opens in the window that sent the message. A turn that no window sent, such as a queued, scheduled, or Agent-started turn, keeps the Browser window the chat already had. Archiving or deleting a chat releases its Browser pages.
+
+## Claude Code chats
+
+A Claude Code chat reaches these tools through a JavaScript session that belongs to the conversation. Its bindings survive across turns, Stop, and anything that restarts Claude Code, such as a changed permission mode. Stopping while its code is running ends that call and resets the bindings, so the next call starts clean. A forked chat starts its own session. The skills that teach these tools load with the chat, and Nodex writes nothing to the user's Claude configuration or project.
+
+Two separate decisions guard desktop control. Running code in the session follows the chat's permission mode like any other tool, and it is never treated as read-only. Its approval card shows the code itself and can allow JavaScript for the chat. Access to a site or an app then asks through its own approval card, which can offer approval once or for the chat. Full access accepts these consent requests without asking and declines a request that needs a typed answer. A request that requires automatic review is declined in every mode, because a Claude Code chat has no automatic reviewer.
 
 ## Website tools
 
@@ -18,7 +24,7 @@ The page bridge exposes only this document-owned registry and callbacks. It gran
 
 ## Native picture in picture
 
-An admitted local task becomes active when Browser Use has an open session or Computer Use has an active item. A task can have both sources; ending one source does not hide the other. Browser presentations retain only the bounded latest accepted raster for each open presentation. Computer Use remains a native remote layer and is not copied into renderer history.
+An admitted local task becomes active when Browser Use has an open session or Computer Use has an active item. Admission follows the local Codex connection, so chats running on the Agent Runtime, including Claude Code chats, do not raise picture in picture. A task can have both sources; ending one source does not hide the other. Browser presentations retain only the bounded latest accepted raster for each open presentation. Computer Use remains a native remote layer and is not copied into renderer history.
 
 The native stack attaches to the focused eligible Nodex window, then the most recently eligible window, or the only eligible window. It follows native window movement without renderer animation frames and disables both stack-placement and companion-window motion when the system requests reduced motion. The stack may move to the restricted companion overlay; that overlay has no restorable Workbench Session and does not own task state. When the same Browser surface is already visible in the selected Nodex window, its duplicate native presentation is temporarily suppressed without changing the user's visibility choice.
 

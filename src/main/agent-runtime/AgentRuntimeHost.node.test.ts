@@ -10,6 +10,7 @@ import type {
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Logger from "effect/Logger";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -75,6 +76,15 @@ const proofOf = (identity: AgentHostTurnIdentity | AgentHostNativeSessionIdentit
   hasNativeBackgroundWork: false,
 });
 
+const desktopTools = {
+  server: {
+    command: "/desktop/node",
+    args: ["signed-launcher"],
+    env: { CODEX_HOME: "/desktop/codex" },
+  },
+  pluginRoots: ["/materialized/browser"],
+};
+
 const fixture = Effect.gen(function* () {
   const events = yield* PubSub.unbounded<AgentRuntimeProcessDelivery>();
   const ended = yield* Deferred.make<never>();
@@ -94,6 +104,9 @@ const fixture = Effect.gen(function* () {
     ["current-project", ["/project/frontend", "/project/backend"]],
   ]);
   const desktopCalls: unknown[] = [];
+  let desktopToolsFailure = false;
+  let desktopToolsAvailable = true;
+  let desktopPreparations = 0;
   const connection: AgentRuntimeProcessConnection = {
     identity: {
       runtimeId: "runtime",
@@ -168,6 +181,11 @@ const fixture = Effect.gen(function* () {
         cwd === "/worktree" ? { set: { WORKTREE_READY: "prepared" }, exclude: ["NODE_ENV"] } : null,
       ),
     desktop: {
+      desktopTools: Effect.suspend(() => {
+        desktopPreparations++;
+        if (desktopToolsFailure) return Effect.fail(new Error("secret launch environment"));
+        return Effect.succeed(desktopToolsAvailable ? desktopTools : null);
+      }),
       threadConfig: (cwd) => Effect.succeed({ "mcp_servers.node_repl": { cwd } }),
       observeNativeTurn: (turn) =>
         Effect.sync(() => {
@@ -203,6 +221,13 @@ const fixture = Effect.gen(function* () {
   return {
     execute,
     desktopCalls,
+    desktopPreparations: () => desktopPreparations,
+    failDesktopTools: () => {
+      desktopToolsFailure = true;
+    },
+    disableDesktopTools: () => {
+      desktopToolsAvailable = false;
+    },
     calls,
     coreReads,
     coreWrites,
@@ -408,7 +433,7 @@ const codexTurn = (runId: string): AgentHostTurnIdentity => ({
 const nativeTurn = (
   identity: AgentHostTurnIdentity,
   phase: "started" | "ended",
-): AgentHostRequest => ({
+): Extract<AgentHostRequest, { operation: "turn.native" }> => ({
   type: "host.request",
   id: `native:${phase}`,
   operation: "turn.native",
@@ -453,10 +478,12 @@ it.effect("other providers receive the Environment their worktree's setup prepar
   Effect.gen(function* () {
     const f = yield* fixture;
     const environment = { set: { WORKTREE_READY: "prepared" }, exclude: ["NODE_ENV"] };
-    assert.deepEqual(yield* f.execute(prepareThread("claude")), { environment });
+    assert.deepEqual(yield* f.execute(prepareThread("claude")), { environment, desktopTools });
     assert.deepEqual(yield* f.execute(prepareThread("acp")), { environment });
-    assert.deepEqual(yield* f.execute(prepareThread("claude", "lease", "/checkout")), {});
-    assert.deepEqual(yield* f.execute(prepareThread("claude", "lease", null)), {});
+    assert.deepEqual(yield* f.execute(prepareThread("claude", "lease", "/checkout")), {
+      desktopTools,
+    });
+    assert.deepEqual(yield* f.execute(prepareThread("claude", "lease", null)), { desktopTools });
   }).pipe(Effect.scoped),
 );
 
@@ -481,6 +508,106 @@ it.effect("a starting Codex Turn names its live Run and Session; ending needs on
         phase: "started",
       },
       { nativeThreadId: "codex-thread", nativeTurnId: "native-turn", phase: "ended" },
+    ]);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("Claude desktop preparation requires both driver identities and the current lease", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* Effect.flip(f.execute(prepareThread("claude", "old-lease")));
+    const mismatched = prepareThread("acp");
+    if (mismatched.operation !== "thread.prepare") throw new Error("expected preparation");
+    yield* f.execute({
+      ...mismatched,
+      identity: { ...mismatched.identity, nativeDriver: "claudeAgent" },
+    });
+    const claude = prepareThread("claude");
+    if (claude.operation !== "thread.prepare") throw new Error("expected preparation");
+    yield* f.execute({ ...claude, identity: { ...claude.identity, nativeDriver: "codex" } });
+    assert.equal(f.desktopPreparations(), 0);
+    yield* f.execute(claude);
+    assert.equal(f.desktopPreparations(), 1);
+  }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "failed Claude desktop preparation retains the workspace Environment and logs no launch values",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      const logs: unknown[] = [];
+      f.failDesktopTools();
+      const result = yield* f.execute(prepareThread("claude")).pipe(
+        Effect.provide(
+          Logger.layer([
+            Logger.make((entry) => {
+              logs.push(entry.message);
+            }),
+          ]),
+        ),
+      );
+      assert.deepEqual(result, {
+        environment: { set: { WORKTREE_READY: "prepared" }, exclude: ["NODE_ENV"] },
+      });
+      assert.deepEqual(logs, [["Desktop tools are unavailable for a Claude thread"]]);
+    }).pipe(Effect.scoped),
+);
+
+it.effect("unavailable Claude desktop tools do not change Environment preparation", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    f.disableDesktopTools();
+    assert.deepEqual(yield* f.execute(prepareThread("claude")), {
+      environment: { set: { WORKTREE_READY: "prepared" }, exclude: ["NODE_ENV"] },
+    });
+    assert.deepEqual(yield* f.execute(prepareThread("claude", "lease", null)), {});
+  }).pipe(Effect.scoped),
+);
+
+it.effect("Claude native Turns retain start authorization and lease-only completion", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const identity: AgentHostTurnIdentity = {
+      ...turn("run:claude"),
+      providerInstanceId: "claude",
+      nativeThreadRef: {
+        driver: "claudeAgent",
+        nativeId: "c40ae828-c6b0-47fe-b5a4-eaf624a1f9f4",
+        strength: "strong",
+      },
+    };
+    const started = {
+      ...nativeTurn(identity, "started"),
+      nativeTurnId: "turn:attempt:claude",
+    } as const;
+    yield* Effect.flip(f.execute(started));
+    f.bind(identity);
+    yield* f.execute(started);
+    f.live.delete("run:claude");
+    const ended = {
+      ...nativeTurn(identity, "ended"),
+      nativeTurnId: "turn:attempt:claude",
+    } as const;
+    yield* f.execute(ended);
+    yield* Effect.flip(
+      f.execute({ ...ended, identity: { ...identity, runtimeGeneration: "old" } }),
+    );
+    assert.deepEqual(f.desktopCalls, [
+      {
+        nativeThreadId: identity.nativeThreadRef!.nativeId,
+        nativeTurnId: "turn:attempt:claude",
+        threadId: identity.threadId,
+        runId: identity.runId,
+        sessionId: "session",
+        projectId: "current-project",
+        phase: "started",
+      },
+      {
+        nativeThreadId: identity.nativeThreadRef!.nativeId,
+        nativeTurnId: "turn:attempt:claude",
+        phase: "ended",
+      },
     ]);
   }).pipe(Effect.scoped),
 );

@@ -207,7 +207,7 @@ function fixtureContent(relativePath: string): string {
       : relativePath.includes("/chrome/")
         ? "chrome"
         : "browser";
-    return `${JSON.stringify({ name, version: "1.0.0-test" }, null, 2)}\n`;
+    return `${JSON.stringify({ name, version: "1.0.0-test", description: `${name} tools` }, null, 2)}\n`;
   }
   return `fixture:${relativePath}\n`;
 }

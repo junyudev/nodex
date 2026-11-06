@@ -5,7 +5,7 @@ import type { BrowserRuntimeArtifact } from "../../shared/browser-runtime-metada
 import type { VerifiedBrowserRuntimeBundle } from "./browser-runtime-bundle";
 
 const SOURCE_MARKETPLACE_NAME = "openai-bundled";
-const MATERIALIZATION_SCHEMA_VERSION = 4;
+const MATERIALIZATION_SCHEMA_VERSION = 5;
 const MATERIALIZATION_KEY_FILENAME = ".materialization-key";
 const COMPUTER_USE_SKILL_TARGET = path.join("skills", "computer-use", "SKILL.md");
 
@@ -80,6 +80,27 @@ async function readJson(filePath: string): Promise<unknown> {
 
 async function writeJson(filePath: string, value: unknown): Promise<void> {
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+async function claudePluginManifest(pluginRoot: string) {
+  const vendor = parseRecord(
+    await readJson(path.join(pluginRoot, ".codex-plugin", "plugin.json")),
+    "Bundled plugin manifest",
+  );
+  if (typeof vendor.name !== "string" || typeof vendor.version !== "string") {
+    throw new Error("Bundled plugin manifest is missing its name or version");
+  }
+  return {
+    name: vendor.name,
+    version: vendor.version,
+    ...(typeof vendor.description === "string" ? { description: vendor.description } : {}),
+  };
+}
+
+async function writeClaudePluginManifest(pluginRoot: string): Promise<void> {
+  const manifest = await claudePluginManifest(pluginRoot);
+  await fs.mkdir(path.join(pluginRoot, ".claude-plugin"), { recursive: true });
+  await writeJson(path.join(pluginRoot, ".claude-plugin", "plugin.json"), manifest);
 }
 
 function materializationKey(
@@ -162,6 +183,18 @@ async function isCurrentMaterialization(
     if (chromeClosure.length > 0 && !(await isCurrentChromeClosure(rootPath, chromeClosure))) {
       return false;
     }
+    const pluginNames = [
+      "browser",
+      ...(chromeClosure.length > 0 ? ["chrome"] : []),
+      ...(includeComputerUse ? ["computer-use"] : []),
+    ];
+    for (const name of pluginNames) {
+      const pluginRoot = path.join(rootPath, "plugins", name);
+      const actual = await readJson(path.join(pluginRoot, ".claude-plugin", "plugin.json"));
+      if (JSON.stringify(actual) !== JSON.stringify(await claudePluginManifest(pluginRoot))) {
+        return false;
+      }
+    }
     if (!includeComputerUse) return true;
     await fs.access(path.join(rootPath, "plugins", "computer-use", COMPUTER_USE_SKILL_TARGET));
     return true;
@@ -229,6 +262,10 @@ async function materializeFresh(
       await fs.cp(bundle.paths.computerUsePluginRoot, computerUsePluginTarget, {
         recursive: true,
       });
+    }
+
+    for (const pluginRoot of [browserPluginTarget, chromePluginTarget, computerUsePluginTarget]) {
+      if (pluginRoot) await writeClaudePluginManifest(pluginRoot);
     }
 
     const sourceManifestPath = path.join(

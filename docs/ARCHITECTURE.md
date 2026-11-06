@@ -407,6 +407,8 @@ disappears. Native click, layout, cursor, pet-wake, visibility, and service-loss
 one integration into Browser Use, Chrome Control, Computer Use, and the restricted avatar overlay;
 no renderer or ambient filesystem search can acquire the raw addon.
 
+Main prepares the Desktop Tool runtime and follows Turns for both local Agent providers. Codex launches the REPL itself, while Agent Runtime launches and owns it for Claude Code and gives each Claude process an in-process facade; see [ADR 0036](adr/0036-desktop-tool-runtime-native-trust-boundary.md).
+
 User-visible availability, placement, focus, visibility, lifecycle, and privacy behavior is specified in [Desktop control surfaces](product-specs/desktop-control-surfaces.md).
 
 Browser Use sessions are a process-scoped keyed resource family. An infinite-idle

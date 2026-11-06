@@ -47,6 +47,28 @@ export function isCodexMcpPermissionRequest(
   );
 }
 
+/**
+ * What a client that answers MCP servers itself does before asking anyone, as app-server does for
+ * its own threads. Strict review needs an automatic reviewer, and such a client has none. Full
+ * access has nobody to ask, so it accepts bare consent and declines forms that want an answer.
+ */
+export function codexMcpElicitationPolicy(
+  payload: CodexSchema.McpServerElicitationRequestParams,
+  input: { readonly fullAccess: boolean },
+): "accept" | "decline" | "ask" {
+  if (payload.mode === "url" || payload.mode === "openai/userVerification") return "decline";
+  const strict =
+    typeof payload._meta === "object" && payload._meta !== null
+      ? Reflect.get(payload._meta, "codex_strict_auto_review")
+      : undefined;
+  if (strict !== undefined && strict !== false) return "decline";
+  if (!input.fullAccess) return "ask";
+  const form = decodeApprovalForm(payload.requestedSchema);
+  return form._tag === "Some" && Object.keys(form.value.properties ?? {}).length === 0
+    ? "accept"
+    : "decline";
+}
+
 export function codexMcpElicitationQuestions(
   payload: CodexSchema.McpServerElicitationRequestParams,
 ): ReadonlyArray<CodexSchema.ToolRequestUserInputParams__ToolRequestUserInputQuestion> {

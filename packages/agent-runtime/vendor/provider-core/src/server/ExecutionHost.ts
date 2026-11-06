@@ -45,6 +45,27 @@ export interface HostWorkspaceEnvironment {
   readonly exclude: readonly string[];
 }
 
+/**
+ * The host's Desktop Tool runtime for a provider that connects MCP servers itself. The server is
+ * launched exactly as given, because native tool peers verify its signed process ancestry.
+ */
+export interface HostDesktopTools {
+  readonly server: {
+    readonly command: string;
+    readonly args: readonly string[];
+    readonly env: Readonly<Record<string, string>>;
+  };
+  /** Local plugin directories whose skills teach an agent to use the available tools. */
+  readonly pluginRoots: readonly string[];
+}
+
+/** What a host contributes to a native thread as it starts, resumes or forks. */
+export interface HostThreadPreparation {
+  readonly config?: Readonly<Record<string, unknown>>;
+  readonly environment?: HostWorkspaceEnvironment;
+  readonly desktopTools?: HostDesktopTools;
+}
+
 /** The environment with a workspace's setup changes applied. */
 export const withWorkspaceEnvironment = (
   environment: NodeJS.ProcessEnv,
@@ -115,13 +136,7 @@ export class ExecutionHost extends Context.Reference<{
     readonly providerInstanceId: ProviderInstanceId;
     readonly nativeDriver: import("@t3tools/contracts").ProviderDriverKind;
     readonly cwd: string | null;
-  }) => Effect.Effect<
-    {
-      readonly config?: Readonly<Record<string, unknown>>;
-      readonly environment?: HostWorkspaceEnvironment;
-    },
-    ExecutionHostError
-  >;
+  }) => Effect.Effect<HostThreadPreparation, ExecutionHostError>;
   /** A host-owned native tool follows the provider's own Turns, which it addresses by native id. */
   readonly observeNativeTurn?: (input: {
     readonly identity: HostTurnIdentity;

@@ -78,6 +78,24 @@ App-server form elicitation remains the sole action-approval authority. The
 native host does not invent a second approval model and returns denials or
 execution failures as typed tool errors.
 
+### Claude Code reaches the REPL through Agent Runtime
+
+The runtime's contract is richer than a stdio MCP client provides. Each call must
+carry its conversation and Turn in request metadata, approvals need response
+metadata, and the `turn_ended` lifecycle tool must not reach a model. The Claude
+CLI's client offers none of these controls, and the process it launches would end
+with each CLI process, taking REPL state with it.
+
+Agent Runtime therefore owns one signed REPL per Claude conversation as an MCP
+client, launched with the unchanged chain above, and gives each Claude process a
+fresh in-process MCP server that forwards to it. That facade stamps identity, hides
+host-only tools, and removes read-only hints from tools that run arbitrary code.
+Elicitations are answered in Agent Runtime under the app-server's rules, which keeps
+form elicitation the sole action-approval authority. Cancelling a call goes through
+MCP, and the REPL resets the kernel itself, so this path needs no separate process
+cleanup. The Turn identity is Nodex's own attempt identity, because Claude exposes
+no stable native Turn id before tools run. Browser routing treats it as opaque.
+
 ### Presentation intent does not imply panel selection
 
 Browser runtime tabs always materialize in their owning Session Scene. A
@@ -131,6 +149,9 @@ reimplemented as renderer state.
   cannot become durable task or Scene authority.
 - ACP and remote Codex execution do not acquire local native control surfaces
   without an explicitly negotiated, independently verified capability.
+- Claude Code gets Browser, Chrome, and Computer Use control under the same trust
+  chain and consent rules. Native PiP still derives activity from the local Codex
+  notification generation, so it does not follow Agent Runtime chats.
 - Release verification must validate mixed signing identities and exercise the
   actual plugin/host/helper chain and exact native-addon ABI, not only file
   presence.
@@ -153,6 +174,19 @@ This would couple app-server lifecycle and protocol identity to a binary whose
 role is native Browser/Computer Use ancestry. Keeping the signed Node and Codex
 processes only in the REPL launch chain preserves independent upgrades while
 still satisfying native sender authentication.
+
+### Register the REPL with the Claude CLI as a stdio server
+
+This needs no bridge code, but the REPL would receive no conversation identity, so
+Browser requests would fail, and the model would see `turn_ended`. Approval metadata
+would pass through a client that does not preserve it, and REPL state would end with
+every CLI process.
+
+### Put a stdio proxy between the Claude CLI and the REPL
+
+A proxy could add identity, but it would need its own private channel to learn the
+current Turn and answer approvals, and it would still die with the CLI process. The
+in-process facade gets all of that from the process that already owns the Turn.
 
 ### Derive PiP from renderer Browser-tab state
 

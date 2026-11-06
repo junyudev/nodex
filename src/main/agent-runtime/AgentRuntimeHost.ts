@@ -55,7 +55,10 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     readonly providers: AgentRuntimeConfiguration["providers"];
     readonly providerDriver?: (instanceId: string) => string | undefined;
     readonly execute: AgentRuntimeHostToolExecutor;
-    readonly desktop?: Pick<AgentRuntimeDesktopTools, "threadConfig" | "observeNativeTurn">;
+    readonly desktop?: Pick<
+      AgentRuntimeDesktopTools,
+      "threadConfig" | "desktopTools" | "observeNativeTurn"
+    >;
     /** What a workspace's Environment setup changed, for providers that start their own processes. */
     readonly workspaceEnvironment?: (cwd: string) => Effect.Effect<
       {
@@ -181,12 +184,26 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
           request.cwd && options.workspaceEnvironment
             ? yield* options.workspaceEnvironment(request.cwd)
             : null;
-        return environment ? { environment } : {};
+        const prepared = environment ? { environment } : {};
+        if (
+          identity.nativeDriver !== "claudeAgent" ||
+          driverOf(identity.providerInstanceId) !== "claudeAgent" ||
+          !options.desktop
+        )
+          return prepared;
+        const desktopTools = yield* options.desktop.desktopTools.pipe(
+          Effect.catch(() =>
+            // Preparation errors can contain launch environment values. Log no error payload.
+            Effect.logWarning("Desktop tools are unavailable for a Claude thread").pipe(
+              Effect.as(null),
+            ),
+          ),
+        );
+        return desktopTools ? { ...prepared, desktopTools } : prepared;
       }
       if (request.operation === "turn.native") {
         const { identity } = request;
-        const nativeThreadId =
-          identity.nativeThreadRef?.driver === "codex" ? identity.nativeThreadRef.nativeId : null;
+        const nativeThreadId = identity.nativeThreadRef?.nativeId;
         if (!options.desktop || identity.runId === null || !nativeThreadId) return {};
         const turn = { nativeThreadId, nativeTurnId: request.nativeTurnId };
         // Ending only lets go of what the Turn held, so it needs the lease, not a live Run.

@@ -26,6 +26,7 @@ export type {
   ProjectId,
 } from "@t3tools/contracts";
 
+export type { HostDesktopTools } from "@t3tools/provider-core/server/ExecutionHost";
 export type * from "./Interface.ts";
 export type { AgentRuntimeBootstrap } from "./Bootstrap.ts";
 export {

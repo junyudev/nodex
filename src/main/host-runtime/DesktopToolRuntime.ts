@@ -1,3 +1,4 @@
+import type { HostDesktopTools } from "@nodex/agent-runtime/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -52,6 +53,7 @@ export class DesktopToolRuntime extends Context.Service<
       ConfigRequirementsReadResponse,
       DesktopToolRuntimeError
     >;
+    readonly desktopTools: Effect.Effect<HostDesktopTools | null, DesktopToolRuntimeError>;
     readonly threadConfig: (
       cwd?: string | null,
     ) => Effect.Effect<NonNullable<ThreadStartParams["config"]> | null, DesktopToolRuntimeError>;
@@ -151,6 +153,22 @@ const make = (options: DesktopToolRuntimeLayerOptions) =>
         Effect.andThen(options.readConfigRequirements),
         Effect.mapError(
           (cause) => new DesktopToolRuntimeError({ operation: "config-requirements", cause }),
+        ),
+      ),
+      desktopTools: ensureReady.pipe(
+        Effect.flatMap((current) =>
+          Effect.try({
+            try: () =>
+              new BrowserUseThreadConfigBuilder({
+                availableBackends: options.availableBackends,
+                browserRuntime: options.browserRuntime,
+                codexHome: options.codexHome,
+                computerUsePluginReady: () => current.computerUsePluginReady,
+                computerUseRuntime: () => current.computerUse,
+                runtimeStateHome: options.runtimeStateHome,
+              }).buildDesktopTools(current.plugins),
+            catch: (cause) => new DesktopToolRuntimeError({ operation: "desktop-tools", cause }),
+          }),
         ),
       ),
       // A Thread asking for desktop tools is itself the readiness boundary. Callers must not

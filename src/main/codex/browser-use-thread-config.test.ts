@@ -12,6 +12,7 @@ import { BrowserUseThreadConfigBuilder } from "./browser-use-thread-config";
 
 import { nodexDesktopToolMarketplaceName } from "./bundled-desktop-tool-marketplace";
 import { computerUseNativePipePath } from "./computer-use-runtime-config";
+import type { BrowserPluginReconcileResult } from "./browser-plugin-reconciler";
 import { NODE_REPL_LAUNCHER_SOURCE } from "./desktop-tool-environment";
 
 const temporaryRoots: string[] = [];
@@ -245,5 +246,149 @@ describe("BrowserUseThreadConfigBuilder", () => {
         ),
       }),
     );
+  });
+});
+
+const reconciledPlugins = (): Extract<BrowserPluginReconcileResult, { status: "ready" }> => ({
+  status: "ready",
+  enabled: true,
+  installedVersion: "1.0.0-test",
+  marketplaceRoot: "/reconciled/marketplace",
+  chrome: {
+    status: "ready",
+    enabled: true,
+    installedVersion: "1.0.0-test",
+    pluginRoot: "/reconciled/chrome",
+  },
+  computerUse: {
+    status: "ready",
+    enabled: true,
+    installedVersion: "1.0.0-test",
+    pluginRoot: "/reconciled/computer-use",
+  },
+});
+
+describe("host Desktop Tools", () => {
+  test("shares the exact signed launcher and environment with Codex and uses reconciled plugin roots", async () => {
+    const { browserRuntime } = await makeVerifiedRuntime();
+    const builder = new BrowserUseThreadConfigBuilder({
+      browserRuntime,
+      availableBackends: () => ["iab", "chrome"],
+      computerUsePluginReady: () => true,
+      computerUseRuntime: () => ({
+        status: "available",
+        appPath: "/state/helper.app",
+        hostServicesPipePath: "/state/host.sock",
+        serviceExecutablePath: "/state/helper.app/service",
+      }),
+      codexHome: "/codex",
+      runtimeStateHome: "/state",
+    });
+    const config = builder.buildResult();
+    if (config.status !== "available") throw new Error(config.message);
+    const { command, args, env } = config.config["mcp_servers.node_repl"] as {
+      command: string;
+      args: string[];
+      env: Record<string, string>;
+    };
+    expect(builder.buildDesktopTools(reconciledPlugins())).toEqual({
+      server: { command, args, env },
+      pluginRoots: [
+        "/reconciled/marketplace/plugins/browser",
+        "/reconciled/chrome",
+        "/reconciled/computer-use",
+      ],
+    });
+  });
+
+  test.each([
+    {
+      backends: ["iab", "chrome"] as const,
+      chromeReady: false,
+      computerReady: false,
+      expectedBackends: "iab",
+      roots: ["/reconciled/marketplace/plugins/browser"],
+    },
+    {
+      backends: ["iab"] as const,
+      chromeReady: true,
+      computerReady: false,
+      expectedBackends: "iab",
+      roots: ["/reconciled/marketplace/plugins/browser"],
+    },
+    {
+      backends: ["chrome"] as const,
+      chromeReady: true,
+      computerReady: false,
+      expectedBackends: "chrome",
+      roots: ["/reconciled/chrome"],
+    },
+    {
+      backends: [] as const,
+      chromeReady: false,
+      computerReady: true,
+      expectedBackends: "",
+      roots: ["/reconciled/computer-use"],
+    },
+  ])(
+    "independently gates backend and plugin readiness: $expectedBackends, $computerReady",
+    async ({ backends, chromeReady, computerReady, expectedBackends, roots }) => {
+      const { browserRuntime } = await makeVerifiedRuntime();
+      const plugins = reconciledPlugins();
+      if (!chromeReady)
+        plugins.chrome = {
+          status: "unavailable",
+          reason: "backend-unavailable",
+          message: "unavailable",
+        };
+      const builder = new BrowserUseThreadConfigBuilder({
+        browserRuntime,
+        availableBackends: () => backends,
+        computerUsePluginReady: () => computerReady,
+        computerUseRuntime: () => ({
+          status: "available",
+          appPath: "/state/helper.app",
+          hostServicesPipePath: "/state/host.sock",
+          serviceExecutablePath: "/state/service",
+        }),
+        codexHome: "/codex",
+        runtimeStateHome: "/state",
+      });
+      const tools = builder.buildDesktopTools(plugins);
+      expect(tools?.pluginRoots).toEqual(roots);
+      expect(tools?.server.env.BROWSER_USE_AVAILABLE_BACKENDS).toBe(expectedBackends);
+      expect(Boolean(tools?.server.env.NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER)).toBe(
+        backends.some((backend) => backend === "iab"),
+      );
+      expect(Boolean(tools?.server.env.NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME)).toBe(
+        expectedBackends.includes("chrome"),
+      );
+      expect(Boolean(tools?.server.env.NODE_REPL_INSTRUCTIONS_USE_CASE_COMPUTER_USE)).toBe(
+        computerReady,
+      );
+      expect(Boolean(tools?.server.env.SKY_CUA_SERVICE_PATH)).toBe(computerReady);
+      expect(Boolean(JSON.parse(tools!.server.env.NODE_REPL_TRUSTED_SERVICES!).sky)).toBe(
+        computerReady,
+      );
+    },
+  );
+
+  test("returns null when no capability or materialization is ready", async () => {
+    const { browserRuntime } = await makeVerifiedRuntime();
+    const builder = new BrowserUseThreadConfigBuilder({
+      browserRuntime,
+      availableBackends: () => [],
+      codexHome: "/codex",
+      runtimeStateHome: "/state",
+    });
+    expect(builder.buildDesktopTools(reconciledPlugins())).toBeNull();
+    expect(builder.buildDesktopTools(null)).toBeNull();
+    expect(
+      builder.buildDesktopTools({
+        status: "unavailable",
+        reason: "reconciliation-failed",
+        message: "not installed",
+      }),
+    ).toBeNull();
   });
 });

@@ -5,9 +5,15 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { assert, it } from "@effect/vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { resolveBrowserRuntimeBundle } from "../codex/browser-runtime-bundle";
+import {
+  makeTestedBrowserAppServerPair,
+  writeBrowserRuntimeFixture,
+} from "../codex/browser-runtime-test-fixture";
+import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../../shared/browser-runtime-metadata";
 import { ComputerUseRuntime } from "./ComputerUseRuntime";
 import { DesktopToolRuntime, testLayer } from "./DesktopToolRuntime";
 import type { BrowserPluginReconcileResult } from "../codex/browser-plugin-reconciler";
@@ -122,6 +128,7 @@ it.effect("owns desktop plugin readiness and derives one coherent snapshot", () 
     );
     const runtime = Context.get(context, DesktopToolRuntime);
     // Thread config must not rely on some earlier Settings read having initialized plugins.
+    assert.isNull(yield* runtime.desktopTools);
     assert.isNull(yield* runtime.threadConfig());
     const ready = yield* runtime.ensureReady;
 
@@ -229,4 +236,129 @@ it.effect("builds the gated artifact template picker from cwd-scoped app-server 
     });
     yield* Scope.close(scope, Exit.void);
   }),
+);
+
+it.effect(
+  "host Desktop Tools reconcile before provisioning and independently gate plugin capabilities",
+  () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(path.join(tmpdir(), "nodex-host-desktop-tools-"));
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => rmSync(root, { recursive: true, force: true })),
+      );
+      const bundleRoot = path.join(root, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
+      const manifest = writeBrowserRuntimeFixture(bundleRoot);
+      const testedPair = makeTestedBrowserAppServerPair({ bundleRoot, manifest });
+      const browserRuntime = yield* Effect.promise(() =>
+        resolveBrowserRuntimeBundle({
+          appServerIdentity: testedPair.appServer,
+          runtimeRoot: root,
+          targetArch: "arm64",
+          targetPlatform: "darwin",
+          testedPairs: [testedPair],
+        }),
+      );
+      assert.equal(browserRuntime.status, "available");
+      const computerUse = {
+        status: "available" as const,
+        appPath: "/state/helper.app",
+        hostServicesPipePath: "/state/host.sock",
+        serviceExecutablePath: "/state/service",
+      };
+      let chromeReady = false;
+      let browserReady = true;
+      let computerReady = true;
+      let pluginResult: BrowserPluginReconcileResult | null = null;
+      const readiness: string[] = [];
+      const runtimeStateHome = path.join(root, "state");
+      const runtime = yield* DesktopToolRuntime.pipe(
+        Effect.provide(
+          testLayer({
+            browserRuntime,
+            codexHome: "/codex",
+            runtimeStateHome,
+            availableBackends: () => ["iab", "chrome"],
+            computerUse: ComputerUseRuntime.of({
+              current: () => computerUse,
+              ensureReady: Effect.sync(() => {
+                readiness.push("helper");
+                return computerUse;
+              }),
+              managedServiceChanges: Stream.empty,
+              managedServiceSnapshot: () => ({ generation: 0, status: "pending" }),
+              reconcileManagedService: () => Effect.succeed({ generation: 0, status: "pending" }),
+            }),
+            plugins: () =>
+              Effect.succeed({
+                ensureInstalled: Effect.sync(() => {
+                  readiness.push("plugins");
+                  pluginResult = {
+                    status: "ready",
+                    enabled: browserReady,
+                    installedVersion: "1.0.0-test",
+                    marketplaceRoot: "/reconciled/marketplace",
+                    chrome: chromeReady
+                      ? {
+                          status: "ready",
+                          enabled: true,
+                          installedVersion: "1.0.0-test",
+                          pluginRoot: "/reconciled/chrome",
+                        }
+                      : {
+                          status: "unavailable",
+                          reason: "backend-unavailable",
+                          message: "unavailable",
+                        },
+                    computerUse: computerReady
+                      ? {
+                          status: "ready",
+                          enabled: true,
+                          installedVersion: "1.0.0-test",
+                          pluginRoot: "/reconciled/computer-use",
+                        }
+                      : {
+                          status: "unavailable",
+                          reason: "capability-unavailable",
+                          message: "unavailable",
+                        },
+                  };
+                  return pluginResult;
+                }),
+                result: Effect.sync(() => pluginResult),
+              }),
+            artifactTemplatePickerEnabled: Effect.die(
+              "host tools must not prepare artifact templates",
+            ),
+            listPlugins: () => Effect.die("host tools must not inspect foreign plugins"),
+            listSkills: () => Effect.die("host tools must not inspect artifact templates"),
+            readConfigRequirements: Effect.succeed({
+              requirements: null,
+              supportsIndependentSpeedModes: false,
+            }),
+          }),
+        ),
+      );
+      // Host provisioning starts with no reconciled plugin result.
+      assert.isNull(pluginResult);
+      const tools = yield* runtime.desktopTools;
+      assert.deepEqual(readiness, ["helper", "plugins"]);
+      assert.deepEqual(tools?.pluginRoots, [
+        "/reconciled/marketplace/plugins/browser",
+        "/reconciled/computer-use",
+      ]);
+      assert.equal(tools?.server.env.BROWSER_USE_AVAILABLE_BACKENDS, "iab");
+      assert.isUndefined(tools?.server.env.NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME);
+      chromeReady = true;
+      const all = yield* runtime.desktopTools;
+      assert.deepEqual(all?.pluginRoots, [
+        "/reconciled/marketplace/plugins/browser",
+        "/reconciled/chrome",
+        "/reconciled/computer-use",
+      ]);
+      assert.equal(all?.server.env.BROWSER_USE_AVAILABLE_BACKENDS, "iab,chrome");
+      browserReady = false;
+      chromeReady = false;
+      computerReady = false;
+      assert.isNull(yield* runtime.desktopTools);
+    }).pipe(Effect.scoped),
 );

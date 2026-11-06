@@ -60,7 +60,7 @@ it.each(["acceptEdits", "auto", "bypassPermissions"] as const)(
         instanceId: ProviderInstanceId.make("claude-work"),
         model: "claude-sonnet-4-6",
       },
-      mcpServers: {},
+      mcpServers: { nodex_app: { type: "http", url: "http://127.0.0.1/mcp" } },
       permissionMode,
       hostInstructions: "The admitted CLI context is ready.",
       hostOrchestrationInstructions: ORCHESTRATION_INSTRUCTIONS,
@@ -79,6 +79,22 @@ it.each(["acceptEdits", "auto", "bypassPermissions"] as const)(
     expect(prompt).not.toMatch(/T3|t3[-_]?code/i);
   },
 );
+
+it("leaves out Nodex tool guidance when only Desktop Tools are connected", () => {
+  const options = makeClaudeQueryOptions({
+    nativeThreadId: "native:test",
+    resume: false,
+    cwd: "/workspace",
+    modelSelection: {
+      instanceId: ProviderInstanceId.make("claude-work"),
+      model: "claude-sonnet-4-6",
+    },
+    mcpServers: { node_repl: { type: "stdio", command: "node" } },
+    hostOrchestrationInstructions: ORCHESTRATION_INSTRUCTIONS,
+  });
+  expect(options.systemPrompt).toMatchObject({ type: "preset", preset: "claude_code" });
+  expect(JSON.stringify(options.systemPrompt)).not.toContain("Nodex content tools");
+});
 
 it("refreshes admitted ACP context on each Turn while preserving native slash commands", () => {
   const state = { interactionMode: "default", hasAppTools: true } as const;

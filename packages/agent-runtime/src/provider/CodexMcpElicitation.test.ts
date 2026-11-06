@@ -3,6 +3,7 @@ import type * as CodexSchema from "effect-codex-app-server/schema";
 import {
   codexMcpApprovalOptions,
   codexMcpApprovalResponse,
+  codexMcpElicitationPolicy,
   codexMcpElicitationQuestions,
   codexMcpElicitationResponse,
   isCodexMcpPermissionRequest,
@@ -24,6 +25,48 @@ const form: CodexSchema.McpServerElicitationRequestParams = {
     required: ["destination", "passengers", "returnTrip"],
   },
 };
+
+describe("MCP elicitation policy for a client that answers servers itself", () => {
+  const consent: CodexSchema.McpServerElicitationRequestParams = {
+    ...form,
+    requestedSchema: { type: "object", properties: {} },
+    _meta: { codex_approval_kind: "mcp_tool_call" },
+  };
+
+  it("asks a person while someone is reviewing, whatever the form holds", () => {
+    assert.strictEqual(codexMcpElicitationPolicy(consent, { fullAccess: false }), "ask");
+    assert.strictEqual(codexMcpElicitationPolicy(form, { fullAccess: false }), "ask");
+  });
+
+  it("accepts bare consent in full access and declines a form that wants answers", () => {
+    assert.strictEqual(codexMcpElicitationPolicy(consent, { fullAccess: true }), "accept");
+    assert.strictEqual(codexMcpElicitationPolicy(form, { fullAccess: true }), "decline");
+  });
+
+  it("declines strict automatic review in every mode, since there is no reviewer", () => {
+    const strict = { ...consent, _meta: { codex_strict_auto_review: true } };
+    assert.strictEqual(codexMcpElicitationPolicy(strict, { fullAccess: false }), "decline");
+    assert.strictEqual(codexMcpElicitationPolicy(strict, { fullAccess: true }), "decline");
+  });
+
+  it("treats a malformed strict flag as strict", () => {
+    const malformed = { ...consent, _meta: { codex_strict_auto_review: "yes" } };
+    assert.strictEqual(codexMcpElicitationPolicy(malformed, { fullAccess: false }), "decline");
+  });
+
+  it("declines connection and verification flows it has no surface for", () => {
+    const url: CodexSchema.McpServerElicitationRequestParams = {
+      serverName: "connected-app",
+      threadId: "native-thread",
+      turnId: "native-turn",
+      mode: "url",
+      message: "Connect",
+      url: "https://example.test",
+      elicitationId: "connection",
+    };
+    assert.strictEqual(codexMcpElicitationPolicy(url, { fullAccess: false }), "decline");
+  });
+});
 
 describe("native MCP information requests", () => {
   it("declines native verification challenges without treating them as tool permission", () => {

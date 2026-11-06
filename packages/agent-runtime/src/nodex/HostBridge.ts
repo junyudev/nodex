@@ -54,6 +54,18 @@ const decodeThreadConfig = Schema.decodeUnknownEffect(
         }),
       ),
     ),
+    desktopTools: Schema.optional(
+      Schema.NullOr(
+        Schema.Struct({
+          server: Schema.Struct({
+            command: Schema.String,
+            args: Schema.Array(Schema.String),
+            env: Schema.Record(Schema.String, Schema.String),
+          }),
+          pluginRoots: Schema.Array(Schema.String),
+        }),
+      ),
+    ),
   }),
 );
 
@@ -279,6 +291,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
     return {
       ...(result.config ? { config: result.config } : {}),
       ...(result.environment ? { environment: result.environment } : {}),
+      ...(result.desktopTools ? { desktopTools: result.desktopTools } : {}),
     };
   });
 

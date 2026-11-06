@@ -1,3 +1,4 @@
+import type { HostDesktopTools } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
 import { CODEX_DESKTOP_THREAD_FEATURE_CONFIG } from "../codex/codex-thread-config";
 import type { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
@@ -5,7 +6,7 @@ import type { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import type { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import type { WindowRuntime } from "../window-runtime/WindowRuntime";
 
-/** A root Codex Turn of Agent execution; a starting Turn belongs to an authorized Run. */
+/** A root native Turn of Agent execution; a starting Turn belongs to an authorized Run. */
 export type AgentRuntimeNativeTurn = {
   readonly nativeThreadId: string;
   readonly nativeTurnId: string;
@@ -21,6 +22,7 @@ export type AgentRuntimeNativeTurn = {
 );
 
 export interface AgentRuntimeDesktopTools {
+  readonly desktopTools: Effect.Effect<HostDesktopTools | null, unknown>;
   readonly threadConfig: (
     cwd: string | null,
   ) => Effect.Effect<Readonly<Record<string, unknown>>, unknown>;
@@ -30,12 +32,12 @@ export interface AgentRuntimeDesktopTools {
 }
 
 /**
- * Codex threads under Agent execution get the Desktop features and tools of the app, and the
- * in-app Browser follows each Turn to the window that submitted it. The Browser addresses a
- * conversation by its Codex thread, so routes are kept per Nodex Session for release.
+ * Agent threads get the Desktop tools of the app, and the in-app Browser follows each native
+ * Turn to the window that submitted it. Native execution ids are opaque to Browser routing;
+ * routes are kept per Nodex Session for release.
  */
 export const make = (ports: {
-  readonly tools: Pick<DesktopToolRuntime["Service"], "threadConfig">;
+  readonly tools: Pick<DesktopToolRuntime["Service"], "threadConfig" | "desktopTools">;
   readonly browserUse: Pick<
     BrowserUseRuntime["Service"],
     "captureRoute" | "turnStarted" | "turnEnded" | "endSessionActivity" | "releaseSession"
@@ -56,6 +58,7 @@ export const make = (ports: {
       )?.webContentsId;
 
   return {
+    desktopTools: ports.tools.desktopTools,
     threadConfig: (cwd) =>
       ports.tools
         .threadConfig(cwd)
@@ -81,18 +84,18 @@ export const make = (ports: {
             ownerWebContentsId: owner,
             projectId: turn.projectId,
           });
-          const threads = routed.get(turn.sessionId) ?? new Set<string>();
-          routed.set(turn.sessionId, threads.add(turn.nativeThreadId));
+          const nativeThreads = routed.get(turn.sessionId) ?? new Set<string>();
+          routed.set(turn.sessionId, nativeThreads.add(turn.nativeThreadId));
         }
         yield* ports.browserUse.turnStarted(browserTurn);
       }).pipe(warn("Browser could not follow an Agent Turn", turn));
     },
     releaseSession: (sessionId) =>
       Effect.suspend(() => {
-        const threads = [...(routed.get(sessionId) ?? [])];
+        const nativeThreads = [...(routed.get(sessionId) ?? [])];
         routed.delete(sessionId);
         return Effect.forEach(
-          threads,
+          nativeThreads,
           (nativeThreadId) =>
             ports.browserUse
               .releaseSession(nativeThreadId)
