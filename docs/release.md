@@ -371,8 +371,10 @@ Import an exported backup on a replacement release Mac with:
 ```
 
 The repository owner may retain a mode-`0600`, gitignored convenience copy in
-`secrets.local/secrets.md`; it is plaintext and does not replace the required
-independent encrypted offline backup. To restore CI, pipe the key into the
+`notes.local/secrets/private/values.json` under `sparkle.private_key`. Consult
+`notes.local/secrets/catalog.json` for credential references without exposing
+values. This plaintext store does not replace the required independent
+encrypted offline backup. To restore CI, pipe the key into the
 environment secret without echoing it:
 
 ```bash
