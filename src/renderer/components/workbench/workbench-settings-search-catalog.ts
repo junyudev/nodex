@@ -98,6 +98,19 @@ export const SETTINGS_SEARCH_PANELS = {
         title: "Nodex Account",
         entries: [entry("Sign in"), entry("Sign out")],
       },
+      {
+        title: "Credits",
+        entries: [
+          entry("Top up", "Buy Nodex credits.", ["credit", "credits", "balance", "payment"]),
+          entry("Model prices", "What each model costs in credits.", [
+            "price",
+            "pricing",
+            "cost",
+            "API",
+            "tokens",
+          ]),
+        ],
+      },
     ],
   },
   "general-settings": {
@@ -156,8 +169,9 @@ export const SETTINGS_SEARCH_PANELS = {
             "rail",
             "meter",
           ]),
-          entry("Nodex credit", "Show Nodex credit in the rail.", [
+          entry("Nodex credits", "Show Nodex credits in the rail.", [
             "credit",
+            "credits",
             "balance",
             "rail",
             "meter",

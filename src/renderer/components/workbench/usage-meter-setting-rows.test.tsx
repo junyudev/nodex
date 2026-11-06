@@ -72,7 +72,7 @@ test("switches persist independently and update an already-open rail in another 
     );
     expect(view.getByRole("button", { name: "Loading Claude usage" })).not.toBeNull();
     expect(view.getByRole("button", { name: "Sign in to Codex" })).not.toBeNull();
-    for (const label of ["Claude", "Codex", "Nodex credit"]) {
+    for (const label of ["Claude", "Codex", "Nodex credits"]) {
       const control = section.getByRole("switch", { name: label });
       await act(async () => {
         fireEvent.click(control);

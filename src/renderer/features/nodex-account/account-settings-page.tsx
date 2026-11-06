@@ -1,4 +1,4 @@
-import { formatNodexCredit } from "../../../shared/nodex-models";
+import { formatNodexCredits } from "../../../shared/nodex-models";
 import { useEffect, useState } from "react";
 import { NODEX_ACCOUNT_ERROR_COPY } from "../../../shared/nodex-account-copy";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
@@ -13,6 +13,7 @@ import {
   describeCreditGauge,
   useNodexCreditGauge,
 } from "./nodex-credit-meter";
+import { NodexModelPrices } from "./nodex-model-prices";
 import { NodexTopUpTiers } from "./nodex-top-up";
 import { useNodexAccount, useNodexCreditRefreshOnFocus } from "./use-nodex-account";
 
@@ -193,7 +194,7 @@ function AccountSettingsContent() {
   );
 }
 
-/** Credit and its tiers, laid out where the person decides to buy; no menu to open first. */
+/** Credits, what buys them and what they buy, laid out where the person decides. */
 function AccountCredit({
   account,
   modelNotice,
@@ -203,18 +204,22 @@ function AccountCredit({
 }) {
   const { gauge } = useNodexCreditGauge(account);
   const level = gauge ? describeCreditGauge(gauge) : null;
+  const status = account.snapshot?.modelStatus;
   return (
     <>
-      <NodexSettingsSection title="Credit">
+      <NodexSettingsSection title="Credits">
         <div className="flex flex-col gap-3 px-4 pt-3.5 pb-4">
-          <span
-            aria-label="Remaining credit"
-            className={cn(
-              "text-2xl font-medium tracking-tight text-token-text-primary tabular-nums",
-              level && CREDIT_SEVERITY_TEXT[level.severity],
-            )}
-          >
-            {gauge ? formatNodexCredit(gauge.balance) : "—"}
+          <span className="flex items-baseline gap-1.5">
+            <span
+              aria-label="Remaining credits"
+              className={cn(
+                "text-2xl font-medium tracking-tight text-token-text-primary tabular-nums",
+                level && CREDIT_SEVERITY_TEXT[level.severity],
+              )}
+            >
+              {gauge ? formatNodexCredits(gauge.balance) : "—"}
+            </span>
+            {gauge ? <span className="text-sm text-token-text-secondary">credits</span> : null}
           </span>
           <NodexCreditBar gauge={gauge} />
         </div>
@@ -225,14 +230,25 @@ function AccountCredit({
         ) : null}
       </NodexSettingsSection>
       <section aria-labelledby="nodex-top-up-title" className="flex flex-col">
-        <h2
-          id="nodex-top-up-title"
-          className="min-h-toolbar pb-1.5 text-base font-medium text-token-text-primary"
-        >
-          Top up
-        </h2>
+        <div className="flex min-h-toolbar items-baseline justify-between gap-3 pb-1.5">
+          <h2 id="nodex-top-up-title" className="text-base font-medium text-token-text-primary">
+            Top up
+          </h2>
+          {status ? (
+            <span className="text-xs text-token-description-foreground tabular-nums">
+              {formatNodexCredits(status.creditsPerUsd)} credits = $1
+            </span>
+          ) : null}
+        </div>
         <NodexTopUpTiers account={account} />
       </section>
+      {status?.pricing ? (
+        <NodexModelPrices
+          pricing={status.pricing}
+          creditsPerUsd={status.creditsPerUsd}
+          unavailableModels={status.models.filter((model) => !model.available).map(({ id }) => id)}
+        />
+      ) : null}
     </>
   );
 }

@@ -17,16 +17,41 @@ setups remain independent. Automatic defaults never select a prepaid model.
 An unavailable saved choice fails explicitly rather than spending through a
 different account or silently choosing another provider.
 
-The rail shows a Nodex credit meter below the provider usage meters and above
-the account avatar: the Nodex mark inside a ring that empties as credit since the
-last top-up is spent, quiet until credit runs low. Its card shows the balance and
+People spend Nodex credits, not dollars. A credit balance is a whole number with
+no currency sign, so a fraction of a credit is never shown as something left to
+spend. The server sets the rate (`creditsPerUsd`, 25 today); dollars appear only
+where money changes hands, on a Top up tile and on Stripe's page.
+
+The rail shows a Nodex credits meter below the provider usage meters and above
+the account avatar: the Nodex mark inside a ring that empties as credits since the
+last top-up are spent, quiet until they run low. Its card shows the balance and
 one Top up action; the meter and that action open Settings → Account. There the
-balance sits above every server-defined tier, laid out without a menu: each tile
-reads price first and credit second (`$10` · `$11 credit +10%`), and choosing one
-starts Checkout. Unavailable tiers stay visible and disabled; paused supply reads
-“Top up is paused.” The account menu keeps identity and settings only. Choosing an available tier asks Main to create a Stripe
-Checkout and open its returned URL in the system browser. Account management
+balance sits above every server-defined tier, laid out without a menu: the section
+states the rate (`25 credits = $1`), each tile reads dollars first and credits second
+(`$10` · `275 credits +10%`), and choosing one starts Checkout. Unavailable tiers
+stay visible and disabled; paused supply reads “Top up is paused.” The account menu
+keeps identity and settings only. Choosing an available tier asks Main to create a
+Stripe Checkout and open its returned URL in the system browser. Account management
 requires no website or web console.
+
+**Model prices** sits below the tiers and shows what each model costs in credits per
+1M tokens: input, cache hit, cache write and output. Hovering a price shows it in
+dollars. Prices come only from the server, so a change needs no Desktop release, and
+they keep the decimals they need, because only a balance rounds to whole credits. A
+column appears only when some model has that price, and a missing price reads `—`.
+Each row is something a person can actually run:
+
+- The header's `×1 API list price` stands for every unmarked row.
+- A rate on the only group, such as OpenAI models at `×0.5`, marks those rows, shows
+  the charged price in green and crosses out the list price beneath it.
+- A separate group adds a row named for the group under each model it includes. The
+  list price is then already on the row above, so nothing is crossed out.
+- When no single factor explains a model's prices, its row claims no rate and shows
+  only the charged and crossed-out list prices.
+
+An unavailable model or group stays listed, dimmed, with “Unavailable”. When the
+server sends no prices, or malformed ones, the section is absent and Top up keeps
+working; Desktop never falls back to prices of its own.
 
 Main observes credit on opening Account settings, on window focus while a credit
 surface is mounted, during regular maintenance while the rail credit meter is
@@ -82,8 +107,20 @@ Responses are bounded, requests time out, redirects are rejected and raw
 backend messages never enter account IPC observations.
 
 `GET https://api.nodex.jyu.app/v1/status` is public and returns
-`{models: [{id, available}], topUp: {available, currency: "USD", tiers: [{amount, credit, available}]}}`.
-It advertises supply, not spending authority. `POST /v1/checkout` at the same
+`{creditsPerUsd, pricing?, models: [{id, available}], topUp: {available, currency: "USD", tiers: [{amount, credit, available}]}}`.
+It advertises supply, not spending authority. A tier's `credit` and the wallet
+stay in USD, and Desktop converts them for display with `creditsPerUsd`; a status
+without a valid rate is a failed observation. Main keeps the last rate it saw, so a
+status outage closes supply without taking a known balance off the screen. `pricing`
+is `{currency: "USD", perTokens, notes: [string], groups: [{id, label, description,
+available, models: [{id, label, provider, reference, effective, multiplier}]}]}`,
+where `reference` and `effective` each hold `input`, `cacheRead`, `cacheWrite` and
+`output`, with `null` for a price the provider doesn't charge. `reference` is the
+official API price and `effective` what the group charges now, both resolved by the
+gateway's billing, so Desktop formats prices and never computes them. `multiplier`
+is set only when one factor explains every price. Pricing is validated on its own:
+a malformed table is dropped without affecting supply or Top up, and it never
+affects model admission or Checkout. `POST /v1/checkout` at the same
 origin uses the Clerk Bearer token and `{amount}`, returning `{url}`. Main
 validates the chosen amount against current available tiers and accepts only
 HTTPS Stripe Checkout destinations. Checkout errors are `unauthenticated` (401),
@@ -136,7 +173,8 @@ payment polling, status caching and late-response generation fences. Runtime
 tests cover error semantics, catalog constraints, admission and busy-instance
 retirement. Picker tests cover unavailable rows, exact instance identity,
 allowlisted choices and automatic default exclusion. Act-clean Account tests
-cover tiers, paused supply, focus refresh and pushed credit updates. Electron
+cover whole-credit balances, tiers, paused supply, model prices at each rate shape,
+absent pricing, focus refresh and pushed credit updates. Electron
 account fixtures provide fake model-access, status, Checkout and usage endpoints
 for automatic payment observation, live supply changes, restart and sign-out
 without paid model calls.
@@ -144,4 +182,4 @@ without paid model calls.
 Production gateway availability, payment checkout and real paid inference need
 separate deployment acceptance. Desktop test fixtures do not prove those services.
 
-The Profile's **Nodex credit** switch in Settings → General → Usage meters controls the rail meter and its periodic balance reads. Turning it off preserves OAuth renewal, managed model access, and the public model and top-up supply refresh. Account settings and pending Checkout still read credit, and enabling the meter reads once immediately. Only credit surfaces refresh balance on window focus; observing identity or model access does not.
+The Profile's **Nodex credits** switch in Settings → General → Usage meters controls the rail meter and its periodic balance reads. Turning it off preserves OAuth renewal, managed model access, and the public model and top-up supply refresh. Account settings and pending Checkout still read credit, and enabling the meter reads once immediately. Only credit surfaces refresh balance on window focus; observing identity or model access does not.

@@ -349,7 +349,7 @@ it.effect(
         modelAccessFixture,
       );
       expect((yield* value.owner.managed)?.identity.subject).toBe("alice");
-      yield* value.owner.openTopUp(2);
+      yield* value.owner.openTopUp(5);
       expect(opened).toBe(1);
       let retired = false;
       yield* value.owner.onModelsChanged(
@@ -361,7 +361,7 @@ it.effect(
       yield* value.owner.signOut;
       expect(retired).toBe(true);
       expect((yield* value.owner.read).credit).toBeNull();
-      yield* value.owner.openTopUp(2);
+      yield* value.owner.openTopUp(5);
       expect(opened).toBe(1);
     }).pipe(Effect.scoped),
 );
@@ -482,6 +482,8 @@ it.effect(
       available = false;
       yield* value.owner.refresh;
       expect((yield* value.owner.read).modelStatus).toBeNull();
+      // A status outage closes supply but keeps the last rate, so a known balance stays readable.
+      expect((yield* value.owner.read).creditsPerUsd).toBe(modelStatusFixture.creditsPerUsd);
       expect((yield* value.owner.read).credit).toBeUndefined();
       yield* TestClock.adjust("60 seconds");
       expect(reads).toBe(3);
@@ -509,7 +511,7 @@ it.effect(
           checkout: (token, amount) =>
             Effect.sync(() => {
               expect(Redacted.value(token)).toBe("private-access");
-              expect(amount).toBe(2);
+              expect(amount).toBe(5);
               checkouts++;
               return "https://checkout.stripe.com/c/pay/synthetic";
             }),
@@ -519,10 +521,10 @@ it.effect(
       yield* value.owner.signIn;
       yield* value.finish();
       yield* Fiber.join(ready);
-      expect((yield* value.owner.openTopUp(5)).checkoutError).toBe("tier_unavailable");
+      expect((yield* value.owner.openTopUp(25)).checkoutError).toBe("tier_unavailable");
       expect((yield* value.owner.openTopUp(NaN)).checkoutError).toBe("tier_unavailable");
       expect(checkouts).toBe(0);
-      expect((yield* value.owner.openTopUp(2)).checkoutPending).toBe(true);
+      expect((yield* value.owner.openTopUp(5)).checkoutPending).toBe(true);
       const before = reads;
       balance = 26.5;
       yield* TestClock.adjust("10 seconds");
@@ -541,10 +543,10 @@ it.effect("stops pending payment polling after five minutes and retires it on si
     yield* value.owner.signIn;
     yield* value.finish();
     yield* Fiber.join(ready);
-    yield* value.owner.openTopUp(2);
+    yield* value.owner.openTopUp(5);
     yield* TestClock.adjust("5 minutes");
     expect((yield* value.owner.read).checkoutPending).toBe(false);
-    yield* value.owner.openTopUp(2);
+    yield* value.owner.openTopUp(5);
     yield* value.owner.signOut;
     yield* TestClock.adjust("10 seconds");
     expect(yield* value.owner.read).toMatchObject({
@@ -582,9 +584,9 @@ it.effect("ignores late checkouts after sign-out and coalesces concurrent checko
     yield* value.owner.signIn;
     yield* value.finish();
     yield* Fiber.join(ready);
-    const checkout = yield* value.owner.openTopUp(2).pipe(Effect.forkScoped);
+    const checkout = yield* value.owner.openTopUp(5).pipe(Effect.forkScoped);
     yield* Deferred.await(started);
-    yield* value.owner.openTopUp(2);
+    yield* value.owner.openTopUp(5);
     expect(requests).toBe(1);
     yield* value.owner.signOut;
     yield* Deferred.succeed(finished, "https://checkout.stripe.com/c/pay/synthetic");
@@ -613,11 +615,11 @@ it.effect("reports paused supply and checkout errors without changing wallet cre
     yield* value.owner.signIn;
     yield* value.finish();
     yield* Fiber.join(ready);
-    expect((yield* value.owner.openTopUp(2)).checkoutError).toBe("unavailable");
+    expect((yield* value.owner.openTopUp(5)).checkoutError).toBe("unavailable");
     available = true;
-    expect((yield* value.owner.openTopUp(2)).checkoutError).toBe("tier_unavailable");
+    expect((yield* value.owner.openTopUp(5)).checkoutError).toBe("tier_unavailable");
     code = "unavailable";
-    expect((yield* value.owner.openTopUp(2)).checkoutError).toBe("unavailable");
+    expect((yield* value.owner.openTopUp(5)).checkoutError).toBe("unavailable");
     expect((yield* value.owner.read).credit?.balance).toBe(12.5);
   }).pipe(Effect.scoped),
 );
@@ -713,7 +715,7 @@ it.effect(
         // An explicit Account surface still reads credit while its rail meter is hidden.
         yield* value.owner.refreshModels;
         expect(balances).toBe(2);
-        yield* value.owner.openTopUp(2);
+        yield* value.owner.openTopUp(5);
         yield* TestClock.adjust("10 seconds");
         expect(balances).toBe(3);
       }),

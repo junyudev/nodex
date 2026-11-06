@@ -6,19 +6,20 @@ import { UsageRingGlyph } from "@/components/workbench/workbench-rail-usage-mete
 import type { UsageSeverity } from "@/lib/usage-meter";
 import { cn } from "@/lib/utils";
 import { resolveNodexAccountView } from "./nodex-account-identity";
-import { formatNodexCredit } from "../../../shared/nodex-models";
+import { nodexCreditBalance } from "../../../shared/nodex-account";
+import { formatNodexCredits } from "../../../shared/nodex-models";
 import { useNodexAccount, useNodexCreditRefreshOnFocus } from "./use-nodex-account";
 
 type Account = ReturnType<typeof useNodexAccount>;
 
-/** Credit as of the last top-up and now; a top-up refills the gauge. */
+/** Credits as of the last top-up and now; a top-up refills the gauge. */
 export interface CreditGauge {
   readonly baseline: number;
   readonly balance: number;
 }
 
 export function nextCreditGauge(previous: CreditGauge | null, balance: number): CreditGauge {
-  const refilled = !previous || previous.baseline <= 0 || balance > previous.balance + 0.005;
+  const refilled = !previous || previous.baseline <= 0 || balance > previous.balance + 0.125;
   return { baseline: refilled ? Math.max(balance, 0) : previous.baseline, balance };
 }
 
@@ -29,11 +30,11 @@ export function describeCreditGauge(gauge: CreditGauge) {
       ? Math.round(Math.max(0, Math.min(1, gauge.balance / gauge.baseline)) * 100)
       : 0;
   const severity: UsageSeverity =
-    gauge.balance < 0.01
+    gauge.balance < 1
       ? "exhausted"
-      : gauge.balance < 0.5 || percent <= 10
+      : gauge.balance < 12 || percent <= 10
         ? "critical"
-        : gauge.balance < 2 || percent <= 25
+        : gauge.balance < 50 || percent <= 25
           ? "low"
           : "normal";
   return { percent, severity };
@@ -65,12 +66,12 @@ function useCreditGaugeState(accountKey: string | null, balance: number | null) 
   return { gauge, funded };
 }
 
-/** The signed-in account's credit gauge, shared by the rail meter and Account settings. */
+/** The signed-in account's credits gauge, shared by the rail meter and Account settings. */
 export function useNodexCreditGauge(account: Account) {
   const identity = account.snapshot?.account;
   return useCreditGaugeState(
     identity ? `${identity.issuer}|${identity.subject}` : null,
-    account.snapshot?.credit?.balance ?? null,
+    nodexCreditBalance(account.snapshot),
   );
 }
 
@@ -81,13 +82,13 @@ export const CREDIT_SEVERITY_TEXT: Readonly<Record<UsageSeverity, string | undef
   exhausted: "text-(--red-text)",
 };
 
-/** Credit remaining since the last top-up, drawn like the rail's usage windows. */
+/** Credits remaining since the last top-up, drawn like the rail's usage windows. */
 export function NodexCreditBar({ gauge }: { readonly gauge: CreditGauge | null }) {
   const level = gauge ? describeCreditGauge(gauge) : null;
   return (
     <div
       role="meter"
-      aria-label="Credit remaining since last top-up"
+      aria-label="Credits remaining since last top-up"
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={level?.percent ?? 0}
@@ -140,20 +141,20 @@ function NodexCreditCard({
         </div>
       </div>
       <section
-        aria-label="Credit"
+        aria-label="Credits"
         className="flex flex-col gap-1.5 border-t border-token-border p-3"
       >
         <div className="flex items-baseline text-xs text-token-description-foreground">
-          <span className="text-sm font-medium text-token-foreground">Credit</span>
+          <span className="text-sm font-medium text-token-foreground">Credits</span>
           <span className="ml-auto tabular-nums">
             <span
-              aria-label="Remaining credit"
+              aria-label="Remaining credits"
               className={cn(
                 "text-sm font-medium text-token-foreground",
                 level && CREDIT_SEVERITY_TEXT[level.severity],
               )}
             >
-              {gauge ? formatNodexCredit(gauge.balance) : "—"}
+              {gauge ? formatNodexCredits(gauge.balance) : "—"}
             </span>
             {gauge ? " left" : null}
           </span>
@@ -175,7 +176,7 @@ function NodexCreditCard({
 }
 
 /**
- * The rail's Nodex credit: the Nodex mark inside a ring that empties as credit since the last
+ * The rail's Nodex credits: the Nodex mark inside a ring that empties as credits since the last
  * top-up is spent, quiet until it runs low. Its card shows the balance and leads to Account
  * settings, where the tiers are bought.
  */
@@ -193,10 +194,12 @@ export function NodexCreditMeter({
   useNodexCreditRefreshOnFocus(visible, account.refreshModels);
   if (!visible) return null;
   const level = gauge ? describeCreditGauge(gauge) : null;
-  const label = gauge ? `Nodex credit, ${formatNodexCredit(gauge.balance)} left` : "Nodex credit";
+  const label = gauge
+    ? `Nodex credits, ${formatNodexCredits(gauge.balance)} left`
+    : "Nodex credits";
   return (
     <NodexHoverCard
-      ariaLabel="Nodex credit details"
+      ariaLabel="Nodex credits details"
       hoverCardContent={
         <NodexCreditCard
           account={account}

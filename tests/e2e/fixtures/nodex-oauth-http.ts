@@ -1,3 +1,4 @@
+import { modelPricingFixture } from "../../../src/main/nodex-account/model-access-fixture";
 import { NODEX_MODELS } from "../../../src/shared/nodex-models";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -79,7 +80,11 @@ export async function startNodexOAuthHttpFixture(
   let topUpAvailable = true;
   const modelAvailability = new Map<string, boolean>();
   const checkouts: number[] = [];
-  const tiers = [{ amount: 2, credit: 14, available: true }, { amount: 5, credit: 35, available: false }];
+  const tiers = [
+    { amount: 5, credit: 5, available: true },
+    { amount: 10, credit: 11, available: true },
+    { amount: 25, credit: 30, available: false },
+  ];
   let modelAccessError: "email_unverified" | "forbidden_client" | "unavailable" | null = null;
 
   const invalid = (response: ServerResponse, reason: string): void => {
@@ -116,6 +121,8 @@ export async function startNodexOAuthHttpFixture(
     if (request.method === "GET" && url.pathname === "/v1/status") {
       statusReads++;
       return sendJson(response, 200, {
+        creditsPerUsd: 25,
+        pricing: modelPricingFixture,
         models: NODEX_MODELS.map(({ id }) => ({ id, available: modelAvailability.get(id) ?? true })),
         topUp: { available: topUpAvailable, currency: "USD", tiers },
       });

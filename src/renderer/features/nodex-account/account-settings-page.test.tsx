@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { NodexAccountSnapshot } from "../../../shared/nodex-account";
@@ -174,7 +174,9 @@ test("shows prepaid credit and opens Top up through the account command", async 
       imageUrl: null,
     },
     credit: { balance: 12.5, unit: "USD" },
+    creditsPerUsd: 25,
     modelStatus: {
+      creditsPerUsd: 25,
       models: [],
       topUp: {
         available: true,
@@ -183,13 +185,102 @@ test("shows prepaid credit and opens Top up through the account command", async 
       },
     },
   });
-  await waitFor(() => expect(screen.getByLabelText("Remaining credit").textContent).toBe("$12.50"));
-  fireEvent.click(await screen.findByRole("button", { name: "Pay $10 for $11 credit" }));
+  await waitFor(() => expect(screen.getByLabelText("Remaining credits").textContent).toBe("312"));
+  expect(screen.getByText("25 credits = $1")).toBeDefined();
+  fireEvent.click(await screen.findByRole("button", { name: "Pay $10 for 275 credits" }));
   await waitFor(() => expect(account.invoke).toHaveBeenCalledWith("nodex-account:open-top-up", 10));
   await act(async () => {
     account.emit({ ...signedOut, revision: 1 });
     await Promise.resolve();
   });
   await screen.findByRole("button", { name: "Sign in" });
-  expect(screen.queryByRole("button", { name: "Pay $10 for $11 credit" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Pay $10 for 275 credits" })).toBeNull();
+});
+
+const priced = (multiplier: number) => ({
+  id: "gpt-6.1-sol",
+  label: "GPT-6.1 Sol",
+  provider: "openai",
+  reference: { input: 5, cacheRead: 0.5, cacheWrite: null, output: 30 },
+  effective: {
+    input: 5 * multiplier,
+    cacheRead: 0.5 * multiplier,
+    cacheWrite: null,
+    output: 30 * multiplier,
+  },
+  multiplier,
+});
+
+const signedInWith = (pricing: unknown) =>
+  ({
+    ...signedOut,
+    status: "signed-in",
+    account: {
+      issuer: "https://clerk.nodex.jyu.app",
+      subject: "alice",
+      email: "alice@example.com",
+      name: "Alice",
+      imageUrl: null,
+    },
+    credit: { balance: 12.5, unit: "USD" },
+    creditsPerUsd: 25,
+    modelStatus: {
+      creditsPerUsd: 25,
+      pricing,
+      models: [{ id: "gpt-6.1-sol", available: true }],
+      topUp: {
+        available: true,
+        currency: "USD",
+        tiers: [{ amount: 10, credit: 11, available: true }],
+      },
+    },
+  }) as Parameters<typeof renderAccount>[0];
+
+const pricingWith = (multiplier: number) => ({
+  currency: "USD",
+  perTokens: 1_000_000,
+  notes: ["Note written on the server."],
+  groups: [
+    {
+      id: "nodex",
+      label: "Nodex",
+      description: null,
+      available: true,
+      models: [priced(multiplier)],
+    },
+  ],
+});
+
+test("shows the server's model prices in credits at the API list price", async () => {
+  renderAccount(signedInWith(pricingWith(1)));
+  const prices = await screen.findByRole("region", { name: "Model prices" });
+  expect(within(prices).getByText("Credits per 1M tokens")).toBeDefined();
+  expect(within(prices).getByText("API list price")).toBeDefined();
+  expect(within(prices).getByText("Note written on the server.", { exact: false })).toBeDefined();
+  const row = within(prices).getByRole("row", { name: /GPT-6.1 Sol/u });
+  expect(
+    within(row)
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent),
+  ).toEqual(["125", "12.5", "750"]);
+  expect(within(prices).queryByRole("columnheader", { name: "Cache write" })).toBeNull();
+});
+
+test("marks a discounted rate and crosses out the list price it replaces", async () => {
+  renderAccount(signedInWith(pricingWith(0.5)));
+  const prices = await screen.findByRole("region", { name: "Model prices" });
+  const row = within(prices).getByRole("row", { name: /GPT-6.1 Sol/u });
+  expect(within(row).getByText("×0.5")).toBeDefined();
+  expect(
+    within(row)
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent),
+  ).toEqual(["62.5125", "6.2512.5", "375750"]);
+  expect(within(prices).queryByText("API list price")).toBeNull();
+});
+
+test("leaves Top up working when the server sends no prices", async () => {
+  renderAccount(signedInWith(undefined));
+  await screen.findByRole("button", { name: "Pay $10 for 275 credits" });
+  expect(screen.queryByRole("region", { name: "Model prices" })).toBeNull();
 });

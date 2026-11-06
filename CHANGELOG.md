@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Account settings now show what each Nodex model costs. Model prices lists input, cache and output prices per million tokens in credits, always current with what the service charges, so you can see what a top-up buys before you pay.
 - You can add and remove images when you edit a sent message. Its images move into the editor, where you can paste, drop or pick more and remove any of them, so a wrong screenshot no longer means starting over. An image whose file was lost shows as failed, and removing it lets the edit through.
 - Claude Code chats can now use the built-in Browser, your Chrome, and Computer Use. Ask Claude to open a page, test your local app, or work in a Mac app, and it asks before it runs code or reaches a new site or app.
 - Nodex now has an iOS and Android app. Drop a thought into the Inbox, start a chat, follow a running chat live, and answer its approvals and questions from your phone. Turn it on and pair a phone in Settings > Mobile. It connects directly to your computer over your local network or a tailnet, encrypted end to end, and captures made offline send when your computer is back.
@@ -15,6 +16,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Nodex prepaid balances are now counted in credits instead of dollars, at 25 credits to $1. Your balance keeps its value and reads as a whole number, and Top up shows how many credits each amount adds.
 - The macOS installer is about 30% smaller, so first-time downloads finish sooner, and Nodex uses about 250 MB less disk space. Opening the disk image and copying Nodex to Applications take a little longer on a first install.
 - The Windows installer is about a fifth smaller, and installing it takes less disk space.
 - Full macOS updates are about 40% smaller, so updating downloads much less when an incremental update isn't available.

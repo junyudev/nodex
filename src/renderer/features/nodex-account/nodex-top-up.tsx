@@ -1,4 +1,5 @@
 import type { NodexAccountSnapshot } from "../../../shared/nodex-account";
+import { formatNodexCredits } from "../../../shared/nodex-models";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
 import type { useNodexAccount } from "./use-nodex-account";
@@ -43,21 +44,24 @@ export function NodexCheckoutNotice({ snapshot }: { snapshot: NodexAccountSnapsh
   );
 }
 
-/** One purchasable tier: what it costs on the left, what it adds on the right. */
+/** One purchasable tier: dollars on the left, the credits they add on the right. */
 function TopUpTile({
   tier,
+  creditsPerUsd,
   disabled,
   onSelect,
 }: {
   readonly tier: Tier;
+  readonly creditsPerUsd: number;
   readonly disabled: boolean;
   readonly onSelect: () => void;
 }) {
   const bonus = Math.round((tier.credit / tier.amount - 1) * 100);
+  const credits = formatNodexCredits(Math.round(tier.credit * creditsPerUsd));
   return (
     <button
       type="button"
-      aria-label={`Pay ${dollars(tier.amount)} for ${dollars(tier.credit)} credit`}
+      aria-label={`Pay ${dollars(tier.amount)} for ${credits} credits`}
       disabled={disabled}
       onClick={onSelect}
       className={cn(
@@ -73,7 +77,7 @@ function TopUpTile({
       </span>
       <span className="flex flex-col items-end">
         <span className="text-sm text-token-foreground tabular-nums">
-          {dollars(tier.credit)} <span className="text-token-description-foreground">credit</span>
+          {credits} <span className="text-token-description-foreground">credits</span>
         </span>
         {bonus > 0 ? (
           <span className="text-xs text-(--green-text) tabular-nums">+{bonus}%</span>
@@ -86,8 +90,9 @@ function TopUpTile({
 /** The server's tiers, always laid out; paused supply keeps them visible but unavailable. */
 export function NodexTopUpTiers({ account }: { account: Account }) {
   const snapshot = account.snapshot;
-  const topUp = snapshot?.modelStatus?.topUp;
-  if (!topUp) {
+  const status = snapshot?.modelStatus;
+  const topUp = status?.topUp;
+  if (!status || !topUp) {
     return (
       <p className="m-0 text-xs text-token-text-secondary">Top up is temporarily unavailable.</p>
     );
@@ -99,6 +104,7 @@ export function NodexTopUpTiers({ account }: { account: Account }) {
           <TopUpTile
             key={tier.amount}
             tier={tier}
+            creditsPerUsd={status.creditsPerUsd}
             disabled={!topUp.available || !tier.available || account.pending !== null}
             onSelect={() => account.act("openTopUp", tier.amount)}
           />

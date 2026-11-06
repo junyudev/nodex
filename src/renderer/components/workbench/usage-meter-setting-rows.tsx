@@ -6,7 +6,7 @@ import { NodexSettingsRow, NodexSettingsSection } from "@/components/ui/settings
 const meters = [
   ["claude", "Claude"],
   ["codex", "Codex"],
-  ["nodexCredit", "Nodex credit"],
+  ["nodexCredit", "Nodex credits"],
 ] as const;
 
 export function UsageMeterSettingRows() {

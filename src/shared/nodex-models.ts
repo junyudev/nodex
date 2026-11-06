@@ -8,10 +8,6 @@ export const NODEX_MODELS = [
 export const isNodexProviderId = (id: string): boolean =>
   /^nodex_(?:codex|claude)_[a-f0-9]{32}$/u.test(id);
 
-export const formatNodexCredit = (balance: number): string =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(balance);
+/** Whole credits: a fraction of one is never shown as something left to spend. */
+export const formatNodexCredits = (credits: number): string =>
+  new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.trunc(credits) || 0);

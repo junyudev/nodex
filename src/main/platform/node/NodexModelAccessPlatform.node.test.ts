@@ -73,6 +73,41 @@ it.live("returns categorical exchange failures without backend response text", (
   }),
 );
 
+it.live("keeps supply and Top up when only the display pricing is malformed", () =>
+  Effect.gen(function* () {
+    const { modelStatusFixture } = yield* Effect.promise(
+      () => import("../../nodex-account/model-access-fixture"),
+    );
+    const { pricing: _pricing, ...withoutPricing } = modelStatusFixture;
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(response({ ...modelStatusFixture, pricing: { groups: "broken" } }))
+        .mockResolvedValueOnce(response(withoutPricing)),
+    );
+    const platform = make({ isPackaged: true, environment: {}, openExternal: vi.fn() });
+    expect(yield* platform.status).toEqual({ ...modelStatusFixture, pricing: null });
+    expect(yield* platform.status).toEqual(withoutPricing);
+  }),
+);
+
+it.live("treats a status without a credit rate as unavailable", () =>
+  Effect.gen(function* () {
+    const { modelStatusFixture } = yield* Effect.promise(
+      () => import("../../nodex-account/model-access-fixture"),
+    );
+    const { creditsPerUsd: _rate, ...withoutRate } = modelStatusFixture;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof globalThis.fetch>().mockResolvedValueOnce(response(withoutRate)),
+    );
+    const platform = make({ isPackaged: true, environment: {}, openExternal: vi.fn() });
+    const error = yield* platform.status.pipe(Effect.flip);
+    expect(error.code).toBe("unavailable");
+  }),
+);
+
 it.live(
   "reads public supply without credentials and creates authenticated Stripe checkout in Main",
   () =>

@@ -215,7 +215,11 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
     expect((await catalog()).filter((provider) => provider.source === "nodex")).toEqual([]);
     await openNodexAccount(page);
     await completeLogin(harness, oauth, readHandoffs);
-    await expect(page.getByLabel("Remaining credit")).toHaveText("$12.50");
+    await expect(page.getByLabel("Remaining credits")).toHaveText("312");
+    await expect(page.getByText("25 credits = $1", { exact: true })).toBeVisible();
+    const prices = page.getByRole("region", { name: "Model prices", exact: true });
+    await expect(prices.getByRole("row", { name: /GPT-6\.1 Sol/u })).toContainText("125");
+    await expect(prices.getByText("API list price", { exact: true })).toBeVisible();
     const artifacts = process.env.NODEX_REVIEW_ARTIFACTS;
     if (artifacts) {
       await mkdir(artifacts, { recursive: true });
@@ -233,14 +237,14 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
     }
     // Account settings lays every tier out; there is no menu to open first.
     await expect(
-      page.getByRole("button", { name: "Pay $5 for $35 credit", exact: true }),
+      page.getByRole("button", { name: "Pay $25 for 750 credits", exact: true }),
     ).toBeDisabled();
     if (artifacts) await page.screenshot({ path: path.join(artifacts, "account-top-up.png") });
-    await page.getByRole("button", { name: "Pay $2 for $14 credit", exact: true }).click();
+    await page.getByRole("button", { name: "Pay $5 for 125 credits", exact: true }).click();
     await expect.poll(readHandoffs).toContain("https://checkout.stripe.com/c/pay/synthetic-nodex");
-    expect(oauth.evidence().checkouts).toEqual([2]);
+    expect(oauth.evidence().checkouts).toEqual([5]);
     oauth.setBalance(26.5);
-    await expect(page.getByLabel("Remaining credit")).toHaveText("$26.50", { timeout: 20_000 });
+    await expect(page.getByLabel("Remaining credits")).toHaveText("662", { timeout: 20_000 });
     await expectNodexAccount(page, { checkoutPending: false });
     const observedCredit = (await readNodexAccount(page)).credit?.balance;
     if (artifacts) await page.screenshot({ path: path.join(artifacts, "account-credit.png") });
@@ -256,7 +260,7 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
     expect(encrypted.includes(Buffer.from("scenario-gateway-key"))).toBe(false);
     oauth.setBalance(0);
     await refreshNodexAccount(page);
-    await expect(page.getByLabel("Remaining credit")).toHaveText("$0.00");
+    await expect(page.getByLabel("Remaining credits")).toHaveText("0");
     await page.screenshot({ path: test.info().outputPath("account-credit.png") });
     await page.getByRole("button", { name: "Back to app", exact: true }).click();
     await page
@@ -290,16 +294,16 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
     // The rail credit meter shows the balance and leads to Account settings to buy.
     const creditMeter = page.locator("[data-nodex-credit-meter]");
     await creditMeter.hover();
-    const creditCard = page.getByRole("dialog", { name: "Nodex credit details" });
-    await expect(creditCard.getByLabel("Remaining credit")).toHaveText("$0.00");
+    const creditCard = page.getByRole("dialog", { name: "Nodex credits details" });
+    await expect(creditCard.getByLabel("Remaining credits")).toHaveText("0");
     await creditCard.getByRole("button", { name: "Top up", exact: true }).click();
-    await page.getByRole("button", { name: "Pay $2 for $14 credit", exact: true }).click();
-    await expect.poll(() => oauth.evidence().checkouts).toEqual([2, 2]);
+    await page.getByRole("button", { name: "Pay $5 for 125 credits", exact: true }).click();
+    await expect.poll(() => oauth.evidence().checkouts).toEqual([5, 5]);
     oauth.setTopUpAvailable(false);
     await refreshNodexAccount(page);
     await expect(page.getByText("Top up is paused.", { exact: true })).toBeVisible();
     const topUpDisabled = await page
-      .getByRole("button", { name: "Pay $2 for $14 credit", exact: true })
+      .getByRole("button", { name: "Pay $5 for 125 credits", exact: true })
       .isDisabled();
     if (artifacts) await page.screenshot({ path: path.join(artifacts, "final.png") });
     if (artifacts) {
@@ -313,7 +317,7 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
             claims: [
               {
                 claim: "Checkout uses chosen amount",
-                expected: [2, 2],
+                expected: [5, 5],
                 actual: oauth.evidence().checkouts,
               },
               {
@@ -383,7 +387,7 @@ test("usage meter choices follow the Profile across windows and restart", async 
       await second.screenshot({ path: path.join(artifacts, "usage-meters-general.png") });
       await first.screenshot({ path: path.join(artifacts, "usage-meters-hidden-rail.png") });
     }
-    const credit = section.getByRole("switch", { name: "Nodex credit", exact: true });
+    const credit = section.getByRole("switch", { name: "Nodex credits", exact: true });
     await credit.click();
     await expect(credit).not.toBeChecked();
     await expect(rail.locator("[data-nodex-credit-meter]")).toHaveCount(0);
@@ -394,7 +398,7 @@ test("usage meter choices follow the Profile across windows and restart", async 
     await expect(restored.getByRole("switch", { name: "Claude", exact: true })).toBeChecked();
     await expect(restored.getByRole("switch", { name: "Codex", exact: true })).not.toBeChecked();
     await expect(
-      restored.getByRole("switch", { name: "Nodex credit", exact: true }),
+      restored.getByRole("switch", { name: "Nodex credits", exact: true }),
     ).not.toBeChecked();
     // Account settings remains an explicit credit surface even with the rail meter off. Main
     // coalesces credit reads within five seconds of startup's, so revisit until it reads again.
@@ -404,11 +408,11 @@ test("usage meter choices follow the Profile across windows and restart", async 
         async () => {
           await first.getByRole("link", { name: "General", exact: true }).click();
           await openNodexAccount(first);
-          return first.getByLabel("Remaining credit").textContent();
+          return first.getByLabel("Remaining credits").textContent();
         },
         { intervals: [2_000], timeout: 20_000 },
       )
-      .toBe("$23.50");
+      .toBe("587");
     expect(oauth.evidence().invalidRequests).toEqual([]);
   } finally {
     await harness.close();

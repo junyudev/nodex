@@ -109,7 +109,10 @@ export const make = Effect.fn("NodexAccount.make")(function* (options: NodexAcco
         const result = yield* models.status.pipe(Effect.result);
         const modelStatus = result._tag === "Success" ? result.success : null;
         if (JSON.stringify((yield* current).modelStatus) === JSON.stringify(modelStatus)) return;
-        yield* publish({ modelStatus });
+        yield* publish({
+          modelStatus,
+          ...(modelStatus ? { creditsPerUsd: modelStatus.creditsPerUsd } : {}),
+        });
       }),
     );
   const retireModels = Effect.gen(function* () {
