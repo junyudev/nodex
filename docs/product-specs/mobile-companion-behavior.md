@@ -47,22 +47,27 @@ holds its keys, its unsent captures, its drafts, and a cache of what it last saw
 - Everything between phone and desktop is encrypted end to end, including on plain Wi-Fi. See
   [Security](../SECURITY.md#mobile-gateway).
 - The app reconnects on its own and at once when it returns to the foreground. Its header shows the
-  state only when it is not connected. A standing notice, on Home and in an open chat, says what it
-  means and offers the fix: `Retry` while the desktop is unreachable, `Pair again` when the desktop
+  state only when it is not connected. A standing notice floats above the Composer, on Home and in an
+  open chat. It says what the state means and offers the fix: `Retry` while the desktop is unreachable, `Pair again` when the desktop
   no longer knows this phone, and an update prompt when the two versions cannot talk. What is already
   on screen stays readable, and the notice holds steady while the app keeps retrying.
 
 ## One screen, one Composer
 
-The app stays in portrait. Home is a stream or a list above and one Composer below. `Inbox` and `Chats` switch by a tap or a
+The app stays in portrait. Home is a stream or a list and one Composer. `Inbox` and `Chats` switch by a tap or a
 swipe, and the Composer follows: it drops into the Inbox, or starts a chat. Drafts stay with their
 Composer until sent.
+
+Content fills the screen and passes beneath floating bars, so no bar keeps space to itself. On a system
+with Liquid Glass the bars and the Composer are glass and content blurs away under the top bar. Elsewhere
+they are the platform's nearest material, and Android keeps a solid top bar. At rest the Composer is one
+line whose placeholder names where a message goes. In use it opens to show its pickers.
 
 ### Inbox
 
 - The stream shows the chosen Inbox, the Library's or a Project's, newest at the bottom, rendered as
-  the desktop renders it. The Composer's chip chooses the Inbox it shows and sends to. A phone chooses
-  explicitly, as a desktop window does.
+  the desktop renders it. The Composer's chip, shown while it is in use, chooses the Inbox it shows and
+  sends to. A phone chooses explicitly, as a desktop window does.
 - Capture never waits for the network. A sent message is durable on the phone first, shows as waiting,
   and is delivered in order once the desktop is reachable, across app restarts. Retrying can never
   create a second message. A message the desktop refuses stays visible with the reason, `Retry` and
@@ -76,6 +81,9 @@ Composer until sent.
   Accepting authorizes the suggestion the phone is showing; a suggestion that changed since then is
   refused rather than applied. A message edited after its suggestion was written is reviewed on the
   desktop. See [Inbox Behavior](./inbox-behavior.md).
+- Tapping a suggestion opens all of it in a sheet, with the same decision: what accepting will do, the
+  prompt a chat would receive, what the suggestion adds of its own, why it was made, who wrote it, and
+  the Agent it chose. Opening the message lays out the same content in place.
 - Opening a message shows it whole, with `Start chat`, `Mark done`, `Keep`, `Important`,
   `Ask for a suggestion` and `Delete`. Decisions that can be undone offer `Undo` for a few seconds.
 - The history control switches between waiting and handled messages.
@@ -103,7 +111,8 @@ Composer until sent.
   work, which names the step in progress or counts the steps done. Opening a step shows its full
   output.
 - Approvals and questions are pinned above the Composer, so they cannot scroll out of reach. An
-  approval shows exactly what is being approved and the choices that Run offers. Answering from a
+  approval shows exactly what is being approved and the choices that Run offers; a long one scrolls
+  and can be opened further. Answering from a
   phone is the same as answering from the desktop, and whichever answers first wins.
 - While a Run is active, sending queues the message behind it, and pressing and holding send redirects
   the Run now instead. An empty Composer's button stops the Run.

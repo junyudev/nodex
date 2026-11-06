@@ -20,10 +20,13 @@ interface HomeState {
   readonly drafts: Readonly<Record<string, ComposerDraft>>;
   /** How many captures this phone has sent, so the stream can return to its end for each. */
   readonly capturesSent: number;
+  /** The chat search, while it is open. */
+  readonly search: string | null;
   readonly noteCaptureSent: () => void;
   readonly setMode: (mode: HomeMode) => void;
   readonly setScope: (scope: InboxScope) => void;
   readonly toggleFilter: () => void;
+  readonly setSearch: (search: string | null) => void;
   readonly setDraft: (key: string, patch: Partial<ComposerDraft>) => void;
   readonly clearDraft: (key: string) => void;
 }
@@ -35,6 +38,7 @@ export const useHomeState = createLocalStore<HomeState>({
   filter: "inbox",
   drafts: {},
   capturesSent: 0,
+  search: null,
   noteCaptureSent: () =>
     useHomeState.setState(({ capturesSent }) => ({ capturesSent: capturesSent + 1 })),
   setMode: (mode) => useHomeState.setState({ mode }),
@@ -43,6 +47,7 @@ export const useHomeState = createLocalStore<HomeState>({
     useHomeState.setState(({ filter }) => ({
       filter: filter === "inbox" ? "processed" : "inbox",
     })),
+  setSearch: (search) => useHomeState.setState({ search }),
   setDraft: (key, patch) =>
     useHomeState.setState(({ drafts }) => ({
       drafts: { ...drafts, [key]: { ...(drafts[key] ?? EMPTY_DRAFT), ...patch } },

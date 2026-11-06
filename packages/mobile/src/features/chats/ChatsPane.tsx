@@ -6,6 +6,7 @@ import { RefreshControl, View } from "react-native";
 import { useRootNavigation } from "../../navigation/types";
 import { useChats } from "../../runtime";
 import { cn } from "../../ui/cn";
+import { insetPadding, type ContentInsets } from "../../ui/ComposerLayout";
 import { formatAge } from "../../ui/format";
 import { EmptyState, SectionLabel, StatusDot, Tap, Txt } from "../../ui/primitives";
 import { useColor } from "../../ui/tokens";
@@ -27,7 +28,7 @@ const ChatRow = ({ chat, now }: { readonly chat: ChatSummary; readonly now: numb
     : (STATUS_WORDS[chat.status] ?? chat.preview);
   return (
     <Tap
-      className="flex-row gap-2.5 px-4 py-2.5"
+      className="flex-row gap-2.5 px-4 py-3"
       pressedClassName="active:bg-surface-2"
       onPress={() => navigation.navigate("Chat", { sessionId: chat.sessionId, title: chat.title })}
     >
@@ -55,26 +56,37 @@ const rowKey = (row: ChatListRow): string =>
   row.type === "header" ? `header:${row.id}` : row.chat.sessionId;
 
 /** Every chat on the desktop, with what needs the person first. */
-export const ChatsPane = ({ query }: { readonly query: string }) => {
+export const ChatsPane = ({
+  query,
+  insets,
+}: {
+  readonly query: string;
+  readonly insets: ContentInsets;
+}) => {
   const chats = useChats(query ? { query } : {});
   const rows = useMemo(() => chatListRows(chats.items), [chats.items]);
   const refreshColor = useColor("ink-3");
   const now = useNow();
   if (rows.length === 0) {
     if (chats.loading) return <View className="flex-1" />;
-    return query ? (
-      <EmptyState icon="search" title="No chats match" />
-    ) : (
-      <EmptyState
-        icon="chat"
-        title="No chats yet"
-        detail="Start one below. It runs on your desktop while you follow along here."
-      />
+    return (
+      <View className="flex-1" style={insetPadding(insets)}>
+        {query ? (
+          <EmptyState icon="search" title="No chats match" />
+        ) : (
+          <EmptyState
+            icon="chat"
+            title="No chats yet"
+            detail="Start one below. It runs on your desktop while you follow along here."
+          />
+        )}
+      </View>
     );
   }
   return (
     <LegendList
-      contentContainerStyle={{ paddingBottom: 8 }}
+      contentContainerStyle={{ paddingTop: insets.top + 4, paddingBottom: insets.bottom + 8 }}
+      contentInsetAdjustmentBehavior="never"
       data={rows}
       estimatedItemSize={64}
       getItemType={(row) => row.type}
@@ -85,8 +97,14 @@ export const ChatsPane = ({ query }: { readonly query: string }) => {
       onEndReachedThreshold={0.5}
       recycleItems
       refreshControl={
-        <RefreshControl refreshing={false} onRefresh={chats.refresh} tintColor={refreshColor} />
+        <RefreshControl
+          progressViewOffset={insets.top}
+          refreshing={false}
+          onRefresh={chats.refresh}
+          tintColor={refreshColor}
+        />
       }
+      scrollIndicatorInsets={{ top: insets.top, bottom: insets.bottom }}
       renderItem={({ item }) =>
         item.type === "header" ? (
           <SectionLabel className="px-4 pb-0.5 pt-3">{item.label}</SectionLabel>

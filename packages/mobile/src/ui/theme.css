@@ -1,48 +1,52 @@
 /*
- * Nodex Mobile's semantic tokens, derived from the desktop's default palette: pure surface and
- * ink, neighboring surfaces close in value, and three levels of text. Components use only these.
+ * Nodex Mobile's semantic tokens: a pure surface that content rests on directly, neighboring
+ * surfaces close in value, three levels of text, and one accent for the action that sends.
+ * `fill` is a translucent wash for controls that may sit on glass, and `glass` tints that glass so
+ * text passing beneath it never competes with text on it. Components use only these.
  */
 @theme {
-  --text-xs: 12px;
-  --text-xs--line-height: 16px;
-  --text-sm: 14px;
-  --text-sm--line-height: 19px;
-  --text-base: 16px;
-  --text-base--line-height: 23px;
-  --text-lg: 17px;
-  --text-lg--line-height: 23px;
-  --text-xl: 20px;
-  --text-xl--line-height: 26px;
+  --text-xs: 13px;
+  --text-xs--line-height: 17px;
+  --text-sm: 15px;
+  --text-sm--line-height: 20px;
+  --text-base: 17px;
+  --text-base--line-height: 25px;
+  --text-xl: 22px;
+  --text-xl--line-height: 28px;
 }
 
 @layer theme {
   :root {
     @variant light {
       --color-surface: #ffffff;
-      --color-surface-2: #f7f7f6;
-      --color-surface-3: #eeeeec;
+      --color-surface-2: #f5f5f5;
+      --color-surface-3: #ececec;
+      --color-fill: rgba(0, 0, 0, 0.06);
+      --color-glass: rgba(255, 255, 255, 0.55);
       --color-ink: #0d0d0d;
-      --color-ink-2: #5c5c59;
-      --color-ink-3: #8f8f8b;
-      --color-line: rgba(13, 13, 13, 0.14);
-      --color-accent: #2c67c5;
+      --color-ink-2: #5d5d5d;
+      --color-ink-3: #8f8f8f;
+      --color-line: rgba(0, 0, 0, 0.1);
+      --color-accent: #3560e0;
       --color-on-accent: #ffffff;
-      --color-danger: #c6352c;
+      --color-danger: #d13a30;
       --color-danger-soft: #fbecea;
       --color-warning: #b8801b;
-      --color-success: #3a843f;
+      --color-success: #2f8a3f;
     }
 
     @variant dark {
-      --color-surface: #111111;
-      --color-surface-2: #1b1b1b;
-      --color-surface-3: #282828;
-      --color-ink: #fcfcfc;
-      --color-ink-2: #b4b4b0;
-      --color-ink-3: #7f7f7b;
-      --color-line: rgba(252, 252, 252, 0.16);
-      --color-accent: #63a8f8;
-      --color-on-accent: #0d0d0d;
+      --color-surface: #000000;
+      --color-surface-2: #171717;
+      --color-surface-3: #2a2a2a;
+      --color-fill: rgba(255, 255, 255, 0.1);
+      --color-glass: rgba(28, 28, 28, 0.68);
+      --color-ink: #ffffff;
+      --color-ink-2: #b0b0b0;
+      --color-ink-3: #868686;
+      --color-line: rgba(255, 255, 255, 0.14);
+      --color-accent: #4d72ee;
+      --color-on-accent: #ffffff;
       --color-danger: #f0776c;
       --color-danger-soft: #3a1f1c;
       --color-warning: #e3b34f;

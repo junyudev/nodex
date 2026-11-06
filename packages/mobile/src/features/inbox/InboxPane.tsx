@@ -1,4 +1,4 @@
-import { inboxScopeKey, type InboxDecision, type InboxMessage } from "@nodex/mobile-protocol";
+import { inboxScopeKey, type InboxMessage } from "@nodex/mobile-protocol";
 import { useMemo } from "react";
 import { View } from "react-native";
 
@@ -6,163 +6,28 @@ import { Markdown } from "../../markdown/Markdown";
 import { previewMarkdown } from "../../markdown/parse";
 import { useRootNavigation } from "../../navigation/types";
 import {
-  decideInbox,
   discardCapture,
   retryCapture,
-  undoInbox,
   useInbox,
   type InboxRow,
   type PendingCapture,
 } from "../../runtime";
 import { BottomAnchoredList } from "../../ui/BottomAnchoredList";
+import { insetPadding, type ContentInsets } from "../../ui/ComposerLayout";
 import { formatStreamTime } from "../../ui/format";
 import { Icon } from "../../ui/icons";
-import { Button, EmptyState, Tap, Txt, lightTap } from "../../ui/primitives";
-import { showFailure, showSnack } from "../../ui/snackbar";
+import { Button, EmptyState, Tap, Txt } from "../../ui/primitives";
 import { useNow } from "../../ui/use-now";
 import { useHomeState } from "../home/home-state";
 import {
   outcomeLabel,
+  proposalAcceptance,
   proposalAction,
-  proposalDestination,
-  decisionReversal,
   sourceLabel,
   suggestionView,
 } from "./inbox-presentation";
-
-/** Runs a decision, then offers what it allows next: the chat it started, or undo. */
-export const useDecide = () => {
-  const navigation = useRootNavigation();
-  return async (pageId: string, decision: InboxDecision, done: string): Promise<void> => {
-    lightTap();
-    try {
-      const { undoToken, sessionId } = await decideInbox(pageId, decision);
-      if (sessionId) {
-        showSnack({
-          text: done,
-          action: { label: "Open", run: () => navigation.navigate("Chat", { sessionId }) },
-        });
-        return;
-      }
-      const reversal = decisionReversal(decision);
-      const undo = undoToken
-        ? () => undoInbox(undoToken)
-        : reversal
-          ? () => decideInbox(pageId, reversal)
-          : null;
-      showSnack({
-        text: done,
-        ...(undo
-          ? {
-              action: {
-                label: "Undo",
-                run: () => {
-                  undo().catch((cause: unknown) => showFailure("Could not undo", cause));
-                },
-              },
-            }
-          : {}),
-      });
-    } catch (cause) {
-      showFailure("That didn't go through", cause);
-    }
-  };
-};
-
-const QuietLine = ({ text }: { readonly text: string }) => (
-  <View className="flex-row items-center gap-1.5">
-    <Icon name="agent" size={14} color="ink-3" />
-    <Txt className="text-sm text-ink-3">{text}</Txt>
-  </View>
-);
-
-/** A message's advice, as its own part of the record: one decision, labeled by what it does. */
-export const SuggestionLine = ({ message }: { readonly message: InboxMessage }) => {
-  const decide = useDecide();
-  const view = suggestionView(message);
-  switch (view.kind) {
-    case "none":
-      return null;
-    case "thinking":
-      return <QuietLine text="Looking at this" />;
-    case "dispatching":
-      return <QuietLine text="Delivering" />;
-    case "failed":
-      return (
-        <View className="flex-row items-center gap-1.5">
-          <Icon name="warning" size={14} color="danger" />
-          <Txt className="flex-1 text-sm text-ink-2" numberOfLines={2}>
-            {view.message}
-          </Txt>
-        </View>
-      );
-    case "dispatch-failed":
-      return (
-        <View className="flex-row items-center gap-2">
-          <Icon name="warning" size={14} color="danger" />
-          <Txt className="flex-1 text-sm text-ink-2" numberOfLines={2}>
-            {view.message}
-          </Txt>
-          <Button
-            compact
-            label="Retry"
-            onPress={() =>
-              void decide(
-                message.pageId,
-                { type: "retry", proposalId: view.proposal.proposalId },
-                "Trying again",
-              )
-            }
-          />
-        </View>
-      );
-    case "offer": {
-      if (view.proposal.outdated) {
-        return (
-          <View className="flex-row items-center gap-1.5">
-            <Icon name="laptop" size={14} color="ink-3" />
-            <Txt className="flex-1 text-sm text-ink-3" numberOfLines={2}>
-              This changed after it was suggested. Review it on your desktop.
-            </Txt>
-          </View>
-        );
-      }
-      const action = proposalAction(view.proposal.action);
-      const destination = proposalDestination(view.proposal.action);
-      return (
-        <View className="flex-row items-center gap-2 rounded-2xl bg-surface-2 py-1.5 pl-3 pr-1.5">
-          <View className="flex-1">
-            <Txt className="text-sm text-ink-2" numberOfLines={2}>
-              {view.proposal.summary}
-            </Txt>
-            {destination ? (
-              <Txt className="text-xs text-ink-3" numberOfLines={1}>
-                {destination}
-              </Txt>
-            ) : null}
-          </View>
-          <Button
-            compact
-            icon={action.icon}
-            label={action.label}
-            tone="primary"
-            onPress={() =>
-              void decide(
-                message.pageId,
-                {
-                  type: "accept",
-                  proposalId: view.proposal.proposalId,
-                  revision: view.proposal.revision,
-                },
-                view.proposal.action.type === "keep" ? "Kept" : "Done",
-              )
-            }
-          />
-        </View>
-      );
-    }
-  }
-};
+import { SuggestionCard } from "./Suggestion";
+import { useDecide } from "./use-decide";
 
 const MessageRow = ({ message, now }: { readonly message: InboxMessage; readonly now: number }) => {
   const navigation = useRootNavigation();
@@ -179,14 +44,11 @@ const MessageRow = ({ message, now }: { readonly message: InboxMessage; readonly
       accessibilityHint="Opens the message"
       onAccessibilityAction={() => {
         if (offer) {
-          void decide(
-            message.pageId,
-            { type: "accept", proposalId: offer.proposalId, revision: offer.revision },
-            offer.action.type === "keep" ? "Kept" : "Done",
-          );
+          const { decision, done } = proposalAcceptance(offer);
+          void decide(message.pageId, decision, done);
         }
       }}
-      className="gap-1.5 px-4 py-2.5"
+      className="gap-2 px-4 py-3"
       pressedClassName="active:bg-surface-2"
       onPress={() => navigation.navigate("Message", { pageId: message.pageId, initial: message })}
     >
@@ -195,7 +57,7 @@ const MessageRow = ({ message, now }: { readonly message: InboxMessage; readonly
         selectable={false}
         actions={{ onOpenChat: (sessionId) => navigation.navigate("Chat", { sessionId }) }}
       />
-      <SuggestionLine message={message} />
+      <SuggestionCard message={message} />
       <View className="flex-row items-center gap-1.5">
         {message.important ? <Icon name="starFilled" size={12} color="warning" /> : null}
         <Txt className="text-xs text-ink-3" numberOfLines={1}>
@@ -214,7 +76,7 @@ const MessageRow = ({ message, now }: { readonly message: InboxMessage; readonly
 };
 
 const PendingRow = ({ capture }: { readonly capture: PendingCapture }) => (
-  <View className="gap-1.5 px-4 py-2.5">
+  <View className="gap-2 px-4 py-3">
     {capture.text ? <Txt className="text-ink-2">{capture.text}</Txt> : null}
     {capture.images.length > 0 ? (
       <Txt className="text-sm text-ink-3">
@@ -245,7 +107,7 @@ const rowKey = (row: InboxRow): string =>
   row.type === "message" ? row.message.pageId : row.capture.captureId;
 
 /** The Inbox stream, newest at the bottom beside the Composer, as it reads on the desktop. */
-export const InboxPane = () => {
+export const InboxPane = ({ insets }: { readonly insets: ContentInsets }) => {
   const scope = useHomeState((state) => state.scope);
   const filter = useHomeState((state) => state.filter);
   const capturesSent = useHomeState((state) => state.capturesSent);
@@ -253,19 +115,24 @@ export const InboxPane = () => {
   const now = useNow();
   if (inbox.rows.length === 0) {
     if (inbox.loading) return <View className="flex-1" />;
-    return filter === "inbox" ? (
-      <EmptyState
-        icon="inbox"
-        title="Nothing waiting"
-        detail="Drop a thought here. It lands on your desktop."
-      />
-    ) : (
-      <EmptyState icon="history" title="Nothing handled yet" />
+    return (
+      <View className="flex-1" style={insetPadding(insets)}>
+        {filter === "inbox" ? (
+          <EmptyState
+            icon="inbox"
+            title="Nothing waiting"
+            detail="Drop a thought here. It lands on your desktop."
+          />
+        ) : (
+          <EmptyState icon="history" title="Nothing handled yet" />
+        )}
+      </View>
     );
   }
   return (
     <BottomAnchoredList
       key={`${inboxScopeKey(scope)}:${filter}`}
+      insets={insets}
       sentCount={capturesSent}
       data={inbox.rows}
       getItemType={(row) => row.type}

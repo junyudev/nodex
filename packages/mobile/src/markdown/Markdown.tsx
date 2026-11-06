@@ -34,9 +34,9 @@ const resolveImageSource = ({ url }: { readonly url: string }) =>
 
 // Android's system font has no semibold through this path, so a heading would read as body text.
 const HEADING_WEIGHT = Platform.OS === "ios" ? "600" : "bold";
-const BODY_SIZE = 16;
-const BODY_LINE = 23;
-const CODE_SIZE = 13.5;
+const BODY_SIZE = 17;
+const BODY_LINE = 25;
+const CODE_SIZE = 14.5;
 
 const SYNTAX = {
   dark: {
@@ -81,7 +81,7 @@ const useMarkdownStyle = (): MarkdownStyle => {
       fontSize: BODY_SIZE,
       lineHeight: BODY_LINE,
       marginTop: 0,
-      marginBottom: 10,
+      marginBottom: 12,
     };
     const heading = (fontSize: number) => ({
       ...body,
@@ -93,16 +93,16 @@ const useMarkdownStyle = (): MarkdownStyle => {
     const block = {
       marginTop: 2,
       marginBottom: 12,
-      borderRadius: 12,
+      borderRadius: 16,
       // A whole device pixel: half a point lands between pixels on a 3x screen and blurs away.
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: line,
     };
     return {
       paragraph: body,
-      h1: heading(19),
-      h2: heading(18),
-      h3: heading(17),
+      h1: heading(22),
+      h2: heading(20),
+      h3: heading(18),
       h4: heading(BODY_SIZE),
       h5: heading(BODY_SIZE),
       h6: heading(BODY_SIZE),
@@ -125,7 +125,7 @@ const useMarkdownStyle = (): MarkdownStyle => {
         ...block,
         fontFamily: MONOSPACE,
         fontSize: CODE_SIZE,
-        lineHeight: 19,
+        lineHeight: 20,
         color: ink,
         backgroundColor: surface2,
         padding: 12,
@@ -141,11 +141,11 @@ const useMarkdownStyle = (): MarkdownStyle => {
       },
       list: { ...body, marginBottom: 4, markerColor: ink3, bulletColor: ink3 },
       thematicBreak: { color: line, height: 0.5, marginTop: 6, marginBottom: 12 },
-      image: { borderRadius: 12, marginTop: 2, marginBottom: 12 },
+      image: { borderRadius: 16, marginTop: 2, marginBottom: 12 },
       table: {
         ...block,
-        fontSize: 14,
-        lineHeight: 19,
+        fontSize: 15,
+        lineHeight: 20,
         color: ink,
         cellPaddingHorizontal: 10,
         cellPaddingVertical: 8,

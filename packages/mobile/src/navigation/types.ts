@@ -11,6 +11,7 @@ export type RootStack = {
   Pair: { readonly uri?: string } | undefined;
   Chat: { readonly sessionId: string; readonly title?: string };
   Message: { readonly pageId: string; readonly initial?: InboxMessage };
+  Suggestion: { readonly pageId: string; readonly initial?: InboxMessage };
   ChatItem: { readonly sessionId: string; readonly itemId: string };
   ScopePicker: undefined;
   /** `projectOnly` when what is being started has no choice of where to run. */

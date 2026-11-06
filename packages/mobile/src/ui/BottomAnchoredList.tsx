@@ -2,6 +2,8 @@ import { LegendList, type LegendListProps, type LegendListRef } from "@legendapp
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
+import type { ContentInsets } from "./ComposerLayout";
+import { Glass } from "./glass";
 import { Icon } from "./icons";
 import { Tap } from "./primitives";
 
@@ -15,10 +17,12 @@ const AWAY_VIEWPORTS = 0.75;
  */
 export const BottomAnchoredList = <Item,>({
   sentCount = 0,
+  insets,
   ...props
 }: LegendListProps<Item> & {
   /** How many things the person has sent from here. Sending always returns to the end. */
   readonly sentCount?: number;
+  readonly insets: ContentInsets;
 }) => {
   const list = useRef<LegendListRef>(null);
   const [away, setAway] = useState(false);
@@ -41,11 +45,21 @@ export const BottomAnchoredList = <Item,>({
     void list.current?.scrollToEnd({ animated: false });
   }, [itemCount]);
 
+  // A taller foot, such as a Composer growing a line, must not cover the end being read.
+  const knownBottom = useRef(insets.bottom);
+  useEffect(() => {
+    const grew = insets.bottom > knownBottom.current;
+    knownBottom.current = insets.bottom;
+    if (grew && !away) void list.current?.scrollToEnd({ animated: false });
+  }, [away, insets.bottom]);
+
   return (
     <View className="flex-1">
       <LegendList
         ref={list}
         alignItemsAtEnd
+        contentContainerStyle={{ paddingTop: insets.top + 4, paddingBottom: insets.bottom + 8 }}
+        contentInsetAdjustmentBehavior="never"
         estimatedItemSize={120}
         initialScrollAtEnd
         keyboardDismissMode="interactive"
@@ -66,17 +80,22 @@ export const BottomAnchoredList = <Item,>({
         // Rows hold their own state, such as an opened run of work.
         recycleItems={false}
         scrollEventThrottle={100}
+        scrollIndicatorInsets={{ top: insets.top, bottom: insets.bottom }}
         {...props}
       />
       {away ? (
-        <Tap
-          accessibilityLabel="Go to the newest"
-          className="absolute bottom-2 h-9 w-9 items-center justify-center self-center rounded-full border-[0.5px] border-line bg-surface-3"
-          hitSlop={6}
-          onPress={() => void list.current?.scrollToEnd({ animated: true })}
-        >
-          <Icon name="chevronDown" size={18} color="ink" />
-        </Tap>
+        <View className="absolute self-center" style={{ bottom: insets.bottom + 8 }}>
+          <Glass radius={20}>
+            <Tap
+              accessibilityLabel="Go to the newest"
+              className="h-10 w-10 items-center justify-center"
+              hitSlop={6}
+              onPress={() => void list.current?.scrollToEnd({ animated: true })}
+            >
+              <Icon name="arrowDown" size={20} color="ink" />
+            </Tap>
+          </Glass>
+        </View>
       ) : null}
     </View>
   );

@@ -7,6 +7,7 @@ import { useColor, type ColorToken } from "./tokens";
 const LINE_GLYPHS = {
   plus: ["M10 4.5v11", "M4.5 10h11"],
   arrowUp: ["M10 15.5v-11", "M5.5 9 10 4.5 14.5 9"],
+  arrowDown: ["M10 4.5v11", "M5.5 11 10 15.5 14.5 11"],
   inbox: [
     "M3.5 11.5l2-6.2a1.2 1.2 0 0 1 1.15-.8h6.7a1.2 1.2 0 0 1 1.15.8l2 6.2v3a1.5 1.5 0 0 1-1.5 1.5h-10a1.5 1.5 0 0 1-1.5-1.5v-3Z",
     "M3.5 11.5h3.6l1 1.8h3.8l1-1.8h3.6",

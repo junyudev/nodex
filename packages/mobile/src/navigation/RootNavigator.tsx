@@ -11,12 +11,13 @@ import {
 } from "@react-navigation/native-stack";
 import * as Linking from "expo-linking";
 import { useEffect, useState } from "react";
-import { useColorScheme } from "react-native";
+import { Platform, useColorScheme } from "react-native";
 
 import { ChatItemScreen } from "../features/chat/ChatItemScreen";
 import { ChatScreen } from "../features/chat/ChatScreen";
-import { HomeScreen } from "../features/home/HomeScreen";
+import { HOME_HEADER, HomeScreen } from "../features/home/HomeScreen";
 import { MessageScreen } from "../features/inbox/MessageScreen";
+import { SuggestionScreen } from "../features/inbox/Suggestion";
 import { PairScreen } from "../features/pair/PairScreen";
 import {
   AgentPickerScreen,
@@ -25,6 +26,8 @@ import {
 } from "../features/pickers/PickerScreens";
 import { SettingsScreen } from "../features/settings/SettingsScreen";
 import { useHosts } from "../runtime";
+import { LIQUID_GLASS } from "../ui/glass";
+import { IconButton } from "../ui/primitives";
 import { useColor } from "../ui/tokens";
 import type { RootStack } from "./types";
 
@@ -36,7 +39,19 @@ const SHEET: NativeStackNavigationOptions = {
   sheetAllowedDetents: [0.5, 0.92],
   sheetGrabberVisible: true,
   headerShown: false,
+  // Clear content is what lets the system draw a partial sheet as glass.
+  ...(LIQUID_GLASS ? { contentStyle: { backgroundColor: "transparent" } } : {}),
+  ...(Platform.OS === "android" ? { sheetCornerRadius: 28 } : {}),
 };
+
+/** A bar the system draws as glass with content passing beneath it, where it can. */
+const GLASS_BAR: NativeStackNavigationOptions = LIQUID_GLASS
+  ? {
+      headerTransparent: true,
+      headerStyle: { backgroundColor: "transparent" },
+      scrollEdgeEffects: { top: "automatic", bottom: "hidden", left: "hidden", right: "hidden" },
+    }
+  : {};
 
 /**
  * A pairing code scanned with the system camera opens the app on the screen that pairs. The link
@@ -73,24 +88,46 @@ export const RootNavigator = () => {
         screenOptions={{
           contentStyle: { backgroundColor: background },
           headerBackButtonDisplayMode: "minimal",
+          headerTitleAlign: "center",
           headerShadowVisible: false,
           headerTintColor: ink,
           headerStyle: { backgroundColor: background },
+          ...GLASS_BAR,
         }}
       >
         {paired ? (
           <>
-            <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Home" component={HomeScreen} options={HOME_HEADER} />
             <Stack.Screen name="Chat" component={ChatScreen} />
-            <Stack.Screen name="Message" component={MessageScreen} options={{ title: "Message" }} />
+            <Stack.Screen name="Message" component={MessageScreen} options={{ title: "" }} />
             <Stack.Screen name="ChatItem" component={ChatItemScreen} options={{ title: "" }} />
+            <Stack.Screen
+              name="Suggestion"
+              component={SuggestionScreen}
+              options={{ ...SHEET, sheetAllowedDetents: "fitToContents" }}
+            />
             <Stack.Screen name="ScopePicker" component={ScopePickerScreen} options={SHEET} />
             <Stack.Screen name="ProjectPicker" component={ProjectPickerScreen} options={SHEET} />
             <Stack.Screen name="AgentPicker" component={AgentPickerScreen} options={SHEET} />
             <Stack.Screen
               name="Settings"
               component={SettingsScreen}
-              options={{ title: "Settings", presentation: "modal" }}
+              options={({ navigation }) => ({
+                title: "Settings",
+                presentation: "modal",
+                ...(Platform.OS === "ios"
+                  ? {
+                      headerRight: () => (
+                        <IconButton
+                          color="ink"
+                          label="Close"
+                          name="close"
+                          onPress={() => navigation.goBack()}
+                        />
+                      ),
+                    }
+                  : {}),
+              })}
             />
             <Stack.Screen
               name="Pair"

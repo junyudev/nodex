@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ScrollView, View } from "react-native";
 
 import { cn } from "../../ui/cn";
+import { Glass } from "../../ui/glass";
 import { Icon } from "../../ui/icons";
 import { Button, Field, Mono, Tap, Txt, lightTap } from "../../ui/primitives";
 import { showFailure } from "../../ui/snackbar";
@@ -22,6 +23,38 @@ const useSubmit = (respond: Respond, request: ChatRequest) => {
   return { submitting, submit };
 };
 
+/** Past this, an approval's detail starts collapsed to a scrolling window. */
+const LONG_DETAIL_LINES = 7;
+
+/** Exactly what is being approved, however long: a window to scroll, or opened up to read. */
+const ApprovalDetail = ({ detail }: { readonly detail: string }) => {
+  const [whole, setWhole] = useState(false);
+  const long = detail.split("\n").length > LONG_DETAIL_LINES || detail.length > 320;
+  return (
+    <View className="items-start gap-1">
+      <ScrollView
+        className={cn("w-full rounded-2xl bg-fill", whole ? "max-h-96" : "max-h-36")}
+        nestedScrollEnabled
+      >
+        <Mono selectable className="p-3 text-xs leading-[17px]">
+          {detail}
+        </Mono>
+      </ScrollView>
+      {long ? (
+        <Tap
+          accessibilityState={{ expanded: whole }}
+          className="flex-row items-center gap-1 py-1"
+          hitSlop={6}
+          onPress={() => setWhole(!whole)}
+        >
+          <Txt className="text-xs font-medium text-ink-2">{whole ? "Show less" : "Show more"}</Txt>
+          <Icon name={whole ? "chevronDown" : "chevronRight"} size={12} color="ink-3" />
+        </Tap>
+      ) : null}
+    </View>
+  );
+};
+
 const ApprovalCard = ({
   request,
   respond,
@@ -36,13 +69,7 @@ const ApprovalCard = ({
         <Icon name="warning" size={17} color="warning" />
         <Txt className="flex-1 font-medium">{request.title}</Txt>
       </View>
-      {request.detail ? (
-        <ScrollView className="max-h-36 rounded-xl bg-surface-3" nestedScrollEnabled>
-          <Mono selectable className="p-2.5 text-xs leading-[17px]">
-            {request.detail}
-          </Mono>
-        </ScrollView>
-      ) : null}
+      {request.detail ? <ApprovalDetail detail={request.detail} /> : null}
       {request.options.length === 0 ? (
         <Txt className="text-sm text-ink-3">Answer this on your desktop.</Txt>
       ) : null}
@@ -87,10 +114,10 @@ const QuestionBlock = ({
             accessibilityRole={question.multiSelect ? "checkbox" : "radio"}
             accessibilityState={{ checked: isSelected }}
             className={cn(
-              "flex-row items-center gap-2 rounded-xl border-[0.5px] border-line px-3 py-2",
+              "flex-row items-center gap-2 rounded-2xl bg-fill px-3.5 py-2.5",
               isSelected && "bg-surface-3",
             )}
-            pressedClassName="active:bg-surface-3"
+            pressedClassName="active:opacity-50"
             onPress={() => onToggle(option.id)}
           >
             <View className="flex-1">
@@ -106,7 +133,7 @@ const QuestionBlock = ({
       {question.allowsText ? (
         <Field
           accessibilityLabel={question.prompt}
-          className="min-h-10 rounded-xl border-[0.5px] border-line px-3 py-2 text-sm text-ink"
+          className="min-h-10 rounded-2xl bg-fill px-3.5 py-2.5 text-sm text-ink"
           multiline
           onChangeText={onText}
           placeholder={question.options.length > 0 ? "Or answer in your words" : "Your answer"}
@@ -178,11 +205,15 @@ export const RequestCard = ({
   readonly request: ChatRequest;
   readonly respond: Respond;
 }) => (
-  <View className="mx-2.5 mt-1.5 rounded-2xl border-[0.5px] border-line bg-surface-2 p-3">
-    {request.kind === "approval" ? (
-      <ApprovalCard request={request} respond={respond} />
-    ) : (
-      <QuestionCard request={request} respond={respond} />
-    )}
+  <View className="px-4" pointerEvents="box-none">
+    <Glass radius={25}>
+      <View className="p-3.5">
+        {request.kind === "approval" ? (
+          <ApprovalCard request={request} respond={respond} />
+        ) : (
+          <QuestionCard request={request} respond={respond} />
+        )}
+      </View>
+    </Glass>
   </View>
 );

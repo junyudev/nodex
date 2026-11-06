@@ -17,14 +17,18 @@ export const effectiveAgentChoice = (
   return stillOffered ? chosen : catalog.defaultChoice;
 };
 
-/** The Composer chip's words: the model, since that is what the person picks between. */
+/** A model's own name, as the person picks between them. */
+export const agentLabel = (catalog: AgentCatalog | null, choice: AgentChoice): string => {
+  const provider = catalog?.providers.find((item) => item.instanceId === choice.providerInstanceId);
+  const model = provider?.models.find((item) => item.id === choice.model);
+  return model?.label ?? choice.model;
+};
+
+/** The Composer chip's words: the model that a chat started now would run on. */
 export const agentChipLabel = (
   catalog: AgentCatalog | null,
   chosen: AgentChoice | null,
 ): string => {
   const choice = effectiveAgentChoice(catalog, chosen);
-  if (!choice) return "Agent";
-  const provider = catalog?.providers.find((item) => item.instanceId === choice.providerInstanceId);
-  const model = provider?.models.find((item) => item.id === choice.model);
-  return model?.label ?? choice.model;
+  return choice ? agentLabel(catalog, choice) : "Agent";
 };

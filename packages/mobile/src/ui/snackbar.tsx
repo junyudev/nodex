@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { View } from "react-native";
 
+import { Glass } from "./glass";
 import { createLocalStore } from "./local-store";
 import { Tap, Txt } from "./primitives";
 
@@ -39,27 +40,29 @@ export const SnackbarHost = ({ bottom }: { readonly bottom: number }) => {
   }, [snack]);
   if (!snack) return null;
   return (
-    <View pointerEvents="box-none" className="absolute inset-x-3" style={{ bottom }}>
-      <View className="flex-row items-center gap-3 rounded-2xl bg-ink px-4 py-3">
-        <Txt
-          accessibilityLiveRegion="polite"
-          className="flex-1 text-sm text-surface"
-          numberOfLines={3}
-        >
-          {snack.text}
-        </Txt>
-        {snack.action ? (
-          <Tap
-            hitSlop={10}
-            onPress={() => {
-              useSnackState.setState({ snack: null });
-              snack.action?.run();
-            }}
+    <View pointerEvents="box-none" className="absolute inset-x-4" style={{ bottom }}>
+      <Glass radius={22}>
+        <View className="flex-row items-center gap-3 px-4 py-3">
+          <Txt
+            accessibilityLiveRegion="polite"
+            className={snack.tone === "danger" ? "flex-1 text-sm text-danger" : "flex-1 text-sm"}
+            numberOfLines={3}
           >
-            <Txt className="text-sm font-semibold text-surface">{snack.action.label}</Txt>
-          </Tap>
-        ) : null}
-      </View>
+            {snack.text}
+          </Txt>
+          {snack.action ? (
+            <Tap
+              hitSlop={10}
+              onPress={() => {
+                useSnackState.setState({ snack: null });
+                snack.action?.run();
+              }}
+            >
+              <Txt className="text-sm font-semibold text-accent">{snack.action.label}</Txt>
+            </Tap>
+          ) : null}
+        </View>
+      </Glass>
     </View>
   );
 };

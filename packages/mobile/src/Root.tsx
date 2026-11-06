@@ -10,7 +10,7 @@ import { RootNavigator } from "./navigation/RootNavigator";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { SnackbarHost } from "./ui/snackbar";
 
-const COMPOSER_CLEARANCE = 84;
+const COMPOSER_CLEARANCE = 60;
 
 const Chrome = () => {
   const insets = useSafeAreaInsets();

@@ -66,14 +66,14 @@ export const IconButton = ({
     accessibilityLabel={label}
     hitSlop={6}
     className={cn("h-9 w-9 items-center justify-center rounded-full", className)}
-    pressedClassName="active:bg-surface-3"
+    pressedClassName="active:bg-fill"
     {...props}
   >
     <Icon name={name} color={color} size={size} />
   </Tap>
 );
 
-/** A neutral reference or picker: a transparent chip with a hairline outline. */
+/** A neutral reference or picker, on a wash so it holds together on glass as well as a surface. */
 export const Chip = ({
   icon,
   label,
@@ -87,18 +87,15 @@ export const Chip = ({
   readonly className?: string;
 }) => (
   <Tap
-    className={cn(
-      "h-8 shrink flex-row items-center gap-1 rounded-full border-[0.5px] border-line px-2.5",
-      className,
-    )}
-    pressedClassName="active:bg-surface-3"
+    className={cn("h-8 shrink flex-row items-center gap-1 rounded-full bg-fill px-2.5", className)}
+    pressedClassName="active:opacity-50"
     {...props}
   >
-    {icon ? <Icon name={icon} size={15} /> : null}
-    <Txt className="shrink text-sm text-ink-2" numberOfLines={1}>
+    {icon ? <Icon name={icon} size={14} /> : null}
+    <Txt className="shrink text-[14px] leading-[18px] text-ink-2" numberOfLines={1}>
       {label}
     </Txt>
-    {trailingChevron ? <Icon name="chevronDown" size={12} color="ink-3" /> : null}
+    {trailingChevron ? <Icon name="chevronDown" size={10} color="ink-3" /> : null}
   </Tap>
 );
 
@@ -107,7 +104,7 @@ export type ButtonTone = "primary" | "default" | "danger";
 const BUTTON_TONES: Readonly<Record<ButtonTone, { readonly box: string; readonly text: string }>> =
   {
     primary: { box: "bg-ink", text: "text-surface" },
-    default: { box: "bg-surface-3", text: "text-ink" },
+    default: { box: "bg-fill", text: "text-ink" },
     danger: { box: "bg-danger-soft", text: "text-danger" },
   };
 
@@ -130,7 +127,7 @@ export const Button = ({
     disabled={disabled}
     className={cn(
       "flex-row items-center justify-center gap-1.5 rounded-full",
-      compact ? "h-8 px-3" : "h-11 px-4",
+      compact ? "h-9 px-3.5" : "h-12 px-5",
       BUTTON_TONES[tone].box,
       disabled && "opacity-40",
       className,
@@ -174,7 +171,7 @@ export const Row = ({
 }) => (
   <Tap
     className={cn("min-h-12 flex-row items-center gap-3 px-3.5 py-2.5", className)}
-    pressedClassName="active:bg-surface-3"
+    pressedClassName="active:bg-fill"
     {...props}
   >
     {icon ? (
@@ -194,16 +191,9 @@ export const Row = ({
   </Tap>
 );
 
-/** One flat grouped surface with hairline dividers between its rows. */
+/** One flat grouped surface for rows that belong together. */
 export const RowGroup = ({ className, children, ...props }: ViewProps) => (
-  <View
-    className={cn(
-      "overflow-hidden rounded-2xl border-[0.5px] border-line bg-surface-2",
-      "divide-y-[0.5px] divide-line",
-      className,
-    )}
-    {...props}
-  >
+  <View className={cn("overflow-hidden rounded-[20px] bg-fill", className)} {...props}>
     {children}
   </View>
 );
@@ -251,10 +241,15 @@ export const Spinner = ({ size }: { readonly size?: "small" | "large" }) => (
   <ActivityIndicator color={useColor("ink-3")} {...(size ? { size } : {})} />
 );
 
-/** A text input in the app's ink and accent, named by what it asks for. */
+/**
+ * A text input in the app's ink and accent, named by what it asks for. It always keeps its font's
+ * natural line height: iOS sets an input's text and placeholder low in any taller line, out of line
+ * with the controls beside them.
+ */
 export const Field = ({
   accessibilityLabel,
   placeholder,
+  style,
   ...props
 }: TextInputProps & { readonly accessibilityLabel: string }) => {
   const accent = useColor("accent");
@@ -265,6 +260,7 @@ export const Field = ({
       placeholder={placeholder ?? accessibilityLabel}
       placeholderTextColor={useColor("ink-3")}
       selectionColor={accent}
+      style={[style, { lineHeight: undefined }]}
       {...props}
     />
   );

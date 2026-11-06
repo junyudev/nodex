@@ -1,9 +1,8 @@
 import type { ChatItem } from "@nodex/mobile-protocol";
-import { useHeaderHeight } from "@react-navigation/elements";
 import { Image } from "expo-image";
 import { memo, useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Markdown } from "../../markdown/Markdown";
 import type { ScreenProps } from "../../navigation/types";
@@ -11,6 +10,9 @@ import { useRootNavigation } from "../../navigation/types";
 import { useChat, useFileUri, type LocalImage } from "../../runtime";
 import { Icon, type IconName } from "../../ui/icons";
 import { BottomAnchoredList } from "../../ui/BottomAnchoredList";
+import { ComposerLayout } from "../../ui/ComposerLayout";
+import { FloatingNote } from "../../ui/FloatingNote";
+import { Glass } from "../../ui/glass";
 import { EmptyState, Spinner, Tap, Txt } from "../../ui/primitives";
 import { showFailure } from "../../ui/snackbar";
 import { Composer } from "../composer/Composer";
@@ -33,14 +35,14 @@ const CATEGORY_ICONS: Readonly<
 
 const SentImage = ({ fileRef, name }: { readonly fileRef: string; readonly name: string }) => {
   const { uri } = useFileUri(fileRef);
-  if (!uri) return <View className="h-40 w-40 rounded-2xl bg-surface-3" />;
+  if (!uri) return <View className="h-40 w-40 rounded-[20px] bg-surface-3" />;
   return (
     <Image
       accessibilityLabel={name}
       contentFit="cover"
       source={{ uri }}
       transition={0}
-      style={{ width: 160, height: 160, borderRadius: 16 }}
+      style={{ width: 160, height: 160, borderRadius: 20 }}
     />
   );
 };
@@ -51,12 +53,12 @@ const UserRow = memo(function UserRow({
   readonly item: Extract<ChatItem, { kind: "user" }>;
 }) {
   return (
-    <View className="items-end gap-1.5 pl-12 pr-3 pt-3">
+    <View className="items-end gap-1.5 pl-14 pr-4 pt-4">
       {item.files.map((file) => (
         <SentImage key={file.ref} fileRef={file.ref} name={file.name} />
       ))}
       {item.text ? (
-        <View className="rounded-[18px] bg-surface-3 px-3.5 py-2">
+        <View className="rounded-[22px] bg-surface-3 px-4 py-2.5">
           <Txt selectable>{item.text}</Txt>
         </View>
       ) : null}
@@ -74,7 +76,7 @@ const AssistantRow = memo(function AssistantRow({
 }) {
   const navigation = useRootNavigation();
   return (
-    <View className="gap-1.5 px-4 pt-3">
+    <View className="gap-1.5 px-4 pt-4">
       {item.truncated ? (
         <Tap onPress={() => navigation.navigate("ChatItem", { sessionId, itemId: item.id })}>
           <Txt className="text-sm text-accent">Show the start of this reply</Txt>
@@ -90,7 +92,7 @@ const AssistantRow = memo(function AssistantRow({
 });
 
 const NoticeRow = ({ item }: { readonly item: Extract<ChatItem, { kind: "notice" }> }) => (
-  <View className="flex-row gap-2 px-4 pt-3">
+  <View className="flex-row gap-2 px-4 pt-4">
     {item.tone === "info" ? null : (
       <Icon name="warning" size={16} color={item.tone === "danger" ? "danger" : "warning"} />
     )}
@@ -134,7 +136,7 @@ const WorkRow = ({
 }) => {
   const [open, setOpen] = useState(false);
   return (
-    <View className="px-4 pt-3">
+    <View className="px-4 pt-4">
       <Tap
         accessibilityState={{ expanded: open }}
         className="flex-row items-center gap-1.5"
@@ -170,7 +172,7 @@ const Row = ({ row, sessionId }: { readonly row: TranscriptRow; readonly session
       return <WorkRow row={row} sessionId={sessionId} />;
     case "working":
       return (
-        <View className="flex-row items-center gap-1.5 px-4 pt-3">
+        <View className="flex-row items-center gap-1.5 px-4 pt-4">
           <Spinner size="small" />
           <Txt className="text-sm text-ink-3">Working</Txt>
         </View>
@@ -183,7 +185,7 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
   const { sessionId } = route.params;
   const { chat, error, hasOlder, loadOlder, loadingOlder, respond, send, stop } =
     useChat(sessionId);
-  const headerHeight = useHeaderHeight();
+  const safeArea = useSafeAreaInsets();
   const [sentCount, setSentCount] = useState(0);
   const title = chat?.title ?? route.params.title ?? "";
   const subtitle = [chat?.projectName, chat?.state.agentLabel].filter(Boolean).join(" · ");
@@ -191,17 +193,20 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
   useEffect(() => {
     navigation.setOptions({
       title,
+      // Glass of its own, since the transcript passes right beneath it.
       headerTitle: () => (
-        <View className="max-w-64 items-center">
-          <Txt className="text-sm font-semibold" numberOfLines={1}>
-            {title}
-          </Txt>
-          {subtitle ? (
-            <Txt className="text-xs text-ink-3" numberOfLines={1}>
-              {subtitle}
+        <Glass radius={22}>
+          <View className="h-11 max-w-60 items-center justify-center px-4">
+            <Txt className="text-sm leading-[19px] font-semibold" numberOfLines={1}>
+              {title}
             </Txt>
-          ) : null}
-        </View>
+            {subtitle ? (
+              <Txt className="text-xs leading-[15px] text-ink-2" numberOfLines={1}>
+                {subtitle}
+              </Txt>
+            ) : null}
+          </View>
+        </Glass>
       ),
     });
   }, [navigation, subtitle, title]);
@@ -235,65 +240,73 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
   const blocked = chat.state.sendBlockedReason;
 
   return (
-    <KeyboardAvoidingView
-      behavior="padding"
-      className="flex-1 bg-surface"
-      keyboardVerticalOffset={headerHeight}
-    >
-      <ConnectionNotice />
-      <BottomAnchoredList
-        sentCount={sentCount}
-        contentContainerStyle={{ paddingBottom: 12 }}
-        data={rows}
-        getItemType={(row) => row.type}
-        keyExtractor={(row) => row.id}
-        ListHeaderComponent={
-          loadingOlder ? (
-            <View className="py-3">
-              <Spinner />
-            </View>
-          ) : undefined
-        }
-        onStartReached={hasOlder ? loadOlder : undefined}
-        renderItem={({ item }) => <Row row={item} sessionId={sessionId} />}
-      />
-      {chat.state.requests.map((request) => (
-        <RequestCard key={request.requestId} request={request} respond={respond} />
-      ))}
-      {chat.state.status === "waiting" && chat.state.requests.length === 0 ? (
-        <View className="flex-row items-center gap-2 px-5 pt-1.5">
-          <Icon name="laptop" size={15} color="warning" />
-          <Txt className="flex-1 text-sm text-ink-2">Waiting for an answer on your desktop.</Txt>
-        </View>
-      ) : null}
-      {chat.state.queuedCount > 0 ? (
-        <Txt className="px-5 pt-1.5 text-xs text-ink-3">
-          {chat.state.queuedCount === 1
-            ? "1 message waiting behind this Run"
-            : `${chat.state.queuedCount} messages waiting behind this Run`}
-        </Txt>
-      ) : null}
-      {blocked ? (
-        <View className="flex-row items-center gap-2 px-4 pb-8 pt-3">
-          <Icon name="laptop" size={16} color="ink-3" />
-          <Txt className="flex-1 text-sm text-ink-3">{blocked}</Txt>
-        </View>
-      ) : (
-        <Composer
-          draftKey={`chat:${sessionId}`}
-          placeholder={activeRunId ? "Add to the queue" : "Reply"}
-          onSend={(text, images) => deliver(text, images, "queue")}
-          {...(activeRunId
-            ? {
-                onSendLongPress: (text: string, images: readonly LocalImage[]) =>
-                  deliver(text, images, "steer"),
-                onStop: () => {
-                  stop().catch((cause: unknown) => showFailure("Could not stop the Run", cause));
-                },
+    <ComposerLayout
+      foot={
+        <>
+          <ConnectionNotice />
+          {chat.state.requests.map((request) => (
+            <RequestCard key={request.requestId} request={request} respond={respond} />
+          ))}
+          {chat.state.status === "waiting" && chat.state.requests.length === 0 ? (
+            <FloatingNote
+              icon="laptop"
+              iconColor="warning"
+              text="Waiting for an answer on your desktop."
+            />
+          ) : null}
+          {chat.state.queuedCount > 0 ? (
+            <FloatingNote
+              icon="clock"
+              text={
+                chat.state.queuedCount === 1
+                  ? "1 message waiting behind this Run"
+                  : `${chat.state.queuedCount} messages waiting behind this Run`
               }
-            : {})}
+            />
+          ) : null}
+          {blocked ? (
+            <View style={{ paddingBottom: Math.max(safeArea.bottom, 8) }}>
+              <FloatingNote icon="laptop" text={blocked} />
+            </View>
+          ) : (
+            <Composer
+              draftKey={`chat:${sessionId}`}
+              placeholder={activeRunId ? "Add to the queue" : "Reply"}
+              onSend={(text, images) => deliver(text, images, "queue")}
+              {...(activeRunId
+                ? {
+                    onSendLongPress: (text: string, images: readonly LocalImage[]) =>
+                      deliver(text, images, "steer"),
+                    onStop: () => {
+                      stop().catch((cause: unknown) =>
+                        showFailure("Could not stop the Run", cause),
+                      );
+                    },
+                  }
+                : {})}
+            />
+          )}
+        </>
+      }
+    >
+      {(insets) => (
+        <BottomAnchoredList
+          insets={insets}
+          sentCount={sentCount}
+          data={rows}
+          getItemType={(row) => row.type}
+          keyExtractor={(row) => row.id}
+          ListHeaderComponent={
+            loadingOlder ? (
+              <View className="py-3">
+                <Spinner />
+              </View>
+            ) : undefined
+          }
+          onStartReached={hasOlder ? loadOlder : undefined}
+          renderItem={({ item }) => <Row row={item} sessionId={sessionId} />}
         />
       )}
-    </KeyboardAvoidingView>
+    </ComposerLayout>
   );
 };

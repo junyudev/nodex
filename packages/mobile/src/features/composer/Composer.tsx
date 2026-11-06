@@ -8,8 +8,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { LocalImage } from "../../runtime";
 import { cn } from "../../ui/cn";
+import { Glass } from "../../ui/glass";
 import { Icon } from "../../ui/icons";
-import { Field, IconButton, Tap, lightTap } from "../../ui/primitives";
+import { Chip, Field, IconButton, Tap, lightTap } from "../../ui/primitives";
 import { showFailure } from "../../ui/snackbar";
 import { useDraft, useHomeState } from "../home/home-state";
 
@@ -45,7 +46,8 @@ const takePhoto = async (): Promise<readonly LocalImage[]> => {
 };
 
 /**
- * The bottom Composer of every surface: text first, one row of controls beneath it. Its bottom inset
+ * The floating Composer of every surface. At rest it is one line of glass. While in use it opens to
+ * text above a row of controls, which is also where `chips` say where this goes. Its bottom inset
  * gives way to the keyboard so the two never leave a gap.
  */
 export const Composer = ({
@@ -83,6 +85,7 @@ export const Composer = ({
   const setDraft = useHomeState((state) => state.setDraft);
   const clearDraft = useHomeState((state) => state.clearDraft);
   const [attaching, setAttaching] = useState(false);
+  const [focused, setFocused] = useState(false);
   const insets = useSafeAreaInsets();
   const { progress } = useReanimatedKeyboardAnimation();
   const restingInset = Math.max(insets.bottom, 8);
@@ -93,6 +96,7 @@ export const Composer = ({
   const hasContent = draft.text.trim().length > 0 || draft.images.length > 0;
   const stopping = onStop !== undefined && !hasContent;
   const ready = stopping || (hasContent && canSend && !sending);
+  const open = attaching || (chips !== undefined && (focused || hasContent));
 
   const addImages = async (pick: () => Promise<readonly LocalImage[]>) => {
     setAttaching(false);
@@ -121,15 +125,56 @@ export const Composer = ({
       });
   };
 
+  const attachControl = (
+    <IconButton
+      className="h-10 w-10"
+      color="ink"
+      label={attaching ? "Close attachments" : "Attach"}
+      name={attaching ? "close" : "plus"}
+      size={22}
+      onPress={() => setAttaching(!attaching)}
+    />
+  );
+
+  const sendControl = (
+    <Tap
+      accessibilityLabel={stopping ? "Stop" : sendLabel}
+      accessibilityState={{ disabled: !ready }}
+      disabled={!ready}
+      hitSlop={6}
+      className={cn(
+        "h-10 w-10 items-center justify-center rounded-full",
+        !ready ? "bg-fill" : stopping ? "bg-ink" : "bg-accent",
+      )}
+      onLongPress={
+        onSendLongPress && hasContent && canSend ? () => submit(onSendLongPress) : undefined
+      }
+      onPress={() => {
+        if (stopping) {
+          lightTap();
+          onStop?.();
+          return;
+        }
+        submit(onSend);
+      }}
+    >
+      <Icon
+        name={stopping ? "stop" : "arrowUp"}
+        size={stopping ? 18 : 20}
+        color={!ready ? "ink-3" : stopping ? "surface" : "on-accent"}
+      />
+    </Tap>
+  );
+
   return (
-    <Animated.View style={inset} className="px-2.5 pt-1.5">
-      <View className="rounded-[22px] border-[0.5px] border-line bg-surface-2 p-1.5">
+    <Animated.View style={inset} className="px-4" pointerEvents="box-none">
+      <Glass radius={25}>
         {draft.images.length > 0 ? (
           <ScrollView
             horizontal
             keyboardShouldPersistTaps="handled"
             showsHorizontalScrollIndicator={false}
-            contentContainerClassName="gap-1.5 px-1 pb-1.5 pt-1"
+            contentContainerClassName="gap-1.5 px-2.5 pt-2.5"
           >
             {draft.images.map((image) => (
               <View key={image.uri}>
@@ -138,7 +183,7 @@ export const Composer = ({
                   accessibilityLabel={image.name}
                   contentFit="cover"
                   transition={0}
-                  style={{ width: 64, height: 64, borderRadius: 12 }}
+                  style={{ width: 64, height: 64, borderRadius: 14 }}
                 />
                 <Tap
                   accessibilityLabel={`Remove ${image.name}`}
@@ -156,63 +201,46 @@ export const Composer = ({
             ))}
           </ScrollView>
         ) : null}
-        <Field
-          accessibilityLabel={placeholder}
-          autoFocus={autoFocus}
-          className="max-h-36 px-2.5 pb-1.5 pt-1.5 text-base text-ink"
-          multiline
-          onChangeText={(text) => setDraft(draftKey, { text })}
-          textAlignVertical="top"
-          value={draft.text}
-        />
-        <View className="flex-row items-center gap-1">
-          <IconButton
-            label={attaching ? "Close attachments" : "Attach"}
-            name={attaching ? "close" : "plus"}
-            onPress={() => setAttaching(!attaching)}
-          />
-          {attaching ? (
-            <>
-              <IconButton
-                label="Choose photos"
-                name="photo"
-                onPress={() => void addImages(pickFromLibrary)}
-              />
-              <IconButton
-                label="Take a photo"
-                name="camera"
-                onPress={() => void addImages(takePhoto)}
-              />
-            </>
-          ) : null}
-          <View className="flex-1 flex-row items-center gap-1 overflow-hidden">
-            {attaching ? null : chips}
-          </View>
-          <Tap
-            accessibilityLabel={stopping ? "Stop" : sendLabel}
-            accessibilityState={{ disabled: !ready }}
-            disabled={!ready}
-            hitSlop={6}
+        {/* The field keeps its place in the tree as the controls move, so it never loses focus. */}
+        <View className="flex-row items-end p-[5px]">
+          {open ? null : attachControl}
+          <Field
+            accessibilityLabel={placeholder}
+            autoFocus={autoFocus}
             className={cn(
-              "h-9 w-9 items-center justify-center rounded-full bg-ink",
-              !ready && "opacity-30",
+              "max-h-36 min-h-10 flex-1 py-[9.75px] text-base text-ink",
+              open ? "px-2.5" : "px-1",
             )}
-            onLongPress={
-              onSendLongPress && hasContent && canSend ? () => submit(onSendLongPress) : undefined
-            }
-            onPress={() => {
-              if (stopping) {
-                lightTap();
-                onStop?.();
-                return;
-              }
-              submit(onSend);
-            }}
-          >
-            <Icon name={stopping ? "stop" : "arrowUp"} size={stopping ? 18 : 20} color="surface" />
-          </Tap>
+            multiline
+            onBlur={() => setFocused(false)}
+            onChangeText={(text) => setDraft(draftKey, { text })}
+            onFocus={() => setFocused(true)}
+            textAlignVertical="top"
+            value={draft.text}
+          />
+          {open ? null : sendControl}
         </View>
-      </View>
+        {open ? (
+          <View className="flex-row items-center gap-1 px-[5px] pb-[5px]">
+            {attachControl}
+            <View className="flex-1 flex-row items-center gap-1 overflow-hidden">
+              {attaching ? (
+                <>
+                  <Chip
+                    icon="photo"
+                    label="Photos"
+                    onPress={() => void addImages(pickFromLibrary)}
+                  />
+                  <Chip icon="camera" label="Camera" onPress={() => void addImages(takePhoto)} />
+                </>
+              ) : (
+                chips
+              )}
+            </View>
+            {sendControl}
+          </View>
+        ) : null}
+      </Glass>
     </Animated.View>
   );
 };

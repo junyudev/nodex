@@ -14,8 +14,8 @@ const Count = ({ value }: { readonly value: number }) =>
 
 const PickerSurface = ({ children }: { readonly children: React.ReactNode }) => (
   <ScrollView
-    className="flex-1 bg-surface"
-    contentContainerClassName="gap-4 p-4"
+    className="flex-1"
+    contentContainerClassName="gap-5 px-4 pb-8 pt-7"
     contentInsetAdjustmentBehavior="automatic"
   >
     {children}

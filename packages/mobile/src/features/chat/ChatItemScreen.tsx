@@ -69,7 +69,7 @@ export const ChatItemScreen = ({ route }: ScreenProps<"ChatItem">) => {
   return (
     <ScrollView
       className="flex-1 bg-surface"
-      contentContainerClassName="p-4"
+      contentContainerClassName="p-4 pb-10"
       contentInsetAdjustmentBehavior="automatic"
     >
       {item ? <ItemBody item={item} /> : null}

@@ -51,7 +51,7 @@ export const SettingsScreen = ({ navigation }: ScreenProps<"Settings">) => {
   return (
     <ScrollView
       className="flex-1 bg-surface"
-      contentContainerClassName="gap-5 p-4"
+      contentContainerClassName="gap-6 p-4 pb-10"
       contentInsetAdjustmentBehavior="automatic"
     >
       {active ? (

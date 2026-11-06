@@ -1,48 +1,27 @@
-import type { InboxMessage } from "@nodex/mobile-protocol";
-import { useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
 
 import { Markdown } from "../../markdown/Markdown";
 import type { ScreenProps } from "../../navigation/types";
-import {
-  decideInbox,
-  fetchInboxMessage,
-  useAgentCatalog,
-  useNewChatPreferences,
-  useProjects,
-} from "../../runtime";
+import { decideInbox, useAgentCatalog, useNewChatPreferences, useProjects } from "../../runtime";
 import { formatStreamTime } from "../../ui/format";
 import { Row, RowGroup, SectionLabel, Txt, lightTap } from "../../ui/primitives";
 import { showFailure } from "../../ui/snackbar";
 import { useNow } from "../../ui/use-now";
 import { agentChipLabel, effectiveAgentChoice } from "../pickers/agent-choice";
-import { SuggestionLine, useDecide } from "./InboxPane";
 import { outcomeLabel, sourceLabel } from "./inbox-presentation";
+import { SuggestionPanel, useInboxMessage } from "./Suggestion";
+import { useDecide } from "./use-decide";
 
 /** A whole message, and everything that can be decided about it. */
 export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => {
   const now = useNow();
   const { pageId, initial } = route.params;
-  const [message, setMessage] = useState<InboxMessage | null>(initial ?? null);
+  const [message, setMessage] = useInboxMessage(pageId, initial);
   const decide = useDecide();
   const { projects } = useProjects();
   const { catalog } = useAgentCatalog();
   const preferences = useNewChatPreferences();
   const project = projects.find((candidate) => candidate.id === preferences.projectId);
-
-  useEffect(() => {
-    let current = true;
-    fetchInboxMessage(pageId)
-      .then((fresh) => {
-        if (current) setMessage(fresh);
-      })
-      .catch(() => {
-        // The stream's copy stays on screen; a stale read is better than an empty page.
-      });
-    return () => {
-      current = false;
-    };
-  }, [pageId]);
 
   if (!message) return <View className="flex-1 bg-surface" />;
 
@@ -69,7 +48,7 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
   return (
     <ScrollView
       className="flex-1 bg-surface"
-      contentContainerClassName="gap-4 p-4"
+      contentContainerClassName="gap-5 p-4 pb-10"
       contentInsetAdjustmentBehavior="automatic"
     >
       <Markdown
@@ -86,7 +65,7 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
           .filter(Boolean)
           .join(" · ")}
       </Txt>
-      <SuggestionLine message={message} />
+      <SuggestionPanel message={message} />
       <View>
         <SectionLabel>Start a chat from this</SectionLabel>
         <RowGroup>

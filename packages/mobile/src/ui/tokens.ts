@@ -5,6 +5,8 @@ export type ColorToken =
   | "surface"
   | "surface-2"
   | "surface-3"
+  | "fill"
+  | "glass"
   | "ink"
   | "ink-2"
   | "ink-3"
