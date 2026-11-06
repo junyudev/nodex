@@ -102,6 +102,7 @@ const buildHarness = (input: {
     const scope = yield* Scope.make();
     const settings = ApplicationSettings.of({
       terminalShellSettingsChanges: Stream.empty,
+      modelPolicyChanges: Stream.never,
       usageMeterSettingsChanges: Stream.empty,
       composerPredictionSettingsChanges: Stream.empty,
       inboxSettingsChanges: Stream.empty,

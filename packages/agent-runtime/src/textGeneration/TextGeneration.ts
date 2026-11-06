@@ -1,7 +1,13 @@
+import { TextGenerationAdmission } from "@t3tools/provider-core/server/textGenerationPolicy";
+import { RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { ProviderInstanceId } from "@t3tools/contracts";
+import type { ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
+import {
+  automaticModelCatalog,
+  projectModelPolicyCatalog,
+} from "../../../../src/shared/model-policy.ts";
 import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
 import { TextGenerationError } from "@t3tools/contracts";
 
@@ -24,7 +30,13 @@ export type {
 /**
  * TextGeneration - Service tag for commit and change request text generation.
  */
-export class TextGeneration extends Context.Service<TextGeneration, ProviderTextGeneration>()(
+type WithAutomaticChoice<Port> = Port extends (input: infer Input) => infer Output
+  ? (input: Input & { readonly automatic?: true }) => Output
+  : Port;
+type PolicyAwareTextGeneration = {
+  [Key in keyof ProviderTextGeneration]: WithAutomaticChoice<ProviderTextGeneration[Key]>;
+};
+export class TextGeneration extends Context.Service<TextGeneration, PolicyAwareTextGeneration>()(
   "t3/textGeneration/TextGeneration",
 ) {}
 
@@ -56,43 +68,114 @@ const resolveInstance = (
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
+  const policy = yield* RuntimeModelPolicy;
   const registry = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
+  const run = <
+    Input extends { readonly modelSelection: ModelSelection; readonly automatic?: true },
+    Output,
+  >(
+    operation: TextGenerationOp,
+    input: Input,
+    generate: (
+      generation: ProviderTextGeneration,
+      input: Input,
+    ) => Effect.Effect<Output, TextGenerationError>,
+  ) =>
+    Effect.gen(function* () {
+      let selection = input.modelSelection;
+      if (input.automatic) {
+        const providers = yield* Effect.forEach(
+          yield* registry.listInstances,
+          (instance) => instance.snapshot.getSnapshot,
+        );
+        const { policy: current } = yield* policy.current;
+        const eligible = automaticModelCatalog(
+          projectModelPolicyCatalog(providers, current),
+        ).filter(
+          (provider) =>
+            provider.enabled &&
+            provider.installed &&
+            provider.status === "ready" &&
+            provider.auth.status !== "unauthenticated" &&
+            provider.supportsTextGeneration !== false &&
+            provider.models.length > 0,
+        );
+        const provider =
+          eligible.find((provider) => provider.instanceId === selection.instanceId) ?? eligible[0];
+        const model =
+          provider?.models.find((model) => model.slug === selection.model) ??
+          provider?.models.find((model) => model.isDefault) ??
+          provider?.models[0];
+        if (provider && model)
+          selection = {
+            instanceId: provider.instanceId,
+            model: model.slug,
+            ...(provider.instanceId === selection.instanceId && model.slug === selection.model
+              ? { options: selection.options }
+              : {}),
+          };
+      }
+      yield* policy
+        .assert(selection, input.automatic ? "automatic" : "person")
+        .pipe(
+          Effect.mapError(
+            (cause) => new TextGenerationError({ operation, detail: cause.message, cause }),
+          ),
+        );
+      const generation = yield* resolveInstance(registry, operation, selection.instanceId);
+      const admission = policy
+        .assert(selection, input.automatic ? "automatic" : "person")
+        .pipe(
+          Effect.mapError(
+            (cause) => new TextGenerationError({ operation, detail: cause.message, cause }),
+          ),
+        );
+      return yield* policy
+        .withUtility(
+          selection,
+          admission.pipe(
+            Effect.andThen(generate(generation, { ...input, modelSelection: selection })),
+            Effect.provideService(TextGenerationAdmission, admission),
+          ),
+        )
+        .pipe(
+          Effect.mapError((cause) =>
+            cause instanceof TextGenerationError
+              ? cause
+              : new TextGenerationError({ operation, detail: cause.message, cause }),
+          ),
+        );
+    });
   return TextGeneration.of({
     generateStructured: (input) =>
-      resolveInstance(registry, "generateStructured", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((generation) =>
-          generation.generateStructured
-            ? generation.generateStructured(input)
-            : Effect.fail(
-                new TextGenerationError({
-                  operation: "generateStructured",
-                  detail: input.images?.length
-                    ? "This Agent cannot read images here. Structured generation is unavailable."
-                    : "This provider does not support structured generation.",
-                }),
-              ),
-        ),
+      run("generateStructured", input, (generation, input) =>
+        generation.generateStructured
+          ? generation.generateStructured(input)
+          : Effect.fail(
+              new TextGenerationError({
+                operation: "generateStructured",
+                detail: input.images?.length
+                  ? "This Agent cannot read images here. Structured generation is unavailable."
+                  : "This provider does not support structured generation.",
+              }),
+            ),
       ),
     generateCommitMessage: (input) =>
-      resolveInstance(registry, "generateCommitMessage", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateCommitMessage(input)),
+      run("generateCommitMessage", input, (generation, input) =>
+        generation.generateCommitMessage(input),
       ),
     generatePrContent: (input) =>
-      resolveInstance(registry, "generatePrContent", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generatePrContent(input)),
-      ),
+      run("generatePrContent", input, (generation, input) => generation.generatePrContent(input)),
     generateBranchName: (input) =>
-      resolveInstance(registry, "generateBranchName", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateBranchName(input)),
-      ),
+      run("generateBranchName", input, (generation, input) => generation.generateBranchName(input)),
     generateReviewGuide: (input) =>
-      resolveInstance(registry, "generateReviewGuide", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateReviewGuide(input)),
+      run("generateReviewGuide", input, (generation, input) =>
+        generation.generateReviewGuide(input),
       ),
     // Nodex configures no source-control hosts, so titles carry no fetched link context.
     generateThreadTitle: (input) =>
-      resolveInstance(registry, "generateThreadTitle", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateThreadTitle(input)),
+      run("generateThreadTitle", input, (generation, input) =>
+        generation.generateThreadTitle(input),
       ),
   });
 });

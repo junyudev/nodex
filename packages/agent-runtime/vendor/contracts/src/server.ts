@@ -79,6 +79,7 @@ export const ServerProviderAuth = Schema.Struct({
 export type ServerProviderAuth = typeof ServerProviderAuth.Type;
 
 export const ServerProviderModel = Schema.Struct({
+  policy: Schema.optional(Schema.Struct({ on: Schema.Boolean, switchOn: Schema.Boolean, spendsCredit: Schema.Boolean })),
   slug: TrimmedNonEmptyString,
   name: TrimmedNonEmptyString,
   shortName: Schema.optional(TrimmedNonEmptyString),
@@ -244,6 +245,7 @@ export const ServerProviderUpdateState = Schema.Struct({
 export type ServerProviderUpdateState = typeof ServerProviderUpdateState.Type;
 
 export const ServerProvider = Schema.Struct({
+  policy: Schema.optional(Schema.Struct({ key: Schema.String, on: Schema.Boolean })),
   source: Schema.optionalKey(Schema.Literal("nodex")),
   // Routing key for the configured instance this snapshot represents. This
   // is the only stable identity consumers may use for provider routing.

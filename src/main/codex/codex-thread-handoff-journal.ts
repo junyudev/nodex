@@ -92,6 +92,8 @@ export interface CodexThreadHandoffJournalEntry {
   readonly runtimeSwitched: boolean;
   readonly coreCommitted: boolean;
   readonly followUpPrompt: string | null;
+  /** null records a person's request; absent on older journals with no retained authority. */
+  readonly followUpSender?: { readonly threadId: string; readonly runId?: string | null } | null;
   readonly modeLimit?: AgentDispatchModeLimit;
   readonly followUpDispatchStarted: boolean;
   readonly warnings: readonly string[];
@@ -215,6 +217,11 @@ const entrySchema = z
     prepared: preparedSchema.nullable(),
     runtimeSwitched: z.boolean(),
     coreCommitted: z.boolean(),
+    followUpSender: z
+      .object({ threadId: z.string().min(1), runId: z.string().nullable().optional() })
+      .strict()
+      .nullable()
+      .optional(),
     followUpPrompt: z.string().max(64_000).nullable(),
     modeLimit: z
       .strictObject({

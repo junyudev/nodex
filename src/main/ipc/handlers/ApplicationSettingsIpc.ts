@@ -1,3 +1,4 @@
+import { ModelPolicySchema, MODEL_POLICY_CHANGED_CHANNEL } from "../../../shared/model-policy";
 import {
   TERMINAL_SHELL_SETTINGS_CHANGED_CHANNEL,
   TerminalShellSettingsSchema,
@@ -91,6 +92,7 @@ type SettingsReadChannel =
   | "settings:terminal-shell:get"
   | "settings:window-restore:get"
   | "settings:link-opening:get"
+  | "settings:model-policy:get"
   | "settings:usage-meters:get"
   | "settings:agent-runtime:get"
   | "settings:composer-predictions:get"
@@ -192,6 +194,14 @@ export const live: Layer.Layer<
           safeBroadcastToWindows(windows.all(), COMPOSER_PREDICTION_SETTINGS_CHANGED_CHANNEL, [
             settings,
           ]);
+        }),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+    );
+    yield* applicationSettings.modelPolicyChanges.pipe(
+      Stream.runForEach((policy) =>
+        Effect.sync(() => {
+          safeBroadcastToWindows(windows.all(), MODEL_POLICY_CHANGED_CHANNEL, [policy]);
         }),
       ),
       Effect.forkScoped({ startImmediately: true }),
@@ -704,6 +714,27 @@ export const live: Layer.Layer<
             "update-composer-prediction-settings",
             { type: "update-composer-predictions", input: parsed },
             (value) => value.composerPredictions,
+          ),
+        ),
+      ),
+    );
+    yield* handleRead("settings:model-policy:get", "Model policy", (value) => value.modelPolicy);
+    yield* ipc.handlePlainCommand("settings:model-policy:update", (event, input: unknown) =>
+      authorize(event, "Model policy").pipe(
+        Effect.andThen(parse("parse-model-policy", () => ModelPolicySchema.parse(input))),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-model-policy",
+            { type: "update-model-policy", input: parsed },
+            (value) => value.modelPolicy,
+          ),
+        ),
+        Effect.tap(() =>
+          runtimeProviders.refresh.pipe(
+            Effect.mapError(
+              (cause) =>
+                new ApplicationSettingsIpcError({ operation: "apply-model-policy", cause }),
+            ),
           ),
         ),
       ),

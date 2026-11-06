@@ -44,11 +44,16 @@ export class ThreadExecution extends Context.Service<
       threadId: string,
       location: CodexThreadExecutionLocation,
     ) => Effect.Effect<void, ThreadExecutionError>;
+    readonly assertFollowUp: (
+      threadId: string,
+      sender?: { readonly threadId: string; readonly runId?: string | null },
+    ) => Effect.Effect<void, ThreadExecutionError>;
     readonly followUp: (
       threadId: string,
       prompt: string,
       operationId?: string,
       modeLimit?: AgentDispatchModeLimit,
+      sender?: { readonly threadId: string; readonly runId?: string | null },
     ) => Effect.Effect<void, ThreadExecutionError>;
     readonly reconcileRecovery?: (
       operations: readonly { readonly threadId: string; readonly operationId: string }[],
@@ -134,12 +139,16 @@ export const make = Effect.gen(function* () {
         owned("commit", threadId, codex.commit(threadId, location)),
         (port) => port.commit(threadId, location),
       ),
-    followUp: (threadId, prompt, operationId, modeLimit) =>
+    assertFollowUp: (threadId, sender) =>
+      route("follow-up-admission", threadId, Effect.void, (port) =>
+        port.assertFollowUp(threadId, sender),
+      ),
+    followUp: (threadId, prompt, operationId, modeLimit, sender) =>
       route(
         "follow-up",
         threadId,
         owned("follow-up", threadId, codex.followUp(threadId, prompt, modeLimit)),
-        (port) => port.followUp(threadId, prompt, operationId, modeLimit),
+        (port) => port.followUp(threadId, prompt, operationId, modeLimit, sender),
       ),
     reconcileRecovery: (operations) =>
       Option.isSome(runtime)

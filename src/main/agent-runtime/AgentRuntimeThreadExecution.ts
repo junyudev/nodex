@@ -255,11 +255,21 @@ export const make = Effect.gen(function* () {
         location: destination,
       });
     }),
+    assertFollowUp: Effect.fn("AgentRuntimeThreadExecution.assertFollowUp")(function* (
+      threadId: string,
+      sender?: { readonly threadId: string; readonly runId?: string | null },
+    ) {
+      const captured = yield* load(threadId);
+      yield* application
+        .assertModelPolicy(captured.thread.modelSelection, sender ? "agent" : "person", sender)
+        .pipe(Effect.mapError((cause) => error("follow-up-admission", threadId, cause)));
+    }),
     followUp: Effect.fn("AgentRuntimeThreadExecution.followUp")(function* (
       threadId: string,
       prompt: string,
       operationId?: string,
       modeLimit?: AgentDispatchModeLimit,
+      sender?: { readonly threadId: string; readonly runId?: string | null },
     ) {
       if (!operationId)
         return yield* fail("follow-up", threadId, "A handoff operation identity is required");
@@ -268,6 +278,7 @@ export const make = Effect.gen(function* () {
         .message({
           sessionId: captured.sessionId,
           ...(modeLimit ? { modeLimit } : {}),
+          ...(sender ? { senderThreadId: sender.threadId, senderRunId: sender.runId } : {}),
           message: {
             messageId: `handoff-follow-up:${createHash("sha256").update(operationId).digest("hex")}`,
             text: prompt,

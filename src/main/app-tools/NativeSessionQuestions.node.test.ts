@@ -305,11 +305,26 @@ it.effect.each([
       required: false,
     });
     const answer = { choice: " Project " };
-    assert.deepEqual(yield* backend.respond(target, syncRequestId, answer, responder, "op-sync"), {
-      requestId: syncRequestId,
-      status: "answered",
-    });
-    yield* backend.respond(target, syncRequestId, answer, responder, "op-sync");
+    assert.deepEqual(
+      yield* backend.respond(
+        target,
+        syncRequestId,
+        answer,
+        { ...responder, senderRunId: "first-run" },
+        "op-sync",
+      ),
+      {
+        requestId: syncRequestId,
+        status: "answered",
+      },
+    );
+    yield* backend.respond(
+      target,
+      syncRequestId,
+      answer,
+      { ...responder, senderRunId: "later-run" },
+      "op-sync",
+    );
     assert.equal(f.syncCalls.length, 1);
     assert.equal(f.forwarded.length, follower ? 1 : 0);
     assert.deepEqual(f.syncCalls[0]?.answers, { choice: ["Project"] });

@@ -1,3 +1,4 @@
+import type { ModelPolicy } from "../../../../src/shared/model-policy.ts";
 import type { AgentAcpManagementOperations } from "./AcpManagementContract.ts";
 import type { AgentWindowsSandboxOperations } from "./WindowsSandboxContract.ts";
 import type {
@@ -130,6 +131,7 @@ export interface AgentRuntimeConfiguration {
   /** Absolute, dedicated writable directory owned by this Profile's execution runtime. */
   readonly home: string;
   readonly cwd: string;
+  readonly modelPolicy?: ModelPolicy;
   readonly providers: Readonly<Record<string, AgentWire<ProviderInstanceConfig>>>;
   readonly host?: { readonly tools: ReadonlyArray<AgentHostTool> };
 }
@@ -526,8 +528,28 @@ export interface AgentRuntimeOperations
     readonly input: { readonly instanceIds: ReadonlyArray<string> };
     readonly output: ReadonlyArray<AgentWire<ServerProvider>>;
   };
+  readonly "models.assert": {
+    readonly input: {
+      readonly modelSelection: AgentWire<ModelSelection>;
+      readonly origin: "person" | "nodex-agent" | "agent" | "automatic";
+      readonly caller?: { readonly threadId: string; readonly runId?: string | null };
+    };
+    readonly output: null;
+  };
+  readonly "models.running-credit": {
+    readonly input: Record<string, never>;
+    readonly output: readonly {
+      readonly rootThreadId: string;
+      readonly threadId: string;
+      readonly instanceId: string;
+      readonly model: string;
+    }[];
+  };
   readonly "providers.configure": {
-    readonly input: { readonly providers: AgentRuntimeConfiguration["providers"] };
+    readonly input: {
+      readonly providers: AgentRuntimeConfiguration["providers"];
+      readonly modelPolicy?: ModelPolicy;
+    };
     readonly output: {
       readonly applied: boolean;
       readonly deferredInstanceIds: ReadonlyArray<string>;
@@ -860,6 +882,8 @@ export type AgentRuntimeResponse =
       readonly error: {
         readonly message: string;
         readonly tag?: string;
+        readonly code?: string;
+        readonly retryable?: boolean;
         readonly reason?: string;
         readonly acp?: import("./AcpManagementContract.ts").AgentAcpFailure;
       };

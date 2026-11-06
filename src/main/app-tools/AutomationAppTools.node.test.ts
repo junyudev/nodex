@@ -20,7 +20,10 @@ import {
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { make, makeWithCapture } from "./AutomationAppTools";
 import { createHostedAppToolCaller, captureHostedAppToolAuthority } from "./AppToolCaller";
-import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
+import {
+  AgentRuntimeApplication,
+  AgentRuntimeApplicationError,
+} from "../agent-runtime/AgentRuntimeApplication";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import { CoreModuleResponseError } from "../core-client/core-client";
@@ -120,6 +123,119 @@ const setup = (
       capture: () => Effect.succeed({ ...authority }),
     } as never),
   );
+
+it.effect.each(["model_off", "credit_requires_person"] as const)(
+  "refuses an Agent automation before saving when Runtime returns %s",
+  (code) =>
+    Effect.gen(function* () {
+      let saved = false;
+      const execute = yield* setup({
+        create: () =>
+          Effect.sync(() => {
+            saved = true;
+            return item;
+          }),
+      }).pipe(
+        Effect.provideService(AgentRuntimeApplication, {
+          catalog: () =>
+            Effect.succeed([{ instanceId: "codex", models: [{ slug: "chosen-model" }] }]),
+          assertModelPolicy: () =>
+            Effect.fail(
+              new AgentRuntimeApplicationError({
+                operation: "model-policy",
+                code,
+                message: "Choose another provider.",
+                retryable: false,
+              }),
+            ),
+        } as never),
+      );
+      const result = yield* execute(input({ ...cron, mode: "create" }));
+      assert.isTrue(result.isError);
+      assert.deepEqual(result.structuredContent, { error: { code } });
+      assert.deepEqual(result.content, [{ type: "text", text: "Choose another provider." }]);
+      assert.isFalse(saved);
+    }),
+);
+
+it.effect(
+  "a Nodex child retains its account when proposing an automation and Runtime resolves its credit authority",
+  () =>
+    Effect.gen(function* () {
+      const instanceId = "nodex_codex_00000000000000000000000000000000";
+      const definitions: unknown[] = [];
+      const admissions: unknown[] = [];
+      const caller = createHostedAppToolCaller({
+        backend: "codex",
+        authority,
+        callId: "credit-automation",
+        generation: 1,
+        isActive: () => true,
+        capture: Effect.succeed(authority),
+        sessionContext: {
+          sessionId: "runtime-session",
+          projectId: "project:a",
+          runtimeId: "engine",
+          rootThreadId: "root",
+          threadId: "child",
+          runId: "source-run",
+          cwd: "/workspace",
+        },
+      });
+      const execute = yield* makeWithCapture(captureHostedAppToolAuthority).pipe(
+        Effect.provideService(CoreModules, createAppToolAdmissionFixture().core),
+        Effect.provideService(CoreAuthority, { identity: { profileId: "profile:a" } } as never),
+        Effect.provideService(ProjectWorkspace, {} as never),
+        Effect.provideService(AgentRuntimeApplication, {
+          inspect: (target: { execution?: { threadId: string } }) =>
+            Effect.succeed({
+              thread: {
+                providerInstanceId: target.execution?.threadId === "child" ? instanceId : "codex",
+              },
+            }),
+          catalog: () =>
+            Effect.succeed([
+              {
+                instanceId,
+                enabled: true,
+                installed: true,
+                status: "ready",
+                models: [{ slug: "chosen-model" }],
+              },
+            ]),
+          assertModelPolicy: (...args: unknown[]) =>
+            Effect.sync(() => {
+              admissions.push(args);
+            }),
+        } as never),
+        Effect.provideService(AutomationApplication, {
+          definitions: {
+            create: (value: unknown) =>
+              Effect.sync(() => {
+                definitions.push(value);
+                return item;
+              }),
+          },
+        } as never),
+      );
+      const result = yield* execute({
+        caller,
+        name: "automation_update",
+        arguments: { ...cron, mode: "create" },
+      });
+      assert.isUndefined(result.isError);
+      assert.deepInclude(definitions[0], {
+        backendBinding: { kind: "codex", runtimeInstanceId: instanceId },
+      });
+      assert.deepEqual(admissions, [
+        [
+          { instanceId, model: "chosen-model" },
+          "agent",
+          { threadId: "child", runId: "source-run" },
+        ],
+      ]);
+    }),
+);
 
 it.effect("an Agent refused automatic execution is directed to a user-reviewed suggestion", () =>
   Effect.gen(function* () {
@@ -487,6 +603,7 @@ it.effect(
           getThread: () => Effect.die("Runtime callers must not read old Thread coordinates"),
         } as never),
         Effect.provideService(AgentRuntimeApplication, {
+          assertModelPolicy: () => Effect.void,
           inspect: () => Effect.succeed({ thread: { providerInstanceId: "codex" } }),
           catalog: () =>
             Effect.succeed([
@@ -583,6 +700,7 @@ it.effect(
             }),
         } as never),
         Effect.provideService(AgentRuntimeApplication, {
+          assertModelPolicy: () => Effect.void,
           inspect: () => Effect.succeed({ thread: { providerInstanceId: providerId } }),
           catalog: () =>
             Effect.succeed([

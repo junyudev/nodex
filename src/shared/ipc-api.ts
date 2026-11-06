@@ -1574,6 +1574,11 @@ export interface IpcApi
     args: [input: import("./link-opening-settings").LinkOpeningSettings];
     result: import("./link-opening-settings").LinkOpeningSettings;
   };
+  "settings:model-policy:get": { args: []; result: import("./model-policy").ModelPolicy };
+  "settings:model-policy:update": {
+    args: [input: import("./model-policy").ModelPolicy];
+    result: import("./model-policy").ModelPolicy;
+  };
   "settings:usage-meters:get": {
     args: [];
     result: import("./usage-meter-settings").UsageMeterSettings;
@@ -3185,6 +3190,7 @@ export interface IpcEvents {
   "terminal-shell-settings-changed": import("./terminal-shell-settings").TerminalShellSettings;
   "link-opening-settings-changed": import("./link-opening-settings").LinkOpeningSettings;
   "link:open-requested": import("./link-opening").LinkOpenRequest;
+  "model-policy-changed": import("./model-policy").ModelPolicy;
   "usage-meter-settings-changed": import("./usage-meter-settings").UsageMeterSettings;
   "composer-prediction-settings-changed": import("./composer-prediction-settings").ComposerPredictionSettings;
   "desktop-notification:action": DesktopNotificationActionInvocation;

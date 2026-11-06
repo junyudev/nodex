@@ -254,7 +254,12 @@ it.effect.each(["command", "file-read", "file-change", "permission", "mcp-elicit
       const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
       assert.equal(yield* worker.drain(10), 1);
       assert.deepEqual(deliveries, [
-        { requestId: f.requestId, decision: "decline", feedback: "Keep this local." },
+        {
+          modelPolicyOrigin: "person",
+          requestId: f.requestId,
+          decision: "decline",
+          feedback: "Keep this local.",
+        },
       ]);
       assert.deepEqual(yield* f.engine.dispatch(command), receipt);
       assert.equal(yield* worker.drain(10), 0);
@@ -279,7 +284,9 @@ it.effect("accepts session grants through the durable effect schema", () => {
       decision: "acceptForSession",
     });
     yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain(10);
-    assert.deepEqual(deliveries, [{ requestId: f.requestId, decision: "acceptForSession" }]);
+    assert.deepEqual(deliveries, [
+      { modelPolicyOrigin: "person", requestId: f.requestId, decision: "acceptForSession" },
+    ]);
   }).pipe(Effect.provide(layerTest(deliveries)));
 });
 
@@ -618,7 +625,9 @@ it.effect.each(["running", "completed", "replaced"] as const)(
         assert.equal(sibling?.responseCapability.type, "not_resumable");
       }
       yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain(10);
-      assert.deepEqual(deliveries, [{ requestId: f.requestId, decision: "cancel" }]);
+      assert.deepEqual(deliveries, [
+        { modelPolicyOrigin: "person", requestId: f.requestId, decision: "cancel" },
+      ]);
       if (state === "replaced")
         assert.equal(
           (yield* f.engine.getThreadProjection(f.threadId)).runs.find(
@@ -690,7 +699,12 @@ it.effect(
       );
       yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain(10);
       assert.deepEqual(deliveries, [
-        { requestId: f.requestId, decision: "acceptForSession", optionId: "directory" },
+        {
+          modelPolicyOrigin: "person",
+          requestId: f.requestId,
+          decision: "acceptForSession",
+          optionId: "directory",
+        },
       ]);
     }).pipe(Effect.provide(layerTest(deliveries)));
   },

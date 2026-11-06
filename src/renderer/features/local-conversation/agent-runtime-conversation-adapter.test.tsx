@@ -43,6 +43,12 @@ import { openCodeSetupRuntime } from "../../lib/opencode-setup-runtime";
 import type { OpenCodeSetupState } from "../../../shared/opencode-setup";
 import { readyExecutable, setupState } from "../opencode-setup/opencode-setup.test-fixtures";
 import { supportsConversationProviderControl } from "./conversation-provider-controls";
+import {
+  DEFAULT_MODEL_POLICY,
+  setModelOn,
+  setProviderOn,
+  type ModelPolicy,
+} from "../../../shared/model-policy";
 import { AgentSettingsNavigationProvider } from "../../lib/agent-settings-navigation";
 import { renderWithMaitai } from "../../test/thread-maitai";
 import { LocalConversationTestQueryProvider } from "./view/local-conversation-test-query.test-fixtures";
@@ -71,6 +77,11 @@ function RuntimeWorkbench({ children }: PropsWithChildren) {
 
 // Account supply is an independent Main projection; catalog behavior uses a deterministic observation.
 const nodexSupply = vi.hoisted(() => ({ available: true }));
+const policyState = vi.hoisted(() => ({
+  settings: { providersOff: [], exceptions: [], agentsMayChooseCredit: false } as ModelPolicy,
+  updateSettings: vi.fn<(value: ModelPolicy) => Promise<void>>(),
+}));
+vi.mock("../model-policy/model-policy", () => ({ useModelPolicy: () => policyState }));
 vi.mock("../nodex-account/use-nodex-account", () => ({
   useNodexAccount: () => ({
     snapshot: {
@@ -100,6 +111,10 @@ const provider = {
 const snapshot = agentRuntimeSnapshotFixture();
 beforeEach(() => {
   nodexSupply.available = true;
+  policyState.settings = DEFAULT_MODEL_POLICY;
+  policyState.updateSettings.mockImplementation(async (value) => {
+    policyState.settings = value;
+  });
   vi.spyOn(agentRuntimeRuntime, "readWindowsSandbox").mockResolvedValue({
     generation: "sandbox:ready",
     status: "ready",
@@ -2830,6 +2845,67 @@ it.each([false, true])(
     }
   },
 );
+
+it("separates off models, preserves provider switches, and enables only non-credit choices", async () => {
+  const credit: AgentRuntimeProvider = {
+    ...provider,
+    source: "nodex",
+    instanceId: `nodex_codex_${"a".repeat(32)}`,
+    models: [{ ...provider.models[0]!, slug: "gpt-6.1-sol", name: "GPT-6.1 Sol" }],
+  };
+  const local = {
+    ...provider,
+    models: [...provider.models, { ...provider.models[0]!, slug: "extra", name: "Extra" }],
+  };
+  policyState.settings = setModelOn(
+    setModelOn(DEFAULT_MODEL_POLICY, local, provider.models[0]!.slug, false),
+    credit,
+    "gpt-6.1-sol",
+    false,
+  );
+  vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([local, credit]);
+  const { result, unmount, rerender } = renderHook(
+    () =>
+      useAgentRuntimeConversationAdapter({
+        sessionId: "policy-draft",
+        sessionUnread: false,
+        projectId: "project",
+        modelProjectId: "project",
+        instances,
+        onRefresh: async () => {},
+        onOpenThread: () => {},
+        ensureDraft: async () => ({ id: "policy-draft" }),
+      }),
+    { wrapper: RuntimeWorkbench },
+  );
+  await waitFor(() => expect(result.current.provider.modelCatalog?.off?.count).toBe(2));
+  const catalog = result.current.provider.modelCatalog!;
+  expect(catalog.entries.map((entry) => entry.model.id)).toEqual(["extra"]);
+  expect(catalog.off?.entries.map((entry) => entry.model.id)).toEqual([
+    provider.models[0]!.slug,
+    "gpt-6.1-sol",
+  ]);
+  const creditEntry = catalog.off!.entries.find((entry) => entry.spendsCredit)!;
+  await expect(catalog.off!.choose(creditEntry.selection)).rejects.toThrow("Settings → Models");
+  const localEntry = catalog.off!.entries.find((entry) => !entry.spendsCredit)!;
+  await act(async () => {
+    await catalog.off!.choose(localEntry.selection);
+    rerender();
+  });
+  await waitFor(() =>
+    expect(result.current.provider.modelCatalog?.selected.model).toBe(provider.models[0]!.slug),
+  );
+  await act(async () => {
+    policyState.settings = setProviderOn(policyState.settings, local, false);
+    rerender();
+  });
+  await waitFor(() => expect(result.current.provider.modelCatalog?.off?.count).toBe(3));
+  expect(result.current.provider.modelCatalog?.off?.entries.map((entry) => entry.model.id)).toEqual(
+    ["gpt-6.1-sol"],
+  );
+  expect(result.current.provider.modelCatalog?.currentModelOff?.code).toBe("model_off");
+  await act(async () => unmount());
+});
 
 it("keeps managed Codex and Claude choices without user-configured instances", async () => {
   const managed = [

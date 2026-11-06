@@ -231,6 +231,7 @@ export const layer: Layer.Layer<
         (candidate) => candidate.id === providerThread.providerSessionId,
       );
       const openSession = sessions.open({
+        modelPolicyOrigin: "person",
         threadId: input.threadId,
         providerSessionId: providerThread.providerSessionId,
         modelSelection,

@@ -1,3 +1,4 @@
+import { readModelPolicyFailure } from "../../../../src/shared/model-policy.ts";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import {
   MessageId,
@@ -78,6 +79,7 @@ export interface ProviderTurnControlServiceV2Shape {
     readonly providerThreadId: ProviderThreadId;
     readonly providerTurnId: ProviderTurnId;
     readonly messageId: MessageId;
+    readonly modelPolicyOrigin?: "person" | "nodex-agent" | "agent" | "automatic";
   }) => Effect.Effect<void, ProviderTurnControlError>;
   readonly interruptAndAwaitTerminal: (input: {
     readonly threadId: ThreadId;
@@ -389,6 +391,7 @@ export const layer: Layer.Layer<
           }
           yield* loaded.session.value
             .steerTurn({
+              modelPolicyOrigin: input.modelPolicyOrigin ?? "automatic",
               threadId: input.threadId,
               runId: run.id,
               providerThread: loaded.providerThread,
@@ -413,6 +416,14 @@ export const layer: Layer.Layer<
             .pipe(
               Effect.catch((cause) =>
                 Effect.gen(function* () {
+                  if (readModelPolicyFailure(cause))
+                    return yield* new ProviderTurnControlError({
+                      threadId: input.threadId,
+                      operation: "steer",
+                      providerTurnId: input.providerTurnId,
+                      delivery: "not_dispatched",
+                      cause,
+                    });
                   const current = yield* projections.getProviderControlContext(
                     input.threadId,
                     input,

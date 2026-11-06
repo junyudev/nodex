@@ -1,3 +1,4 @@
+import { automaticModelCatalog, modelIsOn } from "../../shared/model-policy";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentCatalog, ChatActivity, ChatSummary } from "@nodex/mobile-protocol";
 import * as Effect from "effect/Effect";
@@ -46,7 +47,7 @@ export const projectAgentCatalog = (
   preference: InboxAgentChoice,
 ): AgentCatalog => {
   const preferred = resolveFromCatalog(providers, preference, "chat");
-  const fallback = providers.find(
+  const fallback = automaticModelCatalog(providers).find(
     (provider) => isInboxChatCandidate(provider) && !providerReason(provider),
   );
   const fallbackModel = fallback && inboxDefaultChatModel(fallback);
@@ -55,7 +56,9 @@ export const projectAgentCatalog = (
       instanceId: provider.instanceId,
       label: provider.displayName ?? provider.instanceId,
       unavailableReason: providerReason(provider),
-      models: provider.models.map((model) => ({ id: model.slug, label: model.name })),
+      models: provider.models
+        .filter(modelIsOn)
+        .map((model) => ({ id: model.slug, label: model.name })),
     })),
     defaultChoice:
       preferred.kind === "ready" && !providerReason(preferred.provider)

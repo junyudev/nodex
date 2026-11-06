@@ -3,6 +3,7 @@ import {
   readHostedAppToolSessionContext,
   type AppToolAuthorityCapture,
 } from "./AppToolCaller";
+import { readModelPolicyFailure } from "../../shared/model-policy";
 import { createHash } from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -32,7 +33,9 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
     const workspace = yield* ProjectWorkspace;
     const access = yield* makeControlAuthority;
 
-    return Effect.fn("SessionHandoffAppTools.execute")(function* (input: AppToolInvocation) {
+    const execute = Effect.fn("SessionHandoffAppTools.execute")(function* (
+      input: AppToolInvocation,
+    ) {
       const parsed = parseAppToolArguments(sessionHandoffSchema, input.arguments);
       if (!parsed.success) return parsed.result;
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
@@ -100,6 +103,12 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
         );
         if (!input.caller.isActive()) return toolFailure("call_withdrawn");
         if (!target) return toolFailure("session_unavailable");
+        if (request.followUpPrompt)
+          yield* application.value.assertModelPolicy(target.thread.modelSelection, "agent", {
+            threadId:
+              readHostedAppToolSessionContext(input.caller)?.threadId ?? input.caller.threadId,
+            runId: readHostedAppToolSessionContext(input.caller)?.runId ?? input.caller.turnId,
+          });
         const result = { operationId, sessionId: request.sessionId, threadId: target.threadId };
         const existing = yield* handoffs
           .get(operationId)
@@ -113,9 +122,20 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
             threadTitle: target.thread.title,
             destinationHostId: request.destinationHostId ?? null,
             followUpPrompt: request.followUpPrompt ?? null,
+            followUpSender: {
+              threadId:
+                readHostedAppToolSessionContext(input.caller)?.threadId ?? input.caller.threadId,
+              runId: readHostedAppToolSessionContext(input.caller)?.runId ?? input.caller.turnId,
+            },
             modeLimit,
           })
-          .pipe(Effect.catch(() => Effect.succeed(null)));
+          .pipe(
+            Effect.provideService(CoreApplicationAgent, provenance),
+            Effect.catch((error) => {
+              if (readModelPolicyFailure(error)) return Effect.fail(error);
+              return Effect.succeed(null);
+            }),
+          );
         if (!operation) return toolFailure("session_handoff_unconfirmed", undefined, result);
         if (operation.sourceThreadId !== target.threadId)
           return toolFailure("handoff_binding_changed", undefined, result);
@@ -180,9 +200,19 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
           threadTitle: session.display_title,
           destinationHostId: request.destinationHostId ?? null,
           followUpPrompt: request.followUpPrompt ?? null,
+          followUpSender: {
+            threadId:
+              readHostedAppToolSessionContext(input.caller)?.threadId ?? input.caller.threadId,
+            runId: readHostedAppToolSessionContext(input.caller)?.runId ?? input.caller.turnId,
+          },
           modeLimit,
         })
-        .pipe(Effect.catch(() => Effect.succeed(null)));
+        .pipe(
+          Effect.provideService(CoreApplicationAgent, provenance),
+          Effect.catch((error) =>
+            readModelPolicyFailure(error) ? Effect.fail(error) : Effect.succeed(null),
+          ),
+        );
       if (!operation)
         return toolFailure("session_handoff_unconfirmed", undefined, {
           ...result,
@@ -192,6 +222,20 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
         return toolFailure("handoff_binding_changed", undefined, { ...result, committed: true });
       return toolSuccess({ ...result, replay: false, deliveryState: "started", operation });
     });
+    return (input: AppToolInvocation) =>
+      execute(input).pipe(
+        Effect.catch((error) => {
+          const policy = readModelPolicyFailure(error);
+          return policy
+            ? Effect.succeed(toolFailure(policy.code, policy.message))
+            : Effect.succeed(
+                toolFailure(
+                  "session_handoff_unconfirmed",
+                  error instanceof Error ? error.message : undefined,
+                ),
+              );
+        }),
+      );
   });
 
 export const make = Effect.gen(function* () {

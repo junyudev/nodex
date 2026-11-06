@@ -1,3 +1,5 @@
+import { readModelPolicyFailure } from "../../shared/model-policy";
+import { isNodexProviderId } from "../../shared/nodex-models";
 import {
   captureAppToolAuthority,
   readHostedAppToolSessionContext,
@@ -61,17 +63,26 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
     const identity = yield* CoreAuthority;
     const runtime = yield* Effect.serviceOption(AgentRuntimeApplication);
     const settings = yield* Effect.serviceOption(ApplicationSettings);
-    const runtimeTarget = (sessionId: string) =>
+    const runtimeTarget = (sessionId: string, threadId?: string) =>
       Effect.gen(function* () {
         if (Option.isNone(runtime)) return null;
         const loaded = yield* runtime.value
-          .inspect({ sessionId })
+          .inspect({ sessionId, ...(threadId ? { execution: { threadId } } : {}) })
           .pipe(
             Effect.mapError(
               (cause) => new AutomationApplicationError({ operation: "runtime-target", cause }),
             ),
           );
         if (loaded.thread.providerInstanceId === "codex") return { kind: "codex" } as const;
+        const instanceId = loaded.thread.providerInstanceId;
+        if (isNodexProviderId(instanceId))
+          return instanceId.startsWith("nodex_codex_")
+            ? { kind: "codex" as const, runtimeInstanceId: instanceId }
+            : {
+                kind: "claude" as const,
+                instanceConfigId: instanceId,
+                runtimeInstanceId: instanceId,
+              };
         if (Option.isNone(settings)) return null;
         const configured = yield* settings.value
           .snapshot()
@@ -141,7 +152,10 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           : null;
       const hosted = readHostedAppToolSessionContext(input.caller);
       const runtimeBinding = hosted
-        ? yield* runtimeTarget(targetSessionId ?? hosted.sessionId)
+        ? yield* runtimeTarget(
+            targetSessionId ?? hosted.sessionId,
+            request.kind === "cron" ? hosted.threadId : undefined,
+          )
         : null;
       const target = hosted
         ? null
@@ -221,6 +235,29 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
             "automation_model_unavailable",
             "The selected Agent doesn't offer this model. Omit model to use its first available model.",
           );
+      }
+      const policyInstanceId = agentRuntimeProviderId(backendBinding);
+      const policyModel = ("model" in fields ? fields.model : null) ?? current?.model;
+      if (
+        policyInstanceId &&
+        Option.isSome(runtime) &&
+        (policyModel || policyInstanceId.startsWith("nodex_"))
+      ) {
+        const origin = !policyModel ? "automatic" : "agent";
+        const admitted = yield* Effect.result(
+          runtime.value.assertModelPolicy(
+            { instanceId: policyInstanceId, model: policyModel ?? "default" },
+            origin,
+            hosted ? { threadId: hosted.threadId, runId: hosted.runId } : undefined,
+          ),
+        );
+        if (admitted._tag === "Failure") {
+          const policy = readModelPolicyFailure(admitted.failure);
+          return toolFailure(
+            policy?.code ?? AGENT_UNAVAILABLE,
+            policy?.message ?? AGENT_UNAVAILABLE_MESSAGE,
+          );
+        }
       }
       if (request.mode === "suggested_create" || request.mode === "suggested_update") {
         if (request.mode === "suggested_update") {

@@ -87,6 +87,8 @@ const replySchema = z.discriminatedUnion("success", [
     error: z.object({
       message: z.string(),
       tag: z.string().optional(),
+      code: z.string().optional(),
+      retryable: z.boolean().optional(),
       reason: z.string().optional(),
       acp: z
         .unknown()
@@ -243,6 +245,8 @@ export class AgentRuntimeProcessError extends Schema.TaggedError<AgentRuntimePro
     message: Schema.String,
     /** The engine failure's tag when the engine rejected a request. */
     engineTag: Schema.optional(Schema.String),
+    code: Schema.optional(Schema.String),
+    retryable: Schema.optional(Schema.Boolean),
     engineReason: Schema.optional(Schema.String),
     acp: Schema.optional(
       Schema.declare<AgentAcpFailure>(
@@ -404,6 +408,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
   yield* send({
     type: "bootstrap",
     providers: options.configuration.providers,
+    modelPolicy: options.configuration.modelPolicy,
     ...(options.configuration.host ? { hostTools: options.configuration.host.tools } : {}),
   } satisfies AgentRuntimeBootstrap);
   const processScope = yield* Scope.fork(scope);
@@ -489,6 +494,10 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
         new AgentRuntimeProcessError({
           reason: "rejected",
           message: reply.data.error.message,
+          ...(reply.data.error.code === undefined ? {} : { code: reply.data.error.code }),
+          ...(reply.data.error.retryable === undefined
+            ? {}
+            : { retryable: reply.data.error.retryable }),
           ...(reply.data.error.tag === undefined ? {} : { engineTag: reply.data.error.tag }),
           ...(reply.data.error.reason === undefined
             ? {}

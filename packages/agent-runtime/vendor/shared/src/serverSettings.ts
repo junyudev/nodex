@@ -389,7 +389,6 @@ export function applyServerSettingsPatch(
   const {
     migrateModelPreferences,
     setModelFavorites,
-    setModelsHidden,
     setProviderModelOrder,
     providerModelPreferences,
     automaticGitFetchInterval,
@@ -467,21 +466,8 @@ export function applyServerSettingsPatch(
     migrateModelPreferences?.providerModelPreferences ??
     null;
   let nextModelPreferences = initialModelPreferences;
-  for (const change of setModelsHidden ?? []) {
-    const preferences = nextModelPreferences?.[change.provider] ?? {
-      hiddenModels: [],
-      modelOrder: [],
-    };
-    const hiddenModels = preferences.hiddenModels.filter((model) => model !== change.model);
-    if (change.hidden) hiddenModels.push(change.model);
-    nextModelPreferences = {
-      ...nextModelPreferences,
-      [change.provider]: { ...preferences, hiddenModels },
-    };
-  }
   if (setProviderModelOrder) {
     const preferences = nextModelPreferences?.[setProviderModelOrder.provider] ?? {
-      hiddenModels: [],
       modelOrder: [],
     };
     nextModelPreferences = {

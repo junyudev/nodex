@@ -357,6 +357,10 @@ export type AgentRuntimeConnectionState =
 
 export interface AgentRuntimeIpcApi {
   "agent-runtime:restart": { args: [input: { readonly generation: string }]; result: void };
+  "agent-runtime:models:running-credit": {
+    args: [];
+    result: import("@nodex/agent-runtime/contracts").AgentRuntimeOperations["models.running-credit"]["output"];
+  };
   "agent-runtime:activity:read": {
     args: [];
     result: AgentRuntimeSessionActivitySnapshot;

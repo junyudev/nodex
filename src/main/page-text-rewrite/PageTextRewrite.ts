@@ -1,3 +1,4 @@
+import { readModelPolicyFailure } from "../../shared/model-policy";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -26,6 +27,8 @@ export class PageTextRewriteError extends Schema.TaggedError<PageTextRewriteErro
   "PageTextRewriteError",
   {
     code: Schema.Literals([
+      "model_off",
+      "credit_requires_person",
       "invalid_input",
       "unavailable",
       "busy",
@@ -41,6 +44,8 @@ export class PageTextRewriteError extends Schema.TaggedError<PageTextRewriteErro
 
 /** Never expose provider stderr: it can contain the selection or private runtime details. */
 export const rewriteGenerationFailure = (error: unknown): PageTextRewriteFailure => {
+  const policy = readModelPolicyFailure(error);
+  if (policy) return policy;
   const reason = agentRuntimeFailureReason(error);
   if (/401|unauthori[sz]ed|not (?:logged|signed) in|api key|authentication/i.test(reason))
     return { code: "auth", message: "Sign in to the rewrite Agent and try again" };

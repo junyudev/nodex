@@ -1,3 +1,4 @@
+import { assertTextGenerationAdmission } from "@t3tools/provider-core/server/textGenerationPolicy";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -263,6 +264,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
         },
       });
 
+      yield* assertTextGenerationAdmission;
       const child = yield* commandSpawner
         .spawn(command)
         .pipe(

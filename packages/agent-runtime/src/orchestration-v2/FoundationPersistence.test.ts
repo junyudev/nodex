@@ -2928,6 +2928,8 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
               status: "running",
               providerInstanceId,
               providerThreadId,
+              modelSelection: makeThread(threadId, now).modelSelection,
+              modelPolicyOrigin: "person",
               activeAttemptId: attemptId,
             },
           ],

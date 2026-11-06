@@ -2054,6 +2054,7 @@ export const layer: Layer.Layer<
             rootNodeId: input.rootNode.id,
             providerThread: input.providerThread,
             message: input.message,
+            modelPolicyOrigin: input.run.modelPolicyOrigin ?? "automatic",
             modelSelection: input.modelSelection,
             runtimePolicy: input.runtimePolicy,
             ...(appContext.length === 0 ? {} : { appContext }),

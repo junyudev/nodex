@@ -1,3 +1,4 @@
+import { RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
 import { SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "../nodex/SideChat.ts";
 import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
 import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
@@ -172,6 +173,7 @@ export interface ProviderSessionManagerV2Shape {
     readonly ephemeral?: boolean;
     readonly threadId: ThreadId;
     readonly providerSessionId: ProviderSessionId;
+    readonly modelPolicyOrigin?: "person" | "nodex-agent" | "agent" | "automatic" | undefined;
     readonly modelSelection: ModelSelection;
     readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
     readonly resumeFromSession?: OrchestrationV2ProviderSession;
@@ -373,6 +375,7 @@ export const layerWithOptions = (
   Layer.effect(
     ProviderSessionManagerV2,
     Effect.gen(function* () {
+      const modelPolicy = yield* RuntimeModelPolicy;
       const registry = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
       const fileSystem = yield* FileSystem.FileSystem;
       const mcpSessionRegistry = yield* McpSessionRegistry.McpSessionRegistry;
@@ -2135,6 +2138,22 @@ export const layerWithOptions = (
                     providerInstanceId: runtime.instanceId,
                   }),
                 ).pipe(
+                  Effect.andThen(
+                    modelPolicy
+                      .assert(input.modelSelection, input.modelPolicyOrigin ?? "automatic")
+                      .pipe(
+                        Effect.mapError(
+                          (cause) =>
+                            new ProviderAdapter.ProviderAdapterTurnStartError({
+                              driver: runtime.driver,
+                              threadId: input.threadId,
+                              providerThreadId: input.providerThread.id,
+                              runId: input.runId,
+                              cause,
+                            }),
+                        ),
+                      ),
+                  ),
                   Effect.andThen(requireCurrentRuntime),
                   // A start that fails or is stopped may never emit turn.terminal,
                   // so it clears its own turn or the session never goes idle. If
@@ -2229,10 +2248,53 @@ export const layerWithOptions = (
                     ),
                   ),
                 ),
+          ...(runtime.compactThread === undefined
+            ? {}
+            : {
+                compactThread: (input: Parameters<typeof runtime.startTurn>[0]) =>
+                  modelPolicy
+                    .assert(input.modelSelection, input.modelPolicyOrigin ?? "automatic")
+                    .pipe(
+                      Effect.mapError(
+                        (cause) =>
+                          new ProviderAdapter.ProviderAdapterTurnStartError({
+                            driver: runtime.driver,
+                            threadId: input.threadId,
+                            providerThreadId: input.providerThread.id,
+                            runId: input.runId,
+                            cause,
+                          }),
+                      ),
+                      Effect.andThen(runtime.compactThread!(input)),
+                    ),
+              }),
           steerTurn: (input) =>
-            observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
-              Effect.andThen(requireCurrentRuntime),
-              Effect.andThen(runtime.steerTurn(input).pipe(turnMetrics("steer"))),
+            Effect.gen(function* () {
+              const records = yield* projectionStore.getThreadRecords(input.threadId, ["runs"], {
+                runIds: [input.runId],
+              });
+              yield* modelPolicy.assert(
+                records.runs[0]?.modelSelection ?? {
+                  instanceId: runtime.instanceId,
+                  model: runtime.providerSession.model ?? records.thread.modelSelection.model,
+                },
+                input.modelPolicyOrigin ?? "automatic",
+              );
+            }).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProviderAdapter.ProviderAdapterProtocolError({
+                    driver: runtime.driver,
+                    detail: cause.message,
+                    cause,
+                  }),
+              ),
+              Effect.andThen(
+                observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
+                  Effect.andThen(requireCurrentRuntime),
+                  Effect.andThen(runtime.steerTurn(input).pipe(turnMetrics("steer"))),
+                ),
+              ),
             ),
           interruptTurn: (input) =>
             Effect.acquireUseRelease(
@@ -2296,12 +2358,43 @@ export const layerWithOptions = (
                 }),
             ),
           respondToRuntimeRequest: (input) =>
-            observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
-              Effect.andThen(requireCurrentRuntime),
+            Effect.gen(function* () {
+              const context = yield* projectionStore.getRuntimeResponseContext(
+                threadId,
+                input.requestId,
+              );
+              const runId = context.node?.runId;
+              const records = yield* projectionStore.getThreadRecords(threadId, ["runs"], {
+                runIds: runId ? [runId] : [],
+              });
+              yield* modelPolicy.assert(
+                records.runs[0]?.modelSelection ?? {
+                  instanceId: runtime.instanceId,
+                  model:
+                    context.session?.model ??
+                    runtime.providerSession.model ??
+                    records.thread.modelSelection.model,
+                },
+                input.modelPolicyOrigin ?? "automatic",
+              );
+            }).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProviderAdapter.ProviderAdapterProtocolError({
+                    driver: runtime.driver,
+                    detail: cause.message,
+                    cause,
+                  }),
+              ),
               Effect.andThen(
-                runtime
-                  .respondToRuntimeRequest(input)
-                  .pipe(turnMetrics("runtime-request-response")),
+                observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
+                  Effect.andThen(requireCurrentRuntime),
+                  Effect.andThen(
+                    runtime
+                      .respondToRuntimeRequest(input)
+                      .pipe(turnMetrics("runtime-request-response")),
+                  ),
+                ),
               ),
             ),
         };
@@ -2631,6 +2724,18 @@ export const layerWithOptions = (
           sessionOpen.withLock(
             input.providerSessionId,
             Effect.gen(function* () {
+              yield* modelPolicy
+                .assert(input.modelSelection, input.modelPolicyOrigin ?? "automatic")
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new ProviderSessionOpenError({
+                        instanceId: input.modelSelection.instanceId,
+                        providerSessionId: input.providerSessionId,
+                        cause,
+                      }),
+                  ),
+                );
               const cwd = input.runtimePolicy.cwd;
               if (cwd !== null) {
                 const workspaceIsDirectory = yield* fileSystem.stat(cwd).pipe(

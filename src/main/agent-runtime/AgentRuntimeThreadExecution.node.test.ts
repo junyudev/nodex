@@ -479,6 +479,11 @@ it.effect(
         interactionMode: "plan",
       });
       assert.strictEqual((f.messages[0] as { sessionId: string }).sessionId, "session");
+      yield* f.execution.followUp("thread", "continue", "agent-move", undefined, {
+        threadId: "outside",
+        runId: "outside-run",
+      });
+      assert.deepInclude(f.messages[2], { senderThreadId: "outside", senderRunId: "outside-run" });
     }),
 );
 

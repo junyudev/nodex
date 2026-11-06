@@ -261,6 +261,7 @@ const runtimeFixture = (
     withdrawOnInspect?: boolean;
     wrongOperation?: boolean;
     targetMode?: "approval-required" | "full-access";
+    denyCredit?: boolean;
   } = {},
 ) => {
   let active = true;
@@ -305,6 +306,15 @@ const runtimeFixture = (
         },
       } as never),
       Effect.provideService(AgentRuntimeApplication, {
+        assertModelPolicy: () =>
+          options.denyCredit
+            ? Effect.fail(
+                Object.assign(
+                  new Error("Only the person can start Nodex models. Choose another provider."),
+                  { code: "credit_requires_person", retryable: false },
+                ),
+              )
+            : Effect.void,
         inspect: (target: unknown) =>
           Effect.gen(function* () {
             inspections.push({ target, agent: yield* CoreApplicationAgent });
@@ -416,5 +426,16 @@ it.effect("retains the caller ceiling and rejects a handoff follow-up above it",
       "error.code": "runtime_mode_escalation_denied",
     });
     assert.isEmpty(denied.starts);
+  }),
+);
+
+it.effect("refuses a forbidden credit follow-up before launching any handoff", () =>
+  Effect.gen(function* () {
+    const f = runtimeFixture({ denyCredit: true });
+    const execute = yield* f.execute;
+    const result = yield* execute({ ...input, caller: f.caller });
+    assert.isTrue(result.isError);
+    assert.deepEqual(result.structuredContent, { error: { code: "credit_requires_person" } });
+    assert.lengthOf(f.starts, 0);
   }),
 );

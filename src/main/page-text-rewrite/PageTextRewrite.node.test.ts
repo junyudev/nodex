@@ -267,3 +267,32 @@ it.effect("enforces the total rewrite deadline and cleans the model up", () =>
     assert.isTrue(yield* Deferred.isDone(stopped));
   }),
 );
+
+it.effect.each(["model_off", "credit_requires_person"] as const)(
+  "keeps a Refine %s refusal actionable instead of retrying another model",
+  (code) =>
+    Effect.gen(function* () {
+      let calls = 0;
+      const message = "GPT-6.1 Sol on Nodex is off in Settings → Models. Choose another model.";
+      const service = yield* make.pipe(
+        provide({
+          catalog: () => Effect.succeed([provider()]),
+          generateStructured: () => {
+            calls += 1;
+            return Effect.fail(
+              new AgentRuntimeApplicationError({
+                operation: "structured-generation",
+                code,
+                message,
+                retryable: false,
+              }),
+            );
+          },
+        }),
+      );
+      const failure = yield* service.generate(input).pipe(Effect.flip);
+      assert.equal(failure.code, code);
+      assert.equal(failure.message, message);
+      assert.equal(calls, 1);
+    }),
+);

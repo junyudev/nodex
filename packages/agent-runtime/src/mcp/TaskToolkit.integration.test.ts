@@ -1,3 +1,5 @@
+import { RuntimeModelPolicy, make as makeModelPolicy } from "../nodex/ModelPolicy.ts";
+import { DEFAULT_MODEL_POLICY, setModelOn } from "../../../../src/shared/model-policy.ts";
 import { TASK_RESULT_DELIVERY_META } from "./TaskResultDelivery.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
@@ -83,6 +85,7 @@ const declaredFailure = (result: McpSchema.CallToolResult) => {
 const parentThreadId = ThreadId.make("thread:mcp-task-parent");
 const projectId = ProjectId.make("project:mcp-task");
 const codexInstanceId = ProviderInstanceId.make("codex");
+const creditInstanceId = ProviderInstanceId.make("nodex_codex_00000000000000000000000000000000");
 const claudeInstanceId = ProviderInstanceId.make("claudeAgent");
 const codexModel = "gpt-5.4";
 const claudeModel = "claude-sonnet-4-6";
@@ -470,8 +473,17 @@ describe("task tools", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const cwd = yield* checkpointWorkspace("mcp-task-tools");
+        const policyOwner = yield* makeModelPolicy(DEFAULT_MODEL_POLICY, {});
         const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
         const layerRegistry = ProviderAdapterRegistry.layerFromAdapters([
+          makeDeterministicAdapter({
+            instanceId: creditInstanceId,
+            driver: ProviderDriverKind.make("codex"),
+            capabilities: CodexProviderCapabilitiesV2,
+            capturedTurns,
+            shouldComplete: () => true,
+            response: () => "Credit must not be selected implicitly",
+          }),
           makeDeterministicAdapter({
             instanceId: codexInstanceId,
             driver: ProviderDriverKind.make("codex"),
@@ -552,6 +564,14 @@ describe("task tools", () => {
           ],
         };
         const layerProviderRegistry = ProviderRegistryMock.layer([
+          {
+            ...makeProviderSnapshot({
+              instanceId: creditInstanceId,
+              driver: ProviderDriverKind.make("codex"),
+              model: "gpt-6.1-sol",
+            }),
+            source: "nodex",
+          },
           makeProviderSnapshot({
             instanceId: codexInstanceId,
             driver: ProviderDriverKind.make("codex"),
@@ -578,6 +598,7 @@ describe("task tools", () => {
           Layer.provide(layerProviderRegistry),
           Layer.provide(ServerSettings.layerTest()),
           Layer.provide(NodeServices.layer),
+          Layer.provide(Layer.succeed(RuntimeModelPolicy, policyOwner)),
         );
 
         yield* Effect.gen(function* () {
@@ -682,7 +703,70 @@ describe("task tools", () => {
           const opencode = models.providers.find((p) => p.driverKind === "opencode");
           expect(opencode?.available).toBe(false);
           expect(opencode?.constraints.length).toBeGreaterThan(0);
+          expect(
+            models.providers.find((provider) => provider.providerInstanceId === creditInstanceId)
+              ?.models,
+          ).toEqual([]);
 
+          // A next-turn picker change must not change this Run's credit authority.
+          yield* orchestrator.dispatch({
+            type: "thread.model-selection.set",
+            commandId: CommandId.make("caller-next-turn-credit"),
+            threadId: parentThreadId,
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("nodex_codex_00000000000000000000000000000000"),
+              model: "gpt-6.1-sol",
+            },
+          });
+          const stillNative = yield* decodeModels(yield* call("list_agent_models", {})).pipe(
+            Effect.orDie,
+          );
+          expect(stillNative.inherited?.providerInstanceId).toBe(codexInstanceId);
+          const deniedCredit = declaredFailure(
+            yield* invoke("delegate_task", {
+              task: "Must not spend credit",
+              target: {
+                providerInstanceId: "nodex_codex_00000000000000000000000000000000",
+                model: "gpt-6.1-sol",
+              },
+            }),
+          );
+          expect(deniedCredit).toMatchObject({ code: "credit_requires_person" });
+          yield* orchestrator.dispatch({
+            type: "thread.model-selection.set",
+            commandId: CommandId.make("caller-next-turn-native"),
+            threadId: parentThreadId,
+            modelSelection: codexSelection,
+          });
+          const claudeOff = setModelOn(
+            DEFAULT_MODEL_POLICY,
+            { instanceId: claudeInstanceId, driver: "claudeAgent" },
+            claudeModel,
+            false,
+          );
+          yield* policyOwner.replace({ policy: claudeOff, providers: {} });
+          const deniedExplicit = declaredFailure(
+            yield* invoke("delegate_task", {
+              task: "Must not start",
+              target: { providerInstanceId: claudeInstanceId, model: claudeModel },
+            }),
+          );
+          expect(deniedExplicit).toMatchObject({ code: "model_off" });
+          const deniedFirst = declaredFailure(
+            yield* invoke("delegate_task", {
+              task: "Must not choose first",
+              target: { providerInstanceId: claudeInstanceId },
+            }),
+          );
+          expect(deniedFirst).toMatchObject({ code: "model_unavailable" });
+          const deniedDriver = declaredFailure(
+            yield* invoke("delegate_task", {
+              task: "Must not choose driver",
+              target: { driverKind: "claudeAgent" },
+            }),
+          );
+          expect(deniedDriver).toMatchObject({ code: "provider_unavailable" });
+          yield* policyOwner.replace({ policy: DEFAULT_MODEL_POLICY, providers: {} });
           // Async delegation, then an explicit wait for its result.
           const delegateArgs = {
             task: delegatedPrompt,
@@ -774,6 +858,13 @@ describe("task tools", () => {
             acknowledged.subagents.find((task) => task.id === started.taskId)?.completionDelivery,
           ).toMatchObject({ state: "acknowledged", observedByRunId: parentRun.id });
 
+          yield* policyOwner.replace({ policy: claudeOff, providers: {} });
+          expect(
+            declaredFailure(
+              yield* invoke("task_send", { taskId: started.taskId, message: "Must not continue" }),
+            ),
+          ).toMatchObject({ code: "model_off" });
+          yield* policyOwner.replace({ policy: DEFAULT_MODEL_POLICY, providers: {} });
           // The task's conversation is readable through its taskId only.
           const read = yield* decodeTaskRead(
             yield* call("task_read", { taskId: started.taskId, limit: 10 }),

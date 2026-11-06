@@ -2,6 +2,9 @@ import { ProviderInstanceId, TextGenerationError } from "@t3tools/contracts";
 import { OpenCodeSettings } from "../settings.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
+import { TextGenerationAdmission } from "@t3tools/provider-core/server/textGenerationPolicy";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -24,6 +27,7 @@ const runtimeMock = {
     authHeaders: [] as Array<string | null>,
     closeCalls: [] as string[],
     sessionCreateCalls: 0,
+    beforeSessionCreated: async () => {},
     connectionError: undefined as Error | undefined,
     sessionCreateError: undefined as unknown,
     sessionResult: undefined as { data?: { id: string } } | undefined,
@@ -39,6 +43,7 @@ const runtimeMock = {
     this.state.authHeaders.length = 0;
     this.state.closeCalls.length = 0;
     this.state.sessionCreateCalls = 0;
+    this.state.beforeSessionCreated = async () => {};
     this.state.connectionError = undefined;
     this.state.sessionCreateError = undefined;
     this.state.sessionResult = undefined;
@@ -97,6 +102,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntime.OpenCodeRuntime["Service"] = {
       session: {
         create: async () => {
           runtimeMock.state.sessionCreateCalls += 1;
+          await runtimeMock.state.beforeSessionCreated();
           if (runtimeMock.state.sessionCreateError !== undefined) {
             throw runtimeMock.state.sessionCreateError;
           }
@@ -230,6 +236,57 @@ const advanceIdleClock = Effect.gen(function* () {
 });
 
 it.layer(layerOpenCodeTextGenerationTest)("OpenCodeTextGeneration", (it) => {
+  it.effect("rechecks utility admission after asynchronous session preparation", () =>
+    withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (generation) =>
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>();
+        let resume = () => {};
+        const gate = new Promise<void>((resolve) => {
+          resume = resolve;
+        });
+        let on = true;
+        runtimeMock.state.beforeSessionCreated = async () => {
+          Deferred.doneUnsafe(entered, Effect.void);
+          await gate;
+        };
+        const admission = Effect.suspend(() =>
+          on
+            ? Effect.void
+            : Effect.fail(
+                new TextGenerationError({
+                  operation: "generateCommitMessage",
+                  detail: "Model is off",
+                }),
+              ),
+        );
+        const task = yield* generation
+          .generateCommitMessage({
+            cwd: process.cwd(),
+            branch: null,
+            stagedSummary: "",
+            stagedPatch: "",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("opencode"),
+              model: "opencode/model-free",
+            },
+          })
+          .pipe(
+            Effect.provideService(TextGenerationAdmission, admission),
+            Effect.flip,
+            Effect.forkChild,
+          );
+        try {
+          yield* Deferred.await(entered);
+          on = false;
+          resume();
+          expect((yield* Fiber.join(task)).detail).toBe("Model is off");
+          expect(runtimeMock.state.promptUrls).toEqual([]);
+        } finally {
+          resume();
+        }
+      }),
+    ),
+  );
   it.effect("rejects structured images before opening a native session", () =>
     withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (generation) =>
       Effect.gen(function* () {

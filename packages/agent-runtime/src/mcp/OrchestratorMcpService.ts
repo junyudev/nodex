@@ -1,3 +1,5 @@
+import { RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
+import { canStartModel } from "../../../../src/shared/model-policy.ts";
 import { recordTaskResult } from "./TaskResultDelivery.ts";
 import { pendingUserQuestionIds, readUserQuestion } from "../nodex/PendingUserQuestions.ts";
 import {
@@ -183,6 +185,8 @@ function threadManagementFailure(error: unknown): OrchestratorMcpFailure {
     case "ThreadManagementProjectThreadsListError":
     case "ThreadManagementDurableRunProjectionError":
       return failure("orchestration_error", error.message);
+    case "ModelPolicyError":
+      return failure(error.code, error.message);
     case "ThreadManagementProviderInstanceDisabledError":
       return failure("invalid_request", error.message);
   }
@@ -554,7 +558,6 @@ export const make = Effect.gen(function* () {
   const threadManagement = yield* ThreadManagementService.ThreadManagementService;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const providerAdapters = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
-  const serverSettings = yield* ServerSettings.ServerSettingsService;
 
   const requireCapability = (scope: McpInvocationScope) =>
     scope.capabilities.has("orchestration")
@@ -681,9 +684,7 @@ export const make = Effect.gen(function* () {
   const resolveTargetRechecking = (input: Parameters<typeof resolveTarget>[0]) => {
     const instanceId =
       input.target?.providerInstanceId ??
-      (input.target?.driverKind === undefined
-        ? input.parent.thread.modelSelection.instanceId
-        : undefined);
+      (input.target?.driverKind === undefined ? input.callerSelection.instanceId : undefined);
     const resolved = resolveTarget(input);
     if (instanceId === undefined) return resolved;
     return resolved.pipe(
@@ -699,6 +700,7 @@ export const make = Effect.gen(function* () {
 
   const resolveTarget = (input: {
     readonly parent: Pick<OrchestrationV2ThreadProjection, "thread">;
+    readonly callerSelection: ModelSelection;
     readonly target: OrchestratorMcpTarget | undefined;
     readonly providers: ReadonlyArray<ServerProvider>;
     /**
@@ -713,14 +715,26 @@ export const make = Effect.gen(function* () {
     readonly skipProjectEnablementFilter?: boolean;
   }): Effect.Effect<ResolvedTarget, OrchestratorMcpFailure> =>
     Effect.gen(function* () {
+      const policyOwner = yield* RuntimeModelPolicy;
+      const { policy } = yield* policyOwner.current;
+      const origin = yield* policyOwner.origin(true, input.callerSelection.instanceId);
       const requestedInstanceId = input.target?.providerInstanceId;
       const requestedDriver = input.target?.driverKind;
+      if (requestedInstanceId !== undefined && input.target?.model !== undefined)
+        yield* policyOwner
+          .assert({ instanceId: requestedInstanceId, model: input.target.model }, origin)
+          .pipe(Effect.mapError((error) => failure(error.code, error.message)));
+
       const orchestrationCapableInstanceIds = yield* loadOrchestrationCapableInstanceIds();
       let instanceId = requestedInstanceId;
 
       if (instanceId === undefined && requestedDriver !== undefined) {
         const candidates = input.providers.filter(
           (provider) =>
+            provider.source !== "nodex" &&
+            provider.models.some((model) =>
+              canStartModel(policy, provider, model.slug, "automatic"),
+            ) &&
             provider.driver === requestedDriver &&
             orchestrationCapableInstanceIds.has(provider.instanceId),
         );
@@ -739,7 +753,7 @@ export const make = Effect.gen(function* () {
           (candidate) => providerConstraints(candidate, true).length === 0,
         );
         const inheritedCandidate = healthyCandidates.find(
-          (candidate) => candidate.instanceId === input.parent.thread.modelSelection.instanceId,
+          (candidate) => candidate.instanceId === input.callerSelection.instanceId,
         );
         const orderedCandidates = [
           ...(inheritedCandidate === undefined ? [] : [inheritedCandidate]),
@@ -766,7 +780,7 @@ export const make = Effect.gen(function* () {
           );
         }
       }
-      instanceId ??= input.parent.thread.modelSelection.instanceId;
+      instanceId ??= input.callerSelection.instanceId;
 
       const provider = input.providers.find((candidate) => candidate.instanceId === instanceId);
       if (provider === undefined) {
@@ -792,19 +806,24 @@ export const make = Effect.gen(function* () {
         );
       }
 
-      const inheritedSelection = input.parent.thread.modelSelection;
+      const inheritedSelection = input.callerSelection;
       const requestedModel = input.target?.model;
       const model =
         requestedModel ??
         (instanceId === inheritedSelection.instanceId
           ? inheritedSelection.model
-          : provider?.models[0]?.slug);
+          : provider?.models.find((model) =>
+              canStartModel(policy, provider, model.slug, "automatic"),
+            )?.slug);
       if (model === undefined) {
         return yield* failure(
           "model_unavailable",
           `Provider ${instanceId} has no model available for inheritance.`,
         );
       }
+      yield* policyOwner
+        .assert({ instanceId, model }, origin)
+        .pipe(Effect.mapError((error) => failure(error.code, error.message)));
       if (
         requestedModel !== undefined &&
         provider !== undefined &&
@@ -1324,18 +1343,18 @@ export const make = Effect.gen(function* () {
         const { parent, defaults } = yield* loadCaller(scope);
         const providers = yield* loadProviders;
         const orchestrationCapableInstanceIds = yield* loadOrchestrationCapableInstanceIds();
-        // Models the user hid from pickers stay out of the catalog agents choose from.
-        const modelPreferences = yield* serverSettings.getSettings.pipe(
-          Effect.map((settings) => settings.providerModelPreferences ?? {}),
-          Effect.mapError(() => failure("orchestration_error", "Unable to read server settings.")),
-        );
+        const owner = yield* RuntimeModelPolicy;
+        const { policy } = yield* owner.current;
+        const run = scope.thread ? yield* sourceRun(scope as McpThreadInvocationScope) : undefined;
+        const callerSelection = run?.modelSelection ?? parent?.thread.modelSelection;
+        const origin = yield* owner.origin(true, callerSelection?.instanceId);
         return {
           inherited:
-            parent === undefined
+            callerSelection === undefined
               ? null
               : {
-                  providerInstanceId: parent.thread.modelSelection.instanceId,
-                  model: parent.thread.modelSelection.model,
+                  providerInstanceId: callerSelection.instanceId,
+                  model: callerSelection.model,
                   interactionMode: defaults.interactionMode,
                 },
           providers: providers.map((provider) => {
@@ -1349,11 +1368,7 @@ export const make = Effect.gen(function* () {
               displayName: provider?.displayName ?? null,
               models:
                 provider?.models
-                  .filter(
-                    (model) =>
-                      model.isCustom ||
-                      !modelPreferences[provider.instanceId]?.hiddenModels.includes(model.slug),
-                  )
+                  .filter((model) => canStartModel(policy, provider, model.slug, origin))
                   .map((model) => ({
                     id: model.slug,
                     label: model.name ?? null,
@@ -1394,6 +1409,7 @@ export const make = Effect.gen(function* () {
         const isRetryOfAcceptedDelegation = yield* threadManagement.hasReceipt(commandId);
         const target = yield* resolveTargetRechecking({
           parent,
+          callerSelection: parentRun.modelSelection,
           target: input.target,
           providers,
           skipProjectEnablementFilter: isRetryOfAcceptedDelegation,
@@ -1528,6 +1544,8 @@ export const make = Effect.gen(function* () {
       if (input.action === "read") return { requestId: request.id, questions: item.questions };
       if (input.answers === undefined)
         return yield* failure("invalid_request", "This action needs `answers`.");
+      const caller = yield* requireThreadScope(scope, "task_question");
+      const callerRun = yield* sourceRun(caller);
       const { defaults } = yield* loadControllableThread(scope, threadId);
       const key = yield* requestKey();
       const result = yield* threadManagement
@@ -1541,7 +1559,11 @@ export const make = Effect.gen(function* () {
           }),
           requestId: request.id,
           answers: input.answers,
-          respondedBy: { kind: "agent", senderThreadId: yield* taskOwner(scope, input.taskId) },
+          respondedBy: {
+            kind: "agent",
+            senderThreadId: caller.thread.threadId,
+            ...(callerRun ? { senderRunId: callerRun.id } : {}),
+          },
           requirePending: true,
         })
         .pipe(Effect.provideService(DispatchModeLimit, defaults), Effect.mapError(dispatchFailure));

@@ -987,7 +987,7 @@ describe("synchronized model preferences", () => {
   const provider = ProviderInstanceId.make("codex_work");
   const legacy = {
     favorites: [{ provider, model: "sol" }],
-    providerModelPreferences: { [provider]: { hiddenModels: ["astra"], modelOrder: ["sol"] } },
+    providerModelPreferences: { [provider]: { modelOrder: ["sol"] } },
   };
 
   it("keeps concurrent adds and removes of the same favorite idempotent", () => {
@@ -999,36 +999,12 @@ describe("synchronized model preferences", () => {
     expect(applyServerSettingsPatch(removed, remove).favorites).toEqual([]);
   });
 
-  it("preserves unrelated models and providers during bulk visibility and order edits", () => {
+  it("preserves another provider's model order", () => {
     const otherProvider = ProviderInstanceId.make("claude_work");
-    const initial = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
-      providerModelPreferences: {
-        ...legacy.providerModelPreferences,
-        [otherProvider]: { hiddenModels: ["opus"], modelOrder: ["sonnet", "opus"] },
-      },
-    });
-    const mobile = applyServerSettingsPatch(initial, {
-      setModelsHidden: [{ provider, model: "luna", hidden: true }],
-    });
-    const web = applyServerSettingsPatch(mobile, {
-      setModelsHidden: [
-        { provider, model: "astra", hidden: false },
-        { provider, model: "sol", hidden: true },
-      ],
-      setProviderModelOrder: { provider, modelOrder: ["sol", "luna", "astra"] },
-    });
-    expect(web.providerModelPreferences?.[provider]).toEqual({
-      hiddenModels: ["luna", "sol"],
-      modelOrder: ["sol", "luna", "astra"],
-    });
-    expect(web.providerModelPreferences?.[otherProvider]).toEqual(
-      initial.providerModelPreferences?.[otherProvider],
-    );
-    expect(
-      applyServerSettingsPatch(web, {
-        setProviderModelOrder: { provider, modelOrder: [] },
-      }).providerModelPreferences?.[provider],
-    ).toEqual({ hiddenModels: ["luna", "sol"], modelOrder: [] });
+    const initial = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, { providerModelPreferences: { ...legacy.providerModelPreferences, [otherProvider]: { modelOrder: ["sonnet", "opus"] } } });
+    const updated = applyServerSettingsPatch(initial, { setProviderModelOrder: { provider, modelOrder: ["sol", "luna", "astra"] } });
+    expect(updated.providerModelPreferences?.[otherProvider]).toEqual(initial.providerModelPreferences?.[otherProvider]);
+    expect(updated.providerModelPreferences?.[provider]?.modelOrder).toEqual(["sol", "luna", "astra"]);
   });
 
   it("migrates saved lists independently without claiming empty legacy lists", () => {
@@ -1088,39 +1064,6 @@ describe("synchronized model preferences", () => {
         setModelFavorites: [{ provider, model: "astra", favorite: false }],
       }).favorites,
     ).toEqual([]);
-  });
-
-  it("sets visibility against the latest state without replacing other models or their order", () => {
-    const initial = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
-      providerModelPreferences: legacy.providerModelPreferences,
-    });
-    const first = applyServerSettingsPatch(initial, {
-      setModelsHidden: [{ provider, model: "sol", hidden: true }],
-    });
-    const second = applyServerSettingsPatch(first, {
-      setModelsHidden: [{ provider, model: "luna", hidden: true }],
-    });
-    expect(second.providerModelPreferences?.[provider]).toEqual({
-      hiddenModels: ["astra", "sol", "luna"],
-      modelOrder: ["sol"],
-    });
-    const restored = applyServerSettingsPatch(second, {
-      setModelsHidden: [{ provider, model: "sol", hidden: false }],
-    });
-    expect(restored.providerModelPreferences?.[provider]).toEqual({
-      hiddenModels: ["astra", "luna"],
-      modelOrder: ["sol"],
-    });
-    expect(
-      applyServerSettingsPatch(restored, {
-        setModelsHidden: [{ provider, model: "sol", hidden: false }],
-      }).providerModelPreferences,
-    ).toEqual(restored.providerModelPreferences);
-    expect(
-      applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
-        setModelsHidden: [{ provider, model: "sol", hidden: true }],
-      }).providerModelPreferences?.[provider]?.hiddenModels,
-    ).toEqual(["sol"]);
   });
 
   it("keeps the same model on different provider instances as separate favorites", () => {

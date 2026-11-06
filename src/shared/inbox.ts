@@ -1,3 +1,4 @@
+import { modelIsOn, spendsNodexCredit } from "./model-policy";
 import type { CodexThreadActiveFlag, CodexThreadStatusType } from "./types";
 import type { AgentRuntimeLaunch } from "./agent-runtime-api";
 import {
@@ -478,25 +479,35 @@ const INBOX_SUGGESTION_MODEL_PREFERENCES: Readonly<Partial<Record<string, string
 
 /** The model an omitted suggestion model resolves to; the catalog default when the preference is absent. */
 export const inboxDefaultSuggestionModel = <
-  Model extends { readonly slug: string; readonly isDefault?: boolean },
+  Model extends {
+    readonly slug: string;
+    readonly isDefault?: boolean;
+    readonly policy?: { readonly on: boolean };
+  },
 >(provider: {
   readonly driver: string;
   readonly models: readonly Model[];
 }): Model | undefined => {
   const preferred = INBOX_SUGGESTION_MODEL_PREFERENCES[provider.driver];
   return (
-    provider.models.find((model) => model.slug === preferred) ??
-    provider.models.find((model) => model.isDefault) ??
-    provider.models[0]
+    provider.models.find((model) => modelIsOn(model) && model.slug === preferred) ??
+    provider.models.find((model) => modelIsOn(model) && model.isDefault) ??
+    provider.models.find(modelIsOn)
   );
 };
 
 /** A model an omitted chat model resolves to: the Agent's catalog default. */
 export const inboxDefaultChatModel = <
-  Model extends { readonly slug: string; readonly isDefault?: boolean },
+  Model extends {
+    readonly slug: string;
+    readonly isDefault?: boolean;
+    readonly policy?: { readonly on: boolean };
+  },
 >(provider: {
   readonly models: readonly Model[];
-}): Model | undefined => provider.models.find((model) => model.isDefault) ?? provider.models[0];
+}): Model | undefined =>
+  provider.models.find((model) => modelIsOn(model) && model.isDefault) ??
+  provider.models.find(modelIsOn);
 
 /**
  * Suggestions look things up and choose models as well as routing, so until the user chooses an
@@ -551,6 +562,7 @@ export function inboxOfferedModels(
   const rank = (model: InboxProviderModel) =>
     model === fallback ? 0 : useModelGuide && inboxModelGuideEntry(model) ? 1 : 2;
   return provider.models
+    .filter(modelIsOn)
     .map((model, index) => ({ model, index }))
     .sort((left, right) => rank(left.model) - rank(right.model) || left.index - right.index)
     .slice(0, MAX_INBOX_MODELS_PER_AGENT)
@@ -593,6 +605,13 @@ export function resolveInboxModel(
       ? inboxDefaultSuggestionModel(provider)
       : inboxDefaultChatModel(provider);
   if (!model) return { kind: "unavailable", message: "The selected model is unavailable" };
+  if (!modelIsOn(model))
+    return {
+      kind: "unavailable",
+      message: `${model.name} on ${spendsNodexCredit(provider) ? "Nodex" : (provider.displayName ?? provider.instanceId)} is off in Settings → Models. Choose another model.`,
+    };
+  if (!choice.model && spendsNodexCredit(provider))
+    return { kind: "unavailable", message: "Choose a model explicitly to use Nodex credit." };
   // Named outright, since a utility generation left without an effort picks its own, and what the
   // Inbox shows is what runs. An unchosen chat effort stays unset, for the model to decide.
   const requested = inboxRequestedEffort(provider, choice, purpose);

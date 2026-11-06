@@ -1,3 +1,4 @@
+import type { ModelPolicyError } from "../nodex/ModelPolicy.ts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
   CommandId,
@@ -38,6 +39,7 @@ export class ThreadTitleRegenerationService extends Context.Service<
       | ServerSettingsError
       // `complete` dispatches thread.title.regeneration.complete, a command
       // the enablement chokepoint never gates; the type stays accurate anyway.
+      | ModelPolicyError
       | ThreadManagementService.ThreadManagementProviderInstanceDisabledError
     >;
   }
@@ -113,6 +115,7 @@ const make = Effect.gen(function* () {
         projection.thread.projectId,
       ).settings;
       const result = yield* textGeneration.generateThreadTitle({
+        automatic: true,
         cwd: projection.thread.worktreePath ?? project.value.workspaceRoot,
         message: context.message,
         attachments: context.attachments,

@@ -5,7 +5,7 @@ import {
 } from "./chatAttachment.ts";
 import * as Schema from "effect/Schema";
 
-import { MessageId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { MessageId, ThreadId, RunId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 export const ProviderApprovalPolicy = Schema.Literals([
   "untrusted",
@@ -95,6 +95,7 @@ export type UserInputAttachments = typeof UserInputAttachments.Type;
 export const UserInputResponder = Schema.Struct({
   kind: Schema.Literal("agent"),
   senderThreadId: ThreadId,
+  senderRunId: Schema.optional(Schema.NullOr(RunId)),
   senderSessionId: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
 });
 export type UserInputResponder = typeof UserInputResponder.Type;

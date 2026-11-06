@@ -445,6 +445,7 @@ export interface ProviderAdapterV2TurnInput {
   readonly hostOrchestrationInstructions?: string;
   readonly appThread: OrchestrationV2AppThread;
   readonly threadId: ThreadId;
+  readonly modelPolicyOrigin?: "person" | "nodex-agent" | "agent" | "automatic" | undefined;
   readonly runId: RunId;
   readonly runOrdinal: number;
   /** Whether the current native session has an accepted turn; omitted when unknown. */
@@ -466,6 +467,7 @@ export interface ProviderAdapterV2TurnInput {
 }
 
 export interface ProviderAdapterV2SteerInput {
+  readonly modelPolicyOrigin?: "person" | "nodex-agent" | "agent" | "automatic";
   readonly threadId: ThreadId;
   readonly runId: RunId;
   readonly providerThread: OrchestrationV2ProviderThread;
@@ -485,6 +487,7 @@ export interface ProviderAdapterV2InterruptInput {
 }
 
 export interface ProviderAdapterV2RuntimeRequestResponseInput {
+  readonly modelPolicyOrigin?: "person" | "nodex-agent" | "agent" | "automatic";
   readonly requestId: RuntimeRequestId;
   readonly decision?: ProviderApprovalDecision;
   readonly optionId?: string;

@@ -405,3 +405,24 @@ opens links externally. See [Workbench link opening](product-specs/workbench-she
 - [Security](SECURITY.md) for diagnostics, sandbox, and trust boundaries.
 - [Settings Route Behavior](product-specs/settings-route-behavior.md) for UI
   routing and ownership.
+
+## Model policy
+
+`server.model_policy` is a Profile preference owned by ApplicationSettings. It is independent
+of usage-meter visibility and applies to Runtime execution as well as catalogs.
+
+```toml
+[server.model_policy]
+providersOff = []
+exceptions = []
+agentsMayChooseCredit = false
+```
+
+The arrays store provider keys and model exception keys. A Nodex provider key is `nodex`;
+its model key is a JSON array such as `["nodex","codex","gpt-6.1-sol"]`. Other model keys
+contain the configured Runtime instance ID and the exact model ID. Prefer the shared policy
+helpers when changing these keys; provider switches preserve model exceptions. OpenCode's
+default is free models on; all other models default on. Malformed stored policy fails the
+settings read rather than enabling models. Changes synchronize across windows and reach
+Runtime admission immediately when applied. See [Model policy behavior](product-specs/model-policy-behavior.md)
+for origin rules, retirement and native limitations.

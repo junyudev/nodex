@@ -1,3 +1,5 @@
+import { modelPolicyCatalog } from "../agent-runtime/model-policy-catalog";
+import { isProviderOn } from "../../shared/model-policy";
 import { NodexAccount } from "../nodex-account/NodexAccount";
 import {
   managedNodexProviders,
@@ -202,6 +204,7 @@ const supervisor = Layer.effectContext(
             codexLaunch.configOverrides,
           ],
           providers: [snapshot.claudeAgents, snapshot.openCodeAgents, snapshot.acpAgents],
+          modelPolicy: snapshot.modelPolicy,
           nodex: (yield* nodexAccount.managed)?.identity ?? null,
         };
         return createHash("sha256").update(JSON.stringify(declaration)).digest("hex");
@@ -214,9 +217,15 @@ const supervisor = Layer.effectContext(
     const providerCatalog = {
       ...keptProviderCatalog,
       project: (providers: AgentRuntimeOperations["providers.read"]["output"]) =>
-        nodexAccount.managed.pipe(
-          Effect.map((managed) => projectManagedNodexCatalog(providers, managed)),
-        ),
+        Effect.gen(function* () {
+          const managed = yield* nodexAccount.managed;
+          const { modelPolicy } = yield* settings.snapshot().pipe(Effect.orDie);
+          return modelPolicyCatalog(
+            projectManagedNodexCatalog(providers, managed),
+            modelPolicy,
+            managed?.identity ?? null,
+          );
+        }),
     };
     // Projectless work and Agent execution's own working directory share one Profile directory;
     // the app path is never a working directory (packaged, it is a file inside the archive).
@@ -574,7 +583,13 @@ const supervisor = Layer.effectContext(
         home: config.nodexHome,
         codexBinary: resolve(platform.runtime.binaryPath),
         environment,
-        managed: yield* nodexAccount.managed,
+        managed: isProviderOn(snapshot.modelPolicy, {
+          instanceId: "nodex",
+          driver: "codex",
+          source: "nodex",
+        })
+          ? yield* nodexAccount.managed
+          : null,
       });
       Object.assign(providers, managed);
       for (const provider of Object.values(managed)) {
@@ -585,6 +600,7 @@ const supervisor = Layer.effectContext(
         home: join(config.nodexHome, "agent-runtime"),
         cwd: projectlessWorkspaceRoot,
         providers,
+        modelPolicy: snapshot.modelPolicy,
         host: { tools: runtimeHostToolCatalog },
       };
       for (const [id, provider] of Object.entries(providers)) drivers.set(id, provider.driver);
@@ -697,6 +713,7 @@ const supervisor = Layer.effectContext(
           const { configuration } = yield* readConfiguration;
           const result = yield* connection.request("providers.configure", {
             providers: configuration.providers,
+            modelPolicy: configuration.modelPolicy,
           });
           prepared.set(connection.identity, configuration);
           return result;
@@ -704,6 +721,13 @@ const supervisor = Layer.effectContext(
     })).pipe(
       Effect.mapError((cause) => new AgentRuntimeProviderConfigurationError({ cause })),
       Effect.map((result) => result ?? { applied: true, deferredInstanceIds: [] }),
+    );
+    yield* settings.modelPolicyChanges.pipe(
+      Stream.drop(1),
+      Stream.runForEach(() =>
+        confirmModelRetirement({ refresh, stop: runtime.withStopped(Effect.void) }),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
     );
     yield* Deferred.succeed(ready, runtime);
     yield* nodexAccount.onModelsChanged(

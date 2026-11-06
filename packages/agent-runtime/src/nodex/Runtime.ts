@@ -1,3 +1,5 @@
+import * as ModelPolicy from "./ModelPolicy.ts";
+import { DEFAULT_MODEL_POLICY } from "../../../../src/shared/model-policy.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -196,12 +198,21 @@ const layerServerActivation = Layer.effect(
 export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
   const layerPolicy = Layer.unwrap(
     decodeProviderConfiguration(configuration.providers).pipe(
+      Effect.map((providers) =>
+        ModelPolicy.executionProviders(
+          configuration.modelPolicy ?? DEFAULT_MODEL_POLICY,
+          providers,
+        ),
+      ),
       Effect.map(ProviderConfiguration.layerPolicy),
     ),
   );
   const layerInstances = Layer.unwrap(
     Effect.gen(function* () {
-      const configMap = yield* decodeProviderConfiguration(configuration.providers);
+      const configMap = ModelPolicy.executionProviders(
+        configuration.modelPolicy ?? DEFAULT_MODEL_POLICY,
+        yield* decodeProviderConfiguration(configuration.providers),
+      );
       return ProviderInstances.layer({ drivers, configMap }).pipe(
         Layer.provide(ProviderHost.layer),
         Layer.provide(layerProviderInfrastructure),
@@ -212,29 +223,43 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
     RuntimeLayer.layerProduction,
     RuntimeLayer.layerEventSink,
     RuntimeLayer.layerStores,
-  ).pipe(
-    Layer.provide(ResourceCleanup.layer),
-    Layer.provide(layerServerActivation),
-    Layer.provideMerge(layerActivation),
-    Layer.provideMerge(ProjectionStore.layer),
-    Layer.provideMerge(ThreadCommandExecutor.layer),
-    Layer.provideMerge(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
-    Layer.provideMerge(layerProjectEnrichment),
-    Layer.provideMerge(WorkspacePaths.layer),
-    // Rewind anchors on Run ordinals; nothing is written into user repositories.
-    Layer.provideMerge(CheckpointStore.layerWithoutWorkspaceState),
-    Layer.provideMerge(GitVcsDriver.layer),
-    Layer.provideMerge(TextGeneration.layer),
-    Layer.provideMerge(ProviderRegistry.layer),
-    Layer.provideMerge(layerInstances),
-    Layer.provideMerge(layerProviderInfrastructure),
-    Layer.provideMerge(layerBackground),
-    Layer.provideMerge(layerSettings),
-    Layer.provideMerge(layerPolicy),
-    Layer.provideMerge(ServerSecretStore.layer),
-    Layer.provideMerge(layerConfiguration(configuration)),
-    Layer.provideMerge(layerPlatform),
-  );
+  )
+    .pipe(
+      Layer.provide(ResourceCleanup.layer),
+      Layer.provide(layerServerActivation),
+      Layer.provideMerge(layerActivation),
+      Layer.provideMerge(ProjectionStore.layer),
+      Layer.provideMerge(ThreadCommandExecutor.layer),
+      Layer.provideMerge(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
+      Layer.provideMerge(layerProjectEnrichment),
+      Layer.provideMerge(WorkspacePaths.layer),
+      // Rewind anchors on Run ordinals; nothing is written into user repositories.
+      Layer.provideMerge(CheckpointStore.layerWithoutWorkspaceState),
+      Layer.provideMerge(GitVcsDriver.layer),
+      Layer.provideMerge(TextGeneration.layer),
+      Layer.provideMerge(ProviderRegistry.layer),
+      Layer.provideMerge(layerInstances),
+      Layer.provideMerge(layerProviderInfrastructure),
+      Layer.provideMerge(layerBackground),
+      Layer.provideMerge(layerSettings),
+      Layer.provideMerge(layerPolicy),
+      Layer.provideMerge(
+        Layer.effect(
+          ModelPolicy.RuntimeModelPolicy,
+          Effect.gen(function* () {
+            return yield* ModelPolicy.make(
+              configuration.modelPolicy ?? DEFAULT_MODEL_POLICY,
+              yield* decodeProviderConfiguration(configuration.providers),
+            );
+          }),
+        ),
+      ),
+    )
+    .pipe(
+      Layer.provideMerge(ServerSecretStore.layer),
+      Layer.provideMerge(layerConfiguration(configuration)),
+      Layer.provideMerge(layerPlatform),
+    );
 };
 
 /**

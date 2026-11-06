@@ -1158,13 +1158,6 @@ describe("requiredScopesForProjectMutation", () => {
 });
 
 describe("server model preferences", () => {
-  it("decodes a visibility update scoped to a provider instance and model", () => {
-    const patch = { setModelsHidden: [{ provider: "codex_work", model: "sol", hidden: false }] };
-    expect(decodeServerSettingsPatch(patch)).toEqual(patch);
-    expect(() =>
-      decodeServerSettingsPatch({ setModelsHidden: [{ provider: "codex_work", model: "sol" }] }),
-    ).toThrow();
-  });
   it("distinguishes unmigrated lists from deliberately cleared lists", () => {
     expect(decodeServerSettings({})).toMatchObject({
       favorites: null,
@@ -1178,7 +1171,7 @@ describe("server model preferences", () => {
   it("round trips favorites and hidden models keyed by provider instance", () => {
     const input = {
       favorites: [{ provider: "codex_work", model: "sol" }],
-      providerModelPreferences: { codex_work: { hiddenModels: ["astra"], modelOrder: ["sol"] } },
+      providerModelPreferences: { codex_work: { modelOrder: ["sol"] } },
     };
     expect(encodeServerSettings(decodeServerSettings(input))).toMatchObject(input);
     expect(decodeServerSettingsPatch(input)).toEqual(input);

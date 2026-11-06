@@ -25,6 +25,7 @@ import {
   type CodexThreadHandoffPhase,
 } from "../codex/codex-thread-handoff-journal";
 import type { CodexThreadHandoffJournalStorage } from "../platform/CodexThreadHandoffJournalStorage";
+import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { ThreadExecution } from "../host-runtime/ThreadExecution";
 import { ManagedWorktreeHandoff, ManagedWorktreeHandoffError } from "./ManagedWorktreeHandoff";
 import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
@@ -41,6 +42,7 @@ export interface CodexStartThreadHandoffInput {
   /** Reject a stale attached selector rather than toggling the opposite way. */
   readonly expectedDestination?: "local" | "worktree";
   readonly followUpPrompt: string | null;
+  readonly followUpSender?: { readonly threadId: string; readonly runId?: string | null };
   readonly modeLimit?: AgentDispatchModeLimit;
   readonly requestThreadId?: string;
   readonly threadTitle?: string;
@@ -874,12 +876,20 @@ export const make = (options: {
         );
         entry = yield* invoke(
           "send-follow-up",
-          threadExecution.followUp(
-            entry.threadId,
-            followUpPrompt,
-            entry.operationId,
-            entry.modeLimit,
-          ),
+          Effect.gen(function* () {
+            if (entry.followUpSender === undefined && entry.requestThreadId)
+              return yield* runtimeError(
+                "send-follow-up",
+                "The handoff's original caller is unavailable. Send its follow-up from the composer.",
+              );
+            yield* threadExecution.followUp(
+              entry.threadId,
+              followUpPrompt,
+              entry.operationId,
+              entry.modeLimit,
+              entry.followUpSender ?? undefined,
+            );
+          }),
           { operationId: entry.operationId, threadId: entry.threadId },
         ).pipe(
           Effect.as(entry),
@@ -1120,6 +1130,16 @@ export const make = (options: {
         return yield* Deferred.await(allocation.active.result);
       });
 
+    const captureFollowUpCaller = <A extends CodexStartThreadHandoffInput>(input: A) =>
+      Effect.gen(function* () {
+        const caller = yield* CoreApplicationAgent;
+        if (!caller) return input;
+        return {
+          ...input,
+          followUpSender: { threadId: caller.authority.thread_id, runId: caller.authority.turn_id },
+        };
+      });
+
     const start = (input: CodexStartThreadHandoffInput) =>
       runOwned(
         input.threadId,
@@ -1134,6 +1154,12 @@ export const make = (options: {
             yield* emitProgress({ entry: existing, detail: null }, input.onProgress);
             return existing;
           }
+          if (input.followUpPrompt)
+            yield* invoke(
+              "follow-up-admission",
+              threadExecution.assertFollowUp(input.threadId, input.followUpSender),
+              { operationId: input.operationId, threadId: input.threadId },
+            );
           const persisted = (yield* listJournal).find(
             (entry) => entry.threadId === input.threadId && !isTerminalCodexThreadHandoff(entry),
           );
@@ -1187,6 +1213,7 @@ export const make = (options: {
                   runtimeSwitched: false,
                   coreCommitted: false,
                   followUpPrompt: input.followUpPrompt,
+                  followUpSender: input.followUpSender ?? null,
                   ...(input.modeLimit ? { modeLimit: input.modeLimit } : {}),
                   followUpDispatchStarted: false,
                   warnings: [],
@@ -1342,8 +1369,15 @@ export const make = (options: {
         );
         return yield* get(operationId);
       });
-    const launch = (input: CodexLaunchThreadHandoffInput) =>
+    const launch = (requested: CodexLaunchThreadHandoffInput) =>
       Effect.gen(function* () {
+        const input = yield* captureFollowUpCaller(requested);
+        if (input.followUpPrompt)
+          yield* invoke(
+            "follow-up-admission",
+            threadExecution.assertFollowUp(input.threadId, input.followUpSender),
+            { operationId: input.operationId, threadId: input.threadId },
+          );
         const existing = yield* get(input.operationId);
         if (existing) {
           yield* requireStatusOwnership(input, existing);
@@ -1427,7 +1461,7 @@ export const make = (options: {
       });
 
     return CodexThreadHandoffRuntime.of({
-      start,
+      start: (input) => captureFollowUpCaller(input).pipe(Effect.flatMap(start)),
       prepareRecovery,
       recover,
       launch,

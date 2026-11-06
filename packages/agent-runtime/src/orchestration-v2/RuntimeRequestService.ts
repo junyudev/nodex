@@ -1,3 +1,5 @@
+import * as Cause from "effect/Cause";
+import { readModelPolicyFailure } from "../../../../src/shared/model-policy.ts";
 import {
   EventId,
   TurnItemId,
@@ -60,6 +62,7 @@ export interface RuntimeRequestServiceV2Shape {
     readonly threadId: ThreadId;
     readonly providerSessionId: ProviderSessionId;
     readonly requestId: RuntimeRequestId;
+    readonly modelPolicyOrigin?: "person" | "nodex-agent" | "agent" | "automatic";
     readonly decision?: ProviderApprovalDecision;
     readonly optionId?: string;
     readonly feedback?: string;
@@ -145,6 +148,7 @@ export const layer: Layer.Layer<
           }
           yield* session.value
             .respondToRuntimeRequest({
+              modelPolicyOrigin: input.modelPolicyOrigin ?? "automatic",
               requestId: input.requestId,
               ...(input.decision === undefined ? {} : { decision: input.decision }),
               ...(input.optionId === undefined ? {} : { optionId: input.optionId }),
@@ -159,13 +163,15 @@ export const layer: Layer.Layer<
                     threadId: input.threadId,
                     providerSessionId: input.providerSessionId,
                     requestId: input.requestId,
-                    retryable: request.kind === "user_input",
+                    retryable:
+                      readModelPolicyFailure(cause) === null && request.kind === "user_input",
                     cause,
                   }),
               ),
-              Effect.onError(() =>
+              Effect.onError((responseCause) =>
                 Effect.gen(function* () {
                   if (!Schema.is(ProviderRequestKind)(request.kind)) return;
+                  const policyFailure = readModelPolicyFailure(Cause.squash(responseCause));
                   const context = yield* projections.getRuntimeResponseContext(
                     input.threadId,
                     input.requestId,
@@ -196,11 +202,13 @@ export const layer: Layer.Layer<
                           status: "failed",
                           completedAt: now,
                           updatedAt: now,
-                          failure: makeProviderFailure({
-                            message:
-                              "Your approval response was recorded, but could not be delivered to the provider.",
-                            code: "approval_response_delivery_failed",
-                          }),
+                          failure: makeProviderFailure(
+                            policyFailure ?? {
+                              message:
+                                "Your approval response was recorded, but could not be delivered to the provider.",
+                              code: "approval_response_delivery_failed",
+                            },
+                          ),
                         },
                       },
                     ],

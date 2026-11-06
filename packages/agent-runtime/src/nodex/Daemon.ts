@@ -1,3 +1,5 @@
+import { ModelPolicyError } from "./ModelPolicy.ts";
+import * as Schema from "effect/Schema";
 import { acpFailure } from "./AcpFailures.ts";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
@@ -12,7 +14,20 @@ import { readAgentRuntimeBootstrap } from "./Bootstrap.ts";
 import type { AgentRuntimeConfiguration, AgentRuntimeNotification } from "./Interface.ts";
 
 /** The failure's own tag, so the host can tell engine errors apart without parsing text. */
-const errorIdentity = (error: unknown): { readonly tag?: string; readonly reason?: string } => {
+const errorIdentity = (
+  error: unknown,
+): {
+  readonly tag?: string;
+  readonly reason?: string;
+  readonly code?: string;
+  readonly retryable?: boolean;
+  readonly message?: string;
+} => {
+  let current = error;
+  for (let depth = 0; depth < 16 && current instanceof Error; depth++, current = current.cause) {
+    if (Schema.is(ModelPolicyError)(current))
+      return { tag: current._tag, code: current.code, message: current.message, retryable: false };
+  }
   for (const candidate of [error, error instanceof Error ? error.cause : undefined])
     if (
       typeof candidate === "object" &&

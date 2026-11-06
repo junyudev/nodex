@@ -229,6 +229,7 @@ it.effect(
         withRuntimeLocation: (_threadId, _location, _preparation, use) =>
           record("location").pipe(Effect.andThen(use)),
         commit: () => record("commit"),
+        assertFollowUp: () => Effect.void,
         followUp: (_threadId, _prompt, operationId) =>
           record("follow-up", operationId).pipe(Effect.as(undefined)),
         reconcileRecovery: () => record("reconcile").pipe(Effect.as(undefined)),

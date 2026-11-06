@@ -1,3 +1,8 @@
+import { assertTextGenerationAdmission } from "@t3tools/provider-core/server/textGenerationPolicy";
+import {
+  restrictions as claudeModelRestrictions,
+  verifyClaudeModelPolicy,
+} from "../nodex/ClaudeModelPolicy.ts";
 /**
  * Claude text generation uses native structured output. Text-only utility tasks
  * use the CLI; image-bearing tasks use an SDK user message with image blocks.
@@ -218,9 +223,40 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
       ...(fastMode ? { fastMode: true } : {}),
     };
+    const nativeModelPolicy = yield* claudeModelRestrictions(resolvedModelSelection, catalog).pipe(
+      Effect.mapError(
+        (cause) => new TextGenerationError({ operation, detail: cause.message, cause }),
+      ),
+    );
     const useSdk = Boolean(images?.length || claudeSettings.isolated);
 
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
+      const policySdk = yield* Effect.tryPromise({
+        try: loadClaudeAgentSdk,
+        catch: (cause) =>
+          new TextGenerationError({
+            operation,
+            detail: "Could not inspect Claude model restrictions.",
+            cause,
+          }),
+      });
+      yield* Effect.tryPromise({
+        try: () =>
+          verifyClaudeModelPolicy(
+            {
+              cwd,
+              ...(isolated || claudeSettings.isolated ? { settingSources: [] } : {}),
+              managedSettings: nativeModelPolicy,
+            },
+            policySdk.resolveSettings,
+          ),
+        catch: (cause) =>
+          new TextGenerationError({
+            operation,
+            detail: "Claude model restrictions could not be verified.",
+            cause,
+          }),
+      });
       if (useSdk) {
         const sdk = yield* Effect.tryPromise({
           try: loadClaudeAgentSdk,
@@ -245,6 +281,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
             ],
           },
         };
+        yield* assertTextGenerationAdmission;
         const query = yield* Effect.acquireRelease(
           Effect.try({
             try: () =>
@@ -254,6 +291,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
                 })(),
                 options: {
                   cwd,
+                  managedSettings: nativeModelPolicy,
                   env: claudeEnvironment,
                   ...(isolated || claudeSettings.isolated ? { settingSources: [] } : {}),
                   ...(isolated
@@ -329,6 +367,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           ...(cliEffort ? ["--effort", cliEffort] : []),
           "--settings",
           settingsJson,
+          "--managed-settings",
+          JSON.stringify(nativeModelPolicy),
           "--permission-mode",
           "dontAsk",
           "--tools",
@@ -349,6 +389,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
         },
       });
 
+      yield* assertTextGenerationAdmission;
       const child = yield* commandSpawner
         .spawn(command)
         .pipe(

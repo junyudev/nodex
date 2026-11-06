@@ -867,3 +867,35 @@ it.effect("persists the Profile's default native execution mode and rejects inva
     assert.equal(readFileSync(settingsPath, "utf8"), before);
   }),
 );
+
+it.effect(
+  "persists model policy independently of account and meter settings, preserving unrelated TOML",
+  () =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture('[plugin]\nname = "keep"\n');
+      const input = { environment: {}, hostHomeDirectory: root, settingsPath };
+      const settings = yield* makeApplicationSettings(input);
+      const policy = {
+        providersOff: ["nodex"],
+        exceptions: ['["nodex","codex","gpt-6.1-sol"]'],
+        agentsMayChooseCredit: false,
+      };
+      yield* settings.update({ type: "update-model-policy", input: policy });
+      const reopened = yield* makeApplicationSettings(input);
+      assert.deepEqual((yield* reopened.snapshot()).modelPolicy, policy);
+      assert.deepEqual((yield* reopened.snapshot()).usageMeters, {
+        codex: true,
+        claude: true,
+        nodexCredit: true,
+      });
+      assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).plugin, { name: "keep" });
+      const bad = yield* Effect.result(
+        settings.update({
+          type: "update-model-policy",
+          input: { ...policy, agentsMayChooseCredit: "yes" as never },
+        }),
+      );
+      assert.strictEqual(bad._tag, "Failure");
+      assert.deepEqual((yield* settings.snapshot()).modelPolicy, policy);
+    }),
+);

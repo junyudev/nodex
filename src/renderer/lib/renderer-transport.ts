@@ -37,6 +37,9 @@ export interface RendererTransport {
   subscribeClaudeUsageChanges?: (
     callback: (snapshot: import("../../shared/agent-runtime-api").ClaudeUsageSnapshot) => void,
   ) => () => void;
+  subscribeModelPolicyChanges: (
+    callback: (settings: import("../../shared/model-policy").ModelPolicy) => void,
+  ) => () => void;
   subscribeUsageMeterSettingsChanges: (
     callback: (settings: import("../../shared/usage-meter-settings").UsageMeterSettings) => void,
   ) => () => void;

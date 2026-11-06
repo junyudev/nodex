@@ -92,8 +92,9 @@ function findContextBudgetError(cause: unknown): ContextHandoffBudgetError | und
 
 /** A known error category: its user-facing message and, when Nodex observed it itself, its code. */
 interface KnownCause {
+  readonly retryable?: boolean;
   readonly message?: string | undefined;
-  readonly code?: string;
+  readonly code?: string | undefined;
 }
 
 /** Translate known categories without exposing arbitrary provider defect text. */
@@ -109,6 +110,8 @@ function knownCause(cause: unknown): KnownCause {
       }
       if (typeof cause !== "object") break;
       switch ((cause as Record<string, unknown>)._tag) {
+        case "ModelPolicyError":
+          return { message: stringField(cause, "message"), code: stringField(cause, "code"), retryable: false };
         case "ContextHandoffBudgetError":
           return { message: new ContextHandoffBudgetError().message };
         case "ClaudeBackgroundWorkBlocksQueryReplacementError":
@@ -267,7 +270,7 @@ export function makeProviderFailure(input: {
     class: input.class ?? "unknown",
     message: message || DEFAULT_PROVIDER_FAILURE_MESSAGE,
     code,
-    retryable: budgetExhausted ? false : (input.retryable ?? null),
+    retryable: budgetExhausted ? false : (known.retryable ?? input.retryable ?? null),
     ...(contextBudget === undefined ? {} : { contextBudget }),
     ...(Number.isInteger(input.httpStatusCode) && input.httpStatusCode! >= 100 && input.httpStatusCode! <= 599
       ? { httpStatusCode: input.httpStatusCode! } : {}),

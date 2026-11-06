@@ -1,3 +1,12 @@
+import { useModelPolicy } from "../model-policy/model-policy";
+import {
+  isModelOn,
+  isProviderOn,
+  spendsNodexCredit,
+  modelPolicyFailure,
+  setModelOn,
+  projectModelPolicyCatalog,
+} from "../../../shared/model-policy";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useQuery } from "@tanstack/react-query";
 import { DEFAULT_AGENT_RUNTIME_SETTINGS } from "../../../shared/agent-runtime-settings";
@@ -6,7 +15,7 @@ import { agentRuntimeSettingsQueryOptions } from "@/lib/agent-runtime-settings";
 import { planAgentApprovalDeclineOnSend } from "./agent-approval";
 import { approvalsRefusedBySend } from "./agent-approval-runtime";
 import { composerDraftIntents, type ComposerChatKey } from "@/lib/composer-draft-intents";
-import { isNodexProviderId } from "../../../shared/nodex-models";
+import { isNodexProviderId, NODEX_MODELS } from "../../../shared/nodex-models";
 import { useNodexAccount } from "../nodex-account/use-nodex-account";
 import { subscribeNodexAccountChanges } from "../../lib/nodex-account-runtime";
 import {
@@ -877,6 +886,7 @@ export function useAgentRuntimeConversationAdapter(input: {
 }) {
   const workbenchOwner = useWorkbenchWindowOwner();
   const nodexAccount = useNodexAccount(true);
+  const modelPolicyState = useModelPolicy();
   const [catalogState, setCatalogState] = useState<{
     providers: readonly AgentRuntimeProvider[];
     loading: boolean;
@@ -931,7 +941,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     const load = agentRuntimeRuntime
       .catalog({ refresh: catalogRequest.refresh })
       .then((providers) =>
-        providers.filter(
+        projectModelPolicyCatalog(providers, modelPolicyState.settings).filter(
           (provider) =>
             isNodexProviderId(provider.instanceId) ||
             provider.instanceId === "codex" ||
@@ -959,7 +969,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     return () => {
       active = false;
     };
-  }, [catalogRequest, input.instances, catalogLoad, catalogWaiters]);
+  }, [catalogRequest, input.instances, catalogLoad, catalogWaiters, modelPolicyState.settings]);
   const bindingFor = (instanceId: string) => agentRuntimeBinding(instanceId, input.instances);
   const openAgentSettings = useAgentSettingsNavigation();
   useEffect(() => {
@@ -1072,6 +1082,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       if (!binding || !isAgentRuntimeProviderAvailable(provider)) return [];
       return provider.models.map((model) => ({
         binding,
+        spendsCredit: spendsNodexCredit(provider),
         label: agentRuntimeProviderLabel(provider, input.instances),
         model: projectAgentRuntimeModel(provider, model),
         selection: { binding, model: model.slug },
@@ -1177,7 +1188,7 @@ export function useAgentRuntimeConversationAdapter(input: {
           providers: catalogState.providers,
         })
       : null;
-  const entries = entriesFor(catalogState.providers).map((entry) => {
+  const allEntries = entriesFor(catalogState.providers).map((entry) => {
     const candidate = modelOf(entry.selection);
     const nodexUnavailable =
       entry.binding.runtimeInstanceId &&
@@ -1192,6 +1203,42 @@ export function useAgentRuntimeConversationAdapter(input: {
         : null;
     return unavailableReason ? { ...entry, unavailableReason } : entry;
   });
+  const policyForEntry = (entry: AgentModelPickerEntry) =>
+    catalogState.providers.find(
+      (provider) => provider.instanceId === agentRuntimeProviderId(entry.binding),
+    );
+  const entryIsOn = (entry: AgentModelPickerEntry) => {
+    const provider = policyForEntry(entry);
+    return provider !== undefined && isModelOn(modelPolicyState.settings, provider, entry.model.id);
+  };
+  const entries = allEntries.filter(entryIsOn);
+  const offEntries = allEntries.filter((entry) => {
+    const provider = policyForEntry(entry);
+    return (
+      provider !== undefined &&
+      isProviderOn(modelPolicyState.settings, provider) &&
+      !entryIsOn(entry)
+    );
+  });
+  const selectionInstanceId = agentRuntimeProviderId(selection.binding);
+  const policyProvider =
+    provider ??
+    (selectionInstanceId
+      ? {
+          instanceId: selectionInstanceId,
+          driver: selection.binding.kind === "claude" ? "claudeAgent" : selection.binding.kind,
+        }
+      : undefined);
+  const currentModelFailure = policyProvider
+    ? modelPolicyFailure(
+        modelPolicyState.settings,
+        policyProvider,
+        selection.model,
+        "person",
+        provider?.models.find((model) => model.slug === selection.model)?.name ??
+          NODEX_MODELS.find((model) => model.id === selection.model)?.label,
+      )
+    : null;
   // Editing rewinds the Run the chat's own Agent ran; the edited message may then change Agent.
   const canRollback =
     (observedSelection ? providerOf(observedSelection) : provider)?.supportsConversationRollback ===
@@ -1815,6 +1862,33 @@ export function useAgentRuntimeConversationAdapter(input: {
     selection: agentRuntimeProviderId(selection.binding) ?? "",
     modelCatalog: {
       entries,
+      currentModelOff: currentModelFailure?.code === "model_off" ? currentModelFailure : null,
+      off: {
+        entries: offEntries,
+        count: catalogState.providers.reduce(
+          (count, provider) =>
+            count +
+            provider.models.filter(
+              (model) => !isModelOn(modelPolicyState.settings, provider, model.slug),
+            ).length,
+          0,
+        ),
+        choose: async (requested) => {
+          const provider = catalogState.providers.find(
+            (provider) => provider.instanceId === agentRuntimeProviderId(requested.binding),
+          );
+          if (
+            !provider ||
+            spendsNodexCredit(provider) ||
+            !isProviderOn(modelPolicyState.settings, provider)
+          )
+            throw new Error("Manage this model in Settings → Models.");
+          await modelPolicyState.updateSettings(
+            setModelOn(modelPolicyState.settings, provider, requested.model, true),
+          );
+          await chooseModel(requested);
+        },
+      },
       selected: selection,
       loading: catalogState.loading,
       error: catalogState.error,

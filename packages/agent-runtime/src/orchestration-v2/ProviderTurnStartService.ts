@@ -1,3 +1,4 @@
+import { RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
 import {
   readRunRecoveryContext,
   settleFailedRunAttempt,
@@ -72,6 +73,7 @@ const refusedBeforePrompt = (error: unknown): boolean =>
   (Predicate.hasProperty(error, "cause") && refusedBeforePrompt(error.cause));
 
 const permanentNativeRecoveryFailure = (error: unknown): boolean =>
+  Predicate.isTagged(error, "ModelPolicyError") ||
   ((Predicate.isTagged(error, "ProviderAdapterOpenSessionError") ||
     Predicate.isTagged(error, "ProviderAdapterResumeThreadError")) &&
     Predicate.hasProperty(error, "retryable") &&
@@ -263,11 +265,26 @@ export const layer: Layer.Layer<
         input: Parameters<ProviderAdapter.ProviderAdapterV2SessionRuntime["startTurn"]>[0],
         compact = false,
       ) =>
-        Effect.suspend(() => {
-          if (deliver !== undefined) return deliver(input, compact);
-          return compact && session.compactThread !== undefined
-            ? session.compactThread(input)
-            : session.startTurn(input);
+        Effect.gen(function* () {
+          const policy = yield* RuntimeModelPolicy;
+          yield* policy.assert(input.modelSelection, input.modelPolicyOrigin ?? "automatic").pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProviderAdapter.ProviderAdapterTurnStartError({
+                  driver: session.driver,
+                  threadId: input.threadId,
+                  providerThreadId: input.providerThread.id,
+                  runId: input.runId,
+                  cause,
+                }),
+            ),
+          );
+          return yield* Effect.suspend(() => {
+            if (deliver !== undefined) return deliver(input, compact);
+            return compact && session.compactThread !== undefined
+              ? session.compactThread(input)
+              : session.startTurn(input);
+          });
         }).pipe(
           // Only startup needs the handoff history. The event worker keeps this
           // session alive afterward, including when background work remains.
@@ -647,6 +664,7 @@ export const layer: Layer.Layer<
           threadId: projection.thread.id,
           providerSessionId,
           modelSelection: run.modelSelection,
+          modelPolicyOrigin: run.modelPolicyOrigin ?? "automatic",
           runtimePolicy: resolvedRuntimePolicy,
           ...(existingSessionProjection === undefined
             ? {}

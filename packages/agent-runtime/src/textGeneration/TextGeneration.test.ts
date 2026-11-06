@@ -1,3 +1,5 @@
+import { RuntimeModelPolicy, make as makeModelPolicy } from "../nodex/ModelPolicy.ts";
+import { DEFAULT_MODEL_POLICY, setModelOn } from "../../../../src/shared/model-policy.ts";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";
@@ -5,7 +7,12 @@ import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 import { describe, expect } from "vite-plus/test";
 
-import { ProviderInstanceId, TextGenerationError } from "@t3tools/contracts";
+import {
+  ProviderInstanceId,
+  ProviderDriverKind,
+  TextGenerationError,
+  type ServerProvider,
+} from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 
 import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
@@ -206,3 +213,138 @@ describe("TextGeneration.make", () => {
     }),
   );
 });
+
+it.effect(
+  "refuses every utility method before resolving a provider when the exact model is off",
+  () =>
+    Effect.gen(function* () {
+      const instanceId = ProviderInstanceId.make("codex");
+      const modelSelection = { instanceId, model: "sol" };
+      const owner = yield* makeModelPolicy(
+        setModelOn(DEFAULT_MODEL_POLICY, { instanceId, driver: "codex" }, "sol", false),
+        {},
+      );
+      const generation = yield* TextGeneration.make.pipe(
+        Effect.provideService(
+          ProviderInstanceRegistry.ProviderInstanceRegistry,
+          makeStubRegistry([]),
+        ),
+        Effect.provideService(RuntimeModelPolicy, owner),
+      );
+      const common = { cwd: "/tmp", modelSelection };
+      const requests = [
+        generation.generateStructured!({
+          ...common,
+          prompt: "No inference",
+          outputSchema: { type: "object" },
+        }),
+        generation.generateThreadTitle({ ...common, message: "No inference" }),
+        generation.generateBranchName({ ...common, message: "No inference" }),
+        generation.generateCommitMessage({
+          ...common,
+          branch: null,
+          stagedSummary: "",
+          stagedPatch: "",
+        }),
+        generation.generatePrContent({
+          ...common,
+          baseBranch: "main",
+          headBranch: "test",
+          commitSummary: "",
+          diffSummary: "",
+          diffPatch: "",
+        }),
+        generation.generateReviewGuide({
+          ...common,
+          number: 1,
+          title: "Review",
+          description: "",
+          baseBranch: "main",
+          baseCommit: "head",
+          settledReview: "",
+        }),
+      ];
+      for (const request of requests) {
+        const error = yield* Effect.flip(request);
+        expect(error).toBeInstanceOf(TextGenerationError);
+        expect(error.detail).toBe(
+          "sol on codex is off in Settings → Models. Choose another model.",
+        );
+      }
+    }),
+);
+
+it.effect.each(["codex", "nodex_codex_00000000000000000000000000000000"])(
+  "automatic utility defaults skip off and credit choices from %s",
+  (preferred) =>
+    Effect.gen(function* () {
+      const native = ProviderInstanceId.make("codex");
+      const credit = ProviderInstanceId.make("nodex_codex_00000000000000000000000000000000");
+      const owner = yield* makeModelPolicy(
+        setModelOn(
+          { ...DEFAULT_MODEL_POLICY, agentsMayChooseCredit: true },
+          { instanceId: native, driver: "codex" },
+          "off",
+          false,
+        ),
+        {},
+      );
+      const called: string[] = [];
+      const instance = (instanceId: ProviderInstanceId): ProviderInstance => ({
+        ...makeStubInstance(
+          instanceId,
+          makeStubTextGeneration({
+            generateThreadTitle: (input) => {
+              called.push(`${instanceId}/${input.modelSelection.model}`);
+              return Effect.succeed({ title: "Safe title" });
+            },
+          }),
+        ),
+        snapshot: {
+          ...makeStubInstance(instanceId, makeStubTextGeneration({})).snapshot,
+          getSnapshot: Effect.succeed({
+            instanceId,
+            driver: ProviderDriverKind.make("codex"),
+            ...(instanceId === credit ? { source: "nodex" as const } : {}),
+            enabled: true,
+            installed: true,
+            version: "test",
+            status: "ready",
+            auth: { status: "authenticated" },
+            checkedAt: "2026-11-07T00:00:00Z",
+            slashCommands: [],
+            skills: [],
+            models: ["off", "on"].map((slug) => ({
+              slug,
+              name: slug,
+              isCustom: false,
+              capabilities: null,
+            })),
+          } satisfies ServerProvider),
+        },
+      });
+      const generation = yield* TextGeneration.make.pipe(
+        Effect.provideService(RuntimeModelPolicy, owner),
+        Effect.provideService(
+          ProviderInstanceRegistry.ProviderInstanceRegistry,
+          makeStubRegistry([instance(credit), instance(native)]),
+        ),
+      );
+      yield* generation.generateThreadTitle({
+        automatic: true,
+        cwd: "/tmp",
+        message: "No inference",
+        modelSelection: { instanceId: ProviderInstanceId.make(preferred), model: "off" },
+      });
+      expect(called).toEqual(["codex/on"]);
+      const explicit = yield* generation
+        .generateThreadTitle({
+          cwd: "/tmp",
+          message: "No inference",
+          modelSelection: { instanceId: native, model: "off" },
+        })
+        .pipe(Effect.flip);
+      expect(explicit.detail).toContain("off in Settings → Models");
+      expect(called).toEqual(["codex/on"]);
+    }),
+);

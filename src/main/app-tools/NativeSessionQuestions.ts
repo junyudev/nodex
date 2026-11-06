@@ -17,6 +17,7 @@ import { CodexServerRequestResponses } from "../codex-application/CodexServerReq
 import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
 import {
   SessionQuestionError,
+  questionResponderIdentity,
   type SessionQuestionBackend,
   type SessionQuestionTarget,
   type SessionQuestion,
@@ -222,6 +223,7 @@ export const makeNativeSessionQuestions = Effect.gen(function* () {
     respond: (target, requestId, answers, responder, operationId) =>
       admission.withPermit(
         Effect.gen(function* () {
+          const stableResponder = questionResponderIdentity(responder);
           const resolved = yield* resolve(target);
           const key = JSON.stringify([target.sessionId, operationId]);
           const fingerprint = JSON.stringify([
@@ -229,7 +231,7 @@ export const makeNativeSessionQuestions = Effect.gen(function* () {
             resolved.hostId,
             requestId,
             Object.entries(answers).sort(([a], [b]) => a.localeCompare(b)),
-            responder,
+            stableResponder,
           ]);
           const receipt = receipts.get(key);
           if (receipt && receipt.fingerprint !== fingerprint)
@@ -280,7 +282,7 @@ export const makeNativeSessionQuestions = Effect.gen(function* () {
                   : {};
             if (
               !isDeepStrictEqual(normalized, expected) ||
-              !isDeepStrictEqual(metadata.respondedBy, responder)
+              !isDeepStrictEqual(metadata.respondedBy, stableResponder)
             )
               return yield* failure("forbidden", "An answer operation cannot change");
             return { requestId, status: "answered" as const };
@@ -302,7 +304,7 @@ export const makeNativeSessionQuestions = Effect.gen(function* () {
             answers,
             selected.kind === "sync" ? selected.request.params.questions : [],
           );
-          const questionResponse = { respondedBy: responder, operationId };
+          const questionResponse = { respondedBy: stableResponder, operationId };
           if (selected.kind === "async") {
             const answer = normalized[selected.entry.question.id]?.[0];
             if (!answer)

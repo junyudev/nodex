@@ -45,6 +45,8 @@ export type PageTextRewriteStart = z.infer<typeof PageTextRewriteStartSchema>;
 
 export interface PageTextRewriteFailure {
   readonly code:
+    | "model_off"
+    | "credit_requires_person"
     | "invalid_input"
     | "unavailable"
     | "busy"

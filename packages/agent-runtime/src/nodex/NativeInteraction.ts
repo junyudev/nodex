@@ -1,3 +1,4 @@
+import { RuntimeModelPolicy } from "./ModelPolicy.ts";
 import { CommandId, MessageId, ProviderSessionId, RunId, ThreadId } from "@t3tools/contracts";
 import type {
   CodexNativeInteraction,
@@ -46,6 +47,7 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
   runtimeGeneration: string,
   notify: (notification: AgentRuntimeNotification) => Effect.Effect<void>,
 ) {
+  const models = yield* RuntimeModelPolicy;
   const store = yield* ProjectionStoreV2;
   const sessions = yield* ProviderSessionManagerV2;
   const policy = yield* RuntimePolicyV2;
@@ -176,11 +178,13 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
       !providerThread.nativeThreadRef?.nativeId
     )
       return yield* fail("Native Codex thread is unavailable");
+    yield* models.assert(thread.modelSelection, "person");
     const runtimePolicy = yield* policy.resolve({ thread, modelSelection: thread.modelSelection });
     const runtime = yield* sessions.open({
       threadId: thread.id,
       providerSessionId: providerThread.providerSessionId,
       modelSelection: thread.modelSelection,
+      modelPolicyOrigin: "person",
       runtimePolicy,
       initialNativeThreadId: providerThread.nativeThreadRef.nativeId,
     });
@@ -214,6 +218,10 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
     yield* assertCurrent(source);
     return entry;
   });
+  const assertVoiceModel = (source: AgentNativeSource) =>
+    store
+      .getThread(ThreadId.make(source.threadId))
+      .pipe(Effect.flatMap((thread) => models.assert(thread.modelSelection, "person")));
   const closeClaim = Effect.fn("NativeInteraction.closeVoice")(function* (claimId: string) {
     const entry = voices.get(claimId);
     if (!entry) return;
@@ -673,6 +681,7 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
       settings: unknown;
       sdp: string;
     }) {
+      yield* assertVoiceModel(input.source);
       const entry = yield* voice(input.claimId, input.source);
       entry.started = true;
       yield* entry.native.voice(input.source.nativeThreadId, true);
@@ -700,6 +709,7 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
       role: string;
       text: string;
     }) {
+      yield* assertVoiceModel(input.source);
       const entry = yield* voice(input.claimId, input.source);
       yield* entry.native.request("thread/realtime/appendText", {
         threadId: input.source.nativeThreadId,
@@ -713,6 +723,7 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
       source: AgentNativeSource;
       text: string;
     }) {
+      yield* assertVoiceModel(input.source);
       const entry = yield* voice(input.claimId, input.source);
       yield* entry.native.request("thread/realtime/appendSpeech", {
         threadId: input.source.nativeThreadId,
@@ -725,6 +736,7 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
       source: AgentNativeSource;
       items: unknown;
     }) {
+      yield* assertVoiceModel(input.source);
       const entry = yield* voice(input.claimId, input.source);
       yield* entry.native.request("thread/inject_items", {
         threadId: input.source.nativeThreadId,

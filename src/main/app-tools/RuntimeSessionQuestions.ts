@@ -1,3 +1,4 @@
+import { readModelPolicyFailure } from "../../shared/model-policy";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { sessionDispatchFingerprint } from "./session-dispatch-identity";
@@ -8,7 +9,11 @@ import {
   AgentRuntimeApplicationError,
 } from "../agent-runtime/AgentRuntimeApplication";
 import { runtimeSessionTarget } from "../../shared/nodex-app-tools/session-execution-target";
-import { SessionQuestionError, type SessionQuestionBackend } from "./SessionQuestions";
+import {
+  questionResponderIdentity,
+  SessionQuestionError,
+  type SessionQuestionBackend,
+} from "./SessionQuestions";
 
 const unavailable = (cause: unknown) =>
   new SessionQuestionError({
@@ -50,7 +55,7 @@ export const make = Effect.gen(function* () {
           target: source,
           requestId,
           answers,
-          responder,
+          responder: questionResponderIdentity(responder),
         });
         const node = snapshot.projection.nodes.find((node) => node.id === selected.request.nodeId);
         if (!node)
@@ -72,6 +77,8 @@ export const make = Effect.gen(function* () {
           })
           .pipe(
             Effect.mapError((cause) => {
+              const policy = readModelPolicyFailure(cause);
+              if (policy) return new SessionQuestionError(policy);
               const message = agentRuntimeFailureReason(cause);
               if (Schema.is(AgentRuntimeApplicationError)(cause) && cause.questionReason)
                 return new SessionQuestionError({

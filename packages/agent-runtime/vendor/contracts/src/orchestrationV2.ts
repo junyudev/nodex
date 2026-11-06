@@ -647,6 +647,8 @@ export const OrchestrationV2NativeInput = Schema.Struct({
   nativeTurnId: Schema.String,
 });
 export const OrchestrationV2Run = Schema.Struct({
+  /** Captured admission origin is rechecked against the current Profile policy on every attempt. */
+  modelPolicyOrigin: Schema.optional(Schema.Literals(["person", "nodex-agent", "agent", "automatic"])),
   /** Durable recovery keeps the reply running between failed provider attempts. */
   recovery: Schema.optional(Schema.suspend(() => OrchestrationV2RunRecovery)),
   /** Maintenance and retry remain bound to the failed request and native conversation. */
@@ -3553,6 +3555,7 @@ export const OrchestrationV2Command = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("queued-message.promote-to-steer"),
+    requestedBy: Schema.optional(UserInputResponder),
     commandId: CommandId,
     threadId: ThreadId,
     queuedRunId: RunId,

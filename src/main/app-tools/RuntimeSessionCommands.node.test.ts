@@ -12,7 +12,10 @@ import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime"
 import { CodexDelegatedMessages } from "../codex-application/CodexDelegatedMessages";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { FileExportRuntime } from "../library-application/FileExportRuntime";
-import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
+import {
+  AgentRuntimeApplication,
+  AgentRuntimeApplicationError,
+} from "../agent-runtime/AgentRuntimeApplication";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { CoreModules } from "../core-runtime/CoreModules";
@@ -86,6 +89,7 @@ const fixture = (
     restricted?: boolean;
     targetDefault?: boolean;
     nativeQuestions?: typeof nativeQuestionTestLayers;
+    policyFailure?: "model_off" | "credit_requires_person";
   } = {},
 ) => {
   const frozen = authority;
@@ -98,6 +102,15 @@ const fixture = (
     (input: unknown) =>
       Effect.gen(function* () {
         calls.push({ name, input, agent: yield* CoreApplicationAgent });
+        if (options.policyFailure && (name === "launch" || name === "sendMessage"))
+          return yield* Effect.fail(
+            new AgentRuntimeApplicationError({
+              operation: name,
+              code: options.policyFailure,
+              message: "Choose another model in Settings → Models.",
+              retryable: false,
+            }),
+          );
         return result;
       });
   const makeCaller = (turnId = frozen.turnId, callId = "call") =>
@@ -147,6 +160,7 @@ const fixture = (
     } as never),
     Effect.provideService(CodexTurnAuthority, {} as never),
     Effect.provideService(AgentRuntimeApplication, {
+      assertModelPolicy: () => Effect.void,
       nativeMessageReceipt: () => Effect.succeed(null),
       replayMessage: (input: { messageId: string }) =>
         Effect.succeed(deliveries.get(input.messageId) ?? null),
@@ -240,6 +254,34 @@ const fixture = (
     },
   };
 };
+
+it.effect.each([
+  { name: "create_session", code: "model_off" },
+  { name: "create_session", code: "credit_requires_person" },
+  { name: "send_message_to_session", code: "model_off" },
+  { name: "send_message_to_session", code: "credit_requires_person" },
+] as const)("preserves Runtime $code refusal from $name", ({ name, code }) =>
+  Effect.gen(function* () {
+    const f = fixture({ policyFailure: code });
+    const execute = yield* f.execute;
+    const result = yield* execute({
+      caller: f.caller,
+      name,
+      arguments:
+        name === "create_session"
+          ? {
+              prompt: "Must not start",
+              target: { type: "project", projectId: "project", environment: { type: "local" } },
+            }
+          : { sessionId: "other", prompt: "Must not continue" },
+    });
+    assert.isTrue(result.isError);
+    assert.deepEqual(result.structuredContent, { error: { code } });
+    assert.deepEqual(result.content, [
+      { type: "text", text: "Choose another model in Settings → Models." },
+    ]);
+  }),
+);
 it.effect(
   "forks the current child within its bound product Session using exact engine identity",
   () =>
@@ -710,11 +752,21 @@ it.effect(
       assert.deepInclude(first.structuredContent, { requestId: "question", status: "answered" });
       yield* execute({ ...invocation, caller: f.makeCaller("later", "retry") });
       const responses = f.calls.filter((call) => call.name === "respond");
-      assert.deepEqual(responses[0]?.input, responses[1]?.input);
+      const stableResponse = (value: unknown) => {
+        const { respondedBy, ...request } = value as { respondedBy: { senderRunId?: string } };
+        const { senderRunId: _run, ...source } = respondedBy;
+        return { ...request, respondedBy: source };
+      };
+      assert.deepEqual(stableResponse(responses[0]?.input), stableResponse(responses[1]?.input));
       assert.deepInclude(responses[0]?.input, {
         threadId: "target-child",
         runId: "source-run",
-        respondedBy: { kind: "agent", senderThreadId: "child", senderSessionId: "session:root" },
+        respondedBy: {
+          kind: "agent",
+          senderThreadId: "child",
+          senderRunId: "run",
+          senderSessionId: "session:root",
+        },
         requirePending: true,
         modeLimit: { runtimeMode: "full-access", interactionMode: "plan" },
       });

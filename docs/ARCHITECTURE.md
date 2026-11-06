@@ -880,6 +880,14 @@ with its native owner. Authentication location never substitutes for history ide
 
 ### Agent Runtime conversation ownership
 
+Profile model permission is Main-owned configuration and Runtime-owned execution policy.
+Execution continuations retain the requesting Agent's Run authority across background work,
+durable effects and native responses; message authorship does not grant that authority.
+One live Runtime owner checks intake, provider execution and text generation independently
+of catalogs, captured Run settings and deferred provider configuration. Project settings
+cannot widen the Profile policy. Readable history retains its exact account binding even
+when execution is refused. See [Model policy](product-specs/model-policy-behavior.md).
+
 Ephemeral text generation uses configured Runtime provider utilities without creating product
 Sessions. Main owns the renderer request lifetime; the Runtime owns execution and native utility
 resources, which follow request interruption and process shutdown. [Page selection rewrites](product-specs/nfm-editor-ask-for-change-behavior.md)

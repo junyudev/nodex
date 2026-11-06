@@ -1,3 +1,4 @@
+import { automaticModelCatalog } from "../../shared/model-policy";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import { isAgentRuntimeEffortOption } from "../../shared/agent-runtime-provider";
 import {
@@ -95,15 +96,17 @@ export function inboxAgentCandidates(
   providers: readonly Provider[],
   options: { readonly now: number; readonly useModelGuide: boolean },
 ): readonly InboxAgentCandidate[] {
-  return providers.filter(isInboxChatCandidate).map((provider) => ({
-    instance_id: provider.instanceId,
-    agent: provider.displayName ?? provider.instanceId,
-    harness: provider.driver,
-    budget: budgetOf(provider, options.now),
-    models: inboxOfferedModels(provider, options.useModelGuide).map((model) =>
-      candidateModel(model, options.useModelGuide),
-    ),
-  }));
+  return automaticModelCatalog(providers)
+    .filter(isInboxChatCandidate)
+    .map((provider) => ({
+      instance_id: provider.instanceId,
+      agent: provider.displayName ?? provider.instanceId,
+      harness: provider.driver,
+      budget: budgetOf(provider, options.now),
+      models: inboxOfferedModels(provider, options.useModelGuide).map((model) =>
+        candidateModel(model, options.useModelGuide),
+      ),
+    }));
 }
 
 /** The Inbox's own choice as the suggestion reads it, so null visibly means something. */
@@ -111,7 +114,7 @@ export function inboxDefaultChatCandidate(
   providers: readonly Provider[],
   chatAgent: InboxAgentChoice,
 ): { readonly instance_id: string; readonly model: string; readonly effort: string | null } | null {
-  const resolution = resolveInboxModel(providers, chatAgent, "chat");
+  const resolution = resolveInboxModel(automaticModelCatalog(providers), chatAgent, "chat");
   if (resolution.kind !== "ready") return null;
   const effortId = resolution.model.capabilities?.optionDescriptors?.find(
     isAgentRuntimeEffortOption,

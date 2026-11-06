@@ -1,3 +1,4 @@
+import { assertTextGenerationAdmission } from "@t3tools/provider-core/server/textGenerationPolicy";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
@@ -215,6 +216,7 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
           modelId: parsedModel.modelID,
         };
 
+        yield* assertTextGenerationAdmission;
         const result = yield* Effect.tryPromise({
           try: () =>
             client.session.prompt({

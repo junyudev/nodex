@@ -1,3 +1,4 @@
+import { modelIsOn, spendsNodexCredit } from "../../shared/model-policy";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
 import {
@@ -16,19 +17,31 @@ export const selectPageTextRewriteModel = (
   providers: Providers,
   preference: Preference,
 ): AgentRuntimeLaunch["modelSelection"] | null => {
-  const usable = providers.filter(
-    (provider) =>
-      isInboxProviderUsable(provider) &&
-      provider.installed &&
-      provider.auth.status !== "unauthenticated" &&
-      supportsInboxStructuredGeneration(provider) &&
-      provider.supportsTextGeneration !== false &&
-      provider.models.length > 0,
+  const configuredProvider = providers.find(
+    (provider) => provider.instanceId === preference.suggestionAgent.instanceId,
   );
+  if (
+    preference.suggestionAgent.model &&
+    configuredProvider?.models.some(
+      (model) => model.slug === preference.suggestionAgent.model && !modelIsOn(model),
+    )
+  )
+    return { instanceId: configuredProvider.instanceId, model: preference.suggestionAgent.model };
+  const usable = providers
+    .map((provider) => ({ ...provider, models: provider.models.filter(modelIsOn) }))
+    .filter(
+      (provider) =>
+        isInboxProviderUsable(provider) &&
+        provider.installed &&
+        provider.auth.status !== "unauthenticated" &&
+        supportsInboxStructuredGeneration(provider) &&
+        provider.supportsTextGeneration !== false &&
+        provider.models.length > 0,
+    );
   const preferred = usable.find(
     (provider) => provider.instanceId === preference.suggestionAgent.instanceId,
   );
-  const provider = preferred ?? usable[0];
+  const provider = preferred ?? usable.find((candidate) => !spendsNodexCredit(candidate));
   if (!provider) return null;
   const configured =
     preferred && preference.suggestionAgent.model
@@ -39,6 +52,7 @@ export const selectPageTextRewriteModel = (
       ? provider.models.find((model) => model.slug === "gpt-6-luna")
       : (provider.models.find((model) => /haiku/i.test(model.slug)) ??
         provider.models.find((model) => /sonnet/i.test(model.slug)));
+  if (!configured && spendsNodexCredit(provider)) return null;
   const model = configured ?? economical ?? inboxDefaultSuggestionModel(provider);
   if (!model) return null;
   return lightUtilityModelSelection(

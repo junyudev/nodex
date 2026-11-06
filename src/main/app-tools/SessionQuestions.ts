@@ -22,12 +22,26 @@ export type SessionQuestionAnswers = Record<string, string | readonly string[]>;
 export interface SessionQuestionResponder {
   readonly kind: "agent";
   readonly senderThreadId: string;
+  readonly senderRunId?: string | null;
   readonly senderSessionId: string | null;
 }
+/** Retries identify the same logical answer across the caller's subsequent Runs. */
+export const questionResponderIdentity = (responder: SessionQuestionResponder) => {
+  const { senderRunId: _senderRunId, ...identity } = responder;
+  return identity;
+};
 export class SessionQuestionError extends Schema.TaggedError<SessionQuestionError>()(
   "SessionQuestionError",
   {
-    code: Schema.Literals(["not_found", "not_pending", "unsupported", "forbidden", "unavailable"]),
+    code: Schema.Literals([
+      "not_found",
+      "not_pending",
+      "unsupported",
+      "forbidden",
+      "unavailable",
+      "model_off",
+      "credit_requires_person",
+    ]),
     message: Schema.String,
   },
 ) {}

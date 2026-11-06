@@ -1,3 +1,5 @@
+import { ModelPolicyError } from "../nodex/ModelPolicy.ts";
+import { readModelPolicyFailure } from "../../../../src/shared/model-policy.ts";
 import { assert, it, vi } from "@effect/vitest";
 import {
   NodeId,
@@ -127,6 +129,7 @@ it.effect("forwards orchestrator-resolved runtime requests to the live adapter",
     assert.deepEqual(respondToRuntimeRequest.mock.calls[0]?.[0], {
       requestId,
       answers: { question: "Keep the existing API." },
+      modelPolicyOrigin: "automatic",
     });
   }).pipe(Effect.provide(layerTest));
 });
@@ -293,5 +296,42 @@ it.effect("preserves genuine provider session lookup failures as the cause", () 
       `Failed to respond to runtime request ${requestId} on thread ${threadId} via provider session ${providerSessionId}.`,
     );
     assert.strictEqual(error.cause, lookupFailure);
+  }).pipe(Effect.provide(layerTest));
+});
+
+it.effect("policy refusals during delayed question delivery are never retryable", () => {
+  const threadId = ThreadId.make("credit-thread");
+  const providerSessionId = ProviderSessionId.make("credit-session");
+  const requestId = RuntimeRequestId.make("credit-request");
+  const projection = projectionWithRuntimeRequest(
+    resolvedRuntimeRequest(requestId, providerSessionId),
+  );
+  const layerTest = layerRuntimeRequestTest(projection, () =>
+    Effect.succeed(
+      Option.some({
+        respondToRuntimeRequest: () =>
+          Effect.fail(
+            new ModelPolicyError({
+              code: "credit_requires_person",
+              message: "Only the person can start Nodex models. Choose another provider.",
+              retryable: false,
+            }),
+          ),
+      } as never),
+    ),
+  );
+  return Effect.gen(function* () {
+    const service = yield* RuntimeRequestService.RuntimeRequestServiceV2;
+    const error = yield* service
+      .respond({
+        threadId,
+        providerSessionId,
+        requestId,
+        modelPolicyOrigin: "agent",
+        answers: { answer: "yes" },
+      })
+      .pipe(Effect.flip);
+    assert.equal(error.retryable, false);
+    assert.equal(readModelPolicyFailure(error)?.code, "credit_requires_person");
   }).pipe(Effect.provide(layerTest));
 });

@@ -2079,6 +2079,7 @@ export const make = Effect.gen(function* () {
 
       const generated = yield* textGeneration
         .generateCommitMessage({
+          automatic: true,
           cwd: input.cwd,
           branch: input.branch,
           stagedSummary: limitContext(context.stagedSummary, 8_000),
@@ -2271,6 +2272,7 @@ export const make = Effect.gen(function* () {
         : undefined;
 
     const generated = yield* textGeneration.generatePrContent({
+      automatic: true,
       cwd,
       baseBranch,
       headBranch: headContext.headBranch,

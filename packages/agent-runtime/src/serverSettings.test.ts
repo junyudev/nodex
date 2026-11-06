@@ -98,8 +98,6 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           service.updateSettings({
             setModelFavorites: [{ provider, model: "luna", favorite: true }],
           }),
-          service.updateSettings({ setModelsHidden: [{ provider, model: "astra", hidden: true }] }),
-          service.updateSettings({ setModelsHidden: [{ provider, model: "luna", hidden: true }] }),
           service.updateSettings({
             setProviderModelOrder: { provider, modelOrder: ["luna", "sol"] },
           }),
@@ -108,10 +106,6 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       );
       const settings = yield* service.getSettings;
       assert.deepEqual(settings.favorites?.map((entry) => entry.model).sort(), ["luna", "sol"]);
-      assert.deepEqual(settings.providerModelPreferences?.[provider]?.hiddenModels.toSorted(), [
-        "astra",
-        "luna",
-      ]);
       assert.deepEqual(settings.providerModelPreferences?.[provider]?.modelOrder, ["luna", "sol"]);
     }).pipe(Effect.provide(layerServerSettings())),
   );
@@ -125,7 +119,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         const patch = {
           favorites: [{ provider, model: "sol" }],
           providerModelPreferences: {
-            [provider]: { hiddenModels: ["astra"], modelOrder: ["sol"] },
+            [provider]: { modelOrder: ["sol"] },
           },
         };
         const changes = yield* service.subscribeChanges;
@@ -138,25 +132,6 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         );
         assert.deepEqual(saved.favorites, patch.favorites);
         assert.deepEqual(saved.providerModelPreferences, patch.providerModelPreferences);
-        const hidden = yield* service.updateSettings({
-          setModelsHidden: [{ provider, model: "sol", hidden: true }],
-        });
-        assert.deepEqual(hidden.providerModelPreferences?.[provider], {
-          hiddenModels: ["astra", "sol"],
-          modelOrder: ["sol"],
-        });
-        const shown = yield* service.updateSettings({
-          setModelsHidden: [{ provider, model: "astra", hidden: false }],
-        });
-        assert.deepEqual(shown.providerModelPreferences?.[provider], {
-          hiddenModels: ["sol"],
-          modelOrder: ["sol"],
-        });
-        assert.deepEqual(
-          (yield* decodeServerSettingsJson(yield* fs.readFileString(config.settingsPath)))
-            .providerModelPreferences,
-          shown.providerModelPreferences,
-        );
         yield* service.updateSettings({ favorites: [], providerModelPreferences: {} });
         // An older device's delayed seed cannot undo a clear, even after persistence.
         const migrated = yield* service.updateSettings({ migrateModelPreferences: patch });

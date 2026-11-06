@@ -1,3 +1,4 @@
+import { ModelPolicySchema, type ModelPolicy } from "../../../../src/shared/model-policy.ts";
 import * as Predicate from "effect/Predicate";
 import type { AgentRuntimeConfiguration } from "./Interface.ts";
 
@@ -7,6 +8,7 @@ import type { AgentRuntimeConfiguration } from "./Interface.ts";
  */
 export interface AgentRuntimeBootstrap {
   readonly type: "bootstrap";
+  readonly modelPolicy?: ModelPolicy;
   readonly providers: AgentRuntimeConfiguration["providers"];
   readonly hostTools?: NonNullable<AgentRuntimeConfiguration["host"]>["tools"];
 }
@@ -14,7 +16,7 @@ export interface AgentRuntimeBootstrap {
 /** Reads exactly one bootstrap line; later lines remain on the iterator for requests. */
 export async function readAgentRuntimeBootstrap(
   lines: AsyncIterator<string>,
-): Promise<Pick<AgentRuntimeConfiguration, "providers" | "host">> {
+): Promise<Pick<AgentRuntimeConfiguration, "providers" | "host" | "modelPolicy">> {
   const first = await lines.next();
   if (first.done) throw new Error("Agent Runtime stdin closed before its bootstrap frame.");
   const frame: unknown = JSON.parse(first.value);
@@ -29,6 +31,9 @@ export async function readAgentRuntimeBootstrap(
   const bootstrap = frame as unknown as AgentRuntimeBootstrap;
   return {
     providers: bootstrap.providers,
+    ...(bootstrap.modelPolicy === undefined
+      ? {}
+      : { modelPolicy: ModelPolicySchema.parse(bootstrap.modelPolicy) }),
     ...(bootstrap.hostTools === undefined ? {} : { host: { tools: bootstrap.hostTools } }),
   };
 }

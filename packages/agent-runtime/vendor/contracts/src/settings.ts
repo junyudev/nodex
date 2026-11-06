@@ -309,7 +309,6 @@ export const ModelFavorites = Schema.Array(ModelFavorite);
 export const ProviderModelPreferences = Schema.Record(
   ProviderInstanceId,
   Schema.Struct({
-    hiddenModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
     modelOrder: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   }),
 );
@@ -1497,9 +1496,6 @@ const ModelSelectionPatch = Schema.Struct({
 export const ServerSettingsPatch = Schema.Struct({
   setModelFavorites: Schema.optionalKey(
     Schema.Array(Schema.Struct({ ...ModelFavorite.fields, favorite: Schema.Boolean })),
-  ),
-  setModelsHidden: Schema.optionalKey(
-    Schema.Array(Schema.Struct({ ...ModelFavorite.fields, hidden: Schema.Boolean })),
   ),
   setProviderModelOrder: Schema.optionalKey(
     Schema.Struct({ provider: ProviderInstanceId, modelOrder: Schema.Array(TrimmedString) }),

@@ -1,3 +1,7 @@
+import {
+  restrictions as claudeModelRestrictions,
+  verifyClaudeModelPolicy,
+} from "../../nodex/ClaudeModelPolicy.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- native permission reasons contain terminal control sequences
 import { stripVTControlCharacters } from "node:util";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
@@ -843,6 +847,10 @@ export const layerQueryRunner: Layer.Layer<
               };
         // The CLI is running once query() returns, so it is closed if anything
         // before the session is handed out fails or is interrupted.
+        yield* Effect.tryPromise({
+          try: () => verifyClaudeModelPolicy(options, (input) => sdk.resolveSettings(input)),
+          catch: (cause) => queryRunnerError(cause, "model-policy"),
+        });
         const queryRuntime = yield* Effect.uninterruptibleMask((restore) =>
           Effect.try({
             try: () => sdk.query({ prompt, options }),
@@ -9577,7 +9585,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               ? {}
               : { allowedTools: queryPolicy.allowedTools }),
           });
-          const queryPolicyKey = claudeEffectiveQueryPolicyKey(queryPolicy, mcpOverrides);
+          const nativeModelPolicy = yield* claudeModelRestrictions(
+            turnInput.modelSelection,
+            subagentModelCatalog,
+          );
+          const queryPolicyKey = JSON.stringify([
+            claudeEffectiveQueryPolicyKey(queryPolicy, mcpOverrides),
+            nativeModelPolicy,
+          ]);
           const compiledSelection = compileClaudeModelSelection(
             turnInput.modelSelection,
             subagentModelCatalog,
@@ -9664,59 +9679,66 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             nativeThreadId,
             preparedThread.desktopTools,
           );
-          const queryOptions = makeClaudeQueryOptions({
-            modelCatalog: subagentModelCatalog,
-            ...(turnInput.hostInstructions === undefined
-              ? {}
-              : { hostInstructions: turnInput.hostInstructions }),
-            ...(turnInput.hostOrchestrationInstructions === undefined
-              ? {}
-              : { hostOrchestrationInstructions: turnInput.hostOrchestrationInstructions }),
-            modelSelection: turnInput.modelSelection,
-            nativeThreadId,
-            resume: shouldResume,
-            ...(resumeSessionAt === undefined ? {} : { resumeSessionAt }),
-            cwd: turnInput.runtimePolicy.cwd,
-            attachmentsDir,
-            settings: adapterOptions.settings,
-            environment: ExecutionHost.withWorkspaceEnvironment(
-              adapterOptions.environment,
-              preparedThread.environment,
-              adapterOptions.settings.isolated,
-            ),
-            tools: queryPolicy.tools ?? CLAUDE_CODE_PRESET_TOOLS,
-            ...(mcpOverrides.allowedTools === undefined
-              ? {}
-              : { allowedTools: mcpOverrides.allowedTools }),
-            ...(mcpOverrides.mcpServers === undefined && connectedDesktopTools === undefined
-              ? {}
-              : {
-                  mcpServers: {
-                    ...mcpOverrides.mcpServers,
-                    ...(connectedDesktopTools === undefined
-                      ? {}
-                      : { [CLAUDE_DESKTOP_TOOL_MCP_SERVER]: connectedDesktopTools.mcpServer }),
-                  },
-                }),
-            ...(connectedDesktopTools === undefined
-              ? {}
-              : { plugins: connectedDesktopTools.plugins }),
-            permissionMode: queryPolicy.permissionMode,
-            ...(queryPolicy.allowDangerouslySkipPermissions === undefined
-              ? {}
-              : { allowDangerouslySkipPermissions: queryPolicy.allowDangerouslySkipPermissions }),
-            canUseTool,
-            hooks: {
-              PreToolUse: [{ matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] }],
-              PostToolUse: [{ matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] }],
-              PostToolUseFailure: [
-                { matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] },
-              ],
-            },
-            onElicitation,
-            onUserDialog,
-            supportedDialogKinds: ["resume_return"],
-          });
+          const queryOptions = {
+            ...makeClaudeQueryOptions({
+              modelCatalog: subagentModelCatalog,
+              ...(turnInput.hostInstructions === undefined
+                ? {}
+                : { hostInstructions: turnInput.hostInstructions }),
+              ...(turnInput.hostOrchestrationInstructions === undefined
+                ? {}
+                : { hostOrchestrationInstructions: turnInput.hostOrchestrationInstructions }),
+              modelSelection: turnInput.modelSelection,
+              nativeThreadId,
+              resume: shouldResume,
+              ...(resumeSessionAt === undefined ? {} : { resumeSessionAt }),
+              cwd: turnInput.runtimePolicy.cwd,
+              attachmentsDir,
+              settings: adapterOptions.settings,
+              environment: ExecutionHost.withWorkspaceEnvironment(
+                adapterOptions.environment,
+                preparedThread.environment,
+                adapterOptions.settings.isolated,
+              ),
+              tools: queryPolicy.tools ?? CLAUDE_CODE_PRESET_TOOLS,
+              ...(mcpOverrides.allowedTools === undefined
+                ? {}
+                : { allowedTools: mcpOverrides.allowedTools }),
+              ...(mcpOverrides.mcpServers === undefined && connectedDesktopTools === undefined
+                ? {}
+                : {
+                    mcpServers: {
+                      ...mcpOverrides.mcpServers,
+                      ...(connectedDesktopTools === undefined
+                        ? {}
+                        : { [CLAUDE_DESKTOP_TOOL_MCP_SERVER]: connectedDesktopTools.mcpServer }),
+                    },
+                  }),
+              ...(connectedDesktopTools === undefined
+                ? {}
+                : { plugins: connectedDesktopTools.plugins }),
+              permissionMode: queryPolicy.permissionMode,
+              ...(queryPolicy.allowDangerouslySkipPermissions === undefined
+                ? {}
+                : { allowDangerouslySkipPermissions: queryPolicy.allowDangerouslySkipPermissions }),
+              canUseTool,
+              hooks: {
+                PreToolUse: [
+                  { matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] },
+                ],
+                PostToolUse: [
+                  { matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] },
+                ],
+                PostToolUseFailure: [
+                  { matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] },
+                ],
+              },
+              onElicitation,
+              onUserDialog,
+              supportedDialogKinds: ["resume_return"],
+            }),
+            managedSettings: nativeModelPolicy,
+          };
           const querySession = yield* queryRunner
             .open({
               threadId: turnInput.threadId,

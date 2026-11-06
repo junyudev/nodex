@@ -257,6 +257,7 @@ export const makeManagedCodexProvider = Effect.fn("makeManagedCodexProvider")(fu
           new TextGenerationError({
             operation,
             detail: "detail" in cause ? cause.detail : "Codex text generation failed.",
+            cause,
           }),
       ),
     );

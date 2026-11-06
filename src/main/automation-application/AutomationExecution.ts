@@ -1,3 +1,5 @@
+import { modelIsOn, spendsNodexCredit } from "../../shared/model-policy";
+import { isNodexProviderId } from "../../shared/nodex-models";
 import { createHash, randomUUID } from "node:crypto";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -137,8 +139,10 @@ export const live: Layer.Layer<
       override?: InboxAgentChoice | null,
     ) {
       if (override) return yield* resolveInboxModel(application, override);
-      yield* backends.resolve(definition.backendBinding);
       const instanceId = agentRuntimeProviderId(definition.backendBinding);
+      // Managed instances belong to the Runtime catalog, not native Profile configuration.
+      if (!instanceId || !isNodexProviderId(instanceId))
+        yield* backends.resolve(definition.backendBinding);
       const provider = (yield* application.catalog()).find(
         (item) => item.instanceId === instanceId,
       );
@@ -152,7 +156,9 @@ export const live: Layer.Layer<
           "model",
           "This scheduled task's Agent is off or unavailable. Turn it on in Settings or choose another Agent.",
         );
-      const model = definition.model ?? provider.models[0]?.slug;
+      const model =
+        definition.model ??
+        (!spendsNodexCredit(provider) ? provider.models.find(modelIsOn)?.slug : undefined);
       if (!model)
         return yield* fail(
           "model",

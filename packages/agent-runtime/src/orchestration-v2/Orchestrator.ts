@@ -1,3 +1,5 @@
+import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import { RetainedModelPolicyOrigin, RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
 import {
   eligibleRunRecovery,
   hasPendingRunRecovery,
@@ -363,6 +365,19 @@ export interface OrchestratorV2Shape {
     readonly threadId: ThreadId;
     readonly itemId: TurnItemId;
   }) => Effect.Effect<OrchestrationV2TurnItem | null, OrchestratorV2Error>;
+  readonly getRuntimeResponseContext: (
+    threadId: ThreadId,
+    requestId: import("@t3tools/contracts").RuntimeRequestId,
+  ) => Effect.Effect<
+    import("./ProjectionStore.ts").ProjectionRuntimeResponseContext,
+    OrchestratorV2Error
+  >;
+  readonly getRunningTurnContext: (
+    threadId: ThreadId,
+  ) => Effect.Effect<
+    Effect.Success<ReturnType<ProjectionStoreV2["Service"]["getRunningTurnContext"]>>,
+    OrchestratorV2Error
+  >;
   readonly getThreadRecords: <K extends ProjectionRecordField>(
     threadId: ThreadId,
     fields: ReadonlyArray<K>,
@@ -835,6 +850,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const commandReceipts = yield* CommandReceiptStoreV2;
   const idAllocator = yield* IdAllocator.IdAllocatorV2;
   const projects = yield* ProjectStore.ProjectStoreV2;
+  const modelPolicy = yield* RuntimeModelPolicy;
   const projectionStore = yield* ProjectionStoreV2;
   const effectOutbox = yield* EffectOutbox.EffectOutboxV2;
   const nextTurnItemOrdinal = (
@@ -4630,6 +4646,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     readonly delegatedCompletion?: OrchestrationV2ConversationMessage["delegatedCompletion"];
     readonly forceRestart: boolean;
     readonly retainInput?: boolean;
+    readonly modelPolicyOrigin?: OrchestrationV2Run["modelPolicyOrigin"];
   }) =>
     Effect.gen(function* () {
       const targetRun = input.projection.runs.find(
@@ -4932,6 +4949,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             threadId: input.command.threadId,
             request: {
               type: "provider-turn.steer",
+              modelPolicyOrigin: input.modelPolicyOrigin ?? "automatic",
               providerSessionId,
               providerThreadId: providerThread.id,
               providerTurnId: providerTurn.id,
@@ -5189,6 +5207,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       );
       const restartedRun: OrchestrationV2Run = {
         ...withoutRunRecovery(targetRun),
+        ...(input.modelPolicyOrigin === undefined
+          ? {}
+          : { modelPolicyOrigin: input.modelPolicyOrigin }),
         providerInstanceId: input.modelSelection.instanceId,
         modelSelection: input.modelSelection,
         providerThreadId: restartProviderThread.id,
@@ -5415,6 +5436,37 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   ) =>
     Effect.gen(function* () {
       let projection = yield* getProjectionWithPendingEvents(command.threadId, events, command);
+      const callerSelection = command.senderThreadId
+        ? yield* projectionStore
+            .getThreadRecords(command.senderThreadId, ["runs"], {
+              runIds: command.senderRunId ? [command.senderRunId] : [],
+            })
+            .pipe(
+              Effect.map((sender) =>
+                command.senderRunId
+                  ? sender.runs.find((run) => run.id === command.senderRunId)?.modelSelection
+                  : sender.thread.modelSelection,
+              ),
+              Effect.catch(() => Effect.succeed(undefined)),
+            )
+        : command.createdBy === "agent"
+          ? projection.thread.modelSelection
+          : undefined;
+      const policySourceRun = command.restartContinuationOfRunId
+        ? projection.runs.find((run) => run.id === command.restartContinuationOfRunId)
+        : undefined;
+      const authenticated = (yield* ExecutionHost.McpTurnAdmission)?.actor;
+      const modelPolicyOrigin =
+        (yield* RetainedModelPolicyOrigin) ??
+        (policySourceRun
+          ? (policySourceRun.modelPolicyOrigin ?? "automatic")
+          : yield* modelPolicy.origin(
+              authenticated !== undefined ||
+                command.createdBy === "agent" ||
+                command.senderThreadId !== undefined,
+              authenticated?.providerInstanceId ?? callerSelection?.instanceId,
+            ));
+
       if (command.manualContinuationOfRunId !== undefined) {
         const source = projection.runs.find((run) => run.id === command.manualContinuationOfRunId);
         const limited = latestRootProviderFailure(source ?? null, projection.turnItems);
@@ -5781,6 +5833,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
       if (dispatchMode.type === "steer_active" || dispatchMode.type === "restart_active") {
         yield* dispatchSteerIntoRun({
+          modelPolicyOrigin,
           command,
           events,
           effects,
@@ -5933,6 +5986,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 ),
               );
         const run: OrchestrationV2Run = {
+          modelPolicyOrigin,
           id: runId,
           threadId: command.threadId,
           ordinal,
@@ -6321,6 +6375,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                   mapDispatchError(command),
                 );
         const run: OrchestrationV2Run = {
+          modelPolicyOrigin,
           id: runId,
           threadId: command.threadId,
           ordinal,
@@ -7022,6 +7077,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ),
         );
       const run: OrchestrationV2Run = {
+        modelPolicyOrigin,
         id: runId,
         threadId: command.threadId,
         ordinal,
@@ -7739,6 +7795,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         commandId: command.commandId,
         threadId: childThreadId,
         senderThreadId: command.parentThreadId,
+        senderRunId: command.parentRunId,
         messageId: childMessageId,
         text: command.task,
         attachments: [],
@@ -8294,6 +8351,25 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     },
   );
 
+  const requesterOrigin = Effect.fnUntraced(function* (
+    responder?: import("@t3tools/contracts").UserInputResponder,
+  ) {
+    const admission = yield* ExecutionHost.McpTurnAdmission;
+    const caller = admission?.actor;
+    const senderThreadId = caller?.threadId ?? responder?.senderThreadId;
+    const senderRunId = caller?.runId ?? responder?.senderRunId;
+    const sender = senderThreadId
+      ? yield* projectionStore
+          .getThreadRecords(senderThreadId, ["runs"], { runIds: senderRunId ? [senderRunId] : [] })
+          .pipe(Effect.catch(() => Effect.succeed(undefined)))
+      : undefined;
+    const selection = senderRunId ? sender?.runs[0]?.modelSelection : sender?.thread.modelSelection;
+    return yield* modelPolicy.origin(
+      caller !== undefined || responder !== undefined,
+      caller?.providerInstanceId ?? selection?.instanceId,
+    );
+  });
+
   const dispatchRuntimeRequestRespond = (
     command: Extract<OrchestrationV2Command, { readonly type: "runtime-request.respond" }>,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
@@ -8305,6 +8381,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         .pipe(
           Effect.mapError(() => new OrchestratorProjectionError({ threadId: command.threadId })),
         );
+      const modelPolicyOrigin = yield* requesterOrigin(command.respondedBy);
       const runtimeRequest = context.request;
       if (runtimeRequest === undefined) {
         return yield* new OrchestratorDispatchError({
@@ -8663,6 +8740,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                   createdBy: "agent" as const,
                   creationSource: "mcp" as const,
                   senderThreadId: command.respondedBy.senderThreadId,
+                  senderRunId: command.respondedBy.senderRunId,
                   respondedBy: command.respondedBy,
                 }
               : { createdBy: "user" as const, creationSource: "server" as const }),
@@ -8681,6 +8759,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           threadId: command.threadId,
           request: {
             type: "runtime-request.respond",
+            modelPolicyOrigin,
             providerSessionId,
             requestId: command.requestId,
             ...(command.decision === undefined ? {} : { decision: command.decision }),
@@ -8882,7 +8961,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         },
       });
 
+      const modelPolicyOrigin = yield* requesterOrigin(command.requestedBy);
       yield* dispatchSteerIntoRun({
+        modelPolicyOrigin,
         command,
         events,
         effects,
@@ -13714,6 +13795,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             (cause) => new OrchestratorProjectionError({ threadId: input.threadId, cause }),
           ),
         ),
+    getRuntimeResponseContext: (threadId, requestId) =>
+      projectionStore
+        .getRuntimeResponseContext(threadId, requestId)
+        .pipe(Effect.mapError(() => new OrchestratorProjectionError({ threadId }))),
+    getRunningTurnContext: (threadId) =>
+      projectionStore
+        .getRunningTurnContext(threadId)
+        .pipe(Effect.mapError(() => new OrchestratorProjectionError({ threadId }))),
     getThreadRecords: (threadId, fields, filter) =>
       projectionStore
         .getThreadRecords(threadId, fields, filter)

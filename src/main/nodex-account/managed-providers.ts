@@ -10,7 +10,7 @@ import { NODEX_MODELS, isNodexProviderId } from "../../shared/nodex-models";
 import type { NodexModelAccess } from "../platform/NodexModelAccessPlatform";
 import { shellQuote } from "../platform/node/NodexCliShell";
 
-const accountId = (identity: NodexAccountIdentity) =>
+export const managedNodexAccountId = (identity: NodexAccountIdentity) =>
   createHash("sha256")
     .update(JSON.stringify([identity.issuer, identity.subject]))
     .digest("hex")
@@ -21,7 +21,7 @@ export function projectManagedNodexCatalog(
   providers: AgentRuntimeOperations["providers.read"]["output"],
   managed: { readonly identity: NodexAccountIdentity; readonly access: NodexModelAccess } | null,
 ) {
-  const account = managed ? accountId(managed.identity) : null;
+  const account = managed ? managedNodexAccountId(managed.identity) : null;
   return providers.filter(
     (provider) =>
       (provider.source !== "nodex" && !isNodexProviderId(provider.instanceId)) ||
@@ -49,7 +49,7 @@ export function managedNodexProviders(input: {
 }): AgentRuntimeConfiguration["providers"] {
   if (!input.managed) return {};
   const { identity, access } = input.managed;
-  const account = accountId(identity);
+  const account = managedNodexAccountId(identity);
   const root = join(input.home, "account", "models", account);
   const baseEnvironment = Object.fromEntries(
     Object.entries(input.environment).flatMap(([name, value]) =>

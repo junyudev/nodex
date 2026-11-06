@@ -1,3 +1,4 @@
+import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -123,6 +124,7 @@ const makeHarness = (input: {
   readonly calls: string[];
   readonly operationIds?: string[];
   readonly modeLimits?: unknown[];
+  readonly followUpSenders?: unknown[];
   readonly reconciliations?: Array<
     readonly { readonly threadId: string; readonly operationId: string }[]
   >;
@@ -164,6 +166,19 @@ const makeHarness = (input: {
         ),
       );
     const execution = ThreadExecution.of({
+      assertFollowUp: () =>
+        input.failAt === "follow-up-admission"
+          ? Effect.fail(
+              new ThreadExecutionError({
+                operation: "follow-up-admission",
+                threadId: "thread-1",
+                cause: Object.assign(
+                  new Error("Only the person can start Nodex models. Choose another provider."),
+                  { code: "credit_requires_person", retryable: false },
+                ),
+              }),
+            )
+          : Effect.void,
       reconcileRecovery: (operations) =>
         Effect.gen(function* () {
           input.reconciliations?.push(operations);
@@ -226,10 +241,11 @@ const makeHarness = (input: {
               cause: new Error("Commit reply lost"),
             });
         }),
-      followUp: (_threadId, _prompt, operationId, modeLimit) =>
+      followUp: (_threadId, _prompt, operationId, modeLimit, sender) =>
         Effect.suspend(() => {
           input.operationIds?.push(operationId ?? "missing");
           input.modeLimits?.push(modeLimit);
+          input.followUpSenders?.push(sender);
           assert.isFalse(
             handoffActive,
             "Follow-up must be admitted after the handoff guard releases",
@@ -874,5 +890,98 @@ it.effect("persists and forwards the handoff admission ceiling", () =>
     });
     assert.deepEqual(entry.modeLimit, modeLimit);
     assert.deepEqual(modeLimits, [modeLimit]);
+  }),
+);
+
+it.effect("refuses a follow-up before status, journal or physical handoff mutation", () =>
+  Effect.gen(function* () {
+    const calls: string[] = [];
+    const runtime = yield* makeHarness({ calls, failAt: "follow-up-admission" });
+    const result = yield* runtime
+      .launch({
+        operationId: "forbidden-credit",
+        threadId: "thread-1",
+        destinationHostId: null,
+        followUpPrompt: "Continue",
+        followUpSender: { threadId: "outside", runId: "outside-run" },
+      })
+      .pipe(Effect.flip);
+    assert.include(result.message, "Only the person");
+    assert.deepEqual(calls, []);
+    assert.isNull(yield* runtime.get("forbidden-credit"));
+  }),
+);
+
+it.effect(
+  "retains the requesting Thread and Run when a journaled handoff delivers its follow-up",
+  () =>
+    Effect.gen(function* () {
+      const sender = { threadId: "outside", runId: "outside-run" };
+      const followUpSenders: unknown[] = [];
+      const runtime = yield* makeHarness({
+        calls: [],
+        followUpSenders,
+        canonical: destination,
+        initial: [
+          {
+            ...makeEntry(),
+            phase: "cleaning-source",
+            destination,
+            runtimeSwitched: true,
+            coreCommitted: true,
+            followUpSender: sender,
+          },
+        ],
+      });
+      yield* runtime.recover();
+      assert.deepEqual(followUpSenders, [sender]);
+    }),
+);
+
+it.effect("captures the authenticated handoff caller before background execution", () =>
+  Effect.gen(function* () {
+    const calls: string[] = [];
+    const followUpSenders: unknown[] = [];
+    const runtime = yield* makeHarness({ calls, followUpSenders });
+    const result = yield* runtime
+      .start({
+        operationId: "authenticated-handoff",
+        destinationHostId: null,
+        threadId: "thread-1",
+        requestThreadId: "status-correlation",
+        followUpPrompt: "continue",
+      })
+      .pipe(
+        Effect.provideService(CoreApplicationAgent, {
+          authority: { thread_id: "actual-caller", turn_id: "actual-run" },
+        } as never),
+      );
+    assert.deepEqual(result.followUpSender, { threadId: "actual-caller", runId: "actual-run" });
+    assert.deepEqual(followUpSenders, [{ threadId: "actual-caller", runId: "actual-run" }]);
+  }),
+);
+
+it.effect("does not infer an old handoff caller from its Thread's current model", () =>
+  Effect.gen(function* () {
+    const followUpSenders: unknown[] = [];
+    const runtime = yield* makeHarness({
+      calls: [],
+      followUpSenders,
+      canonical: destination,
+      initial: [
+        {
+          ...makeEntry(),
+          requestThreadId: "caller-without-original-run",
+          phase: "cleaning-source",
+          destination,
+          runtimeSwitched: true,
+          coreCommitted: true,
+        },
+      ],
+    });
+    const entries = yield* runtime.recover();
+    assert.deepEqual(followUpSenders, []);
+    assert.equal(entries[0]?.phase, "completed-with-warning");
+    assert.include(entries[0]?.warnings.join(" "), "original caller is unavailable");
   }),
 );

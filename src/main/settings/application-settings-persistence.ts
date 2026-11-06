@@ -1,4 +1,9 @@
 import {
+  ModelPolicySchema,
+  DEFAULT_MODEL_POLICY,
+  type ModelPolicy,
+} from "../../shared/model-policy";
+import {
   DEFAULT_TERMINAL_SHELL_SETTINGS,
   TerminalShellSettingsSchema,
   type TerminalShellSettings,
@@ -142,6 +147,7 @@ interface ServerTomlConfig {
   composer_predictions_enabled?: boolean;
   default_runtime_mode?: AgentRuntimeSettings["defaultRuntimeMode"];
   usage_meters?: Partial<UsageMeterSettings>;
+  model_policy?: ModelPolicy;
   open_link_in_target?: LinkOpeningSettings["openLinkInTarget"];
   open_local_url_in_target?: LinkOpeningSettings["openLocalUrlInTarget"];
   external_browser_link_shortcut?: LinkOpeningSettings["externalBrowserLinkShortcut"];
@@ -1577,4 +1583,22 @@ export function updateMobileAccessEnabled(
     ...loadProfileServerTomlConfig(source),
     mobile_access_enabled: enabled,
   });
+}
+
+export function getModelPolicy(source: ApplicationSettingsDocumentSource): ModelPolicy {
+  const stored = loadProfileServerTomlConfig(source).model_policy;
+  if (stored === undefined) return DEFAULT_MODEL_POLICY;
+  // Invalid spending policy fails closed instead of silently enabling credit.
+  return ModelPolicySchema.parse(stored);
+}
+export function updateModelPolicy(
+  input: ModelPolicy,
+  source: ApplicationSettingsDocumentSource,
+): ModelPolicy {
+  const policy = ModelPolicySchema.parse(input);
+  writeProfileServerTomlConfig(source, {
+    ...loadProfileServerTomlConfig(source),
+    model_policy: policy,
+  });
+  return policy;
 }

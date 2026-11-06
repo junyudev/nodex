@@ -1,3 +1,5 @@
+import { readModelPolicyFailure } from "../../../../src/shared/model-policy.ts";
+import { RetainedModelPolicyOrigin } from "../nodex/ModelPolicy.ts";
 import { recoveryCommandId } from "./RunRecovery.ts";
 import { CommandId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -302,6 +304,7 @@ export const layerExecutor: Layer.Layer<
                 );
             return providerTurnControl
               .steer({
+                modelPolicyOrigin: effect.request.modelPolicyOrigin ?? "automatic",
                 threadId: effect.threadId,
                 providerSessionId: effect.request.providerSessionId,
                 providerThreadId: effect.request.providerThreadId,
@@ -342,6 +345,13 @@ export const layerExecutor: Layer.Layer<
                 Effect.catch((error) =>
                   Effect.gen(function* () {
                     if (Schema.is(OrchestrationEffectExecutionError)(error)) return yield* error;
+                    if (readModelPolicyFailure(error))
+                      return yield* new OrchestrationEffectExecutionError({
+                        effectId: effect.id,
+                        effectType: effect.request.type,
+                        retryable: false,
+                        cause: error,
+                      });
                     if (error.delivery === "unknown") return yield* recordDelivery("unknown");
                     // A steer that missed its Turn starts the next one; one the provider
                     // refused while its Turn keeps running waits for that Turn to end.
@@ -410,6 +420,10 @@ export const layerExecutor: Layer.Layer<
                           : { respondedBy: message.respondedBy }),
                       })
                       .pipe(
+                        Effect.provideService(
+                          RetainedModelPolicyOrigin,
+                          effect.request.modelPolicyOrigin ?? "automatic",
+                        ),
                         // The turn that just completed leaves no further retry
                         // target once the instance is off: the completed turn
                         // stands as the thread's result instead of going
@@ -491,6 +505,7 @@ export const layerExecutor: Layer.Layer<
           case "runtime-request.respond":
             return runtimeRequests
               .respond({
+                modelPolicyOrigin: effect.request.modelPolicyOrigin ?? "automatic",
                 threadId: effect.threadId,
                 providerSessionId: effect.request.providerSessionId,
                 requestId: effect.request.requestId,
@@ -872,7 +887,9 @@ export const layerWithOptions = (
 
           const error = Cause.pretty(exit.cause);
           const failure = Cause.findErrorOption(exit.cause);
-          const retryable = Option.isNone(failure) || failure.value.retryable !== false;
+          const retryable =
+            Option.isNone(failure) ||
+            (readModelPolicyFailure(failure.value) === null && failure.value.retryable !== false);
           const nonRetryable =
             singleAttempt || isNonRetryableProviderTurnControlFailure(effect.request.type, error);
           yield* Effect.logWarning("Orchestration effect execution failed", {

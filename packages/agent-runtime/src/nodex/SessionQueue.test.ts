@@ -1,3 +1,4 @@
+import { readModelPolicyFailure } from "../../../../src/shared/model-policy.ts";
 import { make as makeStop } from "./SessionStop.ts";
 import { assert, it } from "@effect/vitest";
 import {
@@ -530,5 +531,49 @@ it.effect("lists delivery kinds, protects both markers and preserves internal ca
     });
     const retired = yield* f.orchestrator.getThreadProjection(threadId);
     assert.equal(retired.runs.find((run) => run.id === notification)?.status, "cancelled");
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("an Agent cannot promote a person's queued message into a Nodex turn", () =>
+  Effect.gen(function* () {
+    const f = yield* setup;
+    yield* f.send("credit-queued", "continue");
+    const queuedId = yield* f.queued("credit-queued");
+    const before = yield* f.orchestrator.getThreadProjection(threadId);
+    const run = before.runs.find((row) => row.userMessageId === "active")!;
+    const sink = yield* EventSink.EventSinkV2;
+    yield* sink.write({
+      events: [
+        {
+          id: EventId.make("running-on-credit"),
+          type: "run.updated",
+          threadId,
+          occurredAt: yield* DateTime.now,
+          payload: {
+            ...run,
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("nodex_codex_test"),
+              model: "gpt-6.1-sol",
+            },
+          },
+        },
+      ],
+    });
+    const refused = yield* f
+      .call({
+        action: "steer",
+        queuedId,
+        requestedBy: { kind: "agent", senderThreadId: ThreadId.make("outside-agent") },
+      })
+      .pipe(Effect.result);
+    assert.equal(refused._tag, "Failure");
+    if (refused._tag === "Failure")
+      assert.equal(readModelPolicyFailure(refused.failure)?.code, "credit_requires_person");
+    const after = yield* f.orchestrator.getThreadProjection(threadId);
+    assert.equal(
+      after.runs.find((row) => row.id === queuedId)?.status,
+      before.runs.find((row) => row.id === queuedId)?.status,
+    );
+    assert.deepEqual(after.messages, before.messages);
   }).pipe(Effect.provide(layer)),
 );

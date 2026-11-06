@@ -1,3 +1,10 @@
+import type { AgentRuntimeOperations } from "./Interface.ts";
+import { RuntimeModelPolicy, executionProviders } from "./ModelPolicy.ts";
+import {
+  isModelOn,
+  spendsNodexCredit,
+  type ModelPolicy,
+} from "../../../../src/shared/model-policy.ts";
 import { withSupportedRuntimeModes } from "./ProviderRuntimeModes.ts";
 import { CodexAppServerClientFactory } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { WINDOWS_SANDBOX_NOT_APPLICABLE } from "../provider/CodexWindowsSandbox.ts";
@@ -40,6 +47,7 @@ import {
   PersistChatAttachmentsResult,
   ProviderInstanceConfigMap,
   ProviderInstanceId,
+  ProviderSessionId,
   OrchestrationV2Subagent,
   OrchestrationV2ConversationMessage,
   OrchestrationV2ExecutionLocation,
@@ -296,7 +304,27 @@ const AgentRequest = Schema.Union([
       terminalCursor: Schema.optional(Schema.String),
     }),
   ),
-  request("providers.configure", Schema.Struct({ providers: ProviderInstanceConfigMap })),
+  request(
+    "models.assert",
+    Schema.Struct({
+      modelSelection: ModelSelection,
+      origin: Schema.Literals(["person", "nodex-agent", "agent", "automatic"]),
+      caller: Schema.optional(
+        Schema.Struct({
+          threadId: Schema.String,
+          runId: Schema.optional(Schema.NullOr(Schema.String)),
+        }),
+      ),
+    }),
+  ),
+  request("models.running-credit", Schema.Struct({})),
+  request(
+    "providers.configure",
+    Schema.Struct({
+      providers: ProviderInstanceConfigMap,
+      modelPolicy: Schema.optional(Schema.Unknown),
+    }),
+  ),
   request("attachments.persist", PersistChatAttachmentsInput),
   request("attachments.import", ImportChatAttachmentsInput),
   request(
@@ -764,8 +792,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const providers = yield* Providers.ProviderRegistry;
   const codexClients = yield* CodexAppServerClientFactory;
   const instances = yield* ProviderInstanceRegistry;
+  const modelPolicy = yield* RuntimeModelPolicy;
   const providerConfiguration = yield* ProviderConfiguration.make(
-    yield* Schema.decodeUnknownEffect(ProviderInstanceConfigMap)(initialProviders),
+    executionProviders(
+      (yield* modelPolicy.current).policy,
+      yield* Schema.decodeUnknownEffect(ProviderInstanceConfigMap)(initialProviders),
+    ),
   );
   const processScope = yield* Scope.make("parallel");
   yield* Effect.addFinalizer((exit) => Scope.close(processScope, exit));
@@ -981,38 +1013,146 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* StoreCoordinate.record(input.input.coordinate).pipe(
           Effect.provideService(SqlClient.SqlClient, sql),
         );
+      case "models.assert": {
+        const caller = input.input.caller;
+        const records = caller
+          ? yield* projections
+              .getThreadRecords(ThreadId.make(caller.threadId), ["runs"], {
+                runIds: caller.runId ? [RunId.make(caller.runId)] : [],
+              })
+              .pipe(Effect.catch(() => Effect.succeed(undefined)))
+          : undefined;
+        const selection = caller?.runId
+          ? records?.runs.find((run) => run.id === caller.runId)?.modelSelection
+          : records?.thread.modelSelection;
+        const origin =
+          caller && input.input.origin !== "automatic"
+            ? yield* modelPolicy.origin(true, selection?.instanceId)
+            : input.input.origin;
+        yield* modelPolicy.assert(input.input.modelSelection, origin);
+        return null;
+      }
+      case "models.running-credit": {
+        const rows = yield* sql<{
+          readonly thread_id: string;
+          readonly payload_json: string;
+        }>`SELECT thread_id, payload_json FROM orchestration_v2_projection_runs WHERE status IN ('preparing', 'starting', 'running', 'waiting')`;
+        const result: AgentRuntimeOperations["models.running-credit"]["output"][number][] = [];
+        for (const row of rows) {
+          const run = JSON.parse(row.payload_json) as {
+            modelSelection: { instanceId: string; model: string };
+          };
+          if (!spendsNodexCredit({ instanceId: run.modelSelection.instanceId, driver: "codex" }))
+            continue;
+          for (const rootThreadId of yield* activityRootsOf(ThreadId.make(row.thread_id)))
+            result.push({ rootThreadId, threadId: row.thread_id, ...run.modelSelection });
+        }
+        // Native work can outlive its foreground Run. Include credit roots that
+        // still report background activity, without inventing a second activity model.
+        let cursor: string | undefined;
+        do {
+          const page = yield* readRootActivity({
+            cursor,
+            limit: EXECUTION_ACTIVITY_MAX_PAGE_LIMIT,
+          }).pipe(Effect.provideService(SqlClient.SqlClient, sql));
+          for (const item of page.items) {
+            if (
+              !spendsNodexCredit({ instanceId: item.providerInstanceId, driver: "codex" }) ||
+              result.some(
+                (run) => run.rootThreadId === item.rootThreadId && run.model === item.model,
+              )
+            )
+              continue;
+            result.push({
+              rootThreadId: item.rootThreadId,
+              threadId: item.rootThreadId,
+              instanceId: item.providerInstanceId,
+              model: item.model,
+            });
+          }
+          cursor = page.nextCursor ?? undefined;
+        } while (cursor !== undefined);
+        return result;
+      }
       case "providers.configure": {
         const before = yield* providerPolicy.current;
-        const wanted = input.input.providers;
+        const previousPolicy = yield* modelPolicy.current;
+        const nextPolicy =
+          (input.input.modelPolicy as ModelPolicy | undefined) ?? previousPolicy.policy;
+        const wanted = executionProviders(nextPolicy, input.input.providers);
+        // Close model admission before cancelling queues or releasing any credential-bearing process.
+        yield* modelPolicy.replace({
+          policy: nextPolicy,
+          providers: { ...before, ...input.input.providers },
+        });
         const retiring = Object.entries(before).filter(
           ([id, entry]) => entry.source === "nodex" && !wanted[id as ProviderInstanceId],
         );
         // Queue cancellation precedes native teardown: Stop alone holds queued work for later.
         if (retiring.length) yield* providerConfiguration.closeAdmission(wanted);
-        for (const [id] of retiring) {
+        for (const [id, declaration] of Object.entries(before).filter(
+          ([id, entry]) =>
+            entry.source === "nodex" &&
+            (retiring.some(([retired]) => retired === id) ||
+              JSON.stringify(previousPolicy.policy) !== JSON.stringify(nextPolicy)),
+        )) {
           const active = yield* sql<{
             readonly run_id: string;
             readonly thread_id: string;
             readonly status: string;
+            readonly payload_json: string;
           }>`
-            SELECT run_id, thread_id, status FROM orchestration_v2_projection_runs
+            SELECT run_id, thread_id, status, payload_json FROM orchestration_v2_projection_runs
             WHERE provider_instance_id = ${id} AND status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
           `;
-          for (const row of active.filter((run) => run.status === "queued"))
+          const affected = active.filter(
+            (run) =>
+              retiring.some(([retired]) => retired === id) ||
+              !isModelOn(
+                nextPolicy,
+                { ...declaration, instanceId: id },
+                (JSON.parse(run.payload_json) as { modelSelection: { model: string } })
+                  .modelSelection.model,
+              ),
+          );
+          for (const row of affected.filter((run) => run.status === "queued"))
             yield* orchestrator.dispatch({
               type: "queued-run.cancel-internal",
               commandId: CommandId.make(`nodex-retire:queue:${row.run_id}`),
               threadId: ThreadId.make(row.thread_id),
               runId: RunId.make(row.run_id),
             });
-          for (const row of active.filter((run) => run.status !== "queued"))
+          for (const row of affected.filter((run) => run.status !== "queued"))
             yield* orchestrator.dispatch({
               type: "thread.stop",
               commandId: CommandId.make(`nodex-retire:active:${row.run_id}`),
               threadId: ThreadId.make(row.thread_id),
-              reason: "Nodex Account disconnected",
+              reason: "Nodex model access changed",
             });
-          yield* providerSessions.closeInstance(ProviderInstanceId.make(id));
+          const restricted = declaration.modelAllowlist?.some(
+            (model) =>
+              isModelOn(previousPolicy.policy, { ...declaration, instanceId: id }, model) &&
+              !isModelOn(nextPolicy, { ...declaration, instanceId: id }, model),
+          );
+          // Claude captures managed restrictions per process. Retire its existing queries so an
+          // allowed parent cannot keep an old native child/helper policy after this update.
+          if (
+            retiring.some(([retired]) => retired === id) ||
+            (restricted && declaration.driver === "claudeAgent")
+          ) {
+            yield* providerSessions.closeInstance(ProviderInstanceId.make(id));
+            continue;
+          }
+          if (!restricted) continue;
+          const nativeSessions = yield* sql<{
+            readonly provider_session_id: string;
+            readonly payload_json: string;
+          }>`SELECT provider_session_id, payload_json FROM orchestration_v2_projection_provider_sessions WHERE provider_instance_id = ${id}`;
+          for (const session of nativeSessions) {
+            const model = (JSON.parse(session.payload_json) as { model: string | null }).model;
+            if (model && !isModelOn(nextPolicy, { ...declaration, instanceId: id }, model))
+              yield* providerSessions.close(ProviderSessionId.make(session.provider_session_id));
+          }
         }
         return yield* providerConfiguration.configure(wanted);
       }
@@ -1104,6 +1244,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         yield* nativeInteraction.clearPredictions(input.input.threadId);
         return null;
       case "text.generate-structured": {
+        yield* modelPolicy.assert(input.input.modelSelection, "person");
         const target = (yield* providerPolicy.admission)[input.input.modelSelection.instanceId];
         if (!target || target.enabled === false)
           return yield* Effect.fail(
@@ -1225,6 +1366,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         };
       }
       case "thread.compact":
+        yield* modelPolicy.assert(
+          (yield* orchestrator.getThreadProjection(input.input.threadId)).thread.modelSelection,
+          "person",
+        );
         return yield* compactThread(input.input).pipe(
           Effect.provideService(ThreadManagementService, threads),
         );

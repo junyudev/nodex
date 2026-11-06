@@ -1,3 +1,4 @@
+import { assertTextGenerationAdmission } from "@t3tools/provider-core/server/textGenerationPolicy";
 /**
  * Text generation on an OpenCode 2 server. Both of its `generate` endpoints
  * answer 403 on OpenCode's free tier ("free tier can only be used from within
@@ -147,6 +148,7 @@ const runOnServer = (
       const path = resolveAttachmentPath(attachment);
       return path === null ? [] : [{ uri: `file://${path}`, name: attachment.name }];
     });
+    yield* assertTextGenerationAdmission;
     yield* client.session.prompt({
       sessionID: session.id,
       text: input.prompt,

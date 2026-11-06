@@ -154,6 +154,8 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       "settings:inbox:update",
       "settings:link-opening:get",
       "settings:link-opening:update",
+      "settings:model-policy:get",
+      "settings:model-policy:update",
       "settings:notification-authorization:open-settings",
       "settings:notification-authorization:read",
       "settings:notification-authorization:request",
@@ -228,6 +230,8 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
     for (const channel of [
       "settings:notification-authorization:read",
       "settings:notification-authorization:request",
+      "settings:model-policy:get",
+      "settings:model-policy:update",
       "settings:notification-authorization:open-settings",
     ]) {
       assert.strictEqual(

@@ -1,3 +1,5 @@
+import { DEFAULT_MODEL_POLICY, sameModelPolicy, type ModelPolicy } from "../../shared/model-policy";
+import { getModelPolicy, updateModelPolicy } from "./application-settings-persistence";
 import {
   DEFAULT_TERMINAL_SHELL_SETTINGS,
   type TerminalShellSettings,
@@ -147,6 +149,7 @@ export interface ApplicationSettingsSnapshot {
   readonly composerPredictions: ComposerPredictionSettings;
   readonly agentRuntime: AgentRuntimeSettings;
   readonly usageMeters: UsageMeterSettings;
+  readonly modelPolicy: ModelPolicy;
   readonly linkOpening: LinkOpeningSettings;
 }
 
@@ -188,6 +191,7 @@ export type ApplicationSettingsCommand =
   | { readonly type: "update-agent-runtime"; readonly input: AgentRuntimeSettings }
   | { readonly type: "update-composer-predictions"; readonly input: ComposerPredictionSettings }
   | { readonly type: "update-link-opening"; readonly input: LinkOpeningSettings }
+  | { readonly type: "update-model-policy"; readonly input: ModelPolicy }
   | { readonly type: "update-usage-meters"; readonly input: UsageMeterSettings }
   | { readonly type: "update-mobile-access"; readonly enabled: boolean }
   | { readonly type: "update-inbox"; readonly input: UpdateInboxSettingsInput };
@@ -208,6 +212,7 @@ export class ApplicationSettings extends Context.Service<
     /** Current Profile meter choices and subsequent saved changes. */
     readonly terminalShellSettingsChanges: Stream.Stream<TerminalShellSettings>;
     readonly linkOpeningSettingsChanges: Stream.Stream<LinkOpeningSettings>;
+    readonly modelPolicyChanges: Stream.Stream<ModelPolicy>;
     readonly usageMeterSettingsChanges: Stream.Stream<UsageMeterSettings>;
     /** Latest saved preference; slow observers may coalesce intermediate invalidations. */
     readonly composerPredictionSettingsChanges: Stream.Stream<ComposerPredictionSettings>;
@@ -318,6 +323,7 @@ function makeSnapshot(
     composerPredictions: getComposerPredictionSettings(snapshotSource),
     agentRuntime: getAgentRuntimeSettings(snapshotSource),
     usageMeters: getUsageMeterSettings(snapshotSource),
+    modelPolicy: getModelPolicy(snapshotSource),
     linkOpening: getLinkOpeningSettings(snapshotSource),
   };
 }
@@ -391,6 +397,9 @@ function applyCommand(
     case "update-link-opening":
       updateLinkOpeningSettings(command.input, source);
       return;
+    case "update-model-policy":
+      updateModelPolicy(command.input, source);
+      break;
     case "update-usage-meters":
       updateUsageMeterSettings(command.input, source);
       return;
@@ -417,6 +426,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   };
   const writes = yield* Semaphore.make(1);
   const terminalShell = yield* SubscriptionRef.make(DEFAULT_TERMINAL_SHELL_SETTINGS);
+  const modelPolicy = yield* SubscriptionRef.make(DEFAULT_MODEL_POLICY);
   const usageMeters = yield* SubscriptionRef.make(DEFAULT_USAGE_METER_SETTINGS);
   const linkOpening = yield* SubscriptionRef.make(DEFAULT_LINK_OPENING_SETTINGS);
   // Observers invalidate predictions and reread settings before admitting new work.
@@ -441,6 +451,9 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     buildDefaultChannel: AppUpdateSettings["channel"] = "stable",
   ) {
     const snapshot = yield* attempt("read", () => makeSnapshot(source, buildDefaultChannel));
+    if (!sameModelPolicy(yield* SubscriptionRef.get(modelPolicy), snapshot.modelPolicy)) {
+      yield* SubscriptionRef.set(modelPolicy, snapshot.modelPolicy);
+    }
     if (!sameUsageMeterSettings(yield* SubscriptionRef.get(usageMeters), snapshot.usageMeters)) {
       yield* SubscriptionRef.set(usageMeters, snapshot.usageMeters);
     }
@@ -480,6 +493,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   return ApplicationSettings.of({
     terminalShellSettingsChanges: SubscriptionRef.changes(terminalShell),
     usageMeterSettingsChanges: SubscriptionRef.changes(usageMeters),
+    modelPolicyChanges: SubscriptionRef.changes(modelPolicy),
     linkOpeningSettingsChanges: SubscriptionRef.changes(linkOpening),
     composerPredictionSettingsChanges: Stream.fromPubSub(composerPredictionChanges),
     inboxSettingsChanges: Stream.fromPubSub(inboxChanges),

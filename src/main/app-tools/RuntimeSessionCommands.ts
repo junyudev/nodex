@@ -1,3 +1,4 @@
+import { readModelPolicyFailure } from "../../shared/model-policy";
 import { RUNTIME_MODE_RANK } from "@nodex/agent-runtime/contracts";
 import { sessionQuestionSchema } from "../../shared/nodex-app-tools/session-question-schema";
 import { make as makeSessionQuestions } from "./SessionQuestionIntake";
@@ -78,6 +79,7 @@ export const make = Effect.gen(function* () {
             kind: "agent",
             senderThreadId: hosted?.threadId ?? input.caller.threadId,
             senderSessionId: sessionId,
+            senderRunId: hosted?.runId ?? input.caller.turnId,
           },
           operationId,
         );
@@ -169,6 +171,10 @@ export const make = Effect.gen(function* () {
         sessionId: deriveSessionDispatchIdentity(operationId, "session", acceptedAtMs),
         projectId,
         title: request.title ?? "New chat",
+        sender: {
+          threadId: hosted?.threadId ?? input.caller.threadId,
+          runId: null,
+        },
         modelSelection: {
           ...selection,
           ...(request.model ? { model: request.model } : {}),
@@ -208,8 +214,10 @@ export const make = Effect.gen(function* () {
     });
     return yield* execute.pipe(
       Effect.provideService(CoreApplicationAgent, provenance),
-      Effect.catch((error) =>
-        Effect.succeed(
+      Effect.catch((error) => {
+        const policy = readModelPolicyFailure(error);
+        if (policy) return Effect.succeed(toolFailure(policy.code, policy.message));
+        return Effect.succeed(
           toolFailure(
             Schema.is(SessionQuestionError)(error)
               ? error.code
@@ -222,8 +230,8 @@ export const make = Effect.gen(function* () {
                   : "session_command_failed",
             error instanceof Error ? error.message : "Session command is unavailable",
           ),
-        ),
-      ),
+        );
+      }),
     );
   });
 });

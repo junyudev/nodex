@@ -1,3 +1,4 @@
+import { ModelPolicyError } from "../nodex/ModelPolicy.ts";
 import type { ProjectionRecordField } from "../orchestration-v2/ProjectionStore.ts";
 import {
   CommandId,
@@ -26,24 +27,29 @@ export const unavailable = () =>
 
 /** Decider string rejections are public; wrapped storage and hydration causes are not. */
 export const dispatchFailure = (
-  error: OrchestratorV2Error | ThreadManagement.ThreadManagementProviderInstanceDisabledError,
+  error:
+    | OrchestratorV2Error
+    | ThreadManagement.ThreadManagementProviderInstanceDisabledError
+    | ModelPolicyError,
 ) =>
-  error._tag === "OrchestratorThreadAboveModeLimitError"
-    ? new OrchestratorMcpFailure({
-        code: error.reason,
-        message: `Thread ${error.threadId} now exceeds the caller's execution modes.`,
-      })
-    : error._tag === "ThreadManagementProviderInstanceDisabledError"
-      ? new OrchestratorMcpFailure({ code: "invalid_request", message: error.message })
-      : (error._tag === "OrchestratorDispatchError" ||
-            error._tag === "OrchestratorCommandRejectedError") &&
-          typeof error.cause === "string" &&
-          error.cause.length > 0
-        ? new OrchestratorMcpFailure({
-            code: "orchestration_error",
-            message: Array.from(error.cause).slice(0, 1000).join(""),
-          })
-        : unavailable();
+  error._tag === "ModelPolicyError"
+    ? new OrchestratorMcpFailure({ code: error.code, message: error.message })
+    : error._tag === "OrchestratorThreadAboveModeLimitError"
+      ? new OrchestratorMcpFailure({
+          code: error.reason,
+          message: `Thread ${error.threadId} now exceeds the caller's execution modes.`,
+        })
+      : error._tag === "ThreadManagementProviderInstanceDisabledError"
+        ? new OrchestratorMcpFailure({ code: "invalid_request", message: error.message })
+        : (error._tag === "OrchestratorDispatchError" ||
+              error._tag === "OrchestratorCommandRejectedError") &&
+            typeof error.cause === "string" &&
+            error.cause.length > 0
+          ? new OrchestratorMcpFailure({
+              code: "orchestration_error",
+              message: Array.from(error.cause).slice(0, 1000).join(""),
+            })
+          : unavailable();
 
 export interface Caller {
   readonly scope: McpInvocationContext.McpInvocationScope;

@@ -1,3 +1,10 @@
+import {
+  ModelPolicyError,
+  RetainedModelPolicyOrigin,
+  RuntimeModelPolicy,
+} from "../nodex/ModelPolicy.ts";
+import { readModelPolicyFailure } from "../../../../src/shared/model-policy.ts";
+import { ProviderInstanceId } from "@t3tools/contracts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { assert, it } from "@effect/vitest";
 import {
@@ -1129,4 +1136,147 @@ it.effect.each(["failure", "timeout"] as const)(
         assert.deepEqual(yield* Ref.get(events), ["start"]);
       }).pipe(Effect.provide(workerLayer));
     }),
+);
+
+it.effect(
+  "a promoted person's message retains the Agent promoter when steering becomes a new turn",
+  () =>
+    Effect.gen(function* () {
+      const messageId = MessageId.make("promoted-person-message");
+      const timestamp = DateTime.formatIso(yield* DateTime.now);
+      const events = yield* Ref.make<ReadonlyArray<string>>([]);
+      const policy = yield* RuntimeModelPolicy;
+      const layer = layerExecutorFor({
+        events,
+        steer: () =>
+          Effect.fail(
+            new ProviderTurnControlService.ProviderTurnControlError({
+              threadId,
+              operation: "steer",
+              providerTurnId,
+              turnCompleted: true,
+              delivery: "not_dispatched",
+            }),
+          ),
+        threads: {
+          getThreadRecords: () =>
+            Effect.succeed({
+              messages: [
+                {
+                  id: messageId,
+                  runId,
+                  text: "continue",
+                  attachments: [],
+                  createdBy: "user",
+                  creationSource: "web",
+                },
+              ],
+              runs: [{ id: runId, modelPolicyOrigin: "person" }],
+            } as never),
+          dispatch: () =>
+            Effect.gen(function* () {
+              const origin = yield* RetainedModelPolicyOrigin;
+              assert.equal(origin, "agent");
+              yield* policy.assert(
+                { instanceId: ProviderInstanceId.make("nodex_codex_test"), model: "gpt-6.1-sol" },
+                origin!,
+              );
+              return undefined as never;
+            }),
+        },
+      });
+      const error = yield* EffectWorker.OrchestrationEffectExecutorV2.pipe(
+        Effect.flatMap((executor) =>
+          executor.execute({
+            id: "promoted-effect",
+            commandId: CommandId.make("promoted-command"),
+            threadId,
+            request: {
+              type: "provider-turn.steer",
+              modelPolicyOrigin: "agent",
+              providerSessionId: oldSessionId,
+              providerThreadId,
+              providerTurnId,
+              messageId,
+            },
+            status: "running",
+            attemptCount: 1,
+            availableAt: timestamp,
+            leaseOwner: "test",
+            leaseExpiresAt: timestamp,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            completedAt: null,
+            lastError: null,
+          }),
+        ),
+        Effect.provide(layer),
+        Effect.flip,
+      );
+      assert.equal(readModelPolicyFailure(error)?.code, "credit_requires_person");
+    }),
+);
+
+it.effect("a policy refusal never becomes an unknown steering delivery or a fallback turn", () =>
+  Effect.gen(function* () {
+    const timestamp = DateTime.formatIso(yield* DateTime.now);
+    const events = yield* Ref.make<ReadonlyArray<string>>([]);
+    const commands: OrchestrationV2ServerCommand[] = [];
+    const layer = layerExecutorFor({
+      events,
+      steer: () =>
+        Effect.fail(
+          new ProviderTurnControlService.ProviderTurnControlError({
+            threadId,
+            operation: "steer",
+            providerTurnId,
+            turnRunning: true,
+            delivery: "unknown",
+            cause: new ModelPolicyError({
+              code: "credit_requires_person",
+              message: "Only the person can start Nodex models. Choose another provider.",
+              retryable: false,
+            }),
+          }),
+        ),
+      threads: {
+        dispatch: (command) =>
+          Effect.sync(() => {
+            commands.push(command);
+            return undefined as never;
+          }),
+      },
+    });
+    const failure = yield* EffectWorker.OrchestrationEffectExecutorV2.pipe(
+      Effect.flatMap((executor) =>
+        executor.execute({
+          id: "refused-steer",
+          commandId: CommandId.make("refused-steer"),
+          threadId,
+          request: {
+            type: "provider-turn.steer",
+            modelPolicyOrigin: "agent",
+            providerSessionId: oldSessionId,
+            providerThreadId,
+            providerTurnId,
+            messageId: MessageId.make("refused-message"),
+          },
+          status: "running",
+          attemptCount: 1,
+          availableAt: timestamp,
+          leaseOwner: "test",
+          leaseExpiresAt: timestamp,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          completedAt: null,
+          lastError: null,
+        }),
+      ),
+      Effect.provide(layer),
+      Effect.flip,
+    );
+    assert.propertyVal(failure, "retryable", false);
+    assert.equal(readModelPolicyFailure(failure)?.code, "credit_requires_person");
+    assert.deepEqual(commands, []);
+  }),
 );

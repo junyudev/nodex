@@ -391,6 +391,12 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         if (payload) callback(payload);
       });
     },
+    subscribeModelPolicyChanges(callback) {
+      return bridge.on("model-policy-changed", (...args: unknown[]) => {
+        const payload = args[0] as import("../../shared/model-policy").ModelPolicy | undefined;
+        if (payload) callback(payload);
+      });
+    },
     subscribeUsageMeterSettingsChanges(callback) {
       return bridge.on("usage-meter-settings-changed", (...args: unknown[]) => {
         const payload = args[0] as

@@ -1,3 +1,8 @@
+import {
+  automaticModelCatalog,
+  modelIsOn,
+  readModelPolicyFailure,
+} from "../../shared/model-policy";
 import { recordAcceptedUserMessage } from "../project-application/SessionMessageReminder";
 import { make as makeSessionOrdering } from "./AgentRuntimeSessionOrdering";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
@@ -220,6 +225,8 @@ export class AgentRuntimeApplicationError extends Schema.TaggedError<AgentRuntim
     committedOperationId: Schema.optionalKey(Schema.String),
     /** This attempt failed admission validation before any product or execution mutation. */
     admissionRejected: Schema.optionalKey(Schema.Literal(true)),
+    code: Schema.optionalKey(Schema.Literals(["model_off", "credit_requires_person"])),
+    retryable: Schema.optionalKey(Schema.Literal(false)),
     /** Actionable source-owned search continuation failure; transport outages omit this field. */
     cursorReason: Schema.optionalKey(Schema.Literals(["invalid_cursor", "cursor_stale"])),
     adoptionReason: Schema.optionalKey(Schema.Literal("active_source_busy")),
@@ -233,6 +240,7 @@ const failure = (operation: string, message: string, cause?: unknown) =>
   new AgentRuntimeApplicationError({
     operation,
     message,
+    ...(readModelPolicyFailure(cause) ?? {}),
     ...(cause === undefined ? {} : { cause }),
   });
 const searchFailure = (cause: unknown) => {
@@ -802,10 +810,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     );
     const title =
       session.value.kind === "session" ? session.value.session.display_title.trim() : "";
-    const providers = yield* connection.request("providers.read", {});
+    const providers = automaticModelCatalog(
+      yield* projectCatalog(yield* connection.request("providers.read", {})),
+    );
     const provider =
-      providers.find((entry) => entry.instanceId === "codex" && entry.enabled) ??
-      providers.find((entry) => entry.enabled && entry.source !== "nodex");
+      providers.find(
+        (entry) => entry.instanceId === "codex" && entry.enabled && entry.models.length > 0,
+      ) ?? providers.find((entry) => entry.enabled && entry.models.length > 0);
     const model =
       provider?.models.find((entry) => entry.isDefault)?.slug ?? provider?.models[0]?.slug;
     if (!provider || !model)
@@ -1162,6 +1173,17 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           projectId: previousBinding.project_id ?? null,
         };
     }
+    const sender = input.sender
+      ? {
+          ...input.sender,
+          runId: input.sender.runId ?? provenance?.authority.turn_id ?? null,
+        }
+      : undefined;
+    yield* connection.request("models.assert", {
+      modelSelection: input.modelSelection,
+      origin: provenance || sender ? "agent" : "person",
+      ...(sender ? { caller: sender } : {}),
+    });
     const projectId = previousBinding ? (previousBinding.project_id ?? null) : input.projectId;
     if (input.runInTarget === "newWorktree" && !options.prepareWorkspace)
       return yield* failure("workspace", "Worktree preparation is unavailable");
@@ -1376,7 +1398,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       undefined,
       provenance !== null,
       false,
-      input.sender,
+      sender,
     );
     const firstLaunch = !existing && !previousBinding;
     yield* dispatch(
@@ -1680,7 +1702,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         "import",
         "This import request already belongs to another conversation",
       );
-    const providers = yield* connection.request("providers.read", {});
+    const providers = automaticModelCatalog(
+      yield* projectCatalog(yield* connection.request("providers.read", {})),
+    );
     const provider = providers.find(
       (entry) => entry.instanceId === input.instanceId && entry.enabled,
     );
@@ -1811,7 +1835,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       return yield* importRefusal(
         "This conversation comes from a different history folder than Nodex now uses. Refresh and try again.",
       );
-    const providers = yield* connection.request("providers.read", {});
+    const providers = yield* projectCatalog(yield* connection.request("providers.read", {}));
     const providerId =
       input.backendKind === "codex"
         ? agentRuntimeProviderId({ kind: "codex" })
@@ -1821,8 +1845,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const provider = providers.find((entry) => entry.instanceId === providerId && entry.enabled);
     const model =
       provider?.models.find((entry) => entry.slug === input.model)?.slug ??
-      provider?.models.find((entry) => entry.isDefault)?.slug ??
-      provider?.models[0]?.slug;
+      provider?.models.find((entry) => modelIsOn(entry) && entry.isDefault)?.slug ??
+      provider?.models.find(modelIsOn)?.slug;
     if (!provider || !model)
       return yield* importRefusal(
         "This Agent has no available model. Check Agent settings, then try again.",
@@ -2056,7 +2080,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     )
       return yield* failure("create-side-chat", "The source Agent history is unavailable");
     const selection = backend ? nativeSelectionFromState(backend.nativeState) : null;
-    const providers = yield* connection.request("providers.read", {});
+    const providers = yield* projectCatalog(yield* connection.request("providers.read", {}));
     const provider = providers.find(
       (provider) => provider.instanceId === providerId && provider.enabled,
     );
@@ -2066,8 +2090,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           model.slug ===
           (selection?.model ?? codexSettings?.model ?? native.executionProfile?.modelId),
       ) ??
-      provider?.models.find((model) => model.isDefault) ??
-      provider?.models[0];
+      provider?.models.find((model) => modelIsOn(model) && model.isDefault) ??
+      provider?.models.find(modelIsOn);
     if (!provider || !model)
       return yield* failure("create-side-chat", "The source Agent has no available model");
     const sourceHome = yield* options.nativeImportSourceHome(connection, {
@@ -2880,6 +2904,24 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       );
     if (request.responseCapability.type === "not_resumable" && input.submissionId === undefined)
       return yield* failure("respond", request.responseCapability.reason);
+    const responseAgent = yield* CoreApplicationAgent;
+    const responder = responseAgent
+      ? {
+          kind: "agent" as const,
+          senderThreadId: responseAgent.authority.thread_id,
+          senderRunId: responseAgent.authority.turn_id,
+        }
+      : input.respondedBy;
+    const responseModel =
+      snapshot.projection.runs.find((run) => run.id === input.runId)?.modelSelection ??
+      snapshot.projection.thread.modelSelection;
+    yield* connection.request("models.assert", {
+      modelSelection: responseModel,
+      origin: responder ? "agent" : "person",
+      ...(responder
+        ? { caller: { threadId: responder.senderThreadId, runId: responder.senderRunId } }
+        : {}),
+    });
     const approvalItem = snapshot.projection.turnItems.find(
       (item) => item.type === "approval_request" && item.requestId === request.id,
     );
@@ -2924,6 +2966,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     } else if (input.feedback !== undefined || input.decision === "acceptForSession") {
       return yield* failure("respond", "This response is only supported for execution approvals");
     }
+    const respondedBy = responder;
     const { decision, feedback, answers, attachmentsByQuestionId } = input;
     return yield* dispatch(
       connection,
@@ -2939,7 +2982,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         ...(decision === undefined ? {} : { decision }),
         ...(feedback === undefined ? {} : { feedback }),
         ...(input.optionId === undefined ? {} : { optionId: input.optionId }),
-        ...(input.respondedBy === undefined ? {} : { respondedBy: input.respondedBy }),
+        ...(respondedBy === undefined ? {} : { respondedBy }),
         ...(input.requirePending === undefined ? {} : { requirePending: input.requirePending }),
         ...(input.responseFingerprint === undefined
           ? {}
@@ -3660,10 +3703,20 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             original && input.text !== undefined
               ? retainAgentAppContext({ text: input.text }, original, false).text
               : input.text;
+          const agent = yield* CoreApplicationAgent;
           return yield* connection.request("thread.queue-control", {
             ...input,
             ...(text === undefined ? {} : { text }),
             threadId: loaded.threadId,
+            ...(agent
+              ? {
+                  requestedBy: {
+                    kind: "agent" as const,
+                    senderThreadId: agent.authority.thread_id,
+                    senderRunId: agent.authority.turn_id,
+                  },
+                }
+              : {}),
             commandId: commandId("session-queue", {
               requestId: input.requestId,
               threadId: loaded.threadId,
@@ -4400,6 +4453,36 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         Effect.flatMap(options.connect, (connection) =>
           connection.request("providers.windows-sandbox.cancel", input),
         ),
+      ),
+    assertModelPolicy: (
+      selection: AgentRuntimeLaunch["modelSelection"],
+      origin: "person" | "nodex-agent" | "agent" | "automatic",
+      caller?: { readonly threadId: string; readonly runId?: string | null },
+    ) =>
+      owned(
+        "model-policy",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          yield* connection.request("models.assert", {
+            modelSelection: selection,
+            origin,
+            ...(caller ? { caller } : {}),
+          });
+        }),
+      ),
+    runningCreditModels: () =>
+      owned(
+        "models.running-credit",
+        options.whileRunning
+          ? options
+              .whileRunning(
+                Effect.gen(function* () {
+                  const connection = yield* options.connect;
+                  return yield* connection.request("models.running-credit", {});
+                }),
+              )
+              .pipe(Effect.map((rows) => rows ?? []))
+          : Effect.succeed([]),
       ),
     catalogChanges: (options.providerCatalog?.served ?? Stream.never).pipe(
       Stream.map((providers) =>

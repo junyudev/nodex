@@ -112,6 +112,9 @@ export const live = Layer.effectDiscard(
       ),
       Effect.forkScoped,
     );
+    yield* ipc.handleQuery("agent-runtime:models:running-credit", (event) =>
+      authorize(event).pipe(Effect.andThen(application.runningCreditModels())),
+    );
     yield* ipc.handleQuery("agent-runtime:activity:read", (event) =>
       authorize(event).pipe(Effect.andThen(activity.read)),
     );

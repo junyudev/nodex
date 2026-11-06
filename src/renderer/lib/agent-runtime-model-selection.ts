@@ -1,3 +1,4 @@
+import { modelIsOn } from "../../shared/model-policy";
 import { isNodexProviderId } from "../../shared/nodex-models";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
@@ -30,13 +31,18 @@ export function defaultAgentRuntimeModelSelection(
   providers: readonly Provider[],
   saved: AgentRuntimeCodexDefaults = {},
 ): ModelSelection | null {
-  const available = providers.filter(
-    (provider) =>
-      provider.source !== "nodex" &&
-      !isNodexProviderId(provider.instanceId) &&
-      isAgentRuntimeProviderAvailable(provider) &&
-      provider.models.length > 0,
-  );
+  const savedProvider = providers.find((provider) => provider.instanceId === "codex");
+  const savedModel = savedProvider?.models.find((model) => model.slug === saved.model);
+  if (savedModel?.policy?.on === false) return { instanceId: "codex", model: savedModel.slug };
+  const available = providers
+    .map((provider) => ({ ...provider, models: provider.models.filter(modelIsOn) }))
+    .filter(
+      (provider) =>
+        provider.source !== "nodex" &&
+        !isNodexProviderId(provider.instanceId) &&
+        isAgentRuntimeProviderAvailable(provider) &&
+        provider.models.length > 0,
+    );
   const provider = available.find((entry) => entry.instanceId === "codex") ?? available[0];
   if (!provider) return null;
   const model =
@@ -67,6 +73,13 @@ export function requireAgentRuntimeModelSelection(
   if (!selection) throw new Error("Choose an available Agent model before starting this chat");
   const provider = providers.find((entry) => entry.instanceId === selection.instanceId);
   const model = provider?.models.find((entry) => entry.slug === selection.model);
+  if (model?.policy?.on === false)
+    throw Object.assign(
+      new Error(
+        `${model.name} on ${provider?.source === "nodex" ? "Nodex" : (provider?.displayName ?? provider?.instanceId)} is off in Settings → Models. Choose another model.`,
+      ),
+      { code: "model_off", retryable: false },
+    );
   if (!provider || !isAgentRuntimeProviderAvailable(provider) || !model)
     throw new Error("The selected Agent or model is unavailable. Choose an available Agent model.");
   return { provider, model, selection };

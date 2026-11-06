@@ -70,6 +70,9 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("provider-turn.steer"),
+    modelPolicyOrigin: Schema.optional(
+      Schema.Literals(["person", "nodex-agent", "agent", "automatic"]),
+    ),
     providerSessionId: ProviderSessionId,
     providerThreadId: ProviderThreadId,
     providerTurnId: ProviderTurnId,
@@ -94,6 +97,9 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("runtime-request.respond"),
+    modelPolicyOrigin: Schema.optional(
+      Schema.Literals(["person", "nodex-agent", "agent", "automatic"]),
+    ),
     providerSessionId: ProviderSessionId,
     requestId: RuntimeRequestId,
     decision: Schema.optional(ProviderApprovalDecision),

@@ -73,6 +73,7 @@ import type {
 } from "./agent-intelligence-dropdown";
 
 export interface AgentModelPickerEntry {
+  readonly spendsCredit?: boolean;
   readonly binding: AgentBackendBinding;
   readonly label: string;
   readonly model: AgentModelOption;
@@ -99,6 +100,15 @@ export interface AgentModelSetupPresentation {
 
 /** The composer chooses one complete runtime/model tuple; options belong to the selected runtime. */
 export interface AgentModelCatalogPresentation {
+  readonly currentModelOff?: {
+    readonly code: "model_off" | "credit_requires_person";
+    readonly message: string;
+  } | null;
+  readonly off?: {
+    readonly entries: readonly AgentModelPickerEntry[];
+    readonly count: number;
+    readonly choose: (selection: AgentModelSelection) => Promise<void>;
+  };
   readonly entries: readonly AgentModelPickerEntry[];
   readonly selected: AgentModelSelection;
   readonly loading: boolean;

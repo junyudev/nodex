@@ -676,6 +676,8 @@ export class OrchestratorMcpFailure extends Schema.TaggedError<OrchestratorMcpFa
       "parent_not_active",
       "provider_unavailable",
       "model_unavailable",
+      "model_off",
+      "credit_requires_person",
       "runtime_mode_escalation_denied",
       "interaction_mode_escalation_denied",
       "task_not_found",

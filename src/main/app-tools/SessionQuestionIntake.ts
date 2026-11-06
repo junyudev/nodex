@@ -1,3 +1,5 @@
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
+import { readModelPolicyFailure } from "../../shared/model-policy";
 import * as Effect from "effect/Effect";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
@@ -37,6 +39,7 @@ export const authorizeSessionQuestions = Effect.fn("SessionQuestions.authorize")
 
 export const make = Effect.gen(function* () {
   const core = yield* CoreModules;
+  const application = yield* AgentRuntimeApplication;
   const runtime = yield* makeRuntime;
   const native: SessionQuestionBackend = yield* makeNative;
   const messages = yield* makeMessageIntake;
@@ -94,6 +97,36 @@ export const make = Effect.gen(function* () {
           runtimeMode: callerFacts.runtimeMode,
           interactionMode: callerFacts.interactionMode,
         })
-      : native;
+      : {
+          ...native,
+          respond: (target, requestId, answers, responder, operationId) =>
+            Effect.gen(function* () {
+              const facts = yield* messages
+                .inspect(target)
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new SessionQuestionError({ code: "unavailable", message: String(cause) }),
+                  ),
+                );
+              yield* application
+                .assertModelPolicy(facts.modelSelection, "agent", {
+                  threadId: responder.senderThreadId,
+                  runId: responder.senderRunId,
+                })
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new SessionQuestionError(
+                        readModelPolicyFailure(cause) ?? {
+                          code: "unavailable",
+                          message: String(cause),
+                        },
+                      ),
+                  ),
+                );
+              return yield* native.respond(target, requestId, answers, responder, operationId);
+            }),
+        };
   });
 });

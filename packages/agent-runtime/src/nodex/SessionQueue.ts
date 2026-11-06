@@ -1,4 +1,4 @@
-import { CommandId, RunId, ThreadId } from "@t3tools/contracts";
+import { CommandId, RunId, ThreadId, UserInputResponder } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -17,6 +17,7 @@ import {
 
 export const SessionQueueInput = Schema.Struct({
   threadId: ThreadId,
+  requestedBy: Schema.optional(UserInputResponder),
   action: Schema.Literals(["list", "read", "edit", "remove", "reorder", "steer"]),
   queuedId: Schema.optional(RunId),
   text: Schema.optional(Schema.String),
@@ -189,6 +190,7 @@ export const make = Effect.gen(function* () {
         return yield* dispatch({
           ...base,
           type: "queued-message.promote-to-steer",
+          ...(input.requestedBy ? { requestedBy: input.requestedBy } : {}),
           queuedRunId: input.queuedId,
           targetRunId: target.activeRunId,
         });

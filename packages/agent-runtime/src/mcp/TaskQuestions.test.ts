@@ -1,3 +1,6 @@
+import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import { DEFAULT_MODEL_POLICY } from "../../../../src/shared/model-policy.ts";
+import { RuntimeModelPolicy, make as makePolicy } from "../nodex/ModelPolicy.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import {
@@ -15,6 +18,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderSessionId,
+  ProviderThreadId,
   RuntimeRequestId,
   type RuntimeMode,
   ThreadId,
@@ -1224,4 +1228,120 @@ it.effect.each(["live", "message"] as const)(
         "starting",
       );
     }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect.each(["live", "message", "codex_question_reply"] as const)(
+  "credit authority applies before a %s question response changes state",
+  (capability) =>
+    Effect.gen(function* () {
+      const f = yield* setup();
+      const childId = f.task.childThreadId!;
+      const child = yield* f.projections.getThreadRecords(childId, ["runs"]);
+      const run = child.runs[0]!;
+      const credit = ProviderInstanceId.make("nodex_codex_test");
+      yield* f.sink.write({
+        events: [
+          {
+            id: EventId.make("credit-model"),
+            type: "run.updated",
+            threadId: childId,
+            occurredAt: yield* DateTime.now,
+            payload: {
+              ...run,
+              providerInstanceId: credit,
+              modelSelection: { instanceId: credit, model: "gpt-6.1-sol" },
+            },
+          },
+        ],
+      });
+      const request = yield* f.addRequest("credit-question", capability);
+      const refused = yield* f.question({
+        action: "respond",
+        requestId: request.payload.id,
+        answers: { format: "Markdown" },
+      });
+      expect(refused.isError).toBe(true);
+      expect(failure(refused)).toMatchObject({ code: "credit_requires_person" });
+      expect(
+        (yield* f.projections.getRuntimeResponseContext(childId, request.payload.id)).request
+          ?.status,
+      ).toBe("pending");
+      const threads = yield* Threads.ThreadManagementService;
+      yield* threads.dispatch({
+        type: "runtime-request.respond",
+        threadId: childId,
+        commandId: CommandId.make("person-credit-answer"),
+        requestId: request.payload.id,
+        answers: { format: "Markdown" },
+      });
+      expect(
+        (yield* f.projections.getRuntimeResponseContext(childId, request.payload.id)).request
+          ?.status,
+      ).toBe("resolved");
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect.each(["nodex-agent", "opt-in"] as const)(
+  "%s can answer an on Nodex model's live question",
+  (authority) =>
+    Effect.gen(function* () {
+      const owner = yield* makePolicy(
+        { ...DEFAULT_MODEL_POLICY, agentsMayChooseCredit: authority === "opt-in" },
+        {},
+      );
+      return yield* Effect.gen(function* () {
+        const f = yield* setup();
+        const childId = f.task.childThreadId!;
+        const child = yield* f.projections.getThreadRecords(childId, ["runs"]);
+        const credit = ProviderInstanceId.make("nodex_codex_test");
+        const creditSelection = { instanceId: credit, model: "gpt-6.1-sol" };
+        const runs = authority === "nodex-agent" ? [child.runs[0]!, f.parentRun] : [child.runs[0]!];
+        for (const run of runs)
+          yield* f.sink.write({
+            events: [
+              {
+                id: EventId.make(`credit:${run.id}`),
+                type: "run.updated",
+                threadId: run.threadId,
+                occurredAt: yield* DateTime.now,
+                payload: { ...run, providerInstanceId: credit, modelSelection: creditSelection },
+              },
+            ],
+          });
+        const request = yield* f.addRequest("permitted-credit-question", "live");
+        const caller = scope();
+        const result = yield* f
+          .question(
+            { action: "respond", requestId: request.payload.id, answers: { format: "Markdown" } },
+            authority === "nodex-agent"
+              ? { ...caller, thread: { ...caller.thread!, providerInstanceId: credit } }
+              : caller,
+          )
+          .pipe(
+            Effect.provideService(ExecutionHost.McpTurnAdmission, {
+              actor: {
+                runtimeId: "test-runtime",
+                runtimeGeneration: "test-generation",
+                projectId: ProjectId.make("project:questions"),
+                threadId: parentId,
+                runId: f.parentRun.id,
+                attemptId: f.parentRun.activeAttemptId!,
+                providerInstanceId: authority === "nodex-agent" ? credit : instanceId,
+                providerSessionId: ProviderSessionId.make("session:parent"),
+                providerThreadId: ProviderThreadId.make("provider-thread:parent"),
+                nativeGeneration: 1,
+                nativeThreadRef: null,
+                cwd: null,
+              },
+              requestId: undefined,
+              assertCurrent: () => Effect.void,
+            }),
+          );
+        expect(result.isError, JSON.stringify(result)).not.toBe(true);
+        expect(
+          (yield* f.projections.getRuntimeResponseContext(childId, request.payload.id)).request
+            ?.status,
+        ).toBe("resolved");
+      }).pipe(Effect.provide(layerTest), Effect.provideService(RuntimeModelPolicy, owner));
+    }),
 );

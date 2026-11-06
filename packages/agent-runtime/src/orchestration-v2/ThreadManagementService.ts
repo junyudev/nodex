@@ -1,4 +1,9 @@
 import {
+  RuntimeModelPolicy,
+  ModelPolicyError,
+  RetainedModelPolicyOrigin,
+} from "../nodex/ModelPolicy.ts";
+import {
   delegatedTaskExecutionState,
   delegatedTaskRun,
   isTerminalTaskStatus,
@@ -304,6 +309,7 @@ export const ThreadManagementError = Schema.Union([
   ThreadManagementProjectThreadsListError,
   ThreadManagementDurableRunProjectionError,
   ThreadManagementProviderInstanceDisabledError,
+  ModelPolicyError,
 ]);
 export type ThreadManagementError = typeof ThreadManagementError.Type;
 
@@ -353,7 +359,9 @@ export interface ThreadManagementServiceShape {
     command: OrchestrationV2ServerCommand,
   ) => Effect.Effect<
     Orchestrator.OrchestratorV2DispatchResult,
-    Orchestrator.OrchestratorV2Error | ThreadManagementProviderInstanceDisabledError
+    | Orchestrator.OrchestratorV2Error
+    | ThreadManagementProviderInstanceDisabledError
+    | ModelPolicyError
   >;
   readonly getThreadHistoryPage: Orchestrator.OrchestratorV2["Service"]["getThreadHistoryPage"];
   readonly getTimelinePage: Orchestrator.OrchestratorV2["Service"]["getTimelinePage"];
@@ -464,7 +472,9 @@ export interface ThreadManagementServiceShape {
     { readonly sequence: number } | { readonly settlesWhenTurnEnds: true },
     // Dispatches thread.settle, a command the enablement chokepoint never
     // gates; the type stays accurate anyway.
-    Orchestrator.OrchestratorV2Error | ThreadManagementProviderInstanceDisabledError
+    | Orchestrator.OrchestratorV2Error
+    | ThreadManagementProviderInstanceDisabledError
+    | ModelPolicyError
   >;
   readonly interruptThread: (
     input: ThreadManagementInterruptInput,
@@ -489,7 +499,9 @@ export interface ThreadManagementServiceShape {
     void,
     // Dispatches thread.stop, a command the enablement chokepoint never
     // gates; the type stays accurate anyway.
-    Orchestrator.OrchestratorV2Error | ThreadManagementProviderInstanceDisabledError
+    | Orchestrator.OrchestratorV2Error
+    | ThreadManagementProviderInstanceDisabledError
+    | ModelPolicyError
   >;
   readonly getThreadEventSequence: Orchestrator.OrchestratorV2["Service"]["getThreadEventSequence"];
   readonly recoverDelegatedTask: Orchestrator.OrchestratorV2["Service"]["recoverDelegatedTask"];
@@ -548,6 +560,7 @@ const make = Effect.gen(function* () {
   const layerScope = yield* Effect.scope;
   const legacyImporter = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const modelPolicy = yield* RuntimeModelPolicy;
   const receipts = yield* CommandReceiptStore.CommandReceiptStoreV2;
 
   const assertProviderInstanceEnabled: ThreadManagementServiceShape["assertProviderInstanceEnabled"] =
@@ -660,9 +673,100 @@ const make = Effect.gen(function* () {
       Effect.andThen(orchestrator.getThreadSnapshotWindow(threadId, options)),
     );
 
-  // Every path that can start or wake a provider turn funnels through this
-  // dispatch, so resolving and checking the target instance here (instead of
-  // at each caller) is the one place "off" is enforced.
+  // Intake resolves the exact target before durable admission. Provider execution
+  // independently rechecks retained work against the current Profile policy.
+  const assertModelPolicy = Effect.fn("ThreadManagement.assertModelPolicy")(function* (
+    command: OrchestrationV2ServerCommand,
+  ) {
+    if (
+      command.type !== "message.dispatch" &&
+      command.type !== "delegated_task.request" &&
+      command.type !== "runtime-request.respond" &&
+      command.type !== "queued-message.promote-to-steer"
+    )
+      return;
+    if (yield* hasReceipt(command.commandId)) return;
+    const actor = (yield* ExecutionHost.McpTurnAdmission)?.actor;
+    const requester = (() => {
+      switch (command.type) {
+        case "delegated_task.request":
+          return { threadId: command.parentThreadId, runId: command.parentRunId, agent: true };
+        case "runtime-request.respond":
+          return {
+            threadId: command.respondedBy?.senderThreadId,
+            runId: command.respondedBy?.senderRunId,
+            agent: command.respondedBy !== undefined,
+          };
+        case "queued-message.promote-to-steer":
+          return {
+            threadId: command.requestedBy?.senderThreadId,
+            runId: command.requestedBy?.senderRunId,
+            agent: command.requestedBy !== undefined,
+          };
+        case "message.dispatch":
+          return {
+            threadId: command.senderThreadId,
+            runId: command.senderRunId,
+            agent: command.createdBy === "agent" || command.senderThreadId !== undefined,
+          };
+      }
+    })();
+    const targets = yield* Effect.gen(function* () {
+      if (command.type === "delegated_task.request") return [command.modelSelection];
+      const records = yield* orchestrator.getThreadRecords(command.threadId, []);
+      if (command.type === "runtime-request.respond") {
+        const context = yield* orchestrator.getRuntimeResponseContext(
+          command.threadId,
+          command.requestId,
+        );
+        const runId = context.node?.runId;
+        const runs = runId
+          ? (yield* orchestrator.getThreadRecords(command.threadId, ["runs"], { runIds: [runId] }))
+              .runs
+          : [];
+        const nativeSelection = context.session?.model
+          ? { instanceId: context.session.providerInstanceId, model: context.session.model }
+          : undefined;
+        return [runs[0]?.modelSelection ?? nativeSelection ?? records.thread.modelSelection];
+      }
+      if (command.type === "queued-message.promote-to-steer") {
+        const { runs } = yield* orchestrator.getThreadRecords(command.threadId, ["runs"], {
+          runIds: [command.targetRunId],
+        });
+        return [
+          runs[0]?.modelSelection ?? records.thread.modelSelection,
+          records.thread.modelSelection,
+        ];
+      }
+      const selection = command.modelSelection ?? records.thread.modelSelection;
+      if (
+        command.dispatchMode?.type !== "steer_active" &&
+        command.dispatchMode?.type !== "restart_active"
+      )
+        return [selection];
+      const running = yield* orchestrator.getRunningTurnContext(command.threadId);
+      return running?.run ? [running.run.modelSelection, selection] : [selection];
+    });
+    const parentId = actor?.threadId ?? requester.threadId;
+    const parentRunId = actor?.runId ?? requester.runId;
+    const parent = parentId
+      ? yield* orchestrator
+          .getThreadRecords(parentId, ["runs"], { runIds: parentRunId ? [parentRunId] : [] })
+          .pipe(Effect.catch(() => Effect.succeed(undefined)))
+      : undefined;
+    const callerSelection = parentRunId
+      ? parent?.runs.find((run) => run.id === parentRunId)?.modelSelection
+      : parent?.thread.modelSelection;
+    const origin =
+      (yield* RetainedModelPolicyOrigin) ??
+      (yield* modelPolicy.origin(
+        actor !== undefined || requester.agent,
+        actor?.providerInstanceId ?? callerSelection?.instanceId,
+      ));
+    yield* Effect.forEach(targets, (target) => modelPolicy.assert(target, origin), {
+      discard: true,
+    });
+  });
   const assertDispatchTargetEnabled = (command: OrchestrationV2ServerCommand) => {
     switch (command.type) {
       case "message.dispatch":
@@ -694,6 +798,7 @@ const make = Effect.gen(function* () {
 
   const dispatch: ThreadManagementServiceShape["dispatch"] = (command) =>
     ensureCommandTranscripts(command).pipe(
+      Effect.andThen(assertModelPolicy(command)),
       Effect.andThen(assertDispatchTargetEnabled(command)),
       Effect.andThen(
         Effect.gen(function* () {
@@ -1112,7 +1217,9 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const { subagents } = yield* orchestrator.getThreadRecords(input.threadId, ["subagents"]);
       const failures: Array<
-        Orchestrator.OrchestratorV2Error | ThreadManagementProviderInstanceDisabledError
+        | Orchestrator.OrchestratorV2Error
+        | ThreadManagementProviderInstanceDisabledError
+        | ModelPolicyError
       > = [];
       for (const task of subagents) {
         if (task.origin !== "app_owned" || task.childThreadId === null) continue;

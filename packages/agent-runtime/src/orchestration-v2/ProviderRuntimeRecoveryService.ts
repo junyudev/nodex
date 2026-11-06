@@ -1,3 +1,4 @@
+import { RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
 import { hasPendingRunRecovery, withoutRunRecovery } from "./RunRecovery.ts";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
@@ -182,6 +183,7 @@ function latestStartedRun(
 }
 
 export const make = Effect.gen(function* () {
+  const modelPolicy = yield* RuntimeModelPolicy;
   const settings = yield* ServerSettings.ServerSettingsService;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const eventSink = yield* EventSink.EventSinkV2;
@@ -648,7 +650,14 @@ export const make = Effect.gen(function* () {
           ? restartContinuationRun(projection, now)
           : undefined;
       const continuationRun =
-        continuationCandidate !== undefined && !pendingRecoveryRunIds.has(continuationCandidate.id)
+        continuationCandidate !== undefined &&
+        !pendingRecoveryRunIds.has(continuationCandidate.id) &&
+        (yield* modelPolicy
+          .assert(
+            continuationCandidate.modelSelection,
+            continuationCandidate.modelPolicyOrigin ?? "automatic",
+          )
+          .pipe(Effect.isSuccess))
           ? continuationCandidate
           : undefined;
       const effects: Array<EffectOutbox.PendingOrchestrationEffectV2> = continuationRun
@@ -787,6 +796,12 @@ export const make = Effect.gen(function* () {
           return;
         const run = restartContinuationRun(projection, yield* DateTime.now);
         if (!run || (yield* hasPendingRunRecovery(run, projection.attempts ?? [], outbox))) return;
+        if (
+          yield* modelPolicy
+            .assert(run.modelSelection, run.modelPolicyOrigin ?? "automatic")
+            .pipe(Effect.isFailure)
+        )
+          return;
         const commandId = CommandId.make(`command:restart-prepare:${run.id}`);
         yield* eventSink.writeWithEffects({
           commandId,

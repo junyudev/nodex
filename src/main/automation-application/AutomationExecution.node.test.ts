@@ -539,6 +539,31 @@ it.effect.each([
   },
 );
 
+it.effect.each([true, false])(
+  "a saved Nodex automation requires an exact person-selected model (%s)",
+  (explicit) => {
+    const instanceId = "nodex_claude_00000000000000000000000000000000";
+    const fixture = setup({
+      kind: "claude",
+      instanceConfigId: instanceId,
+      runtimeInstanceId: instanceId,
+    });
+    // A managed instance is not a native Claude configuration.
+    fixture.state.instanceAvailable = false;
+    if (!explicit) fixture.state.definition = { ...fixture.state.definition, model: null };
+    return Effect.gen(function* () {
+      const execution = yield* AutomationExecution;
+      const outcome = yield* execution
+        .executeClaimed(fixture.state.definition, context)
+        .pipe(Effect.result);
+      assert.equal(outcome._tag, explicit ? "Success" : "Failure");
+      assert.equal(fixture.launches.length, explicit ? 1 : 0);
+      if (explicit)
+        assert.deepInclude(fixture.launches[0]?.modelSelection, { instanceId, model: "model" });
+    }).pipe(Effect.provide(fixture.layer));
+  },
+);
+
 it.effect(
   "heartbeat physical lease retry observes its original message despite later busy or disabled state",
   () => {

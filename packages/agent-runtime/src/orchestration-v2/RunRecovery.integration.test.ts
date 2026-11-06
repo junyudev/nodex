@@ -1,3 +1,6 @@
+import * as RuntimeRecovery from "./ProviderRuntimeRecoveryService.ts";
+import { RuntimeModelPolicy, make as makeModelPolicy } from "../nodex/ModelPolicy.ts";
+import { DEFAULT_MODEL_POLICY, setModelOn } from "../../../../src/shared/model-policy.ts";
 import { assert, it, vi } from "@effect/vitest";
 import {
   ChatAttachmentId,
@@ -953,4 +956,178 @@ it.effect("replaces a required provider session during recovery without an inter
       }),
     { restartSession: true, interrupt: false },
   ),
+);
+
+it.effect(
+  "rechecks live model policy before a retained retry starts another provider request",
+  () =>
+    Effect.gen(function* () {
+      const owner = yield* makeModelPolicy(DEFAULT_MODEL_POLICY, {});
+      return yield* withRecovery(({ started, emit, threadId }) =>
+        Effect.gen(function* () {
+          const first = started[0]!;
+          yield* failTurn(emit, first);
+          yield* waitRecovery(first);
+          yield* owner.replace({
+            policy: setModelOn(
+              DEFAULT_MODEL_POLICY,
+              { instanceId, driver },
+              modelSelection.model,
+              false,
+            ),
+            providers: {},
+          });
+          yield* recover(first);
+          const projection = yield* (yield* Orchestrator.OrchestratorV2).getThreadProjection(
+            threadId,
+          );
+          assert.equal(started.length, 1);
+          assert.equal(projection.runs[0]?.status, "failed");
+          assert.equal(projection.runs[0]?.recovery, undefined);
+        }),
+      ).pipe(Effect.provideService(RuntimeModelPolicy, owner));
+    }),
+);
+
+it.effect(
+  "queue promotion rechecks an admitted selection after it is disabled without interrupting the active native turn",
+  () =>
+    Effect.gen(function* () {
+      const owner = yield* makeModelPolicy(DEFAULT_MODEL_POLICY, {});
+      return yield* withRecovery(({ started, emit, threadId }) =>
+        Effect.gen(function* () {
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          yield* orchestrator.dispatch({
+            type: "message.dispatch",
+            commandId: CommandId.make("queue-policy"),
+            threadId,
+            messageId: MessageId.make("queue-policy"),
+            text: "Must not start after disabling",
+            attachments: [],
+            dispatchMode: { type: "queue_after_active" },
+            createdBy: "user",
+            creationSource: "web",
+          });
+          yield* owner.replace({
+            policy: setModelOn(
+              DEFAULT_MODEL_POLICY,
+              { instanceId, driver },
+              modelSelection.model,
+              false,
+            ),
+            providers: {},
+          });
+          assert.equal(started.length, 1);
+          yield* complete(emit, started[0]!);
+          yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain();
+          yield* waitEvent(
+            (event) =>
+              event.type === "run.updated" &&
+              event.payload.userMessageId === "queue-policy" &&
+              event.payload.status === "failed",
+          );
+          const projection = yield* orchestrator.getThreadProjection(threadId);
+          assert.equal(started.length, 1);
+          assert.equal(
+            projection.runs.find((run) => run.userMessageId === "queue-policy")?.status,
+            "failed",
+          );
+        }),
+      ).pipe(Effect.provideService(RuntimeModelPolicy, owner));
+    }),
+);
+
+it.effect("restart reconciliation does not create a continuation on an off model", () =>
+  Effect.gen(function* () {
+    const owner = yield* makeModelPolicy(DEFAULT_MODEL_POLICY, {});
+    return yield* withRecovery(({ started }) =>
+      Effect.gen(function* () {
+        const first = started[0]!;
+        yield* owner.replace({
+          policy: setModelOn(
+            DEFAULT_MODEL_POLICY,
+            { instanceId, driver },
+            modelSelection.model,
+            false,
+          ),
+          providers: {},
+        });
+        const recovery = yield* RuntimeRecovery.make.pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              IdAllocator.layer,
+              ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
+            ),
+          ),
+        );
+        yield* recovery.reconcile("startup");
+        const continuation = yield* (yield* EffectOutbox.EffectOutboxV2).get(
+          `effect:restart-continuation:${first.runId}`,
+        );
+        assert.isTrue(Option.isNone(continuation));
+        assert.equal(started.length, 1);
+      }),
+    ).pipe(Effect.provideService(RuntimeModelPolicy, owner));
+  }),
+);
+
+it.effect(
+  "revoking Agent credit permission refuses an outside Agent's queued choice using its captured origin",
+  () =>
+    Effect.gen(function* () {
+      const providers = { [instanceId]: { driver, source: "nodex" as const, config: {} } };
+      const owner = yield* makeModelPolicy(
+        { ...DEFAULT_MODEL_POLICY, agentsMayChooseCredit: true },
+        providers,
+      );
+      return yield* withRecovery(({ started, emit, threadId }) =>
+        Effect.gen(function* () {
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          const sender = ThreadId.make("outside-credit-sender");
+          yield* orchestrator.dispatch({
+            type: "thread.create",
+            commandId: CommandId.make("outside-credit-sender"),
+            threadId: sender,
+            projectId: ProjectId.make("project:recovery"),
+            title: "Outside Agent",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("outside"),
+              model: "native-model",
+            },
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdBy: "user",
+            creationSource: "web",
+          });
+          yield* orchestrator.dispatch({
+            type: "message.dispatch",
+            commandId: CommandId.make("outside-credit-choice"),
+            threadId,
+            messageId: MessageId.make("outside-credit-choice"),
+            senderThreadId: sender,
+            text: "Must not start after credit choice permission is revoked",
+            attachments: [],
+            dispatchMode: { type: "queue_after_active" },
+            createdBy: "agent",
+            creationSource: "mcp",
+          });
+          const queued = (yield* orchestrator.getThreadProjection(threadId)).runs.find(
+            (run) => run.userMessageId === "outside-credit-choice",
+          );
+          assert.equal(queued?.modelPolicyOrigin, "agent");
+          yield* owner.replace({ policy: DEFAULT_MODEL_POLICY, providers });
+          yield* complete(emit, started[0]!);
+          yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain();
+          yield* waitEvent(
+            (event) =>
+              event.type === "run.updated" &&
+              event.payload.userMessageId === "outside-credit-choice" &&
+              event.payload.status === "failed",
+          );
+          assert.equal(started.length, 1);
+        }),
+      ).pipe(Effect.provideService(RuntimeModelPolicy, owner));
+    }),
 );

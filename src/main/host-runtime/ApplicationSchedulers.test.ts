@@ -351,6 +351,7 @@ const buildHarness = (input: {
               ApplicationSettings,
               ApplicationSettings.of({
                 terminalShellSettingsChanges: Stream.empty,
+                modelPolicyChanges: Stream.never,
                 usageMeterSettingsChanges: Stream.empty,
                 composerPredictionSettingsChanges: Stream.empty,
                 inboxSettingsChanges: Stream.empty,
