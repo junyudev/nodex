@@ -1,4 +1,5 @@
 import { encodeCodexAsyncQuestionReplies } from "@nodex/agent-runtime/codex-conventions";
+import { resolveCodexWebMcpActivities } from "../../../shared/codex-webmcp-tool-call";
 import { prepareAgentMessage } from "../../../shared/agent-prompt";
 import { describe, expect, test } from "vite-plus/test";
 import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
@@ -398,19 +399,20 @@ describe("Runtime application tool presentation", () => {
     ).toMatchObject({ type: "dynamicToolCall", tool: "Write" });
   });
 
-  test("runtime MCP calls retain native identity, metadata and typed result images through projection", () => {
+  test("Claude MCP calls retain native identity, metadata and typed result images through projection", () => {
     const source = buildAgentRuntimeToolResultImageSource({
       sourceThreadId: "parent",
       itemId: "item",
       contentIndex: 1,
     });
     const projected = projectAgentRuntimeItem({
-      ...tool("cua_repl.js"),
+      ...tool("mcp__node_repl__js"),
+      nativeItemRef: { driver: "claudeAgent", nativeId: "native-call", strength: "strong" },
       output: undefined,
       mcpToolCall: {
         type: "mcpToolCall",
         id: "native-call",
-        server: "cua_repl",
+        server: "node_repl",
         tool: "js",
         status: "completed",
         arguments: { title: "Inspect page", code: "await tab.capture()" },
@@ -421,7 +423,16 @@ describe("Runtime application tool presentation", () => {
             { type: "image", mimeType: "image/png" },
           ],
           structuredContent: { page: "Example" },
-          _meta: { "codex/toolSurface": { kind: "browserUse", backend: "chrome" } },
+          _meta: {
+            "codex/toolSurface": {
+              kind: "browserUse",
+              backend: "iab",
+              webMcpCalls: [
+                { kind: "invokeTool", name: "search", title: "Search page", inputJson: "{}" },
+              ],
+              screenshot: { pageUrl: "https://example.com/" },
+            },
+          },
         },
       },
     });
@@ -437,8 +448,8 @@ describe("Runtime application tool presentation", () => {
     expect(view?.mcpToolCall).toMatchObject({
       callId: "native-call",
       pluginId: "browser-tools",
-      invocation: { server: "cua_repl", tool: "js", arguments: { title: "Inspect page" } },
-      source: { kind: "browserUse", backend: "chrome" },
+      invocation: { server: "node_repl", tool: "js", arguments: { title: "Inspect page" } },
+      source: { kind: "browserUse", backend: "iab" },
       result: {
         type: "success",
         structuredContent: { page: "Example" },
@@ -447,6 +458,10 @@ describe("Runtime application tool presentation", () => {
           { type: "image", source, data: "", mimeType: "image/png" },
         ],
       },
+    });
+    expect(resolveCodexWebMcpActivities(view!.mcpToolCall!)).toEqual({
+      calls: [{ kind: "invokeTool", name: "search", title: "Search page", inputJson: "{}" }],
+      fallbackPageUrl: "https://example.com/",
     });
   });
 

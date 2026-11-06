@@ -4,6 +4,7 @@ import { fromLenientJson } from "@t3tools/shared/schemaJson";
 import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
 import { providerPromptForInteraction } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
+import { claudeMcpToolCall } from "./ClaudeMcpToolCall.ts";
 import {
   dynamicToolTitle,
   formatReadToolLabel,
@@ -4764,6 +4765,21 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           readonly toolNonExecutionKind?: string;
         }) => {
           const completedAt = input.status === "running" ? null : input.updatedAt;
+          const nativeToolInput = claudeNativeToolInputValue(input.toolInput);
+          const outputValue = claudeNativeToolOutputValue(input.output);
+          const mcpToolCall = claudeMcpToolCall({
+            toolName: input.toolName,
+            nativeItemId: input.nativeItemId,
+            arguments: nativeToolInput,
+            output: outputValue,
+            status: input.status,
+            startedAtMs: DateTime.toEpochMillis(input.startedAt),
+            updatedAtMs: DateTime.toEpochMillis(input.updatedAt),
+          });
+          const status =
+            input.status === "completed" && mcpToolCall?.status === "failed"
+              ? "failed"
+              : input.status;
           const nodeId = idAllocator.derive.nodeFromProviderItem({
             driver: CLAUDE_PROVIDER,
             nativeItemId: input.nativeItemId,
@@ -4784,7 +4800,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             parentNodeId: input.parentNodeId,
             rootNodeId: input.rootNodeId,
             kind: "tool_call",
-            status: input.status,
+            status,
             countsForRun: false,
             providerThreadId: input.runId === null ? null : input.context.input.providerThread.id,
             providerTurnId: input.runId === null ? null : input.context.providerTurnId,
@@ -4797,7 +4813,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           const readPath = ["read", "read file"].includes(input.classification.normalizedName)
             ? firstStringInputField(input.toolInput, ["file_path", "path"])?.trim()
             : undefined;
-          const nativeToolInput = claudeNativeToolInputValue(input.toolInput);
           const searchTitle = ["grep", "glob", "ls"].includes(input.classification.normalizedName)
             ? formatSearchToolLabel({
                 input:
@@ -4821,7 +4836,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             nativeItemRef,
             parentItemId: null,
             ordinal: input.ordinal,
-            status: input.status,
+            status,
             title:
               readPath !== undefined
                 ? formatReadToolLabel(readPath)
@@ -4863,7 +4878,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           });
           const webSearchResults = webSearchResultsFromClaudeOutput(input.output);
           const webFetchUrl = firstStringInputField(input.toolInput, ["url"])?.trim();
-          const outputValue = claudeNativeToolOutputValue(input.output);
           const outputText =
             itemType === "command_execution"
               ? claudeCommandOutputText(input.output)
@@ -4913,6 +4927,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   : {
                       ...itemBase,
                       type: "dynamic_tool",
+                      ...(mcpToolCall === undefined ? {} : { mcpToolCall }),
                       ...(input.presentation?.toolIcon === undefined
                         ? {}
                         : { toolIcon: input.presentation.toolIcon }),

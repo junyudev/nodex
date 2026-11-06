@@ -3418,6 +3418,160 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  it.effect.each([
+    { server: "node_repl", outcome: "completed" },
+    { server: "node_repl", outcome: "failed" },
+    { server: "node_repl", outcome: "interrupted" },
+    { server: "node_repl", outcome: "envelope_error" },
+    { server: "nodex_app", outcome: "completed" },
+    { server: "nodex_app", outcome: "failed" },
+    { server: "nodex_app", outcome: "interrupted" },
+  ] as const)("projects Claude MCP lifecycle %j", ({ server, outcome }) =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarnessWithOptions({
+        close: (messages) => Queue.shutdown(messages),
+      });
+      const attemptId = RunAttemptId.make("mcp-lifecycle");
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId,
+          text: "Capture a screenshot",
+          attachments: [],
+        }),
+      );
+      const id = "mcp-tool-use";
+      const toolName = `mcp__${server}__js`;
+      const input = { code: "capture()", title: "Capture page" };
+      yield* harness.offerAndWait(
+        claudeSdkFrame({
+          type: "assistant",
+          uuid: "mcp-start",
+          session_id: WAKE_NATIVE_SESSION,
+          parent_tool_use_id: null,
+          message: {
+            id: "mcp-message",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-6",
+            content: [{ type: "tool_use", id, name: toolName, input }],
+          },
+        }),
+      );
+      yield* TestClock.adjust(250);
+      const output = {
+        content: [
+          { type: "text", text: "Captured" },
+          { type: "image", source: { type: "base64", media_type: "image/png", data: "AQID" } },
+          { type: "text", text: "[Image: source: /temporary/session/tool-results/capture.png]" },
+        ],
+        structuredContent: { width: 1200 },
+        _meta: { "codex/toolSurface": { kind: "browserUse", backend: "iab" } },
+        ...(outcome === "envelope_error" ? { isError: true } : {}),
+      };
+      if (outcome === "interrupted") {
+        const allocator = yield* IdAllocator.IdAllocatorV2;
+        yield* harness.runtime.interruptTurn({
+          providerThread: harness.providerThread,
+          providerTurnId: allocator.derive.providerTurn({
+            driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
+            nativeTurnId: `turn:${attemptId}`,
+          }),
+        });
+      } else {
+        yield* harness.offerAndWait(
+          claudeSdkFrame({
+            type: "user",
+            uuid: "mcp-result",
+            session_id: WAKE_NATIVE_SESSION,
+            parent_tool_use_id: null,
+            tool_use_result: output,
+            message: {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: id,
+                  content: output.content,
+                  is_error: outcome === "failed",
+                },
+              ],
+            },
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({ uuid: "mcp-terminal", result: "Done" }),
+        );
+      }
+      yield* Queue.take(harness.terminalReceipts);
+      const items = harness.events.flatMap((event) =>
+        event.type === "turn_item.updated" && event.turnItem.type === "dynamic_tool"
+          ? [event.turnItem]
+          : [],
+      );
+      const terminalStatus = outcome === "envelope_error" ? "failed" : outcome;
+      assert.deepEqual(
+        items.map((item) => item.status),
+        ["running", terminalStatus],
+      );
+      assert.equal(new Set(items.map((item) => item.id)).size, 1);
+      for (const item of items) {
+        assert.deepEqual(item.nativeItemRef, {
+          driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
+          nativeId: id,
+          strength: "strong",
+        });
+        assert.equal(item.toolName, toolName);
+        assert.deepEqual(item.input, input);
+        if (server === "nodex_app") {
+          assert.notProperty(item, "mcpToolCall");
+          continue;
+        }
+        assert.deepInclude(item.mcpToolCall, { id, server, tool: "js", arguments: input });
+        assert.equal(
+          item.mcpToolCall?.status,
+          item.status === "running"
+            ? "inProgress"
+            : item.status === "completed"
+              ? "completed"
+              : "failed",
+        );
+      }
+      assert.notProperty(items[0], "output");
+      assert.isNull(items[0]?.mcpToolCall?.result ?? null);
+      const terminal = items.at(-1)!;
+      if (outcome === "interrupted") {
+        assert.notProperty(terminal, "output");
+        if (server !== "nodex_app")
+          assert.deepEqual(terminal.mcpToolCall?.error, { message: "Tool call interrupted" });
+        return;
+      }
+      assert.deepEqual(terminal.output, output);
+      if (server === "nodex_app") return;
+      assert.deepEqual(terminal.mcpToolCall?.result, {
+        content: [
+          { type: "text", text: "Captured" },
+          { type: "image", mimeType: "image/png", data: "AQID" },
+        ],
+        structuredContent: output.structuredContent,
+        _meta: output._meta,
+      });
+      assert.equal(terminal.mcpToolCall?.durationMs, 250);
+      assert.deepEqual(
+        terminal.mcpToolCall?.error,
+        outcome === "completed" ? null : { message: "Captured" },
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   it.effect(
     "changes speed and Ultracode on a background shell's live query, and refuses only a relaunch",
     () =>

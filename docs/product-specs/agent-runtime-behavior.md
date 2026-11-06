@@ -762,6 +762,13 @@ Running, failed, interrupted and cancelled reads retain their tool status and de
 than claiming the image was viewed. Ordinary file reads and tools that return image content
 retain their own tool presentation.
 
+Claude Code MCP calls retain their server, tool, arguments and native call identity in
+live and saved history, including stopped and failed calls. Tool results preserve structured
+content and metadata, so Browser and Computer Use activity can identify its source and
+show returned screenshots. Inline image results use the same indexed attachment reads as
+other MCP calls; local CLI image-path notes do not appear in the transcript. Application tools
+keep their `nodex_app` presentation.
+
 Lifecycle hooks, automatic reviews, cited memory and the files a command read are Turn
 metadata: they reach the reply's hook indicator and footer details as in any chat, and a
 hook that blocks a prompt explains itself beside that prompt. Context a hook injected for

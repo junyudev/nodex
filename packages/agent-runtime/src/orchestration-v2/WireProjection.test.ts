@@ -25,6 +25,8 @@ import {
   projectStoredEventForWire,
   assertPublicWirePayloadBudget,
 } from "./WireProjection.ts";
+import { claudeMcpToolCall } from "./Adapters/ClaudeMcpToolCall.ts";
+import { stripUnservedToolOutputImageBytes } from "./toolOutputImageBytes.ts";
 import { threadShellFromProjection } from "./ProjectionStore.ts";
 import { MAX_TOOL_OUTPUT_IMAGES, toolOutputImages } from "@t3tools/shared/toolOutput";
 
@@ -102,6 +104,64 @@ describe("orchestration V2 wire projection", () => {
     });
     expect(JSON.stringify(detail)).not.toContain("AQID");
     expect(persisted).toMatchObject({ mcpToolCall: call });
+  });
+
+  it("keeps Claude's normalized image positions across persistence and detail projection", () => {
+    const image = {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/png",
+        data: Buffer.alloc(128, 7).toString("base64"),
+      },
+    };
+    const output = {
+      content: [
+        { type: "text", text: "Before" },
+        image,
+        { type: "text", text: "[Image: source: /tmp/session/tool-results/shot.png]" },
+        image,
+      ],
+      _meta: { "codex/toolSurface": { kind: "browserUse", backend: "iab" } },
+    };
+    const mcpToolCall = claudeMcpToolCall({
+      toolName: "mcp__node_repl__js",
+      nativeItemId: "claude-use",
+      arguments: {},
+      output,
+      status: "completed",
+      startedAtMs: 0,
+      updatedAtMs: 250,
+    });
+    const stored = stripUnservedToolOutputImageBytes(
+      decodeTurnItem({ ...base, toolName: "mcp__node_repl__js", output, mcpToolCall }),
+    );
+    const restored = decodeTurnItemJson(encodeTurnItemJson(stored));
+    expect(restored).toMatchObject({
+      mcpToolCall: {
+        result: {
+          content: [
+            { type: "text", text: "Before" },
+            { type: "image", mimeType: "image/png", data: image.source.data },
+            { type: "image", mimeType: "image/png", data: image.source.data },
+          ],
+          _meta: output._meta,
+        },
+      },
+    });
+    expect(projectTurnItemForDetail(restored)).toMatchObject({
+      mcpToolCall: {
+        result: {
+          content: [
+            { type: "text", text: "Before" },
+            { type: "image", mimeType: "image/png" },
+            { type: "image", mimeType: "image/png" },
+          ],
+          _meta: output._meta,
+        },
+      },
+    });
+    expect(JSON.stringify(projectTurnItemForDetail(restored))).not.toContain(image.source.data);
   });
 
   it("bounds huge MCP results without shifting later image content positions", () => {

@@ -3,6 +3,14 @@ import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
+import { OrchestrationV2TurnItemJson } from "@t3tools/contracts";
+import { claudeMcpToolCall } from "../orchestration-v2/Adapters/ClaudeMcpToolCall.ts";
+import { stripUnservedToolOutputImageBytes } from "../orchestration-v2/toolOutputImageBytes.ts";
+import {
+  projectTurnItemForDetail,
+  projectTurnItemForWire,
+} from "../orchestration-v2/WireProjection.ts";
 import { DatabaseSync } from "node:sqlite";
 import type { PersistChatAttachmentsResult } from "@t3tools/contracts";
 import type { AgentWire } from "./Interface.ts";
@@ -82,6 +90,7 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
               ["item:text", "run:1", "assistant_message"],
               ["item:tool", "run:1", "dynamic_tool"],
               ["item:tool-late", "run:2", "dynamic_tool"],
+              ["item:claude", "run:1", "dynamic_tool"],
             ] as const) {
               const payload = {
                 id,
@@ -127,9 +136,81 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
                     }
                   : {}),
               };
+              let storedPayload: unknown = payload;
+              if (id === "item:claude" && type === "dynamic_tool") {
+                const png = Buffer.alloc(128, 7).toString("base64");
+                const output = {
+                  content: [
+                    { type: "text", text: "Screenshots" },
+                    {
+                      type: "image",
+                      source: { type: "base64", media_type: "image/png", data: png },
+                    },
+                    { type: "text", text: "[Image: source: /tmp/session/tool-results/first.png]" },
+                    {
+                      type: "image",
+                      source: { type: "base64", media_type: "image/jpeg", data: "BAUG" },
+                    },
+                    { type: "text", text: "[Image: source: /tmp/session/tool-results/second.jpg]" },
+                    {
+                      type: "image",
+                      source: { type: "base64", media_type: "image/svg+xml", data: png },
+                    },
+                  ],
+                  _meta: { "codex/toolSurface": { kind: "browserUse", backend: "iab" } },
+                  structuredContent: { captured: 2 },
+                };
+                const toolName = "mcp__node_repl__js";
+                const call = claudeMcpToolCall({
+                  toolName,
+                  nativeItemId: "claude-use",
+                  arguments: { code: "capture()" },
+                  output,
+                  status: "completed",
+                  startedAtMs: 0,
+                  updatedAtMs: 250,
+                });
+                const decoded = Schema.decodeUnknownSync(OrchestrationV2TurnItemJson)({
+                  ...payload,
+                  toolName,
+                  output,
+                  mcpToolCall: call,
+                  nativeItemRef: {
+                    driver: "claudeAgent",
+                    nativeId: "claude-use",
+                    strength: "strong",
+                  },
+                });
+                const stored = stripUnservedToolOutputImageBytes(decoded);
+                // A reload and on-demand detail read must preserve normalized content positions.
+                const restored = Schema.decodeUnknownSync(OrchestrationV2TurnItemJson)(
+                  Schema.encodeSync(OrchestrationV2TurnItemJson)(stored),
+                );
+                const detail = projectTurnItemForDetail(restored);
+                expect(detail).toMatchObject({
+                  mcpToolCall: {
+                    result: {
+                      content: [
+                        { type: "text", text: "Screenshots" },
+                        { type: "image", mimeType: "image/png" },
+                        { type: "image", mimeType: "image/jpeg" },
+                        { type: "image", mimeType: "image/svg+xml" },
+                      ],
+                      _meta: output._meta,
+                      structuredContent: output.structuredContent,
+                    },
+                  },
+                });
+                expect(JSON.stringify(detail)).not.toContain(png);
+                expect(projectTurnItemForWire(restored)).toMatchObject({
+                  outputOmitted: true,
+                  mcpToolCall: { result: { content: [], _meta: output._meta } },
+                });
+                storedPayload = Schema.encodeSync(OrchestrationV2TurnItemJson)(stored);
+              }
               db.prepare(
                 `INSERT INTO orchestration_v2_projection_turn_items (turn_item_id,thread_id,run_id,ordinal,type,status,updated_at,payload_json) VALUES (?, 'thread:source', ?, 1, ?, 'completed', ?, ?)`,
-              ).run(id, runId, type, now, JSON.stringify(payload));
+              ).run(id, runId, type, now, JSON.stringify(storedPayload));
             }
           } finally {
             db.close();
@@ -170,6 +251,15 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
         expect(
           yield* query("thread:fork", "item:tool", "tool-result:1", "thread:foreign"),
         ).toBeNull();
+        expect(yield* query("thread:source", "item:claude", "tool-result:1")).toEqual({
+          dataUrl: `data:image/png;base64,${Buffer.alloc(128, 7).toString("base64")}`,
+        });
+        expect(yield* query("thread:fork", "item:claude", "tool-result:2")).toEqual({
+          dataUrl: "data:image/jpeg;base64,BAUG",
+        });
+        expect(yield* query("thread:source", "item:claude", "tool-result:3")).toBeNull();
+        expect(yield* query("thread:source", "item:claude", "tool-result:4")).toBeNull();
+        expect(yield* query("thread:foreign", "item:claude", "tool-result:1")).toBeNull();
         yield* fs.remove(expected.path);
         expect(yield* query("thread:source", "item:captured")).toBeNull();
       }).pipe(
