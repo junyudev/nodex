@@ -27,9 +27,10 @@ Nodex helps a local builder:
 - recover windows, Documents, history, and whole-Store backups without creating
   a second cloud authority.
 
-Nodex is desktop-first. It does not provide cloud content sync, remote multi-
-account collaboration, mobile presentation, or a general database/filesystem
-server.
+Nodex is desktop-first. [Nodex Mobile](mobile-companion-behavior.md) is a
+companion that reaches a running desktop and owns no data of its own. Nodex does
+not provide cloud content sync, remote multi-account collaboration, or a general
+database/filesystem server.
 
 ## Product model
 
