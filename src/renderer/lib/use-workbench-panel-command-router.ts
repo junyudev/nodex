@@ -8,9 +8,11 @@ import {
 } from "react";
 import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
 import { toast } from "@/components/ui/toast";
+import { requestTerminalFocus, returnFocusFromPanel } from "./terminal-focus";
 import { projectWorkspaceRootOrNull } from "./workbench-workspace-context";
 import {
   PANEL_NEW_TAB_ACTIONS,
+  getPanelNewTabAction,
   isWorkbenchTabKind,
   matchesPanelActionShortcut,
   type PanelNewTabActionKind,
@@ -25,6 +27,7 @@ import { resolveWorkbenchPanelCapabilities } from "./workbench-panel-capabilitie
 import {
   resolveFocusedPanelTabCycleScope,
   isCodexTerminalShortcutTarget,
+  isDialogShortcutTarget,
   isDocumentLevelShortcutTarget,
   isFocusedPanelTabShortcutTargetBlocked,
   isWorkbenchPanelTabShortcutTargetBlocked,
@@ -69,6 +72,8 @@ const reloadBrowserTabCommand = defineRendererCommand({
   owner: "WorkbenchPanelCommandRouter",
   protocol: { kind: "returned_value" },
 });
+
+const TERMINAL_ACTION = getPanelNewTabAction("terminal");
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 type PanelLifecycle = Pick<
@@ -278,6 +283,7 @@ export function useWorkbenchPanelCommandRouter({
       : null;
 
     if (targetPanelOpen && activeTab?.kind === "terminal") {
+      returnFocusFromPanel(targetPanelId);
       await setActivePanelCollapsed(targetPanelId, true);
       return;
     }
@@ -302,6 +308,7 @@ export function useWorkbenchPanelCommandRouter({
         openPanel: true,
         leafId: resolveLeafIdForPanelTab(activeSession, existing.panelId, existing.id),
       });
+      requestTerminalFocus(existing);
       return;
     }
 
@@ -675,7 +682,27 @@ export function useWorkbenchPanelCommandRouter({
     [panelTabShortcutStateRef, resolvePanelShortcutScope],
   );
 
+  const handleTerminalToggleShortcut = (event: KeyboardEvent): boolean => {
+    if (!activeSession || isDialogShortcutTarget(event.target)) return false;
+    if (
+      !resolveActivePanelCapabilities(TERMINAL_ACTION.defaultPanelId).actions.terminal.available
+    ) {
+      return false;
+    }
+    if (event.repeat) return true;
+    void dispatchPanelAction("terminal", {
+      panelId: TERMINAL_ACTION.defaultPanelId,
+      terminalBehavior: "focus_or_create",
+    });
+    return true;
+  };
+
   const handleRightPanelShortcut = useEffectEvent((event: KeyboardEvent): boolean => {
+    // Hiding returns the cursor to the editor and opening moves it into the Terminal, so the toggle
+    // has to answer from both places.
+    if (matchesPanelActionShortcut(event, TERMINAL_ACTION, isMacPlatform, commandKeymapState)) {
+      return handleTerminalToggleShortcut(event);
+    }
     if (isCodexTerminalShortcutTarget(event.target)) return false;
 
     const cycleDirection = resolvePanelTabCycleDirection(event, isMacPlatform, commandKeymapState);

@@ -623,17 +623,75 @@ describe("workbench session shell / panel-commands", () => {
     });
     expect(screen.getByRole("tab", { name: "Side chat" }) !== null).toBe(true);
 
+    const pressTerminalShortcut = async (target: Element) => {
+      setInvokeCalls([]);
+      document.body.appendChild(target);
+      const editable = target.querySelector("input, textarea") ?? target;
+      await act(async () => {
+        fireEvent.keyDown(editable, { key: "`", code: "Backquote", ctrlKey: true });
+        await Promise.resolve();
+      });
+      target.remove();
+      await settleAsyncRender();
+      return invokeCalls.filter(
+        (call) =>
+          call[0] === "window-session-view:tab-create" ||
+          call[0] === "window-session-view:panel-patch",
+      );
+    };
+
+    // A dialog keeps its keys.
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.appendChild(document.createElement("input"));
+    expect(await pressTerminalShortcut(dialog)).toEqual([]);
+
+    // Hiding the Terminal returns the cursor to an editor, which can bring it straight back.
+    const hidden = await pressTerminalShortcut(document.createElement("input"));
+    expect(hidden).toContainEqual([
+      "window-session-view:panel-patch",
+      "session:alpha:database-view",
+      "bottom",
+      expect.objectContaining({ collapsed: true }),
+    ]);
+  });
+
+  test("Ctrl+` hides the bottom Terminal from inside that Terminal", async () => {
+    const terminalSession = makeAttachedSession({
+      id: "session:alpha:terminal",
+      rightCollapsed: true,
+      tabs: [
+        {
+          id: "terminal-tab",
+          kind: "terminal",
+          title: "Terminal",
+          panelId: "bottom",
+          config: { terminalSessionId: "terminal" },
+        },
+      ],
+    });
+    renderWorkbench({ sessionsByProject: { alpha: [terminalSession] } });
+    await settleAsyncRender();
+    await settleAsyncRender();
+
+    const surface = document.createElement("div");
+    surface.dataset.codexTerminal = "true";
+    const input = surface.appendChild(document.createElement("textarea"));
+    document.body.appendChild(surface);
     setInvokeCalls([]);
-    const input = document.createElement("input");
-    document.body.appendChild(input);
     await act(async () => {
       fireEvent.keyDown(input, { key: "`", code: "Backquote", ctrlKey: true });
       await Promise.resolve();
     });
-    input.remove();
+    surface.remove();
     await settleAsyncRender();
 
-    expect(invokeCalls.some((call) => call[0] === "window-session-view:tab-create")).toBe(false);
+    expect(invokeCalls).toContainEqual([
+      "window-session-view:panel-patch",
+      terminalSession.id,
+      "bottom",
+      expect.objectContaining({ collapsed: true }),
+    ]);
   });
 
   test("Ctrl+Shift+] selects the next right-panel tab in the focused tab group", async () => {

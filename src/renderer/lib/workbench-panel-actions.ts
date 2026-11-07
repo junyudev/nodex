@@ -4,6 +4,7 @@ import {
   formatAcceleratorLabel,
   formatCommandShortcutLabel,
   getCommandEntry,
+  getPrimaryCommandAccelerator,
   matchesKeyboardEventToCommand,
   type CommandKeymapState,
 } from "../../shared/command-keybindings";
@@ -252,6 +253,8 @@ export function matchesPanelActionShortcut(
   if (action.commandId) {
     const state = commandKeymapState ?? createCommandKeymapState({}, isMac ? "macOS" : "windows");
     if (matchesKeyboardEventToCommand(event, state, action.commandId)) return true;
+    // Unassigning the command also releases its default gesture, such as to a focused Terminal.
+    if (!getPrimaryCommandAccelerator(state, action.commandId)) return false;
   }
   return action.shortcut ? matchesPanelShortcut(event, action.shortcut, isMac) : false;
 }

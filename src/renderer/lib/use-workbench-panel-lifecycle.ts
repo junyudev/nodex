@@ -12,6 +12,7 @@ import {
   materializeWorkbenchImageEditorSurfaceConfig,
   trackImageEditorPinOutcome,
 } from "@/lib/content-image";
+import { requestTerminalFocus, returnFocusFromPanel, terminalHoldsFocus } from "./terminal-focus";
 import { terminalSessionStore } from "./terminal-session-store";
 import { makeWorkbenchSessionPanelSlotKey } from "./workbench-panel-slot-key";
 import { resolveSameLeafInsertionIndex } from "@/components/workbench/panel-tab-dnd";
@@ -196,7 +197,18 @@ export function useWorkbenchPanelLifecycle({
         candidate.surface?.kind === "terminal" &&
         candidate.surface.config.terminalSessionId === terminalSessionId,
     );
-    if (tab) await closeTab(tab.tabId);
+    if (!tab) return;
+    const heldFocus = terminalHoldsFocus(terminalSessionId);
+    await closeTab(tab.tabId);
+    if (!heldFocus) return;
+    // The cursor was in the shell that ended, so it moves on rather than dropping to the page.
+    const presentation = readPresentation();
+    const selectedTabId = presentation?.groups.find(
+      (group) => group.groupId === tab.groupId,
+    )?.selectedTabId;
+    const next = presentation?.tabs.find((candidate) => candidate.tabId === selectedTabId);
+    if (next?.surface?.kind === "terminal") requestTerminalFocus(next.surface);
+    else if (tab.panelId) returnFocusFromPanel(tab.panelId);
   });
   useEffect(() => {
     terminalSessionStore.ensureEventSubscriptions();

@@ -47,6 +47,7 @@ export function handleKey({
   platform,
   clipboard,
   onNewTerminalTab,
+  isBottomPanelToggle,
   onPaste,
   clearSession,
   sendText,
@@ -56,11 +57,14 @@ export function handleKey({
   platform: CodexRendererOs;
   clipboard?: Pick<Clipboard, "readText" | "writeText">;
   onNewTerminalTab?: () => void;
+  isBottomPanelToggle?: (event: KeyboardEvent) => boolean;
   onPaste: () => boolean;
   clearSession: () => void;
   sendText: (data: string) => void;
 }): boolean {
   if (event.type !== "keydown") return true;
+  // Left unconsumed, so the application menu's accelerator hides the Terminal that opening focused.
+  if (isBottomPanelToggle?.(event)) return false;
   if (onNewTerminalTab && metaOnly(event, ["t"])) {
     consume(event);
     onNewTerminalTab();

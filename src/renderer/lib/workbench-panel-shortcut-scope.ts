@@ -21,6 +21,11 @@ export function isCodexTerminalShortcutTarget(target: EventTarget | null): boole
   return Boolean(element.closest("[data-codex-terminal]"));
 }
 
+export function isDialogShortcutTarget(target: EventTarget | null): boolean {
+  const element = target as ShortcutTargetLike | null;
+  return Boolean(element?.closest?.("[role='dialog']"));
+}
+
 export function isWorkbenchNewChatShortcutTargetEditable(target: EventTarget | null): boolean {
   const element = target as ShortcutTargetLike | null;
   if (!element) return false;

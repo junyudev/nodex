@@ -7,6 +7,7 @@ import {
   useMemo,
 } from "react";
 import { type MotionValue } from "motion/react";
+import { requestTerminalFocus } from "@/lib/terminal-focus";
 import { filterAvailablePanelActions, PANEL_NEW_TAB_ACTIONS } from "@/lib/workbench-panel-actions";
 import type { AppShellMainContentLayout } from "@/lib/codex-panel-motion";
 import type { useWorkbenchPanelCommandRouter } from "@/lib/use-workbench-panel-command-router";
@@ -216,7 +217,9 @@ export function WorkbenchSessionScene({
         contentConcealed={panelId === "right" && conversationFillsFullView}
         commands={{
           selectTab: (leafId, tabId) => {
-            void selectPanelTab(panelId, tabId, leafId);
+            void selectPanelTab(panelId, tabId, leafId).then(() =>
+              requestTerminalFocus(session.tabs.find((tab) => tab.id === tabId)),
+            );
           },
           closeTab: (leafId, tabId) => {
             void closePanelTab(panelId, tabId, leafId);

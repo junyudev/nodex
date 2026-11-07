@@ -5,6 +5,7 @@ import type { CommandKeymapState } from "../../shared/command-keybindings";
 import type { LibraryRouteTarget } from "../../shared/library-module";
 import type { WorkbenchSceneOwner } from "../../shared/workbench-scene";
 import { readWorkbenchAgentContext } from "./workbench-agent-context";
+import { requestTerminalFocus } from "./terminal-focus";
 import { planNewTabReplacement } from "./workbench-new-tab-model";
 import type { PanelNewTabAction, PanelNewTabActionKind } from "./workbench-panel-actions";
 import type { ExecuteWorkbenchUiCommand } from "./use-workbench-scene-commands";
@@ -190,6 +191,7 @@ export function useWorkbenchNewTabPortValue({
       );
       if (terminal) {
         await executeSceneCommand(owner, { kind: "activate_tab", tabId: terminal.tabId });
+        requestTerminalFocus(terminal.surface);
         return;
       }
       const bottom = observation?.panels.find((panel) => panel.panelId === "bottom");

@@ -1,5 +1,6 @@
 import { runWithCleanup } from "./run-with-cleanup";
 import { composerDraftIntents } from "./composer-draft-intents";
+import { requestTerminalFocus } from "./terminal-focus";
 import { collectCodexSubagentThreadIds } from "../../shared/codex-subagent-metadata";
 import { conversationTurnsWithOverlay } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { readLocalConversation } from "@/features/local-conversation/local-conversation-store";
@@ -924,6 +925,7 @@ export function useWorkbenchSessionCommands({
       const createdTab = await createSessionViewTab(createInput);
       if (!createdTab) return false;
       await ensureActivePanelOpenWithoutRefresh(panelId);
+      requestTerminalFocus(createdTab);
       return true;
     },
     [activeSession, createSessionViewTab, ensureActivePanelOpenWithoutRefresh, setActivePanelTab],

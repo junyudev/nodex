@@ -2,8 +2,12 @@ import { useEffect, useEffectEvent, useRef, useSyncExternalStore, type RefObject
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { observeCodexDocumentAppearance } from "./codex-theme-variant";
+import { matchesKeyboardEventToCommand } from "../../shared/command-keybindings";
+import { TOGGLE_BOTTOM_PANEL_COMMAND_ID } from "../../shared/workbench-commands";
 import { resolveCodexRendererOs } from "./codex-window-runtime";
 import { useFileReferenceRouter } from "./file-reference-router";
+import { registerTerminalFocusTarget } from "./terminal-focus";
+import { useResolvedCommandKeymapState } from "./use-command-keymap-state";
 import { openLink } from "./link-opening";
 import { applyTerminalTheme, readTerminalTheme } from "./terminal-appearance";
 import { bindTerminalInput, handleKey } from "./terminal-keyboard";
@@ -60,6 +64,10 @@ export function useTerminal({
     hostId: hostId ?? files.hostId,
   }));
   const readNewTerminalAction = useEffectEvent(() => onNewTerminalTab);
+  const keymap = useResolvedCommandKeymapState();
+  const isBottomPanelToggle = useEffectEvent((event: KeyboardEvent) =>
+    matchesKeyboardEventToCommand(event, keymap, TOGGLE_BOTTOM_PANEL_COMMAND_ID),
+  );
   const normalizedCwd = cwd.trim();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const view = useRef<{ reconnect: () => void; takeOver: () => void } | null>(null);
@@ -112,6 +120,7 @@ export function useTerminal({
         platform,
         clipboard: platform === "darwin" ? undefined : navigator.clipboard,
         onNewTerminalTab: readNewTerminalAction(),
+        isBottomPanelToggle,
         onPaste: () => markUser(),
         clearSession: () => terminalSessionStore.clearSession(terminalId),
         sendText: (data) => terminalSessionStore.write(terminalId, data, "user"),
@@ -218,8 +227,10 @@ export function useTerminal({
       },
       { observeBody: true },
     );
+    const unregisterFocusTarget = registerTerminalFocusTarget(terminalId, () => term.focus());
 
     return () => {
+      unregisterFocusTarget();
       disposed = true;
       if (scrollFrame !== null) cancelAnimationFrame(scrollFrame);
       cancelAnimationFrame(attachFrame);

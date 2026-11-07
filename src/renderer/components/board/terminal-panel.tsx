@@ -1,3 +1,4 @@
+import { rememberFocusBeforeTerminal } from "@/lib/terminal-focus";
 import { useTerminal } from "@/lib/use-terminal";
 import type { ReactNode } from "react";
 
@@ -123,6 +124,7 @@ function TerminalSurface({ terminalId, children }: { terminalId: string; childre
       data-nodex-keyboard-scope="terminal"
       data-codex-xterm="true"
       className="app-theme relative flex h-full w-full flex-col"
+      onFocus={(event) => rememberFocusBeforeTerminal(event.relatedTarget)}
       style={{
         backgroundColor: "var(--color-codex-terminal-background)",
         color: "var(--color-codex-terminal-foreground)",

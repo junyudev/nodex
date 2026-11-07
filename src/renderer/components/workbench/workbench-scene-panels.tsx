@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { BrowserTabFavicon } from "@/features/browser-sidebar/browser-tab-favicon";
+import { requestTerminalFocus } from "@/lib/terminal-focus";
 import { isPanelActionTargetAllowed, type PanelNewTabAction } from "@/lib/workbench-panel-actions";
 import { resolveWorkbenchSceneTabPresentation } from "@/lib/workbench-scene-tab-presentation";
 import type { WorkbenchSceneDurablePanelCommands } from "@/lib/use-workbench-panel-controller";
@@ -216,7 +217,9 @@ export function buildWorkbenchScenePanels({
         renderEmptyLeaf={renderEmptyLeaf ? (leafId) => renderEmptyLeaf(panelId, leafId) : undefined}
         commands={{
           selectTab: (_leafId, surfaceId) => {
-            void executeCommand(scene.owner, { kind: "activate_tab", tabId: surfaceId });
+            void executeCommand(scene.owner, { kind: "activate_tab", tabId: surfaceId }).then(() =>
+              requestTerminalFocus(scene.panelSurfacesById[surfaceId]),
+            );
           },
           closeTab: (_leafId, surfaceId) => {
             void executeCommand(scene.owner, { kind: "close_tab", tabId: surfaceId });

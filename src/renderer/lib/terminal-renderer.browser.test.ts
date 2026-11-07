@@ -1,8 +1,10 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render } from "@testing-library/react";
 import { createElement } from "react";
 import { expect, test, vi } from "vite-plus/test";
 import type { Terminal } from "@xterm/xterm";
 import type { TerminalCreateRequest } from "../../shared/types";
+import { requestTerminalFocus } from "./terminal-focus";
 import { handleKey } from "./terminal-keyboard";
 import { TerminalRenderer } from "./terminal-renderer";
 import { terminalSessionStore, TERMINAL_RENDERER_BUFFER_LIMIT } from "./terminal-session-store";
@@ -89,6 +91,76 @@ test("clipboard paste passes through xterm's bracketed paste mode", async () => 
   }
 });
 
+test("the bottom panel toggle reaches the application menu instead of the shell", () => {
+  const { renderer, dispose } = openRenderer();
+  try {
+    const term = renderer.terminal;
+    const outgoing = vi.fn();
+    term.onData(outgoing);
+    const press = (isBottomPanelToggle: (event: KeyboardEvent) => boolean) => {
+      term.attachCustomKeyEventHandler((event) =>
+        handleKey({
+          event,
+          term,
+          platform: "linux",
+          isBottomPanelToggle,
+          onPaste: () => true,
+          clearSession: () => {},
+          sendText: () => {},
+        }),
+      );
+      const event = new KeyboardEvent("keydown", {
+        key: "j",
+        keyCode: 74,
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      term.textarea?.dispatchEvent(event);
+      return event;
+    };
+
+    const toggled = press((event) => event.ctrlKey && event.key === "j");
+    expect(toggled.defaultPrevented).toBe(false);
+    expect(outgoing).not.toHaveBeenCalled();
+
+    // Any other binding leaves Ctrl+J to the shell as a newline.
+    const typed = press(() => false);
+    expect(typed.defaultPrevented).toBe(true);
+    expect(outgoing).toHaveBeenCalledWith("\n");
+  } finally {
+    dispose();
+  }
+});
+
+test("a focus request reaches the xterm input when its view mounts", async () => {
+  const sessionId = "focus-request";
+  installTerminalApi();
+  requestTerminalFocus({ kind: "terminal", config: { terminalSessionId: sessionId } });
+  const view = renderTerminalTestView(sessionId);
+  try {
+    expect(document.activeElement?.classList.contains("xterm-helper-textarea")).toBe(true);
+    (document.activeElement as HTMLElement).blur();
+
+    // Already mounted, the same request moves the cursor straight away.
+    requestTerminalFocus({ kind: "terminal", config: { terminalSessionId: sessionId } });
+    expect(document.activeElement?.classList.contains("xterm-helper-textarea")).toBe(true);
+  } finally {
+    view.unmount();
+    terminalSessionStore.release(sessionId);
+  }
+});
+
+function renderTerminalTestView(sessionId: string) {
+  return render(
+    createElement(
+      QueryClientProvider,
+      { client: new QueryClient() },
+      createElement(TerminalTestView, { sessionId }),
+    ),
+  );
+}
+
 function installTerminalApi(replay?: string) {
   const calls: unknown[][] = [];
   const listeners = new Map<string, (...args: unknown[]) => void>();
@@ -138,7 +210,7 @@ function mountedRenderer(sessionId: string) {
 test("fences generated replies during replay while forwarding keyboard input", async () => {
   const sessionId = "query-replay";
   const api = installTerminalApi();
-  const view = render(createElement(TerminalTestView, { sessionId }));
+  const view = renderTerminalTestView(sessionId);
   let resume: (handled: boolean) => void = () => {};
 
   try {
@@ -206,7 +278,7 @@ test("restores a clipped alternate buffer and requests a same-size repaint on at
   terminalSessionStore.ensureEventSubscriptions();
   api.emit("terminal-data", { sessionId, data: "\x1b[?1049h" + tail });
   terminalSessionStore.release(sessionId);
-  const view = render(createElement(TerminalTestView, { sessionId }));
+  const view = renderTerminalTestView(sessionId);
 
   try {
     const renderer = mountedRenderer(sessionId);

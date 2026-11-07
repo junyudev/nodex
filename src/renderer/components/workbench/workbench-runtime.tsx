@@ -79,6 +79,8 @@ import {
 } from "./workbench-header-actions";
 import { HistoryPanel } from "./workbench-history-panel";
 import { useTerminalSessionStoreVersion } from "@/lib/terminal-session-store";
+import { requestTerminalFocus, returnFocusFromPanel } from "@/lib/terminal-focus";
+import { createSecureRuntimeId } from "../../../shared/secure-runtime-id";
 import { BrowserSidebarHiddenWebviewHosts } from "@/features/browser-sidebar/browser-sidebar-hidden-webview-hosts";
 import {
   useBrowserSidebarRendererState,
@@ -379,7 +381,11 @@ import {
   type WorkbenchNewTabOwnerContext,
   type WorkbenchNewTabPlacement,
 } from "@/lib/workbench-new-tab-port";
-import { inboxPagePeek, readPageStagePanelTabPageRef } from "@/lib/workbench-panel-placement";
+import {
+  inboxPagePeek,
+  readPageStagePanelTabPageRef,
+  resolveSessionPanelActiveTabId,
+} from "@/lib/workbench-panel-placement";
 import { formatToggleFullViewShortcutLabel } from "@/lib/workbench-command-shortcuts";
 import {
   oppositeWorkbenchPanelSide,
@@ -2543,16 +2549,16 @@ export function WorkbenchRuntime({
         );
       }
       if (kind === "terminal") {
-        return await presentProjectSceneSurface(
-          projectId,
-          {
-            kind,
-            config: {
-              context: { kind: "project", projectId },
-            },
+        const terminal = {
+          kind,
+          config: {
+            context: { kind: "project", projectId },
+            terminalSessionId: createSecureRuntimeId("terminal"),
           },
-          panelOptions,
-        );
+        } as const;
+        const presented = await presentProjectSceneSurface(projectId, terminal, panelOptions);
+        if (presented) requestTerminalFocus(terminal);
+        return presented;
       }
       const hostId = options.hostId ?? "local";
       const workspaceRoot =
@@ -3429,9 +3435,21 @@ export function WorkbenchRuntime({
     setSessionWorkspaceFullView(sessionWorkspace.layout !== "full");
   };
 
+  /** What the bottom panel presents when it opens. */
+  const resolveActiveBottomSurface = () => {
+    if (activeOwnedScene) {
+      const tabId = getWorkbenchPanelActiveLeaf(activeOwnedScene.panels.bottom.layout).activeTabId;
+      return tabId ? activeOwnedScene.panelSurfacesById[tabId] : null;
+    }
+    if (!activeSession) return null;
+    const tabId = resolveSessionPanelActiveTabId(activeSession, "bottom");
+    return activeSession.tabs.find((tab) => tab.id === tabId) ?? null;
+  };
+
   const toggleActiveBottomPanel = () => {
     if (!activePanelOwnerKey) return;
     if (bottomPanelOpen) {
+      returnFocusFromPanel("bottom");
       void hideActiveBottomPanel();
       return;
     }
@@ -3442,7 +3460,8 @@ export function WorkbenchRuntime({
         )
       : (activeSessionPanelModel?.bottomRenderableTabs.length ?? 0) > 0;
     if (hasBottomPanelContent) {
-      void showActiveBottomPanel();
+      const surface = resolveActiveBottomSurface();
+      void showActiveBottomPanel().then(() => requestTerminalFocus(surface));
       return;
     }
 
