@@ -43,6 +43,11 @@ import {
   type OrchestrationEventStoreError,
 } from "./Errors.ts";
 
+/** Metadata row holding the newest sequence the event log no longer guarantees to contain. */
+export const EVENT_LOG_PRUNED_THROUGH = "event-log-pruned-through";
+/** Metadata row holding the head recorded by the last pass; the next pass prunes through it. */
+export const EVENT_LOG_PRUNE_MARK = "event-log-prune-mark";
+
 /** A project event before the store assigns its sequence. */
 export type UnsequencedProjectEvent = ApplicationProjectEvent extends infer Event
   ? Event extends ApplicationProjectEvent
@@ -117,6 +122,9 @@ export class OrchestrationEventStore extends Context.Service<
     ) => Effect.Effect<number, OrchestrationEventStoreError>;
 
     readonly latestApplicationSequence: Effect.Effect<number, OrchestrationEventStoreError>;
+
+    /** Replay from a cursor below this can miss pruned events; resync from a snapshot instead. */
+    readonly prunedThroughSequence: Effect.Effect<number, OrchestrationEventStoreError>;
 
     /** Read the finite retained application-event range `(afterSequence, throughSequence]`. */
     readonly readApplicationEvents: (input: {
@@ -698,6 +706,14 @@ const makeEventStore = Effect.gen(function* () {
     input,
   ) => streamProjectedApplicationEvents({ ...input, project: (event) => event });
 
+  const prunedThroughSequence = sql<{ readonly last_sequence: number }>`
+    SELECT last_sequence FROM orchestration_v2_projection_metadata
+    WHERE projection_name = ${EVENT_LOG_PRUNED_THROUGH}
+  `.pipe(
+    Effect.map((rows) => rows[0]?.last_sequence ?? 0),
+    Effect.mapError(toPersistenceSqlError("OrchestrationEventStore.prunedThroughSequence:query")),
+  );
+
   return {
     appendProjectEvent,
     appendAgentEvents,
@@ -706,6 +722,7 @@ const makeEventStore = Effect.gen(function* () {
     getReplayStats,
     latestAgentSequence,
     latestApplicationSequence,
+    prunedThroughSequence,
     readApplicationEvents: catchUpApplicationEvents,
     publishCommitted: (events) => PubSub.publishAll(committedEvents, events).pipe(Effect.asVoid),
     streamApplicationEvents,

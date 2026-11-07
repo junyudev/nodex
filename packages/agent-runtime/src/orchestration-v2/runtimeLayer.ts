@@ -20,6 +20,7 @@ import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
+import * as DatabaseStorage from "../persistence/DatabaseStorage.ts";
 import * as ProjectionMaintenance from "./ProjectionMaintenance.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
@@ -354,4 +355,5 @@ export const layerProduction = Layer.mergeAll(
   layerDelegatedTaskQuestions,
   layerRunLivenessWorker,
   EffectOutbox.layerPruneWorker.pipe(Layer.provide(EffectOutbox.layer)),
+  DatabaseStorage.layer.pipe(Layer.provide(layerProjectionMaintenanceProvided)),
 ).pipe(Layer.provideMerge(layerEventInfrastructure));

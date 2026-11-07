@@ -42,7 +42,7 @@ import * as EventSink from "../EventSink.ts";
 import * as EventStore from "../EventStore.ts";
 import * as LegacyV1ThreadImporter from "./LegacyV1ThreadImporter.ts";
 import * as Orchestrator from "../Orchestrator.ts";
-import * as ProjectionMaintenance from "../ProjectionMaintenance.ts";
+import * as ProjectionReplay from "../testkit/ProjectionReplay.ts";
 import * as ProjectionStore from "../ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "../ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "../testkit/ProviderReplayHarness.ts";
@@ -597,7 +597,7 @@ const layerBoot = (input: {
   const layerImporterProvided = LegacyV1ThreadImporter.layer.pipe(
     Layer.provide(Layer.mergeAll(layerStoresProvided, layerEventSinkProvided)),
   );
-  const layerMaintenanceProvided = ProjectionMaintenance.layer.pipe(
+  const layerProjectionReplayProvided = ProjectionReplay.layer.pipe(
     Layer.provide(layerStoresProvided),
   );
   const layerOrchestratorProvided = ProviderReplayHarness.layerWithRegistry(
@@ -614,7 +614,7 @@ const layerBoot = (input: {
     layerStoresProvided,
     layerEventSinkProvided,
     layerImporterProvided,
-    layerMaintenanceProvided,
+    layerProjectionReplayProvided,
     layerOrchestratorProvided,
   );
 };
@@ -668,7 +668,7 @@ describe("orchestration v2 legacy v1 cutover", () => {
             Effect.gen(function* () {
               const sql = yield* SqlClient.SqlClient;
               const importer = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
-              const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+              const projectionReplay = yield* ProjectionReplay.ProjectionReplay;
               const projections = yield* ProjectionStore.ProjectionStoreV2;
               const orchestrator = yield* Orchestrator.OrchestratorV2;
 
@@ -683,7 +683,7 @@ describe("orchestration v2 legacy v1 cutover", () => {
                 importedThreadCount: 0,
                 importedMessageCount: 0,
               });
-              assert.isTrue((yield* maintenance.rebuild).valid);
+              assert.isTrue((yield* projectionReplay.rebuild).valid);
 
               const shellSnapshot = yield* projections.getShellSnapshot();
               const visibleShellIds = [

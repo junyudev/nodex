@@ -189,6 +189,11 @@ export interface EventSinkV2Shape {
     readonly eventType?: OrchestrationV2DomainEvent["type"];
     /** Bound RPC subscribers; internal workers must not drop their subscription under load. */
     readonly bounded?: boolean;
+    /**
+     * A cursor promises continuity, so a stream fails rather than skip events pruned after it, and
+     * the client reloads a snapshot. Set this only for a cursor read from the store just now.
+     */
+    readonly capturedCursor?: boolean;
   }) => Stream.Stream<OrchestrationV2StoredEvent, EventSinkV2Error>;
   readonly latestSequence: (input?: {
     readonly threadId?: ThreadId;
@@ -873,13 +878,35 @@ const layerBase: Layer.Layer<
       const matches = (stored: OrchestrationV2StoredEvent) =>
         (input?.threadId === undefined || stored.event.threadId === input.threadId) &&
         (input?.eventType === undefined || stored.event.type === input.eventType);
-      const replay = (throughSequence: number) =>
+      // A cursor at its thread's newest event missed nothing, however old it is.
+      const assertRetainedHistory = Effect.gen(function* () {
+        if (afterSequence >= (yield* eventStore.prunedThroughSequence)) return;
+        const head = yield* eventStore.latestSequence(
+          input?.threadId === undefined ? undefined : { threadId: input.threadId },
+        );
+        if (afterSequence >= head) return;
+        return yield* new EventSinkStreamError({
+          afterSequence,
+          ...(input?.threadId === undefined ? {} : { threadId: input.threadId }),
+          cause: "Events after this cursor were pruned; reload a snapshot.",
+        });
+      });
+      const replayRetained = (throughSequence: number) =>
         catchUp({
           afterSequence,
           throughSequence,
           ...(input?.threadId === undefined ? {} : { threadId: input.threadId }),
           ...(input?.eventType === undefined ? {} : { eventType: input.eventType }),
         }).pipe(Stream.filter(matches));
+      // Pruning publishes its boundary before deleting, so checking again after the read also
+      // catches a pass that ran during it.
+      const replay = (throughSequence: number) =>
+        input?.afterSequence !== undefined && input.capturedCursor !== true
+          ? Stream.fromEffectDrain(assertRetainedHistory).pipe(
+              Stream.concat(replayRetained(throughSequence)),
+              Stream.concat(Stream.fromEffectDrain(assertRetainedHistory)),
+            )
+          : replayRetained(throughSequence);
       return Stream.unwrap(
         Effect.gen(function* () {
           let pubsub = liveEvents;

@@ -70,6 +70,8 @@ export interface EventStoreV2Shape {
   }) => Effect.Effect<number, EventStoreV2Error>;
   /** Latest sequence across project and V2 thread events. */
   readonly latestApplicationSequence: Effect.Effect<number, EventStoreV2Error>;
+  /** Replay from a cursor below this can miss pruned events. */
+  readonly prunedThroughSequence: Effect.Effect<number, EventStoreV2Error>;
   readonly publishCommitted: (events: ReadonlyArray<ApplicationStoredEvent>) => Effect.Effect<void>;
 }
 
@@ -140,6 +142,9 @@ const layerBase: Layer.Layer<EventStoreV2, never, OrchestrationEventStore.Orches
             ),
           ),
         latestApplicationSequence: applicationEvents.latestApplicationSequence.pipe(
+          Effect.mapError((cause) => new EventStoreReadEventsError({ cause })),
+        ),
+        prunedThroughSequence: applicationEvents.prunedThroughSequence.pipe(
           Effect.mapError((cause) => new EventStoreReadEventsError({ cause })),
         ),
         publishCommitted: applicationEvents.publishCommitted,

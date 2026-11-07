@@ -55,7 +55,7 @@ import * as EffectWorker from "./EffectWorker.ts";
 import * as EventSink from "./EventSink.ts";
 import * as EventStore from "./EventStore.ts";
 import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
-import * as ProjectionMaintenance from "./ProjectionMaintenance.ts";
+import * as ProjectionReplay from "./testkit/ProjectionReplay.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as ProviderRuntimeRecovery from "./ProviderRuntimeRecoveryService.ts";
@@ -79,7 +79,7 @@ const layerCommandReceiptStoreProvided = CommandReceiptStore.layer.pipe(
 );
 // Its own database, for tests that act on every row in the outbox table.
 const layerIsolatedOutbox = Layer.fresh(EffectOutbox.layer.pipe(Layer.provideMerge(layerDatabase)));
-const layerProjectionMaintenanceProvided = ProjectionMaintenance.layer.pipe(
+const layerProjectionReplayProvided = ProjectionReplay.layer.pipe(
   Layer.provide(layerStoresProvided),
 );
 const layerTest = Layer.mergeAll(
@@ -88,7 +88,7 @@ const layerTest = Layer.mergeAll(
   layerEffectOutboxProvided,
   layerCommandReceiptStoreProvided,
   IdAllocator.layer,
-  layerProjectionMaintenanceProvided,
+  layerProjectionReplayProvided,
 );
 
 const providerInstanceId = ProviderInstanceId.make("codex");
@@ -142,217 +142,6 @@ function threadCreatedEvent(input: {
     payload: input.thread,
   };
 }
-
-it.effect("rebuilds event history one bounded page at a time", () =>
-  Effect.gen(function* () {
-    const eventStore = yield* EventStore.EventStoreV2;
-    const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
-    const now = yield* DateTime.now;
-    const threadId = ThreadId.make("thread:foundation-paged-rebuild");
-    const thread = makeThread(threadId, now);
-    const eventCount = 1_005;
-    yield* eventStore.append({
-      events: [
-        threadCreatedEvent({ id: "event:paged-rebuild:0", thread, now }),
-        ...Array.from({ length: eventCount - 1 }, (_, index) => ({
-          id: EventId.make(`event:paged-rebuild:${index + 1}`),
-          type: "thread.metadata-updated" as const,
-          threadId,
-          occurredAt: now,
-          payload: { ...thread, title: `Rebuilt update ${index + 1}` },
-        })),
-      ],
-    });
-    let applied = 0;
-    let failAfterFirstPage = false;
-    const appliedAtRead: Array<number> = [];
-    const layerObservedStores = Layer.mergeAll(
-      Layer.succeed(EventStore.EventStoreV2, {
-        ...eventStore,
-        read: (input) =>
-          Stream.suspend(() => {
-            appliedAtRead.push(applied);
-            if (failAfterFirstPage && applied >= 500) {
-              return Stream.fail(
-                new EventStore.EventStoreReadEventsError({ afterSequence: input?.afterSequence }),
-              );
-            }
-            return eventStore.read(input);
-          }),
-      }),
-      Layer.succeed(ProjectionStore.ProjectionStoreV2, {
-        ...projectionStore,
-        apply: (event) =>
-          projectionStore.apply(event).pipe(
-            Effect.tap(() =>
-              Effect.sync(() => {
-                applied += 1;
-              }),
-            ),
-          ),
-      }),
-    );
-    const rebuild = Effect.gen(function* () {
-      const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
-      return yield* maintenance.rebuild;
-    }).pipe(
-      Effect.provide(
-        Layer.fresh(ProjectionMaintenance.layer.pipe(Layer.provide(layerObservedStores))),
-      ),
-    );
-    const rebuilt = yield* rebuild;
-    assert.isTrue(rebuilt.valid);
-    assert.equal(applied, eventCount);
-    assert.deepEqual(appliedAtRead, [0, 500, 1_000]);
-    assert.equal(
-      (yield* projectionStore.getThreadProjection(threadId)).thread.title,
-      "Rebuilt update 1004",
-    );
-    applied = 0;
-    failAfterFirstPage = true;
-    const failed = yield* Effect.exit(rebuild);
-    assert.equal(failed._tag, "Failure");
-    assert.equal(applied, 500);
-    assert.equal(
-      (yield* projectionStore.getThreadProjection(threadId)).thread.title,
-      "Rebuilt update 1004",
-    );
-    const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
-    assert.isTrue((yield* maintenance.verify).valid);
-  }).pipe(Effect.provide(layerTest)),
-);
-
-it.effect("verifies thread membership using only the thread-created partial index", () =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
-    const now = DateTime.formatIso(yield* DateTime.now);
-    yield* sql`
-      WITH RECURSIVE history(n) AS (
-        SELECT 1 UNION ALL SELECT n + 1 FROM history WHERE n < 25000
-      )
-      INSERT INTO orchestration_events (
-        event_id, aggregate_kind, stream_id, stream_version, event_type,
-        occurred_at, actor_kind, payload_json, metadata_json, application_event_version
-      )
-      SELECT 'history:' || n, 'thread', 'thread:history', n,
-        'provider-session.detached', ${now}, 'server', '{}', '{}', 2
-      FROM history
-    `;
-    let membershipQuery: string | undefined;
-    const tracer = Tracer.make({
-      span(options) {
-        const span = new Tracer.NativeSpan(options);
-        const end = span.end.bind(span);
-        span.end = (endTime, exit) => {
-          end(endTime, exit);
-          const query = span.attributes.get("db.query.text");
-          if (
-            typeof query === "string" &&
-            query.includes("SELECT DISTINCT stream_id AS thread_id")
-          ) {
-            membershipQuery = query;
-          }
-        };
-        return span;
-      },
-    });
-    yield* maintenance.verify.pipe(Effect.withTracer(tracer));
-    assert.isDefined(membershipQuery);
-    const plan = yield* sql.unsafe<{ readonly detail: string }>(
-      `EXPLAIN QUERY PLAN ${membershipQuery}`,
-    );
-    const details = plan.map((row) => row.detail).join("\n");
-    assert.match(details, /USING (?:COVERING )?INDEX orchestration_events_v2_created_threads_idx/);
-    assert.notMatch(details, /idx_orch_events_stream_sequence|TEMP B-TREE/);
-  }).pipe(Effect.provide(layerTest)),
-);
-
-it.effect("keeps other database work runnable while discovering compaction candidates", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
-      const now = DateTime.formatIso(yield* DateTime.now);
-      yield* sql`
-        WITH RECURSIVE history(n) AS (
-          SELECT 1 UNION ALL SELECT n + 1 FROM history WHERE n < 2001
-        )
-        INSERT INTO orchestration_events (
-          event_id, aggregate_kind, stream_id, stream_version, event_type,
-          occurred_at, actor_kind, payload_json, metadata_json, application_event_version
-        )
-        SELECT 'retained:' || n, 'thread', 'thread:retained', n,
-          'provider-session.detached', ${now}, 'server', '{}', '{}', 2
-        FROM history
-      `;
-      yield* sql`
-        WITH RECURSIVE history(n) AS (
-          SELECT 1 UNION ALL SELECT n + 1 FROM history WHERE n < 2001
-        )
-        INSERT INTO orchestration_command_receipts (
-          command_id, aggregate_kind, aggregate_id, accepted_at, result_sequence, status, command_type
-        )
-        SELECT 'retained:' || n, 'thread', 'thread:retained', ${now}, n, 'accepted', 'thread.create'
-        FROM history
-      `;
-      const discoveryStarted = {
-        events: yield* Deferred.make<void>(),
-        receipts: yield* Deferred.make<void>(),
-      };
-      const queries = { events: 0, receipts: 0 };
-      let finished = false;
-      const tracer = Tracer.make({
-        span(options) {
-          const span = new Tracer.NativeSpan(options);
-          const end = span.end.bind(span);
-          span.end = (endTime, exit) => {
-            end(endTime, exit);
-            const query = span.attributes.get("db.query.text");
-            if (typeof query !== "string" || !query.trimStart().startsWith("SELECT")) return;
-            if (query.includes("MAX(")) return;
-            const table = query.includes("FROM orchestration_command_receipts")
-              ? "receipts"
-              : query.includes("FROM orchestration_events")
-                ? "events"
-                : undefined;
-            if (table === undefined) return;
-            queries[table] += 1;
-            Deferred.doneUnsafe(discoveryStarted[table], Effect.void);
-          };
-          return span;
-        },
-      });
-      const probes = yield* Effect.forEach(["events", "receipts"] as const, (table) =>
-        Effect.gen(function* () {
-          yield* Deferred.await(discoveryStarted[table]);
-          const result = yield* sql<{ readonly responsive: number }>`SELECT 1 AS responsive`;
-          assert.equal(result[0]?.responsive, 1);
-          return { table, queriesAtProbe: queries[table], finished };
-        }).pipe(Effect.forkScoped),
-      );
-
-      const summary = yield* maintenance.compactEventStore.pipe(
-        Effect.withTracer(tracer),
-        // Exercise the explicit page yields, independent of Effect's operation budget.
-        Effect.provideService(Scheduler.MaxOpsBeforeYield, Number.POSITIVE_INFINITY),
-        Effect.tap(() =>
-          Effect.sync(() => {
-            finished = true;
-          }),
-        ),
-      );
-      assert.equal(summary.deletedEventCount, 0);
-      assert.equal(summary.deletedReceiptCount, 0);
-      for (const probe of probes) {
-        const result = yield* Fiber.join(probe);
-        assert.isFalse(result.finished);
-        assert.isAtLeast(result.queriesAtProbe, 1);
-        assert.isBelow(result.queriesAtProbe, queries[result.table]);
-      }
-    }),
-  ).pipe(Effect.provide(layerTest)),
-);
 
 it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
   it.effect("finds orphaned provider turns and rejects cleanup after a turn is adopted", () =>
@@ -899,7 +688,7 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
     Effect.gen(function* () {
       const eventSink = yield* EventSink.EventSinkV2;
       const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
-      const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+      const projectionReplay = yield* ProjectionReplay.ProjectionReplay;
       const now = yield* DateTime.now;
       const firstThreadId = ThreadId.make("thread:foundation-shared-session:first");
       const secondThreadId = ThreadId.make("thread:foundation-shared-session:second");
@@ -955,212 +744,8 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
         (yield* projectionStore.getThreadProjection(firstThreadId)).providerSessions[0]?.cwd,
         secondSession.cwd,
       );
-      assert.isTrue((yield* maintenance.verify).valid);
-      assert.isTrue((yield* maintenance.rebuild).valid);
-    }),
-  );
-
-  it.effect("compacts superseded state events, imported v1 events, and legacy receipts", () =>
-    Effect.gen(function* () {
-      const eventSink = yield* EventSink.EventSinkV2;
-      const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
-      const sql = yield* SqlClient.SqlClient;
-      const projections = yield* ProjectionStore.ProjectionStoreV2;
-      const now = yield* DateTime.now;
-      const nowIso = DateTime.formatIso(now);
-      const threadId = ThreadId.make("thread:foundation-compact");
-      const thread = makeThread(threadId, now);
-      const messageId = MessageId.make("message:foundation-compact");
-      const threadStateEvent = (
-        suffix: string,
-        type: "thread.visited" | "thread.metadata-updated",
-      ): OrchestrationV2DomainEvent => ({
-        id: EventId.make(`event:foundation-compact:${suffix}`),
-        type,
-        threadId,
-        providerInstanceId,
-        occurredAt: now,
-        payload: { ...thread, lastVisitedAt: now },
-      });
-      const messageEvent = (suffix: string, text: string): OrchestrationV2DomainEvent => ({
-        id: EventId.make(`event:foundation-compact:${suffix}`),
-        type: "message.updated",
-        threadId,
-        occurredAt: now,
-        payload: {
-          createdBy: "user",
-          creationSource: "web",
-          id: messageId,
-          threadId,
-          runId: null,
-          nodeId: null,
-          role: "user",
-          text,
-          attachments: [],
-          streaming: false,
-          createdAt: now,
-          updatedAt: now,
-        },
-      });
-      const nodeId = NodeId.make("node:foundation-compact");
-      const nodeEvent = (
-        suffix: string,
-        status: "running" | "completed",
-      ): OrchestrationV2DomainEvent => ({
-        id: EventId.make(`event:foundation-compact:${suffix}`),
-        type: "node.updated",
-        threadId,
-        occurredAt: now,
-        payload: {
-          id: nodeId,
-          threadId,
-          runId: null,
-          parentNodeId: null,
-          rootNodeId: nodeId,
-          kind: "assistant_message",
-          status,
-          countsForRun: false,
-          providerThreadId: null,
-          providerTurnId: null,
-          nativeItemRef: null,
-          runtimeRequestId: null,
-          checkpointScopeId: null,
-          startedAt: now,
-          completedAt: status === "completed" ? now : null,
-        },
-      });
-      const itemEvent = (suffix: string, text: string): OrchestrationV2DomainEvent => ({
-        id: EventId.make(`event:foundation-compact:${suffix}`),
-        type: "turn-item.updated",
-        threadId,
-        occurredAt: now,
-        payload: {
-          id: TurnItemId.make("turn-item:foundation-compact"),
-          threadId,
-          runId: null,
-          nodeId: null,
-          providerThreadId: null,
-          providerTurnId: null,
-          nativeItemRef: null,
-          parentItemId: null,
-          ordinal: 1,
-          status: "completed",
-          title: null,
-          startedAt: now,
-          completedAt: now,
-          updatedAt: now,
-          type: "assistant_message",
-          messageId,
-          text,
-          streaming: false,
-        },
-      });
-
-      yield* eventSink.write({
-        events: [
-          threadCreatedEvent({ id: "event:foundation-compact:create", thread, now }),
-          threadStateEvent("meta", "thread.metadata-updated"),
-          threadStateEvent("visit-1", "thread.visited"),
-          messageEvent("message-1", "streaming"),
-          nodeEvent("node-1", "running"),
-          itemEvent("item-1", "streaming"),
-          ...Array.from({ length: 501 }, (_, index) =>
-            threadStateEvent(`history-${index}`, "thread.visited"),
-          ),
-          threadStateEvent("visit-2", "thread.visited"),
-          messageEvent("message-2", "final"),
-          nodeEvent("node-2", "completed"),
-          itemEvent("item-2", "final"),
-        ],
-      });
-      const beforeCompaction = yield* projections.getThreadProjection(threadId);
-
-      // A fully imported legacy thread: its v1 events and pre-migration
-      // receipts are dead weight; a still-pending import keeps its rows.
-      const importedV1ThreadId = "thread:foundation-compact-v1-imported";
-      const pendingV1ThreadId = "thread:foundation-compact-v1-pending";
-      const insertV1Event = (threadIdValue: string, version: number) => sql`
-        INSERT INTO orchestration_events (
-          event_id, aggregate_kind, stream_id, stream_version, event_type,
-          occurred_at, actor_kind, payload_json, metadata_json, application_event_version
-        )
-        VALUES (
-          ${`event:v1:${threadIdValue}:${version}`}, 'thread', ${threadIdValue}, ${version},
-          'thread.message-appended', ${nowIso}, 'user', '{}', '{}', 1
-        )
-      `;
-      yield* insertV1Event(importedV1ThreadId, 1);
-      yield* insertV1Event(importedV1ThreadId, 2);
-      yield* insertV1Event(pendingV1ThreadId, 1);
-      yield* sql`
-        INSERT INTO orchestration_v2_legacy_imports (
-          thread_id, source_updated_at, shell_imported_at, transcript_imported_at,
-          imported_message_count, last_error
-        )
-        VALUES
-          (${importedV1ThreadId}, ${nowIso}, ${nowIso}, ${nowIso}, 2, NULL),
-          (${pendingV1ThreadId}, ${nowIso}, ${nowIso}, NULL, 0, NULL)
-        ON CONFLICT(thread_id) DO NOTHING
-      `;
-      yield* sql`
-        INSERT INTO orchestration_command_receipts (
-          command_id, aggregate_kind, aggregate_id, accepted_at, result_sequence, status, command_type
-        )
-        VALUES
-          ('command:foundation-compact:legacy', 'thread', ${importedV1ThreadId}, ${nowIso}, 1, 'accepted', 'legacy'),
-          ('command:foundation-compact:pending', 'thread', ${pendingV1ThreadId}, ${nowIso}, 1, 'accepted', 'legacy')
-        ON CONFLICT(command_id) DO NOTHING
-      `;
-
-      const summary = yield* maintenance.compactEventStore;
-      // Superseded state spans several discovery pages. Both turn-item updates stay.
-      assert.isAtLeast(summary.deletedEventCount, 507);
-      assert.isAtLeast(summary.deletedReceiptCount, 1);
-
-      const remaining = yield* sql<{ readonly event_id: string }>`
-        SELECT event_id
-        FROM orchestration_events
-        WHERE aggregate_kind = 'thread'
-          AND stream_id = ${threadId}
-        ORDER BY sequence ASC
-      `;
-      assert.deepEqual(
-        remaining.map((row) => row.event_id),
-        [
-          "event:foundation-compact:create",
-          "event:foundation-compact:item-1",
-          "event:foundation-compact:visit-2",
-          "event:foundation-compact:message-2",
-          "event:foundation-compact:node-2",
-          "event:foundation-compact:item-2",
-        ],
-      );
-
-      const remainingV1 = yield* sql<{ readonly stream_id: string }>`
-        SELECT stream_id
-        FROM orchestration_events
-        WHERE application_event_version = 1
-          AND stream_id IN (${importedV1ThreadId}, ${pendingV1ThreadId})
-      `;
-      assert.deepEqual(
-        remainingV1.map((row) => row.stream_id),
-        [pendingV1ThreadId],
-      );
-
-      const remainingReceipts = yield* sql<{ readonly command_id: string }>`
-        SELECT command_id
-        FROM orchestration_command_receipts
-        WHERE command_id IN ('command:foundation-compact:legacy', 'command:foundation-compact:pending')
-      `;
-      assert.deepEqual(
-        remainingReceipts.map((row) => row.command_id),
-        ["command:foundation-compact:pending"],
-      );
-
-      // Replay across the deletion gaps must still produce a valid projection.
-      assert.isTrue((yield* maintenance.verify).valid);
-      assert.isTrue((yield* maintenance.rebuild).valid);
-      assert.deepEqual(yield* projections.getThreadProjection(threadId), beforeCompaction);
+      assert.isTrue((yield* projectionReplay.verify).valid);
+      assert.isTrue((yield* projectionReplay.rebuild).valid);
     }),
   );
 
@@ -1168,7 +753,7 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
     Effect.gen(function* () {
       const eventSink = yield* EventSink.EventSinkV2;
       const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
-      const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+      const projectionReplay = yield* ProjectionReplay.ProjectionReplay;
       const sql = yield* SqlClient.SqlClient;
       const now = yield* DateTime.now;
       const parentThreadId = ThreadId.make("thread:foundation-cross-thread:parent");
@@ -1330,16 +915,16 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
       });
 
       yield* assertCrossThreadProjection;
-      assert.isTrue((yield* maintenance.verify).valid);
+      assert.isTrue((yield* projectionReplay.verify).valid);
       yield* sql`
         UPDATE orchestration_v2_projection_provider_threads SET payload_json = '{}'
         WHERE provider_thread_id = ${childProviderThreadId}
       `;
       assert.deepEqual(
-        new Set((yield* maintenance.verify).unreadableThreadIds),
+        new Set((yield* projectionReplay.verify).unreadableThreadIds),
         new Set([parentThreadId, childThreadId]),
       );
-      assert.isTrue((yield* maintenance.rebuild).valid);
+      assert.isTrue((yield* projectionReplay.rebuild).valid);
       yield* assertCrossThreadProjection;
     }),
   );
@@ -3305,7 +2890,7 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
     Effect.gen(function* () {
       const eventSink = yield* EventSink.EventSinkV2;
       const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
-      const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+      const projectionReplay = yield* ProjectionReplay.ProjectionReplay;
       const sql = yield* SqlClient.SqlClient;
       const now = yield* DateTime.now;
       const threadId = ThreadId.make("thread:foundation-many-items");
@@ -3428,18 +3013,18 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
       });
       const afterUpdate = yield* projectionStore.getThreadProjection(threadId);
       assert.equal(afterUpdate.turnItems[0]?.ordinal, ordinals[0]);
-      assert.equal((yield* maintenance.verify).valid, true);
+      assert.equal((yield* projectionReplay.verify).valid, true);
 
       yield* sql`
         UPDATE orchestration_v2_projection_turn_items
         SET payload_json = '{}'
         WHERE turn_item_id = ${items[75]!.id}
       `;
-      const broken = yield* maintenance.verify;
+      const broken = yield* projectionReplay.verify;
       assert.isFalse(broken.valid);
       assert.deepEqual(broken.unreadableThreadIds, [threadId]);
 
-      const rebuilt = yield* maintenance.rebuild;
+      const rebuilt = yield* projectionReplay.rebuild;
       assert.isTrue(rebuilt.valid);
       assert.lengthOf((yield* projectionStore.getThreadProjection(threadId)).turnItems, 151);
     }),

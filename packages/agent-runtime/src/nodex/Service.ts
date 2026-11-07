@@ -1712,6 +1712,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         const cursor = {
           afterSequence,
           ...(input.input.threadId === undefined ? {} : { threadId: input.input.threadId }),
+          // A caller's own cursor can predate pruning; event.error makes it reload a snapshot.
+          capturedCursor: input.input.afterSequence === undefined,
         };
         // Execution observation also follows every event that can change a root's activity.
         const eventTypes =

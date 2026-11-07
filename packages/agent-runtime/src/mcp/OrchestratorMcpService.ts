@@ -1162,6 +1162,7 @@ export const make = Effect.gen(function* () {
           threadManagement.streamStoredEventsFrom({
             threadId: thread === "parent" ? parentId : initial.childThreadId,
             afterSequence,
+            capturedCursor: true,
             eventType,
           }),
         ),

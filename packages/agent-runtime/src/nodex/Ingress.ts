@@ -261,19 +261,21 @@ export const make = Effect.gen(function* () {
         return hostToolAuthorityRefusal(state, actor, actor.nativeGeneration) !== undefined;
       });
       if (yield* revoked) return;
-      yield* orchestrator.streamStoredEventsFrom({ threadId, afterSequence }).pipe(
-        Stream.filter(
-          ({ event }) =>
-            event.type === "thread.deleted" ||
-            event.type === "thread.provider-switched" ||
-            event.type === "provider-thread.updated" ||
-            event.type === "provider-session.detached" ||
-            event.type === "run.execution-retired" ||
-            (event.type === "run.updated" && event.payload.id === actor.runId),
-        ),
-        Stream.filterEffect(() => revoked),
-        Stream.runHead,
-      );
+      yield* orchestrator
+        .streamStoredEventsFrom({ threadId, afterSequence, capturedCursor: true })
+        .pipe(
+          Stream.filter(
+            ({ event }) =>
+              event.type === "thread.deleted" ||
+              event.type === "thread.provider-switched" ||
+              event.type === "provider-thread.updated" ||
+              event.type === "provider-session.detached" ||
+              event.type === "run.execution-retired" ||
+              (event.type === "run.updated" && event.payload.id === actor.runId),
+          ),
+          Stream.filterEffect(() => revoked),
+          Stream.runHead,
+        );
     }).pipe(
       Effect.asVoid,
       Effect.orElseSucceed(() => undefined),

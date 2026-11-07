@@ -1084,7 +1084,11 @@ it.live("cancels a yielded background host call when its exact captured Run is s
       streamStoredEventsFrom: (input) =>
         Stream.unwrap(
           Effect.gen(function* () {
-            expect(input).toEqual({ threadId: captured.threadId, afterSequence: 7 });
+            expect(input).toEqual({
+              threadId: captured.threadId,
+              afterSequence: 7,
+              capturedCursor: true,
+            });
             const queue = yield* PubSub.subscribe(events);
             yield* Deferred.succeed(subscribed, undefined);
             return Stream.fromEffectRepeat(PubSub.take(queue));

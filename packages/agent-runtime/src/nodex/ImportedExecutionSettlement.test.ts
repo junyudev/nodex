@@ -38,7 +38,7 @@ import * as EffectWorker from "../orchestration-v2/EffectWorker.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as EventStore from "../orchestration-v2/EventStore.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
-import * as ProjectionMaintenance from "../orchestration-v2/ProjectionMaintenance.ts";
+import * as ProjectionReplay from "../orchestration-v2/testkit/ProjectionReplay.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "../orchestration-v2/testkit/ProviderReplayHarness.ts";
@@ -627,11 +627,11 @@ it.live(
           expect(yield* sql`SELECT enabled FROM scheduled_tasks`).toEqual([{ enabled: 1 }]);
           yield* sql`UPDATE scheduled_tasks SET enabled = 0 WHERE task_id = 'scheduled'`;
           expect(yield* fs.exists(markerPath)).toBe(false);
-          const maintenance = ProjectionMaintenance.layer.pipe(Layer.provideMerge(layer));
+          const replay = ProjectionReplay.layer.pipe(Layer.provideMerge(layer));
           expect(
-            (yield* ProjectionMaintenance.ProjectionMaintenanceV2.use(
-              (owner) => owner.rebuild,
-            ).pipe(Effect.provide(maintenance))).valid,
+            (yield* ProjectionReplay.ProjectionReplay.use((owner) => owner.rebuild).pipe(
+              Effect.provide(replay),
+            )).valid,
           ).toBe(true);
           expect(yield* projections.getThreadProjection(threadId)).toEqual(settled);
         }).pipe(Effect.provide(layer)),

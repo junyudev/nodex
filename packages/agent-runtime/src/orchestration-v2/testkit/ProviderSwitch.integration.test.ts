@@ -62,7 +62,7 @@ import * as LegacyV1ThreadImporter from "../legacy/LegacyV1ThreadImporter.ts";
 import * as Orchestrator from "../Orchestrator.ts";
 import * as EffectWorker from "../EffectWorker.ts";
 import * as EffectOutbox from "../EffectOutbox.ts";
-import * as ProjectionMaintenance from "../ProjectionMaintenance.ts";
+import * as ProjectionReplay from "./ProjectionReplay.ts";
 import * as ProjectionStore from "../ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "../ProviderAdapterRegistry.ts";
 import * as ProviderSessionManager from "../ProviderSessionManager.ts";
@@ -3514,7 +3514,7 @@ describe("orchestration v2 provider switching", () => {
         const layerImporterProvided = LegacyV1ThreadImporter.layer.pipe(
           Layer.provide(Layer.mergeAll(layerStoresProvided, layerEventSinkProvided)),
         );
-        const layerMaintenanceProvided = ProjectionMaintenance.layer.pipe(
+        const layerProjectionReplayProvided = ProjectionReplay.layer.pipe(
           Layer.provide(layerStoresProvided),
         );
         const layerOrchestratorProvided = ProviderReplayHarness.layerWithRegistry(
@@ -3530,14 +3530,14 @@ describe("orchestration v2 provider switching", () => {
         const layerTest = Layer.mergeAll(
           layerStoresProvided,
           layerImporterProvided,
-          layerMaintenanceProvided,
+          layerProjectionReplayProvided,
           layerOrchestratorProvided,
         );
 
         const projection = yield* Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           const importer = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
-          const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+          const projectionReplay = yield* ProjectionReplay.ProjectionReplay;
           const orchestrator = yield* Orchestrator.OrchestratorV2;
           const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
 
@@ -3634,7 +3634,7 @@ describe("orchestration v2 provider switching", () => {
       `;
 
           yield* importer.reconcileShells;
-          yield* maintenance.rebuild;
+          yield* projectionReplay.rebuild;
           yield* importer.ensureTranscript(importedThreadId);
 
           yield* orchestrator.dispatch({
@@ -3700,7 +3700,7 @@ describe("orchestration v2 provider switching", () => {
             assert.isDefined(nativeId);
             assert.equal(attempt.nativeThreadId, nativeId);
           }
-          yield* maintenance.rebuild;
+          yield* projectionReplay.rebuild;
           const rebuilt = yield* orchestrator.getThreadProjection(importedThreadId);
           assert.deepEqual(rebuilt.attempts, beforeRebuild.attempts);
           return rebuilt;
@@ -5074,7 +5074,7 @@ describe("context recovery in the same native conversation", () => {
           if (outcome === "restart") {
             const compact = (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)!;
             const now = yield* DateTime.now;
-            // Model a persisted maintenance completion whose retry listener did not run before exit.
+            // Model a persisted projectionReplay completion whose retry listener did not run before exit.
             yield* sink.write({
               commandId: CommandId.make("command:runtime-reconcile:completed-compact"),
               events: [

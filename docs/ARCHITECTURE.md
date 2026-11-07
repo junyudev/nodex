@@ -899,7 +899,9 @@ resources, which follow request interruption and process shutdown. [Page selecti
 use this boundary and leave Document mutation with the editor.
 
 The Agent Runtime owns each bound Session's execution root, Runs, provider sessions,
-history, delegated descendants and durable result delivery. It also owns admission receipts
+history, delegated descendants and durable result delivery. Its projections are that durable
+history; the event log is a bounded delivery tail that cannot rebuild them, as
+[ADR 0077](adr/0077-bounded-execution-history.md) records. It also owns admission receipts
 for remote Native messages; the Native execution owner performs producer writes and resolves
 uncertain delivery through producer evidence. Immutable staged launch input and owned resources
 belong to the Runtime; execution begins only after Core admits the product binding. Core owns the product

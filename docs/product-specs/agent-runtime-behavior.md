@@ -423,6 +423,7 @@ stay out of public metadata snapshots and events. Child history and explicit ite
 details provide those bodies. Long text appears as a bounded preview with a truncation
 marker; full copy and export use explicit full-item reads. A control envelope that
 cannot fit fails explicitly rather than exceeding the transport budget.
+A window open long enough to fall behind the retained event tail reloads its conversation.
 
 Agent Session and Task reads share one independent metadata-only timeline window and canonical
 text or JSON slices, rather than the renderer's bounded initial window. Each content slice

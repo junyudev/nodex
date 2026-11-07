@@ -30,7 +30,7 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
 import * as EventStore from "./EventStore.ts";
-import * as ProjectionMaintenance from "./ProjectionMaintenance.ts";
+import * as ProjectionReplay from "./testkit/ProjectionReplay.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import { decodeCodexAsyncQuestionReplies } from "../nodex/CodexConventions.ts";
@@ -322,10 +322,10 @@ it.effect(
       assert.equal((yield* projections.getOpeningRequest(threadId))?.text, "Request 2");
       yield* orchestrator.dispatch(resume);
       assert.equal((yield* projections.getOpeningRequest(threadId))?.text, "Request 2");
-      const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2.pipe(
-        Effect.provide(ProjectionMaintenance.layer),
+      const projectionReplay = yield* ProjectionReplay.ProjectionReplay.pipe(
+        Effect.provide(ProjectionReplay.layer),
       );
-      assert.isTrue((yield* maintenance.rebuild).valid);
+      assert.isTrue((yield* projectionReplay.rebuild).valid);
       assert.equal((yield* projections.getOpeningRequest(threadId))?.text, "Request 2");
     }).pipe(Effect.provide(layerTest)),
 );

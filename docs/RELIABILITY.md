@@ -425,6 +425,17 @@ gaps recover from persisted cursors. Local voice and prediction use the Session'
 managed native connection. Their source checks, pins and late-response cleanup do
 not create another execution owner. See [Agent Runtime behavior](product-specs/agent-runtime-behavior.md).
 
+The execution store's size follows current history, not how long a Profile has run. A background
+pass deletes events the projections cover once they are a day old, and keeps each stream's newest
+event and every event a command committed, so a retry of any age replays exactly. It publishes its
+boundary before deleting: a client cursor below it that its thread has moved past fails explicitly
+and the client reloads a snapshot, so a gap never passes silently. Passes work in short slices at
+10% duty, and a process that stops mid-pass resumes on its next start. New stores return free pages
+incrementally. An older store adopts that mode with one VACUUM at startup, once at least a quarter
+of it is free; low disk space or a failed attempt leaves it intact and starts normally, and a failed
+attempt waits a week before trying again. Projections are not rebuilt from the log, so a projection change must migrate its rows. See
+[ADR 0077](adr/0077-bounded-execution-history.md).
+
 The execution process is started lazily and stops when quiet, but recovery stays conservative:
 a launch skips starting it only with durable evidence, bound to the exact store files, that it
 last stopped with no live or pending work. Unexpected exits restart it within a bounded

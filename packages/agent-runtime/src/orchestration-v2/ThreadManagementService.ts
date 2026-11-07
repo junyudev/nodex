@@ -1016,11 +1016,13 @@ const make = Effect.gen(function* () {
         orchestrator.streamStoredEventsFrom({
           threadId: input.threadId,
           afterSequence,
+          capturedCursor: true,
           eventType: "run.updated",
         }),
         orchestrator.streamStoredEventsFrom({
           threadId: input.threadId,
           afterSequence,
+          capturedCursor: true,
           eventType: "thread.deleted",
         }),
       ).pipe(

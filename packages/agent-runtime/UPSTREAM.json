@@ -11,6 +11,10 @@
     {
       "revision": "c294d63b2135771dd74f0a2b57af5b501043a74b",
       "scope": "Search scoring, message matching and independent SQLite reader behavior"
+    },
+    {
+      "revision": "550c5fa34b6b4f287496f3d725a300347274fbcf",
+      "scope": "Event log pruning and incremental database space reclamation"
     }
   ]
 }

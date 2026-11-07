@@ -86,6 +86,65 @@ it.live("reopens the same execution identity and persisted project after shutdow
   }).pipe(Effect.provide(NodeServices.layer)),
 );
 
+it.live("tells an observer to reload when pruning removed events after its cursor", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-agent-runtime-pruned-" });
+    const failed = yield* Deferred.make<string>();
+    const notify = (notification: AgentRuntimeNotification) =>
+      notification.type === "event.error"
+        ? Deferred.succeed(failed, notification.subscriptionId).pipe(Effect.asVoid)
+        : Effect.void;
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const runtime = yield* AgentRuntime;
+        yield* runtime.handle({
+          id: "project",
+          method: "project.upsert",
+          input: { id: "project:pruned", title: "Workspace", workspaceRoot: home },
+        });
+        yield* runtime.handle({
+          id: "create",
+          method: "command.dispatch",
+          input: {
+            command: {
+              type: "thread.create",
+              commandId: "command:pruned",
+              threadId: "thread:pruned",
+              projectId: "project:pruned",
+              title: "Pruned",
+              modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+              createdBy: "user",
+              creationSource: "web",
+            },
+          },
+        });
+        const database = new DatabaseSync(path.join(home, "agent-runtime.sqlite"));
+        database
+          .prepare(
+            `INSERT INTO orchestration_v2_projection_metadata
+               (projection_name, schema_version, last_sequence, updated_at)
+             VALUES ('event-log-pruned-through', 1,
+               (SELECT MAX(sequence) FROM orchestration_events), '2026-11-07T00:00:00.000Z')`,
+          )
+          .run();
+        database.close();
+        yield* runtime.handle({
+          id: "behind",
+          method: "events.observe",
+          input: { threadId: "thread:pruned", afterSequence: 0 },
+        });
+        expect(yield* Deferred.await(failed)).toBe("behind");
+      }).pipe(Effect.provide(Application.layer({ home, cwd: home, providers: {} }, notify))),
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 it.live(
   "keeps observation metadata bounded and retains full assets and explicitly requested output",
   () =>

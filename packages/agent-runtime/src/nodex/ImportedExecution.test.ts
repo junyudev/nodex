@@ -24,7 +24,7 @@ import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as EffectOutbox from "../orchestration-v2/EffectOutbox.ts";
 import * as EventStore from "../orchestration-v2/EventStore.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
-import * as ProjectionMaintenance from "../orchestration-v2/ProjectionMaintenance.ts";
+import * as ProjectionReplay from "../orchestration-v2/testkit/ProjectionReplay.ts";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as StoreCoordinate from "./StoreCoordinate.ts";
@@ -35,7 +35,7 @@ const stores = Layer.mergeAll(ProjectionStore.layer, EventStore.layer, EffectOut
   Layer.provideMerge(Sqlite.layerMemory),
 );
 const sink = EventSink.layer.pipe(Layer.provideMerge(stores));
-const layer = ProjectionMaintenance.layer.pipe(
+const layer = ProjectionReplay.layer.pipe(
   Layer.provideMerge(sink),
   Layer.provideMerge(NodeServices.layer),
 );
@@ -270,9 +270,7 @@ it.live(
           },
         ],
       });
-      expect((yield* (yield* ProjectionMaintenance.ProjectionMaintenanceV2).rebuild).valid).toBe(
-        true,
-      );
+      expect((yield* (yield* ProjectionReplay.ProjectionReplay).rebuild).valid).toBe(true);
       const replayed = yield* projection.getThreadRecords(threadId, [
         "providerThreads",
         "providerSessions",

@@ -149,7 +149,11 @@ export const waitExecution = Effect.fn("Runtime.waitExecution")(function* (input
     if (current.revision !== input.afterRevision) return current;
     const remaining = deadline - (yield* Clock.currentTimeMillis);
     if (remaining <= 0) return current;
-    const events = orchestrator.streamStoredEventsFrom({ threadId: input.threadId, afterSequence });
+    const events = orchestrator.streamStoredEventsFrom({
+      threadId: input.threadId,
+      afterSequence,
+      capturedCursor: true,
+    });
     const settlement =
       current.continuationPending && current.runId
         ? outbox.awaitSettled(`effect:restart-continuation:${current.runId}`)

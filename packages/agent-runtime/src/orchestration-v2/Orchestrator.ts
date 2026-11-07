@@ -447,6 +447,8 @@ export interface OrchestratorV2Shape {
     readonly afterSequence?: number;
     /** Keep only this type, before the bounded buffer retains anything. */
     readonly eventType?: OrchestrationV2DomainEvent["type"];
+    /** The cursor was read from the store just now, so no pruned gap can lie behind it. */
+    readonly capturedCursor?: boolean;
   }) => Stream.Stream<OrchestrationV2StoredEvent, OrchestratorV2Error>;
   readonly streamDomainEvents: Stream.Stream<OrchestrationV2DomainEvent, OrchestratorV2Error>;
 }
