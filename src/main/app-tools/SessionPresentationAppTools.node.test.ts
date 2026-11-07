@@ -18,7 +18,7 @@ import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 import { GitWorkerRuntime } from "../host-runtime/GitWorkerRuntime";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { BrowserApplication } from "../browser-application/BrowserApplication";
-import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
+import { WorkbenchAgentBridge, WorkbenchAgentBridgeError } from "./WorkbenchAgentBridge";
 import { WorkbenchContentRouting } from "./WorkbenchContentRouting";
 import { make } from "./SessionPresentationAppTools";
 import type { WorkbenchAppToolContext } from "./WorkbenchControl";
@@ -87,6 +87,11 @@ const fixture = (
     observedTabs?: readonly ReturnType<typeof browserTab>[];
     browserTabUrls?: Readonly<Record<string, string>>;
     navigateOk?: boolean;
+    registered?: readonly WorkbenchWindowReference[];
+    lastFocused?: WorkbenchWindowReference | null;
+    discovered?: Readonly<
+      Record<string, { selected?: "target" | "dock"; sceneOwners?: readonly unknown[] } | "fails">
+    >;
   } = {},
 ) => {
   const requests: Array<{ window: WorkbenchWindowReference; body: WorkbenchAgentRequestBody }> = [];
@@ -147,43 +152,62 @@ const fixture = (
       describe: () => Effect.succeed({ status: "available", title: "Authorized Page" }),
     } as never),
     Effect.provideService(WorkbenchAgentBridge, {
-      registered: () => [windowB, windowA],
+      registered: () => options.registered ?? [windowB, windowA],
+      lastFocused: () => options.lastFocused ?? null,
       request: (window: WorkbenchWindowReference, body: WorkbenchAgentRequestBody) =>
-        Effect.sync(() => {
+        Effect.suspend(() => {
           requests.push({ window, body });
-          if (body.kind === "observe")
-            return {
-              kind: "observe",
-              observation: options.observedTabs
-                ? {
-                    presentationRevision: 17,
-                    selectedSceneOwner: { kind: "session", sessionId: "caller-session" },
-                    tabs: options.observedTabs,
-                  }
-                : null,
-            };
-          if (body.kind === "discover")
-            return {
-              kind: "discover",
-              presentationRevision: 17,
-              selectedSceneOwner: { kind: "library" },
-              sceneOwners: [],
-            };
-          if (body.kind !== "command") throw new Error("Unexpected presentation request");
-          return {
-            kind: "command",
-            receipt: {
-              operationId: body.envelope.operationId,
-              sceneOwner: body.envelope.sceneOwner,
-              applied: true,
-              persisted: true,
-              presentationRevision: 18,
-              layoutRevision: 3,
-              tabId: body.envelope.command.kind === "navigate_session" ? null : "opened",
-              groupId: null,
-              error: null,
-            },
-          };
+          const discovered = options.discovered?.[window.windowSessionId];
+          if (body.kind === "discover" && discovered === "fails")
+            return Effect.fail(new WorkbenchAgentBridgeError({ reason: "timeout" }));
+          return Effect.succeed(
+            (() => {
+              if (body.kind === "observe")
+                return {
+                  kind: "observe",
+                  observation: options.observedTabs
+                    ? {
+                        presentationRevision: 17,
+                        selectedSceneOwner: { kind: "session", sessionId: "caller-session" },
+                        tabs: options.observedTabs,
+                      }
+                    : null,
+                };
+              if (body.kind === "discover") {
+                const relation = discovered === "fails" ? undefined : discovered;
+                return {
+                  kind: "discover",
+                  presentationRevision: 17,
+                  selectedSceneOwner:
+                    relation?.selected === "target"
+                      ? { kind: "session", sessionId: body.sessionId }
+                      : relation?.selected === "dock"
+                        ? { kind: "project", projectId: "project-a" }
+                        : { kind: "library" },
+                  sceneOwners:
+                    relation?.sceneOwners ??
+                    (relation?.selected === "dock"
+                      ? [{ kind: "project", projectId: "project-a" }]
+                      : []),
+                };
+              }
+              if (body.kind !== "command") throw new Error("Unexpected presentation request");
+              return {
+                kind: "command",
+                receipt: {
+                  operationId: body.envelope.operationId,
+                  sceneOwner: body.envelope.sceneOwner,
+                  applied: true,
+                  persisted: true,
+                  presentationRevision: 18,
+                  layoutRevision: 3,
+                  tabId: body.envelope.command.kind === "navigate_session" ? null : "opened",
+                  groupId: null,
+                  error: null,
+                },
+              };
+            })(),
+          );
         }),
     } as never),
   );
@@ -603,6 +627,114 @@ it.effect("keeps the web in Browser tabs of their own", () =>
     assert.deepInclude(result.structuredContent, {
       surface: "browser",
       url: "https://example.com/",
+    });
+  }),
+);
+
+const selectedWindow = (result: { readonly structuredContent?: Record<string, unknown> }) =>
+  result.structuredContent?.window;
+
+it.effect("without a submission window, opens in the window showing the Session", () =>
+  Effect.gen(function* () {
+    const subject = fixture({
+      noAnchor: true,
+      lastFocused: windowB,
+      discovered: { "window-a": { selected: "target" } },
+    });
+    const execute = yield* subject.build;
+    const result = yield* execute(openFile({ path: report.path }));
+    assert.deepEqual(selectedWindow(result), windowA);
+    assert.deepEqual(subject.requests.at(-1)!.window, windowA);
+  }),
+);
+
+it.effect("counts a Session shown in a Project's Agent Dock as showing it", () =>
+  Effect.gen(function* () {
+    const subject = fixture({
+      noAnchor: true,
+      lastFocused: windowB,
+      discovered: { "window-a": { selected: "dock" } },
+    });
+    const execute = yield* subject.build;
+    assert.deepEqual(selectedWindow(yield* execute(openFile({ path: report.path }))), windowA);
+  }),
+);
+
+it.effect("otherwise prefers a window that has shown the Session, then the focused window", () =>
+  Effect.gen(function* () {
+    const shownBefore = fixture({
+      noAnchor: true,
+      lastFocused: windowB,
+      discovered: {
+        "window-a": { sceneOwners: [{ kind: "session", sessionId: "caller-session" }] },
+      },
+    });
+    const executeShownBefore = yield* shownBefore.build;
+    assert.deepEqual(
+      selectedWindow(yield* executeShownBefore(openFile({ path: report.path }))),
+      windowA,
+    );
+
+    const focused = fixture({ noAnchor: true, lastFocused: windowA });
+    const executeFocused = yield* focused.build;
+    const result = yield* executeFocused(openFile({ path: report.path }));
+    assert.deepEqual(selectedWindow(result), windowA);
+    assert.strictEqual(result.structuredContent?.status, "queued");
+  }),
+);
+
+it.effect("skips a window that cannot answer and uses the only window open", () =>
+  Effect.gen(function* () {
+    const unresponsive = fixture({
+      noAnchor: true,
+      lastFocused: windowB,
+      discovered: { "window-b": "fails" },
+    });
+    const executeUnresponsive = yield* unresponsive.build;
+    assert.deepEqual(
+      selectedWindow(yield* executeUnresponsive(openFile({ path: report.path }))),
+      windowA,
+    );
+
+    const single = fixture({ noAnchor: true, registered: [windowB] });
+    const executeSingle = yield* single.build;
+    assert.deepEqual(
+      selectedWindow(yield* executeSingle(openFile({ path: report.path }))),
+      windowB,
+    );
+  }),
+);
+
+it.effect("a submission window that has gone away chooses again; a named one does not", () =>
+  Effect.gen(function* () {
+    const implicit = fixture({ stale: true, discovered: { "window-b": { selected: "target" } } });
+    const executeImplicit = yield* implicit.build;
+    assert.deepEqual(
+      selectedWindow(yield* executeImplicit(openFile({ path: report.path }))),
+      windowB,
+    );
+
+    const named = fixture();
+    const executeNamed = yield* named.build;
+    assert.deepEqual(
+      (yield* executeNamed(
+        openFile(
+          { path: report.path },
+          { window: { windowSessionId: "gone", rendererGeneration: "gone" } },
+        ),
+      )).structuredContent,
+      { error: { code: "stale_renderer" } },
+    );
+    assert.deepEqual(named.requests, []);
+  }),
+);
+
+it.effect("fails plainly when no window is open", () =>
+  Effect.gen(function* () {
+    const subject = fixture({ noAnchor: true, registered: [] });
+    const execute = yield* subject.build;
+    assert.deepEqual((yield* execute(openFile({ path: report.path }))).structuredContent, {
+      error: { code: "window_unavailable" },
     });
   }),
 );

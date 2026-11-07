@@ -3,6 +3,7 @@ import * as Option from "effect/Option";
 import { resolveAppToolCallingSession } from "./AppToolCallingSession";
 import { sessionPresentationSchemas as schemas } from "../../shared/nodex-app-tools/session-presentation-schemas";
 import type { WorkbenchCommand } from "../../shared/nodex-app-tools/workbench-commands";
+import type { WorkbenchWindowReference } from "../../shared/nodex-app-tools/workbench";
 import { makeWorkbenchSceneKey } from "../../shared/workbench-scene";
 import { make as makeAppToolOperation } from "./AppToolOperation";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
@@ -10,6 +11,7 @@ import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentatio
 import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
 import type { WorkbenchAppToolContext } from "./WorkbenchControl";
 import { make as makeTarget, type SessionPresentationOpening } from "./SessionPresentationTarget";
+import { make as makeWindowSelection } from "./SessionPresentationWindow";
 import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 
 /** What the receipt reports was opened, so an Agent never has to guess how a file is shown. */
@@ -26,6 +28,7 @@ export const make = Effect.gen(function* () {
   const presentation = yield* Effect.serviceOption(CodexTurnPresentation);
   const bridge = yield* WorkbenchAgentBridge;
   const resolveTarget = yield* makeTarget;
+  const selectWindow = yield* makeWindowSelection;
   return Effect.fn("SessionPresentationAppTools.execute")(function* (
     context: WorkbenchAppToolContext,
   ) {
@@ -46,17 +49,28 @@ export const make = Effect.gen(function* () {
       Option.isSome(presentation) && caller?.runId != null
         ? presentation.value.read(caller.threadId, caller.runId)
         : null;
+    const findCurrent = (reference: WorkbenchWindowReference | null) =>
+      reference
+        ? bridge
+            .registered()
+            .find(
+              (candidate) =>
+                candidate.windowSessionId === reference.windowSessionId &&
+                candidate.rendererGeneration === reference.rendererGeneration,
+            )
+        : undefined;
     const requestedWindow = parsed.data.window ?? anchor;
-    if (!requestedWindow)
-      return toolSuccess({ status: "window_required", windows: bridge.registered() });
-    const window = bridge
-      .registered()
-      .find(
-        (candidate) =>
-          candidate.windowSessionId === requestedWindow.windowSessionId &&
-          candidate.rendererGeneration === requestedWindow.rendererGeneration,
-      );
-    if (!window) return toolFailure("stale_renderer");
+    // Opening a tab never asks an Agent to choose a window unless it named one that is gone;
+    // navigating moves the user, so it keeps its exact window or asks.
+    const selectsWindow = input.name === "open_in_nodex" && !parsed.data.window;
+    const window =
+      findCurrent(requestedWindow) ?? (selectsWindow ? yield* selectWindow(sessionId) : null);
+    if (!window) {
+      if (selectsWindow) return toolFailure("window_unavailable", "No Nodex window is open");
+      return requestedWindow
+        ? toolFailure("stale_renderer")
+        : toolSuccess({ status: "window_required", windows: bridge.registered() });
+    }
     const sceneOwner = { kind: "session" as const, sessionId };
     const observed = yield* bridge.request(window, { kind: "observe", sceneOwner });
     const discovery =

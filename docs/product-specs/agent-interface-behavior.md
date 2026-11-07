@@ -201,8 +201,7 @@ handles identify the observed occurrence, never whichever tab is selected later.
 Expired observations and changed presentation require a new observation.
 
 `open_in_nodex` opens a selected file, Browser, Terminal, Review, Page, View or
-Canvas in the calling Session's panel, or an explicitly selected Session. Its window
-defaults to the Turn's submission window.
+Canvas in the calling Session's panel, or an explicitly selected Session.
 Hidden Sessions retain their opened tabs without navigation. Its receipt names the
 surface that opened, plus the URL of a Browser tab, so an Agent can report what the
 user sees. Relative paths resolve against the target task's workspace, and workspace
@@ -221,12 +220,20 @@ reloads it, so an edit appears. The receipt reports whether that reload started.
 restored after a restart counts once it has been shown. Web URLs always open their
 own tab.
 
-`navigate_to_session` selects a Session in the current Profile in that same window. Both tools
-accept an explicit current window reference and return a revision-fenced apply/persistence
-receipt. They never select global focus or substitute another window after a reload.
-Calls without a submission window return window candidates for explicit selection.
-Exact retries preserve applied receipts; a stale preflight can observe a new revision
-without replaying an applied command. Plan Mode remains a planning convention.
+`open_in_nodex` uses the Turn's submission window. A Turn with no live submission
+window, such as one continuing after a restart, uses the window showing the Session,
+then a window that has shown it, then the most recently focused window; focus only
+breaks ties within those ranks. A tab opened where the Session is not shown stays there
+without navigating and reports `queued`. An explicit window that no longer exists fails
+as stale, and the tool fails plainly when no window is open.
+
+`navigate_to_session` selects a Session in the current Profile in the submission window.
+It moves the user, so it never selects by global focus or substitutes another window after
+a reload: calls without a submission window return window candidates for explicit
+selection. Both tools accept an explicit current window reference and return a
+revision-fenced apply/persistence receipt. Exact retries preserve applied receipts; a stale
+preflight can observe a new revision without replaying an applied command. Plan Mode
+remains a planning convention.
 
 `read_tab_content` synchronizes the exact mounted Page editor before returning
 canonical content and write validators. Pending edits and presentation changes are

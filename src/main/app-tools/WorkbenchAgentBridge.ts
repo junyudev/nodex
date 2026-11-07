@@ -57,6 +57,8 @@ export class WorkbenchAgentBridge extends Context.Service<
       reference: WorkbenchWindowReference,
     ) => Effect.Effect<void>;
     readonly registered: () => readonly WorkbenchWindowReference[];
+    /** The registered window the user most recently focused, for a choice no caller anchored. */
+    readonly lastFocused: () => WorkbenchWindowReference | null;
     readonly referenceForSender: (webContentsId: number) => WorkbenchWindowReference | null;
     readonly request: <Request extends WorkbenchAgentRequestBody>(
       reference: WorkbenchWindowReference,
@@ -277,6 +279,11 @@ export const make = (
       return true;
     });
 
+    const referenceForSender = (id: number) => {
+      const reference = registrations.get(id);
+      return reference && isCurrent(id, reference) ? reference : null;
+    };
+
     return WorkbenchAgentBridge.of({
       register,
       release,
@@ -286,10 +293,11 @@ export const make = (
         [...registrations].flatMap(([id, reference]) =>
           isCurrent(id, reference) ? [reference] : [],
         ),
-      referenceForSender: (id) => {
-        const reference = registrations.get(id);
-        return reference && isCurrent(id, reference) ? reference : null;
+      lastFocused: () => {
+        const focused = windows.getLastFocused();
+        return focused ? referenceForSender(focused.webContents.id) : null;
       },
+      referenceForSender,
     });
   });
 

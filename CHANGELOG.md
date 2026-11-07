@@ -38,6 +38,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Agents now show the HTML pages they make as rendered pages beside the chat. Opening one used to show its source code. An Agent opening the page again reloads the same tab, so you see its edits, and it can still show you the source when you ask.
+- A chat that continues after a restart can open tabs beside it again. With several windows open, its Agent used to stop and show you nothing; it now uses the window showing that chat.
 - Claude Code chats no longer stop partway through a long tool call. A long script or file could end the reply and kill the command it was running; how much an Agent streams can no longer end a reply.
 - Chats woken by finished background work no longer end silently after an error. If the Agent stopped during that reply, the chat looked finished until you typed “continue”; now it recovers and carries on like any other reply, on Claude Code, OpenCode and ACP Agents.
 - Long chats no longer use more memory the longer an Agent runs. A Turn with thousands of messages or file changes now holds only its most recent work in memory, even while it runs and when you are looking elsewhere, and earlier work loads back as you scroll up.
