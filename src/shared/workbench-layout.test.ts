@@ -62,6 +62,7 @@ describe("getWorkbenchPrimaryDestination", () => {
     [{ kind: "inbox" }, "home"],
     [{ kind: "automations", path: "/automations/new", returnTo: { kind: "library" } }, "scheduled"],
     [{ kind: "plugins", path: "/plugins", returnTo: { kind: "library" } }, "plugins"],
+    [{ kind: "insights", path: "/insights", returnTo: { kind: "library" } }, "insights"],
     [
       {
         kind: "settings",

@@ -16,6 +16,7 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
     return (
       <WorkbenchAppRail
         destination={destination}
+        onInsights={() => setDestination("insights")}
         onHome={() => {
           onHome();
           setDestination("home");

@@ -47,6 +47,7 @@ test.each([true, false])(
             settings={null}
             pendingWorktree={emptySlot}
             plugins={emptySlot}
+            insights={emptySlot}
             automations={emptySlot}
             session={{ content: () => <article>Page content</article> }}
           />

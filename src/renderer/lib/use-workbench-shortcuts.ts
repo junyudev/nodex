@@ -45,6 +45,7 @@ export interface WorkbenchShortcutActions {
   onRequestSettingsToggle?: () => void;
   onRequestKeyboardShortcuts?: () => void;
   onRequestGoToPages?: () => void;
+  onRequestGoToInsights?: () => void;
   onRequestGoToSettings?: () => void;
   onRequestLatestToastAction?: () => boolean;
   onRequestProcessManager?: () => void;
@@ -153,6 +154,7 @@ function canExecuteShortcutCommand(
     return canExecuteContextualKeyboardAction(commandId);
   }
   if (commandId === "goToPages") return Boolean(actions.onRequestGoToPages);
+  if (commandId === "goToInsights") return Boolean(actions.onRequestGoToInsights);
   if (commandId === "goToSettings") return Boolean(actions.onRequestGoToSettings);
   if (commandId === "openPage" || commandId === "openChat") {
     return Boolean(actions.onRequestCommandPalette);
@@ -166,6 +168,10 @@ function executeShortcutCommand(commandId: CommandId, actions: WorkbenchShortcut
   }
   if (commandId === "goToPages" && actions.onRequestGoToPages) {
     actions.onRequestGoToPages();
+    return true;
+  }
+  if (commandId === "goToInsights" && actions.onRequestGoToInsights) {
+    actions.onRequestGoToInsights();
     return true;
   }
   if (commandId === "goToSettings" && actions.onRequestGoToSettings) {

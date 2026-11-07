@@ -1,3 +1,9 @@
+import type {
+  InsightsContentSnapshot,
+  InsightsHistoryAccess,
+  InsightsOrigin,
+  InsightsUsageSnapshot,
+} from "./insights";
 import type { ChatSearchInput, ChatSearchResult, ChatMessageSearchResult } from "./chat-search";
 import type { PluginManagementIpcApi, PluginManagementChanged } from "./codex-plugin-management";
 import type { WorkspaceFileSaveDataInput } from "./native-file-save";
@@ -2372,6 +2378,22 @@ export interface IpcApi
   "codex:created-thread:resolve": {
     args: [input: import("./codex-child-thread-summary").CodexCreatedThreadResolveInput];
     result: import("./codex-child-thread-summary").CodexCreatedThreadResolution | null;
+  };
+  "insights:usage": {
+    args: [input: { readonly timeZone: string; readonly origin: InsightsOrigin }];
+    result: InsightsUsageSnapshot;
+  };
+  "insights:content": {
+    args: [input: { readonly timeZone: string }];
+    result: InsightsContentSnapshot | null;
+  };
+  "insights:access": {
+    args: [input: { readonly granted: boolean }];
+    result: { readonly access: InsightsHistoryAccess };
+  };
+  "insights:card:save": {
+    args: [input: { readonly pngDataUrl: string; readonly suggestedName: string }];
+    result: { readonly status: "saved" | "cancelled" };
   };
   "chats:search": {
     args: [input: ChatSearchInput];

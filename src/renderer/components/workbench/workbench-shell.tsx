@@ -375,6 +375,7 @@ export function WorkbenchShell({
         },
     onRequestCommandPalette: workbenchCommands.openCommandPalette,
     onRequestGoToPages: workbenchCommands.goToPages,
+    onRequestGoToInsights: workbenchCommands.goToInsights,
     onRequestGoToSettings: workbenchCommands.goToSettings,
     onRequestLatestToastAction: toast.runLatestAction,
     onRequestContentSearch: handleOpenContentSearch,

@@ -758,6 +758,13 @@ const WorkbenchStableLocationSchema = z.discriminatedUnion("kind", [
       returnTo: WorkbenchSceneLocationSchema,
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal("insights"),
+      path: z.string().min(1),
+      returnTo: WorkbenchSceneLocationSchema,
+    })
+    .strict(),
 ]) satisfies z.ZodType<WorkbenchStableLocation>;
 
 const WorkbenchHomeLocationSchema = z.discriminatedUnion("kind", [

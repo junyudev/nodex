@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { PluginsIcon } from "@/components/shared/icons";
 import {
   WorkbenchHomeIcon,
+  WorkbenchInsightsIcon,
   WorkbenchScheduledIcon,
   WorkbenchSpaceIcon,
 } from "@/components/shared/icons/workbench-navigation-icons";
@@ -23,6 +24,7 @@ export interface WorkbenchAppRailProps {
   onHome: () => void;
   onSpace: () => void;
   onScheduled: () => void;
+  onInsights: () => void;
   onPlugins: () => void;
   /** App-wide controls pinned to the foot of the rail. */
   footer?: ReactNode;
@@ -41,6 +43,7 @@ export function WorkbenchAppRail({
   onHome,
   onSpace,
   onScheduled,
+  onInsights,
   onPlugins,
   footer,
 }: WorkbenchAppRailProps) {
@@ -65,6 +68,13 @@ export function WorkbenchAppRail({
       peekArea: "scheduled",
       icon: (active) => <WorkbenchScheduledIcon filled={active} />,
       onSelect: onScheduled,
+    },
+    {
+      id: "insights",
+      label: "Insights",
+      peekArea: "insights",
+      icon: (active) => <WorkbenchInsightsIcon filled={active} />,
+      onSelect: onInsights,
     },
     {
       id: "plugins",

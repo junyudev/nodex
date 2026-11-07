@@ -733,6 +733,10 @@ export const CODEX_COMMAND_REGISTRY = [
     allowsSequences: true,
     commandMenuGroupKey: "navigation",
   }),
+  command("goToInsights", "Go to Insights", "Open Insights", 241.5, "app", ["G I"], {
+    allowsSequences: true,
+    commandMenuGroupKey: "navigation",
+  }),
   command("goToSettings", "Go to Settings", "Open Settings", 242, "app", ["G S"], {
     allowsSequences: true,
     commandMenuGroupKey: "navigation",

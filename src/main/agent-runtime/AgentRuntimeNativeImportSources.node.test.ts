@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { nativeImportSources } from "./AgentRuntimeNativeImportSources";
+import { insightsUsageSources, nativeImportSources } from "./AgentRuntimeNativeImportSources";
 
 describe("native conversation import sources", () => {
   it("uses the physical account home and instance-specific Claude directory without credentials", () => {
@@ -99,4 +99,67 @@ it("never substitutes the user Codex or Claude home for a managed account during
     { providerInstanceId: "nodex_codex", driver: "codex", homePath: null },
     { providerInstanceId: "nodex_claude", driver: "claudeAgent", homePath: null },
   ]);
+});
+
+describe("Insights usage sources", () => {
+  const read = (
+    providers: Parameters<typeof insightsUsageSources>[0]["configuration"]["providers"],
+    environment: Readonly<Record<string, string | undefined>> = { HOME: "/user" },
+  ) =>
+    insightsUsageSources({
+      configuration: { home: "/profile/agent-runtime", cwd: "/repo", providers },
+      environment,
+      homeDirectory: "/user",
+      codexHome: "/user/.codex",
+    });
+
+  it("reads a person's own homes even with no provider configured", () => {
+    expect(read({})).toEqual([
+      { provider: "claude", home: path.resolve("/user/.claude"), origin: "external" },
+      { provider: "codex", home: "/user/.codex", origin: "external" },
+      { provider: "codex", home: path.join("/profile", "agent"), origin: "nodex" },
+    ]);
+  });
+
+  it("follows an inherited Claude home", () => {
+    expect(read({}, { HOME: "/user", CLAUDE_CONFIG_DIR: "/elsewhere" })[0]?.home).toBe(
+      path.resolve("/elsewhere"),
+    );
+  });
+
+  it("marks a managed account's home as Nodex's own, and names each home once", () => {
+    const sources = read({
+      nodex_claude: {
+        driver: "claudeAgent",
+        source: "nodex",
+        enabled: true,
+        config: { isolated: true },
+        environment: [
+          { name: "CLAUDE_CONFIG_DIR", value: "/profile/models/claude", sensitive: false },
+        ],
+      },
+      nodex_codex: {
+        driver: "codex",
+        source: "nodex",
+        enabled: true,
+        config: { homePath: "/profile/models/codex" },
+      },
+      claude: { driver: "claudeAgent", enabled: true, config: { homePath: "~/.claude" } },
+      remote: { driver: "opencode", enabled: true, config: {} },
+    });
+    expect(sources).toContainEqual({
+      provider: "claude",
+      home: path.resolve("/profile/models/claude"),
+      origin: "nodex",
+    });
+    expect(sources).toContainEqual({
+      provider: "codex",
+      home: path.resolve("/profile/models/codex"),
+      origin: "nodex",
+    });
+    expect(sources.filter((source) => source.home === path.resolve("/user/.claude"))).toHaveLength(
+      1,
+    );
+    expect(sources.some((source) => source.home.includes("remote"))).toBe(false);
+  });
 });

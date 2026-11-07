@@ -282,6 +282,12 @@ export type WorkbenchStableLocation =
       readonly kind: "plugins";
       readonly path: string;
       readonly returnTo: WorkbenchSceneLocation;
+    }
+  | {
+      /** What agents did across this machine, and the cards made from it. */
+      readonly kind: "insights";
+      readonly path: string;
+      readonly returnTo: WorkbenchSceneLocation;
     };
 
 export type WorkbenchLocationV9 =
@@ -298,14 +304,14 @@ export type WorkbenchLocationV9 =
       readonly returnTo: WorkbenchSceneLocation;
     };
 
-/** Home remembers its own routes; Space, Scheduled, and Customize restore their own state. */
+/** Home remembers its own routes; Space, Scheduled, Customize and Insights restore their own state. */
 export type WorkbenchHomeLocation = Exclude<
   WorkbenchStableLocation,
-  { readonly kind: "library" | "automations" | "plugins" }
+  { readonly kind: "library" | "automations" | "plugins" | "insights" }
 >;
 
-/** Rail destinations that own a contextual sidebar. */
-export type WorkbenchPrimaryDestination = "home" | "space" | "scheduled" | "plugins";
+/** Rail destinations. Insights shares Home's sidebar; the others own a contextual sidebar. */
+export type WorkbenchPrimaryDestination = "home" | "space" | "scheduled" | "plugins" | "insights";
 
 export interface WorkbenchLayoutSnapshotV9 {
   readonly version: 9;
@@ -419,6 +425,7 @@ export function getWorkbenchPrimaryDestination(
   if (location.kind === "settings") return getWorkbenchPrimaryDestination(location.returnTo);
   if (location.kind === "library") return "space";
   if (location.kind === "plugins") return "plugins";
+  if (location.kind === "insights") return "insights";
   return location.kind === "automations" ? "scheduled" : "home";
 }
 
@@ -431,6 +438,7 @@ export function getWorkbenchHomeLocation(
     location.kind === "library" ||
     location.kind === "automations" ||
     location.kind === "plugins" ||
+    location.kind === "insights" ||
     location.kind === "pending-worktree"
   ) {
     return null;

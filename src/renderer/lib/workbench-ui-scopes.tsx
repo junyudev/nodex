@@ -35,6 +35,7 @@ export interface RouteScopeDescriptor {
     | "thread"
     | "automations"
     | "plugins"
+    | "insights"
     | "inbox"
     | "settings"
     | "library"

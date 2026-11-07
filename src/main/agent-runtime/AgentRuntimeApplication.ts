@@ -1,3 +1,4 @@
+import type { InsightsOrigin, InsightsUsageSource } from "../../shared/insights";
 import {
   automaticModelCatalog,
   DEFAULT_MODEL_POLICY,
@@ -155,6 +156,10 @@ export interface AgentRuntimeApplicationOptions {
     connection: AgentRuntimeApplicationConnection,
     input: Pick<NativeConversationImportInput, "backendKind" | "instanceConfigId">,
   ) => Effect.Effect<string, unknown>;
+  /** Provider homes whose transcripts count toward Insights, from this lease's configuration. */
+  readonly insightsUsageSources?: (
+    connection: AgentRuntimeApplicationConnection,
+  ) => Effect.Effect<readonly InsightsUsageSource[], unknown>;
   /** Reads already-observed native settings without resuming or taking over the source. */
   readonly nativeCodexSettings?: (
     threadId: string,
@@ -4080,6 +4085,27 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           if (connection.identity.runtimeId !== input.runtimeId)
             return yield* failure("session-metadata", "The bound execution store is unavailable");
           return yield* connection.request("sessions.metadata", { threadIds: input.threadIds });
+        }),
+      ),
+    insightsUsage: (input: { readonly timeZone: string; readonly origin: InsightsOrigin }) =>
+      owned(
+        "insights",
+        Effect.gen(function* () {
+          yield* validateCaller();
+          const connection = yield* options.connect;
+          const sources = options.insightsUsageSources
+            ? yield* options.insightsUsageSources(connection)
+            : [];
+          return yield* connection.request("insights.read", { ...input, sources });
+        }),
+      ),
+    insightsAccess: (granted: boolean) =>
+      owned(
+        "insights",
+        Effect.gen(function* () {
+          yield* validateCaller();
+          const connection = yield* options.connect;
+          return yield* connection.request("insights.access", { granted });
         }),
       ),
     /** Runtime-owned discovery metadata; Core joins exact current Session placement separately. */

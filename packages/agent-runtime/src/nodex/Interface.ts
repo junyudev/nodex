@@ -865,6 +865,22 @@ export interface AgentRuntimeOperations
     readonly input: { readonly subscriptionId: string };
     readonly output: { readonly unsubscribed: true };
   };
+  /** Reading keeps the usage ledger current while someone is looking at it. */
+  readonly "insights.read": {
+    readonly input: {
+      readonly timeZone: string;
+      readonly origin: import("../../../../src/shared/insights.ts").InsightsOrigin;
+      readonly sources: readonly import("../../../../src/shared/insights.ts").InsightsUsageSource[];
+    };
+    readonly output: import("../../../../src/shared/insights.ts").InsightsUsageSnapshot;
+  };
+  /** Granting allows reading provider history; withdrawing also forgets what was read. */
+  readonly "insights.access": {
+    readonly input: { readonly granted: boolean };
+    readonly output: {
+      readonly access: import("../../../../src/shared/insights.ts").InsightsHistoryAccess;
+    };
+  };
   readonly "runtime.identity": {
     readonly input: Record<string, never>;
     readonly output: AgentRuntimeIdentity;

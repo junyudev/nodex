@@ -78,7 +78,10 @@ import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { subscribe as subscribeExecutionChanges } from "../agent-runtime/AgentRuntimeExecutionChanges";
-import { nativeImportSources } from "../agent-runtime/AgentRuntimeNativeImportSources";
+import {
+  insightsUsageSources,
+  nativeImportSources,
+} from "../agent-runtime/AgentRuntimeNativeImportSources";
 import { WorktreeShellEnvironmentRuntime } from "../host-runtime/WorktreeShellEnvironmentRuntime";
 import {
   agentRuntimeEntrypoint,
@@ -257,6 +260,19 @@ const supervisor = Layer.effectContext(
       currentConnection: Deferred.await(ready).pipe(
         Effect.flatMap((runtime) => runtime.currentConnection),
       ),
+      insightsUsageSources: (connection) =>
+        Effect.try(() => {
+          const configuration = prepared.get(connection.identity);
+          const environment = preparedEnvironment.get(connection.identity);
+          if (!configuration || !environment)
+            throw new Error("Physical provider configuration is unavailable");
+          return insightsUsageSources({
+            configuration,
+            environment,
+            homeDirectory: config.homeDirectory,
+            codexHome: platform.accountHome.sharedHome,
+          });
+        }),
       nativeImportSourceHome: (connection, input) =>
         Effect.gen(function* () {
           const histories = yield* physicalNativeImportSources(connection);

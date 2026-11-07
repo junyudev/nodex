@@ -895,6 +895,14 @@ has.
 - Dictation history is stored beneath the active Profile in current-user-only directories/files with atomic metadata replacement, bounded audio/transcript sizes, non-path recording identities, and symlink/path-escape rejection. Native Save-dialog export is explicit user action; history files are not Core or conversation authority.
 - Logs and remote diagnostics may contain only stable session/attempt identity, surface, gesture, stage, duration/latency/byte counts, stop reason/action, HTTP status, and stable error/native constructor names. Audio, transcript, dictionary content, microphone labels, clipboard content, raw request bodies, and service response bodies are prohibited.
 
+### Insights
+
+Reading provider history needs an explicit per-Profile grant, and withdrawing it deletes the ledger.
+The Agent Runtime reads transcripts only for their counts and stores no prompts or content. Its one
+network request fetches a public model price table and carries no user, model or usage data. Share
+cards are drawn on the device from counts alone, and the card save path comes from a native dialog,
+never from the renderer. See [Insights Behavior](product-specs/insights-behavior.md).
+
 ## Current Gaps
 
 - Security logging/auditing is still local-first and not audit-grade. Backend logs redact common secret-bearing fields (for example authorization headers, tokens, API keys, passwords, cookies, and session values) before writing JSON-line log records; optional Sentry crash diagnostics are for failure triage, not an audit trail.

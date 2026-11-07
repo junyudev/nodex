@@ -12,6 +12,10 @@ const PluginsRoute = lazy(async () => ({
   default: (await import("@/features/plugins/view/plugins-route")).PluginsRoute,
 }));
 
+const InsightsRoute = lazy(async () => ({
+  default: (await import("@/features/insights/insights-route")).InsightsRoute,
+}));
+
 type SettingsProps = Omit<ComponentProps<typeof SettingsRouteShell>, "path">;
 type AutomationsProps = Omit<ComponentProps<typeof ScheduledRoute>, "path">;
 type PluginsProps = Omit<ComponentProps<typeof PluginsRoute>, "path">;
@@ -30,6 +34,9 @@ interface WorkbenchRouteSurfacesInput {
     readonly path: string | null;
     readonly props: PluginsProps;
   };
+  readonly insights: {
+    readonly path: string | null;
+  };
   readonly pendingWorktree: {
     readonly clientThreadId: string | null;
     readonly props: PendingWorktreeProps;
@@ -44,6 +51,7 @@ export function useWorkbenchRouteSurfaces({
   settings,
   automations,
   plugins,
+  insights,
   pendingWorktree,
 }: WorkbenchRouteSurfacesInput) {
   const settingsRouteShell = settings.path ? (
@@ -64,6 +72,12 @@ export function useWorkbenchRouteSurfaces({
     </ApplicationSurface>
   ) : null;
 
+  const insightsRouteShell = insights.path ? (
+    <ApplicationSurface>
+      <InsightsRoute />
+    </ApplicationSurface>
+  ) : null;
+
   const pendingWorktreeRouteShell = pendingWorktree.clientThreadId ? (
     <ApplicationSurface>
       <PendingWorktreeRoute
@@ -76,6 +90,7 @@ export function useWorkbenchRouteSurfaces({
   return {
     automationsRouteShell,
     pluginsRouteShell,
+    insightsRouteShell,
     pendingWorktreeRouteShell,
     settingsRouteShell,
   };

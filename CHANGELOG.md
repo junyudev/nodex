@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Insights shows what your agents did across this device, and turns it into a card you can share. Open it from the rail to see tokens, models, cost at API list price, messages, how many agents ran at once, tasks finished and Pages written, including Claude Code and Codex history from before you installed Nodex. Reading that history takes one click to allow and keeps only counts on your device. Share makes a Skyline or Receipt image to copy, save or post, with no project names or prompts on it.
 - Archiving a chat now lets you take it back. A toast appears right away: Undo restores the chat and returns you to it, and View opens your archived chats.
 - The Codex usage ring now shows your remaining credits. Hover it to see your balance below the usage windows. When a limit is used up and credits keep you working, the ring turns amber instead of red, and the card says the credits are in use.
 - You choose which models Nodex can use in Settings → Models. An off model leaves every model menu, and nothing in Nodex can start it. Nodex credits are protected by default: only what you start can spend them, so an Agent on another provider can't start a Nodex subagent unless you allow it, and turning Nodex off means nothing on this computer can spend them.

@@ -110,3 +110,42 @@ export function WorkbenchScheduledIcon({
     </svg>
   );
 }
+
+/** Three rising bars, one solid when Insights is the current destination. */
+export function WorkbenchInsightsIcon({
+  className,
+  filled = false,
+  ...props
+}: WorkbenchNavigationIconProps) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+      className={cn("size-5 shrink-0", className)}
+      {...props}
+    >
+      {[
+        { x: 3, y: 10.5, height: 6.5 },
+        { x: 8.25, y: 6.5, height: 10.5 },
+        { x: 13.5, y: 3, height: 14 },
+      ].map(({ x, y, height }) => (
+        <rect
+          key={x}
+          x={x}
+          y={y}
+          width="3.5"
+          height={height}
+          rx="1"
+          fill={filled ? "currentColor" : "none"}
+          stroke="currentColor"
+          strokeWidth="1.5"
+        />
+      ))}
+    </svg>
+  );
+}

@@ -52,6 +52,8 @@ import {
   OrchestrationV2ConversationMessage,
   OrchestrationV2ExecutionLocation,
 } from "@nodex/runtime-contracts";
+import * as UsageLedger from "../usage/UsageLedger.ts";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
@@ -164,6 +166,21 @@ const VoiceClaim = { claimId: Schema.String, source: NativeSource };
 const AgentRequest = Schema.Union([
   ...AcpManagement.Request.members,
   request("execution.roots", ExecutionRoots.Input),
+  request(
+    "insights.read",
+    Schema.Struct({
+      timeZone: Schema.String.check(Schema.isMaxLength(128)),
+      origin: Schema.Literals(["all", "nodex"]),
+      sources: Schema.Array(
+        Schema.Struct({
+          provider: Schema.Literals(["claude", "codex"]),
+          home: Schema.String,
+          origin: Schema.Literals(["nodex", "external"]),
+        }),
+      ).check(Schema.isMaxLength(64)),
+    }),
+  ),
+  request("insights.access", Schema.Struct({ granted: Schema.Boolean })),
   request("store.coordinate.read", Schema.Struct({})),
   request("store.coordinate.record", Schema.Struct({ coordinate: Schema.String })),
   request("thread.import-native", NativeImport.NativeImportInput),
@@ -810,6 +827,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   );
   const processScope = yield* Scope.make("parallel");
   yield* Effect.addFinalizer((exit) => Scope.close(processScope, exit));
+  const usageLedger = yield* UsageLedger.make({
+    stateDir: (yield* Configuration.ServerConfig).stateDir,
+    scope: processScope,
+  }).pipe(Effect.provide(FetchHttpClient.layer));
   const acp = yield* AcpManagement.make(identity.runtimeGeneration);
   const providerPolicy = yield* ProviderConfiguration.ProviderPolicy;
   const sessionMetadataOptions = {
@@ -1668,6 +1689,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* readSessionMetadata(input.input.threadIds, sessionMetadataOptions).pipe(
           Effect.provideService(SqlClient.SqlClient, sql),
         );
+      case "insights.read":
+        return yield* usageLedger.read(input.input);
+      case "insights.access":
+        return yield* usageLedger.setAccess(input.input.granted);
       case "sessions.catalog":
         return yield* readSessionCatalog(input.input, sessionMetadataOptions).pipe(
           Effect.provideService(SqlClient.SqlClient, sql),

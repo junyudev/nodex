@@ -48,6 +48,7 @@ import {
   resolveWorkbenchWorkspaceInsets,
 } from "@/lib/workbench-shell-geometry";
 import { getWorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
+import { INSIGHTS_ROOT_PATH } from "@/features/insights/insights-routes";
 import { WorkbenchEmptyRoute, WorkbenchRouteHost } from "./workbench-route-host";
 import { InboxRoute } from "@/features/inbox/inbox-route";
 import { inboxScopeProjectId, LIBRARY_INBOX, type InboxScope } from "../../../shared/inbox";
@@ -612,6 +613,8 @@ export function WorkbenchRuntime({
     workbenchWindow.location.kind === "automations" ? workbenchWindow.location.path : null;
   const pluginsPath =
     workbenchWindow.location.kind === "plugins" ? workbenchWindow.location.path : null;
+  const insightsPath =
+    workbenchWindow.location.kind === "insights" ? workbenchWindow.location.path : null;
   const pendingWorktreeClientThreadId =
     workbenchWindow.location.kind === "pending-worktree"
       ? workbenchWindow.location.clientThreadId
@@ -640,14 +643,18 @@ export function WorkbenchRuntime({
     [settingsPath, workbenchWindow],
   );
   /**
-   * Scheduled and Customize are path routes over the current Scene. Closing either one
+   * Scheduled, Customize and Insights are path routes over the current Scene. Closing one
    * returns to that Scene before another destination opens.
    */
   const setDestinationRoute = useCallback(
-    (kind: "automations" | "plugins", path: string | null) => {
+    (kind: "automations" | "plugins" | "insights", path: string | null) => {
       const location = workbenchWindow.location;
       if (path === null) {
-        if (location.kind === "automations" || location.kind === "plugins") {
+        if (
+          location.kind === "automations" ||
+          location.kind === "plugins" ||
+          location.kind === "insights"
+        ) {
           workbenchWindow.closeRoute();
         }
         return;
@@ -666,6 +673,10 @@ export function WorkbenchRuntime({
   );
   const setPluginsPath = useCallback(
     (path: string | null) => setDestinationRoute("plugins", path),
+    [setDestinationRoute],
+  );
+  const setInsightsPath = useCallback(
+    (path: string | null) => setDestinationRoute("insights", path),
     [setDestinationRoute],
   );
   const setPendingWorktreeClientThreadId = useCallback(
@@ -1725,7 +1736,7 @@ export function WorkbenchRuntime({
     threadSummaryPanelLayoutMode,
   } = useWorkbenchChromeLayout({
     activeSessionId: activeSession?.id ?? null,
-    destinationRouteOpen: Boolean(automationsPath ?? pluginsPath),
+    destinationRouteOpen: Boolean(automationsPath ?? pluginsPath ?? insightsPath),
     bottomPanelOpen,
     bottomPanelRequestedHeight: bottomPanel?.size.heightPx ?? null,
     headerLeftWidth,
@@ -2124,6 +2135,14 @@ export function WorkbenchRuntime({
     },
     [closePendingWorktreeRoute, setPluginsPath, setSettingsPath],
   );
+
+  const openInsights = useCallback(() => {
+    closePendingWorktreeRoute();
+    setSettingsPath(null);
+    setReopenStableWorktreeAfterSettingsId(null);
+    setReopenPendingWorktreeAfterSettingsClientThreadId(null);
+    setInsightsPath(INSIGHTS_ROOT_PATH);
+  }, [closePendingWorktreeRoute, setInsightsPath, setSettingsPath]);
 
   const presentExistingDatabaseView = useCallback(
     async (projectId: string, databaseViewId: string): Promise<boolean> => {
@@ -3668,6 +3687,7 @@ export function WorkbenchRuntime({
     },
     openCommandPalette,
     goToPages: workbenchWindow.selectLibrary,
+    goToInsights: openInsights,
     goToSettings: openSettings,
     toggleSettings,
     openKeyboardShortcuts: openKeyboardShortcutHelp,
@@ -4053,6 +4073,7 @@ export function WorkbenchRuntime({
   const {
     automationsRouteShell,
     pluginsRouteShell,
+    insightsRouteShell,
     pendingWorktreeRouteShell,
     settingsRouteShell,
   } = useWorkbenchRouteSurfaces({
@@ -4098,6 +4119,7 @@ export function WorkbenchRuntime({
       path: pluginsPath,
       props: { navigation: customizeNavigation },
     },
+    insights: { path: insightsPath },
     pendingWorktree: {
       clientThreadId: pendingWorktreeClientThreadId,
       props: {
@@ -4134,8 +4156,8 @@ export function WorkbenchRuntime({
       },
     },
   });
-  // Scheduled and Customize are page routes over the Scene; they own the title row.
-  const destinationRouteShell = automationsRouteShell ?? pluginsRouteShell;
+  // Scheduled, Customize and Insights are page routes over the Scene; they own the title row.
+  const destinationRouteShell = automationsRouteShell ?? pluginsRouteShell ?? insightsRouteShell;
   // A full-width Scene panel covers the title row only while its Scene is showing,
   // never under a route such as Automations opened over it.
   const appShellHeaderCoveredByScene = rightPanelFullView && destinationRouteShell == null;
@@ -5655,6 +5677,7 @@ export function WorkbenchRuntime({
                         onHome={workbenchWindow.selectHome}
                         onSpace={workbenchWindow.selectLibrary}
                         onScheduled={() => openAutomations()}
+                        onInsights={openInsights}
                         onPlugins={() => openPlugins()}
                         footer={
                           <WorkbenchRailFoot
@@ -5752,6 +5775,17 @@ export function WorkbenchRuntime({
                             selected
                           >
                             {pluginsRouteShell}
+                          </WorkbenchSessionScopePath>
+                        ),
+                      }}
+                      insights={{
+                        content: () => (
+                          <WorkbenchSessionScopePath
+                            thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
+                            route={{ routeKey: insightsPath!, kind: "insights" }}
+                            selected
+                          >
+                            {insightsRouteShell}
                           </WorkbenchSessionScopePath>
                         ),
                       }}

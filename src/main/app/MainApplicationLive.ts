@@ -6,6 +6,7 @@ import * as MobileAccessIpc from "../ipc/handlers/MobileAccessIpc";
 import * as SecretEncryption from "../platform/electron/SecretEncryption";
 import { SessionReminderRuntime } from "../host-runtime/SessionReminderRuntime";
 import { live as chatSearchLive } from "../chat-search/ChatSearch";
+import { live as insightsLive } from "../insights/Insights";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -135,6 +136,7 @@ const executionGraph = AgentRuntimeApplicationLive.runtime.pipe(
 );
 const interactionsGraph = ConversationApplicationLive.interactions.pipe(
   Layer.provideMerge(chatSearchLive.pipe(Layer.provideMerge(executionGraph))),
+  Layer.provideMerge(insightsLive.pipe(Layer.provideMerge(executionGraph))),
 );
 const protocolGraph = ConversationApplicationLive.protocol.pipe(
   Layer.provideMerge(interactionsGraph),

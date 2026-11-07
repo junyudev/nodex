@@ -231,6 +231,7 @@ export function openWorkbenchRoute(
     | { readonly kind: "settings"; readonly path: string }
     | { readonly kind: "automations"; readonly path: string }
     | { readonly kind: "plugins"; readonly path: string }
+    | { readonly kind: "insights"; readonly path: string }
     | {
         readonly kind: "pending-worktree";
         readonly clientThreadId: string;

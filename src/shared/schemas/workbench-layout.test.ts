@@ -620,6 +620,22 @@ describe("WorkbenchLayoutSnapshotSchema v9", () => {
 });
 
 describe("WorkbenchLayoutSnapshotSchema locations", () => {
+  test("reopens on Insights, and on Settings opened from it", () => {
+    const insights = {
+      kind: "insights",
+      path: "/insights",
+      returnTo: { kind: "library" },
+    } as const;
+    const snapshot = createDefaultWorkbenchLayoutSnapshot();
+    expect(
+      WorkbenchLayoutSnapshotSchema.parse({ ...snapshot, location: insights }).location,
+    ).toEqual(insights);
+    const settings = { kind: "settings", path: "/settings/general", returnTo: insights } as const;
+    expect(
+      WorkbenchLayoutSnapshotSchema.parse({ ...snapshot, location: settings }).location,
+    ).toEqual(settings);
+  });
+
   test.each([
     { returnTo: { kind: "inbox" as const }, home: "origin" },
     {

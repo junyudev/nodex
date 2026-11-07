@@ -41,6 +41,7 @@ vi.mock("./pending-worktree-route", () => {
 });
 
 const input: Parameters<typeof useWorkbenchRouteSurfaces>[0] = {
+  insights: { path: null },
   settings: {
     path: null,
     props: {
