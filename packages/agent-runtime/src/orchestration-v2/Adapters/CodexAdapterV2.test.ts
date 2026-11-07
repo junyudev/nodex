@@ -7394,6 +7394,64 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       ),
   );
 
+  it.effect.each([
+    { name: "a malformed reply", reply: { result: {} } },
+    {
+      name: "an unsupported method",
+      reply: { error: { code: -32601, message: "Unknown method" } },
+    },
+  ])("keeps a resumed conversation when its background terminals answer with $name", ({ reply }) =>
+    Effect.gen(function* () {
+      const nativeThreadId = "codex-resume-roster-unreadable";
+      const transcript = makeCodexReplayTranscript({
+        scenario: "codex-resume-roster-unreadable",
+        entries: [
+          ...codexReplayPreamble({
+            nativeThreadId,
+            nativeTurnId: "unused",
+            prompt: "unused",
+          }).slice(0, 5),
+          {
+            type: "expect_outbound",
+            frame: {
+              id: 3,
+              method: "thread/resume",
+              params: {
+                threadId: nativeThreadId,
+                excludeTurns: true,
+                config: CodexAdapterV2.CODEX_THREAD_CONFIG,
+              },
+            },
+          },
+          {
+            type: "emit_inbound",
+            frame: { id: 3, result: { thread: { id: nativeThreadId, updatedAt: 1782622441 } } },
+          },
+          {
+            type: "expect_outbound",
+            frame: {
+              id: 4,
+              method: "thread/backgroundTerminals/list",
+              params: { threadId: nativeThreadId, limit: 100 },
+            },
+          },
+          { type: "emit_inbound", frame: { id: 4, ...reply } },
+        ],
+      });
+      const harness = yield* makeCodexReplayHarness(transcript);
+      const resumed = yield* harness.runtime.resumeThread({
+        providerThread: harness.providerThread,
+      });
+      assert.equal(resumed.nativeThreadRef?.nativeId, nativeThreadId);
+      assert.deepEqual(resumed.pendingBackgroundTasks, []);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   it.effect("clears the Codex roster before reporting an app-server process exit", () =>
     Effect.gen(function* () {
       const processExit = yield* Deferred.make<

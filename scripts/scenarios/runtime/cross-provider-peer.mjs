@@ -761,6 +761,9 @@ async function handleCodex(message) {
       reply(threadResponse(thread, params.model));
       return;
     }
+    case "thread/backgroundTerminals/list":
+      reply({ data: [], nextCursor: null });
+      return;
     case "thread/read": {
       state = load();
       reply({ thread: state.threads[params.threadId] });

@@ -7977,7 +7977,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               commandOutputTails.delete(nativeThreadId);
               backgroundThreads.set(nativeThreadId, resumed);
               rootProviderThreads.set(nativeThreadId, resumed);
-              yield* refreshBackgroundTerminals(nativeThreadId);
+              // The conversation is back. A roster that can't be read must not discard it.
+              yield* refreshBackgroundTerminalsSafely(nativeThreadId);
               return backgroundThreads.get(nativeThreadId)!;
             }).pipe(
               Effect.mapError(
