@@ -475,6 +475,9 @@ finish opening. Reopening it with the same seed does not repair it. Start a new
 home with the seed. `--delete` removes the old home at once without launching it;
 for a compatible home, the launcher deletes it after you quit the app.
 
+`document-recovery-review` opens on three unsaved-edit drafts Core analyses like any
+other: one it can merge, one it refuses, and one that adds nothing readable.
+
 `landing/showcase` supplies three Tinyboard Pages with an unfinished brief.
 `landing/shared-pages` supplies the complete brief, an empty Implementation notes
 section, and one linked Chat without a Thread or fabricated transcript. Use a fresh

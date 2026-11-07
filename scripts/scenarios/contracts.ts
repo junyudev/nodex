@@ -1,3 +1,4 @@
+import type { PageDocumentEnvelope } from "../../src/shared/block-documents/page-document";
 import type {
   InboxDispatchAction,
   InboxEntryKind,
@@ -154,6 +155,15 @@ export interface ScenarioRelatedChatSeedResult {
   readonly threadId: string | null;
 }
 
+export interface ScenarioRecoveryDraftSeed {
+  readonly projectId: string;
+  readonly documentId: string;
+  readonly draftId: string;
+  readonly createdAt: string;
+  /** Applied to the canonical Page; Core never saw these edits. */
+  readonly edit: (document: PageDocumentEnvelope) => void;
+}
+
 export interface ScenarioSeedPort {
   createProject(input: ProjectCreateInput): Promise<Project>;
   createPage(input: ScenarioPageSeed): Promise<{ readonly documentId: string }>;
@@ -180,6 +190,8 @@ export interface ScenarioSeedPort {
   addPageFileEntry(input: ScenarioPageFileEntrySeed): Promise<LibraryPageFileEntryReceipt>;
   readPageFileInventory(projectId: string, pageId: string): Promise<LibraryPageFileInventory>;
   createDocumentCheckpoint(input: ScenarioDocumentCheckpointSeed): Promise<string>;
+  /** Hands Core the unsaved edits a lost window would have, for it to analyse like any other. */
+  captureRecoveryDraft(input: ScenarioRecoveryDraftSeed): Promise<void>;
   readPage(
     projectId: string,
     pageId: string,

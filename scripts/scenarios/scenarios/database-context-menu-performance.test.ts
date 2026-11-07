@@ -65,6 +65,10 @@ class PerformanceSeedPort implements ScenarioSeedPort {
     throw new Error("Document history seeding is not part of this scenario");
   }
 
+  async captureRecoveryDraft(): Promise<never> {
+    throw new Error("Recovery drafts are not part of this scenario");
+  }
+
   async ensurePrimaryDataSourcePropertyCount(
     _projectId: string,
     count: number,

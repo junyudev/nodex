@@ -98,6 +98,10 @@ class RecordingSeedPort implements ScenarioSeedPort {
     throw new Error("Page File inspection is not part of this scenario");
   }
 
+  async captureRecoveryDraft(): Promise<never> {
+    throw new Error("Recovery drafts are not part of this scenario");
+  }
+
   async createDocumentCheckpoint(): Promise<never> {
     throw new Error("Document history seeding is not part of this scenario");
   }

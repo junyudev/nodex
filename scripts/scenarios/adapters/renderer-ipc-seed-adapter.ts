@@ -1,5 +1,7 @@
 import type { Page } from "playwright";
 import * as Y from "yjs";
+import { encodeRecoveryBundle } from "../../../src/shared/block-documents/recovery-bundle";
+import { buildRecoveryDraftCapture } from "../seed/recovery-draft";
 import { readPageBlockOutline } from "./page-block-outline";
 import {
   LIBRARY_INBOX,
@@ -26,6 +28,7 @@ import type {
   ScenarioPageObservation,
   ScenarioPageFileEntrySeed,
   ScenarioPageSeed,
+  ScenarioRecoveryDraftSeed,
   ScenarioRelatedChatSeed,
   ScenarioRelatedChatSeedResult,
   ScenarioInboxDispatchSeed,
@@ -274,6 +277,53 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     } finally {
       document.destroy();
       requireSuccess(await this.#invoke("document-sync:unsubscribe", request), `Close ${pageId}`);
+    }
+  }
+
+  async captureRecoveryDraft(input: ScenarioRecoveryDraftSeed): Promise<void> {
+    const request = {
+      projectId: input.projectId,
+      documentId: input.documentId,
+      clientSessionId: createUuidV7(),
+    };
+    requireSuccess(
+      await this.#invoke("document-sync:subscribe", request),
+      `Subscribe ${input.documentId}`,
+    );
+    try {
+      const canonical = requireSuccess(
+        await this.#invoke("document-sync:sync", {
+          ...request,
+          stateVector: new Uint8Array([0]),
+        }),
+        `Read ${input.documentId}`,
+      );
+      const library = requireSuccess(
+        await this.#invoke(
+          "library-module:read",
+          { kind: "project", projectId: input.projectId },
+          { read: { mode: "metadata" } },
+        ),
+        "Read Library identity",
+      );
+      if (!("libraryId" in library)) throw new Error("Library metadata has no identity");
+      const capture = buildRecoveryDraftCapture(input, canonical);
+      requireSuccess(
+        await this.#invoke("document-recovery:apply", {
+          libraryId: library.libraryId,
+          routingContext: { kind: "project", projectId: input.projectId },
+          kind: "capture",
+          operationId: createBoundedOperationId("document.recovery.capture"),
+          storeEpoch: canonical.storeEpoch,
+          bundle: await encodeRecoveryBundle(capture, capture.draft_id),
+        }),
+        `Capture ${input.draftId}`,
+      );
+    } finally {
+      requireSuccess(
+        await this.#invoke("document-sync:unsubscribe", request),
+        `Close ${input.documentId}`,
+      );
     }
   }
 

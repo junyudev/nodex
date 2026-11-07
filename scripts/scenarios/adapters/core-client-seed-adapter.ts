@@ -34,11 +34,13 @@ import type {
   ScenarioPageObservation,
   ScenarioPageFileEntrySeed,
   ScenarioPageSeed,
+  ScenarioRecoveryDraftSeed,
   ScenarioRelatedChatSeed,
   ScenarioRelatedChatSeedResult,
   ScenarioSeedPort,
   ScenarioStandalonePageSeed,
 } from "../contracts";
+import { buildRecoveryDraftCapture } from "../seed/recovery-draft";
 import { normalizeScenarioBoardGroups } from "./normalize-board-groups";
 import {
   ensurePrimaryDataSourcePropertyCount,
@@ -255,6 +257,37 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     } finally {
       await stream.close();
       document.destroy();
+    }
+  }
+
+  async captureRecoveryDraft(input: ScenarioRecoveryDraftSeed): Promise<void> {
+    const client = this.#runtime.clientForProject(input.projectId);
+    const clientSessionId = createUuidV7();
+    const stream = await client.openDocumentEventStream(
+      { documentId: input.documentId, clientSessionId },
+      () => undefined,
+      () => undefined,
+      () => undefined,
+    );
+    try {
+      const canonical = requireSuccess(
+        await createCoreDocumentSyncAdapter(client).sync({
+          documentId: input.documentId,
+          clientSessionId,
+          stateVector: new Uint8Array([0]),
+        }),
+        `Read ${input.documentId}`,
+      );
+      await client.documentApply({
+        operationId: createBoundedOperationId("document.recovery.capture"),
+        clientSessionId,
+        intent: {
+          kind: "capture_recovery",
+          capture: buildRecoveryDraftCapture(input, canonical),
+        },
+      });
+    } finally {
+      await stream.close();
     }
   }
 
