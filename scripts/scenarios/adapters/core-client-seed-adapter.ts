@@ -76,18 +76,20 @@ const requireSuccess = <Value>(
   throw new Error(`${label} failed: ${result.error.message}`);
 };
 
+/** Whether a Profile already holds a Project or a Session. */
+export const profileHasWork = async (runtime: RustDataAuthorityRuntime): Promise<boolean> =>
+  (await runScenarioProjectWorkspace(runtime, (workspace) => workspace.readProjectBootstrap))
+    .status === "ready";
+
 export class CoreClientSeedAdapter implements ScenarioSeedPort {
   readonly #runtime: RustDataAuthorityRuntime;
   readonly #libraryIdsByProject = new Map<string, string>();
-  #bootstrap: Promise<void> | null = null;
 
   constructor(runtime: RustDataAuthorityRuntime) {
     this.#runtime = runtime;
   }
 
   async createProject(input: ProjectCreateInput): Promise<Project> {
-    this.#bootstrap ??= this.#ensureInitialProject(input.sources?.[0]);
-    await this.#bootstrap;
     const { value: project } = await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
       workspace.createProject({
         operationId: createBoundedOperationId("scenario.project.create"),
@@ -851,29 +853,5 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
       read: (request) => runScenarioDatabase(this.#runtime, (database) => database.read(request)),
       apply: (request) => runScenarioDatabase(this.#runtime, (database) => database.apply(request)),
     };
-  }
-
-  async #ensureInitialProject(sourceRoot?: string): Promise<void> {
-    await runScenarioProjectWorkspace(
-      this.#runtime,
-      Effect.fn("CoreClientSeedAdapter.ensureInitialProject")(function* (workspace) {
-        const bootstrap = yield* workspace.readProjectBootstrap;
-        if (bootstrap.status === "ready") return;
-        const projectId = createUuidV7();
-        yield* workspace.createInitialProject({
-          operationId: createUuidV7(),
-          projectId,
-          name: "Scenario Bootstrap",
-          description: "",
-          sources: sourceRoot ? [sourceRoot] : [],
-          starterPage: {
-            pageId: createUuidV7(),
-            documentId: createUuidV7(),
-            titleMarkdown: "Scenario Bootstrap",
-            markdown: "Scenario bootstrap authority.",
-          },
-        });
-      }),
-    );
   }
 }

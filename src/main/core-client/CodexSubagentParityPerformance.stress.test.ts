@@ -607,18 +607,12 @@ const seedProject = (core: CoreLaunchResult["client"], profileRoot: string): Eff
       core.workspaceApply({
         operationId: "subagent-scale-create-project",
         intent: {
-          kind: "create_initial_project",
+          kind: "create_project",
           project_id: "project:subagent-scale",
           name: "Subagent scale evidence",
           description: "Disposable Milestone 9 projection fixture",
           appearance: null,
           source_roots: [sourceRoot],
-          starter_page: {
-            page_id: "page:subagent-scale",
-            document_id: "document:subagent-scale",
-            title_markdown: "Subagent scale evidence",
-            markdown: "Disposable scale evidence.",
-          },
         },
       }),
     );

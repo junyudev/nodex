@@ -1002,7 +1002,7 @@ test.describe("parallel functional Electron smoke", () => {
     test(`preserves mouse-selected nested Images through local-path ${command} and native paste`, async () => {
       test.setTimeout(180_000);
       const harness = await ElectronScenarioHarness.create({ label: "image-hierarchy-clipboard" });
-      const workspace = harness.profile.initialProjectsDirectory;
+      const workspace = harness.profile.projectsDirectory;
       try {
         const page = await harness.launch();
         const project = await createConvergenceProject(
@@ -1210,7 +1210,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("deletes, copies, pastes, and restores a mixed subpage selection", async () => {
     test.setTimeout(180_000);
     const harness = await ElectronScenarioHarness.create({ label: "structural-subpage-edit" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
       const project = await createConvergenceProject(page, "Structural subpage edit", workspace);
@@ -1445,7 +1445,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("turns a mixed subpage selection into content and restores it", async () => {
     test.setTimeout(180_000);
     const harness = await ElectronScenarioHarness.create({ label: "subpage-turn-into" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
       const project = await createConvergenceProject(page, "Subpage turn into", workspace);
@@ -1556,7 +1556,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("pastes a mixed subpage selection after both Page Stage tabs remount", async () => {
     test.setTimeout(180_000);
     const harness = await ElectronScenarioHarness.create({ label: "structural-retained-paste" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
       const project = await createConvergenceProject(page, "Retained structural paste", workspace);
@@ -1671,7 +1671,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("keeps consecutive subpage cuts available for nested paste", async () => {
     test.setTimeout(180_000);
     const harness = await ElectronScenarioHarness.create({ label: "structural-consecutive-cut" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
       const project = await createConvergenceProject(page, "Structural consecutive cut", workspace);
@@ -1807,7 +1807,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("moves a cut subpage across Pages and restores it from target history", async () => {
     test.setTimeout(150_000);
     const harness = await ElectronScenarioHarness.create({ label: "structural-subpage-cut" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
       const project = await createConvergenceProject(page, "Structural subpage cut", workspace);
@@ -1902,198 +1902,6 @@ test.describe("parallel functional Electron smoke", () => {
     }
   });
 
-  test("provisions and persists the initial source-backed Project across a full Electron restart", async () => {
-    test.setTimeout(120_000);
-    const harness = await ElectronScenarioHarness.create({
-      label: "initial-project-restart",
-    });
-    const { initialProjectsDirectory: projectsDirectory, nodexHome } = harness.profile;
-    try {
-      const firstWindow = await harness.launch();
-
-      await expect
-        .poll(async () => {
-          return await firstWindow.evaluate(async () => {
-            const projects = (await window.api?.invoke("projects:list")) as
-              | {
-                  items?: unknown[];
-                }
-              | undefined;
-            return projects?.items?.length ?? 0;
-          });
-        })
-        .toBe(1);
-      await expect(
-        firstWindow.getByRole("heading", {
-          name: "Select a project",
-        }),
-      ).toHaveCount(0);
-
-      const firstState = await firstWindow.evaluate(async () => {
-        const projects = (await window.api?.invoke("projects:list")) as
-          | {
-              items?: Array<{
-                id: string;
-                name: string;
-                primaryWorkspaceRoot: string | null;
-              }>;
-            }
-          | undefined;
-        const bootstrap = (await window.api?.invoke("window-sessions:bootstrap")) as
-          | {
-              session?: {
-                layout?: {
-                  location?: {
-                    kind?: string;
-                    projectId?: string;
-                  };
-                  scenesByOwnerKey?: Record<
-                    string,
-                    {
-                      primary?: {
-                        kind?: string;
-                      };
-                      panelSurfacesById?: Record<
-                        string,
-                        {
-                          kind?: string;
-                          config?: { pageId?: string };
-                        }
-                      >;
-                      panels?: {
-                        right?: {
-                          collapsed?: boolean;
-                          size?: { fullWidth?: boolean };
-                          layout?: {
-                            root?: { activeTabId?: string | null };
-                          };
-                        };
-                      };
-                    }
-                  >;
-                };
-              };
-            }
-          | undefined;
-        return { projects, bootstrap };
-      });
-      const createdProject = firstState.projects?.items?.[0];
-      expect(createdProject).toMatchObject({ name: "My Project" });
-      expect(createdProject?.primaryWorkspaceRoot).toBe(path.join(projectsDirectory, "My Project"));
-      expect(fs.realpathSync(createdProject?.primaryWorkspaceRoot ?? "")).toBe(
-        fs.realpathSync(path.join(projectsDirectory, "My Project")),
-      );
-
-      const layout = firstState.bootstrap?.session?.layout;
-      expect(layout?.location).toMatchObject({
-        kind: "project",
-        projectId: createdProject?.id,
-      });
-      const projectScene = createdProject?.id
-        ? layout?.scenesByOwnerKey?.[`project:${createdProject.id}`]
-        : undefined;
-      expect(projectScene?.primary).toMatchObject({
-        kind: "inbox",
-        config: { scope: { kind: "project", projectId: createdProject?.id } },
-      });
-      const surfaces = Object.values(projectScene?.panelSurfacesById ?? {});
-      expect(surfaces.map((surface) => surface.kind)).toEqual(["page_stage"]);
-      expect(projectScene?.panels?.right).toMatchObject({
-        collapsed: false,
-        size: { fullWidth: true },
-      });
-      const activeRightTabId = projectScene?.panels?.right?.layout?.root?.activeTabId;
-      expect(
-        activeRightTabId ? projectScene?.panelSurfacesById?.[activeRightTabId]?.kind : undefined,
-      ).toBe("page_stage");
-      const starterPageId = surfaces.find((surface) => surface.kind === "page_stage")?.config
-        ?.pageId;
-      expect(starterPageId).toBeTruthy();
-
-      const pageDetail = await firstWindow.evaluate(
-        async ({ projectId, pageId }) => {
-          return await window.api?.invoke("pages:detail:get", projectId, pageId);
-        },
-        {
-          projectId: createdProject?.id ?? "",
-          pageId: starterPageId ?? "",
-        },
-      );
-      expect(pageDetail).toMatchObject({
-        ok: true,
-        value: {
-          page: {
-            title: "Welcome to Nodex",
-          },
-          document: {
-            readiness: "ready",
-          },
-        },
-      });
-      expect(
-        (
-          pageDetail as {
-            value?: { page?: { plainText?: string } };
-          }
-        ).value?.page?.plainText,
-      ).toContain("Connect your model");
-      expect(
-        (
-          pageDetail as {
-            value?: { page?: { plainText?: string } };
-          }
-        ).value?.page?.plainText,
-      ).toContain(createdProject?.primaryWorkspaceRoot);
-
-      expect(fs.existsSync(path.join(nodexHome, "recovery", "initial-project-v2.json"))).toBe(
-        false,
-      );
-      expect(
-        fs.existsSync(
-          path.join(createdProject?.primaryWorkspaceRoot ?? "", ".nodex-initial-project-v2.json"),
-        ),
-      ).toBe(false);
-
-      const restartedWindow = await harness.restart();
-
-      const persisted = await restartedWindow.evaluate(async () => {
-        const projects = await window.api?.invoke("projects:list");
-        const bootstrap = await window.api?.invoke("window-sessions:bootstrap");
-        return { projects, bootstrap };
-      });
-      expect(
-        (
-          persisted as {
-            projects?: { items?: unknown[] };
-          }
-        ).projects?.items,
-      ).toEqual([
-        expect.objectContaining({
-          id: createdProject?.id,
-          name: "My Project",
-          primaryWorkspaceRoot: createdProject?.primaryWorkspaceRoot,
-        }),
-      ]);
-      expect(
-        (
-          persisted as {
-            bootstrap?: { session?: { layout?: { location?: unknown } } };
-          }
-        ).bootstrap?.session?.layout?.location,
-      ).toMatchObject({
-        kind: "project",
-        projectId: createdProject?.id,
-      });
-      await expect(
-        restartedWindow.getByRole("heading", {
-          name: "Select a project",
-        }),
-      ).toHaveCount(0);
-    } finally {
-      await harness.close();
-    }
-  });
-
   test("New Chat reuses its default draft and opens a pre-thread Terminal", async () => {
     test.setTimeout(120_000);
     // This types at the first prompt, so the account's startup files must not ask anything first.
@@ -2172,7 +1980,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("creates and draws in an inline Canvas without taking over the Page", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "canvas" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
       await createConvergenceProject(page, "Canvas workflow", workspace);
@@ -2328,7 +2136,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("converges a Move to operation in the live standalone Pages projection", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "move-convergence" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
 
@@ -2410,7 +2218,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("creates one stable Board Page and edits its grouping Property @create-modal-smoke @property-menu-smoke", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "create-modal" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
 
@@ -2657,7 +2465,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("converges a Block transfer into the live Board Page projection", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "board-convergence" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
 
@@ -2747,7 +2555,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("keeps the Page editor mounted while its Document commits", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "page-edit" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
       const project = await createConvergenceProject(page, "Page edit stability", workspace);
@@ -2873,7 +2681,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("keeps semantic children and Code Tab/Shift-Tab behavior stable across restart @block-children-smoke", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "block-children" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
       const project = await createConvergenceProject(page, "Block children", workspace);
@@ -3007,7 +2815,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("moves selected Blocks to a DB status through the picker @move-picker-smoke", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "move-picker" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
 
@@ -3099,7 +2907,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("reorders an ordinary editor subtree across a Subpage with native DnD @editor-dnd-smoke", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "editor-subtree-dnd" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
       const project = await createConvergenceProject(page, "Editor subtree DnD", workspace);
@@ -3196,7 +3004,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("moves an editor subtree into a collapsed toggle with native DnD @editor-dnd-smoke", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "editor-toggle-dnd" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
       const project = await createConvergenceProject(page, "Editor toggle DnD", workspace);
@@ -3302,7 +3110,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("projects an accepted native Block to Board move by the next frame @instant-dnd", async ({}, testInfo) => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "instant-native-dnd" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
       const project = await createConvergenceProject(page, "Instant structural DnD", workspace);
@@ -3538,7 +3346,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("moves a Block into Board and List views with native DnD @dnd-smoke", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "native-dnd" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
 
@@ -3804,7 +3612,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("promotes an image-bearing Block into Board without cloning its File @page-file-placement", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "page-file-placement" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
       const project = await createConvergenceProject(page, "Page File placement", workspace);
@@ -3950,7 +3758,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("cuts and pastes a clicked image Block across Windows at sibling depth with stable File identity @page-file-placement", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "page-file-exclusive-move" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
       const project = await createConvergenceProject(page, "Page File move", workspace);
@@ -4236,7 +4044,7 @@ test.describe("parallel functional Electron smoke", () => {
   test("opens and pointer-reorders a nested List subtree without changing its internal parent @list-dnd-smoke", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "list-dnd" });
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     try {
       const page = await harness.launch();
 
@@ -4439,7 +4247,7 @@ test("keeps Page ready and idle CPU bounded with 14k LocalCommit history @perfor
   test.setTimeout(360_000);
   const harness = await ElectronScenarioHarness.create({ label: "page-ready-pressure" });
   const nodexHome = harness.profile.nodexHome;
-  const workspace = harness.profile.initialProjectsDirectory;
+  const workspace = harness.profile.projectsDirectory;
   try {
     const setupPage = await harness.launch();
     const project = await createConvergenceProject(
@@ -4753,7 +4561,7 @@ test("keeps Page ready and idle CPU bounded with 14k LocalCommit history @perfor
 test("converges a high-pressure Page promotion across tab groups and WebContents", async ({}, testInfo) => {
   test.setTimeout(180_000);
   const harness = await ElectronScenarioHarness.create({ label: "cross-tab" });
-  const workspace = harness.profile.initialProjectsDirectory;
+  const workspace = harness.profile.projectsDirectory;
   try {
     const page = await harness.launch();
     const application = harness.application;
@@ -5217,7 +5025,7 @@ test("measures high-pressure nested Block transfer into a populated Board @perfo
   });
   const fixtureRoot = harness.profile.runRoot;
   const nodexHome = harness.profile.nodexHome;
-  const workspace = harness.profile.initialProjectsDirectory;
+  const workspace = harness.profile.projectsDirectory;
   try {
     const page = await harness.launch();
     const application = harness.application;

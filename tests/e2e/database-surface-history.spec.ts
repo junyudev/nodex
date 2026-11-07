@@ -81,7 +81,7 @@ test("replays Board, List, and editor transfers through their content participan
     const project = await createConvergenceProject(
       page,
       "Surface history",
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
     );
     const first = await createConvergenceBoardPage(page, project, "History first", "First Page");
     await createConvergenceBoardPage(page, project, "History last", "Last Page");

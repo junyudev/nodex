@@ -188,7 +188,7 @@ test("projectless agents use Profile content and Automation tools in both intera
         });
         const seedProject = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Content fixture",
         );
         const seed = new RendererIpcSeedAdapter(page);

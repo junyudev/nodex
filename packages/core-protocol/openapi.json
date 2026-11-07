@@ -29632,59 +29632,6 @@
                   "name",
                   "description",
                   "source_roots",
-                  "starter_page",
-                  "kind"
-                ],
-                "properties": {
-                  "appearance": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/ProjectAppearance"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "create_initial_project"
-                    ]
-                  },
-                  "name": {
-                    "type": "string"
-                  },
-                  "page_key_prefix": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "project_id": {
-                    "type": "string"
-                  },
-                  "source_roots": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "starter_page": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceStarterPage"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "project_id",
-                  "name",
-                  "description",
-                  "source_roots",
                   "kind"
                 ],
                 "properties": {
@@ -40912,59 +40859,6 @@
               "name",
               "description",
               "source_roots",
-              "starter_page",
-              "kind"
-            ],
-            "properties": {
-              "appearance": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ProjectAppearance"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "description": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "create_initial_project"
-                ]
-              },
-              "name": {
-                "type": "string"
-              },
-              "page_key_prefix": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "project_id": {
-                "type": "string"
-              },
-              "source_roots": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "starter_page": {
-                "$ref": "#/components/schemas/ProjectWorkspaceStarterPage"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "project_id",
-              "name",
-              "description",
-              "source_roots",
               "kind"
             ],
             "properties": {
@@ -44692,29 +44586,6 @@
             "format": "int64"
           },
           "placement_id": {
-            "type": "string"
-          }
-        }
-      },
-      "ProjectWorkspaceStarterPage": {
-        "type": "object",
-        "required": [
-          "page_id",
-          "document_id",
-          "title_markdown",
-          "markdown"
-        ],
-        "properties": {
-          "document_id": {
-            "type": "string"
-          },
-          "markdown": {
-            "type": "string"
-          },
-          "page_id": {
-            "type": "string"
-          },
-          "title_markdown": {
             "type": "string"
           }
         }

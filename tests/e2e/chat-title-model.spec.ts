@@ -43,7 +43,7 @@ test("a chosen title model titles a chat that runs on another Agent", async () =
     label: "chat-title-model",
     environment: { NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: path.resolve(".") },
   });
-  const sourceRoot = realpathSync(harness.profile.initialProjectsDirectory);
+  const sourceRoot = realpathSync(harness.profile.projectsDirectory);
   const binaryPath = path.join(harness.profile.runRoot, "opencode");
   const fixtureUrl = pathToFileURL(
     path.resolve("scripts/scenarios/runtime/scripted-opencode-agent.mjs"),

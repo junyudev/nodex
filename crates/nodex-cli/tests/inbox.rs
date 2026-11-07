@@ -9,7 +9,7 @@ use nodex_core_contracts::inbox::{
 };
 use nodex_core_contracts::workspace::{
     PROJECT_WORKSPACE_CONTRACT_VERSION, ProjectWorkspaceIntent, ProjectWorkspaceRead,
-    ProjectWorkspaceReadValue, ProjectWorkspaceStarterPage,
+    ProjectWorkspaceReadValue,
 };
 use nodex_core_contracts::{ModuleApplyRequest, StoreEpoch};
 use nodex_core_protocol::ResponseEnvelope;
@@ -84,19 +84,13 @@ fn command_line_sends_land_in_the_inbox_of_their_project() {
                 contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                 operation_id: "inbox-cli:project".to_owned(),
                 store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
-                intent: ProjectWorkspaceIntent::CreateInitialProject {
+                intent: ProjectWorkspaceIntent::CreateProject {
                     project_id: PROJECT.to_owned(),
                     name: "Search".to_owned(),
                     description: String::new(),
                     appearance: None,
                     source_roots: vec![workspace.to_string_lossy().into_owned()],
                     page_key_prefix: None,
-                    starter_page: ProjectWorkspaceStarterPage {
-                        page_id: "019b1000-1000-7000-8000-000000000102".to_owned(),
-                        document_id: "document:inbox-cli".to_owned(),
-                        title_markdown: "Notes".to_owned(),
-                        markdown: String::new(),
-                    },
                 },
             },
         )

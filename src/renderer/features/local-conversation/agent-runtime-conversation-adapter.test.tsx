@@ -246,7 +246,7 @@ describe("Agent Runtime composer readiness", () => {
     );
   };
 
-  it("keeps an unstarted chat quiet while offering Codex sign-in in the model picker", async () => {
+  it("asks an unstarted chat for an Agent while offering Codex sign-in in the model picker", async () => {
     vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([signedOutCodex]);
     const { result, unmount } = mountChat(false);
     await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
@@ -254,7 +254,7 @@ describe("Agent Runtime composer readiness", () => {
       binding: { kind: "codex" },
       model: "",
     });
-    expect(result.current.provider.notice).toBeNull();
+    expect(result.current.provider.notice).toMatchObject({ title: "Connect an agent to start" });
     expect(result.current.provider.modelCatalog?.setups).toEqual([
       expect.objectContaining({ kind: "codex", label: "Codex", hint: "Sign in" }),
     ]);
@@ -2180,9 +2180,10 @@ describe("Host OpenCode setup", () => {
           }),
         );
     });
+    // OpenCode's models start off, so a search is what brings this one back.
     await waitFor(() =>
       expect(
-        result.current.provider.modelCatalog?.entries.map((entry) => entry.model.id),
+        result.current.provider.modelCatalog?.off?.entries.map((entry) => entry.model.id),
       ).toContain("opencode/glm-free"),
     );
     expect(catalog).toHaveBeenLastCalledWith({ refresh: true });

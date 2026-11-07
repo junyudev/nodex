@@ -151,6 +151,11 @@ export const SETTINGS_SEARCH_PANELS = {
             "Nightly gets new builds first. Switching channels never installs an older build.",
             ["Stable", "Nightly", "beta"],
           ),
+          entry("Run setup again", "Connect Agents and add projects.", [
+            "setup",
+            "welcome",
+            "onboarding",
+          ]),
           entry("Open source licenses", "Third-party notices for bundled dependencies.", [
             "open source",
             "licenses",

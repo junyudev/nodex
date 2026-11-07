@@ -282,7 +282,7 @@ test("retains native HTML guests across real Thread navigation and releases dele
   const rendererErrors: string[] = [];
   try {
     expect(await exists(auth)).toBe(false);
-    const workspace = harness.profile.initialProjectsDirectory;
+    const workspace = harness.profile.projectsDirectory;
     for (const label of ["A", "B"] as const) {
       const fixture = await seedNativeVisualizationHistory({
         executable: runtime.executable,

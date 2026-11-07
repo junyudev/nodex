@@ -25,7 +25,7 @@ import { cleanupIsolatedProfile, createIsolatedProfile } from "../profile/isolat
 import { getScenario } from "../registry";
 import { prepareScenarioAgentRuntime } from "../runtime/agent-runtime-fixture";
 import { inspectScenario, materializeScenario } from "../seed/scenario-seed";
-import { materializeDevelopmentSeed } from "./development-seed";
+import { ensureScenarioProject, materializeDevelopmentSeed } from "./development-seed";
 import {
   launchTestElectron,
   type ElectronTestWindowPresentation,
@@ -170,7 +170,7 @@ export interface NodexElectronLaunchInput {
    * arguments: the harness's arguments include positional values (macOS process defaults).
    */
   readonly executablePath?: string;
-  readonly initialProjectsDirectory: string;
+  readonly projectsDirectory: string;
   readonly nodexHome: string;
   readonly runId?: string;
   readonly isolatedHostHome?: string;
@@ -216,7 +216,7 @@ export async function launchNodexElectronApplication(
       // Browsers read native host registrations from the real home, and the last writer owns
       // them, so a scenario must publish under its own Profile even without isolated host paths.
       NODEX_INTERNAL_BROWSER_HOST_HOME: path.join(input.nodexHome, "browser-host-home"),
-      NODEX_INITIAL_PROJECTS_DIR: input.initialProjectsDirectory,
+      NODEX_PROJECTS_DIR: input.projectsDirectory,
       ...(input.isolatedHostHome ? { NODEX_INTERNAL_SCENARIO_HOME: input.isolatedHostHome } : {}),
       ...(input.runId ? { NODEX_INTERNAL_ISOLATED_RUN_ID: input.runId } : {}),
       NODE_ENV: "test",
@@ -326,6 +326,8 @@ export interface ElectronHarnessInput {
   /** Isolate Electron's home/Documents paths before Main captures its host configuration. */
   readonly isolateHostDirectories?: boolean;
   readonly windows?: E2eWindowPresentation;
+  /** Opens on an empty Profile, as a person first starting Nodex does; others get one Project. */
+  readonly emptyProfile?: boolean;
 }
 
 export class ElectronScenarioHarness {
@@ -340,6 +342,8 @@ export class ElectronScenarioHarness {
   #application: ElectronApplication | null = null;
   #page: Page | null = null;
   #closing: Promise<void> | null = null;
+  /** True until the first launch has settled what the Profile starts with. */
+  #needsScenarioProject: boolean;
 
   private constructor(
     profile: IsolatedProfile,
@@ -350,7 +354,9 @@ export class ElectronScenarioHarness {
     executablePath?: string,
     isolateHostDirectories = false,
     windows?: E2eWindowPresentation,
+    emptyProfile = false,
   ) {
+    this.#needsScenarioProject = !emptyProfile;
     this.profile = profile;
     this.#cwd = cwd;
     this.#codexApiKey = codexApiKey;
@@ -395,6 +401,7 @@ export class ElectronScenarioHarness {
         input.executablePath,
         input.isolateHostDirectories,
         input.windows,
+        input.emptyProfile,
       );
     } catch (error) {
       const cleanup = await cleanupIsolatedProfile({
@@ -424,12 +431,20 @@ export class ElectronScenarioHarness {
 
   async launch(options?: { readonly phase?: "application-ready" | "first-window" }): Promise<Page> {
     if (this.#application) throw new Error("Electron scenario is already running");
+    const createdScenarioProject =
+      this.#needsScenarioProject &&
+      (await ensureScenarioProject({
+        environment: this.#environment,
+        nodexHome: this.profile.nodexHome,
+        projectsDirectory: this.profile.projectsDirectory,
+      }));
+    this.#needsScenarioProject = false;
     const application = await launchNodexElectronApplication({
       cwd: this.#cwd,
       codexHome: this.profile.codexHome,
       claudeConfigHome: this.profile.claudeConfigHome,
       nodexHome: this.profile.nodexHome,
-      initialProjectsDirectory: this.profile.initialProjectsDirectory,
+      projectsDirectory: this.profile.projectsDirectory,
       runId: this.profile.runId,
       environment: this.#environment,
       executablePath: this.#executablePath,
@@ -446,6 +461,9 @@ export class ElectronScenarioHarness {
     this.#page = page;
     if (options?.phase === "first-window") return page;
     await this.waitForApplicationReady();
+    // A scenario starts where setup leaves a person: New Chat in their Project.
+    if (createdScenarioProject)
+      await page.getByRole("button", { name: "Start new chat in My Project", exact: true }).click();
     await this.ensureCodexApiKeyLogin(page);
     return page;
   }
@@ -612,7 +630,7 @@ export const withElectronScenario = async <Value>(
     page = await harness.launch();
     const seed = new RendererIpcSeedAdapter(page);
     manifest ??= input.scenarioId
-      ? await materializeScenario(input.scenarioId, seed, harness.profile.initialProjectsDirectory)
+      ? await materializeScenario(input.scenarioId, seed, harness.profile.projectsDirectory)
       : null;
     facts = manifest ? await inspectScenario(manifest, seed) : null;
     value = await run({

@@ -25,19 +25,10 @@ multi-account remote collaboration, or mobile presentation.
 
 ## First run
 
-A fresh Profile creates one ordinary Project named `My Project`; there is no
-separate setup-wizard product mode. Its source is a collision-free directory
-under the user's Documents/Nodex directory. Core creates the Project, primary
-Database, default View, primary Canvas, and one editable `Welcome to Nodex`
-Page as one idempotent bootstrap intent. It creates no Chat.
-The Welcome Page's Prompt send shortcut uses the host platform: `⌘⏎` on macOS
-and `Ctrl+Enter` on Windows and Linux.
-
-The first Window Session opens that Project Scene, retains the default Database
-View as its protected root, and opens the Welcome Page beside it. The starter
-Project and Page are normal user-owned objects: they may be renamed, moved,
-archived, or deleted and are never recreated merely because active Projects
-later become empty.
+A fresh Profile starts empty: no Project, no Page and no folder exist until the person chooses them.
+Its first window opens on setup, which connects an Agent and chooses where to work, then lands on New
+Chat with a first task ready. The complete contract lives in
+[First-Run Behavior](first-run-behavior.md).
 
 A Project with no configured source remains valid as a Nodex data and Chat
 context. Work-locally Chats use a generated workspace; Git worktree and local

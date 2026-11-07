@@ -411,38 +411,32 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
         .to_owned();
     assert!(library_id.starts_with("library-"));
 
-    let create_initial_project = serde_json::json!({
+    let create_project = serde_json::json!({
         "contract_version": PROJECT_WORKSPACE_CONTRACT_VERSION,
-        "operation_id": "lifecycle-initial-project",
+        "operation_id": "lifecycle-project",
         "store_epoch": expected.store_epoch,
         "intent": {
-            "kind": "create_initial_project",
+            "kind": "create_project",
             "project_id": "project:default",
             "name": "Default",
             "description": "",
             "appearance": null,
-            "source_roots": [nodex_platform::fixture_path!("/workspace/default")],
-            "starter_page": {
-                "page_id": "page:getting-started",
-                "document_id": "document:getting-started",
-                "title_markdown": "Welcome to Nodex",
-                "markdown": "Welcome to Nodex."
-            }
+            "source_roots": [nodex_platform::fixture_path!("/workspace/default")]
         }
     })
     .to_string();
-    let initial_project = request_with_headers(
+    let created_project = request_with_headers(
         &expected.endpoint,
         &auth,
         "POST",
         "/core/v1/modules/workspace/apply",
-        &create_initial_project,
+        &create_project,
         &connection_headers,
     );
     assert_eq!(
-        response_json(&initial_project)["status"],
+        response_json(&created_project)["status"],
         "ok",
-        "{initial_project}"
+        "{created_project}"
     );
 
     let apply_body = serde_json::json!({
@@ -611,7 +605,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     assert_eq!(database_apply["payload"]["status"], "committed");
 
     let mut malformed_workspace: serde_json::Value =
-        serde_json::from_str(&create_initial_project).expect("Workspace request");
+        serde_json::from_str(&create_project).expect("Workspace request");
     malformed_workspace["intent"]["source_roots"] =
         serde_json::json!([{ "path": "/workspace/default" }]);
     let malformed_workspace = malformed_workspace.to_string();
@@ -1265,38 +1259,32 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
         ),
         ("x-nodex-connection-binding", binding.as_str()),
     ];
-    let create_initial_project = serde_json::json!({
+    let create_project = serde_json::json!({
         "contract_version": PROJECT_WORKSPACE_CONTRACT_VERSION,
-        "operation_id": "workspace-contract-regression-initial-project",
+        "operation_id": "workspace-contract-regression-project",
         "store_epoch": selected.store_epoch,
         "intent": {
-            "kind": "create_initial_project",
+            "kind": "create_project",
             "project_id": "project:default",
             "name": "Default",
             "description": "",
             "appearance": null,
-            "source_roots": [nodex_platform::fixture_path!("/workspace/default")],
-            "starter_page": {
-                "page_id": "page:getting-started",
-                "document_id": "document:getting-started",
-                "title_markdown": "Welcome to Nodex",
-                "markdown": "Welcome to Nodex."
-            }
+            "source_roots": [nodex_platform::fixture_path!("/workspace/default")]
         }
     })
     .to_string();
-    let initial_project = request_with_headers(
+    let created_project = request_with_headers(
         &selected.endpoint,
         &selected_auth,
         "POST",
         "/core/v1/modules/workspace/apply",
-        &create_initial_project,
+        &create_project,
         &connection_headers,
     );
     assert_eq!(
-        response_json(&initial_project)["status"],
+        response_json(&created_project)["status"],
         "ok",
-        "{initial_project}"
+        "{created_project}"
     );
 
     let apply = serde_json::json!({

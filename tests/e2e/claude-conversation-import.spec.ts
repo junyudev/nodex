@@ -48,7 +48,7 @@ test("imports Claude history as an independent executable copy with a replacemen
     async ({ harness, page }) => {
       const nativeSessionId = createUuidV7();
       const userId = createUuidV7();
-      const replacementCwd = realpathSync(harness.profile.initialProjectsDirectory);
+      const replacementCwd = realpathSync(harness.profile.projectsDirectory);
       const originalCwd = path.join(harness.profile.runRoot, "removed-workspace");
       const nativeHome = path.join(harness.profile.runRoot, "native-claude");
       const projectDirectory = path.join(

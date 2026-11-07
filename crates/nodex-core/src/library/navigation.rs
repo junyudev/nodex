@@ -3727,7 +3727,6 @@ mod tests {
     };
     use nodex_core_contracts::workspace::{
         ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
-        ProjectWorkspaceStarterPage,
     };
     use nodex_core_contracts::{
         AdapterKind, BoundModuleContext, CoreErrorCode, LIBRARY_CONTRACT_VERSION, LibraryId,
@@ -3800,7 +3799,7 @@ mod tests {
         for (operation_id, intent) in [
             (
                 "create-project",
-                ProjectWorkspaceIntent::CreateInitialProject {
+                ProjectWorkspaceIntent::CreateProject {
                     project_id: PROJECT.to_owned(),
                     name: "Research".to_owned(),
                     description: String::new(),
@@ -3809,12 +3808,6 @@ mod tests {
                         nodex_platform::fixture_path!("/workspace/research").to_owned(),
                     ],
                     page_key_prefix: None,
-                    starter_page: ProjectWorkspaceStarterPage {
-                        page_id: "page:starter".to_owned(),
-                        document_id: "document:starter".to_owned(),
-                        title_markdown: "Welcome".to_owned(),
-                        markdown: "Start here.".to_owned(),
-                    },
                 },
             ),
             (

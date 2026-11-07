@@ -21,6 +21,7 @@ import { agentRuntimeSettingsQueryOptions } from "@/lib/agent-runtime-settings";
 import { planAgentApprovalDeclineOnSend } from "./agent-approval";
 import { approvalsRefusedBySend } from "./agent-approval-runtime";
 import { composerDraftIntents, type ComposerChatKey } from "@/lib/composer-draft-intents";
+import { nodexCreditBalance } from "../../../shared/nodex-account";
 import { isNodexProviderId, NODEX_MODELS } from "../../../shared/nodex-models";
 import { useNodexAccount } from "../nodex-account/use-nodex-account";
 import { subscribeNodexAccountChanges } from "../../lib/nodex-account-runtime";
@@ -122,7 +123,14 @@ import {
   setLocalConversationThreadPresented,
   useDefaultCodexAppServerManager,
 } from "./local-conversation-store";
-import { agentReadinessNotice, agentReadinessSetupHint } from "./agent-readiness-notice";
+import { subscribeAgentCatalogRefresh } from "@/lib/agent-catalog-refresh";
+import { useFirstRunEntry, useNotificationOffer } from "@/features/first-run/first-run-state";
+import {
+  agentReadinessNotice,
+  agentReadinessProblem,
+  agentReadinessSetupHint,
+  connectAgentNotice,
+} from "./agent-readiness-notice";
 import { useWindowsSandboxSetup } from "./use-windows-sandbox-setup";
 import { resolveCodexRendererOs } from "@/lib/codex-window-runtime";
 import { toastFailure } from "../../lib/failure-toast";
@@ -926,6 +934,14 @@ export function useAgentRuntimeConversationAdapter(input: {
       }),
     [],
   );
+  useEffect(
+    () =>
+      subscribeAgentCatalogRefresh(() => {
+        setCatalogRequest(({ revision }) => ({ revision: revision + 1, refresh: false }));
+      }),
+    [],
+  );
+  const { connectAgent } = useFirstRunEntry();
   // Signing in to Codex from the composer finishes in the browser; the new account checks the
   // Agents again so the composer can send without a manual refresh.
   const codexAccounts = useDefaultCodexAppServerManager();
@@ -1798,26 +1814,46 @@ export function useAgentRuntimeConversationAdapter(input: {
       },
     ];
   });
-  // Only the Agent this chat runs on, or one the person chose, raises a readiness notice. The
-  // stand-in offered while no Agent is usable stays quiet: the model picker already asks for a
-  // model and the account rail already offers sign-in.
+  // Only the Agent this chat runs on, or one the person chose, raises a readiness notice. A new chat
+  // with nothing it could run asks for an Agent instead. Credits are never chosen automatically, so
+  // an account that could spend them leaves a model to choose rather than an Agent to connect.
+  const nodexBalance = nodexCreditBalance(nodexAccount.snapshot);
+  const creditsCanRun =
+    (nodexBalance === null || Math.trunc(nodexBalance) > 0) &&
+    allEntries.some((entry) => {
+      const entryProvider = policyForEntry(entry);
+      return (
+        entryProvider !== undefined &&
+        spendsNodexCredit(entryProvider) &&
+        !agentReadinessProblem(entryProvider) &&
+        entryIsOn(entry) &&
+        !entry.unavailableReason
+      );
+    });
+  const noUsableAgent =
+    !observed && !selection.model && !catalogState.loading && !catalogState.error && !creditsCanRun;
   const agentNotice =
     acpSetup.notice ??
-    ((observed || selection.model) && !currentModelOff
-      ? agentReadinessNotice(
-          provider ? agentRuntimeProviderLabel(provider, input.instances) : "The Agent",
-          provider,
-          {
-            ...(provider?.instanceId === "codex" ? { signIn: signInToCodex } : {}),
-            ...(openAgentSettings
-              ? { openSettings: () => openSettingsFor(selection.binding) }
-              : {}),
-            checkAgain: checkCatalogAgain,
-          },
-        )
-      : null);
+    (noUsableAgent
+      ? connectAgentNotice(() => void connectAgent())
+      : (observed || selection.model) && !currentModelOff
+        ? agentReadinessNotice(
+            provider ? agentRuntimeProviderLabel(provider, input.instances) : "The Agent",
+            provider,
+            {
+              ...(provider?.instanceId === "codex" ? { signIn: signInToCodex } : {}),
+              ...(openAgentSettings
+                ? { openSettings: () => openSettingsFor(selection.binding) }
+                : {}),
+              checkAgain: checkCatalogAgain,
+            },
+          )
+        : null);
   // One standing condition at a time, the most specific first: this chat's own Run, then its
   // connection, then the Agents it can use.
+  const notificationOffer = useNotificationOffer(
+    (projection?.runs ?? []).some((run) => run.status === "completed"),
+  );
   const composerNotice: ComposerNotice | null = preparationFailure
     ? {
         key: `worktree-preparation:${preparationFailure}`,
@@ -1854,7 +1890,7 @@ export function useAgentRuntimeConversationAdapter(input: {
             detail: catalogState.error,
             actions: [{ label: "Retry", pendingLabel: "Retrying…", run: checkCatalogAgain }],
           }
-        : (agentNotice ?? windowsSandboxNotice);
+        : (agentNotice ?? windowsSandboxNotice ?? notificationOffer);
   const presentation: ConversationProviderPresentation = {
     runtimeMode: resolveAgentRuntimeMode(
       observed?.runtimeMode ?? draftRuntimeMode,

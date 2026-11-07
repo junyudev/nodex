@@ -51,7 +51,7 @@ test("moves a Claude Code chat with its uncommitted files and native history acr
       NODEX_LOG_FILE_LEVEL: "debug",
     },
   });
-  const sourceRoot = realpathSync(harness.profile.initialProjectsDirectory);
+  const sourceRoot = realpathSync(harness.profile.projectsDirectory);
   const managedRoot = path.join(harness.profile.runRoot, "managed worktrees");
   const nativeHome = path.join(harness.profile.runRoot, "native-claude");
   const observationsPath = path.join(nativeHome, "observations.jsonl");

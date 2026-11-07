@@ -75,6 +75,7 @@ export type CommandPaletteShellCommandId =
   | "openInbox"
   | "openLibraryFiles"
   | "openProcessManager"
+  | "runSetupAgain"
   | "settings"
   | "showKeyboardShortcuts";
 
@@ -143,6 +144,7 @@ export function isCommandPaletteShellCommandId(id: string): id is CommandPalette
     id === "openInbox" ||
     id === "openLibraryFiles" ||
     id === "openProcessManager" ||
+    id === "runSetupAgain" ||
     id === "settings" ||
     id === "showKeyboardShortcuts"
   );
@@ -582,6 +584,14 @@ export function buildCommandPaletteCommands(
       {
         shortcut: shortcutLabel("showKeyboardShortcuts", "CmdOrCtrl+Shift+/"),
       },
+    ),
+    command(
+      "runSetupAgain",
+      "Configure",
+      "Run setup again",
+      "Connect Agents and add projects",
+      ["setup", "welcome", "onboarding", "agents", "connect"],
+      705,
     ),
     ...(context.canReloadSkills === true
       ? [

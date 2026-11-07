@@ -15,7 +15,9 @@ import { resolveNodexProjectsDirectory } from "./nodex-projects-directory";
 
 const PROJECT = { id: "project-created" } as Project;
 const DOCUMENTS_DIRECTORY = resolve("/Users/test/Documents");
-const PROJECTS_DIRECTORY = resolveNodexProjectsDirectory(DOCUMENTS_DIRECTORY);
+const PROJECTS_DIRECTORY = resolveNodexProjectsDirectory({
+  documentsDirectory: DOCUMENTS_DIRECTORY,
+});
 
 describe("default Project sources", () => {
   test("sanitizes the generated folder name using the desktop filesystem contract", () => {
@@ -133,7 +135,7 @@ describe("default Project sources", () => {
         Effect.gen(function* () {
           const createProject = vi.fn(() => Effect.succeed(PROJECT));
 
-          const projectsDirectory = resolveNodexProjectsDirectory(documentsDirectory);
+          const projectsDirectory = resolveNodexProjectsDirectory({ documentsDirectory });
           yield* createProjectWithDefaultSource(
             { name: "", sources: [] },
             { projectsDirectory, createProject },

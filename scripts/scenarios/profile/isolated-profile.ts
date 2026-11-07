@@ -33,7 +33,7 @@ export interface IsolatedProfile {
   readonly codexHome: string;
   /** Claude Code's configuration and native history, so no scenario sees the developer's account. */
   readonly claudeConfigHome: string;
-  readonly initialProjectsDirectory: string;
+  readonly projectsDirectory: string;
   readonly artifactsDirectory: string;
   readonly manifestPath: string;
   readonly repositoryRealpath: string;
@@ -157,7 +157,7 @@ const descriptorFrom = (
   settingsPath: path.join(runRoot, ".nodex/config.toml"),
   codexHome: path.join(runRoot, ".nodex/agent"),
   claudeConfigHome: path.join(runRoot, ".claude"),
-  initialProjectsDirectory: path.join(runRoot, "workspace"),
+  projectsDirectory: path.join(runRoot, "workspace"),
   artifactsDirectory: path.join(runRoot, "artifacts"),
   manifestPath: path.join(runRoot, ISOLATED_PROFILE_MANIFEST_FILE),
   repositoryRealpath: manifest.repositoryRealpath,
@@ -185,7 +185,7 @@ export const createIsolatedProfile = async (
       mkdir(profile.nodexHome, { recursive: true, mode: 0o700 }),
       mkdir(profile.codexHome, { recursive: true, mode: 0o700 }),
       mkdir(profile.claudeConfigHome, { recursive: true, mode: 0o700 }),
-      mkdir(profile.initialProjectsDirectory, { recursive: true, mode: 0o700 }),
+      mkdir(profile.projectsDirectory, { recursive: true, mode: 0o700 }),
       mkdir(profile.artifactsDirectory, { recursive: true, mode: 0o700 }),
     ]);
     await writeFile(profile.settingsPath, SCENARIO_PROFILE_SETTINGS, { mode: 0o600 });

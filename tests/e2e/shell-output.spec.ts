@@ -124,10 +124,7 @@ test("real Shell output survives delayed batching and preserves repeated lines a
         { mode: 0o600 },
       );
       try {
-        const outputGate = path.join(
-          harness.profile.initialProjectsDirectory,
-          "release-shell-output",
-        );
+        const outputGate = path.join(harness.profile.projectsDirectory, "release-shell-output");
         // Hold the repeated output until its command is issued, so it streams into a live chat.
         repeatCommand = `while [ ! -f '${outputGate}' ]; do sleep 0.02; done; ${repeatCommand}`;
         const page = await harness.launch();
@@ -135,11 +132,11 @@ test("real Shell output survives delayed batching and preserves repeated lines a
         const project = await createConvergenceProject(
           page,
           "Shell fixture",
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
         );
         const draft = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Shell output",
         );
         const fixture = await createConvergencePage(

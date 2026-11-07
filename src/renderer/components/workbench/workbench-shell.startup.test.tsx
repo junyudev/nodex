@@ -1,5 +1,5 @@
 import "./workbench-testkit/workbench-shell-harness";
-import { act, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { createApplicationReadiness } from "@/bootstrap/application-surface";
 import { settleAsyncRender } from "@/test/dom";
@@ -13,9 +13,41 @@ import {
   makeProject,
   type ProjectSession,
 } from "./workbench-testkit/workbench-shell-fixtures";
-import { renderWorkbench } from "./workbench-testkit/workbench-shell-harness";
+import {
+  invokeCalls,
+  mockInvokeImpl,
+  renderWorkbench,
+  setMockInvokeImpl,
+  setMockLibraryStatus,
+} from "./workbench-testkit/workbench-shell-harness";
 
 describe("Workbench startup readiness", () => {
+  test("holds the analytics notice back until a person can see it past setup", async () => {
+    const notice = "Nodex shares anonymous usage and crash data";
+    const presented = () =>
+      invokeCalls.some(([channel]) => channel === "product-analytics:notice:presented");
+    setMockLibraryStatus("empty");
+    const view = renderWorkbench({ sessionsByProject: {} });
+    const base = mockInvokeImpl;
+    setMockInvokeImpl(async (channel, ...args) =>
+      channel === "product-analytics:notice:read"
+        ? { present: true }
+        : ((await base?.(channel, ...args)) ?? null),
+    );
+
+    const skip = await view.findByRole("button", { name: "Skip" });
+    await settleAsyncRender();
+    expect(view.queryByText(notice)).toBeNull();
+    expect(presented()).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(skip);
+      await Promise.resolve();
+    });
+    expect(await view.findByText(notice)).toBeTruthy();
+    await waitFor(() => expect(presented()).toBe(true));
+  });
+
   test("waits for the restored Project Inbox's messages before reporting ready", async () => {
     let resolveInbox = (): void => undefined;
     const initialInboxDataReady = new Promise<void>((resolve) => {

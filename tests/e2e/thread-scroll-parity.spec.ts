@@ -141,7 +141,7 @@ test("small upward wheels retain the reading position through tool resize, compl
     await page.setViewportSize({ width: 1100, height: 800 });
     const draft = await createAgentSmokeDraft(
       page,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Conversation scrolling",
     );
     const threadId = await sendAgentPrompt(
@@ -164,7 +164,7 @@ test("small upward wheels retain the reading position through tool resize, compl
           type: "commandExecution",
           id: `scroll-command-${index}`,
           command,
-          cwd: harness.profile.initialProjectsDirectory,
+          cwd: harness.profile.projectsDirectory,
           pluginId: null,
           scriptPath: null,
           processId: null,
@@ -291,7 +291,7 @@ test("answered questions remain before their replies and later Markdown after Sc
     await page.setViewportSize({ width: 1280, height: 800 });
     const draft = await createAgentSmokeDraft(
       page,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Question history",
     );
     const threadId = await sendAgentPrompt(page, draft.projectSessionId, controlledPrompt);

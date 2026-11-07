@@ -1,9 +1,10 @@
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import {
   initializeStandaloneDataAuthority,
   type RustDataAuthorityRuntime,
 } from "../../../src/main/core-client";
-import { CoreClientSeedAdapter } from "../adapters/core-client-seed-adapter";
+import { CoreClientSeedAdapter, profileHasWork } from "../adapters/core-client-seed-adapter";
 import type { ScenarioManifest } from "../contracts";
 import { waitForCoreRuntimeRemoval } from "../profile/isolated-profile";
 import { materializeScenario } from "../seed/scenario-seed";
@@ -69,4 +70,34 @@ export const materializeDevelopmentSeed = async (input: {
     });
   }
   return manifest;
+};
+
+/**
+ * Gives a scenario Profile the ordinary Project most tests work in. A Profile that already has
+ * work keeps it unchanged, so core-seeded scenarios and restarts add nothing.
+ */
+export const ensureScenarioProject = async (input: {
+  readonly environment?: NodeJS.ProcessEnv;
+  readonly nodexHome: string;
+  readonly projectsDirectory: string;
+}): Promise<boolean> => {
+  const runtime = await initializeStandaloneDataAuthority({
+    buildId: "scenario:project",
+    environment: input.environment,
+    isPackaged: false,
+    nodexHome: input.nodexHome,
+  });
+  try {
+    if (await profileHasWork(runtime)) return false;
+    const source = path.join(input.projectsDirectory, "My Project");
+    await mkdir(source, { recursive: true });
+    await new CoreClientSeedAdapter(runtime).createProject({
+      name: "My Project",
+      sources: [source],
+    });
+    return true;
+  } finally {
+    await runtime.rootClient.shutdown();
+    await waitForCoreRuntimeRemoval(input.nodexHome);
+  }
 };

@@ -12,7 +12,7 @@ test("native window close releases its prepared visualization guest without rend
     const page = await harness.launch();
     const draft = await createAgentSmokeDraft(
       page,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Window close",
     );
     const rendererErrors: string[] = [];

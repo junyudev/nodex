@@ -602,17 +602,11 @@ test("reads a long Session exactly through native MCP without losing typed activ
           `model_provider = "openai"\nopenai_base_url = ${JSON.stringify(`${model.baseUrl}/v1`)}\nrequest_max_retries = 0\nstream_max_retries = 0\n[features]\nrespect_system_proxy = false\ncode_mode = true\ncode_mode_only = true\n`,
           { mode: 0o600 },
         );
-        const workspace = path.join(harness.profile.initialProjectsDirectory, "session-reading");
-        const controlWorkspace = path.join(
-          harness.profile.initialProjectsDirectory,
-          "recency-control",
-        );
-        const reviewerWorkspace = path.join(
-          harness.profile.initialProjectsDirectory,
-          "history-review",
-        );
+        const workspace = path.join(harness.profile.projectsDirectory, "session-reading");
+        const controlWorkspace = path.join(harness.profile.projectsDirectory, "recency-control");
+        const reviewerWorkspace = path.join(harness.profile.projectsDirectory, "history-review");
         const attachmentWorkspace = path.join(
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "attachment-intake",
         );
         for (const directory of [

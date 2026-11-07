@@ -12,7 +12,9 @@ import { openWorkbenchSceneFile } from "@/lib/workbench-scene-file-opener";
 import { prepareWorkbenchSceneSurfaceClose } from "@/lib/workbench-scene-command-lifecycle";
 import type { FileReferenceRouterPort } from "@/lib/file-reference-router";
 import { useRegisterFileLocationNavigator } from "@/lib/file-location-navigation";
-import { useApplicationReady } from "@/bootstrap/application-surface";
+import { useApplicationPending, useApplicationReady } from "@/bootstrap/application-surface";
+import { FirstRunOverlay } from "@/features/first-run/first-run-overlay";
+import { useFirstRunPresentation } from "@/features/first-run/first-run-state";
 import { subscribeDictationRecordingNavigation } from "@/lib/global-dictation-commands";
 import {
   useCallback,
@@ -1070,6 +1072,8 @@ export function WorkbenchRuntime({
   const [commandContentSearchOpenRequest, setCommandContentSearchOpenRequest] =
     useState<ContentSearchOpenRequest | null>(null);
   const workbenchRootRef = useRef<HTMLDivElement | null>(null);
+  const firstRun = useFirstRunPresentation();
+  useApplicationPending(firstRun.undecided);
   const pinningPreviewTabIdsRef = useRef<Set<string>>(new Set());
   const focusedPanelGroupRef = workbenchWindow.owner.focusedPanelGroupRef;
   const panelTabShortcutStateRef = useRef<WorkbenchPanelTabShortcutState | null>(null);
@@ -3703,10 +3707,12 @@ export function WorkbenchRuntime({
     openDesktopNotification,
   }))();
 
+  // While setup holds the window, shortcuts and menu commands have nothing to act on.
+  const commandsAvailable = !firstRun.workbenchInert;
   useEffect(() => {
-    if (!onRegisterCommandPort) return undefined;
+    if (!onRegisterCommandPort || !commandsAvailable) return undefined;
     return onRegisterCommandPort(commandPort);
-  }, [commandPort, onRegisterCommandPort]);
+  }, [commandPort, commandsAvailable, onRegisterCommandPort]);
 
   const executePendingWorkbenchCommands = useEffectEvent(() => {
     const pending = pendingWorkbenchCommandInvocationsRef.current.splice(0);
@@ -5540,6 +5546,7 @@ export function WorkbenchRuntime({
               />
               <motion.div
                 ref={workbenchRootRef}
+                inert={firstRun.workbenchInert}
                 data-page-create-project-focus-root={
                   activeProject?.id ?? activeProjectId ?? undefined
                 }
@@ -5548,7 +5555,7 @@ export function WorkbenchRuntime({
                 data-app-shell-application-menu-bar={applicationMenuBarEnabled ? "true" : undefined}
                 data-app-shell-frame
                 data-app-shell-page-surface="true"
-                className="relative flex flex-col text-token-text-primary browser:bg-token-side-bar-background"
+                className="relative isolate flex flex-col text-token-text-primary browser:bg-token-side-bar-background"
                 style={
                   {
                     "--app-shell-application-menu-height": `${applicationMenuBarEnabled ? WORKBENCH_APPLICATION_MENU_HEIGHT_PX : 0}px`,
@@ -5830,6 +5837,14 @@ export function WorkbenchRuntime({
                   </WorkbenchWorkspaceFrame>
                 </WorkbenchTitlebarProvider>
               </motion.div>
+              <FirstRunOverlay
+                presentation={firstRun}
+                projects={projects}
+                insets={{ left: safeHeaderLeftWidth, right: safeHeaderRightWidth }}
+                onCreateProject={onCreateProject}
+                onStartNewChatWithPrompt={startNewChatWithPrompt}
+                onStartNewChat={startNewChatInProject}
+              />
             </ContentSearchProvider>
           </FileReferenceRouterProvider>
         </NodexTooltipProvider>
@@ -5842,7 +5857,12 @@ export function WorkbenchRuntime({
       <ScheduledNavigationProvider value={scheduledNavigation}>
         <WorkbenchNewTabPortProvider port={newTabPort}>
           <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
-          <ProductAnalyticsNotice onManage={() => openSettingsAt("general-settings", "privacy")} />
+          {/* Its grace period counts from when it can be seen, which setup would prevent. */}
+          {firstRun.undecided || firstRun.workbenchInert ? null : (
+            <ProductAnalyticsNotice
+              onManage={() => openSettingsAt("general-settings", "privacy")}
+            />
+          )}
         </WorkbenchNewTabPortProvider>
       </ScheduledNavigationProvider>
     </AgentSettingsNavigationProvider>

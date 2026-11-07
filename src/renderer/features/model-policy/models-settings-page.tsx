@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { agentBackendKindOfRuntimeDriver } from "../../../shared/agent-backend";
 import {
   isModelOn,
+  isFreeModel,
   isModelSwitchOn,
   isProviderOn,
   policyProviderKey,
@@ -322,9 +323,7 @@ function ProviderCard({
       <div className="flex flex-col pb-1.5">
         <ListHeader count={`${count} of ${provider.models.length} on`}>
           {FREE_MODEL_DRIVERS.includes(provider.driver) ? (
-            <ListAction onClick={() => setAll((slug) => slug.endsWith("-free"))}>
-              Free only
-            </ListAction>
+            <ListAction onClick={() => setAll(isFreeModel)}>Free only</ListAction>
           ) : null}
           <ListAction onClick={() => setAll(() => true)}>All on</ListAction>
           <ListAction onClick={() => setAll(() => false)}>All off</ListAction>

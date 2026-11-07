@@ -70,7 +70,7 @@ test("authors, previews and persists HTML adjustments and sends them as app data
     const initial = await harness.launch();
     const draft = await createAgentSmokeDraft(
       initial,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "HTML adjustments",
     );
     const threadId = await sendAgentPrompt(

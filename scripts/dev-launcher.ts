@@ -357,7 +357,7 @@ export const createDevLaunchPlan = (input: {
           NODEX_DEV_AGENT_RUNTIME_PROJECT_ROOT: undefined,
           NODEX_DEV_AGENT_RUNTIME_NODE_EXECUTABLE: undefined,
         }),
-    NODEX_INITIAL_PROJECTS_DIR: input.home.workspace,
+    NODEX_PROJECTS_DIR: input.home.workspace,
     NODEX_REMOTE_DEBUGGING_PORT: remoteDebuggingPort,
     NODEX_SENTRY_ENABLED: usesProfileSnapshot ? "false" : "true",
     ...(usesProfileSnapshot

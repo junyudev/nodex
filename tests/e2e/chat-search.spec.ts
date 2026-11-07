@@ -33,8 +33,8 @@ test("finds old chats across the complete catalog with CJK substrings and typos,
       },
     },
     async ({ page, profile, seed }) => {
-      const firstDirectory = path.join(profile.initialProjectsDirectory, "infrastructure");
-      const secondDirectory = path.join(profile.initialProjectsDirectory, "deployments");
+      const firstDirectory = path.join(profile.projectsDirectory, "infrastructure");
+      const secondDirectory = path.join(profile.projectsDirectory, "deployments");
       await mkdir(firstDirectory);
       await mkdir(secondDirectory);
       const firstProject = await seed.createProject({

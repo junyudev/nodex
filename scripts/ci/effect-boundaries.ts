@@ -77,7 +77,6 @@ const effectApplicationRoots = [
   "src/main/database-application/",
   "src/main/git-application/",
   "src/main/host-runtime/",
-  "src/main/initial-project/",
   "src/main/ipc/handlers/",
   "src/main/library-application/",
   "src/main/mobile-gateway/",

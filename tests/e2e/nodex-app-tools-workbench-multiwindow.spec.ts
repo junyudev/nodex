@@ -308,7 +308,7 @@ test("native Workbench observations keep two windows independent and preserve th
         await setAgentExecutionProfile(first, { preferredModelId: "gpt-5.6-sol" });
         const draft = await createAgentSmokeDraft(
           first,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Two windows",
         );
         sessionId = draft.projectSessionId;

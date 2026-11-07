@@ -1132,6 +1132,10 @@ export interface IpcApi
     args: [input: import("./inbox").InboxUndoInput];
     result: CoreLocalCommitResult<void>;
   };
+  "projects:bootstrap": {
+    args: [];
+    result: { readonly status: "empty" | "ready" };
+  };
   "projects:create": {
     args: [command: ProjectCreateCommandInput];
     result: CoreLocalCommitResult<Project>;
@@ -2504,6 +2508,10 @@ export interface IpcApi
   "native-sessions:list": {
     args: [input: NativeSessionCatalogInput];
     result: NativeSessionCatalogPage;
+  };
+  "native-sessions:discover-projects": {
+    args: [];
+    result: import("./project-discovery").ProjectDiscoveryResult;
   };
   "native-sessions:preview-import": {
     args: [input: NativeConversationImportPreviewInput];

@@ -8,7 +8,6 @@ import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import { nativeTheme, screen, type BrowserWindow, type WebContents } from "electron";
 import { randomUUID } from "node:crypto";
-import type { InitialProjectPresentation } from "../../shared/initial-project-welcome";
 import type {
   WindowRestorePolicy,
   WindowSessionBounds,
@@ -218,9 +217,6 @@ export interface WindowRuntimeService {
     webContentsId: number,
     input: WindowSessionSaveLayoutInput,
     bounds?: WindowSessionBounds,
-  ) => WindowSessionRecord;
-  readonly seedInitialProjectPresentation: (
-    presentation: InitialProjectPresentation,
   ) => WindowSessionRecord;
   readonly selectStartupSessions: (policy: WindowRestorePolicy) => readonly WindowSessionRecord[];
   readonly snapshot: () => WindowRuntimeSnapshot;
@@ -658,8 +654,6 @@ export const fromState = (
               });
               return session;
             },
-            seedInitialProjectPresentation: (presentation) =>
-              sessions.seedInitialProjectPresentation(presentation),
             selectStartupSessions: (policy) => sessions.selectStartupSessions(policy),
             snapshot,
             updateBounds: (webContentsId, bounds) => sessions.updateBounds(webContentsId, bounds),

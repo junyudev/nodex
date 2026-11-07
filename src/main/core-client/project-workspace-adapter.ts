@@ -7,7 +7,6 @@ import type {
   PageChatActivitySummary,
   SessionLinkedPageSummary,
   PageChatItem,
-  ProjectCreateInput,
   ProjectSession,
   ProjectSessionSummary,
   ProjectSessionThreadSummary,
@@ -457,23 +456,6 @@ export interface DesktopAppServerSweepReconcileResult {
 
 export interface DesktopProjectBootstrap {
   readonly status: "empty" | "ready";
-}
-
-export interface DesktopInitialProjectStarterPage {
-  readonly pageId: string;
-  readonly documentId: string;
-  readonly titleMarkdown: string;
-  readonly markdown: string;
-}
-
-export interface DesktopInitialProjectCreateInput extends ProjectCreateInput {
-  readonly operationId: string;
-  readonly projectId: string;
-  readonly starterPage: DesktopInitialProjectStarterPage;
-}
-
-export interface DesktopInitialProjectCreateResult {
-  readonly project: Project;
 }
 
 export const projectWorkspaceProjectFromCore = (project: CoreProject): Project => ({

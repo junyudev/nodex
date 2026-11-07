@@ -59,8 +59,8 @@ test("reads message media through its native source and preserves it when stream
       queuedSubmissions: [],
     }),
   );
-  const imagePath = path.join(harness.profile.initialProjectsDirectory, "message-image.png");
-  const audioPath = path.join(harness.profile.initialProjectsDirectory, "message-audio.wav");
+  const imagePath = path.join(harness.profile.projectsDirectory, "message-image.png");
+  const audioPath = path.join(harness.profile.projectsDirectory, "message-audio.wav");
   await writeFile(
     imagePath,
     Buffer.from(
@@ -77,7 +77,7 @@ test("reads message media through its native source and preserves it when stream
     page.on("pageerror", (error) => errors.push(error.message));
     const draft = await createAgentSmokeDraft(
       page,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Message media",
     );
     // The reply streams into the Turn this prompt starts.

@@ -277,7 +277,7 @@ outputs still come from the task's worktree. Each environment has this layout:
 ├── dev-home.json
 ├── .nodex/                 # NODEX_HOME
 │   └── agent/              # CODEX_HOME
-├── workspace/              # NODEX_INITIAL_PROJECTS_DIR
+├── workspace/              # NODEX_PROJECTS_DIR
 └── artifacts/
 ```
 
@@ -430,6 +430,11 @@ the exact Core generation stops, the lease is released, and runtime evidence is
 absent. Unsafe cleanup preserves the environment and exits nonzero.
 
 ### Seeded development environments
+
+A new home without `--seed` starts empty and opens on [setup](product-specs/first-run-behavior.md),
+which is how to review it. Electron scenarios start on New Chat in one ordinary Project unless they pass
+`emptyProfile: true`, and their fake Codex is signed in unless they set
+`NODEX_FAKE_CODEX_SIGNED_OUT=1`.
 
 Authoritative scenario recipes create current-schema product data through public
 Core operations. `--seed <id>` applies a recipe only while initializing a new

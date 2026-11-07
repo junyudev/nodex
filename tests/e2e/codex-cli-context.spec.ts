@@ -31,7 +31,7 @@ test("the real Desktop binds plain nodex to its connected Profile and task Proje
     const manifest = await materializeScenario(
       "agent/cli-workflow",
       seed,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
     );
     await page
       .getByRole("button", { name: "Start new chat in Agent CLI Lab", exact: true })

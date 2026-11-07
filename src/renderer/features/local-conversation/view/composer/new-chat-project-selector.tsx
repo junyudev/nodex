@@ -47,7 +47,7 @@ export function NewChatProjectSelector({
   );
   const selectorDisabled = disabled || model.disabled || !actions.onNewThreadProjectChange;
   const triggerLabel = selectedOption?.label ?? "Choose project";
-  const headingTriggerLabel = `${selectedOption?.label ?? "Work in a project"}?`;
+  const headingTriggerLabel = `${triggerLabel}?`;
   const handleMenuOpenChange = (open: boolean) => {
     setMenuOpen(open);
     if (!open) setSearch("");

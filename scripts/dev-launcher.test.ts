@@ -173,7 +173,7 @@ describe("dev launcher", () => {
     expect(plan.environment).toMatchObject({
       NODEX_HOME: HOME.nodexHome,
       CODEX_HOME: HOME.codexHome,
-      NODEX_INITIAL_PROJECTS_DIR: HOME.workspace,
+      NODEX_PROJECTS_DIR: HOME.workspace,
       NODEX_DEV_ENABLED_FEATURES: "runtime-metrics",
     });
     if (process.platform === "win32") return;

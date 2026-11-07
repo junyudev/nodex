@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- A new Profile now opens on a short setup instead of a sample Project. It shows which Agents Nodex found, lets you sign in or install the ones you want, or add Nodex credits if you'd rather pay as you go, offers the projects you've already used with Codex and Claude Code, and lands on New Chat with a first task ready to send. Nothing is created until you choose it, and `Run setup again` in Settings replays it.
 - Insights shows what your agents did across this device, and turns it into a card you can share. Open it from the rail to see tokens, models, cost at API list price, messages, how many agents ran at once, tasks finished and Pages written, including Claude Code and Codex history from before you installed Nodex. Reading that history takes one click to allow and keeps only counts on your device. Share makes a Skyline or Receipt image to copy, save or post, with no project names or prompts on it.
 - Archiving a chat now lets you take it back. A toast appears right away: Undo restores the chat and returns you to it, and View opens your archived chats.
 - Settings now shows exactly what usage analytics send. Open See what is sent in Settings → General → Privacy to read your random ID and every event waiting or sent since launch. Prompts, code, titles and file paths have no field to travel in.
@@ -22,6 +23,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- OpenCode models now start off, free ones included, so a new chat never lands on a third party's model unless you chose it. Turn them on during setup or in Settings → Models.
 - Notifications stack at the top of the window. Up to three show at once and fan out when you hover them, hovering pauses their timers, and you can swipe one away.
 - Usage analytics and crash reports are now on by default, and first launch says so. Nothing is sent until you have had a minute to turn it off in Settings → General → Privacy, and turning usage analytics off takes effect at once and discards anything unsent. `DO_NOT_TRACK` is respected. Session replays stay off unless you enable them, and the separate web analytics setting is gone because Nodex no longer collects web analytics in the app.
 - Reviewing unsaved edits now shows exactly what they would add to the Page. Word-level changes appear in place, unchanged content folds away, and one sentence says what restoring does or that nothing was lost, so you no longer compare two full copies by eye. Edits that can't be merged can still be copied back with one click, and discarding applies immediately with Undo.

@@ -140,7 +140,7 @@ it.effect(
                   environment: {},
                   environmentPath: null,
                   homeDirectory: "/tmp",
-                  initialProjectsDirectory: null,
+                  projectsDirectory: null,
                   isolatedRunId: null,
                   isDefaultApp: false,
                   isPackaged: false,

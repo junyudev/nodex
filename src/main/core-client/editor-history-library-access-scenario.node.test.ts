@@ -12,7 +12,7 @@ test("structural history remains usable across Project presentations in one Libr
   await withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (ctx) => {
     const other = await ctx.seed.createProject({
       name: "Independent history authority",
-      sources: [ctx.profile.initialProjectsDirectory],
+      sources: [ctx.profile.projectsDirectory],
     });
     const pageId = createUuidV7();
     const childId = createUuidV7();

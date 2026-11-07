@@ -23,11 +23,7 @@ test("the Page editor pastes plain text as line Blocks and Markdown as structure
   await withElectronScenario(
     { label: "markdown-paste-page", scenarioId: null, prepareAgentRuntime: false },
     async ({ application, page, profile }) => {
-      const project = await createConvergenceProject(
-        page,
-        "Page paste",
-        profile.initialProjectsDirectory,
-      );
+      const project = await createConvergenceProject(page, "Page paste", profile.projectsDirectory);
       const fixture = await createConvergenceBoardPage(page, project, "Paste into Page", "");
       await page.getByRole("button", { name: "Open Page paste", exact: true }).click();
       await openProjectBoard(page);

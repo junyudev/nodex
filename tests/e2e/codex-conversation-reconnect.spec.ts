@@ -63,7 +63,7 @@ test("two windows keep an Agent chat going after its Codex process exits", async
     const first = await harness.launch();
     const draft = await createAgentSmokeDraft(
       first,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Reconnect history",
     );
     const threadId = await sendAgentPrompt(first, draft.projectSessionId, firstPrompt);

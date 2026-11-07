@@ -161,7 +161,7 @@ test("native Database View tools distinguish displayed rows from the effective s
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.6-sol" });
         const draft = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Database View content",
         );
         callerSessionId = draft.projectSessionId;

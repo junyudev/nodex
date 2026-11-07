@@ -167,7 +167,7 @@ respect_system_proxy = false
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
         const draft = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Composer predictions",
         );
         const initialSwitch = await openComposerSettings(page);

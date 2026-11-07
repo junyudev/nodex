@@ -98,6 +98,14 @@ export function agentReadinessNotice(
   }
 }
 
+/** A new chat with no usable Agent at all: connecting one is the only way forward. */
+export const connectAgentNotice = (connect: () => void): ComposerNotice => ({
+  key: "agent:none",
+  tone: "warning",
+  title: "Connect an agent to start",
+  actions: [{ label: "Connect", run: connect }],
+});
+
 /**
  * The model picker's setup row for an Agent the person turned on but cannot use yet: the quiet
  * place that explains why its models are missing. A turned-off Agent gets none.

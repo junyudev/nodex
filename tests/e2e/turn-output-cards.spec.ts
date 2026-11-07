@@ -152,7 +152,7 @@ test("a turn's deliverable appears as a card and in the summary, while its sourc
         `model_provider = "openai"\nopenai_base_url = ${JSON.stringify(`${modelServer.baseUrl}/v1`)}\nrequest_max_retries = 0\nstream_max_retries = 0\n[features]\nrespect_system_proxy = false\n`,
         { mode: 0o600 },
       );
-      const workspace = path.join(harness.profile.initialProjectsDirectory, "lumen-web");
+      const workspace = path.join(harness.profile.projectsDirectory, "lumen-web");
       createWorkspace(workspace);
       try {
         const page = await harness.launch();

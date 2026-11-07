@@ -74,7 +74,7 @@ it.effect("scope-owns Chrome settings IPC and rejects an untrusted sender before
                 environment: {},
                 environmentPath: null,
                 homeDirectory: "/tmp",
-                initialProjectsDirectory: null,
+                projectsDirectory: null,
                 isolatedRunId: null,
                 isDefaultApp: false,
                 isPackaged: false,

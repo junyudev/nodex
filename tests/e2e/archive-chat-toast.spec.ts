@@ -72,7 +72,7 @@ test("a chat archived from the sidebar comes back through Undo and Data controls
         `model_provider = "openai"\nopenai_base_url = ${JSON.stringify(`${modelServer.baseUrl}/v1`)}\nrequest_max_retries = 0\nstream_max_retries = 0\n[features]\nrespect_system_proxy = false\n`,
         { mode: 0o600 },
       );
-      const workspace = path.join(harness.profile.initialProjectsDirectory, "archive-toast");
+      const workspace = path.join(harness.profile.projectsDirectory, "archive-toast");
       fs.mkdirSync(workspace, { recursive: true });
       try {
         const page = await harness.launch();

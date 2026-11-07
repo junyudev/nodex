@@ -64,7 +64,7 @@ test("a collapsed Turn's denied-action count opens and centers its first refusal
     type: "commandExecution",
     id,
     command: text,
-    cwd: harness.profile.initialProjectsDirectory,
+    cwd: harness.profile.projectsDirectory,
     pluginId: null,
     scriptPath: null,
     processId: null,
@@ -101,7 +101,7 @@ test("a collapsed Turn's denied-action count opens and centers its first refusal
     await page.setViewportSize({ width: 1100, height: 800 });
     const draft = await createAgentSmokeDraft(
       page,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Denied action review",
     );
     await sendAgentPrompt(page, draft.projectSessionId, prompt);
@@ -113,14 +113,14 @@ test("a collapsed Turn's denied-action count opens and centers its first refusal
       reviewId: "first-denial",
       targetItemId: declined.id,
       command: declined.command,
-      cwd: harness.profile.initialProjectsDirectory,
+      cwd: harness.profile.projectsDirectory,
     });
     await appendWork(12, 12);
     await command({
       type: "denied",
       reviewId: "second-denial",
       command: "touch protected-second.txt",
-      cwd: harness.profile.initialProjectsDirectory,
+      cwd: harness.profile.projectsDirectory,
     });
     await command({ type: "start" });
     await command({ type: "delta", delta: `${paragraphs("Completed review", 12)}\n\n` });

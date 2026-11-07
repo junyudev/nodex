@@ -23,9 +23,6 @@ import {
 import { live as projectArchiveBlockersLive } from "../project-application/ProjectArchiveBlockers";
 import { live as projectLifecycleCommandsLive } from "../project-application/ProjectLifecycleCommands";
 import { live as projectSessionCommandsLive } from "../project-application/ProjectSessionCommands";
-import { live as initialProjectBootstrapLive } from "../initial-project/InitialProjectBootstrapRuntime";
-import { resolveInitialProjectProjectsDirectory } from "../initial-project/initial-project-filesystem";
-import { resolveInitialProjectJournalPath } from "../initial-project/initial-project-journal-store";
 import { live as coreApplicationProjectionLive } from "../core-runtime/CoreApplicationProjectionRuntime";
 import { live as projectionDeliveryLive } from "../core-runtime/ProjectionDeliveryRuntime";
 import { live as coreEventHubLive } from "../core-runtime/CoreEventHub";
@@ -80,21 +77,8 @@ const managedWorktreeCatalog = Layer.unwrap(
     );
   }),
 ).pipe(Layer.provideMerge(projectSessions));
-const initialProjectBootstrap = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* MainConfig;
-    return initialProjectBootstrapLive({
-      platform: config.platform,
-      projectsDirectory: resolveInitialProjectProjectsDirectory({
-        configuredDirectory: config.initialProjectsDirectory ?? undefined,
-        documentsDirectory: config.documentsPath,
-      }),
-      journalPath: resolveInitialProjectJournalPath(config.nodexHome),
-    });
-  }),
-).pipe(Layer.provideMerge(managedWorktreeCatalog));
 const coreApplicationProjection = coreApplicationProjectionLive.pipe(
-  Layer.provideMerge(initialProjectBootstrap),
+  Layer.provideMerge(managedWorktreeCatalog),
 );
 const projectionDelivery = projectionDeliveryLive.pipe(
   Layer.provideMerge(coreApplicationProjection),

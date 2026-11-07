@@ -2405,6 +2405,12 @@ function HydratedThreadComposer({
   ): Promise<boolean> => {
     if (isDraftCaptureLocked()) return false;
     if (hasPendingPastedTextAttachments) return false;
+    // Nothing is chosen to send this to yet, so choosing is the next step and the message stays.
+    const catalog = model.provider?.modelCatalog;
+    if (catalog && !catalog.loading && !catalog.selected.model) {
+      intelligenceController.open();
+      return false;
+    }
     const executionHostId = model.hostId;
     const intentImageAttachments = input.imageEditIntent
       ? buildComposerImageEditAttachments({

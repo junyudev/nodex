@@ -3,6 +3,7 @@ import { TerminalShellSettingRow } from "./terminal-shell-setting-row";
 import { UsageMeterSettingRows } from "./usage-meter-setting-rows";
 import { startTransition } from "react";
 import { NodexButton } from "@/components/ui/button";
+import { useFirstRunEntry } from "@/features/first-run/first-run-state";
 import { CodexRequestDiagnostics } from "@/features/local-conversation/codex-request-diagnostics";
 import { AppUpdateSettingRows } from "./app-update-settings-control";
 import { WindowsStartupSettingsRow } from "./windows-startup-settings-row";
@@ -41,6 +42,7 @@ export function GeneralSettingsPage({
   open,
   threadQueueFollowUpsEnabled,
 }: SettingsSectionPageProps) {
+  const { runSetupAgain } = useFirstRunEntry();
   return (
     <SettingsPageSurface
       title="General"
@@ -56,6 +58,11 @@ export function GeneralSettingsPage({
         <TerminalShellSettingRow />
         <AppUpdateSettingRows open={open} />
         <WindowsStartupSettingsRow open={open} />
+        <SettingRow label="Run setup again" description="Connect Agents and add projects.">
+          <NodexButton variant="secondary" size="xs" onClick={() => void runSetupAgain()}>
+            Run setup
+          </NodexButton>
+        </SettingRow>
         <SettingRow
           label="Open source licenses"
           description="Third-party notices for bundled dependencies."

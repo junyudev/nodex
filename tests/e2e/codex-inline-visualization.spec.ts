@@ -240,7 +240,7 @@ test("restores interactive HTML responses, retains guests during navigation and 
     const initial = await harness.launch();
     const draft = await createAgentSmokeDraft(
       initial,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Interactive responses",
     );
     const threadId = await sendAgentPrompt(
@@ -259,10 +259,7 @@ test("restores interactive HTML responses, retains guests during navigation and 
     if (!directory) throw new Error("Synthetic native Thread has no visualization directory");
     await mkdir(directory, { recursive: true });
     await writeFile(path.join(directory, "directory-widget.html"), widgetDocument("directory"));
-    const workspaceFile = path.join(
-      harness.profile.initialProjectsDirectory,
-      "workspace-widget.html",
-    );
+    const workspaceFile = path.join(harness.profile.projectsDirectory, "workspace-widget.html");
     await writeFile(workspaceFile, widgetDocument("workspace"));
     // The Agent's reply names a file in its Codex thread's folder and one in the workspace.
     const page = initial;

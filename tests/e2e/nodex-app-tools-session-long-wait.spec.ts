@@ -130,8 +130,8 @@ test("keeps a real provider MCP wait alive beyond 185 seconds and cancels its ex
       try {
         const page = await harness.launch();
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
-        const targetWorkspace = path.join(harness.profile.initialProjectsDirectory, "wait-target");
-        const callerWorkspace = path.join(harness.profile.initialProjectsDirectory, "wait-caller");
+        const targetWorkspace = path.join(harness.profile.projectsDirectory, "wait-target");
+        const callerWorkspace = path.join(harness.profile.projectsDirectory, "wait-caller");
         fs.mkdirSync(targetWorkspace, { recursive: true });
         fs.mkdirSync(callerWorkspace, { recursive: true });
         const target = await createAgentSmokeDraft(page, targetWorkspace, "Long wait target");

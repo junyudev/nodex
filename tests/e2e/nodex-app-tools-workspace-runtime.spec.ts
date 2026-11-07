@@ -129,7 +129,7 @@ test("native workspace dependency paths generate and reopen document artifacts",
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.6-sol" });
         const draft = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Document dependencies",
         );
         const threadId = await sendAgentPrompt(page, draft.projectSessionId, "DEPENDENCIES");

@@ -236,7 +236,7 @@ for (const { rendererCpuRate, unversioned } of [
           await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
           const draft = await createAgentSmokeDraft(
             page,
-            harness.profile.initialProjectsDirectory,
+            harness.profile.projectsDirectory,
             "Thread restart",
           );
           const threadId = await sendAgentPrompt(page, draft.projectSessionId, firstPrompt);
@@ -398,7 +398,7 @@ test("runs a real shell tool through the scripted model boundary", async () => {
           });
           const draft = await createAgentSmokeDraft(
             page,
-            harness.profile.initialProjectsDirectory,
+            harness.profile.projectsDirectory,
             "Scripted Agent file smoke",
           );
           const threadId = await sendAgentPrompt(
@@ -514,7 +514,7 @@ test("edits an earlier message and continues from it without the later Turns", a
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
         const draft = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Scripted Agent edit",
         );
         const threadId = await sendAgentPrompt(page, draft.projectSessionId, first);
@@ -639,7 +639,7 @@ test("gives the model attached context as data and shows only the user's words",
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
         const draft = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Scripted Agent context",
         );
         const threadId = await sendAgentPrompt(page, draft.projectSessionId, opening);
@@ -773,7 +773,7 @@ test("rewrites a message with exactly the images its editor holds", async () => 
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
         const draft = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Scripted Agent edit images",
         );
         const threadId = await sendAgentPrompt(page, draft.projectSessionId, first);
@@ -956,7 +956,7 @@ test("keeps message editing at the exact rewind point across a failed Run", asyn
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
         const draft = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Scripted Agent edit eligibility",
         );
         const threadId = await sendAgentPrompt(page, draft.projectSessionId, first);
@@ -1116,7 +1116,7 @@ test("keeps a pasted image visible when steering a running Turn and after restar
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
         const draft = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Steering with an image",
         );
         const threadId = await sendAgentPrompt(page, draft.projectSessionId, prompt);
@@ -1347,7 +1347,7 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
           });
           const draft = await createAgentSmokeDraft(
             page,
-            harness.profile.initialProjectsDirectory,
+            harness.profile.projectsDirectory,
             "Scripted Agent Browser smoke",
           );
           await invokeIpc(page, "browser-use-policy-update-origin-rule", {
@@ -1680,7 +1680,7 @@ test("keeps a real collaboration subagent Active until completion, then converge
         const selectedProfile = await setAgentExecutionProfile(page);
         const draft = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Scripted Agent subagent smoke",
         );
         const threadId = await sendAgentPrompt(

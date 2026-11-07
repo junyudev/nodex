@@ -143,7 +143,7 @@ async function main() {
       codexHome: home.codexHome,
       claudeConfigHome: path.join(isolatedHome, ".claude"),
       isolatedHostHome: isolatedHome,
-      initialProjectsDirectory: home.workspace,
+      projectsDirectory: home.workspace,
       runId,
       cwd: root,
       windows: args.includes("--hold") ? "foreground" : "background",

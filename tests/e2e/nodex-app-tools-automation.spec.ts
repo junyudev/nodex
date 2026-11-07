@@ -233,11 +233,11 @@ test("manages durable Automation definitions through native MCP across a restart
       );
       try {
         let page = await harness.launch();
-        workspaceRoot = harness.profile.initialProjectsDirectory;
+        workspaceRoot = harness.profile.projectsDirectory;
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.6-sol" });
         const draft = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Automation caller",
         );
         callerSessionId = draft.projectSessionId;
@@ -248,7 +248,7 @@ test("manages durable Automation definitions through native MCP across a restart
               projectId: selectedProjectId,
               input: {
                 name: "Automation execution target",
-                sources: [harness.profile.initialProjectsDirectory],
+                sources: [harness.profile.projectsDirectory],
               },
             },
           }),

@@ -168,7 +168,7 @@ test("native presentation tools preserve Session ownership and reveal exact file
         if (rendererErrors.length > 20) rendererErrors.shift();
       };
       try {
-        const workspace = harness.profile.initialProjectsDirectory;
+        const workspace = harness.profile.projectsDirectory;
         filePath = join(workspace, "review.ts");
         const original =
           Array.from(

@@ -99,41 +99,6 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("seeds one durable active Welcome presentation idempotently", () => {
-    withTempUserData((userDataPath) => {
-      const state = new WindowSessionState(userDataPath);
-      const initial = state.createFreshSession();
-      const presentation = {
-        projectId: "project-default",
-        starterPageId: "page-welcome",
-        starterPageTitle: "Welcome to Nodex",
-      };
-
-      const seeded = state.seedInitialProjectPresentation(presentation);
-      const replayed = state.seedInitialProjectPresentation(presentation);
-      const restarted = new WindowSessionState(userDataPath)
-        .readCatalog()
-        ?.sessions.find((session) => session.id === initial.id);
-      const scene = restarted?.layout.scenesByOwnerKey[`project:${presentation.projectId}`];
-
-      expect(seeded.id).toBe(initial.id);
-      expect(replayed).toEqual(seeded);
-      expect(replayed.layoutRevision).toBe(1);
-      expect(restarted?.layout.location).toEqual({
-        kind: "project",
-        projectId: presentation.projectId,
-      });
-      // The Project opens on its Inbox Home, with the Welcome Page beside it.
-      expect(scene?.primary).toMatchObject({
-        kind: "inbox",
-        config: { scope: { kind: "project", projectId: presentation.projectId } },
-      });
-      expect(Object.values(scene?.panelSurfacesById ?? {}).map((surface) => surface.kind)).toEqual([
-        "page_stage",
-      ]);
-    });
-  });
-
   test("restores all open sessions without reopening deliberately closed history", () => {
     withTempUserData((userDataPath) => {
       const clock = createClock();

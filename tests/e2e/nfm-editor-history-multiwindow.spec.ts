@@ -27,7 +27,7 @@ test("two windows retain independent text history after the same Document's stru
     const project = await createConvergenceProject(
       first,
       "Shared Document history",
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
     );
     const source = await createConvergenceBoardPage(
       first,
@@ -168,7 +168,7 @@ test("cross-window paste supersedes only the source Cut and keeps independent Un
     const project = await createConvergenceProject(
       sourceWindow,
       "Window history",
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
     );
     const source = await createConvergenceBoardPage(
       sourceWindow,

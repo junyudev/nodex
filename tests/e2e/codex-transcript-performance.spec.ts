@@ -88,7 +88,7 @@ test("streams an Agent chat reply into one item, across windows, without touchin
     const first = await harness.launch();
     const draft = await createAgentSmokeDraft(
       first,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Transcript streaming",
     );
     await sendAgentPrompt(first, draft.projectSessionId, prompt);

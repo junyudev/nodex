@@ -127,23 +127,17 @@ const withTimeout = async <Value>(promise: Promise<Value>, message: string): Pro
   }
 };
 
-async function createInitialProject(client: CoreClient, nodexHome: string): Promise<number> {
+async function createFirstProject(client: CoreClient, nodexHome: string): Promise<number> {
   const source = path.join(nodexHome, "workspace");
   const committed = await client.workspaceApply({
-    operationId: "node-initial-project",
+    operationId: "node-first-project",
     intent: {
-      kind: "create_initial_project",
+      kind: "create_project",
       project_id: "project:default",
       name: "My Project",
       description: "",
       appearance: null,
       source_roots: [source],
-      starter_page: {
-        page_id: "page:getting-started",
-        document_id: "document:getting-started",
-        title_markdown: "Welcome to Nodex",
-        markdown: "Welcome to Nodex.",
-      },
     },
   });
   return applyResultCursor(committed);
@@ -244,7 +238,7 @@ describe("CoreClient over a private local endpoint", () => {
         clientKind: "test",
         buildId: "file-client-test",
       });
-      await createInitialProject(root, nodexHome);
+      await createFirstProject(root, nodexHome);
       const client = root.forProject("project:default");
       const adapter = createCoreLibraryModuleAdapter({
         client,
@@ -297,17 +291,19 @@ describe("CoreClient over a private local endpoint", () => {
         head_version: 1,
         revision: 1,
       });
-      const pageIds = ["page:getting-started", "page:second"];
-      await client.libraryApply({
-        operationId: createUuidV7(),
-        intent: {
-          kind: "create_page",
-          page_id: pageIds[1],
-          document_id: "document:second",
-          title: "Second",
-          parent: { kind: "library", before: null },
-        },
-      });
+      const pageIds = ["page:first", "page:second"];
+      for (const [index, pageId] of pageIds.entries()) {
+        await client.libraryApply({
+          operationId: createUuidV7(),
+          intent: {
+            kind: "create_page",
+            page_id: pageId,
+            document_id: `document:${index}`,
+            title: pageId,
+            parent: { kind: "library", before: null },
+          },
+        });
+      }
       for (const pageId of pageIds) {
         const attached = await apply({
           kind: "apply_page_file_entries",
@@ -532,7 +528,7 @@ describe("CoreClient over a private local endpoint", () => {
         clientKind: "test",
         buildId: "node-document-stream-lifecycle-test",
       });
-      await createInitialProject(rootClient, nodexHome);
+      await createFirstProject(rootClient, nodexHome);
       const client = rootClient.forProject("project:default");
       const documentId = "document:stream-lifecycle";
       const created = await client.libraryApply({
@@ -631,7 +627,7 @@ describe("CoreClient over a private local endpoint", () => {
         kind: "metadata",
         library_id: rootClient.handshake.library_id,
       });
-      const initialProjectEventSequence = await createInitialProject(rootClient, nodexHome);
+      const firstProjectEventSequence = await createFirstProject(rootClient, nodexHome);
       const client = rootClient.forProject("project:default");
       expect(client.handshake.generation.pid).toBe(winnerPid);
 
@@ -653,13 +649,13 @@ describe("CoreClient over a private local endpoint", () => {
         resolveEvent = resolve;
       });
       subscription = await client.openEventStream(
-        initialProjectEventSequence,
+        firstProjectEventSequence,
         (event) => resolveEvent?.(event),
         () => undefined,
       );
       await expect(
         client.openEventStream(
-          initialProjectEventSequence,
+          firstProjectEventSequence,
           () => undefined,
           () => undefined,
         ),
@@ -819,7 +815,7 @@ describe("CoreClient over a private local endpoint", () => {
         throw new Error("Expected native Database catalog");
       }
       const databaseId = databaseCatalog.value.databases.items[0]?.database.database_id;
-      if (!databaseId) throw new Error("Initial Project has no Database");
+      if (!databaseId) throw new Error("The Project has no Database");
       const dataSources = await client.databaseRead({
         kind: "data_source_window",
         database_id: databaseId,
@@ -829,7 +825,18 @@ describe("CoreClient over a private local endpoint", () => {
         throw new Error("Expected native Data Source window");
       }
       const dataSourceId = dataSources.value.data_sources.items[0]?.data_source_id;
-      if (!dataSourceId) throw new Error("Initial Project has no Data Source");
+      if (!dataSourceId) throw new Error("The Project has no Data Source");
+      const firstPageId = createUuidV7();
+      await rootClient.workspaceApply({
+        operationId: "node-first-page",
+        intent: {
+          kind: "create_page_for",
+          for: { kind: "project", project_id: "project:default" },
+          page_id: firstPageId,
+          document_id: createUuidV7(),
+          title: "Getting started",
+        },
+      });
       const agentDatabaseQuery = await client.databaseRead({
         kind: "agent_data_source_query",
         data_source_id: dataSourceId,
@@ -849,8 +856,8 @@ describe("CoreClient over a private local endpoint", () => {
           rows: {
             items: [
               {
-                page_id: "page:getting-started",
-                title: "Welcome to Nodex",
+                page_id: firstPageId,
+                title: "Getting started",
                 database_values: {
                   status: "triage",
                 },

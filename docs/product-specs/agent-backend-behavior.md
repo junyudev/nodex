@@ -71,9 +71,9 @@ authentication, history and cache. An external server uses only explicitly confi
 server credentials and retains its own process lifecycle.
 
 The default OpenCode instance is enabled for an unconfigured Profile. An explicitly
-disabled instance stays disabled. OpenCode models whose native ID ends in `-free` start on
-and the rest start off, as [Model policy](model-policy-behavior.md) describes; turn others
-on in Settings → Models or find one by searching the model menu. Availability and pricing
+disabled instance stays disabled. OpenCode models start off, as
+[Model policy](model-policy-behavior.md) describes; turn them on in setup or Settings → Models,
+or find one by searching the model menu. Availability and pricing
 remain with the native provider.
 
 OpenCode setup reuses an existing host installation. Installation starts only from an

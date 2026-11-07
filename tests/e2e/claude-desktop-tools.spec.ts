@@ -264,7 +264,7 @@ for (const mode of ["full-access", "approval-required"] as const) {
       saveEvidence(`${mode}-computer-gate.json`, { available: computer.available });
       const draft = await createAgentSmokeDraft(
         page,
-        harness.profile.initialProjectsDirectory,
+        harness.profile.projectsDirectory,
         `Claude Browser ${mode}`,
       );
       await refreshComposerModels(page);
@@ -699,7 +699,7 @@ test("Claude completes a Turn when Desktop Tools are unavailable", async () => {
     await configureClaude(page, harness, model.environment);
     const draft = await createAgentSmokeDraft(
       page,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Claude without Desktop Tools",
     );
     await refreshComposerModels(page);
@@ -772,7 +772,7 @@ test("Claude chat grants survive Stop and restart, and end on a permission mode 
     },
   });
   // A real executable prefix forces the CLI to suggest a rule containing punctuation.
-  const executable = path.join(harness.profile.initialProjectsDirectory, "say (a, b)");
+  const executable = path.join(harness.profile.projectsDirectory, "say (a, b)");
   fs.mkdirSync(path.dirname(executable), { recursive: true });
   fs.writeFileSync(executable, "#!/bin/sh\nprintf 'CHAT_GRANTS_BASH_OK\\n'\n", { mode: 0o755 });
   const bashCommand = `${JSON.stringify(executable)} hello`;
@@ -868,7 +868,7 @@ test("Claude chat grants survive Stop and restart, and end on a permission mode 
     await configureClaude(page, harness, server.environment);
     const draft = await createAgentSmokeDraft(
       page,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Claude chat grants",
     );
     await refreshComposerModels(page);

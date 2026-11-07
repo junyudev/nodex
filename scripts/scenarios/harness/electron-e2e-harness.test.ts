@@ -13,7 +13,7 @@ afterEach(() => {
 
 const fixture = {
   executablePath: "/fixture/electron",
-  initialProjectsDirectory: "/fixture/workspace",
+  projectsDirectory: "/fixture/workspace",
   nodexHome: "/fixture/.nodex",
 };
 

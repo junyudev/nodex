@@ -1,14 +1,19 @@
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
+import type { NativeSessionCatalogInput } from "../../../shared/native-session-catalog";
 import { NativeSessionCatalog } from "../../agent-backend/NativeSessionCatalog";
+import { discoverProjects } from "../../agent-backend/project-discovery";
 import {
   AgentRuntimeApplication,
   AgentRuntimeApplicationError,
 } from "../../agent-runtime/AgentRuntimeApplication";
 import { MainConfig } from "../../app/MainConfig";
+import { probeGitRepository } from "../../platform/node/GitRepositoryProbe";
+import { ApplicationSettings } from "../../settings/ApplicationSettings";
 import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
@@ -61,6 +66,7 @@ export const live = Layer.effectDiscard(
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
+    const settings = yield* ApplicationSettings;
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () => {
@@ -84,15 +90,11 @@ export const live = Layer.effectDiscard(
             ),
           ),
     );
-    yield* handleQuery("native-sessions:list", (_, input) =>
+    const readCatalogPage = (input: NativeSessionCatalogInput) =>
       Effect.gen(function* () {
-        const parsed = yield* Effect.try({
-          try: () => ListInput.parse(input),
-          catch: (cause) => new NativeSessionCatalogIpcError({ operation: "list.input", cause }),
-        });
-        const page = yield* catalog.list(parsed);
+        const page = yield* catalog.list(input);
         const imported = yield* runtime.findNativeImports({
-          backendKind: parsed.backendKind,
+          backendKind: input.backendKind,
           sourceHome: page.nativeHome,
           nativeThreadIds: page.entries.map((entry) => entry.nativeSessionId),
         });
@@ -103,6 +105,33 @@ export const live = Layer.effectDiscard(
             ...imported.find((copy) => copy.nativeSessionId === entry.nativeSessionId),
           })),
         };
+      });
+    yield* handleQuery("native-sessions:list", (_, input) =>
+      Effect.try({
+        try: () => ListInput.parse(input),
+        catch: (cause) => new NativeSessionCatalogIpcError({ operation: "list.input", cause }),
+      }).pipe(Effect.flatMap(readCatalogPage)),
+    );
+    yield* handleQuery("native-sessions:discover-projects", () =>
+      Effect.gen(function* () {
+        const { claudeAgents } = yield* settings.snapshot();
+        const now = yield* Clock.currentTimeMillis;
+        return yield* discoverProjects({
+          sources: [
+            { backendKind: "codex" as const },
+            ...claudeAgents.instances
+              .filter((instance) => instance.enabled)
+              .map((instance) => ({
+                backendKind: "claude" as const,
+                instanceConfigId: instance.id,
+              })),
+          ],
+          nodexHome: config.nodexHome,
+          now,
+          readPage: (source, cursor) =>
+            readCatalogPage({ ...source, ...(cursor ? { cursor } : {}) }),
+          probe: (cwd) => Effect.promise(() => probeGitRepository(cwd)),
+        });
       }),
     );
     yield* handleQuery("native-sessions:preview-import", (_, input) =>

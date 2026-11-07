@@ -15,7 +15,6 @@ import {
   getWorkbenchSceneReturnLocation,
   type WorkbenchLayoutSnapshot,
 } from "../shared/workbench-layout";
-import type { InitialProjectPresentation } from "../shared/initial-project-welcome";
 import {
   LegacyWindowSessionCatalogV1Schema,
   LegacyWindowSessionCatalogV2Schema,
@@ -26,7 +25,6 @@ import {
   cloneWorkbenchSceneLayoutForNewWindow,
   createWorkbenchSceneSurface,
   makeWorkbenchSceneKey,
-  materializeInitialProjectWelcomeScene,
   materializeInitialWorkbenchScene,
   type WorkbenchSurfaceDescriptor,
 } from "../shared/workbench-scene";
@@ -654,59 +652,6 @@ export class WindowSessionState {
       lastActiveSessionId: session.id,
       sessions: [session],
     });
-  }
-
-  seedInitialProjectPresentation(presentation: InitialProjectPresentation): WindowSessionRecord {
-    const catalog = this.readOrCreateCatalog();
-    const target =
-      catalog.sessions.find((session) => session.id === catalog.lastActiveSessionId) ??
-      catalog.sessions[0];
-    if (!target) {
-      throw new Error("Initial Project has no Window Session presentation target");
-    }
-
-    const currentLocation = getWorkbenchSceneReturnLocation(target.layout.location);
-    const sceneKey = makeWorkbenchSceneKey({
-      kind: "project",
-      projectId: presentation.projectId,
-    });
-    const currentScene = target.layout.scenesByOwnerKey[sceneKey];
-    const alreadySeeded =
-      currentLocation.kind === "project" &&
-      currentLocation.projectId === presentation.projectId &&
-      Object.values(currentScene?.panelSurfacesById ?? {}).some(
-        (surface) =>
-          surface.kind === "page_stage" &&
-          surface.config.routingContext.kind === "project" &&
-          surface.config.routingContext.projectId === presentation.projectId &&
-          surface.config.pageId === presentation.starterPageId,
-      );
-    if (alreadySeeded) return target;
-
-    const timestamp = this.nowIso();
-    const scene = materializeInitialProjectWelcomeScene(presentation, { touchedAt: timestamp });
-    const next: WindowSessionRecord = {
-      ...target,
-      layoutRevision: target.layoutRevision + 1,
-      layout: {
-        ...target.layout,
-        location: {
-          kind: "project",
-          projectId: presentation.projectId,
-        },
-        scenesByOwnerKey: {
-          ...target.layout.scenesByOwnerKey,
-          [sceneKey]: scene,
-        },
-      },
-      updatedAt: timestamp,
-    };
-    const written = this.writeCatalog({
-      version: WINDOW_SESSION_VERSION,
-      lastActiveSessionId: target.id,
-      sessions: catalog.sessions.map((session) => (session.id === target.id ? next : session)),
-    });
-    return this.requireSession(written, target.id);
   }
 
   private nowIso(): string {

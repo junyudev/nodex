@@ -35,14 +35,14 @@ export const policyModelKey = (provider: PolicyProvider, model: string): string 
   ]);
 export const isProviderOn = (policy: ModelPolicy, provider: PolicyProvider): boolean =>
   !policy.providersOff.includes(policyProviderKey(provider));
-const onByDefault = (provider: PolicyProvider, model: string): boolean =>
-  !["opencode", "opencode2"].includes(provider.driver) || model.endsWith("-free");
+/** OpenCode's models run on third parties' terms, so a person turns them on; others start on. */
+const onByDefault = (provider: PolicyProvider): boolean =>
+  !["opencode", "opencode2"].includes(provider.driver);
 export const isModelSwitchOn = (
   policy: ModelPolicy,
   provider: PolicyProvider,
   model: string,
-): boolean =>
-  onByDefault(provider, model) !== policy.exceptions.includes(policyModelKey(provider, model));
+): boolean => onByDefault(provider) !== policy.exceptions.includes(policyModelKey(provider, model));
 export const isModelOn = (policy: ModelPolicy, provider: PolicyProvider, model: string): boolean =>
   isProviderOn(policy, provider) && isModelSwitchOn(policy, provider, model);
 export function setModelOn(
@@ -53,8 +53,17 @@ export function setModelOn(
 ): ModelPolicy {
   const key = policyModelKey(provider, model);
   const others = policy.exceptions.filter((entry) => entry !== key);
-  return { ...policy, exceptions: on === onByDefault(provider, model) ? others : [...others, key] };
+  return { ...policy, exceptions: on === onByDefault(provider) ? others : [...others, key] };
 }
+export const isFreeModel = (model: string): boolean => model.endsWith("-free");
+/** Turns on a provider's free models and leaves its other switches as they are. */
+export const withFreeModelsOn = (
+  policy: ModelPolicy,
+  provider: PolicyProvider & { readonly models: readonly { readonly slug: string }[] },
+): ModelPolicy =>
+  provider.models
+    .filter((model) => isFreeModel(model.slug))
+    .reduce((next, model) => setModelOn(next, provider, model.slug, true), policy);
 export function setProviderOn(
   policy: ModelPolicy,
   provider: PolicyProvider,

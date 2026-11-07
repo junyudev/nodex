@@ -133,7 +133,7 @@ test("delegates across Codex and Claude through the Session UI and restores chil
     const seed = new RendererIpcSeedAdapter(page);
     const otherProject = await seed.createProject({
       name: "Background content target",
-      sources: [harness.profile.initialProjectsDirectory],
+      sources: [harness.profile.projectsDirectory],
     });
     const otherPageId = createUuidV7();
     await seed.createPage({

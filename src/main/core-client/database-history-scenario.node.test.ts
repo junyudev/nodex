@@ -134,7 +134,7 @@ test.each(["data", "list"] as const)(
       const before = await db.readRow(pageId);
       const foreign = await ctx.seed.createProject({
         name: "Separate history context",
-        sources: [ctx.profile.initialProjectsDirectory],
+        sources: [ctx.profile.projectsDirectory],
       });
       const client = ctx.runtime.clientForProject(foreign.id);
       const crossProjectRow = await client.databaseRead({ kind: "row_detail", page_id: pageId });
@@ -218,7 +218,7 @@ test("cross-Project history validates the entire inverse before an atomic commit
     const protectedPageId = ctx.manifest.pageIdsByKey.source!;
     const other = await ctx.seed.createProject({
       name: "Other history context",
-      sources: [ctx.profile.initialProjectsDirectory],
+      sources: [ctx.profile.projectsDirectory],
     });
     const ownPageId = createUuidV7();
     await ctx.seed.createPage({
@@ -697,7 +697,7 @@ test("scalar codecs, set patches, cross-Project inverses and option/schema guard
     expect(await readValues()).toEqual(after);
     const foreign = await ctx.seed.createProject({
       name: "Other Project context",
-      sources: [ctx.profile.initialProjectsDirectory],
+      sources: [ctx.profile.projectsDirectory],
     });
     const otherAdapter = createCoreDatabaseModuleAdapter({
       ...ctx.runtime.identity,

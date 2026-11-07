@@ -216,18 +216,12 @@ async function seedProfile(profile: string): Promise<void> {
     await rootClient.workspaceApply({
       operationId: "failure-matrix-seed-project",
       intent: {
-        kind: "create_initial_project",
+        kind: "create_project",
         project_id: projectId,
         name: "Failure matrix",
         description: "",
         appearance: null,
         source_roots: [path.join(profile, "source")],
-        starter_page: {
-          page_id: "page:failure-matrix-getting-started",
-          document_id: "document:failure-matrix-getting-started",
-          title_markdown: "Welcome to Nodex",
-          markdown: "Welcome to Nodex.",
-        },
       },
     });
     const projectClient = rootClient.forProject(projectId);

@@ -86,7 +86,7 @@ test("editing an earlier message preserves its node, focus, selection and draft 
     await page.setViewportSize({ width: 1280, height: 800 });
     const draft = await createAgentSmokeDraft(
       page,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Thread editing",
     );
     const firstPrompt = "Review the first request";

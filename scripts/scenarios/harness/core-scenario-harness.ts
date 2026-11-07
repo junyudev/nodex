@@ -123,11 +123,7 @@ export const withCoreScenario = async <Value>(
     };
     input.signal?.throwIfAborted();
     progress("seed", profile.nodexHome);
-    const manifest = await materializeScenario(
-      input.scenarioId,
-      seed,
-      profile.initialProjectsDirectory,
-    );
+    const manifest = await materializeScenario(input.scenarioId, seed, profile.projectsDirectory);
     input.signal?.throwIfAborted();
     progress("inspect", profile.nodexHome);
     const facts = await inspectScenario(manifest, seed);

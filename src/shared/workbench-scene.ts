@@ -2,7 +2,6 @@ import { resolveBrowserTabTitle } from "./browser-url";
 import { workbenchFilesResourceKey } from "./workbench-resource-identity";
 import type { BrowserSidebarDeviceToolbarState } from "./browser-sidebar";
 import type { CodexForkBrowserSidePanelSnapshot } from "./codex-fork-browser-transfer";
-import type { InitialProjectPresentation } from "./initial-project-welcome";
 import { createSecureRuntimeId } from "./secure-runtime-id";
 import { contentRoutingContextKey, type ContentRoutingContext } from "./content-routing-context";
 import type { DatabaseId } from "./database-identities";
@@ -916,51 +915,6 @@ export function materializeInitialWorkbenchScene(
   } = {},
 ): WorkbenchSceneSnapshot {
   return createEmptyWorkbenchScene(owner, options);
-}
-
-export function materializeInitialProjectWelcomeScene(
-  presentation: InitialProjectPresentation,
-  options: { readonly touchedAt?: string } = {},
-): WorkbenchSceneSnapshot {
-  const counters = new Map<string, number>();
-  const identityFactory: WorkbenchSceneIdentityFactory = {
-    createId(kind) {
-      const ordinal = counters.get(kind) ?? 0;
-      counters.set(kind, ordinal + 1);
-      return `initial:${presentation.projectId}:${kind}:${ordinal}`;
-    },
-  };
-  const initial = materializeInitialWorkbenchScene(
-    { kind: "project", projectId: presentation.projectId },
-    {
-      identityFactory,
-      touchedAt: options.touchedAt,
-    },
-  );
-  const surfaceId = identityFactory.createId("surface");
-  const withPage = createWorkbenchSceneSurface(initial, {
-    panelId: "right",
-    surface: {
-      id: surfaceId,
-      kind: "page_stage",
-      titleSnapshot: presentation.starterPageTitle,
-      config: {
-        routingContext: {
-          kind: "project",
-          projectId: presentation.projectId,
-        },
-        pageId: presentation.starterPageId,
-        titleSnapshot: presentation.starterPageTitle,
-      },
-      stateKey: 0,
-      state: null,
-    },
-  });
-  const maximized = patchWorkbenchScenePanel(withPage, "right", {
-    collapsed: false,
-    size: { fullWidth: true },
-  });
-  return options.touchedAt ? { ...maximized, touchedAt: options.touchedAt } : maximized;
 }
 
 export function normalizeWorkbenchScene(value: WorkbenchSceneSnapshot): WorkbenchSceneSnapshot {

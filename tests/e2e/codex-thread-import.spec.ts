@@ -204,7 +204,7 @@ test("imports a Codex link as independent history and continues after its source
         },
       });
       const originalCwd = path.join(harness.profile.runRoot, "original-workspace");
-      const replacementCwd = fs.realpathSync(harness.profile.initialProjectsDirectory);
+      const replacementCwd = fs.realpathSync(harness.profile.projectsDirectory);
       const log = path.join(harness.profile.runRoot, ".native-import-requests.jsonl");
       // Both native consumers get one absolute observer ledger despite different execution cwd.
       const proxy = path.join(harness.profile.runRoot, "codex-native-observer.mjs");

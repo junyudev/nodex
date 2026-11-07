@@ -70,7 +70,7 @@ it.effect("registers and releases the Remote Hosted PiP ingress with the Main Sc
                 environment: {},
                 environmentPath: null,
                 homeDirectory: "/tmp",
-                initialProjectsDirectory: null,
+                projectsDirectory: null,
                 isolatedRunId: null,
                 isDefaultApp: false,
                 isPackaged: false,

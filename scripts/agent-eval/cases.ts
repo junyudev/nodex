@@ -407,7 +407,7 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
         let exported: Uint8Array | null = null;
         try {
           exported = await readFile(
-            path.join(context.profile.initialProjectsDirectory, "release-evidence.txt"),
+            path.join(context.profile.projectsDirectory, "release-evidence.txt"),
           );
         } catch {
           /* A missing output is an assertion failure. */

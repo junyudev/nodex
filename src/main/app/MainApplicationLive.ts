@@ -55,7 +55,6 @@ import { live as inboxDispatchRuntimeLive } from "../inbox-application/InboxDisp
 import { DeepLinkRuntime } from "../host-runtime/DeepLinkRuntime";
 import { ApplicationInitializationRuntime } from "../host-runtime/ApplicationInitializationRuntime";
 import * as AppProtocolRuntime from "../host-runtime/AppProtocolRuntime";
-import { InitialProjectBootstrapRuntime } from "../initial-project/InitialProjectBootstrapRuntime";
 import { requestsExplicitNewWindow } from "../main-runtime-startup-events";
 import { getLogger } from "../logging/logger";
 import { ElectronApp } from "../platform/electron/ElectronApp";
@@ -236,7 +235,6 @@ export const live: Layer.Layer<
         const initialization = yield* ApplicationInitializationRuntime;
         const authority = yield* CoreAuthority;
         const automationRouting = yield* AutomationRoutingIndex;
-        const initialProjectBootstrap = yield* InitialProjectBootstrapRuntime;
         const scheduledAutomations = yield* ScheduledAutomationRuntime;
         const projectionDelivery = yield* ProjectionDeliveryRuntime;
         const coreEventHub = yield* CoreEventHub;
@@ -348,11 +346,6 @@ export const live: Layer.Layer<
             Effect.forkIn(runtimeScope),
             Effect.asVoid,
           );
-          yield* initialProjectBootstrap
-            .ensure((presentation) =>
-              Effect.sync(() => applicationWindows.seedInitialProjectPresentation(presentation)),
-            )
-            .pipe(Effect.mapError((cause) => runtimeError("initial-project-bootstrap", cause)));
           yield* deepLinks.markReady;
           yield* automationRouting.synchronize.pipe(
             Effect.mapError((cause) => runtimeError("synchronize-automations", cause)),

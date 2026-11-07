@@ -194,7 +194,7 @@ it.effect("registers application channels directly against their owning modules"
                 environment: {},
                 environmentPath: null,
                 homeDirectory: "/tmp",
-                initialProjectsDirectory: null,
+                projectsDirectory: null,
                 isolatedRunId: null,
                 isDefaultApp: false,
                 isPackaged: false,

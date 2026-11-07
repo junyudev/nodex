@@ -14,7 +14,7 @@ test("ordinary shell pipelines, redirects, jq and Python preserve development CL
     async ({ profile, manifest, runtime }) => {
       const { environment } = await prepareDesktopEnvironment({
         repository: process.cwd(),
-        workspace: profile.initialProjectsDirectory,
+        workspace: profile.projectsDirectory,
         nodexHome: profile.nodexHome,
         codexHome: profile.codexHome,
         projectId: manifest.projectId,
@@ -30,7 +30,7 @@ test("ordinary shell pipelines, redirects, jq and Python preserve development CL
       });
       // Windows PowerShell's native argument parser strips embedded quotes from Python -c.
       await writeFile(
-        path.join(profile.initialProjectsDirectory, "read-selected-project.py"),
+        path.join(profile.projectsDirectory, "read-selected-project.py"),
         'import pathlib\nprint(pathlib.Path("selected-project.txt").read_text(encoding="utf-8-sig").strip())\n',
       );
       const result = await promisify(execFile)(
@@ -49,7 +49,7 @@ test("ordinary shell pipelines, redirects, jq and Python preserve development CL
               "set -euo pipefail\nnodex context | jq -r '.result.project.id' > selected-project.txt\npython3 read-selected-project.py",
             ],
         {
-          cwd: profile.initialProjectsDirectory,
+          cwd: profile.projectsDirectory,
           env: {
             ...process.env,
             ...environment,

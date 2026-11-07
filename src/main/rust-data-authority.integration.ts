@@ -255,23 +255,17 @@ describe("Electron native data authority", () => {
       const projectId = await withFinalDataApplications(runtime, ({ workspace }) =>
         Effect.gen(function* () {
           expect(yield* workspace.readProjectBootstrap).toEqual({ status: "empty" });
-          const initialProject = yield* workspace.createInitialProject({
+          const created = yield* workspace.createProject({
             operationId: randomUUID(),
-            projectId: randomUUID(),
-            name: "Electron authority",
-            description: "",
-            sources: [nodexHome],
-            starterPage: {
-              pageId: randomUUID(),
-              documentId: randomUUID(),
-              titleMarkdown: "Welcome to Nodex",
-              markdown: "Welcome to Nodex.",
+            payload: {
+              projectId: randomUUID(),
+              input: { name: "Electron authority", sources: [nodexHome] },
             },
           });
           expect(yield* workspace.listProjects).toEqual(
-            expect.arrayContaining([expect.objectContaining({ id: initialProject.project.id })]),
+            expect.arrayContaining([expect.objectContaining({ id: created.value.id })]),
           );
-          return initialProject.project.id;
+          return created.value.id;
         }),
       );
       expect(listCurrentProcessFiles()).not.toContain(databasePath);
@@ -1042,7 +1036,7 @@ describe("Electron native data authority", () => {
       expect(finalApplications.row).toMatchObject({
         id: copiedDataSourcePageId,
         status: "done",
-        order: 1,
+        order: 0,
       });
       const lifecycleLibrary = createCoreLibraryModuleAdapter({
         client: runtime.clientForProject(projectId),

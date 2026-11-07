@@ -46,7 +46,7 @@ test("chooses an OpenCode model with native options before its first prompt and 
       NODEX_LOG_FILE_LEVEL: "debug",
     },
   });
-  const sourceRoot = realpathSync(harness.profile.initialProjectsDirectory);
+  const sourceRoot = realpathSync(harness.profile.projectsDirectory);
   const profileDirectory = path.join(harness.profile.runRoot, "opencode-profile");
   const nativeRoot = path.join(profileDirectory, "data", "opencode");
   const observationPath = path.join(nativeRoot, "observations.jsonl");

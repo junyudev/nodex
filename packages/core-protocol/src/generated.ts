@@ -7140,16 +7140,6 @@ export interface components {
                 readonly appearance?: components["schemas"]["ProjectAppearance"] | null;
                 readonly description: string;
                 /** @enum {string} */
-                readonly kind: "create_initial_project";
-                readonly name: string;
-                readonly page_key_prefix?: string | null;
-                readonly project_id: string;
-                readonly source_roots: readonly string[];
-                readonly starter_page: components["schemas"]["ProjectWorkspaceStarterPage"];
-            } | {
-                readonly appearance?: components["schemas"]["ProjectAppearance"] | null;
-                readonly description: string;
-                /** @enum {string} */
                 readonly kind: "create_project";
                 readonly name: string;
                 readonly page_key_prefix?: string | null;
@@ -9822,16 +9812,6 @@ export interface components {
             readonly appearance?: components["schemas"]["ProjectAppearance"] | null;
             readonly description: string;
             /** @enum {string} */
-            readonly kind: "create_initial_project";
-            readonly name: string;
-            readonly page_key_prefix?: string | null;
-            readonly project_id: string;
-            readonly source_roots: readonly string[];
-            readonly starter_page: components["schemas"]["ProjectWorkspaceStarterPage"];
-        } | {
-            readonly appearance?: components["schemas"]["ProjectAppearance"] | null;
-            readonly description: string;
-            /** @enum {string} */
             readonly kind: "create_project";
             readonly name: string;
             readonly page_key_prefix?: string | null;
@@ -10670,12 +10650,6 @@ export interface components {
             /** Format: int64 */
             readonly expected_revision: number;
             readonly placement_id: string;
-        };
-        readonly ProjectWorkspaceStarterPage: {
-            readonly document_id: string;
-            readonly markdown: string;
-            readonly page_id: string;
-            readonly title_markdown: string;
         };
         readonly ProjectWorkspaceSubagentObservation: {
             /** Format: int64 */

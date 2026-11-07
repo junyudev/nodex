@@ -42,11 +42,7 @@ import {
 import { cleanupIsolatedCore } from "./isolated-core-cleanup";
 import { verifyPackagedAgentSkills } from "./verify-packaged-agent-skills";
 import { layer as mainShutdownLive } from "../src/main/app/MainShutdown";
-import {
-  InitialProjectBootstrapRuntime,
-  live as initialProjectBootstrapLive,
-} from "../src/main/initial-project/InitialProjectBootstrapRuntime";
-import { resolveInitialProjectJournalPath } from "../src/main/initial-project/initial-project-journal-store";
+import { createOperationId } from "../src/main/core-runtime/operation-identity";
 import {
   acquireIsolatedRunLease,
   ISOLATED_RUN_ID_ENV,
@@ -779,20 +775,17 @@ const bootstrapPackagedCliProject = (
 ): Effect.Effect<string, PackagedNativeRuntimeVerificationError, ProjectWorkspace | Scope.Scope> =>
   Effect.gen(function* () {
     const workspace = yield* ProjectWorkspace;
-    const bootstrapContext = yield* Layer.build(
-      initialProjectBootstrapLive({
-        platform: process.platform,
-        projectsDirectory: join(temporaryRoot, "projects"),
-        journalPath: resolveInitialProjectJournalPath(join(temporaryRoot, "profile")),
-      }).pipe(Layer.provide(Layer.succeed(ProjectWorkspace, workspace))),
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new PackagedNativeRuntimeVerificationError({ operation: "bootstrap-project", cause }),
-      ),
+    yield* attempt("create-project-source", () =>
+      mkdirSync(join(temporaryRoot, "projects"), { recursive: true }),
     );
-    yield* Context.get(bootstrapContext, InitialProjectBootstrapRuntime)
-      .ensure(() => Effect.void)
+    yield* workspace
+      .createProject({
+        operationId: createOperationId("packaged-smoke.project"),
+        payload: {
+          projectId: randomUUID(),
+          input: { name: "Packaged smoke", sources: [join(temporaryRoot, "projects")] },
+        },
+      })
       .pipe(
         Effect.mapError(
           (cause) =>

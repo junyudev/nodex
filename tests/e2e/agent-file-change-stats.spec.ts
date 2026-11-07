@@ -183,7 +183,7 @@ test("an Agent's multi-file patch shows each file's real line counts and diff, l
         `model_provider = "openai"\nopenai_base_url = ${JSON.stringify(`${modelServer.baseUrl}/v1`)}\nrequest_max_retries = 0\nstream_max_retries = 0\n[features]\nrespect_system_proxy = false\n`,
         { mode: 0o600 },
       );
-      const workspace = path.join(harness.profile.initialProjectsDirectory, "file-change-stats");
+      const workspace = path.join(harness.profile.projectsDirectory, "file-change-stats");
       fs.mkdirSync(path.join(workspace, "src"), { recursive: true });
       fs.writeFileSync(path.join(workspace, "src", "app.ts"), ORIGINAL_APP);
       try {

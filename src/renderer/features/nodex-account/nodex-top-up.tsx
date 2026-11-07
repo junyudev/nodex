@@ -48,11 +48,13 @@ export function NodexCheckoutNotice({ snapshot }: { snapshot: NodexAccountSnapsh
 function TopUpTile({
   tier,
   creditsPerUsd,
+  compact,
   disabled,
   onSelect,
 }: {
   readonly tier: Tier;
   readonly creditsPerUsd: number;
+  readonly compact: boolean;
   readonly disabled: boolean;
   readonly onSelect: () => void;
 }) {
@@ -65,18 +67,26 @@ function TopUpTile({
       disabled={disabled}
       onClick={onSelect}
       className={cn(
-        "flex items-center justify-between gap-3 rounded-2xl border border-token-border px-4 py-3.5 text-left outline-none",
+        "flex border border-token-border text-left outline-none",
+        compact
+          ? "flex-col gap-0.5 rounded-lg px-3 py-2"
+          : "items-center justify-between gap-3 rounded-2xl px-4 py-3.5",
         "bg-(--color-background-panel,var(--color-token-bg-fog)) transition-colors duration-150",
         "hover:border-token-foreground/20 hover:bg-token-list-hover-background",
         "focus-visible:ring-2 focus-visible:ring-(--sidebar-ring)/35",
         "disabled:pointer-events-none disabled:opacity-45",
       )}
     >
-      <span className="text-xl font-medium tracking-tight text-token-foreground tabular-nums">
+      <span
+        className={cn(
+          "font-medium tracking-tight text-token-foreground tabular-nums",
+          compact ? "text-base" : "text-xl",
+        )}
+      >
         {dollars(tier.amount)}
       </span>
-      <span className="flex flex-col items-end">
-        <span className="text-sm text-token-foreground tabular-nums">
+      <span className={cn("flex", compact ? "items-baseline gap-1.5" : "flex-col items-end")}>
+        <span className={cn("text-token-foreground tabular-nums", compact ? "text-xs" : "text-sm")}>
           {credits} <span className="text-token-description-foreground">credits</span>
         </span>
         {bonus > 0 ? (
@@ -88,7 +98,14 @@ function TopUpTile({
 }
 
 /** The server's tiers, always laid out; paused supply keeps them visible but unavailable. */
-export function NodexTopUpTiers({ account }: { account: Account }) {
+export function NodexTopUpTiers({
+  account,
+  compact = false,
+}: {
+  account: Account;
+  /** Tiles narrow enough for three to sit inside a row. */
+  compact?: boolean;
+}) {
   const snapshot = account.snapshot;
   const status = snapshot?.modelStatus;
   const topUp = status?.topUp;
@@ -99,12 +116,20 @@ export function NodexTopUpTiers({ account }: { account: Account }) {
   }
   return (
     <div className="flex flex-col gap-2.5">
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3">
+      <div
+        className={cn(
+          "grid gap-3",
+          compact
+            ? "grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] gap-2"
+            : "grid-cols-[repeat(auto-fit,minmax(11rem,1fr))]",
+        )}
+      >
         {topUp.tiers.map((tier) => (
           <TopUpTile
             key={tier.amount}
             tier={tier}
             creditsPerUsd={status.creditsPerUsd}
+            compact={compact}
             disabled={!topUp.available || !tier.available || account.pending !== null}
             onSelect={() => account.act("openTopUp", tier.amount)}
           />

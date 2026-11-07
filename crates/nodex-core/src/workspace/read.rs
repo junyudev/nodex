@@ -215,14 +215,16 @@ pub(super) fn read(
             })
         }
         ProjectWorkspaceRead::ProjectBootstrap => {
-            let project_count = connection.query_row(
-                "SELECT count(*) FROM projects WHERE library_id = ?1",
+            let empty = connection.query_row(
+                "SELECT NOT EXISTS(SELECT 1 FROM projects WHERE library_id = ?1) \
+                 AND NOT EXISTS(SELECT 1 FROM project_sessions WHERE project_id IS NULL) \
+                 AND NOT EXISTS(SELECT 1 FROM pages WHERE library_id = ?1)",
                 [library_id],
-                |row| row.get::<_, i64>(0),
+                |row| row.get::<_, bool>(0),
             )?;
             Ok(ProjectWorkspaceReadValue::ProjectBootstrap {
                 bootstrap: ProjectWorkspaceBootstrap {
-                    status: if project_count == 0 {
+                    status: if empty {
                         ProjectWorkspaceBootstrapStatus::Empty
                     } else {
                         ProjectWorkspaceBootstrapStatus::Ready

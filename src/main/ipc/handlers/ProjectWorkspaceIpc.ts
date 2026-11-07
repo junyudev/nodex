@@ -186,6 +186,7 @@ export const live: Layer.Layer<
           : await desktop.dialog.showOpenDialog(dialogOptions);
         return result.canceled ? null : (result.filePaths[0] ?? null);
       });
+    yield* invokeEffectQuery("projects:bootstrap", () => projects.readProjectBootstrap);
     yield* invokeEffectQuery("projects:list", (_, input) => projects.listProjectWindow(input));
     yield* invokeEffectQuery("projects:get", (_, projectId) => projects.getProject(projectId));
     yield* invokeEffectQuery("projects:activity-summaries", (_, projectIds) =>
@@ -217,7 +218,10 @@ export const live: Layer.Layer<
             "projects:create",
             command,
             createProjectWithDefaultSource(command.payload.input, {
-              projectsDirectory: resolveNodexProjectsDirectory(config.documentsPath),
+              projectsDirectory: resolveNodexProjectsDirectory({
+                configuredDirectory: config.projectsDirectory,
+                documentsDirectory: config.documentsPath,
+              }),
               createProject: (input) =>
                 projects.createProject({
                   ...command,

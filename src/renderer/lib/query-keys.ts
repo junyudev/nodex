@@ -27,6 +27,7 @@ export const queryKeys = {
   },
   projects: {
     all: () => ["projects"] as const,
+    bootstrap: () => ["projects", "bootstrap"] as const,
     lists: () => ["projects", "list"] as const,
     list: (includeArchived = false) => ["projects", "list", includeArchived] as const,
     detail: (projectId: string) => ["projects", "detail", projectId] as const,

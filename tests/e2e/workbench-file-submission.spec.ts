@@ -97,10 +97,7 @@ test("long file paths retain exact submission context before and after pinning",
           OPENAI_API_KEY: "nodex-scripted-model-test-key",
         },
       });
-      filePath = join(
-        harness.profile.initialProjectsDirectory,
-        `${"long-file-".repeat(18)}路径.txt`,
-      );
+      filePath = join(harness.profile.projectsDirectory, `${"long-file-".repeat(18)}路径.txt`);
       writeFileSync(filePath, "Exact file context remains usable after pinning.\n");
       writeFileSync(
         join(harness.profile.codexHome, "config.toml"),
@@ -112,7 +109,7 @@ test("long file paths retain exact submission context before and after pinning",
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.6-sol" });
         const draft = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "File submission",
         );
         const threadId = await sendAgentPrompt(page, draft.projectSessionId, "FILE_LINK_PROBE");

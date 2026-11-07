@@ -17,7 +17,7 @@ test("retains queryable startup evidence without Core or verbose logs", async ()
     const application = await launchNodexElectronApplication({
       cwd: profile.runRoot,
       nodexHome: profile.nodexHome,
-      initialProjectsDirectory: profile.initialProjectsDirectory,
+      projectsDirectory: profile.projectsDirectory,
       codexHome: profile.codexHome,
       claudeConfigHome: profile.claudeConfigHome,
       environment: {

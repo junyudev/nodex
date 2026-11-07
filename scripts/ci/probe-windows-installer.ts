@@ -430,7 +430,7 @@ async function main(): Promise<void> {
       NODEX_LOG_LEVEL: "debug",
       NODEX_HOME: profile,
       CODEX_HOME: join(profile, "agent"),
-      NODEX_INITIAL_PROJECTS_DIR: join(root, "workspace"),
+      NODEX_PROJECTS_DIR: join(root, "workspace"),
       NODEX_SENTRY_ENABLED: "false",
       NODEX_TELEMETRY_ENABLED: "false",
       NODEX_CORE_IDLE_TIMEOUT_MS: String(Math.max(600_000, installerTimeoutMs * 2)),

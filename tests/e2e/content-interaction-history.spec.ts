@@ -21,7 +21,7 @@ test("undoes native promotion immediately and interleaves editor changes in inte
     const project = await createConvergenceProject(
       page,
       "Interaction history",
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
     );
     const target = await createConvergenceBoardPage(page, project, "Drop anchor", "Anchor Page");
     const source = await createConvergenceBoardPage(page, project, "History source", "Source Page");

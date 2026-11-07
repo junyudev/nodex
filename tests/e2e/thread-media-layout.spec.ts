@@ -60,12 +60,9 @@ test("renders mixed local media with valid HTML and preserves its controls throu
       )
         nestingWarnings.push(message.text());
     });
-    const imagePath = path.join(harness.profile.initialProjectsDirectory, "layout-image.png");
-    const secondImagePath = path.join(
-      harness.profile.initialProjectsDirectory,
-      "layout-second-image.png",
-    );
-    const videoPath = path.join(harness.profile.initialProjectsDirectory, "layout-clip.webm");
+    const imagePath = path.join(harness.profile.projectsDirectory, "layout-image.png");
+    const secondImagePath = path.join(harness.profile.projectsDirectory, "layout-second-image.png");
+    const videoPath = path.join(harness.profile.projectsDirectory, "layout-clip.webm");
     const png = await page.evaluate(() => {
       const canvas = document.createElement("canvas");
       canvas.width = 640;
@@ -81,7 +78,7 @@ test("renders mixed local media with valid HTML and preserves its controls throu
     await copyFile(path.resolve("tests/fixtures/workspace-media/vp8-vorbis.webm"), videoPath);
     const draft = await createAgentSmokeDraft(
       page,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Media layout review",
     );
     await sendAgentPrompt(page, draft.projectSessionId, prompt);

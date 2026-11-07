@@ -16,6 +16,7 @@ import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplica
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
+import { ApplicationSettings } from "../../settings/ApplicationSettings";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live, type NativeSessionCatalogIpcError } from "./NativeSessionCatalogIpc";
 
@@ -136,6 +137,9 @@ const makeFixture = Effect.fn("NativeSessionCatalogIpc.testFixture")(function* (
               ),
           } as unknown as AgentRuntimeApplication["Service"]),
           Layer.succeed(ElectronIpc, ipc),
+          Layer.succeed(ApplicationSettings, {
+            snapshot: () => Effect.succeed({ claudeAgents: { instances: [] } }),
+          } as unknown as ApplicationSettings["Service"]),
           Layer.succeed(
             WindowRuntime,
             WindowRuntime.of({

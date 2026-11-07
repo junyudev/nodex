@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 57;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 58;
 
 /// Host-only admission: the model chooses an opaque key, never a clock or operation envelope.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -431,6 +431,7 @@ pub enum ProjectWorkspaceReadValue {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectWorkspaceBootstrapStatus {
+    /// The Library has no Project, active or archived, no Session and no Page.
     Empty,
     Ready,
 }
@@ -1515,14 +1516,6 @@ pub struct ProjectWorkspaceThreadSummary {
     pub linked_at: String,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceStarterPage {
-    pub page_id: String,
-    pub document_id: String,
-    pub title_markdown: String,
-    pub markdown: String,
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspacePageCreationTarget {
@@ -1582,16 +1575,6 @@ pub enum ProjectWorkspaceIntent {
         provenance: Box<crate::agent::AgentTurnProvenance>,
         #[schema(no_recursion)]
         intent: Box<ProjectWorkspaceIntent>,
-    },
-    CreateInitialProject {
-        project_id: String,
-        name: String,
-        description: String,
-        appearance: Option<ProjectAppearance>,
-        source_roots: Vec<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        page_key_prefix: Option<String>,
-        starter_page: ProjectWorkspaceStarterPage,
     },
     CreateProject {
         project_id: String,

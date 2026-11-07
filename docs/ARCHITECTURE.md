@@ -368,14 +368,10 @@ subscription fiber owns its renderer-destruction registration and physical-watch
 renderer destruction, acquisition failure, and Main Scope release interrupt the same resource
 without IPC-owned lifecycle registries.
 
-First-run Project creation belongs to one Main-scoped `InitialProjectBootstrapRuntime`. One
-Semaphore owns the complete recovery-journal, collision-safe source claim, idempotent Core commit,
-Window Session presentation, and marker cleanup transaction; there is no nested Promise tail in the
-filesystem Adapter. Scope close rejects queued attempts and drains the already admitted transaction.
-The Adapter performs only durable journal/marker filesystem operations, while Effect Clock supplies
-quarantine identity and Core remains the Project/Page transaction authority. Packaged-runtime
-verification builds the same Module in a one-shot script Scope instead of carrying a second bootstrap
-implementation.
+A fresh Profile is an ordinary empty Library: Core accepts its first Project like any other and owns
+the read that says whether the Library holds any work. Setup is renderer presentation over the
+Workbench that creates Projects and changes preferences only through their usual owners. See
+[First-Run Behavior](product-specs/first-run-behavior.md).
 
 Foreground Appshot discovery is one process-scoped host runtime. Windows only
 contribute focus observations; closing a window or Main releases its listeners,

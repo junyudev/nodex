@@ -163,7 +163,7 @@ test("native Workbench tools arrange, read and safely edit the exact Page", asyn
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.6-sol" });
         const draft = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Workbench controls",
         );
         callerSessionId = draft.projectSessionId;

@@ -41,7 +41,7 @@ describe("scheduled/ask-in-inbox scenario", () => {
         name: "Bump dependency versions",
         projectId: manifest.projectId,
         launch: "ask",
-        cwds: [context.profile.initialProjectsDirectory.replaceAll("\\", "/")],
+        cwds: [context.profile.projectsDirectory.replaceAll("\\", "/")],
         executionEnvironment: "worktree",
         rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0;BYSECOND=0",
         runbookPageId: manifest.pageIdsByKey.dependencyPolicy,

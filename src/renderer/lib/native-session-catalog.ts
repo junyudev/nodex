@@ -24,6 +24,9 @@ const pickImportDirectoryCommand = defineRendererCommand({
 export const listNativeSessions = (input: NativeSessionCatalogInput) =>
   invokeRendererQuery("native-sessions:list", input);
 
+export const discoverNativeProjects = () =>
+  invokeRendererQuery("native-sessions:discover-projects");
+
 export const previewNativeConversationImport = (input: NativeConversationImportPreviewInput) =>
   invokeRendererQuery("native-sessions:preview-import", input);
 

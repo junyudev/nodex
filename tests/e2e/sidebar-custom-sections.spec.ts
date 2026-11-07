@@ -207,14 +207,14 @@ test("moves draft and attached Chats through Section boundaries and built-in des
     const creator = await createNativeTranscriptFixtureClient({
       executable: runtime.executable,
       codexHome: harness.profile.codexHome,
-      cwd: harness.profile.initialProjectsDirectory,
+      cwd: harness.profile.projectsDirectory,
     });
     let started: Awaited<ReturnType<typeof creator.call<"thread/start">>>;
     try {
       started = await creator.call(
         "thread/start",
         {
-          cwd: harness.profile.initialProjectsDirectory,
+          cwd: harness.profile.projectsDirectory,
           ephemeral: false,
           approvalPolicy: "never",
           sandbox: "workspace-write",
@@ -238,7 +238,7 @@ test("moves draft and attached Chats through Section boundaries and built-in des
     const manifest = await materializeScenario(
       SIDEBAR_CUSTOM_SECTIONS_SCENARIO_ID,
       seed,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
     );
     facts = await inspectScenario(manifest, seed);
     const observed = requireSidebarCustomSectionsFacts(facts);

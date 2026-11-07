@@ -96,7 +96,7 @@ Agents > Codex owns the speed new Codex chats start with, and Copy setup. Setup 
 shared Codex configuration.
 
 General is grouped by what a setting affects, in this order: App (window restore, Terminal shell on Windows, the running
-version with its update actions and preferences, open source licenses), Chats, Writing, Files &
+version with its update actions and preferences, `Run setup again`, open source licenses), Chats, Writing, Files &
 links, Notifications, Privacy (crash reports, session replays and usage analytics; see
 [Product Analytics Behavior](product-analytics-behavior.md)) and Troubleshooting (app-server request diagnostics). Each preference is its own row; a row's
 description adds its current state only when that differs from what the switch shows, such as an

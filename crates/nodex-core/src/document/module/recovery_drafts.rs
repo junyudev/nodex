@@ -1031,7 +1031,9 @@ fn analyse_content(
                 }
             }
             if !exact {
-                result.explanation = Some("Some elements changed after these edits, so they can’t be merged.".to_owned());
+                result.explanation = Some(
+                    "Some elements changed after these edits, so they can’t be merged.".to_owned(),
+                );
             }
         }
     }
@@ -1342,24 +1344,99 @@ impl OwnedDocumentModule {
         let generation = resolve
             .expected_generation
             .ok_or_else(|| invalid("A current document preview is required"))?;
-        self.apply_document_update(DocumentUpdateJob {
-            context: context.clone(), client_session_id: context.connection_id.clone(), operation_id: operation_id.clone(), expected_store_epoch: epoch, document_id: summary.document_id, generation, operation_kind: "restore_recovery", request_hash,
-            publication: UpdatePublication::Updated, prepared_agent: None, semantic_block_etag_ids: Vec::new(), include_local_block_etags: false,
-            recovery: Some(RecoveryCommit { draft_id: resolve.draft_id.clone(), revision: resolve.revision, resolution: RecoveryResolution::Restored }),
-        }, move |connection, authority, engine, materialization, _| {
-            let (summary, capture) = load_draft(connection, &context_for_prepare, &library_id, &resolve.draft_id)?;
-            require_revision(&summary, &resolve)?;
-            require_preview(authority, &resolve)?;
-            let analysis = inspect(connection, &context_for_prepare, summary, capture.clone())?;
-            if !analysis.can_restore { return Err(conflict("These edits can’t be merged safely.")); }
-            let (update, restored, file_restore) = prepare_recovery_update(connection, &context_for_prepare, authority, engine, &capture, &operation_id)?;
-            if !engine.prepare_update_v1(&update).map_err(engine_error)?.did_change() { return Ok(PreparedUpdate::NoChange); }
-            let placement = derive_document_placement_delta(materialization, &restored);
-            let touched = derive_touched_block_ids(&authority.owner_block_id, materialization, &restored, &placement);
-            let now = sqlite_now(connection)?;
-            insert_document_checkpoint(connection, authority, materialization, NewDocumentCheckpoint { operation_id: &operation_id, cause: "before_restore", label: Some("Before restoring unsaved edits"), revision_kind: "restore", source_mutation_id: Some(&operation_id), source_change_seq: None, actor: None, context: &context_for_prepare, now: &now })?;
-            Ok(PreparedUpdate::Apply { file_restore: Some(file_restore), base_head_seq: authority.head.head_seq, update_id: operation_id, touched_block_ids: touched.clone(), update, write_fence_block_ids: touched, placement_attribution: PreparedPlacementAttribution::Collaborative, title_write_fence_required: materialization.rich_title != restored.rich_title, document_write_fence_required: true, mutation_effect: None, semantic_local_block_ids: None })
-        }, Some(DocumentCommitCheckpoint { actor: serde_json::json!({"kind":"user"}), cause: "after_restore", label: Some("Restored unsaved edits".to_owned()), revision_kind: "restore" }))
+        self.apply_document_update(
+            DocumentUpdateJob {
+                context: context.clone(),
+                client_session_id: context.connection_id.clone(),
+                operation_id: operation_id.clone(),
+                expected_store_epoch: epoch,
+                document_id: summary.document_id,
+                generation,
+                operation_kind: "restore_recovery",
+                request_hash,
+                publication: UpdatePublication::Updated,
+                prepared_agent: None,
+                semantic_block_etag_ids: Vec::new(),
+                include_local_block_etags: false,
+                recovery: Some(RecoveryCommit {
+                    draft_id: resolve.draft_id.clone(),
+                    revision: resolve.revision,
+                    resolution: RecoveryResolution::Restored,
+                }),
+            },
+            move |connection, authority, engine, materialization, _| {
+                let (summary, capture) = load_draft(
+                    connection,
+                    &context_for_prepare,
+                    &library_id,
+                    &resolve.draft_id,
+                )?;
+                require_revision(&summary, &resolve)?;
+                require_preview(authority, &resolve)?;
+                let analysis = inspect(connection, &context_for_prepare, summary, capture.clone())?;
+                if !analysis.can_restore {
+                    return Err(conflict("These edits can’t be merged safely."));
+                }
+                let (update, restored, file_restore) = prepare_recovery_update(
+                    connection,
+                    &context_for_prepare,
+                    authority,
+                    engine,
+                    &capture,
+                    &operation_id,
+                )?;
+                if !engine
+                    .prepare_update_v1(&update)
+                    .map_err(engine_error)?
+                    .did_change()
+                {
+                    return Ok(PreparedUpdate::NoChange);
+                }
+                let placement = derive_document_placement_delta(materialization, &restored);
+                let touched = derive_touched_block_ids(
+                    &authority.owner_block_id,
+                    materialization,
+                    &restored,
+                    &placement,
+                );
+                let now = sqlite_now(connection)?;
+                insert_document_checkpoint(
+                    connection,
+                    authority,
+                    materialization,
+                    NewDocumentCheckpoint {
+                        operation_id: &operation_id,
+                        cause: "before_restore",
+                        label: Some("Before restoring unsaved edits"),
+                        revision_kind: "restore",
+                        source_mutation_id: Some(&operation_id),
+                        source_change_seq: None,
+                        actor: None,
+                        context: &context_for_prepare,
+                        now: &now,
+                    },
+                )?;
+                Ok(PreparedUpdate::Apply {
+                    file_restore: Some(file_restore),
+                    base_head_seq: authority.head.head_seq,
+                    update_id: operation_id,
+                    touched_block_ids: touched.clone(),
+                    update,
+                    write_fence_block_ids: touched,
+                    placement_attribution: PreparedPlacementAttribution::Collaborative,
+                    title_write_fence_required: materialization.rich_title != restored.rich_title,
+                    document_write_fence_required: true,
+                    mutation_effect: None,
+                    semantic_local_block_ids: None,
+                })
+            },
+            Some(DocumentCommitCheckpoint {
+                actor: serde_json::json!({"kind":"user"}),
+                cause: "after_restore",
+                label: Some("Restored unsaved edits".to_owned()),
+                revision_kind: "restore",
+            }),
+        )
     }
 
     fn restore_canvas_recovery(

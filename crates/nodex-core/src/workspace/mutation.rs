@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use nodex_core_contracts::workspace::{
     ProjectAppearance, ProjectCatalogChangeKind, ProjectLifecycle, ProjectMarker,
     ProjectSessionInvalidationScope, ProjectWorkspaceCommitValue, ProjectWorkspaceIntent,
-    ProjectWorkspaceReceipt, ProjectWorkspaceStarterPage,
+    ProjectWorkspaceReceipt,
 };
 use nodex_core_contracts::{
     BoundModuleContext, ModuleApplyRequest, ModuleMutationReceipt, ModuleName,
@@ -13,10 +13,7 @@ use nodex_core_contracts::{
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::json;
 
-use crate::database::{
-    create_database_authority_records, create_page_key_namespace,
-    resolve_page_transfer_data_source_destination,
-};
+use crate::database::{create_database_authority_records, create_page_key_namespace};
 use crate::document::{
     PrimaryCanvasIdentity, create_primary_canvas, primary_canvas_block_id,
     primary_canvas_document_id, read_store_epoch, sha256,
@@ -31,7 +28,7 @@ use crate::infrastructure::durable_mutation::{
 use crate::infrastructure::event_log::{
     NewChangeLogEntry, append_change_log, load_committed_event_by_sequence,
 };
-use crate::infrastructure::local_commit::{self, CommitContext};
+use crate::infrastructure::local_commit;
 use crate::infrastructure::module_receipts::read_module_receipt;
 #[cfg(test)]
 use crate::infrastructure::module_receipts::{NewModuleReceipt, insert_module_receipt};
@@ -76,13 +73,6 @@ struct ProjectAggregateIdentities {
 struct CreatedProjectAggregate {
     identities: ProjectAggregateIdentities,
     canvas: PrimaryCanvasIdentity,
-    starter_page: Option<crate::library::page_genesis::CreatedPageGenesis>,
-}
-
-struct StarterPageGenesisRequest<'a> {
-    context: &'a BoundModuleContext,
-    page: &'a ProjectWorkspaceStarterPage,
-    store_epoch: &'a str,
 }
 
 pub(super) struct WorkspaceMutationEffects {
@@ -142,7 +132,6 @@ pub(super) fn seed_rootless_default_project_for_test(
             )?;
             create_project_records(
                 transaction,
-                &commit,
                 &committed_at,
                 &library_id,
                 "project:default",
@@ -153,7 +142,6 @@ pub(super) fn seed_rootless_default_project_for_test(
                 None,
                 "test:rootless-default-project:v1",
                 &assets_root,
-                None,
             )?;
             let receipt_context = nodex_core_contracts::BoundModuleContext {
                 editor_history_owner: None,
@@ -288,16 +276,6 @@ pub(super) fn apply(
                     committed,
                     event: None,
                 });
-            }
-
-            if !matches!(
-                &request.intent,
-                ProjectWorkspaceIntent::CreateInitialProject { .. }
-            ) && project_catalog_is_empty(transaction, &library_id)?
-            {
-                return Err(conflict(
-                    "The initial Project must be created before other Workspace mutations",
-                ));
             }
 
             let agent_provenance = match &request.intent {
@@ -494,31 +472,6 @@ pub(super) fn apply(
                 ProjectWorkspaceIntent::AgentCommand { .. } => {
                     Err(internal("Nested Agent Workspace command was not rejected"))
                 }
-                ProjectWorkspaceIntent::CreateInitialProject {
-                    project_id,
-                    name,
-                    description,
-                    appearance,
-                    source_roots,
-                    page_key_prefix,
-                    starter_page,
-                } => create_project(
-                    transaction,
-                    &library_id,
-                    &context,
-                    &store_epoch,
-                    &request.operation_id,
-                    &request_hash,
-                    project_id,
-                    name,
-                    description,
-                    appearance.as_ref(),
-                    source_roots,
-                    page_key_prefix.as_deref(),
-                    Some(starter_page),
-                    &assets_root,
-                    ProjectCreationMode::Initial,
-                ),
                 ProjectWorkspaceIntent::CreateProject {
                     project_id,
                     name,
@@ -539,9 +492,7 @@ pub(super) fn apply(
                     appearance.as_ref(),
                     source_roots,
                     page_key_prefix.as_deref(),
-                    None,
                     &assets_root,
-                    ProjectCreationMode::Subsequent,
                 ),
                 ProjectWorkspaceIntent::UpdateProject {
                     project_id,
@@ -1318,20 +1269,6 @@ pub(super) fn apply(
     })
 }
 
-#[derive(Clone, Copy)]
-enum ProjectCreationMode {
-    Initial,
-    Subsequent,
-}
-
-fn project_catalog_is_empty(connection: &Connection, library_id: &str) -> Result<bool, StoreError> {
-    Ok(connection.query_row(
-        "SELECT NOT EXISTS(SELECT 1 FROM projects WHERE library_id = ?1)",
-        [library_id],
-        |row| row.get(0),
-    )?)
-}
-
 #[allow(clippy::too_many_arguments)]
 fn create_project(
     connection: &Connection,
@@ -1346,36 +1283,11 @@ fn create_project(
     appearance: Option<&ProjectAppearance>,
     source_roots: &[String],
     page_key_prefix: Option<&str>,
-    starter_page: Option<&ProjectWorkspaceStarterPage>,
     assets_root: &Path,
-    mode: ProjectCreationMode,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_project_input(project_id, description)?;
-    let project_count = connection.query_row(
-        "SELECT count(*) FROM projects WHERE library_id = ?1",
-        [library_id],
-        |row| row.get::<_, i64>(0),
-    )?;
-    match mode {
-        ProjectCreationMode::Initial if project_count != 0 => {
-            return Err(conflict(
-                "The initial Project has already been created for this Library",
-            ));
-        }
-        ProjectCreationMode::Subsequent if project_count == 0 => {
-            return Err(conflict(
-                "The first Project must be created with CreateInitialProject",
-            ));
-        }
-        ProjectCreationMode::Initial | ProjectCreationMode::Subsequent => {}
-    }
     require_unarchived_project_capacity(connection, library_id)?;
     let sources = normalize_source_roots(source_roots)?;
-    if matches!(mode, ProjectCreationMode::Initial) && sources.is_empty() {
-        return Err(invalid(
-            "The initial Project requires at least one source root",
-        ));
-    }
     let name = normalize_project_name(name, &sources)?;
     let appearance = appearance
         .map(normalize_project_appearance)
@@ -1397,7 +1309,6 @@ fn create_project(
         |scope| {
             let created = create_project_records(
                 connection,
-                scope.evidence(),
                 &committed_at,
                 library_id,
                 project_id,
@@ -1408,30 +1319,7 @@ fn create_project(
                 page_key_prefix,
                 operation_id,
                 assets_root,
-                starter_page.map(|page| StarterPageGenesisRequest {
-                    context,
-                    page,
-                    store_epoch,
-                }),
             )?;
-            let mut block_ids = vec![
-                created.identities.database_id.clone(),
-                created.canvas.block_id,
-            ];
-            let mut document_ids = vec![created.canvas.document_id];
-            let mut page_ids = Vec::new();
-            let mut data_source_ids = Vec::new();
-            let mut view_ids = Vec::new();
-            let mut document_heads = Vec::new();
-            if let Some(starter_page) = &created.starter_page {
-                page_ids.push(starter_page.page_create.page_id.clone());
-                block_ids.push(starter_page.page_create.page_id.clone());
-                block_ids.extend(starter_page.page_create.block_ids.iter().cloned());
-                document_ids.push(starter_page.page_create.document_id.clone());
-                data_source_ids.push(starter_page.data_source_id.clone());
-                view_ids.extend(starter_page.affected_view_ids.iter().cloned());
-                document_heads.push(starter_page.document_head.clone());
-            }
             seal_mutation(
                 scope,
                 context,
@@ -1445,13 +1333,16 @@ fn create_project(
                     thread_ids: Vec::new(),
                     session_summary_scopes: Vec::new(),
                     session_detail_ids: Vec::new(),
-                    block_ids,
-                    document_ids,
+                    block_ids: vec![
+                        created.identities.database_id.clone(),
+                        created.canvas.block_id,
+                    ],
+                    document_ids: vec![created.canvas.document_id],
                     database_ids: vec![created.identities.database_id],
-                    page_ids,
-                    data_source_ids,
-                    view_ids,
-                    document_heads,
+                    page_ids: Vec::new(),
+                    data_source_ids: Vec::new(),
+                    view_ids: Vec::new(),
+                    document_heads: Vec::new(),
                     committed_at: committed_at.clone(),
                 },
             )
@@ -2221,7 +2112,6 @@ fn lifecycle_literal(lifecycle: ProjectLifecycle) -> &'static str {
 #[allow(clippy::too_many_arguments)]
 fn create_project_records(
     connection: &Connection,
-    commit_context: &CommitContext,
     committed_at: &str,
     library_id: &str,
     project_id: &str,
@@ -2232,7 +2122,6 @@ fn create_project_records(
     page_key_prefix: Option<&str>,
     identity_namespace: &str,
     assets_root: &Path,
-    starter_page: Option<StarterPageGenesisRequest<'_>>,
 ) -> Result<CreatedProjectAggregate, StoreError> {
     let identities = aggregate_identities(identity_namespace, project_id);
     let canvas_block_id = primary_canvas_block_id(project_id);
@@ -2319,36 +2208,6 @@ fn create_project_records(
          ) VALUES (?1, ?2, ?3, 'active', 1, ?4, ?4)",
         params![project_id, library_id, identities.database_id, now],
     )?;
-    let starter_page = starter_page
-        .map(|request| {
-            let destination = resolve_page_transfer_data_source_destination(
-                connection,
-                library_id,
-                Some(project_id),
-                &identities.data_source_id,
-                &identities.view_id,
-                Some("triage"),
-                None,
-            )?;
-            crate::library::page_genesis::create_page_in_data_source(
-                connection,
-                crate::library::page_genesis::PageGenesisInput {
-                    context: request.context,
-                    commit_context,
-                    library_id,
-                    actor_project_id: Some(project_id),
-                    operation_id: identity_namespace,
-                    store_epoch: request.store_epoch,
-                    page_id: &request.page.page_id,
-                    document_id: &request.page.document_id,
-                    title_markdown: &request.page.title_markdown,
-                    markdown: &request.page.markdown,
-                    now: &now,
-                },
-                &destination,
-            )
-        })
-        .transpose()?;
     let canvas = create_primary_canvas(
         connection,
         library_id,
@@ -2366,11 +2225,7 @@ fn create_project_records(
         &now,
     )?;
 
-    Ok(CreatedProjectAggregate {
-        identities,
-        canvas,
-        starter_page,
-    })
+    Ok(CreatedProjectAggregate { identities, canvas })
 }
 
 fn insert_project_sources(
@@ -2586,7 +2441,7 @@ mod tests {
         ProjectLifecycle, ProjectMarker, ProjectMarkerColor, ProjectMarkerIcon,
         ProjectSessionIntent, ProjectSessionInvalidationScope, ProjectWorkspaceBootstrapStatus,
         ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
-        ProjectWorkspaceStarterPage, ProjectWorkspaceThreadPatch, ProjectWorkspaceThreadStatus,
+        ProjectWorkspaceThreadPatch, ProjectWorkspaceThreadStatus,
     };
     use nodex_core_contracts::{
         AdapterKind, BoundModuleContext, CoreErrorCode, CoreModuleEventPayload,
@@ -2808,18 +2663,8 @@ mod tests {
         )
     }
 
-    fn starter_page(seed: &str) -> ProjectWorkspaceStarterPage {
-        ProjectWorkspaceStarterPage {
-            page_id: format!("page:getting-started:{seed}"),
-            document_id: format!("document:getting-started:{seed}"),
-            title_markdown: "Welcome to Nodex".to_owned(),
-            markdown: "Welcome to **Nodex**.".to_owned(),
-        }
-    }
-
     #[test]
-    fn derives_bootstrap_and_atomically_creates_exactly_one_source_backed_initial_project() {
-        let (_directory, kernel, module) = empty_module();
+    fn a_fresh_library_accepts_projects_and_projectless_sessions_and_stops_being_empty() {
         let read_bootstrap = |module: &ProjectWorkspaceModule| {
             let snapshot = module
                 .read(
@@ -2836,34 +2681,57 @@ mod tests {
             bootstrap
         };
 
-        let empty = read_bootstrap(&module);
-        assert_eq!(empty.status, ProjectWorkspaceBootstrapStatus::Empty);
-
-        let ordinary_error = module
+        let (_project_directory, kernel, module) = empty_module();
+        assert_eq!(
+            read_bootstrap(&module).status,
+            ProjectWorkspaceBootstrapStatus::Empty
+        );
+        module
             .apply(
                 &bootstrap_context(),
                 request(
-                    "initial-ordinary-create",
+                    "fresh-project-without-source",
                     ProjectWorkspaceIntent::CreateProject {
-                        project_id: "project:ordinary".to_owned(),
-                        name: "Ordinary".to_owned(),
+                        project_id: "project:rootless".to_owned(),
+                        name: "Rootless".to_owned(),
                         description: String::new(),
                         appearance: None,
-                        source_roots: vec![
-                            nodex_platform::fixture_path!("/workspace/ordinary").to_owned(),
-                        ],
+                        source_roots: Vec::new(),
                         page_key_prefix: None,
                     },
                 ),
             )
-            .expect_err("ordinary creation cannot claim the empty catalog");
-        assert_eq!(ordinary_error.code, CoreErrorCode::Conflict);
+            .expect("the first Project may have no source");
+        assert_eq!(
+            read_bootstrap(&module).status,
+            ProjectWorkspaceBootstrapStatus::Ready
+        );
+        let (project_count, page_count, database_count) = kernel
+            .writer()
+            .call(|connection| {
+                Ok((
+                    connection.query_row("SELECT count(*) FROM projects", [], |row| {
+                        row.get::<_, i64>(0)
+                    })?,
+                    connection
+                        .query_row("SELECT count(*) FROM pages", [], |row| row.get::<_, i64>(0))?,
+                    connection.query_row(
+                        "SELECT count(*) FROM database_containers",
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )?,
+                ))
+            })
+            .expect("fresh Project aggregate counts");
+        assert_eq!((project_count, page_count), (1, 0));
+        assert!(database_count >= 1, "the Project owns a primary Database");
 
-        let projectless_error = module
+        let (_session_directory, _kernel, module) = empty_module();
+        module
             .apply(
                 &bootstrap_context(),
                 request(
-                    "initial-projectless-session",
+                    "fresh-projectless-session",
                     ProjectWorkspaceIntent::CreateSession {
                         session_id: "session:projectless".to_owned(),
                         project_id: None,
@@ -2872,156 +2740,33 @@ mod tests {
                     },
                 ),
             )
-            .expect_err("Projectless mutations wait for initial Project bootstrap");
-        assert_eq!(projectless_error.code, CoreErrorCode::Conflict);
+            .expect("a fresh Library accepts a projectless Session");
+        assert_eq!(
+            read_bootstrap(&module).status,
+            ProjectWorkspaceBootstrapStatus::Ready
+        );
 
-        let rootless_error = module
+        let (_inbox_directory, _kernel, module) = empty_module();
+        module
             .apply(
                 &bootstrap_context(),
                 request(
-                    "initial-rootless-create",
-                    ProjectWorkspaceIntent::CreateInitialProject {
-                        project_id: "project:rootless".to_owned(),
-                        name: "Rootless".to_owned(),
-                        description: String::new(),
-                        appearance: None,
-                        source_roots: Vec::new(),
-                        page_key_prefix: None,
-                        starter_page: starter_page("rootless"),
+                    "fresh-inbox-message",
+                    ProjectWorkspaceIntent::SendInboxMessage {
+                        expected_store_epoch: None,
+                        page_id: "page:inbox".to_owned(),
+                        document_id: "document:inbox".to_owned(),
+                        body: "Review the proposal".to_owned(),
+                        title: None,
+                        project_id: None,
                     },
                 ),
             )
-            .expect_err("initial Project requires a source");
-        assert_eq!(rootless_error.code, CoreErrorCode::InvalidInput);
-
-        let first = ProjectWorkspaceModule::new("profile-1", "library-1", &kernel)
-            .expect("first competing Workspace module");
-        let second = ProjectWorkspaceModule::new("profile-1", "library-1", &kernel)
-            .expect("second competing Workspace module");
-        let first_thread = std::thread::spawn(move || {
-            first.apply(
-                &bootstrap_context(),
-                request(
-                    "initial-concurrent-a",
-                    ProjectWorkspaceIntent::CreateInitialProject {
-                        project_id: "project:initial-a".to_owned(),
-                        name: "My Project".to_owned(),
-                        description: String::new(),
-                        appearance: None,
-                        source_roots: vec![
-                            nodex_platform::fixture_path!("/workspace/default-a").to_owned(),
-                        ],
-                        page_key_prefix: None,
-                        starter_page: starter_page("concurrent-a"),
-                    },
-                ),
-            )
-        });
-        let second_thread = std::thread::spawn(move || {
-            second.apply(
-                &bootstrap_context(),
-                request(
-                    "initial-concurrent-b",
-                    ProjectWorkspaceIntent::CreateInitialProject {
-                        project_id: "project:initial-b".to_owned(),
-                        name: "My Project".to_owned(),
-                        description: String::new(),
-                        appearance: None,
-                        source_roots: vec![
-                            nodex_platform::fixture_path!("/workspace/default-b").to_owned(),
-                        ],
-                        page_key_prefix: None,
-                        starter_page: starter_page("concurrent-b"),
-                    },
-                ),
-            )
-        });
-        let outcomes = [
-            first_thread.join().expect("first competing writer"),
-            second_thread.join().expect("second competing writer"),
-        ];
+            .expect("a fresh Library accepts an Inbox message");
         assert_eq!(
-            outcomes.iter().filter(|outcome| outcome.is_ok()).count(),
-            1,
-            "competing initial Project outcomes: {outcomes:?}",
+            read_bootstrap(&module).status,
+            ProjectWorkspaceBootstrapStatus::Ready
         );
-        let loser = outcomes
-            .iter()
-            .find_map(|outcome| outcome.as_ref().err())
-            .expect("one initial Project loses");
-        assert_eq!(loser.code, CoreErrorCode::Conflict);
-
-        let ready = read_bootstrap(&module);
-        assert_eq!(ready.status, ProjectWorkspaceBootstrapStatus::Ready);
-        let (project_count, page_count, ready_document_count, membership_count, starter_page_key) =
-            kernel
-                .writer()
-                .call(|connection| {
-                    Ok((
-                        connection.query_row(
-                            "SELECT count(*) FROM projects WHERE library_id = 'library-1'",
-                            [],
-                            |row| row.get::<_, i64>(0),
-                        )?,
-                        connection.query_row(
-                            "SELECT count(*) FROM pages WHERE library_id = 'library-1'",
-                            [],
-                            |row| row.get::<_, i64>(0),
-                        )?,
-                        connection.query_row(
-                            "SELECT count(*) FROM pages page \
-                         JOIN documents document ON document.id = page.document_id \
-                         WHERE page.library_id = 'library-1' AND document.readiness = 'ready'",
-                            [],
-                            |row| row.get::<_, i64>(0),
-                        )?,
-                        connection.query_row(
-                            "SELECT count(*) FROM data_source_page_memberships \
-                         WHERE removed_at IS NULL",
-                            [],
-                            |row| row.get::<_, i64>(0),
-                        )?,
-                        connection.query_row(
-                            "SELECT prefix.normalized_prefix || '-' || assignment.number \
-                         FROM page_key_assignments assignment \
-                         JOIN page_key_prefixes prefix \
-                           ON prefix.database_block_id = assignment.database_block_id \
-                          AND prefix.retired_at IS NULL",
-                            [],
-                            |row| row.get::<_, String>(0),
-                        )?,
-                    ))
-                })
-                .expect("initial Project aggregate counts");
-        assert_eq!(project_count, 1);
-        assert_eq!(page_count, 1);
-        assert_eq!(ready_document_count, 1);
-        assert_eq!(membership_count, 1);
-        assert_eq!(starter_page_key, "MP-1");
-        let winner = outcomes
-            .into_iter()
-            .find_map(Result::ok)
-            .expect("one initial Project wins");
-        let impact = winner
-            .event
-            .expect("initial Project event")
-            .projection_impact;
-        let ProjectionImpact::Resources {
-            page_ids,
-            database_ids,
-            data_source_ids,
-            view_ids,
-            document_heads,
-        } = impact
-        else {
-            panic!("initial Project has bounded projection impact")
-        };
-        assert_eq!(page_ids.len(), 1);
-        assert_eq!(database_ids.len(), 1);
-        assert_eq!(data_source_ids.len(), 1);
-        assert_eq!(view_ids.len(), 1);
-        assert_eq!(document_heads.len(), 1);
-        assert_eq!(document_heads[0].page_id, page_ids[0]);
     }
 
     #[test]
@@ -3060,109 +2805,6 @@ mod tests {
             .expect("archive legacy default");
         let archived = read_bootstrap();
         assert_eq!(archived.status, ProjectWorkspaceBootstrapStatus::Ready);
-    }
-
-    #[test]
-    fn invalid_starter_page_rolls_back_the_entire_initial_project_aggregate() {
-        let (_directory, kernel, module) = empty_module();
-        let mut invalid_starter_page = starter_page("invalid");
-        invalid_starter_page.markdown = "<page uuid=\"nested-page\" />".to_owned();
-
-        let error = module
-            .apply(
-                &bootstrap_context(),
-                request(
-                    "initial-invalid-starter-page",
-                    ProjectWorkspaceIntent::CreateInitialProject {
-                        project_id: "project:initial-invalid".to_owned(),
-                        name: "My Project".to_owned(),
-                        description: String::new(),
-                        appearance: None,
-                        source_roots: vec![
-                            nodex_platform::fixture_path!("/workspace/default-invalid").to_owned(),
-                        ],
-                        page_key_prefix: None,
-                        starter_page: invalid_starter_page,
-                    },
-                ),
-            )
-            .expect_err("owning nested Page must reject starter genesis");
-        assert_eq!(error.code, CoreErrorCode::InvalidInput);
-
-        let (project_count, database_count, page_count) = kernel
-            .writer()
-            .call(|connection| {
-                Ok((
-                    connection.query_row("SELECT count(*) FROM projects", [], |row| {
-                        row.get::<_, i64>(0)
-                    })?,
-                    connection.query_row(
-                        "SELECT count(*) FROM database_containers",
-                        [],
-                        |row| row.get::<_, i64>(0),
-                    )?,
-                    connection
-                        .query_row("SELECT count(*) FROM pages", [], |row| row.get::<_, i64>(0))?,
-                ))
-            })
-            .expect("rolled-back aggregate counts");
-        assert_eq!((project_count, database_count, page_count), (0, 0, 0));
-        let bootstrap = module
-            .read(
-                &context(),
-                ModuleReadRequest {
-                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
-                    read: ProjectWorkspaceRead::ProjectBootstrap,
-                },
-            )
-            .expect("empty bootstrap after rollback");
-        let ProjectWorkspaceReadValue::ProjectBootstrap { bootstrap } = bootstrap.value else {
-            panic!("Project bootstrap value")
-        };
-        assert_eq!(bootstrap.status, ProjectWorkspaceBootstrapStatus::Empty);
-    }
-
-    #[test]
-    fn initial_project_creation_replays_its_receipt_before_the_empty_catalog_precondition() {
-        let (_directory, kernel, module) = empty_module();
-        let initial = request(
-            "initial-exact-replay",
-            ProjectWorkspaceIntent::CreateInitialProject {
-                project_id: "project:initial".to_owned(),
-                name: "My Project".to_owned(),
-                description: String::new(),
-                appearance: None,
-                source_roots: vec![nodex_platform::fixture_path!("/workspace/default").to_owned()],
-                page_key_prefix: None,
-                starter_page: starter_page("replay"),
-            },
-        );
-        let committed = module
-            .apply(&bootstrap_context(), initial.clone())
-            .expect("create initial Project");
-        let mut rebound_context = bootstrap_context();
-        rebound_context.connection_id = "connection:rebound-generation".to_owned();
-        let replay = module
-            .apply(&rebound_context, initial)
-            .expect("replay initial Project");
-
-        assert_eq!(
-            replay.committed.event_sequence,
-            committed.committed.event_sequence,
-        );
-        assert!(replay.committed.receipt.mutation.duplicate);
-        assert!(replay.event.is_none());
-        let count = kernel
-            .writer()
-            .call(|connection| {
-                Ok(connection.query_row(
-                    "SELECT count(*) FROM projects WHERE library_id = 'library-1'",
-                    [],
-                    |row| row.get::<_, i64>(0),
-                )?)
-            })
-            .expect("Project count");
-        assert_eq!(count, 1);
     }
 
     #[test]

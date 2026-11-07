@@ -74,6 +74,12 @@ test("first launch discloses analytics, and delivery honors the person's choice"
     await capture(page, "01-first-launch-notice");
     expect(receiver.batches, "nothing leaves before the notice is acted on").toEqual([]);
 
+    // Adoption counts what a person opens.
+    await page
+      .getByRole("navigation", { name: "Home" })
+      .getByRole("button", { name: "Inbox", exact: true })
+      .click();
+
     // A renderer event, end to end: the shortcut opens the palette, which reports its use.
     await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k");
     await expect(page.getByRole("dialog")).toBeVisible();
@@ -92,10 +98,8 @@ test("first launch discloses analytics, and delivery honors the person's choice"
     await expect(dialog.getByText("installation_created")).toBeVisible();
     await expect(dialog.getByText("app_launched")).toBeVisible();
     await expect(dialog.getByText("feature=command_palette")).toBeVisible();
-    await expect(dialog.getByText("feature=page")).toBeVisible();
-    await expect(dialog.getByText("feature=inbox"), "a tab behind the page is not use").toHaveCount(
-      0,
-    );
+    await expect(dialog.getByText("feature=inbox")).toBeVisible();
+    await expect(dialog.getByText("feature=page"), "what nobody opened is not use").toHaveCount(0);
     await capture(page, "03-see-what-is-sent");
     await dialog.getByRole("button", { name: "Done" }).click();
 

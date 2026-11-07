@@ -62,7 +62,7 @@ test("keeps every final Claude reply block visible while completed work is colla
     });
     const { projectSessionId } = await createAgentSmokeDraft(
       page,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Claude reply collapse",
     );
     await chooseComposerModel(page, "Claude Opus 5", "Claude Opus 5");

@@ -215,7 +215,7 @@ test("persists typography across real conversation, Page, settings and Electron 
     await page.setViewportSize({ width: 1440, height: 960 });
     const draft = await createAgentSmokeDraft(
       page,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Typography review",
     );
     const pageId = createUuidV7();

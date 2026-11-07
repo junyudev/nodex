@@ -58,9 +58,9 @@ The canonical vocabulary, invariants, and authority table live in
 
 ### Projects, Library, and Workbench
 
-A fresh Profile opens with one ordinary source-backed Project, its primary
-Database and Canvas, and an editable Welcome Page. Projects may also have no
-source or no Chat. Removing a Project archives execution context while leaving
+A fresh Profile starts empty and opens on [setup](first-run-behavior.md), which
+connects an Agent and creates the Projects the person chooses. Projects may also
+have no source or no Chat. Removing a Project archives execution context while leaving
 its source folders and Library resources intact.
 
 The Workbench presents Project, Session, Inbox, and Library Scenes through one

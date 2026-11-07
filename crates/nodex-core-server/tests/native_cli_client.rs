@@ -12,7 +12,7 @@ use nodex_core_contracts::library::{
     LibraryIntent, LibraryPageFileEntryChange, LibraryPagePrepareKind,
     LibraryPageProjectionFileKind, LibraryRead, LibraryReadValue, LibraryWriteParent,
 };
-use nodex_core_contracts::workspace::{ProjectWorkspaceIntent, ProjectWorkspaceStarterPage};
+use nodex_core_contracts::workspace::ProjectWorkspaceIntent;
 use nodex_core_contracts::{
     ApplyResponse, ModuleApplyRequest, StoreEpoch, VersionedModuleContract,
 };
@@ -80,19 +80,13 @@ fn native_client_cold_starts_reuses_and_reads_the_authenticated_core() {
                 contract_version: <nodex_core_contracts::workspace::ProjectWorkspaceContract as VersionedModuleContract>::VERSION,
                 operation_id: "native-client:create-project".to_owned(),
                 store_epoch: store_epoch.clone(),
-                intent: ProjectWorkspaceIntent::CreateInitialProject {
+                intent: ProjectWorkspaceIntent::CreateProject {
                     project_id: project_id.to_owned(),
                     name: "Native CLI".to_owned(),
                     description: String::new(),
                     appearance: None,
                     source_roots: vec![source.to_string_lossy().into_owned()],
                     page_key_prefix: None,
-                    starter_page: ProjectWorkspaceStarterPage {
-                        page_id: "019b1000-1000-7000-8000-000000000004".to_owned(),
-                        document_id: "019b1000-1000-7000-8000-000000000005".to_owned(),
-                        title_markdown: "Welcome to Nodex".to_owned(),
-                        markdown: "Welcome to Nodex.".to_owned(),
-                    },
                 },
             },
         )
@@ -680,19 +674,13 @@ fn agent_attribution_credentials_name_the_attaching_session() {
     };
     workspace(
         "attribution:create-project",
-        ProjectWorkspaceIntent::CreateInitialProject {
+        ProjectWorkspaceIntent::CreateProject {
             project_id: project_id.to_owned(),
             name: "Attribution".to_owned(),
             description: String::new(),
             appearance: None,
             source_roots: vec![source.to_string_lossy().into_owned()],
             page_key_prefix: None,
-            starter_page: ProjectWorkspaceStarterPage {
-                page_id: "019b1000-1000-7000-8000-0000000000a4".to_owned(),
-                document_id: "019b1000-1000-7000-8000-0000000000a5".to_owned(),
-                title_markdown: "Welcome".to_owned(),
-                markdown: "Welcome.".to_owned(),
-            },
         },
     );
     workspace(

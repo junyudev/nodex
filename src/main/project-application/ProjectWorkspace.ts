@@ -116,8 +116,6 @@ import {
   projectWorkspaceThreadWorkspaceFromCore,
   projectWorkspaceThreadWorkspaceToCore,
   type DesktopAppServerSweepReconcileResult,
-  type DesktopInitialProjectCreateInput,
-  type DesktopInitialProjectCreateResult,
   type DesktopManagedWorktreeLifecycleSnapshot,
   type DesktopManagedWorktreeWindow,
   type DesktopProjectBootstrap,
@@ -143,8 +141,6 @@ import type { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 
 export type {
   DesktopAppServerSweepReconcileResult,
-  DesktopInitialProjectCreateInput,
-  DesktopInitialProjectCreateResult,
   DesktopManagedWorktreeLifecycleConsumer,
   DesktopManagedWorktreeLifecycleSnapshot,
   DesktopManagedWorktreeProjectProtection,
@@ -222,9 +218,6 @@ export interface ProjectWorkspaceService {
     input: PageChatLinkInput,
   ) => ProjectWorkspaceEffect<void>;
   readonly getProject: (projectId: string) => ProjectWorkspaceEffect<Project | null>;
-  readonly createInitialProject: (
-    input: DesktopInitialProjectCreateInput,
-  ) => ProjectWorkspaceEffect<DesktopInitialProjectCreateResult>;
   readonly createProject: (
     command: ProjectCreateCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<Project>>;
@@ -1630,29 +1623,6 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       readSessionLinkedPageSummaries,
       listPageChatWindow,
       getProject,
-      createInitialProject: Effect.fn("ProjectWorkspace.createInitialProject")(function* (input) {
-        yield* applyWithId("project.initial.create", input.operationId, {
-          kind: "create_initial_project",
-          project_id: input.projectId,
-          name: input.name ?? "",
-          description: input.description ?? "",
-          appearance: input.appearance ?? null,
-          source_roots: input.sources ?? [],
-          ...(input.pageKeyPrefix === undefined ? {} : { page_key_prefix: input.pageKeyPrefix }),
-          starter_page: {
-            page_id: input.starterPage.pageId,
-            document_id: input.starterPage.documentId,
-            title_markdown: input.starterPage.titleMarkdown,
-            markdown: input.starterPage.markdown,
-          },
-        });
-        const project = yield* getProject(input.projectId);
-        if (project) return { project };
-        return yield* projectWorkspaceError(
-          "project.initial.create",
-          new Error(`Created initial Project not found: ${input.projectId}`),
-        );
-      }),
       createProject,
       updateProject: Effect.fn("ProjectWorkspace.updateProject")(function* (input) {
         return yield* runSerializedProjectUpdate(

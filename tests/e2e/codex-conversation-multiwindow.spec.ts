@@ -92,7 +92,7 @@ test("two windows share an Agent chat's queue, Stop and Main commands, then cont
     observe(first);
     const draft = await createAgentSmokeDraft(
       first,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Conversation peers",
     );
     const threadId = await sendAgentPrompt(first, draft.projectSessionId, initialPrompt);

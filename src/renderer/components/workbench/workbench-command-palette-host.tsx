@@ -1,4 +1,5 @@
 import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { useFirstRunEntry } from "@/features/first-run/first-run-state";
 import { useFileReferenceRouter } from "@/lib/file-reference-router";
 import { toast } from "@/components/ui/toast";
 import {
@@ -137,6 +138,7 @@ export function WorkbenchCommandPaletteHost({
   const workspaceSearchContext = useSelectedWorkspaceSearchContext();
   const fileRouter = useFileReferenceRouter();
   const skillsReloadControl = useSelectedConversationSkillsReloadControl();
+  const { runSetupAgain } = useFirstRunEntry();
   const openingFolder = useRef(false);
   const openFolder = async () => {
     if (openingFolder.current) return;
@@ -324,6 +326,7 @@ export function WorkbenchCommandPaletteHost({
     openProcessManager,
     settings: openSettings,
     showKeyboardShortcuts: openKeyboardShortcuts,
+    runSetupAgain: () => void runSetupAgain(),
   };
 
   return (

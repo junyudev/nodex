@@ -464,7 +464,7 @@ test("reads its Session through native MCP before and after restarting Nodex", a
         { mode: 0o600 },
       );
       try {
-        const workspace = harness.profile.initialProjectsDirectory;
+        const workspace = harness.profile.projectsDirectory;
         execFileSync("git", ["init", "--initial-branch=main", workspace]);
         execFileSync("git", [
           "-C",
@@ -482,7 +482,7 @@ test("reads its Session through native MCP before and after restarting Nodex", a
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.6-sol" });
         const draft = await createAgentSmokeDraft(
           page,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Application context",
         );
         sessionId = draft.projectSessionId;

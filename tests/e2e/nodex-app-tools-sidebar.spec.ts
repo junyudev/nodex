@@ -214,7 +214,7 @@ test("native Sidebar commands converge across two windows with mixed and built-i
           [projectA, "Sidebar Project A"],
           [projectB, "Sidebar Project B"],
         ]) {
-          const root = join(harness.profile.initialProjectsDirectory, projectId!);
+          const root = join(harness.profile.projectsDirectory, projectId!);
           mkdirSync(root, { recursive: true });
           requireCoreValue(
             await invokeIpc(first, "projects:create", {
@@ -241,7 +241,7 @@ test("native Sidebar commands converge across two windows with mixed and built-i
         }
         const actor = await createAgentSmokeDraft(
           first,
-          harness.profile.initialProjectsDirectory,
+          harness.profile.projectsDirectory,
           "Sidebar actor project",
         );
         actorId = actor.projectSessionId;

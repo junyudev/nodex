@@ -233,7 +233,7 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       scope,
     );
 
-    assert.strictEqual(handlers.size, 51);
+    assert.strictEqual(handlers.size, 52);
     assert.isTrue(handlers.has("projects:create"));
     assert.isTrue(handlers.has("project-sessions:set-reminder"));
     assert.isTrue(handlers.has("projects:update"));

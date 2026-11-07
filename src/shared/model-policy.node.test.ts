@@ -11,16 +11,30 @@ import {
   modelPolicyFailure,
   projectModelPolicyCatalog,
   automaticModelCatalog,
+  withFreeModelsOn,
 } from "./model-policy";
 const credit = { instanceId: "nodex_codex_alice", driver: "codex", source: "nodex" };
 const native = { instanceId: "codex_work", driver: "codex" };
 describe("Profile model policy", () => {
-  it("defaults OpenCode to free only and every other provider to on", () => {
+  it("starts OpenCode off, free models included, and every other provider on", () => {
     for (const driver of ["opencode", "opencode2"]) {
-      expect(isModelOn(defaults, { ...native, driver }, "opencode/x-free")).toBe(true);
+      expect(isModelOn(defaults, { ...native, driver }, "opencode/x-free")).toBe(false);
       expect(isModelOn(defaults, { ...native, driver }, "opencode/x")).toBe(false);
     }
     expect(isModelOn(defaults, credit, "new-model")).toBe(true);
+  });
+  it("turns on a provider's free models and nothing else", () => {
+    const provider = {
+      ...native,
+      driver: "opencode",
+      models: [{ slug: "opencode/x-free" }, { slug: "opencode/x" }],
+    };
+    const policy = withFreeModelsOn(defaults, provider);
+    expect(isModelOn(policy, provider, "opencode/x-free")).toBe(true);
+    expect(isModelOn(policy, provider, "opencode/x")).toBe(false);
+    expect(
+      automaticModelCatalog(projectModelPolicyCatalog([provider], defaults))[0]?.models,
+    ).toEqual([]);
   });
   it("preserves individual exceptions through provider off/on and account changes", () => {
     const off = setModelOn(defaults, credit, "sol", false);

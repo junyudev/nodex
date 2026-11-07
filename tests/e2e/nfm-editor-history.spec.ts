@@ -28,7 +28,7 @@ test("undoes later typing before a native Subpage cut and restores the same owne
     const project = await createConvergenceProject(
       page,
       "Chronological history",
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
     );
     const source = await createConvergenceBoardPage(
       page,

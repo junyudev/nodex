@@ -52,7 +52,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
       NODEX_LOG_FILE_LEVEL: "debug",
     },
   });
-  const sourceRoot = realpathSync(harness.profile.initialProjectsDirectory);
+  const sourceRoot = realpathSync(harness.profile.projectsDirectory);
   const managedRoot = path.join(harness.profile.runRoot, "managed worktrees");
   const binaryPath = path.join(harness.profile.runRoot, "claude");
   const fixtureUrl = pathToFileURL(

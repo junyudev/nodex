@@ -157,8 +157,8 @@ test("native context menus preserve selected text, image actions, and file edito
       NODEX_FAKE_CODEX_AUTO_COMPLETE_FIRST_TURN: "1",
     },
   });
-  const imagePath = path.join(harness.profile.initialProjectsDirectory, "native-menu.png");
-  const editorPath = path.join(harness.profile.initialProjectsDirectory, "native-menu.txt");
+  const imagePath = path.join(harness.profile.projectsDirectory, "native-menu.png");
+  const editorPath = path.join(harness.profile.projectsDirectory, "native-menu.txt");
   fs.writeFileSync(imagePath, IMAGE_PNG);
   fs.writeFileSync(editorPath, "editor sentinel");
   fs.writeFileSync(

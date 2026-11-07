@@ -194,18 +194,12 @@ describe.runIf(enabled)("Rust Core Gate E runtime", () => {
     await runtime.client.workspaceApply({
       operationId: "gate-e-create-project",
       intent: {
-        kind: "create_initial_project",
+        kind: "create_project",
         project_id: projectId,
         name: "Gate E benchmark",
         description: "Native Core runtime quality fixture",
         appearance: null,
         source_roots: [path.join(fixtureHome, "source")],
-        starter_page: {
-          page_id: createUuidV7(),
-          document_id: createUuidV7(),
-          title_markdown: "Welcome to Nodex",
-          markdown: "Welcome to Nodex.",
-        },
       },
     });
 

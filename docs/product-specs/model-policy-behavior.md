@@ -7,8 +7,8 @@ Conversation history remains readable with its original account and model bindin
 ## Choices and identity
 
 The Profile stores provider switches and exceptions to each provider's model default.
-Every provider defaults on. OpenCode models default on only when their exact ID ends in
-`-free`; other models default on. Switching a provider off preserves its model exceptions.
+Every provider defaults on. OpenCode's models default off, free ones included, because third
+parties run them on their own terms; every other model defaults on. Switching a provider off preserves its model exceptions.
 New models follow the provider default. Nodex has one provider switch; its model keys
 contain the Runtime driver and exact model ID, independent of the signed-in account.
 Other keys contain the configured instance and exact model ID. Changing accounts never

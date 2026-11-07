@@ -223,8 +223,14 @@ const isWorkspaceCommandInvocation = (channel: string, args: readonly unknown[])
   return args.length === 1 && typeof input === "object" && input !== null && "operationId" in input;
 };
 
+// These scenes are Profiles that hold work, which never open on setup, unless a test says otherwise.
+let mockLibraryStatus: "empty" | "ready" = "ready";
+export function setMockLibraryStatus(status: "empty" | "ready"): void {
+  mockLibraryStatus = status;
+}
 const invokeRendererHarness = async (channel: string, ...args: unknown[]): Promise<unknown> => {
   invokeCalls.push([channel, ...args]);
+  if (channel === "projects:bootstrap") return { status: mockLibraryStatus };
   return (await mockInvokeImpl?.(channel, ...args)) ?? null;
 };
 export let agentRuntimeLaunchCalls: AgentRuntimeLaunch[] = [];
@@ -4817,6 +4823,7 @@ beforeEach(() => {
   projectSessionListeners.clear();
   pendingWorktreeWarningListener = null;
   mockInvokeImpl = null;
+  mockLibraryStatus = "ready";
   setWindowInnerWidthForTest(1024);
   localStorage.clear();
   sessionStorage.clear();

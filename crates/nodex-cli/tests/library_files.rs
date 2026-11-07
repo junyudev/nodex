@@ -5,7 +5,7 @@ use std::process::Command;
 
 use nodex_core_contracts::library::{LIBRARY_CONTRACT_VERSION, LibraryIntent, LibraryWriteParent};
 use nodex_core_contracts::workspace::{
-    PROJECT_WORKSPACE_CONTRACT_VERSION, ProjectWorkspaceIntent, ProjectWorkspaceStarterPage,
+    PROJECT_WORKSPACE_CONTRACT_VERSION, ProjectWorkspaceIntent, ProjectWorkspacePageCreationTarget,
 };
 use nodex_core_contracts::{ModuleApplyRequest, StoreEpoch};
 use nodex_core_protocol::ResponseEnvelope;
@@ -14,6 +14,7 @@ use serde_json::Value;
 
 const PROJECT: &str = "019b1000-1000-7000-8000-000000000001";
 const PAGE_A: &str = "019b1000-1000-7000-8000-000000000002";
+const PAGE_A_DOCUMENT: &str = "019b1000-1000-7000-8000-0000000000a2";
 const PAGE_B: &str = "019b1000-1000-7000-8000-000000000003";
 
 struct CoreGuard(u32);
@@ -99,19 +100,32 @@ fn seed(client: &CoreClient, home: &Path) {
                 contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                 operation_id: "cli-files:project".to_owned(),
                 store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
-                intent: ProjectWorkspaceIntent::CreateInitialProject {
+                intent: ProjectWorkspaceIntent::CreateProject {
                     project_id: PROJECT.to_owned(),
                     name: "File CLI".to_owned(),
                     description: String::new(),
                     appearance: None,
                     source_roots: vec![source.to_string_lossy().into_owned()],
                     page_key_prefix: None,
-                    starter_page: ProjectWorkspaceStarterPage {
-                        page_id: PAGE_A.to_owned(),
-                        document_id: "document:cli-a".to_owned(),
-                        title_markdown: "Page A".to_owned(),
-                        markdown: String::new(),
+                },
+            },
+        )
+        .unwrap();
+    assert!(matches!(created.0, ResponseEnvelope::Ok(_)));
+    let created = client
+        .workspace_apply(
+            None,
+            ModuleApplyRequest {
+                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                operation_id: "cli-files:page-a".to_owned(),
+                store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
+                intent: ProjectWorkspaceIntent::CreatePageFor {
+                    target: ProjectWorkspacePageCreationTarget::Project {
+                        project_id: PROJECT.to_owned(),
                     },
+                    page_id: PAGE_A.to_owned(),
+                    document_id: PAGE_A_DOCUMENT.to_owned(),
+                    title: "Page A".to_owned(),
                 },
             },
         )

@@ -19,6 +19,7 @@ const injectionReleasePath = process.env.NODEX_FAKE_CODEX_INJECTION_RELEASE_PATH
 const threadReadReleasePath = process.env.NODEX_FAKE_CODEX_THREAD_READ_RELEASE_PATH;
 // Individual scenarios can opt into newer contracts after enabling their matching fixture paths.
 const appServerVersion = process.env.NODEX_FAKE_CODEX_APP_SERVER_VERSION ?? "0.145.0-alpha.15";
+const signedOut = process.env.NODEX_FAKE_CODEX_SIGNED_OUT === "1";
 
 const readState = () => {
   try {
@@ -468,12 +469,20 @@ const handle = (message) => {
     case "initialized":
       return;
     case "account/read":
+      if (signedOut) {
+        respond(id, { account: null, requiresOpenaiAuth: true });
+        return;
+      }
       respond(id, {
         account: { type: "chatgpt", workspaceName: null, email: "queue@example.com", planType: "plus" },
         requiresOpenaiAuth: false,
       });
       return;
     case "getAuthStatus":
+      if (signedOut) {
+        respond(id, { authMethod: null, authToken: null, requiresOpenaiAuth: true });
+        return;
+      }
       respond(id, {
         authMethod: "chatgpt",
         authToken: params.includeToken

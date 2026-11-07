@@ -84,7 +84,7 @@ test("direct Agent commands update the same Page, properties, and attachments sh
       const pageId = manifest.pageIdsByKey[AGENT_CLI_PAGE_KEY];
       if (!pageId) throw new Error("Meeting Page is missing");
       const run = (args: readonly string[], input?: string) =>
-        cli(profile.nodexHome, profile.initialProjectsDirectory, args, input);
+        cli(profile.nodexHome, profile.projectsDirectory, args, input);
       const structured = async <T>(args: readonly string[], input?: string): Promise<T> =>
         parseResult<T>(await run(args, input));
 

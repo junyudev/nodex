@@ -90,6 +90,7 @@ const commandHandlers: CommandPaletteShellCommandHandlers = {
   openProcessManager: ignore,
   settings: ignore,
   showKeyboardShortcuts: ignore,
+  runSetupAgain: () => undefined,
 };
 const commandContext: Omit<CommandPaletteShellCommandContext, "isMac"> = {
   canGoBack: true,

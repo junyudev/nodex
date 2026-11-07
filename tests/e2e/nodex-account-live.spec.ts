@@ -82,7 +82,7 @@ test("signs in with real Clerk and preserves local work after sign out", async (
     const manifest = await materializeScenario(
       BOARD_DENSE_SCENARIO_ID,
       seed,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
     );
     const pageId = manifest.pageIdsByKey[BOARD_DENSE_PRIMARY_PAGE_KEY]!;
     const localBefore = await seed.readPage(manifest.projectId, pageId);

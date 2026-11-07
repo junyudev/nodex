@@ -238,5 +238,8 @@ test("Free only returns OpenCode to its free models", async () => {
     fireEvent.click(screen.getByRole("button", { name: "Free only" }));
     await Promise.resolve();
   });
-  expect(lastPolicy()?.exceptions).toEqual(['"unused"']);
+  expect(lastPolicy()?.exceptions).toEqual([
+    '"unused"',
+    JSON.stringify(["opencode_a", "opencode/beam-free"]),
+  ]);
 });

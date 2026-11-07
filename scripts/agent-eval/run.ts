@@ -75,7 +75,7 @@ async function run(signal: AbortSignal): Promise<void> {
     const scenarioManifest = await materializeScenario(
       "agent/cli-workflow",
       seed,
-      profile.initialProjectsDirectory,
+      profile.projectsDirectory,
     );
     const fixture = await definition.prepare(
       { runtime, seed, manifest: scenarioManifest, profile },
@@ -83,7 +83,7 @@ async function run(signal: AbortSignal): Promise<void> {
     );
     const prepared = await prepareDesktopEnvironment({
       repository,
-      workspace: profile.initialProjectsDirectory,
+      workspace: profile.projectsDirectory,
       nodexHome: profile.nodexHome,
       codexHome: profile.codexHome,
       projectId: scenarioManifest.projectId,
@@ -95,7 +95,7 @@ async function run(signal: AbortSignal): Promise<void> {
       prepared.binary,
       ["--project", scenarioManifest.projectId, "context"],
       {
-        cwd: profile.initialProjectsDirectory,
+        cwd: profile.projectsDirectory,
         env: { ...process.env, ...prepared.environment },
         encoding: "utf8",
       },
@@ -131,10 +131,10 @@ async function run(signal: AbortSignal): Promise<void> {
       projectId: scenarioManifest.projectId,
       profileId: descriptor.profile_id,
       profileRoot: profile.runRoot,
-      workspace: profile.initialProjectsDirectory,
+      workspace: profile.projectsDirectory,
       repository,
       workspaceInstructionsHash: await digestFile(
-        path.join(profile.initialProjectsDirectory, "AGENTS.md"),
+        path.join(profile.projectsDirectory, "AGENTS.md"),
       ),
       coreStartNonce: descriptor.start_nonce,
     };

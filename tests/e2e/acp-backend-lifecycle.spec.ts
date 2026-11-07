@@ -372,7 +372,7 @@ test("ACP automations preserve their instance through Cron, Page-linked Heartbea
         backendBinding: binding,
         model: "scripted-model",
         executionEnvironment: "local",
-        cwds: [profile.initialProjectsDirectory],
+        cwds: [profile.projectsDirectory],
       };
       const created = await invoke<{ item: CodexScheduledAutomation }>(
         page,

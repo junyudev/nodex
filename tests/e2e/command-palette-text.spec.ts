@@ -65,7 +65,7 @@ test("searches file contents, filters file types and opens the exact matching ca
     },
     async ({ page, profile, manifest }) => {
       if (!manifest) throw new Error("board/dense did not materialize");
-      const workspace = path.join(profile.initialProjectsDirectory, "text-search-fixture");
+      const workspace = path.join(profile.projectsDirectory, "text-search-fixture");
       const targetPath = path.join(workspace, "implementation.ts");
       const excludedPath = path.join(workspace, "notes.md");
       const needle = "CommandPaletteBodyNeedle_7B39";

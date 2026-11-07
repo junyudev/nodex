@@ -315,11 +315,7 @@ const runPaidCase = async (
       if (message.type() === "error") diagnostics.push(`console: ${message.text()}`);
     });
     const account = await preflightPaidAccount(page);
-    const draft = await createPaidSmokeDraft(
-      page,
-      harness.profile.initialProjectsDirectory,
-      caseId,
-    );
+    const draft = await createPaidSmokeDraft(page, harness.profile.projectsDirectory, caseId);
     const preflight = await preflightExecutionProfile(page, caseId);
     const selectedProfile = await selectExecutionProfile(page, preflight);
     await beforeSend({ page });
@@ -329,7 +325,7 @@ const runPaidCase = async (
     if (caseId === "browser") {
       const threadPage = page;
       const skills = (await invokeIpc(page, "codex:composer-skills:list", {
-        cwds: [harness.profile.initialProjectsDirectory],
+        cwds: [harness.profile.projectsDirectory],
       })) as Array<Record<string, unknown>>;
       if (skills.some((skill) => skill.name === "agent-browser")) {
         throw new Error("Competing Agent Browser skill remained enabled after Thread launch");
@@ -715,7 +711,7 @@ test("reads the image in an explicit Inbox suggestion @paid-agent-inbox-image", 
     const seed = new RendererIpcSeedAdapter(page);
     const project = await seed.createProject({
       name: "Image smoke",
-      sources: [harness.profile.initialProjectsDirectory],
+      sources: [harness.profile.projectsDirectory],
     });
     const settings = await invokeTypedIpc(page, "settings:inbox:update", {
       suggestions: "on_request",

@@ -1,6 +1,5 @@
 import type { BrowserWindow } from "electron";
 import { Effect } from "effect";
-import type { InitialProjectPresentation } from "../../shared/initial-project-welcome";
 import type {
   WindowSessionBounds,
   WindowSessionNewWindowRequest,
@@ -43,7 +42,6 @@ export interface ApplicationWindowCoordinator {
     webContentsId: number,
     input: WindowSessionSaveLayoutInput,
   ) => { readonly session: WindowSessionRecord };
-  readonly seedInitialProjectPresentation: (presentation: InitialProjectPresentation) => void;
   readonly sendReminderOpen: (payload: {
     readonly projectId: string;
     readonly pageId: string;
@@ -189,7 +187,6 @@ export const createApplicationWindowCoordinator = (
     requestNew,
     resolveSessionId: options.windows.resolveSessionId,
     saveLayout,
-    seedInitialProjectPresentation: options.windows.seedInitialProjectPresentation,
     sendReminderOpen: (payload) => {
       focusLast();
       safeSendToWindow(options.windows.getLastFocused(), "reminder:open", [payload]);
