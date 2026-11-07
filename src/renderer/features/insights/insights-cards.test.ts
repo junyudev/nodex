@@ -60,7 +60,8 @@ const options = (overrides: Partial<ShareCardOptions> = {}): ShareCardOptions =>
 describe("share cards", () => {
   it.each(["skyline", "receipt"] as const)("%s is a self-contained 4:5 picture", (kind) => {
     const svg = renderShareCard(view(), options({ kind }));
-    expect(svg).toMatch(/^<svg [^>]*width="1080" height="1350"/);
+    const root = /^<([a-z]+) [^>]*width="(\d+)" height="(\d+)"/u.exec(svg);
+    expect(root?.slice(1)).toEqual(["svg", "1080", "1350"]);
     // A canvas refuses images that embed HTML or reach outside themselves.
     expect(svg).not.toContain("foreignObject");
     expect(svg).not.toMatch(/(?:href|src)="https?:/);

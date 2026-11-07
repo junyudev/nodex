@@ -244,7 +244,9 @@ impl QueryContext<'_> {
                 Ok((property, revision))
             })
             .collect::<rusqlite::Result<BTreeMap<_, _>>>()?;
-        Ok(json!({ "membership_revision": revision, "value_revisions": revisions, "value_updated_ats": updated }))
+        Ok(
+            json!({ "membership_revision": revision, "value_revisions": revisions, "value_updated_ats": updated }),
+        )
     }
 
     fn relation_value(
