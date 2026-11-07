@@ -34,6 +34,7 @@ holds its keys, its unsent captures, its drafts, and a cache of what it last saw
   desktop first recovers that identity, even if it already used the code or the code expired. A
   refusal from the desktop clears the unfinished pairing; starting one with another desktop replaces
   it.
+- Settings links to the app's listings on the download page, for a phone that doesn't have it yet.
 - Settings lists each paired phone with its platform, version, and whether it is connected or when
   it was last seen. `Remove` ends that phone's access at once, including a live connection. Removing
   a phone does not touch its chats or messages, which belong to the Profile.
