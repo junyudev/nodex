@@ -28,7 +28,9 @@ No forbidden explicit choice is silently replaced. Driver-only delegation, anoth
 instance's first-model selection, planner candidates, Mobile fallback, Refine fallback,
 automation first-model selection, and native-import fallback exclude Nodex credit.
 Runtime title and source-control utilities resolve their automatic defaults from on,
-non-credit models, including when a Project's default is off.
+non-credit models, including when a Project's default is off. A chat's default title model comes
+from the chat's own Agent, uses only on models, and never moves a credit chat to a model the person
+did not choose.
 A saved exact model remains an explicit choice, including when it has been switched off.
 
 ## Settings and pickers
@@ -48,7 +50,8 @@ is off, which opens Settings → Models, and its gear opens the same page. Searc
 off models, dimmed and marked `Off`: choosing one turns it on and selects it, except that a
 Nodex model opens its Settings card instead, because spending credits is a deliberate choice.
 A whole provider that is off returns only from Settings. Other pickers, such as Inbox,
-scheduled tasks and a Page's agent configuration, list on models and keep a saved choice visible.
+scheduled tasks, the chat title model and a Page's agent configuration, list on models and keep a
+saved choice visible.
 
 A chat whose model is off keeps showing it, marked `Off`, and raises a composer notice naming
 the model with **Choose model**, and **Turn on** or, for Nodex and an off provider, **Manage**.

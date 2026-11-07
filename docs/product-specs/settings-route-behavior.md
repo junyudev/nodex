@@ -101,7 +101,9 @@ links, Notifications, Privacy (crash reports, session replays, product telemetry
 and Troubleshooting (app-server request diagnostics). Each preference is its own row; a row's
 description adds its current state only when that differs from what the switch shows, such as an
 environment override, a prerequisite or a change that applies after restart. A search result for a
-General setting lands on its group. Request diagnostics are captured only while the General page is
+General setting lands on its group. Chats' **Title chats with** chooses the model described in
+[Agent Runtime behavior](agent-runtime-behavior.md); it offers Agents that can generate text and
+only the model, since a title always runs at the lightest effort. Request diagnostics are captured only while the General page is
 open and show bounded recent request timing, scheduling, transport, and failure data for local
 troubleshooting.
 On Windows, General's Terminal shell row lists Automatic first, followed by only

@@ -16,9 +16,13 @@ import {
 } from "../../shared/link-opening-settings";
 import {
   AgentRuntimeSettingsSchema,
+  AgentRuntimeTitleModelSchema,
   DEFAULT_AGENT_RUNTIME_SETTINGS,
   type AgentRuntimeSettings,
+  type AgentRuntimeTitleModel,
+  type UpdateAgentRuntimeSettingsInput,
 } from "../../shared/agent-runtime-settings";
+import { AgentRuntimeModeSchema } from "../../shared/schemas/agent-runtime-api";
 import {
   UsageMeterSettingsSchema,
   DEFAULT_USAGE_METER_SETTINGS,
@@ -146,6 +150,7 @@ interface ServerTomlConfig {
   window_restore_policy?: WindowRestorePolicy;
   composer_predictions_enabled?: boolean;
   default_runtime_mode?: AgentRuntimeSettings["defaultRuntimeMode"];
+  title_model?: AgentRuntimeTitleModel;
   usage_meters?: Partial<UsageMeterSettings>;
   model_policy?: ModelPolicy;
   open_link_in_target?: LinkOpeningSettings["openLinkInTarget"];
@@ -1460,21 +1465,31 @@ export function updateWindowRestoreSettings(
 export function getAgentRuntimeSettings(
   source: ApplicationSettingsDocumentSource,
 ): AgentRuntimeSettings {
-  const parsed = AgentRuntimeSettingsSchema.safeParse({
-    defaultRuntimeMode: loadProfileServerTomlConfig(source).default_runtime_mode,
-  });
-  return parsed.success ? parsed.data : DEFAULT_AGENT_RUNTIME_SETTINGS;
+  const config = loadProfileServerTomlConfig(source);
+  // Each choice stands alone, so a damaged title model never resets the permission mode.
+  return {
+    defaultRuntimeMode:
+      AgentRuntimeModeSchema.safeParse(config.default_runtime_mode).data ??
+      DEFAULT_AGENT_RUNTIME_SETTINGS.defaultRuntimeMode,
+    titleModel: AgentRuntimeTitleModelSchema.safeParse(config.title_model).data ?? null,
+  };
 }
 
 export function updateAgentRuntimeSettings(
-  input: AgentRuntimeSettings,
+  input: UpdateAgentRuntimeSettingsInput,
   source: ApplicationSettingsDocumentSource,
 ): AgentRuntimeSettings {
-  const settings = AgentRuntimeSettingsSchema.parse(input);
-  writeProfileServerTomlConfig(source, {
+  const settings = AgentRuntimeSettingsSchema.parse({
+    ...getAgentRuntimeSettings(source),
+    ...input,
+  });
+  const server: ServerTomlConfig = {
     ...loadProfileServerTomlConfig(source),
     default_runtime_mode: settings.defaultRuntimeMode,
-  });
+  };
+  if (settings.titleModel) server.title_model = settings.titleModel;
+  else delete server.title_model;
+  writeProfileServerTomlConfig(source, server);
   return settings;
 }
 

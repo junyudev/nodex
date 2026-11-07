@@ -204,6 +204,11 @@ export const SETTINGS_SEARCH_PANELS = {
             "While a thread is running, queue new messages by default instead of steering it right away.",
             ["steer", "composer"],
           ),
+          entry(
+            "Title chats with",
+            "Each chat's own Agent titles it. A model chosen here receives every first message.",
+            ["title", "name", "rename", "generate", "model", "utility"],
+          ),
         ],
       },
       {

@@ -1,6 +1,8 @@
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { toast } from "@/components/ui/toast";
 import { agentRuntimeRuntime } from "./agent-runtime-runtime";
+import { readableIpcError } from "./ipc-error-message";
 import { queryKeys } from "./query-keys";
 import { resolveRendererTransport } from "./renderer-transport";
 
@@ -26,4 +28,16 @@ export function useAgentRuntimeProviders() {
     [client],
   );
   return useQuery(agentRuntimeProvidersQueryOptions());
+}
+
+/** Asks every Agent to check its models again, and publishes what they report. */
+export function useRefreshAgentRuntimeProviders() {
+  const client = useQueryClient();
+  return () =>
+    void agentRuntimeRuntime
+      .catalog({ refresh: true })
+      .then((providers) => client.setQueryData(queryKeys.agentRuntime.providers(), providers))
+      .catch((error: unknown) =>
+        toast.danger(readableIpcError(error, "Agents could not be checked")),
+      );
 }

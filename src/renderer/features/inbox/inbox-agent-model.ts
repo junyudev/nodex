@@ -1,4 +1,3 @@
-import { modelIsOn } from "../../../shared/model-policy";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import type { AgentSessionConfigOption } from "../../../shared/agent-conversation";
@@ -24,6 +23,7 @@ import { formatAgentModelName } from "@/lib/codex-thread-settings";
 import {
   agentEffortLabel,
   agentRuntimeBinding,
+  agentRuntimePickerEntries,
   agentRuntimeProviderBackendKind,
   agentRuntimeProviderLabel,
   isAgentRuntimeProviderAvailable,
@@ -190,29 +190,11 @@ export function inboxAgentPickerModel(
   choice: InboxAgentChoice,
   purpose: InboxAgentPurpose = "chat",
 ): InboxAgentPickerModel {
-  const entries = catalog.providers.flatMap((provider) => {
-    const binding = agentRuntimeBinding(provider.instanceId, catalog.instances);
-    if (
-      !binding ||
-      !isAgentRuntimeProviderAvailable(provider) ||
-      (purpose === "suggestion" && !supportsInboxStructuredGeneration(provider))
-    )
-      return [];
-    const label = agentRuntimeProviderLabel(provider, catalog.instances);
-    return provider.models
-      .filter(
-        // A saved choice stays visible, so turning it off never changes it silently.
-        (model) =>
-          modelIsOn(model) ||
-          (provider.instanceId === choice.instanceId && model.slug === choice.model),
-      )
-      .map((model) => ({
-        binding,
-        label,
-        model: projectAgentRuntimeModel(provider, model),
-        selection: { binding, model: model.slug },
-      }));
-  });
+  const entries = agentRuntimePickerEntries(
+    catalog,
+    choice,
+    (provider) => purpose !== "suggestion" || supportsInboxStructuredGeneration(provider),
+  );
   const provider = catalog.providers.find(
     (candidate) => candidate.instanceId === choice.instanceId,
   );

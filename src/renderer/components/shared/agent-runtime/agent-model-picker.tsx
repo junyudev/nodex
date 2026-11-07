@@ -247,6 +247,10 @@ export function AgentModelPicker(
     readonly catalog: AgentModelCatalogPresentation;
     /** Replaces the composer or settings trigger, such as a split button's menu half. */
     readonly triggerButton?: ReactElement;
+    /** Renames the inherited choice `allowInherit` lists. */
+    readonly inheritLabel?: string;
+    /** Chooses a model and nothing else, where Nodex decides its effort and speed. */
+    readonly modelOnly?: boolean;
   },
 ) {
   const { triggerRef } = props;
@@ -325,7 +329,7 @@ export function AgentModelPicker(
   const reasoningOptions = isCodex
     ? resolveCodexReasoningEffortOptions(selection.model, models)
     : (currentModel?.supportedReasoningEfforts ?? []);
-  const nativeControls = isCodex || selection.kind === "claude";
+  const nativeControls = !props.modelOnly && (isCodex || selection.kind === "claude");
   const effortStops = nativeControls
     ? resolveIntelligenceEffortStops({
         efforts: reasoningOptions,
@@ -381,6 +385,7 @@ export function AgentModelPicker(
   const contextWindows = [...new Set(native?.capabilities.contextWindows ?? [])];
   const offCount = catalog.off?.count ?? 0;
   const inherited = props.allowInherit === true && props.inheritance === "inherited";
+  const inheritLabel = props.inheritLabel ?? INHERIT_LABEL;
   // An inherited choice names no modes of its own.
   const settingsIndicators = inherited ? [] : indicators;
   const inheritOptions: readonly NodexOptionPickerOption[] = props.allowInherit
@@ -389,7 +394,7 @@ export function AgentModelPicker(
           value: INHERIT_OPTION_VALUE,
           // Keeps the label in line with the model names beside their provider marks.
           leftSlot: <span aria-hidden="true" className="size-3.5" />,
-          label: INHERIT_LABEL,
+          label: inheritLabel,
         },
       ]
     : [];
@@ -493,9 +498,9 @@ export function AgentModelPicker(
       />
     ) : null,
   ].filter(Boolean);
-  const modeToggles = modeToggleList.length > 0 ? modeToggleList : null;
+  const modeToggles = !props.modelOnly && modeToggleList.length > 0 ? modeToggleList : null;
   const genericOptions =
-    isCodex || selection.kind === "claude"
+    props.modelOnly || isCodex || selection.kind === "claude"
       ? []
       : (catalog.configOptions?.filter((option) => option.category !== "model") ?? []);
   const runtimeOptions = catalog.runtimeOptions ?? [];
@@ -578,7 +583,7 @@ export function AgentModelPicker(
             ))}
             <span className="min-w-0 flex-1 truncate text-start">
               {inherited ? (
-                INHERIT_LABEL
+                inheritLabel
               ) : (
                 <>
                   {modelLabel}

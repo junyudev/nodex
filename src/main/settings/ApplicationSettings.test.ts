@@ -847,6 +847,7 @@ it.effect("persists the Profile's default native execution mode and rejects inva
     const settings = yield* makeApplicationSettings(source);
     assert.deepEqual((yield* settings.snapshot()).agentRuntime, {
       defaultRuntimeMode: "full-access",
+      titleModel: null,
     });
     for (const defaultRuntimeMode of ["auto", "approval-required", "full-access"] as const) {
       yield* settings.update({ type: "update-agent-runtime", input: { defaultRuntimeMode } });
@@ -865,6 +866,40 @@ it.effect("persists the Profile's default native execution mode and rejects inva
       "Failure",
     );
     assert.equal(readFileSync(settingsPath, "utf8"), before);
+  }),
+);
+
+it.effect("keeps the chat title model and permission mode independent", () =>
+  Effect.gen(function* () {
+    const { root, settingsPath } = fixture('[plugin]\nname = "keep"\n');
+    const source = { environment: {}, hostHomeDirectory: root, settingsPath };
+    const settings = yield* makeApplicationSettings(source);
+    const titleModel = { instanceId: "codex", model: "gpt-6-luna" };
+    yield* settings.update({
+      type: "update-agent-runtime",
+      input: { defaultRuntimeMode: "auto" },
+    });
+    yield* settings.update({ type: "update-agent-runtime", input: { titleModel } });
+    assert.deepEqual((yield* (yield* makeApplicationSettings(source)).snapshot()).agentRuntime, {
+      defaultRuntimeMode: "auto",
+      titleModel,
+    });
+
+    yield* settings.update({ type: "update-agent-runtime", input: { titleModel: null } });
+    assert.deepEqual((yield* settings.snapshot()).agentRuntime, {
+      defaultRuntimeMode: "auto",
+      titleModel: null,
+    });
+    assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).plugin, { name: "keep" });
+
+    writeFileSync(
+      settingsPath,
+      '[server]\ndefault_runtime_mode = "auto"\n[server.title_model]\nmodel = "no-agent"\n',
+    );
+    assert.deepEqual((yield* (yield* makeApplicationSettings(source)).snapshot()).agentRuntime, {
+      defaultRuntimeMode: "auto",
+      titleModel: null,
+    });
   }),
 );
 

@@ -1,3 +1,4 @@
+import { ChatTitleModelSettingRow } from "./chat-title-model-setting-row";
 import { TerminalShellSettingRow } from "./terminal-shell-setting-row";
 import { UsageMeterSettingRows } from "./usage-meter-setting-rows";
 import { startTransition } from "react";
@@ -106,6 +107,7 @@ export function GeneralSettingsPage({
             onChange={onThreadQueueFollowUpsEnabledChange}
           />
         </SettingRow>
+        <ChatTitleModelSettingRow />
       </SectionBlock>
 
       <SectionBlock id="writing" title="Writing">

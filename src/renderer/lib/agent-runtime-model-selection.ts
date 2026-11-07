@@ -123,6 +123,40 @@ export function agentRuntimeProviderLabel(
   );
 }
 
+/**
+ * What a model picker lists for one use: the on models of every available Agent that can serve it.
+ * A saved choice stays listed, so turning it off never changes it silently.
+ */
+export function agentRuntimePickerEntries(
+  catalog: {
+    readonly providers: readonly Provider[];
+    readonly instances: readonly {
+      readonly binding: AgentBackendBinding;
+      readonly label: string;
+    }[];
+  },
+  saved: { readonly instanceId: string; readonly model: string | null } | null,
+  canServe: (provider: Provider) => boolean,
+) {
+  return catalog.providers.flatMap((provider) => {
+    const binding = agentRuntimeBinding(provider.instanceId, catalog.instances);
+    if (!binding || !isAgentRuntimeProviderAvailable(provider) || !canServe(provider)) return [];
+    const label = agentRuntimeProviderLabel(provider, catalog.instances);
+    return provider.models
+      .filter(
+        (model) =>
+          modelIsOn(model) ||
+          (provider.instanceId === saved?.instanceId && model.slug === saved.model),
+      )
+      .map((model) => ({
+        binding,
+        label,
+        model: projectAgentRuntimeModel(provider, model),
+        selection: { binding, model: model.slug },
+      }));
+  });
+}
+
 /** A Runtime model as the shared model picker lists it, with its effort choices. */
 export function projectAgentRuntimeModel(
   provider: Provider,

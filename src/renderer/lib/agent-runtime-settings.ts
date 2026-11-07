@@ -1,5 +1,5 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
-import type { AgentRuntimeSettings } from "../../shared/agent-runtime-settings";
+import type { UpdateAgentRuntimeSettingsInput } from "../../shared/agent-runtime-settings";
 import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
 
 export const agentRuntimeSettingsQueryOptions = () =>
@@ -14,7 +14,10 @@ const updateCommand = defineRendererCommand({
   owner: "AgentRuntimeSettings",
   protocol: { kind: "returned_value" },
 });
-export async function updateAgentRuntimeSettings(client: QueryClient, input: AgentRuntimeSettings) {
+export async function updateAgentRuntimeSettings(
+  client: QueryClient,
+  input: UpdateAgentRuntimeSettingsInput,
+) {
   const settings = await invokePlainCommand(updateCommand, input);
   client.setQueryData(agentRuntimeSettingsQueryOptions().queryKey, settings);
   return settings;

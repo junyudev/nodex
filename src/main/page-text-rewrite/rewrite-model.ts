@@ -7,7 +7,10 @@ import {
   supportsInboxStructuredGeneration,
   type InboxSettings,
 } from "../../shared/inbox";
-import { lightUtilityModelSelection } from "../../shared/agent-runtime-utility-model";
+import {
+  economicalUtilityModel,
+  lightUtilityModelSelection,
+} from "../../shared/agent-runtime-utility-model";
 
 type Providers = AgentRuntimeOperations["providers.read"]["output"];
 type Preference = Pick<InboxSettings, "suggestionAgent">;
@@ -47,11 +50,7 @@ export const selectPageTextRewriteModel = (
     preferred && preference.suggestionAgent.model
       ? provider.models.find((model) => model.slug === preference.suggestionAgent.model)
       : undefined;
-  const economical =
-    provider.driver === "codex"
-      ? provider.models.find((model) => model.slug === "gpt-6-luna")
-      : (provider.models.find((model) => /haiku/i.test(model.slug)) ??
-        provider.models.find((model) => /sonnet/i.test(model.slug)));
+  const economical = economicalUtilityModel(provider);
   if (!configured && spendsNodexCredit(provider)) return null;
   const model = configured ?? economical ?? inboxDefaultSuggestionModel(provider);
   if (!model) return null;

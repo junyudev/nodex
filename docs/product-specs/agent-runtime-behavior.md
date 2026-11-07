@@ -28,10 +28,16 @@ worktree again, and Work locally, which starts the Run in the source checkout. A
 preparation interrupted by an application restart fails with that reason; Retry then
 creates the worktree from the source checkout's current branch.
 
-A chat a person starts is titled once from its opening prompt, using the chat's own model
-at its lightest effort. The generated title replaces only the provisional title it was
-derived from, so a rename that lands first always wins; chats an Agent starts keep the
-title it chose. Forks follow the same order and retain their source Session's title as
+A chat a person starts is titled once from its opening prompt, at the lightest effort of the
+model Settings → General names in **Title chats with**. Until one is chosen, a light model on the
+chat's own Agent titles it, so the prompt goes nowhere new: GPT-6 Luna on Codex and Haiku or else
+Sonnet on Claude Code. The chat's own model titles it when that light model is off or absent, on
+other Agents, whose catalogs reach many vendors, and on Nodex credit, which only spends on a model the
+person chose. Choosing a model sends each opening prompt to it, and lets it title chats whose own
+Agent cannot generate text. A chosen model that cannot run is never replaced: Settings marks it `Off`
+or `Unavailable` and those chats keep their provisional titles. The generated title replaces only
+the provisional title it was derived from, so a rename that lands first always wins; chats an
+Agent starts keep the title it chose. Forks follow the same order and retain their source Session's title as
 "Fork of …". A worktree fork that stopped before recording its new location completes
 that move when retried; a same-directory fork never claims its source's managed worktree.
 
@@ -211,12 +217,12 @@ Provider utility processes for titles, commit messages and change-request guides
 with no approval prompts: Codex uses a read-only sandbox and Claude Code allows only reading and
 searching tools. Their task prompts and output schemas remain specific to their purpose;
 investigation can read the workspace but cannot change it or reach the network.
-
-Ephemeral structured generations follow the requesting client's lifetime. Cancelling a pending
-request interrupts its native utility process and releases temporary resources without stopping
 OpenCode utility requests run in temporary sessions that refuse every tool and answer in the JSON
 their prompt asks for. They still load OpenCode's own configuration and project instructions, stop
 at the caller's time limit, and are removed once they settle, so they never join OpenCode's history.
+
+Ephemeral structured generations follow the requesting client's lifetime. Cancelling a pending
+request interrupts its native utility process and releases temporary resources without stopping
 the Runtime or other requests. Durable commands keep their receipt and recovery semantics when
 their caller disconnects.
 

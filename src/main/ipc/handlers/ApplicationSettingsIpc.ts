@@ -7,7 +7,7 @@ import {
   LINK_OPENING_SETTINGS_CHANGED_CHANNEL,
   LinkOpeningSettingsSchema,
 } from "../../../shared/link-opening-settings";
-import { AgentRuntimeSettingsSchema } from "../../../shared/agent-runtime-settings";
+import { UpdateAgentRuntimeSettingsInputSchema } from "../../../shared/agent-runtime-settings";
 import {
   USAGE_METER_SETTINGS_CHANGED_CHANNEL,
   UsageMeterSettingsSchema,
@@ -686,7 +686,9 @@ export const live: Layer.Layer<
     yield* ipc.handlePlainCommand("settings:agent-runtime:update", (event, input: unknown) =>
       authorize(event, "Agent execution settings").pipe(
         Effect.andThen(
-          parse("parse-agent-runtime-settings", () => AgentRuntimeSettingsSchema.parse(input)),
+          parse("parse-agent-runtime-settings", () =>
+            UpdateAgentRuntimeSettingsInputSchema.parse(input),
+          ),
         ),
         Effect.flatMap((parsed) =>
           update(

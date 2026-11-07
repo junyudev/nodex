@@ -9,7 +9,10 @@ import {
   sameLinkOpeningSettings,
   type LinkOpeningSettings,
 } from "../../shared/link-opening-settings";
-import type { AgentRuntimeSettings } from "../../shared/agent-runtime-settings";
+import type {
+  AgentRuntimeSettings,
+  UpdateAgentRuntimeSettingsInput,
+} from "../../shared/agent-runtime-settings";
 import {
   DEFAULT_USAGE_METER_SETTINGS,
   sameUsageMeterSettings,
@@ -188,7 +191,7 @@ export type ApplicationSettingsCommand =
   | { readonly type: "reset-command-keybindings" }
   | { readonly type: "update-app-update"; readonly input: UpdateAppUpdateSettingsInput }
   | { readonly type: "update-window-restore"; readonly input: UpdateWindowRestoreSettingsInput }
-  | { readonly type: "update-agent-runtime"; readonly input: AgentRuntimeSettings }
+  | { readonly type: "update-agent-runtime"; readonly input: UpdateAgentRuntimeSettingsInput }
   | { readonly type: "update-composer-predictions"; readonly input: ComposerPredictionSettings }
   | { readonly type: "update-link-opening"; readonly input: LinkOpeningSettings }
   | { readonly type: "update-model-policy"; readonly input: ModelPolicy }

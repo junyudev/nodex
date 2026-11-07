@@ -1,5 +1,4 @@
 import { forwardRef, type ComponentPropsWithoutRef, type ReactElement } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   DEFAULT_INBOX_SETTINGS,
   type InboxAgentChoice,
@@ -10,11 +9,12 @@ import { AgentModelPicker } from "@/components/shared/agent-runtime/agent-model-
 import { AgentProviderIcon, CompactChevronDownIcon } from "@/components/shared/icons";
 import { NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
-import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
 import { readableIpcError } from "@/lib/ipc-error-message";
-import { queryKeys } from "@/lib/query-keys";
-import { useAgentRuntimeProviders } from "@/lib/use-agent-runtime-providers";
+import {
+  useAgentRuntimeProviders,
+  useRefreshAgentRuntimeProviders,
+} from "@/lib/use-agent-runtime-providers";
 import { cn } from "@/lib/utils";
 import { useAgentInstances } from "../local-conversation/use-agent-instances";
 import { useInboxSettingsQuery, useUpdateInboxSettings } from "./use-inbox";
@@ -49,8 +49,8 @@ export interface InboxAgents extends InboxAgentCatalog {
 
 /** One read of the Runtime catalog and Agent settings serves the whole Inbox. */
 export function useInboxAgents(): InboxAgents {
-  const client = useQueryClient();
   const catalog = useAgentRuntimeProviders();
+  const refresh = useRefreshAgentRuntimeProviders();
   const { instances } = useAgentInstances();
   const settingsQuery = useInboxSettingsQuery();
   const update = useUpdateInboxSettings();
@@ -70,13 +70,7 @@ export function useInboxAgents(): InboxAgents {
         },
       ),
     reload: () => void catalog.refetch(),
-    refresh: () =>
-      void agentRuntimeRuntime
-        .catalog({ refresh: true })
-        .then((providers) => client.setQueryData(queryKeys.agentRuntime.providers(), providers))
-        .catch((error: unknown) =>
-          toast.danger(readableIpcError(error, "Agents could not be checked")),
-        ),
+    refresh,
   };
 }
 

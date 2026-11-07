@@ -1,5 +1,6 @@
 import {
   automaticModelCatalog,
+  DEFAULT_MODEL_POLICY,
   modelIsOn,
   readModelPolicyFailure,
 } from "../../shared/model-policy";
@@ -389,6 +390,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           .snapshot()
           .pipe(Effect.map((snapshot) => snapshot.agentRuntime.defaultRuntimeMode))
       : Effect.succeed(DEFAULT_RUNTIME_MODE));
+  const titlePreferences = Option.isSome(settings)
+    ? settings.value.snapshot().pipe(
+        Effect.map((snapshot) => ({
+          titleModel: snapshot.agentRuntime.titleModel,
+          modelPolicy: snapshot.modelPolicy,
+        })),
+      )
+    : Effect.succeed({ titleModel: null, modelPolicy: DEFAULT_MODEL_POLICY });
   const lifecycle = yield* ProjectRuntimeLifecycleRuntime;
   const workspace = yield* ProjectWorkspace;
   const messageResources = yield* makeMessageResources();
@@ -1471,7 +1480,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       readonly modelSelection: AgentRuntimeLaunch["modelSelection"];
     },
   ) =>
-    generateSessionTitle(connection, input).pipe(
+    titlePreferences.pipe(
+      Effect.flatMap((preferences) =>
+        generateSessionTitle(connection, { ...input, ...preferences }),
+      ),
       Effect.flatMap((title) =>
         title === null || title === input.provisionalTitle
           ? Effect.void

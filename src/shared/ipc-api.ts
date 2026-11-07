@@ -1592,7 +1592,7 @@ export interface IpcApi
     result: import("./agent-runtime-settings").AgentRuntimeSettings;
   };
   "settings:agent-runtime:update": {
-    args: [input: import("./agent-runtime-settings").AgentRuntimeSettings];
+    args: [input: import("./agent-runtime-settings").UpdateAgentRuntimeSettingsInput];
     result: import("./agent-runtime-settings").AgentRuntimeSettings;
   };
   "settings:composer-predictions:get": {

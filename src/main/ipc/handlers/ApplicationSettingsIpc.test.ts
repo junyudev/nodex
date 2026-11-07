@@ -241,10 +241,11 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
     }
     assert.deepEqual(yield* handlers.get("settings:agent-runtime:get")!(event), {
       defaultRuntimeMode: "full-access",
+      titleModel: null,
     });
     assert.deepEqual(
       yield* handlers.get("settings:agent-runtime:update")!(event, { defaultRuntimeMode: "auto" }),
-      { defaultRuntimeMode: "auto" },
+      { defaultRuntimeMode: "auto", titleModel: null },
     );
     assert.equal(
       (yield* Effect.result(
