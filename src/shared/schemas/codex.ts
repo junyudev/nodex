@@ -109,23 +109,8 @@ export function parseCodexThreadTokenUsage(value: unknown): CodexThreadTokenUsag
   return parsed.success ? parsed.data : undefined;
 }
 
-const NonEmptyTrimmedStringSchema = z
-  .string()
-  .transform((value) => value.trim())
-  .pipe(z.string().min(1));
-
 export const CodexThreadSettingsSchema = z.record(z.string(), z.unknown()).transform((value) => {
   const next: CodexThreadSettings = {};
-
-  const model = NonEmptyTrimmedStringSchema.safeParse(value.model);
-  if (model.success) {
-    next.model = model.data;
-  }
-
-  const reasoningEffort = CodexReasoningEffortSchema.safeParse(value.reasoningEffort);
-  if (reasoningEffort.success) {
-    next.reasoningEffort = reasoningEffort.data;
-  }
 
   const detailLevel = CodexThreadDetailLevelSchema.safeParse(value.detailLevel);
   if (detailLevel.success) {

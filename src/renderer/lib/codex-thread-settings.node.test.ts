@@ -4,10 +4,10 @@ import {
   formatCodexReasoningEffortLabel,
   formatCodexThreadDetailLevelLabel,
   readCodexThreadSettings,
+  resolveCodexDefaultThreadSettings,
   resolveCodexModelSelection,
   resolveCodexReasoningEffortOptions,
   resolveCodexThreadDetailLevel,
-  resolveCodexThreadSettings,
   THREAD_SETTINGS_STORAGE_KEY,
 } from "./codex-thread-settings";
 import type { CodexModelOption } from "./types";
@@ -51,7 +51,7 @@ const MODELS: CodexModelOption[] = [
 ];
 
 describe("codex-thread-settings", () => {
-  test("preserves dynamic reasoning efforts and drops invalid closed settings fields", () => {
+  test("reads only the detail level, ignoring models and efforts saved by earlier versions", () => {
     const storageGlobal = globalThis as unknown as {
       localStorage?: {
         getItem: (key: string) => string | null;
@@ -74,18 +74,21 @@ describe("codex-thread-settings", () => {
     try {
       store.set(
         THREAD_SETTINGS_STORAGE_KEY,
-        JSON.stringify({
-          model: " gpt-5.3-codex ",
-          reasoningEffort: "future-effort",
-          detailLevel: "invalid-detail-level",
-        }),
+        JSON.stringify({ model: "gpt-5.3-codex", reasoningEffort: "high" }),
       );
+      expect(readCodexThreadSettings()).toBeNull();
 
-      const settings = readCodexThreadSettings();
+      store.set(
+        THREAD_SETTINGS_STORAGE_KEY,
+        JSON.stringify({ model: "gpt-5.3-codex", detailLevel: "invalid-detail-level" }),
+      );
+      expect(readCodexThreadSettings()).toBeNull();
 
-      expect(settings?.model).toBe("gpt-5.3-codex");
-      expect(settings?.reasoningEffort).toBe("future-effort");
-      expect(settings?.detailLevel).toBe(undefined);
+      store.set(
+        THREAD_SETTINGS_STORAGE_KEY,
+        JSON.stringify({ model: "gpt-5.3-codex", detailLevel: "STEPS_PROSE" }),
+      );
+      expect(readCodexThreadSettings()).toEqual({ detailLevel: "STEPS_PROSE" });
     } finally {
       if (previousLocalStorage) {
         storageGlobal.localStorage = previousLocalStorage;
@@ -96,36 +99,14 @@ describe("codex-thread-settings", () => {
   });
 
   test("defaults to the default model and its preferred reasoning effort", () => {
-    const settings = resolveCodexThreadSettings(undefined, MODELS);
+    const settings = resolveCodexDefaultThreadSettings(MODELS);
 
     expect(settings.model).toBe("gpt-5.3-codex");
     expect(settings.reasoningEffort).toBe("high");
   });
 
-  test("omits a model fallback when the selector list is unavailable", () => {
-    const settings = resolveCodexThreadSettings(
-      {
-        model: "gpt-5.2-codex",
-        reasoningEffort: "medium",
-      },
-      [],
-    );
-
-    expect(settings.model).toBe("");
-    expect(settings.reasoningEffort).toBe("medium");
-  });
-
-  test("falls back from unavailable stored models to the visible default", () => {
-    const settings = resolveCodexThreadSettings(
-      {
-        model: "gpt-5.2-codex",
-        reasoningEffort: "medium",
-      },
-      MODELS,
-    );
-
-    expect(settings.model).toBe("gpt-5.3-codex");
-    expect(settings.reasoningEffort).toBe("medium");
+  test("omits a model while the selector list is unavailable", () => {
+    expect(resolveCodexDefaultThreadSettings([])).toEqual({ model: "", reasoningEffort: "high" });
   });
 
   test("resolves shared model selections from visible defaults", () => {
@@ -171,16 +152,16 @@ describe("codex-thread-settings", () => {
   });
 
   test("clamps unsupported reasoning effort when the selected model changes", () => {
-    const settings = resolveCodexThreadSettings(
-      {
-        model: "gpt-5-codex-mini",
-        reasoningEffort: "high",
-      },
-      MODELS,
-    );
+    const selection = resolveCodexModelSelection({
+      model: "gpt-5-codex-mini",
+      reasoningEffort: "high",
+      models: MODELS,
+      fallbackReasoningEffort: "high",
+      preferHighReasoning: true,
+    });
 
-    expect(settings.model).toBe("gpt-5-codex-mini");
-    expect(settings.reasoningEffort).toBe("minimal");
+    expect(selection.model).toBe("gpt-5-codex-mini");
+    expect(selection.reasoningEffort).toBe("minimal");
   });
 
   test("resolves reasoning effort options from the selected model", () => {
@@ -226,22 +207,5 @@ describe("codex-thread-settings", () => {
     expect(formatCodexReasoningEffortLabel("future_effort")).toBe("Future Effort");
     expect(formatCodexThreadDetailLevelLabel("STEPS_EXECUTION")).toBe("Steps with code output");
     expect(resolveCodexThreadDetailLevel(undefined)).toBe("STEPS_COMMANDS");
-  });
-
-  test("defaults thread detail level to steps with code commands", () => {
-    const settings = resolveCodexThreadSettings(undefined, MODELS);
-
-    expect(settings.detailLevel).toBe("STEPS_COMMANDS");
-  });
-
-  test("preserves a stored thread detail level", () => {
-    const settings = resolveCodexThreadSettings(
-      {
-        detailLevel: "STEPS_EXECUTION",
-      },
-      MODELS,
-    );
-
-    expect(settings.detailLevel).toBe("STEPS_EXECUTION");
   });
 });

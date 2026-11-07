@@ -2432,8 +2432,6 @@ export type CodexModelOption = Pick<
 >;
 
 export interface CodexThreadSettings {
-  model?: string;
-  reasoningEffort?: CodexReasoningEffort;
   detailLevel?: CodexThreadDetailLevel;
 }
 

@@ -383,7 +383,6 @@ import type {
   CodexReasoningEffortOption,
   CodexServiceTier,
   CodexSharedObject,
-  CodexThreadSettings,
   CodexThreadSummary,
   CodexThreadSummaryWindow,
   CodexTurnStartOptions,
@@ -464,15 +463,14 @@ import {
 import { isCodexNotificationChildConversation } from "../../../shared/codex-thread-notification";
 import { CodexTerminalInteractionAccumulator } from "../../../shared/codex-terminal-interaction";
 import {
+  resolveCodexDefaultThreadSettings,
   resolveCodexReasoningEffortOptions,
-  resolveCodexThreadSettings,
 } from "../../lib/codex-thread-settings";
 import {
   buildCodexServiceTierRequestOverride,
   readCodexServiceTier,
   resolveCodexRequestServiceTier,
 } from "../../lib/codex-service-tier-settings";
-import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
 import { terminalSessionStore } from "../../lib/terminal-session-store";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
 import { runConversationOperation, subscribeCodexEvents } from "./local-conversation-deps";
@@ -581,7 +579,7 @@ function resolveCodexDraftRequestSettings(
     model?: string;
     reasoningEffort?: CodexReasoningEffort;
   },
-  resolvedSettings: Required<CodexThreadSettings>,
+  resolvedSettings: ReturnType<typeof resolveCodexDefaultThreadSettings>,
 ): {
   model?: string;
   reasoningEffort?: CodexReasoningEffort;
@@ -9821,8 +9819,6 @@ export function useCodexAppServerControl(
   const workbenchOwner = useWorkbenchWindowOwner();
   const availableModels = useCodexAvailableModelsForManager(manager);
 
-  const { settings: storedThreadSettings, updateSettings: updateStoredThreadSettings } =
-    useCodexThreadSettings();
   const { serviceTierSettings, setServiceTier } = useCodexServiceTierSettings();
   const [personality, setPersonalityState] = useState<CodexPersonality>("friendly");
   const personalityIntentVersion = useRef(0);
@@ -9844,8 +9840,8 @@ export function useCodexAppServerControl(
   }, []);
 
   const threadSettings = useMemo(
-    () => resolveCodexThreadSettings(storedThreadSettings, availableModels),
-    [availableModels, storedThreadSettings],
+    () => resolveCodexDefaultThreadSettings(availableModels),
+    [availableModels],
   );
   const executionProfile = useMemo(
     () =>
@@ -9857,16 +9853,6 @@ export function useCodexAppServerControl(
           }
         : null,
     [serviceTierSettings.serviceTier, threadSettings.model, threadSettings.reasoningEffort],
-  );
-  const setExecutionProfile = useCallback(
-    (profile: NonNullable<typeof executionProfile>) => {
-      updateStoredThreadSettings({
-        model: profile.modelId,
-        reasoningEffort: profile.reasoningEffort ?? threadSettings.reasoningEffort,
-      });
-      setServiceTier(profile.serviceTier, "composer_menu");
-    },
-    [setServiceTier, threadSettings.reasoningEffort, updateStoredThreadSettings],
   );
   const reasoningEffortOptions = useMemo<CodexReasoningEffortOption[]>(
     () => [...resolveCodexReasoningEffortOptions(threadSettings.model, availableModels)],
@@ -9925,8 +9911,7 @@ export function useCodexAppServerControl(
         },
         submittedPresentation,
       );
-      const resolvedSettings = resolveCodexThreadSettings(storedThreadSettings, availableModels);
-      const requestSettings = resolveCodexDraftRequestSettings(input, resolvedSettings);
+      const requestSettings = resolveCodexDraftRequestSettings(input, threadSettings);
       const effectiveServiceTier = resolveCodexRequestServiceTier(
         input,
         serviceTierSettings.serviceTier,
@@ -9939,13 +9924,7 @@ export function useCodexAppServerControl(
         ...buildCodexServiceTierRequestOverride(effectiveServiceTier),
       });
     },
-    [
-      availableModels,
-      managerForConversation,
-      serviceTierSettings.serviceTier,
-      storedThreadSettings,
-      workbenchOwner,
-    ],
+    [managerForConversation, serviceTierSettings.serviceTier, threadSettings, workbenchOwner],
   );
 
   const discardSideChat = useCallback(
@@ -10376,27 +10355,6 @@ export function useCodexAppServerControl(
       ),
     [managerForConversation],
   );
-  const setThreadModel = useCallback(
-    (model: string) => {
-      const normalizedModel = normalizeThreadSettingsModel(model);
-      if (!normalizedModel) {
-        return;
-      }
-
-      updateStoredThreadSettings({ model: normalizedModel });
-    },
-    [updateStoredThreadSettings],
-  );
-  const setThreadReasoningEffort = useCallback(
-    (reasoningEffort: CodexThreadSettings["reasoningEffort"]) => {
-      if (!reasoningEffort) {
-        return;
-      }
-
-      updateStoredThreadSettings({ reasoningEffort });
-    },
-    [updateStoredThreadSettings],
-  );
   const setDefaultServiceTier = useCallback(
     (serviceTier: CodexServiceTier) => {
       setServiceTier(serviceTier, "composer_menu");
@@ -10463,9 +10421,6 @@ export function useCodexAppServerControl(
 
     respondOptionPicker,
 
-    setThreadModel,
-    setThreadReasoningEffort,
     setDefaultServiceTier,
-    setExecutionProfile,
   };
 }

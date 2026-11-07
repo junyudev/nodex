@@ -1,6 +1,5 @@
 import type {
   AgentModelOption,
-  CodexModelOption,
   CodexReasoningEffort,
   CodexReasoningEffortOption,
   CodexThreadDetailLevel,
@@ -66,7 +65,7 @@ export function readCodexThreadSettings(): CodexThreadSettings | null {
   try {
     const raw = localStorage.getItem(THREAD_SETTINGS_STORAGE_KEY);
     const parsed = parseJsonStringWithSchema(raw, CodexThreadSettingsSchema, {});
-    return parsed.model || parsed.reasoningEffort || parsed.detailLevel ? parsed : null;
+    return parsed.detailLevel ? parsed : null;
   } catch {
     return null;
   }
@@ -200,26 +199,17 @@ export function resolveCodexReasoningEffortOptions(
   return selectedModel.supportedReasoningEfforts;
 }
 
-export function resolveCodexThreadSettings(
-  stored: CodexThreadSettings | null | undefined,
-  models: CodexModelOption[],
-): Required<CodexThreadSettings> {
+/** What a native Codex request names when it brings no model of its own. */
+export function resolveCodexDefaultThreadSettings(models: readonly AgentModelOption[]): {
+  readonly model: string;
+  readonly reasoningEffort: CodexReasoningEffort;
+} {
   const selection = resolveCodexModelSelection({
-    model: stored?.model,
-    reasoningEffort: stored?.reasoningEffort,
     models,
     fallbackReasoningEffort: "high",
     preferHighReasoning: true,
   });
-  const detailLevel = isCodexThreadDetailLevel(stored?.detailLevel)
-    ? stored.detailLevel
-    : DEFAULT_CODEX_THREAD_DETAIL_LEVEL;
-
-  return {
-    model: selection.model,
-    reasoningEffort: selection.reasoningEffort || "high",
-    detailLevel,
-  };
+  return { model: selection.model, reasoningEffort: selection.reasoningEffort || "high" };
 }
 
 export function formatCodexModelLabel<Model extends Pick<AgentModelOption, "id" | "displayName">>(

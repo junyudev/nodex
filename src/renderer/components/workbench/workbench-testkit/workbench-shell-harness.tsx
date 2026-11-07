@@ -295,8 +295,6 @@ export const mockCodexControl = {
   loadModels: async () => undefined,
   loadThreads: async () => undefined,
   listCollaborationModes: async () => [{ name: "Plan", mode: "plan", model: null }],
-  setThreadModel: () => undefined,
-  setThreadReasoningEffort: () => undefined,
 
   startSideChat: async (input: unknown) => {
     startSideChatCalls.push(input);
