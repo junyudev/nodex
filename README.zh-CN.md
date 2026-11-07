@@ -110,6 +110,19 @@ Page，沿着 Triage → Plan → Doing → Review → Done 推进。Agent 通�
 Agent 在后台用 `nodex` CLI 完成：一条只读 SQL 查询读完整个 backlog，再用一次原子批量编辑写回
 （数据被改过就拒绝，不会覆盖更新的内容）。你打开的视图会随之实时重新分组。
 
+### 离开工位，不离开你的 Agent
+
+<picture>
+  <source srcset=".github/assets/readme/mobile-dark.webp" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/mobile-light.webp" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/mobile-light.webp" alt="在手机上批准对话里的一条命令，身后电脑上的同一个对话随即开始工作；手机从家里的 Wi-Fi 切到 Tailscale，往收件箱丢一条消息，再开启它建议的对话，新对话随即出现在电脑上" width="100%">
+</picture>
+
+Nodex Mobile（iOS 和 Android）直连运行 Agent 的那台电脑。在手机上能看到所有对话，需要你处理的排在最前；
+可以批准操作、回答问题、追加消息或停止运行，也可以随手把想法丢进收件箱，离线时也行。它通过局域网或 Tailscale
+直接连接，全程端到端加密，中间没有 Nodex 服务器，所以需要电脑开着、Nodex 保持打开。在“设置 → Mobile”里开启，
+扫描二维码配对，然后[下载 App](https://nodex.jyu.app/download/#mobile)。
+
 ## Agent 周边的一切
 
 - **Worktree 和 Environment**：每个对话都可以有自己隔离的 checkout。

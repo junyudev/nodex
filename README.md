@@ -115,6 +115,21 @@ in plain words. Behind the dock the agent runs the `nodex` CLI: one read-only SQ
 the backlog, then one atomic batch of edits that never overwrites newer changes. The View you
 have open regroups as it lands.
 
+### Leave your desk. Not your agents.
+
+<picture>
+  <source srcset=".github/assets/readme/mobile-dark.webp" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/readme/mobile-light.webp" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/readme/mobile-light.webp" alt="A phone approves a chat's command and the same chat starts working on the computer behind it; the phone moves from home Wi-Fi to Tailscale, drops a message into the Inbox, and starts the chat it suggests, which appears on the computer" width="100%">
+</picture>
+
+Nodex Mobile for iOS and Android reaches the computer your agents run on. See every chat, with the
+ones asking for you first; answer approvals and questions, queue a follow-up or stop a run; and drop
+thoughts into the Inbox, even offline. It connects directly over your local network or Tailscale,
+encrypted end to end, with no Nodex server in between, so it needs your computer on with Nodex open.
+Turn it on in Settings → Mobile, pair with a QR code, and
+[get the app](https://nodex.jyu.app/download/#mobile).
+
 ## Everything around the agent
 
 - **Worktrees and Environments** give each chat its own isolated checkout.
