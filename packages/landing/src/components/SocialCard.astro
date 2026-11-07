@@ -1,0 +1,23 @@
+---
+// One social preview: on the left, Nodex's name, the page's promise at the card's center, and the
+// site's address; running off the card's edges, the window that shows the promise. The default slot
+// holds the promise; the `aside` slot holds the window's content.
+---
+
+<div class="relative h-[630px] w-[1200px] overflow-hidden bg-page font-sans text-ink">
+  <div class="absolute inset-y-16 left-16 grid w-[440px] grid-rows-[1fr_auto_1fr]">
+    <div class="flex items-center gap-3 self-start">
+      <img src="/nodex-icon.png" alt="" width="48" height="48" class="size-12" />
+      <span class="text-[31px] font-semibold tracking-[-0.02em]">Nodex</span>
+    </div>
+    <div class="flex flex-col gap-8">
+      <slot />
+    </div>
+    <span class="self-end font-mono text-[20px] text-ink-3">{Astro.site!.host}</span>
+  </div>
+  <div
+    class="absolute -top-6 -right-6 -bottom-6 left-[540px] bg-app pt-6 pr-6 pb-6 font-app text-app-fg shadow-window"
+  >
+    <slot name="aside" />
+  </div>
+</div>

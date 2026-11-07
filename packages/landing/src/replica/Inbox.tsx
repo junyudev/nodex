@@ -35,6 +35,7 @@ export function InboxCard({
   source = "user",
   agent,
   modelMenu,
+  routeOnly = false,
 }: {
   readonly message: InboxMessage;
   readonly phase: CardPhase;
@@ -44,8 +45,12 @@ export function InboxCard({
   readonly agent?: AgentChoice;
   /** The model menu, opening from the decision's model half. */
   readonly modelMenu?: ReactNode;
+  /** Say only where the message goes, leaving out the suggestion's own words. */
+  readonly routeOnly?: boolean;
 }) {
-  const strip = phase === "suggested" || phase === "decided";
+  const { dispatch } = message;
+  const fansOut = dispatch.kind === "new_chat" && Boolean(dispatch.delegates?.length);
+  const strip = (phase === "suggested" || phase === "decided") && (!routeOnly || fansOut);
   const fromUser = source === "user";
   return (
     <div className={cx("flex w-full flex-col gap-1", fromUser ? "items-end" : "items-start")}>
@@ -77,7 +82,7 @@ export function InboxCard({
                 {phase === "decided" ? (
                   <Outcome dispatch={message.dispatch} />
                 ) : (
-                  <Suggestion dispatch={message.dispatch} />
+                  <Suggestion dispatch={message.dispatch} routeOnly={routeOnly} />
                 )}
               </div>
             </motion.div>
@@ -135,12 +140,18 @@ function IconButton({ children, label }: { readonly children: ReactNode; readonl
   );
 }
 
-function Suggestion({ dispatch }: { readonly dispatch: Dispatch }) {
+function Suggestion({
+  dispatch,
+  routeOnly,
+}: {
+  readonly dispatch: Dispatch;
+  readonly routeOnly: boolean;
+}) {
   if (dispatch.kind === "keep")
     return <p className="text-[14px] leading-snug">{dispatch.summary}</p>;
   return (
     <div className="flex min-w-0 flex-col gap-2">
-      <p className="text-[14px] leading-[1.625]">{dispatch.prompt}</p>
+      {routeOnly ? null : <p className="text-[14px] leading-[1.625]">{dispatch.prompt}</p>}
       {dispatch.kind === "new_chat" && (dispatch.delegates?.length || dispatch.plan) ? (
         <div className="flex min-w-0 flex-col gap-1 text-[13px] leading-5 text-app-muted">
           {dispatch.delegates?.map((delegate, index) => (
@@ -161,7 +172,7 @@ function Suggestion({ dispatch }: { readonly dispatch: Dispatch }) {
               />
             </motion.div>
           ))}
-          {dispatch.plan ? (
+          {dispatch.plan && !routeOnly ? (
             <p className="line-clamp-3 whitespace-pre-line">{dispatch.plan}</p>
           ) : null}
         </div>
@@ -369,7 +380,7 @@ export function InboxComposer({
       </span>
       <div className="relative min-h-[34px] flex-1 py-[7px] text-[14px] leading-5">
         <motion.span
-          className="pointer-events-none absolute inset-y-[7px] left-0 text-app-faint"
+          className="pointer-events-none absolute inset-y-[7px] left-[3px] text-app-faint"
           style={{ opacity: placeholderOpacity }}
         >
           Drop a thought, task, or question…

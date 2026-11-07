@@ -50,7 +50,8 @@ lacks WebP encoding, the recorder also supports an installed `img2webp`
 port may serve another checkout's site and the recording silently shows its demos; start
 this checkout's server on a free port and pass it with `--base-url`. `--out` defaults to
 `notes.local/artifacts/landing-captures` in the checkout, which git ignores. `--demo`, `--theme`, `--fps` (30), and `--scale` (2) select the
-capture. `--og` renders only a dark hero still at 70% as `og.png` (1200×630).
+capture. `--og` renders only the [social cards](#social-cards) and replaces their committed images in `public/`,
+unless `--out` names another directory; it needs Chromium but not ffmpeg.
 Run `vp run capture:landing --help` for all options. Named outputs are replaced
 on subsequent runs; temporary full-resolution frames are removed after each capture.
 
@@ -85,17 +86,18 @@ that Chromium never delivered.
 - `src/pages/download/index.astro` for the download page that lists every platform's build
 - `src/pages/changelog/index.astro` for the generated changelog page
 - `src/pages/privacy/index.astro` and `src/pages/terms/index.astro` for the legal pages
-- `src/components/` for shared site navigation and footer
+- `src/components/` for shared site navigation, footer, and the social card frame
 - `src/sections/` for the homepage sections, each an Astro component that places one demo island
 - `src/demos/` for the interactive product demos, hydrated with Astro client directives and animated with `motion/react`; `lumen.ts` holds the fictional workspace and the current agent and model names every demo shares
 - `src/replica/` for presentational copies of the desktop UI (window shell, Inbox, chat, Board) that the demos compose
-- `src/pages/capture/` for the unlisted pages the media recorder captures, including the `og` social preview
+- `src/pages/capture/` for the unlisted pages the media recorder captures, including each social card at `/capture/og/<card>/`
 - `src/styles/global.css` for landing-only Tailwind, Geist fonts, and the system-driven dark variant
 - `src/styles/theme.css` for site colors and the app colors the replicas use in each theme
 - `src/lib/site.ts` for typed release and install constants
+- `src/lib/social-cards.ts` for the social cards the site publishes
 - `src/changelog.ts` for build-time `CHANGELOG.md` parsing and the entry helpers the changelog page uses
 - `src/download-cta.ts` for copying the Homebrew install command
-- `public/` for copied brand assets, the committed OG image, and `.nojekyll`
+- `public/` for copied brand assets, the committed social cards, and `.nojekyll`
 - `scripts/capture-demos.ts` for recording demos into README and social media
 - `dist/` for generated static output
 
@@ -235,6 +237,33 @@ Product demos are scripted re-enactments built from replicas of the interface, n
 
 The README embeds media recorded from the same demos under `.github/assets/readme/`. Record
 again with `vp run capture:landing` after changing a demo the README shows.
+
+### Social cards
+
+A link to the site previews as a social card. A page names its card through `BaseLayout`'s
+`socialCard`, and `SOCIAL_CARDS` owns each card's published file and alt text, so the tags and the
+recorder read one list. Home, Download and Changelog each have a card; Privacy and Terms use Home's.
+
+The home card shows what sets Nodex apart: one Inbox sending several messages each to its own
+place, across different models, above the composer that invites the next one. Never trade that for
+size; a single message reads as an ordinary chat. To make room, its cards leave out the suggestion's
+words and keep the message and its route, and a build test holds the card to its composer and at
+least three different routes and models. The agents' marks stand alone beneath its headline: they
+are known well enough to need no names, and the card's alt text says them.
+
+People see a card in a feed at about 500px wide, not at its 1200×630 design size:
+
+- Keep every word worth reading at about 14px or larger at the design size, and on one line where
+  it can be.
+- Keep everything inside the central 1200×600, since a feed can crop a card to 2:1. A feed can also
+  lay its own label over the lower left, so only the site's address sits there; the page's promise
+  stays at the card's center.
+- Show nothing a release would make stale, such as a version number. Cards are recorded when they
+  change, not with each release. Anything a card shows follows the demos' rule and must have shipped.
+
+After changing a card or the replica it shows, record it again with `vp run capture:landing --og`,
+compare the result at 500px wide, and commit the images. Platforms cache previews, so a replaced
+image can take days to reach a link that was already shared.
 
 Release CTA contract:
 

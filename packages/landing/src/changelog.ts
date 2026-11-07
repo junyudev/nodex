@@ -226,6 +226,16 @@ export function parseChangelog(content: string): ChangelogRelease[] {
 /** Kinds of change in the order the changelog page reads them, whatever order a release uses. */
 export const CHANGE_ORDER = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"];
 
+/** Each kind of change keeps the color its status has in the app. */
+export const CHANGE_TONE: Record<string, string> = {
+  Added: "bg-status-done",
+  Changed: "bg-status-doing",
+  Deprecated: "bg-ink-3",
+  Removed: "bg-status-review",
+  Fixed: "bg-status-plan",
+  Security: "bg-free",
+};
+
 /**
  * The releases the changelog page shows: each one with entries, in source order, its kinds of
  * change in CHANGE_ORDER. An Unreleased section with no entries yet is left out.

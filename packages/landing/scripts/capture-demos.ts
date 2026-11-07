@@ -5,11 +5,14 @@ import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium, type Browser } from "playwright";
 import { CAPTURE_DEMOS, type CaptureDemoId } from "../src/demos/capture-demos";
+import { SOCIAL_CARDS, SOCIAL_CARD_VIEWPORT } from "../src/lib/social-cards";
 
 // Inside the checkout, where git ignores `*.local`, so recordings are never committed by accident.
 const DEFAULT_OUT = fileURLToPath(
   new URL("../../../notes.local/artifacts/landing-captures", import.meta.url),
 );
+// Social cards are committed: the site publishes them from here.
+const PUBLIC_ASSETS = fileURLToPath(new URL("../public", import.meta.url));
 const MP4_LIMIT = 4_000_000;
 const WEBP_LIMIT = 8_000_000;
 const GIF_LIMIT = 10_000_000;
@@ -64,14 +67,14 @@ const help = `Record landing demos in real time with Chromium and ffmpeg.
   --demo <id|all>       Default: all (${Object.keys(CAPTURE_DEMOS).join(", ")})
   --theme <dark|light|both>  Default: both
   --base-url <url>      Default: http://127.0.0.1:4330
-  --out <directory>     Default: ${DEFAULT_OUT}
+  --out <directory>     Default: ${DEFAULT_OUT}, or ${PUBLIC_ASSETS} with --og
   --fps <number>        Constant video frame rate, 1–60. Default: 30
   --scale <number>      Device scale factor, 1–4. Default: 2
-  --og                 Only render the /capture/og/ social preview as og.png (1200×630 at --scale)
+  --og                 Only render each /capture/og/<card>/ social card (1200×630 at --scale)
   --help               Show this help
 
-Start the landing server separately. Requires Playwright Chromium, ffmpeg with
-libx264/libvpx-vp9, and libwebp_anim/libwebp or the optional img2webp CLI.
+Start the landing server separately. Requires Playwright Chromium. Demos also need
+ffmpeg with libx264/libvpx-vp9, and libwebp_anim/libwebp or the optional img2webp CLI.
 No browser clock or animation time is mocked. Existing named outputs are replaced.
 `;
 
@@ -82,7 +85,7 @@ export function parseOptions(args: readonly string[]): Options | undefined {
       demo: { type: "string", default: "all" },
       theme: { type: "string", default: "both" },
       "base-url": { type: "string", default: "http://127.0.0.1:4330" },
-      out: { type: "string", default: DEFAULT_OUT },
+      out: { type: "string" },
       fps: { type: "string", default: "30" },
       scale: { type: "string", default: "2" },
       og: { type: "boolean", default: false },
@@ -113,7 +116,7 @@ export function parseOptions(args: readonly string[]): Options | undefined {
       demo === "all" ? (Object.keys(CAPTURE_DEMOS) as CaptureDemoId[]) : [demo as CaptureDemoId],
     themes: theme === "both" ? ["dark", "light"] : [theme],
     baseUrl: baseUrl.href,
-    out: resolve(values.out!),
+    out: resolve(values.out ?? (values.og ? PUBLIC_ASSETS : DEFAULT_OUT)),
     fps,
     scale,
     og: values.og,
@@ -181,7 +184,7 @@ async function inspectMedia(file: string): Promise<{
   );
 }
 
-async function checkTools(og: boolean): Promise<string | undefined> {
+async function checkTools(): Promise<string | undefined> {
   try {
     const version = await command("ffmpeg", ["-version"]);
     await command("ffprobe", ["-version"]);
@@ -194,7 +197,6 @@ async function checkTools(og: boolean): Promise<string | undefined> {
       },
     );
   }
-  if (og) return undefined;
   const encoders = await command("ffmpeg", ["-hide_banner", "-encoders"]);
   for (const encoder of ["libx264", "libvpx-vp9"]) {
     if (!encoders.includes(encoder))
@@ -376,7 +378,7 @@ async function record(
       frames: valid.map((frame) => frame.timestampMs - timing.startMs),
     };
     await writeFile(
-      join(options.out, options.og ? "og-timing.json" : `${demo}-${theme}-timing.json`),
+      join(options.out, `${demo}-${theme}-timing.json`),
       `${JSON.stringify(report, null, 2)}\n`,
     );
     console.log(
@@ -636,20 +638,32 @@ async function encode(
   return rows;
 }
 
-/** The social preview is its own designed page; it waits for its entrances to settle. */
-async function og(browser: Browser, options: Options): Promise<Output> {
+/** Each social card is its own designed page; it waits for its entrances to settle. */
+async function socialCards(browser: Browser, options: Options): Promise<Output[]> {
   const page = await browser.newPage({
-    viewport: { width: 1200, height: 630 },
+    viewport: SOCIAL_CARD_VIEWPORT,
     deviceScaleFactor: options.scale,
     colorScheme: "dark",
   });
   try {
-    await page.goto(new URL("/capture/og/", options.baseUrl).href, { waitUntil: "networkidle" });
-    await page.evaluate(() => document.fonts.ready);
-    await page.waitForTimeout(1500);
-    const file = join(options.out, "og.png");
-    await page.screenshot({ path: file });
-    return await output(file, 1200 * options.scale, 630 * options.scale);
+    const rows: Output[] = [];
+    for (const [id, card] of Object.entries(SOCIAL_CARDS)) {
+      const url = new URL(`/capture/og/${id}/`, options.baseUrl);
+      const response = await page.goto(url.href, { waitUntil: "networkidle" });
+      if (!response?.ok()) throw new Error(`Capture page returned ${response?.status()}: ${url}`);
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(1500);
+      const file = join(options.out, card.file);
+      await page.screenshot({ path: file });
+      rows.push(
+        await output(
+          file,
+          SOCIAL_CARD_VIEWPORT.width * options.scale,
+          SOCIAL_CARD_VIEWPORT.height * options.scale,
+        ),
+      );
+    }
+    return rows;
   } finally {
     await page.close();
   }
@@ -661,7 +675,7 @@ async function main(): Promise<void> {
     console.log(help);
     return;
   }
-  const webpEncoder = await checkTools(options.og);
+  const webpEncoder = options.og ? undefined : await checkTools();
   await mkdir(options.out, { recursive: true });
   const browser = await chromium.launch({
     headless: true,
@@ -671,7 +685,7 @@ async function main(): Promise<void> {
   const rows: Output[] = [];
   try {
     if (options.og) {
-      rows.push(await og(browser, options));
+      rows.push(...(await socialCards(browser, options)));
     } else {
       for (const demo of options.demos) {
         for (const theme of options.themes) {

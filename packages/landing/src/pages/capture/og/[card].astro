@@ -1,0 +1,106 @@
+---
+import { CHANGE_TONE } from "../../../changelog";
+import PlatformIcon from "../../../components/PlatformIcon.astro";
+import SocialCard from "../../../components/SocialCard.astro";
+import OgInbox from "../../../demos/OgInbox";
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { BREW_COMMAND } from "../../../lib/site";
+import { SOCIAL_CARDS, type SocialCardId } from "../../../lib/social-cards";
+import { ProviderMark } from "../../../replica/Window";
+
+export function getStaticPaths() {
+  return Object.keys(SOCIAL_CARDS).map((card) => ({ params: { card } }));
+}
+
+const card = Astro.params.card as SocialCardId;
+
+const headline = "text-[80px] leading-[1.02] font-semibold tracking-[-0.045em]";
+const supporting = "text-[28px] leading-[1.3] tracking-[-0.01em] text-ink-2";
+
+const agents = [
+  { kind: "claude", size: "size-[26px]" },
+  { kind: "codex", size: "size-[26px]" },
+  { kind: "opencode", size: "size-[21px]" },
+] as const;
+
+const platforms = [
+  { platform: "macos", name: "macOS", detail: "Apple silicon, macOS 15 or later" },
+  { platform: "windows", name: "Windows 11", detail: "x64 and Arm" },
+] as const;
+
+// Shipped entries with no version beside them: the image is not recorded again with each release.
+const changes = [
+  { kind: "Added", lead: "Nodex runs on Windows 11, on both x64 and Arm PCs." },
+  { kind: "Changed", lead: "Backups no longer wait for your Agents." },
+  { kind: "Fixed", lead: "Codex chats running side by side no longer all stop at once." },
+];
+---
+
+<BaseLayout title={`Nodex social card: ${card}`} noindex>
+  {
+    card === "home" && (
+      <SocialCard>
+        <h1 class={headline}>
+          One inbox.
+          <br />
+          Every agent.
+          <br />
+          All local.
+        </h1>
+        <ul class="flex items-center gap-3.5">
+          {agents.map((agent) => (
+            <li class="flex size-[26px] items-center justify-center text-ink">
+              <ProviderMark kind={agent.kind} className={agent.size} />
+            </li>
+          ))}
+        </ul>
+        <OgInbox slot="aside" client:load />
+      </SocialCard>
+    )
+  }
+  {
+    card === "download" && (
+      <SocialCard>
+        <h1 class={headline}>
+          Download
+          <br />
+          Nodex
+        </h1>
+        <p class={supporting}>Free and open source.</p>
+        <div slot="aside" class="flex h-full flex-col justify-center gap-9 px-12">
+          {platforms.map(({ platform, name, detail }) => (
+            <div class="flex items-center gap-6">
+              <PlatformIcon platform={platform} class="size-12 shrink-0" />
+              <div class="flex flex-col gap-1">
+                <p class="text-[34px] leading-tight font-semibold tracking-[-0.02em]">{name}</p>
+                <p class="text-[24px] leading-tight text-app-muted">{detail}</p>
+              </div>
+            </div>
+          ))}
+          <code class="border-t-[0.5px] border-app-line pt-9 font-mono text-[23px] tracking-[-0.03em] whitespace-nowrap text-app-muted">
+            {BREW_COMMAND}
+          </code>
+        </div>
+      </SocialCard>
+    )
+  }
+  {
+    card === "changelog" && (
+      <SocialCard>
+        <h1 class={headline}>Changelog</h1>
+        <p class={supporting}>Every change, release by release.</p>
+        <div slot="aside" class="flex h-full flex-col justify-center gap-9 px-12">
+          {changes.map(({ kind, lead }) => (
+            <div class="flex flex-col gap-2.5">
+              <p class="flex items-center gap-2.5 text-[21px] font-medium text-app-muted">
+                <span class:list={["size-3 rounded-full", CHANGE_TONE[kind]]} />
+                {kind}
+              </p>
+              <p class="text-[32px] leading-[1.25] font-medium tracking-[-0.015em] text-pretty">{lead}</p>
+            </div>
+          ))}
+        </div>
+      </SocialCard>
+    )
+  }
+</BaseLayout>

@@ -1,6 +1,7 @@
 ---
 import { readFileSync } from "node:fs";
 import {
+  CHANGE_TONE,
   formatReleaseDate,
   inlineHtml,
   releasesToShow,
@@ -18,16 +19,6 @@ const releases = releasesToShow(
   readFileSync(new URL("../../../../../CHANGELOG.md", import.meta.url), "utf8"),
 );
 const latest = releases.find((release) => release.version !== null);
-
-// Each kind of change keeps the color its status has in the app.
-const TONE: Record<string, string> = {
-  Added: "bg-status-done",
-  Changed: "bg-status-doing",
-  Deprecated: "bg-ink-3",
-  Removed: "bg-status-review",
-  Fixed: "bg-status-plan",
-  Security: "bg-free",
-};
 
 const anchorOf = (release: ChangelogRelease) =>
   release.version === null ? "unreleased" : `v${release.version}`;
@@ -55,6 +46,7 @@ const entryClass =
 <BaseLayout
   title="Changelog | Nodex"
   ogTitle="Nodex Changelog"
+  socialCard="changelog"
   description="Every change in Nodex, release by release, newest first."
 >
   <SiteNav />
@@ -140,7 +132,7 @@ const entryClass =
               <p class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-3">
                 {release.categories.map((category) => (
                   <span class="inline-flex items-center gap-1.5 tabular-nums">
-                    <span class:list={["size-1.5 rounded-full", TONE[category.title] ?? "bg-ink-3"]} />
+                    <span class:list={["size-1.5 rounded-full", CHANGE_TONE[category.title] ?? "bg-ink-3"]} />
                     {category.items.length} {category.title.toLowerCase()}
                   </span>
                 ))}
@@ -161,7 +153,7 @@ const entryClass =
                 return (
                   <section class="mt-9">
                     <h3 class="flex items-center gap-2 text-[13px] font-medium text-ink">
-                      <span class:list={["size-2 rounded-full", TONE[category.title] ?? "bg-ink-3"]} />
+                      <span class:list={["size-2 rounded-full", CHANGE_TONE[category.title] ?? "bg-ink-3"]} />
                       {category.title}
                       <span class="font-normal text-ink-3 tabular-nums">{category.items.length}</span>
                     </h3>

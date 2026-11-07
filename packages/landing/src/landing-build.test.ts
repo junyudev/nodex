@@ -6,6 +6,7 @@ import { parse } from "node-html-parser";
 import { vitePlusCommand } from "../../../scripts/vite-plus-command";
 import { afterAll, beforeAll, expect, test } from "vite-plus/test";
 import { windowsDownloadsAvailable } from "./lib/site";
+import { SOCIAL_CARDS, type SocialCardId } from "./lib/social-cards";
 
 const landingRoot = resolve(import.meta.dirname, "..");
 const generated = resolve(landingRoot, "../../.generated");
@@ -110,10 +111,58 @@ test("downloads and the copy control use the public install contracts", () => {
   ).toBe("/download/");
 });
 
-test("demo capture pages stay out of search results", () => {
-  expect(
-    readPage("capture/hero").querySelector('meta[name="robots"]')?.getAttribute("content"),
-  ).toBe("noindex");
+test("every public page shares a complete preview, declaring its image's real size", () => {
+  const cards: Readonly<Record<string, SocialCardId>> = {
+    "": "home",
+    download: "download",
+    changelog: "changelog",
+    privacy: "home",
+    terms: "home",
+  };
+
+  for (const [route, id] of Object.entries(cards)) {
+    const page = readPage(route);
+    const tag = (name: string) =>
+      page.querySelector(`meta[property="${name}"], meta[name="${name}"]`)?.getAttribute("content");
+    const card = SOCIAL_CARDS[id];
+    const image = `https://nodex.jyu.app/${card.file}`;
+    const png = readFileSync(join(outputDir, card.file));
+
+    expect(tag("og:site_name"), route).toBe("Nodex");
+    expect(tag("og:url"), route).toBe(
+      route ? `https://nodex.jyu.app/${route}/` : "https://nodex.jyu.app/",
+    );
+    expect(tag("og:image"), route).toBe(image);
+    expect(tag("og:image:alt"), route).toBe(card.alt);
+    expect(tag("twitter:card"), route).toBe("summary_large_image");
+    expect(tag("twitter:image"), route).toBe(image);
+    expect(tag("twitter:image:alt"), route).toBe(card.alt);
+    // A PNG stores its width and height at these offsets of its first chunk.
+    expect(tag("og:image:width"), route).toBe(String(png.readUInt32BE(16)));
+    expect(tag("og:image:height"), route).toBe(String(png.readUInt32BE(20)));
+  }
+});
+
+test("the home social card shows one Inbox sending messages to different places and models", () => {
+  const page = readPage("capture/og/home");
+  const distinct = (selector: string) =>
+    new Set(page.querySelectorAll(selector).map((element) => element.textContent.trim())).size;
+
+  expect(distinct('[data-cursor-target^="decision:"]')).toBeGreaterThanOrEqual(3);
+  expect(distinct('[data-cursor-target^="model:"]')).toBeGreaterThanOrEqual(3);
+  expect(page.querySelector('[aria-label="Send to Inbox"]')).not.toBeNull();
+});
+
+test("demo and social card capture pages stay out of search results", () => {
+  for (const route of [
+    "capture/hero",
+    ...Object.keys(SOCIAL_CARDS).map((id) => `capture/og/${id}`),
+  ]) {
+    expect(
+      readPage(route).querySelector('meta[name="robots"]')?.getAttribute("content"),
+      route,
+    ).toBe("noindex");
+  }
   expect(readFileSync(join(outputDir, "robots.txt"), "utf8")).toContain("Disallow: /capture/");
 });
 
@@ -155,7 +204,7 @@ test("the build preserves the custom domain and public asset bytes", () => {
     "CNAME",
     ".nojekyll",
     "robots.txt",
-    "og.png",
+    ...Object.values(SOCIAL_CARDS).map((card) => card.file),
     "favicon.png",
     "nodex-icon.svg",
     "nodex-icon.png",
