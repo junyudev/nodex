@@ -26,6 +26,8 @@ export function Stage({
   useLayoutEffect(() => {
     const node = ref.current;
     if (!node) return;
+    // Measure before the first paint, so a demo never shows, or records, an empty frame.
+    setAvailable(node.clientWidth);
     const observer = new ResizeObserver(([entry]) => {
       if (entry) setAvailable(entry.contentRect.width);
     });

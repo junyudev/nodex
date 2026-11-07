@@ -8,6 +8,7 @@ export const CAPTURE_DEMOS = {
   agents: { width: 640, height: 540 },
   pages: { width: 1180, height: 700 },
   tidy: { width: 1180, height: 700 },
+  mobile: { width: 640, height: 570 },
 } as const;
 
 export type CaptureDemoId = keyof typeof CAPTURE_DEMOS;

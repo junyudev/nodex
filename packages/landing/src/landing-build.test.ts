@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { parse } from "node-html-parser";
 import { vitePlusCommand } from "../../../scripts/vite-plus-command";
 import { afterAll, beforeAll, expect, test } from "vite-plus/test";
+import { ANDROID_LATEST_APK } from "../../../scripts/release/mobile";
 import { windowsDownloadsAvailable } from "./lib/site";
 import { SOCIAL_CARDS, type SocialCardId } from "./lib/social-cards";
 
@@ -77,21 +78,31 @@ const RELEASE_ALIASES = {
     "https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-arm64.exe",
 } as const;
 
+// The APK alias is the one every stable Release Bundle must carry, so the link can never dangle.
+const MOBILE_LISTINGS = {
+  ios: "https://testflight.apple.com/join/Yz8Kpcty",
+  android: `https://github.com/junyudev/nodex/releases/latest/download/${ANDROID_LATEST_APK}`,
+} as const;
+
 test("downloads and the copy control use the public install contracts", () => {
   const { version } = JSON.parse(
     readFileSync(resolve(landingRoot, "../../package.json"), "utf8"),
   ) as { version: string };
-  const offered = windowsDownloadsAvailable(version) ? Object.keys(RELEASE_ALIASES) : ["macos"];
+  const desktop = windowsDownloadsAvailable(version) ? Object.keys(RELEASE_ALIASES) : ["macos"];
+  const links = { ...RELEASE_ALIASES, ...MOBILE_LISTINGS };
 
-  for (const route of ["", "download"]) {
+  for (const [route, offered] of [
+    ["", desktop],
+    ["download", [...desktop, ...Object.keys(MOBILE_LISTINGS)]],
+  ] as const) {
     const page = readPage(route);
     const downloads = page.querySelectorAll("a[data-download]");
     const targets = new Set(downloads.map((link) => link.getAttribute("data-download")));
 
     expect(targets).toEqual(new Set(offered));
     for (const link of downloads) {
-      const target = link.getAttribute("data-download") as keyof typeof RELEASE_ALIASES;
-      expect(link.getAttribute("href")).toBe(RELEASE_ALIASES[target]);
+      const target = link.getAttribute("data-download") as keyof typeof links;
+      expect(link.getAttribute("href")).toBe(links[target]);
     }
     const copies = page.querySelectorAll(".landing-brew-copy");
     expect(copies.length).toBeGreaterThan(0);
@@ -109,6 +120,20 @@ test("downloads and the copy control use the public install contracts", () => {
       .find((link) => link.textContent.trim() === "Download")
       ?.getAttribute("href"),
   ).toBe("/download/");
+});
+
+test("the homepage sends someone after the phone app to its listings on the download page", () => {
+  const [path, anchor] = readPage("")
+    .querySelector('a[href$="#mobile"]')
+    ?.getAttribute("href")
+    ?.split("#") ?? ["", ""];
+  const listings = readPage(path!.replaceAll("/", ""))
+    .getElementById(anchor!)
+    ?.querySelectorAll("a[data-download]");
+
+  expect(listings?.map((link) => link.getAttribute("data-download"))).toEqual(
+    Object.keys(MOBILE_LISTINGS),
+  );
 });
 
 test("every public page shares a complete preview, declaring its image's real size", () => {

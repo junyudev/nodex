@@ -54,6 +54,44 @@ export function useCursorTarget(
   return { ref, point };
 }
 
+/** A fingertip on a phone: it travels to its target and presses down on it. */
+export function Touch({
+  target,
+  pressed,
+  rest,
+}: {
+  /** The `data-cursor-target` to touch; null lifts the finger off the screen. */
+  readonly target: string | null;
+  readonly pressed: boolean;
+  /** Where the finger first comes down from. */
+  readonly rest: Point;
+}) {
+  const { ref, point } = useCursorTarget(target);
+  const at = point ?? rest;
+  const size = 46;
+  return (
+    <div ref={ref} className="pointer-events-none absolute inset-0 z-20">
+      <motion.span
+        className="absolute top-0 left-0 rounded-full bg-phone-ink/25 ring-1 ring-phone-ink/35"
+        style={{ width: size, height: size, marginLeft: -size / 2, marginTop: -size / 2 }}
+        initial={false}
+        animate={{
+          x: at.x,
+          y: at.y,
+          opacity: target !== null && point !== null ? 1 : 0,
+          scale: pressed ? 0.72 : 1,
+        }}
+        transition={{
+          x: { type: "spring", stiffness: 170, damping: 24 },
+          y: { type: "spring", stiffness: 170, damping: 24 },
+          opacity: { duration: 0.2 },
+          scale: { duration: 0.1 },
+        }}
+      />
+    </div>
+  );
+}
+
 /** A macOS pointer that glides to its target and dips when it clicks. */
 export function Cursor({
   target,

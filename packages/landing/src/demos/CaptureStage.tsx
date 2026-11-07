@@ -2,6 +2,7 @@ import AgentsDemo from "./AgentsDemo";
 import { CAPTURE_DEMOS, type CaptureDemoId } from "./capture-demos";
 import FanOutDemo from "./FanOutDemo";
 import HeroDemo from "./HeroDemo";
+import MobileDemo from "./MobileDemo";
 import PagesDemo from "./PagesDemo";
 import TidyDemo from "./TidyDemo";
 
@@ -11,6 +12,7 @@ const DEMOS: Record<CaptureDemoId, () => React.ReactNode> = {
   agents: () => <AgentsDemo />,
   pages: () => <PagesDemo />,
   tidy: () => <TidyDemo />,
+  mobile: () => <MobileDemo />,
 };
 
 /** One demo alone at its designed size, for recording README and social media. */

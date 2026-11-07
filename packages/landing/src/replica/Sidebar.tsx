@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { PROJECTS, type ProjectName, type ProviderKind } from "../demos/lumen";
 import {
+  AgentQuestionIcon,
   InboxIcon,
   NewChatIcon,
   ProjectFolderIcon,
@@ -14,6 +15,8 @@ export interface SidebarChat {
   readonly project: ProjectName;
   readonly provider: ProviderKind;
   readonly working: boolean;
+  /** Asking its person for an answer or an approval. */
+  readonly waiting?: boolean;
   readonly unread?: boolean;
 }
 
@@ -88,13 +91,15 @@ export function AppSidebar({
                         active={selection.kind === "chat" && selection.title === chat.title}
                         cursorTarget={`chat:${chat.title}`}
                         trailing={
-                          chat.working || chat.unread ? (
+                          chat.working || chat.waiting || chat.unread ? (
                             <span className="-mr-[3.28px] flex size-[16.4px] shrink-0 items-center justify-center">
                               {chat.working ? (
                                 <SpinnerIcon
                                   className="size-[13.12px] text-app-muted"
                                   animationDurationMs={2_000}
                                 />
+                              ) : chat.waiting ? (
+                                <AgentQuestionIcon className="size-[13.12px] text-(--usage-low)" />
                               ) : (
                                 <span
                                   aria-label="Unread"

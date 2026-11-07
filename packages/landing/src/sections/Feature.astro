@@ -38,6 +38,7 @@ const { eyebrow, title, points = [], flip = false, wide = false } = Astro.props;
           </ul>
         ) : null
       }
+      <slot name="footer" />
     </div>
     <div class:list={["min-w-0", flip && !wide && "lg:order-1"]}>
       <slot />
