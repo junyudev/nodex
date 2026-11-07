@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Agent activity now says what happened in plain language, naming the Pages and chats it touched instead of showing IDs. Rows read like `Read Launch plan` or `Updated Launch plan +2 -1`, every Nodex tool has one, and clicking a name opens that Page or chat. Opening a row shows the result for reading, such as the formatted Page or the diff, and hovering a Nodex or MCP tool row reveals an inspector with the exact input, output and record.
 - OpenCode models now start off, free ones included, so a new chat never lands on a third party's model unless you chose it. Turn them on during setup or in Settings → Models.
 - Notifications stack at the top of the window. Up to three show at once and fan out when you hover them, hovering pauses their timers, and you can swipe one away.
 - Usage analytics and crash reports are now on by default, and first launch says so. Nothing is sent until you have had a minute to turn it off in Settings → General → Privacy, and turning usage analytics off takes effect at once and discards anything unsent. `DO_NOT_TRACK` is respected. Session replays stay off unless you enable them, and the separate web analytics setting is gone because Nodex no longer collects web analytics in the app.

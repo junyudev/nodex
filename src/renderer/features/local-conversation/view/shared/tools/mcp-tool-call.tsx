@@ -32,7 +32,8 @@ import { ToolActivityIcon, resolveMcpSourceIcon } from "./tool-call-icons";
 import { resolveMcpToolActivityLabel } from "./mcp-tool-call-labels";
 import { McpCapabilityViewFrame } from "./mcp-capability-view-frame";
 import { useThreadMcpApps } from "./mcp-apps-context";
-import { ToolCallCodePanel, ToolCallRawDialog } from "./tool-call-inspection";
+import { ToolCallCodePanel } from "./tool-call-inspection";
+import { inspectMcpToolCall, ToolCallInspector } from "./tool-call-inspector";
 import { WebMcpToolActivity } from "./webmcp-tool-activity";
 import { ToolOutputImage } from "./tool-output-image";
 import {
@@ -127,8 +128,6 @@ function budgetMcpContentBlocks(blocks: readonly CodexMcpToolCallContentBlock[])
 interface McpToolCallProps {
   automaticApprovalReviews?: readonly CodexTranscriptEntry[];
   item: CodexTranscriptEntry;
-  rawDialogOpen?: boolean;
-  onRawDialogOpenChange?: (open: boolean) => void;
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
 }
 
@@ -370,8 +369,6 @@ function McpResultBody({
   resourceLoading,
   resourceError,
   mcpServerStatuses,
-  rawDialogOpen,
-  onRawDialogOpenChange,
   onOpenMcpAppSidePanel,
 }: {
   payload: CodexMcpToolCallView;
@@ -382,8 +379,6 @@ function McpResultBody({
   resourceLoading: boolean;
   resourceError: string | null;
   mcpServerStatuses: ProtocolListMcpServerStatusResponse;
-  rawDialogOpen: boolean;
-  onRawDialogOpenChange: (open: boolean) => void;
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
 }) {
   const result = payload.result;
@@ -426,7 +421,6 @@ function McpResultBody({
     hasMcpAppBranch,
     hasResourceScope,
   });
-  const shouldShowInspection = !isMcpAppLoading;
   const budgetedDisplayContent = useMemo(
     () => budgetMcpContentBlocks(displayContent),
     [displayContent],
@@ -456,33 +450,18 @@ function McpResultBody({
     [mcpServerStatuses, payload.invocation, successResult, threadId],
   );
 
-  const inspectionActions = shouldShowInspection ? (
-    <>
-      {resource && onOpenMcpAppSidePanel ? (
-        <ThreadActionIconButton
-          label="Open MCP app in side panel"
-          tooltip="Open app in side panel"
-          onClick={() => {
-            void onOpenMcpAppSidePanel(buildMcpAppSidePanelInput({ threadId, payload, resource }));
-          }}
-        >
-          <PanelRightVisibleIcon className="icon-xs electron:icon-sm" />
-        </ThreadActionIconButton>
-      ) : null}
-      <ToolCallRawDialog
-        open={rawDialogOpen}
-        onOpenChange={onRawDialogOpenChange}
-        title={`Raw ${payload.invocation.server}.${payload.invocation.tool} tool call output`}
-        getRawValue={() => ({
-          callId: payload.callId,
-          invocation: payload.invocation,
-          durationMs: payload.durationMs,
-          result: payload.result,
-        })}
-        triggerLabel="Show raw tool call output"
-      />
-    </>
-  ) : null;
+  const inspectionActions =
+    !isMcpAppLoading && resource && onOpenMcpAppSidePanel ? (
+      <ThreadActionIconButton
+        label="Open MCP app in side panel"
+        tooltip="Open app in side panel"
+        onClick={() => {
+          void onOpenMcpAppSidePanel(buildMcpAppSidePanelInput({ threadId, payload, resource }));
+        }}
+      >
+        <PanelRightVisibleIcon className="icon-xs electron:icon-sm" />
+      </ThreadActionIconButton>
+    ) : null;
   // Inspection joins the first text or JSON panel's toolbar; app widgets, errors and empty
   // results keep a visible action row instead.
   const textActionsIndex = hasMcpAppBranch
@@ -550,36 +529,9 @@ function McpResultBody({
   );
 }
 
-function useControllableBoolean(
-  value: boolean | undefined,
-  onChange: ((nextValue: boolean) => void) | undefined,
-): [boolean, (nextValue: boolean) => void] {
-  const [internalValue, setInternalValue] = useState(Boolean(value));
-
-  const [previousValue, setPreviousValue] = useState(value);
-  if (previousValue !== value) {
-    setPreviousValue(value);
-    if (value !== undefined) setInternalValue(value);
-  }
-
-  const resolvedValue = value ?? internalValue;
-
-  return [
-    resolvedValue,
-    (nextValue) => {
-      if (value === undefined) {
-        setInternalValue(nextValue);
-      }
-      onChange?.(nextValue);
-    },
-  ];
-}
-
 export function McpToolCall({
   automaticApprovalReviews = EMPTY_AUTOMATIC_APPROVAL_REVIEWS,
   item,
-  rawDialogOpen,
-  onRawDialogOpenChange,
   onOpenMcpAppSidePanel,
 }: McpToolCallProps) {
   const bodyId = useId();
@@ -589,10 +541,6 @@ export function McpToolCall({
     item,
     isExpanded,
     payload?.outputOmitted,
-  );
-  const [isRawDialogOpen, setIsRawDialogOpen] = useControllableBoolean(
-    rawDialogOpen,
-    onRawDialogOpenChange,
   );
   const { elementHeightPx, elementRef } = useMeasuredElementHeight();
   const hasSuccessfulResult = payload?.result?.type === "success";
@@ -667,6 +615,14 @@ export function McpToolCall({
     <ThreadRichActivityHeader
       accessory={hasApprovalReviews ? <AutomaticApprovalReviewShield /> : null}
       icon={<ToolActivityIcon descriptor={resolveMcpSourceIcon(item, mcpApps)} />}
+      inspector={
+        <ToolCallInspector
+          item={item}
+          outputOmitted={payload.outputOmitted}
+          title={summary}
+          inspect={() => inspectMcpToolCall(payload)}
+        />
+      }
       disclosure={
         canExpand
           ? {
@@ -729,8 +685,6 @@ export function McpToolCall({
                   resourceLoading={resourceLoading}
                   resourceError={resourceError}
                   mcpServerStatuses={mcpServerStatuses}
-                  rawDialogOpen={isRawDialogOpen}
-                  onRawDialogOpenChange={setIsRawDialogOpen}
                   onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
                 />
               )}

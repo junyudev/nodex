@@ -35,7 +35,11 @@ import { CodexShimmerText } from "../codex-shimmer-text";
 import { CODEX_THREAD_ACCORDION_TRANSITION } from "../thread-motion";
 import { useMeasuredElementHeight } from "../use-measured-element-height";
 import { CopyMessageActionButton } from "../thread-message-actions";
-import { CodeBlock, ThreadRichActivityHeader } from "./tool-primitives";
+import {
+  ACTIVITY_INLINE_LINK_CLASS_NAME,
+  CodeBlock,
+  ThreadRichActivityHeader,
+} from "./tool-primitives";
 import {
   basename,
   DiffStats,
@@ -425,7 +429,7 @@ function PatchPathLink({
         data-agent-activity-file-link
         role="link"
         tabIndex={0}
-        className="pointer-events-auto inline-block max-w-full cursor-interaction truncate align-bottom text-inherit underline decoration-dotted decoration-[0.5px] underline-offset-2 group-hover/activity-header:!text-token-foreground hover:!text-token-foreground"
+        className={ACTIVITY_INLINE_LINK_CLASS_NAME}
         onClick={(event) => {
           event.stopPropagation();
           onOpen(

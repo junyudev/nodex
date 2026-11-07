@@ -104,6 +104,10 @@ import { resolveCompletedMcpServerElicitationView } from "../../projection/mcp-s
 import { buildHookFeedbackSettingsHref } from "../../projection/hook-feedback-settings";
 import { resolveHookFeedbackSettingsTarget } from "../../../../lib/codex-hooks-route";
 import { formatThreadAgentActivityCompletedSummaryPart } from "../../projection/agent-activity-v2-summary";
+import {
+  asFollowingClause,
+  summarizeRepeatedNodexCalls,
+} from "../../projection/tool-metadata/nodex-tool-activity";
 import type {
   ThreadBlockModel,
   ThreadAgentActivityCompletedSummaryPart,
@@ -363,10 +367,26 @@ function CompletedActivitySummaryText({
 }: {
   parts: readonly ThreadAgentActivityCompletedSummaryPart[];
 }) {
+  const repeatedClauses = summarizeRepeatedNodexCalls(
+    parts.flatMap((part) =>
+      part.kind === "dynamicToolCall" && part.item.entry.dynamicToolCall
+        ? [{ ...part.item.entry.dynamicToolCall, completed: true }]
+        : [],
+    ),
+  );
   const labels = parts.flatMap((part, index): Array<{ key: string; content: ReactNode }> => {
     if (part.kind === "dynamicToolCall") {
       const call = part.item.entry.dynamicToolCall;
       if (!call) return [];
+      const repeatedClause = repeatedClauses.get(call.callId);
+      if (repeatedClause === null) return [];
+      if (repeatedClause !== undefined)
+        return [
+          {
+            key: part.key,
+            content: index === 0 ? repeatedClause : asFollowingClause(repeatedClause),
+          },
+        ];
       return [
         {
           key: part.key,
@@ -462,7 +482,8 @@ export function ThreadAgentActivityGroupBlock({
   const body = (
     <CodexShimmerProvider enabled={false}>
       <div
-        className="vertical-scroll-fade-mask flex max-h-56 flex-col overflow-x-hidden overflow-y-auto [--edge-fade-distance:1.5rem]"
+        // The bound keeps a list of one-line rows compact; an opened row needs room to be read.
+        className="vertical-scroll-fade-mask flex max-h-56 flex-col overflow-x-hidden overflow-y-auto [--edge-fade-distance:1.5rem] has-[[aria-expanded=true]]:max-h-[min(36rem,70vh)]"
         style={
           {
             "--conversation-patch-file-gap": "var(--conversation-grouped-item-gap, 4px)",

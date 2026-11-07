@@ -86,10 +86,7 @@ test("opens the chat an Agent created from its row, once, in the chat it started
     );
     const sourceThreadId = await sourceRow.getAttribute("data-app-action-sidebar-thread-id");
     if (!sourceThreadId) throw new Error("The source chat has no sidebar row");
-    const createdRow = sourceScene.getByRole("button", {
-      name: "Created chat: Plan review",
-      exact: true,
-    });
+    const createdRow = sourceScene.getByRole("link", { name: "Plan review", exact: true });
     const createdScene = page.locator(
       `[data-workbench-scene-owner="session:${created.sessionId}"]`,
     );
@@ -97,7 +94,10 @@ test("opens the chat an Agent created from its row, once, in the chat it started
       '[data-app-action-sidebar-thread-row][data-app-action-sidebar-thread-title="Plan review"]',
     );
 
-    // The row opens the chat the Agent started, already answering its own prompt.
+    // A settled turn folds its work away; the chat's name on its row opens the chat, already
+    // answering its own prompt.
+    const workedFor = sourceScene.getByRole("button", { name: /^Worked for/ });
+    await workedFor.click();
     await createdRow.click();
     await expect(createdScene).toBeVisible({ timeout: 30_000 });
     await expect(createdScene.getByText("Review the plan", { exact: true })).toBeVisible({

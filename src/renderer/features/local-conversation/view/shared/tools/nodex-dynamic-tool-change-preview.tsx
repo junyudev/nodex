@@ -1,35 +1,14 @@
 import { cn } from "../../../../../lib/utils";
-import type { NodexMarkdownChangePreview } from "../../../projection/tool-metadata/nodex-dynamic-tool-call-presentation";
+import type { NodexMarkdownChangePreview } from "../../../projection/tool-metadata/nodex-tool-activity";
 
+/** The Markdown an Agent wrote to a Page, as the bounded diff behind its row. */
 export function NodexDynamicToolChangePreview({ change }: { change: NodexMarkdownChangePreview }) {
-  const compactRemovedLines = change.lines.filter((line) => line.kind === "removed").slice(0, 2);
-  const compactAddedLines = change.lines.filter((line) => line.kind === "added").slice(0, 2);
-  const compactLines =
-    compactRemovedLines.length > 0 && compactAddedLines.length > 0
-      ? [...compactRemovedLines, ...compactAddedLines]
-      : change.lines.filter((line) => line.kind !== "separator").slice(0, 4);
-  const visibleLines = compactLines;
-  const renderedChangeLineCount = change.lines.filter((line) => line.kind !== "separator").length;
-  const visibleChangeLineCount = visibleLines.filter((line) => line.kind !== "separator").length;
-  const omittedLineCount =
-    change.omittedLineCount + Math.max(0, renderedChangeLineCount - visibleChangeLineCount);
-  const stats = [
-    change.additions > 0 ? `+${change.additions}` : null,
-    change.deletions > 0 ? `−${change.deletions}` : null,
-  ]
-    .filter((value): value is string => value !== null)
-    .join(" ");
+  const { lines: visibleLines, omittedLineCount } = change;
 
   return (
-    <div
-      className={cn(
-        "overflow-hidden rounded-md bg-token-bg-secondary/40 ring-[0.5px] ring-token-border-light",
-        "mt-1.5",
-      )}
-    >
-      <div className="flex items-center justify-between gap-2 border-b-[0.5px] border-token-border-light px-2 py-1 font-sans text-xs text-token-description-foreground">
-        <span className="truncate font-medium">{change.label}</span>
-        {stats ? <span className="shrink-0 font-code">{stats}</span> : null}
+    <div className="overflow-hidden rounded-md bg-token-bg-secondary/40 ring-[0.5px] ring-token-border-light">
+      <div className="truncate border-b-[0.5px] border-token-border-light px-2 py-1 font-sans text-xs font-medium text-token-description-foreground">
+        {change.label}
       </div>
       <div
         className="codex-tool-code max-h-64 overflow-auto py-0.5 font-code text-size-code"

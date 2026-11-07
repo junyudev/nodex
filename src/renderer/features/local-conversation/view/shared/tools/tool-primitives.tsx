@@ -233,6 +233,9 @@ export function ThreadActivitySummaryText({
 
 export interface ThreadActivityDisclosureProps {
   accessibleLabel?: string;
+  /** Rendered beside the summary, outside its muted text treatment. */
+  accessory?: ReactNode;
+  inspector?: ReactNode;
   autoExpandWhileRunning?: boolean;
   bodyClassName?: string;
   bodyTestId?: string;
@@ -295,6 +298,10 @@ function useMeasuredThreadActivityBodyHeight(): {
   return { elementHeightPx, elementRef };
 }
 
+/** A named object inside an activity sentence: quiet like the sentence, marked as openable. */
+export const ACTIVITY_INLINE_LINK_CLASS_NAME =
+  "pointer-events-auto inline-block max-w-full cursor-interaction truncate align-bottom text-inherit underline decoration-dotted decoration-[0.5px] underline-offset-2 group-hover/activity-header:!text-token-foreground hover:!text-token-foreground";
+
 /** Owns summary text across tool rows and group headers; icons and accessories stay outside. */
 export function ThreadActivitySummaryLabel({
   children,
@@ -330,6 +337,7 @@ export function ThreadRichActivityHeader({
   className,
   disclosure,
   icon,
+  inspector,
   summary,
   summaryClassName,
   testId,
@@ -339,6 +347,8 @@ export function ThreadRichActivityHeader({
   className?: string;
   disclosure?: ThreadActivityDisclosureState;
   icon: ReactNode;
+  /** A control at the row's end, above its disclosure target and revealed by the row's hover. */
+  inspector?: ReactNode;
   summary: ReactNode;
   summaryClassName?: string;
   testId?: string;
@@ -359,7 +369,11 @@ export function ThreadRichActivityHeader({
 
   if (!disclosure) {
     return (
-      <ThreadActivityHeader className={cn("max-w-full", className)} testId={testId}>
+      <ThreadActivityHeader
+        accessory={inspector}
+        className={cn("max-w-full", className)}
+        testId={testId}
+      >
         {content}
       </ThreadActivityHeader>
     );
@@ -388,12 +402,14 @@ export function ThreadRichActivityHeader({
       <span className="pointer-events-none relative flex">
         <ThreadActivityChevron expanded={disclosure.expanded} />
       </span>
+      {inspector}
     </div>
   );
 }
 
 export function ThreadActivityDisclosure({
   accessibleLabel,
+  accessory,
   autoExpandWhileRunning = false,
   bodyClassName,
   bodyTestId,
@@ -405,6 +421,7 @@ export function ThreadActivityDisclosure({
   headerClassName,
   headerTestId,
   icon,
+  inspector,
   onExpand,
   preview,
   status,
@@ -451,9 +468,11 @@ export function ThreadActivityDisclosure({
     ) : (
       <ThreadRichActivityHeader
         accessibleLabel={accessibleLabel}
+        accessory={accessory}
         className={headerClassName}
         disclosure={disclosure}
         icon={icon}
+        inspector={inspector}
         summary={summaryNode}
         summaryClassName={summaryClassName}
         testId={headerTestId}
@@ -593,7 +612,7 @@ export function ToolErrorDetail({
   return (
     <div className={className}>
       {showLabel ? <DetailLabel>Error</DetailLabel> : null}
-      <div className="rounded-md border border-(--destructive)/35 bg-(--destructive)/10 px-2.5 py-2 text-xs text-(--destructive)">
+      <div className="rounded-md border border-(--destructive)/35 bg-(--destructive)/10 px-2.5 py-2 text-xs wrap-break-word text-(--destructive)">
         {error}
       </div>
     </div>

@@ -804,10 +804,11 @@ describe("McpToolCall", () => {
     });
     expect(Boolean(getByText("plaintext"))).toBe(true);
 
-    fireEvent.click(getByRole("button", { name: "Show raw tool call output" }));
+    fireEvent.click(getByRole("button", { name: "Inspect tool call" }));
     await waitFor(() => {
-      expect(Boolean(getByText("Raw context7.resolve-library-id tool call output"))).toBe(true);
+      expect(textContent(getByRole("dialog")).includes("context7.resolve-library-id")).toBe(true);
     });
+    fireEvent.click(getByRole("tab", { name: "Raw" }));
     await waitFor(() => {
       expect(
         textContentIncludingShadowRoots(getByRole("dialog")).includes(

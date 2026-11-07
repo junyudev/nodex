@@ -16,7 +16,10 @@ import {
   resolveConversationCommandText,
 } from "../../../projection/tool-metadata/command-activity-classification";
 import { getDynamicToolRegistryEntry } from "../../../projection/tool-metadata/dynamic-tool-call-utils";
-import { resolveNodexDynamicToolCallPresentation } from "../../../projection/tool-metadata/nodex-dynamic-tool-call-presentation";
+import {
+  resolveNodexToolActivity,
+  type NodexToolActivityIcon,
+} from "../../../projection/tool-metadata/nodex-tool-activity";
 import { resolveThreadVisualizationCommandKind } from "../../../projection/agent-activity-v2";
 import { normalizeEnvironmentAwareAppResourceSource } from "../../../../../lib/app-resource-source";
 import { useTheme } from "../../../../../lib/use-theme";
@@ -30,12 +33,18 @@ import {
   SuccessCircleIcon,
   ComputerUseIcon,
   ConnectorFallbackIcon,
+  BoardIcon,
   EditFilesIcon,
   ConnectorGlobeIcon,
   HooksIcon,
+  InboxIcon,
+  PageIcon,
   PluginsIcon,
   ReadFilesIcon,
+  SidebarSortClockIcon,
+  SidebarVisibleIcon,
   SkillIcon,
+  ThreadIcon,
   TerminalActivityIcon,
   DeniedCircleIcon,
   withActivityIconClass,
@@ -47,22 +56,28 @@ export type ToolActivityIconId =
   | "automatic-review"
   | "automatic-review-denied"
   | "browser-use"
+  | "chat"
   | "code-searching"
   | "computer-use"
   | "connector"
+  | "database"
   | "denied"
   | "edit-files"
   | "hooks"
+  | "inbox"
   | "list-files"
   | "node-repl"
+  | "page"
   | "plugin"
   | "read-files"
   | "run-command"
+  | "schedule"
   | "settings"
   | "skill"
   | "stopped"
   | "visualization"
-  | "web-search";
+  | "web-search"
+  | "workspace";
 
 export type ToolActivityIconDescriptor =
   | {
@@ -113,26 +128,36 @@ function SemanticToolIcon({ icon, className }: { icon: ToolActivityIconId; class
       );
     case "browser-use":
       return <BrowserUseIcon aria-hidden className={iconClassName} />;
+    case "chat":
+      return <ThreadIcon className={iconClassName} />;
     case "computer-use":
       return <ComputerUseIcon aria-hidden className={iconClassName} />;
     case "connector":
       return <ConnectorFallbackIcon aria-hidden className={iconClassName} />;
     case "code-searching":
       return <ActivitySearchIcon aria-hidden className={iconClassName} />;
+    case "database":
+      return <BoardIcon className={iconClassName} />;
     case "denied":
       return <DeniedCircleIcon aria-hidden className={iconClassName} />;
     case "edit-files":
       return <EditFilesIcon aria-hidden className={iconClassName} />;
     case "hooks":
       return <HooksIcon aria-hidden className={iconClassName} />;
+    case "inbox":
+      return <InboxIcon className={iconClassName} />;
     case "list-files":
       return <ActivityListFilesIcon aria-hidden className={iconClassName} />;
     case "node-repl":
       return <TerminalActivityIcon aria-hidden className={iconClassName} />;
+    case "page":
+      return <PageIcon aria-hidden className={iconClassName} />;
     case "plugin":
       return <PluginsIcon aria-hidden className={iconClassName} />;
     case "read-files":
       return <ReadFilesIcon aria-hidden className={iconClassName} />;
+    case "schedule":
+      return <SidebarSortClockIcon className={iconClassName} />;
     case "settings":
       return <SettingsGeneralIcon className={iconClassName} />;
     case "skill":
@@ -143,6 +168,8 @@ function SemanticToolIcon({ icon, className }: { icon: ToolActivityIconId; class
       return <Sparkles aria-hidden className={iconClassName} />;
     case "web-search":
       return <ConnectorGlobeIcon aria-hidden className={iconClassName} />;
+    case "workspace":
+      return <SidebarVisibleIcon className={iconClassName} />;
     case "run-command":
       return <TerminalActivityIcon aria-hidden className={iconClassName} />;
   }
@@ -366,6 +393,27 @@ export function resolveMcpSourceIcon(
   return semanticToolIcon(fallbackIcon);
 }
 
+const NODEX_TOOL_ACTIVITY_ICONS: Readonly<Record<NodexToolActivityIcon, ToolActivityIconId>> = {
+  account: "settings",
+  chat: "chat",
+  database: "database",
+  inbox: "inbox",
+  page: "page",
+  plugin: "plugin",
+  project: "list-files",
+  schedule: "schedule",
+  search: "code-searching",
+  task: "app",
+  terminal: "node-repl",
+  workspace: "workspace",
+};
+
+export function resolveNodexToolActivityIcon(
+  icon: NodexToolActivityIcon,
+): ToolActivityIconDescriptor {
+  return semanticToolIcon(NODEX_TOOL_ACTIVITY_ICONS[icon]);
+}
+
 export function resolveDynamicToolFallbackIcon(
   call: CodexDynamicToolCallView,
 ): ToolActivityIconDescriptor {
@@ -439,18 +487,8 @@ export function resolveToolActivityEntryIcon(
     const call = block.entry.dynamicToolCall;
     if (!call) return null;
 
-    const nodexPresentation = resolveNodexDynamicToolCallPresentation(call);
-    switch (nodexPresentation?.icon) {
-      case "read":
-        return semanticToolIcon("list-files");
-      case "search":
-        return semanticToolIcon("code-searching");
-      case "transfer":
-      case "write":
-        return semanticToolIcon("edit-files");
-      case "database":
-        return semanticToolIcon("settings");
-    }
+    const nodexActivity = resolveNodexToolActivity(call);
+    if (nodexActivity) return resolveNodexToolActivityIcon(nodexActivity.icon);
 
     const registryEntry = getDynamicToolRegistryEntry(call);
     if (

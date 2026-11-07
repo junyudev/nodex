@@ -9,28 +9,19 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Circle } from "@/components/shared/icons/generic-icons";
 import type { CodexDynamicToolCallView } from "../../../../../lib/types";
 import { cn } from "../../../../../lib/utils";
-import { readAgentSessionToolTarget } from "../../../projection/tool-metadata/agent-session-tool";
-import {
-  buildDynamicToolArgumentPanels,
-  formatToolOutputText,
-  resolveDynamicToolFallbackIdentity,
-} from "../../../projection/tool-metadata/dynamic-tool-fallback-details";
-import {
-  resolveNodexDynamicToolCallPresentation,
-  type NodexDynamicToolPresentationIcon,
-} from "../../../projection/tool-metadata/nodex-dynamic-tool-call-presentation";
+import { resolveNodexToolActivity } from "../../../projection/tool-metadata/nodex-tool-activity";
 import { CodexShimmerText } from "../codex-shimmer-text";
-import { useToolCallOutputDetail } from "./use-tool-call-output-detail";
-import { buildTextPreview, INLINE_TEXT_PREVIEW_MAX_CHARS } from "../../../../../lib/text-preview";
+import { buildDynamicToolAuthoredPanels } from "../../../projection/tool-metadata/dynamic-tool-fallback-details";
+import { DynamicToolDetails } from "./dynamic-tool-details";
+import { inspectDynamicToolCall, ToolCallInspector } from "./tool-call-inspector";
 import type { ToolComponentProps } from "./get-tool-component";
 import { AutomationUpdatePage } from "./automation-update-page";
 import { ThreadActivityDisclosure, ThreadRichActivityHeader } from "./tool-primitives";
-import { ToolCallCodePanel, ToolCallRawDialog } from "./tool-call-inspection";
-import { ToolOutputImage } from "./tool-output-image";
-import { NodexDynamicToolChangePreview } from "./nodex-dynamic-tool-change-preview";
+import { NodexToolActivityRow, NodexToolActivitySentence } from "./nodex-tool-activity-row";
 import {
   ToolActivityIcon,
   resolveDynamicToolFallbackIcon,
+  resolveNodexToolActivityIcon,
   semanticToolIcon,
 } from "./tool-call-icons";
 import {
@@ -119,7 +110,7 @@ function DynamicToolRegistryLabelRow({
   active: boolean;
   className?: string;
   icon: ReactNode;
-  label: string;
+  label: ReactNode;
   onClick?: () => void;
   variant: DynamicToolCallRenderVariant;
 }) {
@@ -371,44 +362,6 @@ function CodexAppThreadToolCall({
   );
 }
 
-/** A chat an Agent created, forked or messaged opens from its row. */
-function AgentSessionToolCall({
-  call,
-  onOpenThread,
-  variant = "row",
-}: {
-  call: CodexDynamicToolCallView;
-  onOpenThread?: ToolComponentProps["onOpenThread"];
-  variant?: DynamicToolCallRenderVariant;
-}) {
-  const label = resolveDynamicToolRegistryLabel(call);
-  if (!label) return null;
-  const target = variant === "row" ? readAgentSessionToolTarget(call) : null;
-  return (
-    <DynamicToolRegistryLabelRow
-      active={!call.completed}
-      icon={
-        variant === "summary-text" ? null : (
-          <AppActivityIcon
-            className={cn(
-              "icon-xs shrink-0 text-token-conversation-body",
-              target && "group-hover:!text-token-foreground",
-            )}
-            aria-hidden
-          />
-        )
-      }
-      label={label}
-      onClick={
-        target && onOpenThread
-          ? () => void onOpenThread(target.threadId, { runtimeSessionId: target.sessionId })
-          : undefined
-      }
-      variant={variant}
-    />
-  );
-}
-
 function SettingsToolCall({
   call,
   isLeadingSummaryPart = true,
@@ -438,49 +391,32 @@ function SettingsToolCall({
   );
 }
 
-function nodexPresentationIcon(icon: NodexDynamicToolPresentationIcon) {
-  switch (icon) {
-    case "database":
-      return semanticToolIcon("settings");
-    case "read":
-      return semanticToolIcon("list-files");
-    case "search":
-      return semanticToolIcon("code-searching");
-    case "transfer":
-    case "write":
-      return semanticToolIcon("edit-files");
-  }
-}
-
-function NodexAppToolCall({
+/** A Nodex call inside a collapsed group's summary; its own row owns links and details. */
+function NodexToolActivitySummary({
   call,
-  variant = "row",
+  isLeadingSummaryPart,
+  variant,
 }: {
   call: CodexDynamicToolCallView;
-  variant?: DynamicToolCallRenderVariant;
+  isLeadingSummaryPart: boolean;
+  variant: DynamicToolCallRenderVariant;
 }) {
-  const presentation = resolveNodexDynamicToolCallPresentation(call);
-  if (!presentation) return null;
-
+  const activity = resolveNodexToolActivity(call);
+  if (!activity) return null;
   return (
-    <>
-      <DynamicToolRegistryLabelRow
-        active={!call.completed}
-        icon={
-          variant === "summary-text" ? null : (
-            <ToolActivityIcon
-              descriptor={nodexPresentationIcon(presentation.icon)}
-              className="icon-xs shrink-0 text-token-conversation-body"
-            />
-          )
-        }
-        label={presentation.label}
-        variant={variant}
-      />
-      {variant === "row" && presentation.markdownChange ? (
-        <NodexDynamicToolChangePreview change={presentation.markdownChange} />
-      ) : null}
-    </>
+    <DynamicToolRegistryLabelRow
+      active={!call.completed}
+      icon={
+        variant === "summary-text" ? null : (
+          <ToolActivityIcon
+            descriptor={resolveNodexToolActivityIcon(activity.icon)}
+            className="icon-xs shrink-0 text-token-conversation-body"
+          />
+        )
+      }
+      label={<NodexToolActivitySentence activity={activity} following={!isLeadingSummaryPart} />}
+      variant={variant}
+    />
   );
 }
 
@@ -620,8 +556,6 @@ function renderRegisteredDynamicToolCall({
   variant: DynamicToolCallRenderVariant;
 }) {
   switch (entry.rendererKind) {
-    case "agentSession":
-      return <AgentSessionToolCall call={call} onOpenThread={onOpenThread} variant={variant} />;
     case "automationUpdate":
       if (!resolveDynamicToolRegistryLabel(call)) return null;
       return (
@@ -652,7 +586,13 @@ function renderRegisteredDynamicToolCall({
         />
       );
     case "nodexApp":
-      return <NodexAppToolCall call={call} variant={variant} />;
+      return (
+        <NodexToolActivitySummary
+          call={call}
+          isLeadingSummaryPart={isLeadingSummaryPart}
+          variant={variant}
+        />
+      );
     case "settings":
       if (!resolveDynamicToolRegistryLabel(call)) return null;
       return (
@@ -701,117 +641,28 @@ function DynamicToolFallbackLabel({
   );
 }
 
-/** Unregistered tools retain one compact activity and an inspectable typed result. */
-function DynamicToolFallbackDetails({ item }: ToolComponentProps) {
-  const { error: outputError, available: outputAvailable } = useToolCallOutputDetail(
-    item,
-    true,
-    item.dynamicToolCall?.outputOmitted,
-  );
-  const [rawOpen, setRawOpen] = useState(false);
-  const call = item.dynamicToolCall!;
-  const identity = resolveDynamicToolFallbackIdentity(call);
-  const argumentPanels = buildDynamicToolArgumentPanels(call);
-  const outputItems = outputError || call.outputOmitted ? [] : (call.contentItems ?? []);
-  const outputTitle = call.success === false ? "Error" : "Output";
-  const rawInspector = call.outputOmitted ? null : (
-    <ToolCallRawDialog
-      open={rawOpen}
-      onOpenChange={setRawOpen}
-      title={`Raw ${[call.namespace, call.tool].filter(Boolean).join(".")} tool call`}
-      triggerLabel="Show raw tool call output"
-      getRawValue={() =>
-        item.rawItem ?? {
-          type: "dynamicToolCall",
-          id: call.callId,
-          namespace: call.namespace,
-          tool: call.tool,
-          arguments: call.arguments,
-          status: call.status,
-          durationMs: call.durationMs,
-          success: call.success,
-          contentItems: call.contentItems,
-        }
-      }
-    />
-  );
-  // The inspector joins the first panel's toolbar instead of occupying its own row.
-  const outputRawIndex =
-    argumentPanels.length > 0
-      ? -1
-      : outputItems.findIndex((content) => content.type === "inputText");
-  const rawInPanel = argumentPanels.length > 0 || outputRawIndex >= 0;
-
-  return (
-    <div className="flex min-w-0 flex-col gap-2">
-      {identity ? (
-        <div className="truncate text-xs text-token-description-foreground">{identity}</div>
-      ) : null}
-      {argumentPanels.map((panel, index) => (
-        <DynamicToolDetailCodePanel
-          key={`argument:${index}`}
-          actions={index === 0 ? rawInspector : null}
-          text={panel.text}
-          title={panel.title}
-        />
-      ))}
-      {outputError ? (
-        <p role="alert">{outputError}</p>
-      ) : call.outputOmitted ? (
-        <p className="text-token-description-foreground">
-          {outputAvailable ? "Loading output…" : "Tool output unavailable"}
-        </p>
-      ) : (
-        outputItems.map((content, index) =>
-          content.type === "inputImage" ? (
-            <ToolOutputImage key={index} source={content.imageUrl} />
-          ) : content.type === "inputAudio" ? (
-            <audio key={index} src={content.audioUrl} controls preload="metadata" />
-          ) : (
-            <DynamicToolDetailCodePanel
-              key={index}
-              actions={index === outputRawIndex ? rawInspector : null}
-              text={formatToolOutputText(content.text)}
-              title={outputTitle}
-            />
-          ),
-        )
-      )}
-      {rawInPanel || !rawInspector ? null : <div className="flex">{rawInspector}</div>}
-    </div>
-  );
-}
-
-function DynamicToolDetailCodePanel({
-  actions,
-  text,
-  title,
-}: {
-  actions: ReactNode;
-  text: string;
-  title: string;
-}) {
-  return (
-    <ToolCallCodePanel
-      title={title}
-      actions={actions}
-      preview={buildTextPreview(text, INLINE_TEXT_PREVIEW_MAX_CHARS)}
-      getCopyText={() => text}
-      getFullText={() => text}
-      preClassName="font-mono text-size-code"
-    />
-  );
-}
-
 function DynamicToolFallbackRow({ item }: ToolComponentProps) {
   const call = item.dynamicToolCall!;
   return (
     <ThreadActivityDisclosure
+      canExpand={
+        call.outputOmitted === true ||
+        (call.contentItems?.length ?? 0) > 0 ||
+        buildDynamicToolAuthoredPanels(call).length > 0
+      }
       icon={<ToolActivityIcon descriptor={resolveDynamicToolFallbackIcon(call)} />}
+      inspector={
+        <ToolCallInspector
+          item={item}
+          outputOmitted={call.outputOmitted}
+          title={resolveDynamicToolFallbackLabel(call)}
+          inspect={() => inspectDynamicToolCall(call, item.rawItem)}
+        />
+      }
       summary={<DynamicToolFallbackLabel call={call} variant="summary-text" />}
       status={!call.completed ? "running" : call.success === false ? "failed" : "completed"}
     >
-      {(expanded) => (expanded ? <DynamicToolFallbackDetails item={item} /> : null)}
+      {(expanded) => (expanded ? <DynamicToolDetails item={item} /> : null)}
     </ThreadActivityDisclosure>
   );
 }
@@ -849,8 +700,11 @@ export function DynamicToolCall({
 
   if (!call) return null;
 
-  let content: ReactNode = null;
   const entry = getDynamicToolRegistryEntry(call);
+  if (entry?.rendererKind === "nodexApp")
+    return <NodexToolActivityRow item={item} onOpenThread={onOpenThread} />;
+
+  let content: ReactNode = null;
   if (entry) {
     content = renderRegisteredDynamicToolCall({
       call,

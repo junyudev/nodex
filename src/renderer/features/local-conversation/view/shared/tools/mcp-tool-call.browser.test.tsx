@@ -90,7 +90,7 @@ test.each(["light", "dark"] as const)(
       expect(image).toBeVisible();
       const surface = view.container.querySelector<HTMLElement>("[style]")!;
       await waitFor(() => expect(surface.scrollWidth).toBeLessThanOrEqual(surface.clientWidth));
-      const rawButton = view.getByRole("button", { name: "Show raw tool call output" });
+      const rawButton = view.getByRole("button", { name: "Inspect tool call" });
       await waitFor(() =>
         expect(surface.getBoundingClientRect().bottom).toBeGreaterThanOrEqual(
           rawButton.getBoundingClientRect().bottom,

@@ -197,7 +197,7 @@ describe("DynamicToolCall", () => {
     expect(view.getByText("ready")).toBeTruthy();
     expect(view.getByRole("img", { name: "Tool output" }).getAttribute("src")).toBe(imageUrl);
     expect(view.container.querySelector("audio")?.getAttribute("src")).toBe(audioUrl);
-    expect(view.getByRole("button", { name: "Show raw tool call output" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Inspect tool call" })).toBeTruthy();
   });
 
   test("expanded fallback calls read authored arguments verbatim without repeating the tool", async () => {
@@ -225,7 +225,7 @@ describe("DynamicToolCall", () => {
       script,
       '{\n  "status": "async_launched",\n  "taskId": "w7"\n}',
     ]);
-    expect(view.getByRole("button", { name: "Show raw tool call output" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Inspect tool call" })).toBeTruthy();
   });
 
   test("renders navigable Codex app thread rows through the registry renderer", async () => {
@@ -324,58 +324,6 @@ describe("DynamicToolCall", () => {
     ]);
   });
 
-  const createdSession = { sessionId: "session-created", threadId: "thread-created" };
-  test("opens the chat an Agent created from its row", async () => {
-    const opened: Array<{ id: string; context: unknown }> = [];
-    const { getByRole } = render(
-      <DynamicToolCall
-        item={buildDynamicEntry({
-          namespace: "nodex_app",
-          tool: "create_session",
-          arguments: {
-            prompt: "Review the plan",
-            title: "Plan review",
-            target: { type: "projectless" },
-          },
-          contentItems: [{ type: "inputText", text: JSON.stringify(createdSession) }],
-        })}
-        onOpenThread={(threadId, context) => {
-          opened.push({ id: threadId, context });
-        }}
-      />,
-    );
-
-    await act(async () => {
-      fireEvent.click(getByRole("button", { name: "Created chat: Plan review" }));
-      await Promise.resolve();
-    });
-
-    expect(opened).toEqual([
-      { id: "thread-created", context: { runtimeSessionId: "session-created" } },
-    ]);
-  });
-
-  test("leaves a chat the Agent could not create closed", () => {
-    const { container, queryByRole } = render(
-      <DynamicToolCall
-        item={buildDynamicEntry({
-          namespace: "nodex_app",
-          tool: "fork_session",
-          arguments: {},
-          status: "failed",
-          success: false,
-          contentItems: [{ type: "inputText", text: JSON.stringify(createdSession) }],
-        })}
-        onOpenThread={() => {
-          throw new Error("A failed fork has no chat to open");
-        }}
-      />,
-    );
-
-    expect(activityText(container)).toBe("Couldn't fork chat");
-    expect(queryByRole("button")).toBeNull();
-  });
-
   test("renders settings and Chrome tab-context calls with registered labels", () => {
     const { container: settings } = render(
       <DynamicToolCall
@@ -421,36 +369,6 @@ describe("DynamicToolCall", () => {
     );
 
     expect(textContent(container).includes("Get Tab Context")).toBe(true);
-  });
-
-  test("shows both sides of an NFM patch in its specialised preview", () => {
-    const { container } = render(
-      <DynamicToolCall
-        item={buildDynamicEntry({
-          namespace: "nodex_app",
-          tool: "edit_document",
-          arguments: {
-            documentId: "document-1",
-            ifRevision: "revision-1",
-            body: {
-              kind: "markdown.patch",
-              patches: [
-                {
-                  oldMarkdown: "## Draft\n- [ ] Verify migration",
-                  newMarkdown: "## Ready\n- [x] Verify migration",
-                },
-              ],
-            },
-          },
-        })}
-      />,
-    );
-
-    expect(textContent(container).includes("## Draft")).toBe(true);
-    expect(textContent(container).includes("## Ready")).toBe(true);
-    expect(textContent(container).includes("−2")).toBe(true);
-    expect(textContent(container).includes("+2")).toBe(true);
-    expect(textContent(container).includes("Arguments")).toBe(false);
   });
 
   test("uses active fallback labels for in-progress generic dynamic tools", () => {

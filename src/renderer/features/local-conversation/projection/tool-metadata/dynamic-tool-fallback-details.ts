@@ -1,6 +1,5 @@
 import type { CodexDynamicToolCallView } from "../../../../lib/types";
-import { isLikelyJsonText, resolveDynamicToolFallbackLabel } from "./dynamic-tool-call-utils";
-import { humanizeIdentifier } from "./tool-call-utils";
+import { isLikelyJsonText } from "./dynamic-tool-call-utils";
 
 /** One titled text panel in an expanded fallback tool row. */
 export interface DynamicToolDetailPanel {
@@ -8,56 +7,22 @@ export interface DynamicToolDetailPanel {
   readonly text: string;
 }
 
-function identityWords(value: string): string[] {
-  return humanizeIdentifier(value.replace(/[^\p{L}\p{N}]+/gu, " "))
-    .toLowerCase()
-    .split(" ")
-    .filter(Boolean);
-}
-
-/** The qualified tool name, unless the activity label already names every part of it. */
-export function resolveDynamicToolFallbackIdentity(call: CodexDynamicToolCallView): string | null {
-  const identity = [call.namespace, call.tool].filter(Boolean).join(".");
-  const labelWords = new Set(identityWords(resolveDynamicToolFallbackLabel(call)));
-  return identityWords(identity).every((word) => labelWords.has(word)) ? null : identity;
-}
-
-function stringifyArguments(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2) ?? String(value);
-  } catch {
-    return String(value);
-  }
-}
-
 /**
- * Multi-line string arguments are authored text such as scripts and prompts, so they read
- * verbatim under their own name. Remaining arguments stay together as formatted JSON.
+ * Text the caller authored, such as a script or a prompt, reads verbatim under its own name. Other
+ * arguments are the call's plumbing and stay with its exact record.
  */
-export function buildDynamicToolArgumentPanels(
+export function buildDynamicToolAuthoredPanels(
   call: CodexDynamicToolCallView,
 ): DynamicToolDetailPanel[] {
   const args = call.arguments;
-  const record =
-    typeof args === "object" && args !== null && !Array.isArray(args)
-      ? (args as Record<string, unknown>)
-      : null;
-  if (call.tool === "js" && typeof record?.code === "string") {
+  if (typeof args === "string") return args.trim() ? [{ title: "Input", text: args }] : [];
+  if (typeof args !== "object" || args === null || Array.isArray(args)) return [];
+  const record = args as Record<string, unknown>;
+  if (call.tool === "js" && typeof record.code === "string")
     return [{ title: "javascript", text: record.code }];
-  }
-  if (args === null || args === undefined) return [];
-  if (typeof args === "string") return args.trim() ? [{ title: "Arguments", text: args }] : [];
-  if (!record) return [{ title: "Arguments", text: stringifyArguments(args) }];
-
-  const fields: Record<string, unknown> = {};
-  const texts: DynamicToolDetailPanel[] = [];
-  for (const [key, value] of Object.entries(record)) {
-    if (typeof value === "string" && value.includes("\n")) texts.push({ title: key, text: value });
-    else fields[key] = value;
-  }
-  return Object.keys(fields).length > 0
-    ? [{ title: "Arguments", text: stringifyArguments(fields) }, ...texts]
-    : texts;
+  return Object.entries(record).flatMap(([key, value]) =>
+    typeof value === "string" && value.includes("\n") ? [{ title: key, text: value }] : [],
+  );
 }
 
 /**

@@ -1,15 +1,10 @@
 import type { CodexAppHandoffOperation } from "../../../../../shared/codex-thread-handoff";
-import { AGENT_SESSION_TOOLS, resolveAgentSessionToolLabel } from "./agent-session-tool";
 import { formatCodexScheduledAutomationRruleSummary } from "../../../../lib/codex-scheduled-automation-display";
 import { formatDynamicToolCallMarkdownFallback } from "../../../../../shared/codex-dynamic-tool-markdown";
 import {
   readCreatedThreadActivityResult,
   type CodexCreatedThreadResult,
 } from "../../../../../shared/codex-created-thread-result";
-import {
-  NODEX_APP_V2_TOOLS,
-  NODEX_APP_V3_TOOLS,
-} from "../../../../../shared/nodex-agent-tools/identity";
 import type {
   CodexConversationItem,
   CodexDynamicToolCallView,
@@ -21,7 +16,7 @@ import type {
   CodexScheduledAutomationUpdateInput,
 } from "../../../../lib/types";
 import { humanizeIdentifier, resolveScriptToolTitle } from "./tool-call-utils";
-import { resolveNodexDynamicToolCallPresentation } from "./nodex-dynamic-tool-call-presentation";
+import { NODEX_TOOL_ACTIVITY_TOOLS, resolveNodexToolActivity } from "./nodex-tool-activity";
 
 const CODEX_APP_NAMESPACE = "codex_app";
 const CHROME_EXTENSION_NAMESPACE = "chrome_extension";
@@ -40,7 +35,6 @@ const DYNAMIC_TOOL_ACTIVE_FALLBACK_LABELS: Record<string, string> = {
 };
 
 export type DynamicToolRendererKind =
-  | "agentSession"
   | "automationUpdate"
   | "chromeTabContext"
   | "codexAppThread"
@@ -700,22 +694,13 @@ function resolveAutomationUpdateSummaryKey(call: CodexDynamicToolCallView): stri
 }
 
 const DYNAMIC_TOOL_REGISTRY: DynamicToolRegistryEntry[] = [
-  ...AGENT_SESSION_TOOLS.map((tool): DynamicToolRegistryEntry => ({
+  ...NODEX_TOOL_ACTIVITY_TOOLS.map((tool): DynamicToolRegistryEntry => ({
     namespace: "nodex_app",
     tool,
-    rendererKind: "agentSession",
-    resolveLabel: resolveAgentSessionToolLabel,
+    rendererKind: "nodexApp",
+    resolveLabel: (call) => resolveNodexToolActivity(call)?.label ?? null,
     getCompletedSummaryPartKey: (call) => call.callId,
   })),
-  ...[...new Set([...NODEX_APP_V2_TOOLS, ...NODEX_APP_V3_TOOLS])].map(
-    (tool): DynamicToolRegistryEntry => ({
-      namespace: "nodex_app",
-      tool,
-      rendererKind: "nodexApp",
-      resolveLabel: (call) => resolveNodexDynamicToolCallPresentation(call)?.label ?? null,
-      getCompletedSummaryPartKey: (call) => call.callId,
-    }),
-  ),
   {
     namespace: CODEX_APP_NAMESPACE,
     tool: "automation_update",

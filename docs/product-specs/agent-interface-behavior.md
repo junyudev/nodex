@@ -797,9 +797,35 @@ Ownership never hides in Markdown: create, move, duplicate, and protected deleti
 are typed semantic operations. Exact syntax is documented in
 [Nodex Markdown](../references/nodex-markdown.md).
 
-Tool rows identify the visible intent and result and retain expandable exact
-arguments/output plus raw app-server evidence. Historical calls remain readable
-after their catalog becomes non-executable. Transcript presentation follows
+Tool rows disclose a call in three steps, each for a different reader.
+
+The row states what the Agent did to what, in plain language. Every tool an Agent
+can call reads as a sentence such as `Read Launch plan` or `Searched pages for
+“launch” · 4 results`, with an icon for the kind of thing it touched. Nothing an
+Agent passes for its own bookkeeping reaches that sentence: a row never shows an
+identity, a transport format or a tool name. Pages and chats appear by their current
+name, so a rename shows in rows already in the transcript. Clicking a Page's name
+opens it beside the chat, and clicking a chat's name opens that chat. A Page that can
+no longer be opened keeps the title the call recorded, or reads as `page` or `deleted
+page`. A group summary names them in quotes without linking and folds repeated calls
+into one clause such as `read 3 pages`. Each settled call keeps the names, identities
+and counts its row shows; result bodies stay on demand.
+
+Opening a row shows its result for a person: a read's Page as a formatted document
+with child Pages as links, an edit's diff, the Pages a search found or a batch created
+or moved, what the Agent wrote to another chat or the Inbox, or a failure's message.
+A call with nothing to read, such as listing Projects, does not open.
+
+Hovering or focusing the row of a Nodex, MCP or other application tool reveals an
+inspect control at its end. It opens the exact call for whoever needs to know precisely
+what happened: the tool's full name, status and duration, with its input, output and
+stored record each a tab away. Output opens first, unwrapped from the provider's
+envelope, and a withheld output loads when the inspector opens. Tools without a
+presentation of their own open to what their caller wrote, such as a script, and what
+they returned, and share the same inspector. Command, file change and web search rows
+already show their content and have no inspector.
+Calls to a tool that has left the catalog remain readable under their own name.
+Transcript presentation follows
 [Codex Thread Transcript Behavior](codex-thread-transcript-behavior.md).
 
 ### Database queries

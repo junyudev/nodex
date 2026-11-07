@@ -1,9 +1,8 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { CodexDynamicToolCallView } from "../../../../lib/types";
 import {
-  buildDynamicToolArgumentPanels,
+  buildDynamicToolAuthoredPanels,
   formatToolOutputText,
-  resolveDynamicToolFallbackIdentity,
 } from "./dynamic-tool-fallback-details";
 
 function call(overrides: Partial<CodexDynamicToolCallView> = {}): CodexDynamicToolCallView {
@@ -22,51 +21,25 @@ function call(overrides: Partial<CodexDynamicToolCallView> = {}): CodexDynamicTo
 }
 
 describe("dynamic tool fallback details", () => {
-  test("names the tool only when its activity label does not already", () => {
-    expect(resolveDynamicToolFallbackIdentity(call())).toBeNull();
-    expect(
-      resolveDynamicToolFallbackIdentity(
-        call({ tool: "Skill", displayTitle: "Skill: workflow-authoring" }),
-      ),
-    ).toBeNull();
-    expect(resolveDynamicToolFallbackIdentity(call({ tool: "read_file" }))).toBeNull();
-    expect(
-      resolveDynamicToolFallbackIdentity(call({ namespace: "docs_search", tool: "read_file" })),
-    ).toBe("docs_search.read_file");
-    expect(
-      resolveDynamicToolFallbackIdentity(
-        call({ namespace: "node_repl", tool: "js", arguments: { title: "Inspect metadata" } }),
-      ),
-    ).toBe("node_repl.js");
-    expect(
-      resolveDynamicToolFallbackIdentity(call({ tool: "go", displayTitle: "Google search" })),
-    ).toBe("go");
-  });
-
-  test("reads multi-line arguments verbatim and keeps the remaining fields as JSON", () => {
+  test("reads what the caller authored verbatim and leaves its plumbing to the inspector", () => {
     const script = "export const meta = {\n  name: 'triage',\n}\n";
-    expect(buildDynamicToolArgumentPanels(call({ arguments: { script } }))).toEqual([
+    expect(buildDynamicToolAuthoredPanels(call({ arguments: { script } }))).toEqual([
       { title: "script", text: script },
     ]);
     expect(
-      buildDynamicToolArgumentPanels(
+      buildDynamicToolAuthoredPanels(
         call({ arguments: { name: "triage", prompt: "Line one\nLine two", limit: 2 } }),
       ),
-    ).toEqual([
-      { title: "Arguments", text: '{\n  "name": "triage",\n  "limit": 2\n}' },
-      { title: "prompt", text: "Line one\nLine two" },
-    ]);
-    expect(buildDynamicToolArgumentPanels(call({ arguments: ["a", 1] }))).toEqual([
-      { title: "Arguments", text: '[\n  "a",\n  1\n]' },
-    ]);
+    ).toEqual([{ title: "prompt", text: "Line one\nLine two" }]);
+    expect(buildDynamicToolAuthoredPanels(call({ arguments: ["a", 1] }))).toEqual([]);
   });
 
-  test("omits empty arguments and keeps script tools' code as their only panel", () => {
-    expect(buildDynamicToolArgumentPanels(call({ arguments: {} }))).toEqual([]);
-    expect(buildDynamicToolArgumentPanels(call({ arguments: null }))).toEqual([]);
-    expect(buildDynamicToolArgumentPanels(call({ arguments: "  " }))).toEqual([]);
+  test("offers nothing for empty arguments and a script tool's code as its only panel", () => {
+    expect(buildDynamicToolAuthoredPanels(call({ arguments: {} }))).toEqual([]);
+    expect(buildDynamicToolAuthoredPanels(call({ arguments: null }))).toEqual([]);
+    expect(buildDynamicToolAuthoredPanels(call({ arguments: "  " }))).toEqual([]);
     expect(
-      buildDynamicToolArgumentPanels(
+      buildDynamicToolAuthoredPanels(
         call({ tool: "js", arguments: { title: "Inspect", code: "console.log(1)" } }),
       ),
     ).toEqual([{ title: "javascript", text: "console.log(1)" }]);

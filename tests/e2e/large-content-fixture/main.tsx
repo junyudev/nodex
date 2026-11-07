@@ -5,7 +5,10 @@ import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { LazySourceViewer } from "@/components/ui/lazy-source-viewer";
 import { WorkspaceFilesPanel } from "@/features/workspace-files/workspace-files-panel";
 import { ThreadStartProgressPanel } from "@/features/local-conversation/view/local-conversation-thread-body-owner";
-import { ToolCallRawDialog } from "@/features/local-conversation/view/shared/tools/tool-call-inspection";
+import {
+  stringifyToolCallValue,
+  ToolCallSourceSurface,
+} from "@/features/local-conversation/view/shared/tools/tool-call-inspection";
 import { createMaitaiStore, MaitaiProvider } from "@/lib/maitai";
 import type { Project, ProjectSession } from "@/lib/types";
 import { createLargeContentFixtures } from "../../../src/main/performance/large-content-fixtures";
@@ -162,13 +165,13 @@ function ScenarioSurface({ scenario }: { readonly scenario: Scenario }) {
   }
   if (scenario === "tool") {
     return (
-      <ToolCallRawDialog
-        open
-        onOpenChange={() => undefined}
-        title="Raw large tool output"
-        getRawValue={() => fixtures.toolValue}
-        triggerLabel="Show raw large tool output"
-      />
+      <div className="flex max-h-[65vh] min-h-0 flex-col">
+        <ToolCallSourceSurface
+          value={stringifyToolCallValue(fixtures.toolValue)}
+          ariaLabel="Raw large tool output"
+          language="json"
+        />
+      </div>
     );
   }
   return <StartupScenario />;
