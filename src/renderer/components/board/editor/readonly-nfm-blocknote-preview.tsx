@@ -48,6 +48,7 @@ import { resolveThreadMentionDisplay } from "@/lib/editor-model/thread-mention-d
 import { createCalloutBlock } from "./callout-block";
 import { createPromptBlockSpec } from "./prompt-block";
 import { editorCodeBlockOptions } from "./code-block-options";
+import { BLOCK_SELECTION_PRESENTATION_ATTRIBUTE } from "./selected-block-decorations";
 import { createNfmCodeBlockSpec } from "./nfm-code-block-spec";
 import { imageBlockSpec } from "./image-block";
 import { openNfmResolvedLinkAction, resolveNfmLinkAction } from "@/lib/nfm-link-actions";
@@ -77,6 +78,9 @@ import {
   threadMentionInlineContentConfig,
 } from "../../../../shared/block-documents/blocknote-schema-config";
 import { BLOCK_CHILDREN_RULES } from "../../../../shared/block-documents/block-children-policy";
+
+/** Nothing can be selected here, so an atom first Block must not wear the selection halo. */
+const READONLY_SELECTION_PRESENTATION = { [BLOCK_SELECTION_PRESENTATION_ATTRIBUTE]: "" };
 
 interface ReadonlyMarkdownBlockNotePreviewProps {
   fileAuthority?: FileReadAuthority | FilePreviewAuthority | null;
@@ -551,6 +555,7 @@ function ReadonlyNfmPreviewContent({
       onAuxClickCapture={handleAuxClickCapture}
       onContextMenuCapture={handleContextMenuCapture}
       spellCheck={false}
+      {...READONLY_SELECTION_PRESENTATION}
       data-testid="readonly-nfm-blocknote-preview"
       data-project-id={projectId}
       data-uuid-v7={pageId}
