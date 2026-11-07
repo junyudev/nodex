@@ -289,6 +289,13 @@ impl Relation {
                         .page_intrinsic_properties(row)
                         .map(|value| (None, value));
                 }
+                if self.table.table == "pages" && column.name == "block_count" {
+                    return self
+                        .snapshot
+                        .library(connection)
+                        .page_block_count(row)
+                        .map(|value| (None, value));
+                }
                 if let Some(source) = &self.table.data_source_id {
                     if let Some(property) = &column.property_id {
                         return self

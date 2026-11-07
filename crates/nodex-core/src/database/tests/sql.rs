@@ -83,6 +83,36 @@ fn sql(
     Ok(value)
 }
 #[test]
+fn public_sql_exposes_when_a_value_changed_and_how_many_blocks_a_page_holds() {
+    let directory = tempdir().unwrap();
+    let kernel = SqliteStoreKernel::open_test(&directory.path().canonicalize().unwrap()).unwrap();
+    let _module = seed_grouped_fixture(&kernel, vec![]);
+    let query_module = QueryModule::new("profile-1", "library-1", &kernel);
+    let library = LibraryModule::new("profile-1", "library-1", &kernel);
+    create_rows(&kernel, &library, SOURCE_ID, 2, "first");
+
+    let values = sql(
+        &query_module,
+        SqlScope::default(),
+        "SELECT value_revision, value_updated_at FROM property_values WHERE property_id = 'status'",
+    )
+    .unwrap();
+    assert!(!values.rows.is_empty());
+    for row in &values.rows {
+        // A stored value says when it last changed; an unset one has never changed.
+        assert_eq!(row[0].as_i64().unwrap() > 0, row[1].is_string(), "{row:?}");
+    }
+
+    let blocks = sql(
+        &query_module,
+        SqlScope::default(),
+        "SELECT count(*), sum(block_count) >= 0, min(block_count) >= 0 FROM pages",
+    )
+    .unwrap();
+    assert_eq!(blocks.rows, vec![vec![json!(2), json!(1), json!(1)]]);
+}
+
+#[test]
 fn public_sql_counts_complete_windows_and_enforces_cross_source_authority() {
     let directory = tempdir().unwrap();
     let kernel = SqliteStoreKernel::open_test(&directory.path().canonicalize().unwrap()).unwrap();

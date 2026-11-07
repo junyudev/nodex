@@ -231,14 +231,20 @@ impl QueryContext<'_> {
 
     pub(crate) fn source_versions(&self, source: &str, page: &str) -> Result<Value, StoreError> {
         let (membership, revision) = self.membership(source, page)?;
+        let mut updated = BTreeMap::new();
         let revisions = self.connection.prepare(
-            "SELECT property.id, COALESCE(value.revision, 0) FROM data_source_properties property \
+            "SELECT property.id, COALESCE(value.revision, 0), value.updated_at FROM data_source_properties property \
              LEFT JOIN data_source_property_values value ON value.data_source_id = property.data_source_id \
                AND value.property_id = property.id AND value.membership_id = ?2 \
              WHERE property.data_source_id = ?1 AND property.lifecycle = 'active' ORDER BY property.id",
-        )?.query_map(params![source, membership], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))?
+        )?.query_map(params![source, membership], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, Option<String>>(2)?)))?
+            .map(|row| {
+                let (property, revision, updated_at) = row?;
+                updated.insert(property.clone(), updated_at);
+                Ok((property, revision))
+            })
             .collect::<rusqlite::Result<BTreeMap<_, _>>>()?;
-        Ok(json!({ "membership_revision": revision, "value_revisions": revisions }))
+        Ok(json!({ "membership_revision": revision, "value_revisions": revisions, "value_updated_ats": updated }))
     }
 
     fn relation_value(
@@ -398,7 +404,7 @@ impl QueryContext<'_> {
                 let id = &property.property_id;
                 let value = self.source_value(source, &page, id)?;
                 output.push(json!({ "page_id": page, "data_source_id": source, "property_id": id,
-                    "value_json": encode(&value)?, "value_revision": revisions["value_revisions"][id], "membership_revision": revisions["membership_revision"] }))?;
+                    "value_json": encode(&value)?, "value_revision": revisions["value_revisions"][id], "value_updated_at": revisions["value_updated_ats"][id], "membership_revision": revisions["membership_revision"] }))?;
             }
         }
         Ok(())

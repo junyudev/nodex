@@ -59,6 +59,7 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
                 ("title_etag", "TEXT", false),
                 ("file_manifest_revision", "INTEGER", false),
                 ("intrinsic_properties", "TEXT", false),
+                ("block_count", "INTEGER", false),
             ],
         ),
         "page_documents" => (
@@ -158,6 +159,7 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
                 ("value_json", "TEXT", false),
                 ("value_revision", "INTEGER", false),
                 ("membership_revision", "INTEGER", false),
+                ("value_updated_at", "TEXT", true),
             ],
         ),
         "page_relations" => (

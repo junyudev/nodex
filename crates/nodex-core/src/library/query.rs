@@ -122,6 +122,18 @@ impl QueryContext<'_> {
         ))
     }
 
+    /// Counted only when selected, so ordinary Page reads never pay for it.
+    pub(crate) fn page_block_count(&self, id: &str) -> Result<Value, StoreError> {
+        self.require_page(id)?;
+        let count: i64 = self.connection.query_row(
+            "SELECT COUNT(*) FROM document_block_index \
+             WHERE document_id = (SELECT document_id FROM pages WHERE block_id = ?1)",
+            [id],
+            |row| row.get(0),
+        )?;
+        Ok(Value::from(count))
+    }
+
     pub(crate) fn page_document(&self, id: &str) -> Result<Value, StoreError> {
         self.require_page(id)?;
         let page = page_projection::page_projection_file(
