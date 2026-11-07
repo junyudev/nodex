@@ -1,5 +1,5 @@
 import type { OpencodeClient } from "@opencode-ai/sdk/v2";
-import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
+import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 
 /** Counts an entire SSE event, including data split across lines and chunks. */
 export const makeFrameGuard = (label: string, maxBytes = BoundedQueue.MAX_PROMPT_BYTES) => {

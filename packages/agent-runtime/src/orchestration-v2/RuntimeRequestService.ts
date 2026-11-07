@@ -9,9 +9,9 @@ import {
   ProviderUserInputAnswers,
   RuntimeRequestId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
-import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+import { makeProviderFailure } from "@nodex/provider-core/server/failure";
 import * as EventSink from "./EventSink.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -73,7 +73,7 @@ export interface RuntimeRequestServiceV2Shape {
 export class RuntimeRequestServiceV2 extends Context.Service<
   RuntimeRequestServiceV2,
   RuntimeRequestServiceV2Shape
->()("t3/orchestration-v2/RuntimeRequestService/RuntimeRequestServiceV2") {}
+>()("nodex/runtime/orchestration-v2/RuntimeRequestService/RuntimeRequestServiceV2") {}
 
 export const layer: Layer.Layer<
   RuntimeRequestServiceV2,

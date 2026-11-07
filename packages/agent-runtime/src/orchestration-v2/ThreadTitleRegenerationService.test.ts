@@ -8,7 +8,7 @@ import {
   ProviderInstanceId,
   ThreadId,
   TextGenerationError,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
@@ -27,7 +27,7 @@ import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 import * as ThreadTitleRegeneration from "./ThreadTitleRegenerationService.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 
 const projectId = ProjectId.make("project:title-regeneration");
 const modelSelection = {

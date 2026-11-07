@@ -1,7 +1,7 @@
 import { expect, test } from "vite-plus/test";
 import { it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";

@@ -1,4 +1,4 @@
-import type { OrchestrationV2ConversationMessage } from "@t3tools/contracts";
+import type { OrchestrationV2ConversationMessage } from "@nodex/runtime-contracts";
 import type { SqlClient } from "effect/sql/SqlClient";
 import type { Fragment } from "effect/sql/Statement";
 

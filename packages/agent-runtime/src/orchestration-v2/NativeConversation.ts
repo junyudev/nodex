@@ -1,4 +1,4 @@
-import type { OrchestrationV2ProviderThread } from "@t3tools/contracts";
+import type { OrchestrationV2ProviderThread } from "@nodex/runtime-contracts";
 import type * as DateTime from "effect/DateTime";
 
 /** Keep portable history while retiring native-only state before a fresh conversation. */

@@ -1,18 +1,18 @@
-import { TextGenerationAdmission } from "@t3tools/provider-core/server/textGenerationPolicy";
+import { TextGenerationAdmission } from "@nodex/provider-core/server/textGenerationPolicy";
 import { RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
+import type { ModelSelection, ProviderInstanceId } from "@nodex/runtime-contracts";
 import {
   automaticModelCatalog,
   projectModelPolicyCatalog,
 } from "../../../../src/shared/model-policy.ts";
-import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
-import { TextGenerationError } from "@t3tools/contracts";
+import type { ProviderTextGeneration } from "@nodex/provider-core/server/textGeneration";
+import { TextGenerationError } from "@nodex/runtime-contracts";
 
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
-import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
+import type { ProviderInstance } from "@nodex/provider-core/server/driver";
 
 export type {
   BranchNameGenerationInput,
@@ -25,7 +25,7 @@ export type {
   ReviewGuideGenerationResult,
   ThreadTitleGenerationInput,
   ThreadTitleGenerationResult,
-} from "@t3tools/provider-core/server/textGeneration";
+} from "@nodex/provider-core/server/textGeneration";
 
 /**
  * TextGeneration - Service tag for commit and change request text generation.
@@ -37,7 +37,7 @@ type PolicyAwareTextGeneration = {
   [Key in keyof ProviderTextGeneration]: WithAutomaticChoice<ProviderTextGeneration[Key]>;
 };
 export class TextGeneration extends Context.Service<TextGeneration, PolicyAwareTextGeneration>()(
-  "t3/textGeneration/TextGeneration",
+  "nodex/runtime/textGeneration/TextGeneration",
 ) {}
 
 type TextGenerationOp =

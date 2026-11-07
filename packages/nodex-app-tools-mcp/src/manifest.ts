@@ -6,7 +6,7 @@ export {
   APP_TOOLS_PROVIDER_TIMEOUT_MS,
   appToolsHostCallTimeoutMs,
   sessionWaitLimits,
-} from "@t3tools/shared/nodexAppMcp";
+} from "@nodex/runtime-shared/nodexAppMcp";
 
 const approvalMode = z.enum(["approve", "prompt", "deny"]);
 const manifestSchema = z.strictObject({

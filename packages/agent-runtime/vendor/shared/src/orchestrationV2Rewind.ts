@@ -1,5 +1,5 @@
 import { isRunVisibleAtHistoryRevision } from "./orchestrationV2Timeline.ts";
-import type { OrchestrationV2Run, OrchestrationV2ThreadProjection } from "@t3tools/contracts";
+import type { OrchestrationV2Run, OrchestrationV2ThreadProjection } from "@nodex/runtime-contracts";
 
 export const MESSAGE_EDIT_UNAVAILABLE =
   "This message can't be edited because the conversation point before it wasn't recorded.";

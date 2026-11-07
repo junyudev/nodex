@@ -1,10 +1,10 @@
 import type * as Path from "effect/Path";
 
-import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
+import { expandHomePath } from "@nodex/provider-core/server/pathExpansion";
 
 /**
  * Directory new worktrees are created under: the `worktreesDirectory`
- * setting (`~` expands to `home`), or `defaultDir` (`<T3 home>/worktrees`)
+ * setting (`~` expands to `home`), or `defaultDir` (`<Nodex home>/worktrees`)
  * when it is empty. Null when
  * the setting is not an absolute path on this machine, such as `D:\worktrees`
  * configured for a Windows server and synced to a Linux one, or when it is a
@@ -28,7 +28,7 @@ export function isFilesystemRoot(directory: string, path: Path.Path): boolean {
   return path.dirname(directory) === directory;
 }
 
-/** Every directory that holds T3-managed worktrees on this machine. */
+/** Every directory that holds Nodex-managed worktrees on this machine. */
 export function managedWorktreesDirectories(
   settings: {
     readonly worktreesDirectory: string;

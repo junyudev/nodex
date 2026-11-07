@@ -1,10 +1,10 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { ProviderSessionId, ThreadId } from "@t3tools/contracts";
+import { ProviderSessionId, ThreadId } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { vi } from "vite-plus/test";
-import { ProviderEventLoggers } from "@t3tools/provider-core/server/ProviderEventLoggers";
+import { ProviderEventLoggers } from "@nodex/provider-core/server/ProviderEventLoggers";
 import { ClaudeAgentSdkQueryRunner, layerQueryRunner } from "./ClaudeAdapterV2.ts";
 
 const sdk = vi.hoisted(() => ({

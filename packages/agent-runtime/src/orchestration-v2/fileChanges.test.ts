@@ -5,7 +5,7 @@ import {
   fileChangeItemFields,
   fileChangesFromPatch,
   unifiedHunksText,
-} from "@t3tools/shared/fileChanges";
+} from "@nodex/runtime-shared/fileChanges";
 
 describe("file change line counts", () => {
   it("counts created and deleted files by their content lines", () => {

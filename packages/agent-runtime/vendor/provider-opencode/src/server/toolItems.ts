@@ -3,13 +3,13 @@
  * Both report a tool as a name, a JSON input, text output, and free-form
  * metadata; only how they deliver those differs.
  */
-import type { OrchestrationV2TurnItem } from "@t3tools/contracts";
+import type { OrchestrationV2TurnItem } from "@nodex/runtime-contracts";
 import {
   fileChangeDetail,
   fileChangeItemFields,
   fileChangesFromPatch,
-} from "@t3tools/shared/fileChanges";
-import { formatReadToolLabel, formatSearchToolLabel } from "@t3tools/shared/toolActivity";
+} from "@nodex/runtime-shared/fileChanges";
+import { formatReadToolLabel, formatSearchToolLabel } from "@nodex/runtime-shared/toolActivity";
 
 // Search results stay on the timeline wire, so keep their text a preview.
 const SEARCH_PREVIEW_MAX_CHARS = 8_000;

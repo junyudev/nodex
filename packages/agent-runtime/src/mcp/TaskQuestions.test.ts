@@ -1,4 +1,4 @@
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import { DEFAULT_MODEL_POLICY } from "../../../../src/shared/model-policy.ts";
 import { RuntimeModelPolicy, make as makePolicy } from "../nodex/ModelPolicy.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -23,8 +23,8 @@ import {
   type RuntimeMode,
   ThreadId,
   TurnItemId,
-} from "@t3tools/contracts";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+} from "@nodex/runtime-contracts";
+import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";

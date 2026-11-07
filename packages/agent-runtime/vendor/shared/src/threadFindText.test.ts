@@ -59,11 +59,11 @@ it("indexes skill labels in prose but leaves links and code literal", () => {
       {
         role: "assistant",
         streaming: false,
-        text: "Use $test-t3-app now.\n\n`$test-t3-app`\n\n[$test-t3-app](https://example.com)",
+        text: "Use $test-demo-app now.\n\n`$test-demo-app`\n\n[$test-demo-app](https://example.com)",
       },
       undefined,
-      [{ name: "test-t3-app", displayName: "T3 App Testing" }],
+      [{ name: "test-demo-app", displayName: "Nodex App Testing" }],
     ),
-  ).toEqual(["Use T3 App Testing now.", "$test-t3-app", "$test-t3-app"]);
+  ).toEqual(["Use Nodex App Testing now.", "$test-demo-app", "$test-demo-app"]);
 });
 

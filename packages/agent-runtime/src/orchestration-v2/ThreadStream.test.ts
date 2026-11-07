@@ -6,11 +6,11 @@ import {
   type OrchestrationV2ProjectedTurnItem,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2TurnItem,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import { describe, expect, it } from "vite-plus/test";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
-import { boundedSnapshotProjection } from "@t3tools/shared/orchestrationV2BoundedSnapshot";
+import { boundedSnapshotProjection } from "@nodex/runtime-shared/orchestrationV2BoundedSnapshot";
 
 import {
   buildBoundedThreadStreamSnapshot,

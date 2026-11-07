@@ -1,5 +1,5 @@
 /**
- * ModelCatalog — the model metadata a provider reads from T3's model manifest.
+ * ModelCatalog — the model metadata a provider reads from Nodex's model manifest.
  *
  * The server owns the manifest itself (bundle, remote refresh, disk cache,
  * compatibility policies). A provider only sees its own catalog entry, so a
@@ -12,7 +12,7 @@ import type {
   ModelCapabilities,
   ProviderDriverKind,
   ServerProviderModel,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 
@@ -58,7 +58,7 @@ export class ModelCatalog extends Context.Service<
      */
     readonly refreshInBackground: Effect.Effect<void>;
   }
->()("@t3tools/provider-core/server/ModelCatalog") {}
+>()("@nodex/provider-core/server/ModelCatalog") {}
 
 /** A catalog model as the snapshot model it presents. */
 export const catalogServerModel = (

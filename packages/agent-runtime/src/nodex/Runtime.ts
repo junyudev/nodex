@@ -5,15 +5,15 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import { FetchHttpClient } from "effect/http";
-import { CommandId, ProviderInstanceConfigMap } from "@t3tools/contracts";
+import { CommandId, ProviderInstanceConfigMap } from "@nodex/runtime-contracts";
 import * as Schema from "effect/Schema";
-import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
-import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
-import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
-import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import { DEFAULT_SIGNAL_EXPORT } from "@nodex/runtime-shared/observability";
+import * as OtelEnvironment from "@nodex/runtime-shared/otelEnvironment";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
+import * as ProviderContinuationRequests from "@nodex/provider-core/server/ProviderContinuationRequests";
+import * as ProviderEventLoggers from "@nodex/provider-core/server/ProviderEventLoggers";
+import * as ProviderLatestVersions from "@nodex/provider-core/server/ProviderLatestVersions";
+import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
 import * as ServerConfig from "../config.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -36,15 +36,12 @@ import * as ModelManifest from "../provider/ModelManifest.ts";
 import * as ResetCredits from "../provider/resetCreditCoordinator.ts";
 import { CodexDriver, type CodexDriverEnv } from "../provider/Drivers/CodexDriver.ts";
 import { ClaudeDriver, type ClaudeDriverEnv } from "../provider/Drivers/ClaudeDriver.ts";
-import {
-  AcpRegistryDriver,
-  type AcpRegistryDriverEnv,
-} from "@t3tools/provider-acp-registry/server";
-import * as AcpRegistrySupport from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
-import { OpenCodeDriver, type OpenCodeDriverEnv } from "@t3tools/provider-opencode/server";
-import * as OpenCodeRuntime from "@t3tools/provider-opencode/server/OpenCodeRuntime";
-import * as OpenCodeServerLedger from "@t3tools/provider-opencode/server/OpenCodeServerLedger";
-import type { AnyProviderDriver } from "@t3tools/provider-core/server/driver";
+import { AcpRegistryDriver, type AcpRegistryDriverEnv } from "@nodex/provider-acp-registry/server";
+import * as AcpRegistrySupport from "@nodex/provider-acp-registry/server/AcpRegistrySupport";
+import { OpenCodeDriver, type OpenCodeDriverEnv } from "@nodex/provider-opencode/server";
+import * as OpenCodeRuntime from "@nodex/provider-opencode/server/OpenCodeRuntime";
+import * as OpenCodeServerLedger from "@nodex/provider-opencode/server/OpenCodeServerLedger";
+import type { AnyProviderDriver } from "@nodex/provider-core/server/driver";
 import * as CodexAdapter from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as ClaudeAdapter from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
@@ -138,9 +135,7 @@ const layerBackground = BackgroundPolicy.layer.pipe(
   Layer.provide(layerSettings),
 );
 const layerProjectEnrichment = ProjectEnrichment.layer.pipe(
-  Layer.provide(
-    ProjectFavicon.layer.pipe(Layer.provide(WorkspacePaths.layer)),
-  ),
+  Layer.provide(ProjectFavicon.layer.pipe(Layer.provide(WorkspacePaths.layer))),
   Layer.provide(RepositoryIdentity.layer),
 );
 const layerProviderInfrastructure = Layer.mergeAll(

@@ -7,14 +7,14 @@ import {
   ProviderInstanceId,
   ThreadId,
   EventId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import { DispatchModeLimit } from "./DispatchModeLimit.ts";
 import * as EventSink from "./EventSink.ts";

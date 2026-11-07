@@ -1,4 +1,4 @@
-import { errorTag } from "@t3tools/shared/observability";
+import { errorTag } from "@nodex/runtime-shared/observability";
 
 export function structuralProtocolMethod(value: string): string {
   return value.length <= 128 && /^[A-Za-z][A-Za-z0-9._:/-]*$/.test(value) ? value : "unknown";

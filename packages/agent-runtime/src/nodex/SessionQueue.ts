@@ -4,7 +4,7 @@ import {
   RunId,
   ThreadId,
   UserInputResponder,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";

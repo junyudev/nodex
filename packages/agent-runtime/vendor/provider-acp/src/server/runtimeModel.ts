@@ -9,18 +9,18 @@ import * as EffectAcpSchemaV1 from "effect-acp/schema-v1";
 import {
   deriveToolActivityPresentation,
   mergeToolActivityData,
-} from "@t3tools/shared/toolActivity";
+} from "@nodex/runtime-shared/toolActivity";
 import {
   NODEX_APP_MCP_SERVER,
   NODEX_APP_MCP_SERVER_PATTERN,
   NODEX_APP_TASK_TOOL_NAMES,
   isNodexAppMcpServer,
-} from "@t3tools/shared/nodexAppMcp";
+} from "@nodex/runtime-shared/nodexAppMcp";
 import type {
   OrchestrationV2ProviderThreadNativeMetadata,
   ThreadTokenUsageSnapshot,
   ToolLifecycleItemType,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -339,7 +339,7 @@ export function acpContentBlockDisplayText(
       const mimeType = boundedContentMetadata(content.mimeType, 256) || "unknown type";
       return `[ACP audio (${mimeType})]`;
     }
-    case "_t3_unknown":
+    case "_unknown":
       return `[Unsupported ACP content: ${boundedContentMetadata(content.originalType, 128) || "unknown"}]`;
   }
 }
@@ -373,9 +373,9 @@ function sanitizeAcpToolCallContent(
         };
       case "terminal":
         return { type: "terminal", terminalId: entry.terminalId };
-      case "_t3_unknown":
+      case "_unknown":
         return {
-          type: "_t3_unknown",
+          type: "_unknown",
           originalType: boundedContentMetadata(entry.originalType, 128) || "unknown",
           raw: null,
         };
@@ -1068,7 +1068,7 @@ export interface AcpMcpToolCallIdentity {
   readonly input?: Record<string, unknown>;
 }
 
-/** Matches an invocation of T3's `acp-mcp-call` bridge fallback CLI. */
+/** Matches an invocation of Nodex's `acp-mcp-call` bridge fallback CLI. */
 const ACP_MCP_FALLBACK_CALL = /(?:^|[\s"'=])acp-mcp-call[\s"']+([A-Za-z0-9_.-]+)(?:\s+(.+?))?\s*$/u;
 
 function acpMcpFallbackInput(value: string | undefined): Record<string, unknown> | undefined {
@@ -1122,7 +1122,7 @@ const BARE_TOOL_TITLE_CALL = /^(?<tool>[A-Za-z0-9_]+)(?::\s|$)/;
  *
  * ACP has no typed MCP tool-call item, so agents surface MCP calls in
  * agent-specific shapes: codex-acp tags execute calls with
- * `rawInput.server`/`rawInput.tool`, while agents on T3's terminal fallback
+ * `rawInput.server`/`rawInput.tool`, while agents on Nodex's terminal fallback
  * run the `acp-mcp-call <tool>` CLI through their command or an embedded
  * client terminal. Recovered identity lets the projection render the same
  * branded MCP item that native providers produce.
@@ -1174,7 +1174,7 @@ export function extractMcpToolCallIdentity(
   const assertsForeignOrigin =
     (metaServerId.length > 0 && !isNodexAppMcpServer(metaServerId)) ||
     (gooseExtension.length > 0 && !isNodexAppMcpServer(gooseExtension));
-  // A foreign origin never brands as T3. qwen's serverId marks a real MCP
+  // A foreign origin never brands as Nodex. qwen's serverId marks a real MCP
   // server, but goose reports its built-in extensions (developer__shell,
   // edits) the same way as user MCP servers, so goose stays unclassified and
   // keeps its command and file-change projections.
@@ -1215,8 +1215,8 @@ export function extractMcpToolCallIdentity(
   for (const command of commands) {
     const match = ACP_MCP_FALLBACK_CALL.exec(command);
     if (match?.[1] !== undefined) {
-      // The acp-mcp-call CLI exists only as T3's bridge fallback, so the
-      // server identity is T3's by construction.
+      // The acp-mcp-call CLI exists only as Nodex's bridge fallback, so the
+      // server identity is Nodex's by construction.
       const input = acpMcpFallbackInput(match[2]);
       return {
         server: NODEX_APP_MCP_SERVER,
@@ -1394,7 +1394,7 @@ export function syntheticLoadSessionResponseFromInitialize(
   return {
     ...(modes ? { modes } : {}),
     _meta: {
-      t3SessionLoadReady: "replay_idle",
+      sessionLoadReady: "replay_idle",
     },
   };
 }
@@ -1662,7 +1662,7 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
       });
       break;
     }
-    case "_t3_unknown": {
+    case "_unknown": {
       events.push({
         _tag: "UnknownUpdate",
         updateType: boundedContentMetadata(upd.originalSessionUpdate, 128) || "unknown",

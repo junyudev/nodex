@@ -18,7 +18,7 @@ import {
   RuntimeRequestId,
   ThreadId,
   TurnItemId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

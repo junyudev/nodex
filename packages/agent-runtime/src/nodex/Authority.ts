@@ -1,4 +1,4 @@
-import { ProviderSessionId, type RunId, type ThreadId } from "@t3tools/contracts";
+import { ProviderSessionId, type RunId, type ThreadId } from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";

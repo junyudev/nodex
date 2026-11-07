@@ -158,6 +158,7 @@
     "ci:verify-ignored-rust-tests": "tsx scripts/ci/verify-ignored-rust-tests.ts",
     "ci:report-timings": "tsx scripts/ci/report-actions-timings.ts",
     "verify:icons": "tsx scripts/ci/verify-icon-boundaries.ts",
+    "verify:product-identity": "tsx scripts/ci/verify-product-identity.ts",
     "verify:renderer-command-boundaries": "tsx scripts/ci/verify-renderer-command-boundaries.ts",
     "verify:renderer-ui-boundaries": "tsx scripts/ci/verify-renderer-ui-boundaries.ts",
     "verify:token-color-utilities": "tsx scripts/ci/verify-token-color-utilities.ts",

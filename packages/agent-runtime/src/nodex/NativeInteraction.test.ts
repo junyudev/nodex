@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import type { OrchestrationV2ShellThreadStatus } from "@t3tools/contracts";
+import type { OrchestrationV2ShellThreadStatus } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
@@ -14,7 +14,7 @@ import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
 import type {
   CodexNativeInteraction,
   CodexNativeNotification,
-} from "@t3tools/provider-core/server/nativeInteraction";
+} from "@nodex/provider-core/server/nativeInteraction";
 import { make } from "./NativeInteraction.ts";
 import type { AgentPredictionInput, AgentRuntimeNotification } from "./Interface.ts";
 

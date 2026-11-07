@@ -1,5 +1,5 @@
 import { assert } from "@effect/vitest";
-import type { ProviderReplayTranscript } from "@t3tools/contracts";
+import type { ProviderReplayTranscript } from "@nodex/runtime-contracts";
 
 import type { OrchestratorV2ScenarioResult } from "../../OrchestratorScenario.ts";
 import { assertBaseProjection, projectionFor } from "../shared.ts";

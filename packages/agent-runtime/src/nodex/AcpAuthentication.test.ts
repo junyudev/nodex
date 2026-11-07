@@ -1,7 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
-import { ProviderInstanceId, type ProviderAuthState } from "@t3tools/contracts";
-import * as ProviderAuthFlow from "@t3tools/provider-core/server/providerAuthFlow";
+import { ProviderInstanceId, type ProviderAuthState } from "@nodex/runtime-contracts";
+import * as ProviderAuthFlow from "@nodex/provider-core/server/providerAuthFlow";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";

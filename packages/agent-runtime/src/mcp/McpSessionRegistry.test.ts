@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProviderInstanceId, ThreadId } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import { HttpServer } from "effect/http";
 import * as NetAddress from "effect/net/NetAddress";

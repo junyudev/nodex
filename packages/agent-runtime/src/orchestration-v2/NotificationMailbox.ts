@@ -2,7 +2,7 @@ import {
   latestProviderTurnForAttempt,
   type MessageId,
   type OrchestrationV2ThreadProjection,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 
 /**
  * A persisted steer without an acceptance receipt can be retried as a continuation.

@@ -8,7 +8,7 @@ import {
   type ProjectScript,
   SCRIPT_RUN_COMMAND_PATTERN,
   type ThreadEnvMode,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";

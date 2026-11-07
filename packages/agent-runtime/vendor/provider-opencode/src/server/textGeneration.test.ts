@@ -1,8 +1,8 @@
-import { ProviderInstanceId, TextGenerationError } from "@t3tools/contracts";
+import { ProviderInstanceId, TextGenerationError } from "@nodex/runtime-contracts";
 import { OpenCodeSettings } from "../settings.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import { TextGenerationAdmission } from "@t3tools/provider-core/server/textGenerationPolicy";
+import { TextGenerationAdmission } from "@nodex/provider-core/server/textGenerationPolicy";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Duration from "effect/Duration";
@@ -10,14 +10,14 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
-import * as NetService from "@t3tools/shared/Net";
+import * as NetService from "@nodex/runtime-shared/Net";
 import { beforeEach, expect } from "vite-plus/test";
 
-import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
+import * as TestProviderHost from "@nodex/provider-testing/TestProviderHost";
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
 import * as OpenCodeServerOwner from "./OpenCodeServerOwner.ts";
 import * as OpenCodeTextGeneration from "./textGeneration.ts";
-import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
+import type { ProviderTextGeneration } from "@nodex/provider-core/server/textGeneration";
 
 const runtimeMock = {
   state: {

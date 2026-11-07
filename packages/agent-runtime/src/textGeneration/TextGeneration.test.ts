@@ -12,13 +12,13 @@ import {
   ProviderDriverKind,
   TextGenerationError,
   type ServerProvider,
-} from "@t3tools/contracts";
-import { createModelSelection } from "@t3tools/shared/model";
+} from "@nodex/runtime-contracts";
+import { createModelSelection } from "@nodex/runtime-shared/model";
 
-import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
+import type { ProviderInstance } from "@nodex/provider-core/server/driver";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as TextGeneration from "./TextGeneration.ts";
-import { buildThreadTitlePrompt } from "@t3tools/provider-core/server/textGenerationPrompts";
+import { buildThreadTitlePrompt } from "@nodex/provider-core/server/textGenerationPrompts";
 
 const makeStubTextGeneration = (
   overrides: Partial<TextGeneration.TextGeneration["Service"]>,

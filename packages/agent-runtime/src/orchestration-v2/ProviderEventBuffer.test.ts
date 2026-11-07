@@ -1,6 +1,11 @@
 import { assert, it } from "@effect/vitest";
-import { MessageId, ProviderDriverKind, ProviderSessionId, ThreadId } from "@t3tools/contracts";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import {
+  MessageId,
+  ProviderDriverKind,
+  ProviderSessionId,
+  ThreadId,
+} from "@nodex/runtime-contracts";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";

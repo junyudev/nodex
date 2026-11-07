@@ -8,10 +8,10 @@ import * as Predicate from "effect/Predicate";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
-import * as OpenCodeRuntime from "@t3tools/provider-opencode/server/OpenCodeRuntime";
-import * as OpenCodeServerLedger from "@t3tools/provider-opencode/server/OpenCodeServerLedger";
-import * as OpenCode2Client from "@t3tools/provider-opencode/server/v2/OpenCode2Client";
-import * as OpenCode2Server from "@t3tools/provider-opencode/server/v2/OpenCode2Server";
+import * as OpenCodeRuntime from "@nodex/provider-opencode/server/OpenCodeRuntime";
+import * as OpenCodeServerLedger from "@nodex/provider-opencode/server/OpenCodeServerLedger";
+import * as OpenCode2Client from "@nodex/provider-opencode/server/v2/OpenCode2Client";
+import * as OpenCode2Server from "@nodex/provider-opencode/server/v2/OpenCode2Server";
 import { probeOpenCodeRuntime } from "../../vendor/provider-opencode/src/server/versionProbe.ts";
 
 export class OpenCodeCatalogError extends Schema.TaggedError<OpenCodeCatalogError>()(

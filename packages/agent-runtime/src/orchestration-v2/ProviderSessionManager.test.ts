@@ -2,7 +2,7 @@ import { makeProviderEventBuffer } from "./ProviderEventBuffer.ts";
 import * as NetAddress from "effect/net/NetAddress";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it, vi } from "@effect/vitest";
-import { AgentScope } from "@t3tools/shared/AgentScope";
+import { AgentScope } from "@nodex/runtime-shared/AgentScope";
 import {
   EnvironmentId,
   type ModelSelection,
@@ -17,7 +17,7 @@ import {
   ProviderInstanceId,
   ProviderSessionId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -39,22 +39,22 @@ import { HttpServer } from "effect/http";
 import { ProviderWorkspaceMissingError } from "../provider/Errors.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ProjectService from "../project/ProjectService.ts";
-import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import * as McpProviderSession from "@nodex/provider-core/server/mcpSession";
+import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
 import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as EventSink from "./EventSink.ts";
 import * as EventStore from "./EventStore.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import { SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "../nodex/SideChat.ts";
 
 const layerTestDatabase = SqlitePersistence.layerMemory;
@@ -1075,14 +1075,14 @@ it.effect("ProviderSessionManagerV2 records provider session and turn metrics", 
             ),
         );
       assert.isTrue(
-        has("t3_provider_sessions_total", {
+        has("nodex_provider_sessions_total", {
           provider: "codex",
           operation: "open",
           outcome: "success",
         }),
       );
       assert.isTrue(
-        has("t3_provider_sessions_total", {
+        has("nodex_provider_sessions_total", {
           provider: "codex",
           operation: "release",
           reason: "manual_shutdown",
@@ -1090,16 +1090,16 @@ it.effect("ProviderSessionManagerV2 records provider session and turn metrics", 
         }),
       );
       assert.isTrue(
-        has("t3_provider_turns_total", {
+        has("nodex_provider_turns_total", {
           provider: "codex",
           operation: "send",
           modelFamily: "gpt",
           outcome: "success",
         }),
       );
-      assert.isTrue(has("t3_provider_turn_duration", { provider: "codex", operation: "send" }));
+      assert.isTrue(has("nodex_provider_turn_duration", { provider: "codex", operation: "send" }));
       assert.isTrue(
-        has("t3_provider_turns_total", {
+        has("nodex_provider_turns_total", {
           provider: "codex",
           operation: "interrupt",
           outcome: "success",

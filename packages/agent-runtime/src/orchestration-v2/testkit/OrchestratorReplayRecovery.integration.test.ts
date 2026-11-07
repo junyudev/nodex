@@ -8,7 +8,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as CodexReplay from "effect-codex-app-server/replay";
-import { ProviderDriverKind } from "@t3tools/contracts";
+import { ProviderDriverKind } from "@nodex/runtime-contracts";
 
 import {
   ClaudeOrchestratorReplayHarness,
@@ -16,7 +16,7 @@ import {
 } from "../Adapters/ClaudeAdapterV2.testkit.ts";
 import { CodexOrchestratorReplayHarness } from "../Adapters/CodexAdapterV2.testkit.ts";
 import * as CodexAdapterV2Testkit from "../Adapters/CodexAdapterV2.testkit.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import * as EffectOutbox from "../EffectOutbox.ts";
 import { provideDeterministicTestRuntime } from "./DeterministicRuntime.ts";
@@ -43,11 +43,11 @@ import {
   runOrchestratorV2ProviderReplayScenario,
 } from "./ProviderReplayHarness.ts";
 import { runOrchestratorV2Scenario } from "./OrchestratorScenario.ts";
-import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
+import { checkpointWorkspace } from "@nodex/provider-testing/replayWorkspace";
 import {
   materializeReplayTranscriptWorkspace,
   readProviderReplayTranscript,
-} from "@t3tools/provider-testing/replayTranscript";
+} from "@nodex/provider-testing/replayTranscript";
 
 const FIRST_FINAL = "provider thread resume fixture first turn complete";
 const SECOND_FINAL = "provider thread resume fixture second turn complete";
@@ -109,7 +109,7 @@ describe("orchestrator replay recovery", () => {
           const path = yield* Path.Path;
           const tempDir = yield* Effect.acquireRelease(
             fs.makeTempDirectory({
-              prefix: "t3-orchestration-v2-recovery-",
+              prefix: "nodex-orchestration-v2-recovery-",
             }),
             (directory) =>
               fs.remove(directory, { recursive: true, force: true }).pipe(Effect.orDie),
@@ -233,7 +233,7 @@ describe("orchestrator replay recovery", () => {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const tempDir = yield* Effect.acquireRelease(
-          fs.makeTempDirectory({ prefix: "t3-orchestration-v2-claude-recovery-" }),
+          fs.makeTempDirectory({ prefix: "nodex-orchestration-v2-claude-recovery-" }),
           (directory) => fs.remove(directory, { recursive: true, force: true }).pipe(Effect.orDie),
         );
         const materialized = yield* materializeFixtureInput({

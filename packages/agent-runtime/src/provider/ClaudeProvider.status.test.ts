@@ -1,14 +1,14 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { ClaudeSettings } from "@t3tools/contracts";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import { ClaudeSettings } from "@nodex/runtime-contracts";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Logger from "effect/Logger";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
 import * as NodePath from "node:path";
 
-import { resolveUsageLimitsAfterProbe } from "@t3tools/provider-core/server/usageLimits";
+import { resolveUsageLimitsAfterProbe } from "@nodex/provider-core/server/usageLimits";
 
 import { checkClaudeProviderStatus } from "./ClaudeProvider.ts";
 

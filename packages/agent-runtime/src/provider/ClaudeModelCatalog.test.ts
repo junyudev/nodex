@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
+import { ProviderDriverKind, ProviderInstanceId } from "@nodex/runtime-contracts";
 
 import { hasValidClaudeManifestAdapters } from "./ClaudeModelManifest.ts";
 import { resolveProviderCatalog, type ModelManifestData } from "./ModelManifest.ts";

@@ -1,4 +1,4 @@
-import type { ServerProviderUsageWindow } from "@t3tools/contracts";
+import type { ServerProviderUsageWindow } from "@nodex/runtime-contracts";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -15,8 +15,8 @@ import {
   clampPercent,
   makeUnavailableUsageLimits,
   makeUsageLimits,
-} from "@t3tools/provider-core/server/usageLimits";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+} from "@nodex/provider-core/server/usageLimits";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 
 const AuthFile = Schema.Struct({ "opencode-go": Schema.optionalKey(Schema.Unknown) });
 const ApiAuth = Schema.Struct({ type: Schema.Literal("api"), key: Schema.String });

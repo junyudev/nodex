@@ -8,20 +8,20 @@ import {
   ProviderThreadId,
   RunId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as Hex from "effect/encoding/Hex";
-import * as KeyedLock from "@t3tools/shared/KeyedLock";
+import * as KeyedLock from "@nodex/runtime-shared/KeyedLock";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
 import { isGitImport, parseTurnDiffFilesFromNumstat } from "../checkpointing/Diffs.ts";
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 
 const CHECKPOINT_REFS_PREFIX = "refs/nodex/checkpoints";
 const ROOT_CHECKPOINT_SCOPE_NAME = "root";
@@ -156,7 +156,7 @@ export interface CheckpointServiceV2Shape {
 export class CheckpointServiceV2 extends Context.Service<
   CheckpointServiceV2,
   CheckpointServiceV2Shape
->()("t3/orchestration-v2/CheckpointService/CheckpointServiceV2") {}
+>()("nodex/runtime/orchestration-v2/CheckpointService/CheckpointServiceV2") {}
 
 export const checkpointRefForScopeOrdinal = Effect.fn("checkpointRefForScopeOrdinal")(
   function* (input: { readonly scopeId: CheckpointScopeId; readonly ordinalWithinScope: number }) {

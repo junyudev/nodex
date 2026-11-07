@@ -4,7 +4,7 @@ import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { createModelSelection } from "./model.ts";
 import {

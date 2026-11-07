@@ -108,20 +108,20 @@ describe("TerminalOpenInput", () => {
       threadId: "thread-1",
       terminalId: DEFAULT_TERMINAL_ID,
       cwd: "/tmp/project",
-      worktreePath: "/tmp/project/.t3/worktrees/feature-a",
+      worktreePath: "/tmp/project/.nodex/worktrees/feature-a",
       cols: 100,
       rows: 24,
       env: {
-        T3CODE_PROJECT_ROOT: "/tmp/project",
+        NODEX_PROJECT_ROOT: "/tmp/project",
         CUSTOM_FLAG: "1",
       },
       providerInstanceId: "codex_work",
     });
     expect(parsed.env).toMatchObject({
-      T3CODE_PROJECT_ROOT: "/tmp/project",
+      NODEX_PROJECT_ROOT: "/tmp/project",
       CUSTOM_FLAG: "1",
     });
-    expect(parsed.worktreePath).toBe("/tmp/project/.t3/worktrees/feature-a");
+    expect(parsed.worktreePath).toBe("/tmp/project/.nodex/worktrees/feature-a");
     expect(parsed.providerInstanceId).toBe("codex_work");
   });
 
@@ -331,8 +331,8 @@ describe("TerminalEvent", () => {
         snapshot: {
           threadId: "thread-1",
           terminalId: DEFAULT_TERMINAL_ID,
-          cwd: "/tmp/project/.t3/worktrees/feature-a",
-          worktreePath: "/tmp/project/.t3/worktrees/feature-a",
+          cwd: "/tmp/project/.nodex/worktrees/feature-a",
+          worktreePath: "/tmp/project/.nodex/worktrees/feature-a",
           status: "running",
           pid: 1234,
           history: "",

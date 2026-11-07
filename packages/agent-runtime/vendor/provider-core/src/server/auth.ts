@@ -4,13 +4,13 @@ import type {
   ProviderAuthRespondInput,
   ProviderAuthState,
   ProviderSetupError,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import type * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 import type * as Stream from "effect/Stream";
 
 export interface ProviderCredentialBinding {
-  readonly owner: "provider" | "t3";
+  readonly owner: "provider" | "nodex";
   /** An overlap means these controllers can change the same credential resource. */
   readonly claims: readonly [string, ...string[]];
 }

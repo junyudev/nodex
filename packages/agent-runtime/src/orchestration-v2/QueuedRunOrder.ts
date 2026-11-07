@@ -1,4 +1,4 @@
-import type { OrchestrationV2Run, OrchestrationV2ThreadProjection } from "@t3tools/contracts";
+import type { OrchestrationV2Run, OrchestrationV2ThreadProjection } from "@nodex/runtime-contracts";
 
 import { isRuntimeDeliveryMessage, queuedMessageKind } from "./QueuedRunKind.ts";
 

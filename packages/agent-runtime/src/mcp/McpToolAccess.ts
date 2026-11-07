@@ -1,4 +1,4 @@
-import { withMcpTurnLifetime } from "@t3tools/provider-core/server/ExecutionHost";
+import { withMcpTurnLifetime } from "@nodex/provider-core/server/ExecutionHost";
 import {
   OrchestratorMcpFailure,
   type OrchestratorMcpInteractionMode,
@@ -6,7 +6,7 @@ import {
   type ProviderInteractionMode,
   type RuntimeMode,
   type ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Struct from "effect/Struct";
 import type * as Layer from "effect/Layer";
@@ -32,7 +32,7 @@ import {
  * Both constructors demand this. Their private constructors only stop the type
  * checker; this also stops `Reflect.construct` and friends at runtime.
  */
-const builtHere: unique symbol = Symbol("t3/mcp/McpToolAccess/builtHere");
+const builtHere: unique symbol = Symbol("nodex/runtime/mcp/McpToolAccess/builtHere");
 
 const refuseOutsideConstruction = (token: symbol) => {
   if (token !== builtHere) {
@@ -88,14 +88,14 @@ const requireThreadCaller = McpInvocationContext.McpInvocationContext.pipe(
 export const reads = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
   declare((params: P) => handle(params));
 
-/** Reads what belongs to the calling T3 thread, such as its preview tabs or devices. */
+/** Reads what belongs to the calling Nodex thread, such as its preview tabs or devices. */
 export const readsAsCaller = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
   declare((params: P) => requireThreadCaller.pipe(Effect.flatMap(() => handle(params))));
 
 /**
- * Acts as the calling T3 thread (its subagents, preview tabs, devices,
+ * Acts as the calling Nodex thread (its subagents, preview tabs, devices,
  * worktree) while its native execution is valid. Only an agent running inside a
- * T3 thread has one.
+ * Nodex thread has one.
  */
 export const actsAsCaller = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
   declare((params: P) =>

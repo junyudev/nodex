@@ -1,12 +1,12 @@
-import { ProviderDriverKind, type CodexSettings } from "@t3tools/contracts";
+import { ProviderDriverKind, type CodexSettings } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as PlatformError from "effect/PlatformError";
 
-import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import { expandHomePath } from "@nodex/provider-core/server/pathExpansion";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 
 export interface CodexHomeLayout {
   readonly mode: "direct" | "authOverlay";

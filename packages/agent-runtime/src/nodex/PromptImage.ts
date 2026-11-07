@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import type { StructuredGenerationImage } from "@t3tools/provider-core/server/textGeneration";
+import type { StructuredGenerationImage } from "@nodex/provider-core/server/textGeneration";
 
 /** Main fits images before they cross this transport boundary. */
 export const PromptImage = Schema.Struct({

@@ -1,4 +1,4 @@
-import { CommandId, MessageId, RunId, ThreadId } from "@t3tools/contracts";
+import { CommandId, MessageId, RunId, ThreadId } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 

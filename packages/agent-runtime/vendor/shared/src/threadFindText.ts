@@ -20,7 +20,7 @@ import {
   inlineCodeFilePathCandidate,
   resolveMarkdownFileLinkTarget,
 } from "./markdownLinks.ts";
-import type { OrchestrationV2ConversationMessage } from "@t3tools/contracts";
+import type { OrchestrationV2ConversationMessage } from "@nodex/runtime-contracts";
 import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "./proposedPlanText.ts";
 import { unified } from "unified";
 import remarkParse from "remark-parse";

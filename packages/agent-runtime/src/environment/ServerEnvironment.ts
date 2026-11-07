@@ -1,4 +1,4 @@
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId } from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -29,7 +29,7 @@ export class ServerEnvironmentIdentity extends Context.Service<
   {
     readonly getEnvironmentId: Effect.Effect<EnvironmentId>;
   }
->()("t3/environment/ServerEnvironment/ServerEnvironmentIdentity") {}
+>()("nodex/runtime/environment/ServerEnvironment/ServerEnvironmentIdentity") {}
 
 const makeIdentity = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;

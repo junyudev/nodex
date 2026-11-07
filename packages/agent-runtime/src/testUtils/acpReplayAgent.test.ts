@@ -92,8 +92,8 @@ async function withReplayAgent(
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,
-        T3_ACP_REPLAY_TRANSCRIPT: Buffer.from(JSON.stringify(transcript)).toString("base64"),
-        T3_ACP_REPLAY_STATUS_PATH: statusPath,
+        NODEX_ACP_REPLAY_TRANSCRIPT: Buffer.from(JSON.stringify(transcript)).toString("base64"),
+        NODEX_ACP_REPLAY_STATUS_PATH: statusPath,
         PROBE_BOUNDARY: boundary,
         PROBE_REACHED: reachedPath,
         PROBE_RELEASE: releasePath,

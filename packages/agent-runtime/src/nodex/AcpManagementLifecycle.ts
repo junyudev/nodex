@@ -1,4 +1,4 @@
-import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
+import type { ProviderInstance } from "@nodex/provider-core/server/driver";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";

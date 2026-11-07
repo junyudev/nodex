@@ -4,7 +4,7 @@ import * as Deferred from "effect/Deferred";
 import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 import * as Exit from "effect/Exit";
-import { AcpRegistryOperationError } from "@t3tools/contracts";
+import { AcpRegistryOperationError } from "@nodex/runtime-contracts";
 import { makeOperations, validateProviderMutation } from "./AcpManagement.ts";
 import type { AgentAcpOperation } from "./AcpManagementContract.ts";
 import { decodeAgentAcpFailure } from "./AcpFailureContract.ts";

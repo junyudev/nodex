@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import { ProviderInstanceId } from "@t3tools/contracts";
+import { ProviderInstanceId } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import { resolveRuntimeMode } from "./delegatedTaskModes.ts";
 

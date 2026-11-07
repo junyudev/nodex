@@ -5,14 +5,14 @@ import {
   ProviderThreadId,
   RunId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
-import { encodedBytes } from "@t3tools/shared/BoundedQueue";
+import { encodedBytes } from "@nodex/runtime-shared/BoundedQueue";
 
 export const MAX_PENDING_CONTINUATIONS = 512;
 export const MAX_PENDING_CONTINUATION_BYTES = 8 * 1024 * 1024;
@@ -75,7 +75,7 @@ export interface ProviderContinuationRequest {
 export class ProviderContinuationRequests extends Context.Reference<{
   readonly offer: (request: ProviderContinuationRequest) => Effect.Effect<void, ProviderContinuationQueueFull>;
   readonly take: Effect.Effect<ProviderContinuationRequest>;
-}>("@t3tools/provider-core/server/ProviderContinuationRequests", {
+}>("@nodex/provider-core/server/ProviderContinuationRequests", {
   defaultValue: () => ({ offer: () => Effect.void, take: Effect.never }),
 }) {}
 

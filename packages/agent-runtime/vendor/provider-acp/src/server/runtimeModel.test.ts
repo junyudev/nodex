@@ -197,7 +197,7 @@ describe("AcpRuntimeModel", () => {
     } as EffectAcpSchema.InitializeResponse);
 
     expect(response.modes).toBeUndefined();
-    expect(response._meta).toMatchObject({ t3SessionLoadReady: "replay_idle" });
+    expect(response._meta).toMatchObject({ sessionLoadReady: "replay_idle" });
   });
 
   it("builds a synthetic load response with initialize mode state", () => {
@@ -1211,7 +1211,7 @@ describe("AcpRuntimeModel", () => {
   it("turns future ACP content and session updates into explicit placeholders", () => {
     expect(
       acpContentBlockDisplayText({
-        type: "_t3_unknown",
+        type: "_unknown",
         originalType: "chart",
         raw: { type: "chart", points: [] },
       }),
@@ -1221,7 +1221,7 @@ describe("AcpRuntimeModel", () => {
       parseSessionUpdateEvent({
         sessionId: "session-1",
         update: {
-          sessionUpdate: "_t3_unknown",
+          sessionUpdate: "_unknown",
           originalSessionUpdate: "timeline_update",
           raw: { sessionUpdate: "timeline_update", entries: [] },
         },
@@ -1469,7 +1469,7 @@ describe("extractMcpToolCallIdentity", () => {
     expect(
       extractMcpToolCallIdentity(toolCall, {
         embeddedTerminalCommands: [
-          '/usr/bin/node /srv/t3/bin.ts acp-mcp-call delegate_task {"task":"x"}',
+          '/usr/bin/node /srv/nodex/bin.ts acp-mcp-call delegate_task {"task":"x"}',
         ],
       }),
     ).toEqual({ server: "nodex_app", tool: "delegate_task", input: { task: "x" } });
@@ -1735,12 +1735,12 @@ describe("embeddedTerminalIdsFromSessionUpdate", () => {
           toolCallId: "call_1",
           status: "in_progress",
           content: [
-            { type: "terminal", terminalId: "t3-term-9" },
+            { type: "terminal", terminalId: "nodex-term-9" },
             { type: "content", content: { type: "text", text: "noise" } },
           ],
         },
       }),
-    ).toEqual({ toolCallId: "call_1", terminalIds: ["t3-term-9"] });
+    ).toEqual({ toolCallId: "call_1", terminalIds: ["nodex-term-9"] });
     expect(
       embeddedTerminalIdsFromSessionUpdate({
         sessionId: "session-1",

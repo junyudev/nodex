@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { ProviderDriverKind, ProviderThreadId, ThreadId } from "@t3tools/contracts";
-import * as Requests from "@t3tools/provider-core/server/ProviderContinuationRequests";
+import { ProviderDriverKind, ProviderThreadId, ThreadId } from "@nodex/runtime-contracts";
+import * as Requests from "@nodex/provider-core/server/ProviderContinuationRequests";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Cause from "effect/Cause";

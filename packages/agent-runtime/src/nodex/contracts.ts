@@ -6,7 +6,7 @@ export {
   getProviderAttachmentLimitError,
   DEFAULT_RUNTIME_MODE,
   RUNTIME_MODE_RANK,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 export type {
   OrchestrationV2AppThread,
   OrchestrationV2ServerCommand,
@@ -24,9 +24,9 @@ export type {
   ThreadId,
   RunId,
   ProjectId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 
-export type { HostDesktopTools } from "@t3tools/provider-core/server/ExecutionHost";
+export type { HostDesktopTools } from "@nodex/provider-core/server/ExecutionHost";
 export type * from "./Interface.ts";
 export type { AgentRuntimeBootstrap } from "./Bootstrap.ts";
 export {

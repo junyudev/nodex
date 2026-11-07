@@ -10,9 +10,9 @@ import {
   type OrchestrationV2AppThread,
   type ThreadId,
   type TurnItemId,
-} from "@t3tools/contracts";
-import { mcpAppToolCallableByApp, type McpAppReference } from "@t3tools/shared/mcpApp";
-import { mcpAppFromToolItem } from "@t3tools/shared/toolOutput";
+} from "@nodex/runtime-contracts";
+import { mcpAppToolCallableByApp, type McpAppReference } from "@nodex/runtime-shared/mcpApp";
+import { mcpAppFromToolItem } from "@nodex/runtime-shared/toolOutput";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -21,7 +21,7 @@ import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import * as ProviderSessionManager from "../orchestration-v2/ProviderSessionManager.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as McpAppModelContext from "./McpAppModelContext.ts";
@@ -49,7 +49,7 @@ export class McpAppRequests extends Context.Service<
       input: McpAppUpdateModelContextInput,
     ) => Effect.Effect<void, McpAppRequestError>;
   }
->()("t3/mcpApps/McpAppRequests") {}
+>()("nodex/runtime/mcpApps/McpAppRequests") {}
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const utf8 = new TextEncoder();

@@ -11,7 +11,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
@@ -30,7 +30,7 @@ import {
   ThreadManagementService,
   layer as management,
 } from "../orchestration-v2/ThreadManagementService.ts";
-import type { ProviderAdapterV2 } from "@t3tools/provider-core/server/ProviderAdapter";
+import type { ProviderAdapterV2 } from "@nodex/provider-core/server/ProviderAdapter";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as ThreadCommandExecutor from "../orchestration-v2/ThreadCommandExecutor.ts";
 import { queuedRunsInDeliveryOrder } from "../orchestration-v2/QueuedRunOrder.ts";

@@ -5,9 +5,9 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 
-import * as PtyAdapter from "@t3tools/shared/PtyAdapter";
+import * as PtyAdapter from "@nodex/runtime-shared/PtyAdapter";
 
 export class NodePtyModuleLoadError extends Schema.TaggedError<NodePtyModuleLoadError>()(
   "NodePtyModuleLoadError",

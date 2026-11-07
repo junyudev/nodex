@@ -1,9 +1,9 @@
 import { RuntimeModelPolicy } from "./ModelPolicy.ts";
-import { CommandId, MessageId, ProviderSessionId, RunId, ThreadId } from "@t3tools/contracts";
+import { CommandId, MessageId, ProviderSessionId, RunId, ThreadId } from "@nodex/runtime-contracts";
 import type {
   CodexNativeInteraction,
   CodexNativeMethods,
-} from "@t3tools/provider-core/server/nativeInteraction";
+} from "@nodex/provider-core/server/nativeInteraction";
 import * as Effect from "effect/Effect";
 import * as Scope from "effect/Scope";
 import * as Exit from "effect/Exit";
@@ -15,7 +15,7 @@ import * as Random from "effect/Random";
 import * as Semaphore from "effect/Semaphore";
 import { createHash } from "node:crypto";
 import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
-import { compareSemverVersions, parseSemver } from "@t3tools/shared/semver";
+import { compareSemverVersions, parseSemver } from "@nodex/runtime-shared/semver";
 import { ProjectionStoreV2 } from "../orchestration-v2/ProjectionStore.ts";
 import { readExecutionHandoff } from "../orchestration-v2/ExecutionHandoff.ts";
 import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionManager.ts";

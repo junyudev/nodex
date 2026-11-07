@@ -19,7 +19,7 @@ export class ResourceCleanupService extends Context.Reference<{
   readonly cleanupAttachments: (
     attachmentIds: ReadonlyArray<string>,
   ) => Effect.Effect<void, ResourceCleanupError>;
-}>("t3/orchestration-v2/ResourceCleanupService", {
+}>("nodex/runtime/orchestration-v2/ResourceCleanupService", {
   defaultValue: () => ({
     cleanupTerminals: () => Effect.void,
     cleanupPreviews: () => Effect.void,

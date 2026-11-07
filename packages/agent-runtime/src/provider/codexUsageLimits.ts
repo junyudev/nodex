@@ -11,12 +11,12 @@ import type {
   ServerProviderResetCredits,
   ServerProviderUsageLimits,
   ServerProviderUsageWindow,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import type * as CodexErrors from "effect-codex-app-server/errors";
 
-import { clampPercent, makeUsageLimits } from "@t3tools/provider-core/server/usageLimits";
+import { clampPercent, makeUsageLimits } from "@nodex/provider-core/server/usageLimits";
 
 interface CodexRateLimitWindow {
   readonly usedPercent: number;

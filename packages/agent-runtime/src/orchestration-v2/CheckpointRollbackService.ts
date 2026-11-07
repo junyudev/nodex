@@ -2,7 +2,7 @@ import {
   conversationRewindContext,
   isExactConversationRewindTarget,
   resolveConversationRewindTargets,
-} from "@t3tools/shared/orchestrationV2Rewind";
+} from "@nodex/runtime-shared/orchestrationV2Rewind";
 import {
   CheckpointId,
   type CommandId,
@@ -12,7 +12,7 @@ import {
   ProviderThreadId,
   type RunId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -28,10 +28,10 @@ import {
 } from "./CheckpointRestoreSafety.ts";
 import { CheckpointServiceV2 } from "./CheckpointService.ts";
 import { EventSinkV2 } from "./EventSink.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import { ProjectionStoreV2 } from "./ProjectionStore.ts";
 import * as ProjectStore from "./ProjectStore.ts";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import { ProviderSessionManagerV2 } from "./ProviderSessionManager.ts";
 import { RuntimePolicyV2 } from "./RuntimePolicy.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
@@ -88,7 +88,7 @@ export interface CheckpointRollbackServiceV2Shape {
 export class CheckpointRollbackServiceV2 extends Context.Service<
   CheckpointRollbackServiceV2,
   CheckpointRollbackServiceV2Shape
->()("t3/orchestration-v2/CheckpointRollbackService/CheckpointRollbackServiceV2") {}
+>()("nodex/runtime/orchestration-v2/CheckpointRollbackService/CheckpointRollbackServiceV2") {}
 
 export const layer: Layer.Layer<
   CheckpointRollbackServiceV2,

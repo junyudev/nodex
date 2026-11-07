@@ -2,8 +2,8 @@ import { assert, it } from "@effect/vitest";
 import { createOpencodeClient, type Model } from "@opencode-ai/sdk/v2";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { OpenCodeSettings } from "@t3tools/provider-opencode/settings";
-import * as OpenCodeRuntime from "@t3tools/provider-opencode/server/OpenCodeRuntime";
+import { OpenCodeSettings } from "@nodex/provider-opencode/settings";
+import * as OpenCodeRuntime from "@nodex/provider-opencode/server/OpenCodeRuntime";
 import * as OpenCodeServerOwner from "../../vendor/provider-opencode/src/server/OpenCodeServerOwner.ts";
 import {
   checkOpenCodeProviderStatus,

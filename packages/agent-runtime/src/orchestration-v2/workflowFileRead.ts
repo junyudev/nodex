@@ -17,9 +17,9 @@ import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
-import { OrchestrationWorkflowFileError } from "@t3tools/contracts";
+import { OrchestrationWorkflowFileError } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 
 function workflowFilesRoot(home: string, configDir?: string): string {
   return NodePath.join(configDir?.trim() || NodePath.join(home, ".claude"), "projects");

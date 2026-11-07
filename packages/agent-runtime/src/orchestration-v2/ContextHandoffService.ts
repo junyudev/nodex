@@ -6,7 +6,7 @@ import {
   ProviderThreadId,
   RunId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -22,8 +22,8 @@ import {
   historicalMessage,
   renderHistory,
   selectHistory,
-} from "@t3tools/provider-core/server/handoffBudget";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+} from "@nodex/provider-core/server/handoffBudget";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import type { ProjectionHandoffHistory } from "./ProjectionStore.ts";
 
 export class ContextHandoffPrepareError extends Schema.TaggedError<ContextHandoffPrepareError>()(
@@ -98,7 +98,7 @@ export interface ContextHandoffServiceV2Shape {
 export class ContextHandoffServiceV2 extends Context.Service<
   ContextHandoffServiceV2,
   ContextHandoffServiceV2Shape
->()("t3/orchestration-v2/ContextHandoffService/ContextHandoffServiceV2") {}
+>()("nodex/runtime/orchestration-v2/ContextHandoffService/ContextHandoffServiceV2") {}
 
 function compactText(text: string, maxLength = 240): string {
   const compacted = text.replace(/\s+/g, " ").trim();

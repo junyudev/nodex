@@ -2,7 +2,7 @@ import {
   ProviderInstanceId,
   ServerSettingsError,
   type ProviderInstanceConfigMap,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
 import * as Ref from "effect/Ref";
@@ -14,7 +14,7 @@ import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as Schema from "effect/Schema";
-import { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
+import { AcpRegistrySettings } from "@nodex/provider-acp-registry/settings";
 import type { ServerSettingsService } from "../serverSettings.ts";
 import * as Registry from "../provider/ProviderInstanceRegistryMutator.ts";
 import * as Sessions from "../orchestration-v2/ProviderSessionManager.ts";

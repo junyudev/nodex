@@ -1,4 +1,4 @@
-import { SourceControlProviderKind } from "@t3tools/contracts";
+import { SourceControlProviderKind } from "@nodex/runtime-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -238,10 +238,10 @@ it("keeps a GitLab identity's whole path, because a nested group is part of the 
 it("puts owner and name back together for an identity recorded before displayName", () => {
   const selector = sourceControlRepositorySelector({
     provider: "github",
-    owner: "t3tools",
-    name: "t3code",
+    owner: "acme",
+    name: "widgets",
   });
-  expect(selector).toBe("t3tools/t3code");
+  expect(selector).toBe("acme/widgets");
 });
 
 it("names nothing for a project with no remote to name it by", () => {

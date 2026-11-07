@@ -1,7 +1,7 @@
 import { sdkFetch } from "./SseIntake.ts";
 import * as NodeURL from "node:url";
 
-import type { ChatAttachment, ProviderApprovalDecision } from "@t3tools/contracts";
+import type { ChatAttachment, ProviderApprovalDecision } from "@nodex/runtime-contracts";
 import {
   createOpencodeClient,
   type Agent,
@@ -33,15 +33,15 @@ import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
-import { isWindowsCommandNotFound } from "@t3tools/provider-core/server/snapshotProbe";
+import { isWindowsCommandNotFound } from "@nodex/provider-core/server/snapshotProbe";
 import * as OpenCodeServerLedger from "./OpenCodeServerLedger.ts";
 import * as NativeExecutionPlugin from "./NativeExecutionPlugin.ts";
-import { collectStreamAsString } from "@t3tools/provider-core/server/snapshotProbe";
-import * as NetService from "@t3tools/shared/Net";
-import { AgentScope } from "@t3tools/shared/AgentScope";
-import * as HostProcess from "@t3tools/shared/HostProcess";
-import { compareSemverVersions, parseSemver } from "@t3tools/shared/semver";
-import { resolveSpawnCommand } from "@t3tools/shared/shell";
+import { collectStreamAsString } from "@nodex/provider-core/server/snapshotProbe";
+import * as NetService from "@nodex/runtime-shared/Net";
+import { AgentScope } from "@nodex/runtime-shared/AgentScope";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
+import { compareSemverVersions, parseSemver } from "@nodex/runtime-shared/semver";
+import { resolveSpawnCommand } from "@nodex/runtime-shared/shell";
 import { MINIMUM_OPENCODE_VERSION } from "../settings.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
 const OPENCODE_EMPTY_CONFIG_CONTENT = "{}";
@@ -296,7 +296,7 @@ export class OpenCodeRuntime extends Context.Service<
       readonly environment?: NodeJS.ProcessEnv;
     }) => Effect.Effect<ReadonlyArray<OpenCodeSkill>, OpenCodeRuntimeError>;
   }
->()("@t3tools/provider-opencode/server/OpenCodeRuntime") {}
+>()("@nodex/provider-opencode/server/OpenCodeRuntime") {}
 
 function parseServerUrlFromOutput(output: string): string | null {
   for (const line of output.split("\n")) {

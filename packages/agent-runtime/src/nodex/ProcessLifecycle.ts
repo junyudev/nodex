@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import * as Effect from "effect/Effect";
-import * as OpenCodeServerLedger from "@t3tools/provider-opencode/server/OpenCodeServerLedger";
+import * as OpenCodeServerLedger from "@nodex/provider-opencode/server/OpenCodeServerLedger";
 
 // Provider release includes escalation and ledger cleanup; the host's graceful
 // deadline must enclose it before the process spawner's separate force-kill budget.

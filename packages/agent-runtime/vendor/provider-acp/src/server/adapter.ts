@@ -1,4 +1,4 @@
-import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
+import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 // @effect-diagnostics nodeBuiltinImport:off
 
 import {
@@ -32,16 +32,16 @@ import {
   type RuntimeRequestId,
   type ThreadTokenUsageSnapshot,
   type ThreadId,
-} from "@t3tools/contracts";
-import { AgentScope, AgentScopeThreadId } from "@t3tools/shared/AgentScope";
-import { modelSelectionsEqual } from "@t3tools/shared/model";
-import { type SelfInvocation, selfInvocationArgs } from "@t3tools/shared/nodeRuntime";
+} from "@nodex/runtime-contracts";
+import { AgentScope, AgentScopeThreadId } from "@nodex/runtime-shared/AgentScope";
+import { modelSelectionsEqual } from "@nodex/runtime-shared/model";
+import { type SelfInvocation, selfInvocationArgs } from "@nodex/runtime-shared/nodeRuntime";
 import {
   fileChangeDetail,
   fileChangeItemFields,
   fileChangesFromPatch,
   unifiedHunksText,
-} from "@t3tools/shared/fileChanges";
+} from "@nodex/runtime-shared/fileChanges";
 import { structuredPatch } from "diff";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
@@ -63,12 +63,12 @@ import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpProtocol from "effect-acp/protocol";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
-import { formatReadToolLabel, formatSearchToolLabel } from "@t3tools/shared/toolActivity";
-import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
+import { formatReadToolLabel, formatSearchToolLabel } from "@nodex/runtime-shared/toolActivity";
+import * as ProviderHost from "@nodex/provider-core/server/ProviderHost";
 import { makeAcpMcpOverAcpBridge, type AcpMcpOverAcpBridge } from "./mcpOverAcpBridge.ts";
-import { mcpToolPresentation } from "@t3tools/provider-core/server/mcpToolPresentation";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
-import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
+import { mcpToolPresentation } from "@nodex/provider-core/server/mcpToolPresentation";
+import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
+import * as McpProviderSession from "@nodex/provider-core/server/mcpSession";
 import {
   applyAcpAgentTerminalUpdate,
   acpContentBlockDisplayText,
@@ -103,31 +103,31 @@ import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 import {
   acpPromptWithInstructions,
   type AcpInstructionState,
-} from "@t3tools/provider-core/server/orchestrationInstructions";
-import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
+} from "@nodex/provider-core/server/orchestrationInstructions";
+import { buildRuntimeInstructions } from "@nodex/provider-core/server/runtimeInstructions";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
+import type * as ProviderContinuationRequests from "@nodex/provider-core/server/ProviderContinuationRequests";
 import {
   type BackgroundWork,
   type BackgroundWorkReport,
   backgroundWorkNotification,
-} from "@t3tools/provider-core/server/notification";
+} from "@nodex/provider-core/server/notification";
 import {
   makeProviderFailure,
   makeProviderRetryTurnItem,
-} from "@t3tools/provider-core/server/failure";
-import { acpSelectionTransition } from "@t3tools/provider-core/server/selectionTransition";
+} from "@nodex/provider-core/server/failure";
+import { acpSelectionTransition } from "@nodex/provider-core/server/selectionTransition";
 import {
   isProviderNativeImageAttachment,
   providerMessageTextWithAttachmentPaths,
-} from "@t3tools/provider-core/server/attachmentPrompt";
+} from "@nodex/provider-core/server/attachmentPrompt";
 import {
   makeSubagentChildThread,
   makeSubagentConversationArtifacts,
   subagentThreadTitle,
-} from "@t3tools/provider-core/server/subagentProjection";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import { NODEX_APP_MCP_SERVER } from "@t3tools/shared/nodexAppMcp";
+} from "@nodex/provider-core/server/subagentProjection";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
+import { NODEX_APP_MCP_SERVER } from "@nodex/runtime-shared/nodexAppMcp";
 
 export const ACP_PROTOCOL = "acp.ndjson-jsonrpc" as const;
 
@@ -347,7 +347,7 @@ export interface AcpAdapterV2Flavor {
   /**
    * Optional plan-file sniffing (#8358): providers that write their proposed
    * plan to a file mid-turn (Grok plan.md) return its markdown from a tool
-   * call so T3 can show the proposed-plan card while plan mode is active.
+   * call so Nodex can show the proposed-plan card while plan mode is active.
    */
   readonly extractProposedPlanMarkdown?: (toolCall: AcpToolCallState) => string | undefined;
   /**
@@ -394,7 +394,7 @@ export interface AcpAdapterV2Flavor {
   readonly isPersistentBackgroundTool?: (toolCall: AcpToolCallState) => boolean;
   /**
    * Whether a root-session frame belongs to a turn the agent started itself
-   * after background work ended (Grok `task-completed-*`), not to T3's prompt.
+   * after background work ended (Grok `task-completed-*`), not to Nodex's prompt.
    * Such frames never project into a root turn held open for that work; they
    * take the post-settle wake path once the held turn finalizes.
    */
@@ -659,7 +659,7 @@ export const AcpProviderCapabilitiesV2 = {
     appCanCheckpointFilesystem: true,
     supportsNestedCheckpointScopes: true,
     // ACP defines no conversation truncation, so rollback resets the provider
-    // conversation: T3 restores checkpointed state and the next turn starts a
+    // conversation: Nodex restores checkpointed state and the next turn starts a
     // fresh agent session without the rolled-back context.
     providerCanRollbackConversation: true,
     providerRollbackReturnsSnapshot: true,
@@ -672,7 +672,7 @@ export const AcpProviderCapabilitiesV2 = {
     nativeRequestIds: "weak",
   },
   runtimePolicy: {
-    // ACP agents run their own tools; T3 only answers their permission
+    // ACP agents run their own tools; Nodex only answers their permission
     // requests by policy.
     enforcement: "client-boundary",
   },
@@ -704,7 +704,7 @@ function negotiatedCapabilities(
     },
     tools: {
       ...base.tools,
-      // The stdio bridge (`t3 acp-mcp-bridge`) makes the t3-code MCP toolkit
+      // The stdio bridge (`acp-mcp-bridge`) makes the nodex_app MCP toolkit
       // available regardless of the agent's optional http/sse MCP support.
       supportsMcpTools: true,
     },
@@ -733,8 +733,8 @@ function acpMcpContext(
   // Stdio is ACP's required baseline MCP transport. Agents that advertise
   // optional http support still routinely fail to wire injected http servers
   // through to their backend (codex-acp 1.2.0 and pi-acp both drop them), so
-  // every ACP session gets the `t3 acp-mcp-bridge` stdio server, which
-  // forwards JSON-RPC to T3's authenticated MCP endpoint. The credential
+  // every ACP session gets the `acp-mcp-bridge` stdio server, which
+  // forwards JSON-RPC to Nodex's authenticated MCP endpoint. The credential
   // travels via environment variables, never the command line.
   return {
     servers: [
@@ -3951,7 +3951,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const projectAsCommandExecution = inputVariant === "monitor" || outputIsBashResult;
           // ACP has no typed MCP item, so recover MCP identity from the
           // agent-specific shape and project the same branded dynamic_tool
-          // item native providers produce (e.g. the T3 orchestration tools).
+          // item native providers produce (e.g. the Nodex orchestration tools).
           const mcpIdentity = extractMcpToolCallIdentity(toolCall, {
             embeddedTerminalCommands: embeddedTerminalCommands(
               context.nativeThreadId,

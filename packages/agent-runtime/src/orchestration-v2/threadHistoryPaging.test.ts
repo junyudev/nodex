@@ -6,7 +6,7 @@ import {
   TurnItemId,
   type OrchestrationV2ProjectedTurnItem,
   type OrchestrationV2TurnItem,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 

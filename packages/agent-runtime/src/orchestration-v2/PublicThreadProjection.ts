@@ -1,5 +1,5 @@
-import { latestNativeContextUsage } from "@t3tools/provider-core/contextUsage";
-import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
+import { latestNativeContextUsage } from "@nodex/provider-core/contextUsage";
+import type { OrchestrationV2ThreadProjection } from "@nodex/runtime-contracts";
 
 /** A transcript window is not an index of every entity ever owned by its Runs. */
 export function retainPublicThreadControlClosure(

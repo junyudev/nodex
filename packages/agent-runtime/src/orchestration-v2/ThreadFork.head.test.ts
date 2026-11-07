@@ -11,12 +11,12 @@ import {
   RuntimeRequestId,
   ThreadId,
   TurnItemId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import {
   OPENCODE_DEFAULT_INSTANCE_ID,
   OPENCODE_PROVIDER,
   OPENCODE_SDK_PROTOCOL,
-} from "@t3tools/provider-opencode/testing";
+} from "@nodex/provider-opencode/testing";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Context from "effect/Context";

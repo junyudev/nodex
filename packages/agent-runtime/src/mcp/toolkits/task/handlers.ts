@@ -1,4 +1,4 @@
-import type { OrchestratorMcpDelegateTaskResult } from "@t3tools/contracts";
+import type { OrchestratorMcpDelegateTaskResult } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";

@@ -1,6 +1,6 @@
-import type { ProviderInteractionMode } from "@t3tools/contracts";
+import type { ProviderInteractionMode } from "@nodex/runtime-contracts";
 import type { V2TurnStartParams__AdditionalContextEntry } from "effect-codex-app-server/schema";
-import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
+import { buildRuntimeInstructions } from "@nodex/provider-core/server/runtimeInstructions";
 
 const CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS = `<collaboration_mode># Plan Mode (Conversational)
 

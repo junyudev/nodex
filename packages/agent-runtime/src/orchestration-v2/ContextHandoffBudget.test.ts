@@ -1,8 +1,8 @@
 import {
   ContextHandoffBudgetError,
   makeProviderFailure,
-} from "@t3tools/provider-core/server/failure";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+} from "@nodex/provider-core/server/failure";
+import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import { assert, describe, it } from "@effect/vitest";
 import {
   ContextHandoffId,
@@ -16,7 +16,7 @@ import {
   OrchestrationV2ContextHandoff,
   type OrchestrationV2HistoricalMessage,
   type OrchestrationV2ProviderThread,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -28,7 +28,7 @@ import {
   historyResponseItems,
   selectHistory,
   historicalMessage,
-} from "@t3tools/provider-core/server/handoffBudget";
+} from "@nodex/provider-core/server/handoffBudget";
 import { projectContextHandoffForWire } from "./WireProjection.ts";
 import { deliverContextHandoffs } from "./ContextHandoffDelivery.ts";
 
@@ -89,7 +89,7 @@ const handoff: OrchestrationV2ContextHandoff = {
   summaryText: "",
   history: {
     messages,
-    coverage: "Historical context; retrieve thread:handoff with t3_thread_read.",
+    coverage: "Historical context; retrieve thread:handoff with thread_read.",
     omittedItems: 0,
   },
   createdByProviderInstanceId: null,

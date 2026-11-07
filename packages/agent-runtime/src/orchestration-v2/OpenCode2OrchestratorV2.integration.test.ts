@@ -17,7 +17,7 @@ import {
   type ProviderReplayEntry,
   type RuntimeMode,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as FileSystem from "effect/FileSystem";
@@ -27,16 +27,16 @@ import {
   OPENCODE2_HTTP_PROTOCOL,
   OpenCode2OrchestratorReplayHarness,
 } from "./Adapters/OpenCode2AdapterV2.testkit.ts";
-import { OPENCODE_PROVIDER } from "@t3tools/provider-opencode/testing";
+import { OPENCODE_PROVIDER } from "@nodex/provider-opencode/testing";
 import { provideDeterministicTestRuntime } from "./testkit/DeterministicRuntime.ts";
 import type { OrchestratorV2ScenarioStep } from "./testkit/OrchestratorScenario.ts";
 import { runOrchestratorV2ProviderReplayScenario } from "./testkit/ProviderReplayHarness.ts";
-import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
+import { checkpointWorkspace } from "@nodex/provider-testing/replayWorkspace";
 import {
   decodeProviderReplayNdjson,
   readProviderReplayTranscript,
-} from "@t3tools/provider-testing/replayTranscript";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+} from "@nodex/provider-testing/replayTranscript";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 
 const SESSION = "ses_f148ca2deffeJcwCnRQtb0YFNX";
 /** Held until the scenario releases it, so the turn is still running meanwhile. */
@@ -143,7 +143,7 @@ const sessionInfo = (directory: string, permissions: ReadonlyArray<unknown>, tit
     permissions,
   },
 });
-/** T3's instructions entry, written before a thread's first prompt and whenever it changes. */
+/** Nodex's instructions entry, written before a thread's first prompt and whenever it changes. */
 const instructionsWritten: ReadonlyArray<ProviderReplayEntry> = [
   out("session.instructions.entry.put", { sessionID: SESSION, key: "nodex", value: "<any>" }),
   reply("session.instructions.entry.put", null),
@@ -569,7 +569,7 @@ describe("OpenCode 2 through the orchestrator", () => {
         recorded.metadata?.["forkedNativeSessionId"],
       );
       // The fork keeps the first turn and drops the second: the model answers
-      // from the first alone, and T3 shows the inherited turn but not the other.
+      // from the first alone, and Nodex shows the inherited turn but not the other.
       assert.deepEqual(
         forked.runs.map((run) => run.status),
         ["completed"],
@@ -668,7 +668,7 @@ describe("OpenCode 2 through the orchestrator", () => {
   /**
    * The recorded background run (`opencode2_background`): the parent's turn
    * ends while its subagent runs, then the subagent's report wakes the parent
-   * and T3 opens a continuation run for that follow-up. `reconnect` replaces
+   * and Nodex opens a continuation run for that follow-up. `reconnect` replaces
    * the recording from `cut` on with a stream drop, a restarted stream and
    * what the server answers then.
    */

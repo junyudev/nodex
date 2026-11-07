@@ -4,7 +4,7 @@
  *
  * @module provider/Drivers/codexUsage
  */
-import type { CodexSettings } from "@t3tools/contracts";
+import type { CodexSettings } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
@@ -17,8 +17,8 @@ import {
   type TranscriptUsageFormat,
   type UsageRecord,
   type UsageSpeed,
-} from "@t3tools/provider-core/server/usage";
-import type { UsageTokenTotals } from "@t3tools/contracts";
+} from "@nodex/provider-core/server/usage";
+import type { UsageTokenTotals } from "@nodex/runtime-contracts";
 
 import { resolveCodexHomeLayout } from "./CodexHomeLayout.ts";
 

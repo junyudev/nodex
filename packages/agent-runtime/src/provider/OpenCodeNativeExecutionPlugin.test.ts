@@ -11,7 +11,7 @@ import {
   nativeExecutionPluginEnvironment,
   nativeExecutionPluginSource,
   nativeExecutionPluginSourceV1,
-} from "@t3tools/provider-opencode/testing";
+} from "@nodex/provider-opencode/testing";
 
 interface NativeToolEvent {
   readonly tool: string;

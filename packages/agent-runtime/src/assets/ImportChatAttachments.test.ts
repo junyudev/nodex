@@ -4,7 +4,7 @@ import * as NodePath from "node:path";
 import { createHash } from "node:crypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { MessageId, ThreadId, PROVIDER_SEND_TURN_MAX_FILE_BYTES } from "@t3tools/contracts";
+import { MessageId, ThreadId, PROVIDER_SEND_TURN_MAX_FILE_BYTES } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as FileSystem from "effect/FileSystem";

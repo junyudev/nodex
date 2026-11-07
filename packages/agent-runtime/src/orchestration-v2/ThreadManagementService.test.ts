@@ -19,7 +19,7 @@ import {
   ThreadId,
   TurnItemId,
   type OrchestrationV2TurnItem,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Deferred from "effect/Deferred";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
@@ -31,7 +31,7 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -39,7 +39,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 

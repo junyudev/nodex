@@ -4,7 +4,7 @@ import type {
   OrchestrationV2TurnItem,
   ThreadId,
   TurnItemId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 
 /**
  * Conversation and item windows share one budget. A long Turn may be partial;

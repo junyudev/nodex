@@ -1,5 +1,5 @@
 {
-  "name": "@t3tools/shared",
+  "name": "@nodex/runtime-shared",
   "private": true,
   "type": "module",
   "exports": {
@@ -75,7 +75,7 @@
   "dependencies": {
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
-    "@t3tools/contracts": "workspace:*",
+    "@nodex/runtime-contracts": "workspace:*",
     "effect": "4.0.6",
     "jose": "6.2.13",
     "mdast-util-directive": "3.1.1",

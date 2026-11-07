@@ -17,7 +17,7 @@ import {
   ModelCapabilities,
   TrimmedNonEmptyString,
   type ProviderDriverKind,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -26,7 +26,7 @@ import * as Schema from "effect/Schema";
 import { hasValidClaudeManifestAdapters } from "./ClaudeModelManifest.ts";
 import bundledManifestJson from "./model-manifest.json" with { type: "json" };
 import { ProviderCompatibilityPolicy } from "./providerCompatibility.ts";
-import * as ModelCatalog from "@t3tools/provider-core/server/ModelCatalog";
+import * as ModelCatalog from "@nodex/provider-core/server/ModelCatalog";
 
 const ManifestModelStatus = Schema.Literals(["current", "legacy"]);
 
@@ -155,7 +155,7 @@ export class ModelManifest extends Context.Service<
     /** Refresh without waiting; drivers call this from provider checks. */
     readonly refreshInBackground: Effect.Effect<void>;
   }
->()("t3/provider/ModelManifest") {}
+>()("nodex/runtime/provider/ModelManifest") {}
 
 /** The release's manifest; every read and refresh returns it unchanged. */
 const BundledOnlyModelManifest: ModelManifest["Service"] = {

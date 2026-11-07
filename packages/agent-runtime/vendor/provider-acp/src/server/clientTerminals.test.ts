@@ -2,7 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 
 import {
   makeAcpClientTerminals,
@@ -50,7 +50,7 @@ describe("AcpClientTerminals", () => {
       const terminals = yield* makeAcpClientTerminals({
         defaultCwd: process.cwd(),
         environmentForSession: (sessionId) => ({
-          T3_TEST_ACP_SESSION_TOKEN: sessionId === "session-a" ? "token-a" : "token-b",
+          NODEX_TEST_ACP_SESSION_TOKEN: sessionId === "session-a" ? "token-a" : "token-b",
         }),
       });
       yield* Effect.addFinalizer(() => terminals.disposeAll);
@@ -62,7 +62,7 @@ describe("AcpClientTerminals", () => {
         const created = yield* terminals.create({
           sessionId,
           command: process.execPath,
-          args: ["-e", "process.stdout.write(process.env.T3_TEST_ACP_SESSION_TOKEN ?? '')"],
+          args: ["-e", "process.stdout.write(process.env.NODEX_TEST_ACP_SESSION_TOKEN ?? '')"],
         });
         yield* terminals.waitForExit({ sessionId, terminalId: created.terminalId });
         const output = yield* terminals.output({ sessionId, terminalId: created.terminalId });
@@ -289,14 +289,14 @@ describe("resolveEmbeddedTerminalContent", () => {
         toolCallId: "call-1",
         content: [
           { type: "content" as const, content: { type: "text" as const, text: "before" } },
-          { type: "terminal" as const, terminalId: "t3-term-1" },
-          { type: "terminal" as const, terminalId: "t3-term-unknown" },
+          { type: "terminal" as const, terminalId: "nodex-term-1" },
+          { type: "terminal" as const, terminalId: "nodex-term-unknown" },
         ],
       },
     };
 
     const resolved = resolveEmbeddedTerminalContent(notification, (sessionId, terminalId) =>
-      sessionId === "session" && terminalId === "t3-term-1"
+      sessionId === "session" && terminalId === "nodex-term-1"
         ? { output: "compiled 3 files", truncated: false, exitStatus: undefined }
         : undefined,
     );
@@ -305,7 +305,7 @@ describe("resolveEmbeddedTerminalContent", () => {
       content: [
         { type: "content", content: { type: "text", text: "before" } },
         { type: "content", content: { type: "text", text: "compiled 3 files" } },
-        { type: "content", content: { type: "text", text: "[terminal t3-term-unknown]" } },
+        { type: "content", content: { type: "text", text: "[terminal nodex-term-unknown]" } },
       ],
     });
   });

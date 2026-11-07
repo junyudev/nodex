@@ -1,5 +1,5 @@
 import { subscribeEvents } from "./SseIntake.ts";
-import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
+import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 import type {
   Event as OpenCodeEvent,
   Message as OpenCodeMessage,
@@ -11,9 +11,9 @@ import type {
   Todo as OpenCodeTodo,
   ToolPart,
 } from "@opencode-ai/sdk/v2";
-import * as HostProcess from "@t3tools/shared/HostProcess";
-import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
-import { causeErrorTag } from "@t3tools/shared/observability";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
+import { getModelSelectionStringOptionValue } from "@nodex/runtime-shared/model";
+import { causeErrorTag } from "@nodex/runtime-shared/observability";
 import {
   defaultInstanceIdForDriver,
   type ModelSelection,
@@ -37,7 +37,7 @@ import {
   type ProviderSessionId,
   type RuntimeRequestId,
   type ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import { OpenCodeSettings } from "../settings.ts";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
@@ -55,37 +55,37 @@ import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
-import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import * as ProviderHost from "@nodex/provider-core/server/ProviderHost";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import {
   mcpToolPresentation,
   publicMcpToolInput,
-} from "@t3tools/provider-core/server/mcpToolPresentation";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
-import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+} from "@nodex/provider-core/server/mcpToolPresentation";
+import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
+import * as ProviderEventLoggers from "@nodex/provider-core/server/ProviderEventLoggers";
 import {
   structuralProtocolMethod,
   summarizeNativeProtocolPayload,
-} from "@t3tools/provider-core/server/nativeProtocolLogging";
-import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
-import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
+} from "@nodex/provider-core/server/nativeProtocolLogging";
+import { mergeProviderInstanceEnvironment } from "@nodex/provider-core/server/instanceEnvironment";
+import { buildRuntimeInstructions } from "@nodex/provider-core/server/runtimeInstructions";
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
-import { turnScopedSelectionTransition } from "@t3tools/provider-core/server/selectionTransition";
-import { providerMessageTextWithAttachmentPaths } from "@t3tools/provider-core/server/attachmentPrompt";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
+import { makeProviderFailure } from "@nodex/provider-core/server/failure";
+import { turnScopedSelectionTransition } from "@nodex/provider-core/server/selectionTransition";
+import { providerMessageTextWithAttachmentPaths } from "@nodex/provider-core/server/attachmentPrompt";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import {
   ProviderAdapterDriverCreateError,
   type ProviderAdapterDriver,
   type ProviderAdapterDriverCreateInput,
-} from "@t3tools/provider-core/server/adapterDriver";
+} from "@nodex/provider-core/server/adapterDriver";
 import {
   makeSubagentChildThread,
   subagentThreadTitle,
-} from "@t3tools/provider-core/server/subagentProjection";
+} from "@nodex/provider-core/server/subagentProjection";
 import { openCodeToolTurnItem } from "./toolItems.ts";
-import { APP_TOOLS_PROVIDER_TIMEOUT_MS, NODEX_APP_MCP_SERVER } from "@t3tools/shared/nodexAppMcp";
+import { APP_TOOLS_PROVIDER_TIMEOUT_MS, NODEX_APP_MCP_SERVER } from "@nodex/runtime-shared/nodexAppMcp";
 
 export { openCodeToolProjectionKind } from "./toolItems.ts";
 
@@ -982,8 +982,8 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
         const { client, connection } = yield* connectClient(cwd);
 
         const mcpSession = yield* mcpSessions.read(input.threadId);
-        const hasT3Mcp = mcpSession !== undefined && !connection.external;
-        if (hasT3Mcp) {
+        const hasAppTools = mcpSession !== undefined && !connection.external;
+        if (hasAppTools) {
           yield* OpenCodeRuntime.runOpenCodeSdk("mcp.add", () =>
             client.mcp.add({
               name: NODEX_APP_MCP_SERVER,
@@ -3416,7 +3416,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 return;
               }
               const systemPrompt = [
-                hasT3Mcp ? turnInput.hostOrchestrationInstructions : undefined,
+                hasAppTools ? turnInput.hostOrchestrationInstructions : undefined,
                 turnInput.hostInstructions,
                 buildRuntimeInstructions({
                   harness: "OpenCode",

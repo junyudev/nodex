@@ -1,5 +1,5 @@
 import { makeFrameGuard } from "../SseIntake.ts";
-import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
+import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 import { OpenCode, type OpenCodeClient } from "@opencode/client/effect";
 import { OpenCodeEvent } from "@opencode/protocol/groups/event";
 import * as Context from "effect/Context";
@@ -96,7 +96,7 @@ export class OpenCode2Client extends Context.Service<
       readonly password: string | Redacted.Redacted;
     }) => Effect.Effect<OpenCode2Api>;
   }
->()("@t3tools/provider-opencode/server/v2/OpenCode2Client") {}
+>()("@nodex/provider-opencode/server/v2/OpenCode2Client") {}
 
 /**
  * OpenCode writes a `: heartbeat` comment every 10 to 15 seconds, so this long

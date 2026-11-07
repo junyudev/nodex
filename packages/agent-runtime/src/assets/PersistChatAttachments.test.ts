@@ -3,7 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
-import { MessageId, ThreadId } from "@t3tools/contracts";
+import { MessageId, ThreadId } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ServerConfig from "../config.ts";

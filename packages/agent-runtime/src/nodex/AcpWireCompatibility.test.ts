@@ -9,8 +9,8 @@ import { makeInMemoryStdio } from "../../vendor/effect-acp/src/_internal/stdio.t
 import {
   findModelConfigOption,
   parseSessionUpdateEvent,
-} from "@t3tools/provider-acp/server/runtimeModel";
-import { acpProviderOptionDescriptors } from "@t3tools/provider-acp/server/sessionConfig";
+} from "@nodex/provider-acp/server/runtimeModel";
+import { acpProviderOptionDescriptors } from "@nodex/provider-acp/server/sessionConfig";
 
 const peer = Effect.gen(function* () {
   const { stdio, input, output } = yield* makeInMemoryStdio();

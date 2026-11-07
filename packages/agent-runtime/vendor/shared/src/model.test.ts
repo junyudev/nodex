@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ProviderDriverKind, ProviderInstanceId, type ModelCapabilities } from "@t3tools/contracts";
+import { ProviderDriverKind, ProviderInstanceId, type ModelCapabilities } from "@nodex/runtime-contracts";
 
 import {
   buildExplicitProviderOptionSelectionsFromDescriptors,

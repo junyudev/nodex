@@ -6,7 +6,7 @@ import {
   type ProviderAuthInteraction,
   type ProviderAuthResponse,
   type ProviderAuthState,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Fiber from "effect/Fiber";
 import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
@@ -214,7 +214,7 @@ it.effect.each([
       const received = yield* Deferred.make<ProviderAuthResponse>();
       const controller = yield* ProviderAuthFlow.make({
         instanceId,
-        credentialBinding: { owner: "t3", claims: ["binding"] },
+        credentialBinding: { owner: "nodex", claims: ["binding"] },
         methods: Effect.succeed([method]),
         authenticate: (_, context) =>
           Effect.gen(function* () {
@@ -309,7 +309,7 @@ it.effect.each([
   Effect.gen(function* () {
     const controller = yield* ProviderAuthFlow.make({
       instanceId,
-      credentialBinding: { owner: "t3", claims: ["failure"] },
+      credentialBinding: { owner: "nodex", claims: ["failure"] },
       methods: Effect.succeed([method]),
       authenticate: () => failure,
       logout: Effect.void,
@@ -333,7 +333,7 @@ const makeBlockingResponseHarness = Effect.gen(function* () {
   let responses = 0;
   const controller = yield* ProviderAuthFlow.make({
     instanceId,
-    credentialBinding: { owner: "t3", claims: ["blocked-response"] },
+    credentialBinding: { owner: "nodex", claims: ["blocked-response"] },
     methods: Effect.succeed([method]),
     authenticate: (_, context) =>
       Effect.gen(function* () {
@@ -523,7 +523,7 @@ it.effect("profile import stops owned sessions and gates access until credential
   Effect.gen(function* () {
     const controller = yield* ProviderAuthFlow.make({
       instanceId,
-      credentialBinding: { owner: "t3", claims: ["handoff-binding"] },
+      credentialBinding: { owner: "nodex", claims: ["handoff-binding"] },
       methods: Effect.succeed([method]),
       authenticate: () => Effect.void,
       logout: Effect.void,

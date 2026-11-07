@@ -164,7 +164,7 @@ export type ScheduledTaskRunStatus = typeof ScheduledTaskRunStatus.Type;
 export const ScheduledTaskWebhookEndpoint = Schema.Struct({
   /** Environment-relative path including the secret token; works on any origin that reaches the environment. */
   path: TrimmedNonEmptyString,
-  /** Public T3 Connect URL, or null when the environment is not linked to T3 Connect. */
+  /** Public URL, or null when the environment has no managed tunnel. */
   url: Schema.NullOr(TrimmedNonEmptyString),
   hasSecret: Schema.Boolean,
 });

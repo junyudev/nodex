@@ -8,7 +8,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import * as Environment from "../environment/ServerEnvironment.ts";
 import { ORCHESTRATION_INSTRUCTIONS } from "./Instructions.ts";
 import type {

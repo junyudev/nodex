@@ -1,9 +1,9 @@
 import { expect, it } from "@effect/vitest";
 import * as Schema from "effect/Schema";
-import { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
+import { AcpRegistrySettings } from "@nodex/provider-acp-registry/settings";
 import { acpRegistryCredentialBinding } from "../../vendor/provider-acp-registry/src/server/auth.ts";
 
-import { providerCredentialBindingsOverlap } from "@t3tools/provider-core/server/auth";
+import { providerCredentialBindingsOverlap } from "@nodex/provider-core/server/auth";
 
 const settings = Schema.decodeSync(AcpRegistrySettings)({ source: "local", commandPath: "agent" });
 

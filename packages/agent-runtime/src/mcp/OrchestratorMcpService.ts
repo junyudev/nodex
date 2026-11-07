@@ -39,8 +39,8 @@ import {
   type ServerProvider,
   ThreadId,
   TurnItemId,
-} from "@t3tools/contracts";
-import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
+} from "@nodex/runtime-contracts";
+import { runRanAfter } from "@nodex/runtime-shared/orchestrationV2ThreadError";
 import * as Clock from "effect/Clock";
 import * as SqlClient from "effect/sql/SqlClient";
 import { make as makeToolOperation } from "./ToolOperation.ts";
@@ -55,8 +55,8 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
-import { subagentResultForRun } from "@t3tools/provider-core/server/subagentProjection";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
+import { subagentResultForRun } from "@nodex/provider-core/server/subagentProjection";
 import { turnItemText } from "../orchestration-v2/turnItemContent.ts";
 export { turnItemText } from "../orchestration-v2/turnItemContent.ts";
 import { readHistory } from "../nodex/HistoryRead.ts";
@@ -161,7 +161,7 @@ export interface OrchestratorMcpServiceShape {
 export class OrchestratorMcpService extends Context.Service<
   OrchestratorMcpService,
   OrchestratorMcpServiceShape
->()("t3/mcp/OrchestratorMcpService") {}
+>()("nodex/runtime/mcp/OrchestratorMcpService") {}
 
 const isThreadManagementError = Schema.is(ThreadManagementService.ThreadManagementError);
 const isModeLimitError = Schema.is(OrchestratorThreadAboveModeLimitError);

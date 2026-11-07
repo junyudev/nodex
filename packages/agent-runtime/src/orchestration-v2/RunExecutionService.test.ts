@@ -26,7 +26,7 @@ import {
   ServerSettingsError,
   ThreadId,
   TurnItemId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Cause from "effect/Cause";
 import * as Fiber from "effect/Fiber";
 import { TestClock } from "effect/testing";
@@ -45,8 +45,8 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as CheckpointService from "./CheckpointService.ts";
 import type { PendingOrchestrationEffectV2 } from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";

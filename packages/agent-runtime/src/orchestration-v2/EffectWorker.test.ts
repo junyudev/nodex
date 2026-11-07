@@ -4,7 +4,7 @@ import {
   RuntimeModelPolicy,
 } from "../nodex/ModelPolicy.ts";
 import { readModelPolicyFailure } from "../../../../src/shared/model-policy.ts";
-import { ProviderInstanceId } from "@t3tools/contracts";
+import { ProviderInstanceId } from "@nodex/runtime-contracts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { assert, it } from "@effect/vitest";
 import {
@@ -18,7 +18,7 @@ import {
   RunAttemptId,
   RunId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";

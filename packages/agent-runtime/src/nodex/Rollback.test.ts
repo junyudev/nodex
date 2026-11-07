@@ -17,12 +17,12 @@ import {
   RunId,
   ThreadId,
   type OrchestrationV2ServerCommand,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
@@ -30,7 +30,7 @@ import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterReg
 import * as ProviderReplayHarness from "../orchestration-v2/testkit/ProviderReplayHarness.ts";
 import type { ProjectionCheckpointContext } from "../orchestration-v2/ProjectionStore.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import { rollbackThread as rollbackWithAllocator } from "./Rollback.ts";
 
 const rollbackThread = (input: Parameters<typeof rollbackWithAllocator>[0]) =>

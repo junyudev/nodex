@@ -1,4 +1,4 @@
-import { ProviderInteractionMode, RUNTIME_MODE_RANK, RuntimeMode } from "@t3tools/contracts";
+import { ProviderInteractionMode, RUNTIME_MODE_RANK, RuntimeMode } from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Schema from "effect/Schema";
 

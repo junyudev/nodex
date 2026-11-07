@@ -6,7 +6,7 @@ import type {
   RunAttemptId,
   RunId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -14,7 +14,7 @@ import type * as Scope from "effect/Scope";
 
 /** Exact admitted native session incarnation and Run; never inferred from a reusable bearer. */
 export interface HostTurnIdentity {
-  readonly nativeDriver?: import("@t3tools/contracts").ProviderDriverKind;
+  readonly nativeDriver?: import("@nodex/runtime-contracts").ProviderDriverKind;
   readonly projectId: ProjectId;
   readonly threadId: ThreadId;
   readonly runId: RunId;
@@ -134,7 +134,7 @@ export class ExecutionHost extends Context.Reference<{
   readonly prepareThread?: (input: {
     readonly threadId: ThreadId;
     readonly providerInstanceId: ProviderInstanceId;
-    readonly nativeDriver: import("@t3tools/contracts").ProviderDriverKind;
+    readonly nativeDriver: import("@nodex/runtime-contracts").ProviderDriverKind;
     readonly cwd: string | null;
   }) => Effect.Effect<HostThreadPreparation, ExecutionHostError>;
   /** A host-owned native tool follows the provider's own Turns, which it addresses by native id. */
@@ -143,7 +143,7 @@ export class ExecutionHost extends Context.Reference<{
     readonly nativeTurnId: string;
     readonly phase: "started" | "ended";
   }) => Effect.Effect<void>;
-}>("@t3tools/provider-core/server/ExecutionHost", {
+}>("@nodex/provider-core/server/ExecutionHost", {
   defaultValue: () => ({ prepareTurn: () => Effect.succeed({}) }),
 }) {}
 
@@ -154,7 +154,7 @@ export class McpTurnAdmission extends Context.Reference<{
   readonly assertCurrent: () => Effect.Effect<void, ExecutionHostError>;
   /** Completes when this captured execution is cancelled or its authority is replaced. */
   readonly awaitRevoked?: Effect.Effect<void>;
-} | undefined>("@t3tools/provider-core/server/McpTurnAdmission", { defaultValue: () => undefined }) {}
+} | undefined>("@nodex/provider-core/server/McpTurnAdmission", { defaultValue: () => undefined }) {}
 
 
 /** Bind the actual tool handler, including work that outlives the provider's foreground call. */

@@ -1,16 +1,16 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
-import { ClaudeSettings, ProviderSessionId, ThreadId } from "@t3tools/contracts";
+import { ClaudeSettings, ProviderSessionId, ThreadId } from "@nodex/runtime-contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
+import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
 import * as Claude from "./ClaudeAdapterV2.ts";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import { available } from "../../provider/ClaudeSessionHistory.ts";
 
 it.live(

@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import * as OpenCodeRuntime from "@t3tools/provider-opencode/server/OpenCodeRuntime";
+import * as OpenCodeRuntime from "@nodex/provider-opencode/server/OpenCodeRuntime";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
@@ -11,7 +11,7 @@ import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { vi } from "vitest";
 import { makeOpenCodeCatalog, openOpenCodeCatalog } from "./OpenCodeCatalog.ts";
 import { loadOpenCode2Catalog } from "../../vendor/provider-opencode/src/server/openCode2Catalog.ts";
-import * as OpenCode2Client from "@t3tools/provider-opencode/server/v2/OpenCode2Client";
+import * as OpenCode2Client from "@nodex/provider-opencode/server/v2/OpenCode2Client";
 
 const directory = "/exact/workspace";
 const model = (id: string, enabled = true) => ({

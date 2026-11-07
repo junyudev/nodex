@@ -37,7 +37,7 @@ const startServer = Effect.fn("OpenCode2ClientLive.startServer")(function* (bina
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-opencode2-live-" });
+  const root = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-opencode2-live-" });
   const directory = path.join(root, "work");
   yield* fs.makeDirectory(directory);
   // Non-ASCII on purpose: OpenCode decodes Basic credentials as UTF-8.
@@ -99,7 +99,7 @@ describe("OpenCode2Client live", () => {
         assert.strictEqual(info.pid, server.pid);
 
         const session = yield* client.session.create({
-          title: "t3 client live check",
+          title: "nodex client live check",
           location: Location.PublicRef.make({ directory: AbsolutePath.make(server.directory) }),
           model: Model.Ref.make({
             providerID: Provider.ID.make("opencode"),

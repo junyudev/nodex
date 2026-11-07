@@ -5,7 +5,7 @@
  *
  * @module provider-core/server/ProviderEventLoggers
  */
-import type { ThreadId } from "@t3tools/contracts";
+import type { ThreadId } from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 
@@ -21,7 +21,7 @@ export class ProviderEventLoggers extends Context.Service<
     readonly native: EventNdjsonLogger | undefined;
     readonly canonical: EventNdjsonLogger | undefined;
   }
->()("@t3tools/provider-core/server/ProviderEventLoggers") {}
+>()("@nodex/provider-core/server/ProviderEventLoggers") {}
 
 /** Logging turned off: for tests and boot layers that skip diagnostics. */
 export const NoOpProviderEventLoggers: ProviderEventLoggers["Service"] = {

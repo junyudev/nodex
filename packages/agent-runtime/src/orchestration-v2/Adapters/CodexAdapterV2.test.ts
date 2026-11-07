@@ -1,6 +1,6 @@
 import * as NodeOS from "node:os";
 
-import { historyResponseItems } from "@t3tools/provider-core/server/handoffBudget";
+import { historyResponseItems } from "@nodex/provider-core/server/handoffBudget";
 import {
   makeProviderTextDeltaCoalescer,
   type ProviderTextDeltaUpdate,
@@ -29,10 +29,10 @@ import {
   RunId,
   ThreadId,
   TurnItemId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import { assert, describe, it } from "@effect/vitest";
-import * as HostProcess from "@t3tools/shared/HostProcess";
-import { SpawnExecutableResolution } from "@t3tools/shared/shell";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
+import { SpawnExecutableResolution } from "@nodex/runtime-shared/shell";
 import * as CodexClient from "effect-codex-app-server/client";
 import * as CodexError from "effect-codex-app-server/errors";
 import * as CodexReplay from "effect-codex-app-server/replay";
@@ -44,7 +44,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Predicate from "effect/Predicate";
 import * as FileSystem from "effect/FileSystem";
-import { MCP_APP_OUTPUT_KEY, readMcpAppReference } from "@t3tools/shared/mcpApp";
+import { MCP_APP_OUTPUT_KEY, readMcpAppReference } from "@nodex/runtime-shared/mcpApp";
 import { resolveAttachmentPathById } from "../../attachmentStore.ts";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -59,16 +59,16 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import packageJson from "../../../package.json" with { type: "json" };
 import * as ServerConfig from "../../config.ts";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
-import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
+import * as ProviderEventLoggers from "@nodex/provider-core/server/ProviderEventLoggers";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as EffectWorker from "../EffectWorker.ts";
 import * as Orchestrator from "../Orchestrator.ts";
 import * as ProjectionStore from "../ProjectionStore.ts";
 import * as ProviderReplayHarness from "../testkit/ProviderReplayHarness.ts";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
+import * as ProviderContinuationRequests from "@nodex/provider-core/server/ProviderContinuationRequests";
 import * as CodexAdapterV2 from "./CodexAdapterV2.ts";
 import { makeReplayServerConfig, withCodexReplayChildMetadata } from "./CodexAdapterV2.testkit.ts";
 import * as CodexAdapterV2Testkit from "./CodexAdapterV2.testkit.ts";
@@ -495,7 +495,7 @@ describe("CodexAdapterV2 runtime policy", () => {
         codexInput: [{ type: "text", text: "what's on my list?" }],
         runtimePolicy: policy,
         modelSelection,
-        hasT3Mcp: true,
+        hasAppTools: true,
         appContext,
       });
       assert.deepEqual(withT3.additionalContext?.["mcp_app_todos_list_todos_item-1"], {
@@ -520,7 +520,7 @@ describe("CodexAdapterV2 runtime policy", () => {
           instanceId: ProviderInstanceId.make("codex"),
           model: "gpt-5.4",
         },
-        hasT3Mcp: true,
+        hasAppTools: true,
         hostOrchestrationInstructions: "Use delegate_task for child work.",
       });
 
@@ -533,10 +533,10 @@ describe("CodexAdapterV2 runtime policy", () => {
     }),
   );
 
-  it.effect("omits default-mode collaboration settings without the T3 MCP server", () =>
+  it.effect("omits default-mode collaboration settings without the Nodex MCP server", () =>
     Effect.gen(function* () {
       const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
-        nativeThreadId: "native-default-without-t3-mcp",
+        nativeThreadId: "native-default-without-nodex-mcp",
         codexInput: [{ type: "text", text: "implement this task" }],
         runtimePolicy: {
           runtimeMode: "full-access",
@@ -547,7 +547,7 @@ describe("CodexAdapterV2 runtime policy", () => {
           instanceId: ProviderInstanceId.make("codex"),
           model: "gpt-5.4",
         },
-        hasT3Mcp: false,
+        hasAppTools: false,
       });
 
       assert.isUndefined(params.collaborationMode);
@@ -557,7 +557,7 @@ describe("CodexAdapterV2 runtime policy", () => {
   it.effect("adds plan-mode developer instructions when the application tools are attached", () =>
     Effect.gen(function* () {
       const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
-        nativeThreadId: "native-plan-with-t3-mcp",
+        nativeThreadId: "native-plan-with-nodex-mcp",
         codexInput: [{ type: "text", text: "plan this task" }],
         runtimePolicy: {
           runtimeMode: "full-access",
@@ -568,7 +568,7 @@ describe("CodexAdapterV2 runtime policy", () => {
           instanceId: ProviderInstanceId.make("codex"),
           model: "gpt-5.4",
         },
-        hasT3Mcp: true,
+        hasAppTools: true,
       });
 
       assert.equal(params.collaborationMode?.mode, "plan");
@@ -579,10 +579,10 @@ describe("CodexAdapterV2 runtime policy", () => {
     }),
   );
 
-  it.effect("keeps Codex in plan mode without referencing unavailable T3 MCP tools", () =>
+  it.effect("keeps Codex in plan mode without referencing unavailable Nodex MCP tools", () =>
     Effect.gen(function* () {
       const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
-        nativeThreadId: "native-plan-without-t3-mcp",
+        nativeThreadId: "native-plan-without-nodex-mcp",
         codexInput: [{ type: "text", text: "plan this task" }],
         runtimePolicy: {
           runtimeMode: "full-access",
@@ -593,7 +593,7 @@ describe("CodexAdapterV2 runtime policy", () => {
           instanceId: ProviderInstanceId.make("codex"),
           model: "gpt-5.4",
         },
-        hasT3Mcp: false,
+        hasAppTools: false,
       });
 
       assert.equal(params.collaborationMode?.mode, "plan");
@@ -844,7 +844,7 @@ describe("CodexAdapterV2 process spawning", () => {
         Effect.provide(
           Layer.mergeAll(
             CodexAdapterV2.layerAppServerClientFactory,
-            ServerConfig.layerTest(process.cwd(), { prefix: "t3-codex-binary-home-" }),
+            ServerConfig.layerTest(process.cwd(), { prefix: "nodex_appx-binary-home-" }),
           ),
         ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
@@ -1695,7 +1695,7 @@ function codexReplayPreamble(input: {
       frame: {
         id: 1,
         result: {
-          userAgent: "T3 Code/0.156.1",
+          userAgent: "Nodex/0.156.1",
           codexHome: "/tmp/codex-home",
           platformFamily: "unix",
           platformOs: "macos",
@@ -5231,7 +5231,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           codexInput: [{ type: "text", text: "work" }],
           runtimePolicy: CODEX_TEST_RUNTIME_POLICY,
           modelSelection: CODEX_TEST_MODEL_SELECTION,
-          hasT3Mcp: true,
+          hasAppTools: true,
         });
         assert.include(params.additionalContext?.nodex_runtime?.value ?? "", "running in Nodex");
         const entries = codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt: "work" });
@@ -7731,7 +7731,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       ),
   );
 
-  // "thread_unloaded": the thread was settled, so T3 unsubscribed and Codex
+  // "thread_unloaded": the thread was settled, so Nodex unsubscribed and Codex
   // unloaded it (killing its terminals) before Stop arrived.
   const backgroundStopCases = [true, false, "still_running", "thread_unloaded"] as const;
   const makeBackgroundStopTranscript = (terminated: (typeof backgroundStopCases)[number]) => {
@@ -7999,7 +7999,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       return Effect.scoped(
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;
-          const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-bg-stop-workspace-" });
+          const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-bg-stop-workspace-" });
           const localTranscript = yield* decodeReplayTranscriptJson(
             (yield* encodeReplayTranscriptJson(transcript)).replaceAll(
               yield* encodeStringJson("/workspace"),
@@ -8143,7 +8143,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-bg-stale-workspace-" });
+        const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-bg-stale-workspace-" });
         const staleTranscript = makeCodexReplayTranscript({
           scenario: "codex-bg-stop-untracked",
           entries: [
@@ -10561,7 +10561,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               type: "mcpToolCall",
               id: COMPLETED_WAIT_ITEM,
               server: "nodex_app",
-              tool: "t3_thread_wait",
+              tool: "nodex_thread_wait",
               status: "inProgress",
               arguments: { threadId: "thread:completed-wait", timeoutMs: 30000 },
             },
@@ -10581,7 +10581,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               type: "mcpToolCall",
               id: COMPLETED_WAIT_ITEM,
               server: "nodex_app",
-              tool: "t3_thread_wait",
+              tool: "nodex_thread_wait",
               status: "completed",
               arguments: { threadId: "thread:completed-wait", timeoutMs: 30000 },
               result: { content: [{ type: "text", text: "idle" }] },
@@ -10602,7 +10602,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               type: "mcpToolCall",
               id: ORPHAN_WAIT_ITEM,
               server: "nodex_app",
-              tool: "t3_thread_wait",
+              tool: "nodex_thread_wait",
               status: "inProgress",
               arguments: {
                 threadId:

@@ -1,6 +1,6 @@
-import type { ProviderThreadId, ThreadId } from "@t3tools/contracts";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
+import type { ProviderThreadId, ThreadId } from "@nodex/runtime-contracts";
+import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
+import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";

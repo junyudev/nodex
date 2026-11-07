@@ -5,18 +5,18 @@ import {
   queuedMessageKindSql,
   queuedRunPrioritySql,
 } from "./QueuedRunKind.ts";
-import { ProviderRequestKind } from "@t3tools/contracts";
+import { ProviderRequestKind } from "@nodex/runtime-contracts";
 import { isClosedNativeDetachment } from "./NativeConversation.ts";
 import {
   boundConversationRewindContext,
   conversationRewindContext,
-} from "@t3tools/shared/orchestrationV2Rewind";
+} from "@nodex/runtime-shared/orchestrationV2Rewind";
 import {
   OrchestrationV2ConversationRewindContext,
   OrchestrationV2SideChatCapture,
-} from "@t3tools/contracts";
-import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
-import { providerThreadActivatesThread } from "@t3tools/provider-core/contextUsage";
+} from "@nodex/runtime-contracts";
+import * as NodeSqliteClient from "@nodex/runtime-shared/nodeSqliteClient";
+import { providerThreadActivatesThread } from "@nodex/provider-core/contextUsage";
 import {
   MAX_PENDING_MESSAGE_DELIVERIES,
   PENDING_MESSAGE_DELIVERY_PREDICATE,
@@ -33,14 +33,14 @@ import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
   OrchestrationV2ThreadHistoryPage,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import {
   latestRootProviderFailure,
   latestUnheldRun,
   threadErrorSummary,
   usageLimitRunPresentedAsLatest,
-} from "@t3tools/shared/orchestrationV2ThreadError";
-import { threadPullRequestsOf } from "@t3tools/shared/threadPullRequests";
+} from "@nodex/runtime-shared/orchestrationV2ThreadError";
+import { threadPullRequestsOf } from "@nodex/runtime-shared/threadPullRequests";
 import type {
   OrchestrationV2AppThread,
   ModelSelection,
@@ -66,7 +66,7 @@ import type {
   OrchestrationV2TurnItem,
   ProjectId,
   ProviderInstanceId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import {
   hasImportedThreadHistory,
   latestProviderTurnForAttempt,
@@ -102,13 +102,13 @@ import {
   ThreadId,
   TurnItemId,
   NodeId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import {
   createOrchestrationV2TurnItemVisibility,
   isOrchestrationV2SupersededInterrupt,
   isRunVisibleAtHistoryRevision,
-} from "@t3tools/shared/orchestrationV2Timeline";
-import { derivePendingBackgroundWork } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+} from "@nodex/runtime-shared/orchestrationV2Timeline";
+import { derivePendingBackgroundWork } from "@nodex/runtime-shared/orchestrationV2PendingBackgroundWork";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -117,7 +117,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
-import { derive } from "@t3tools/provider-core/server/IdAllocator";
+import { derive } from "@nodex/provider-core/server/IdAllocator";
 import {
   attachmentTokenAllowance,
   CONVERSATION_SUMMARY_CHAR_CAP,
@@ -126,7 +126,7 @@ import {
   historicalMessage,
   HISTORY_IMAGE_CONTEXT,
   selectHistory,
-} from "@t3tools/provider-core/server/handoffBudget";
+} from "@nodex/provider-core/server/handoffBudget";
 
 import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
 import {
@@ -1094,7 +1094,7 @@ export interface ProjectionStoreV2Shape {
   /** The Run a user message belongs to, including steers and promoted queued messages. */
   readonly getMessageTurnOutcome: (
     threadId: ThreadId,
-    messageId: import("@t3tools/contracts").MessageId,
+    messageId: import("@nodex/runtime-contracts").MessageId,
   ) => Effect.Effect<ProjectionRunOutcome | null, ProjectionStoreV2Error>;
   /** Durable Run result, including rollback settlement; no live provider or body read. */
   readonly getRunOutcome: (
@@ -1404,7 +1404,7 @@ export interface ProjectionStoreV2Shape {
 }
 
 export class ProjectionStoreV2 extends Context.Service<ProjectionStoreV2, ProjectionStoreV2Shape>()(
-  "t3/orchestration-v2/ProjectionStore/ProjectionStoreV2",
+  "nodex/runtime/orchestration-v2/ProjectionStore/ProjectionStoreV2",
 ) {}
 
 export const ORCHESTRATION_V2_PROJECTION_SCHEMA_VERSION = 2;

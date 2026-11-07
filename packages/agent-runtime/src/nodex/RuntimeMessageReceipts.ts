@@ -8,11 +8,11 @@ import {
   ProviderInteractionMode,
   RuntimeMode,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
-import { readOnly } from "@t3tools/shared/nodeSqliteClient";
+import { readOnly } from "@nodex/runtime-shared/nodeSqliteClient";
 import {
   importChatAttachments,
   ImportChatAttachmentsInput,

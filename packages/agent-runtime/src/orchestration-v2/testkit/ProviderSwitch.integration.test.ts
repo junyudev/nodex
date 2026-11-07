@@ -1,5 +1,5 @@
 import { vi } from "vite-plus/test";
-import { historyResponseItems } from "@t3tools/provider-core/server/handoffBudget";
+import { historyResponseItems } from "@nodex/provider-core/server/handoffBudget";
 import { assert, describe, it } from "@effect/vitest";
 import {
   CommandId,
@@ -23,7 +23,7 @@ import {
   ThreadId,
   TurnItemId,
   ProviderDriverKind,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as FileSystem from "effect/FileSystem";
 import { consume as consumeImportedExecution } from "../../nodex/ImportedExecution.ts";
@@ -43,7 +43,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { rollbackThread } from "../../nodex/Rollback.ts";
 import { importHistoryEvents } from "../../nodex/NativeImportHistory.ts";
 import { ThreadManagementService } from "../ThreadManagementService.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
 import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import { CommandPolicyCapabilityUnsupportedError } from "../CommandPolicy.ts";
@@ -55,7 +55,7 @@ import {
   CodexProviderCapabilitiesV2,
   canReuseCodexContextUsage,
 } from "../Adapters/CodexAdapterV2.ts";
-import { AcpProviderCapabilitiesV2 } from "@t3tools/provider-acp/server/adapter";
+import { AcpProviderCapabilitiesV2 } from "@nodex/provider-acp/server/adapter";
 import * as EventSink from "../EventSink.ts";
 import * as EventStore from "../EventStore.ts";
 import * as LegacyV1ThreadImporter from "../legacy/LegacyV1ThreadImporter.ts";
@@ -66,15 +66,15 @@ import * as ProjectionMaintenance from "../ProjectionMaintenance.ts";
 import * as ProjectionStore from "../ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "../ProviderAdapterRegistry.ts";
 import * as ProviderSessionManager from "../ProviderSessionManager.ts";
-import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+import { makeProviderFailure } from "@nodex/provider-core/server/failure";
 import {
   CLAUDE_MODEL_SELECTION,
   CODEX_MODEL_SELECTION,
   GROK_MODEL_SELECTION,
 } from "./fixtures/shared.ts";
 import * as ProviderReplayHarness from "./ProviderReplayHarness.ts";
-import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { checkpointWorkspace } from "@nodex/provider-testing/replayWorkspace";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
@@ -135,7 +135,7 @@ function makeTestAdapter(input: {
     Record<number, Omit<OrchestrationV2ProviderTurnTokenUsage, "updatedAt">>
   >;
   readonly compactBoundary?: boolean;
-  readonly failureClass?: import("@t3tools/contracts").OrchestrationV2ProviderFailureClass;
+  readonly failureClass?: import("@nodex/runtime-contracts").OrchestrationV2ProviderFailureClass;
   readonly failureRetryable?: boolean;
   readonly failedRunOrdinals?: ReadonlySet<number>;
   readonly interruptedRunOrdinals?: ReadonlySet<number>;

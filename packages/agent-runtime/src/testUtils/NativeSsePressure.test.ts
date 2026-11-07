@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import * as Effect from "effect/Effect";
-import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
+import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 import {
   boundResponse,
   makeFrameGuard,

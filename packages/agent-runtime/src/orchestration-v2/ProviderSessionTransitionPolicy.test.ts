@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
+import { ProviderDriverKind, ProviderInstanceId } from "@nodex/runtime-contracts";
 
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import { decideProviderSessionTransition } from "./ProviderSessionTransitionPolicy.ts";

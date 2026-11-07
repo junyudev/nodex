@@ -1,7 +1,7 @@
 import {
   isProviderSendTurnSupportedImageMimeType,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Predicate from "effect/Predicate";
 
 import {
@@ -109,7 +109,7 @@ function boundedId(value: unknown): string | undefined {
   return Array.from(value).join("");
 }
 
-/** Keeps only IDs and failure metadata used by T3's grouped tool summaries. */
+/** Keeps only IDs and failure metadata used by Nodex's grouped tool summaries. */
 export function compactDynamicToolOutput(value: unknown): CompactToolOutput | undefined {
   const budget: ResultReadBudget = {
     remainingBytes: MAX_PARSED_BYTES,

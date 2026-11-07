@@ -1,10 +1,10 @@
-import type { ProviderOptionChoice, ProviderOptionDescriptor } from "@t3tools/contracts";
+import type { ProviderOptionChoice, ProviderOptionDescriptor } from "@nodex/runtime-contracts";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
 import type { AcpSessionModeState } from "./runtimeModel.ts";
 
 /**
- * Maps ACP session configuration and session modes onto T3's provider option
+ * Maps ACP session configuration and session modes onto Nodex's provider option
  * descriptors so the existing model-options UI can drive them.
  *
  * Model selection stays on the dedicated model picker: `category: "model"`
@@ -15,11 +15,11 @@ import type { AcpSessionModeState } from "./runtimeModel.ts";
  */
 
 /** Synthetic descriptor ID for agents that expose modes outside config options. */
-export const ACP_SESSION_MODE_OPTION_ID = "_t3/session-mode";
+export const ACP_SESSION_MODE_OPTION_ID = "_nodex/session-mode";
 
 /** Nonempty UI choice keys preserve the protocol's valid empty-string selection. */
-export const ACP_EMPTY_OPTION_VALUE = "_t3/empty";
-const ACP_ESCAPED_OPTION_PREFIX = "_t3/value:";
+export const ACP_EMPTY_OPTION_VALUE = "_nodex/empty";
+const ACP_ESCAPED_OPTION_PREFIX = "_nodex/value:";
 
 export const acpOptionSelectionValue = (value: string): string => {
   if (value === ACP_EMPTY_OPTION_VALUE) return "";
@@ -97,7 +97,7 @@ export function acpProviderOptionDescriptors(input: {
 
   for (const option of input.configOptions ?? []) {
     // "model" options surface as the model list; "collaboration_mode" options
-    // are driven by T3's own plan/build interaction mode in the ACP adapter.
+    // are driven by Nodex's own plan/build interaction mode in the ACP adapter.
     if (option.category === "model" || option.category === "collaboration_mode") {
       continue;
     }

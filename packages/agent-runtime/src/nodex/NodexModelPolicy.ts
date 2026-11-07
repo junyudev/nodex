@@ -2,8 +2,8 @@ import type {
   OrchestrationV2ProviderFailure,
   ProviderInstanceConfig,
   ServerProvider,
-} from "@t3tools/contracts";
-import type { ProviderAdapterV2Event } from "@t3tools/provider-core/server/ProviderAdapter";
+} from "@nodex/runtime-contracts";
+import type { ProviderAdapterV2Event } from "@nodex/provider-core/server/ProviderAdapter";
 
 /** A declaration constrains every catalog consumer, including native application tools. */
 export function constrainProviderCatalog(

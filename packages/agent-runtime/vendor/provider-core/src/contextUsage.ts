@@ -1,4 +1,4 @@
-import type { OrchestrationV2ProviderTurn, ThreadTokenUsageSnapshot } from "@t3tools/contracts";
+import type { OrchestrationV2ProviderTurn, ThreadTokenUsageSnapshot } from "@nodex/runtime-contracts";
 
 // A structural read boundary shared by domain and wire projections. Identity strings
 // are unbranded here; the runtime validates them before publishing either projection.

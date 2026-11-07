@@ -3,4 +3,4 @@
  * application MCP server name. Native call capture and transcript presentation
  * recognize calls by this name.
  */
-export { NODEX_APP_MCP_SERVER, isNodexAppMcpServer } from "@t3tools/shared/nodexAppMcp";
+export { NODEX_APP_MCP_SERVER, isNodexAppMcpServer } from "@nodex/runtime-shared/nodexAppMcp";

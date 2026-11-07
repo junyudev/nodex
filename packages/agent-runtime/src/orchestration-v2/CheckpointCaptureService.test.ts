@@ -15,7 +15,7 @@ import {
   ProviderThreadId,
   RunId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -24,11 +24,11 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
-import { VcsProcessTimeoutError } from "@t3tools/contracts";
+import { VcsProcessTimeoutError } from "@nodex/runtime-contracts";
 import * as CheckpointService from "./CheckpointService.ts";
 import * as CheckpointCaptureService from "./CheckpointCaptureService.ts";
 import * as EventSink from "./EventSink.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as ProjectionStore from "./ProjectionStore.ts";
 
 const layerProjectionStoreTest = Layer.mergeAll(

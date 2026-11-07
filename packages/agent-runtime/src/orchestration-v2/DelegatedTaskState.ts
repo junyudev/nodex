@@ -3,7 +3,7 @@ import type {
   OrchestrationV2Subagent,
   OrchestrationV2ThreadProjection,
   OrchestratorMcpDelegateTaskResult,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 
 type TerminalTaskStatus = "completed" | "failed" | "cancelled" | "interrupted";
 export type DelegatedTaskStatus = TerminalTaskStatus | "queued" | "waiting" | "running";

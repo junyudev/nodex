@@ -1,4 +1,4 @@
-import { assertTextGenerationAdmission } from "@t3tools/provider-core/server/textGenerationPolicy";
+import { assertTextGenerationAdmission } from "@nodex/provider-core/server/textGenerationPolicy";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -13,22 +13,22 @@ import {
   DEFAULT_TEXT_GENERATION_REASONING_EFFORT,
   type ServerProviderModel,
   TextGenerationError,
-} from "@t3tools/contracts";
-import { resolveSpawnCommand } from "@t3tools/shared/shell";
+} from "@nodex/runtime-contracts";
+import { resolveSpawnCommand } from "@nodex/runtime-shared/shell";
 
 import { resolveAttachmentPath } from "../attachmentStore.ts";
 import { inferImageExtension } from "../imageMime.ts";
 import * as ServerConfig from "../config.ts";
-import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
+import { expandHomePath } from "@nodex/provider-core/server/pathExpansion";
 import { codexExecLaunchArgs, resolveCodexLaunchArgs } from "../provider/codexLaunchArgs.ts";
-import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
+import * as TextGenerationOperations from "@nodex/provider-core/server/textGenerationOperations";
 import {
   normalizeCliError,
   toJsonSchemaObject,
-} from "@t3tools/provider-core/server/textGenerationUtils";
-import { codexModelFamily, getModelSelectionStringOptionValue } from "@t3tools/shared/model";
+} from "@nodex/provider-core/server/textGenerationUtils";
+import { codexModelFamily, getModelSelectionStringOptionValue } from "@nodex/runtime-shared/model";
 import { getCodexServiceTierOptionValue } from "../codexModelOptions.ts";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 
 const CODEX_TIMEOUT_MS = 180_000;
 const encodeJsonString = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
@@ -42,7 +42,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
   getModels: Effect.Effect<ReadonlyArray<ServerProviderModel>> = Effect.succeed([]),
   resolveRuntime?: Effect.Effect<
     import("../provider/CodexManagedRuntime.ts").CodexEffectiveRuntime,
-    import("@t3tools/contracts").ProviderSetupError,
+    import("@nodex/runtime-contracts").ProviderSetupError,
     Scope.Scope
   >,
 ) {

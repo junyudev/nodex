@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it as effectIt } from "@effect/vitest";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -419,7 +419,7 @@ effectIt.layer(NodeServices.layer)("resolveCommandPath", (it) => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-case-sensitive-path-" });
+        const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-case-sensitive-path-" });
         const executable = path.join(cwd, "audit-command.cmd");
         yield* fs.writeFileString(executable, "@echo off\n");
 
@@ -444,7 +444,7 @@ effectIt.layer(NodeServices.layer)("resolveCommandPath", (it) => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-path-cache-" });
+      const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-path-cache-" });
       const executable = path.join(cwd, "appeared.CMD");
       const options = { env: { PATH: `${cwd};${cwd}`, PATHEXT: ".CMD" } };
 

@@ -17,11 +17,11 @@ import {
   RuntimeRequestId,
   ThreadId,
   TurnItemId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import {
   derivePendingBackgroundWork,
   liveBackgroundWork,
-} from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+} from "@nodex/runtime-shared/orchestrationV2PendingBackgroundWork";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

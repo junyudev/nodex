@@ -1,9 +1,9 @@
-import type { ModelSelection, ClaudeSettings } from "@t3tools/contracts";
+import type { ModelSelection, ClaudeSettings } from "@nodex/runtime-contracts";
 import {
   getModelSelectionBooleanOptionValue,
   getModelSelectionStringOptionValue,
   getProviderOptionDescriptors,
-} from "@t3tools/shared/model";
+} from "@nodex/runtime-shared/model";
 
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,

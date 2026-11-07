@@ -11,7 +11,7 @@ import {
   ProviderDriverKind,
   type ProviderReplayTranscript,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -19,7 +19,7 @@ import * as ProviderAdapterRegistry from "../ProviderAdapterRegistry.ts";
 
 import { ClaudeOrchestratorReplayHarness } from "../Adapters/ClaudeAdapterV2.testkit.ts";
 import { CodexOrchestratorReplayHarness } from "../Adapters/CodexAdapterV2.testkit.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import { provideDeterministicTestRuntime } from "./DeterministicRuntime.ts";
 import {
   CODEX_MODEL_SELECTION,
@@ -37,11 +37,11 @@ import {
   THREAD_MERGE_BACK_SOURCE_PROMPT,
 } from "./fixtures/shared.ts";
 import { runOrchestratorV2ProviderReplayScenario } from "./ProviderReplayHarness.ts";
-import { makeCheckpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
+import { makeCheckpointWorkspace } from "@nodex/provider-testing/replayWorkspace";
 import {
   decodeProviderReplayNdjson,
   materializeReplayTranscriptWorkspace,
-} from "@t3tools/provider-testing/replayTranscript";
+} from "@nodex/provider-testing/replayTranscript";
 
 // These recorded 0.137 rollouts predate injection. Preserve their native fork
 // and turn exchanges, and assert the new history delivery at the adapter boundary.

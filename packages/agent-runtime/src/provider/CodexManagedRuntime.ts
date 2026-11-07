@@ -1,5 +1,9 @@
 import { resolveManagedCodexHomeLayout } from "./CodexManagedHome.ts";
-import { CodexSettings, ProviderSetupError, type ProviderInstanceId } from "@t3tools/contracts";
+import {
+  CodexSettings,
+  ProviderSetupError,
+  type ProviderInstanceId,
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -15,7 +19,7 @@ export interface CodexEffectiveRuntime {
   readonly revision: string;
 }
 const decodeSettings = Schema.decodeSync(CodexSettings);
-// Managed sign-in stores tokens in T3's credential store and never writes native auth.json.
+// Managed sign-in stores tokens in Nodex's credential store and never writes native auth.json.
 const managedCodexLaunchArgs = [
   'model_provider="openai_token_sharing"',
   'model_providers.openai_token_sharing.name="OpenAI Token Sharing"',
@@ -89,7 +93,7 @@ export const makeCodexManagedRuntime = Effect.fn("makeCodexManagedRuntime")(func
           }),
       ),
     );
-    // Ambient CLI overrides cannot redirect a T3-owned token to a different provider.
+    // Ambient CLI overrides cannot redirect a Nodex-owned token to a different provider.
     const environment: NodeJS.ProcessEnv = {
       ...options.environment,
       ACCESS_TOKEN: credentials.accessToken,

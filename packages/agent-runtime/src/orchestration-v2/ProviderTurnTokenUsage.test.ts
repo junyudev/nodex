@@ -3,7 +3,7 @@ import {
   type OrchestrationV2ProviderTurn,
   ProviderThreadId,
   ProviderTurnId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 

@@ -12,18 +12,14 @@ import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as ProjectFaviconResolver from "./ProjectFaviconResolver.ts";
 
 const layerTest = Layer.empty.pipe(
-  Layer.provideMerge(
-    ProjectFaviconResolver.layer.pipe(
-      Layer.provide(WorkspacePaths.layer),
-    ),
-  ),
+  Layer.provideMerge(ProjectFaviconResolver.layer.pipe(Layer.provide(WorkspacePaths.layer))),
   Layer.provideMerge(NodeServices.layer),
 );
 
 const makeTempDir = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   return yield* fileSystem.makeTempDirectoryScoped({
-    prefix: "t3code-project-favicon-",
+    prefix: "widgets-project-favicon-",
   });
 });
 

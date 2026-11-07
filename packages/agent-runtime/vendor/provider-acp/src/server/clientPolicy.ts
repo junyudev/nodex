@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import type { ProviderRequestKind, RuntimeMode } from "@t3tools/contracts";
-import { NODEX_APP_MCP_SERVER } from "@t3tools/shared/nodexAppMcp";
+import type { ProviderRequestKind, RuntimeMode } from "@nodex/runtime-contracts";
+import { NODEX_APP_MCP_SERVER } from "@nodex/runtime-shared/nodexAppMcp";
 import type * as EffectAcpSchema from "effect-acp/compat";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";

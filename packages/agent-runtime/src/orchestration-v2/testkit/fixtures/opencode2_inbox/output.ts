@@ -1,5 +1,5 @@
 import { assert } from "@effect/vitest";
-import type { ProviderReplayTranscript } from "@t3tools/contracts";
+import type { ProviderReplayTranscript } from "@nodex/runtime-contracts";
 
 import type { OrchestratorV2ScenarioResult } from "../../OrchestratorScenario.ts";
 import {
@@ -19,7 +19,7 @@ import {
 /**
  * The steer goes out as `delivery: "steer"` into the running turn, which the
  * shell call's step boundary delivers: one provider turn answers both, and it
- * ends with its execution. T3 keeps the queue, so the queued message is a
+ * ends with its execution. Nodex keeps the queue, so the queued message is a
  * second turn and the cancelled one never reaches OpenCode.
  */
 export function assertOpenCode2InboxOutput(
@@ -67,6 +67,6 @@ export function assertOpenCode2InboxOutput(
 
   // Each turn remembers the user message it prompted with: fork and rollback cut there.
   for (const turn of [...turnOf(first), ...turnOf(queued)]) {
-    assert.match(turn.nativeTurnRef?.nativeId ?? "", /^msg_t3_turn_/);
+    assert.match(turn.nativeTurnRef?.nativeId ?? "", /^msg_nodex_turn_/);
   }
 }

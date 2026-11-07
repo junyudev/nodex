@@ -195,7 +195,7 @@ it.effect("effect-acp agent handles core agent requests and outbound client requ
         result: { ok: true },
       });
       assert.deepEqual(yield* Ref.get(requestContexts), [
-        { requestId: "$t3:jsonrpc:number:2", method: "initialize" },
+        { requestId: "$nodex:jsonrpc:number:2", method: "initialize" },
         { requestId: "extension-3", method: "x/test" },
       ]);
 

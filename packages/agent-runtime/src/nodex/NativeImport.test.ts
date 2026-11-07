@@ -15,10 +15,10 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import type { ThreadItemEntry } from "@nodex/codex-app-server-protocol/v2";
-import type { CodexNativeInteraction } from "@t3tools/provider-core/server/nativeInteraction";
-import type * as Adapter from "@t3tools/provider-core/server/ProviderAdapter";
+import type { CodexNativeInteraction } from "@nodex/provider-core/server/nativeInteraction";
+import type * as Adapter from "@nodex/provider-core/server/ProviderAdapter";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as ServerConfig from "../config.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";

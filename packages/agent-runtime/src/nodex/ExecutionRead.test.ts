@@ -14,7 +14,7 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2AppThread,
   type OrchestrationV2RuntimeRequest,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import type { ThreadActiveFlag } from "@nodex/codex-app-server-protocol/v2";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";

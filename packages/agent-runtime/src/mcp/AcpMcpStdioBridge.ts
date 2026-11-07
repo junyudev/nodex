@@ -7,14 +7,14 @@ import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
-import { discardResponseBody, responsePayloads } from "@t3tools/shared/mcpResponsePayloads";
+import { discardResponseBody, responsePayloads } from "@nodex/runtime-shared/mcpResponsePayloads";
 
 /**
- * Stdio-to-HTTP bridge for T3's MCP endpoint.
+ * Stdio-to-HTTP bridge for Nodex's MCP endpoint.
  *
  * ACP agents must support stdio MCP servers, while optional http/sse support
- * is unevenly implemented. `t3 acp-mcp-bridge` runs as the stdio MCP server an
- * ACP agent spawns and forwards each JSON-RPC line to T3's authenticated
+ * is unevenly implemented. `acp-mcp-bridge` runs as the stdio MCP server an
+ * ACP agent spawns and forwards each JSON-RPC line to Nodex's authenticated
  * streamable-HTTP endpoint: single JSON responses and SSE streams are written
  * back as newline-delimited JSON-RPC, notification acknowledgements (202/204)
  * produce no output, and the `mcp-session-id` / negotiated protocol version
@@ -120,7 +120,7 @@ export function callAcpMcpTool(
         return payloads;
       });
 
-    const initializeId = "t3-acp-cli-initialize";
+    const initializeId = "nodex-acp-cli-initialize";
     const initialized = yield* send({
       jsonrpc: "2.0",
       id: initializeId,
@@ -139,7 +139,7 @@ export function callAcpMcpTool(
     }
     yield* send({ jsonrpc: "2.0", method: "notifications/initialized" });
 
-    const callId = "t3-acp-cli-tool-call";
+    const callId = "nodex-acp-cli-tool-call";
     const responses = yield* send({
       jsonrpc: "2.0",
       id: callId,
@@ -308,7 +308,7 @@ export function runAcpMcpStdioBridge(options: AcpMcpStdioBridgeOptions): Effect.
 }
 
 /**
- * Argv runner for `t3 acp-mcp-bridge` and `t3 acp-mcp-call`, shared by the
+ * Argv runner for `acp-mcp-bridge` and `acp-mcp-call`, shared by the
  * fast-path dispatch in bin.ts and the full CLI's command handlers. Kept free
  * of heavy imports: these commands run on the ACP first-message critical path.
  */

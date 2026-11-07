@@ -7,7 +7,7 @@ import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Sink from "effect/Sink";
 import * as Stdio from "effect/Stdio";
-import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
+import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 import * as Codex from "../../vendor/effect-codex-app-server/src/protocol.ts";
 import * as Acp from "../../vendor/effect-acp/src/protocol.ts";
 import { makeInMemoryStdio } from "../../vendor/effect-codex-app-server/src/_internal/stdio.ts";

@@ -317,16 +317,16 @@ export const DesktopUpdateStateSchema = Schema.Struct({
   canRetry: Schema.Boolean,
 });
 
-/** The desktop app's `t3` command on PATH, managed from Settings. */
+/** The desktop app's `nodex` command on PATH, managed from Settings. */
 export const DesktopCliCommandStateSchema = Schema.Struct({
   /** Only installed builds have a launcher to put on PATH. */
   supported: Schema.Boolean,
-  /** The `t3` the app installed, or null when it is not installed. */
+  /** The `nodex` the app installed, or null when it is not installed. */
   installedPath: Schema.NullOr(Schema.String),
   /** Whether a new terminal finds it; false when the folder is not on PATH yet. */
   onPath: Schema.Boolean,
   /**
-   * Another `t3` a new terminal runs instead, earlier on PATH. Install refuses
+   * Another `nodex` a new terminal runs instead, earlier on PATH. Install refuses
    * while it is there, since a link behind it would never run.
    */
   shadowedBy: Schema.optionalKey(Schema.String),
@@ -702,7 +702,7 @@ export interface DesktopPreviewRecordingInputEvent {
  * can attach.
  */
 export interface DesktopPreviewWebviewConfig {
-  /** `persist:t3code-preview` (or whatever the desktop chose). */
+  /** `persist:nodex-preview` (or whatever the desktop chose). */
   partition: string;
   /**
    * Canonical `<webview webpreferences="...">` string. Encodes the security
@@ -1239,15 +1239,15 @@ export interface DesktopBridge {
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
-  /** Settings → `t3` command. Optional: older desktop builds lack it. */
+  /** Settings → `nodex` command. Optional: older desktop builds lack it. */
   cliCommand?: {
     getState: () => Promise<DesktopCliCommandState>;
     install: () => Promise<DesktopCliCommandState>;
     uninstall: () => Promise<DesktopCliCommandState>;
   };
-  /** Present when the desktop shell accepts `t3 app` activation requests. */
+  /** Present when the desktop shell accepts `nodex app` activation requests. */
   /**
-   * Web links the OS opens with T3 Code as the default browser (macOS). The
+   * Web links the OS opens with Nodex as the default browser (macOS). The
    * renderer reports when it listens; links queue in the main process until then.
    */
   webLinks?: {
@@ -1267,7 +1267,7 @@ export interface DesktopBridge {
 }
 
 /** Renderer callback invoked by Electron with a fresh user gesture before display-media capture. */
-export const DESKTOP_PREVIEW_RECORDING_CAPTURE_TRIGGER = "__t3DesktopPreviewRecordingCapture";
+export const DESKTOP_PREVIEW_RECORDING_CAPTURE_TRIGGER = "__nodexDesktopPreviewRecordingCapture";
 
 export interface DesktopPreviewBridge {
   setForwardedShortcuts?: (shortcuts: ReadonlyArray<PreviewForwardedShortcut>) => Promise<void>;

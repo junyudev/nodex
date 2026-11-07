@@ -21,21 +21,24 @@ import {
   RunAttemptId,
   RunId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
-import { AgentScope } from "@t3tools/shared/AgentScope";
-import { getModelSelectionStringOptionValue, modelSelectionsEqual } from "@t3tools/shared/model";
+import { AgentScope } from "@nodex/runtime-shared/AgentScope";
+import {
+  getModelSelectionStringOptionValue,
+  modelSelectionsEqual,
+} from "@nodex/runtime-shared/model";
 import * as AnalyticsService from "../telemetry/AnalyticsService.ts";
 import * as EventSink from "./EventSink.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import { makeProviderFailureTurnItem } from "@t3tools/provider-core/server/failure";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
+import { makeProviderFailureTurnItem } from "@nodex/provider-core/server/failure";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import { stripUnservedToolOutputImageBytes } from "./toolOutputImageBytes.ts";
 import { isNativeCompactCommand } from "./nativeMaintenanceCommand.ts";
@@ -81,7 +84,7 @@ export interface ProviderTurnAnalyticsContext {
 
 export class ProviderTurnAnalytics extends Context.Reference<{
   readonly record: (properties: Readonly<Record<string, unknown>>) => Effect.Effect<void>;
-}>("t3/orchestration-v2/ProviderTurnAnalytics", {
+}>("nodex/runtime/orchestration-v2/ProviderTurnAnalytics", {
   defaultValue: () => ({ record: () => Effect.void }),
 }) {}
 
@@ -297,7 +300,7 @@ export interface ProviderEventIngestorV2Shape {
 export class ProviderEventIngestorV2 extends Context.Service<
   ProviderEventIngestorV2,
   ProviderEventIngestorV2Shape
->()("t3/orchestration-v2/ProviderEventIngestor/ProviderEventIngestorV2") {}
+>()("nodex/runtime/orchestration-v2/ProviderEventIngestor/ProviderEventIngestorV2") {}
 
 function compactUndefined<T extends Record<string, unknown>>(record: T): T {
   return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined)) as T;
@@ -484,9 +487,9 @@ export const layer: Layer.Layer<
     );
 
     /**
-     * The provider rewound its conversation outside T3. Retire the runs that
+     * The provider rewound its conversation outside Nodex. Retire the runs that
      * fell off its active branch with the same run, root-node, and checkpoint
-     * updates CheckpointRollbackService writes for a T3 revert. The run
+     * updates CheckpointRollbackService writes for a Nodex revert. The run
      * reporting the rewind performed it and stays, so it keeps lastRunOrdinal.
      */
     const rollBackRewoundRuns = Effect.fn("ProviderEventIngestor.rollBackRewoundRuns")(function* (

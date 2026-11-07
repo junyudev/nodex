@@ -21,7 +21,7 @@ import {
   RuntimeRequestId,
   ThreadId,
   TurnItemId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -187,7 +187,7 @@ export class IdAllocatorV2 extends Context.Service<
     readonly allocate: IdAllocatorV2Allocate;
     readonly derive: IdAllocatorV2Derive;
   }
->()("@t3tools/provider-core/server/IdAllocator/IdAllocatorV2") {}
+>()("@nodex/provider-core/server/IdAllocator/IdAllocatorV2") {}
 
 const encodePart = (part: string | number): string => encodeURIComponent(String(part));
 

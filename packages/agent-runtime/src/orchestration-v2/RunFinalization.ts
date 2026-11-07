@@ -1,4 +1,4 @@
-import { CheckpointScopeId, ProjectId, RunId, ThreadId } from "@t3tools/contracts";
+import { CheckpointScopeId, ProjectId, RunId, ThreadId } from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -30,7 +30,7 @@ export class RunFinalizationObserver extends Context.Reference<{
     readonly threadId: ThreadId;
     readonly runId: RunId;
   }) => Effect.Effect<void, RunFinalizationRefreshError>;
-}>("t3/orchestration-v2/RunFinalizationObserver", {
+}>("nodex/runtime/orchestration-v2/RunFinalizationObserver", {
   defaultValue: () => ({ refresh: () => Effect.void, refreshAfterTurn: () => Effect.void }),
 }) {}
 
@@ -43,7 +43,7 @@ export class RunFinalizationService extends Context.Service<
       readonly scopeId: CheckpointScopeId;
     }) => Effect.Effect<void, RunFinalizationError>;
   }
->()("t3/orchestration-v2/RunFinalizationService") {}
+>()("nodex/runtime/orchestration-v2/RunFinalizationService") {}
 
 const make = Effect.gen(function* () {
   const checkpointCapture = yield* CheckpointCapture.CheckpointCaptureServiceV2;

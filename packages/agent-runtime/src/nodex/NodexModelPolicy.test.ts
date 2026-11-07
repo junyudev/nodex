@@ -1,8 +1,8 @@
-import { withWorkspaceEnvironment } from "@t3tools/provider-core/server/ExecutionHost";
-import { fallbackTextGenerationModelSelection } from "@t3tools/shared/serverSettings";
+import { withWorkspaceEnvironment } from "@nodex/provider-core/server/ExecutionHost";
+import { fallbackTextGenerationModelSelection } from "@nodex/runtime-shared/serverSettings";
 import { describe, expect, it } from "vite-plus/test";
-import type { ProviderInstanceConfig, ServerProvider } from "@t3tools/contracts";
-import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+import type { ProviderInstanceConfig, ServerProvider } from "@nodex/runtime-contracts";
+import { makeProviderFailure } from "@nodex/provider-core/server/failure";
 import { constrainProviderCatalog, nodexCreditFailure } from "./NodexModelPolicy.ts";
 
 describe("Nodex model policy", () => {
@@ -78,7 +78,7 @@ it("excludes managed providers from automatic utility defaults", () => {
   const id = "nodex_codex_account";
   const configured = {
     [id]: { driver: "codex", source: "nodex" },
-  } as unknown as import("@t3tools/contracts").ServerSettings["providerInstances"];
+  } as unknown as import("@nodex/runtime-contracts").ServerSettings["providerInstances"];
   expect(
     fallbackTextGenerationModelSelection(configured, (candidate) => candidate === id, {
       includeConfiguredInstances: true,

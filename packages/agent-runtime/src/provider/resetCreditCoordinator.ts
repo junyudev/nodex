@@ -8,7 +8,7 @@
  *
  * @module provider/resetCreditCoordinator
  */
-import type { ProviderConsumeResetCreditOutcome } from "@t3tools/contracts";
+import type { ProviderConsumeResetCreditOutcome } from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -38,7 +38,7 @@ export class ResetCreditCoordinator extends Context.Service<
       isSettled?: (error: E) => boolean,
     ) => Effect.Effect<ProviderConsumeResetCreditOutcome, E | PlatformError.PlatformError, R>;
   }
->()("t3/provider/resetCreditCoordinator") {}
+>()("nodex/runtime/provider/resetCreditCoordinator") {}
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {

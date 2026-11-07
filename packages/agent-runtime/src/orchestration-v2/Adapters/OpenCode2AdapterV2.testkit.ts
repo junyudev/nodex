@@ -11,7 +11,7 @@ import {
   ProviderSessionId,
   ThreadId,
   type ProviderReplayTranscript,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -20,19 +20,19 @@ import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import * as UrlParams from "effect/http/UrlParams";
 
-import * as OpenCode2Client from "@t3tools/provider-opencode/server/v2/OpenCode2Client";
-import * as OpenCode2Server from "@t3tools/provider-opencode/server/v2/OpenCode2Server";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as OpenCode2Client from "@nodex/provider-opencode/server/v2/OpenCode2Client";
+import * as OpenCode2Server from "@nodex/provider-opencode/server/v2/OpenCode2Server";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as ProviderAdapterRegistry from "../ProviderAdapterRegistry.ts";
-import type { ProviderReplayGate } from "@t3tools/provider-testing/replayGate";
+import type { ProviderReplayGate } from "@nodex/provider-testing/replayGate";
 import type { OrchestratorV2ProviderReplayHarness } from "../testkit/ProviderReplayHarness.ts";
-import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
-import { OPENCODE_PROVIDER } from "@t3tools/provider-opencode/testing";
+import * as TestProviderHost from "@nodex/provider-testing/TestProviderHost";
+import { OPENCODE_PROVIDER } from "@nodex/provider-opencode/testing";
 import {
   OpenCodeReplayController,
   OpenCodeReplayTranscriptDecodeError,
 } from "./OpenCodeAdapterV2.testkit.ts";
-import * as OpenCode2Adapter from "@t3tools/provider-opencode/server/v2/adapter";
+import * as OpenCode2Adapter from "@nodex/provider-opencode/server/v2/adapter";
 
 export const OPENCODE2_HTTP_PROTOCOL = "opencode2-http.sse" as const;
 const BASE_URL = "http://opencode2.replay";
@@ -109,7 +109,7 @@ const operationOf = (
     if (method === "DELETE" && rest === "/revert") return { type: "session.revert.clear", input };
     const inbox = /^\/inbox\/([^/]+)$/.exec(rest);
     if (method === "DELETE" && inbox !== null) {
-      // T3's steer ids carry `:`, which the path encodes.
+      // Nodex's steer ids carry `:`, which the path encodes.
       const inboxID = decodeURIComponent(inbox[1] ?? "");
       return { type: "session.inbox.cancel", input: { ...input, inboxID } };
     }
@@ -326,7 +326,7 @@ export const openCode2ReplayRuntime = (
         instanceId: ProviderInstanceId.make("opencode"),
         model: "opencode/big-pickle",
       },
-      // Opened where the adapter tests' threads run, as T3 opens a session for its first thread.
+      // Opened where the adapter tests' threads run, as Nodex opens a session for its first thread.
       runtimePolicy: {
         runtimeMode: "full-access",
         interactionMode: "default",

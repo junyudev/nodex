@@ -1,4 +1,4 @@
-import type { OrchestrationV2Command, ProviderReplayTranscript } from "@t3tools/contracts";
+import type { OrchestrationV2Command, ProviderReplayTranscript } from "@nodex/runtime-contracts";
 import * as Predicate from "effect/Predicate";
 
 /** Binds older recordings to the exact authored messages the fixture will dispatch. */

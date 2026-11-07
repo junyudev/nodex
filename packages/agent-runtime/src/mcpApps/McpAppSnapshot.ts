@@ -1,4 +1,4 @@
-import type { ThreadId } from "@t3tools/contracts";
+import type { ThreadId } from "@nodex/runtime-contracts";
 import {
   injectMcpAppCsp,
   MCP_APP_MAX_HTML_BYTES,
@@ -7,7 +7,7 @@ import {
   readMcpAppCsp,
   readMcpAppPermissions,
   type McpAppReference,
-} from "@t3tools/shared/mcpApp";
+} from "@nodex/runtime-shared/mcpApp";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Predicate from "effect/Predicate";

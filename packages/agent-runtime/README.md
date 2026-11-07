@@ -136,3 +136,6 @@ and renderer projects.
 
 Source provenance and license notices are recorded in `UPSTREAM.json` and
 `LICENSE.t3code`. Bundled distribution must retain those notices.
+Everything else carries Nodex's own name, including code adapted from that source: packages,
+service tags, telemetry, and anything a person or an Agent reads. `vp run verify:product-identity`
+enforces this; recorded provider transcripts under `testkit/fixtures` keep the words they captured.

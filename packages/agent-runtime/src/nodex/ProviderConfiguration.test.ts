@@ -5,7 +5,7 @@ import {
   type ProviderInstanceConfigMap,
   ProjectId,
   resolveProjectProviderInstanceEnabled,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";

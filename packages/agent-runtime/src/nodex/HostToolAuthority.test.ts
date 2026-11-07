@@ -8,7 +8,7 @@ import {
   RunAttemptId,
   RunId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import { hostToolAuthorityRefusal, type HostToolAuthorityView } from "./HostToolAuthority.ts";
 import type { AgentHostTurnIdentity } from "./Interface.ts";
 

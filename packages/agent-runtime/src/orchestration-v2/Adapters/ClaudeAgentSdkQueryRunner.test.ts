@@ -1,17 +1,17 @@
-import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
+import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Stream from "effect/Stream";
 import * as ClaudeSdk from "@anthropic-ai/claude-agent-sdk";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { ProviderSessionId, ThreadId } from "@t3tools/contracts";
+import { ProviderSessionId, ThreadId } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import { vi } from "vite-plus/test";
 
-import { ProviderEventLoggers } from "@t3tools/provider-core/server/ProviderEventLoggers";
+import { ProviderEventLoggers } from "@nodex/provider-core/server/ProviderEventLoggers";
 import {
   CLAUDE_AGENT_SDK_QUERY_PROTOCOL,
   ClaudeAgentSdkQueryRunner,

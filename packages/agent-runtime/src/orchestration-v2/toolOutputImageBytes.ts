@@ -1,9 +1,9 @@
-import type { OrchestrationV2TurnItem } from "@t3tools/contracts";
+import type { OrchestrationV2TurnItem } from "@nodex/runtime-contracts";
 import {
   MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH,
   readToolOutputImage,
   toolOutputImageBlocks,
-} from "@t3tools/shared/toolOutput";
+} from "@nodex/runtime-shared/toolOutput";
 
 const IMAGE_MIME_KEYS = ["mimeType", "mime_type", "media_type", "type"] as const;
 const IMAGE_BODY_KEYS = new Set(["data", "blob", "base64"]);

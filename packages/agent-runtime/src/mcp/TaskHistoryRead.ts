@@ -1,5 +1,5 @@
-import { ThreadId, TurnItemId } from "@t3tools/contracts";
-import type { ThreadId as ThreadIdentity } from "@t3tools/contracts";
+import { ThreadId, TurnItemId } from "@nodex/runtime-contracts";
+import type { ThreadId as ThreadIdentity } from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";

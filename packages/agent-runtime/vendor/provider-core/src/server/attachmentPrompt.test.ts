@@ -3,7 +3,7 @@ import {
   ChatFileAttachment,
   ChatImageAttachment,
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import { assert, describe, it } from "@effect/vitest";
 
 import {

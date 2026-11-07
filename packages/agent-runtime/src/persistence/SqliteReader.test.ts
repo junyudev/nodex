@@ -147,7 +147,7 @@ const withFileClient = <A, E>(
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-sqlite-reader-off-" });
+    const directory = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-sqlite-reader-off-" });
     const filename = path.join(directory, "state.sqlite");
     return yield* Effect.gen(function* () {
       return yield* setup(yield* SqlClient.SqlClient, filename);

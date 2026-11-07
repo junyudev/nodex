@@ -10,10 +10,10 @@ import {
   RunAttemptId,
   RunId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import { expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -1019,7 +1019,7 @@ it.live(
 it.live("cancels a yielded background host call when its exact captured Run is stopped", () =>
   Effect.gen(function* () {
     const events =
-      yield* PubSub.unbounded<import("@t3tools/contracts").OrchestrationV2StoredEvent>();
+      yield* PubSub.unbounded<import("@nodex/runtime-contracts").OrchestrationV2StoredEvent>();
     const subscribed = yield* Deferred.make<void>();
     const hostStarted = yield* Deferred.make<string>();
     const hostCancelled = yield* Deferred.make<string>();

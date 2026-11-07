@@ -1,11 +1,17 @@
-import { CheckpointId, CheckpointScopeId, CommandId, RunId, ThreadId } from "@t3tools/contracts";
+import {
+  CheckpointId,
+  CheckpointScopeId,
+  CommandId,
+  RunId,
+  ThreadId,
+} from "@nodex/runtime-contracts";
 import {
   MESSAGE_EDIT_UNAVAILABLE,
   resolveConversationRewindTargets,
-} from "@t3tools/shared/orchestrationV2Rewind";
+} from "@nodex/runtime-shared/orchestrationV2Rewind";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 
 /**

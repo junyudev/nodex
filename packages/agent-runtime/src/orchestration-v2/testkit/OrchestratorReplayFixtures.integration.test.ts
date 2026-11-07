@@ -4,7 +4,7 @@ import type {
   OrchestrationV2DomainEvent,
   ProviderReplayEntry,
   ProviderReplayTranscript,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -17,7 +17,7 @@ import {
   OPENCODE2_HTTP_PROTOCOL,
   OpenCode2OrchestratorReplayHarness,
 } from "../Adapters/OpenCode2AdapterV2.testkit.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import { provideDeterministicTestRuntime } from "./DeterministicRuntime.ts";
 import { ORCHESTRATOR_REPLAY_FIXTURES } from "./fixtures/index.ts";
 import {
@@ -31,13 +31,13 @@ import {
   runOrchestratorV2ProviderReplayScenario,
   type OrchestratorV2ProviderReplayHarness,
 } from "./ProviderReplayHarness.ts";
-import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
+import { checkpointWorkspace } from "@nodex/provider-testing/replayWorkspace";
 import { materializeReplayTranscriptRuntimeInstructions } from "./ReplayRuntimeInstructions.ts";
 import { materializeReplayMessageIdentities } from "./ReplayMessageIdentities.ts";
 import {
   materializeReplayTranscriptWorkspace,
   readProviderReplayTranscript,
-} from "@t3tools/provider-testing/replayTranscript";
+} from "@nodex/provider-testing/replayTranscript";
 
 const readTranscript = Effect.fn("readOrchestratorReplayTranscript")(function* (file: URL) {
   return yield* readProviderReplayTranscript(file);

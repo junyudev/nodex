@@ -11,7 +11,7 @@ import {
 import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import type {
   ProjectionRecordField,
   ProjectionRecordFilter,
@@ -43,7 +43,7 @@ import {
   type ScheduledTaskId,
   ThreadId,
   type TurnItemId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -52,15 +52,15 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
-import { derive } from "@t3tools/provider-core/server/IdAllocator";
+import { derive } from "@nodex/provider-core/server/IdAllocator";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import { projectTurnItemForDetail } from "./WireProjection.ts";
-import { liveBackgroundWork } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import { liveBackgroundWork } from "@nodex/runtime-shared/orchestrationV2PendingBackgroundWork";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
@@ -514,7 +514,7 @@ export interface ThreadManagementServiceShape {
 export class ThreadManagementService extends Context.Service<
   ThreadManagementService,
   ThreadManagementServiceShape
->()("t3/orchestration-v2/ThreadManagementService") {}
+>()("nodex/runtime/orchestration-v2/ThreadManagementService") {}
 
 export function isActiveRun(run: OrchestrationV2Run): boolean {
   return (

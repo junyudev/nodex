@@ -4,9 +4,9 @@ import {
 } from "../../nodex/ClaudeModelPolicy.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- native permission reasons contain terminal control sequences
 import { stripVTControlCharacters } from "node:util";
-import { fromLenientJson } from "@t3tools/shared/schemaJson";
-import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
-import { providerPromptForInteraction } from "@t3tools/provider-core/server/orchestrationInstructions";
+import { fromLenientJson } from "@nodex/runtime-shared/schemaJson";
+import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
+import { providerPromptForInteraction } from "@nodex/provider-core/server/orchestrationInstructions";
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
 import { claudeMcpToolCall } from "./ClaudeMcpToolCall.ts";
 import {
@@ -19,7 +19,7 @@ import {
   dynamicToolTitle,
   formatReadToolLabel,
   formatSearchToolLabel,
-} from "@t3tools/shared/toolActivity";
+} from "@nodex/runtime-shared/toolActivity";
 import { field, text } from "../unknownField.ts";
 import { readWorkflowAgentAnswers } from "../workflowAgentAnswers.ts";
 import {
@@ -29,14 +29,14 @@ import {
   parseClaudeWorkflowRunHandles,
 } from "./claudeWorkflowProgress.ts";
 
-import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
+import { isWorkspaceImagePreviewPath } from "@nodex/runtime-shared/filePreview";
 import {
   fileChangeDetail,
   fileChangeItemFields,
   fileChangesFromPatch,
   unifiedHunksText,
   type StructuredHunk,
-} from "@t3tools/shared/fileChanges";
+} from "@nodex/runtime-shared/fileChanges";
 import { normalizeClaudeTurnTokenUsage } from "../../provider/ClaudeTurnTokenUsage.ts";
 import {
   codexMcpApprovalOptions,
@@ -77,13 +77,13 @@ import type {
   AskUserQuestionInput,
   WebSearchOutput,
 } from "@anthropic-ai/claude-agent-sdk/sdk-tools";
-import { parseCliArgs } from "@t3tools/shared/cliArgs";
-import { AgentScope } from "@t3tools/shared/AgentScope";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import { parseCliArgs } from "@nodex/runtime-shared/cliArgs";
+import { AgentScope } from "@nodex/runtime-shared/AgentScope";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import {
   CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
   formatClaudeResumeCompactionQuestion,
-} from "@t3tools/shared/claudeCompaction";
+} from "@nodex/runtime-shared/claudeCompaction";
 import {
   type ChatAttachment,
   ClaudeSettings,
@@ -120,7 +120,7 @@ import {
   type ProviderThreadId,
   type RunId,
   type ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -148,7 +148,7 @@ import { planClaudeSkillDispatch } from "../../provider/Drivers/ClaudeSkillDispa
 import { discoverClaudeSkills } from "../../provider/Drivers/ClaudeSkills.ts";
 import { compileClaudeModelSelection, type ClaudeLiveSelection } from "../../claudeModelOptions.ts";
 import * as ServerConfig from "../../config.ts";
-import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
+import { expandHomePath } from "@nodex/provider-core/server/pathExpansion";
 import {
   claudeSignedOutMessage,
   makeClaudeEnvironment,
@@ -166,47 +166,47 @@ import {
   boundProviderEventForLogging,
   shouldPersistProviderEvent,
 } from "../../provider/EventNdjsonLogger.ts";
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import type * as CodexSchema from "effect-codex-app-server/schema";
-import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+import * as ProviderEventLoggers from "@nodex/provider-core/server/ProviderEventLoggers";
 import {
   claudeRateLimitEventToUpdate,
   type ClaudeScopedLimitNames,
 } from "../../provider/claudeUsageLimits.ts";
-import type { ManagedServerProvider } from "@t3tools/provider-core/server/snapshot";
-import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
-import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
+import type { ManagedServerProvider } from "@nodex/provider-core/server/snapshot";
+import { mergeProviderInstanceEnvironment } from "@nodex/provider-core/server/instanceEnvironment";
+import { buildRuntimeInstructions } from "@nodex/provider-core/server/runtimeInstructions";
 import { NODEX_APP_MCP_SERVER } from "../../mcp/NodexAppMcpServer.ts";
 import {
   mcpToolPresentation,
   normalizeMcpText,
   publicMcpToolInput,
-} from "@t3tools/provider-core/server/mcpToolPresentation";
-import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+} from "@nodex/provider-core/server/mcpToolPresentation";
+import * as McpProviderSession from "@nodex/provider-core/server/mcpSession";
+import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import {
   makeProviderFailure,
   makeProviderRetryTurnItem,
-} from "@t3tools/provider-core/server/failure";
-import { turnScopedSelectionTransition } from "@t3tools/provider-core/server/selectionTransition";
-import { providerMessageTextWithAttachmentPaths } from "@t3tools/provider-core/server/attachmentPrompt";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+} from "@nodex/provider-core/server/failure";
+import { turnScopedSelectionTransition } from "@nodex/provider-core/server/selectionTransition";
+import { providerMessageTextWithAttachmentPaths } from "@nodex/provider-core/server/attachmentPrompt";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import {
   ProviderAdapterDriverCreateError,
   type ProviderAdapterDriver,
   type ProviderAdapterDriverCreateInput,
-} from "@t3tools/provider-core/server/adapterDriver";
+} from "@nodex/provider-core/server/adapterDriver";
 import {
   type BackgroundWorkReport,
   backgroundWorkNotification,
-} from "@t3tools/provider-core/server/notification";
-import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
+} from "@nodex/provider-core/server/notification";
+import * as ProviderContinuationRequests from "@nodex/provider-core/server/ProviderContinuationRequests";
 import {
   makeSubagentChildThread,
   makeSubagentConversationArtifacts,
   subagentThreadTitle,
-} from "@t3tools/provider-core/server/subagentProjection";
+} from "@nodex/provider-core/server/subagentProjection";
 
 export const CLAUDE_PROVIDER = ProviderDriverKind.make("claudeAgent");
 export const CLAUDE_AGENT_SDK_QUERY_PROTOCOL = "claude-agent-sdk.query" as const;
@@ -521,7 +521,7 @@ export interface ClaudeAgentSdkQueryRunnerShape {
 export class ClaudeAgentSdkQueryRunner extends Context.Service<
   ClaudeAgentSdkQueryRunner,
   ClaudeAgentSdkQueryRunnerShape
->()("t3/orchestration-v2/Adapters/ClaudeAdapterV2/ClaudeAgentSdkQueryRunner") {}
+>()("nodex/runtime/orchestration-v2/Adapters/ClaudeAdapterV2/ClaudeAgentSdkQueryRunner") {}
 
 export interface ClaudeAgentSdkSessionForkInput {
   readonly configDirectory?: string;
@@ -8484,7 +8484,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
 
           // The converse of the drop above, and the case actually worth
           // watching: a positive-turn task-notification result settling a turn
-          // T3 did not mark as a continuation. That is the hang fix working,
+          // Nodex did not mark as a continuation. That is the hang fix working,
           // but it is also the shape a stale result would take if one ever
           // carried model turns, which nothing on the wire lets us rule out.
           if (

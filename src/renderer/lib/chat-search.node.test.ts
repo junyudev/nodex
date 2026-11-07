@@ -81,8 +81,8 @@ describe("chat search presentation", () => {
 
   test("offsets a branch hint past the worktree prefix it omits", () => {
     const hint = { label: "Branch", text: "fix-search", ranges: [{ start: 4, end: 10 }] };
-    expect(chatFieldHighlightSegments("t3/fix-search", hint, "Branch")).toEqual([
-      { text: "t3/fix-", highlight: false },
+    expect(chatFieldHighlightSegments("nodex/runtime/fix-search", hint, "Branch")).toEqual([
+      { text: "nodex/runtime/fix-", highlight: false },
       { text: "search", highlight: true },
     ]);
     expect(chatFieldHighlightSegments("Nodex", hint, "Project")).toBeNull();

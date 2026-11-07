@@ -4,7 +4,7 @@ import {
   ThreadId,
   TurnItemId,
   type OrchestrationV2ThreadProjection,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { expect, it } from "vite-plus/test";
@@ -12,7 +12,7 @@ import { expect, it } from "vite-plus/test";
 import * as EffectWorker from "./EffectWorker.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderRuntimeRecovery from "./ProviderRuntimeRecoveryService.ts";
 import * as ServerSettings from "../serverSettings.ts";

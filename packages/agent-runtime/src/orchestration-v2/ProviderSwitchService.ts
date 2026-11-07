@@ -4,8 +4,8 @@ import {
   ProviderSessionId,
   ProviderThreadId,
   ThreadId,
-} from "@t3tools/contracts";
-import { modelSelectionsEqual } from "@t3tools/shared/model";
+} from "@nodex/runtime-contracts";
+import { modelSelectionsEqual } from "@nodex/runtime-shared/model";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -49,7 +49,7 @@ export interface ProviderSwitchServiceV2Shape {
 export class ProviderSwitchServiceV2 extends Context.Service<
   ProviderSwitchServiceV2,
   ProviderSwitchServiceV2Shape
->()("t3/orchestration-v2/ProviderSwitchService/ProviderSwitchServiceV2") {}
+>()("nodex/runtime/orchestration-v2/ProviderSwitchService/ProviderSwitchServiceV2") {}
 
 // Stopped and errored records stay in session history but can no longer be
 // restarted or released; only live sessions participate in a transition.

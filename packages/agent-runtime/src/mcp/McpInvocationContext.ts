@@ -9,7 +9,7 @@ import {
   type ProviderInteractionMode,
   type RuntimeMode,
   type ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 
@@ -22,14 +22,14 @@ const ALL_MCP_CAPABILITIES = [
 ] as const;
 export type McpCapability = (typeof ALL_MCP_CAPABILITIES)[number];
 
-/** A provider session T3 Code launched for one thread. */
+/** A provider session Nodex launched for one thread. */
 export interface McpThreadCaller {
   readonly threadId: ThreadId;
   readonly providerSessionId: string;
   readonly providerInstanceId: ProviderInstanceId;
 }
 
-/** An agent T3 Code did not launch, signed in through MCP OAuth. */
+/** An agent Nodex did not launch, signed in through MCP OAuth. */
 export interface McpClientCaller {
   readonly sessionId: string;
   readonly label: string;
@@ -68,7 +68,7 @@ export const callerModeCeiling = (
 export class McpInvocationContext extends Context.Service<
   McpInvocationContext,
   McpInvocationScope
->()("t3/mcp/McpInvocationContext") {}
+>()("nodex/runtime/mcp/McpInvocationContext") {}
 
 /** The error a missing capability surfaces as; preview keeps its own so the broker can route it. */
 export type McpCapabilityError<C extends McpCapability> = C extends "preview"

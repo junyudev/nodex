@@ -1,5 +1,5 @@
 import { McpSchema } from "effect/ai";
-import { McpTurnAdmission } from "@t3tools/provider-core/server/ExecutionHost";
+import { McpTurnAdmission } from "@nodex/provider-core/server/ExecutionHost";
 import {
   TASK_RESULT_DELIVERY_META,
   recordTaskResult,
@@ -9,9 +9,9 @@ import { taskView } from "../mcp/toolkits/task/handlers.ts";
 import { delegatedResultReceipts } from "./DelegatedResultReceipt.ts";
 import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import { deliverContextHandoffs } from "./ContextHandoffDelivery.ts";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
@@ -36,7 +36,7 @@ import {
   RunId,
   ThreadId,
   TurnItemId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -48,7 +48,7 @@ import * as McpSessionRegistryTestkit from "../mcp/McpSessionRegistry.testkit.ts
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
-import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
+import type { ProviderInstance } from "@nodex/provider-core/server/driver";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
@@ -67,13 +67,13 @@ import {
   seedUndecodableHistory,
 } from "./testkit/HistoryPressure.ts";
 import * as ProviderTurnStartServiceTestkit from "./ProviderTurnStartService.testkit.ts";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
+import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
+import * as ProviderContinuationRequests from "@nodex/provider-core/server/ProviderContinuationRequests";
 
 const layerPlatformTest = NodeServices.layer;
 
 const layerServerConfig = ServerConfig.layerTest(process.cwd(), {
-  prefix: "t3-orchestration-v2-delegated-completion-",
+  prefix: "nodex-orchestration-v2-delegated-completion-",
 });
 
 const modelSelection = {
@@ -1175,7 +1175,7 @@ it.layer(layerTest)("delegated completion delivery repairs", (it) => {
           now,
         });
 
-        // Distinct command IDs mirror task_status vs t3_thread_read racing after
+        // Distinct command IDs mirror task_status vs thread_read racing after
         // their shared read preflight saw delivered ownership.
         const firstAck = yield* orchestrator.dispatch({
           type: "delegated_task.completion-delivery.acknowledge",
@@ -2831,7 +2831,7 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
             hasPendingQuestion: false,
             pendingApproval: null,
             waitTimedOut: false,
-          } satisfies import("@t3tools/contracts").OrchestratorMcpDelegateTaskResult;
+          } satisfies import("@nodex/runtime-contracts").OrchestratorMcpDelegateTaskResult;
           const publicResult = taskView(taskResult);
           assert.notProperty(publicResult, "resultContextTransferId");
           const output = yield* withTaskResultDelivery(

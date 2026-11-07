@@ -16,14 +16,14 @@ import {
   TurnItemId,
   type OrchestrationV2RuntimeRequest,
   type ProviderRequestKind,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as Sqlite from "../persistence/Sqlite.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";

@@ -2,7 +2,7 @@ import type {
   ProviderApprovalDecision,
   ProviderApprovalOption,
   ProviderUserInputAnswers,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Schema from "effect/Schema";
 import type * as CodexSchema from "effect-codex-app-server/schema";
 

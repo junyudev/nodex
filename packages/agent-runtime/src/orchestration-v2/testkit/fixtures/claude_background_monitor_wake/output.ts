@@ -1,5 +1,5 @@
 import { assert } from "@effect/vitest";
-import { TurnItemId, type ProviderReplayTranscript } from "@t3tools/contracts";
+import { TurnItemId, type ProviderReplayTranscript } from "@nodex/runtime-contracts";
 
 import type { OrchestratorV2ScenarioResult } from "../../OrchestratorScenario.ts";
 import {

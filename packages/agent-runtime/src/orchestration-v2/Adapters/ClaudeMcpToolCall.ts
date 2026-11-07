@@ -1,4 +1,4 @@
-import type { OrchestrationV2TurnItem } from "@t3tools/contracts";
+import type { OrchestrationV2TurnItem } from "@nodex/runtime-contracts";
 import * as Schema from "effect/Schema";
 import { field } from "../unknownField.ts";
 

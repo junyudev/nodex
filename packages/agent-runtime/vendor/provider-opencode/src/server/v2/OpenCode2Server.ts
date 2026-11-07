@@ -31,16 +31,16 @@ export interface OpenCode2Connection extends OpenCode2Client.OpenCode2Api {
 export class OpenCode2Server extends Context.Service<
   OpenCode2Server,
   {
-    /** Runs `use` against the instance's server, spawning it first when T3 owns it. */
+    /** Runs `use` against the instance's server, spawning it first when Nodex owns it. */
     readonly withConnection: <A, E, R>(
       use: (connection: OpenCode2Connection) => Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E | OpenCodeRuntime.OpenCodeRuntimeError, R>;
   }
->()("@t3tools/provider-opencode/server/v2/OpenCode2Server") {}
+>()("@nodex/provider-opencode/server/v2/OpenCode2Server") {}
 
 /**
  * A fresh password for a spawned server. OpenCode 2 always requires one and
- * prints a generated one to stdout otherwise, so T3 supplies its own and keeps
+ * prints a generated one to stdout otherwise, so Nodex supplies its own and keeps
  * it in memory.
  */
 export const generatePassword = Effect.gen(function* () {
@@ -52,7 +52,7 @@ export const generatePassword = Effect.gen(function* () {
 /**
  * The environment for a spawned 2.x server. `OPENCODE_PASSWORD` wins over
  * `OPENCODE_SERVER_PASSWORD` in OpenCode 2, so the inherited 1.x variable is
- * dropped to keep the T3 password the only one in play.
+ * dropped to keep the Nodex password the only one in play.
  */
 export const serverEnvironment = (
   environment: NodeJS.ProcessEnv,

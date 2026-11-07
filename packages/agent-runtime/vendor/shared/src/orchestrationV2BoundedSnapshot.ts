@@ -1,7 +1,7 @@
 import type {
   OrchestrationV2ProjectedTurnItem,
   OrchestrationV2ThreadProjection,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 
 /** Local timeline rows also carry their item in `projection.turnItems`. */
 function isLocalTimelineRow(

@@ -2,9 +2,9 @@ import type {
   OrchestrationV2ContextHandoff,
   OrchestrationV2ContextBudget,
   OrchestrationV2ProviderThread,
-} from "@t3tools/contracts";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import { ContextHandoffBudgetError } from "@t3tools/provider-core/server/failure";
+} from "@nodex/runtime-contracts";
+import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
+import { ContextHandoffBudgetError } from "@nodex/provider-core/server/failure";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import {
@@ -13,7 +13,7 @@ import {
   renderHistory,
   selectHistory,
   taskHistoryRecoveryInstructions,
-} from "@t3tools/provider-core/server/handoffBudget";
+} from "@nodex/provider-core/server/handoffBudget";
 
 /**
  * Persist before/after injection: an ambiguous pending delivery requires a fresh native thread.

@@ -1,4 +1,4 @@
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import { RetainedModelPolicyOrigin, RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
 import {
   eligibleRunRecovery,
@@ -6,13 +6,13 @@ import {
   withoutRunRecovery,
   runRecoverySummary,
 } from "./RunRecovery.ts";
-import { ProviderRequestKind } from "@t3tools/contracts";
+import { ProviderRequestKind } from "@nodex/runtime-contracts";
 import {
   conversationRewindContext,
   isExactConversationRewindTarget,
   MESSAGE_EDIT_UNAVAILABLE,
   resolveConversationRewindTargets,
-} from "@t3tools/shared/orchestrationV2Rewind";
+} from "@nodex/runtime-shared/orchestrationV2Rewind";
 import { delegatedResultReceipts } from "./DelegatedResultReceipt.ts";
 import { SIDE_CHAT_BOUNDARY_TEXT } from "../nodex/SideChat.ts";
 import {
@@ -26,21 +26,21 @@ import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
   OrchestrationV2ThreadHistoryPage,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import { encodeCodexAsyncQuestionReplies } from "../nodex/CodexConventions.ts";
 import {
   latestExecutedRun,
   latestRootProviderFailure,
   runRanAfter,
   usageLimitBlockedRun,
-} from "@t3tools/shared/orchestrationV2ThreadError";
-import { threadPullRequestsOf } from "@t3tools/shared/threadPullRequests";
+} from "@nodex/runtime-shared/orchestrationV2ThreadError";
+import { threadPullRequestsOf } from "@nodex/runtime-shared/threadPullRequests";
 import {
   normalizeThreadPullRequestKey,
   visibleThreadPullRequests,
   threadPullRequestKeysEqual,
   legacyThreadPullRequestKey,
-} from "@t3tools/shared/threadPullRequests";
+} from "@nodex/runtime-shared/threadPullRequests";
 import {
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   type ChatAttachment,
@@ -86,13 +86,13 @@ import {
   ThreadLinkedPullRequest,
   ThreadId,
   TurnItemId,
-} from "@t3tools/contracts";
-import { modelSelectionsEqual } from "@t3tools/shared/model";
+} from "@nodex/runtime-contracts";
+import { modelSelectionsEqual } from "@nodex/runtime-shared/model";
 import {
   derivePendingBackgroundWork,
   liveBackgroundWork,
   pendingBackgroundTurnItems,
-} from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+} from "@nodex/runtime-shared/orchestrationV2PendingBackgroundWork";
 import { forkParked } from "../serverActivation.ts";
 import { isTransientObservationFailure } from "./ProviderObservation.ts";
 import * as Context from "effect/Context";
@@ -120,13 +120,13 @@ import { CheckpointServiceV2 } from "./CheckpointService.ts";
 import { CommandPolicyV2, resolveMessageDispatchIntent } from "./CommandPolicy.ts";
 import { CommandReceiptStoreV2, type CommandReceiptStoreV2Shape } from "./CommandReceiptStore.ts";
 import { ContextHandoffServiceV2 } from "./ContextHandoffService.ts";
-import { notificationTurnItem } from "@t3tools/provider-core/server/notification";
+import { notificationTurnItem } from "@nodex/provider-core/server/notification";
 import { isRestartNoteSource } from "./RestartBackgroundNote.ts";
 import { isUndeliveredMailboxSteer } from "./NotificationMailbox.ts";
 import { EventSinkV2 } from "./EventSink.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import type { OrchestrationEffectRequestV2, PendingOrchestrationEffectV2 } from "./EffectOutbox.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import {
   applyToProjection,
@@ -144,8 +144,8 @@ import {
   type ShellSnapshotOptions,
 } from "./ProjectionStore.ts";
 import { ProviderAdapterRegistryV2 } from "./ProviderAdapterRegistry.ts";
-import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
-import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+import * as ProviderContinuationRequests from "@nodex/provider-core/server/ProviderContinuationRequests";
+import { makeProviderFailure } from "@nodex/provider-core/server/failure";
 import * as RunExecutionService from "./RunExecutionService.ts";
 import { ProviderSessionManagerV2 } from "./ProviderSessionManager.ts";
 import { ProviderSwitchServiceV2 } from "./ProviderSwitchService.ts";
@@ -159,7 +159,7 @@ import {
   subagentResultForRun,
   delegatedTaskProgress,
   subagentThreadTitle,
-} from "@t3tools/provider-core/server/subagentProjection";
+} from "@nodex/provider-core/server/subagentProjection";
 import {
   forkThread,
   savedSideChatCapture,
@@ -170,7 +170,7 @@ import {
 } from "./ThreadForkService.ts";
 import { planThreadDeletion } from "./ThreadDeletion.ts";
 import { isNativeCompactCommand, isNativeMaintenanceCommand } from "./nativeMaintenanceCommand.ts";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import * as ServerSettings from "../serverSettings.ts";
 
 export class OrchestratorDispatchError extends Schema.TaggedError<OrchestratorDispatchError>()(
@@ -367,7 +367,7 @@ export interface OrchestratorV2Shape {
   }) => Effect.Effect<OrchestrationV2TurnItem | null, OrchestratorV2Error>;
   readonly getRuntimeResponseContext: (
     threadId: ThreadId,
-    requestId: import("@t3tools/contracts").RuntimeRequestId,
+    requestId: import("@nodex/runtime-contracts").RuntimeRequestId,
   ) => Effect.Effect<
     import("./ProjectionStore.ts").ProjectionRuntimeResponseContext,
     OrchestratorV2Error
@@ -452,7 +452,7 @@ export interface OrchestratorV2Shape {
 }
 
 export class OrchestratorV2 extends Context.Service<OrchestratorV2, OrchestratorV2Shape>()(
-  "t3/orchestration-v2/Orchestrator/OrchestratorV2",
+  "nodex/runtime/orchestration-v2/Orchestrator/OrchestratorV2",
 ) {}
 
 function nextRunOrdinal(projection: Pick<OrchestrationV2ThreadProjection, "runs">): number {
@@ -2192,7 +2192,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           : "disposed";
       const now = yield* DateTime.now;
       const emitEvent = emit(events, command);
-      // task_status and t3_thread_read use distinct command IDs, so two
+      // task_status and session reads use distinct command IDs, so two
       // valid observations can race after their read preflight. Re-emit the
       // existing task row so the second dispatch is a successful idempotent
       // no-op rather than "already acknowledged/disposed" or empty-events.
@@ -4637,7 +4637,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     readonly messageId: OrchestrationV2ConversationMessage["id"];
     readonly text: string;
     readonly attachments: ReadonlyArray<ChatAttachment>;
-    readonly context?: import("@t3tools/contracts").OrchestrationMessageContext | undefined;
+    readonly context?: import("@nodex/runtime-contracts").OrchestrationMessageContext | undefined;
     readonly createdBy: OrchestrationV2ConversationMessage["createdBy"];
     readonly creationSource: OrchestrationV2ConversationMessage["creationSource"];
     readonly scheduledTaskId?: OrchestrationV2ConversationMessage["scheduledTaskId"];
@@ -8352,7 +8352,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   );
 
   const requesterOrigin = Effect.fnUntraced(function* (
-    responder?: import("@t3tools/contracts").UserInputResponder,
+    responder?: import("@nodex/runtime-contracts").UserInputResponder,
   ) {
     const admission = yield* ExecutionHost.McpTurnAdmission;
     const caller = admission?.actor;
@@ -11133,7 +11133,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }),
       );
 
-      // Open interrupt edge cases are tracked in https://github.com/pingdotgg/t3code/issues/15013.
       yield* emitEvent({
         type: "turn-item.updated",
         threadId: command.threadId,

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "@effect/vitest";
-import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ServerProvider,
+} from "@nodex/runtime-contracts";
 import {
   createModelCapabilities,
   readCustomModelEntries,
   toCustomModelSetting,
-} from "@t3tools/shared/model";
-import { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
+} from "@nodex/runtime-shared/model";
+import { AcpRegistrySettings } from "@nodex/provider-acp-registry/settings";
 import {
   acpRegistryProbeResult,
   normalizeAcpRegistryLiveConfiguration,

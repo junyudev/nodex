@@ -1,4 +1,4 @@
-import { OrchestrationV2TurnItem, RunId, ThreadId, TurnItemId } from "@t3tools/contracts";
+import { OrchestrationV2TurnItem, RunId, ThreadId, TurnItemId } from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -32,7 +32,7 @@ export interface TurnItemPositionStoreV2Shape {
 export class TurnItemPositionStoreV2 extends Context.Service<
   TurnItemPositionStoreV2,
   TurnItemPositionStoreV2Shape
->()("t3/orchestration-v2/TurnItemPositionStore/TurnItemPositionStoreV2") {}
+>()("nodex/runtime/orchestration-v2/TurnItemPositionStore/TurnItemPositionStoreV2") {}
 
 export const layer: Layer.Layer<TurnItemPositionStoreV2, never, SqlClient.SqlClient> = Layer.effect(
   TurnItemPositionStoreV2,

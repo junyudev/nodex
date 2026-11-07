@@ -1,8 +1,8 @@
-import type { OrchestrationV2Run } from "@t3tools/contracts";
+import type { OrchestrationV2Run } from "@nodex/runtime-contracts";
 import type { AgentWire } from "../nodex/Interface.ts";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
-import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+import * as NodeSqliteClient from "@nodex/runtime-shared/nodeSqliteClient";
 
 export type SessionRunSummary = Pick<
   AgentWire<OrchestrationV2Run>,

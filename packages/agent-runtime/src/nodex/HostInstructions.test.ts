@@ -1,16 +1,16 @@
-import { ProviderInstanceId } from "@t3tools/contracts";
+import { ProviderInstanceId } from "@nodex/runtime-contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { buildCodexTurnStartParams } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { makeClaudeQueryOptions } from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import { ORCHESTRATION_INSTRUCTIONS } from "./Instructions.ts";
-import { acpPromptWithInstructions } from "@t3tools/provider-core/server/orchestrationInstructions";
+import { acpPromptWithInstructions } from "@nodex/provider-core/server/orchestrationInstructions";
 import { compileClaudeModelSelection } from "../claudeModelOptions.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   scopeClaudeModelCatalog,
 } from "../provider/ClaudeModelCatalog.ts";
-import { ClaudeSettings } from "@t3tools/contracts";
+import { ClaudeSettings } from "@nodex/runtime-contracts";
 import * as Schema from "effect/Schema";
 
 it.effect.each(["approval-required", "auto", "full-access"] as const)(
@@ -22,7 +22,7 @@ it.effect.each(["approval-required", "auto", "full-access"] as const)(
         codexInput: [{ type: "text", text: "Help with this Page." }],
         runtimePolicy: { runtimeMode, interactionMode: "default", cwd: "/workspace" },
         modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
-        hasT3Mcp: true,
+        hasAppTools: true,
         hostInstructions: "The admitted CLI context is ready.",
         hostOrchestrationInstructions: ORCHESTRATION_INSTRUCTIONS,
       });
@@ -76,7 +76,6 @@ it.each(["acceptEdits", "auto", "bypassPermissions"] as const)(
     expect(prompt).toContain("Nodex content tools work in every execution mode.");
     expect(prompt).toContain("The admitted CLI context is ready.");
     expect(prompt).toContain("running in Nodex through the Claude Code harness");
-    expect(prompt).not.toMatch(/T3|t3[-_]?code/i);
   },
 );
 

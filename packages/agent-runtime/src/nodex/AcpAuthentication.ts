@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { AgentWire } from "./Interface.ts";
-import type { ProviderAuthState } from "@t3tools/contracts";
+import type { ProviderAuthState } from "@nodex/runtime-contracts";
 import type { AgentAcpAuthentication } from "./AcpManagementContract.ts";
 
 interface FlowMetadata {

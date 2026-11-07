@@ -1,4 +1,4 @@
-import type { ThreadId } from "@t3tools/contracts";
+import type { ThreadId } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import type { ProjectionStoreV2Shape } from "./ProjectionStore.ts";
 

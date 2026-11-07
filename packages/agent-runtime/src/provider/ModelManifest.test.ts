@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { ProviderDriverKind } from "@t3tools/contracts";
+import { ProviderDriverKind } from "@nodex/runtime-contracts";
 
 import * as ModelManifest from "./ModelManifest.ts";
 

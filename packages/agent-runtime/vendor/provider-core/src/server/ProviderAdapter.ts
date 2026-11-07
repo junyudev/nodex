@@ -1,4 +1,4 @@
-import type { OrchestrationV2HistoricalMessage } from "@t3tools/contracts";
+import type { OrchestrationV2HistoricalMessage } from "@nodex/runtime-contracts";
 import {
   ChatAttachment,
   CheckpointId,
@@ -34,7 +34,7 @@ import {
   RunAttemptId,
   RunId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Schema from "effect/Schema";
 import type * as Effect from "effect/Effect";
@@ -92,7 +92,7 @@ export const ProviderAdapterV2Event = Schema.Union([
     driver: ProviderDriverKind,
     providerThread: OrchestrationV2ProviderThread,
     /**
-     * Set when the provider rewound its own conversation outside T3, for
+     * Set when the provider rewound its own conversation outside Nodex, for
      * example a Pi extension moving the session-tree leaf back. Lists every
      * native turn id still on the active branch; the ingestor rolls back
      * earlier runs whose turns fell off it.
@@ -436,7 +436,7 @@ export interface ProviderAdapterV2TurnInput {
   /** Automatic same-Run recovery input; separate from runtime restart continuation. */
   readonly continuation?: "resend" | "empty" | "prompt";
   readonly isRunTerminal?: (runId: RunId) => Effect.Effect<boolean, unknown>;
-  readonly nativeInput?: import("@t3tools/contracts").OrchestrationV2Run["nativeInput"];
+  readonly nativeInput?: import("@nodex/runtime-contracts").OrchestrationV2Run["nativeInput"];
   readonly hostExecutionIdentity?: import("./ExecutionHost.ts").HostTurnIdentity;
   /** Trusted execution-host context supplied after Turn admission. */
   readonly hostInstructions?: string;
@@ -600,7 +600,7 @@ export interface ProviderAdapterV2TurnReconciliation {
   readonly status: "active" | "completed" | "failed" | "interrupted" | "unknown" | "process_gone";
   /** Idempotent snapshots normalized exactly like live events, in delivery order. */
   readonly events: ReadonlyArray<ProviderAdapterV2Event>;
-  readonly failure?: import("@t3tools/contracts").OrchestrationV2ProviderFailure;
+  readonly failure?: import("@nodex/runtime-contracts").OrchestrationV2ProviderFailure;
 }
 
 /** Observation loss is control metadata, never a provider outcome. */
@@ -777,4 +777,4 @@ export class ProviderAdapterV2 extends Context.Service<
       input: ProviderAdapterV2OpenSessionInput,
     ) => Effect.Effect<ProviderAdapterV2SessionRuntime, ProviderAdapterV2Error, Scope.Scope>;
   }
->()("@t3tools/provider-core/server/ProviderAdapter/ProviderAdapterV2") {}
+>()("@nodex/provider-core/server/ProviderAdapter/ProviderAdapterV2") {}

@@ -9,7 +9,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
 import * as OpenCodeServerLedger from "./OpenCodeServerLedger.ts";
@@ -216,7 +216,7 @@ it.layer(layerTest)("OpenCodeRuntime inventory", (it) => {
       const hostEnvironment = yield* HostProcess.Environment;
       const executablePath = yield* HostProcess.ExecutablePath;
       const hostPlatform = yield* HostProcess.Platform;
-      const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-opencode-inventory-" });
+      const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-opencode-inventory-" });
       const isWindows = hostPlatform === "win32";
       const binaryPath = path.join(tempDir, isWindows ? "opencode.cmd" : "opencode");
       const scriptPath = path.join(tempDir, "opencode.mjs");
@@ -239,8 +239,8 @@ it.layer(layerTest)("OpenCodeRuntime inventory", (it) => {
         [
           ...(isWindows ? ["@echo off"] : ["#!/bin/sh"]),
           isWindows
-            ? '"%T3_TEST_NODE_BINARY%" "%T3_TEST_OPENCODE_SCRIPT%" %*'
-            : 'exec "$T3_TEST_NODE_BINARY" "$T3_TEST_OPENCODE_SCRIPT" "$@"',
+            ? '"%NODEX_TEST_NODE_BINARY%" "%NODEX_TEST_OPENCODE_SCRIPT%" %*'
+            : 'exec "$NODEX_TEST_NODE_BINARY" "$NODEX_TEST_OPENCODE_SCRIPT" "$@"',
           "",
         ].join("\n"),
       );
@@ -254,8 +254,8 @@ it.layer(layerTest)("OpenCodeRuntime inventory", (it) => {
         cwd: tempDir,
         environment: {
           ...hostEnvironment,
-          T3_TEST_NODE_BINARY: executablePath,
-          T3_TEST_OPENCODE_SCRIPT: scriptPath,
+          NODEX_TEST_NODE_BINARY: executablePath,
+          NODEX_TEST_OPENCODE_SCRIPT: scriptPath,
         },
       });
 

@@ -1,4 +1,4 @@
-import type { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, ProviderInstanceId, ThreadId } from "@nodex/runtime-contracts";
 
 export interface McpProviderSessionConfig {
   readonly environmentId: EnvironmentId;

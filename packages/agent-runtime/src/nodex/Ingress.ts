@@ -1,12 +1,12 @@
 import * as Stream from "effect/Stream";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
-import { ThreadId } from "@t3tools/contracts";
+import { ThreadId } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import type * as Types from "effect/Types";
 import { HttpEffect, HttpServerRequest, HttpServerResponse } from "effect/http";
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import * as Invocation from "../mcp/McpInvocationContext.ts";
 import * as Projections from "../orchestration-v2/ProjectionStore.ts";
 import { HostBridge } from "./HostBridge.ts";

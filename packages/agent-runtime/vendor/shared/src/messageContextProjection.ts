@@ -1,4 +1,4 @@
-import type { OrchestrationMessageContext } from "@t3tools/contracts";
+import type { OrchestrationMessageContext } from "@nodex/runtime-contracts";
 
 const ENVELOPE_TAG = "nodex_context";
 const ENTRY_TAG = "context";

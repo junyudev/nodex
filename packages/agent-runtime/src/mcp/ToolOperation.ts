@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import { OrchestratorMcpFailure } from "@nodex/runtime-contracts";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";

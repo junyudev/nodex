@@ -2,8 +2,8 @@ import {
   DEFAULT_PROVIDER_HEALTH_REFRESH_INTERVAL,
   type ServerProvider,
   ServerSettingsError,
-} from "@t3tools/contracts";
-import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
+} from "@nodex/runtime-contracts";
+import { resolveServerBackgroundActivitySettings } from "@nodex/runtime-shared/backgroundActivitySettings";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";

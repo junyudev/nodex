@@ -1,5 +1,5 @@
 import { assert } from "@effect/vitest";
-import type { OrchestrationV2ThreadProjection, ProviderReplayTranscript } from "@t3tools/contracts";
+import type { OrchestrationV2ThreadProjection, ProviderReplayTranscript } from "@nodex/runtime-contracts";
 
 import type { OrchestratorV2ScenarioResult } from "../../OrchestratorScenario.ts";
 import { assertSemanticProjectionIntegrity, projectionFor } from "../shared.ts";

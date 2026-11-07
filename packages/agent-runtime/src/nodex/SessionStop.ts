@@ -1,4 +1,4 @@
-import { CommandId, ThreadId } from "@t3tools/contracts";
+import { CommandId, ThreadId } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import { DispatchModeLimit, type DispatchModes } from "../orchestration-v2/DispatchModeLimit.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";

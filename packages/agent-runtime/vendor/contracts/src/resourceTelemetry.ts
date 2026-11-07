@@ -6,7 +6,7 @@ import { DesktopUpdateStateSchema } from "./ipc.ts";
 
 export const RESOURCE_MONITOR_PROTOCOL_VERSION = 3 as const;
 
-/** Whole-host capacity, independent of T3's process diagnostics. */
+/** Whole-host capacity, independent of Nodex's process diagnostics. */
 export const HostResourcesSnapshot = Schema.Struct({
   sampledAt: NonNegativeInt,
   cpuUtilization: Schema.NullOr(Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),

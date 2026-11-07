@@ -6,8 +6,8 @@ import * as NodeSqlite from "node:sqlite";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { ThreadId } from "@t3tools/contracts";
-import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+import { ThreadId } from "@nodex/runtime-contracts";
+import * as NodeSqliteClient from "@nodex/runtime-shared/nodeSqliteClient";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -24,7 +24,7 @@ import * as LegacyV1ThreadImporter from "../orchestration-v2/legacy/LegacyV1Thre
 it.effect(
   "snapshots V1, imports transcripts lazily, and preserves both databases across switches",
   () => {
-    const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-v1-v2-"));
+    const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "nodex-v1-v2-"));
     const sourcePath = NodePath.join(directory, "state.sqlite");
     const destinationPath = NodePath.join(directory, "statev2.sqlite");
     const threadId = ThreadId.make("legacy-thread");
@@ -118,7 +118,7 @@ it.effect(
 );
 
 it.effect("includes committed WAL data and does not publish a failed snapshot", () => {
-  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-v2-snapshot-"));
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "nodex-v2-snapshot-"));
   const sourcePath = NodePath.join(directory, "state.sqlite");
   const destinationPath = NodePath.join(directory, "statev2.sqlite");
   return Effect.gen(function* () {
@@ -158,7 +158,7 @@ it.effect("uses statev2.sqlite for default and explicit development paths", () =
   Effect.gen(function* () {
     for (const devUrl of [undefined, new URL("http://localhost:5173")]) {
       for (const baseDirIsExplicit of [false, true]) {
-        const paths = yield* ServerConfig.deriveServerPaths("/tmp/t3", devUrl, {
+        const paths = yield* ServerConfig.deriveServerPaths("/tmp/nodex", devUrl, {
           baseDirIsExplicit,
         });
         assert.equal(NodePath.basename(paths.dbPath), "statev2.sqlite");
@@ -169,7 +169,7 @@ it.effect("uses statev2.sqlite for default and explicit development paths", () =
 );
 
 it.effect("starts fresh without V1 and never imports over existing V2 state", () => {
-  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-v2-fresh-"));
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "nodex-v2-fresh-"));
   const destinationPath = NodePath.join(directory, "userdata", "statev2.sqlite");
   return Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;

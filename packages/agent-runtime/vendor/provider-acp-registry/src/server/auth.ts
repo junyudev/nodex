@@ -1,11 +1,11 @@
 import { makeAuthOutputRedactor } from "./authOutput.ts";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import { createHash } from "node:crypto";
 import {
   ProviderSetupError,
   type ProviderAuthMethod,
   type ProviderInstanceId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import type { AcpRegistrySettings } from "../settings.ts";
 import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
@@ -19,10 +19,10 @@ import * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import type * as AcpSchema from "effect-acp/compat";
 
-import * as PtyAdapter from "@t3tools/shared/PtyAdapter";
-import { SpawnExecutableResolution } from "@t3tools/shared/shell";
-import * as ProviderAuthFlow from "@t3tools/provider-core/server/providerAuthFlow";
-import type { ProviderCredentialBinding } from "@t3tools/provider-core/server/auth";
+import * as PtyAdapter from "@nodex/runtime-shared/PtyAdapter";
+import { SpawnExecutableResolution } from "@nodex/runtime-shared/shell";
+import * as ProviderAuthFlow from "@nodex/provider-core/server/providerAuthFlow";
+import type { ProviderCredentialBinding } from "@nodex/provider-core/server/auth";
 import {
   normalizeAcpRegistryAuthMethods,
   normalizeAcpRegistryWebUrl,
@@ -30,7 +30,7 @@ import {
 } from "./probe.ts";
 import * as AcpRegistrySupport from "./AcpRegistrySupport.ts";
 import * as AcpRegistryRuntimeCoordinator from "./AcpRegistryRuntimeCoordinator.ts";
-import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
+import * as AcpSessionRuntime from "@nodex/provider-acp/server/AcpSessionRuntime";
 
 type Runtime = Pick<
   AcpSessionRuntime.AcpSessionRuntime["Service"],

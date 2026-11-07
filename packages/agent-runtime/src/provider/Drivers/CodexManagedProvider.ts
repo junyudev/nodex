@@ -1,4 +1,8 @@
-import { ProviderDriverKind, TextGenerationError, type CodexSettings } from "@t3tools/contracts";
+import {
+  ProviderDriverKind,
+  TextGenerationError,
+  type CodexSettings,
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -6,7 +10,7 @@ import * as Stream from "effect/Stream";
 import * as Option from "effect/Option";
 import { ChildProcessSpawner } from "effect/process";
 import { makeCodexTextGeneration } from "../../textGeneration/CodexTextGeneration.ts";
-import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
+import * as ProviderHost from "@nodex/provider-core/server/ProviderHost";
 import { chatGptModels } from "../CodexChatGptModels.ts";
 import { makeCodexManagedRuntime } from "../CodexManagedRuntime.ts";
 import { ProviderDriverError } from "../Errors.ts";
@@ -16,14 +20,14 @@ import {
   makePendingCodexProvider,
   probeCodexSkillsForCwd,
 } from "../CodexProvider.ts";
-import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
-import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+import { makeManagedServerProvider } from "@nodex/provider-core/server/managedProvider";
+import { mergeProviderInstanceEnvironment } from "@nodex/provider-core/server/instanceEnvironment";
 import {
   type ProviderDriverCreateInput,
   type ProviderInstance,
-} from "@t3tools/provider-core/server/driver";
+} from "@nodex/provider-core/server/driver";
 import { codexContinuationIdentity } from "./CodexHomeLayout.ts";
-import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
+import { withInstanceIdentity } from "@nodex/provider-core/server/instanceIdentity";
 import { HttpClient } from "effect/http";
 const DRIVER = ProviderDriverKind.make("codex");
 

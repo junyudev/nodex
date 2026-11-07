@@ -1,4 +1,4 @@
-import { NODEX_APP_TASK_TOOL_NAMES } from "@t3tools/shared/nodexAppMcp";
+import { NODEX_APP_TASK_TOOL_NAMES } from "@nodex/runtime-shared/nodexAppMcp";
 import * as NodeHttp from "node:http";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as Layer from "effect/Layer";

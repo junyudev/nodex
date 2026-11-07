@@ -1,4 +1,4 @@
-import { RuntimeMode, type ServerProvider } from "@t3tools/contracts";
+import { RuntimeMode, type ServerProvider } from "@nodex/runtime-contracts";
 
 /** Catalog choices reflect the execution modes a native provider can enforce. */
 export const withSupportedRuntimeModes = <

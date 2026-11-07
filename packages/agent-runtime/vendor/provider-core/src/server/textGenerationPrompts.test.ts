@@ -12,7 +12,7 @@ import {
   sanitizeThreadTitle,
   toJsonSchemaObject,
 } from "./textGenerationUtils.ts";
-import { TextGenerationError } from "@t3tools/contracts";
+import { TextGenerationError } from "@nodex/runtime-contracts";
 
 describe("buildCommitMessagePrompt", () => {
   it("includes staged patch and summary in the prompt", () => {

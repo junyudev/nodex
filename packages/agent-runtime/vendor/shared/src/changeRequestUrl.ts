@@ -1,4 +1,4 @@
-import type { RepositoryIdentity, ThreadLinkedPullRequest } from "@t3tools/contracts";
+import type { RepositoryIdentity, ThreadLinkedPullRequest } from "@nodex/runtime-contracts";
 import { canonicalRepositoryKey } from "./sourceControl.ts";
 
 /**

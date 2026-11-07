@@ -1,4 +1,4 @@
-import { assertTextGenerationAdmission } from "@t3tools/provider-core/server/textGenerationPolicy";
+import { assertTextGenerationAdmission } from "@nodex/provider-core/server/textGenerationPolicy";
 /**
  * Text generation on an OpenCode 2 server. Both of its `generate` endpoints
  * answer 403 on OpenCode's free tier ("free tier can only be used from within
@@ -8,17 +8,17 @@ import { assertTextGenerationAdmission } from "@t3tools/provider-core/server/tex
  * @module textGeneration/OpenCode2TextGeneration
  */
 import { AbsolutePath, Location, Model, Provider, Session } from "@opencode/client/effect";
-import { TextGenerationError } from "@t3tools/contracts";
-import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
+import { TextGenerationError } from "@nodex/runtime-contracts";
+import { getModelSelectionStringOptionValue } from "@nodex/runtime-shared/model";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
-import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
+import * as ProviderHost from "@nodex/provider-core/server/ProviderHost";
 import * as OpenCode2Server from "./OpenCode2Server.ts";
 import * as OpenCodeRuntime from "../OpenCodeRuntime.ts";
-import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
+import * as TextGenerationOperations from "@nodex/provider-core/server/textGenerationOperations";
 
 const isTextGenerationError = Schema.is(TextGenerationError);
 
@@ -26,7 +26,7 @@ const isTextGenerationError = Schema.is(TextGenerationError);
 const GENERATION_TIMEOUT = "3 minutes";
 
 /**
- * Nothing in a text generation needs a tool, so every tool asks and T3 is not
+ * Nothing in a text generation needs a tool, so every tool asks and Nodex is not
  * there to answer. Denying `shell` or `read` outright gets the whole session
  * refused on OpenCode's free models, and an ask that is never answered would
  * hang, so asks are rejected as they arrive.

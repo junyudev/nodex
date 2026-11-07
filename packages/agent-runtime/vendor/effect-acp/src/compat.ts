@@ -8,7 +8,7 @@ type KnownContentBlock<T extends V2.ContentBlock["type"]> = Extract<
   { readonly type: T }
 >;
 
-/** Provider-neutral content accepted by T3 after ACP v1 or v2 negotiation. */
+/** Provider-neutral content accepted by Nodex after ACP v1 or v2 negotiation. */
 export type ContentBlock =
   | KnownContentBlock<"text">
   | KnownContentBlock<"image">
@@ -16,7 +16,7 @@ export type ContentBlock =
   | KnownContentBlock<"resource_link">
   | KnownContentBlock<"resource">
   | {
-      readonly type: "_t3_unknown";
+      readonly type: "_unknown";
       readonly originalType: string;
       readonly raw: unknown;
     };
@@ -263,7 +263,7 @@ export type ToolCallContent =
     }
   | { readonly type: "terminal"; readonly terminalId: string; readonly _meta?: Meta }
   | {
-      readonly type: "_t3_unknown";
+      readonly type: "_unknown";
       readonly originalType: string;
       readonly raw: unknown;
     };
@@ -359,7 +359,7 @@ export type SessionUpdate =
   | { readonly sessionUpdate: "plan"; readonly entries: ReadonlyArray<V2.PlanEntry> }
   | { readonly sessionUpdate: "current_mode_update"; readonly currentModeId: string }
   | {
-      readonly sessionUpdate: "_t3_unknown";
+      readonly sessionUpdate: "_unknown";
       readonly originalSessionUpdate: string;
       readonly raw: unknown;
     };

@@ -6,16 +6,16 @@ import {
   ProviderThreadId,
   ThreadId,
   type OrchestrationV2ThreadProjection,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
-import { acpSelectionTransition } from "@t3tools/provider-core/server/selectionTransition";
+import { acpSelectionTransition } from "@nodex/provider-core/server/selectionTransition";
 import * as ProviderSwitch from "./ProviderSwitchService.ts";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 
 const driver = ProviderDriverKind.make("codex");
 const currentInstanceId = ProviderInstanceId.make("codex_primary");

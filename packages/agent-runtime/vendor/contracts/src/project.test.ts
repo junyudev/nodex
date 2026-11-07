@@ -190,7 +190,7 @@ effectIt.effect("project icon overrides accept Lucide icons, colors, and emoji",
 
 effectIt.effect("project monograms validate text and palette colors", () =>
   Effect.gen(function* () {
-    for (const text of ["A", "T3", "É", "文書", "कि", "किखि", "e\u0301"]) {
+    for (const text of ["A", "Nodex", "É", "文書", "कि", "किखि", "e\u0301"]) {
       assert.deepEqual(yield* decodeUpdateIcon({ kind: "monogram", color: "violet", text }), {
         kind: "monogram",
         text,
@@ -202,7 +202,7 @@ effectIt.effect("project monograms validate text and palette colors", () =>
       { kind: "monogram", text: "\u0301", color: "blue" },
       { kind: "monogram", text: "A B", color: "blue" },
       { kind: "monogram", text: "🚀", color: "blue" },
-      { kind: "monogram", text: "T3", color: "ultraviolet" },
+      { kind: "monogram", text: "Nodex", color: "ultraviolet" },
     ]) {
       assert.strictEqual((yield* Effect.exit(decodeUpdateIcon(projectIcon)))._tag, "Failure");
     }
@@ -231,11 +231,11 @@ effectIt.effect("sends and stores icons in their plain shape", () =>
 
 effectIt.effect("reads monograms stored in the pre-v2 fallback shape", () =>
   Effect.gen(function* () {
-    const monogram = { kind: "monogram", text: "T3", color: "violet" } as const;
+    const monogram = { kind: "monogram", text: "Nodex", color: "violet" } as const;
     const fallback = { kind: "lucide", name: "folder-code", color: "violet" } as const;
     for (const legacy of [
-      { ...fallback, monogramText: "T3" },
-      { ...fallback, monogram: "T3" },
+      { ...fallback, monogramText: "Nodex" },
+      { ...fallback, monogram: "Nodex" },
     ]) {
       assert.deepEqual(yield* decodeStoredIcon(legacy), monogram);
       assert.deepEqual(yield* decodeReceivedIcon(legacy), monogram);

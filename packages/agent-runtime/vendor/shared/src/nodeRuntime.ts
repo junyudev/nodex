@@ -27,7 +27,7 @@ export class NodeRuntimeUnavailableError extends Schema.TaggedError<NodeRuntimeU
 }
 
 export interface SelfInvocation {
-  /** The binary to spawn: Node, Electron (with `ELECTRON_RUN_AS_NODE`), or the packaged T3. */
+  /** The binary to spawn: Node, Electron (with `ELECTRON_RUN_AS_NODE`), or the packaged Nodex. */
   readonly command: string;
   /**
    * The absolute entrypoint script to place before the subcommand, or
@@ -38,7 +38,7 @@ export interface SelfInvocation {
 }
 
 /**
- * How another process runs this T3 install's CLI, for hidden subcommands the
+ * How another process runs this Nodex install's CLI, for hidden subcommands the
  * server hands to children such as `acp-mcp-bridge`. `process.execPath` plus
  * `argv[1]` only works for a script run by Node; the single-executable has no
  * entrypoint script (Node repeats the binary at argv[1]), so callers must not
@@ -57,14 +57,14 @@ export const resolveSelfInvocation = Effect.fn("nodeRuntime.resolveSelfInvocatio
   } satisfies SelfInvocation;
 });
 
-/** `[entrypoint?, ...args]`: the argv that runs `args` against this T3 install. */
+/** `[entrypoint?, ...args]`: the argv that runs `args` against this Nodex install. */
 export const selfInvocationArgs = (
   invocation: SelfInvocation,
   args: ReadonlyArray<string>,
 ): ReadonlyArray<string> =>
   invocation.entrypoint === undefined ? args : [invocation.entrypoint, ...args];
 
-/** A standalone T3 binary runs its embedded CLI, regardless of script arguments. */
+/** A standalone Nodex binary runs its embedded CLI, regardless of script arguments. */
 export const resolveNodeExecutable = Effect.fn("nodeRuntime.resolveNodeExecutable")(function* (
   feature: typeof NodeRuntimeFeature.Type,
   environment?: NodeJS.ProcessEnv,

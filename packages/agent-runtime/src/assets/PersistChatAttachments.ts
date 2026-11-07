@@ -4,7 +4,7 @@ import {
   PersistChatAttachmentsError,
   getProviderAttachmentLimitError,
   type PersistChatAttachmentsInput,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Base64 from "effect/encoding/Base64";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";

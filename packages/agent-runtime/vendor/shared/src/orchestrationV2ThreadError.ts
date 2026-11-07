@@ -2,7 +2,7 @@ import type {
   OrchestrationV2ProviderFailure,
   OrchestrationV2Run,
   OrchestrationV2TurnItem,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 
 /** Only a failed root turn of the current run owns the thread's failure state. */

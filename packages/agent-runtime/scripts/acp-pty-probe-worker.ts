@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { PtyAdapter, type PtyProcess } from "@t3tools/shared/PtyAdapter";
+import { PtyAdapter, type PtyProcess } from "@nodex/runtime-shared/PtyAdapter";
 import { NodePtyAdapterLive, NodePtyModuleLoaderRef } from "../src/nodex/NodePtyAdapter.ts";
 import { hasCompletePtyLine, probePtyResize } from "../../../scripts/testing/pty-resize-probe.ts";
 

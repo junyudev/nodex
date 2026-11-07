@@ -11,7 +11,7 @@ const load = (env: Record<string, string>) =>
 
 const SPEC_OFF =
   "OTEL_SDK_DISABLED is set, so no telemetry is exported, whatever configured it; set NODEX_OTEL_SDK_DISABLED=false to export anyway";
-const T3_OFF =
+const NODEX_OFF =
   "NODEX_OTEL_SDK_DISABLED is set, so no telemetry is exported, whatever configured it";
 const specIgnored = (value: string) =>
   `OTEL_SDK_DISABLED=${value} was read as false; the OpenTelemetry specification recognizes only the string true, so use OTEL_SDK_DISABLED=true or NODEX_OTEL_SDK_DISABLED to say it any other way`;
@@ -42,34 +42,34 @@ describe("OtelEnvironment", () => {
       warnings: [specIgnored("yes")],
     },
     // NODEX_OTEL_SDK_DISABLED takes Config.Boolean's values, case-insensitively.
-    { name: "t3 1", env: { NODEX_OTEL_SDK_DISABLED: "1" }, disabled: true, warnings: [T3_OFF] },
+    { name: "nodex 1", env: { NODEX_OTEL_SDK_DISABLED: "1" }, disabled: true, warnings: [NODEX_OFF] },
     {
-      name: "t3 TRUE",
+      name: "nodex TRUE",
       env: { NODEX_OTEL_SDK_DISABLED: "TRUE" },
       disabled: true,
-      warnings: [T3_OFF],
+      warnings: [NODEX_OFF],
     },
-    { name: "t3 n", env: { NODEX_OTEL_SDK_DISABLED: "n" }, disabled: false, warnings: [] },
+    { name: "nodex n", env: { NODEX_OTEL_SDK_DISABLED: "n" }, disabled: false, warnings: [] },
     {
-      name: "t3 false overrides spec true",
+      name: "nodex false overrides spec true",
       env: { NODEX_OTEL_SDK_DISABLED: "false", OTEL_SDK_DISABLED: "true" },
       disabled: false,
       warnings: [],
     },
     {
-      name: "blank t3 falls through",
+      name: "blank nodex falls through",
       env: { NODEX_OTEL_SDK_DISABLED: "  ", OTEL_SDK_DISABLED: "true" },
       disabled: true,
       warnings: [SPEC_OFF],
     },
     {
-      name: "unreadable t3 warns and falls through",
+      name: "unreadable nodex warns and falls through",
       env: { NODEX_OTEL_SDK_DISABLED: "maybe", OTEL_SDK_DISABLED: "true" },
       disabled: true,
       warnings: ["NODEX_OTEL_SDK_DISABLED=maybe is not a yes or a no and was ignored", SPEC_OFF],
     },
     {
-      name: "bad spec value still warns when t3 answered",
+      name: "bad spec value still warns when nodex answered",
       env: { NODEX_OTEL_SDK_DISABLED: "false", OTEL_SDK_DISABLED: "yes" },
       disabled: false,
       warnings: [specIgnored("yes")],
@@ -202,7 +202,7 @@ describe("OtelEnvironment", () => {
         traces: "Unset",
         metrics: "Unset",
         logs: "Unset",
-        warnings: [T3_OFF],
+        warnings: [NODEX_OFF],
       },
       {
         name: "an exporter of none turns off only its signal",
@@ -298,9 +298,9 @@ describe("OtelEnvironment", () => {
       },
       {
         name: "headers are comma-separated pairs with percent-encoded values",
-        env: { ...ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS: "api-key=a%20b,tenant=t3" },
-        traces: { protocol: "http/protobuf", headers: { "api-key": "a b", tenant: "t3" } },
-        logs: { protocol: "http/protobuf", headers: { "api-key": "a b", tenant: "t3" } },
+        env: { ...ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS: "api-key=a%20b,tenant=nodex" },
+        traces: { protocol: "http/protobuf", headers: { "api-key": "a b", tenant: "nodex" } },
+        logs: { protocol: "http/protobuf", headers: { "api-key": "a b", tenant: "nodex" } },
         warnings: [],
       },
       {
@@ -390,9 +390,9 @@ describe("OtelEnvironment", () => {
   });
 
   describe("resolveSignalEndpoint", () => {
-    const t3Export = {
+    const nodexExport = {
       protocol: "http/json",
-      headers: { "x-key": "t3" },
+      headers: { "x-key": "nodex" },
       exportIntervalMs: 5_000,
     } as const;
     const withLogs = (logs: OtelEnvironment.OtelSignal, disabled = false) => ({
@@ -407,21 +407,21 @@ describe("OtelEnvironment", () => {
     });
     it.each([
       {
-        name: "T3CODE_OTLP_*_URL wins over an OTEL endpoint",
+        name: "NODEX_OTLP_*_URL wins over an OTEL endpoint",
         otel: withLogs(otelExport),
-        t3Url: "http://t3:4318/v1/logs",
-        expected: { url: "http://t3:4318/v1/logs", export: t3Export },
+        nodexUrl: "http://nodex:4318/v1/logs",
+        expected: { url: "http://nodex:4318/v1/logs", export: nodexExport },
       },
       {
-        name: "T3CODE_OTLP_*_URL wins over a signal the OTEL variables turned off",
+        name: "NODEX_OTLP_*_URL wins over a signal the OTEL variables turned off",
         otel: withLogs(OtelEnvironment.OtelSignal.Off()),
-        t3Url: "http://t3:4318/v1/logs",
-        expected: { url: "http://t3:4318/v1/logs", export: t3Export },
+        nodexUrl: "http://nodex:4318/v1/logs",
+        expected: { url: "http://nodex:4318/v1/logs", export: nodexExport },
       },
       {
         name: "an OTEL endpoint brings its headers and protocol over the fallback",
         otel: withLogs(otelExport),
-        t3Url: " ",
+        nodexUrl: " ",
         expected: {
           url: "http://otel:4318/v1/logs",
           export: {
@@ -434,27 +434,27 @@ describe("OtelEnvironment", () => {
       {
         name: "a signal the OTEL variables turned off does not fall through",
         otel: withLogs(OtelEnvironment.OtelSignal.Off()),
-        t3Url: undefined,
+        nodexUrl: undefined,
         expected: undefined,
       },
       {
         name: "an unset signal takes the first non-blank fallback",
         otel: withLogs(OtelEnvironment.OtelSignal.Unset()),
-        t3Url: undefined,
-        expected: { url: "http://settings:4318/v1/logs", export: t3Export },
+        nodexUrl: undefined,
+        expected: { url: "http://settings:4318/v1/logs", export: nodexExport },
       },
       {
         name: "the kill switch wins over everything",
         otel: withLogs(otelExport, true),
-        t3Url: "http://t3:4318/v1/logs",
+        nodexUrl: "http://nodex:4318/v1/logs",
         expected: undefined,
       },
-    ])("$name", ({ otel, t3Url, expected }) => {
+    ])("$name", ({ otel, nodexUrl, expected }) => {
       assert.deepStrictEqual(
         OtelEnvironment.resolveSignalEndpoint(
           otel,
           "logs",
-          { url: t3Url, export: t3Export },
+          { url: nodexUrl, export: nodexExport },
           "",
           "http://settings:4318/v1/logs",
         ),
@@ -466,16 +466,16 @@ describe("OtelEnvironment", () => {
   it.effect("an exporter of none keeps the Settings endpoint from re-enabling its signal", () =>
     Effect.gen(function* () {
       const otel = yield* load({ OTEL_LOGS_EXPORTER: "none" });
-      const t3 = {
+      const nodex = {
         url: undefined,
         export: { protocol: "http/json", headers: undefined, exportIntervalMs: 10_000 },
       } as const;
       assert.strictEqual(
-        OtelEnvironment.resolveSignalEndpoint(otel, "logs", t3, "http://settings:4318/v1/logs"),
+        OtelEnvironment.resolveSignalEndpoint(otel, "logs", nodex, "http://settings:4318/v1/logs"),
         undefined,
       );
       assert.strictEqual(
-        OtelEnvironment.resolveSignalEndpoint(otel, "traces", t3, "http://settings:4318/v1/traces")
+        OtelEnvironment.resolveSignalEndpoint(otel, "traces", nodex, "http://settings:4318/v1/traces")
           ?.url,
         "http://settings:4318/v1/traces",
       );
@@ -492,7 +492,7 @@ describe("OtelEnvironment", () => {
           ConfigProvider.fromEnv({ env: { OTEL_RESOURCE_ATTRIBUTES: raw } }),
         );
         const otel = yield* OtelEnvironment.load.pipe(Effect.provide(layerEnv));
-        const resource = yield* OtlpResource.fromConfig({ serviceName: "t3" }).pipe(
+        const resource = yield* OtlpResource.fromConfig({ serviceName: "nodex" }).pipe(
           Effect.provide(
             Layer.provide(
               OtelEnvironment.layerResourceAttributes(otel.resourceAttributes),

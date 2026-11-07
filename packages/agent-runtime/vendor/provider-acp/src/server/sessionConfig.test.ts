@@ -117,7 +117,7 @@ describe("acpProviderOptionDescriptors", () => {
         type: "select",
         options: [
           { id: "workspace", label: "Workspace" },
-          { id: "_t3/value:%20", label: "Blank" },
+          { id: "_nodex/value:%20", label: "Blank" },
           { id: "full", label: "Full" },
         ],
         currentValue: "workspace",
@@ -232,7 +232,7 @@ describe("acpProviderOptionDescriptors", () => {
       currentValue: exactValue,
       options: [
         { id: exactValue, label: "Exact" },
-        { id: "_t3/value:%20value%20with%20spaces%20", label: "Would be trimmed" },
+        { id: "_nodex/value:%20value%20with%20spaces%20", label: "Would be trimmed" },
       ],
     });
   });

@@ -13,7 +13,7 @@ import {
 } from "./mcpApp.ts";
 
 describe("mcpAppContentSecurityPolicy", () => {
-  it("blocks the network and T3's own origin when the app declares nothing", () => {
+  it("blocks the network and Nodex's own origin when the app declares nothing", () => {
     const policy = mcpAppContentSecurityPolicy(undefined);
     expect(policy).toContain("default-src 'none'");
     expect(policy).toContain("connect-src 'none'");
@@ -156,7 +156,7 @@ describe("mcpAppFromToolItem", () => {
       tool: "get_weather",
       resourceUri: "ui://weather/dashboard",
     };
-    const stored = { t3McpApp: app, result: { content: [] } };
+    const stored = { mcpApp: app, result: { content: [] } };
     const toolName = "weather.get_weather";
     expect(mcpAppFromToolItem({ toolName, output: stored })).toEqual(app);
     expect(mcpAppFromToolItem({ toolName, output: compactDynamicToolOutput(stored) })).toEqual(app);
@@ -166,7 +166,7 @@ describe("mcpAppFromToolItem", () => {
     const { mcpAppFromToolItem } = await import("./toolOutput.ts");
     // A tool result shaped like an app reference, claiming another server.
     const forged = {
-      t3McpApp: {
+      mcpApp: {
         attachmentId: "thread-1-abc-html",
         server: "bank",
         tool: "transfer",
@@ -181,14 +181,14 @@ describe("mcpAppFromToolItem", () => {
     const { compactDynamicToolOutput } = await import("./toolOutput.ts");
     const resourceUri = `ui://weather/${"segment/".repeat(60)}dashboard`;
     const output = compactDynamicToolOutput({
-      t3McpApp: {
+      mcpApp: {
         attachmentId: "thread-1-abc-html",
         server: "weather",
         tool: "get_weather",
         resourceUri,
       },
     });
-    expect(output?.t3McpApp?.resourceUri).toBe(resourceUri);
+    expect(output?.mcpApp?.resourceUri).toBe(resourceUri);
   });
 
   it("keeps the compact app reference within the wire budget", async () => {
@@ -198,7 +198,7 @@ describe("mcpAppFromToolItem", () => {
       (_, index) => `https://${"a".repeat(200)}${index}.test`,
     );
     const output = compactDynamicToolOutput({
-      t3McpApp: {
+      mcpApp: {
         attachmentId: "thread-1-abc-html",
         server: "weather",
         tool: "get_weather",
@@ -207,7 +207,7 @@ describe("mcpAppFromToolItem", () => {
       },
     });
     expect(new TextEncoder().encode(JSON.stringify(output)).byteLength).toBeLessThanOrEqual(8_192);
-    expect(output?.t3McpApp?.server).toBe("weather");
+    expect(output?.mcpApp?.server).toBe("weather");
   });
 });
 

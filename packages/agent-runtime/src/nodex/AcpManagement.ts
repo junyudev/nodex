@@ -1,5 +1,5 @@
-import { NARROWEST_RUNTIME_MODE, RuntimeMode } from "@t3tools/contracts";
-import { providerCredentialBindingsOverlap } from "@t3tools/provider-core/server/auth";
+import { NARROWEST_RUNTIME_MODE, RuntimeMode } from "@nodex/runtime-contracts";
+import { providerCredentialBindingsOverlap } from "@nodex/provider-core/server/auth";
 import {
   AcpRegistrySearchInput,
   AcpRegistryPrepareInput,
@@ -17,7 +17,7 @@ import {
   ThreadId,
   ProjectId,
   type AcpRegistryListProvidersResult,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
@@ -31,16 +31,16 @@ import { createHash } from "node:crypto";
 import * as nodePath from "node:path";
 import * as FileSystem from "effect/FileSystem";
 import * as Equal from "effect/Equal";
-import { AcpRegistryCatalog } from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
-import { AcpRegistryRuntimeCoordinator } from "@t3tools/provider-acp-registry/server/AcpRegistryRuntimeCoordinator";
-import { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
-import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
-import * as HostProcess from "@t3tools/shared/HostProcess";
-import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
+import { AcpRegistryCatalog } from "@nodex/provider-acp-registry/server/AcpRegistrySupport";
+import { AcpRegistryRuntimeCoordinator } from "@nodex/provider-acp-registry/server/AcpRegistryRuntimeCoordinator";
+import { AcpRegistrySettings } from "@nodex/provider-acp-registry/settings";
+import { mergeProviderInstanceEnvironment } from "@nodex/provider-core/server/instanceEnvironment";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
+import type { ProviderInstance } from "@nodex/provider-core/server/driver";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionManager.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
-import { deriveThreadFromProviderThread } from "@t3tools/provider-core/server/IdAllocator";
+import { deriveThreadFromProviderThread } from "@nodex/provider-core/server/IdAllocator";
 import { ProviderPolicy } from "./ProviderConfiguration.ts";
 import { AcpManagementError, acpFailure } from "./AcpFailures.ts";
 import type { AgentAcpFailure, AgentAcpOperation } from "./AcpManagementContract.ts";

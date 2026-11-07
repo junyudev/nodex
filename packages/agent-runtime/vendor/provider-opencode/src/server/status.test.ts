@@ -895,7 +895,7 @@ it("lists an OpenCode 2 directory's skills by id and its commands after /compact
   NodeAssert.deepEqual(
     openCode2CommandsToServerProviderSlashCommands([
       ...scanned.commands,
-      { name: "compact", description: "a workspace command named like T3's own" },
+      { name: "compact", description: "a workspace command named like Nodex's own" },
     ]).map((command) => command.name),
     ["compact", "init", "review", "hello"],
   );

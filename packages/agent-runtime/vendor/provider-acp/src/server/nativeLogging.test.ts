@@ -1,5 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { ProviderDriverKind, ThreadId } from "@t3tools/contracts";
+import { ProviderDriverKind, ThreadId } from "@nodex/runtime-contracts";
 import { assert, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -8,7 +8,7 @@ import * as Logger from "effect/Logger";
 import * as Schema from "effect/Schema";
 import * as AcpErrors from "effect-acp/errors";
 
-import type * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+import type * as ProviderEventLoggers from "@nodex/provider-core/server/ProviderEventLoggers";
 import { makeAcpNativeLoggerFactory } from "./nativeLogging.ts";
 
 const nodeServicesIt = it.layer(NodeServices.layer);

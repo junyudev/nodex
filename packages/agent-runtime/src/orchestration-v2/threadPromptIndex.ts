@@ -1,4 +1,7 @@
-import type { OrchestrationV2ProjectedTurnItem, OrchestrationV2TurnItem } from "@t3tools/contracts";
+import type {
+  OrchestrationV2ProjectedTurnItem,
+  OrchestrationV2TurnItem,
+} from "@nodex/runtime-contracts";
 import { isThreadHistoryTurnStart } from "./threadHistoryPaging.ts";
 
 /** The newest prompts an index lists; older prompts appear once their history loads. */

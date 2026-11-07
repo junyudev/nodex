@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { OrchestrationV2TurnItemJson } from "@t3tools/contracts";
+import { OrchestrationV2TurnItemJson } from "@nodex/runtime-contracts";
 import { claudeMcpToolCall } from "../orchestration-v2/Adapters/ClaudeMcpToolCall.ts";
 import { stripUnservedToolOutputImageBytes } from "../orchestration-v2/toolOutputImageBytes.ts";
 import {
@@ -12,7 +12,7 @@ import {
   projectTurnItemForWire,
 } from "../orchestration-v2/WireProjection.ts";
 import { DatabaseSync } from "node:sqlite";
-import type { PersistChatAttachmentsResult } from "@t3tools/contracts";
+import type { PersistChatAttachmentsResult } from "@nodex/runtime-contracts";
 import type { AgentWire } from "./Interface.ts";
 import * as Application from "./Application.ts";
 import { AgentRuntime } from "./Service.ts";

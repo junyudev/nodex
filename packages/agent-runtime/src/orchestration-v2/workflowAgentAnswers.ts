@@ -12,7 +12,7 @@
  */
 import * as NodePath from "node:path";
 
-import { OrchestrationWorkflowFileError } from "@t3tools/contracts";
+import { OrchestrationWorkflowFileError } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 
 import { field, text } from "./unknownField.ts";

@@ -1,12 +1,12 @@
 import type { ModelPolicyError } from "../nodex/ModelPolicy.ts";
-import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { resolveProjectSettings } from "@nodex/runtime-shared/projectSettings";
 import {
   CommandId,
   type ChatAttachment,
   type MessageId,
   type ServerSettingsError,
   type ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -20,8 +20,8 @@ import type { OrchestratorV2Error } from "./Orchestrator.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 
-import { formatThreadTitleContext } from "@t3tools/provider-core/server/threadTitleContext";
-export { formatThreadTitleContext } from "@t3tools/provider-core/server/threadTitleContext";
+import { formatThreadTitleContext } from "@nodex/provider-core/server/threadTitleContext";
+export { formatThreadTitleContext } from "@nodex/provider-core/server/threadTitleContext";
 
 export class ThreadTitleRegenerationService extends Context.Service<
   ThreadTitleRegenerationService,
@@ -43,7 +43,7 @@ export class ThreadTitleRegenerationService extends Context.Service<
       | ThreadManagementService.ThreadManagementProviderInstanceDisabledError
     >;
   }
->()("t3/orchestration-v2/ThreadTitleRegenerationService") {}
+>()("nodex/runtime/orchestration-v2/ThreadTitleRegenerationService") {}
 
 const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService.ThreadManagementService;

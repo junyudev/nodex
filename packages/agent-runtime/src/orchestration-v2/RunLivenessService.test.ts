@@ -22,14 +22,14 @@ import {
   type OrchestrationV2ProviderTurn,
   type OrchestrationV2CheckpointScope,
   type OrchestrationV2DomainEvent,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as CheckpointService from "./CheckpointService.ts";
@@ -213,7 +213,7 @@ const withLiveness = <A>(input: {
             input.terminalOwner || input.supersededAttempt ? [f.thread.id] : [],
         }),
       getThreadRecords: () =>
-        Effect.succeed<import("@t3tools/contracts").OrchestrationV2ThreadProjection>({
+        Effect.succeed<import("@nodex/runtime-contracts").OrchestrationV2ThreadProjection>({
           ...state,
           checkpointScopes: [f.scope],
           checkpoints: [],

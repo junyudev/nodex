@@ -267,7 +267,7 @@ function keepWindowsPathDestination(this: DestinationCompileContext, token: unkn
 }
 
 /**
- * CommonMark reads the `\.` in `C:\me\.t3\shot.png` as an escape, even in a link
+ * CommonMark reads the `\.` in `C:\me\.nodex\shot.png` as an escape, even in a link
  * destination. Every backslash in a Windows path is a separator, so link, image, and
  * definition destinations that are Windows paths keep the text as written.
  */

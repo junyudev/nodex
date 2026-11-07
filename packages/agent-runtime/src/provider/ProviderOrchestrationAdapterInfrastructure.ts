@@ -2,8 +2,8 @@ import * as Layer from "effect/Layer";
 
 import * as ClaudeAdapterV2 from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import * as CodexAdapterV2 from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
+import * as ProviderContinuationRequests from "@nodex/provider-core/server/ProviderContinuationRequests";
 
 export type ProviderOrchestrationAdapterInfrastructure =
   | ClaudeAdapterV2.ClaudeAgentSdkQueryRunner

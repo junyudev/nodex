@@ -1,7 +1,11 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it, describe } from "@effect/vitest";
-import { ProviderInstanceId, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
-import { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
+import {
+  ProviderInstanceId,
+  ProviderDriverKind,
+  type ServerProvider,
+} from "@nodex/runtime-contracts";
+import { AcpRegistrySettings } from "@nodex/provider-acp-registry/settings";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";

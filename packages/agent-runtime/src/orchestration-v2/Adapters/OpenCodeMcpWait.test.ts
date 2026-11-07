@@ -1,14 +1,19 @@
 import { assert, it } from "@effect/vitest";
-import { EnvironmentId, ProviderInstanceId, ProviderSessionId, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProviderInstanceId,
+  ProviderSessionId,
+  ThreadId,
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import * as Sessions from "@t3tools/provider-core/server/McpProviderSessions";
-import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import { ProviderAdapterV2RuntimePolicy } from "@t3tools/provider-core/server/ProviderAdapter";
-import * as OpenCodeRuntime from "@t3tools/provider-opencode/server/OpenCodeRuntime";
-import { OpenCodeSettings } from "@t3tools/provider-opencode/settings";
+import * as Sessions from "@nodex/provider-core/server/McpProviderSessions";
+import * as ProviderHost from "@nodex/provider-core/server/ProviderHost";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
+import { ProviderAdapterV2RuntimePolicy } from "@nodex/provider-core/server/ProviderAdapter";
+import * as OpenCodeRuntime from "@nodex/provider-opencode/server/OpenCodeRuntime";
+import { OpenCodeSettings } from "@nodex/provider-opencode/settings";
 import { makeOpenCodeAdapterV2 } from "../../../vendor/provider-opencode/src/server/adapter.ts";
 
 it.effect(

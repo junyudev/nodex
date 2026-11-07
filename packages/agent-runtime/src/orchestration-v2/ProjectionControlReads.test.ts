@@ -1,4 +1,4 @@
-import { latestNativeContextUsage } from "@t3tools/provider-core/contextUsage";
+import { latestNativeContextUsage } from "@nodex/provider-core/contextUsage";
 import { assert, it } from "@effect/vitest";
 import {
   EventId,
@@ -17,7 +17,7 @@ import {
   TurnItemId,
   OrchestrationV2ThreadStreamItem,
   type OrchestrationV2DomainEvent,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -30,7 +30,7 @@ import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderTurnControlService from "./ProviderTurnControlService.ts";
 import * as EventSink from "./EventSink.ts";
 import * as RuntimeRequestService from "./RuntimeRequestService.ts";
-import { derive } from "@t3tools/provider-core/server/IdAllocator";
+import { derive } from "@nodex/provider-core/server/IdAllocator";
 import { buildBoundedThreadStreamSnapshot } from "./ThreadStream.ts";
 import { projectTurnItemForDetail } from "./WireProjection.ts";
 import { THREAD_HISTORY_PAGE_POLICY } from "./threadHistoryPaging.ts";

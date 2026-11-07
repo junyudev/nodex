@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { ClaudeSettings } from "@t3tools/contracts";
-import * as HostProcess from "@t3tools/shared/HostProcess";
-import * as OpenCodeRuntime from "@t3tools/provider-opencode/server/OpenCodeRuntime";
-import * as OpenCodeServerLedger from "@t3tools/provider-opencode/server/OpenCodeServerLedger";
+import { ClaudeSettings } from "@nodex/runtime-contracts";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
+import * as OpenCodeRuntime from "@nodex/provider-opencode/server/OpenCodeRuntime";
+import * as OpenCodeServerLedger from "@nodex/provider-opencode/server/OpenCodeServerLedger";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";

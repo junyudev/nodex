@@ -3,7 +3,7 @@ import type {
   ProviderUserInputAnswers,
   UserInputAttachments,
   UserInputAttachmentAnswerPayload,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 
 export interface AsyncQuestionReply {
   readonly question: OrchestrationV2UserInputQuestion;

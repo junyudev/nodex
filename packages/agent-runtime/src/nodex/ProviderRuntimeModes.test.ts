@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { withSupportedRuntimeModes } from "./ProviderRuntimeModes.ts";
-import { ProviderDriverKind } from "@t3tools/contracts";
+import { ProviderDriverKind } from "@nodex/runtime-contracts";
 
 describe("provider execution mode catalog", () => {
   it.each(["codex", "claudeAgent", "acpRegistry", "opencode"])(

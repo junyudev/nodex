@@ -188,8 +188,8 @@ function matchToken(
   ) {
     // A token that opens with punctuation (".ts") brings its own boundary, as in messages.
     if (field.wordStarts[index] || ownBoundary) {
-      // Whole when the match ends where a word ends: "t3c" is a prefix of
-      // "t3code", ".ts" whole in "index.ts" but a prefix in "parser.tsx".
+      // Whole when the match ends where a word ends: "h2" is a prefix of
+      // "h2o", ".ts" whole in "index.ts" but a prefix in "parser.tsx".
       const end = index + token.length;
       const whole =
         end >= field.text.length ||
@@ -213,7 +213,7 @@ function matchToken(
     if (joined) return joined;
   }
   if ((best !== null && best.score > MID_WORD) || !typos || token.length < 3) return best;
-  // Numbers skip typos to keep pull requests distinct. Words with digits ("t3code") do not.
+  // Numbers skip typos to keep pull requests distinct. Words with digits ("h2o") do not.
   if (LETTER.test(token)) {
     for (let index = 0; index < field.text.length; index++) {
       if (!field.wordStarts[index]) continue;
@@ -868,10 +868,10 @@ export interface SearchMatchHint {
   readonly ranges: ReadonlyArray<SearchRange>;
 }
 
-// Most threads' branches start with the app's own worktree prefix ("t3/", and
-// "t3code/" before it), so "t3 connect" would match nearly every thread.
-// Only before more text, so typing "t3/" does not empty the list for a keystroke.
-const WORKTREE_BRANCH_PREFIX_PATTERN = new RegExp(`^(?:${WORKTREE_BRANCH_PREFIX}|t3code)/(?=\\S)`);
+// Most threads' branches start with the app's own worktree prefix ("nodex/"), so "nodex connect"
+// would match nearly every thread.
+// Only before more text, so typing "nodex/" does not empty the list for a keystroke.
+const WORKTREE_BRANCH_PREFIX_PATTERN = new RegExp(`^${WORKTREE_BRANCH_PREFIX}/(?=\\S)`);
 
 function searchableBranch(branch: string | null | undefined): string | null {
   return branch ? branch.replace(WORKTREE_BRANCH_PREFIX_PATTERN, "") : null;

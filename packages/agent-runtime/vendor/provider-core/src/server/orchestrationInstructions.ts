@@ -1,4 +1,4 @@
-import type { ProviderInteractionMode } from "@t3tools/contracts";
+import type { ProviderInteractionMode } from "@nodex/runtime-contracts";
 
 /**
  * The host owns the application tool guidance and supplies it as

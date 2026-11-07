@@ -1,5 +1,5 @@
-import type { OrchestrationV2TurnItem } from "@t3tools/contracts";
-import { imageAvailabilityText } from "@t3tools/provider-core/server/handoffBudget";
+import type { OrchestrationV2TurnItem } from "@nodex/runtime-contracts";
+import { imageAvailabilityText } from "@nodex/provider-core/server/handoffBudget";
 
 function jsonText(value: unknown): string {
   try {

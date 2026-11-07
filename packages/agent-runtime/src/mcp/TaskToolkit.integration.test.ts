@@ -27,7 +27,7 @@ import {
   type ServerProvider,
   ThreadId,
   TurnItemId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -46,20 +46,20 @@ import { CodexOrchestratorReplayHarness } from "../orchestration-v2/Adapters/Cod
 import * as CommandReceiptStore from "../orchestration-v2/CommandReceiptStore.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import * as ServerSettings from "../serverSettings.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
-import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
-import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
+import * as ProviderContinuationRequests from "@nodex/provider-core/server/ProviderContinuationRequests";
+import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
+import { checkpointWorkspace } from "@nodex/provider-testing/replayWorkspace";
 import * as ProviderReplayHarness from "../orchestration-v2/testkit/ProviderReplayHarness.ts";
 import {
   decodeProviderReplayNdjson,
   materializeReplayTranscriptWorkspace,
-} from "@t3tools/provider-testing/replayTranscript";
+} from "@nodex/provider-testing/replayTranscript";
 import * as ProviderRegistryMock from "../provider/testUtils/providerRegistryMock.ts";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import { layerToolkit } from "../nodex/Mcp.ts";
 import * as OrchestratorMcp from "./OrchestratorMcpService.ts";
 import { runtimeHistoryContent } from "../nodex/RuntimeHistoryContent.ts";

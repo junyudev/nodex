@@ -4,8 +4,8 @@ import {
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ProviderThread,
   type OrchestrationV2TurnItem,
-} from "@t3tools/contracts";
-import type * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+} from "@nodex/runtime-contracts";
+import type * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 
 /** A native import is read ancestry, never a synthetic Run or a new user prompt. */
 export function nativeThreadHistoryEvents(input: {

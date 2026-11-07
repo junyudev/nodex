@@ -2,7 +2,7 @@
 // provider readiness probe tests. Answers the handshake and, for session
 // requests, returns REAL captured responses (codexMultiAgentWire.json), then
 // replays a scripted multi-agent notification sequence read from the
-// T3_CODEX_COLLAB_SCRIPT env var (a JSON file path) when the first turn
+// NODEX_CODEX_COLLAB_SCRIPT env var (a JSON file path) when the first turn
 // starts. Runs as a plain Node process — stdlib only.
 import * as NodeFS from "node:fs";
 import * as NodeReadline from "node:readline";
@@ -13,7 +13,7 @@ const here = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const fixture = JSON.parse(
   NodeFS.readFileSync(NodePath.join(here, "codexMultiAgentWire.json"), "utf8"),
 );
-const script = JSON.parse(NodeFS.readFileSync(process.env.T3_CODEX_COLLAB_SCRIPT, "utf8"));
+const script = JSON.parse(NodeFS.readFileSync(process.env.NODEX_CODEX_COLLAB_SCRIPT, "utf8"));
 
 const write = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 let turnStartCount = 0;
@@ -41,7 +41,7 @@ rl.on("line", (line) => {
     const request = openServerRequests.get(id);
     openServerRequests.delete(id);
     NodeFS.appendFileSync(
-      `${process.env.T3_CODEX_COLLAB_SCRIPT}.approvalResponses`,
+      `${process.env.NODEX_CODEX_COLLAB_SCRIPT}.approvalResponses`,
       `${JSON.stringify({ id, label: request.label, result: message.result ?? null })}\n`,
     );
     write({
@@ -56,7 +56,7 @@ rl.on("line", (line) => {
   }
   if (method === undefined && script.serverRequests?.some((request) => request.id === id)) {
     NodeFS.appendFileSync(
-      `${process.env.T3_CODEX_COLLAB_SCRIPT}.responses`,
+      `${process.env.NODEX_CODEX_COLLAB_SCRIPT}.responses`,
       `${JSON.stringify({ id, result: message.result, error: message.error })}\n`,
     );
     if (script.completeTurnOnServerResponse && activeTurn) {
@@ -75,7 +75,7 @@ rl.on("line", (line) => {
     write({
       id,
       result: {
-        userAgent: "t3-collab-mock/0.0.0",
+        userAgent: "nodex-collab-mock/0.0.0",
         codexHome: "/tmp",
         platformFamily: "unix",
         platformOs: "linux",
@@ -108,7 +108,7 @@ rl.on("line", (line) => {
   }
   if (method === "thread/inject_items" && script.recordRequests) {
     NodeFS.appendFileSync(
-      `${process.env.T3_CODEX_COLLAB_SCRIPT}.requests`,
+      `${process.env.NODEX_CODEX_COLLAB_SCRIPT}.requests`,
       `${JSON.stringify({ method, params: message.params })}\n`,
     );
     write({ id, result: {} });
@@ -117,7 +117,7 @@ rl.on("line", (line) => {
   if (method === "thread/resume") {
     if (script.recordRequests) {
       NodeFS.appendFileSync(
-        `${process.env.T3_CODEX_COLLAB_SCRIPT}.requests`,
+        `${process.env.NODEX_CODEX_COLLAB_SCRIPT}.requests`,
         `${JSON.stringify({ method, params: message.params })}\n`,
       );
     }
@@ -218,7 +218,7 @@ rl.on("line", (line) => {
     // failInterruptFor simulates a dead child whose interrupt errors.
     const target = message.params?.threadId;
     NodeFS.appendFileSync(
-      `${process.env.T3_CODEX_COLLAB_SCRIPT}.interrupts`,
+      `${process.env.NODEX_CODEX_COLLAB_SCRIPT}.interrupts`,
       `${JSON.stringify({ threadId: target, turnId: message.params?.turnId })}\n`,
     );
     if (

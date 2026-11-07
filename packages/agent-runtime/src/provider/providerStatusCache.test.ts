@@ -4,8 +4,8 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
-} from "@t3tools/contracts";
-import { createModelCapabilities } from "@t3tools/shared/model";
+} from "@nodex/runtime-contracts";
+import { createModelCapabilities } from "@nodex/runtime-shared/model";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -79,7 +79,9 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
 
     return Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-provider-cache-invalid-" });
+      const tempDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "nodex-provider-cache-invalid-",
+      });
       const cachePath = `${tempDir}/provider.json`;
       const secretCacheValue = "secret-cache-value";
       yield* fs.writeFileString(cachePath, `{ "token": "${secretCacheValue}" }`);
@@ -103,7 +105,7 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
   it.effect("writes and reads provider status snapshots", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-provider-cache-" });
+      const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-provider-cache-" });
       const codexProvider = makeProvider(CODEX_DRIVER);
       const claudeProvider = makeProvider(CLAUDE_AGENT_DRIVER, {
         status: "warning",
@@ -246,7 +248,7 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
       version: null,
       status: "disabled",
       auth: { status: "unknown" },
-      message: "Codex is disabled in T3 Code settings.",
+      message: "Codex is disabled in Nodex settings.",
     });
 
     assert.deepStrictEqual(

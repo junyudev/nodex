@@ -18,7 +18,7 @@ import {
   type UploadChatImageAttachment,
   ProjectId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as FileSystem from "effect/FileSystem";

@@ -318,7 +318,7 @@ export const AcpRegistryProbeResult = Schema.Struct({
   models: Schema.Array(AcpRegistryProbeModel).check(Schema.isMaxLength(256)),
   currentModelId: Schema.NullOr(AcpRegistryProbeText),
   inputModalities: ModelCapabilities.fields.inputModalities,
-  // Non-model session config options and session modes, pre-mapped onto T3's
+  // Non-model session config options and session modes, pre-mapped onto Nodex's
   // provider option descriptors so model capabilities can carry them directly.
   configOptions: Schema.Array(ProviderOptionDescriptor).check(Schema.isMaxLength(16)),
   sessionManagement: Schema.Struct({

@@ -5,14 +5,11 @@
  *
  * @module provider/builtInDrivers
  */
-import {
-  AcpRegistryDriver,
-  type AcpRegistryDriverEnv,
-} from "@t3tools/provider-acp-registry/server";
+import { AcpRegistryDriver, type AcpRegistryDriverEnv } from "@nodex/provider-acp-registry/server";
 import { ClaudeDriver, type ClaudeDriverEnv } from "./Drivers/ClaudeDriver.ts";
 import { CodexDriver, type CodexDriverEnv } from "./Drivers/CodexDriver.ts";
-import { OpenCodeDriver, type OpenCodeDriverEnv } from "@t3tools/provider-opencode/server";
-import type { AnyProviderDriver } from "@t3tools/provider-core/server/driver";
+import { OpenCodeDriver, type OpenCodeDriverEnv } from "@nodex/provider-opencode/server";
+import type { AnyProviderDriver } from "@nodex/provider-core/server/driver";
 
 /** Infrastructure services required to construct any built-in driver. */
 export type BuiltInDriversEnv =

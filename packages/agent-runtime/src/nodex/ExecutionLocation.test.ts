@@ -9,7 +9,7 @@ import {
   ProviderSessionId,
   RunId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as Fiber from "effect/Fiber";
@@ -17,7 +17,7 @@ import * as Option from "effect/Option";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Statement from "effect/sql/Statement";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 import { ProjectionStoreV2, layer as storeLayer } from "../orchestration-v2/ProjectionStore.ts";

@@ -6,7 +6,7 @@ import {
   ProviderTurnId,
   RunId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -19,7 +19,7 @@ import {
   ContextHandoffBudgetError,
 } from "./failure.ts";
 import * as IdAllocator from "./IdAllocator.ts";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 
 it("redacts credentials and URL secrets from provider failures", () => {
   const failure = makeProviderFailure({
@@ -281,5 +281,4 @@ it("names Nodex-observed losses so automatic recovery can recognize them", () =>
 
   const uncertain = makeProviderFailure({ cause: { _tag: "ContextHandoffDeliveryUncertainError" } });
   assert.equal(uncertain.code, "context_handoff_delivery_uncertain");
-  assert.notInclude(uncertain.message, "T3");
 });

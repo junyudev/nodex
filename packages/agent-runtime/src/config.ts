@@ -17,8 +17,8 @@ import type * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 
 import { sweepStalePendingAttachments } from "./attachmentStore.ts";
-import { DEFAULT_SIGNAL_EXPORT, type SignalExport } from "@t3tools/shared/observability";
-import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
+import { DEFAULT_SIGNAL_EXPORT, type SignalExport } from "@nodex/runtime-shared/observability";
+import * as OtelEnvironment from "@nodex/runtime-shared/otelEnvironment";
 
 export const DEFAULT_PORT = 3773;
 
@@ -106,7 +106,7 @@ export class ServerConfig extends Context.Service<
     readonly tailscaleServeEnabled: boolean;
     readonly tailscaleServePort: number;
   }
->()("t3/config/ServerConfig") {
+>()("nodex/runtime/config/ServerConfig") {
   /** @deprecated Import and use `layerTest` from this module. */
   static readonly layerTest = (
     cwd: string,
@@ -124,7 +124,7 @@ export const otlpResource = (config: ServerConfig["Service"]) => ({
   serviceName: "nodex-agent-runtime",
   attributes: {
     "service.namespace": "nodex",
-    "service.runtime": "t3-server",
+    "service.runtime": "nodex-agent-runtime",
     "service.mode": config.mode,
   },
 });

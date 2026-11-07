@@ -1,9 +1,9 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
-import * as HostProcess from "@t3tools/shared/HostProcess";
-import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
-import { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
-import * as Catalog from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
+import * as TestProviderHost from "@nodex/provider-testing/TestProviderHost";
+import { AcpRegistrySettings } from "@nodex/provider-acp-registry/settings";
+import * as Catalog from "@nodex/provider-acp-registry/server/AcpRegistrySupport";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";

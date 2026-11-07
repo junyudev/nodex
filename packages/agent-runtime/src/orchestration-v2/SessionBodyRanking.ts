@@ -4,7 +4,7 @@ import {
   scoreMessageSearch,
   type MessageSearchRank,
   type ThreadOpenStats,
-} from "@t3tools/shared/paletteSearch";
+} from "@nodex/runtime-shared/paletteSearch";
 
 export interface SessionBodyUsageSubject {
   readonly latestUserAuthoredMessageAt: string | null;

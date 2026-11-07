@@ -9,8 +9,8 @@ import type {
   ProviderTurnId,
   RunId,
   ThreadId,
-} from "@t3tools/contracts";
-import { OrchestrationV2ContextBudget } from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
+import { OrchestrationV2ContextBudget } from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Cause from "effect/Cause";
 

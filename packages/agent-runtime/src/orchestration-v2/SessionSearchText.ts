@@ -1,4 +1,4 @@
-import { messageMatcher, messageSearchTokens } from "@t3tools/shared/paletteSearch";
+import { messageMatcher, messageSearchTokens } from "@nodex/runtime-shared/paletteSearch";
 
 const MARKDOWN_LINK = /!?\[([^\]\n]*)\]\([^)\s]*\)/g;
 const lowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;

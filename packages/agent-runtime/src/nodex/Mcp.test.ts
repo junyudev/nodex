@@ -3,7 +3,7 @@ import { Tool } from "effect/ai";
 import * as Schema from "effect/Schema";
 import { TaskReadResult, TaskToolkit } from "../mcp/toolkits/task/tools.ts";
 import { taskReadView } from "../mcp/TaskHistoryRead.ts";
-import { NODEX_APP_TASK_TOOL_NAMES } from "@t3tools/shared/nodexAppMcp";
+import { NODEX_APP_TASK_TOOL_NAMES } from "@nodex/runtime-shared/nodexAppMcp";
 
 const propertyNames = (schema: unknown): ReadonlyArray<string> => {
   if (Array.isArray(schema)) return schema.flatMap(propertyNames);

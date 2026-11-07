@@ -8,7 +8,7 @@ import {
   ThreadId,
   type OrchestrationV2CheckpointScope,
   VcsProcessTimeoutError,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -16,7 +16,7 @@ import * as Layer from "effect/Layer";
 
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as CheckpointService from "./CheckpointService.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 
 it.effect.each([false, true, "interrupt"] as const)(
   "materializes baseline, lookup fails=%s",

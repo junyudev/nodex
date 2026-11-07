@@ -7,7 +7,7 @@ import type {
 import * as Effect from "effect/Effect";
 import { isModelOn, policyModelKey } from "../../../../src/shared/model-policy.ts";
 import { RuntimeModelPolicy, providerForPolicy } from "./ModelPolicy.ts";
-import type { ModelSelection } from "@t3tools/contracts";
+import type { ModelSelection } from "@nodex/runtime-contracts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   resolveClaudeCatalogApiModelId,

@@ -14,7 +14,7 @@ import type {
   AgentTimelinePage,
   AgentThreadProgress,
 } from "./Interface.ts";
-import type { PersistChatAttachmentsResult } from "@t3tools/contracts";
+import type { PersistChatAttachmentsResult } from "@nodex/runtime-contracts";
 import * as Application from "./Application.ts";
 import { AgentRuntime } from "./Service.ts";
 import type { AgentShellSnapshot } from "./Interface.ts";

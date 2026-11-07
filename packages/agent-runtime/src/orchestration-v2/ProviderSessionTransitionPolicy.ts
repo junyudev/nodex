@@ -3,11 +3,11 @@ import type {
   OrchestrationV2ProviderCapabilities,
   ProviderDriverKind,
   ProviderInteractionMode,
-} from "@t3tools/contracts";
-import { modelSelectionsEqual } from "@t3tools/shared/model";
+} from "@nodex/runtime-contracts";
+import { modelSelectionsEqual } from "@nodex/runtime-shared/model";
 
-import type { ProviderContinuationIdentity } from "@t3tools/provider-core/server/driver";
-import type { ProviderSelectionTransitionPlan } from "@t3tools/provider-core/server/selectionTransition";
+import type { ProviderContinuationIdentity } from "@nodex/provider-core/server/driver";
+import type { ProviderSelectionTransitionPlan } from "@nodex/provider-core/server/selectionTransition";
 
 export type ProviderSessionTransition =
   | { readonly type: "reuse" }

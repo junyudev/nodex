@@ -4,7 +4,7 @@ import type { AgentWindowsSandboxOperations } from "./WindowsSandboxContract.ts"
 import type {
   HostTurnIdentity,
   HostNativeSessionIdentity,
-} from "@t3tools/provider-core/server/ExecutionHost";
+} from "@nodex/provider-core/server/ExecutionHost";
 import type * as DateTime from "effect/DateTime";
 import type * as Brand from "effect/Brand";
 import type {
@@ -25,7 +25,7 @@ import type {
   OrchestrationV2Subagent,
   OrchestrationV2ConversationMessage,
   ChatImageAttachment,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 
 /** Plain transport types. Execution schemas and their codecs stay in the engine process. */
 export type AgentWire<T> = T extends DateTime.Utc
@@ -201,7 +201,7 @@ export interface AgentPredictionInput {
   };
 }
 export type AgentExecutionLocation = AgentWire<
-  import("@t3tools/contracts").OrchestrationV2AppThread["executionLocation"]
+  import("@nodex/runtime-contracts").OrchestrationV2AppThread["executionLocation"]
 > & {};
 
 export type AgentBackgroundTask =
@@ -242,7 +242,7 @@ export interface AgentRuntimeOperations
       readonly modelSelection: AgentWire<ModelSelection>;
       readonly cwd: string;
       readonly interactionMode?: "default" | "plan";
-      readonly runtimeMode?: import("@t3tools/contracts").RuntimeMode;
+      readonly runtimeMode?: import("@nodex/runtime-contracts").RuntimeMode;
       readonly sideChatCapture?: true;
     };
     readonly output: { readonly threadId: string };
@@ -360,7 +360,7 @@ export interface AgentRuntimeOperations
   /** Prepared images accompany the prompt, after its text and in their supplied order. */
   readonly "text.generate-structured": {
     readonly input: AgentWire<
-      import("@t3tools/provider-core/server/textGeneration").StructuredGenerationInput
+      import("@nodex/provider-core/server/textGeneration").StructuredGenerationInput
     >;
     readonly output: unknown;
   };
@@ -449,7 +449,7 @@ export interface AgentRuntimeOperations
       readonly commandId: string;
       readonly messageId: string;
       readonly text: string;
-      readonly attachments: readonly AgentWire<import("@t3tools/contracts").ChatAttachment>[];
+      readonly attachments: readonly AgentWire<import("@nodex/runtime-contracts").ChatAttachment>[];
       readonly context?: Extract<AgentCommand, { readonly type: "message.dispatch" }>["context"];
       readonly interactionMode?: Extract<
         AgentCommand,
@@ -767,7 +767,7 @@ export interface AgentRuntimeOperations
     };
     readonly output:
       | (({ readonly path: string } | { readonly dataUrl: string }) & {
-          readonly attachment?: AgentWire<import("@t3tools/contracts").ChatAttachment>;
+          readonly attachment?: AgentWire<import("@nodex/runtime-contracts").ChatAttachment>;
         })
       | null;
   };

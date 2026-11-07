@@ -1,5 +1,5 @@
-import type { ResponseStreamingMode } from "@t3tools/contracts";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import type { ResponseStreamingMode } from "@nodex/runtime-contracts";
+import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 
 // An opening fence may sit at any indentation, since fences inside list
 // items are indented past the marker. A closing fence may be indented at most

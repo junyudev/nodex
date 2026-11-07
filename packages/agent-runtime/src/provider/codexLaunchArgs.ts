@@ -1,4 +1,4 @@
-import { tokenizeCliArgs } from "@t3tools/shared/cliArgs";
+import { tokenizeCliArgs } from "@nodex/runtime-shared/cliArgs";
 
 const NODEX_CODEX_LAUNCH_ARGS_ENV = "NODEX_CODEX_LAUNCH_ARGS";
 

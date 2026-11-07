@@ -1,5 +1,5 @@
 {
-  "name": "@t3tools/provider-acp",
+  "name": "@nodex/provider-acp",
   "private": true,
   "type": "module",
   "exports": {
@@ -16,9 +16,9 @@
     "typecheck": "tsc-rs --noEmit"
   },
   "dependencies": {
-    "@t3tools/contracts": "workspace:*",
-    "@t3tools/provider-core": "workspace:*",
-    "@t3tools/shared": "workspace:*",
+    "@nodex/runtime-contracts": "workspace:*",
+    "@nodex/provider-core": "workspace:*",
+    "@nodex/runtime-shared": "workspace:*",
     "diff": "9.0.0",
     "effect": "4.0.6"
   },

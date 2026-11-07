@@ -1,8 +1,12 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
-import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
-import { makeManualOnlyProviderMaintenanceCapabilities } from "@t3tools/provider-core/server/maintenanceResolver";
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ServerProvider,
+} from "@nodex/runtime-contracts";
+import type { ProviderInstance } from "@nodex/provider-core/server/driver";
+import { makeManualOnlyProviderMaintenanceCapabilities } from "@nodex/provider-core/server/maintenanceResolver";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";

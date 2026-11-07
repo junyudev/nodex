@@ -45,7 +45,7 @@ export interface AgentScopeCommand {
   readonly args: ReadonlyArray<string>;
 }
 
-export const AgentScope = Context.Reference<AgentScopeShape>("@t3tools/shared/AgentScope", {
+export const AgentScope = Context.Reference<AgentScopeShape>("@nodex/runtime-shared/AgentScope", {
   defaultValue: () => ({
     wrap: ({ command, args }) => Effect.succeed({ command, args }),
     oomKilled: () => Effect.succeed(false),
@@ -58,7 +58,7 @@ export const AgentScope = Context.Reference<AgentScopeShape>("@t3tools/shared/Ag
  * provider flavors and do not take a thread id, so the ACP adapter provides it.
  */
 export const AgentScopeThreadId = Context.Reference<string | undefined>(
-  "@t3tools/shared/AgentScope/ThreadId",
+  "@nodex/runtime-shared/AgentScope/ThreadId",
   { defaultValue: () => undefined },
 );
 
@@ -105,14 +105,14 @@ export function agentScopeCommand(input: {
 }): AgentScopeCommand {
   const { command, args, scope } = input;
   if (scope === undefined) {
-    return { command: "/bin/sh", args: ["-c", LAUNCH_SCRIPT, "t3-agent", command, ...args] };
+    return { command: "/bin/sh", args: ["-c", LAUNCH_SCRIPT, "nodex-agent", command, ...args] };
   }
   return {
     command: "/bin/sh",
     args: [
       "-c",
       SCOPED_LAUNCH_SCRIPT,
-      "t3-agent",
+      "nodex-agent",
       scope.runtimeDir,
       scope.systemdRun,
       "--user",

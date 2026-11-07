@@ -42,7 +42,7 @@ const spawnWriteLockHolder = (dbPath: string, holdMs: number) =>
   );
 
 it.effect("waits out a concurrent writer instead of failing with SQLITE_BUSY", () => {
-  const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-sqlite-busy-"));
+  const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "nodex-sqlite-busy-"));
   const dbPath = NodePath.join(tempDir, "state.sqlite");
 
   return Effect.gen(function* () {
@@ -59,7 +59,7 @@ it.effect("waits out a concurrent writer instead of failing with SQLITE_BUSY", (
 });
 
 it.effect("shrinks the WAL file back to the size limit after a large write", () => {
-  const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-sqlite-wal-"));
+  const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "nodex-sqlite-wal-"));
   const dbPath = NodePath.join(tempDir, "state.sqlite");
   const walFileSize = () => NodeFS.statSync(`${dbPath}-wal`).size;
   // About 25% more 4 KB rows than the limit holds, in one transaction.

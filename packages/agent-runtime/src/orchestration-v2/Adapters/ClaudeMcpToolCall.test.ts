@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { readToolOutputImage } from "@t3tools/shared/toolOutput";
+import { readToolOutputImage } from "@nodex/runtime-shared/toolOutput";
 import { claudeMcpToolCall } from "./ClaudeMcpToolCall.ts";
 
 const input = {

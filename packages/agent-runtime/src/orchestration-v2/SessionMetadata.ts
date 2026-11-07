@@ -1,4 +1,4 @@
-import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+import * as NodeSqliteClient from "@nodex/runtime-shared/nodeSqliteClient";
 import type { ProjectionStoreV2Error } from "./ProjectionStore.ts";
 import { isSnoozed } from "./threadSnoozePolicy.ts";
 import type { ThreadActiveFlag } from "@nodex/codex-app-server-protocol/v2";
@@ -7,7 +7,7 @@ import type {
   OrchestrationV2ThreadShell,
   OrchestrationV2AppThread,
   OrchestrationV2Run,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";

@@ -4,7 +4,7 @@ import {
   type ServerProvider,
   type ServerProviderModel,
   type ServerProviderSlashCommand,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -13,8 +13,8 @@ import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
-import { createModelCapabilities } from "@t3tools/shared/model";
-import { resolveSpawnCommand } from "@t3tools/shared/shell";
+import { createModelCapabilities } from "@nodex/runtime-shared/model";
+import { resolveSpawnCommand } from "@nodex/runtime-shared/shell";
 import type {
   Options as ClaudeQueryOptions,
   SlashCommand as ClaudeSlashCommand,
@@ -34,12 +34,12 @@ import {
   providerModelsFromSettings,
   spawnAndCollect,
   type ServerProviderDraft,
-} from "@t3tools/provider-core/server/snapshotProbe";
+} from "@nodex/provider-core/server/snapshotProbe";
 import { resolveClaudeSdkExecutablePath } from "./Drivers/ClaudeExecutable.ts";
 import { makeClaudeEnvironment } from "./Drivers/ClaudeHome.ts";
 import { discoverClaudeSkills } from "./Drivers/ClaudeSkills.ts";
-import type { ProviderWorkspaceSnapshot } from "@t3tools/provider-core/server/driver";
-import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
+import type { ProviderWorkspaceSnapshot } from "@nodex/provider-core/server/driver";
+import { makeUnavailableUsageLimits } from "@nodex/provider-core/server/usageLimits";
 import {
   type ClaudeScopedLimitNames,
   claudeUsageResponseToLimits,

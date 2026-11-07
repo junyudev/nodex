@@ -1,5 +1,5 @@
 {
-  "name": "@t3tools/provider-opencode",
+  "name": "@nodex/provider-opencode",
   "private": true,
   "type": "module",
   "exports": {
@@ -22,15 +22,15 @@
     "@opencode/client": "2.1.4",
     "@opencode/protocol": "2.1.4",
     "@opencode/schema": "2.1.4",
-    "@t3tools/contracts": "workspace:*",
-    "@t3tools/provider-core": "workspace:*",
-    "@t3tools/shared": "workspace:*",
+    "@nodex/runtime-contracts": "workspace:*",
+    "@nodex/provider-core": "workspace:*",
+    "@nodex/runtime-shared": "workspace:*",
     "effect": "4.0.6"
   },
   "devDependencies": {
     "@effect/platform-node": "4.0.6",
     "@effect/vitest": "4.0.6",
-    "@t3tools/provider-testing": "workspace:*",
+    "@nodex/provider-testing": "workspace:*",
     "@types/node": "24.19.2",
     "vite-plus": "1.4.0"
   }

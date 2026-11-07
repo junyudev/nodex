@@ -8,7 +8,7 @@ import {
   type ServerSettings,
   type ThreadEnvMode,
   type WorktreeCleanupRules,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import { normalizeProjectPathForComparison } from "./path.ts";
 import { fallbackTextGenerationModelSelection } from "./serverSettings.ts";
 

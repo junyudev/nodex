@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
-import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
+import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 
 const make = (maxItems = 2, maxBytes = 8) =>
   BoundedQueue.make<string, BoundedQueue.BufferOverflow>({

@@ -1,4 +1,4 @@
-import { TextGenerationError } from "@t3tools/contracts";
+import { TextGenerationError } from "@nodex/runtime-contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 

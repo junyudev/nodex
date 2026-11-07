@@ -1,4 +1,4 @@
-import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
+import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 import type * as AcpCompat from "./compat.ts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -39,7 +39,7 @@ export interface AcpRequestContext {
 
 /** Lossless string identity for JSON-RPC request IDs used by callback maps. */
 export function acpRequestIdentity(requestId: AcpError.AcpRequestId): string {
-  const prefix = "$t3:jsonrpc:";
+  const prefix = "$nodex:jsonrpc:";
   if (typeof requestId === "number") return `${prefix}number:${requestId}`;
   return requestId.startsWith(prefix) ? `${prefix}string:${requestId}` : requestId;
 }

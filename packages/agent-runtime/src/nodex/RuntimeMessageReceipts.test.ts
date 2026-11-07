@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import { CommandId, MessageId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { CommandId, MessageId, ProviderInstanceId, ThreadId } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as FileSystem from "effect/FileSystem";

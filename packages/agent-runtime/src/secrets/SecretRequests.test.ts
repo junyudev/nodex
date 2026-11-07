@@ -6,7 +6,7 @@ import {
   type OrchestrationV2ServerCommand,
   ThreadId,
   TurnItemId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -285,7 +285,7 @@ it.effect("traces and counts a saved answer without ever recording the value", (
       Effect.map((snapshots) => {
         const found = snapshots.find(
           (snapshot) =>
-            snapshot.id === "t3_secret_refs_consumed_total" &&
+            snapshot.id === "nodex_secret_refs_consumed_total" &&
             snapshot.attributes?.result === "used",
         );
         return found?.type === "Counter" ? Number(found.state.count) : 0;
@@ -372,7 +372,7 @@ it.effect("drops values nobody used once they expire, and keeps the rest", () =>
     Effect.provide(
       ServerSecretStore.layer.pipe(
         Layer.provideMerge(
-          ServerConfig.layerTest(process.cwd(), { prefix: "t3-secret-requests-" }),
+          ServerConfig.layerTest(process.cwd(), { prefix: "nodex-secret-requests-" }),
         ),
         Layer.provideMerge(NodeServices.layer),
       ),

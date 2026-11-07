@@ -1,12 +1,12 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { CommandId, ProviderDriverKind } from "@t3tools/contracts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import { makeProviderReplayGate } from "@t3tools/provider-testing/replayGate";
+import { CommandId, ProviderDriverKind } from "@nodex/runtime-contracts";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
+import { makeProviderReplayGate } from "@nodex/provider-testing/replayGate";
 import {
   materializeReplayTranscriptWorkspace,
   readProviderReplayTranscript,
-} from "@t3tools/provider-testing/replayTranscript";
+} from "@nodex/provider-testing/replayTranscript";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";

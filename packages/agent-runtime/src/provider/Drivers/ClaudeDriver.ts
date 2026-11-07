@@ -12,7 +12,7 @@
  *
  * @module provider/Drivers/ClaudeDriver
  */
-import { ClaudeSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { ClaudeSettings, ProviderDriverKind } from "@nodex/runtime-contracts";
 import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";
 import * as Crypto from "effect/Crypto";
@@ -24,11 +24,11 @@ import { HttpClient } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
 
 import { makeClaudeTextGeneration } from "../../textGeneration/ClaudeTextGeneration.ts";
-import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
-import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
+import * as ProviderLatestVersions from "@nodex/provider-core/server/ProviderLatestVersions";
+import * as ProviderHost from "@nodex/provider-core/server/ProviderHost";
 import * as ServerConfig from "../../config.ts";
-import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
-import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+import { expandHomePath } from "@nodex/provider-core/server/pathExpansion";
+import * as ProviderEventLoggers from "@nodex/provider-core/server/ProviderEventLoggers";
 import {
   createClaudeAdapterV2,
   type ClaudeAdapterV2DriverEnv,
@@ -45,34 +45,34 @@ import {
   probeClaudeWorkspaceSnapshot,
   signOutClaudeCli,
 } from "../ClaudeProvider.ts";
-import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
-import * as ModelCatalog from "@t3tools/provider-core/server/ModelCatalog";
+import { makeManagedServerProvider } from "@nodex/provider-core/server/managedProvider";
+import * as ModelCatalog from "@nodex/provider-core/server/ModelCatalog";
 import { resolveClaudeModelCatalog } from "../ClaudeModelCatalog.ts";
 import {
   defaultProviderContinuationIdentity,
   type ProviderDriver,
   type ProviderInstance,
-} from "@t3tools/provider-core/server/driver";
-import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
-import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+} from "@nodex/provider-core/server/driver";
+import { withInstanceIdentity } from "@nodex/provider-core/server/instanceIdentity";
+import { mergeProviderInstanceEnvironment } from "@nodex/provider-core/server/instanceEnvironment";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
   makeCachedProviderMaintenanceResolution,
   makePackageManagedProviderMaintenanceResolver,
   normalizeCommandPath,
   resolveProviderMaintenanceCapabilitiesEffect,
-} from "@t3tools/provider-core/server/maintenanceResolver";
+} from "@nodex/provider-core/server/maintenanceResolver";
 import {
   haveProviderSnapshotSettingsChanged,
   makeProviderSnapshotSettingsSource,
   type ProviderSnapshotSettings,
-} from "@t3tools/provider-core/server/snapshotSettings";
+} from "@nodex/provider-core/server/snapshotSettings";
 import {
   makeClaudeCapabilitiesCacheKey,
   makeClaudeContinuationGroupKey,
   resolveClaudeHomePath,
 } from "./ClaudeHome.ts";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("claudeAgent");

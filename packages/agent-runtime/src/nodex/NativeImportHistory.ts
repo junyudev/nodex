@@ -11,7 +11,7 @@ import {
   type ChatAttachment,
   type OrchestrationV2UnavailableImage,
   type OrchestrationV2ImportedImageLink,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 

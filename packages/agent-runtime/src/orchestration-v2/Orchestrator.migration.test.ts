@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as Schema from "effect/Schema";
-import { ContextHandoffId, OrchestrationV2Command, ThreadId } from "@t3tools/contracts";
+import { ContextHandoffId, OrchestrationV2Command, ThreadId } from "@nodex/runtime-contracts";
 
 import {
   appendContextHandoffId,
@@ -73,18 +73,18 @@ it("links and unlinks a pull request through thread.metadata.update (#8160)", ()
     threadId: "thread-1",
     linkedPullRequest: {
       projectId: "project-1",
-      repository: "pingdotgg/t3code",
+      repository: "acme/widgets",
       number: 8160,
-      url: "https://github.com/pingdotgg/t3code/pull/8160",
+      url: "https://github.com/acme/widgets/pull/8160",
     },
   });
   assert.deepStrictEqual(
     (linked as Extract<typeof linked, { type: "thread.metadata.update" }>).linkedPullRequest,
     {
       projectId: "project-1",
-      repository: "pingdotgg/t3code",
+      repository: "acme/widgets",
       number: 8160,
-      url: "https://github.com/pingdotgg/t3code/pull/8160",
+      url: "https://github.com/acme/widgets/pull/8160",
     },
   );
   const unlinked = decode({

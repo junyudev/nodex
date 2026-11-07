@@ -1,7 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
-import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+import * as NodeSqliteClient from "@nodex/runtime-shared/nodeSqliteClient";
 import * as Clock from "effect/Clock";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

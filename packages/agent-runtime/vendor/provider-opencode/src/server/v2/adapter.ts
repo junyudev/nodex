@@ -1,4 +1,4 @@
-import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
+import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 /**
  * The OpenCode 2 runtime behind the `opencode` driver. It talks to the
  * instance's `opencode serve` process through the HTTP client and reads that
@@ -15,7 +15,7 @@ import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
  *
  * A `subagent` call runs in a child session shown as a subagent thread. A
  * background one outlives its turn; when it ends, OpenCode starts a parent
- * execution T3 did not ask for, which waits here for the continuation turn T3
+ * execution Nodex did not ask for, which waits here for the continuation turn Nodex
  * opens for it.
  *
  * @module orchestration-v2/Adapters/OpenCode2AdapterV2
@@ -54,9 +54,9 @@ import {
   type ProviderApprovalDecision,
   type RunId,
   type RuntimeRequestId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import type * as Cause from "effect/Cause";
-import { publicMcpToolInput } from "@t3tools/provider-core/server/mcpToolPresentation";
+import { publicMcpToolInput } from "@nodex/provider-core/server/mcpToolPresentation";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Crypto from "effect/Crypto";
@@ -70,37 +70,37 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
-import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import * as ProviderHost from "@nodex/provider-core/server/ProviderHost";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import * as OpenCode2Client from "./OpenCode2Client.ts";
 import * as OpenCode2Server from "./OpenCode2Server.ts";
 import * as OpenCodeRuntime from "../OpenCodeRuntime.ts";
 import { openCodePermissionRequestKind } from "../adapter.ts";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
-import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
-import { SKILL_MENTION_PATTERN } from "@t3tools/shared/composerInlineTokens";
-import * as KeyedLock from "@t3tools/shared/KeyedLock";
-import { getModelSelectionStringOptionValue, modelSelectionsEqual } from "@t3tools/shared/model";
-import { causeErrorTag } from "@t3tools/shared/observability";
+import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
+import { buildRuntimeInstructions } from "@nodex/provider-core/server/runtimeInstructions";
+import { SKILL_MENTION_PATTERN } from "@nodex/runtime-shared/composerInlineTokens";
+import * as KeyedLock from "@nodex/runtime-shared/KeyedLock";
+import { getModelSelectionStringOptionValue, modelSelectionsEqual } from "@nodex/runtime-shared/model";
+import { causeErrorTag } from "@nodex/runtime-shared/observability";
 
-import { providerMessageTextWithAttachmentPaths } from "@t3tools/provider-core/server/attachmentPrompt";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import { providerMessageTextWithAttachmentPaths } from "@nodex/provider-core/server/attachmentPrompt";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import {
   backgroundWorkNotification,
   type BackgroundWorkReport,
-} from "@t3tools/provider-core/server/notification";
-import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
-import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+} from "@nodex/provider-core/server/notification";
+import * as ProviderContinuationRequests from "@nodex/provider-core/server/ProviderContinuationRequests";
+import { makeProviderFailure } from "@nodex/provider-core/server/failure";
 import {
   makeSubagentChildThread,
   makeSubagentConversationArtifacts,
   subagentThreadTitle,
-} from "@t3tools/provider-core/server/subagentProjection";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import { turnScopedSelectionTransition } from "@t3tools/provider-core/server/selectionTransition";
+} from "@nodex/provider-core/server/subagentProjection";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
+import { turnScopedSelectionTransition } from "@nodex/provider-core/server/selectionTransition";
 import { OPENCODE_PROVIDER } from "../adapter.ts";
 import { openCodeToolTurnItem } from "../toolItems.ts";
-import { APP_TOOLS_PROVIDER_TIMEOUT_MS, NODEX_APP_MCP_SERVER } from "@t3tools/shared/nodexAppMcp";
+import { APP_TOOLS_PROVIDER_TIMEOUT_MS, NODEX_APP_MCP_SERVER } from "@nodex/runtime-shared/nodexAppMcp";
 
 const OpenCode2ProviderCapabilities = {
   sessions: {
@@ -127,7 +127,7 @@ const OpenCode2ProviderCapabilities = {
     supportsInterrupt: true,
     supportsActiveSteering: true,
     supportsSteeringByInterruptRestart: true,
-    // T3 holds queued messages and starts each as its own turn once the one
+    // Nodex holds queued messages and starts each as its own turn once the one
     // before it ends, so OpenCode's own `queue` delivery is never used.
     supportsQueuedMessages: true,
     terminalStatusQuality: "strong",
@@ -235,7 +235,7 @@ interface ActiveTurn {
   lastStep: Tokens | undefined;
   /**
    * The history item this turn's execution follows, for a turn with no prompt
-   * id of T3's: the session's newest item before a `/name` command (null when
+   * id of Nodex's: the session's newest item before a `/name` command (null when
    * the history was empty), since `session.command` takes no id and answers
    * without one; the report a continuation turn's execution answers; or, on a
    * subagent's session, the first item queued for its turn. A reconnect
@@ -302,9 +302,9 @@ interface SubagentCall {
 }
 
 /**
- * An execution OpenCode ran on a thread's session without T3 asking: the
+ * An execution OpenCode ran on a thread's session without Nodex asking: the
  * parent's answer once a background subagent ended. Its events are held until
- * the continuation turn T3 opens for it takes them.
+ * the continuation turn Nodex opens for it takes them.
  */
 interface Wake {
   /** The message its continuation run starts from, which names the wake in that turn's input. */
@@ -345,7 +345,7 @@ interface ThreadState {
   /**
    * Set when a turn ended here while OpenCode may still be running it: a Stop
    * that timed out, a prompt whose request failed without a clear answer, or a
-   * request T3 could not answer. Execution events carry only the session id,
+   * request Nodex could not answer. Execution events carry only the session id,
    * so the next execution end belongs to that run; it clears this and ends no turn.
    */
   unsettled: boolean;
@@ -361,7 +361,7 @@ interface ThreadState {
    * The agent the session runs (`build`, or `plan` for planning intent).
    */
   agent: string;
-  /** The native session's title as T3 last read or wrote it. */
+  /** The native session's title as Nodex last read or wrote it. */
   title: string | undefined;
   /** The native session's execution rules as last read or written. */
   rules: ReadonlyArray<Rule> | undefined;
@@ -404,7 +404,7 @@ interface ThreadState {
     }
   >;
   /**
-   * Background subagent sessions T3 stopped. OpenCode wakes the parent to
+   * Background subagent sessions Nodex stopped. OpenCode wakes the parent to
    * report them; a wake that reports only these is stopped as well.
    */
   readonly stoppedChildren: Set<string>;
@@ -413,7 +413,7 @@ interface ThreadState {
    * inbox, where the next prompt would deliver them first, so it cancels them.
    */
   readonly strandedSteers: Set<string>;
-  /** T3's MCP server as registered for this thread, and the instructions entry sent with it. */
+  /** Nodex's MCP server as registered for this thread, and the instructions entry sent with it. */
   mcp:
     | { readonly name: string; readonly directory: string; readonly credential: string }
     | undefined;
@@ -438,7 +438,7 @@ interface PendingRequest {
   readonly turn: ActiveTurn;
   /** The session that asked: the thread's own, or one of its subagents'. */
   readonly sessionId: string;
-  /** Set once T3 sends its answer; the orchestrator has already recorded it. */
+  /** Set once Nodex sends its answer; the orchestrator has already recorded it. */
   answering: boolean;
   readonly native:
     | {
@@ -527,7 +527,7 @@ const sameRules = (left: ReadonlyArray<Rule> | undefined, right: ReadonlyArray<R
 const text = (value: string | undefined, fallback: string) => value?.trim() || fallback;
 
 /**
- * A form's fields as T3 questions, or why T3 cannot ask them: a link to open,
+ * A form's fields as Nodex questions, or why Nodex cannot ask them: a link to open,
  * a field shown only for another answer, a hidden field, or a number or yes/no
  * value. OpenCode's question tool only asks text and multi-select fields.
  */
@@ -561,7 +561,7 @@ const formQuestions = (
   return { questions };
 };
 
-/** T3's answers in OpenCode's shape: a list for a multi-select, text otherwise. */
+/** Nodex's answers in OpenCode's shape: a list for a multi-select, text otherwise. */
 const formAnswer = (form: NativeForm, answers: Readonly<Record<string, unknown>>) => {
   const answer: Record<string, string | ReadonlyArray<string>> = {};
   for (const field of form.fields) {
@@ -686,22 +686,22 @@ const deliver = <E>(answer: Effect.Effect<void, E>) =>
 type ModelRef = ReturnType<typeof Model.Ref.make>;
 
 /**
- * The user message ids T3 prompts under. OpenCode takes a client id (it must
+ * The user message ids Nodex prompts under. OpenCode takes a client id (it must
  * start with `msg_`) and answers a repeat of one in the same session with the
  * item it already has, so a retried request never queues a second message,
  * and a turn knows the message fork and rollback cut at before OpenCode
  * answers. The id is unique across the whole server, which refuses it in any
- * other session (409), so it names the session: another T3 database or
+ * other session (409), so it names the session: another Nodex database or
  * environment on the same server repeats thread ids and run ordinals, never
  * session ids. A turn keeps its id in `nativeTurnRef`.
  */
 const turnPromptId = (sessionId: string, attemptId: string) =>
-  SessionMessage.ID.make(`msg_t3_turn_${sessionId}:${attemptId}`);
+  SessionMessage.ID.make(`msg_nodex_turn_${sessionId}:${attemptId}`);
 const steerPromptId = (sessionId: string, messageId: string) =>
-  SessionMessage.ID.make(`msg_t3_steer_${sessionId}:${messageId}`);
+  SessionMessage.ID.make(`msg_nodex_steer_${sessionId}:${messageId}`);
 
 /**
- * The user message a turn prompted with. Turns from before T3 chose prompt ids
+ * The user message a turn prompted with. Turns from before Nodex chose prompt ids
  * recorded `<session>:attempt:<id>`, which is no message.
  */
 const promptOf = (turn: OrchestrationV2ProviderTurn) => {
@@ -716,7 +716,7 @@ const promptOf = (turn: OrchestrationV2ProviderTurn) => {
  * prompt, or for a continuation the report it answers. A turn refused before
  * it prompted is not in the session and is passed over, and so is a
  * continuation that took no report. `null` means nothing follows, so there is
- * no cut; a later turn from before T3 chose prompt ids has no known message,
+ * no cut; a later turn from before Nodex chose prompt ids has no known message,
  * so no cut is safe.
  */
 const boundaryAfter = (
@@ -753,7 +753,7 @@ const isProviderAdapterError = Schema.is(ProviderAdapter.ProviderAdapterV2Error)
 /**
  * The model OpenCode should run for a `provider/model` slug and its reasoning
  * variant, or undefined for any other slug: sending none would run OpenCode's
- * default while T3 records the requested model.
+ * default while Nodex records the requested model.
  */
 const modelRef = (selection: ProviderAdapter.ProviderAdapterV2TurnInput["modelSelection"]) => {
   const parsed = OpenCodeRuntime.parseOpenCodeModelSlug(selection.model);
@@ -772,7 +772,7 @@ const sameModel = (left: ModelRef, right: ModelRef | undefined) =>
   left.id === right?.id &&
   (left.variant ?? "default") === (right?.variant ?? "default");
 
-/** OpenCode's own agents for T3's interaction modes; plan mode is its read-only `plan` agent. */
+/** OpenCode's own agents for Nodex's interaction modes; plan mode is its read-only `plan` agent. */
 const agentFor = (input: ProviderAdapter.ProviderAdapterV2TurnInput) =>
   input.runtimePolicy.interactionMode === "plan" ? "plan" : "build";
 
@@ -867,7 +867,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     // OpenCode config can change a model's limits, and this one runtime serves
     // the instance's threads in every directory.
     const contextWindows = new Map<string, Map<string, number>>();
-    /** A thread without a worktree runs where T3 does, as its session is created. */
+    /** A thread without a worktree runs where Nodex does, as its session is created. */
     const directoryOf = (cwd: string | null | undefined) => cwd ?? host.paths.cwd;
     const windowOf = (cwd: string | null | undefined, model: string) =>
       contextWindows.get(directoryOf(cwd))?.get(model);
@@ -955,7 +955,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     const emit = (event: ProviderAdapter.ProviderAdapterV2Event) =>
       BoundedQueue.offer(events, event).pipe(Effect.asVoid);
     const ownerOf = (sessionId: string) => childOwners.get(sessionId) ?? threads.get(sessionId);
-    /** Marks a run T3 ended while OpenCode may still run it (see `unsettled`). */
+    /** Marks a run Nodex ended while OpenCode may still run it (see `unsettled`). */
     const markUnsettled = (state: ThreadState) => {
       state.unsettled = true;
       state.unsettledStarted = busy.has(state.sessionId);
@@ -1839,7 +1839,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
             }),
       });
       // A subagent's session is its call's to settle: a turn there is runless,
-      // and T3 has no terminal to wait on.
+      // and Nodex has no terminal to wait on.
       if (state.subagent !== undefined) {
         const call = state.subagent.call;
         if (!call.background && terminal.status !== "completed") {
@@ -1890,7 +1890,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     });
 
     /**
-     * Ends the turn a request T3 could not answer would block, and stops the
+     * Ends the turn a request Nodex could not answer would block, and stops the
      * session: OpenCode waits on an unanswered request forever. The stopped
      * run's end is its own, not the next turn's.
      */
@@ -1923,7 +1923,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     });
 
     /**
-     * Settles a request OpenCode answered or dropped on its own. T3's own
+     * Settles a request OpenCode answered or dropped on its own. Nodex's own
      * answers are only forgotten: the orchestrator already recorded them.
      */
     const settleRequest = Effect.fnUntraced(function* (
@@ -1952,7 +1952,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     });
 
     /**
-     * Stops a run no turn of T3's waits on (one a Stop left running, or one
+     * Stops a run no turn of Nodex's waits on (one a Stop left running, or one
      * found asking after a reconnect): a reject without a message and a
      * cancelled form both end OpenCode's execution. Its end is not a turn's.
      */
@@ -1982,7 +1982,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
 
     /**
      * Stops what a session still waits on when this runtime first loads it:
-     * T3 shows none of those requests (a restart or a closed session expired
+     * Nodex shows none of those requests (a restart or a closed session expired
      * them), and OpenCode would wait on them forever.
      */
     const stopLeftoverRequests = Effect.fnUntraced(function* (state: ThreadState) {
@@ -2449,7 +2449,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     });
 
     /**
-     * An execution OpenCode started on a thread's session with no turn of T3's
+     * An execution OpenCode started on a thread's session with no turn of Nodex's
      * running: the parent's answer to a background subagent's report. It is
      * held for the continuation turn it asks for, or stopped when it only
      * reports subagents a Stop ended.
@@ -2587,7 +2587,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       const sessionId = sessionOfEvent(event);
       // `revert.clear` wakes the session into an empty execution of its own
       // (2.0.18's `Session.revert.clear` ends with a wake). It is no run of
-      // T3's, and no follow-up to a subagent either.
+      // Nodex's, and no follow-up to a subagent either.
       const cleared = sessionId === undefined ? undefined : clearing.get(sessionId);
       if (cleared !== undefined) {
         if (event.type === "unreadable.execution.ended" || executionEnd(event.type)) {
@@ -2710,7 +2710,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         return yield* onAsked({ type: "form", form: event.data.form });
       // Answered in another OpenCode client, or dropped by OpenCode: a reject
       // it sends on its own (a Stop, or another reject in the same session)
-      // cancels the request. T3's own answers are settled where they are sent.
+      // cancels the request. Nodex's own answers are settled where they are sent.
       if (
         event.type === "permission.replied" ||
         event.type === "form.replied" ||
@@ -2804,7 +2804,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     // execution it lost. So a lost stream reconnects, then reconciles each
     // running turn from the server's own state (see `reconcile`). Only when
     // reconnecting keeps failing are the turns failed and the session broken,
-    // so T3 reopens it. Set first, so a turn starting meanwhile waits or refuses.
+    // so Nodex reopens it. Set first, so a turn starting meanwhile waits or refuses.
     let streamFailure: string | undefined;
     let reconnected = yield* Deferred.make<void>();
     const failAll = Effect.fnUntraced(function* (message: string) {
@@ -2827,7 +2827,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
      * Emits what a running turn missed while the stream was down, from the
      * session's history since the turn began: text, reasoning and tools, each
      * under the same native id its live events would have used, so nothing
-     * already shown is duplicated. A turn begins at its prompt, whose id T3
+     * already shown is duplicated. A turn begins at its prompt, whose id Nodex
      * chose (`nativeTurnRef`), or after `before` for a `/name` command or a
      * continuation.
      * Returns how that history says the turn's execution ended: the `idle` item
@@ -2984,7 +2984,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         yield* Effect.forkIn(stopStrays(thread), sessionScope);
       }
       // A request asked while the stream was down was never shown, and the
-      // run waits on it; one T3 shows that OpenCode no longer lists was
+      // run waits on it; one Nodex shows that OpenCode no longer lists was
       // answered elsewhere or dropped with its execution. A session that
       // stopped dropped its requests.
       const listed = new Map<string, Set<string>>();
@@ -3036,7 +3036,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       client = next.client;
       currentScope = scope;
       yield* Scope.close(previous, Exit.void);
-      // A restarted server forgot T3's MCP servers; the next turn adds them again.
+      // A restarted server forgot Nodex's MCP servers; the next turn adds them again.
       for (const state of threads.values()) state.mcp = undefined;
       yield* lock.withPermit(reconcile).pipe(Effect.timeout(RECONCILE_TIMEOUT));
       return stream;
@@ -3084,7 +3084,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     // Subscribed before any session or prompt call, so no event of theirs is missed.
     yield* follow(yield* connection.events).pipe(Effect.forkScoped);
 
-    // A server T3 did not start keeps running after T3 stops, so stop the turns
+    // A server Nodex did not start keeps running after Nodex stops, so stop the turns
     // it would otherwise finish unseen. A spawned server stops with its owner.
     if (connection.external) {
       yield* Effect.addFinalizer(() =>
@@ -3241,10 +3241,10 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
 
     /**
      * Refuses to cut or copy a session's history while something writes to
-     * it: a turn of T3's, an execution seen running on the stream (a held
+     * it: a turn of Nodex's, an execution seen running on the stream (a held
      * follow-up), or a run on the server this runtime does not own: one a
      * timed-out Stop or an unanswered request left behind, or any run on a
-     * session loaded after the server outlived T3. Only that last case asks
+     * session loaded after the server outlived Nodex. Only that last case asks
      * the server. A rollback also waits for background subagents, whose
      * reports wake the session into the history it would cut.
      */
@@ -3294,7 +3294,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
 
     /**
      * Clears a staged revert and waits out the empty execution `clear` runs,
-     * which is no turn of T3's. 2.0.18 wakes the session after every clear,
+     * which is no turn of Nodex's. 2.0.18 wakes the session after every clear,
      * with or without a stage (seen live), so that execution always comes.
      */
     const clearRevert = Effect.fnUntraced(function* (sessionId: string) {
@@ -3315,7 +3315,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
      * revert, then commits it. If either fails or is interrupted the stage is
      * cleared, since OpenCode commits a staged revert on the next prompt; a
      * clear that fails too is tried again before that prompt. Files stay where
-     * they are: T3 restores its own checkpoint when the user asked for files,
+     * they are: Nodex restores its own checkpoint when the user asked for files,
      * and a rewind without files must not touch them.
      */
     const rollBackTo = Effect.fnUntraced(function* (
@@ -3359,7 +3359,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         ),
       );
 
-    /** The session's history as V2 messages, read after any change T3 made to it. */
+    /** The session's history as V2 messages, read after any change Nodex made to it. */
     const snapshotOf = Effect.fnUntraced(function* (
       providerThread: OrchestrationV2ProviderThread,
       sessionId: string,
@@ -3428,7 +3428,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         client.mcp.remove({ server: mcp.name, location: { directory: mcp.directory } }),
       ).pipe(Effect.timeout("5 seconds"), Effect.ignore({ log: true }));
 
-    // T3's MCP registrations outlive a session only on an external server; a
+    // Nodex's MCP registrations outlive a session only on an external server; a
     // spawned one forgets them when it stops.
     yield* Effect.addFinalizer(() =>
       Effect.forEach(
@@ -3439,7 +3439,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     );
 
     /**
-     * T3's MCP server for this thread, and the per-turn instructions. The MCP
+     * Nodex's MCP server for this thread, and the per-turn instructions. The MCP
      * server is registered for the session's directory under the thread's own
      * name and credential, and removed when
      * the thread unloads or the session closes. OpenCode 2 has no per-prompt
@@ -3454,7 +3454,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       const mcpSession = yield* mcpSessions.read(turnInput.threadId);
       const directory = turnInput.runtimePolicy.cwd ?? host.paths.cwd;
       const name = yield* mcpServerNameFor(turnInput.threadId);
-      // An external server may not reach T3's MCP endpoint, as with 1.x.
+      // An external server may not reach Nodex's MCP endpoint, as with 1.x.
       const wanted =
         mcpSession === undefined || connection.external
           ? undefined
@@ -3468,7 +3468,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         yield* removeMcp(state.mcp);
         state.mcp = undefined;
       }
-      // T3's tools are an addition: a server that cannot add them still runs the turn.
+      // Nodex's tools are an addition: a server that cannot add them still runs the turn.
       if (wanted !== undefined && state.mcp === undefined) {
         const added = yield* client.mcp
           .add({
@@ -3518,7 +3518,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         if (turn !== undefined) turn.before = before;
       });
 
-    /** Installs a turn T3 started; every path after it ends the turn with a terminal. */
+    /** Installs a turn Nodex started; every path after it ends the turn with a terminal. */
     const beginTurn = (
       state: ThreadState,
       turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
@@ -3596,7 +3596,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         retired.add(childId);
         // OpenCode reports its end to the session that called it; that
         // report answers no turn, so the execution it wakes is stopped. A
-        // deeper one reports to a stray, which T3 does not track.
+        // deeper one reports to a stray, which Nodex does not track.
         threads.get(info.parentID ?? "")?.stoppedChildren.add(childId);
       };
       for (const wake of wakes) {
@@ -3812,7 +3812,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           Effect.orElseSucceed(() => []),
         );
         if (commands.some((entry) => entry.name === command.name)) {
-          // `session.command` takes no id of T3's and its answer carries none,
+          // `session.command` takes no id of Nodex's and its answer carries none,
           // so the turn remembers where the history stood before it.
           const newest = yield* client.message.list({ sessionID, order: "desc", limit: 1 });
           yield* markBefore(sessionId, newest.data[0]?.id ?? null);
@@ -3950,7 +3950,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
             yield* readModelsOnce(threadInput.runtimePolicy.cwd);
           }
           // 1.x session ids survive the upgrade; a server without this session
-          // fails the resume, so T3 recreates the thread with a handoff.
+          // fails the resume, so Nodex recreates the thread with a handoff.
           const native = yield* client.session.get({ sessionID: Session.ID.make(sessionId) });
           const providerThread: OrchestrationV2ProviderThread = {
             ...threadInput.providerThread,
@@ -3962,7 +3962,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           const loaded = threads.has(sessionId);
           const state = register(providerThread, native, cwd ?? native.location.directory);
           // OpenCode keeps no request across its own restart, but a server that
-          // outlived T3 may still wait on one T3 no longer shows.
+          // outlived Nodex may still wait on one Nodex no longer shows.
           if (!loaded) yield* stopLeftoverRequests(state);
           // The session gets the rules for this thread's mode: it may have run
           // another mode, or been made by 1.x or an earlier build.
@@ -4058,7 +4058,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
                   }),
                 });
               }
-              // A turn T3 will not run still starts and fails, so the refusal is what
+              // A turn Nodex will not run still starts and fails, so the refusal is what
               // the user reads.
               const model = modelRef(turnInput.modelSelection);
               if (model === undefined) {
@@ -4116,7 +4116,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           if (started === undefined) return;
           const { state, sessionId, turn } = started;
           yield* submit(sessionId, turnInput, state, turn).pipe(
-            // Deleted outside T3: the thread is broken, and forgetting it makes
+            // Deleted outside Nodex: the thread is broken, and forgetting it makes
             // the next turn resume, fail, and recreate it with a handoff.
             Effect.catchTags({
               SessionNotFoundError: () =>
@@ -4472,7 +4472,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
             yield* rollBackTo(sessionId, SessionMessage.ID.make(boundary));
           }
           // The turns after the target left the history with their messages.
-          // The snapshot lists the ones kept as T3 recorded them, which a
+          // The snapshot lists the ones kept as Nodex recorded them, which a
           // runtime that loaded the session after they ran never saw.
           const keptOrdinal = target.type === "provider_turn" ? target.providerTurn.ordinal : 0;
           const loaded = threads.get(sessionId);
@@ -4544,7 +4544,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
                   prompts,
                 );
           // A fork copies the source's history, model, location and rules; its
-          // message ids are new, so it has no turns T3 could cut at yet.
+          // message ids are new, so it has no turns Nodex could cut at yet.
           const forked = yield* client.session.fork({
             sessionID: Session.ID.make(sourceId),
             ...(before === null ? {} : { before: SessionMessage.ID.make(before) }),

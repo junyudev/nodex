@@ -6,8 +6,13 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { expect, it } from "@effect/vitest";
-import { EnvironmentId, ProviderInstanceId, ProviderSessionId, ThreadId } from "@t3tools/contracts";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import {
+  EnvironmentId,
+  ProviderInstanceId,
+  ProviderSessionId,
+  ThreadId,
+} from "@nodex/runtime-contracts";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
@@ -26,23 +31,23 @@ import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import * as ServerConfig from "../../config.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import * as ResetCreditCoordinator from "../resetCreditCoordinator.ts";
-import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
-import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+import * as ProviderLatestVersions from "@nodex/provider-core/server/ProviderLatestVersions";
+import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
+import * as ProviderEventLoggers from "@nodex/provider-core/server/ProviderEventLoggers";
 import * as ModelManifest from "../ModelManifest.ts";
 import {
   createProviderVersionAdvisory,
   resolveLatestProviderVersion,
-} from "@t3tools/provider-core/server/maintenanceResolver";
+} from "@nodex/provider-core/server/maintenanceResolver";
 import { CodexDriver } from "./CodexDriver.ts";
 import * as CodexAdapterV2 from "../../orchestration-v2/Adapters/CodexAdapterV2.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import * as ProviderCredentialStore from "../ProviderCredentialStore.ts";
 import * as ProviderHostLive from "../ProviderHostLive.ts";
 
 const layerDeps = ServerConfig.layerTest(process.cwd(), {
-  prefix: "t3-codex-driver-maintenance-",
+  prefix: "nodex_appx-driver-maintenance-",
 }).pipe(
   Layer.provideMerge(NodeServices.layer),
   Layer.provideMerge(IdAllocator.layer),
@@ -210,7 +215,7 @@ it.layer(layerTest)("CodexDriver", (it) => {
           `providers/codex/${instanceId}/shadow`,
         );
         yield* Deferred.await(observedAccount);
-        // Sessions launch the T3-installed Codex with the account's token, not ambient credentials.
+        // Sessions launch the Nodex-installed Codex with the account's token, not ambient credentials.
         const threadId = ThreadId.make("managed-account-thread");
         yield* instance.orchestrationAdapter
           .openSession({
@@ -278,7 +283,7 @@ it.layer(layerTest)("CodexDriver", (it) => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const tempDir = yield* fs
-          .makeTempDirectoryScoped({ prefix: "t3-codex-driver-" })
+          .makeTempDirectoryScoped({ prefix: "nodex_appx-driver-" })
           .pipe(Effect.flatMap((directory) => fs.realPath(directory)));
         const sharedHome = NodePath.join(tempDir, "codex-home");
         const shadowHome = NodePath.join(tempDir, "codex-shadow");
@@ -322,7 +327,7 @@ it.layer(layerTest)("CodexDriver", (it) => {
         environment: [],
         config: {
           ...CodexDriver.defaultConfig(),
-          binaryPath: NodePath.join(NodeOS.tmpdir(), "t3-codex-missing", "codex"),
+          binaryPath: NodePath.join(NodeOS.tmpdir(), "nodex_appx-missing", "codex"),
         },
       });
       expect((yield* instance.snapshot.resolveMaintenance()).update).toBeNull();
@@ -355,7 +360,7 @@ it.layer(layerTest)("CodexDriver", (it) => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const tempDir = yield* fs
-          .makeTempDirectoryScoped({ prefix: "t3-codex-installer-" })
+          .makeTempDirectoryScoped({ prefix: "nodex_appx-installer-" })
           .pipe(Effect.flatMap((directory) => fs.realPath(directory)));
         const installPath = NodePath.join(tempDir, ...fixture.installSegments);
         const realBinaryPath = NodePath.join(
@@ -414,7 +419,7 @@ it.layer(layerTest)("CodexDriver", (it) => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const tempDir = yield* fs
-          .makeTempDirectoryScoped({ prefix: `t3-codex-mise-${layout}-` })
+          .makeTempDirectoryScoped({ prefix: `nodex_appx-mise-${layout}-` })
           .pipe(Effect.flatMap((directory) => fs.realPath(directory)));
         const binaryPath =
           layout === "direct"
@@ -491,7 +496,7 @@ it.layer(layerTest)("CodexDriver", (it) => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const tempDir = yield* fs
-          .makeTempDirectoryScoped({ prefix: "t3-codex-mise-shim-" })
+          .makeTempDirectoryScoped({ prefix: "nodex_appx-mise-shim-" })
           .pipe(Effect.flatMap((directory) => fs.realPath(directory)));
         const brewPrefix = NodePath.join(tempDir, "homebrew");
         const brewPath = NodePath.join(brewPrefix, "bin", "brew");

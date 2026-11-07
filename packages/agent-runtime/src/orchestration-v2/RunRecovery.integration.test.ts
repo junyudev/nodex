@@ -17,7 +17,7 @@ import {
   ThreadId,
   TurnItemId,
   type OrchestrationV2DomainEvent,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -34,9 +34,9 @@ import { taskView } from "../mcp/toolkits/task/handlers.ts";
 import * as Stream from "effect/Stream";
 import { TestClock } from "effect/testing";
 import { SqlError, UnknownError } from "effect/sql/SqlError";
-import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import { checkpointWorkspace } from "@nodex/provider-testing/replayWorkspace";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";

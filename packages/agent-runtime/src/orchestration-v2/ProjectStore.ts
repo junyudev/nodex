@@ -7,7 +7,7 @@ import {
   ProjectId,
   ProjectScript,
   ThreadEnvMode,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -97,7 +97,7 @@ export class ProjectStoreV2 extends Context.Service<
       readonly projectIds?: ReadonlyArray<ProjectId>;
     }) => Effect.Effect<ReadonlyArray<OrchestrationProjectShell>, ProjectStoreV2Error>;
   }
->()("t3/orchestration-v2/ProjectStore/ProjectStoreV2") {}
+>()("nodex/runtime/orchestration-v2/ProjectStore/ProjectStoreV2") {}
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {

@@ -3,7 +3,7 @@
  * operation, diff text and line counts, measured once from the complete diff, so presentation
  * never has to infer a change from a provider's text or from a diff a projection withheld.
  */
-import type { OrchestrationV2FileChangeDetail } from "@t3tools/contracts";
+import type { OrchestrationV2FileChangeDetail } from "@nodex/runtime-contracts";
 import { unquoteGitPatchPath } from "./gitPatchPath.ts";
 
 export interface FileChangeInput {

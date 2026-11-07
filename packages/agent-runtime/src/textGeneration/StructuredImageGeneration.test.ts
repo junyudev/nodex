@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { TextGenerationError } from "@t3tools/contracts";
+import { TextGenerationError } from "@nodex/runtime-contracts";
 import * as ClaudeSdk from "@anthropic-ai/claude-agent-sdk";
 import * as Schedule from "effect/Schedule";
 import * as Fiber from "effect/Fiber";
@@ -12,7 +12,7 @@ import * as Path from "effect/Path";
 import { vi } from "vite-plus/test";
 import * as Application from "../nodex/Application.ts";
 import { AgentRuntime } from "../nodex/Service.ts";
-import { writeFakeCli } from "@t3tools/provider-testing/fakeCli";
+import { writeFakeCli } from "@nodex/provider-testing/fakeCli";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", { spy: true });
 

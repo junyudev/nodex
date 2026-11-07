@@ -1,4 +1,4 @@
-import type { ThreadId, TurnItemId } from "@t3tools/contracts";
+import type { ThreadId, TurnItemId } from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -41,7 +41,7 @@ export class McpAppModelContext extends Context.Service<
       threadId: ThreadId,
     ) => Effect.Effect<ReadonlyArray<McpAppModelContextEntry>, McpAppModelContextError>;
   }
->()("t3/mcpApps/McpAppModelContext") {}
+>()("nodex/runtime/mcpApps/McpAppModelContext") {}
 
 export const layer = Layer.effect(
   McpAppModelContext,

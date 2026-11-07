@@ -2,7 +2,7 @@ import {
   ProjectId,
   type ThreadPullRequestLink,
   type ThreadPullRequestSnapshot,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import {
@@ -50,9 +50,9 @@ function link(
 ): ThreadPullRequestLink {
   return {
     host: "github.com",
-    repository: "pingdotgg/t3code",
+    repository: "acme/widgets",
     number,
-    url: `https://github.com/pingdotgg/t3code/pull/${number}`,
+    url: `https://github.com/acme/widgets/pull/${number}`,
     source: "manual",
     linkedAt: `2026-01-01T00:00:${String(number).padStart(2, "0")}.000Z`,
     snapshot: null,
@@ -87,14 +87,14 @@ describe("threadPullRequestKeysEqual", () => {
   it("ignores host and repository case", () => {
     expect(
       threadPullRequestKeysEqual(
-        { host: "GitHub.com", repository: "PingDotGG/t3code", number: 1 },
-        { host: "github.com", repository: "pingdotgg/t3code", number: 1 },
+        { host: "GitHub.com", repository: "ACME/widgets", number: 1 },
+        { host: "github.com", repository: "acme/widgets", number: 1 },
       ),
     ).toBe(true);
     expect(
       threadPullRequestKeysEqual(
-        { host: "github.com", repository: "pingdotgg/t3code", number: 1 },
-        { host: "gitlab.com", repository: "pingdotgg/t3code", number: 1 },
+        { host: "github.com", repository: "acme/widgets", number: 1 },
+        { host: "gitlab.com", repository: "acme/widgets", number: 1 },
       ),
     ).toBe(false);
   });
@@ -127,7 +127,7 @@ describe("resolveThreadCurrentPullRequest", () => {
       kind: "native" as const,
       id: "s1",
       number: 1,
-      url: "https://github.com/pingdotgg/t3code/stacks/1",
+      url: "https://github.com/acme/widgets/stacks/1",
       base: "main",
       layers: [
         { number: 10, headBranch: "a", state: "open" as const },
@@ -160,28 +160,28 @@ describe("resolveThreadCurrentPullRequest", () => {
 
 describe("legacyLinkedPullRequestOf", () => {
   const identity = {
-    canonicalKey: "github.com/pingdotgg/t3code",
+    canonicalKey: "github.com/acme/widgets",
     provider: "github",
-    displayName: "pingdotgg/t3code",
+    displayName: "acme/widgets",
     locator: {
       source: "git-remote" as const,
       remoteName: "origin",
-      remoteUrl: "https://github.com/pingdotgg/t3code.git",
+      remoteUrl: "https://github.com/acme/widgets.git",
     },
   };
   it("projects only links the owning project can route without a host", () => {
     expect(legacyLinkedPullRequestOf([link(7)], "project-1" as never, identity)).toEqual({
       projectId: "project-1",
-      repository: "pingdotgg/t3code",
+      repository: "acme/widgets",
       number: 7,
-      url: "https://github.com/pingdotgg/t3code/pull/7",
+      url: "https://github.com/acme/widgets/pull/7",
     });
     expect(legacyLinkedPullRequestOf([], "project-1" as never, identity)).toBeNull();
   });
   it.each([
     {
       host: "github.enterprise.test",
-      url: "https://github.enterprise.test/pingdotgg/t3code/pull/7",
+      url: "https://github.enterprise.test/acme/widgets/pull/7",
     },
     { repository: "acme/other", url: "https://github.com/acme/other/pull/7" },
   ])("omits an unsafe legacy route %j", (foreign) => {
@@ -275,7 +275,7 @@ describe("resolveThreadPullRequestChains", () => {
       kind: "native" as const,
       id: "s1",
       number: 1,
-      url: "https://github.com/pingdotgg/t3code/stacks/1",
+      url: "https://github.com/acme/widgets/stacks/1",
       base: "main",
       layers: [
         { number: 5, headBranch: "a", state: "merged" as const },
@@ -359,7 +359,7 @@ describe("chain selection and badge state", () => {
       kind: "native" as const,
       id: "native-1",
       number: 1,
-      url: "https://github.com/pingdotgg/t3code/stacks/1",
+      url: "https://github.com/acme/widgets/stacks/1",
       base: "main",
       layers: [
         { number: 2, headBranch: "base", state: "merged" as const },
@@ -400,7 +400,7 @@ describe("chain selection and badge state", () => {
 
   it("keeps branch matching case-sensitive while ignoring repository case", () => {
     const bottom = link(1, {
-      repository: "PingDotGG/T3code",
+      repository: "ACME/Widgets",
       snapshot: snapshot({ headBranch: "Base" }),
     });
     const top = link(2, { snapshot: snapshot({ headBranch: "top", baseBranch: "base" }) });
@@ -450,9 +450,9 @@ describe("threadPullRequestSearchTerms", () => {
     (pullRequests) => {
       const branchPullRequest = {
         projectId: ProjectId.make("project"),
-        repository: "pingdotgg/t3code",
+        repository: "acme/widgets",
         number: 11809,
-        url: "https://github.com/pingdotgg/t3code/pull/11809",
+        url: "https://github.com/acme/widgets/pull/11809",
       };
       const terms = threadPullRequestSearchTerms({
         pullRequests,
@@ -460,10 +460,10 @@ describe("threadPullRequestSearchTerms", () => {
         linkedPullRequest: {
           ...branchPullRequest,
           number: 12,
-          url: "https://github.com/pingdotgg/t3code/pull/12",
+          url: "https://github.com/acme/widgets/pull/12",
         },
       });
-      for (const query of ["11809", "#11809", "pingdotgg/t3code#11809", branchPullRequest.url]) {
+      for (const query of ["11809", "#11809", "acme/widgets#11809", branchPullRequest.url]) {
         expect(terms.some((term) => term.includes(query))).toBe(true);
       }
       expect(terms).toContain(pullRequests?.length ? "#34" : "#12");
@@ -479,8 +479,8 @@ describe("threadPullRequestSearchTerms", () => {
       ],
     });
     expect(terms).toContain("#12");
-    expect(terms).toContain("pingdotgg/t3code#12");
-    expect(terms).toContain("https://github.com/pingdotgg/t3code/pull/12");
+    expect(terms).toContain("acme/widgets#12");
+    expect(terms).toContain("https://github.com/acme/widgets/pull/12");
     expect(terms).toContain("Fix login");
     expect(terms).toContain("#34");
     expect(terms.join(" ")).not.toContain("56");
@@ -490,9 +490,9 @@ describe("threadPullRequestSearchTerms", () => {
 it("searches the legacy projection when old environments decode to an empty links list", () => {
   const linkedPullRequest = {
     projectId: ProjectId.make("project"),
-    repository: "pingdotgg/t3code",
+    repository: "acme/widgets",
     number: 12,
-    url: "https://github.com/pingdotgg/t3code/pull/12",
+    url: "https://github.com/acme/widgets/pull/12",
   };
   expect(threadPullRequestSearchTerms({ pullRequests: [], linkedPullRequest })).toContain("#12");
   expect(

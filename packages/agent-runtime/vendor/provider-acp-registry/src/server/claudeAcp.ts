@@ -1,11 +1,11 @@
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type * as AcpSchema from "effect-acp/compat";
-import type { AcpToolCallState } from "@t3tools/provider-acp/server/runtimeModel";
+import type { AcpToolCallState } from "@nodex/provider-acp/server/runtimeModel";
 import type {
   AcpAdapterV2SubagentUpdate,
   AcpSubagentSessionEvent,
-} from "@t3tools/provider-acp/server/adapter";
+} from "@nodex/provider-acp/server/adapter";
 
 const decodeAgentInput = Schema.decodeUnknownOption(
   Schema.Struct({
@@ -81,7 +81,7 @@ export function extractClaudeSubagentSessionEvent(
   notification: AcpSchema.SessionNotification,
 ): AcpSubagentSessionEvent | undefined {
   const update = notification.update;
-  if (update.sessionUpdate !== "_t3_unknown") return;
+  if (update.sessionUpdate !== "_unknown") return;
   if (update.originalSessionUpdate === "subagent_update") {
     const child = decodeChildState(update.raw);
     if (Option.isNone(child)) return;

@@ -1,5 +1,5 @@
-import { SourceControlProviderKind } from "@t3tools/contracts";
-import type { RepositoryIdentity, SourceControlProviderInfo } from "@t3tools/contracts";
+import { SourceControlProviderKind } from "@nodex/runtime-contracts";
+import type { RepositoryIdentity, SourceControlProviderInfo } from "@nodex/runtime-contracts";
 
 export interface ChangeRequestPresentation {
   readonly icon:

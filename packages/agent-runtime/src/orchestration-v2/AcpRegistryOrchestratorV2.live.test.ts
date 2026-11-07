@@ -10,7 +10,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -27,11 +27,11 @@ import * as CodexInstallation from "../provider/CodexInstallation.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ModelManifest from "../provider/ModelManifest.ts";
 import * as ProviderInstanceRegistryHydration from "../provider/ProviderInstanceRegistryHydration.ts";
-import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
-import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
-import * as OpenCodeRuntime from "@t3tools/provider-opencode/server/OpenCodeRuntime";
-import * as OpenCodeServerLedger from "@t3tools/provider-opencode/server/OpenCodeServerLedger";
+import * as ProviderLatestVersions from "@nodex/provider-core/server/ProviderLatestVersions";
+import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
+import * as ProviderEventLoggers from "@nodex/provider-core/server/ProviderEventLoggers";
+import * as OpenCodeRuntime from "@nodex/provider-opencode/server/OpenCodeRuntime";
+import * as OpenCodeServerLedger from "@nodex/provider-opencode/server/OpenCodeServerLedger";
 import * as ServerSettings from "../serverSettings.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
@@ -44,15 +44,15 @@ import * as McpSessionRegistryTestkit from "../mcp/McpSessionRegistry.testkit.ts
 // official Registry distribution. It uses credentials already owned by the
 // Antigravity agent and never stores them in the test database.
 //
-// T3_ACP_ANTIGRAVITY_LIVE=1 ../../node_modules/.bin/vp test run \
+// NODEX_ACP_ANTIGRAVITY_LIVE=1 ../../node_modules/.bin/vp test run \
 //   src/orchestration-v2/AcpRegistryOrchestratorV2.live.test.ts
 const layerPlatformTest = NodeServices.layer;
 
-const runAntigravityFixture = process.env.T3_ACP_ANTIGRAVITY_LIVE === "1";
+const runAntigravityFixture = process.env.NODEX_ACP_ANTIGRAVITY_LIVE === "1";
 const liveAgentId = runAntigravityFixture
   ? "antigravity-acp"
-  : process.env.T3_ACP_REGISTRY_LIVE_AGENT_ID?.trim() || "devin";
-const liveCommandPath = process.env.T3_ACP_REGISTRY_LIVE_COMMAND?.trim();
+  : process.env.NODEX_ACP_REGISTRY_LIVE_AGENT_ID?.trim() || "devin";
+const liveCommandPath = process.env.NODEX_ACP_REGISTRY_LIVE_COMMAND?.trim();
 const liveInstanceId = ProviderInstanceId.make("acpRegistry_live");
 const liveModelSelection = {
   instanceId: liveInstanceId,
@@ -60,7 +60,7 @@ const liveModelSelection = {
 } satisfies ModelSelection;
 
 const layerServerConfig = ServerConfig.layerTest(process.cwd(), {
-  prefix: "t3-acp-registry-v2-live-",
+  prefix: "nodex-acp-registry-v2-live-",
 });
 
 const layerVcsDriverRegistry = VcsDriverRegistry.layer.pipe(
@@ -156,7 +156,7 @@ const waitForIdle = Effect.fn("AcpRegistryOrchestratorV2Live.waitForIdle")(funct
   return yield* Effect.die(new Error(`Timed out waiting for ACP Registry thread ${threadId}.`));
 });
 
-describe.runIf(runAntigravityFixture || process.env.T3_ACP_REGISTRY_LIVE_ORCHESTRATOR === "1")(
+describe.runIf(runAntigravityFixture || process.env.NODEX_ACP_REGISTRY_LIVE_ORCHESTRATOR === "1")(
   "ACP Registry V2 live orchestrator",
   () => {
     it.live(

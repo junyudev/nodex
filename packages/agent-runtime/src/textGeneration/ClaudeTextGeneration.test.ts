@@ -1,8 +1,8 @@
 import * as ClaudeSdk from "@anthropic-ai/claude-agent-sdk";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { ClaudeSettings, ProviderInstanceId, TextGenerationError } from "@t3tools/contracts";
-import { writeFakeCli } from "@t3tools/provider-testing/fakeCli";
+import { ClaudeSettings, ProviderInstanceId, TextGenerationError } from "@nodex/runtime-contracts";
+import { writeFakeCli } from "@nodex/provider-testing/fakeCli";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";

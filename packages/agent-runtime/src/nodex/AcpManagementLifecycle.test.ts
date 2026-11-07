@@ -1,6 +1,6 @@
 import { expect, it } from "@effect/vitest";
-import { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
-import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
+import { ProviderDriverKind, ProviderInstanceId } from "@nodex/runtime-contracts";
+import type { ProviderInstance } from "@nodex/provider-core/server/driver";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";

@@ -13,7 +13,7 @@ import {
   MessageId,
   type OrchestrationV2AppThread,
   type OrchestrationV2ProviderThread,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";

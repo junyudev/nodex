@@ -8,7 +8,7 @@ import {
   type ThreadId,
   type OrchestrationV2TurnItem,
   type OrchestrationV2ConversationMessage,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
 import * as Effect from "effect/Effect";

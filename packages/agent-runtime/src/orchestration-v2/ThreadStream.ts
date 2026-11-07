@@ -1,9 +1,9 @@
 import type {
   OrchestrationV2ThreadProjection,
   OrchestrationV2ThreadStreamItem,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 
-import { omitLocalVisibleTurnItems } from "@t3tools/shared/orchestrationV2BoundedSnapshot";
+import { omitLocalVisibleTurnItems } from "@nodex/runtime-shared/orchestrationV2BoundedSnapshot";
 
 import {
   buildBoundedThreadProjection,

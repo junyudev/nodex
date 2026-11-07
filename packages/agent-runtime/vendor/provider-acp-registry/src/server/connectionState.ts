@@ -5,7 +5,7 @@ import {
   type AcpRegistryProbeAuthMethod,
   type ProviderInstanceEnvironment,
   type ProviderInstanceId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import type { AcpRegistrySettings } from "../settings.ts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -17,9 +17,9 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
-import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
-import * as HostProcess from "@t3tools/shared/HostProcess";
-import { SpawnExecutableResolution } from "@t3tools/shared/shell";
+import { writeFileStringAtomically } from "@nodex/runtime-shared/atomicWrite";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
+import { SpawnExecutableResolution } from "@nodex/runtime-shared/shell";
 
 const decodeState = Schema.decodeUnknownEffect(
   Schema.fromJsonString(

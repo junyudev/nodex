@@ -7,7 +7,7 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2ProviderTurn,
   ProviderSessionId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
@@ -18,8 +18,8 @@ import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as EventSink from "./EventSink.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";

@@ -1,4 +1,4 @@
-import type { ChatAttachment, OrchestrationMessageContext } from "@t3tools/contracts";
+import type { ChatAttachment, OrchestrationMessageContext } from "@nodex/runtime-contracts";
 
 interface NativeCommandMessage {
   readonly text: string;

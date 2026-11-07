@@ -1,5 +1,8 @@
-import { AcpRegistryOperationError, AcpRegistryOperationErrorReason } from "@t3tools/contracts";
-import { AcpRegistryError } from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
+import {
+  AcpRegistryOperationError,
+  AcpRegistryOperationErrorReason,
+} from "@nodex/runtime-contracts";
+import { AcpRegistryError } from "@nodex/provider-acp-registry/server/AcpRegistrySupport";
 import * as Schema from "effect/Schema";
 import type { AgentAcpFailure } from "./AcpManagementContract.ts";
 

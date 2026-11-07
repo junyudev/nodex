@@ -6,14 +6,14 @@ import {
   OrchestrationV2AppThread,
   ProjectId,
   ProviderInstanceId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 
@@ -53,7 +53,7 @@ export interface RuntimePolicyV2Shape {
 }
 
 export class RuntimePolicyV2 extends Context.Service<RuntimePolicyV2, RuntimePolicyV2Shape>()(
-  "t3/orchestration-v2/RuntimePolicy/RuntimePolicyV2",
+  "nodex/runtime/orchestration-v2/RuntimePolicy/RuntimePolicyV2",
 ) {}
 
 /**

@@ -1,7 +1,7 @@
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { resolveSettings } from "@anthropic-ai/claude-agent-sdk";
-import { ProviderInstanceId } from "@t3tools/contracts";
+import { ProviderInstanceId } from "@nodex/runtime-contracts";
 import { DEFAULT_MODEL_POLICY, setModelOn } from "../../../../src/shared/model-policy.ts";
 import { RuntimeModelPolicy, make } from "./ModelPolicy.ts";
 import { restrictions, verifyClaudeModelPolicy } from "./ClaudeModelPolicy.ts";

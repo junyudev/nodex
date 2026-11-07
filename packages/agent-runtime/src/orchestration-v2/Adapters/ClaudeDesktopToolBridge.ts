@@ -20,7 +20,7 @@ import {
   type JSONRPCMessage,
   type RequestId,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { HostDesktopTools } from "@t3tools/provider-core/server/ExecutionHost";
+import type { HostDesktopTools } from "@nodex/provider-core/server/ExecutionHost";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";

@@ -15,10 +15,10 @@ import {
   ImportChatAttachmentsInput,
   importChatAttachments,
 } from "../assets/ImportChatAttachments.ts";
-import { ChatAttachment } from "@t3tools/contracts";
+import { ChatAttachment } from "@nodex/runtime-contracts";
 import { runtimeHistoryContent } from "./RuntimeHistoryContent.ts";
 import * as OrchestratorMcp from "../mcp/OrchestratorMcpService.ts";
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId } from "@nodex/runtime-contracts";
 import {
   CommandId,
   ChatAttachmentId,
@@ -51,7 +51,7 @@ import {
   OrchestrationV2Subagent,
   OrchestrationV2ConversationMessage,
   OrchestrationV2ExecutionLocation,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
@@ -112,7 +112,7 @@ import { readSessionSearch, resolveSessionSearch } from "../orchestration-v2/Ses
 import * as Duration from "effect/Duration";
 import { rollbackThread } from "./Rollback.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as Providers from "../provider/ProviderRegistry.ts";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 import * as Configuration from "../config.ts";

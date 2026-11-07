@@ -7,7 +7,7 @@ import {
   type ProviderInteractionMode,
   RUNTIME_MODE_RANK,
   type RuntimeMode,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 
 /** Inherited modes step down for provider support; explicit selections must be supported. */

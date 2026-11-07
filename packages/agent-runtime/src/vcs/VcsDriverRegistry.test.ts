@@ -89,7 +89,7 @@ describe("VcsDriverRegistry", () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const repoDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-vcs-registry-" });
+      const repoDir = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-vcs-registry-" });
       yield* fs.makeDirectory(path.join(repoDir, ".git"));
       const calls: string[] = [];
 
@@ -113,7 +113,7 @@ describe("VcsDriverRegistry", () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const repoDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-vcs-registry-" });
+      const repoDir = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-vcs-registry-" });
       yield* fs.makeDirectory(path.join(repoDir, ".git"));
       const calls: string[] = [];
 
@@ -133,7 +133,7 @@ describe("VcsDriverRegistry", () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const parentDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-vcs-registry-" });
+      const parentDir = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-vcs-registry-" });
       const projectDir = path.join(parentDir, "project");
       yield* fs.makeDirectory(path.join(parentDir, ".git"));
       yield* fs.makeDirectory(projectDir);
@@ -157,7 +157,7 @@ describe("VcsDriverRegistry", () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const parentDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-vcs-registry-" });
+      const parentDir = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-vcs-registry-" });
       const middleDir = path.join(parentDir, "a");
       const cwd = path.join(middleDir, "b");
       yield* fs.makeDirectory(path.join(parentDir, ".git"));
@@ -179,7 +179,7 @@ describe("VcsDriverRegistry", () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const repoDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-vcs-registry-" });
+      const repoDir = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-vcs-registry-" });
       const calls: string[] = [];
 
       yield* Effect.gen(function* () {

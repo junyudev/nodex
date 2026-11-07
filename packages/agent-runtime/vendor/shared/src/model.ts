@@ -7,7 +7,7 @@ import {
   ProviderInstanceId,
   type ProviderOptionDescriptor,
   type ProviderOptionSelection,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { copySorted } from "./Array.ts";

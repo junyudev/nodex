@@ -1,4 +1,4 @@
-import type { ModelPreferences } from "@t3tools/contracts/settings";
+import type { ModelPreferences } from "@nodex/runtime-contracts/settings";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_TEXT_GENERATION_MODEL,
@@ -18,7 +18,7 @@ import {
   type ServerProvider,
   ServerSettings,
   type ServerSettingsPatch,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { deepMerge } from "./Struct.ts";

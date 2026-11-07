@@ -16,8 +16,8 @@ import type {
   ProviderAuthCompleteInput,
   ProviderAuthCancelInput,
   ProviderAuthState,
-} from "@t3tools/contracts";
-import type { AcpRegistryInspection } from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
+} from "@nodex/runtime-contracts";
+import type { AcpRegistryInspection } from "@nodex/provider-acp-registry/server/AcpRegistrySupport";
 import type { AgentWire } from "./Interface.ts";
 
 export interface AgentAcpTarget {
@@ -159,7 +159,7 @@ export interface AgentAcpManagementOperations {
       readonly sessionId: string;
       readonly sourceFingerprint: string;
       readonly model: string;
-      readonly runtimeMode?: import("@t3tools/contracts").RuntimeMode;
+      readonly runtimeMode?: import("@nodex/runtime-contracts").RuntimeMode;
     };
     readonly output: { readonly threadId: string };
   };

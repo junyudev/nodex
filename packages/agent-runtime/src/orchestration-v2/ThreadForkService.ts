@@ -10,8 +10,8 @@ import {
   OrchestrationV2SideChatCapture,
   OrchestrationV2ThreadProjection,
   ThreadId,
-} from "@t3tools/contracts";
-import { selectHistory } from "@t3tools/provider-core/server/handoffBudget";
+} from "@nodex/runtime-contracts";
+import { selectHistory } from "@nodex/provider-core/server/handoffBudget";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -76,7 +76,7 @@ export interface ThreadForkServiceV2Shape {
 export class ThreadForkServiceV2 extends Context.Service<
   ThreadForkServiceV2,
   ThreadForkServiceV2Shape
->()("t3/orchestration-v2/ThreadForkService/ThreadForkServiceV2") {}
+>()("nodex/runtime/orchestration-v2/ThreadForkService/ThreadForkServiceV2") {}
 
 type ForkThreadInput = Pick<
   Parameters<ThreadForkServiceV2Shape["plan"]>[0],

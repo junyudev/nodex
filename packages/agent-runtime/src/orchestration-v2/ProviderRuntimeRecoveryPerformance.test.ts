@@ -18,7 +18,7 @@ import {
   RunId,
   ThreadId,
   TurnItemId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Console from "effect/Console";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -31,12 +31,12 @@ import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
 import * as EventStore from "./EventStore.ts";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderRuntimeRecovery from "./ProviderRuntimeRecoveryService.ts";
 
 // Startup recovery cost for restart continuation. The default case is small
-// enough for CI and asserts correctness; T3_BENCH_RECOVERY=1 adds the matrix.
+// enough for CI and asserts correctness; NODEX_BENCH_RECOVERY=1 adds the matrix.
 // `it.live` keeps a real clock: each reconcile gets a fresh command id, so the
 // second recover cannot hide behind command receipt dedup.
 
@@ -494,7 +494,7 @@ it.live(
   60_000,
 );
 
-it.live.skipIf(process.env.T3_BENCH_RECOVERY !== "1")(
+it.live.skipIf(process.env.NODEX_BENCH_RECOVERY !== "1")(
   "restart recovery scales with active threads, not settled history",
   () =>
     Effect.gen(function* () {

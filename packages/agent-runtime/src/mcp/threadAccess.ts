@@ -6,10 +6,10 @@ import {
   type ProjectId,
   type ThreadId,
   type OrchestrationV2ThreadShell,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 
 import type { OrchestratorV2Error } from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
@@ -54,7 +54,7 @@ export const dispatchFailure = (
 export interface Caller {
   readonly scope: McpInvocationContext.McpInvocationScope;
   readonly threads: ThreadManagement.ThreadManagementService["Service"];
-  /** The calling thread, absent for a client signed in from outside T3. */
+  /** The calling thread, absent for a client signed in from outside Nodex. */
   readonly caller: OrchestrationV2ThreadShell | undefined;
   readonly limits: DispatchModes;
 }
@@ -137,7 +137,7 @@ export const resolveProjectId = (context: Caller, projectId: ProjectId | undefin
       : Effect.fail(
           new OrchestratorMcpFailure({
             code: "target_required",
-            message: "Pass projectId: this MCP client is not running inside a T3 thread.",
+            message: "Pass projectId: this MCP client is not running inside a Nodex thread.",
           }),
         );
 
@@ -150,7 +150,7 @@ const resolveThreadId = (context: Caller, threadId: ThreadId | undefined) =>
       : Effect.fail(
           new OrchestratorMcpFailure({
             code: "target_required",
-            message: "Pass threadId: this MCP client is not running inside a T3 thread.",
+            message: "Pass threadId: this MCP client is not running inside a Nodex thread.",
           }),
         );
 

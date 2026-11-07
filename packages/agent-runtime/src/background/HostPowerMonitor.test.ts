@@ -1,4 +1,4 @@
-import type { DesktopHostTelemetrySnapshot } from "@t3tools/contracts";
+import type { DesktopHostTelemetrySnapshot } from "@nodex/runtime-contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";

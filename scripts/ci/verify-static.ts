@@ -109,6 +109,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "module boundaries",
   },
   {
+    command: ["run", "verify:product-identity"],
+    group: "repository-contracts",
+    id: "product-identity",
+    name: "product identity",
+  },
+  {
     command: ["run", "version-surfaces:audit"],
     group: "repository-contracts",
     id: "version-surfaces",

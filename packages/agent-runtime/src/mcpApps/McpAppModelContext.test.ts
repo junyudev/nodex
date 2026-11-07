@@ -1,6 +1,6 @@
-import { ThreadId, TurnItemId } from "@t3tools/contracts";
+import { ThreadId, TurnItemId } from "@nodex/runtime-contracts";
 import { assert, it } from "@effect/vitest";
-import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+import * as NodeSqliteClient from "@nodex/runtime-shared/nodeSqliteClient";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";

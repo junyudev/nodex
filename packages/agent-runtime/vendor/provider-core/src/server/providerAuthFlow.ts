@@ -5,7 +5,7 @@ import {
   type ProviderAuthResponse,
   type ProviderAuthState,
   type ProviderInstanceId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";

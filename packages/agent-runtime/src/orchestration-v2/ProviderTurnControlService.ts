@@ -1,5 +1,5 @@
 import { readModelPolicyFailure } from "../../../../src/shared/model-policy.ts";
-import { projectMessageForProvider } from "@t3tools/shared/messageContextProjection";
+import { projectMessageForProvider } from "@nodex/runtime-shared/messageContextProjection";
 import {
   MessageId,
   type NodeId,
@@ -9,7 +9,7 @@ import {
   ProviderTurnId,
   RunAttemptId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -19,7 +19,7 @@ import * as Schema from "effect/Schema";
 import {
   ProviderAdapterSteerRunError,
   ProviderAdapterSteerRunUnsupportedError,
-} from "@t3tools/provider-core/server/ProviderAdapter";
+} from "@nodex/provider-core/server/ProviderAdapter";
 
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
@@ -94,7 +94,7 @@ export interface ProviderTurnControlServiceV2Shape {
 export class ProviderTurnControlServiceV2 extends Context.Service<
   ProviderTurnControlServiceV2,
   ProviderTurnControlServiceV2Shape
->()("t3/orchestration-v2/ProviderTurnControlService/ProviderTurnControlServiceV2") {}
+>()("nodex/runtime/orchestration-v2/ProviderTurnControlService/ProviderTurnControlServiceV2") {}
 
 export const layer: Layer.Layer<
   ProviderTurnControlServiceV2,

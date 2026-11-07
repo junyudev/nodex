@@ -28,7 +28,7 @@
  *
  * @module provider/ProviderInstanceRegistryMutator
  */
-import type { ProviderInstanceConfigMap } from "@t3tools/contracts";
+import type { ProviderInstanceConfigMap } from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 
@@ -49,4 +49,4 @@ export interface ProviderInstanceRegistryMutatorShape {
 export class ProviderInstanceRegistryMutator extends Context.Service<
   ProviderInstanceRegistryMutator,
   ProviderInstanceRegistryMutatorShape
->()("t3/provider/ProviderInstanceRegistryMutator") {}
+>()("nodex/runtime/provider/ProviderInstanceRegistryMutator") {}

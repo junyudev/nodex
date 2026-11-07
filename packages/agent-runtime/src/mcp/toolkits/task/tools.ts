@@ -19,7 +19,7 @@ import {
   RunId,
   RuntimeRequestId,
   TrimmedNonEmptyString,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import type { AgentTurnItem } from "../../../nodex/Interface.ts";
 import type { HistoryItem } from "../../../nodex/history-contracts.ts";
 import { Tool, Toolkit } from "effect/ai";

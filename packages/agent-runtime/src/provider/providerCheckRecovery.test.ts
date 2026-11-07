@@ -4,9 +4,9 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
-} from "@t3tools/contracts";
-import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
-import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
+} from "@nodex/runtime-contracts";
+import * as ProviderHost from "@nodex/provider-core/server/ProviderHost";
+import { makeManagedServerProvider } from "@nodex/provider-core/server/managedProvider";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

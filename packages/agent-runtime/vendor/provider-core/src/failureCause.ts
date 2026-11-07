@@ -1,4 +1,4 @@
-import type { OrchestrationV2ProviderFailure } from "@t3tools/contracts";
+import type { OrchestrationV2ProviderFailure } from "@nodex/runtime-contracts";
 
 /**
  * What a failed reply ran into, derived once from the failure's structured evidence.

@@ -2,7 +2,7 @@
 import * as NodeChildProcess from "node:child_process";
 
 import { describe, expect, it } from "@effect/vitest";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 
 import { signalProcessGroup } from "./processGroup.ts";
 

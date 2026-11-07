@@ -1,4 +1,4 @@
-import { assertTextGenerationAdmission } from "@t3tools/provider-core/server/textGenerationPolicy";
+import { assertTextGenerationAdmission } from "@nodex/provider-core/server/textGenerationPolicy";
 import {
   restrictions as claudeModelRestrictions,
   verifyClaudeModelPolicy,
@@ -19,18 +19,18 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { type ClaudeSettings, TextGenerationError } from "@t3tools/contracts";
-import { resolveSpawnCommand } from "@t3tools/shared/shell";
+import { type ClaudeSettings, TextGenerationError } from "@nodex/runtime-contracts";
+import { resolveSpawnCommand } from "@nodex/runtime-shared/shell";
 
-import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
+import * as TextGenerationOperations from "@nodex/provider-core/server/textGenerationOperations";
 import {
   normalizeCliError,
   toJsonSchemaObject,
-} from "@t3tools/provider-core/server/textGenerationUtils";
+} from "@nodex/provider-core/server/textGenerationUtils";
 import {
   getModelSelectionStringOptionValue,
   getProviderOptionDescriptors,
-} from "@t3tools/shared/model";
+} from "@nodex/runtime-shared/model";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   type ClaudeModelCatalog,

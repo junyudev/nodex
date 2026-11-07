@@ -2,7 +2,7 @@ import { OPENCODE2_BACKGROUND_PROMPT, type OrchestratorFixtureInput } from "../s
 
 /**
  * The parent's turn ends while its background subagent runs. When the
- * subagent ends, OpenCode starts a parent execution of its own, which T3
+ * subagent ends, OpenCode starts a parent execution of its own, which Nodex
  * replays as a continuation run.
  */
 export function openCode2BackgroundInput(): OrchestratorFixtureInput {

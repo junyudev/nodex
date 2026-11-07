@@ -2,7 +2,7 @@
 import * as NodeOS from "node:os";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { CodexSettings, EnvironmentId, ProviderInstanceId } from "@t3tools/contracts";
+import { CodexSettings, EnvironmentId, ProviderInstanceId } from "@nodex/runtime-contracts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -26,21 +26,21 @@ it.effect("managed home defaults to the global Codex home and honors configured 
   Effect.gen(function* () {
     const path = yield* Path.Path;
     const primary = yield* resolveManagedCodexHomeLayout(
-      "/t3-state",
+      "/nodex-state",
       ProviderInstanceId.make("codex"),
       decodeSettings({}),
     );
     assert.equal(primary.sharedHomePath, path.join(NodeOS.homedir(), ".codex"));
     assert.equal(primary.mode, "direct");
     const additional = yield* resolveManagedCodexHomeLayout(
-      "/t3-state",
+      "/nodex-state",
       ProviderInstanceId.make("codex-work"),
       decodeSettings({}),
     );
     assert.equal(additional.sharedHomePath, primary.sharedHomePath);
     assert.equal(additional.mode, "authOverlay");
     const configured = yield* resolveManagedCodexHomeLayout(
-      "/t3-state",
+      "/nodex-state",
       ProviderInstanceId.make("codex-work"),
       decodeSettings({ homePath: "/custom/shared", shadowHomePath: "/custom/shadow" }),
     );
@@ -216,7 +216,7 @@ it.effect.each(
       Effect.scoped,
       Effect.provide(
         ServerConfig.layerTest(process.cwd(), {
-          prefix: "t3-managed-runtime-",
+          prefix: "nodex-managed-runtime-",
         }).pipe(Layer.provideMerge(NodeServices.layer)),
       ),
     ),

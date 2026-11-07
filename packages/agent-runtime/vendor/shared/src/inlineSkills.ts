@@ -1,4 +1,4 @@
-import type { ServerProviderSkill } from "@t3tools/contracts";
+import type { ServerProviderSkill } from "@nodex/runtime-contracts";
 
 export type InlineSkill = Pick<ServerProviderSkill, "name" | "displayName">;
 

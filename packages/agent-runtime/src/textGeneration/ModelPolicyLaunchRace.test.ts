@@ -1,6 +1,6 @@
 import * as TextGeneration from "./TextGeneration.ts";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
-import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
+import type { ProviderInstance } from "@nodex/provider-core/server/driver";
 import { it, expect } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 import * as Schedule from "effect/Schedule";
@@ -17,8 +17,8 @@ import {
   ProviderInstanceId,
   ProviderDriverKind,
   TextGenerationError,
-} from "@t3tools/contracts";
-import { TextGenerationAdmission } from "@t3tools/provider-core/server/textGenerationPolicy";
+} from "@nodex/runtime-contracts";
+import { TextGenerationAdmission } from "@nodex/provider-core/server/textGenerationPolicy";
 import { DEFAULT_MODEL_POLICY, setModelOn } from "../../../../src/shared/model-policy.ts";
 import { RuntimeModelPolicy, make as makePolicy } from "../nodex/ModelPolicy.ts";
 import * as ServerConfig from "../config.ts";

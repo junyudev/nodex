@@ -1,8 +1,8 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it, expect } from "@effect/vitest";
-import { ProviderInstanceId, TextGenerationError } from "@t3tools/contracts";
-import { TextGenerationAdmission } from "@t3tools/provider-core/server/textGenerationPolicy";
-import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
+import { ProviderInstanceId, TextGenerationError } from "@nodex/runtime-contracts";
+import { TextGenerationAdmission } from "@nodex/provider-core/server/textGenerationPolicy";
+import * as TestProviderHost from "@nodex/provider-testing/TestProviderHost";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";

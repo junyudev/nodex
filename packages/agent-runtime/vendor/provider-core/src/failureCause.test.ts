@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import type { OrchestrationV2ProviderFailure } from "@t3tools/contracts";
+import type { OrchestrationV2ProviderFailure } from "@nodex/runtime-contracts";
 
 import { providerFailureCause, type ProviderFailureCause } from "./failureCause.ts";
 

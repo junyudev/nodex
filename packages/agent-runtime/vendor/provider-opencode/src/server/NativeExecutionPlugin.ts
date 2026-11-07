@@ -3,9 +3,9 @@ import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
 import { pathToFileURL } from "node:url";
 
-import { fromLenientJson } from "@t3tools/shared/schemaJson";
+import { fromLenientJson } from "@nodex/runtime-shared/schemaJson";
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
-import { NODEX_APP_MCP_SERVER } from "@t3tools/shared/nodexAppMcp";
+import { NODEX_APP_MCP_SERVER } from "@nodex/runtime-shared/nodexAppMcp";
 
 /** Native tool context is attached after model input validation, never accepted from the model. */
 export const source = `export default {

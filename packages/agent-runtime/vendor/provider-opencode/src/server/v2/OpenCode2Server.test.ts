@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -180,19 +180,19 @@ describe("OpenCode2Server passwords", () => {
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
-  it("hands the spawned server only the T3 password", () => {
-    const password = Redacted.make("t3-generated");
+  it("hands the spawned server only the Nodex password", () => {
+    const password = Redacted.make("nodex-generated");
     const environment = OpenCode2Server.serverEnvironment(
       { PATH: "/bin", OPENCODE_SERVER_PASSWORD: "ambient", OPENCODE_PASSWORD: "ambient" },
       password,
     );
-    assert.deepStrictEqual(environment, { PATH: "/bin", OPENCODE_PASSWORD: "t3-generated" });
+    assert.deepStrictEqual(environment, { PATH: "/bin", OPENCODE_PASSWORD: "nodex-generated" });
   });
 });
 
 // Serves /api/info only with the password from OPENCODE_PASSWORD, like 2.x, and
 // prints the 2.x banner (plus the generated-password line 2.x prints when no
-// password is set, which T3 must never need).
+// password is set, which Nodex must never need).
 const FAKE_SERVER = `import { createServer } from "node:http";
 const expected = "Basic " + Buffer.from("opencode:" + process.env.OPENCODE_PASSWORD).toString("base64");
 const server = createServer((request, response) => {
@@ -206,7 +206,7 @@ const server = createServer((request, response) => {
 });
 server.listen(0, "127.0.0.1", () => {
   process.stdout.write("server listening on http://127.0.0.1:" + server.address().port + "\\n");
-  process.stdout.write("server password not-the-t3-password\\n");
+  process.stdout.write("server password not-the-nodex-password\\n");
 });
 `;
 
@@ -218,7 +218,7 @@ describe("OpenCode2Server spawned server", () => {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const platform = yield* HostProcess.Platform;
-        const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-opencode2-fake-" });
+        const directory = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-opencode2-fake-" });
         const isWindows = platform === "win32";
         const binaryPath = path.join(directory, isWindows ? "opencode.cmd" : "opencode");
         const scriptPath = path.join(directory, "opencode.mjs");

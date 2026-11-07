@@ -587,11 +587,11 @@ export const ServerSignalProcessResult = Schema.Struct({
 export type ServerSignalProcessResult = typeof ServerSignalProcessResult.Type;
 
 /**
- * A palette the environment's machine publishes for T3 Code to follow, read
+ * A palette the environment's machine publishes for Nodex to follow, read
  * from a theme file next to the rest of the environment's state. Two seed
  * colors rather than a full palette: clients derive the remaining roles with
  * the same generator the guided theme editor uses, so a desktop theme carries
- * over as a coherent T3 Code palette instead of a foreign one.
+ * over as a coherent Nodex palette instead of a foreign one.
  */
 export const EnvironmentThemeColor = Schema.String.check(
   Schema.isPattern(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/),
@@ -992,7 +992,7 @@ export class ServerProviderUpdateError extends Schema.TaggedError<ServerProvider
 }
 
 export const ServerSelfUpdateInput = Schema.Struct({
-  /** Exact npm version of the `t3` package to install (never a dist-tag, so
+  /** Exact npm version of the `nodex` package to install (never a dist-tag, so
       the server and the acknowledging client agree on what was requested). */
   targetVersion: TrimmedNonEmptyString,
   /** Opt-in recovery for provider turns that are running when the server

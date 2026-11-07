@@ -1,4 +1,4 @@
-import { foldSearchQuery, scoreThreadSearch } from "@t3tools/shared/paletteSearch";
+import { foldSearchQuery, scoreThreadSearch } from "@nodex/runtime-shared/paletteSearch";
 
 export interface SessionSearchSubject {
   readonly sessionId: string;

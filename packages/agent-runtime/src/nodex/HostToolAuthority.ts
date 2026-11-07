@@ -3,7 +3,7 @@ import type {
   OrchestrationV2ProviderThread,
   OrchestrationV2Run,
   OrchestrationV2Subagent,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import type { AgentHostExecutionIdentity } from "./Interface.ts";
 
 export interface HostToolAuthorityView {

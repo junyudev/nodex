@@ -2,7 +2,7 @@ import { makeProviderEventBuffer } from "../ProviderEventBuffer.ts";
 import type { CodexErrorInfo } from "../../../../codex-app-server-protocol/src/v2/CodexErrorInfo.ts";
 import * as PubSub from "effect/PubSub";
 import { revertCodexThread, revertCodexThreadTurns } from "../../provider/CodexThreadRevert.ts";
-import { historyResponseItems } from "@t3tools/provider-core/server/handoffBudget";
+import { historyResponseItems } from "@nodex/provider-core/server/handoffBudget";
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
 import {
   mcpToolPresentation,
@@ -15,9 +15,9 @@ import {
   completeCodexTurnTokenUsage,
   type CodexTurnTokenUsageState,
 } from "../../provider/CodexTurnTokenUsage.ts";
-import type { ManagedServerProvider } from "@t3tools/provider-core/server/snapshot";
+import type { ManagedServerProvider } from "@nodex/provider-core/server/snapshot";
 import type { CodexEffectiveRuntime } from "../../provider/CodexManagedRuntime.ts";
-import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import {
   withCodexAppServerClient,
   buildCodexInitializeParams,
@@ -36,19 +36,22 @@ import {
   OrchestrationV2ProviderGoal,
   ProviderDriverKind,
   type ProviderSetupError,
-} from "@t3tools/contracts";
-import { SKILL_MENTION_PATTERN } from "@t3tools/shared/composerInlineTokens";
-import { AgentScope } from "@t3tools/shared/AgentScope";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+} from "@nodex/runtime-contracts";
+import { SKILL_MENTION_PATTERN } from "@nodex/runtime-shared/composerInlineTokens";
+import { AgentScope } from "@nodex/runtime-shared/AgentScope";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import {
   makeCodexWindowsSandbox,
   requireCodexWindowsSandbox,
   type CodexWindowsSandbox,
 } from "../../provider/CodexWindowsSandbox.ts";
-import { dynamicToolTitle } from "@t3tools/shared/toolActivity";
-import { fileChangeDetail, fileChangeItemFields } from "@t3tools/shared/fileChanges";
-import { getModelSelectionStringOptionValue, modelSelectionsEqual } from "@t3tools/shared/model";
-import { resolveSpawnCommand } from "@t3tools/shared/shell";
+import { dynamicToolTitle } from "@nodex/runtime-shared/toolActivity";
+import { fileChangeDetail, fileChangeItemFields } from "@nodex/runtime-shared/fileChanges";
+import {
+  getModelSelectionStringOptionValue,
+  modelSelectionsEqual,
+} from "@nodex/runtime-shared/model";
+import { resolveSpawnCommand } from "@nodex/runtime-shared/shell";
 import type {
   ChatAttachment,
   OrchestrationV2AppThread,
@@ -79,7 +82,7 @@ import type {
   ProviderInstanceId,
   RuntimeRequestId,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@nodex/runtime-contracts";
 import * as CodexClient from "effect-codex-app-server/client";
 import * as CodexErrors from "effect-codex-app-server/errors";
 import * as CodexSchema from "effect-codex-app-server/schema";
@@ -110,7 +113,7 @@ import type { ThreadBackgroundTerminalsTerminateResponse } from "@nodex/codex-ap
 import { resolveAttachmentPath, resolveAttachmentPathById } from "../../attachmentStore.ts";
 import { getCodexServiceTierOptionValue } from "../../codexModelOptions.ts";
 import { ServerConfig } from "../../config.ts";
-import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
+import { expandHomePath } from "@nodex/provider-core/server/pathExpansion";
 import {
   buildCodexAdditionalContext,
   buildCodexDeveloperInstructions,
@@ -130,44 +133,44 @@ import {
   boundProviderEventForLogging,
   shouldPersistProviderEvent,
 } from "../../provider/EventNdjsonLogger.ts";
-import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+import * as ProviderEventLoggers from "@nodex/provider-core/server/ProviderEventLoggers";
 import { codexAppServerArgs, resolveCodexLaunchArgs } from "../../provider/codexLaunchArgs.ts";
-import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
-import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import { mergeProviderInstanceEnvironment } from "@nodex/provider-core/server/instanceEnvironment";
+import * as McpProviderSession from "@nodex/provider-core/server/mcpSession";
+import * as McpProviderSessions from "@nodex/provider-core/server/McpProviderSessions";
 import {
   MCP_APP_EXTENSION_ID,
   MCP_APP_MIME_TYPE,
   MCP_APP_OUTPUT_KEY,
   MCP_APP_RESOURCE_SCHEME,
-} from "@t3tools/shared/mcpApp";
+} from "@nodex/runtime-shared/mcpApp";
 import { snapshotMcpApp } from "../../mcpApps/McpAppSnapshot.ts";
 import {
   ProviderAdapterDriverCreateError,
   type ProviderAdapterDriver,
   type ProviderAdapterDriverCreateInput,
-} from "@t3tools/provider-core/server/adapterDriver";
-import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
-import { backgroundWorkNotification } from "@t3tools/provider-core/server/notification";
+} from "@nodex/provider-core/server/adapterDriver";
+import * as ProviderContinuationRequests from "@nodex/provider-core/server/ProviderContinuationRequests";
+import { backgroundWorkNotification } from "@nodex/provider-core/server/notification";
 import {
   makeProviderFailure,
   makeProviderFailureTurnItem,
   makeProviderRetryTurnItem,
-} from "@t3tools/provider-core/server/failure";
-import { turnScopedSelectionTransition } from "@t3tools/provider-core/server/selectionTransition";
+} from "@nodex/provider-core/server/failure";
+import { turnScopedSelectionTransition } from "@nodex/provider-core/server/selectionTransition";
 import {
   isProviderNativeImageAttachment,
   providerMessageTextWithAttachmentPaths,
-} from "@t3tools/provider-core/server/attachmentPrompt";
+} from "@nodex/provider-core/server/attachmentPrompt";
 import {
   makeSubagentChildThread,
   makeSubagentConversationArtifacts,
   subagentThreadTitle,
-} from "@t3tools/provider-core/server/subagentProjection";
-import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+} from "@nodex/provider-core/server/subagentProjection";
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
+import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import { NODEX_APP_MCP_SERVER } from "../../mcp/NodexAppMcpServer.ts";
-import { APP_TOOLS_PROVIDER_TIMEOUT_MS } from "@t3tools/shared/nodexAppMcp";
+import { APP_TOOLS_PROVIDER_TIMEOUT_MS } from "@nodex/runtime-shared/nodexAppMcp";
 import { AGENT_RUNTIME_CODEX_THREAD_SOURCE } from "../../nodex/CodexThreadSource.ts";
 import { SIDE_CHAT_BOUNDARY_TEXT } from "../../nodex/SideChat.ts";
 import {
@@ -741,7 +744,7 @@ export function buildCodexTurnStartParams(input: {
   readonly codexInput: ReadonlyArray<CodexSchema.V2TurnStartParams__UserInput>;
   readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
   readonly modelSelection: ModelSelection;
-  readonly hasT3Mcp?: boolean;
+  readonly hasAppTools?: boolean;
   readonly attachmentsDir?: string;
   readonly sourceRoots?: readonly string[];
   readonly hostInstructions?: string;
@@ -769,7 +772,7 @@ export function buildCodexTurnStartParams(input: {
         ? undefined
         : getCodexServiceTierOptionValue(input.modelSelection);
     const developerInstructions =
-      input.hasT3Mcp === true
+      input.hasAppTools === true
         ? buildCodexDeveloperInstructions(input.runtimePolicy.interactionMode)
         : undefined;
     // An app's context is text an MCP server wrote, so it goes in as untrusted
@@ -781,8 +784,8 @@ export function buildCodexTurnStartParams(input: {
         { kind: "untrusted" as const, value: entry.text },
       ]),
     );
-    const t3Context =
-      input.hasT3Mcp === true
+    const orchestrationContext =
+      input.hasAppTools === true
         ? buildCodexAdditionalContext(
             { model: input.modelSelection.model, reasoningEffort: effort ?? "medium" },
             input.hostOrchestrationInstructions,
@@ -795,11 +798,11 @@ export function buildCodexTurnStartParams(input: {
             nodex_host: { kind: "application" as const, value: input.hostInstructions },
           };
     const additionalContext =
-      t3Context === undefined &&
+      orchestrationContext === undefined &&
       Object.keys(appContext).length === 0 &&
       Object.keys(hostContext).length === 0
         ? undefined
-        : { ...t3Context, ...appContext, ...hostContext };
+        : { ...orchestrationContext, ...appContext, ...hostContext };
     const collaborationMode: CodexSchema.ClientRequest__CollaborationMode | undefined =
       input.runtimePolicy.interactionMode !== "plan" && developerInstructions === undefined
         ? undefined
@@ -821,7 +824,7 @@ export function buildCodexTurnStartParams(input: {
       cwd: input.runtimePolicy.cwd,
       model: input.modelSelection.model,
       // Model catalogues can default summaries to "none". Request them on every
-      // turn, including resumed threads, for T3's reasoning timeline.
+      // turn, including resumed threads, for Nodex's reasoning timeline.
       summary: "detailed",
       // Always explicit: omitting this on resume leaves Codex's previous
       // reviewer sticky after switching away from Auto mode.
@@ -1461,11 +1464,11 @@ export interface CodexAppServerClientFactoryShape {
 export class CodexAppServerClientFactory extends Context.Service<
   CodexAppServerClientFactory,
   CodexAppServerClientFactoryShape
->()("t3/orchestration-v2/Adapters/CodexAdapterV2/CodexAppServerClientFactory") {}
+>()("nodex/runtime/orchestration-v2/Adapters/CodexAdapterV2/CodexAppServerClientFactory") {}
 
 /**
  * Config overrides sent with every `thread/start`, `thread/resume` and `thread/fork`.
- * Codex 0.152 made the `update_plan` checklist tool opt-in; T3 renders it as the
+ * Codex 0.152 made the `update_plan` checklist tool opt-in; Nodex renders it as the
  * todo list. Codex layers these above the user's and project's `config.toml`.
  */
 export const CODEX_THREAD_CONFIG = { "tools.update_plan.enabled": true } as const;
@@ -1838,7 +1841,7 @@ export interface CodexAdapterV2Options {
   readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
   /**
    * Resolves launch settings when each session opens, replacing `settings` and
-   * `environment`. Managed ChatGPT sign-in uses it to launch the T3-installed
+   * `environment`. Managed ChatGPT sign-in uses it to launch the Nodex-installed
    * Codex with a current access token.
    */
   readonly resolveRuntime?: Effect.Effect<CodexEffectiveRuntime, ProviderSetupError, Scope.Scope>;
@@ -7320,7 +7323,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 ? {}
                 : { sourceRoots: turnInput.hostSourceRoots }),
               modelSelection: turnInput.modelSelection,
-              hasT3Mcp: mcpSession !== undefined,
+              hasAppTools: mcpSession !== undefined,
               ...(turnInput.hostInstructions === undefined
                 ? {}
                 : { hostInstructions: turnInput.hostInstructions }),
@@ -7481,7 +7484,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           );
 
         // MCP Apps reach their server through Codex's own MCP client, so any
-        // server the user configured for Codex works without T3 connecting to it.
+        // server the user configured for Codex works without Nodex connecting to it.
         const mcpAppsError = (detail: string) => (cause: unknown) =>
           new ProviderAdapter.ProviderAdapterProtocolError({
             driver: CODEX_PROVIDER,
