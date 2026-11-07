@@ -3,7 +3,6 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import * as Option from "effect/Option";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import {
@@ -12,7 +11,6 @@ import {
   type CodexSidebarThreadMoveInput,
   type CodexSidebarThreadMoveResult,
 } from "../../shared/codex-sidebar-thread-move";
-import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
 import { isAgentExecutionThreadId } from "../../shared/agent-runtime-api";
 import type {
   CodexSidebarSnapshot,
@@ -52,7 +50,6 @@ export class CodexThreadCatalogError extends Data.TaggedError("CodexThreadCatalo
 export class CodexThreadCatalog extends Context.Service<
   CodexThreadCatalog,
   {
-    readonly listPinned: Effect.Effect<readonly string[], CodexThreadCatalogError>;
     readonly listProject: (
       projectId: string,
       input?: CodexThreadSummaryWindowInput,
@@ -83,10 +80,6 @@ export const CODEX_PINNED_THREAD_LIST_MAX_RESULTS = 1_000;
 export const CODEX_PINNED_THREAD_LIST_MAX_PAGE_BYTES = 2 * 1024 * 1024;
 export const CODEX_PINNED_THREAD_LIST_MAX_RESULT_BYTES = 256 * 1024;
 export const CODEX_PINNED_THREAD_LIST_PAGE_DEADLINE = "3 seconds";
-type CoreTaskWindow = Extract<
-  import("../core-client/types").ProjectWorkspaceReadSnapshot["value"],
-  { readonly kind: "task_window" }
->["tasks"];
 
 const isCoreNotFound = (cause: unknown): boolean =>
   cause instanceof CoreRuntimeError &&
@@ -380,78 +373,6 @@ export const make = (): Effect.Effect<
     });
 
     return CodexThreadCatalog.of({
-      listPinned: runOwned(
-        Effect.gen(function* () {
-          const ids: string[] = [];
-          const seenThreadIds = new Set<string>();
-          const seenCursors = new Set<string>();
-          let after: string | null = null;
-          let retainedBytes = 0;
-          for (let page = 0; page < CODEX_PINNED_THREAD_LIST_MAX_PAGES; page += 1) {
-            const loaded = yield* readTaskWindow({
-              projectId: null,
-              pinned: true,
-              after,
-              first: CODEX_PINNED_THREAD_LIST_PAGE_SIZE,
-            }).pipe(Effect.timeoutOption(CODEX_PINNED_THREAD_LIST_PAGE_DEADLINE));
-            if (Option.isNone(loaded)) {
-              return yield* error(
-                "list-pinned",
-                new Error("Pinned Thread list page exceeded its bounded deadline"),
-              );
-            }
-            const tasks: CoreTaskWindow = loaded.value;
-            if (
-              tasks.items.length > CODEX_PINNED_THREAD_LIST_PAGE_SIZE ||
-              cappedApproximateValueBytes(tasks.items, CODEX_PINNED_THREAD_LIST_MAX_PAGE_BYTES) >
-                CODEX_PINNED_THREAD_LIST_MAX_PAGE_BYTES
-            ) {
-              return yield* error(
-                "list-pinned",
-                new Error("Pinned Thread list page exceeded its bounded admission budget"),
-              );
-            }
-            for (const task of tasks.items) {
-              const threadId =
-                task.thread?.backend_binding.kind === "codex" ? task.thread.thread_id : null;
-              if (!threadId || seenThreadIds.has(threadId)) continue;
-              if (ids.length >= CODEX_PINNED_THREAD_LIST_MAX_RESULTS) {
-                return yield* error(
-                  "list-pinned",
-                  new Error("Pinned Thread list exceeded its bounded result budget"),
-                );
-              }
-              const threadIdBytes = cappedApproximateValueBytes(
-                threadId,
-                CODEX_PINNED_THREAD_LIST_MAX_RESULT_BYTES - retainedBytes,
-              );
-              if (threadIdBytes > CODEX_PINNED_THREAD_LIST_MAX_RESULT_BYTES - retainedBytes) {
-                return yield* error(
-                  "list-pinned",
-                  new Error("Pinned Thread ids exceeded their bounded retention budget"),
-                );
-              }
-              seenThreadIds.add(threadId);
-              ids.push(threadId);
-              retainedBytes += threadIdBytes;
-            }
-            const next = tasks.next_cursor ?? null;
-            if (next === null) return ids;
-            if (seenCursors.has(next)) {
-              return yield* error(
-                "list-pinned",
-                new Error("Pinned Thread list cursor did not advance"),
-              );
-            }
-            seenCursors.add(next);
-            after = next;
-          }
-          return yield* error(
-            "list-pinned",
-            new Error("Pinned Thread list exceeded its bounded page budget"),
-          );
-        }).pipe(Effect.mapError((cause) => error("list-pinned", cause))),
-      ),
       listProject: (projectId, input = {}) => {
         const normalized = projectId.trim();
         if (!normalized)

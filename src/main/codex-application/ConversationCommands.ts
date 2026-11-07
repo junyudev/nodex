@@ -50,16 +50,6 @@ export class ConversationCommands extends Context.Service<
     readonly unarchive: (
       threadId: string,
     ) => Effect.Effect<CodexThreadSummary | null, CodexConversationArchiveError>;
-    readonly setMemoryMode: (
-      threadId: string,
-      mode: ClientRequestParamsByMethod["thread/memoryMode/set"]["mode"],
-    ) => Effect.Effect<void, ConversationThreadCommandError>;
-    readonly startReview: (
-      params: ClientRequestParamsByMethod["review/start"],
-    ) => Effect.Effect<
-      ClientRequestResponsesByMethod["review/start"],
-      ConversationThreadCommandError
-    >;
     readonly uploadFeedback: (
       params: ClientRequestParamsByMethod["feedback/upload"],
     ) => Effect.Effect<void, CodexRuntimeError>;
@@ -227,22 +217,6 @@ export const live: Layer.Layer<
           (deleted) => deleted,
         ),
       unarchive: (threadId) => runSerial(threadId, archive.unarchive(threadId)),
-      setMemoryMode: (threadId, mode) =>
-        requireCodexThread(threadId).pipe(
-          Effect.andThen(
-            Effect.suspend(() =>
-              gateway
-                .requestForThread(threadId, "thread/memoryMode/set", { threadId, mode })
-                .pipe(Effect.asVoid),
-            ),
-          ),
-        ),
-      startReview: (params) =>
-        requireCodexThread(params.threadId).pipe(
-          Effect.andThen(
-            Effect.suspend(() => gateway.requestForThread(params.threadId, "review/start", params)),
-          ),
-        ),
       uploadFeedback: (params) =>
         gateway.requestLocal("feedback/upload", params).pipe(Effect.asVoid),
       listBackgroundTerminalsPage: (threadId, options) =>

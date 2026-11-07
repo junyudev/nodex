@@ -5,7 +5,6 @@ import path from "node:path";
 import {
   createCodexProjectlessWorkspace,
   formatCodexProjectlessLocalDate,
-  parseCodexProjectlessThreadCwdInput,
   parseCodexProjectlessWorkspace,
   resolveCodexProjectlessWorkspaceRoot,
   slugCodexProjectlessDirectoryName,
@@ -81,35 +80,6 @@ describe("Codex projectless workspace", () => {
     } finally {
       await rm(homeDirectory, { recursive: true, force: true });
     }
-  });
-
-  test("validates the renderer host request without changing nullable values", () => {
-    expect(
-      parseCodexProjectlessThreadCwdInput({
-        prompt: null,
-        directoryName: "Explicit directory",
-        createSplitDirectories: false,
-      }),
-    ).toStrictEqual({
-      prompt: null,
-      directoryName: "Explicit directory",
-      createSplitDirectories: false,
-    });
-    expect(parseCodexProjectlessThreadCwdInput({})).toStrictEqual({
-      prompt: undefined,
-      directoryName: undefined,
-    });
-    expect(() => parseCodexProjectlessThreadCwdInput(null)).toThrow(
-      "Projectless thread cwd input must be an object",
-    );
-    expect(() => parseCodexProjectlessThreadCwdInput({ prompt: 1 })).toThrow(
-      "prompt must be a string, null, or omitted",
-    );
-    expect(() =>
-      parseCodexProjectlessThreadCwdInput({
-        createSplitDirectories: "yes",
-      }),
-    ).toThrow("createSplitDirectories must be a boolean or omitted");
   });
 
   test("validates a renderer-returned workspace descriptor", () => {

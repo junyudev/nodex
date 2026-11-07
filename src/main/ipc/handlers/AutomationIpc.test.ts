@@ -52,10 +52,9 @@ it.effect("owns calendar and scheduled automation ingress with the Main Scope", 
       scope,
     );
 
-    assert.strictEqual(channels.size, 17);
+    assert.strictEqual(channels.size, 15);
     assert.isTrue(channels.has("calendar:occurrences"));
     assert.isTrue(channels.has("codex:scheduled-automations:run-now"));
-    assert.isTrue(channels.has("codex:automation-runs:mark-all-read"));
 
     yield* Scope.close(scope, Exit.void);
     assert.strictEqual(channels.size, 0);

@@ -56,12 +56,3 @@ export interface AgentImportResult {
   readonly completedAt: number;
   readonly outcomes: readonly AgentImportItemOutcome[];
 }
-
-export interface AgentImportProgress {
-  readonly importId: string;
-  readonly sourceKind: AgentImportSourceKind;
-  readonly completedItems: number;
-  readonly totalItems: number;
-  readonly activeItemLabel: string | null;
-  readonly completed: boolean;
-}

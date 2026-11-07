@@ -18,7 +18,6 @@ import {
   type PendingImportScan,
 } from "../codex/agent-import-operations";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
-import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexExternalAgentImportRuntime } from "./CodexExternalAgentImportRuntime";
 
 export class AgentImportRuntimeError extends Data.TaggedError("AgentImportRuntimeError")<{
@@ -73,11 +72,10 @@ export const make = (
 ): Effect.Effect<
   AgentImportRuntime["Service"],
   never,
-  CodexApplicationEventHub | CodexExternalAgentImportRuntime | CodexGateway | Scope.Scope
+  CodexExternalAgentImportRuntime | CodexGateway | Scope.Scope
 > =>
   Effect.gen(function* () {
     const operations = makeAgentImportOperations(options, {
-      events: yield* CodexApplicationEventHub,
       externalImport: yield* CodexExternalAgentImportRuntime,
       gateway: yield* CodexGateway,
     });

@@ -1586,7 +1586,6 @@ describe("review diff panel", () => {
 
     await waitForGitReviewSnapshotCall();
     expect(invokeCalls.some((call) => call[0] === "review-diff")).toBe(true);
-    expect(invokeCalls.some((call) => call[0] === "codex:review:start")).toBe(false);
     await unmountReviewView(view);
   });
 
@@ -1651,8 +1650,6 @@ describe("review diff panel", () => {
         throw new Error("Expected branch review snapshot request.");
       }
     });
-
-    expect(invokeCalls.some((call) => call[0] === "codex:review:start")).toBe(false);
   });
 
   test("renders Codex unstaged empty state copy", async () => {

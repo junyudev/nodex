@@ -171,11 +171,6 @@ export const live: Layer.Layer<
         Effect.andThen(pending.cancel(pendingWorktreeId)),
       ),
     );
-    yield* handlePlainCommand("codex:pending-worktree:dismiss", (_, hostId, pendingWorktreeId) =>
-      requireOwned(hostId, pendingWorktreeId).pipe(
-        Effect.andThen(pending.dismiss(pendingWorktreeId)),
-      ),
-    );
     yield* handlePlainCommand(
       "codex:pending-worktree:rename",
       (_, hostId, pendingWorktreeId, label) =>

@@ -163,15 +163,6 @@ When `gh` is missing, unauthenticated, or the repository has no remote, main ret
 
 ## Review Requests And Comments
 
-Explicit review-start actions call `codex:review:start` with protocol-native targets where possible:
-
-- uncommitted changes -> `{ type: "uncommittedChanges" }`
-- base branch -> `{ type: "baseBranch", branch }`
-- commit -> `{ type: "commit", sha, title }`
-- unsupported custom scopes -> `{ type: "custom", instructions }`
-
-Delivery defaults to `inline`.
-
 Diff lines are commentable in the Review panel. Hovering a changed line exposes the `@pierre/diffs` gutter utility slot (`data-gutter-utility-slot > button[data-utility-button]`) with the package plus icon. Clicking the plus, dragging a gutter line/range, or right-clicking a hovered line and choosing `Request changes` creates a local line annotation draft unless that exact `${side}:${lineNumber}` already has a model comment, local pending comment, or open draft. `side` is `additions` for right-side/new lines and `deletions` for left-side/removed lines.
 
 Local drafts render in the diff annotation slot as `Local comment` cards. The header shows `Comment on line Rn` / `Comment on line Ln`, or `Comment on lines ... to ...` for ranges. The editor placeholder is `Request change`; empty drafts cannot be submitted. New drafts expose `Cancel` and `Comment`. Submitted local comments stay as editable pending annotation cards with `Save` and `Delete`, and also appear as removable composer attachment chips until sent.

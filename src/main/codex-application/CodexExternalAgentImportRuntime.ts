@@ -44,7 +44,6 @@ export class CodexExternalAgentImportRuntime extends Context.Service<
   {
     readonly run: (
       items: readonly ExternalAgentConfigMigrationItem[],
-      onProgress: (progress: ExternalAgentConfigImportProgressNotification) => Effect.Effect<void>,
     ) => Effect.Effect<
       ExternalAgentConfigImportCompletedNotification,
       CodexExternalAgentImportError
@@ -81,10 +80,7 @@ export const make = (
     const closed = yield* Latch.make();
     yield* Effect.addFinalizer(() => closed.open);
 
-    const runImport = (
-      items: readonly ExternalAgentConfigMigrationItem[],
-      onProgress: (progress: ExternalAgentConfigImportProgressNotification) => Effect.Effect<void>,
-    ) =>
+    const runImport = (items: readonly ExternalAgentConfigMigrationItem[]) =>
       Effect.scoped(
         Effect.gen(function* () {
           const notifications = yield* Queue.bounded<ImportNotification>(
@@ -121,13 +117,10 @@ export const make = (
             Effect.suspend(() =>
               Queue.take(notifications).pipe(
                 Effect.flatMap((notification) => {
-                  if (notification.params.importId !== response.importId) {
-                    return awaitCompletion;
-                  }
-                  if (notification.method === "externalAgentConfig/import/progress") {
-                    return onProgress(notification.params).pipe(Effect.andThen(awaitCompletion));
-                  }
-                  return Effect.succeed(notification.params);
+                  return notification.params.importId !== response.importId ||
+                    notification.method === "externalAgentConfig/import/progress"
+                    ? awaitCompletion
+                    : Effect.succeed(notification.params);
                 }),
               ),
             );
@@ -147,9 +140,9 @@ export const make = (
       );
 
     return CodexExternalAgentImportRuntime.of({
-      run: (items, onProgress) =>
+      run: (items) =>
         Effect.raceFirst(
-          admission.withPermits(1)(runImport(items, onProgress)),
+          admission.withPermits(1)(runImport(items)),
           closed.await.pipe(
             Effect.andThen(
               Effect.fail(

@@ -36,8 +36,7 @@ export type CodexApplicationEvent =
   | {
       readonly kind: "pendingWorktreeWarning";
       readonly value: IpcEvents["codex:pending-worktree:warning"];
-    }
-  | { readonly kind: "agentImportProgress"; readonly value: IpcEvents["agent-import:progress"] };
+    };
 
 /** Synchronous ingress for causally ordered protocol projections into the Main-scoped event bus. */
 export interface CodexApplicationEventPublisher {

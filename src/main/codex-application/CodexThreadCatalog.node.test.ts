@@ -5,7 +5,7 @@ import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
 import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
 import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
-import { CODEX_PINNED_THREAD_LIST_MAX_PAGES, make } from "./CodexThreadCatalog";
+import { make } from "./CodexThreadCatalog";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 
 const coreProject = (id: string, root: string) => ({
@@ -373,36 +373,6 @@ it.effect("materializes the Session before pinning a discovered Thread", () =>
   ),
 );
 
-it.effect("fails closed instead of draining unbounded pinned Thread pages", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      let reads = 0;
-      const service = yield* catalog({
-        read: ({ kind }) => {
-          if (kind !== "sidebar_overview") return Effect.succeed(emptyCoreWindow(kind as never));
-          return Effect.sync(() => {
-            reads += 1;
-            return {
-              value: {
-                kind: "sidebar_overview",
-                pinned_tasks: {
-                  items: [],
-                  next_cursor: `cursor-${reads}`,
-                  authority: { projection_revision: 1 },
-                },
-              },
-            } as never;
-          });
-        },
-      });
-      const error = yield* service.listPinned.pipe(Effect.flip);
-
-      assert.strictEqual(error.operation, "list-pinned");
-      assert.strictEqual(reads, CODEX_PINNED_THREAD_LIST_MAX_PAGES);
-    }),
-  ),
-);
-
 it.effect("keeps every Codex-only catalog list free of durable ACP Threads", () =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -415,12 +385,8 @@ it.effect("keeps every Codex-only catalog list free of durable ACP Threads", () 
         },
       });
 
-      const [pinned, project] = yield* Effect.all([
-        service.listPinned,
-        service.listProject("project-a"),
-      ] as const);
+      const project = yield* service.listProject("project-a");
 
-      assert.deepEqual(pinned, ["thread-codex"]);
       assert.deepEqual(
         project.items.map((thread) => thread.threadId),
         ["thread-codex"],

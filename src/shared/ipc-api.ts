@@ -200,7 +200,6 @@ import type {
 } from "./codex-hooks";
 import type {
   AgentImportApplyInput,
-  AgentImportProgress,
   AgentImportResult,
   AgentImportScan,
   AgentImportScanInput,
@@ -283,21 +282,13 @@ import type {
   CodexVisualizationOpenExternalInput,
   CodexVisualizationConsumeGestureInput,
   ProtocolDynamicToolCallResponse,
-  CodexCollaborationModeKind,
-  CodexCollaborationModeState,
-  CodexConversationThreadSettings,
   CodexConversationThreadSettingsPatch,
   CodexPersonality,
   CodexEvent,
-  CodexReviewStartParams,
-  CodexReviewStartResponse,
   CodexAutomationRunsInboxResponse,
   CodexAutomationRunArchiveInput,
-  CodexAutomationRunDeleteInput,
   CodexAutomationRunsUpdatedEvent,
   CodexAutomationRunUnarchiveInput,
-  CodexAutomationRunMarkAllReadInput,
-  CodexAutomationRunMarkAllReadResponse,
   CodexAutomationRunMutationResponse,
   CodexAutomationRunReadStateInput,
   CodexAutomationInboxItem,
@@ -354,14 +345,11 @@ import type {
   CodexHostMessage,
   CodexMcpServerElicitationResponse,
   CodexProtocolRequestId,
-  CodexProjectlessThreadCwdInput,
-  CodexProjectlessWorkspace,
   CodexSteerTurnInput,
   CodexSteerTurnResult,
   CodexSideChatStartInput,
   CodexSideChatStartResult,
   CodexThreadGoalDraftInput,
-  CodexThreadGoalSetActionInput,
   CodexThreadGoalMaterializedDraft,
   CodexThreadSummary,
   CodexThreadSummaryWindow,
@@ -374,7 +362,6 @@ import type {
   ProtocolMcpServerToolCallResponse,
   ProtocolListMcpServerStatusResponse,
   CodexTurnStartOptions,
-  CodexTurnSummary,
   ManagedWorktreeRecord,
   ManagedWorktreeAvailability,
   ManagedWorktreeRestoreResult,
@@ -607,7 +594,6 @@ import type {
   FeedbackUploadResponse,
   ThreadGoal,
 } from "@nodex/codex-app-server-protocol/v2";
-import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
 import type {
   ClaimedClipboardPresentationWriteInput,
   ClaimedClipboardPresentationWriteResult,
@@ -1625,10 +1611,6 @@ export interface IpcApi
     args: [input: UpdateWindowRestoreSettingsInput];
     result: WindowRestoreSettings;
   };
-  "settings:codex-developer:get": {
-    args: [];
-    result: CodexDeveloperInstructionSettings;
-  };
   "settings:codex-developer:update": {
     args: [input: UpdateCodexDeveloperInstructionSettingsInput];
     result: CodexDeveloperInstructionSettings;
@@ -1826,7 +1808,6 @@ export interface IpcApi
     args: [input: { imagesOnly: boolean; title: string }];
     result: ComposerPickedFile[];
   };
-  "window:show-emoji-panel": { args: []; result: boolean };
   "window:new": { args: [request?: WindowSessionNewWindowRequest]; result: boolean };
   "window-sessions:bootstrap": { args: []; result: WindowSessionBootstrap };
   "window-sessions:save-layout": {
@@ -2368,10 +2349,6 @@ export interface IpcApi
     args: [input: CodexSidebarThreadMoveInput];
     result: CodexSidebarThreadMoveResult;
   };
-  "codex:threads:pinned:list": {
-    args: [];
-    result: string[];
-  };
   "codex:threads:pinned:set": {
     args: [threadId: string, input: { pinned: boolean }];
     result: CodexSidebarSnapshot;
@@ -2441,10 +2418,6 @@ export interface IpcApi
     args: [input: CodexAutomationRunArchiveInput];
     result: CodexAutomationRunMutationResponse;
   };
-  "codex:automation-runs:delete": {
-    args: [input: CodexAutomationRunDeleteInput];
-    result: CodexAutomationRunMutationResponse;
-  };
   "codex:automation-runs:unarchive": {
     args: [input: CodexAutomationRunUnarchiveInput];
     result: CodexAutomationRunMutationResponse;
@@ -2456,10 +2429,6 @@ export interface IpcApi
   "codex:automation-runs:set-read-state": {
     args: [input: CodexAutomationRunReadStateInput];
     result: CodexAutomationInboxItem | null;
-  };
-  "codex:automation-runs:mark-all-read": {
-    args: [input: CodexAutomationRunMarkAllReadInput];
-    result: CodexAutomationRunMarkAllReadResponse;
   };
   "codex:composer-plugins:activate": {
     args: [input: CodexComposerPluginActivateInput];
@@ -2521,10 +2490,6 @@ export interface IpcApi
     args: [input: CodexHooksStateUpdateInput];
     result: void;
   };
-  "codex:projectless-thread-cwd": {
-    args: [input: CodexProjectlessThreadCwdInput];
-    result: CodexProjectlessWorkspace;
-  };
   "codex:thread:side-chat:start": {
     args: [CodexSideChatStartInput];
     result: CodexSideChatStartResult;
@@ -2532,10 +2497,6 @@ export interface IpcApi
   "codex:thread:side-chat:discard": {
     args: [threadId: string];
     result: boolean;
-  };
-  "codex:renderer-client:id": {
-    args: [];
-    result: string | null;
   };
   "codex:thread:history-hydration:prepare": {
     args: [threadId: string];
@@ -2760,10 +2721,6 @@ export interface IpcApi
     args: [hostId: string, pendingWorktreeId: string];
     result: void;
   };
-  "codex:pending-worktree:dismiss": {
-    args: [hostId: string, pendingWorktreeId: string];
-    result: void;
-  };
   "codex:pending-worktree:rename": {
     args: [hostId: string, pendingWorktreeId: string, label: string];
     result: void;
@@ -2867,10 +2824,6 @@ export interface IpcApi
     args: [threadId: string];
     result: CodexThreadSummary | null;
   };
-  "codex:thread:collaboration-mode:set": {
-    args: [threadId: string, collaborationMode: CodexCollaborationModeKind];
-    result: CodexCollaborationModeState;
-  };
   "codex:personality:get": { args: []; result: CodexPersonality };
   "codex:personality:set": { args: [personality: CodexPersonality]; result: void };
   "codex:thread:interrupt-effects": {
@@ -2888,23 +2841,6 @@ export interface IpcApi
       change: CodexConversationThreadSettingsPatch["executionProfileChange"],
     ];
     result: import("./codex-execution-profile").CodexExecutionProfile;
-  };
-  "codex:thread:settings:update": {
-    args: [threadId: string, patch: CodexConversationThreadSettingsPatch];
-    result: CodexConversationThreadSettings;
-  };
-  "codex:turn:start": {
-    args: [
-      threadId: string,
-      prompt: string,
-      opts?: CodexTurnStartOptions,
-      presentationTicket?: CodexTurnPresentationTicket,
-    ];
-    result: CodexTurnSummary | null;
-  };
-  "codex:review:start": {
-    args: [input: CodexReviewStartParams];
-    result: CodexReviewStartResponse;
   };
   "codex:queued-messages:prepare-native": {
     args: [
@@ -2944,21 +2880,9 @@ export interface IpcApi
     args: [identity: { conversationId: string; messageId: string; lockId: string; sent: boolean }];
     result: void;
   };
-  "codex:thread:compact:start": {
-    args: [threadId: string];
-    result: void;
-  };
   "codex:thread:goal:get": {
     args: [threadId: string];
     result: ThreadGoal | null;
-  };
-  "codex:thread:goal:set": {
-    args: [params: CodexThreadGoalSetActionInput];
-    result: ThreadGoal | null;
-  };
-  "codex:thread:goal:clear": {
-    args: [threadId: string];
-    result: void;
   };
   "codex:thread:goal:materialize-draft": {
     args: [hostId: string, draft: CodexThreadGoalDraftInput];
@@ -2982,10 +2906,6 @@ export interface IpcApi
   };
   "codex:pasted-text:remove": {
     args: [input: RemovePastedTextAttachmentInput];
-    result: void;
-  };
-  "codex:thread:memory-mode:set": {
-    args: [threadId: string, mode: ThreadMemoryMode];
     result: void;
   };
   "codex:feedback:upload": {
@@ -3116,7 +3036,6 @@ export interface IpcEvents {
   "workbench-agent:cancel": WorkbenchAgentCancel;
   "global-dictation:command": import("./global-dictation").GlobalDictationRendererCommand;
   "dictation:open-recording": { readonly recordingId: string };
-  "agent-import:progress": AgentImportProgress;
   "agent-runtime:session-event": import("./agent-runtime-api").AgentRuntimeSessionEvent;
   "agent-runtime:activity-changed": import("./agent-runtime-api").AgentRuntimeSessionActivityChange;
   "agent-runtime:connection-changed": import("./agent-runtime-api").AgentRuntimeConnectionState;

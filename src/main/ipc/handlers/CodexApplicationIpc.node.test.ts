@@ -9,7 +9,6 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
-import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
 import type { CodexPersonality } from "../../../shared/types";
 import { MainConfig } from "../../app/MainConfig";
 import { CodexAccount } from "../../codex-application/CodexAccount";
@@ -123,41 +122,10 @@ it.effect("registers application channels directly against their owning modules"
       updateVoiceLanguage: () => Effect.die("unused"),
       resolveImage: () => Effect.succeed({ ok: false, message: "not available", status: null }),
     });
-    const reviewResponse = {
-      reviewThreadId: "review-thread",
-      turn: {
-        id: "review-turn",
-        items: [
-          {
-            type: "functionCallOutput",
-            id: "review-function-output",
-            name: "external_lookup",
-            namespace: null,
-            output: "opaque model-context result",
-            startedAtMs: null,
-            completedAtMs: null,
-          },
-        ],
-        status: "failed",
-        error: {
-          message: "Request needs a narrower scope",
-          codexErrorInfo: {
-            responseStreamDisconnected: {},
-            httpConnectionFailed: 123,
-          },
-          misalignment: {
-            errorType: "scope",
-            steer: { message: "Continue with the narrowed scope" },
-          },
-        },
-      },
-    } satisfies ClientRequestResponsesByMethod["review/start"];
     const conversations = ConversationCommands.of({
       archive: () => Effect.die("unused"),
       deleteArchived: () => Effect.die("unused"),
       unarchive: () => Effect.die("unused"),
-      setMemoryMode: () => Effect.void,
-      startReview: () => Effect.succeed(reviewResponse),
       uploadFeedback: () => Effect.void,
       listBackgroundTerminalsPage: () => Effect.die("unused"),
       listBackgroundTerminals: () =>
@@ -262,8 +230,6 @@ it.effect("registers application channels directly against their owning modules"
     assert.isTrue(handlers.has("codex:pasted-text:create"));
     assert.isTrue(handlers.has("codex:pasted-text:read"));
     assert.isTrue(handlers.has("codex:pasted-text:remove"));
-    assert.isTrue(handlers.has("codex:thread:memory-mode:set"));
-    assert.isTrue(handlers.has("codex:review:start"));
     assert.isTrue(handlers.has("codex:feedback:upload"));
     assert.isTrue(handlers.has("codex:turn:interrupt"));
     assert.isTrue(handlers.has("codex:thread:background-terminals:clean"));
@@ -275,45 +241,6 @@ it.effect("registers application channels directly against their owning modules"
     assert.isTrue(handlers.has("codex:mcp-server-statuses:list"));
     assert.isTrue(handlers.has("codex:hooks:list"));
     assert.isTrue(handlers.has("codex:hooks:state:update"));
-    const event = {} as IpcMainInvokeEvent;
-    const review = yield* handlers.get("codex:review:start")!(event, {
-      threadId: "source-thread",
-      target: { type: "uncommittedChanges" },
-    });
-    assert.deepStrictEqual(review, {
-      reviewThreadId: "review-thread",
-      turn: {
-        rootTurnId: null,
-        id: "review-turn",
-        itemsView: "full",
-        status: "failed",
-        error: {
-          message: "Request needs a narrower scope",
-          codexErrorInfo: { responseStreamDisconnected: { httpStatusCode: null } },
-          additionalDetails: null,
-          misalignment: {
-            errorType: "scope",
-            detailedExplanation: null,
-            steer: { message: "Continue with the narrowed scope" },
-          },
-        },
-        startedAt: null,
-        completedAt: null,
-        durationMs: null,
-        items: [
-          {
-            type: "functionCallOutput",
-            id: "review-function-output",
-            name: "external_lookup",
-            namespace: null,
-            output: "opaque model-context result",
-            startedAtMs: null,
-            completedAtMs: null,
-          },
-        ],
-      },
-    });
-
     yield* Scope.close(scope, Exit.void);
   }),
 );

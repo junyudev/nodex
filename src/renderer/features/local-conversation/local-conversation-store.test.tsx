@@ -946,10 +946,6 @@ vi.mock("./local-conversation-deps", () => ({
         return null;
       }
 
-      if (channel === "codex:turn:start") {
-        return null;
-      }
-
       if (channel === "codex:turn:steer") {
         const input = args[0] as
           | {
@@ -4549,7 +4545,6 @@ describe("local-conversation-store", () => {
       expect(
         invokeRecords.some((record) => record.channel === "codex:thread:edit-last-user-turn"),
       ).toBe(false);
-      expect(invokeRecords.some((record) => record.channel === "codex:turn:start")).toBe(false);
       expect(
         invokeRecords.some((record) => record.channel === "codex:turn:native-steer:execute"),
       ).toBe(true);
@@ -13967,15 +13962,7 @@ describe("local-conversation-store", () => {
       routed = latestFollowerAction();
       expect(readFollowerConversationId(routed)).toBe("thread-1");
       expect(routed?.request?.method).toBe("thread-follower-compact-thread");
-
-      expect(invokeRecords.some((record) => record.channel === "codex:turn:start")).toBe(false);
       expect(invokeRecords.some((record) => record.channel === "codex:turn:steer")).toBe(false);
-      expect(
-        invokeRecords.some((record) => record.channel === "codex:thread:settings:update"),
-      ).toBe(false);
-      expect(invokeRecords.some((record) => record.channel === "codex:thread:compact:start")).toBe(
-        false,
-      );
     } finally {
       followerActionResult = null;
       manager.destroy();
@@ -14432,7 +14419,6 @@ describe("local-conversation-store", () => {
       );
       expect(resumeIndex).toBeGreaterThanOrEqual(0);
       expect(turnStartIndex).toBeGreaterThan(resumeIndex);
-      expect(channels.includes("codex:turn:start")).toBe(false);
       expect(manager.getStreamRole("thread-1")?.role).toBe("owner");
       expect(
         manager
@@ -19337,7 +19323,6 @@ describe("local-conversation-store", () => {
             ).request?.method === "turn/start",
         ),
       ).toBe(true);
-      expect(channels.includes("codex:turn:start")).toBe(false);
       expect(manager.getStreamRole("thread-1")?.role).toBe("owner");
     } finally {
       followerActionError = null;
@@ -20910,9 +20895,6 @@ describe("local-conversation-store", () => {
       expect(invokeRecords.some((record) => record.channel === "codex:thread:resume:prepare")).toBe(
         false,
       );
-      expect(invokeRecords.some((record) => record.channel === "codex:thread:goal:set")).toBe(
-        false,
-      );
     } finally {
       resumeThreadResult = null;
       manager.destroy();
@@ -20971,9 +20953,6 @@ describe("local-conversation-store", () => {
       expect(params?.threadId).toBe("thread-1");
       expect(params?.status).toBe("paused");
       expect(Object.prototype.hasOwnProperty.call(params ?? {}, "objective")).toBe(false);
-      expect(invokeRecords.some((record) => record.channel === "codex:thread:goal:set")).toBe(
-        false,
-      );
       expect(invokeRecords.some((record) => record.channel === "peer:requestThreadFollower")).toBe(
         false,
       );

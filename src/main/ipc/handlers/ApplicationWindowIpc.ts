@@ -3,7 +3,7 @@ import { setWindowShellZoom, syncWindowNavigationChrome } from "../../window-nav
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { app, nativeTheme, type IpcMainInvokeEvent } from "electron";
+import { nativeTheme, type IpcMainInvokeEvent } from "electron";
 import { parseDevelopmentFeatureEnvironment } from "../../../shared/development-features";
 import type { AppRuntimeCapabilities } from "../../../shared/runtime-capabilities";
 import { WindowSessionNewWindowRequestSchema } from "../../../shared/schemas/window-session";
@@ -21,7 +21,6 @@ export class ApplicationWindowIpcError extends Schema.TaggedError<ApplicationWin
 ) {}
 
 export interface ApplicationWindowIpcOptions {
-  readonly showEmojiPanel?: () => boolean;
   readonly runtimeCapabilities?: AppRuntimeCapabilities;
 }
 
@@ -139,18 +138,6 @@ export const live = (
       );
       yield* ipc.handleQuery("app:runtime-capabilities:get", (event) =>
         authorize(event, "Runtime capabilities").pipe(Effect.as(runtimeCapabilities)),
-      );
-      yield* ipc.handlePlainCommand("window:show-emoji-panel", (event) =>
-        authorize(event, "Emoji panel").pipe(
-          Effect.andThen(
-            Effect.sync(() => {
-              if (options.showEmojiPanel) return options.showEmojiPanel();
-              if (config.platform !== "darwin") return false;
-              app.showEmojiPanel();
-              return true;
-            }),
-          ),
-        ),
       );
       yield* ipc.handlePlainCommand("window:new", (event, input: unknown = {}) =>
         authorize(event, "New window").pipe(

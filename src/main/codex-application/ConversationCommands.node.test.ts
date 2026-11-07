@@ -16,7 +16,7 @@ import {
 } from "./CodexConversationProjection";
 import { CodexServerRequestResponses } from "./CodexServerRequestResponses";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
-import { CodexThreadDirectory, CodexThreadDirectoryError } from "./CodexThreadDirectory";
+import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { ConversationCommands, live } from "./ConversationCommands";
 import {
@@ -234,10 +234,6 @@ it.effect("commits interruption without waking queued work before terminal compl
       yield* commands.listBackgroundTerminalsPage("thread-a", { cursor: null });
       assert.deepEqual(backgroundTerminalRequests, [{ threadId: "thread-a", cursor: null }]);
       assert.isFalse(Object.hasOwn(backgroundTerminalRequests[0] as object, "limit"));
-
-      const denied = yield* commands.setMemoryMode("acp-thread", "disabled").pipe(Effect.flip);
-      assert.instanceOf(denied, CodexThreadDirectoryError);
-      assert.isFalse(events.some((event) => event.includes("thread/memoryMode/set")));
     }),
   ),
 );

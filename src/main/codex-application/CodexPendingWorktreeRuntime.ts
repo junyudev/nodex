@@ -90,7 +90,6 @@ export class CodexPendingWorktreeRuntime extends Context.Service<
     ) => Effect.Effect<{ readonly threadId: string }, CodexPendingWorktreeRuntimeError>;
     readonly continueWithoutSetup: (pendingWorktreeId: string) => Effect.Effect<void>;
     readonly cancel: (pendingWorktreeId: string) => Effect.Effect<void>;
-    readonly dismiss: (pendingWorktreeId: string) => Effect.Effect<void>;
     readonly rename: (pendingWorktreeId: string, label: string) => Effect.Effect<void>;
     readonly setPinned: (pendingWorktreeId: string, isPinned: boolean) => Effect.Effect<void>;
     readonly setPinnedBeforeThreadId: (
@@ -747,13 +746,6 @@ export const make: Effect.Effect<
         interruptLaunch(pendingWorktreeId);
         releaseSubmission(pendingWorktreeId);
         dispatch({ type: "cancel", pendingWorktreeId });
-      }),
-    dismiss: (pendingWorktreeId) =>
-      Effect.sync(() => {
-        rejectLocalLaunch(pendingWorktreeId, "Pending worktree launch dismissed");
-        interruptLaunch(pendingWorktreeId);
-        releaseSubmission(pendingWorktreeId);
-        dispatch({ type: "dismiss", pendingWorktreeId });
       }),
     rename: (pendingWorktreeId, label) =>
       Effect.sync(() => {

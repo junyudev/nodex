@@ -5,10 +5,8 @@ import type { ExternalAgentConfigMigrationItem } from "@nodex/codex-app-server-p
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import type { AgentImportProgress } from "../../shared/agent-import";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { make } from "./AgentImportRuntime";
-import { CodexApplicationEventHub, type CodexApplicationEvent } from "./CodexApplicationEventHub";
 import { CodexExternalAgentImportRuntime } from "./CodexExternalAgentImportRuntime";
 
 const temporaryRoot = Effect.acquireRelease(
@@ -43,7 +41,6 @@ const makeHarness = (
 ) => {
   const requests: Array<{ readonly method: string; readonly params: unknown }> = [];
   const externalImports: Array<readonly ExternalAgentConfigMigrationItem[]> = [];
-  const events: CodexApplicationEvent[] = [];
   const unsupported = () => Effect.die(new Error("Unexpected setup import gateway operation"));
   const gateway = CodexGateway.of({
     events: Stream.empty,
@@ -71,19 +68,11 @@ const makeHarness = (
   return {
     requests,
     externalImports,
-    events,
     runtime: make({
       codexHome,
       sourceHomes: { codex: sourceHome, "claude-code": sourceHome },
     }).pipe(
       Effect.provideService(CodexGateway, gateway),
-      Effect.provideService(
-        CodexApplicationEventHub,
-        CodexApplicationEventHub.of({
-          events: Stream.empty,
-          publish: (event) => events.push(event),
-        }),
-      ),
       Effect.provideService(
         CodexExternalAgentImportRuntime,
         CodexExternalAgentImportRuntime.of({
@@ -144,11 +133,6 @@ it.effect("copies selected setup without importing or changing conversations fro
       assert.isFalse(existsSync(path.join(source.codexHome, "sessions")));
       assert.deepEqual(harness.requests, []);
       assert.deepEqual(harness.externalImports, []);
-      const progress = harness.events.flatMap((event): AgentImportProgress[] =>
-        event.kind === "agentImportProgress" ? [event.value] : [],
-      );
-      assert.isFalse(progress[0]?.completed ?? true);
-      assert.isTrue(progress.at(-1)?.completed ?? false);
       const retry = yield* Effect.flip(
         runtime.apply({ scanId: scan.scanId, itemIds: scan.items.map(({ id }) => id) }),
       );

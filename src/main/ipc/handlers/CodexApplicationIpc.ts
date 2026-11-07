@@ -7,9 +7,6 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { IpcMainInvokeEvent } from "electron";
 import type { McpResourceReadParams } from "@nodex/codex-app-server-protocol/v2/McpResourceReadParams";
 import type { McpServerToolCallParams } from "@nodex/codex-app-server-protocol/v2/McpServerToolCallParams";
-import type { CodexErrorInfo } from "@nodex/codex-app-server-protocol/v2/CodexErrorInfo";
-import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
-import { V2ReviewStartResponse__NonSteerableTurnKind } from "@nodex/effect-codex-app-server/schema";
 import type {
   CodexComposerPluginActivateInput,
   CodexComposerPluginListInput,
@@ -26,116 +23,9 @@ import type {
 } from "../../../shared/pasted-text-attachments";
 import type { FeedbackUploadParams } from "@nodex/codex-app-server-protocol/v2/FeedbackUploadParams";
 import type { ThreadBackgroundTerminal } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminal";
-import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
-import type { ReviewStartParams } from "@nodex/codex-app-server-protocol/v2/ReviewStartParams";
-import type { ReviewStartResponse } from "@nodex/codex-app-server-protocol/v2/ReviewStartResponse";
-import type { TurnError } from "@nodex/codex-app-server-protocol/v2/TurnError";
 import type { IpcEvents } from "../../../shared/ipc-api";
 import type { CodexHooksListInput, CodexHooksStateUpdateInput } from "../../../shared/codex-hooks";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
-import { parseCodexProtocolThreadItem } from "../../../shared/codex-protocol-thread-item";
-
-type ReviewStartCodexErrorInfo = NonNullable<
-  NonNullable<ClientRequestResponsesByMethod["review/start"]["turn"]["error"]>["codexErrorInfo"]
->;
-type ReviewStartTurnError = NonNullable<
-  ClientRequestResponsesByMethod["review/start"]["turn"]["error"]
->;
-type ReviewStartMisalignment = NonNullable<ReviewStartTurnError["misalignment"]>;
-
-const isHttpFailure = Schema.is(
-  Schema.Struct({ httpStatusCode: Schema.optionalKey(Schema.NullOr(Schema.Number)) }),
-);
-const isNonSteerableTurn = Schema.is(
-  Schema.Struct({ turnKind: V2ReviewStartResponse__NonSteerableTurnKind }),
-);
-
-function normalizeReviewCodexErrorInfo(
-  value: ReviewStartCodexErrorInfo | null | undefined,
-): CodexErrorInfo | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "string") return value;
-  if (isHttpFailure(value.httpConnectionFailed)) {
-    return {
-      httpConnectionFailed: {
-        httpStatusCode: value.httpConnectionFailed.httpStatusCode ?? null,
-      },
-    };
-  }
-  if (isHttpFailure(value.responseStreamConnectionFailed)) {
-    return {
-      responseStreamConnectionFailed: {
-        httpStatusCode: value.responseStreamConnectionFailed.httpStatusCode ?? null,
-      },
-    };
-  }
-  if (isHttpFailure(value.responseStreamDisconnected)) {
-    return {
-      responseStreamDisconnected: {
-        httpStatusCode: value.responseStreamDisconnected.httpStatusCode ?? null,
-      },
-    };
-  }
-  if (isHttpFailure(value.responseTooManyFailedAttempts)) {
-    return {
-      responseTooManyFailedAttempts: {
-        httpStatusCode: value.responseTooManyFailedAttempts.httpStatusCode ?? null,
-      },
-    };
-  }
-  if (isNonSteerableTurn(value.activeTurnNotSteerable)) {
-    return { activeTurnNotSteerable: { turnKind: value.activeTurnNotSteerable.turnKind } };
-  }
-  return null;
-}
-
-function normalizeReviewMisalignment(
-  value: ReviewStartMisalignment | null | undefined,
-): TurnError["misalignment"] {
-  if (value === null || value === undefined) return null;
-  return {
-    errorType: value.errorType ?? null,
-    detailedExplanation: value.detailedExplanation ?? null,
-    steer: value.steer ?? null,
-  };
-}
-
-function normalizeReviewTurnError(
-  value: ReviewStartTurnError | null | undefined,
-): TurnError | null {
-  if (value === null || value === undefined) return null;
-  return {
-    message: value.message,
-    codexErrorInfo: normalizeReviewCodexErrorInfo(value.codexErrorInfo),
-    additionalDetails: value.additionalDetails ?? null,
-    misalignment: normalizeReviewMisalignment(value.misalignment),
-  };
-}
-
-function normalizeReviewStartResponse(
-  response: ClientRequestResponsesByMethod["review/start"],
-): ReviewStartResponse {
-  return {
-    reviewThreadId: response.reviewThreadId,
-    turn: {
-      id: response.turn.id,
-      rootTurnId: response.turn.rootTurnId ?? null,
-      itemsView: response.turn.itemsView ?? "full",
-      status: response.turn.status,
-      error: normalizeReviewTurnError(response.turn.error),
-      startedAt: response.turn.startedAt ?? null,
-      completedAt: response.turn.completedAt ?? null,
-      durationMs: response.turn.durationMs ?? null,
-      items: response.turn.items.map((item) => {
-        const normalized =
-          item.type === "userMessage" ? { ...item, clientId: item.clientId ?? null } : item;
-        const parsed = parseCodexProtocolThreadItem(normalized);
-        if (!parsed) throw new Error(`Invalid review item '${item.type}'`);
-        return parsed;
-      }),
-    },
-  };
-}
 import { CodexAccount, type CodexAccountLoginInput } from "../../codex-application/CodexAccount";
 import { CodexConnection } from "../../codex-application/CodexConnection";
 import { CodexMedia } from "../../codex-application/CodexMedia";
@@ -339,22 +229,6 @@ export const live: Layer.Layer<
     yield* ipc.handlePlainCommand(
       "codex:pasted-text:remove",
       (_event, input: RemovePastedTextAttachmentInput) => attachments.removePastedText(input.file),
-    );
-    yield* ipc.handlePlainCommand(
-      "codex:thread:memory-mode:set",
-      (_event, threadId: string, mode: ThreadMemoryMode) =>
-        conversations.setMemoryMode(threadId, mode),
-    );
-    yield* ipc.handlePlainCommand("codex:review:start", (_event, params: ReviewStartParams) =>
-      conversations.startReview(params).pipe(
-        Effect.flatMap((response) =>
-          Effect.try({
-            try: () => normalizeReviewStartResponse(response),
-            catch: (cause) =>
-              new CodexApplicationIpcError({ operation: "normalize-review-response", cause }),
-          }),
-        ),
-      ),
     );
     yield* ipc.handlePlainCommand("codex:feedback:upload", (_event, params: FeedbackUploadParams) =>
       conversations.uploadFeedback(parseFeedbackUpload(params)),

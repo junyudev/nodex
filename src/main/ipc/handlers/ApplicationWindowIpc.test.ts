@@ -46,9 +46,7 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
     } as unknown as WindowRuntime["Service"]);
     const scope = yield* Scope.make();
     yield* Layer.buildWithScope(
-      live({
-        showEmojiPanel: () => true,
-      }).pipe(
+      live().pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(ApplicationWindowRuntime, applicationWindows),
@@ -83,7 +81,6 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
       "surface-history:publish",
       "window:appearance:sync",
       "window:new",
-      "window:show-emoji-panel",
     ]);
 
     const frame = { url: "http://localhost:5173" };

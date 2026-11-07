@@ -69,7 +69,6 @@ import { CodexHistorySearchAdapter } from "../../codex-application/CodexHistoryS
 import { CodexHistoryTimelineAdapter } from "../../codex-application/CodexHistoryTimelineAdapter";
 import { CodexConversationHistoryExport } from "../../codex-application/CodexConversationHistoryExport";
 import { CodexConversationResumeRuntime } from "../../codex-application/CodexConversationResumeRuntime";
-import { CodexManualCompactionRuntime } from "../../codex-application/CodexManualCompactionRuntime";
 import { CodexQueuedFollowUps } from "../../codex-application/CodexQueuedFollowUps";
 import { CodexServerRequestResponses } from "../../codex-application/CodexServerRequestResponses";
 import { CodexSidebarSyncRuntime } from "../../codex-application/CodexSidebarSyncRuntime";
@@ -84,16 +83,10 @@ import { CodexTurnCommands } from "../../codex-application/CodexTurnCommands";
 import { CodexTurnPresentation } from "../../codex-application/CodexTurnPresentation";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { requireMcpAppNavigationUrl } from "../../../shared/mcp-app/mcp-app-navigation";
-import type { CodexTurnPresentationTicket } from "../../../shared/nodex-app-tools/turn-presentation";
 import { ConversationCommands } from "../../codex-application/ConversationCommands";
 import { ManagedWorktreeCatalog } from "../../codex-application/ManagedWorktreeCatalog";
-import {
-  createCodexProjectlessWorkspace,
-  parseCodexProjectlessThreadCwdInput,
-} from "../../codex/codex-projectless-workspace";
 import type {
   CodexBackgroundProcessRunActionInput,
-  CodexCollaborationModeKind,
   CodexProtocolRequestId,
 } from "../../../shared/types";
 import type {
@@ -116,13 +109,7 @@ import type {
   IpcQueryChannel,
   PlainResultCommandChannel,
 } from "../../../shared/ipc-endpoint-policy";
-import type {
-  CodexConversationThreadSettingsPatch,
-  CodexSideChatStartInput,
-  CodexThreadGoalSetActionInput,
-  CodexSteerTurnInput,
-  CodexTurnStartOptions,
-} from "../../../shared/types";
+import type { CodexSideChatStartInput, CodexSteerTurnInput } from "../../../shared/types";
 import {
   approximateJsonPayloadBytes,
   getDevRuntimeMetricDurationMs,
@@ -252,7 +239,6 @@ export const live = Layer.effectDiscard(
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
     const managedWorktreeCatalog = yield* ManagedWorktreeCatalog;
-    const manualCompaction = yield* CodexManualCompactionRuntime;
     const threadGoals = yield* CodexThreadGoalRuntime;
     const threadSettings = yield* CodexThreadSettingsRuntime;
     const threadCatalog = yield* CodexThreadCatalog;
@@ -543,10 +529,6 @@ export const live = Layer.effectDiscard(
           try: (signal) => Promise.resolve(listener(event, ...args, signal)),
           catch: (cause) => new CodexIpcError({ operation: channel, cause }),
         });
-    const registerQuery = <Channel extends IpcQueryChannel>(
-      channel: Channel,
-      listener: TypedIpcHandler<Channel>,
-    ): void => registerEffectQuery(channel, toEffectHandler(channel, listener));
     const registerPlainCommand = <Channel extends PlainResultCommandChannel>(
       channel: Channel,
       listener: TypedIpcHandler<Channel>,
@@ -643,15 +625,6 @@ export const live = Layer.effectDiscard(
             (cause) => new CodexIpcError({ operation: "codex:sidebar:thread:move", cause }),
           ),
         ),
-    );
-
-    registerEffectQuery("codex:threads:pinned:list", () =>
-      threadCatalog.listPinned.pipe(
-        Effect.map((threadIds) => [...threadIds]),
-        Effect.mapError(
-          (cause) => new CodexIpcError({ operation: "codex:threads:pinned:list", cause }),
-        ),
-      ),
     );
 
     registerEffectPlainCommand("codex:threads:pinned:set", (_, threadId: string, input) =>
@@ -780,15 +753,6 @@ export const live = Layer.effectDiscard(
         ),
       ),
     );
-
-    registerQuery("codex:projectless-thread-cwd", (_, rawInput) => {
-      const input = parseCodexProjectlessThreadCwdInput(rawInput);
-      return createCodexProjectlessWorkspace({
-        prompt: input.prompt,
-        directoryName: input.directoryName,
-        createSplitDirectories: input.createSplitDirectories !== false,
-      });
-    });
 
     registerEffectPlainCommand(
       "codex:thread:side-chat:start",
@@ -1858,81 +1822,6 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectPlainCommand(
-      "codex:thread:collaboration-mode:set",
-      (_, threadId: string, collaborationMode: CodexCollaborationModeKind) =>
-        threadSettings.update({ threadId, patch: { collaborationMode } }).pipe(
-          Effect.mapError(
-            (cause) =>
-              new CodexIpcError({
-                operation: "codex:thread:collaboration-mode:set",
-                cause,
-              }),
-          ),
-          Effect.flatMap((settings) =>
-            settings.collaborationMode
-              ? Effect.succeed(settings.collaborationMode)
-              : Effect.fail(
-                  new CodexIpcError({
-                    operation: "codex:thread:collaboration-mode:set",
-                    cause: new Error("Thread settings projection omitted collaboration mode"),
-                  }),
-                ),
-          ),
-        ),
-    );
-
-    registerEffectPlainCommand(
-      "codex:thread:settings:update",
-      (_, threadId: string, patch: CodexConversationThreadSettingsPatch) =>
-        threadSettings
-          .update({ threadId, patch })
-          .pipe(
-            Effect.mapError(
-              (cause) => new CodexIpcError({ operation: "codex:thread:settings:update", cause }),
-            ),
-          ),
-    );
-
-    registerEffectPlainCommand(
-      "codex:turn:start",
-      (
-        _,
-        threadId: string,
-        prompt: string,
-        opts?: CodexTurnStartOptions,
-        presentationTicket?: CodexTurnPresentationTicket,
-      ) =>
-        Effect.gen(function* () {
-          const clientUserMessageId = createUuidV7();
-          const presentationClaim = presentationTicket
-            ? yield* turnPresentation
-                .claim(presentationTicket, { kind: "thread", threadId }, clientUserMessageId)
-                .pipe(
-                  Effect.mapError(
-                    (cause) => new CodexIpcError({ operation: "codex:turn:start", cause }),
-                  ),
-                )
-            : undefined;
-          return yield* turnCommands
-            .start(threadId, prompt, {
-              ...opts,
-              presentationClaim,
-              clientUserMessageId,
-            })
-            .pipe(
-              Effect.onExit((exit) =>
-                exit._tag === "Failure"
-                  ? Effect.sync(() => turnPresentation.releaseClaim(presentationClaim))
-                  : Effect.void,
-              ),
-              Effect.mapError(
-                (cause) => new CodexIpcError({ operation: "codex:turn:start", cause }),
-              ),
-            );
-        }),
-    );
-
     registerEffectControl(
       "codex:queued-messages:prepare-native",
       (event, threadId, message, mode, preparationContext) =>
@@ -2024,44 +1913,12 @@ export const live = Layer.effectDiscard(
       Effect.sync(() => queuedFollowUps.releaseSendLock(identity)),
     );
 
-    registerEffectPlainCommand("codex:thread:compact:start", (_, threadId: string) =>
-      manualCompaction
-        .start(threadId)
-        .pipe(
-          Effect.mapError(
-            (cause) => new CodexIpcError({ operation: "codex:thread:compact:start", cause }),
-          ),
-        ),
-    );
-
     registerEffectQuery("codex:thread:goal:get", (_, threadId: string) =>
       threadGoals
         .get(threadId)
         .pipe(
           Effect.mapError(
             (cause) => new CodexIpcError({ operation: "codex:thread:goal:get", cause }),
-          ),
-        ),
-    );
-
-    registerEffectPlainCommand(
-      "codex:thread:goal:set",
-      (_, params: CodexThreadGoalSetActionInput) =>
-        threadGoals
-          .set(params)
-          .pipe(
-            Effect.mapError(
-              (cause) => new CodexIpcError({ operation: "codex:thread:goal:set", cause }),
-            ),
-          ),
-    );
-
-    registerEffectPlainCommand("codex:thread:goal:clear", (_, threadId: string) =>
-      threadGoals
-        .clear(threadId)
-        .pipe(
-          Effect.mapError(
-            (cause) => new CodexIpcError({ operation: "codex:thread:goal:clear", cause }),
           ),
         ),
     );

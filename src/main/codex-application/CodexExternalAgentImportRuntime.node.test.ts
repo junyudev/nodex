@@ -36,7 +36,6 @@ const makeGateway = (
 it.effect("buffers completion that arrives before the import response", () =>
   Effect.gen(function* () {
     const events = yield* PubSub.unbounded<CodexEndpointEvent>();
-    const progress: string[] = [];
     const runtime = yield* make().pipe(
       Effect.provideService(
         CodexGateway,
@@ -63,11 +62,8 @@ it.effect("buffers completion that arrives before the import response", () =>
       ),
     );
 
-    const completed = yield* runtime.run([], (update) =>
-      Effect.sync(() => progress.push(update.importId)),
-    );
+    const completed = yield* runtime.run([]);
     assert.strictEqual(completed.importId, "import-1");
-    assert.deepEqual(progress, ["import-1"]);
   }),
 );
 
@@ -89,9 +85,9 @@ it.effect("serializes import admission so pre-response notifications cannot cros
         }),
       ),
     );
-    const first = yield* Effect.forkChild(runtime.run([], () => Effect.void));
+    const first = yield* Effect.forkChild(runtime.run([]));
     yield* Deferred.await(firstRequested);
-    const second = yield* Effect.forkChild(runtime.run([], () => Effect.void));
+    const second = yield* Effect.forkChild(runtime.run([]));
     yield* Effect.yieldNow;
     assert.strictEqual(requestCount, 1);
 
@@ -115,7 +111,7 @@ it.effect("uses the Effect clock for the sole completion deadline", () =>
         ),
       ),
     );
-    const timedOut = yield* Effect.forkChild(runtime.run([], () => Effect.void).pipe(Effect.flip));
+    const timedOut = yield* Effect.forkChild(runtime.run([]).pipe(Effect.flip));
     yield* TestClock.adjust("1999 millis");
     yield* TestClock.adjust("1 millis");
     const error = yield* Fiber.join(timedOut);
@@ -138,7 +134,7 @@ it.effect("interrupts an active import when the Main Scope closes", () =>
       ),
       Effect.provideService(Scope.Scope, scope),
     );
-    const closed = yield* Effect.forkChild(runtime.run([], () => Effect.void).pipe(Effect.flip));
+    const closed = yield* Effect.forkChild(runtime.run([]).pipe(Effect.flip));
     yield* Deferred.await(requested);
     yield* Scope.close(scope, Exit.void);
     assert.strictEqual((yield* Fiber.join(closed)).reason, "runtime-closed");

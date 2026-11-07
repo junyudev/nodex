@@ -142,9 +142,6 @@ export const live: Layer.Layer<
             broadcastWindows("codex:pending-worktree:warning", event.value);
             return;
           }
-          if (event.kind === "agentImportProgress") {
-            broadcastWindows("agent-import:progress", event.value);
-          }
         }),
       ),
       Effect.forkScoped({ startImmediately: true }),

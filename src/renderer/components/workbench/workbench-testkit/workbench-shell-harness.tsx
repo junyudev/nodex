@@ -3516,12 +3516,6 @@ export function renderWorkbench({
       });
       return { success };
     }
-    if (channel === "codex:automation-runs:delete") {
-      const runId = String((args[0] as { runId?: string } | undefined)?.runId ?? "");
-      const previousLength = automationInboxItems.length;
-      automationInboxItems = automationInboxItems.filter((item) => item.runId !== runId);
-      return { success: automationInboxItems.length !== previousLength };
-    }
     if (channel === "codex:automation-runs:set-read-state") {
       const input = args[0] as { runId?: string; readAt?: number | null };
       let updated: CodexAutomationInboxItem | null = null;
@@ -3621,12 +3615,6 @@ export function renderWorkbench({
         success: scheduledAutomations.length !== previousLength || item === null,
         status: item ? "deleted" : "not_found",
       };
-    }
-    if (channel === "codex:threads:pinned:list") {
-      return Object.values(sessionState)
-        .flat()
-        .filter((session) => session.thread && session.pinned)
-        .map((session) => session.thread?.threadId);
     }
     if (channel === "codex:thread:ensure-session") {
       const threadId = String(args[0]);

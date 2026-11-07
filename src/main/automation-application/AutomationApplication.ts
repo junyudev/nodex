@@ -224,7 +224,6 @@ export interface AutomationInbox {
   readonly setReadState: (
     input: CodexAutomationRunReadStateInput,
   ) => AutomationEffect<CodexAutomationInboxItem | null>;
-  readonly markAllRead: AutomationEffect<number>;
 }
 
 export interface AutomationOccurrences {
@@ -1175,12 +1174,6 @@ export const make: Effect.Effect<
           }),
         ),
       setReadState: setInboxReadState,
-      markAllRead: Effect.suspend(() =>
-        apply("inbox.markAllRead", {
-          operationId: operationId("mark-all-read"),
-          intent: { kind: "mark_all_runs_read" },
-        }).pipe(Effect.map((committed) => committed.outcome.run_bulk?.changed_count ?? 0)),
-      ),
     },
     occurrences: {
       list: listOccurrences,

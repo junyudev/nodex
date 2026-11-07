@@ -338,24 +338,6 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handlePlainCommand("codex:automation-runs:delete", (_, input) =>
-      automation.runs.get(input.runId).pipe(
-        Effect.flatMap((item) =>
-          automation.runs.delete(input.runId).pipe(
-            Effect.tap((success) =>
-              success && item
-                ? broadcastRunChanged({
-                    automationId: item.automationId,
-                    runId: input.runId,
-                    reason: "delete",
-                  })
-                : Effect.void,
-            ),
-            Effect.map((success) => ({ success })),
-          ),
-        ),
-      ),
-    );
     yield* handlePlainCommand("codex:automation-runs:unarchive", (_, input) =>
       automation.runs.get(input.runId).pipe(
         Effect.flatMap((item) =>
@@ -391,20 +373,6 @@ export const live: Layer.Layer<
               })
             : Effect.void,
         ),
-      ),
-    );
-    yield* handlePlainCommand("codex:automation-runs:mark-all-read", () =>
-      automation.inbox.markAllRead.pipe(
-        Effect.tap((changedCount) =>
-          changedCount > 0
-            ? broadcastRunsUpdated({
-                automationId: null,
-                runId: null,
-                reason: "mark-all-read",
-              })
-            : Effect.void,
-        ),
-        Effect.map((changedCount) => ({ changedCount })),
       ),
     );
   }),

@@ -83,7 +83,6 @@ type SettingsReadChannel =
   | "settings:opencode-agents:get"
   | "settings:codex-home:get"
   | "settings:backup:get"
-  | "settings:codex-developer:get"
   | "settings:diagnostics:get"
   | "settings:git:get"
   | "settings:history:get"
@@ -605,11 +604,6 @@ export const live: Layer.Layer<
           ),
         ),
       ),
-    );
-    yield* handleRead(
-      "settings:codex-developer:get",
-      "Developer instruction settings",
-      (value) => value.developer,
     );
     yield* ipc.handlePlainCommand("settings:codex-developer:update", (event, input: unknown) =>
       authorize(event, "Developer instruction settings").pipe(

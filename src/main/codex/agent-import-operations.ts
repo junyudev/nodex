@@ -25,12 +25,10 @@ import type {
   AgentImportApplyInput,
   AgentImportItemKind,
   AgentImportItemOutcome,
-  AgentImportProgress,
   AgentImportResult,
   AgentImportScan,
   AgentImportSourceKind,
 } from "../../shared/agent-import";
-import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexExternalAgentImportRuntime } from "../codex-application/CodexExternalAgentImportRuntime";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 
@@ -123,7 +121,6 @@ export interface AgentImportFileConfiguration {
 }
 
 interface AgentImportEffectServices {
-  readonly events: CodexApplicationEventHub["Service"];
   readonly externalImport: CodexExternalAgentImportRuntime["Service"];
   readonly gateway: CodexGateway["Service"];
 }
@@ -723,14 +720,6 @@ class AgentImportOperations {
     });
     return Effect.gen({ self: this }, function* () {
       const selectedItems = yield* selected;
-      this.emitProgress({
-        activeItemLabel: selectedItems[0]?.label ?? null,
-        completed: false,
-        completedItems: 0,
-        importId,
-        sourceKind: pendingScan.scan.sourceKind,
-        totalItems: selectedItems.length,
-      });
       const result =
         pendingScan.scan.sourceKind === "claude-code"
           ? yield* this.applyClaudeItems(importId, pendingScan, selectedItems, startedAt)
@@ -753,26 +742,7 @@ class AgentImportOperations {
       );
       const completed =
         migrationItems.length > 0
-          ? yield* this.services.externalImport.run(migrationItems, (progress) =>
-              Effect.sync(() => {
-                const completedTypes = new Set(
-                  progress.itemTypeResults.map((result) => result.itemType),
-                );
-                const activeItem = claudeItems.find(
-                  (item) =>
-                    item.payload.type === "claude" &&
-                    !completedTypes.has(item.payload.migrationItem.itemType),
-                );
-                this.emitProgress({
-                  activeItemLabel: activeItem?.label ?? "Importing Claude Code setup",
-                  completed: false,
-                  completedItems: Math.min(completedTypes.size, claudeItems.length),
-                  importId,
-                  sourceKind: "claude-code",
-                  totalItems: selectedItems.length,
-                });
-              }),
-            )
+          ? yield* this.services.externalImport.run(migrationItems)
           : { importId, itemTypeResults: [] };
       const externalOutcomes = claudeItems.map((item) => {
         if (item.payload.type !== "claude") return outcomeFromExternalResult(item, undefined);
@@ -783,15 +753,7 @@ class AgentImportOperations {
         );
       });
       const nativeOutcomes: AgentImportItemOutcome[] = [];
-      for (const [index, item] of nativeItems.entries()) {
-        this.emitProgress({
-          activeItemLabel: item.label,
-          completed: false,
-          completedItems: claudeItems.length + index,
-          importId,
-          sourceKind: "claude-code",
-          totalItems: selectedItems.length,
-        });
+      for (const item of nativeItems) {
         nativeOutcomes.push(yield* this.applyNativeItem(item));
       }
       const outcomes = selectedItems.map((item) => {
@@ -809,7 +771,6 @@ class AgentImportOperations {
         sourceLabel: pendingScan.scan.sourceLabel,
         startedAt,
       };
-      this.emitCompletedProgress(result, selectedItems.length);
       return result;
     });
   }
@@ -822,15 +783,7 @@ class AgentImportOperations {
   ) {
     return Effect.gen({ self: this }, function* () {
       const outcomes: AgentImportItemOutcome[] = [];
-      for (const [index, item] of selectedItems.entries()) {
-        this.emitProgress({
-          activeItemLabel: item.label,
-          completed: false,
-          completedItems: index,
-          importId,
-          sourceKind: pendingScan.scan.sourceKind,
-          totalItems: selectedItems.length,
-        });
+      for (const item of selectedItems) {
         outcomes.push(yield* this.applyNativeItem(item));
       }
       const result: AgentImportResult = {
@@ -841,7 +794,6 @@ class AgentImportOperations {
         sourceLabel: pendingScan.scan.sourceLabel,
         startedAt,
       };
-      this.emitCompletedProgress(result, selectedItems.length);
       return result;
     });
   }
@@ -917,21 +869,6 @@ class AgentImportOperations {
       skippedCount,
       successCount,
     };
-  }
-
-  private emitCompletedProgress(result: AgentImportResult, totalItems: number): void {
-    this.emitProgress({
-      activeItemLabel: null,
-      completed: true,
-      completedItems: totalItems,
-      importId: result.importId,
-      sourceKind: result.sourceKind,
-      totalItems,
-    });
-  }
-
-  private emitProgress(progress: AgentImportProgress): void {
-    this.services.events.publish({ kind: "agentImportProgress", value: progress });
   }
 
   private failedItemOutcome(item: PendingImportItem, cause: unknown): AgentImportItemOutcome {
