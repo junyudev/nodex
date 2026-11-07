@@ -111,6 +111,7 @@ const makeArchive = (input: {
   readonly archivePersistenceFailure?: unknown;
   readonly deletePersistenceFailure?: unknown;
   readonly unarchiveOwner?: boolean;
+  readonly unarchiveTransportFailure?: unknown;
   readonly unarchiveUnsubscribeFailure?: unknown;
   readonly unarchiveHydrationFailure?: unknown;
   readonly unarchiveHydrationMissing?: boolean;
@@ -130,20 +131,22 @@ const makeArchive = (input: {
         Effect.andThen(
           method === "thread/archive" && input.archiveTransportFailure
             ? Effect.fail(input.archiveTransportFailure)
-            : method === "thread/read" && input.nativeReadFailure
-              ? Effect.fail(input.nativeReadFailure)
-              : method === "thread/delete" && input.deleteTransportFailure
-                ? Effect.fail(input.deleteTransportFailure)
-                : method === "thread/list"
-                  ? Effect.sync(() => {
-                      const pages = input.nativeArchivedPages ?? [["thread-a"]];
-                      const ids = pages[archivedPage++] ?? [];
-                      return {
-                        data: ids.map((id) => ({ id })),
-                        nextCursor: archivedPage < pages.length ? `page-${archivedPage}` : null,
-                      };
-                    })
-                  : Effect.succeed({}),
+            : method === "thread/unarchive" && input.unarchiveTransportFailure
+              ? Effect.fail(input.unarchiveTransportFailure)
+              : method === "thread/read" && input.nativeReadFailure
+                ? Effect.fail(input.nativeReadFailure)
+                : method === "thread/delete" && input.deleteTransportFailure
+                  ? Effect.fail(input.deleteTransportFailure)
+                  : method === "thread/list"
+                    ? Effect.sync(() => {
+                        const pages = input.nativeArchivedPages ?? [["thread-a"]];
+                        const ids = pages[archivedPage++] ?? [];
+                        return {
+                          data: ids.map((id) => ({ id })),
+                          nextCursor: archivedPage < pages.length ? `page-${archivedPage}` : null,
+                        };
+                      })
+                    : Effect.succeed({}),
         ),
       ) as never,
     requestRawOnHost: unsupported,
@@ -348,7 +351,7 @@ const makeArchive = (input: {
 };
 
 const lifecycleRequestFailure = (
-  method: "thread/archive" | "thread/delete" | "thread/read",
+  method: "thread/archive" | "thread/delete" | "thread/read" | "thread/unarchive",
   code: number,
   message: string,
 ) =>
@@ -564,6 +567,54 @@ it.effect("does not clear ownership or unarchive when owner unsubscribe fails", 
 
     assert.isTrue(exit._tag === "Failure");
     assert.deepEqual(events, ["manager:assert:1", "gateway:local:thread/unsubscribe"]);
+  }),
+);
+
+it.effect("restores a Thread whose rollout was never archived natively", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const currentThread = thread({ archived: true, managedWorktreePath: null });
+    const archive = yield* makeArchive({
+      events,
+      currentThread,
+      lifecycleConsumers: [currentThread],
+      unarchiveTransportFailure: lifecycleRequestFailure(
+        "thread/unarchive",
+        -32603,
+        "no archived rollout found for thread id thread-a",
+      ),
+    });
+
+    const summary = yield* archive.unarchive("thread-a");
+
+    assert.strictEqual(summary?.archived, false);
+    assert.deepEqual(events, [
+      "gateway:thread/unarchive",
+      "core:archive",
+      "directory:metadata:thread-a",
+    ]);
+  }),
+);
+
+it.effect("keeps a Thread archived when the native unarchive really fails", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const currentThread = thread({ archived: true, managedWorktreePath: null });
+    const archive = yield* makeArchive({
+      events,
+      currentThread,
+      lifecycleConsumers: [currentThread],
+      unarchiveTransportFailure: lifecycleRequestFailure(
+        "thread/unarchive",
+        -32603,
+        "no archived rollout found for thread id other",
+      ),
+    });
+
+    const exit = yield* Effect.exit(archive.unarchive("thread-a"));
+
+    assert.isTrue(exit._tag === "Failure");
+    assert.deepEqual(events, ["gateway:thread/unarchive"]);
   }),
 );
 

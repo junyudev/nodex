@@ -12,6 +12,7 @@ import type {
   CodexSidebarSyncResult,
   ProjectSession,
 } from "../../shared/types";
+import { CODEX_AGENT_BACKEND_BINDING } from "../../shared/agent-backend";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
@@ -20,7 +21,37 @@ import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
 import { readCodexLinkedRootSession } from "./CodexLinkedRootSession";
 import { projectCoreWorkspaceTask } from "./CodexThreadCatalogProjection";
 
-const CODEX_SIDEBAR_SYNC_PINNED_PAGE_SIZE = 200;
+const CODEX_SIDEBAR_SYNC_PAGE_SIZE = 200;
+
+const archivedRuntimeChatItem = (
+  task: ReturnType<typeof projectCoreWorkspaceTask>,
+): CodexSidebarSnapshot["items"][number] => ({
+  key: `local:session:${task.id}`,
+  kind: "local",
+  backendBinding: CODEX_AGENT_BACKEND_BINDING,
+  runtimeBound: true,
+  runLocation: { kind: "local-checkout" },
+  hostId: "local",
+  threadId: task.executionRef?.threadId ?? task.id,
+  parentThreadId: null,
+  sessionId: task.id,
+  projectId: task.projectId,
+  title: task.displayTitle,
+  preview: "",
+  cwd: null,
+  updatedAt: Date.parse(task.updatedAt),
+  recencyAt: task.activityAt,
+  createdAt: Date.parse(task.createdAt),
+  pinned: task.pinned,
+  pinnedOrder: task.pinnedOrder,
+  unread: task.unread,
+  remindAt: task.remindAt,
+  archived: task.archived,
+  statusType: "idle",
+  statusActiveFlags: [],
+  projectless: task.projectId === null,
+  disabled: false,
+});
 export interface CodexSidebarSyncMetadata {
   readonly changedProjectIds: readonly string[];
   readonly projectlessChanged: boolean;
@@ -92,67 +123,68 @@ export const make = (options: CodexSidebarSyncRuntimeOptions = {}) =>
     let invalidationRevision = 0;
     const cache = new Map<boolean, { revision: number; snapshot: CodexSidebarSnapshot }>();
     const fail = (cause: unknown) => new CodexSidebarSyncError({ cause });
-    const readPinnedTasks = Effect.fn("CodexSidebarSync.readPinnedTasks")(function* (
-      includeArchived: boolean,
-    ) {
+    /**
+     * The sidebar's pinned lane, or every archived chat, most recent first. The pinned lane is all
+     * or nothing because the sidebar reconciles against it; a long archive stops at its budget.
+     */
+    const readTasks = Effect.fn("CodexSidebarSync.readTasks")(function* (archived: boolean) {
       const tasks = [] as Array<ReturnType<typeof projectCoreWorkspaceTask>>;
       let projectionRevision = 0;
       let after: string | null = null;
       const seenCursors = new Set<string>();
       let retainedBytes = 0;
+      const overBudget = (message: string) =>
+        archived ? Effect.succeed({ tasks, projectionRevision }) : fail(new Error(message));
       for (let page = 0; page < sweepMaxPages; page += 1) {
+        const taskWindow = { after, first: CODEX_SIDEBAR_SYNC_PAGE_SIZE };
         const loaded = yield* core.workspace
-          .read({
-            kind: "sidebar_overview",
-            include_archived: includeArchived,
-            pinned_window: { after, first: CODEX_SIDEBAR_SYNC_PINNED_PAGE_SIZE },
-          })
+          .read(
+            archived
+              ? { kind: "session_window", archived: true, window: taskWindow }
+              : { kind: "sidebar_overview", include_archived: false, pinned_window: taskWindow },
+          )
           .pipe(Effect.timeoutOption(sweepPageDeadline));
         if (Option.isNone(loaded)) {
-          return yield* fail(new Error("Pinned sidebar read exceeded its bounded deadline"));
+          return yield* fail(new Error("Sidebar read exceeded its bounded deadline"));
         }
         const response: import("../core-client/types").ProjectWorkspaceReadSnapshot = loaded.value;
-        if (response.value.kind !== "sidebar_overview") {
-          return yield* fail(new Error("Core returned a non-sidebar-overview read variant"));
-        }
-        const pageTasks = response.value.pinned_tasks.items;
+        const value = response.value;
+        const read =
+          value.kind === "session_window"
+            ? { ...value.sessions, items: value.sessions.items.map((item) => item.task) }
+            : value.kind === "sidebar_overview"
+              ? value.pinned_tasks
+              : null;
+        if (!read) return yield* fail(new Error("Core returned the wrong sidebar read variant"));
+        const pageTasks = read.items;
         const pageBytes = cappedApproximateValueBytes(pageTasks, sweepMaxPageBytes);
         if (
-          pageTasks.length > CODEX_SIDEBAR_SYNC_PINNED_PAGE_SIZE ||
+          pageTasks.length > CODEX_SIDEBAR_SYNC_PAGE_SIZE ||
           pageBytes > sweepMaxPageBytes ||
           tasks.length > sweepMaxResults - pageTasks.length ||
           retainedBytes > sweepMaxBytes - pageBytes
         ) {
-          return yield* fail(
-            new Error("Pinned sidebar read exceeded its bounded admission budget"),
-          );
+          return yield* overBudget("Sidebar read exceeded its bounded admission budget");
         }
-        projectionRevision = Math.max(
-          projectionRevision,
-          response.value.pinned_tasks.authority.projection_revision,
-        );
+        projectionRevision = Math.max(projectionRevision, read.authority.projection_revision);
         for (const task of pageTasks) tasks.push(projectCoreWorkspaceTask(task));
         retainedBytes += pageBytes;
-        const next = response.value.pinned_tasks.next_cursor ?? null;
+        const next = read.next_cursor ?? null;
         if (next === null) return { tasks, projectionRevision };
         if (seenCursors.has(next)) {
-          return yield* fail(new Error("Pinned sidebar cursor did not advance"));
+          return yield* fail(new Error("Sidebar cursor did not advance"));
         }
         seenCursors.add(next);
         after = next;
       }
-      return yield* fail(new Error("Pinned sidebar read exceeded its bounded page budget"));
+      return yield* overBudget("Sidebar read exceeded its bounded page budget");
     });
 
     const buildSnapshot = Effect.fn("CodexSidebarSync.buildSnapshot")(function* (
       includeArchived: boolean,
     ) {
       const [{ tasks, projectionRevision }, hosts, generatedAt] = yield* Effect.all(
-        [
-          readPinnedTasks(includeArchived),
-          executionHosts.hosts(),
-          Clock.currentTimeMillis,
-        ] as const,
+        [readTasks(includeArchived), executionHosts.hosts(), Clock.currentTimeMillis] as const,
         { concurrency: "unbounded" },
       );
       const hostNames = new Map(hosts.map((host) => [host.hostId, host.displayName] as const));
@@ -160,7 +192,12 @@ export const make = (options: CodexSidebarSyncRuntimeOptions = {}) =>
       const projectlessThreadIds: string[] = [];
       const items = tasks.flatMap((task) => {
         const thread = task.thread;
-        if (!thread || thread.parentThreadId) return [];
+        if (thread?.parentThreadId) return [];
+        if (!thread) {
+          // A Runtime-bound chat has no native Thread row. The live sidebar builds its row from the
+          // Session, but nothing else can list it once it is archived.
+          return includeArchived && task.executionRef ? [archivedRuntimeChatItem(task)] : [];
+        }
         const hostId = thread.executionHostId || "local";
         const isLocalHost = hostId === "local";
         const managedWorktreePath = thread.managedWorktreePath ?? null;
@@ -214,7 +251,7 @@ export const make = (options: CodexSidebarSyncRuntimeOptions = {}) =>
       });
       return {
         items,
-        pinnedThreadIds: items.map((item) => item.threadId),
+        pinnedThreadIds: items.filter((item) => item.pinned).map((item) => item.threadId),
         projectAssignments,
         projectlessThreadIds,
         revision: projectionRevision,

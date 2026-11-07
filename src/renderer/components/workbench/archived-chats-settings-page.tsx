@@ -51,6 +51,10 @@ function chatTitle(chat: CodexSidebarThreadItem): string {
   return chat.title.trim() || chat.preview.trim() || "Untitled chat";
 }
 
+function isNativeThreadChat(chat: CodexSidebarThreadItem): boolean {
+  return isCodexAgentBackendBinding(chat.backendBinding) && !chat.runtimeBound;
+}
+
 function requireSessionId(chat: CodexSidebarThreadItem): string {
   if (chat.sessionId) return chat.sessionId;
   throw new Error(`Archived ${chat.backendBinding.kind} chat has no durable Session identity.`);
@@ -219,7 +223,7 @@ export function ArchivedChatsSettingsPage({
     setBusyThreadId(chat.threadId);
     return runWithCleanup(
       async () => {
-        const restored = isCodexAgentBackendBinding(chat.backendBinding)
+        const restored = isNativeThreadChat(chat)
           ? await unarchiveChat(chat.threadId)
           : await workspaceSessionCommands.unarchive(requireSessionId(chat));
         setChats((current) => current.filter((candidate) => candidate.threadId !== chat.threadId));
@@ -261,7 +265,7 @@ export function ArchivedChatsSettingsPage({
     return runWithCleanup(
       async () => {
         for (const chat of target.chats) {
-          if (!isCodexAgentBackendBinding(chat.backendBinding)) {
+          if (!isNativeThreadChat(chat)) {
             await workspaceSessionCommands.delete(requireSessionId(chat));
             continue;
           }

@@ -221,6 +221,12 @@ export const projectCoreWorkspaceTask = (task: CoreWorkspaceTask): ProjectSessio
   archivedAt: task.session.archived_at ?? null,
   unread: task.session.unread,
   remindAt: task.session.remind_at ?? null,
+  executionRef: task.session.execution_ref
+    ? {
+        runtimeId: task.session.execution_ref.runtime_id,
+        threadId: task.session.execution_ref.thread_id,
+      }
+    : null,
   thread: task.thread
     ? {
         sessionId: task.session.id,

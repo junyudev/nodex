@@ -1413,6 +1413,8 @@ export interface CodexSidebarThreadItem {
   key: string;
   kind: CodexSidebarThreadKind;
   backendBinding: AgentBackendBinding;
+  /** The Agent Runtime owns this conversation, so its lifecycle runs through the Session. */
+  runtimeBound?: boolean;
   runLocation: CodexSidebarRunLocation;
   pendingWorktreeId?: string;
   clientThreadId?: string;

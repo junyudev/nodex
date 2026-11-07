@@ -139,6 +139,30 @@ describe("Archived chats settings", () => {
     expect(groups).toEqual([{ id: "project-a", label: "Nodex", chats: [root] }]);
   });
 
+  test("restores and deletes a Runtime-bound chat through its Session", async () => {
+    const runtime = chat("runtime-thread", {
+      title: "Runtime task",
+      sessionId: "session-runtime",
+      runtimeBound: true,
+    });
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === "codex:sidebar:snapshot") return snapshot([runtime]);
+      throw new Error(`Unexpected ${channel}`);
+    });
+    workspaceSessionCommand.mockResolvedValue({ id: "session-runtime" });
+
+    const view = renderPage();
+    expect(await view.findByText("Runtime task")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Unarchive" }));
+    });
+    await waitFor(() =>
+      expect(workspaceSessionCommand).toHaveBeenCalledWith("unarchive", "session-runtime"),
+    );
+    expect(invoke).not.toHaveBeenCalledWith("codex:thread:unarchive", "runtime-thread");
+  });
+
   test("loads, filters, unarchives, and permanently deletes only after confirmation", async () => {
     const alpha = chat("alpha", { title: "Alpha task" });
     const beta = chat("beta", { title: "Beta task", updatedAt: 150 });

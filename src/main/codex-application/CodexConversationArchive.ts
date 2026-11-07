@@ -446,7 +446,17 @@ export const make: Effect.Effect<
           .requestForThread(normalizedThreadId, "thread/unarchive", {
             threadId: normalizedThreadId,
           })
-          .pipe(Effect.mapError((cause) => fail("unarchive", normalizedThreadId, cause)));
+          .pipe(
+            // Archiving from the sidebar commits through the Session and leaves the native rollout
+            // in place, so a Thread with nothing archived natively only needs its Core state back.
+            Effect.catch((cause) =>
+              nativeMessage(cause).includes(
+                `no archived rollout found for thread id ${normalizedThreadId}`,
+              )
+                ? Effect.void
+                : Effect.fail(fail("unarchive", normalizedThreadId, cause)),
+            ),
+          );
         yield* project(
           "unarchive",
           normalizedThreadId,
