@@ -137,6 +137,22 @@ export function isBrowserUseNavigationUrl(url: string): boolean {
   return isHttpUrl(url);
 }
 
+/** What an Agent may show the user in a Browser tab: the web, or a file on this device. */
+export function isAgentPresentedBrowserUrl(url: string): boolean {
+  const parsed = parseUrl(url);
+  if (!parsed) return false;
+  return parsed.protocol === "file:" ? isLocalFileUrl(parsed) : isHttpUrl(url);
+}
+
+/** Whether two URLs load the same document; a fragment only scrolls within it. */
+export function isSameBrowserDocument(left: string, right: string): boolean {
+  const [first, second] = [parseUrl(left), parseUrl(right)];
+  if (!first || !second) return false;
+  first.hash = "";
+  second.hash = "";
+  return first.href === second.href;
+}
+
 export type LinkRouteTarget =
   | { readonly type: "url"; readonly url: string }
   | {

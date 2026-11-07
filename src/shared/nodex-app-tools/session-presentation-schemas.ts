@@ -1,15 +1,17 @@
 import { idempotencyKeySchema } from "./idempotency-key";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { isAgentPresentedBrowserUrl } from "../browser-url-policy";
 import { WorkbenchWindowReferenceSchema } from "./workbench";
 
 const identity = z.string().min(1).max(512);
 const path = z.string().min(1).max(4_096);
-const webUrl = z
+const browserUrl = z
   .string()
   .max(16_384)
   .url()
-  .regex(/^https?:\/\//i, "Use an HTTP or HTTPS URL");
+  .regex(/^(https?|file):\/\//i, "Use an HTTP, HTTPS or local file URL")
+  .refine(isAgentPresentedBrowserUrl, "File URLs must name a file on this device");
 const common = {
   window: WorkbenchWindowReferenceSchema.optional(),
   idempotencyKey: idempotencyKeySchema.optional(),
@@ -29,7 +31,7 @@ export const sessionPresentationSchemas = {
       z
         .strictObject({
           kind: z.literal("browser"),
-          url: webUrl.optional(),
+          url: browserUrl.optional(),
           tabId: identity.optional(),
         })
         .refine(
@@ -60,7 +62,7 @@ const descriptions: Record<keyof typeof sessionPresentationSchemas, string> = {
   navigate_to_session:
     "Show a Session in the current Profile in the calling Turn's submission window and wait for its navigation receipt. An explicit window must be a current window reference returned by Workbench context. Never infers global focus.",
   open_in_nodex:
-    "Open a file (optionally at a line), Browser URL or existing Browser tab, Terminal, Review, Page, View or Canvas in the calling Session's panel. Set sessionId only for an explicitly requested other Session. Hidden Sessions retain the opened tab without navigating there. Existing Browser and Terminal identities must belong to that Session. Local workspace targets require a local Session. Returns the exact window and Scene receipt; this opens presentation and does not read file contents or execute shell commands on behalf of the Agent.",
+    "Show a file (optionally at a line), Browser URL or existing Browser tab, Terminal, Review, Page, View or Canvas in the calling Session's panel. A local HTML file opens rendered in the Browser, reloading a tab that already shows it; set line to open its source in Files instead. Browser URLs may be HTTP, HTTPS or a file on this device. Set sessionId only for an explicitly requested other Session. Hidden Sessions retain the opened tab without navigating there. Existing Browser and Terminal identities must belong to that Session. Local workspace targets require a local Session. Returns the exact window, Scene receipt and the surface that opened; this opens presentation and does not read file contents or execute shell commands on behalf of the Agent.",
 };
 export const sessionPresentationToolCatalog: readonly Tool[] = Object.entries(
   sessionPresentationSchemas,

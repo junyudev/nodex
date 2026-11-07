@@ -512,6 +512,12 @@ has.
   and local HTTP and requires the current tab failure. Link context-menu Browser
   choices accept HTTP(S). Popups deny `other` and open other dispositions in Browser
   tabs, preserving background selection and opener placement.
+- `open_in_nodex` lets an Agent show the user HTTP(S) URLs and existing files on this
+  device in a Session's Browser, without a user gesture. A page it opens runs in the
+  same sandboxed guest as any other Browser page, so a local file carries no more
+  authority than a web page the Agent could already open. The tool does not give the
+  Agent the page: Browser Use control below stays limited to HTTP(S). Remote Sessions
+  cannot open local files, and network-share file URLs are refused.
 - Browser Use claims and current-page assertions activate a per-page navigation
   restriction. Explicit navigation, page navigation/redirect hooks and Session
   main-frame/subframe requests admit HTTP(S) or exact `about:blank` while control is

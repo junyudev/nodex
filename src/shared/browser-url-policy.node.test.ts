@@ -1,11 +1,13 @@
 import { describe, expect, test } from "vitest";
 import {
+  isAgentPresentedBrowserUrl,
   isBrowserHtmlFilePath,
   isBrowserUseNavigationUrl,
   isErrorPageExternalUrl,
   isExternallyOpenableUrl,
   isLocalHostname,
   isLocalUrl,
+  isSameBrowserDocument,
   readLocalHttpPort,
   resolveLinkOpenTarget,
   shouldOpenLinkInBrowser,
@@ -208,5 +210,39 @@ describe("link destinations", () => {
         link: { type: "file", path: "/a/notes.md" },
       }),
     ).toBe(false);
+  });
+});
+
+describe("Agent-presented Browser URLs", () => {
+  test("admit the web and files on this device only", () => {
+    for (const url of [
+      "https://example.com",
+      "http://localhost:3000/",
+      "file:///tmp/report.html",
+      "file://localhost/tmp/report.html",
+      "file:///C:/Users/a/report.html",
+    ])
+      expect(isAgentPresentedBrowserUrl(url), url).toBe(true);
+    for (const url of [
+      "file://server/share/report.html",
+      "file:////server/share/report.html",
+      "javascript:alert(1)",
+      "data:text/html,<h1>x</h1>",
+      "about:blank",
+      "not a url",
+    ])
+      expect(isAgentPresentedBrowserUrl(url), url).toBe(false);
+  });
+});
+
+describe("same Browser document", () => {
+  test("ignores only the fragment and normalizes equivalent encodings", () => {
+    expect(isSameBrowserDocument("file:///a/b.html#one", "file:///a/b.html")).toBe(true);
+    expect(isSameBrowserDocument("file:///a/报告.html", "file:///a/%E6%8A%A5%E5%91%8A.html")).toBe(
+      true,
+    );
+    expect(isSameBrowserDocument("file:///a/b.html?x=1", "file:///a/b.html")).toBe(false);
+    expect(isSameBrowserDocument("file:///a/b.html", "file:///a/c.html")).toBe(false);
+    expect(isSameBrowserDocument("not a url", "not a url")).toBe(false);
   });
 });

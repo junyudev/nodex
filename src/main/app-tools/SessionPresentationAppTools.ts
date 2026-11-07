@@ -9,8 +9,16 @@ import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
 import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
 import type { WorkbenchAppToolContext } from "./WorkbenchControl";
-import { make as makeTarget } from "./SessionPresentationTarget";
+import { make as makeTarget, type SessionPresentationOpening } from "./SessionPresentationTarget";
 import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
+
+/** What the receipt reports was opened, so an Agent never has to guess how a file is shown. */
+const presentedSurface = (opening: SessionPresentationOpening) => {
+  if ("existingTabId" in opening)
+    return { surface: opening.surface, ...(opening.url ? { url: opening.url } : {}) };
+  const { kind, config } = opening.surface;
+  return { surface: kind, ...(kind === "browser" && config.url ? { url: config.url } : {}) };
+};
 
 export const make = Effect.gen(function* () {
   const admitOperation = yield* makeAppToolOperation;
@@ -67,14 +75,16 @@ export const make = Effect.gen(function* () {
     if (!operation.success) return operation.result;
     const { operationId } = operation;
     let command: WorkbenchCommand;
+    let opening: SessionPresentationOpening | null = null;
     if (input.name === "navigate_to_session") {
       command = { kind: "navigate_session", projectId: session.projectId };
     } else {
       const args = schemas.open_in_nodex.parse(input.arguments);
-      const opening = yield* resolveTarget({
+      opening = yield* resolveTarget({
         target: args.target,
         session,
         observation: observed.observation,
+        window,
         operationId,
         authority,
         callId: input.caller.callId,
@@ -96,6 +106,9 @@ export const make = Effect.gen(function* () {
       },
     });
     const receipt = result.receipt;
+    const reload =
+      opening && "existingTabId" in opening && !receipt.error ? opening.reload : undefined;
+    const reloaded = reload ? yield* reload : undefined;
     const isSelected =
       selected !== null && makeWorkbenchSceneKey(selected) === makeWorkbenchSceneKey(sceneOwner);
     return toolSuccess({
@@ -109,6 +122,8 @@ export const make = Effect.gen(function* () {
       window,
       sessionId,
       ...receipt,
+      ...(opening ? presentedSurface(opening) : {}),
+      ...(reloaded === undefined ? {} : { reloaded }),
     });
   });
 });

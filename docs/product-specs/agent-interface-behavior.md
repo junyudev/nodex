@@ -200,13 +200,26 @@ observation, including preview surfaces. Unavailable resources retain their life
 handles identify the observed occurrence, never whichever tab is selected later.
 Expired observations and changed presentation require a new observation.
 
-`open_in_nodex` opens an selected file, Browser, Terminal, Review, Page, View or
+`open_in_nodex` opens a selected file, Browser, Terminal, Review, Page, View or
 Canvas in the calling Session's panel, or an explicitly selected Session. Its window
-defaults to the Turn's submission window. Hidden Sessions retain their opened tabs
-without navigation. Files can select a one-based line; relative paths resolve against
-the target task's workspace, and workspace requests resolve within canonical selected roots. Existing Browser and Terminal identities must belong to the target Session.
-Review supports last-turn, staged, unstaged and branch sources, including an explicit
-base revision and file path. Source and file reveal requests are consumed once.
+defaults to the Turn's submission window.
+Hidden Sessions retain their opened tabs without navigation. Its receipt names the
+surface that opened, plus the URL of a Browser tab, so an Agent can report what the
+user sees. Relative paths resolve against the target task's workspace, and workspace
+requests resolve within canonical selected roots. Existing Browser and Terminal
+identities must belong to the target Session. Review supports last-turn, staged,
+unstaged and branch sources, including an explicit base revision and file path. Source
+and file reveal requests are consumed once.
+
+Files follow the same intent as [opening one from a message](message-content-behavior.md#opening-links-and-files):
+a local `.html` or `.htm` file without a line opens rendered in the Browser, and any
+line opens the source in Files at that one-based line. Browser URLs may be HTTP, HTTPS
+or an existing file on this device; a remote Session cannot open local files, and a
+network share or missing file is unavailable. A local document keeps one Browser tab
+per Session in a window: opening it again activates the tab already showing it and
+reloads it, so an edit appears. The receipt reports whether that reload started. A tab
+restored after a restart counts once it has been shown. Web URLs always open their
+own tab.
 
 `navigate_to_session` selects a Session in the current Profile in that same window. Both tools
 accept an explicit current window reference and return a revision-fenced apply/persistence

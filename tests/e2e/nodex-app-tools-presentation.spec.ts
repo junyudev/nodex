@@ -1,8 +1,9 @@
 import { nativeAppToolCall } from "./support/native-app-tools";
 import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import {
@@ -34,19 +35,24 @@ const records = (value: unknown) =>
     }
   });
 
-test("native presentation tools preserve Session ownership and reveal exact file and Review targets", async () => {
-  test.setTimeout(180_000);
+test("native presentation tools preserve Session ownership and reveal exact file, HTML and Review targets", async () => {
+  test.setTimeout(300_000);
   const otherSessionId = createUuidV7();
   let callerSessionId = "";
   let filePath = "";
+  let htmlPath = "";
+  let htmlTabId = "";
   let browserUrl = "";
+  const phases = ["review", "file", "html", "reopen", "source"];
   await withScriptedModelServer(
     {
-      exchanges: ["review", "file"].map<ScriptedModelExchange>((phase) => ({
+      exchanges: phases.map<ScriptedModelExchange>((phase, phaseIndex) => ({
         name: `presentation ${phase}`,
         match: (request) =>
           request.hasUserInputText(`PRESENT_${phase}`) &&
-          (phase === "file" || !request.hasUserInputText("PRESENT_file")),
+          phases
+            .slice(phaseIndex + 1)
+            .every((later) => !request.hasUserInputText(`PRESENT_${later}`)),
         expectedCalls: 2,
         maximumCalls: 2,
         respond: (request, index) => {
@@ -59,8 +65,17 @@ test("native presentation tools preserve Session ownership and reveal exact file
               'const unwrap=r=>{const v=typeof r==="string"?JSON.parse(r):r;return v.structuredContent??(v.content?JSON.parse(v.content[0].text):v);};',
               'async function invoke(name,args){for(let i=0;i<3;i++){const result=unwrap(await app[name](args));if(result.error!=="stale_presentation")return result;}throw new Error("Presentation kept changing");}',
             ];
-            const script =
-              phase === "review"
+            const openHtml = (label: string, idempotencyKey: string, line?: number) =>
+              `text({${label}:await invoke("open_in_nodex",{idempotencyKey:${JSON.stringify(idempotencyKey)},target:${JSON.stringify({ kind: "file", path: htmlPath, line })}})});`;
+            const htmlScripts: Readonly<Record<string, readonly string[]>> = {
+              html: [openHtml("html", "show-html"), openHtml("htmlRetry", "show-html")],
+              reopen: [openHtml("reopened", "reopen-html")],
+              source: [openHtml("htmlSource", "show-html-source", 1)],
+            };
+            const htmlScript = htmlScripts[phase];
+            const script = htmlScript
+              ? [...common, ...htmlScript]
+              : phase === "review"
                 ? [
                     ...common,
                     "text({initial:unwrap(await app.get_session_context({}))});",
@@ -127,6 +142,29 @@ test("native presentation tools preserve Session ownership and reveal exact file
               error: null,
               sessionId: callerSessionId,
             });
+          } else if (phase === "html") {
+            htmlTabId = (result("html") as { tabId: string }).tabId;
+            expect(result("html")).toMatchObject({
+              status: "opened",
+              error: null,
+              surface: "browser",
+              url: pathToFileURL(htmlPath).href,
+            });
+            expect(result("htmlRetry")).toEqual(result("html"));
+          } else if (phase === "reopen") {
+            expect(result("reopened")).toMatchObject({
+              status: "opened",
+              error: null,
+              surface: "browser",
+              tabId: htmlTabId,
+              reloaded: true,
+            });
+          } else if (phase === "source") {
+            expect(result("htmlSource")).toMatchObject({
+              status: "opened",
+              error: null,
+              surface: "files",
+            });
           } else {
             expect(result("file")).toMatchObject({
               status: "opened",
@@ -170,6 +208,8 @@ test("native presentation tools preserve Session ownership and reveal exact file
       try {
         const workspace = harness.profile.projectsDirectory;
         filePath = join(workspace, "review.ts");
+        htmlPath = join(realpathSync(workspace), "report.html");
+        writeFileSync(htmlPath, "<!doctype html><title>Report</title><h1>First version</h1>");
         const original =
           Array.from(
             { length: 40 },
@@ -251,6 +291,42 @@ test("native presentation tools preserve Session ownership and reveal exact file
             );
           })
           .toBe(true);
+
+        const sendPhase = async (phase: string) => {
+          await composer.fill(`PRESENT_${phase}`);
+          await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+          await waitForFinalMarker(page, `PRESENT_${phase}_OK`);
+          await waitForRuntimeCompletedAgentTurn(
+            page,
+            { sessionId: callerSessionId, threadId: threadId! },
+            60_000,
+          );
+        };
+        const reportGuests = () =>
+          harness.application.evaluate(async ({ webContents }, url) => {
+            const guests = webContents
+              .getAllWebContents()
+              .filter((guest) => guest.getType() === "webview" && guest.getURL() === url);
+            return Promise.all(
+              guests.map((guest) => guest.executeJavaScript("document.body.innerText")),
+            ) as Promise<string[]>;
+          }, pathToFileURL(htmlPath).href);
+
+        await sendPhase("html");
+        await expect
+          .poll(reportGuests, { message: "the page renders in one Browser tab" })
+          .toEqual(["First version"]);
+
+        writeFileSync(htmlPath, "<!doctype html><title>Report</title><h1>Second version</h1>");
+        await sendPhase("reopen");
+        await expect
+          .poll(reportGuests, { message: "opening it again shows the edit in the same tab" })
+          .toEqual(["Second version"]);
+
+        await sendPhase("source");
+        await expect(
+          page.getByRole("region", { name: "Source editor for report.html", exact: true }),
+        ).toBeVisible();
       } catch (error) {
         const snapshot = threadId
           ? await invokeIpc(harness.page, "agent-runtime:session:control", {
