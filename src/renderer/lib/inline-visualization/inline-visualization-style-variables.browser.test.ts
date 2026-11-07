@@ -323,6 +323,8 @@ test("drag and layout presentation changes send no widget context while fraction
     "light",
   );
   const runtime = mount();
+  // Keep the guest width fixed so shell padding changes only exercise style observation.
+  runtime.element.style.width = "400px";
   await waitFor(() => expect(runtime.getSnapshot().status).toBe("ready"));
   const frame = guests[0]!;
   const guest = frame.contentWindow as GuestWindow;

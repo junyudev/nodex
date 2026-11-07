@@ -9,6 +9,7 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
   const onHome = vi.fn();
   const onSpace = vi.fn();
   const onScheduled = vi.fn();
+  const onInsights = vi.fn();
   const onPlugins = vi.fn();
 
   function RailHarness() {
@@ -16,7 +17,10 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
     return (
       <WorkbenchAppRail
         destination={destination}
-        onInsights={() => setDestination("insights")}
+        onInsights={() => {
+          onInsights();
+          setDestination("insights");
+        }}
         onHome={() => {
           onHome();
           setDestination("home");
@@ -41,9 +45,10 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
   const home = view.getByRole("button", { name: "Home" });
   const space = view.getByRole("button", { name: "Space" });
   const scheduled = view.getByRole("button", { name: "Scheduled" });
+  const insights = view.getByRole("button", { name: "Insights" });
   const plugins = view.getByRole("button", { name: "Plugins" });
   const current = () =>
-    [home, space, scheduled, plugins]
+    [home, space, scheduled, insights, plugins]
       .filter((button) => button.getAttribute("aria-current") === "page")
       .map((button) => button.getAttribute("aria-label"));
   expect(current()).toEqual(["Home"]);
@@ -74,11 +79,20 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
     await userEvent.tab();
     await userEvent.keyboard("{Enter}");
   });
+  expect(document.activeElement).toBe(insights);
+  expect(onInsights).toHaveBeenCalledOnce();
+  expect(current()).toEqual(["Insights"]);
+
+  await act(async () => {
+    await userEvent.tab();
+    await userEvent.keyboard("{Enter}");
+  });
   expect(document.activeElement).toBe(plugins);
   expect(onPlugins).toHaveBeenCalledOnce();
   expect(current()).toEqual(["Plugins"]);
 
   await act(async () => {
+    await userEvent.tab({ shift: true });
     await userEvent.tab({ shift: true });
     await userEvent.tab({ shift: true });
     await userEvent.tab({ shift: true });
