@@ -25,6 +25,22 @@ import {
   routeAddresses,
 } from "./mobile-access-presentation";
 
+const MOBILE_DOWNLOAD_URL = "https://nodex.jyu.app/download/#mobile";
+
+/** For someone who hasn't installed the app yet, wherever pairing first asks them to use it. */
+function GetTheAppLink() {
+  return (
+    <a
+      href={MOBILE_DOWNLOAD_URL}
+      target="_blank"
+      rel="noreferrer"
+      className="text-token-text-link-foreground hover:underline"
+    >
+      Get the app.
+    </a>
+  );
+}
+
 /**
  * A change only says to read again, so a pairing secret reaches this window by its own request and
  * never by a broadcast to every window.
@@ -82,7 +98,9 @@ function PairingOffer({
       <PairingCode uri={pairing.uri} />
       <div className="flex min-w-48 flex-1 flex-col gap-2">
         <ol className="flex list-inside list-decimal flex-col gap-1 text-sm">
-          <li>Open Nodex Mobile on your phone.</li>
+          <li>
+            Open Nodex Mobile on your phone. <GetTheAppLink />
+          </li>
           <li>Scan this code.</li>
         </ol>
         <p className="text-sm text-token-text-secondary">
@@ -198,8 +216,12 @@ export function MobileAccessSettingsPage({ open }: { readonly open: boolean }) {
             <SettingRow
               label="Show a pairing code"
               description={
-                status.failureMessage ??
-                "Scan it with Nodex Mobile to connect that phone to this Profile."
+                status.failureMessage ?? (
+                  <>
+                    Scan it with Nodex Mobile to connect that phone to this Profile.{" "}
+                    <GetTheAppLink />
+                  </>
+                )
               }
             >
               <NodexButton
