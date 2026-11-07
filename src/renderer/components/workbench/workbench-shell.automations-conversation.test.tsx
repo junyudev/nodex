@@ -325,10 +325,7 @@ describe("workbench session shell / automations-conversation", () => {
     await waitFor(() => expect(screen.getRunNowAutomationIds()).toEqual(["automation-active"]));
     expect(
       __getNodexToastSnapshotForTests().some(
-        (record) =>
-          record.kind === "plain" &&
-          record.level === "info" &&
-          record.title === "Scheduled task started",
+        (record) => record.level === "info" && record.title === "Scheduled task started",
       ),
     ).toBe(true);
 
@@ -363,7 +360,6 @@ describe("workbench session shell / automations-conversation", () => {
     expect(
       __getNodexToastSnapshotForTests().some(
         (record) =>
-          record.kind === "plain" &&
           record.level === "danger" &&
           record.title === "Could not update scheduled task" &&
           record.description === "Host update failed",

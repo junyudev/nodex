@@ -132,12 +132,12 @@ describe("PageMoveDestinationPicker", () => {
     );
     expect(onClose).toHaveBeenCalledOnce();
     const movedToast = __getNodexToastSnapshotForTests().find(
-      (item) => item.kind === "plain" && item.title === "Moved to Beta",
+      (item) => item.title === "Moved to Beta",
     );
-    expect(movedToast?.kind === "plain" ? movedToast.action?.label : null).toBe("Undo");
+    expect(movedToast?.action?.label).toBe("Undo");
 
     await act(async () => {
-      if (movedToast?.kind === "plain") movedToast.action?.onClick();
+      movedToast?.action?.onClick();
       await Promise.resolve();
     });
     await waitFor(() =>

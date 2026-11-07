@@ -123,7 +123,7 @@ function resetStorage(): void {
 /** The failures the composer reported, as "title: reason". */
 function failureToasts(): string[] {
   return __getNodexToastSnapshotForTests().flatMap((record) =>
-    record.kind === "plain" && record.level === "danger" && record.isShown
+    record.level === "danger"
       ? [[record.title, record.description].filter(Boolean).map(String).join(": ")]
       : [],
   );

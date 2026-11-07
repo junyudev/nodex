@@ -899,7 +899,7 @@ describe("workbench session shell / sidebar-core", () => {
     expect(getThreadRow(screen.container, "Archive failure")).not.toBeNull();
     expect(
       __getNodexToastSnapshotForTests().some(
-        (toastItem) => toastItem.kind === "plain" && toastItem.title === "Failed to archive chat",
+        (toastItem) => toastItem.title === "Failed to archive chat",
       ),
     ).toBe(true);
   });

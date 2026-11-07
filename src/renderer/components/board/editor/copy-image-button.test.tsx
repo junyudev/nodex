@@ -55,9 +55,7 @@ describe("CopyImageButton", () => {
     await settleAsyncRender();
 
     expect(focusCalls).toBe(1);
-    expect(Boolean(view.baseElement.textContent?.includes("Copied image to clipboard."))).toBe(
-      true,
-    );
+    expect(await view.findByText("Copied image to clipboard.")).toBeTruthy();
   });
 
   test("shows a global danger toast when native image copy fails", async () => {

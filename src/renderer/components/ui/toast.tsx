@@ -1,13 +1,17 @@
-import { type ReactNode, useCallback, useEffect, useSyncExternalStore } from "react";
-import { AlertCircle, AlertTriangle } from "@/components/shared/icons/generic-icons";
-import { CloseIcon, InfoIcon, SuccessCircleIcon } from "@/components/shared/icons";
-import { NodexButton, type NodexButtonProps } from "@/components/ui/button";
-import { motion } from "motion/react";
+import { type ReactNode, useEffect } from "react";
+import { toast as toastEngine, Toaster } from "sonner";
+import {
+  AlertCircle16Icon,
+  Close16Icon,
+  InfoCircle16Icon,
+  SuccessCircle16Icon,
+} from "@/components/shared/icons";
+import { ToolbarButton } from "@/components/ui/toolbar-button";
 import { APP_SHELL_TOAST_LAYER_CLASS } from "@/lib/app-shell-layers";
 import { cn } from "@/lib/utils";
+import styles from "./toast.module.css";
 
 const DEFAULT_TOAST_DURATION_MS = 5000;
-const TOAST_EXIT_DURATION_S = 0.18;
 
 export type ToastLevel = "info" | "success" | "warning" | "danger";
 
@@ -17,247 +21,156 @@ export interface ToastHandle {
 
 export interface ToastAction {
   label: ReactNode;
+  /** Runs the action; returning `false` keeps the toast open. */
   onClick: () => boolean | void;
-  variant?: NodexButtonProps["variant"];
 }
 
 export interface ToastOptions {
   description?: ReactNode;
+  /** Replaces the level's icon. */
+  leading?: ReactNode;
+  /** The emphasized action. */
   action?: ToastAction;
+  /** A quieter action placed before `action`. */
   secondaryAction?: ToastAction;
+  /** Milliseconds before the toast closes itself; `0` keeps it until it is dismissed. */
   duration?: number;
+  /** Logical identity: showing a toast replaces the visible one with the same id. */
   id?: string;
-  hasCloseButton?: boolean;
-  onRemove?: () => void;
 }
 
-export interface ToastCustomOptions {
-  level?: ToastLevel;
-  duration?: number;
-  id?: string;
-  hasCloseButton?: boolean;
-  onRemove?: () => void;
-  renderContent: (input: { close: () => void; level: ToastLevel }) => ReactNode;
-}
-
-interface ToastBaseRecord {
+export interface ToastRecord extends Omit<ToastOptions, "duration" | "id"> {
   id: string;
   logicalId: string | null;
   level: ToastLevel;
-  duration: number;
-  hasCloseButton: boolean;
-  isShown: boolean;
-}
-
-export interface ToastPlainRecord extends ToastBaseRecord {
-  kind: "plain";
   title: ReactNode;
-  description?: ReactNode;
-  action?: ToastOptions["action"];
-  secondaryAction?: ToastOptions["secondaryAction"];
+  duration: number;
 }
-
-export interface ToastCustomRecord extends ToastBaseRecord {
-  kind: "custom";
-  renderContent: ToastCustomOptions["renderContent"];
-}
-
-export type ToastRecord = ToastPlainRecord | ToastCustomRecord;
-
-type ToastListener = () => void;
 
 function resolveToastDuration(duration?: number): number {
-  if (duration === 0) return 0;
   if (typeof duration !== "number" || Number.isNaN(duration) || duration < 0) {
     return DEFAULT_TOAST_DURATION_MS;
   }
   return duration;
 }
 
-function resolveLogicalToastId(id?: string): string | null {
-  const normalized = id?.trim() ?? "";
-  return normalized.length > 0 ? normalized : null;
+/** A confirmation with nothing to act on leaves on time, even while the toast stack is hovered. */
+function closesOnFixedTimer(record: ToastRecord): boolean {
+  return (
+    record.level === "success" &&
+    record.duration !== 0 &&
+    record.action === undefined &&
+    record.secondaryAction === undefined
+  );
 }
 
+/**
+ * Owns which toasts are open, newest first, and asks the notification engine to present them. The
+ * engine owns everything after that: stacking, hover expansion, swipe, and the exit animation.
+ */
 class NodexToastStore {
-  private snapshot: readonly ToastRecord[] = [];
+  private records: readonly ToastRecord[] = [];
 
-  private readonly listeners = new Set<ToastListener>();
-
-  private readonly records = new Map<string, ToastRecord>();
-
-  private readonly onRemoveCallbacks = new Map<string, () => void>();
-
-  private readonly orderedIds: string[] = [];
+  private viewportMounted = false;
 
   private nextId = 1;
 
-  subscribe = (listener: ToastListener): (() => void) => {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  };
+  private readonly fixedTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  getSnapshot = (): readonly ToastRecord[] => this.snapshot;
+  getSnapshot = (): readonly ToastRecord[] => this.records;
 
-  info(title: ReactNode, options?: ToastOptions): ToastHandle {
-    return this.createPlainToast("info", title, options);
-  }
+  show(level: ToastLevel, title: ReactNode, options: ToastOptions = {}): ToastHandle {
+    const logicalId = options.id?.trim() || null;
+    const id = `${logicalId ?? "toast"}-${this.nextId}`;
+    this.nextId += 1;
 
-  success(title: ReactNode, options?: ToastOptions): ToastHandle {
-    return this.createPlainToast("success", title, options);
-  }
-
-  warning(title: ReactNode, options?: ToastOptions): ToastHandle {
-    return this.createPlainToast("warning", title, options);
-  }
-
-  danger(title: ReactNode, options?: ToastOptions): ToastHandle {
-    return this.createPlainToast("danger", title, options);
-  }
-
-  custom(options: ToastCustomOptions): ToastHandle {
-    const logicalId = resolveLogicalToastId(options.id);
-    const id = this.createPhysicalToastId(logicalId);
-    const record: ToastCustomRecord = {
-      kind: "custom",
-      id,
-      logicalId,
-      level: options.level ?? "info",
-      duration: resolveToastDuration(options.duration),
-      hasCloseButton: options.hasCloseButton ?? true,
-      isShown: true,
-      renderContent: options.renderContent,
-    };
-    return this.insertRecord(record, options.onRemove);
-  }
-
-  closeAll(): void {
-    let didChange = false;
-
-    for (const [id, record] of this.records.entries()) {
-      if (!record.isShown) continue;
-      this.records.set(id, {
-        ...record,
-        isShown: false,
-      });
-      didChange = true;
+    if (logicalId) {
+      for (const existing of this.records) {
+        if (existing.logicalId === logicalId) this.close(existing.id);
+      }
     }
 
-    if (!didChange) return;
-    this.emit();
+    const record: ToastRecord = {
+      id,
+      logicalId,
+      level,
+      title,
+      description: options.description,
+      leading: options.leading,
+      action: options.action,
+      secondaryAction: options.secondaryAction,
+      duration: resolveToastDuration(options.duration),
+    };
+    this.records = [record, ...this.records];
+    this.present(record);
+
+    return { close: () => this.close(id) };
+  }
+
+  runAction(record: ToastRecord, action: ToastAction): void {
+    if (action.onClick() !== false) this.close(record.id);
   }
 
   runLatestAction(): boolean {
-    const record = this.orderedIds
-      .map((id) => this.records.get(id) ?? null)
-      .find(
-        (candidate): candidate is ToastPlainRecord =>
-          candidate?.kind === "plain" && candidate.isShown && candidate.action !== undefined,
-      );
+    const record = this.records.find((candidate) => candidate.action !== undefined);
     if (!record?.action) return false;
-    const shouldClose = record.action.onClick();
-    if (shouldClose !== false) this.close(record.id);
+    this.runAction(record, record.action);
     return true;
   }
 
   close(id: string): void {
-    const record = this.records.get(id);
-    if (!record || !record.isShown) return;
-
-    this.records.set(id, {
-      ...record,
-      isShown: false,
-    });
-    this.emit();
+    if (!this.records.some((record) => record.id === id)) return;
+    this.forget(id);
+    if (this.viewportMounted) toastEngine.dismiss(id);
   }
 
-  remove(id: string): void {
-    if (!this.records.has(id)) return;
+  closeAll(): void {
+    for (const record of this.records) this.close(record.id);
+  }
 
-    this.records.delete(id);
-    const index = this.orderedIds.indexOf(id);
-    if (index >= 0) {
-      this.orderedIds.splice(index, 1);
-    }
-
-    const onRemove = this.onRemoveCallbacks.get(id);
-    this.onRemoveCallbacks.delete(id);
-    this.emit();
-    onRemove?.();
+  /**
+   * The engine replays its open toasts to every new viewport, so it only holds toasts while a
+   * viewport is mounted; the records here carry them across a remount.
+   */
+  registerViewport(): () => void {
+    this.viewportMounted = true;
+    for (const record of [...this.records].reverse()) this.present(record);
+    return () => {
+      this.viewportMounted = false;
+      for (const record of this.records) toastEngine.dismiss(record.id);
+    };
   }
 
   resetForTest(): void {
-    this.snapshot = [];
-    this.records.clear();
-    this.onRemoveCallbacks.clear();
-    this.orderedIds.splice(0, this.orderedIds.length);
-    this.nextId = 1;
-    this.emit();
+    this.closeAll();
   }
 
-  private createPlainToast(
-    level: ToastLevel,
-    title: ReactNode,
-    options?: ToastOptions,
-  ): ToastHandle {
-    const logicalId = resolveLogicalToastId(options?.id);
-    const id = this.createPhysicalToastId(logicalId);
-    const record: ToastPlainRecord = {
-      kind: "plain",
-      id,
-      logicalId,
-      level,
-      duration: resolveToastDuration(options?.duration),
-      hasCloseButton: options?.hasCloseButton ?? true,
-      isShown: true,
-      title,
-      description: options?.description,
-      action: options?.action,
-      secondaryAction: options?.secondaryAction,
-    };
-    return this.insertRecord(record, options?.onRemove);
-  }
-
-  private createPhysicalToastId(logicalId: string | null): string {
-    const physicalId = logicalId ? `${logicalId}-${this.nextId}` : String(this.nextId);
-    this.nextId += 1;
-    return physicalId;
-  }
-
-  private insertRecord(record: ToastRecord, onRemove?: () => void): ToastHandle {
-    if (record.logicalId) {
-      for (const [id, existing] of this.records.entries()) {
-        if (existing.logicalId !== record.logicalId || !existing.isShown) continue;
-        this.records.set(id, {
-          ...existing,
-          isShown: false,
-        });
-      }
+  private present(record: ToastRecord): void {
+    if (!this.viewportMounted) return;
+    toastEngine.custom(() => <ToastSurface record={record} />, {
+      id: record.id,
+      duration: record.duration === 0 ? Number.POSITIVE_INFINITY : record.duration,
+      onAutoClose: () => this.forget(record.id),
+      onDismiss: () => this.forget(record.id),
+    });
+    if (closesOnFixedTimer(record) && !this.fixedTimers.has(record.id)) {
+      this.fixedTimers.set(
+        record.id,
+        setTimeout(() => this.close(record.id), record.duration),
+      );
     }
-
-    this.records.set(record.id, record);
-    if (onRemove) {
-      this.onRemoveCallbacks.set(record.id, onRemove);
-    }
-    this.orderedIds.unshift(record.id);
-    this.emit();
-
-    return {
-      close: () => {
-        this.close(record.id);
-      },
-    };
   }
 
-  private emit(): void {
-    this.snapshot = this.orderedIds
-      .map((id) => this.records.get(id) ?? null)
-      .filter((record): record is ToastRecord => record !== null);
+  private forget(id: string): void {
+    const timer = this.fixedTimers.get(id);
+    if (timer !== undefined) clearTimeout(timer);
+    this.fixedTimers.delete(id);
 
-    for (const listener of this.listeners) {
-      listener();
+    this.records = this.records.filter((record) => record.id !== id);
+    // Blurring before the last toast unmounts returns focus to where it was before the toast.
+    if (this.viewportMounted && this.records.length === 0) {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active.closest("[data-sonner-toaster]")) active.blur();
     }
   }
 }
@@ -265,11 +178,13 @@ class NodexToastStore {
 const nodexToastStore = new NodexToastStore();
 
 export const toast = {
-  info: (title: ReactNode, options?: ToastOptions) => nodexToastStore.info(title, options),
-  success: (title: ReactNode, options?: ToastOptions) => nodexToastStore.success(title, options),
-  warning: (title: ReactNode, options?: ToastOptions) => nodexToastStore.warning(title, options),
-  danger: (title: ReactNode, options?: ToastOptions) => nodexToastStore.danger(title, options),
-  custom: (options: ToastCustomOptions) => nodexToastStore.custom(options),
+  info: (title: ReactNode, options?: ToastOptions) => nodexToastStore.show("info", title, options),
+  success: (title: ReactNode, options?: ToastOptions) =>
+    nodexToastStore.show("success", title, options),
+  warning: (title: ReactNode, options?: ToastOptions) =>
+    nodexToastStore.show("warning", title, options),
+  danger: (title: ReactNode, options?: ToastOptions) =>
+    nodexToastStore.show("danger", title, options),
   runLatestAction: () => nodexToastStore.runLatestAction(),
   closeAll: () => nodexToastStore.closeAll(),
 };
@@ -278,228 +193,138 @@ export function useToaster() {
   return toast;
 }
 
-function useToastRecords() {
-  return useSyncExternalStore(
-    nodexToastStore.subscribe,
-    nodexToastStore.getSnapshot,
-    nodexToastStore.getSnapshot,
-  );
-}
+const TOAST_TONE: Record<
+  ToastLevel,
+  { surface: string; description: string; icon: typeof InfoCircle16Icon }
+> = {
+  info: {
+    surface: "border-default bg-surface-elevated-secondary text-default",
+    description: "text-(--color-text-secondary)",
+    icon: InfoCircle16Icon,
+  },
+  success: {
+    surface:
+      "border-(--color-text-success)/20 bg-(--color-background-success-surface) text-(--color-text-success)",
+    description: "text-(--color-text-success)/80",
+    icon: SuccessCircle16Icon,
+  },
+  warning: {
+    surface:
+      "border-(--color-border-warning-outline) bg-(--color-background-warning-surface) text-(--color-text-warning)",
+    description: "text-(--color-text-warning)/80",
+    icon: AlertCircle16Icon,
+  },
+  danger: {
+    surface:
+      "border-(--color-border-danger-outline) bg-(--color-background-danger-surface) text-(--color-text-danger)",
+    description: "text-(--color-text-danger)/80",
+    icon: AlertCircle16Icon,
+  },
+};
 
-function ToastDismissButton({ onClick }: { onClick: () => void }) {
+function ToastSurface({ record }: { record: ToastRecord }) {
+  const { action, secondaryAction, description } = record;
+  const tone = TOAST_TONE[record.level];
+  const LevelIcon = tone.icon;
+  const actions =
+    action || secondaryAction ? (
+      <>
+        {secondaryAction ? (
+          <ToolbarButton
+            color="secondary"
+            size="compact"
+            onClick={() => nodexToastStore.runAction(record, secondaryAction)}
+          >
+            {secondaryAction.label}
+          </ToolbarButton>
+        ) : null}
+        {action ? (
+          <ToolbarButton
+            color="primary"
+            size="compact"
+            onClick={() => nodexToastStore.runAction(record, action)}
+          >
+            {action.label}
+          </ToolbarButton>
+        ) : null}
+      </>
+    ) : null;
+
   return (
-    <button
-      type="button"
-      className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-token-description-foreground hover:bg-token-foreground/8 hover:text-token-foreground"
-      aria-label="Dismiss notification"
-      onClick={onClick}
-    >
-      <CloseIcon className="size-3.5" />
-    </button>
-  );
-}
-
-function ToastLevelIcon({ level }: { level: ToastLevel }) {
-  if (level === "success") {
-    return <SuccessCircleIcon className="size-4 shrink-0 text-token-charts-green" />;
-  }
-
-  if (level === "warning") {
-    return <AlertTriangle className="size-4 shrink-0 text-[var(--color-text-warning)]" />;
-  }
-
-  if (level === "danger") {
-    return <AlertCircle className="size-4 shrink-0 text-token-charts-red" />;
-  }
-
-  return <InfoIcon className="size-4 shrink-0 text-token-description-foreground" />;
-}
-
-function plainToastToneClassName(level: ToastLevel): string {
-  if (level === "success") {
-    return "bg-token-charts-green/10 text-token-foreground ring-token-charts-green/25";
-  }
-
-  if (level === "warning") {
-    return "bg-[var(--color-background-status-warning)] text-token-foreground ring-[var(--color-border-warning)]";
-  }
-
-  if (level === "danger") {
-    return "bg-token-charts-red/10 text-token-foreground ring-token-charts-red/25";
-  }
-
-  return "bg-token-dropdown-background/90 text-token-foreground ring-token-border";
-}
-
-function NodexToastPlainSurface({
-  record,
-  onClose,
-}: {
-  record: ToastPlainRecord;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      role="alert"
-      className={cn(
-        "no-drag pointer-events-auto flex min-w-0 items-center gap-2 rounded-[14px] px-3 py-2 shadow-lg ring-[0.5px] backdrop-blur-sm",
-        plainToastToneClassName(record.level),
-      )}
-    >
-      <ToastLevelIcon level={record.level} />
-      <div className="min-w-0 flex-1">
-        <div className="min-w-0 text-sm leading-5 font-medium text-token-foreground">
-          {record.title}
-        </div>
-        {record.description ? (
-          <div className="min-w-0 text-sm leading-5 text-token-description-foreground">
-            {record.description}
+    <div data-slot="toast-item" className="max-w-full min-w-0">
+      <div
+        role="alert"
+        className={cn(
+          "no-drag pointer-events-auto flex max-w-full min-w-0 flex-col gap-2 rounded-xl border px-3 py-2 text-base leading-normal shadow-[0_4px_12px_rgb(0_0_0/0.1)]",
+          tone.surface,
+        )}
+      >
+        <div className="flex min-w-0 items-start gap-1">
+          <div className="flex size-6 shrink-0 grow-0 items-center justify-center">
+            {record.leading ?? <LevelIcon className="size-4 shrink-0" />}
           </div>
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <div className="min-w-0 flex-1 break-words">
+              <div className="flex min-h-6 items-center text-start font-medium whitespace-pre-wrap">
+                {record.title}
+              </div>
+              {description ? (
+                <div className={cn("text-start", tone.description)}>{description}</div>
+              ) : null}
+            </div>
+            {actions && !description ? (
+              <div className="flex shrink-0 items-center gap-2">{actions}</div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            aria-label="Dismiss notification"
+            className="flex size-6 shrink-0 grow-0 cursor-interaction items-center justify-center rounded-full hover:bg-(--color-background-primary-ghost-hover)/5"
+            onClick={() => nodexToastStore.close(record.id)}
+          >
+            <Close16Icon className="size-4 shrink-0" />
+          </button>
+        </div>
+        {actions && description ? (
+          <div className="flex items-center justify-end gap-2">{actions}</div>
         ) : null}
       </div>
-      {record.secondaryAction ? (
-        <NodexButton
-          type="button"
-          variant={record.secondaryAction.variant ?? "secondary"}
-          size="xs"
-          onClick={() => {
-            const shouldClose = record.secondaryAction?.onClick();
-            if (shouldClose !== false) onClose();
-          }}
-        >
-          {record.secondaryAction.label}
-        </NodexButton>
-      ) : null}
-      {record.action ? (
-        <NodexButton
-          type="button"
-          variant={record.action.variant ?? "secondary"}
-          size="xs"
-          onClick={() => {
-            const shouldClose = record.action?.onClick();
-            if (shouldClose !== false) onClose();
-          }}
-        >
-          {record.action.label}
-        </NodexButton>
-      ) : null}
-      {record.hasCloseButton ? <ToastDismissButton onClick={onClose} /> : null}
     </div>
   );
 }
 
-function NodexToastCustomSurface({
-  record,
-  onClose,
-}: {
-  record: ToastCustomRecord;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      className={cn(
-        "no-drag pointer-events-auto relative rounded-[16px] bg-token-dropdown-background/90 shadow-lg ring-[0.5px] ring-token-border backdrop-blur-sm",
-        record.hasCloseButton ? "pr-10" : "",
-      )}
-    >
-      {record.hasCloseButton ? (
-        <div className="absolute top-2 right-2">
-          <ToastDismissButton onClick={onClose} />
-        </div>
-      ) : null}
-      {record.renderContent({
-        close: onClose,
-        level: record.level,
-      })}
-    </div>
-  );
-}
-
-function NodexToastItem({ record }: { record: ToastRecord }) {
-  const closeToast = useCallback(() => {
-    nodexToastStore.close(record.id);
-  }, [record.id]);
-
-  return (
-    <ToastLifecycleWrapper record={record}>
-      {record.kind === "plain" ? (
-        <NodexToastPlainSurface record={record} onClose={closeToast} />
-      ) : (
-        <NodexToastCustomSurface record={record} onClose={closeToast} />
-      )}
-    </ToastLifecycleWrapper>
-  );
-}
-
-function ToastLifecycleWrapper({ record, children }: { record: ToastRecord; children: ReactNode }) {
-  const closeToast = useCallback(() => {
-    nodexToastStore.close(record.id);
-  }, [record.id]);
-
-  useEffect(() => {
-    if (!record.isShown || record.duration === 0) return undefined;
-
-    const timer = window.setTimeout(() => {
-      closeToast();
-    }, record.duration);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [closeToast, record.duration, record.isShown]);
-
-  return (
-    <motion.div
-      data-slot="toast-item"
-      layout="position"
-      initial={{
-        opacity: 0,
-        y: -10,
-        scale: 0.98,
-      }}
-      animate={
-        record.isShown
-          ? {
-              opacity: 1,
-              y: 0,
-              scale: 1,
-            }
-          : {
-              opacity: 0,
-              y: -8,
-              scale: 0.98,
-            }
-      }
-      transition={{
-        duration: TOAST_EXIT_DURATION_S,
-        ease: [0.19, 1, 0.22, 1],
-      }}
-      onAnimationComplete={() => {
-        if (!record.isShown) {
-          nodexToastStore.remove(record.id);
-        }
-      }}
-      className="w-fit max-w-full"
-    >
-      {children}
-    </motion.div>
-  );
-}
+const TOAST_SWIPE_DIRECTIONS = ["right"] as const;
+const TOAST_ENGINE_OPTIONS = { className: styles.toast, unstyled: true };
 
 export function NodexToastProvider({ children }: { children: ReactNode }) {
-  const records = useToastRecords();
+  useEffect(() => nodexToastStore.registerViewport(), []);
 
   return (
     <>
       {children}
-      <div className={cn("pointer-events-none fixed inset-0", APP_SHELL_TOAST_LAYER_CLASS)}>
-        <div
-          data-slot="toast-viewport"
-          className="pointer-events-none mx-auto flex w-full max-w-[440px] flex-col items-center gap-2 px-3 pt-3"
-        >
-          {records.map((record) => (
-            <NodexToastItem key={record.id} record={record} />
-          ))}
+      <div
+        className={cn(
+          "pointer-events-none fixed inset-0 px-2 pt-12",
+          styles.layer,
+          APP_SHELL_TOAST_LAYER_CLASS,
+        )}
+      >
+        <div data-slot="toast-viewport" className="relative w-full">
+          <Toaster
+            className={cn(
+              styles.toaster,
+              "flex max-w-(--thread-composer-max-width) justify-center",
+            )}
+            customAriaLabel="Notifications"
+            gap={8}
+            hotkey={[]}
+            mobileOffset={0}
+            offset={0}
+            position="top-center"
+            swipeDirections={[...TOAST_SWIPE_DIRECTIONS]}
+            toastOptions={TOAST_ENGINE_OPTIONS}
+            visibleToasts={3}
+          />
         </div>
       </div>
     </>

@@ -862,7 +862,6 @@ describe("workbench session shell / routes-threads", () => {
       expect(
         __getNodexToastSnapshotForTests().some(
           (record) =>
-            record.kind === "plain" &&
             record.level === "danger" &&
             record.title === "Could not create scheduled task" &&
             record.description === "Create bridge failed",

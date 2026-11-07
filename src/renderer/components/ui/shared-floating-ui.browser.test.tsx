@@ -201,6 +201,116 @@ describe("shared floating UI in Chromium", () => {
     );
   });
 
+  test("lays out an actionable toast at the top center with its compact rhythm", async () => {
+    const view = render(
+      <NodexToastProvider>
+        <div />
+      </NodexToastProvider>,
+    );
+
+    await act(async () => {
+      toast.info("Archived chat", {
+        duration: 0,
+        secondaryAction: { label: "View", onClick: () => false },
+        action: { label: "Undo", onClick: () => false },
+      });
+      await settleFloatingSurface();
+    });
+
+    const alert = view.getByRole("alert");
+    const edges = (element: Element) => element.getBoundingClientRect();
+    const title = edges(view.getByText("Archived chat"));
+    const secondary = view.getByRole("button", { name: "View" });
+    const primary = view.getByRole("button", { name: "Undo" });
+    const dismiss = edges(view.getByRole("button", { name: "Dismiss notification" }));
+
+    await waitFor(() => expect(edges(alert).top).toBe(48));
+    expect(edges(alert).height).toBe(42);
+    expect(
+      Math.abs(edges(alert).left + edges(alert).width / 2 - window.innerWidth / 2),
+    ).toBeLessThanOrEqual(1);
+
+    // Icon slot, title, actions, then the dismiss slot: 4, 12, 8 and 4 pixels apart.
+    expect(title.left - edges(alert).left).toBe(1 + 12 + 24 + 4);
+    expect(edges(secondary).left - title.right).toBeCloseTo(12, 0);
+    expect(edges(primary).left - edges(secondary).right).toBeCloseTo(8, 0);
+    expect(dismiss.left - edges(primary).right).toBeCloseTo(4, 0);
+    expect(edges(alert).right - dismiss.right).toBe(12 + 1);
+
+    for (const button of [secondary, primary]) {
+      expect(edges(button).height).toBe(24);
+      expect(getComputedStyle(button).fontSize).toBe("12px");
+    }
+    expect(getComputedStyle(alert).boxShadow).toContain("0px 4px 12px");
+  });
+
+  test("moves toast actions below a description and animates through the shared duration", async () => {
+    const view = render(
+      <NodexToastProvider>
+        <div />
+      </NodexToastProvider>,
+    );
+
+    await act(async () => {
+      toast.danger("Unable to transcribe audio", {
+        description: "The recording could not be read.",
+        duration: 0,
+        action: { label: "Retry", onClick: () => false },
+      });
+      await settleFloatingSurface();
+    });
+
+    const description = view.getByText("The recording could not be read.");
+    const retry = view.getByRole("button", { name: "Retry" });
+    expect(retry.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+      description.getBoundingClientRect().bottom,
+    );
+
+    const item = view.getByRole("alert").closest("[data-sonner-toast]");
+    if (!item) throw new Error("Expected the toast to sit in the notification stack.");
+    expect(getComputedStyle(item).transitionDuration.split(", ")[0]).toBe("0.3s");
+    expect(getComputedStyle(item).position).toBe("absolute");
+  });
+
+  test("stacks up to three toasts and fans them out on hover", async () => {
+    const view = render(
+      <NodexToastProvider>
+        <div />
+      </NodexToastProvider>,
+    );
+
+    await act(async () => {
+      for (const title of ["First", "Second", "Third", "Fourth"]) {
+        toast.info(title, { duration: 0 });
+        await settleFloatingSurface();
+      }
+    });
+
+    const items = () =>
+      Array.from(view.baseElement.querySelectorAll<HTMLElement>("[data-sonner-toast]"));
+    await waitFor(() => expect(items().length).toBe(4));
+    expect(items().filter((item) => item.dataset.visible === "true").length).toBe(3);
+
+    const stack = view.baseElement.querySelector("[data-sonner-toaster]");
+    if (!stack) throw new Error("Expected the notification stack.");
+    await act(async () => {
+      fireEvent.mouseEnter(stack);
+      fireEvent.mouseMove(stack);
+      await settleFloatingSurface();
+    });
+
+    await waitFor(() => {
+      const [front, second] = items();
+      if (!front || !second) throw new Error("Expected two toasts.");
+      expect(front.dataset.expanded).toBe("true");
+      // 42px surface plus the 8px gap once the transition settles.
+      expect(second.getBoundingClientRect().top - front.getBoundingClientRect().top).toBeCloseTo(
+        50,
+        0,
+      );
+    });
+  });
+
   test("renders compact property-chip and menu leading icons at 16 pixels", async () => {
     const view = render(
       <div>

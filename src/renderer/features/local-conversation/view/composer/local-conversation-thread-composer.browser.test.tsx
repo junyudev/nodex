@@ -160,7 +160,6 @@ test.each(["send", "queue", "steer"] as const)(
       expect(__getNodexToastSnapshotForTests()).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            kind: "plain",
             level: "danger",
             title: "Message not sent",
             description: "Try again",

@@ -1,0 +1,32 @@
+/*
+ * The notification engine injects an unlayered stylesheet, so its integration rules stay unlayered
+ * too: a layered rule or Tailwind utility would lose to it whatever its specificity.
+ */
+
+.layer:not(:has([data-sonner-toast])) {
+  visibility: hidden;
+}
+
+[data-sonner-toaster].toaster {
+  position: absolute;
+  top: 0;
+  width: 100%;
+  font-family: inherit;
+  transition-duration: var(--transition-duration-relaxed);
+}
+
+[data-sonner-toaster].toaster [data-sonner-toast],
+[data-sonner-toaster].toaster [data-sonner-toast] > * {
+  transition-duration: var(--transition-duration-relaxed);
+}
+
+.toast {
+  pointer-events: auto;
+  width: max-content;
+  max-width: 100%;
+}
+
+.toast[data-x-position="center"] {
+  display: flex;
+  justify-content: center;
+}

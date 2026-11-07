@@ -2883,9 +2883,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     ).toBe(false);
     expect(
       __getNodexToastSnapshotForTests().some(
-        (toastItem) =>
-          toastItem.kind === "plain" &&
-          toastItem.title === "This project's Database has no default View to open.",
+        (toastItem) => toastItem.title === "This project's Database has no default View to open.",
       ),
     ).toBe(true);
   });

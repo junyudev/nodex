@@ -18,162 +18,152 @@ function ToastHarness() {
   );
 }
 
+async function show(emit: () => void) {
+  await act(async () => {
+    emit();
+    await settleAsyncRender();
+  });
+}
+
 describe("Nodex toast system", () => {
   beforeEach(() => {
     installAsyncRequestAnimationFrame();
     __resetNodexToastStoreForTests();
   });
 
-  test("creates plain toasts at the front of the ordered stack", async () => {
+  test("orders open toasts newest first", async () => {
     render(<ToastHarness />);
 
-    await act(async () => {
+    await show(() => {
       toast.info("First toast", { duration: 0 });
       toast.success("Second toast", { duration: 0 });
-      await settleAsyncRender();
     });
 
-    const snapshot = __getNodexToastSnapshotForTests();
-    expect(snapshot.length).toBe(2);
-    expect(snapshot[0]?.kind).toBe("plain");
-    expect(String((snapshot[0] as { title?: unknown }).title ?? "")).toBe("Second toast");
-    expect(String((snapshot[1] as { title?: unknown }).title ?? "")).toBe("First toast");
+    expect(__getNodexToastSnapshotForTests().map((record) => record.title)).toEqual([
+      "Second toast",
+      "First toast",
+    ]);
   });
 
-  test("returns working close handles and removes the toast after exit completes", async () => {
+  test("presents toasts raised before the viewport mounts", async () => {
+    toast.info("Raised during startup", { duration: 0 });
+
+    const view = render(<ToastHarness />);
+    await settleAsyncRender();
+
+    expect(await view.findByText("Raised during startup")).toBeTruthy();
+  });
+
+  test("returns working close handles and removes the toast after its exit", async () => {
     const view = render(<ToastHarness />);
     let handle!: { close: () => void };
 
-    await act(async () => {
+    await show(() => {
       handle = toast.info("Closable toast", { duration: 0 });
-      await settleAsyncRender();
     });
+    expect(view.getByText("Closable toast")).toBeTruthy();
 
-    expect(Boolean(view.baseElement.textContent?.includes("Closable toast"))).toBe(true);
+    await show(() => handle.close());
 
-    await act(async () => {
-      handle.close();
-      await settleAsyncRender();
-    });
-
-    await waitFor(() => {
-      if (view.baseElement.textContent?.includes("Closable toast")) {
-        throw new Error("Expected the toast to be removed.");
-      }
-    });
+    expect(__getNodexToastSnapshotForTests()).toEqual([]);
+    await waitFor(() => expect(view.queryByText("Closable toast")).toBeNull());
   });
 
-  test("keeps sticky toasts visible until explicitly closed", async () => {
+  test("keeps sticky toasts open until they are explicitly closed", async () => {
     const view = render(<ToastHarness />);
-    let handle!: { close: () => void };
 
+    await show(() => {
+      toast.info("Sticky toast", { duration: 0 });
+    });
     await act(async () => {
-      handle = toast.info("Sticky toast", { duration: 0 });
       await new Promise((resolve) => setTimeout(resolve, 25));
-      await settleAsyncRender();
     });
 
-    expect(Boolean(view.baseElement.textContent?.includes("Sticky toast"))).toBe(true);
-
-    await act(async () => {
-      handle.close();
-      await settleAsyncRender();
-    });
-
-    await waitFor(() => {
-      if (view.baseElement.textContent?.includes("Sticky toast")) {
-        throw new Error("Expected the sticky toast to close.");
-      }
-    });
+    expect(view.getByText("Sticky toast")).toBeTruthy();
   });
 
-  test("replaces older siblings with the same logical id", async () => {
+  test("closes a toast by itself after its duration", async () => {
     const view = render(<ToastHarness />);
 
-    await act(async () => {
+    await show(() => {
+      toast.info("Short toast", { duration: 20 });
+    });
+    expect(view.getByText("Short toast")).toBeTruthy();
+
+    await waitFor(() => expect(__getNodexToastSnapshotForTests()).toEqual([]));
+    await waitFor(() => expect(view.queryByText("Short toast")).toBeNull());
+  });
+
+  test("replaces older toasts with the same logical id", async () => {
+    const view = render(<ToastHarness />);
+
+    await show(() => {
       toast.info("Old sync state", { id: "sync", duration: 0 });
       toast.success("New sync state", { id: "sync", duration: 0 });
-      await settleAsyncRender();
     });
 
-    await waitFor(() => {
-      const text = view.baseElement.textContent ?? "";
-      if (text.includes("Old sync state")) {
-        throw new Error("Expected the older logical-id toast to be replaced.");
-      }
-      if (!text.includes("New sync state")) {
-        throw new Error("Expected the replacement toast to stay visible.");
-      }
-    });
+    await waitFor(() => expect(view.queryByText("Old sync state")).toBeNull());
+    expect(view.getByText("New sync state")).toBeTruthy();
+    expect(__getNodexToastSnapshotForTests().map((record) => record.title)).toEqual([
+      "New sync state",
+    ]);
   });
 
-  test("closes all active toasts", async () => {
+  test("closes all open toasts", async () => {
     const view = render(<ToastHarness />);
 
-    await act(async () => {
+    await show(() => {
       toast.info("Toast A", { duration: 0 });
       toast.warning("Toast B", { duration: 0 });
-      await settleAsyncRender();
     });
-
-    await act(async () => {
-      toast.closeAll();
-      await settleAsyncRender();
-    });
+    await show(() => toast.closeAll());
 
     await waitFor(() => {
-      const text = view.baseElement.textContent ?? "";
-      if (text.includes("Toast A") || text.includes("Toast B")) {
-        throw new Error("Expected all toasts to be dismissed.");
-      }
+      expect(view.queryByText("Toast A")).toBeNull();
+      expect(view.queryByText("Toast B")).toBeNull();
     });
   });
 
-  test("runs onRemove exactly once when a toast leaves the stack", async () => {
-    render(<ToastHarness />);
-    let removeCalls = 0;
-
-    await act(async () => {
-      const handle = toast.info("Tracked removal", {
-        duration: 0,
-        onRemove: () => {
-          removeCalls += 1;
-        },
-      });
-      handle.close();
-      await settleAsyncRender();
-    });
-
-    await waitFor(() => {
-      if (removeCalls !== 1) {
-        throw new Error(`Expected one remove callback, received ${removeCalls}.`);
-      }
-    });
-  });
-
-  test("renders the plain severity shell with role alert and a close button", async () => {
+  test("announces title and description as an alert with a dismiss button", async () => {
     const view = render(<ToastHarness />);
 
-    await act(async () => {
+    await show(() => {
       toast.warning("Workspace warning", {
         description: "The checkout is behind origin/main.",
         duration: 0,
       });
-      await settleAsyncRender();
     });
 
-    const alert = view.baseElement.querySelector('[role="alert"]');
-    expect(alert === null).toBe(false);
-    expect(Boolean(alert?.textContent?.includes("Workspace warning"))).toBe(true);
-    expect(Boolean(alert?.textContent?.includes("The checkout is behind origin/main."))).toBe(true);
-    expect(Boolean(view.getByRole("button", { name: "Dismiss notification" }))).toBe(true);
+    const alert = view.getByRole("alert");
+    expect(alert.textContent).toContain("Workspace warning");
+    expect(alert.textContent).toContain("The checkout is behind origin/main.");
+
+    fireEvent.click(view.getByRole("button", { name: "Dismiss notification" }));
+    expect(__getNodexToastSnapshotForTests()).toEqual([]);
+    await waitFor(() => expect(view.queryByRole("alert")).toBeNull());
   });
 
-  test("keeps recoverable actions inside the shared plain toast shell", async () => {
+  test("shows a caller's leading content in place of the level icon", async () => {
+    const view = render(<ToastHarness />);
+
+    await show(() => {
+      toast.info("Archived chat", {
+        duration: 0,
+        leading: <span data-testid="leading" />,
+      });
+    });
+
+    const alert = view.getByRole("alert");
+    expect(view.getByTestId("leading")).toBeTruthy();
+    // The only remaining glyph belongs to the dismiss button.
+    expect(alert.querySelectorAll("svg").length).toBe(1);
+  });
+
+  test("dismisses the toast after an action succeeds", async () => {
     const view = render(<ToastHarness />);
     let restoreCalls = 0;
 
-    await act(async () => {
+    await show(() => {
       toast.info("Page draft closed", {
         duration: 0,
         action: {
@@ -183,11 +173,7 @@ describe("Nodex toast system", () => {
           },
         },
       });
-      await settleAsyncRender();
     });
-
-    const alert = view.getByRole("alert");
-    expect(Boolean(alert.textContent?.includes("Page draft closed"))).toBe(true);
 
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Restore" }));
@@ -195,64 +181,34 @@ describe("Nodex toast system", () => {
     });
 
     expect(restoreCalls).toBe(1);
-    await waitFor(() => {
-      if (view.baseElement.textContent?.includes("Page draft closed")) {
-        throw new Error("Expected the successful toast action to dismiss its toast.");
-      }
-    });
+    await waitFor(() => expect(view.queryByText("Page draft closed")).toBeNull());
   });
 
-  test("renders secondary and primary recovery actions in the shared toast shell", async () => {
+  test("places the secondary action before the primary one", async () => {
     const view = render(<ToastHarness />);
-    const calls: string[] = [];
 
-    await act(async () => {
+    await show(() => {
       toast.danger("Unable to transcribe audio", {
         duration: 0,
-        secondaryAction: {
-          label: "View recording",
-          onClick: () => {
-            calls.push("view");
-            return false;
-          },
-        },
-        action: {
-          label: "Retry",
-          variant: "primary",
-          onClick: () => {
-            calls.push("retry");
-          },
-        },
+        action: { label: "Retry", onClick: () => undefined },
+        secondaryAction: { label: "View recording", onClick: () => undefined },
       });
-      await settleAsyncRender();
     });
 
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "View recording" }));
-      await Promise.resolve();
-    });
-    expect(calls).toEqual(["view"]);
-    expect(view.getByRole("alert")).toBeTruthy();
-
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Retry" }));
-      await Promise.resolve();
-    });
-    expect(calls).toEqual(["view", "retry"]);
+    const labels = Array.from(view.getByRole("alert").querySelectorAll("button"))
+      .map((button) => button.textContent)
+      .filter(Boolean);
+    expect(labels).toEqual(["View recording", "Retry"]);
   });
 
-  test("lets a recoverable action keep its toast open when recovery is unavailable", async () => {
+  test("lets an action keep its toast open when it returns false", async () => {
     const view = render(<ToastHarness />);
 
-    await act(async () => {
+    await show(() => {
       toast.info("Page draft closed", {
         duration: 0,
-        action: {
-          label: "Restore",
-          onClick: () => false,
-        },
+        action: { label: "Restore", onClick: () => false },
       });
-      await settleAsyncRender();
     });
 
     await act(async () => {
@@ -260,33 +216,23 @@ describe("Nodex toast system", () => {
       await settleAsyncRender();
     });
 
-    expect(Boolean(view.baseElement.textContent?.includes("Page draft closed"))).toBe(true);
+    expect(view.getByText("Page draft closed")).toBeTruthy();
+    expect(__getNodexToastSnapshotForTests().length).toBe(1);
   });
 
-  test("runs the newest visible toast action from the keyboard command", async () => {
+  test("runs the newest open toast action from the keyboard command", async () => {
     const view = render(<ToastHarness />);
     const calls: string[] = [];
 
-    await act(async () => {
+    await show(() => {
       toast.info("Older action", {
         duration: 0,
-        action: {
-          label: "Older",
-          onClick: () => {
-            calls.push("older");
-          },
-        },
+        action: { label: "Older", onClick: () => void calls.push("older") },
       });
       toast.info("Latest action", {
         duration: 0,
-        action: {
-          label: "Latest",
-          onClick: () => {
-            calls.push("latest");
-          },
-        },
+        action: { label: "Latest", onClick: () => void calls.push("latest") },
       });
-      await settleAsyncRender();
     });
 
     await act(async () => {
@@ -295,54 +241,41 @@ describe("Nodex toast system", () => {
     });
 
     expect(calls).toEqual(["latest"]);
-    expect(view.queryByRole("button", { name: "Latest" })).toBeNull();
+    await waitFor(() => expect(view.queryByRole("button", { name: "Latest" })).toBeNull());
     expect(view.getByRole("button", { name: "Older" })).toBeTruthy();
   });
 
-  test("renders custom toasts and lets the custom content close itself", async () => {
+  test("hovering the stack holds a toast with actions but not a bare confirmation", async () => {
     const view = render(<ToastHarness />);
 
-    await act(async () => {
-      toast.custom({
-        level: "danger",
-        duration: 0,
-        hasCloseButton: false,
-        renderContent: ({ close, level }) => (
-          <div className="flex items-center gap-2 p-3 text-sm">
-            <span>{level}</span>
-            <button type="button" onClick={close}>
-              Dismiss custom toast
-            </button>
-          </div>
-        ),
+    await show(() => {
+      toast.success("Saved", { duration: 30 });
+      toast.info("Archived chat", {
+        duration: 30,
+        action: { label: "Undo", onClick: () => undefined },
       });
-      await settleAsyncRender();
     });
 
-    expect(Boolean(view.baseElement.textContent?.includes("danger"))).toBe(true);
-
+    const stack = view.baseElement.querySelector("[data-sonner-toaster]");
+    if (!stack) throw new Error("Expected the toast stack.");
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Dismiss custom toast" }));
-      await settleAsyncRender();
+      fireEvent.mouseEnter(stack);
+      fireEvent.mouseMove(stack);
+      await Promise.resolve();
     });
 
-    await waitFor(() => {
-      if (view.baseElement.textContent?.includes("Dismiss custom toast")) {
-        throw new Error("Expected the custom toast to close.");
-      }
-    });
+    await waitFor(() =>
+      expect(__getNodexToastSnapshotForTests().map((record) => record.title)).toEqual([
+        "Archived chat",
+      ]),
+    );
   });
 
   test("exposes the shared controller through useToaster", async () => {
     function HookProbe() {
       const toaster = useToaster();
       return (
-        <button
-          type="button"
-          onClick={() => {
-            toaster.success("Hook toast", { duration: 0 });
-          }}
-        >
+        <button type="button" onClick={() => void toaster.success("Hook toast", { duration: 0 })}>
           Emit hook toast
         </button>
       );
@@ -359,7 +292,7 @@ describe("Nodex toast system", () => {
       await settleAsyncRender();
     });
 
-    expect(Boolean(view.baseElement.textContent?.includes("Hook toast"))).toBe(true);
-    expect(Boolean(view.baseElement.querySelector('[data-slot="toast-viewport"]'))).toBe(true);
+    expect(view.getByText("Hook toast")).toBeTruthy();
+    expect(view.baseElement.querySelector('[data-slot="toast-viewport"]')).not.toBeNull();
   });
 });

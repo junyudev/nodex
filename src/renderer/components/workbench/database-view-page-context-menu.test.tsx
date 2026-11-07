@@ -201,9 +201,7 @@ describe("DatabaseViewPageContextMenu", () => {
 
     await waitFor(() =>
       expect(
-        __getNodexToastSnapshotForTests().some(
-          (item) => item.kind === "plain" && item.title === "Failed to copy title",
-        ),
+        __getNodexToastSnapshotForTests().some((item) => item.title === "Failed to copy title"),
       ).toBe(true),
     );
   });
@@ -274,7 +272,7 @@ describe("DatabaseViewPageContextMenu", () => {
     await waitFor(() =>
       expect(
         __getNodexToastSnapshotForTests().some(
-          (item) => item.kind === "plain" && item.title === "Failed to open Page in a new chat",
+          (item) => item.title === "Failed to open Page in a new chat",
         ),
       ).toBe(true),
     );

@@ -25,8 +25,11 @@ export interface ToolbarButtonProps extends ButtonHTMLAttributes<HTMLButtonEleme
   readonly color?: ToolbarButtonColor;
   /** Icon-only: a square as tall as the toolbar. */
   readonly uniform?: boolean;
-  /** `icon`: a 24px square for inline row actions, such as removing a list entry. */
-  readonly size?: "toolbar" | "icon";
+  /**
+   * `icon`: a 24px square for inline row actions, such as removing a list entry.
+   * `compact`: a 24px text button for dense surfaces, such as toast actions.
+   */
+  readonly size?: "toolbar" | "icon" | "compact";
   readonly loading?: boolean;
 }
 
@@ -55,12 +58,16 @@ export const ToolbarButton = forwardRef<HTMLButtonElement, ToolbarButtonProps>(
         aria-busy={loading || undefined}
         className={cn(
           TOOLBAR_BUTTON_BASE_CLASS,
-          "rounded-(--radius-button-toolbar) py-0 text-sm leading-[18px]",
-          size === "icon"
-            ? "size-6 shrink-0 justify-center px-0"
-            : uniform
-              ? "h-token-button-composer w-token-button-composer justify-center px-0"
-              : "h-token-button-composer px-2",
+          size === "compact"
+            ? "h-6 rounded-lg px-2 py-0 text-xs leading-4"
+            : [
+                "rounded-(--radius-button-toolbar) py-0 text-sm leading-[18px]",
+                size === "icon"
+                  ? "size-6 shrink-0 justify-center px-0"
+                  : uniform
+                    ? "h-token-button-composer w-token-button-composer justify-center px-0"
+                    : "h-token-button-composer px-2",
+              ],
           TOOLBAR_BUTTON_COLOR_CLASS[color],
           className,
         )}

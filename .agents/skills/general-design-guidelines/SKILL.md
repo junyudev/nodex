@@ -270,6 +270,11 @@ Active/selected items must be **unmistakable** without being garish:
 - A one-off failure of something the person did is a danger toast through
   `toastFailure(title, cause)`: the title says what failed, the readable reason
   goes underneath. A stable `id` keeps a repeating failure to one toast.
+- A toast reports the outcome of something the person just did. Its emphasized `action`
+  reverses or continues that outcome, its `secondaryAction` goes somewhere, and a stable
+  `id` keeps a repeated outcome to one toast. A bare confirmation leaves on its own; give
+  a toast `leading` only when an object says more than the level's icon, as with an
+  archive.
 - A failure that belongs to a record, such as a failed Run, is part of that record.
 - Never write status or error text inside an input's surface or let it change the
   input's layout, and never funnel unrelated failures into one shared error string
