@@ -141,7 +141,7 @@ describe("materializeBundledDesktopToolMarketplace", () => {
     expect(fs.existsSync(path.join(result.browserPluginRoot, "client.js"))).toBe(true);
     expect(relativeFiles(result.chromePluginRoot!)).toEqual(
       [
-        ".claude-plugin/plugin.json",
+        path.join(".claude-plugin", "plugin.json"),
         ...relativeFiles(fixture.bundle.paths.chromePluginRoot!),
       ].sort(),
     );

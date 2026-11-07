@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, vi, test } from "vite-plus/test";
-import { fireEvent } from "@testing-library/react";
-import { render, settleAsyncRender } from "../../../test/dom";
+import { act, fireEvent } from "@testing-library/react";
+import { render } from "../../../test/dom";
 import { __resetNodexToastStoreForTests, NodexToastProvider } from "../../ui/toast";
 
 let copyResult: { ok: true } | { ok: false; message: string } = { ok: true };
@@ -51,11 +51,13 @@ describe("CopyImageButton", () => {
       </NodexToastProvider>,
     );
 
-    fireEvent.click(view.getByRole("button", { name: "Copy image" }));
-    await settleAsyncRender();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Copy image" }));
+      await Promise.resolve();
+    });
 
-    expect(focusCalls).toBe(1);
     expect(await view.findByText("Copied image to clipboard.")).toBeTruthy();
+    expect(focusCalls).toBe(1);
   });
 
   test("shows a global danger toast when native image copy fails", async () => {
@@ -69,12 +71,12 @@ describe("CopyImageButton", () => {
       </NodexToastProvider>,
     );
 
-    fireEvent.click(view.getByRole("button", { name: "Copy image" }));
-    await settleAsyncRender();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Copy image" }));
+      await Promise.resolve();
+    });
 
+    expect(await view.findByText("Could not load the image file.")).toBeTruthy();
     expect(focusCalls).toBe(0);
-    expect(Boolean(view.baseElement.textContent?.includes("Could not load the image file."))).toBe(
-      true,
-    );
   });
 });

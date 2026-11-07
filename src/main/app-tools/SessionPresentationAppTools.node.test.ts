@@ -26,7 +26,7 @@ import { createHostedAppToolCaller } from "./AppToolCaller";
 
 const windowA = { windowSessionId: "window-a", rendererGeneration: "generation-a" };
 const windowB = { windowSessionId: "window-b", rendererGeneration: "generation-b" };
-const workspaceDirectory = realpathSync(mkdtempSync(join(tmpdir(), "nodex-open-in-nodex-")));
+const workspaceDirectory = realpathSync.native(mkdtempSync(join(tmpdir(), "nodex-open-in-nodex-")));
 afterAll(() => rmSync(workspaceDirectory, { recursive: true, force: true }));
 const writeWorkspaceFile = (name: string) => {
   const path = join(workspaceDirectory, name);
