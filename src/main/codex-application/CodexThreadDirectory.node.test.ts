@@ -125,7 +125,7 @@ const appThread = (threadId: string, turns: Thread["turns"] = []): Thread => ({
 });
 
 it("preserves explicit settings and known settings when model metadata is unavailable", () => {
-  const existing = projectCoreWorkspaceThread(coreThread("thread-a", { service_tier: "priority" }));
+  const existing = projectCoreWorkspaceThread(coreThread("thread-a", { service_tier: "flex" }));
   const input = {
     thread: appThread("thread-a"),
     existing,
@@ -135,7 +135,7 @@ it("preserves explicit settings and known settings when model metadata is unavai
   const unavailable = projectCodexThreadDirectoryMaterialization(input);
   assert.strictEqual(unavailable?.patch.model_id, "gpt-test");
   assert.strictEqual(unavailable?.patch.reasoning_effort, "high");
-  assert.strictEqual(unavailable?.patch.service_tier, "priority");
+  assert.strictEqual(unavailable?.patch.service_tier, "flex");
 
   const explicit = projectCodexThreadDirectoryMaterialization({
     ...input,
@@ -150,13 +150,13 @@ it("preserves explicit settings and known settings when model metadata is unavai
 it("uses configured model metadata and treats null effort as unset without changing service tier", () => {
   const materialized = projectCodexThreadDirectoryMaterialization({
     thread: { ...appThread("thread-a"), model: "gpt-observed", reasoningEffort: null },
-    existing: projectCoreWorkspaceThread(coreThread("thread-a", { service_tier: "priority" })),
+    existing: projectCoreWorkspaceThread(coreThread("thread-a", { service_tier: "flex" })),
     parent: null,
     nowMs: 120000,
   });
   assert.strictEqual(materialized?.patch.model_id, "gpt-observed");
   assert.isNull(materialized?.patch.reasoning_effort);
-  assert.strictEqual(materialized?.patch.service_tier, "priority");
+  assert.strictEqual(materialized?.patch.service_tier, "flex");
 });
 
 const notFound = (threadId: string) =>

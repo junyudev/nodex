@@ -64,3 +64,32 @@ it("refuses an unavailable configured model before changing the original message
   );
   expect(message).toEqual({ text: "Task", agentConfigs: [{ model: "removed" }] });
 });
+
+it("writes Fast as the id the model's catalog gives the tier", () => {
+  const tiers = {
+    optionDescriptors: [
+      {
+        id: "serviceTier",
+        label: "Service Tier",
+        type: "select" as const,
+        options: [
+          { id: "default", label: "Standard" },
+          { id: "priority", label: "Fast" },
+        ],
+      },
+    ],
+  };
+  const result = resolveAgentRuntimeAgentConfig({
+    ...base,
+    providers: [
+      {
+        ...providers[0]!,
+        models: [{ slug: "default", name: "Default", isCustom: false, capabilities: tiers }],
+      },
+    ],
+    message: { text: "Task", agentConfigs: [{ speed: "fast" }] },
+  });
+  expect(result.message.modelSelection?.options).toEqual([
+    { id: "serviceTier", value: "priority" },
+  ]);
+});

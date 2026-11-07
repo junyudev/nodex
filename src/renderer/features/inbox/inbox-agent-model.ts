@@ -18,6 +18,10 @@ import {
   type InboxAgentChoice,
 } from "../../../shared/inbox";
 import type { AgentModelOption, CodexReasoningEffort } from "../../../shared/types";
+import {
+  normalizeCodexServiceTier,
+  offeredCodexServiceTier,
+} from "../../../shared/codex-service-tier";
 import { agentRuntimeQualifier } from "@/lib/agent-model-selection";
 import { formatAgentModelName } from "@/lib/codex-thread-settings";
 import {
@@ -94,7 +98,10 @@ const offersServiceTier = (model: ProviderModel | undefined, tier: string) =>
     (option) =>
       option.id === "serviceTier" &&
       option.type === "select" &&
-      option.options.some((value) => value.id === tier),
+      offeredCodexServiceTier(
+        option.options.map((value) => value.id),
+        tier,
+      ) !== null,
   ) ?? false;
 
 /**
@@ -223,7 +230,8 @@ export function inboxAgentPickerModel(
       ? provider.models.map((entry) => projectAgentRuntimeModel(provider, entry))
       : [],
     reasoningEffort: effort ?? "default",
-    fast: choice.serviceTier === "fast" && offersServiceTier(model, "fast"),
+    fast:
+      normalizeCodexServiceTier(choice.serviceTier) === "fast" && offersServiceTier(model, "fast"),
     configOptions:
       kind !== "codex" && kind !== "claude" && descriptor?.type === "select" && effort
         ? [

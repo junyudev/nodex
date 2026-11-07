@@ -14,6 +14,7 @@ import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplicatio
 import { AgentRuntimeSupervisor } from "../agent-runtime/AgentRuntimeSupervisor";
 import { subscribe as subscribeExecutionChanges } from "../agent-runtime/AgentRuntimeExecutionChanges";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
+import { offeredCodexServiceTier } from "../../shared/codex-service-tier";
 import { CODEX_AGENT_BACKEND_BINDING } from "../../shared/agent-backend";
 import type {
   CodexScheduledAutomation,
@@ -93,15 +94,26 @@ const modelOption = (
     throw new Error(`This Agent doesn't offer model '${model}'. Choose another model.`);
   const options: Array<{ id: string; value: string | boolean }> = [];
   const descriptors = selected.capabilities?.optionDescriptors ?? [];
-  for (const [pattern, value] of [
-    [/effort|reasoning/i, effort],
-    [/tier/i, tier],
+  for (const [pattern, value, offered] of [
+    [
+      /effort|reasoning/i,
+      effort,
+      (ids: readonly string[], chosen: string) => (ids.includes(chosen) ? chosen : null),
+    ],
+    [/tier/i, tier, offeredCodexServiceTier],
   ] as const) {
     if (value === null) continue;
     const option = descriptors.find((item) => pattern.test(item.id));
-    if (option?.type !== "select" || !option.options.some((item) => item.id === value))
+    const id =
+      option?.type === "select"
+        ? offered(
+            option.options.map((item) => item.id),
+            value,
+          )
+        : null;
+    if (!option || !id)
       throw new Error(`Model '${model}' doesn't offer '${value}'. Choose its options again.`);
-    options.push({ id: option.id, value });
+    options.push({ id: option.id, value: id });
   }
   return options;
 };

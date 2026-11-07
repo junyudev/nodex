@@ -2,6 +2,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 import type { AgentWire, ModelSelection } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "./agent-backend";
+import { normalizeCodexServiceTier, offeredCodexServiceTier } from "./codex-service-tier";
 
 /** Provider keys are shared by desktop configuration and model selection. */
 export function agentRuntimeProviderId(binding: AgentBackendBinding): string | null {
@@ -94,11 +95,20 @@ export function applyAgentRuntimeOptionIntent(
   };
   if (intent.reasoningEffort !== undefined)
     choose(descriptors.find(isAgentRuntimeEffortOption), intent.reasoningEffort);
-  if (intent.serviceTier !== undefined)
+  if (intent.serviceTier !== undefined) {
+    const tiers = byId.get(SERVICE_TIER_OPTION);
     choose(
-      byId.get(SERVICE_TIER_OPTION),
-      intent.serviceTier === null ? STANDARD_SERVICE_TIER : intent.serviceTier,
+      tiers,
+      intent.serviceTier === null
+        ? STANDARD_SERVICE_TIER
+        : ((tiers?.type === "select"
+            ? offeredCodexServiceTier(
+                tiers.options.map((option) => option.id),
+                intent.serviceTier,
+              )
+            : null) ?? intent.serviceTier),
     );
+  }
   return [...next].map(([id, value]) => ({ id, value }));
 }
 
@@ -117,8 +127,7 @@ export function readAgentRuntimeServiceTier(
   options: AgentWire<ModelSelection>["options"],
 ): string | null | undefined {
   const value = options?.find((option) => option.id === SERVICE_TIER_OPTION)?.value;
-  if (typeof value !== "string") return undefined;
-  return value === STANDARD_SERVICE_TIER ? null : value;
+  return typeof value === "string" ? normalizeCodexServiceTier(value) : undefined;
 }
 
 /** Enough of a binding's provider to ask whether a model is on, before its catalog has loaded. */

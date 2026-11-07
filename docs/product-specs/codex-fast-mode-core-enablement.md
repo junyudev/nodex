@@ -33,9 +33,13 @@ This spec does not cover:
 - Agent execution profiles may additionally hold named tier identifiers advertised by their model
   catalog.
 - `null` means Standard/default behavior.
-- `"fast"` means requests should send `serviceTier: "fast"`.
+- `"fast"` means the model's Fast tier. Current Codex catalogs and Threads name that tier
+  `priority`, older catalogs `fast`, and the app-server accepts either on a request. Nodex reads
+  both as `"fast"`, and an option or Agent config written from a catalog uses the id that catalog
+  gives the tier.
 - App-server `"default"` and legacy/UI `"standard"` are boundary aliases for domain `null`; neither
-  may be persisted as a named tier.
+  may be persisted as a named tier. App-server `"priority"` is the boundary alias for domain
+  `"fast"`.
 - The new-chat Fast preference is global, not per-project. Existing executions, including
   subagents, retain their own provider-observed service tier.
 

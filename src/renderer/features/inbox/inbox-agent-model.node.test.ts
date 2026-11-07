@@ -52,6 +52,42 @@ describe("what an Inbox chat runs on", () => {
     expect(inboxAgentLine(describeInboxAgent(catalog, light))).toBe("Codex · GPT-6 Luna");
   });
 
+  test("shows and runs Fast on a model whose catalog names the tier `priority`", () => {
+    const catalog = inboxAgentsFixture();
+    const priorityCatalog = {
+      ...catalog,
+      providers: catalog.providers.map((provider) => ({
+        ...provider,
+        models: provider.models.map((model) => ({
+          ...model,
+          capabilities: model.capabilities && {
+            ...model.capabilities,
+            optionDescriptors: model.capabilities.optionDescriptors?.map((option) =>
+              option.id === "serviceTier" && option.type === "select"
+                ? {
+                    ...option,
+                    options: option.options.map((tier) =>
+                      tier.id === "fast" ? { ...tier, id: "priority" } : tier,
+                    ),
+                  }
+                : option,
+            ),
+          },
+        })),
+      })),
+    };
+    const chosen = codex({ reasoningEffort: "high", serviceTier: "fast" });
+    expect(inboxAgentLine(describeInboxAgent(priorityCatalog, chosen))).toBe(
+      "Codex · GPT-6 Astra · High · Fast",
+    );
+    expect(inboxAgentPickerModel(priorityCatalog, chosen).fast).toBe(true);
+    const resolved = resolveInboxModel(priorityCatalog.providers, chosen, "chat");
+    expect(resolved.kind === "ready" && resolved.selection.options).toContainEqual({
+      id: "serviceTier",
+      value: "priority",
+    });
+  });
+
   test("names the Agent beside its mark only when the name says more", () => {
     const catalog = inboxAgentsFixture();
     expect(inboxAgentShortLine(describeInboxAgent(catalog, codex()))).toBe("GPT-6 Astra · Medium");

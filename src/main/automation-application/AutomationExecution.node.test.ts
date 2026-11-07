@@ -259,6 +259,18 @@ const setup = (
                       ],
                     },
                   },
+                  {
+                    slug: "priority-model",
+                    capabilities: {
+                      optionDescriptors: [
+                        {
+                          id: "serviceTier",
+                          type: "select",
+                          options: [{ id: "default" }, { id: "priority" }],
+                        },
+                      ],
+                    },
+                  },
                 ],
               },
               {
@@ -771,6 +783,22 @@ it.effect(
     }).pipe(Effect.provide(fixture.layer));
   },
 );
+
+it.effect("runs a Fast task on the id its model's catalog gives the tier", () => {
+  const fixture = setup();
+  return Effect.gen(function* () {
+    const execution = yield* AutomationExecution;
+    fixture.state.definition = {
+      ...fixture.state.definition,
+      model: "priority-model",
+      serviceTier: "fast",
+    };
+    yield* execution.executeClaimed(fixture.state.definition, context);
+    assert.deepEqual(fixture.launches[0]!.modelSelection.options, [
+      { id: "serviceTier", value: "priority" },
+    ]);
+  }).pipe(Effect.provide(fixture.layer));
+});
 
 it.effect(
   "refusals tell the user what to change, as the scheduled-task toast receives them",

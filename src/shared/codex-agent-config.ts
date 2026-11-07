@@ -1,5 +1,5 @@
 import type { CodexExecutionProfile } from "./codex-execution-profile";
-import { normalizeCodexServiceTier } from "./codex-service-tier";
+import { normalizeCodexServiceTier, offeredCodexServiceTier } from "./codex-service-tier";
 import type {
   CodexCollaborationModeKind,
   CodexModelOption,
@@ -106,7 +106,11 @@ function resolveSpeed(
   if (requested === undefined) return model.defaultServiceTier ?? null;
   const normalized = normalizeCodexServiceTier(requested);
   if (normalized === null) return null;
-  if (model.serviceTiers.some((option) => option.id === normalized)) return normalized;
+  const offered = offeredCodexServiceTier(
+    model.serviceTiers.map((option) => option.id),
+    normalized,
+  );
+  if (offered) return offered;
   throw new Error(`Speed '${requested}' is unavailable for ${model.displayName}`);
 }
 

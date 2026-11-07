@@ -210,13 +210,8 @@ export function resolveAgentConfigChip(
   const modelLabel =
     model?.displayName ?? (props.model ? formatCodexModelLabel(props.model, []) : "");
   const reasoningLabel = props.reasoning ? formatCodexReasoningEffortLabel(props.reasoning) : "";
-  const speedLabel = props.speed
-    ? normalizeCodexServiceTier(props.speed) === null
-      ? "Standard"
-      : props.speed === "fast"
-        ? "Fast"
-        : props.speed
-    : "";
+  const speed = props.speed ? normalizeCodexServiceTier(props.speed) : "";
+  const speedLabel = speed === null ? "Standard" : speed === "fast" ? "Fast" : speed;
   const summary = [modeLabel, modelLabel].filter(Boolean).join(" · ");
   const detail = [modeLabel, modelLabel, reasoningLabel, speedLabel].filter(Boolean).join(" · ");
   const invalid =

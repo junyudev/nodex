@@ -87,6 +87,26 @@ describe("Agent Runtime model option intent", () => {
     expect(readAgentRuntimeServiceTier([{ id: "serviceTier", value: "fast" }])).toBe("fast");
   });
 
+  it("reaches a model whose catalog names Fast `priority`, and reads it back as Fast", () => {
+    const tiers = [
+      {
+        id: "serviceTier",
+        label: "Service Tier",
+        type: "select" as const,
+        options: [
+          { id: "default", label: "Standard" },
+          { id: "priority", label: "Fast" },
+        ],
+      },
+    ];
+    const fast = applyAgentRuntimeOptionIntent(tiers, undefined, { serviceTier: "fast" });
+    expect(fast).toEqual([{ id: "serviceTier", value: "priority" }]);
+    expect(readAgentRuntimeServiceTier(fast)).toBe("fast");
+    const standard = applyAgentRuntimeOptionIntent(tiers, fast, { serviceTier: null });
+    expect(standard).toEqual([{ id: "serviceTier", value: "default" }]);
+    expect(readAgentRuntimeServiceTier(standard)).toBeNull();
+  });
+
   it("writes Claude effort under effort and keeps its other declared options", () => {
     expect(
       applyAgentRuntimeOptionIntent(

@@ -67,7 +67,7 @@ const thread = (projectId: string): CoreThread => ({
   backend_binding: { kind: "codex" as const },
   model_id: "gpt-test",
   reasoning_effort: "high",
-  service_tier: "priority",
+  service_tier: "flex",
   execution_host_id: "local",
   writable_roots: ["/workspace/source"],
   cwd: "/workspace/source",
@@ -277,7 +277,7 @@ it("projects execution authority from the Core task window without follow-up rea
   assert.deepStrictEqual(projected.thread?.executionProfile, {
     modelId: "gpt-test",
     reasoningEffort: "high",
-    serviceTier: "priority",
+    serviceTier: "flex",
   });
   assert.strictEqual(projected.thread?.projectlessOutputDirectory, "/workspace/output");
   assert.strictEqual(projected.thread?.projectlessWorkspaceBrowserRoot, "/workspace/browser");

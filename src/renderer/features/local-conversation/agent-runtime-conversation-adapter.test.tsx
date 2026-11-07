@@ -689,6 +689,68 @@ describe("Agent Runtime Codex controls", () => {
     await act(async () => unmount());
   });
 
+  it("runs Fast on a model whose catalog names the tier priority, and shows it as Fast", async () => {
+    const priorityProvider = {
+      ...codexProvider,
+      models: codexProvider.models.map((model) => ({
+        ...model,
+        capabilities: {
+          ...model.capabilities,
+          optionDescriptors: model.capabilities?.optionDescriptors?.map((option) =>
+            option.id === "serviceTier" && option.type === "select"
+              ? {
+                  ...option,
+                  options: option.options.map((tier) =>
+                    tier.id === "fast" ? { ...tier, id: "priority" } : tier,
+                  ),
+                }
+              : option,
+          ),
+        },
+      })),
+    } as AgentRuntimeProvider;
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([priorityProvider]);
+    const launch = vi
+      .spyOn(agentRuntimeRuntime, "launch")
+      .mockResolvedValue({ sessionId: "next-fast", projectId: "project", threadId: "thread" });
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+      sessionId: "next-fast",
+      projectId: "project",
+      threadId: "thread",
+      snapshot,
+    });
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const first = mountDraft("first-fast");
+    await waitFor(() => expect(first.result.current.selectedModel).toBe("gpt"));
+    expect(first.result.current.provider.serviceTier).toBeNull();
+    await act(async () => {
+      await first.result.current.actions.onIntelligenceSelectionChange!({
+        kind: "codex",
+        model: "gpt",
+        reasoningEffort: "medium",
+        serviceTier: "fast",
+      });
+    });
+    expect(first.result.current.provider.serviceTier).toBe("fast");
+    expect(localStorage.getItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY)).toBe("fast");
+    await act(async () => first.unmount());
+
+    const { result, unmount } = mountDraft("next-fast");
+    await waitFor(() => expect(result.current.provider.serviceTier).toBe("fast"));
+    await act(async () => {
+      await result.current.actions.onStartThreadForSession!({
+        projectId: "project",
+        sessionId: "next-fast",
+        prompt: "Go",
+      });
+    });
+    expect(launch.mock.calls[0]![0].modelSelection.options).toContainEqual({
+      id: "serviceTier",
+      value: "priority",
+    });
+    await act(async () => unmount());
+  });
+
   it("waits for the Agent catalog when a first message outruns it", async () => {
     let resolveCatalog: (providers: AgentRuntimeProvider[]) => void = () => {};
     vi.spyOn(agentRuntimeRuntime, "catalog").mockReturnValue(
