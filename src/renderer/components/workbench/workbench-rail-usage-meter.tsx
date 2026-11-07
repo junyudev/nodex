@@ -8,8 +8,10 @@ import {
   describeUsageProvenance,
   formatRateLimitResetLabel,
   formatUsageCountdown,
+  formatUsageCredits,
   formatUsageMoment,
   formatUsagePlan,
+  type UsageCredits,
   type UsageMeterView,
   type UsageProvider,
   type UsageReading,
@@ -57,6 +59,17 @@ const SEVERITY_TEXT: Readonly<Record<UsageSeverity, string | undefined>> = {
   exhausted: "text-(--red-text)",
 };
 
+type UsageRingTrack = "solid" | "dotted" | "spent" | "credits" | "open";
+
+const RING_TRACK_PAINT: Readonly<
+  Record<Exclude<UsageRingTrack, "open">, { stroke: string; opacity: number }>
+> = {
+  solid: { stroke: "currentColor", opacity: 0.16 },
+  dotted: { stroke: "currentColor", opacity: 0.4 },
+  spent: { stroke: "var(--red-text)", opacity: 0.45 },
+  credits: { stroke: "var(--yellow-text)", opacity: 0.45 },
+};
+
 /** The reading came from this computer's Agent, never from the account's other devices. */
 export const USAGE_HOST_LABEL =
   typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC")
@@ -76,8 +89,9 @@ function UsageProviderMark({
 /**
  * The rail's usage glyph: the provider's mark inside one ring. A solid track with an arc is a
  * measured level, a dotted track is a level Nodex does not know, a red track is a window that
- * is used up, and an open track with a plus is an account not signed in yet. Only low levels
- * take color; a healthy meter stays as quiet as the rail around it.
+ * is used up, an amber track is a used-up window that credits are carrying the account past, and
+ * an open track with a plus is an account not signed in yet. Only low levels take color; a healthy
+ * meter stays as quiet as the rail around it.
  */
 export function UsageRingGlyph({
   provider,
@@ -90,7 +104,7 @@ export function UsageRingGlyph({
   readonly provider: UsageProvider;
   /** Replaces the provider mark, as for Nodex's own credit ring. */
   readonly mark?: ReactNode;
-  readonly track: "solid" | "dotted" | "spent" | "open";
+  readonly track: UsageRingTrack;
   readonly arc?: {
     readonly percent: number;
     readonly severity: UsageSeverity;
@@ -133,8 +147,8 @@ export function UsageRingGlyph({
             r={RING_RADIUS}
             strokeWidth="2.25"
             strokeLinecap="round"
-            stroke={track === "spent" ? "var(--red-text)" : "currentColor"}
-            strokeOpacity={track === "spent" ? 0.45 : track === "dotted" ? 0.4 : 0.16}
+            stroke={RING_TRACK_PAINT[track].stroke}
+            strokeOpacity={RING_TRACK_PAINT[track].opacity}
             strokeDasharray={track === "dotted" ? "0.01 3.75" : undefined}
           />
         )}
@@ -181,7 +195,13 @@ function UsageRing({ view }: { readonly view: UsageMeterView }) {
     <UsageRingGlyph
       provider={view.reading.provider}
       track={
-        view.status === "unread" ? "dotted" : binding?.severity === "exhausted" ? "spent" : "solid"
+        view.status === "unread"
+          ? "dotted"
+          : view.creditsInUse
+            ? "credits"
+            : binding?.severity === "exhausted"
+              ? "spent"
+              : "solid"
       }
       arc={
         binding
@@ -190,6 +210,25 @@ function UsageRing({ view }: { readonly view: UsageMeterView }) {
       }
       alert={view.reading.readFailed}
     />
+  );
+}
+
+/** A card row's heading: what it measures, a note beside it, and the level at its end. */
+function UsageRowHeading({
+  label,
+  meta,
+  children,
+}: {
+  readonly label: string;
+  readonly meta: ReactNode;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="flex items-baseline gap-1.5 text-xs text-token-description-foreground">
+      <span className="shrink-0 text-sm font-medium text-token-foreground">{label}</span>
+      {meta ? <span className="min-w-0 truncate">{meta}</span> : null}
+      <span className="ml-auto shrink-0 tabular-nums">{children}</span>
+    </div>
   );
 }
 
@@ -219,29 +258,25 @@ function UsageWindowRow({
       data-usage-window-state={window.state}
       className="flex flex-col gap-1.5"
     >
-      <div className="flex items-baseline gap-1.5 text-xs text-token-description-foreground">
-        <span className="shrink-0 text-sm font-medium text-token-foreground">{window.label}</span>
-        {meta ? <span className="min-w-0 truncate">{meta}</span> : null}
-        <span className="ml-auto shrink-0 tabular-nums">
-          {window.state === "elapsed" ? (
-            "Not read yet"
-          ) : exhausted ? (
-            <span className="font-medium text-(--red-text)">Limit reached</span>
-          ) : (
-            <>
-              <span
-                className={cn(
-                  "text-sm font-medium text-token-foreground",
-                  SEVERITY_TEXT[window.severity],
-                )}
-              >
-                {window.remainingPercent}%
-              </span>{" "}
-              left
-            </>
-          )}
-        </span>
-      </div>
+      <UsageRowHeading label={window.label} meta={meta}>
+        {window.state === "elapsed" ? (
+          "Not read yet"
+        ) : exhausted ? (
+          <span className="font-medium text-(--red-text)">Limit reached</span>
+        ) : (
+          <>
+            <span
+              className={cn(
+                "text-sm font-medium text-token-foreground",
+                SEVERITY_TEXT[window.severity],
+              )}
+            >
+              {window.remainingPercent}%
+            </span>{" "}
+            left
+          </>
+        )}
+      </UsageRowHeading>
       {window.state === "elapsed" ? (
         <div aria-hidden="true" className="h-1 rounded-full bg-token-foreground/5" />
       ) : (
@@ -276,6 +311,27 @@ function UsageWindowRow({
   );
 }
 
+/** The balance has no bar: unlike a window, it has no full mark to measure against. */
+function UsageCreditsRow({
+  credits,
+  inUse,
+}: {
+  readonly credits: UsageCredits;
+  readonly inUse: boolean;
+}) {
+  return (
+    <UsageRowHeading
+      label="Credits"
+      meta={inUse ? <span className={SEVERITY_TEXT.low}>In use</span> : null}
+    >
+      <span className="text-sm font-medium text-token-foreground">
+        {formatUsageCredits(credits)}
+      </span>
+      {credits === "unlimited" ? null : " left"}
+    </UsageRowHeading>
+  );
+}
+
 /** Says why there is nothing to draw, unless the provenance footer already says it. */
 function emptyUsageMessage(view: UsageMeterView): string | null {
   if (view.status === "unmetered") return "Billed by usage; no subscription limits apply.";
@@ -299,7 +355,7 @@ export function UsageMeterCard({
   readonly hostLabel?: string;
   /** A trailing header action, such as signing out of the account. */
   readonly action?: ReactNode;
-  /** Provider-specific rows after the windows, such as quota reset credits. */
+  /** Provider-specific rows after the windows and credits, such as quota resets. */
   readonly children?: ReactNode;
 }) {
   const { reading } = view;
@@ -330,7 +386,7 @@ export function UsageMeterCard({
         </div>
         {action}
       </div>
-      {view.windows.length > 0 || empty || children ? (
+      {view.windows.length > 0 || reading.credits !== null || empty || children ? (
         <section
           aria-label="Usage remaining"
           className="flex flex-col gap-3 border-t border-token-border p-3"
@@ -338,6 +394,9 @@ export function UsageMeterCard({
           {view.windows.map((window) => (
             <UsageWindowRow key={window.id} window={window} faded={view.stale} now={now} />
           ))}
+          {reading.credits !== null ? (
+            <UsageCreditsRow credits={reading.credits} inUse={view.creditsInUse} />
+          ) : null}
           {empty ? <p className="m-0 text-xs text-token-text-secondary">{empty}</p> : null}
           {children}
         </section>

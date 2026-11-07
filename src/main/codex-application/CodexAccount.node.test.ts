@@ -39,7 +39,10 @@ it.effect("owns account, login, rate-limit, and notification state behind one in
         if (method === "account/rateLimits/read") {
           return {
             ordinaryUsageAllowed: false,
-            rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } },
+            rateLimits: {
+              primary: { usedPercent: 25, resetsAt: 1_800_000_000 },
+              credits: { hasCredits: true, unlimited: false, balance: "1240.5" },
+            },
             rateLimitsByLimitId: null,
             rateLimitResetCredits: { availableCount: 1, credits: null },
           };
@@ -98,6 +101,11 @@ it.effect("owns account, login, rate-limit, and notification state behind one in
       planType: "plus",
     });
     assert.strictEqual(first.rateLimits?.primary?.usedPercent, 25);
+    assert.deepEqual(first.rateLimits?.credits, {
+      hasCredits: true,
+      unlimited: false,
+      balance: "1240.5",
+    });
     assert.strictEqual(first.rateLimitResetCredits?.availableCount, 1);
     assert.strictEqual((yield* account.readUsageLimits).ordinaryUsageAllowed, false);
 

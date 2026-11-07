@@ -10,6 +10,7 @@ import {
   describeUsageMeter,
   describeUsageMeterLabel,
   describeUsageProvenance,
+  formatUsageCredits,
   formatRateLimitResetLabel,
   formatRateLimitWindowLabel,
   formatUsageAge,
@@ -61,6 +62,7 @@ const reading = (overrides: Partial<UsageReading> = {}): UsageReading => ({
   ],
   observedAt: NOW - 5 * 60_000,
   readFailed: false,
+  credits: null,
   ...overrides,
 });
 
@@ -272,6 +274,75 @@ describe("usage meter", () => {
   });
 });
 
+describe("usage credits", () => {
+  const usedUp = reading({
+    credits: 1240.5,
+    windows: [
+      {
+        id: "five_hour",
+        label: "5-hour",
+        usedPercent: 100,
+        resetsAt: NOW + HOUR,
+        durationMins: 300,
+        scope: "account",
+      },
+      {
+        id: "seven_day",
+        label: "Weekly",
+        usedPercent: 30,
+        resetsAt: NOW + 72 * HOUR,
+        durationMins: 7 * 24 * 60,
+        scope: "account",
+      },
+    ],
+  });
+
+  test.each([
+    [1240, "1,240"],
+    [1240.1, "1,241"],
+    [0.2, "1"],
+    ["unlimited", "Unlimited"],
+  ] as const)("%s reads as %s", (credits, expected) => {
+    expect(formatUsageCredits(credits)).toBe(expected);
+  });
+
+  test("credits are in use only while the window that stops work first is used up", () => {
+    expect(describeUsageMeter(usedUp, NOW).creditsInUse).toBe(true);
+    expect(describeUsageMeter({ ...usedUp, credits: null }, NOW).creditsInUse).toBe(false);
+    expect(describeUsageMeter(reading({ credits: 1240.5 }), NOW).creditsInUse).toBe(false);
+  });
+
+  test("a used-up window that has reset no longer draws on credits", () => {
+    expect(describeUsageMeter(usedUp, NOW + 2 * HOUR).creditsInUse).toBe(false);
+  });
+
+  test("a model-only window that is used up does not draw on credits", () => {
+    const view = describeUsageMeter(
+      reading({
+        credits: 1240.5,
+        windows: [
+          { ...usedUp.windows[1]!, usedPercent: 30 },
+          { ...usedUp.windows[0]!, id: "fable", label: "Fable", scope: "model" },
+        ],
+      }),
+      NOW,
+    );
+    expect(view.creditsInUse).toBe(false);
+  });
+
+  test("the rail announces credits only when they are carrying the account", () => {
+    expect(describeUsageMeterLabel(describeUsageMeter(usedUp, NOW), NOW)).toBe(
+      "Claude usage: 5-hour limit reached, resets in 1 h, using credits, 1,241 left",
+    );
+    expect(
+      describeUsageMeterLabel(describeUsageMeter({ ...usedUp, credits: "unlimited" }, NOW), NOW),
+    ).toBe("Claude usage: 5-hour limit reached, resets in 1 h, using credits");
+    expect(
+      describeUsageMeterLabel(describeUsageMeter(reading({ credits: 1240.5 }), NOW), NOW),
+    ).toBe("Claude usage: 30% left in weekly window");
+  });
+});
+
 describe("usage readings", () => {
   const codexAccount: CodexAccountSnapshot = {
     status: "ready",
@@ -297,6 +368,56 @@ describe("usage readings", () => {
     const apiKey = codexUsageReading({ ...codexAccount, account: { type: "apiKey" } });
     expect(apiKey?.metered).toBe(false);
     expect(describeUsageMeter(apiKey!, NOW).status).toBe("unmetered");
+  });
+
+  const withCredits = (
+    credits: NonNullable<CodexAccountSnapshot["rateLimits"]>["credits"],
+    planType = "plus",
+  ) =>
+    codexUsageReading({
+      ...codexAccount,
+      account: { type: "chatgpt", email: "dev@example.com", planType },
+      rateLimits: { ...codexAccount.rateLimits, credits },
+    })?.credits;
+
+  test.each([
+    ["a positive balance", { hasCredits: true, unlimited: false, balance: "1240.5" }, 1240.5],
+    ["unlimited credits", { hasCredits: true, unlimited: true }, "unlimited"],
+    ["a zero balance", { hasCredits: true, unlimited: false, balance: "0" }, null],
+    ["a blank balance", { hasCredits: true, unlimited: false, balance: "  " }, null],
+    ["an unknown balance", { hasCredits: true, unlimited: false }, null],
+    ["an unreadable balance", { hasCredits: true, unlimited: false, balance: "soon" }, null],
+    ["an account without credits", { hasCredits: false, unlimited: false, balance: "50" }, null],
+    ["no report at all", undefined, null],
+  ])("a personal Codex plan with %s", (_name, credits, expected) => {
+    expect(withCredits(credits)).toBe(expected);
+  });
+
+  test.each(["free", "go", "plus", "prolite", "pro", "promax"])(
+    "the %s plan's credits are the person's own",
+    (planType) => {
+      const credits = { hasCredits: true, unlimited: false, balance: "12" };
+      expect(withCredits(credits, planType)).toBe(12);
+    },
+  );
+
+  test.each(["team", "business", "enterprise", "edu", "unknown"])(
+    "the %s plan's credits are not the person's own",
+    (planType) => {
+      const credits = { hasCredits: true, unlimited: false, balance: "12" };
+      expect(withCredits(credits, planType)).toBe(null);
+      expect(withCredits({ ...credits, unlimited: true }, planType)).toBe(null);
+    },
+  );
+
+  test("a Codex API key has no credits to show", () => {
+    expect(
+      codexUsageReading({
+        ...codexAccount,
+        account: { type: "apiKey" },
+        rateLimits: { credits: { hasCredits: true, unlimited: false, balance: "12" } },
+      })?.credits,
+    ).toBe(null);
   });
 
   test("a Codex catalog reading gives both account windows to the shared meter", () => {

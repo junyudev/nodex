@@ -232,6 +232,93 @@ describe("WorkbenchRailAccountControls", () => {
     });
   });
 
+  test("lists the account's credits below its windows and above its quota resets", async () => {
+    const account: CodexAccountSnapshot = {
+      ...authenticatedAccount,
+      rateLimits: {
+        ...authenticatedAccount.rateLimits,
+        credits: { hasCredits: true, unlimited: false, balance: "1240.5" },
+      },
+    };
+    const view = renderRail(
+      <NodexTooltipProvider>
+        <WorkbenchRailAccountControls
+          onOpenSettings={() => undefined}
+          onOpenAccountSettings={() => undefined}
+          account={account}
+          connection={{ status: "connected", retries: 0 }}
+          onRefreshAccount={async () => account}
+          onConsumeRateLimitReset={async () => ({ outcome: "reset", account })}
+          onLogout={async () => undefined}
+        />
+      </NodexTooltipProvider>,
+    );
+
+    const ring = view.getByRole("button", { name: "Codex usage: 61% left in weekly window" });
+    expect(
+      ring.querySelector("[data-usage-ring-track]")?.getAttribute("data-usage-ring-track"),
+    ).toBe("solid");
+    await act(async () => {
+      fireEvent.focus(ring);
+      await Promise.resolve();
+    });
+
+    const balance = await view.findByText("1,241");
+    expect(view.queryByText("In use")).toBeNull();
+    const [lastWindow] = view.getAllByRole("meter").slice(-1);
+    const resets = view.getByRole("button", { name: "2 quota resets" });
+    expect(
+      lastWindow!.compareDocumentPosition(balance) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(balance.compareDocumentPosition(resets) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test("a used-up window draws an amber ring while credits carry the account, red without", async () => {
+    const usedUp = (credits: NonNullable<CodexAccountSnapshot["rateLimits"]>["credits"]) =>
+      ({
+        ...authenticatedAccount,
+        rateLimits: {
+          primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: Date.now() + HOUR },
+          secondary: authenticatedAccount.rateLimits?.secondary,
+          credits,
+        },
+      }) satisfies CodexAccountSnapshot;
+    const rail = (account: CodexAccountSnapshot) => (
+      <NodexTooltipProvider>
+        <WorkbenchRailAccountControls
+          onOpenSettings={() => undefined}
+          onOpenAccountSettings={() => undefined}
+          account={account}
+          connection={{ status: "connected", retries: 0 }}
+          onRefreshAccount={async () => account}
+          onLogout={async () => undefined}
+        />
+      </NodexTooltipProvider>
+    );
+    const view = renderRail(rail(usedUp({ hasCredits: true, unlimited: false, balance: "320" })));
+    const track = () =>
+      codexMeter(view.container)
+        .querySelector("[data-usage-ring-track]")
+        ?.getAttribute("data-usage-ring-track");
+
+    expect(track()).toBe("credits");
+    expect(codexMeter(view.container).getAttribute("aria-label")).toContain(
+      "using credits, 320 left",
+    );
+    await act(async () => {
+      fireEvent.focus(codexMeter(view.container));
+      await Promise.resolve();
+    });
+    expect(await view.findByText("In use")).toBeTruthy();
+    expect(view.getByText("Limit reached")).toBeTruthy();
+    expect(view.getByText("320")).toBeTruthy();
+
+    view.rerender(rail(usedUp({ hasCredits: true, unlimited: false, balance: "0" })));
+    await waitFor(() => expect(track()).toBe("spent"));
+    expect(view.queryByText("In use")).toBeNull();
+    expect(codexMeter(view.container).getAttribute("aria-label")).not.toContain("credits");
+  });
+
   test("keeps quota resets collapsed and reuses the attempt key after a transport failure", async () => {
     const attempts: Array<{ idempotencyKey: string; creditId?: string | null }> = [];
     const view = renderRail(

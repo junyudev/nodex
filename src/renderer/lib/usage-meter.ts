@@ -38,7 +38,12 @@ export interface UsageReading {
   readonly observedAt: number | null;
   /** The latest read failed; `windows` is the previous reading, if there was one. */
   readonly readFailed: boolean;
+  /** Prepaid credits that carry the account past a used-up window; null when it has none. */
+  readonly credits: UsageCredits | null;
 }
+
+/** A positive balance, or an account whose credits never run out. */
+export type UsageCredits = number | "unlimited";
 
 export type UsageSeverity = "normal" | "low" | "critical" | "exhausted";
 
@@ -69,6 +74,8 @@ export interface UsageMeterView {
   readonly stale: boolean;
   /** The next moment this view changes without new data: a reset or the reading going stale. */
   readonly nextChangeAt: number | null;
+  /** The window that stops work first is used up, and credits are carrying the account past it. */
+  readonly creditsInUse: boolean;
 }
 
 /** After this long a reading may no longer describe the account; it is shown, but dimmed. */
@@ -207,7 +214,20 @@ export function describeUsageMeter(
     windows,
     stale,
     nextChangeAt: upcoming.length > 0 ? Math.min(...upcoming) : null,
+    creditsInUse: binding?.severity === "exhausted" && reading.credits !== null,
   };
+}
+
+/** Whole credits, rounded up so a balance that remains never reads as none. */
+export function formatUsageCredits(credits: UsageCredits): string {
+  return credits === "unlimited" ? "Unlimited" : Math.ceil(credits).toLocaleString("en-US");
+}
+
+function describeCreditsInUse({ creditsInUse, reading: { credits } }: UsageMeterView): string {
+  if (!creditsInUse || credits === null) return "";
+  return credits === "unlimited"
+    ? ", using credits"
+    : `, using credits, ${formatUsageCredits(credits)} left`;
 }
 
 /** What the rail announces for one meter; the card carries the rest. */
@@ -229,7 +249,7 @@ export function describeUsageMeterLabel(view: UsageMeterView, now: number = Date
     view.stale && reading.observedAt !== null
       ? `, read ${formatUsageAge(reading.observedAt, now)}`
       : "";
-  return `${reading.title} usage: ${level}${age}`;
+  return `${reading.title} usage: ${level}${describeCreditsInUse(view)}${age}`;
 }
 
 /**
@@ -290,6 +310,26 @@ const CHATGPT_PLAN_LABELS: Readonly<Record<PlanType, string | null>> = {
   unknown: null,
 };
 
+/** Plans whose credits are the person's own; a workspace's balance is a pool shared with others. */
+const PERSONAL_CREDIT_PLANS: ReadonlySet<string> = new Set<PlanType>([
+  "free",
+  "go",
+  "plus",
+  "prolite",
+  "pro",
+  "promax",
+]);
+
+function codexCredits(
+  planType: string,
+  credits: CodexRateLimitsSnapshot["credits"],
+): UsageCredits | null {
+  if (!credits?.hasCredits || !PERSONAL_CREDIT_PLANS.has(planType)) return null;
+  if (credits.unlimited) return "unlimited";
+  const balance = Number(credits.balance);
+  return Number.isFinite(balance) && balance > 0 ? balance : null;
+}
+
 /** Names a ChatGPT plan for display, title-casing plans this build does not know yet. */
 export function formatChatGptPlan(planType: string): string {
   const known: Readonly<Record<string, string | null>> = CHATGPT_PLAN_LABELS;
@@ -334,6 +374,7 @@ export function codexUsageReading(snapshot: CodexAccountSnapshot | null): UsageR
       windows: [],
       observedAt: null,
       readFailed: false,
+      credits: null,
     };
   }
   const limits = snapshot.rateLimits;
@@ -350,6 +391,7 @@ export function codexUsageReading(snapshot: CodexAccountSnapshot | null): UsageR
     ].filter((window) => window !== null),
     observedAt: snapshot.rateLimitsUpdatedAt ?? null,
     readFailed: snapshot.rateLimitsReadFailed ?? false,
+    credits: codexCredits(account.planType, limits?.credits),
   };
 }
 
@@ -399,6 +441,8 @@ export function runtimeUsageReading(provider: RuntimeProvider, readFailed: boole
     windows,
     observedAt: windows.length > 0 ? epochMs(limits?.checkedAt) : null,
     readFailed: readFailed || limits?.unavailable?.reason === "probeFailed",
+    // The Agent catalog reports windows only; the signed-in account's own reading has credits.
+    credits: null,
   };
 }
 
