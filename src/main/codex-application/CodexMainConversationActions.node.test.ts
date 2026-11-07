@@ -103,6 +103,7 @@ it.effect("decodes follower question answers, prepared edit images and queue con
     );
     if (!handler) throw new Error("Peer actions missing");
     const editOptions = {
+      images: [{ source: "data:image/png;base64,AQID", caption: "attached" }],
       turnId: "turn",
       message: "![shot](nodex://files/shot)",
       writtenImages: [{ source: "data:image/png;base64,AQID", caption: "shot" }],
@@ -126,6 +127,12 @@ it.effect("decodes follower question answers, prepared edit images and queue con
       params: { conversationId: "thread", ...editOptions, writtenImages: [{ source: 123 }] },
     }).pipe(Effect.result);
     assert.strictEqual(invalidEdit._tag, "Failure");
+    assert.strictEqual(edits.length, 1);
+    const missingImages = yield* handler("remote", {
+      method: "thread-follower-edit-last-user-turn",
+      params: { conversationId: "thread", turnId: "turn", message: "text" },
+    }).pipe(Effect.result);
+    assert.strictEqual(missingImages._tag, "Failure");
     assert.strictEqual(edits.length, 1);
     const accepted = yield* handler("local", {
       method: "thread-follower-submit-user-input",

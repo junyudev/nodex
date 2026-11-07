@@ -421,6 +421,19 @@ export interface ThreadStageRouteInput {
   } | null;
 }
 
+/**
+ * A sent message rewritten. The conversation rewinds to just before it and continues from what
+ * this describes, so it is the whole message: its text, and `images`, every image attached to it,
+ * in order. A sent image keeps its transcript source; an empty list sends none. Images written
+ * into `message` are numbered after these and travel after them.
+ */
+export interface UserTurnEdit {
+  readonly threadId: string;
+  readonly turnId: string;
+  readonly message: string;
+  readonly images: readonly import("../../../shared/types").CodexPromptImageInput[];
+}
+
 export interface ThreadStageActions {
   onNextQueuedFollowUpPage?: () => Promise<void>;
   onPreviousQueuedFollowUpPage?: () => Promise<void>;
@@ -578,7 +591,7 @@ export interface ThreadStageActions {
     promptInput?: CodexPromptInput;
     ledgerRevision?: number;
   }) => Promise<void>;
-  onEditUserTurn: (input: { threadId: string; turnId: string; message: string }) => Promise<void>;
+  onEditUserTurn: (input: UserTurnEdit) => Promise<void>;
   onForkFromTurn: (input: { threadId: string; turnId: string; message: string }) => Promise<void>;
   onForkThread?: (target: "local" | "newWorktree") => Promise<void>;
   /** Present in a fork: brings its newest finished work into the chat it was forked from. */

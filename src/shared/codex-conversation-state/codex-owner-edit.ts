@@ -1,4 +1,5 @@
 import type { ThreadRevertResponse, TurnStartParams } from "@nodex/codex-app-server-protocol/v2";
+import { codexImageInputSource } from "../codex-image-input";
 import { projectMessageText } from "../message-agent-input";
 import {
   prepareCodexPrompt,
@@ -16,6 +17,7 @@ import { residentConversationTurns } from "./codex-turn-mutation";
 export interface CanonicalEditOptions {
   readonly turnId: string;
   readonly message: string;
+  readonly images: readonly CodexPromptImageInput[];
   /** Written images in occurrence order, with Library Files materialized before owner dispatch. */
   readonly writtenImages?: readonly CodexPromptImageInput[];
 
@@ -55,7 +57,7 @@ export function replaceCanonicalEditedPrompt(original: string, message: string):
 /**
  * Rewrites any settled user Turn: the conversation reverts to just before it, so that Turn and
  * every later Turn leave history, then the rewritten message starts a new Turn. Runs on the owner
- * after follower dispatch, preserving original non-text inputs before newly written images.
+ * after follower dispatch, preserving non-image inputs before the authoritative replacement images.
  */
 export async function editCanonicalUserTurn(
   client: CanonicalEditClient,
@@ -81,18 +83,24 @@ export async function editCanonicalUserTurn(
   if (removed.some((turn) => turn.status === "inProgress"))
     throw new Error("Cannot edit a message while a turn is in progress.");
   const written = projectMessageText(options.message, {
-    precedingImageCount: original.params.input.filter(
-      (item) => item.type === "image" || item.type === "localImage",
-    ).length,
+    precedingImageCount: options.images.length,
   });
-  // Prepare before reverting: an unavailable written image must leave history intact.
+  const originals = original.params.input.filter(
+    (item) => item.type === "image" || item.type === "localImage",
+  );
+  const findOriginal = (source: string) =>
+    originals.find((item) => codexImageInputSource(item) === source);
+  // Resolve the entire replacement before reverting, retaining exact native image fields.
   const prepared = await prepareCodexPrompt(
     written.text,
-    { ...written, images: options.writtenImages ? [...options.writtenImages] : written.images },
-    { resolveImageInput: client.resolveImageInput, allowEmptyTextPlaceholder: true },
+    { ...written, images: [...options.images, ...(options.writtenImages ?? written.images ?? [])] },
+    {
+      resolveImageInput: (source) => findOriginal(source) ?? client.resolveImageInput(source),
+      allowEmptyTextPlaceholder: true,
+    },
   );
   const textIndex = original.params.input.findIndex((item) => item.type === "text");
-  const input =
+  const input: TurnStartParams["input"] = (
     textIndex < 0
       ? [{ type: "text" as const, text: written.text, text_elements: [] }, ...original.params.input]
       : original.params.input.map((item, index) =>
@@ -103,9 +111,15 @@ export async function editCanonicalUserTurn(
                 text_elements: [],
               }
             : item,
-        );
+        )
+  ).filter((item) => item.type !== "image" && item.type !== "localImage");
   input.push(
-    ...prepared.inputItems.filter((item) => item.type === "image" || item.type === "localImage"),
+    ...prepared.inputItems
+      .filter((item) => item.type === "image" || item.type === "localImage")
+      .map(
+        // Hosted file IDs bypass the prompt resolver; restore their native detail here too.
+        (item) => findOriginal(codexImageInputSource(item)) ?? item,
+      ),
   );
   // Freeze the current execution workspace with the retained bytes before changing history.
   const start = await client.prepareStart(

@@ -593,7 +593,12 @@ describe("workbench session shell / automations-conversation", () => {
 
     const actions = getLastThreadStageActions();
     const onEditUserTurn = actions.onEditUserTurn as
-      | ((input: { threadId: string; turnId: string; message: string }) => Promise<void>)
+      | ((input: {
+          threadId: string;
+          turnId: string;
+          message: string;
+          images: [];
+        }) => Promise<void>)
       | undefined;
     expect(typeof onEditUserTurn).toBe("function");
 
@@ -602,6 +607,7 @@ describe("workbench session shell / automations-conversation", () => {
         threadId: "thread-alpha",
         turnId: "turn-latest",
         message: "Rewrite the latest prompt",
+        images: [],
       });
     });
     await settleAsyncRender();

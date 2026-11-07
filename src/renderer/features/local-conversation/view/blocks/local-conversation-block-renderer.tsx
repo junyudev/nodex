@@ -32,6 +32,7 @@ import type {
   ThreadBlockModel,
   ThreadPlanSidePanelState,
   ThreadStageActions,
+  UserTurnEdit,
 } from "../../thread-stage-types";
 
 interface ThreadBlockRendererProps {
@@ -46,11 +47,7 @@ interface ThreadBlockRendererProps {
   childMemberships?: readonly CodexConversationChildMembership[];
   parentModel?: string | null;
   threadCwd?: string | null;
-  onEditUserTurn?: (input: {
-    threadId: string;
-    turnId: string;
-    message: string;
-  }) => void | Promise<void>;
+  onEditUserTurn?: (input: UserTurnEdit) => void | Promise<void>;
   onForkFromTurn?: (input: {
     threadId: string;
     turnId: string;

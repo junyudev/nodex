@@ -69,6 +69,7 @@ import type {
   ThreadComposerShellBackgroundAgentRowModel,
   ThreadPlanSidePanelState,
   ThreadStageActions,
+  UserTurnEdit,
 } from "../thread-stage-types";
 import type { LocalConversationAttachmentState } from "../conversation-attachment-state";
 import type { ConversationHistoryPort } from "../conversation-runtime";
@@ -1170,7 +1171,7 @@ export function LocalConversationThreadBodyOwner({
   useRegisterContentSearchSource(contentSearchSource);
 
   const handleEditUserTurn = useCallback(
-    async (input: { threadId: string; turnId: string; message: string }) => {
+    async (input: UserTurnEdit) => {
       if (presentation === "main")
         threadScrollController.prepareLatestTurnSubmitPlacement({ placeLatestTurn: true });
       try {

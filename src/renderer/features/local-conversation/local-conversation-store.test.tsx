@@ -2762,12 +2762,12 @@ describe("local-conversation-store", () => {
           const control = controlRef.current;
           if (!control) throw new Error("Control fixture unavailable");
           await control.startTurn("tier-thread", "Continue", { serviceTier });
-          await control.editUserTurn("tier-thread", "turn", "Replace", { serviceTier });
+          await control.editUserTurn("tier-thread", "turn", "Replace", [], { serviceTier });
           await control.enqueueQueuedFollowUp("tier-thread", "Next", { serviceTier });
         });
         for (const options of [
           start.mock.calls[0]?.[2],
-          edit.mock.calls[0]?.[3],
+          edit.mock.calls[0]?.[4],
           enqueue.mock.calls[0]?.[2],
         ]) {
           if (serviceTier === undefined) expect(options).not.toHaveProperty("serviceTier");
@@ -4332,6 +4332,7 @@ describe("local-conversation-store", () => {
         "thread-1",
         "turn-user",
         "Rewrite prompt",
+        [],
       );
       await flushAsyncWork(2);
       expect(editResult.threadId).toBe("thread-1");
@@ -20532,7 +20533,10 @@ describe("local-conversation-store", () => {
     const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
 
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    const materialize = vi
+      .spyOn(assets, "readManagedImageDataUrl")
+      .mockResolvedValue("data:image/png;base64,AQID");
+    const manager = trackNativeTestManager(new CodexAppServerManager("devbox"));
     try {
       const partialConversation: CodexConversationSnapshot = {
         ...buildConversation("thread-1", "project-1"),
@@ -20547,7 +20551,7 @@ describe("local-conversation-store", () => {
         ],
       };
       dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
-        hostId: "local",
+        hostId: "devbox",
         conversationId: "thread-1",
         version: 1,
         change: {
@@ -20558,7 +20562,10 @@ describe("local-conversation-store", () => {
         sourceClientId: "owner-a",
       });
 
-      const editPromise = manager.editUserTurn("thread-1", "turn-older", "Rewrite older prompt");
+      const editPromise = manager.editUserTurn("thread-1", "turn-older", "Rewrite older prompt", [
+        { source: "nodex://assets/new.png", caption: "new" },
+        { source: "/remote/kept.png" },
+      ]);
       await flushAsyncWork();
 
       const followerRecords = invokeRecords.filter(
@@ -20573,14 +20580,20 @@ describe("local-conversation-store", () => {
             conversationId: "thread-1",
             turnId: "turn-older",
             message: "Rewrite older prompt",
+            images: [
+              { source: "data:image/png;base64,AQID", caption: "new" },
+              { source: "/remote/kept.png" },
+            ],
           },
         },
       });
       await editPromise;
+      expect(materialize).toHaveBeenCalledExactlyOnceWith("nodex://assets/new.png");
       expect(
         invokeRecords.some((record) => record.channel === "codex:thread:edit-last-user-turn"),
       ).toBe(false);
     } finally {
+      materialize.mockRestore();
       followerActionResult = null;
       manager.destroy();
     }
@@ -20648,7 +20661,7 @@ describe("local-conversation-store", () => {
       });
 
       const editPromise = manager
-        .editUserTurn("thread-1", "turn-latest", "Rewrite latest prompt")
+        .editUserTurn("thread-1", "turn-latest", "Rewrite latest prompt", [])
         .then(() => {
           resolved = true;
         });
@@ -21639,7 +21652,9 @@ describe("local-conversation-store", () => {
         }
         await flushAsyncWork();
         invokeRecords = [];
-        await manager.editUserTurn("thread-1", "turn-latest", "![shot](nodex://files/shot)");
+        await manager.editUserTurn("thread-1", "turn-latest", "![shot](nodex://files/shot)", [
+          { source: "/execution-host/original.png" },
+        ]);
 
         expect(readFile).toHaveBeenCalledExactlyOnceWith(
           { kind: "library" },
@@ -21798,7 +21813,12 @@ describe("local-conversation-store", () => {
       resumeThreadResult = withPaginatedCanonicalState(currentConversation);
       ownerEditRevertResult = buildRevertResponseFromConversation(revertConversation);
 
-      const result = await manager.editUserTurn("thread-1", "turn-latest", "Rewrite latest prompt");
+      const result = await manager.editUserTurn(
+        "thread-1",
+        "turn-latest",
+        "Rewrite latest prompt",
+        [],
+      );
 
       const resumeIndex = invokeRecords.findIndex(
         (record) => record.channel === "codex:thread:resume:prepare",
@@ -21915,7 +21935,12 @@ describe("local-conversation-store", () => {
       });
       invokeRecords = [];
 
-      const result = await manager.editUserTurn("thread-1", "turn-latest", "Rewrite latest prompt");
+      const result = await manager.editUserTurn(
+        "thread-1",
+        "turn-latest",
+        "Rewrite latest prompt",
+        [],
+      );
 
       expect(
         invokeRecords.find((record) => record.channel === "peer:requestThreadFollower")?.args[0],
@@ -22002,7 +22027,12 @@ describe("local-conversation-store", () => {
         expect(turns[0]?.turnId).toBe("turn-older");
         expect(turns[1]?.turnId).toBeNull();
       };
-      const result = await manager.editUserTurn("thread-1", "turn-latest", "Rewrite latest prompt");
+      const result = await manager.editUserTurn(
+        "thread-1",
+        "turn-latest",
+        "Rewrite latest prompt",
+        [],
+      );
 
       const revertIndex = recordedNativeRequests().findIndex(
         (record) =>
@@ -22136,7 +22166,7 @@ describe("local-conversation-store", () => {
         ).toBe(true);
       };
       await act(async () => {
-        await manager.editUserTurn("thread-1", "turn-latest", "Rewrite latest prompt");
+        await manager.editUserTurn("thread-1", "turn-latest", "Rewrite latest prompt", []);
       });
 
       expect(view.queryByText("Latest prompt")).toBeNull();
@@ -22173,7 +22203,7 @@ describe("local-conversation-store", () => {
         invokeRecords = [];
         ownerEditPreparationFailure = failure;
         await expect(
-          manager.editUserTurn("thread-1", "turn-latest", "Replacement"),
+          manager.editUserTurn("thread-1", "turn-latest", "Replacement", [{ source: "/new.png" }]),
         ).rejects.toThrow(failure === "revert" ? "Revert failed" : "Image unavailable");
         expect(manager.readConversation("thread-1")?.turns[0]?.turnId).toBe("turn-latest");
         expect(invokeRecords.some((record) => record.channel === "codex:turn:native:release")).toBe(
@@ -22232,7 +22262,12 @@ describe("local-conversation-store", () => {
       await manager.requestThreadStreamResume("thread-1");
       invokeRecords = [];
 
-      const editPromise = manager.editUserTurn("thread-1", "turn-latest", "Rewrite latest prompt");
+      const editPromise = manager.editUserTurn(
+        "thread-1",
+        "turn-latest",
+        "Rewrite latest prompt",
+        [],
+      );
       dispatchCodexAppServerMessage("native-notification", {
         type: "nativeNotification",
         generation: resumeThreadGeneration,

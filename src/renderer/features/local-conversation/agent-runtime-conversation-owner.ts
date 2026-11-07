@@ -40,7 +40,10 @@ import type {
   CodexCanonicalItem,
   CodexPromptInput,
 } from "../../../shared/types";
-import { buildAgentRuntimeAttachmentSource } from "../../../shared/agent-runtime-attachments";
+import {
+  buildAgentRuntimeAttachmentSource,
+  parseAgentRuntimeAttachmentSource,
+} from "../../../shared/agent-runtime-attachments";
 import {
   agentRuntimeSubagentAgent,
   projectAgentRuntimeSubagentDisplay,
@@ -435,13 +438,10 @@ export class AgentRuntimeConversationOwner {
       ...readRuntimeThreadTextSelections(message.context),
     };
   };
-  /**
-   * Reads the message that started a sent Run, with its images resolved to files, so an edit
-   * can submit the rewritten words alongside everything else the message carried. The Agent
-   * Runtime answers only while that Run remains in the conversation.
-   */
+  /** Resolves only the selected sent images; removed or unloaded originals do not block edits. */
   readonly readSentMessage = async (
     runId: string,
+    attached: NonNullable<CodexPromptInput["images"]>,
   ): Promise<{
     readonly message: NonNullable<AgentRuntimeRunMessage>;
     readonly images: NonNullable<CodexPromptInput["images"]>;
@@ -449,19 +449,22 @@ export class AgentRuntimeConversationOwner {
     const message = await this.#transport.readRunMessage({ ...this.#target, runId });
     if (!message || message.threadId !== this.#target.threadId || message.role !== "user")
       throw new Error("This message is no longer available");
-    if (!message.attachments.some((attachment) => attachment.type === "image"))
-      return { message, images: [] };
-    // Image bytes are addressed through the message's transcript item, resident while shown.
-    const opening = [...this.#items.values()].find((item) => item.runId === runId && item.opening);
-    if (!opening) throw new Error("This message's images are not loaded");
-    return {
-      message,
-      images: await this.#resolveMessageImages(
-        message,
-        opening.sourceThreadId,
-        opening.sourceItemId,
-      ),
-    };
+    const images: NonNullable<CodexPromptInput["images"]> = [];
+    for (const image of attached) {
+      const reference = parseAgentRuntimeAttachmentSource(image.source);
+      if (!reference) {
+        images.push(image);
+        continue;
+      }
+      const source = await this.#transport.attachment({ ...this.#target, ...reference });
+      if (!source) throw new Error("An image in this message is no longer available");
+      const attachment = message.attachments.find((entry) => entry.id === reference.attachmentId);
+      images.push({
+        source: "dataUrl" in source ? source.dataUrl : source.path,
+        caption: attachment?.name ?? image.caption,
+      });
+    }
+    return { message, images };
   };
   async #resolveMessageImages(
     message: NonNullable<AgentRuntimeRunMessage>,

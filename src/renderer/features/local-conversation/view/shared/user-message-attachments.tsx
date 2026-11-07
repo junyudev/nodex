@@ -38,7 +38,10 @@ import type {
 import { cn } from "@/lib/utils";
 
 import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
+import { ComposerAttachmentStrip } from "@/components/composer/composer-attachments";
 
+import { ComposerImageAttachmentThumbnail } from "../composer/image-attachments/composer-image-attachment-thumbnail";
+import { resolveComposerImageAttachmentSize } from "../composer/image-attachments/composer-image-attachment-model";
 import { NO_UNAVAILABLE_IMAGES, UnavailableImageChip } from "./unavailable-image";
 
 export function ImageLoadingTile({ label }: { label: string }) {
@@ -249,11 +252,10 @@ function useUserImageMenu(attachment: CodexUserImageAttachment, url: string | nu
   };
 }
 
-function UserImageAttachment({ attachment }: { attachment: CodexUserImageAttachment }) {
+/** One of the message's images: read, and in the message's viewer once it has been. */
+function useUserMessageImage(attachment: CodexUserImageAttachment) {
   const gallery = useContext(UserMessageImagesContext)!;
-  const asset = useContentImage(attachment.source);
-  const { previewSrc: src, downloadSrc, isLoading, isError } = asset;
-  const showMenu = useUserImageMenu(attachment, isError ? null : src);
+  const { previewSrc: src, downloadSrc, isLoading, isError } = useContentImage(attachment.source);
   const register = gallery.register;
 
   useEffect(() => {
@@ -265,6 +267,13 @@ function UserImageAttachment({ attachment }: { attachment: CodexUserImageAttachm
       src,
     });
   }, [attachment.id, attachment.source, downloadSrc, isError, isLoading, register, src]);
+
+  return { gallery, src, isLoading, isError };
+}
+
+function UserImageAttachment({ attachment }: { attachment: CodexUserImageAttachment }) {
+  const { gallery, src, isLoading, isError } = useUserMessageImage(attachment);
+  const showMenu = useUserImageMenu(attachment, isError ? null : src);
 
   return (
     <span className="contents" onContextMenu={showMenu}>
@@ -338,18 +347,74 @@ function UserFileAttachmentChip({
   );
 }
 
+function EditableUserImage({
+  attachment,
+  name,
+  onRemove,
+}: {
+  attachment: CodexUserImageAttachment;
+  name: string;
+  onRemove: (attachmentId: string) => void;
+}) {
+  const { gallery, src, isLoading, isError } = useUserMessageImage(attachment);
+  return (
+    <ComposerImageAttachmentThumbnail
+      attachment={{ id: attachment.id, filename: name, src: src ?? "", uploadStatus: "idle" }}
+      availability={isLoading ? "loading" : isError || !src ? "failed" : undefined}
+      previewEnabled={!isLoading && !isError && Boolean(src)}
+      size={resolveComposerImageAttachmentSize(false)}
+      onOpen={(attachmentId) =>
+        gallery.open(
+          attachmentId,
+          document.activeElement instanceof HTMLElement ? document.activeElement : document.body,
+        )
+      }
+      onRemove={onRemove}
+    />
+  );
+}
+
+/**
+ * The images of a message being rewritten, shown as a Composer shows a draft's: they open in the
+ * message's viewer and can be removed. One that cannot be read says so, and can still go.
+ */
+export function UserMessageEditImageRow({
+  images,
+  onRemove,
+}: {
+  images: readonly CodexUserImageAttachment[];
+  onRemove: (attachmentId: string) => void;
+}) {
+  if (images.length === 0) return null;
+  return (
+    <ComposerAttachmentStrip>
+      {images.map((image, index) => (
+        <EditableUserImage
+          key={image.id}
+          attachment={image}
+          name={image.caption || `Image #${index + 1}`}
+          onRemove={onRemove}
+        />
+      ))}
+    </ComposerAttachmentStrip>
+  );
+}
+
 /**
  * One image viewer for a sent message: its attached images, and every placeholder in its text
  * that names one, navigate together. `text` is the message's text, whose placeholders number
- * the images it was sent with.
+ * the images it was sent with. A message being rewritten is still a draft: looking at one of its
+ * images does not offer to edit it, as that would send the edit somewhere else.
  */
 export function UserMessageImageGallery({
   attachments,
   text,
+  rewriting = false,
   children,
 }: {
   attachments: readonly CodexUserAttachment[];
   text: string;
+  rewriting?: boolean;
   children: ReactNode;
 }) {
   const { composerTarget, conversationId } = useContentImageScope();
@@ -385,7 +450,8 @@ export function UserMessageImageGallery({
       ),
     [attachments],
   );
-  const numbersImages = images.length > 0 && imagePlaceholderCount(text) === images.length;
+  // A number beyond the images means one could not be sent, so the numbering cannot be trusted.
+  const numbersImages = images.length > 0 && imagePlaceholderCount(text) <= images.length;
   const context = useMemo<UserMessageImages>(
     () => ({
       images,
@@ -437,23 +503,27 @@ export function UserMessageImageGallery({
               ? () => showImage(activeImageIndex + 1)
               : undefined
           }
-          onEditImage={() => {
-            void openUserAttachmentImagePreview({
-              alt: "User attachment",
-              attachmentId: activeImage.attachmentId,
-              attachmentSrc: activeImage.attachmentSource,
-              composerTarget: composerTarget ?? undefined,
-              downloadSrc: activeImage.downloadSrc ?? activeImage.src,
-              entrypoint: "lightbox_edit_button",
-              imageSource: "uploaded",
-              openInEditor: true,
-              policy: "edit_button",
-              previewSrc: activeImage.src,
-              src: activeImage.src,
-              threadId: conversationId,
-              title: "User attachment",
-            });
-          }}
+          onEditImage={
+            rewriting
+              ? undefined
+              : () => {
+                  void openUserAttachmentImagePreview({
+                    alt: "User attachment",
+                    attachmentId: activeImage.attachmentId,
+                    attachmentSrc: activeImage.attachmentSource,
+                    composerTarget: composerTarget ?? undefined,
+                    downloadSrc: activeImage.downloadSrc ?? activeImage.src,
+                    entrypoint: "lightbox_edit_button",
+                    imageSource: "uploaded",
+                    openInEditor: true,
+                    policy: "edit_button",
+                    previewSrc: activeImage.src,
+                    src: activeImage.src,
+                    threadId: conversationId,
+                    title: "User attachment",
+                  });
+                }
+          }
         />
       ) : null}
     </UserMessageImagesContext>

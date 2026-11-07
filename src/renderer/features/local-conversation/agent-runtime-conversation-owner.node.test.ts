@@ -2257,13 +2257,32 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(owner.getSnapshot().view?.capabilityFlags.canEditUserTurns).toBe(true);
 
     vi.mocked(wire.port.attachment).mockResolvedValueOnce({ path: "/attachments/chart.png" });
-    const read = await owner.readSentMessage("run");
+    const read = await owner.readSentMessage("run", [
+      { source: "nodex-runtime-image:thread/sent-item/image-1" },
+    ]);
     expect(read.message.text).toBe("Compare these");
     expect(read.images).toEqual([{ source: "/attachments/chart.png", caption: "chart.png" }]);
     expect(wire.port.attachment).toHaveBeenCalledWith({
       ...target,
       sourceThreadId: target.threadId,
       itemId: "sent-item",
+      attachmentId: "image-1",
+    });
+    vi.mocked(wire.port.attachment).mockClear();
+    vi.mocked(wire.port.attachment).mockResolvedValue(null);
+    // Removing the missing original does not attempt to load it.
+    expect((await owner.readSentMessage("run", [])).images).toEqual([]);
+    expect((await owner.readSentMessage("run", [{ source: "/new.png" }])).images).toEqual([
+      { source: "/new.png" },
+    ]);
+    expect(wire.port.attachment).not.toHaveBeenCalled();
+    await expect(
+      owner.readSentMessage("run", [{ source: "nodex-runtime-image:other/original/image-1" }]),
+    ).rejects.toThrow("An image in this message is no longer available");
+    expect(wire.port.attachment).toHaveBeenCalledWith({
+      ...target,
+      sourceThreadId: "other",
+      itemId: "original",
       attachmentId: "image-1",
     });
     release();

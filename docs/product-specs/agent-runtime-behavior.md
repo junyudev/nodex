@@ -428,9 +428,10 @@ failed Run cannot be edited. A rewind never reaches further back to an older rec
 point. Editing a sent user message is one operation: it prepares the replacement, which
 compiles it and persists its images, then admits a conversation rewind to just before that
 message's Run and waits for that exact Run to become rolled back before dispatching the
-replacement; every later Run leaves the conversation with it. The replacement keeps the
-original message's images and app context. Because preparation comes first, a message the
-Agent cannot accept or an image that cannot be read discards nothing. Document Agent config is resolved during this preflight so
+replacement; every later Run leaves the conversation with it. The replacement carries exactly
+the images the edit names, reading only those from the original message, and keeps its app
+context. Because preparation comes first, a message the Agent cannot accept or an image that
+cannot be read discards nothing. Document Agent config is resolved during this preflight so
 image admission uses the effective model before history changes. Queued or active
 work and native background tasks block editing.
 Only Providers that explicitly advertise native rollback to an earlier Turn offer
@@ -984,8 +985,9 @@ Both have full access to the current Profile.
 Conversation and queued-message images retain native attachment descriptors. A mounted
 image resolves its exact item and captured read ancestry to the Runtime's stored file
 path, then uses the desktop image reader. Metadata, cold history and closed queues
-never read image bytes. Editing a queued or sent message resolves its own image paths
-and preserves the images when submitting the edited prompt.
+never read image bytes. Editing a queued message resolves its own image paths and
+preserves the images when submitting the edited prompt; editing a sent message resolves
+only the images the edit keeps.
 
 Session titles, archive state and placement come from Core Session overview; Core is
 their only writer. The engine keeps placement and archive only as execution gates (the

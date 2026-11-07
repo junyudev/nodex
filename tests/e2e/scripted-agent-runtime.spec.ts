@@ -1,4 +1,4 @@
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import {
   AGENT_RUNTIME_CODEX_THREAD_SOURCE,
   type AgentSubagentOverview,
@@ -62,12 +62,43 @@ const latestUserText = (request: ScriptedModelRequest): string => {
 const hasInputImage = (request: ScriptedModelRequest): boolean =>
   JSON.stringify(request.inputItems()).includes('"input_image"');
 
+/** The images of the newest user message, which are the ones its Turn was given. */
+const latestUserImages = (request: ScriptedModelRequest): readonly string[] => {
+  const latest = request
+    .inputItems()
+    .filter(
+      (item): item is { readonly content?: unknown } =>
+        typeof item === "object" &&
+        item !== null &&
+        (item as Record<string, unknown>).type === "message" &&
+        (item as Record<string, unknown>).role === "user",
+    )
+    .at(-1);
+  return (Array.isArray(latest?.content) ? (latest.content as Record<string, unknown>[]) : [])
+    .filter((part) => part.type === "input_image")
+    .map((part) => String(part.image_url));
+};
+
+/** Pastes an image into a Composer or the editor of a sent message, as the clipboard would. */
+const pasteImage = (field: Locator, base64: string, name: string) =>
+  field.evaluate(
+    (element, image) => {
+      const bytes = Uint8Array.from(atob(image.base64), (character) => character.charCodeAt(0));
+      const clipboardData = new DataTransfer();
+      clipboardData.items.add(new File([bytes], image.name, { type: "image/png" }));
+      element.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+    },
+    { base64, name },
+  );
+
 /** A small opaque PNG, encoded so the Composer receives it as a pasted image. */
-const swatchPngBase64 = (): string => {
+const swatchPngBase64 = (color: readonly [number, number, number] = [0xd0, 0x10, 0x10]): string => {
   const size = 8;
   const rows = Buffer.concat(
     Array.from({ length: size }, () =>
-      Buffer.concat([Buffer.from([0]), Buffer.alloc(size * 3, Buffer.from([0xd0, 0x10, 0x10]))]),
+      Buffer.concat([Buffer.from([0]), Buffer.alloc(size * 3, Buffer.from(color))]),
     ),
   );
   const chunk = (type: string, data: Buffer) => {
@@ -495,14 +526,7 @@ test("edits an earlier message and continues from it without the later Turns", a
           .locator('[data-codex-composer="true"][aria-label="Ask for follow-up changes"]')
           .first();
         await composer.fill(second);
-        await composer.evaluate((element, base64) => {
-          const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
-          const clipboardData = new DataTransfer();
-          clipboardData.items.add(new File([bytes], "swatch.png", { type: "image/png" }));
-          element.dispatchEvent(
-            new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
-          );
-        }, swatchPngBase64());
+        await pasteImage(composer, swatchPngBase64(), "swatch.png");
         await expect(page.getByRole("img", { name: "User attachment" })).toHaveCount(1);
         await page.getByRole("button", { name: "Send prompt" }).click();
         await waitForRuntimeCompletedAgentTurn(page, target);
@@ -539,6 +563,172 @@ test("edits an earlier message and continues from it without the later Turns", a
         });
         await expect(rewrittenTurn.getByRole("img")).not.toHaveCount(0);
         await expect(page.getByRole("button", { name: "Edit message" })).toHaveCount(2);
+      } catch (error) {
+        const logs = await readBoundedElectronRuntimeLogs(harness.profile);
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)}\n\nElectron runtime logs:\n${logs}`,
+          { cause: error },
+        );
+      } finally {
+        await harness.close();
+      }
+    },
+  );
+});
+
+test("rewrites a message with exactly the images its editor holds", async () => {
+  test.setTimeout(180_000);
+  const token = randomUUID();
+  const first = `Remember the first note ${token}`;
+  const firstReply = `First note saved ${token}`;
+  const second = `Compare these swatches ${token}`;
+  const secondReply = `Swatches compared ${token}`;
+  const rewritten = `Compare the kept and the added swatch ${token}`;
+  const rewrittenReply = `Kept and added swatch compared ${token}`;
+  const stripped = `Forget the swatches ${token}`;
+  const strippedReply = `No swatches left ${token}`;
+  const removed = swatchPngBase64([0xd0, 0x10, 0x10]);
+  const kept = swatchPngBase64([0x10, 0xd0, 0x10]);
+  const added = swatchPngBase64([0x10, 0x10, 0xd0]);
+  const dataUrl = (base64: string) => `data:image/png;base64,${base64}`;
+  const turn = (
+    name: string,
+    words: string,
+    text: string,
+    check: (request: ScriptedModelRequest) => void,
+  ) => ({
+    name,
+    match: (request: ScriptedModelRequest) =>
+      request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+      latestUserText(request).includes(words),
+    respond: (request: ScriptedModelRequest) => {
+      check(request);
+      return responses.stream([
+        responses.created(`response_${name}_${token}`),
+        responses.assistantMessage(`message_${name}_${token}`, text, "final_answer"),
+        responses.completed(`response_${name}_${token}`, true),
+      ]);
+    },
+  });
+
+  await withScriptedModelServer(
+    {
+      exchanges: [
+        turn("first", first, firstReply, () => {}),
+        turn("second", second, secondReply, (request) => {
+          expect(latestUserImages(request)).toEqual([dataUrl(removed), dataUrl(kept)]);
+        }),
+        turn("rewritten", rewritten, rewrittenReply, (request) => {
+          expect(latestUserImages(request)).toEqual([dataUrl(kept), dataUrl(added)]);
+          expect(request.hasInputText(firstReply)).toBe(true);
+          expect(request.hasInputText(second)).toBe(false);
+          expect(JSON.stringify(request.inputItems())).not.toContain(removed);
+        }),
+        turn("stripped", stripped, strippedReply, (request) => {
+          // Nothing of the images remains, in this message or in the history it continues.
+          expect(hasInputImage(request)).toBe(false);
+          expect(request.hasInputText(firstReply)).toBe(true);
+          expect(request.hasInputText(rewritten)).toBe(false);
+        }),
+        ...standardCodexBackgroundExchanges(),
+      ],
+    },
+    async (modelServer) => {
+      const harness = await ElectronScenarioHarness.create({
+        label: "scripted-agent-edit-images",
+        cwd: repositoryRoot,
+        prepareAgentRuntime: false,
+        retention: process.env.NODEX_KEEP_SCENARIO_PROFILES === "1" ? "keep" : "dispose",
+        environment: {
+          ...modelServer.loopbackEnvironment(),
+          NODEX_LOG_CONSOLE: "0",
+          NODEX_LOG_FILE: "1",
+          OPENAI_API_KEY: "nodex-scripted-model-test-key",
+        },
+      });
+      fs.writeFileSync(
+        path.join(harness.profile.codexHome, "config.toml"),
+        scriptedCodexConfig(modelServer.baseUrl),
+        { encoding: "utf8", mode: 0o600 },
+      );
+      try {
+        const page = await harness.launch();
+        await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
+        const draft = await createAgentSmokeDraft(
+          page,
+          harness.profile.initialProjectsDirectory,
+          "Scripted Agent edit images",
+        );
+        const threadId = await sendAgentPrompt(page, draft.projectSessionId, first);
+        const target = { sessionId: draft.projectSessionId, threadId };
+        await waitForRuntimeCompletedAgentTurn(page, target);
+        await waitForFinalMarker(page, firstReply);
+
+        const composer = page
+          .locator('[data-codex-composer="true"][aria-label="Ask for follow-up changes"]')
+          .first();
+        await composer.fill(second);
+        await pasteImage(composer, removed, "removed.png");
+        await expect(page.getByRole("button", { name: "Remove removed.png" })).toBeVisible();
+        await pasteImage(composer, kept, "kept.png");
+        await expect(page.getByRole("button", { name: "Remove kept.png" })).toBeVisible();
+        await page.getByRole("button", { name: "Send prompt" }).click();
+        await waitForRuntimeCompletedAgentTurn(page, target);
+        await waitForFinalMarker(page, secondReply);
+
+        const bubbles = page.locator("[data-user-message-bubble='true']");
+        const startEdit = async (words: string) => {
+          const turn = page.locator("[data-thread-turn-id]", {
+            has: bubbles.filter({ hasText: words }),
+          });
+          await turn.locator("[data-user-message-bubble='true']").hover();
+          await turn.getByRole("button", { name: "Edit message" }).click();
+          const editor = page.getByRole("textbox", { name: "Edit message" });
+          await expect(editor).toBeFocused();
+          return { editor, form: page.locator("form", { has: editor }) };
+        };
+
+        const { editor, form } = await startEdit(second);
+        // The message's images are in the editor, not also above it.
+        await expect(form.getByRole("img", { name: "User attachment" })).toHaveCount(2);
+        await form
+          .getByRole("button", { name: /^Remove /u })
+          .first()
+          .click();
+        await expect(form.getByRole("img", { name: "User attachment" })).toHaveCount(1);
+        await expect(editor).toBeFocused();
+        await pasteImage(editor, added, "added.png");
+        await expect(form.getByRole("button", { name: "Remove added.png" })).toBeVisible();
+        await expect(form.getByRole("img", { name: "User attachment" })).toHaveCount(2);
+        await editor.fill(rewritten);
+        await editor.press("Enter");
+        await expect(editor).toHaveCount(0);
+        await modelServer.waitForRequest((request) => latestUserText(request).includes(rewritten));
+        await waitForRuntimeCompletedAgentTurn(page, target);
+        await waitForFinalMarker(page, rewrittenReply);
+        await expect(bubbles).toHaveText([first, rewritten]);
+        const rewrittenTurn = page.locator("[data-thread-turn-id]", {
+          has: bubbles.filter({ hasText: rewritten }),
+        });
+        await expect(rewrittenTurn.getByRole("img", { name: "User attachment" })).toHaveCount(2);
+
+        const again = await startEdit(rewritten);
+        const remove = again.form.getByRole("button", { name: /^Remove /u });
+        await expect(remove).toHaveCount(2);
+        await remove.first().click();
+        await remove.first().click();
+        await expect(remove).toHaveCount(0);
+        await again.editor.fill(stripped);
+        await again.editor.press("Enter");
+        await expect(again.editor).toHaveCount(0);
+        await modelServer.waitForRequest((request) => latestUserText(request).includes(stripped));
+        await waitForRuntimeCompletedAgentTurn(page, target);
+        await waitForFinalMarker(page, strippedReply);
+        await expect(bubbles).toHaveText([first, stripped]);
+        const strippedTurn = page.locator("[data-thread-turn-id]", {
+          has: bubbles.filter({ hasText: stripped }),
+        });
+        await expect(strippedTurn.getByRole("img", { name: "User attachment" })).toHaveCount(0);
       } catch (error) {
         const logs = await readBoundedElectronRuntimeLogs(harness.profile);
         throw new Error(
@@ -831,14 +1021,7 @@ test("keeps a pasted image visible when steering a running Turn and after restar
           .locator('[data-codex-composer="true"][aria-label="Ask for follow-up changes"]')
           .first();
         await composer.fill(steer);
-        await composer.evaluate((element, base64) => {
-          const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
-          const clipboardData = new DataTransfer();
-          clipboardData.items.add(new File([bytes], "swatch.png", { type: "image/png" }));
-          element.dispatchEvent(
-            new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
-          );
-        }, swatchPngBase64());
+        await pasteImage(composer, swatchPngBase64(), "swatch.png");
         await expect(page.getByRole("img", { name: "User attachment" })).toHaveCount(1);
         if (await page.getByRole("button", { name: "Queue follow-up" }).isVisible()) {
           await composer.press("ControlOrMeta+Enter");

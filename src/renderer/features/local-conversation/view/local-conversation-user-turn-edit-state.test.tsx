@@ -7,9 +7,17 @@ import {
   removeLocalConversationViewState,
   useLocalConversationEditingTurnIds,
   useLocalConversationUserTurnEditDraft,
+  type UserTurnEditDraftUpdate,
 } from "./local-conversation-thread-view-state";
+import type { UserTurnEditDraft } from "./user-turn-edit-draft";
 
 type DraftState = ReturnType<typeof useLocalConversationUserTurnEditDraft>;
+
+const textDraft = (text: string): UserTurnEditDraft => ({
+  text,
+  sentImages: [],
+  addedImages: [],
+});
 
 function mountEditState() {
   const drafts = new Map<string, DraftState>();
@@ -55,7 +63,13 @@ function mountEditState() {
     commits,
     draft,
     ids: (conversationId: string) => commits(conversationId).at(-1),
+    text: (conversationId: string, turnId: string) => draft(conversationId, turnId)[0]?.text,
     write: (conversationId: string, turnId: string, value: string | null) =>
+      act(async () => {
+        draft(conversationId, turnId)[1](value === null ? null : textDraft(value));
+        await Promise.resolve();
+      }),
+    update: (conversationId: string, turnId: string, value: UserTurnEditDraftUpdate) =>
       act(async () => {
         draft(conversationId, turnId)[1](value);
         await Promise.resolve();
@@ -81,7 +95,7 @@ describe("active message edits", () => {
     const initialCommitCount = view.commits("a").length;
     for (const text of ["Typing", "", "Revised request"]) {
       await view.write("a", "first", text);
-      expect(view.draft("a", "first")[0]).toBe(text);
+      expect(view.text("a", "first")).toBe(text);
       expect(view.ids("a")).toBe(initialMembership);
       expect(view.commits("a")).toHaveLength(initialCommitCount);
     }
@@ -101,6 +115,25 @@ describe("active message edits", () => {
     expect(view.ids("a")).toEqual(["first"]);
   });
 
+  test("an update from the current draft changes its images and cannot reopen a closed edit", async () => {
+    const view = mountEditState();
+    await view.write("a", "first", "Original request");
+    const membership = view.ids("a");
+    const commits = view.commits("a").length;
+    const lateImage = (current: UserTurnEditDraft | null) =>
+      current && { ...current, text: `${current.text} with image` };
+
+    await view.update("a", "first", lateImage);
+    expect(view.text("a", "first")).toBe("Original request with image");
+    expect(view.ids("a")).toBe(membership);
+    expect(view.commits("a")).toHaveLength(commits);
+
+    await view.write("a", "first", null);
+    await view.update("a", "first", lateImage);
+    expect(view.draft("a", "first")[0]).toBeNull();
+    expect(view.ids("a")).toEqual([]);
+  });
+
   test("deletion closes mounted drafts and prevents late setters from reopening the deleted conversation", async () => {
     const view = mountEditState();
     await view.write("a", "first", "Unsaved request");
@@ -114,15 +147,15 @@ describe("active message edits", () => {
     expect(view.ids("a")).toEqual([]);
     expect(view.ids("b")).toBe(otherMembership);
     expect(view.commits("b")).toHaveLength(otherCommitCount);
-    expect(view.draft("b", "first")[0]).toBe("Keep this draft");
+    expect(view.text("b", "first")).toBe("Keep this draft");
 
     await act(async () => {
-      lateSetDraft("A late update");
+      lateSetDraft(textDraft("A late update"));
       await Promise.resolve();
     });
     expect(view.draft("a", "first")[0]).toBeNull();
     expect(view.ids("a")).toEqual([]);
     await view.write("b", "first", "The other conversation still works");
-    expect(view.draft("b", "first")[0]).toBe("The other conversation still works");
+    expect(view.text("b", "first")).toBe("The other conversation still works");
   });
 });

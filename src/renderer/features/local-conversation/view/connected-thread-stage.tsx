@@ -9,6 +9,10 @@ import { appScope, useScopeHandle } from "@/lib/maitai";
 import { RouteScope } from "@/lib/workbench-ui-scopes";
 import { openModal } from "@/lib/modal-registry";
 import { useBackgroundSubagentRows } from "../use-background-subagent-rows";
+import {
+  ConversationImageInputContext,
+  resolveConversationImageInput,
+} from "../conversation-image-input";
 import { supportsConversationProviderControl } from "../conversation-provider-controls";
 import { isLocalConversationWriterConflict } from "../conversation-attachment-state";
 import { resolveWorkspaceSearchContext } from "@/lib/workspace-search-context";
@@ -463,6 +467,16 @@ function ConnectedThreadStageBody({
     ],
   );
 
+  const liveModel = useConversationThreadSettings(activeThreadId)?.model;
+  const imageInput = useMemo(
+    () =>
+      resolveConversationImageInput({
+        provider: input.provider,
+        availableModels: input.availableModels,
+        selectedModel: liveModel ?? input.selectedModel,
+      }),
+    [input.availableModels, input.provider, input.selectedModel, liveModel],
+  );
   const history = useConversationRuntimeHistory(runtime, activeThreadId, conversationSnapshot);
   const model = useMemo<ThreadBodySurfaceModel>(
     () => ({
@@ -544,23 +558,25 @@ function ConnectedThreadStageBody({
   );
 
   return (
-    <LocalConversationThreadBody
-      model={model}
-      actions={actionsWithAttachmentRetry}
-      isWorktreeThread={isWorktreeThread}
-      onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
-      contentShiftX={contentShiftX}
-      footer={footer}
-      leadingContent={leadingContent}
-      resolveHistoryImage={input.provider?.resolveHistoryImage}
-      resolveRuntimeAttachment={input.provider?.resolveRuntimeAttachment}
-      readToolOutput={input.provider?.readToolOutput}
-      initialUiState={initialUiState}
-      transcriptVisible={transcriptVisible}
-      planSidePanelState={input.planSidePanelState ?? null}
-      turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
-      presentation={presentation}
-    />
+    <ConversationImageInputContext value={imageInput}>
+      <LocalConversationThreadBody
+        model={model}
+        actions={actionsWithAttachmentRetry}
+        isWorktreeThread={isWorktreeThread}
+        onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
+        contentShiftX={contentShiftX}
+        footer={footer}
+        leadingContent={leadingContent}
+        resolveHistoryImage={input.provider?.resolveHistoryImage}
+        resolveRuntimeAttachment={input.provider?.resolveRuntimeAttachment}
+        readToolOutput={input.provider?.readToolOutput}
+        initialUiState={initialUiState}
+        transcriptVisible={transcriptVisible}
+        planSidePanelState={input.planSidePanelState ?? null}
+        turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
+        presentation={presentation}
+      />
+    </ConversationImageInputContext>
   );
 }
 

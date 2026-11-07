@@ -25,6 +25,7 @@ import type {
   ThreadComposerShellBackgroundAgentRowModel,
   ThreadPlanSidePanelState,
   ThreadStageActions,
+  UserTurnEdit,
 } from "../thread-stage-types";
 import { ThreadTurn } from "./local-conversation-thread-turn";
 import { LocalConversationAboveComposerPortal } from "./local-conversation-above-composer-portal";
@@ -49,11 +50,7 @@ interface LocalConversationTurnEntryProps {
   projectWorkspacePath?: string | null;
   projectlessOutputDirectory?: string | null;
   threadCwd?: string | null;
-  onEditUserTurn?: (input: {
-    threadId: string;
-    turnId: string;
-    message: string;
-  }) => void | Promise<void>;
+  onEditUserTurn?: (input: UserTurnEdit) => void | Promise<void>;
   onForkTurnMessage?: (input: {
     threadId: string;
     turnId: string;

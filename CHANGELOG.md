@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- You can add and remove images when you edit a sent message. Its images move into the editor, where you can paste, drop or pick more and remove any of them, so a wrong screenshot no longer means starting over. An image whose file was lost shows as failed, and removing it lets the edit through.
 - Claude Code chats can now use the built-in Browser, your Chrome, and Computer Use. Ask Claude to open a page, test your local app, or work in a Mac app, and it asks before it runs code or reaches a new site or app.
 - Nodex now has an iOS and Android app. Drop a thought into the Inbox, start a chat, follow a running chat live, and answer its approvals and questions from your phone. Turn it on and pair a phone in Settings > Mobile. It connects directly to your computer over your local network or a tailnet, encrypted end to end, and captures made offline send when your computer is back.
 - You can stop an Inbox suggestion that is taking too long. Hover its spinner and click stop: the work ends at once, no more usage is spent, and the message keeps any advice it had or offers Suggest.

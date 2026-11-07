@@ -10,6 +10,8 @@ export interface ComposerImageAttachmentThumbnailProps {
     ComposerImageAttachment,
     "id" | "filename" | "src" | "uploadStatus" | "uploadProgress"
   >;
+  /** An image that has to be read first shows that, or says it could not be; it stays removable. */
+  readonly availability?: "loading" | "failed";
   readonly previewEnabled: boolean;
   readonly size: 80 | 54;
   readonly onOpen: (id: string) => void;
@@ -25,6 +27,7 @@ function stopRemoveEvent(
 
 export function ComposerImageAttachmentThumbnail({
   attachment,
+  availability,
   previewEnabled,
   size,
   onOpen,
@@ -65,8 +68,24 @@ export function ComposerImageAttachmentThumbnail({
       onKeyDown={handleKeyDown}
     >
       <span className="composer-attachment-surface absolute inset-0 overflow-hidden rounded-lg">
-        {/* An image still on its way has nothing to show yet but its progress. */}
-        {displaySrc ? (
+        {availability === "loading" ? (
+          <span
+            role="status"
+            aria-label={`Loading ${attachment.filename}`}
+            className="flex size-full items-center justify-center text-token-description-foreground"
+          >
+            <ActivitySpinnerIcon className="icon-xs" aria-hidden="true" />
+          </span>
+        ) : availability === "failed" ? (
+          <span
+            role="img"
+            aria-label="Image failed to load"
+            className="flex size-full items-center justify-center bg-background-danger-surface/20 px-1 text-center text-[10px] leading-3 text-danger"
+          >
+            Failed
+          </span>
+        ) : displaySrc ? (
+          /* An image still on its way has nothing to show yet but its progress. */
           <img
             src={displaySrc}
             alt="User attachment"

@@ -13,6 +13,12 @@ import {
   type VirtualizedLatestTurnRestoreState,
   type VirtualizedTurnListRestoreState,
 } from "./local-conversation-turn-virtualization";
+import type { UserTurnEditDraft } from "./user-turn-edit-draft";
+
+export type UserTurnEditDraftUpdate =
+  | UserTurnEditDraft
+  | null
+  | ((current: UserTurnEditDraft | null) => UserTurnEditDraft | null);
 
 export interface LocalConversationThreadRestoreSnapshot {
   readonly distanceFromBottomPx: number;
@@ -75,7 +81,7 @@ export const localConversationUserTurnEditDraftFamily = scopedAtomFamily({
   scope: appScope,
   debugLabel: "local-conversation-user-turn-edit-draft",
   key: ({ conversationId, turnId }: UserTurnEditDraftKey) => ({ conversationId, turnId }),
-  create: () => scopedAtom<string | null>(appScope, null, { debugLabel: "draft" }),
+  create: () => scopedAtom<UserTurnEditDraft | null>(appScope, null, { debugLabel: "draft" }),
 });
 
 const editDraftTurnIdsByConversationIdAtom = scopedAtom<
@@ -296,23 +302,26 @@ export function useLocalConversationTurnCollapseOverride({
 
 /**
  * The open edit draft of one sent user message, or null while the message is not being edited.
- * Without a Turn identity the message cannot be edited, so the draft stays closed.
+ * Without a Turn identity the message cannot be edited, so the draft stays closed. An update from
+ * the current draft, as a late image makes, sees null once the edit has closed and leaves it so.
  */
 export function useLocalConversationUserTurnEditDraft(
   conversationId: string,
   turnId: string | null,
-): readonly [string | null, (draft: string | null) => void] {
+): readonly [UserTurnEditDraft | null, (draft: UserTurnEditDraftUpdate) => void] {
   const handle = useScopeHandle(appScope);
   const key = useMemo(() => ({ conversationId, turnId: turnId ?? "" }), [conversationId, turnId]);
   const draft = useScopedAtomValue(localConversationUserTurnEditDraftFamily(key));
 
   const setDraft = useCallback(
-    (next: string | null) => {
+    (update: UserTurnEditDraftUpdate) => {
       if (turnId === null || handle.get(deletedConversationIdsAtom)[conversationId] === true)
         return;
+      const member = localConversationUserTurnEditDraftFamily(key);
+      const next = typeof update === "function" ? update(handle.get(member)) : update;
       if (next !== null)
         indexConversationKey(handle, editDraftTurnIdsByConversationIdAtom, conversationId, turnId);
-      handle.set(localConversationUserTurnEditDraftFamily(key), next);
+      handle.set(member, next);
     },
     [conversationId, handle, key, turnId],
   );

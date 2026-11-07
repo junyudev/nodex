@@ -25,11 +25,12 @@ function sideChatFixture() {
 it("keeps remote submissions and queue edits on the attached native owner", async () => {
   const startTurn = vi.fn().mockResolvedValue(undefined);
   const removeQueuedFollowUp = vi.fn().mockResolvedValue(undefined);
+  const editUserTurn = vi.fn().mockResolvedValue(undefined);
   const input = {
     hostId: "ssh:owned",
     threadId: "remote-thread",
     projectId: "project",
-    control: { startTurn, removeQueuedFollowUp },
+    control: { startTurn, removeQueuedFollowUp, editUserTurn },
     host: { onQueueingEnabledChange: vi.fn(), onOpenThread: vi.fn() },
   } as unknown as Parameters<typeof createRemoteCodexStageActions>[0];
   expect(() => createRemoteCodexStageActions({ ...input, hostId: "local" })).toThrow(
@@ -43,6 +44,14 @@ it("keeps remote submissions and queue edits on the attached native owner", asyn
     { projectId: "project", promptInput: { text: "Exact input" } },
     undefined,
   );
+  const images = [{ source: "file-service://kept" }, { source: "nodex://assets/new.png" }];
+  await actions.onEditUserTurn({
+    threadId: "remote-thread",
+    turnId: "old-turn",
+    message: "",
+    images,
+  });
+  expect(editUserTurn).toHaveBeenCalledExactlyOnceWith("remote-thread", "old-turn", "", images);
   await actions.onRemoveQueuedFollowUp("remote-thread", "queued-message");
   await expect(actions.onRemoveQueuedFollowUp("foreign-thread", "queued-message")).rejects.toThrow(
     "identity changed",

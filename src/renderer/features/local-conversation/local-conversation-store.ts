@@ -370,6 +370,7 @@ import type {
   CodexModelOption,
   CodexPendingSteer,
   CodexPreparedPrompt,
+  CodexPromptImageInput,
   CodexPersonality,
   CodexProtocolRequestId,
   CodexQueuedFollowUp,
@@ -7105,11 +7106,17 @@ export class CodexAppServerManager {
     threadId: string,
     turnId: string,
     message: string,
+    images: readonly CodexPromptImageInput[],
     opts?: { serviceTier?: CodexServiceTier },
     presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<CodexThreadActionResult> {
+    const attached = await materializeWrittenImages(
+      { text: "", images: [...images] },
+      this.getHostId(),
+    );
     const written = await materializeWrittenImages(projectMessageText(message), this.getHostId());
     const editOptions: CanonicalEditOptions = {
+      images: attached!.images!,
       turnId,
       message,
       serviceTier: opts?.serviceTier,
@@ -10287,6 +10294,7 @@ export function useCodexAppServerControl(
       threadId: string,
       turnId: string,
       message: string,
+      images: readonly CodexPromptImageInput[],
       opts?: {
         serviceTier?: CodexServiceTier;
       },
@@ -10304,6 +10312,7 @@ export function useCodexAppServerControl(
         threadId,
         turnId,
         message,
+        images,
         buildCodexServiceTierRequestOverride(opts?.serviceTier),
         presentationTicket,
       );

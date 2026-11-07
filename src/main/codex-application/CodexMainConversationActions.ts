@@ -94,6 +94,12 @@ export const install = Effect.gen(function* () {
             Schema.Struct({
               turnId: Schema.String,
               message: Schema.String,
+              images: Schema.Array(
+                Schema.Struct({
+                  source: Schema.String,
+                  caption: Schema.optionalKey(Schema.String),
+                }),
+              ),
               writtenImages: Schema.optionalKey(
                 Schema.Array(
                   Schema.Struct({

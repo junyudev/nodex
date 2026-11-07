@@ -120,7 +120,7 @@ export function readImagePlaceholders(blocks: readonly MarkdownBlock[]): Markdow
   });
 }
 
-/** The highest image number a sent message's text names, which is how many images it was sent with. */
+/** The highest image number a sent message's text names, which no image it carries can exceed. */
 export function imagePlaceholderCount(text: string): number {
   let highest = 0;
   const visit = (value: unknown): void => {
@@ -133,6 +133,72 @@ export function imagePlaceholderCount(text: string): number {
   };
   if (text.includes("[Image #")) visit(readImagePlaceholders(readMarkdown(text)));
   return highest;
+}
+
+const CODE_FENCE = /^ {0,3}(`{3,}|~{3,})/u;
+const INLINE_CODE = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)/gu;
+
+/** One line without the image numbered `number`, and with the images after it moved up. */
+function renumberPlaceholders(line: string, number: number): string {
+  const code = [...line.matchAll(INLINE_CODE)].map(
+    (match) => [match.index, match.index + match[0].length] as const,
+  );
+  let written = "";
+  let cursor = 0;
+  for (const match of line.matchAll(IMAGE_PLACEHOLDER)) {
+    if (code.some(([start, end]) => match.index >= start && match.index < end)) continue;
+    const named = Number(match[1]);
+    if (named < number) continue;
+    const end = match.index + match[0].length;
+    if (named > number) {
+      written += `${line.slice(cursor, match.index)}[Image #${named - 1}]`;
+      cursor = end;
+      continue;
+    }
+    const details = placeholderDetails(line, end);
+    let after = details === null ? end : end + details.length + 3;
+    let before = line.slice(cursor, match.index);
+    // The words around it stay one space apart, and punctuation stays against its word.
+    if (before.endsWith(" ") && !/^[\p{L}\p{N}]/u.test(line.slice(after)))
+      before = before.slice(0, -1);
+    else if (`${written}${before}`.trim() === "" && line[after] === " ") after += 1;
+    written += before;
+    cursor = after;
+  }
+  return written + line.slice(cursor);
+}
+
+/**
+ * A message's text once its image numbered `number` leaves it: the placeholders that name that
+ * image go with their details, and later images move up, so every placeholder still names the
+ * image it did. A line that held only that image goes too. Code keeps its text.
+ */
+export function removeImagePlaceholder(text: string, number: number): string {
+  if (!text.includes("[Image #")) return text;
+  const lines: string[] = [];
+  let fence: string | null = null;
+  for (const line of text.split("\n")) {
+    const marker = line.match(CODE_FENCE)?.[1];
+    if (fence !== null) {
+      if (marker?.startsWith(fence) && line.trim() === marker) fence = null;
+      lines.push(line);
+      continue;
+    }
+    if (marker) {
+      fence = marker;
+      lines.push(line);
+      continue;
+    }
+    const written = renumberPlaceholders(line, number);
+    if (written !== line && written.trim() === "") {
+      // The blank line that set it apart goes with it.
+      if (lines.at(-1)?.trim() === "") lines.pop();
+      continue;
+    }
+    lines.push(written);
+  }
+  const result = lines.join("\n");
+  return result === text ? text : result.trim();
 }
 
 export function projectMessageBlocks(

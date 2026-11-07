@@ -40,6 +40,7 @@ import type {
   CodexSelectedSubagentHydrateResult,
   CodexHostMessage,
   CodexModelOption,
+  CodexPromptImageInput,
   CodexScheduledAutomation,
   CodexScheduledAutomationCreateInput,
   CodexScheduledAutomationUpdateInput,
@@ -416,8 +417,13 @@ export const mockCodexControl = {
   sendQueuedFollowUpNow: async (threadId: string, followUpId: string) => {
     sendQueuedFollowUpNowCalls.push([threadId, followUpId]);
   },
-  editUserTurn: async (threadId: string, turnId: string, message: string) => {
-    editUserTurnCalls.push([threadId, turnId, message]);
+  editUserTurn: async (
+    threadId: string,
+    turnId: string,
+    message: string,
+    images: readonly CodexPromptImageInput[],
+  ) => {
+    editUserTurnCalls.push([threadId, turnId, message, images]);
     return {
       threadId,
       composerIntent: {

@@ -668,6 +668,7 @@ describe("Agent Runtime stage commands", () => {
       threadId: "child",
       turnId: "run:completed",
       message: "Edited",
+      images: [],
     });
     await vi.waitFor(() => expect(f.rewriteMessage).toHaveBeenCalledOnce());
     expect(f.message).not.toHaveBeenCalled();
@@ -686,6 +687,7 @@ describe("Agent Runtime stage commands", () => {
         threadId: "child",
         turnId: "run:completed",
         message: "Unsafe",
+        images: [],
       }),
     ).rejects.toThrow("Image preparation failed");
     expect(f.message).not.toHaveBeenCalled();
@@ -709,8 +711,12 @@ describe("Agent Runtime stage commands", () => {
       threadId: "child",
       turnId: "run:completed",
       message: "Compare the first two",
+      images: [{ source: "nodex-runtime-image:child/sent/image" }],
     });
 
+    expect(f.owner.readSentMessage).toHaveBeenCalledWith("run:completed", [
+      { source: "nodex-runtime-image:child/sent/image" },
+    ]);
     expect(f.prepare).toHaveBeenCalledWith("Compare the first two", {
       text: "Compare the first two",
       images: [{ source: "/attachments/chart.png", caption: "chart.png" }],
@@ -731,6 +737,7 @@ describe("Agent Runtime stage commands", () => {
         threadId: "child",
         turnId: "run:completed",
         message: "Edited",
+        images: [],
       }),
     ).rejects.toThrow("does not support images");
     expect(f.rewriteMessage).not.toHaveBeenCalled();
@@ -917,4 +924,20 @@ it("keeps Page context as a steer after approval feedback consumes the typed mes
   expect(prepare).toHaveBeenCalledWith("", { text: "", pageReferences }, undefined);
   expect(context.message).toHaveBeenCalledWith(expect.objectContaining({ intent: "steer" }));
   approvals.clear();
+});
+
+it("an image-only rewrite preserves the explicit empty text", async () => {
+  const f = fixture();
+  f.owner.readSentMessage.mockResolvedValueOnce({
+    message: { attachments: [], text: "old" } as never,
+    images: [{ source: "/new.png" }],
+  });
+  await f.actions.onEditUserTurn!({
+    threadId: "child",
+    turnId: "run:completed",
+    message: "",
+    images: [{ source: "/new.png" }],
+  });
+  expect(f.prepare).toHaveBeenCalledWith("", { text: "", images: [{ source: "/new.png" }] });
+  expect(f.rewriteMessage.mock.calls[0]![0].message.images).toEqual([{ source: "/new.png" }]);
 });

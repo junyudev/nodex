@@ -2717,6 +2717,7 @@ describe("Agent Runtime sent-image edit admission", () => {
             threadId: target.threadId,
             turnId: "sent-image-run",
             message,
+            images,
           });
           if (accepted) await editing;
           else await expect(editing).rejects.toThrow("does not support image");

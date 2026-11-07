@@ -172,6 +172,7 @@ for (const { name, message, writtenImages, expectedText, expectedImages } of [
       Effect.gen(function* () {
         const { service, calls, readState, readAdmitted } = yield* makeEditFixture();
         yield* service.edit("local", "thread", {
+          images: [{ source: "/image.png" }],
           turnId: "message",
           message,
           writtenImages,
@@ -196,6 +197,7 @@ it.effect("Main edit preserves remote history when a managed image has no bytes"
     const originalState = readState();
     const originalTurns = structuredClone(residentConversationTurns(originalState));
     const options = {
+      images: [{ source: "/image.png" }],
       turnId: "message",
       message: "Compare ![asset](nodex://assets/shot.png)",
       writingBlockContextPrepared: true,
@@ -245,7 +247,7 @@ for (const failure of ["prepare", "inspect", "revert"] as const)
       const f = yield* makeEditFixture("local", failure);
       const original = f.readState();
       const result = yield* f.service
-        .edit("local", "thread", { turnId: "message", message: "new" })
+        .edit("local", "thread", { turnId: "message", message: "new", images: [] })
         .pipe(Effect.result);
       assert.strictEqual(result._tag, "Failure");
       assert.strictEqual(f.readState(), original);

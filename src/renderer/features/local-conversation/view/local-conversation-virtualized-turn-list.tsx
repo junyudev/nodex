@@ -38,6 +38,7 @@ import type {
   ThreadComposerShellBackgroundAgentRowModel,
   ThreadPlanSidePanelState,
   ThreadStageActions,
+  UserTurnEdit,
 } from "../thread-stage-types";
 import {
   buildVirtualizedTurnLayout,
@@ -303,11 +304,7 @@ interface LocalConversationVirtualizedTurnListProps {
   editableTurnIds: ReadonlySet<string>;
   canForkFromTurn: boolean;
   initialCollapsedAgentBodyByTurnSearchKey?: Readonly<Record<string, boolean>>;
-  onEditUserTurn?: (input: {
-    threadId: string;
-    turnId: string;
-    message: string;
-  }) => void | Promise<void>;
+  onEditUserTurn?: (input: UserTurnEdit) => void | Promise<void>;
   onForkTurnMessage?: (input: {
     threadId: string;
     turnId: string;
@@ -476,11 +473,7 @@ interface MeasuredTurnProps {
   initialCollapsedOverride?: boolean;
   canEditTurnUserPrefix: boolean;
   canForkTurn: boolean;
-  onEditUserTurn?: (input: {
-    threadId: string;
-    turnId: string;
-    message: string;
-  }) => void | Promise<void>;
+  onEditUserTurn?: (input: UserTurnEdit) => void | Promise<void>;
   onForkTurnMessage?: (input: {
     threadId: string;
     turnId: string;

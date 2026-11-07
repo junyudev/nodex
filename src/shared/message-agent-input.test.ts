@@ -6,6 +6,7 @@ import {
   projectMessageText,
   projectPromptBlockForSend,
   readImagePlaceholders,
+  removeImagePlaceholder,
 } from "./message-agent-input";
 
 describe("a message as an Agent receives it", () => {
@@ -185,6 +186,54 @@ describe("a sent message read back", () => {
       "[Image #9]",
       " in code",
     ]);
+  });
+});
+
+describe("a message losing one of its images", () => {
+  test("drops what named the image and moves later images up, so each still names its own", () => {
+    const { text } = projectMessageText(
+      "Compare ![shot](</tmp/a (1).png>) with ![](nodex://files/b)",
+      {
+        precedingImageCount: 1,
+      },
+    );
+    expect(removeImagePlaceholder(text, 1)).toBe(
+      "Compare [Image #1] (caption: shot; path: /tmp/a (1).png) with [Image #2]",
+    );
+    expect(removeImagePlaceholder(text, 2)).toBe("Compare with [Image #2]");
+    expect(removeImagePlaceholder(text, 3)).toBe(
+      "Compare [Image #2] (caption: shot; path: /tmp/a (1).png) with",
+    );
+  });
+
+  test.each([
+    [
+      "a line of its own, and the blank line that set it apart",
+      "One\n\n[Image #1]\n\nTwo",
+      "One\n\nTwo",
+    ],
+    ["the opening of the message", "[Image #1]\n\nTwo", "Two"],
+    ["the whole message", "[Image #1]", ""],
+    ["the start of a line", "[Image #1] looks wrong", "looks wrong"],
+    ["every mention of the image", "[Image #1] and again [Image #1]!", "and again!"],
+    ["its details", "See [Image #1] (caption: a) now", "See now"],
+  ])("takes %s", (_case, text, expected) => {
+    expect(removeImagePlaceholder(text, 1)).toBe(expected);
+  });
+
+  test.each([
+    ["inline code", "Type `[Image #1]` to refer to it"],
+    ["a fenced block", "```\n[Image #1]\n```"],
+    ["a longer fence that holds a shorter one", "````\n```\n[Image #1]\n```\n````"],
+    ["no placeholder at all", "  Just words  "],
+  ])("leaves %s exactly as written", (_case, text) => {
+    expect(removeImagePlaceholder(text, 1)).toBe(text);
+  });
+
+  test("still renumbers after a fence closes, and an image another image follows", () => {
+    expect(removeImagePlaceholder("```\n[Image #3]\n```\nSee [Image #3]", 1)).toBe(
+      "```\n[Image #3]\n```\nSee [Image #2]",
+    );
   });
 });
 

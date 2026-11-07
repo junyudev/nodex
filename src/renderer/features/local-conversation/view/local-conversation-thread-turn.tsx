@@ -12,6 +12,7 @@ import type {
   ThreadPlanSidePanelState,
   ThreadStageActions,
   ThreadTurnModel,
+  UserTurnEdit,
 } from "../thread-stage-types";
 import { resolveCodexThreadAgentBodyMotion } from "./shared/thread-motion";
 import { useWorkedForLabelText } from "./shared/use-worked-for-label";
@@ -64,11 +65,7 @@ interface ThreadTurnProps {
   childMemberships?: readonly CodexConversationChildMembership[];
   parentModel?: string | null;
   threadCwd?: string | null;
-  onEditUserTurn?: (input: {
-    threadId: string;
-    turnId: string;
-    message: string;
-  }) => void | Promise<void>;
+  onEditUserTurn?: (input: UserTurnEdit) => void | Promise<void>;
   onForkFromTurn?: (input: {
     threadId: string;
     turnId: string;

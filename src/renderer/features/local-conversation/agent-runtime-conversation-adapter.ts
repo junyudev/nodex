@@ -668,8 +668,8 @@ export function createAgentRuntimeStageActions(input: {
       const target = exactTarget(request.threadId);
       const owner = input.owner();
       if (!owner) throw new Error("Open the conversation before editing this message");
-      const original = await owner.readSentMessage(request.turnId);
-      // The message keeps the images it was sent with; images written into the edit follow them.
+      const original = await owner.readSentMessage(request.turnId, [...request.images]);
+      // Images written into the edit follow the selected attachments.
       const written = projectMessageText(request.message, {
         precedingImageCount: original.images?.length ?? 0,
       });

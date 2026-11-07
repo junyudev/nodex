@@ -89,5 +89,6 @@ test("editing focuses at the end, grows between two and six lines, and retains p
     threadId: "thread",
     turnId: "turn",
     message: "Revised request",
+    images: [],
   });
 });

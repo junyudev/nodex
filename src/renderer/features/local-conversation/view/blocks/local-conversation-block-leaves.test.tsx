@@ -37,6 +37,7 @@ import {
   buildThreadWorktreeInitActivities,
 } from "./local-conversation-block-leaves";
 import { ThreadBlockRenderer } from "./local-conversation-block-renderer";
+import { ConversationImageInputContext } from "../../conversation-image-input";
 import { ConversationRecoveryActionsProvider } from "../conversation-recovery-actions";
 import { HookFeedbackSettingsNavigationProvider } from "../hook-feedback-settings-navigation";
 import { useLocalConversationEditingTurnIds } from "../local-conversation-thread-view-state";
@@ -45,6 +46,12 @@ import type {
   ThreadOpenThreadContext,
   ThreadTranscriptBlockModel,
 } from "../../thread-stage-types";
+
+const { toastFailureMock } = vi.hoisted(() => ({ toastFailureMock: vi.fn() }));
+vi.mock("@/lib/failure-toast", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/failure-toast")>()),
+  toastFailure: toastFailureMock,
+}));
 
 // Thread leaves read Library and host images through the app's query client.
 const render: typeof renderWithMaitai = (ui, options) =>
@@ -412,6 +419,19 @@ describe("UserMessageBubble images", () => {
     await waitFor(() => expect(dialog.querySelector("img")?.getAttribute("src")).toBe(first));
   });
 
+  test("a placeholder still opens its image when the message carries more images than its text names", async () => {
+    const view = render(
+      <TooltipProvider>
+        <UserMessageBubble
+          block={block("Only [Image #1] is named")}
+          isLatestTurn={false}
+          isStreamingTurn={false}
+        />
+      </TooltipProvider>,
+    );
+    expect(await view.findByRole("button", { name: "Open Image #1" })).toBeTruthy();
+  });
+
   test("a placeholder that names no image of the message stays a plain reference", async () => {
     const view = render(
       <TooltipProvider>
@@ -689,6 +709,7 @@ describe("UserMessageBubble collapse", () => {
       threadId: "thread-1",
       turnId: "turn-1",
       message: "Revised request",
+      images: [],
     });
     expect((getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
     await act(async () => {
@@ -775,6 +796,7 @@ describe("UserMessageBubble collapse", () => {
       threadId: "thread-1",
       turnId: "turn-1",
       message: "Rewritten request",
+      images: [],
     });
     await waitFor(() => expect(queryByRole("textbox", { name: "Edit message" })).toBeNull());
     expect(editingTurnIds.at(-1)).toEqual([]);
@@ -817,6 +839,277 @@ describe("UserMessageBubble collapse", () => {
     } finally {
       localStorage.removeItem(COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY);
     }
+  });
+
+  describe("while the message is rewritten", () => {
+    // This environment has no DataTransfer; these are the parts a transfer of one file reads.
+    const fileTransfer = (name: string) => {
+      const file = new File(["pixels"], name, { type: "image/png" });
+      return {
+        files: [file],
+        items: [{ kind: "file", type: file.type, getAsFile: () => file }],
+        types: ["Files"],
+        getData: () => "",
+        dropEffect: "none",
+      };
+    };
+    const pasteImage = (target: HTMLElement, name = "pasted.png") =>
+      act(async () => {
+        fireEvent.paste(target, { clipboardData: fileTransfer(name) });
+        await Promise.resolve();
+      });
+    const open = async (
+      text: string,
+      attachments: NonNullable<ThreadTranscriptBlockModel["entry"]["userAttachments"]>,
+      onEditUserTurn = vi.fn().mockResolvedValue(undefined),
+    ) => {
+      const built = buildUserMessageBlock(text);
+      const block = {
+        ...built,
+        entry: { ...built.entry, userAttachments: attachments },
+        userMessageActions: { canEdit: true, sentAtMs: null },
+      } as ThreadTranscriptBlockModel;
+      const view = render(
+        <TooltipProvider>
+          <UserMessageBubble
+            block={block}
+            isLatestTurn
+            isStreamingTurn={false}
+            onEditUserTurn={onEditUserTurn}
+          />
+        </TooltipProvider>,
+      );
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Edit message" }));
+        await Promise.resolve();
+      });
+      const editor = view.getByRole("textbox", { name: "Edit message" }) as HTMLTextAreaElement;
+      return { view, editor, onEditUserTurn };
+    };
+    const send = (editor: HTMLTextAreaElement) =>
+      act(async () => {
+        fireEvent.submit(editor.form!);
+        await Promise.resolve();
+      });
+    const attached = (id: string, source: string) =>
+      ({ type: "image", id, source, sourceKind: "inline-image" }) as const;
+    const first = "data:image/png;base64,Zmlyc3Q=";
+    const second = "data:image/png;base64,c2Vjb25k";
+
+    test("sends what the message keeps, and takes what named a removed image out of its text", async () => {
+      const { view, editor, onEditUserTurn } = await open("Compare with [Image #2]", [
+        attached("a", first),
+        attached("b", second),
+      ]);
+      // The images move into the form, so they appear once, each removable.
+      expect(await view.findByRole("button", { name: "Remove Image #1" })).toBeTruthy();
+      expect(view.getAllByRole("img", { name: "User attachment" })).toHaveLength(2);
+
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Remove Image #1" }));
+        await Promise.resolve();
+      });
+      expect(editor.value).toBe("Compare with [Image #1]");
+      expect(view.getAllByRole("img", { name: "User attachment" })).toHaveLength(1);
+      // Removing an image is not a reason to take focus from the text.
+      expect(document.activeElement).toBe(editor);
+
+      await send(editor);
+      expect(onEditUserTurn).toHaveBeenCalledExactlyOnceWith({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        message: "Compare with [Image #1]",
+        images: [{ source: second }],
+      });
+    });
+
+    test("removing every image sends none, while Cancel puts them all back", async () => {
+      const { view, editor, onEditUserTurn } = await open("Words", [attached("a", first)]);
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Remove Image #1" }));
+        await Promise.resolve();
+      });
+      await act(async () => {
+        fireEvent.keyDown(editor, { key: "Escape" });
+        await Promise.resolve();
+      });
+      expect(onEditUserTurn).not.toHaveBeenCalled();
+      expect(view.queryByRole("textbox", { name: "Edit message" })).toBeNull();
+      await waitFor(() =>
+        expect(view.getAllByRole("img", { name: "User attachment" })).toHaveLength(1),
+      );
+
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Edit message" }));
+        await Promise.resolve();
+      });
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Remove Image #1" }));
+        await Promise.resolve();
+      });
+      await send(view.getByRole("textbox", { name: "Edit message" }) as HTMLTextAreaElement);
+      expect(onEditUserTurn).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ message: "Words", images: [] }),
+      );
+    });
+
+    test("an image is enough to send, and the last image is not", async () => {
+      const { view, editor, onEditUserTurn } = await open("Words", [attached("a", first)]);
+      await act(async () => {
+        fireEvent.change(editor, { target: { value: "   " } });
+        await Promise.resolve();
+      });
+      const sendButton = () => view.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+      expect(sendButton().disabled).toBe(false);
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Remove Image #1" }));
+        await Promise.resolve();
+      });
+      expect(sendButton().disabled).toBe(true);
+      await send(editor);
+      expect(onEditUserTurn).not.toHaveBeenCalled();
+    });
+
+    test("adds pasted images after the ones it keeps, without changing the text", async () => {
+      const { view, editor, onEditUserTurn } = await open("See [Image #1]", [attached("a", first)]);
+      await pasteImage(editor);
+      const removeAdded = await view.findByRole("button", { name: "Remove pasted.png" });
+      expect(removeAdded).toBeTruthy();
+      expect(editor.value).toBe("See [Image #1]");
+
+      await send(editor);
+      const [edit] = onEditUserTurn.mock.calls[0]!;
+      expect(edit.images[0]).toEqual({ source: first });
+      expect(edit.images[1]).toMatchObject({ caption: "pasted.png" });
+      expect(edit.images).toHaveLength(2);
+    });
+
+    test("adds dropped images, marking the form only while a drag is over it", async () => {
+      const { view, editor, onEditUserTurn } = await open("Words", []);
+      const form = editor.form!;
+      const dataTransfer = fileTransfer("dropped.png");
+      await act(async () => {
+        fireEvent.dragEnter(form, { dataTransfer });
+        await Promise.resolve();
+      });
+      expect(form.getAttribute("data-file-drop-active")).toBe("true");
+      await act(async () => {
+        fireEvent.drop(form, { dataTransfer });
+        await Promise.resolve();
+      });
+      expect(form.getAttribute("data-file-drop-active")).toBe("false");
+      await view.findByRole("button", { name: "Remove dropped.png" });
+
+      await send(editor);
+      expect(onEditUserTurn.mock.calls[0]![0].images).toEqual([
+        expect.objectContaining({ caption: "dropped.png" }),
+      ]);
+    });
+
+    test("adds picked images", async () => {
+      const { view, editor } = await open("Words", []);
+      expect(view.getByRole("button", { name: "Add photos" })).toBeTruthy();
+      await act(async () => {
+        fireEvent.change(view.getByTestId("message-image-picker"), {
+          target: { files: [new File(["pixels"], "picked.png", { type: "image/png" })] },
+        });
+        await Promise.resolve();
+      });
+      await view.findByRole("button", { name: "Remove picked.png" });
+      expect(document.activeElement).toBe(editor);
+    });
+
+    test("says why when the conversation's model cannot take an image", async () => {
+      const built = buildUserMessageBlock("Words");
+      const view = render(
+        <TooltipProvider>
+          <ConversationImageInputContext
+            value={{ supported: false, unavailableReason: "This model reads no images." }}
+          >
+            <UserMessageBubble
+              block={{ ...built, userMessageActions: { canEdit: true, sentAtMs: null } }}
+              isLatestTurn
+              isStreamingTurn={false}
+              onEditUserTurn={vi.fn()}
+            />
+          </ConversationImageInputContext>
+        </TooltipProvider>,
+      );
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Edit message" }));
+        await Promise.resolve();
+      });
+      await pasteImage(view.getByRole("textbox", { name: "Edit message" }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(view.queryByRole("button", { name: /^Remove / })).toBeNull();
+      expect(toastFailureMock).toHaveBeenCalledWith("This model reads no images.");
+    });
+
+    test("an image that cannot be read says so, and can still be removed", async () => {
+      const unreadable = attached("a", "/gone/missing.png");
+      const { view, editor, onEditUserTurn } = await open("Words", [
+        { ...unreadable, sourceKind: "local-image" },
+      ]);
+      await view.findByRole("img", { name: "Image failed to load" });
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Remove Image #1" }));
+        await Promise.resolve();
+      });
+      await send(editor);
+      expect(onEditUserTurn).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ images: [] }),
+      );
+    });
+
+    test("looking at an image from the form does not offer to edit it", async () => {
+      const { view } = await open("Words", [attached("a", first)]);
+      await act(async () => {
+        fireEvent.click(await view.findByRole("button", { name: "Image #1" }));
+        await Promise.resolve();
+      });
+      const dialog = await view.findByRole("dialog", { name: "Image preview" });
+      expect(within(dialog).queryByRole("button", { name: "Edit image" })).toBeNull();
+    });
+
+    test("keeps its images and added ones while the message scrolls away", async () => {
+      const built = buildUserMessageBlock("Words");
+      const block = {
+        ...built,
+        entry: { ...built.entry, userAttachments: [attached("a", first), attached("b", second)] },
+        userMessageActions: { canEdit: true, sentAtMs: null },
+      } as ThreadTranscriptBlockModel;
+      const bubble = (visible: boolean) => (
+        <TooltipProvider>
+          {visible ? (
+            <UserMessageBubble
+              block={block}
+              isLatestTurn
+              isStreamingTurn={false}
+              onEditUserTurn={vi.fn()}
+            />
+          ) : null}
+        </TooltipProvider>
+      );
+      const view = render(bubble(true));
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Edit message" }));
+        await Promise.resolve();
+      });
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Remove Image #1" }));
+        await Promise.resolve();
+      });
+      await pasteImage(view.getByRole("textbox", { name: "Edit message" }));
+      await view.findByRole("button", { name: "Remove pasted.png" });
+
+      view.rerender(bubble(false));
+      view.rerender(bubble(true));
+      expect(await view.findByRole("button", { name: "Remove pasted.png" })).toBeTruthy();
+      expect(view.getByRole("button", { name: "Remove Image #1" })).toBeTruthy();
+      expect(view.queryByRole("button", { name: "Remove Image #2" })).toBeNull();
+    });
   });
 
   test("does not send an emptied edit", async () => {

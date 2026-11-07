@@ -126,6 +126,7 @@ function harness(
 test("editing the latest message also reverts trailing automatic turns and keeps non-text input", async () => {
   const f = harness();
   await editCanonicalUserTurn(f.client, "id", {
+    images: [{ source: "/image.png" }],
     turnId: "message",
     message: "new",
   });
@@ -147,6 +148,7 @@ test("editing the latest message also reverts trailing automatic turns and keeps
 test("editing projects written images after the original image inputs", async () => {
   const f = harness();
   await editCanonicalUserTurn(f.client, "id", {
+    images: [{ source: "/image.png" }],
     turnId: "message",
     message: "![shot](/tmp/x.png)",
   });
@@ -164,6 +166,7 @@ test("editing projects written images after the original image inputs", async ()
 test("editing keeps hosted images and appends written data, file URL and materialized Library images in order", async () => {
   const f = harness({ input: [{ type: "image", fileId: "file_123", detail: "high" }] });
   await editCanonicalUserTurn(f.client, "id", {
+    images: [{ source: "file-service://file_123" }],
     turnId: "message",
     message:
       "![inline](data:image/png;base64,AQID)\n\n![disk](file:///tmp/my%20shot.png)\n\n![library](nodex://files/shot)\n\n![web](https://example.com/web.png)",
@@ -193,6 +196,7 @@ test("an unavailable written image leaves the original history intact", async ()
   const f = harness({ resolveImageInput });
   await expect(
     editCanonicalUserTurn(f.client, "id", {
+      images: [{ source: "/image.png" }],
       turnId: "message",
       message: "![shot](nodex://assets/shot.png)",
     }),
@@ -221,13 +225,14 @@ test.each(["  rewritten\n\ntext  ", "", "![web](https://example.com/web.png)"])(
     ];
     const f = harness({ input: original });
     await editCanonicalUserTurn(f.client, "id", {
+      images: [{ source: "file-service://file_123" }],
       turnId: "message",
       message,
     });
     expect(f.starts[0]?.input).toEqual([
-      original[0],
       { type: "text", text: message, text_elements: [] },
       ...original.slice(2),
+      original[0],
     ]);
   },
 );
@@ -240,6 +245,7 @@ test("editing an earlier message reverts it with every later user Turn", async (
     ],
   });
   await editCanonicalUserTurn(f.client, "id", {
+    images: [{ source: "/image.png" }],
     turnId: "message",
     message: "rewritten",
   });
@@ -265,6 +271,7 @@ test("editing waits for every later Turn to settle", async () => {
 
   await expect(
     editCanonicalUserTurn(f.client, "id", {
+      images: [{ source: "/image.png" }],
       turnId: "message",
       message: "rewritten",
     }),
@@ -276,6 +283,7 @@ test("editing waits for every later Turn to settle", async () => {
 test("editing an attachment-only message sends the new text alongside its image", async () => {
   const f = harness({ input: [{ type: "image", fileId: "file_123" }] });
   await editCanonicalUserTurn(f.client, "id", {
+    images: [{ source: "file-service://file_123" }],
     turnId: "message",
     message: "Describe it",
   });
@@ -292,6 +300,7 @@ test.each([{ historyMode: "legacy" as const }, { ephemeral: true }, { supportsRe
     const f = harness(options);
     await expect(
       editCanonicalUserTurn(f.client, "id", {
+        images: [{ source: "/image.png" }],
         turnId: "message",
         message: "new",
       }),
@@ -309,6 +318,51 @@ test("prompt editing replaces only the last request marker and resets plain text
     ),
   ).toBe("one\n## My request:\nquoted\n## My request:\nnew\n");
   expect(replaceCanonicalEditedPrompt("plain old", "new")).toBe("new");
+});
+
+test("the selected image order replaces originals, preserving native detail and non-image inputs", async () => {
+  const kept = {
+    type: "image" as const,
+    url: "https://example.com/kept.png",
+    detail: "high" as const,
+  };
+  const mention = { type: "mention" as const, name: "notes", path: "/notes" };
+  const f = harness({ input: [{ type: "localImage", path: "/missing.png" }, kept, mention] });
+  await editCanonicalUserTurn(f.client, "id", {
+    turnId: "message",
+    message: "",
+    images: [{ source: "/new.png" }, { source: kept.url }],
+  });
+  expect(f.starts[0]?.input).toEqual([
+    { type: "text", text: "", text_elements: [] },
+    mention,
+    { type: "localImage", path: "/new.png" },
+    kept,
+  ]);
+});
+
+test("an empty selection removes every original image", async () => {
+  const f = harness();
+  await editCanonicalUserTurn(f.client, "id", { turnId: "message", message: "text", images: [] });
+  expect(f.starts[0]?.input).toEqual([
+    { type: "text", text: "# Files\n## My request:\ntext\n", text_elements: [] },
+  ]);
+});
+
+test("a failing new image leaves revert uncalled", async () => {
+  const f = harness({
+    resolveImageInput: () => {
+      throw new Error("Unreadable image");
+    },
+  });
+  await expect(
+    editCanonicalUserTurn(f.client, "id", {
+      turnId: "message",
+      message: "",
+      images: [{ source: "/new.png" }],
+    }),
+  ).rejects.toThrow("Unreadable image");
+  expect(f.calls).toEqual(["settings"]);
 });
 
 test.each(["revert", "start", "success"])(
@@ -331,7 +385,7 @@ test.each(["revert", "start", "success"])(
     const edit = editCanonicalUserTurn(
       { ...f.client, prepareStart, revert, applyRevert: () => {} },
       "id",
-      { turnId: "message", message: "text" },
+      { turnId: "message", message: "text", images: [] },
     );
     if (failure === "success") await edit;
     else await expect(edit).rejects.toThrow(`${failure} failed`);
@@ -354,7 +408,7 @@ test("native preparation failure leaves revert and history untouched", async () 
         },
       },
       "id",
-      { turnId: "message", message: "new" },
+      { turnId: "message", message: "new", images: [] },
     ),
   ).rejects.toThrow("Image capture failed");
   expect(revert).not.toHaveBeenCalled();

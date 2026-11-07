@@ -13,7 +13,7 @@ export const CODEX_PEER_METHOD_VERSIONS: Readonly<Record<string, number>> = {
   "thread-follower-steer-turn": 1,
   "thread-follower-interrupt-turn": 4,
   "thread-follower-update-thread-settings": 2,
-  "thread-follower-edit-last-user-turn": 2,
+  "thread-follower-edit-last-user-turn": 3,
   "thread-follower-submit-user-input": 1,
   "thread-follower-submit-mcp-server-elicitation-response": 1,
   "thread-follower-set-queued-follow-ups-state": 1,

@@ -1,3 +1,4 @@
+import { createContext } from "react";
 import { resolveImageInputSupport } from "@/lib/content-image";
 import type { AgentModelOption } from "../../../shared/types";
 import { supportsConversationProviderControl } from "./conversation-provider-controls";
@@ -24,3 +25,12 @@ export function resolveConversationImageInput(input: {
     unavailableReason: input.provider?.imageInputUnavailableReason ?? null,
   };
 }
+
+/**
+ * The transcript's view of that answer. A message rewritten there is sent as the conversation's
+ * next message, and the rows between it and the stage are memoized on their own props.
+ */
+export const ConversationImageInputContext = createContext<ConversationImageInput>({
+  supported: true,
+  unavailableReason: null,
+});

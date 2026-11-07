@@ -1,4 +1,3 @@
-import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { UserMessagePageReferences } from "../shared/user-message-page-references";
 import { ThreadTextSelectionAttachments } from "../thread-text-selection-attachments";
 import { ResponseAnnotationContext } from "../response-annotation-context";
@@ -8,15 +7,7 @@ import { readAssistantCreatedThreadResults } from "../../projection/assistant-cr
 import { useCreatedThreadSourceAeon } from "../../created-thread-host-hooks";
 import { footerText } from "../shared/thread-footer-i18n";
 import { HookStatsIndicator } from "../shared/hook-stats-indicator";
-import {
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  type CSSProperties,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { useCallback, useContext, useEffect, type CSSProperties, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { SendIcon } from "@/components/shared/icons/generic-icons";
@@ -122,14 +113,14 @@ import type {
   ThreadSubagentActivityInlineRowModel,
   ThreadTranscriptBlockModel,
   ThreadWorkedForBlockModel,
+  UserTurnEdit,
 } from "../../thread-stage-types";
 import { THREAD_VISUAL_TOKENS } from "./local-conversation-visual-tokens";
 import { formatThoughtLabel, sumThoughtDurations } from "../../thread-thought-label";
 import { useHookFeedbackSettingsNavigation } from "../hook-feedback-settings-navigation";
 import { useLocalConversationUserTurnEditDraft } from "../local-conversation-thread-view-state";
-import { resolveComposerSubmitIntentFromKeyDown } from "../shared/composer-action";
-import { composerEnterBehaviorAtom } from "@/lib/composer-enter-behavior-atom";
-import { useScopedAtomValue } from "@/lib/maitai";
+import { openUserTurnEditDraft, userTurnEditDraftImages } from "../user-turn-edit-draft";
+import { UserMessageEditForm } from "../shared/user-message-edit-form";
 import {
   useCodexTranscriptBlock,
   useCodexTranscriptDelegatedTaskEntries,
@@ -148,11 +139,7 @@ export interface ThreadLeafBlockProps {
   childMemberships?: readonly CodexConversationChildMembership[];
   parentModel?: string | null;
   threadCwd?: string | null;
-  onEditUserTurn?: (input: {
-    threadId: string;
-    turnId: string;
-    message: string;
-  }) => void | Promise<void>;
+  onEditUserTurn?: (input: UserTurnEdit) => void | Promise<void>;
   onForkFromTurn?: (input: {
     threadId: string;
     turnId: string;
@@ -290,13 +277,6 @@ function humanizeBlockType(type: ThreadBlockModel["type"]): string {
     default:
       return "System event";
   }
-}
-
-/** Opens the editor ready to continue typing at the end of the message. */
-function focusEditMessageTextareaOnMount(element: HTMLTextAreaElement | null): void {
-  if (!element || element.ownerDocument.activeElement === element) return;
-  element.focus();
-  element.setSelectionRange(element.value.length, element.value.length);
 }
 
 function renderCollapsedActivityEntry({
@@ -834,106 +814,6 @@ export function SubagentActivityInlineRows({
 }
 
 /**
- * Rewrites a sent message in place of its bubble. Sending rewinds the conversation to just
- * before this message and continues from the rewritten one; keys follow the Composer.
- */
-function UserMessageEditForm({
-  draft,
-  onDraftChange,
-  onCancel,
-  onSubmit,
-}: {
-  readonly draft: string;
-  readonly onDraftChange: (draft: string) => void;
-  readonly onCancel: () => void;
-  /** Rejects when the edit failed, so the draft stays open to retry. */
-  readonly onSubmit: (message: string) => Promise<void>;
-}) {
-  const enterBehavior = useScopedAtomValue(composerEnterBehaviorAtom);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const canSubmit = draft.trim().length > 0 && !isSubmitting;
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!canSubmit) return;
-    setIsSubmitting(true);
-    return runWithCleanup(() => onSubmit(draft.trim()), {
-      cleanup: () => setIsSubmitting(false),
-      onError: () => {
-        // The conversation surface reports the failure; the draft stays for another try.
-      },
-    });
-  };
-
-  return (
-    <form
-      className="flex w-full flex-col gap-4 rounded-2xl bg-token-foreground/5 px-3 py-2.5"
-      onSubmit={(event) => {
-        void submit(event);
-      }}
-    >
-      <textarea
-        aria-label={footerText("Edit message")}
-        className="max-h-30 min-h-10 w-full resize-none bg-transparent p-0 font-content text-size-chat leading-5 text-token-foreground outline-none [field-sizing:content] placeholder:text-token-description-foreground"
-        placeholder={footerText("Edit message")}
-        rows={2}
-        value={draft}
-        onChange={(event) => {
-          onDraftChange(event.currentTarget.value);
-        }}
-        // Programmatic value writes such as dictation bypass React's change tracking.
-        onInput={(event) => {
-          onDraftChange(event.currentTarget.value);
-        }}
-        onKeyDown={(event) => {
-          if (event.nativeEvent.isComposing) return;
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            onCancel();
-            return;
-          }
-          const intent = resolveComposerSubmitIntentFromKeyDown({
-            enterBehavior,
-            hasMultilinePrompt: draft.includes("\n"),
-            isThreadRunning: false,
-            primarySubmitAction: "send",
-            alternateSubmitAction: null,
-            key: event.key,
-            ctrlKey: event.ctrlKey,
-            metaKey: event.metaKey,
-            shiftKey: event.shiftKey,
-            altKey: event.altKey,
-          });
-          if (!intent) return;
-          event.preventDefault();
-          event.currentTarget.form?.requestSubmit();
-        }}
-        ref={focusEditMessageTextareaOnMount}
-      />
-      <div className="flex justify-end gap-1.5">
-        <button
-          type="button"
-          disabled={isSubmitting}
-          className="border-token-border user-select-none no-drag cursor-interaction flex items-center gap-1 border focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg border-token-border text-token-button-tertiary-foreground bg-token-bg-fog enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background border h-token-button-composer px-2 py-0 text-base leading-[18px]"
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          aria-busy={isSubmitting}
-          className="border-token-border user-select-none no-drag cursor-interaction flex items-center gap-1 border focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg bg-token-foreground enabled:hover:bg-token-foreground/80 data-[state=open]:bg-token-foreground/80 text-token-dropdown-background h-token-button-composer px-2 py-0 text-base leading-[18px]"
-        >
-          Send
-        </button>
-      </div>
-    </form>
-  );
-}
-
-/**
  * Attribute messages sent by another source, question replies another Agent gave, and input
  * delivered from the queue.
  */
@@ -1047,13 +927,14 @@ export function UserMessageBubble({
         : null;
 
   const submitEdit = useCallback(
-    async (message: string) => {
+    async (edit: Pick<UserTurnEdit, "message" | "images">) => {
       if (!onEditUserTurn || block.turnId === null) return;
-      await onEditUserTurn({ threadId: block.entry.threadId, turnId: block.turnId, message });
+      await onEditUserTurn({ threadId: block.entry.threadId, turnId: block.turnId, ...edit });
       setEditDraft(null);
     },
     [block.entry.threadId, block.turnId, onEditUserTurn, setEditDraft],
   );
+  const attachments = block.entry.userAttachments ?? NO_USER_ATTACHMENTS;
   const messageBubble = hasMessageContent ? (
     <div
       data-user-message-bubble="true"
@@ -1103,12 +984,18 @@ export function UserMessageBubble({
         </div>
       ) : null}
       <UserMessageImageGallery
-        attachments={block.entry.userAttachments ?? NO_USER_ATTACHMENTS}
+        attachments={isEditing ? userTurnEditDraftImages(editDraft) : attachments}
         text={content}
+        rewriting={isEditing}
       >
         <NfmImagePlaceholderContext value={renderUserImageReference}>
           <UserAttachmentStrip
-            attachments={block.entry.userAttachments ?? NO_USER_ATTACHMENTS}
+            // While the message is rewritten its images sit in the form, where they can change.
+            attachments={
+              isEditing
+                ? attachments.filter((attachment) => attachment.type !== "image")
+                : attachments
+            }
             unavailableImages={block.entry.unavailableImages ?? []}
           />
           <div className="group flex w-full flex-col items-end justify-end gap-1">
@@ -1116,6 +1003,7 @@ export function UserMessageBubble({
             {isEditing ? (
               <UserMessageEditForm
                 draft={editDraft}
+                scopeKey={`${block.entry.threadId}:${block.turnId}`}
                 onDraftChange={setEditDraft}
                 onCancel={() => setEditDraft(null)}
                 onSubmit={submitEdit}
@@ -1183,7 +1071,7 @@ export function UserMessageBubble({
                         <ThreadActionIconButton
                           label={footerText("Edit message")}
                           tooltip={footerText("Edit")}
-                          onClick={() => setEditDraft(content)}
+                          onClick={() => setEditDraft(openUserTurnEditDraft(content, attachments))}
                         >
                           <EditMessageIcon />
                         </ThreadActionIconButton>
