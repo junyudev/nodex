@@ -26,7 +26,11 @@ import type {
   CodexConversationSnapshot,
   CodexConversationTurn,
 } from "../../../lib/types";
-import type { ThreadBodySurfaceModel, ThreadStageActions } from "../thread-stage-types";
+import type {
+  ThreadBodySurfaceModel,
+  ThreadStageActions,
+  UserTurnEdit,
+} from "../thread-stage-types";
 import { buildThreadBodyModel } from "../projection/build-thread-body-model";
 import { LocalConversationTestQueryProvider } from "./local-conversation-test-query.test-fixtures";
 import { CodexTranscriptReadOwnerContext } from "../normalized-transcript-hooks";
@@ -2138,11 +2142,7 @@ describe("LocalConversationThreadBody", () => {
   });
 
   test("opens an inline edit prompt in place and only edits on send", async () => {
-    const onEditUserTurnCalls: Array<{
-      threadId: string;
-      turnId: string;
-      message: string;
-    }> = [];
+    const onEditUserTurnCalls: UserTurnEdit[] = [];
     const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
     const { getByDisplayValue, getByLabelText, getByRole, queryByDisplayValue } = render(
       <TooltipProvider>
@@ -2173,7 +2173,7 @@ describe("LocalConversationThreadBody", () => {
   });
 
   test("offers Edit on every settled user message and hides it while a Turn runs", async () => {
-    const onEditUserTurnCalls: Array<{ threadId: string; turnId: string; message: string }> = [];
+    const onEditUserTurnCalls: UserTurnEdit[] = [];
     const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
     const turns = [buildIndexedTurn(1), buildIndexedTurn(2), buildIndexedTurn(3)];
     const actions = buildActions({
@@ -2208,8 +2208,8 @@ describe("LocalConversationThreadBody", () => {
     });
     await settleAsyncRender();
     expect(onEditUserTurnCalls).toEqual([
-      { threadId: "thread_1", turnId: "turn_1", message: "Message 1, rewritten" },
-    ]);
+      { threadId: "thread_1", turnId: "turn_1", message: "Message 1, rewritten", images: [] },
+    ] satisfies UserTurnEdit[]);
 
     rerender(
       view(
