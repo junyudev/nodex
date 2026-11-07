@@ -30,7 +30,7 @@ import {
 import { history, redo, undo } from "@tiptap/pm/history";
 import { keymap } from "@tiptap/pm/keymap";
 import { Schema, Slice, type DOMOutputSpec, type Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { EditorState, Plugin, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { EditorState, Plugin, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, EditorView } from "@tiptap/pm/view";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
@@ -1618,6 +1618,7 @@ export const ComposerPromptEditor = forwardRef<
     [dispatchSuggestionMeta, replaceTextRange, setText],
   );
 
+  const focusedSelectionRef = useRef<ReturnType<Selection["toJSON"]> | null>(null);
   useLayoutEffect(() => {
     const mount = mountRef.current;
     if (!mount || viewRef.current) return;
@@ -1667,8 +1668,17 @@ export const ComposerPromptEditor = forwardRef<
     dictationRef.current = createComposerDictationEditor(view);
     emitSuggestionState(view);
     reportIntrinsicContentWidth();
+    // This effect can run again without the component going away, under StrictMode or an Activity.
+    // Rebuilding the editor then must not take the cursor from someone about to type.
+    const rebuiltFrom = focusedSelectionRef.current;
+    focusedSelectionRef.current = null;
+    if (rebuiltFrom) {
+      view.dispatch(view.state.tr.setSelection(Selection.fromJSON(view.state.doc, rebuiltFrom)));
+      view.focus();
+    }
 
     return () => {
+      focusedSelectionRef.current = view.hasFocus() ? view.state.selection.toJSON() : null;
       dictationRef.current?.dispose();
       view.destroy();
       viewRef.current = null;

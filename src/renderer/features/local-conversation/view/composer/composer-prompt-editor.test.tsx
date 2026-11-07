@@ -1,5 +1,5 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
-import { createRef } from "react";
+import { createRef, StrictMode, useEffect, useRef } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { resolveSubagentAvatarAsset } from "../shared/subagent-avatar";
 import {
@@ -168,6 +168,35 @@ describe("ComposerPromptEditor", () => {
       expect(editorRef.current!.getSelection()).toEqual({ from: cursor, to: cursor });
     },
   );
+
+  test("keeps a one-time focus request when its effects run a second time", () => {
+    const FocusedOnce = () => {
+      const editorRef = useRef<ComposerPromptEditorHandle>(null);
+      const requested = useRef(false);
+      useEffect(() => {
+        if (requested.current) return;
+        requested.current = true;
+        editorRef.current?.focusAtEnd();
+      }, []);
+      return (
+        <ComposerPromptEditor
+          ref={editorRef}
+          value="A first task"
+          placeholder="Do anything"
+          disabled={false}
+          onChange={vi.fn()}
+          onKeyDown={vi.fn(() => false)}
+        />
+      );
+    };
+    const { container } = render(
+      <StrictMode>
+        <FocusedOnce />
+      </StrictMode>,
+    );
+    expect(document.activeElement).toBe(container.querySelector("[contenteditable='true']"));
+    expect(document.getSelection()?.anchorOffset).toBe("A first task".length);
+  });
 
   test("measures the longest unwrapped prompt width without mutating editor styles", () => {
     const editor = document.createElement("div");
