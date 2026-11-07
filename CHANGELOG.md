@@ -42,6 +42,7 @@ All notable changes to this project will be documented in this file.
 
 - Agents now show the HTML pages they make as rendered pages beside the chat. Opening one used to show its source code. An Agent opening the page again reloads the same tab, so you see its edits, and it can still show you the source when you ask.
 - A chat that continues after a restart can open tabs beside it again. With several windows open, its Agent used to stop and show you nothing; it now uses the window showing that chat.
+- The marker showing that a chat moved to another Agent now stays visible. It says which Agents the chat moved between and what it carried, and it used to fold away as soon as the reply finished.
 - Returning a chat to Codex keeps Codex's own conversation. A resume that had already succeeded could be thrown away because its background terminals couldn't be listed, which started a new conversation and pasted the whole history into it.
 - Fast mode now works on current Codex models. The Fast toggle, `/fast`, the speed setting for new chats, a scheduled task's speed and `speed="fast"` in a prompt's agent config had no effect or failed, because these models name the tier differently. If you turned Fast on earlier, new chats now really run at Fast and use more of your usage; turn it off in the model menu or Settings.
 - Claude Code chats no longer stop partway through a long tool call. A long script or file could end the reply and kill the command it was running; how much an Agent streams can no longer end a reply.

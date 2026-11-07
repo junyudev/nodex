@@ -2127,10 +2127,17 @@ describe("bucketizeTurnItems", () => {
       type: "userMessage",
       entry: { ...buildItem({}).entry, itemId: "user", kind: "userMessage" },
     });
-    const buckets = bucketizeTurnItems({ items: [handoff, user, buildItem({ id: "answer" })] });
-    expect(buckets.preUserItems.map((item) => item.id)).toEqual(["handoff"]);
-    expect(buckets.userItems.map((item) => item.id)).toEqual(["user"]);
-    expect(buckets.assistantItem?.id).toBe("answer");
+    // A Run records the person's message first, so this is the order a chat really sees.
+    for (const prefix of [
+      [handoff, user],
+      [user, handoff],
+    ]) {
+      const buckets = bucketizeTurnItems({ items: [...prefix, buildItem({ id: "answer" })] });
+      expect(buckets.preUserItems.map((item) => item.id)).toEqual(["handoff"]);
+      expect(buckets.userItems.map((item) => item.id)).toEqual(["user"]);
+      expect(buckets.agentItems).toEqual([]);
+      expect(buckets.assistantItem?.id).toBe("answer");
+    }
   });
 
   test("Runtime stop markers and task rows stay visible in the response body", () => {

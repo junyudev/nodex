@@ -180,9 +180,9 @@ export function bucketizeTurnItems(input: BucketizeTurnItemsInput): ThreadTurnRe
     }
 
     // A Run that continues on another Agent opens with that handoff, above the person's message.
+    // It follows that message in the Run, and must not fold away with the Turn's work.
     if (
       beforeAgentSequence &&
-      buckets.userItems.length === 0 &&
       item.type === "runtimeNotice" &&
       item.entry.runtimeNotice?.kind === "agentHandoff"
     ) {
