@@ -10,7 +10,7 @@ import {
   openNodexAccount,
 } from "./fixtures/nodex-account-ui";
 import { startNodexOAuthHttpFixture } from "./fixtures/nodex-oauth-http";
-import { openComposerModelPicker } from "./support/composer-model-picker";
+import { composerModelLabel, openComposerModelPicker } from "./support/composer-model-picker";
 import { openWorkbenchSettings } from "./support/workbench-settings";
 
 const creditProviders = async (page: Page) =>
@@ -148,16 +148,12 @@ test("turning models off removes them everywhere and survives a restart", async 
     search = await openComposerModelPicker(page);
     await search.fill("GPT-6 Luna");
     await page.getByRole("option", { name: /GPT-6 Luna.*Nodex/u }).click();
-    await expect(page.getByRole("button", { name: "Select model", exact: true })).toContainText(
-      "GPT-6 Luna",
-    );
+    await expect(composerModelLabel(page)).toContainText("GPT-6 Luna");
     await openModelsSettings(page);
     await page.getByRole("switch", { name: "GPT-6 Luna", exact: true }).click();
     await page.getByRole("button", { name: "Back to app", exact: true }).click();
     await expect(page.getByText("GPT-6 Luna on Nodex is off", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Select model", exact: true })).toContainText(
-      "GPT-6 Luna",
-    );
+    await expect(composerModelLabel(page)).toContainText("GPT-6 Luna");
     await expect(page.getByRole("button", { name: "Turn on", exact: true })).toHaveCount(0);
     await shot(page, "composer-model-off.png");
     await page.getByRole("button", { name: "Choose model", exact: true }).click();

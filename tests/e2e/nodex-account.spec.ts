@@ -2,7 +2,7 @@ import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import { expect, test } from "@playwright/test";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { openComposerModelPicker } from "./support/composer-model-picker";
+import { composerModelLabel, openComposerModelPicker } from "./support/composer-model-picker";
 import { openWorkbenchSettings } from "./support/workbench-settings";
 import {
   ElectronScenarioHarness,
@@ -254,15 +254,11 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
         .screenshot({ path: path.join(artifacts, "nodex-model-picker.png") });
     await page.screenshot({ path: test.info().outputPath("nodex-model-picker.png") });
     await page.getByRole("option", { name: /GPT-6.1 Sol/u }).click();
-    await expect(page.getByRole("button", { name: "Select model", exact: true })).toContainText(
-      "GPT-6.1 Sol",
-    );
+    await expect(composerModelLabel(page)).toContainText("GPT-6.1 Sol");
     await openComposerModelPicker(page);
     await page.getByRole("combobox", { name: "Search models" }).fill("Nodex");
     await page.getByRole("option", { name: /Claude Sonnet 5.5/u }).click();
-    await expect(page.getByRole("button", { name: "Select model", exact: true })).toContainText(
-      "Claude Sonnet 5.5",
-    );
+    await expect(composerModelLabel(page)).toContainText("Claude Sonnet 5.5");
     // The rail credit meter shows the balance and leads to Account settings to buy.
     const creditMeter = page.locator("[data-nodex-credit-meter]");
     await creditMeter.hover();

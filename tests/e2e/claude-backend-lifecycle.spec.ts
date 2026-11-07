@@ -3,6 +3,7 @@ import { openWorkbenchSettings } from "./support/workbench-settings";
 import {
   chooseComposerEffort,
   chooseComposerModel,
+  composerModelLabel,
   openComposerModelPicker,
   setComposerFast,
 } from "./support/composer-model-picker";
@@ -222,7 +223,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
     await page.keyboard.press("Escape");
     await expect(page.getByRole("slider", { name: "Effort", exact: true })).toHaveCount(0);
     const modelTrigger = page.getByRole("button", { name: "Select model", exact: true });
-    await expect(modelTrigger).toContainText("Max");
+    await expect(composerModelLabel(page)).toContainText("Max");
     await expect(modelTrigger.locator('[data-fast-mode-indicator="true"]')).toHaveCount(1);
     await expect(location).toHaveText("This computer");
     await expect(location).toBeEnabled();
@@ -301,7 +302,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
     await chooseComposerEffort(page, "Medium");
     await setComposerFast(page, false);
     await page.keyboard.press("Escape");
-    await expect(modelTrigger).toContainText("Medium");
+    await expect(composerModelLabel(page)).toContainText("Medium");
     await composer.fill("Verify thinking enabled");
     await page.getByRole("button", { name: "Send prompt", exact: true }).click();
     await expect(page.getByText("Native thinking enabled", { exact: true })).toBeVisible();
@@ -318,9 +319,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
     });
     await openComposerModelPicker(page);
     await sonnet.click();
-    await expect(page.getByRole("button", { name: "Select model", exact: true })).toContainText(
-      "Claude Sonnet 5.5",
-    );
+    await expect(composerModelLabel(page)).toContainText("Claude Sonnet 5.5");
     await chooseComposerEffort(page, "Low");
     await page.keyboard.press("Escape");
     await composer.fill("Wait for cancellation");
