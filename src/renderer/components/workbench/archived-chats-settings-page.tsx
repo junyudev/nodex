@@ -1,6 +1,6 @@
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { startTransition, useDeferredValue, useEffect, useEffectEvent, useState } from "react";
-import { DeleteIcon, SearchIcon } from "@/components/shared/icons";
+import { Archive16Icon, DeleteIcon, SearchIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import {
   NodexDialog,
@@ -227,11 +227,12 @@ export function ArchivedChatsSettingsPage({
           ? await unarchiveChat(chat.threadId)
           : await workspaceSessionCommands.unarchive(requireSessionId(chat));
         setChats((current) => current.filter((candidate) => candidate.threadId !== chat.threadId));
-        toast.success("Unarchived chat", {
+        toast.info("Unarchived chat", {
+          leading: <Archive16Icon className="size-4 shrink-0" />,
           ...(restored && onOpenThread
             ? {
                 action: {
-                  label: "Open",
+                  label: "View",
                   onClick: () => {
                     void onOpenThread(chat.threadId);
                   },

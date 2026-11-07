@@ -17,12 +17,14 @@ import {
   archiveWorkbenchThread,
   moveWorkbenchSidebarThread,
 } from "@/lib/workbench-shell-operations";
+import { unarchiveChat } from "@/lib/workbench-settings-runtime";
 import { buildSessionDeepLink } from "@/lib/page-deeplink";
 import { documentSessionRegistry } from "@/lib/document-session-registry";
 import {
   loadLocalEnvironmentConfigSelection,
   readLocalEnvironmentSelections,
 } from "./local-environment-selection";
+import { archiveChatWithFeedback } from "./archive-chat-feedback";
 import type { ScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
 import {
@@ -138,6 +140,7 @@ interface WorkbenchSidebarControllerInput {
   readonly setPendingWorktreeClientThreadId: (clientThreadId: string | null) => void;
   readonly setLocalEnvironmentSettingsInitial: (value: null) => void;
   readonly closePendingWorktreeRoute: () => void;
+  readonly openArchivedChats: () => void;
   readonly onOpenProjectSessionInNewWindow?: (session: ProjectSession) => Promise<void>;
 }
 
@@ -190,6 +193,7 @@ export function useWorkbenchSidebarController({
   setPendingWorktreeClientThreadId,
   setLocalEnvironmentSettingsInitial,
   closePendingWorktreeRoute,
+  openArchivedChats,
   onOpenProjectSessionInNewWindow,
 }: WorkbenchSidebarControllerInput) {
   const {
@@ -580,10 +584,7 @@ export function useWorkbenchSidebarController({
     [appHandle],
   );
 
-  const archiveSession = async (
-    session: ProjectSessionDomain,
-    options: { showToast?: boolean } = {},
-  ) => {
+  const archiveSessionQuietly = async (session: ProjectSessionDomain): Promise<boolean> => {
     try {
       const refreshedPresentations = await catalog.archive(session);
       await runWithCleanup(
@@ -609,11 +610,22 @@ export function useWorkbenchSidebarController({
       );
       return true;
     } catch {
-      if (options.showToast !== false) {
-        toast.danger("Failed to archive chat");
-      }
       return false;
     }
+  };
+
+  const archiveSession = (session: ProjectSessionDomain): Promise<boolean> => {
+    const wasActive = activeSessionId === session.id;
+    return archiveChatWithFeedback({
+      chatId: session.id,
+      archive: () => archiveSessionQuietly(session),
+      restore: async () => {
+        await catalog.unarchive(session);
+        await refreshSidebarThreadSnapshot();
+        if (wasActive) selectSession(session);
+      },
+      viewArchivedChats: openArchivedChats,
+    });
   };
 
   const resolveSidebarArchivePendingKeyForSession = useCallback(
@@ -631,17 +643,11 @@ export function useWorkbenchSidebarController({
     const pendingKey = resolveSidebarArchivePendingKeyForSession(session);
     if (!beginArchive(pendingKey)) return;
 
-    await runWithCleanup(
-      async () => {
-        const archived = await archiveSession(session, { showToast: false });
-        if (!archived) toast.danger("Failed to archive chat");
+    await runWithCleanup(() => archiveSession(session), {
+      cleanup: () => {
+        finishArchive(pendingKey);
       },
-      {
-        cleanup: () => {
-          finishArchive(pendingKey);
-        },
-      },
-    );
+    });
   };
 
   const archiveSidebarThreadItem = async (
@@ -668,31 +674,49 @@ export function useWorkbenchSidebarController({
             : (knownSessions.find((candidate) => candidate.thread?.threadId === item.threadId) ??
               null));
         if (session) {
-          const archived = await archiveSession(session, { showToast: false });
-          if (!archived) toast.danger("Failed to archive chat");
+          await archiveSession(session);
           return;
         }
 
         const authority = resolveSidebarThreadMutationAuthority(item);
         if (authority.kind === "unavailable") return;
         if (authority.kind === "workspace") {
-          await workspaceSessionCommands.archive(authority.sessionId);
+          const { sessionId } = authority;
+          await archiveChatWithFeedback({
+            chatId: sessionId,
+            archive: async () => {
+              await workspaceSessionCommands.archive(sessionId);
+              return true;
+            },
+            restore: async () => {
+              await workspaceSessionCommands.unarchive(sessionId);
+            },
+            viewArchivedChats: openArchivedChats,
+          });
           return;
         }
 
-        await archiveWorkbenchThread(item.threadId);
-        await refreshSidebarThreadSnapshot();
+        const { threadId } = item;
+        await archiveChatWithFeedback({
+          chatId: threadId,
+          archive: async () => {
+            const archived = await archiveWorkbenchThread(threadId);
+            await refreshSidebarThreadSnapshot();
+            return archived;
+          },
+          restore: async () => {
+            await unarchiveChat(threadId);
+            await refreshSidebarThreadSnapshot();
+          },
+          viewArchivedChats: openArchivedChats,
+        });
       },
       {
         cleanup: () => {
           finishArchive(item.key);
         },
         onError: () => {
-          toast.danger(
-            item.kind === "pending-worktree"
-              ? "Failed to cancel worktree setup"
-              : "Failed to archive chat",
-          );
+          toast.danger("Failed to cancel worktree setup");
         },
       },
     );
@@ -709,7 +733,7 @@ export function useWorkbenchSidebarController({
           : (knownSessions.find((candidate) => candidate.thread?.threadId === item.threadId) ??
             null);
         if (session) {
-          return await archiveSession(session, { showToast: false });
+          return await archiveSessionQuietly(session);
         }
 
         const authority = resolveSidebarThreadMutationAuthority(item);

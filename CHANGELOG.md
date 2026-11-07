@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Archiving a chat now lets you take it back. A toast appears right away: Undo restores the chat and returns you to it, and View opens your archived chats.
 - The Codex usage ring now shows your remaining credits. Hover it to see your balance below the usage windows. When a limit is used up and credits keep you working, the ring turns amber instead of red, and the card says the credits are in use.
 - You choose which models Nodex can use in Settings → Models. An off model leaves every model menu, and nothing in Nodex can start it. Nodex credits are protected by default: only what you start can spend them, so an Agent on another provider can't start a Nodex subagent unless you allow it, and turning Nodex off means nothing on this computer can spend them.
 - Account settings now show what each Nodex model costs. Model prices lists input, cache and output prices per million tokens in credits, always current with what the service charges, so you can see what a top-up buys before you pay.

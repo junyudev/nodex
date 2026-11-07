@@ -786,6 +786,101 @@ describe("workbench session shell / sidebar-core", () => {
     ).toBe(true);
   });
 
+  describe("archive toast", () => {
+    const archivedToast = () => {
+      const record = __getNodexToastSnapshotForTests().find(
+        (item) => item.title === "Archived chat",
+      );
+      if (!record) throw new Error("Expected the archived chat toast.");
+      return record;
+    };
+
+    const archiveRow = async (container: HTMLElement, title: string) => {
+      await act(async () => {
+        fireEvent.click(
+          within(getThreadRow(container, title)).getByRole("button", { name: "Archive chat" }),
+        );
+        await Promise.resolve();
+      });
+      await settleAsyncRender();
+    };
+
+    const renderWithTarget = async () => {
+      const target = makeAttachedSession({
+        id: "session:alpha:archive-target",
+        threadId: "thread-archive-target",
+        title: "Archive target",
+        activityAt: fixtureSessionActivityAt(1),
+        rightCollapsed: true,
+        tabs: [],
+      });
+      const screen = renderWorkbench({
+        sessionsByProject: { alpha: [makeSession(), target] },
+      });
+      await settleAsyncRender();
+      await settleAsyncRender();
+      return screen;
+    };
+
+    test("Undo restores the open chat and returns to it", async () => {
+      const screen = await renderWithTarget();
+      await selectSidebarSession(screen.container, "Archive target");
+      await archiveRow(screen.container, "Archive target");
+
+      expect(archivedToast().action?.label).toBe("Undo");
+      expect(archivedToast().secondaryAction?.label).toBe("View");
+      expect(getMountedSessionIds(screen.container)).not.toContain("session:alpha:archive-target");
+
+      await act(async () => {
+        archivedToast().action?.onClick();
+        await Promise.resolve();
+      });
+      await settleAsyncRender();
+      await settleAsyncRender();
+
+      expect(
+        invokeCalls.some(
+          (call) =>
+            call[0] === "project-sessions:unarchive" &&
+            rendererCommandPayload(call)?.sessionId === "session:alpha:archive-target",
+        ),
+      ).toBe(true);
+      expect(getThreadRow(screen.container, "Archive target")).not.toBeNull();
+      expect(getMountedSessionIds(screen.container)).toContain("session:alpha:archive-target");
+      expect(__getNodexToastSnapshotForTests().some((item) => item.title === "Chat restored")).toBe(
+        true,
+      );
+    });
+
+    test("Undo leaves the person where they are when the chat was not open", async () => {
+      const screen = await renderWithTarget();
+      await selectSidebarSession(screen.container, "Database View");
+      await archiveRow(screen.container, "Archive target");
+
+      await act(async () => {
+        archivedToast().action?.onClick();
+        await Promise.resolve();
+      });
+      await settleAsyncRender();
+      await settleAsyncRender();
+
+      expect(getThreadRow(screen.container, "Archive target")).not.toBeNull();
+      expect(getMountedSessionIds(screen.container)).toEqual(["session:alpha:database-view"]);
+    });
+
+    test("View opens the page that lists archived chats", async () => {
+      const screen = await renderWithTarget();
+      await archiveRow(screen.container, "Archive target");
+
+      await act(async () => {
+        archivedToast().secondaryAction?.onClick();
+        await Promise.resolve();
+      });
+
+      expect(await screen.findByRole("heading", { name: "Data controls" })).toBeTruthy();
+    });
+  });
+
   test("sidebar archive hover action uses codex thread archive for snapshot-only chats", async () => {
     const snapshotOnlyItem: CodexSidebarThreadItem = {
       key: "local:thread-snapshot-only",

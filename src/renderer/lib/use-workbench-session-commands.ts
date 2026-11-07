@@ -194,10 +194,7 @@ interface WorkbenchSessionCommandsInput {
     session: ProjectSessionDomain | ProjectSession,
     placement?: WorkbenchSessionPlacement,
   ) => void;
-  readonly archiveSession: (
-    session: ProjectSession,
-    options?: { readonly showToast?: boolean },
-  ) => Promise<boolean>;
+  readonly archiveSession: (session: ProjectSession) => Promise<boolean>;
   readonly toggleSessionPin: (session: ProjectSession) => Promise<void>;
   readonly toggleSessionUnread: (session: ProjectSession) => Promise<void>;
   readonly refreshProjectSessions: (projectId: string | null) => Promise<unknown>;

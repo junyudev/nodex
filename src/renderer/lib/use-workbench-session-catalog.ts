@@ -158,6 +158,7 @@ export interface WorkbenchSessionCatalog {
   readonly setPinned: (session: ProjectSession, pinned: boolean) => Promise<ProjectSession | null>;
   readonly rename: (session: ProjectSession, title: string) => Promise<ProjectSession>;
   readonly archive: (session: ProjectSession) => Promise<readonly WorkbenchSessionPresentation[]>;
+  readonly unarchive: (session: ProjectSession) => Promise<void>;
   readonly ensureThreadSession: (threadId: string) => Promise<ProjectSession | null>;
   readonly ensureDefaultDraft: (projectId: string | null) => Promise<WorkbenchSessionPresentation>;
   readonly createOrdinarySession: (
@@ -616,6 +617,13 @@ export function useWorkbenchSessionCatalog({
     },
     [queryClient, refresh],
   );
+  const unarchive = useCallback(
+    async (session: ProjectSession): Promise<void> => {
+      await workspaceSessionCommands.unarchive(session.id);
+      await refresh(session.projectId);
+    },
+    [refresh],
+  );
   const ensureThreadSession = useCallback(
     async (threadId: string): Promise<ProjectSession | null> => {
       const ensured = await ensureWorkbenchThreadSession(threadId);
@@ -805,6 +813,7 @@ export function useWorkbenchSessionCatalog({
     setPinned,
     rename,
     archive,
+    unarchive,
     ensureThreadSession,
     ensureDefaultDraft,
     createOrdinarySession,

@@ -13,11 +13,13 @@ const subscribeCodexEvents = vi.fn((_callback: unknown) => () => undefined);
 const subscribeProjectSessionChanges = vi.fn((_callback: unknown) => () => undefined);
 const workspaceSessionCommand = vi.fn();
 const successToast = vi.fn();
+const infoToast = vi.fn();
 const dangerToast = vi.fn();
 
 vi.mock("@/components/ui/toast", () => ({
   toast: {
     success: (...args: unknown[]) => successToast(...args),
+    info: (...args: unknown[]) => infoToast(...args),
     danger: (...args: unknown[]) => dangerToast(...args),
   },
 }));
@@ -119,6 +121,7 @@ describe("Archived chats settings", () => {
     subscribeProjectSessionChanges.mockClear();
     workspaceSessionCommand.mockReset();
     successToast.mockReset();
+    infoToast.mockReset();
     dangerToast.mockReset();
   });
 
@@ -187,6 +190,9 @@ describe("Archived chats settings", () => {
     });
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("codex:thread:unarchive", "alpha"));
     expect(view.queryByText("Alpha task")).toBeNull();
+    await waitFor(() =>
+      expect(infoToast).toHaveBeenCalledWith("Unarchived chat", expect.anything()),
+    );
 
     fireEvent.click(view.getByRole("button", { name: "Delete archived chat Beta task" }));
     expect(view.getByRole("dialog")).toBeTruthy();

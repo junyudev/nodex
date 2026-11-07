@@ -2333,6 +2333,7 @@ export function WorkbenchRuntime({
     setPendingWorktreeClientThreadId,
     setLocalEnvironmentSettingsInitial,
     closePendingWorktreeRoute,
+    openArchivedChats: () => openSettingsAt("data-controls"),
     onOpenProjectSessionInNewWindow,
   });
   const {
