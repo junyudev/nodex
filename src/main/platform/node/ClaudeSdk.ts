@@ -64,7 +64,7 @@ export class ClaudeSdk extends Context.Service<
     ) => Effect.Effect<string, AgentRuntimeError>;
     readonly listSessions: (
       input: ClaudeNativeScopeInput,
-      offset: number,
+      page: { readonly offset: number; readonly limit: number },
     ) => Effect.Effect<readonly SDKSessionInfo[], AgentRuntimeError>;
     readonly sessionInfo: (
       input: ClaudeNativeScopeInput,
@@ -378,7 +378,7 @@ const nativeOperations = (moduleUrl: string) => {
     }).then(async sdk => {
       if (workerData.operation === "home") return;
       if (workerData.operation === "catalog") {
-        post((await sdk.listSessions({limit:51,offset:workerData.options.offset,includeProgrammatic:true})).map(metadata));return;
+        post((await sdk.listSessions({limit:workerData.options.limit,offset:workerData.options.offset,includeProgrammatic:true})).map(metadata));return;
       }
       if (workerData.operation === "configuration") {
         const resolved = await sdk.resolveSettings({cwd:workerData.cwd,settingSources:["user","project","local"]});
@@ -482,8 +482,8 @@ const nativeOperations = (moduleUrl: string) => {
   const configuration: ClaudeSdk["Service"]["configuration"] = (input) =>
     nativeOperation({ ...input, sessionId: "" }, "configuration");
   const nativeHome: ClaudeSdk["Service"]["nativeHome"] = (input) => nativeOperation(input, "home");
-  const listSessions: ClaudeSdk["Service"]["listSessions"] = (input, offset) =>
-    nativeOperation(input, "catalog", { offset });
+  const listSessions: ClaudeSdk["Service"]["listSessions"] = (input, page) =>
+    nativeOperation(input, "catalog", page);
   const sessionInfo: ClaudeSdk["Service"]["sessionInfo"] = (input, sessionId) =>
     nativeOperation({ ...input, sessionId }, "session-info");
 

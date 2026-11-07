@@ -80,6 +80,8 @@ const isImportableRoot = (thread: Thread): boolean => {
     !hasCodexSubagentSource(thread.source)
   );
 };
+/** The app-server's own bound for one `thread/list` page. */
+const CODEX_CATALOG_PAGE_SIZE = 100;
 const milliseconds = (seconds: number): number =>
   Number.isFinite(seconds) && seconds >= 0
     ? Math.min(Number.MAX_SAFE_INTEGER, Math.floor(seconds * 1000))
@@ -176,19 +178,34 @@ export const make = Effect.gen(function* () {
         true,
       );
     const home = yield* nativeHome();
-    const response = yield* gateway.requestLocal(
-      "thread/list",
-      {
-        cursor: input.cursor ?? null,
-        limit: 50,
-        sortKey: "updated_at",
-        sortDirection: "desc",
-        sourceKinds: ["cli", "vscode", "exec", "appServer", "unknown"],
-        archived: false,
-      },
-      { priority: "interactive", source: "native_session_catalog", timeoutMs: 15_000 },
-    );
-    if (response.data.length > 50)
+    const readPage = (fromIndex: boolean) =>
+      gateway.requestLocal(
+        "thread/list",
+        {
+          cursor: input.cursor ?? null,
+          limit: CODEX_CATALOG_PAGE_SIZE,
+          sortKey: "updated_at",
+          sortDirection: "desc",
+          sourceKinds: ["cli", "vscode", "exec", "appServer", "unknown"],
+          archived: false,
+          ...(fromIndex ? { useStateDbOnly: true } : {}),
+        },
+        { priority: "interactive", source: "native_session_catalog", timeoutMs: 15_000 },
+      );
+    // A scan of the rollouts reads a page in about a second and an index read in milliseconds, so a
+    // whole history is read from the index once the first page has scanned and repaired it. An index
+    // still being built can stop short, so only a scan may say the history has ended.
+    let response = yield* readPage(input.cursor !== undefined);
+    if (input.cursor !== undefined && !response.nextCursor) {
+      const indexed = response;
+      response = yield* readPage(false).pipe(
+        Effect.map((scanned) =>
+          scanned.nextCursor || scanned.data.length > indexed.data.length ? scanned : indexed,
+        ),
+        Effect.orElseSucceed(() => indexed),
+      );
+    }
+    if (response.data.length > CODEX_CATALOG_PAGE_SIZE)
       return yield* fail(
         "catalog.bound",
         new Error("Codex returned an unexpected conversation list. Refresh to try again."),

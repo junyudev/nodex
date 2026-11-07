@@ -7,6 +7,7 @@ import type { IpcMainInvokeEvent } from "electron";
 import type {
   NativeConversationImportInput,
   NativeSessionCatalogInput,
+  NativeSessionCatalogPage,
 } from "../../../shared/native-session-catalog";
 import {
   NativeSessionCatalog,
@@ -73,7 +74,12 @@ const makeFixture = Effect.fn("NativeSessionCatalogIpc.testFixture")(function* (
   const prepared: NativeConversationImportInput[] = [];
   const imported: Array<NativeConversationImportInput & { title: string; model: string | null }> =
     [];
-  const state = { completed: false, preparationFailure: null as "validation" | "transport" | null };
+  const state = {
+    completed: false,
+    preparationFailure: null as "validation" | "transport" | null,
+    entries: [] as NativeSessionCatalogPage["entries"],
+  };
+  const importLookups: string[][] = [];
   const source = {
     backendKind: "codex" as const,
     nativeSessionId: "019abcde-1234-7000-8000-123456789abc",
@@ -100,7 +106,7 @@ const makeFixture = Effect.fn("NativeSessionCatalogIpc.testFixture")(function* (
     list: (input) =>
       Effect.sync(() => {
         listed.push(input);
-        return { nativeHome: "/native-home", entries: [], nextCursor: null };
+        return { nativeHome: "/native-home", entries: state.entries, nextCursor: null };
       }),
   });
   yield* Layer.buildWithScope(
@@ -110,7 +116,17 @@ const makeFixture = Effect.fn("NativeSessionCatalogIpc.testFixture")(function* (
           mainConfigLayer(),
           Layer.succeed(NativeSessionCatalog, catalog),
           Layer.succeed(AgentRuntimeApplication, {
-            findNativeImports: () => Effect.succeed([]),
+            findNativeImports: ({ nativeThreadIds }: { nativeThreadIds: readonly string[] }) =>
+              Effect.sync(() => {
+                importLookups.push([...nativeThreadIds]);
+                return nativeThreadIds
+                  .filter((id) => id === "imported")
+                  .map((nativeSessionId) => ({
+                    nativeSessionId,
+                    importedSessionId: "copy-session",
+                    importedThreadId: "copy-thread",
+                  }));
+              }),
             submitNativeImport: (
               input: NativeConversationImportInput,
               prepare: Effect.Effect<{ title: string; model: string | null }, unknown>,
@@ -156,8 +172,36 @@ const makeFixture = Effect.fn("NativeSessionCatalogIpc.testFixture")(function* (
   const preview = handlers.get("native-sessions:preview-import");
   if (!list || !importNative || !preview)
     throw new Error("Native conversation IPC handlers are unavailable.");
-  return { list, listed, importNative, preview, prepared, imported, state };
+  return { list, listed, importNative, preview, prepared, imported, state, importLookups };
 });
+
+it.effect("finds imported copies for a page larger than one Runtime lookup", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      const entry = (nativeSessionId: string) => ({
+        nativeSessionId,
+        title: nativeSessionId,
+        cwd: "/repo",
+        updatedAt: 1,
+      });
+      fixture.state.entries = [
+        ...Array.from({ length: 150 }, (_, index) => entry(`source-${index}`)),
+        entry("imported"),
+      ];
+      const page = (yield* fixture.list(trustedEvent(), {
+        backendKind: "codex",
+      })) as NativeSessionCatalogPage;
+      assert.deepEqual(
+        fixture.importLookups.map((lookup) => lookup.length),
+        [100, 51],
+      );
+      assert.equal(page.entries.length, 151);
+      assert.equal(page.entries.at(-1)?.importedThreadId, "copy-thread");
+      assert.isUndefined(page.entries[0]?.importedThreadId);
+    }),
+  ),
+);
 
 it.effect(
   "imports only validated source metadata and recovers completed copies without rereading the source",

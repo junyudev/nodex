@@ -73,6 +73,11 @@ const failure = (
   cause: unknown,
   reason: AgentRuntimeError["reason"] = "request",
 ) => agentRuntimeError({ operation: `Claude ${operation}`, reason, retryable: false, cause });
+/**
+ * Each read scans every session before its offset, so pages double to keep reading a whole history
+ * close to one full scan, up to a bound on what one worker reply carries.
+ */
+const claudeCatalogPageSize = (offset: number) => Math.min(1_000, Math.max(50, offset));
 const CLAUDE_ACCOUNT_ENVIRONMENT_NAMES = new Set(["HOME", "USERPROFILE", "CLAUDE_CONFIG_DIR"]);
 const claudeWorkspaceInheritsPath = (
   environment: CodexStoredShellEnvironment | null | undefined,
@@ -145,7 +150,7 @@ export const make = Effect.gen(function* () {
           .object({
             home: z.string(),
             instance: z.string(),
-            offset: z.number().int().min(0).max(100_000),
+            offset: z.number().int().min(0).max(1_000_000),
           })
           .strict()
           .parse(JSON.parse(Buffer.from(input.cursor, "base64url").toString("utf8")));
@@ -155,7 +160,8 @@ export const make = Effect.gen(function* () {
       },
       catch: (cause) => failure("catalog cursor", cause),
     });
-    const sessions = yield* sdk.listSessions(scope.input, offset);
+    const pageSize = claudeCatalogPageSize(offset);
+    const sessions = yield* sdk.listSessions(scope.input, { offset, limit: pageSize + 1 });
     if ((yield* nativeHome(input.instanceConfigId)) !== scope.nativeHome)
       return yield* failure(
         "catalog",
@@ -163,7 +169,7 @@ export const make = Effect.gen(function* () {
         "resource-not-found",
       );
     const candidates = yield* Effect.forEach(
-      sessions.slice(0, 50),
+      sessions.slice(0, pageSize),
       (session) =>
         Effect.gen(function* () {
           if (
@@ -193,12 +199,12 @@ export const make = Effect.gen(function* () {
       nativeHome: scope.nativeHome,
       entries: candidates.filter((candidate) => candidate !== null),
       nextCursor:
-        sessions.length > 50
+        sessions.length > pageSize
           ? Buffer.from(
               JSON.stringify({
                 home: scope.nativeHome,
                 instance: input.instanceConfigId,
-                offset: offset + 50,
+                offset: offset + pageSize,
               }),
             ).toString("base64url")
           : null,

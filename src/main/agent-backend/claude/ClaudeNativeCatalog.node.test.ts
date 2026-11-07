@@ -6,6 +6,7 @@ import { ClaudeSdk, type ClaudeSdkDiscoveryInput } from "../../platform/node/Cla
 import { ApplicationSettings } from "../../settings/ApplicationSettings";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
+import type { NativeSessionCatalogPage } from "../../../shared/native-session-catalog";
 
 vi.mock("../../platform/node/ClaudeDiscovery", async (original) => ({
   ...(await original<typeof import("../../platform/node/ClaudeDiscovery")>()),
@@ -81,6 +82,53 @@ it.effect(
     ),
 );
 
+it.effect("reads a whole history in doubling pages so older pages stay affordable", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const history = Array.from({ length: 330 }, (_, index) => ({
+        sessionId: String(index),
+        lastModified: index,
+        summary: "Saved",
+        cwd: "/missing",
+      }));
+      const reads: Array<{ offset: number; limit: number }> = [];
+      const catalog = yield* make.pipe(
+        Effect.provide(mainConfigLayer()),
+        Effect.provideService(ApplicationSettings, {
+          claudeLaunchConfiguration: () =>
+            Effect.succeed({ instance: defaultClaudeInstance(), environment: {} }),
+        } as never),
+        Effect.provideService(ClaudeSdk, {
+          nativeHome: () => Effect.succeed("/home"),
+          listSessions: (_input: unknown, page: { offset: number; limit: number }) =>
+            Effect.sync(() => {
+              reads.push(page);
+              return history.slice(page.offset, page.offset + page.limit);
+            }),
+        } as never),
+      );
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const page: NativeSessionCatalogPage = yield* catalog.nativeCatalog({
+          instanceConfigId: "first",
+          ...(cursor ? { cursor } : {}),
+        });
+        seen.push(...page.entries.map((entry) => entry.nativeSessionId));
+        cursor = page.nextCursor;
+      } while (cursor);
+      assert.deepEqual(
+        reads.map(({ offset }) => offset),
+        [0, 50, 100, 200],
+      );
+      assert.deepEqual(
+        seen,
+        history.map(({ sessionId }) => sessionId),
+      );
+    }),
+  ),
+);
+
 it.effect("native catalog cursors cannot cross account or configured instance identity", () =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -94,7 +142,7 @@ it.effect("native catalog cursors cannot cross account or configured instance id
         } as never),
         Effect.provideService(ClaudeSdk, {
           nativeHome: () => Effect.sync(() => home),
-          listSessions: (_input: unknown, offset: number) =>
+          listSessions: (_input: unknown, { offset }: { offset: number }) =>
             Effect.sync(() => {
               offsets.push(offset);
               return Array.from({ length: 51 }, (_, index) => ({

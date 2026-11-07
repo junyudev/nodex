@@ -58,6 +58,11 @@ const harness = (
     readonly readThread?: Thread;
     readonly readThreads?: Readonly<Record<string, Thread>>;
     readonly nextCursor?: string;
+    readonly listResponse?: (params: {
+      readonly useStateDbOnly?: boolean;
+    }) =>
+      | { readonly data: readonly unknown[]; readonly nextCursor: string | null }
+      | Effect.Effect<never, Error>;
     readonly claudeProfiles?: readonly { id: string; home: string }[];
     readonly brokenClaudeProfile?: string;
     readonly codexReadFailure?: Error;
@@ -88,11 +93,14 @@ const harness = (
     requestLocal: (method: string, params: unknown) =>
       Effect.suspend((): Effect.Effect<unknown, Error> => {
         requests.push({ method, params });
-        if (method === "thread/list")
+        if (method === "thread/list") {
+          const scripted = options.listResponse?.(params as { useStateDbOnly?: boolean });
+          if (scripted) return Effect.isEffect(scripted) ? scripted : Effect.succeed(scripted);
           return Effect.succeed({
             data: options.threads ?? [nativeThread(cwd)],
             nextCursor: options.nextCursor ?? null,
           });
+        }
         if (method === "thread/read") {
           if (options.codexReadFailure) return Effect.fail(options.codexReadFailure);
           options.afterRead?.();
@@ -199,12 +207,70 @@ it.effect("pages persistent Codex roots without loading history or starting a ru
       assert.equal(fixture.requests.filter(({ method }) => method === "thread/read").length, 7);
       assert.deepEqual(fixture.requests[0]?.params, {
         cursor: "native-page",
-        limit: 50,
+        limit: 100,
         sortKey: "updated_at",
         sortDirection: "desc",
         sourceKinds: ["cli", "vscode", "exec", "appServer", "unknown"],
         archived: false,
+        useStateDbOnly: true,
       });
+    }),
+  ),
+);
+
+it.effect("rescans rollouts for the first page and reads later pages from the index", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const root = yield* temporaryRoot;
+      const fixture = harness(root, { nextCursor: "older" });
+      const catalog = yield* fixture.catalog;
+      yield* catalog.list({ backendKind: "codex" });
+      yield* catalog.list({ backendKind: "codex", cursor: "older" });
+      const lists = fixture.requests.filter(({ method }) => method === "thread/list");
+      assert.notProperty(lists[0]?.params, "useStateDbOnly");
+      assert.propertyVal(lists[1]?.params, "useStateDbOnly", true);
+      assert.equal(lists.length, 2);
+    }),
+  ),
+);
+
+it.effect("does not let an index that is still being built end the list", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const root = yield* temporaryRoot;
+      const cwd = join(root, "workspace");
+      mkdirSync(cwd);
+      const fixture = harness(root, {
+        threads: [nativeThread(cwd)],
+        listResponse: (params) =>
+          params.useStateDbOnly
+            ? { data: [], nextCursor: null }
+            : { data: [nativeThread(cwd)], nextCursor: "older-still" },
+      });
+      const catalog = yield* fixture.catalog;
+      const page = yield* catalog.list({ backendKind: "codex", cursor: "older" });
+      assert.equal(page.entries.length, 1);
+      assert.equal(page.nextCursor, "older-still");
+    }),
+  ),
+);
+
+it.effect("keeps the index's answer when the scan confirming the end fails", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const root = yield* temporaryRoot;
+      const cwd = join(root, "workspace");
+      mkdirSync(cwd);
+      const fixture = harness(root, {
+        listResponse: (params) =>
+          params.useStateDbOnly
+            ? { data: [nativeThread(cwd)], nextCursor: null }
+            : Effect.fail(new Error("Scan timed out")),
+      });
+      const catalog = yield* fixture.catalog;
+      const page = yield* catalog.list({ backendKind: "codex", cursor: "older" });
+      assert.equal(page.entries.length, 1);
+      assert.isNull(page.nextCursor);
     }),
   ),
 );

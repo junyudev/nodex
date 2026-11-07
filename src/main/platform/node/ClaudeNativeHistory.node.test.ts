@@ -171,12 +171,12 @@ it.effect(
       expect(yield* sdk.nativeHome(first)).toBe(
         yield* Effect.promise(() => realpath(first.instance.configDirectory!)),
       );
-      const catalogA = yield* sdk.listSessions(first, 0);
-      const catalogB = yield* sdk.listSessions(second, 0);
+      const catalogA = yield* sdk.listSessions(first, { offset: 0, limit: 51 });
+      const catalogB = yield* sdk.listSessions(second, { offset: 0, limit: 51 });
       expect(catalogA.map(({ sessionId }) => sessionId)).toEqual([id]);
       expect(catalogA[0]?.summary).toBe("Account A");
       expect(catalogB[0]?.summary).toBe("Account B");
-      expect(yield* sdk.listSessions(first, 1)).toEqual([]);
+      expect(yield* sdk.listSessions(first, { offset: 1, limit: 51 })).toEqual([]);
       expect(yield* sdk.sessionInfo(first, id)).toMatchObject({
         sessionId: id,
         cwd,

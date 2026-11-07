@@ -1,3 +1,4 @@
+import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -18,6 +19,8 @@ import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/Ele
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 
+/** The most identities one Runtime lookup accepts. */
+const NATIVE_IMPORT_LOOKUP_SIZE = 100;
 const identity = z.string().trim().min(1).max(512);
 const backend = z.enum(["claude", "codex"]);
 const ListInput = z
@@ -93,16 +96,24 @@ export const live = Layer.effectDiscard(
     const readCatalogPage = (input: NativeSessionCatalogInput) =>
       Effect.gen(function* () {
         const page = yield* catalog.list(input);
-        const imported = yield* runtime.findNativeImports({
-          backendKind: input.backendKind,
-          sourceHome: page.nativeHome,
-          nativeThreadIds: page.entries.map((entry) => entry.nativeSessionId),
-        });
+        const lookups = yield* Effect.forEach(
+          Arr.chunksOf(
+            page.entries.map((entry) => entry.nativeSessionId),
+            NATIVE_IMPORT_LOOKUP_SIZE,
+          ),
+          (nativeThreadIds) =>
+            runtime.findNativeImports({
+              backendKind: input.backendKind,
+              sourceHome: page.nativeHome,
+              nativeThreadIds,
+            }),
+        );
+        const imported = new Map(lookups.flat().map((copy) => [copy.nativeSessionId, copy]));
         return {
           ...page,
           entries: page.entries.map((entry) => ({
             ...entry,
-            ...imported.find((copy) => copy.nativeSessionId === entry.nativeSessionId),
+            ...imported.get(entry.nativeSessionId),
           })),
         };
       });

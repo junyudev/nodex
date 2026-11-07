@@ -45,7 +45,7 @@ it.effect("packaged Main and history workers share the standalone SDK through Un
       const sdk = yield* ClaudeSdk;
       return yield* sdk.listSessions(
         { instance: defaultClaudeInstance(), environment: { HOME: resourcesPath } },
-        0,
+        { offset: 0, limit: 51 },
       );
     }).pipe(Effect.provide(sdkLayer));
     expect(sessions).toEqual([{ sessionId: "packaged", summary: "Shared SDK", lastModified: 1 }]);
