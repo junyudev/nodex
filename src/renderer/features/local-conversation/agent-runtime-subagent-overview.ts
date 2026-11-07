@@ -130,17 +130,6 @@ export function agentRuntimeOverviewTotalsUnknown(
   return find(overview, task.id) === undefined;
 }
 
-/** Takes each section's total from a fresh read, keeping the loaded rows. */
-export function withAgentRuntimeOverviewTotals(
-  overview: AgentSubagentOverview,
-  read: AgentSubagentOverview,
-): AgentSubagentOverview {
-  return {
-    active: { ...overview.active, totalCount: read.active.totalCount },
-    terminal: { ...overview.terminal, totalCount: read.terminal.totalCount },
-  };
-}
-
 /** Places one item by recency; an older or equal report never replaces a newer one. */
 function upsert(
   overview: AgentSubagentOverview,
@@ -237,25 +226,38 @@ export function agentRuntimeOverviewSectionsToRefill(
   );
 }
 
+/**
+ * Takes a fresh read into the window. Its totals describe its rows, so the rows come with them: a
+ * report still on its way for a move the read already counted finds that row already moved.
+ */
+export function reconcileAgentRuntimeOverview(
+  overview: AgentSubagentOverview,
+  read: AgentSubagentOverview,
+): AgentSubagentOverview {
+  let merged = overview;
+  for (const item of [...read.active.items, ...read.terminal.items])
+    merged = upsert(merged, item, false);
+  return {
+    active: { ...merged.active, totalCount: read.active.totalCount },
+    terminal: { ...merged.terminal, totalCount: read.terminal.totalCount },
+  };
+}
+
 /** Merges an explicitly loaded page into the current window, keeping newer task reports. */
 export function appendAgentRuntimeOverviewPage(
   current: AgentSubagentOverview,
   page: AgentSubagentOverview,
   section: Section,
 ): AgentSubagentOverview {
-  let merged = current;
-  for (const item of page[section].items) merged = upsert(merged, item, false);
-  return withAgentRuntimeOverviewTotals(
-    {
-      ...merged,
-      [section]: {
-        ...merged[section],
-        nextCursor: page[section].nextCursor,
-        hasMore: page[section].hasMore,
-      },
+  const merged = reconcileAgentRuntimeOverview(current, page);
+  return {
+    ...merged,
+    [section]: {
+      ...merged[section],
+      nextCursor: page[section].nextCursor,
+      hasMore: page[section].hasMore,
     },
-    page,
-  );
+  };
 }
 
 /** Waiting child rows read only control metadata; the panel never attaches their transcript. */

@@ -23,10 +23,10 @@ import {
   appendAgentRuntimeOverviewPage,
   agentRuntimeOverviewTotalsUnknown,
   applyAgentRuntimeOverviewTask,
+  reconcileAgentRuntimeOverview,
   type AgentRuntimeOverviewWindow,
   projectAgentRuntimeSubagentOverview,
   type AgentRuntimeTaskRecord,
-  withAgentRuntimeOverviewTotals,
 } from "@/features/local-conversation/agent-runtime-subagent-overview";
 import {
   agentRuntimeDelegatedTasks,
@@ -337,6 +337,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
     (requestAttachment: number) => requestAttachment === attachment,
   );
   const loadingMore = useRef(new Set<"active" | "terminal">());
+  const reports = useRef(0);
   const connection = useAgentRuntimeConnectionState();
   const readyGeneration = connection.status === "ready" ? connection.generation : null;
   const stopping = useSyncExternalStore(
@@ -383,6 +384,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
             return;
           }
           if (notification.event.event.type !== "subagent.updated") return;
+          reports.current += 1;
           const task = notification.event.event.payload;
           if (pending) pending.push(task);
           else
@@ -434,13 +436,20 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
     if (state.recount === 0) return;
     let active = true;
     const timer = window.setTimeout(() => {
+      const reportsBeforeRead = reports.current;
       void agentRuntimeRuntime
         .overview({ sessionId: input.sessionId, threadId: input.threadId })
         .then((read) => {
           if (!active) return;
+          // A report that landed during the read may be missing from it, so that read isn't final.
+          const superseded = Number(reports.current !== reportsBeforeRead);
           setState((current) =>
             current.source
-              ? { ...current, source: withAgentRuntimeOverviewTotals(current.source, read) }
+              ? {
+                  ...current,
+                  source: reconcileAgentRuntimeOverview(current.source, read),
+                  recount: current.recount + superseded,
+                }
               : current,
           );
         })

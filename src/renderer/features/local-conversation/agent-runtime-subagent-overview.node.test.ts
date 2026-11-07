@@ -11,8 +11,8 @@ import {
   applyAgentRuntimeOverviewTask,
   projectAgentRuntimeSubagent,
   projectAgentRuntimeSubagentOverview,
+  reconcileAgentRuntimeOverview,
   type AgentRuntimeTaskRecord,
-  withAgentRuntimeOverviewTotals,
 } from "./agent-runtime-subagent-overview";
 
 const task: AgentSubagentOverviewItem = {
@@ -210,9 +210,45 @@ describe("Runtime subagent overview events", () => {
     const patched = applyAgentRuntimeOverviewTask(loaded, unseen);
     expect([patched.active.totalCount, patched.terminal.totalCount]).toEqual([1, 30]);
     const read = { active: page([], null, 2), terminal: page([], null, 29) };
-    const recounted = withAgentRuntimeOverviewTotals(patched, read);
+    const recounted = reconcileAgentRuntimeOverview(patched, read);
     expect([recounted.active.totalCount, recounted.terminal.totalCount]).toEqual([2, 29]);
     expect(recounted.active.items).toBe(patched.active.items);
+  });
+
+  it("counts a move once when its report arrives after a re-read that already saw it", () => {
+    const other = { ...task, id: "other" };
+    const loaded: AgentSubagentOverview = { active: page([task, other]), terminal: page([]) };
+    const settled = {
+      status: "completed",
+      completedAt: "2026-10-13T20:00:09Z",
+      updatedAt: "2026-10-13T20:00:09Z",
+    } as const;
+    const read: AgentSubagentOverview = {
+      active: page([other]),
+      terminal: page([{ ...task, ...settled }]),
+    };
+
+    const reconciled = reconcileAgentRuntimeOverview(loaded, read);
+    const late = applyAgentRuntimeOverviewTask(reconciled, record(settled));
+
+    expect([late.active.totalCount, late.terminal.totalCount]).toEqual([1, 1]);
+    expect(late.active.items.map((item) => item.id)).toEqual(["other"]);
+    expect(late.terminal.items.map((item) => item.id)).toEqual(["task"]);
+  });
+
+  it("keeps a newer report when a re-read was taken before it", () => {
+    const settled = {
+      ...task,
+      status: "completed",
+      updatedAt: "2026-10-13T20:00:09Z",
+    } as const;
+    const current: AgentSubagentOverview = { active: page([]), terminal: page([settled]) };
+    const read: AgentSubagentOverview = { active: page([task]), terminal: page([]) };
+
+    const reconciled = reconcileAgentRuntimeOverview(current, read);
+
+    expect(reconciled.active.items).toEqual([]);
+    expect(reconciled.terminal.items).toEqual([settled]);
   });
 
   it("ignores an older report and leaves unloaded pages to explicit paging", () => {
