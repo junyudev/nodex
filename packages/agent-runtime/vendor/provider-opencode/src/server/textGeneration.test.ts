@@ -11,7 +11,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
 import * as NetService from "@nodex/runtime-shared/Net";
-import { beforeEach, expect } from "vite-plus/test";
+import { beforeEach, expect, vi } from "vite-plus/test";
 
 import * as TestProviderHost from "@nodex/provider-testing/TestProviderHost";
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
@@ -27,6 +27,10 @@ const runtimeMock = {
     authHeaders: [] as Array<string | null>,
     closeCalls: [] as string[],
     sessionCreateCalls: 0,
+    deletedSessions: [] as string[],
+    abortedSessions: [] as string[],
+    promptSignals: [] as Array<AbortSignal | undefined>,
+    promptWaitsForAbort: false,
     beforeSessionCreated: async () => {},
     connectionError: undefined as Error | undefined,
     sessionCreateError: undefined as unknown,
@@ -43,6 +47,10 @@ const runtimeMock = {
     this.state.authHeaders.length = 0;
     this.state.closeCalls.length = 0;
     this.state.sessionCreateCalls = 0;
+    this.state.deletedSessions.length = 0;
+    this.state.abortedSessions.length = 0;
+    this.state.promptSignals.length = 0;
+    this.state.promptWaitsForAbort = false;
     this.state.beforeSessionCreated = async () => {};
     this.state.connectionError = undefined;
     this.state.sessionCreateError = undefined;
@@ -108,8 +116,24 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntime.OpenCodeRuntime["Service"] = {
           }
           return runtimeMock.state.sessionResult ?? { data: { id: `${baseUrl}/session` } };
         },
-        prompt: async (input: { readonly parts: ReadonlyArray<unknown> }) => {
+        abort: async (input: { readonly sessionID: string }) => {
+          runtimeMock.state.abortedSessions.push(input.sessionID);
+          return { data: true };
+        },
+        delete: async (input: { readonly sessionID: string }) => {
+          runtimeMock.state.deletedSessions.push(input.sessionID);
+          return { data: true };
+        },
+        prompt: async (
+          input: { readonly parts: ReadonlyArray<unknown> },
+          options?: { readonly signal?: AbortSignal },
+        ) => {
           runtimeMock.state.promptUrls.push(baseUrl);
+          runtimeMock.state.promptSignals.push(options?.signal);
+          if (runtimeMock.state.promptWaitsForAbort)
+            await new Promise((_, reject) =>
+              options?.signal?.addEventListener("abort", () => reject(new Error("aborted"))),
+            );
           runtimeMock.state.promptParts.push(input.parts);
           runtimeMock.state.authHeaders.push(
             serverPassword ? `Basic ${btoa(`opencode:${serverPassword}`)}` : null,
@@ -290,7 +314,7 @@ it.layer(layerOpenCodeTextGenerationTest)("OpenCodeTextGeneration", (it) => {
   it.effect("rejects structured images before opening a native session", () =>
     withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (generation) =>
       Effect.gen(function* () {
-        const error = yield* generation.generateStructured!({
+        const error = yield* generation.generateStructured({
           cwd: process.cwd(),
           prompt: "Inspect these images",
           images: [{ mediaType: "image/png", data: "AQID" }],
@@ -308,13 +332,51 @@ it.layer(layerOpenCodeTextGenerationTest)("OpenCodeTextGeneration", (it) => {
           outputSchema: {},
         };
         for (const images of [undefined, []]) {
-          const result = yield* generation.generateStructured!({ ...input, images });
+          const result = yield* generation.generateStructured({ ...input, images });
           expect(result).toEqual({
             subject: "Improve OpenCode reuse",
             body: "Reuse one server for the full action.",
           });
         }
         expect(runtimeMock.state.sessionCreateCalls).toBe(2);
+      }),
+    ),
+  );
+
+  it.effect("removes its session once OpenCode has answered", () =>
+    withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (generation) =>
+      Effect.gen(function* () {
+        yield* generation.generateStructured({
+          cwd: process.cwd(),
+          prompt: "Generate text",
+          modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+          outputSchema: {},
+        });
+        expect(runtimeMock.state.deletedSessions).toHaveLength(1);
+      }),
+    ),
+  );
+
+  it.effect("stops a prompt OpenCode never answers at the caller's limit", () =>
+    withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (generation) =>
+      Effect.gen(function* () {
+        runtimeMock.state.promptWaitsForAbort = true;
+        const task = yield* generation
+          .generateStructured({
+            cwd: process.cwd(),
+            prompt: "Generate text",
+            modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+            outputSchema: {},
+            timeoutMs: 30_000,
+          })
+          .pipe(Effect.flip, Effect.forkChild({ startImmediately: true }));
+        yield* Effect.promise(() => vi.waitFor(() => expect(runtimeMock.state.promptSignals).toHaveLength(1)));
+        yield* TestClock.adjust(Duration.millis(30_000));
+        const error = yield* Fiber.join(task);
+        expect(error.detail).toBe("OpenCode did not finish generating in time.");
+        expect(runtimeMock.state.promptSignals[0]?.aborted).toBe(true);
+        expect(runtimeMock.state.abortedSessions).toEqual(runtimeMock.state.deletedSessions);
+        expect(runtimeMock.state.deletedSessions).toHaveLength(1);
       }),
     ),
   );

@@ -353,5 +353,6 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
 
   return TextGenerationOperations.fromRunner("CodexTextGeneration", runCodexJson, {
     supportsImages: true,
+    enforcesJsonSchema: true,
   });
 });

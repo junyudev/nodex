@@ -9,6 +9,7 @@ if (process.argv.includes("--version")) {
   process.stdout.write("1.15.13\n");
   process.exit(0);
 }
+const SCRIPTED_TITLE = "Scripted OpenCode title";
 const fixtureHome = process.env.NODEX_TEST_CROSS_PROVIDER_HOME;
 const scenario = fixtureHome
   ? JSON.parse(readFileSync(join(fixtureHome, "plan.json"), "utf8"))
@@ -280,7 +281,39 @@ const server = createServer(async (request, response) => {
     save(sessions);
     return json(response, stored.session);
   }
+  if (segments.length === 2 && request.method === "DELETE") {
+    delete sessions[id];
+    save(sessions);
+    observe({ kind: "deleteSession", sessionId: id });
+    return json(response, true);
+  }
   if (segments[2] === "children") return json(response, []);
+  // A synchronous prompt is how utility generation runs: it answers in the response itself.
+  if (segments[2] === "message" && request.method === "POST") {
+    const text = body.parts
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n");
+    observe({
+      kind: "utilityPrompt",
+      sessionId: id,
+      model: body.model,
+      variant: body.variant,
+      permission: stored.session.permission,
+      text,
+    });
+    return json(response, {
+      info: { id: `msg_${randomUUID().replaceAll("-", "")}`, sessionID: id, role: "assistant" },
+      parts: [
+        {
+          type: "text",
+          text: text.includes("JSON Schema")
+            ? JSON.stringify({ title: SCRIPTED_TITLE, description: "Written by the scripted peer" })
+            : SCRIPTED_TITLE,
+        },
+      ],
+    });
+  }
   if (segments[2] === "message") {
     if (segments[3]) {
       const message = stored.messages.find((entry) => entry.info.id === segments[3]);

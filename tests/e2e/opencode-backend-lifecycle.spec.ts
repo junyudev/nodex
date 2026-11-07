@@ -65,6 +65,9 @@ test("chooses an OpenCode model with native options before its first prompt and 
           .filter(Boolean)
           .map((line) => JSON.parse(line))
       : [];
+  const keptSessions = () =>
+    observations().filter(({ kind }) => kind === "createSession").length -
+    observations().filter(({ kind }) => kind === "deleteSession").length;
   const rendererErrors: string[] = [];
   let threadId: string | undefined;
   let harnessSessionId = "";
@@ -163,6 +166,18 @@ test("chooses an OpenCode model with native options before its first prompt and 
       expect.arrayContaining([expect.objectContaining({ value: "high" })]),
     );
     await expect(page.getByText("OPEN_CODE_OK", { exact: true }).last()).toBeVisible();
+    // The opening prompt titles the chat on its own model at the lightest effort, in a session
+    // of its own that OpenCode's history never keeps.
+    await expect
+      .poll(
+        async () =>
+          (await invoke<ProjectSession>(page, "project-sessions:get", sessionId)).displayTitle,
+      )
+      .toBe("Scripted OpenCode title");
+    expect(observations().find(({ kind }) => kind === "utilityPrompt")).toMatchObject({
+      model: { providerID: "moonshot", modelID: "kimi-k3" },
+      variant: "low",
+    });
     expect(observations().find(({ kind }) => kind === "prompt")).toMatchObject({
       model: { providerID: "moonshot", modelID: "kimi-k3" },
       variant: "high",
@@ -170,7 +185,7 @@ test("chooses an OpenCode model with native options before its first prompt and 
       cwd: sourceRoot,
     });
     const promptCount = observations().filter(({ kind }) => kind === "prompt").length;
-    const sessionCount = observations().filter(({ kind }) => kind === "createSession").length;
+    const sessionCount = keptSessions();
     expect(sessionCount).toBe(1);
 
     // Nodex keeps the history; reopening never prompts or creates a native session again.
@@ -190,9 +205,7 @@ test("chooses an OpenCode model with native options before its first prompt and 
       animations: "disabled",
     });
     expect(observations().filter(({ kind }) => kind === "prompt")).toHaveLength(promptCount);
-    expect(observations().filter(({ kind }) => kind === "createSession")).toHaveLength(
-      sessionCount,
-    );
+    expect(keptSessions()).toBe(sessionCount);
     expect(rendererErrors).toEqual([]);
     writeFileSync(
       path.join(evidenceRoot, "verified.json"),

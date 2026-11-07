@@ -148,18 +148,7 @@ export const make = Effect.gen(function* () {
     });
   return TextGeneration.of({
     generateStructured: (input) =>
-      run("generateStructured", input, (generation, input) =>
-        generation.generateStructured
-          ? generation.generateStructured(input)
-          : Effect.fail(
-              new TextGenerationError({
-                operation: "generateStructured",
-                detail: input.images?.length
-                  ? "This Agent cannot read images here. Structured generation is unavailable."
-                  : "This provider does not support structured generation.",
-              }),
-            ),
-      ),
+      run("generateStructured", input, (generation, input) => generation.generateStructured(input)),
     generateCommitMessage: (input) =>
       run("generateCommitMessage", input, (generation, input) =>
         generation.generateCommitMessage(input),

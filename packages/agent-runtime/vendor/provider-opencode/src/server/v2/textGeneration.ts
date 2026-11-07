@@ -22,7 +22,7 @@ import * as TextGenerationOperations from "@nodex/provider-core/server/textGener
 
 const isTextGenerationError = Schema.is(TextGenerationError);
 
-/** A generation that takes this long is stuck; its session is stopped and removed. */
+/** Without a caller's limit, a generation that takes this long is stuck; its session is stopped and removed. */
 const GENERATION_TIMEOUT = "3 minutes";
 
 /**
@@ -156,7 +156,7 @@ const runOnServer = (
     });
     const result = yield* Deferred.await(outcome).pipe(
       Effect.timeoutOrElse({
-        duration: GENERATION_TIMEOUT,
+        duration: input.timeoutMs ?? GENERATION_TIMEOUT,
         orElse: () =>
           client.session.interrupt({ sessionID: Session.ID.make(session.id) }).pipe(
             Effect.ignore,

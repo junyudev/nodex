@@ -276,7 +276,7 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
         (textGeneration) =>
           Effect.gen(function* () {
             expect(
-              yield* textGeneration.generateStructured!({
+              yield* textGeneration.generateStructured({
                 cwd: process.cwd(),
                 prompt: "Route this message",
                 modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-5.4", [
@@ -308,7 +308,7 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
         forbidArg: "--listen",
       },
       (generation) =>
-        generation.generateStructured!({
+        generation.generateStructured({
           cwd: process.cwd(),
           prompt: "Suggest a title",
           modelSelection: DEFAULT_TEST_MODEL_SELECTION,
@@ -772,7 +772,7 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
               ],
               images: [{ mediaType: "image/jpeg" as const, data: "AwQF" }],
             };
-            expect(yield* generation.generateStructured!(input)).toEqual({
+            expect(yield* generation.generateStructured(input)).toEqual({
               title: "Ordered images",
             });
             expect(yield* fs.readFile(attachmentPath)).toEqual(Buffer.from([0, 1, 2]));

@@ -121,7 +121,6 @@ export interface StructuredGenerationImage {
   readonly data: string;
 }
 
-/** Commit, change request, branch, and title generation backed by one provider instance. */
 export interface StructuredGenerationInput {
   readonly cwd: string;
   readonly prompt: string;
@@ -135,8 +134,13 @@ export interface StructuredGenerationInput {
   readonly webSearch?: boolean | undefined;
 }
 
+/**
+ * Utility generation backed by one provider instance. Every method is required, so a wrapper
+ * that lists them cannot drop one; an Agent without a capability fails it with its own reason.
+ */
 export interface ProviderTextGeneration {
-  readonly generateStructured?: (
+  /** Generate JSON satisfying a caller's schema from a prompt that carries everything needed. */
+  readonly generateStructured: (
     input: StructuredGenerationInput,
   ) => Effect.Effect<unknown, TextGenerationError>;
   /**

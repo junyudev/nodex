@@ -88,6 +88,23 @@ it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("sends structured generation to the instance's own server", () =>
+    Effect.gen(function* () {
+      serverStarts.length = 0;
+      const instance = yield* create({}, noHttp);
+      const error = yield* Effect.flip(
+        instance.textGeneration.generateStructured({
+          cwd: process.cwd(),
+          prompt: "Title this chat",
+          modelSelection: { instanceId: instance.instanceId, model: "opencode/big-pickle" },
+          outputSchema: { type: "object" },
+        }),
+      );
+      assert.strictEqual(error.operation, "generateStructured");
+      assert.deepStrictEqual(serverStarts, ["start"]);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("lists an OpenCode 2 workspace's own skills and commands from its server", () =>
     Effect.gen(function* () {
       serverStarts.length = 0;

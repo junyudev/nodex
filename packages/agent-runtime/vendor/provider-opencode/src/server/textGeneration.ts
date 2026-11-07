@@ -79,6 +79,15 @@ export class OpenCodeTextGenerationPromptResponseError extends Schema.TaggedErro
   }
 }
 
+export class OpenCodeTextGenerationTimeoutError extends Schema.TaggedError<OpenCodeTextGenerationTimeoutError>()(
+  "OpenCodeTextGenerationTimeoutError",
+  openCodePromptErrorContext,
+) {
+  override get message(): string {
+    return `OpenCode did not finish ${this.operation} in ${this.cwd} using ${this.providerId}/${this.modelId} in time (session ${this.sessionId}).`;
+  }
+}
+
 export class OpenCodeTextGenerationEmptyOutputError extends Schema.TaggedError<OpenCodeTextGenerationEmptyOutputError>()(
   "OpenCodeTextGenerationEmptyOutputError",
   {
@@ -91,6 +100,9 @@ export class OpenCodeTextGenerationEmptyOutputError extends Schema.TaggedError<O
     return `OpenCode returned empty output for ${this.operation} in ${this.cwd} using ${this.providerId}/${this.modelId} (session ${this.sessionId}, ${this.responsePartCount} response parts, ${this.textPartCount} text parts).`;
   }
 }
+
+/** OpenCode keeps retrying a rate-limited model, so an unanswered prompt would never settle. */
+const GENERATION_TIMEOUT = "3 minutes";
 
 interface OpenCodePromptFailure {
   readonly name?: string;
@@ -206,32 +218,49 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
             cwd: input.cwd,
           });
         }
+        const sessionID = session.data.id;
+        // A utility session has no place in the person's OpenCode history. Only `abort` stops a
+        // running model: neither dropping the prompt's request nor deleting its session does.
+        yield* Effect.addFinalizer(() =>
+          Effect.tryPromise(async () => {
+            await client.session.abort({ sessionID });
+            await client.session.delete({ sessionID });
+          }).pipe(Effect.timeout("5 seconds"), Effect.ignore({ log: true })),
+        );
         const selectedAgent = getModelSelectionStringOptionValue(input.modelSelection, "agent");
         const selectedVariant = getModelSelectionStringOptionValue(input.modelSelection, "variant");
         const promptContext = {
           operation: input.operation,
           cwd: input.cwd,
-          sessionId: session.data.id,
+          sessionId: sessionID,
           providerId: parsedModel.providerID,
           modelId: parsedModel.modelID,
         };
 
         yield* assertTextGenerationAdmission;
         const result = yield* Effect.tryPromise({
-          try: () =>
-            client.session.prompt({
-              sessionID: session.data.id,
-              model: parsedModel,
-              ...(selectedAgent ? { agent: selectedAgent } : {}),
-              ...(selectedVariant ? { variant: selectedVariant } : {}),
-              parts: [{ type: "text", text: input.prompt }, ...fileParts],
-            }),
+          try: (signal) =>
+            client.session.prompt(
+              {
+                sessionID,
+                model: parsedModel,
+                ...(selectedAgent ? { agent: selectedAgent } : {}),
+                ...(selectedVariant ? { variant: selectedVariant } : {}),
+                parts: [{ type: "text", text: input.prompt }, ...fileParts],
+              },
+              { signal },
+            ),
           catch: (cause) =>
             new OpenCodeTextGenerationPromptRequestError({
               ...promptContext,
               cause,
             }),
-        });
+        }).pipe(
+          Effect.timeoutOrElse({
+            duration: input.timeoutMs ?? GENERATION_TIMEOUT,
+            orElse: () => Effect.fail(new OpenCodeTextGenerationTimeoutError(promptContext)),
+          }),
+        );
         const promptFailure = getOpenCodePromptFailure(result.data?.info?.error);
         if (promptFailure) {
           return yield* new OpenCodeTextGenerationPromptResponseError({
@@ -251,6 +280,7 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
         }
         return rawText;
       },
+      Effect.scoped,
       Effect.catchTags({
         OpenCodeTextGenerationSessionRequestError: (cause) =>
           Effect.fail(
@@ -289,6 +319,14 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
             new TextGenerationError({
               operation: cause.operation,
               detail: "OpenCode returned empty output.",
+              cause,
+            }),
+          ),
+        OpenCodeTextGenerationTimeoutError: (cause) =>
+          Effect.fail(
+            new TextGenerationError({
+              operation: cause.operation,
+              detail: "OpenCode did not finish generating in time.",
               cause,
             }),
           ),

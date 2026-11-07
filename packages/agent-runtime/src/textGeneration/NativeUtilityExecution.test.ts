@@ -113,7 +113,7 @@ for (const driver of ["codex", "claude"] as const) {
           required: ["title"],
           additionalProperties: false,
         };
-        const structured = yield* generation.generateStructured!({
+        const structured = yield* generation.generateStructured({
           cwd: directory,
           prompt: "Generate a title",
           images: [],
@@ -122,15 +122,17 @@ for (const driver of ["codex", "claude"] as const) {
           maxOutputBytes: 1024,
         });
         assert.deepEqual(structured, { title: "Inspect exact native execution" });
-        const oversized = yield* generation.generateStructured!({
-          cwd: directory,
-          prompt: "Generate a title",
-          modelSelection,
-          outputSchema,
-          maxOutputBytes: 1,
-        }).pipe(Effect.result);
+        const oversized = yield* generation
+          .generateStructured({
+            cwd: directory,
+            prompt: "Generate a title",
+            modelSelection,
+            outputSchema,
+            maxOutputBytes: 1,
+          })
+          .pipe(Effect.result);
         assert.equal(oversized._tag, "Failure");
-        const searched = yield* generation.generateStructured!({
+        const searched = yield* generation.generateStructured({
           cwd: directory,
           prompt: "Generate a title",
           modelSelection,

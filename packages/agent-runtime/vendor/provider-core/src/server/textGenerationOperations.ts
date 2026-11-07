@@ -36,7 +36,10 @@ export interface Request<S extends Schema.Top> {
   readonly prompt: string;
   readonly images?: StructuredGenerationInput["images"];
   readonly webSearch?: StructuredGenerationInput["webSearch"];
-  /** The run sees only what Nodex supplies, never the user's personal Agent environment or project instruction files. */
+  /**
+   * The run sees only what Nodex supplies, never the user's personal Agent environment or project
+   * instruction files. OpenCode cannot leave its own behind, so its sessions refuse every tool instead.
+   */
   readonly isolated?: boolean;
   readonly outputSchema: S;
   readonly modelSelection: ModelSelection;
@@ -100,11 +103,19 @@ export const decodeJsonReply = <S extends Schema.Top>(
   );
 };
 
+/** A provider that cannot enforce a schema only knows the shape its prompt asks for. */
+const promptForJsonSchema = (prompt: string, schema: StructuredGenerationInput["outputSchema"]) =>
+  `${prompt}\n\nReply with only a JSON object that satisfies this JSON Schema, with no prose or code fences:\n${JSON.stringify(schema)}`;
+
 /** The text generation service over `run`. `name` prefixes each operation's span. */
 export function fromRunner(
   name: string,
   run: Runner,
-  options: { readonly supportsImages?: boolean } = {},
+  options: {
+    readonly supportsImages?: boolean;
+    /** The runner hands `jsonSchema` to its provider, which holds the reply to it. */
+    readonly enforcesJsonSchema?: boolean;
+  } = {},
 ): ProviderTextGeneration {
   const generateCommitMessage: ProviderTextGeneration["generateCommitMessage"] = Effect.fn(
     `${name}.generateCommitMessage`,
@@ -211,6 +222,9 @@ export function fromRunner(
         );
       return run({
         ...input,
+        prompt: options.enforcesJsonSchema
+          ? input.prompt
+          : promptForJsonSchema(input.prompt, input.outputSchema),
         operation: "generateStructured",
         isolated: true,
         outputSchema: Schema.Unknown,

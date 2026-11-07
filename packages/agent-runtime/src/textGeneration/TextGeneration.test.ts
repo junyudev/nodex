@@ -24,6 +24,7 @@ const makeStubTextGeneration = (
   overrides: Partial<TextGeneration.TextGeneration["Service"]>,
 ): TextGeneration.TextGeneration["Service"] =>
   TextGeneration.TextGeneration.of({
+    generateStructured: () => Effect.die("generateStructured stub not configured for this test"),
     generateCommitMessage: () =>
       Effect.die("generateCommitMessage stub not configured for this test"),
     generatePrContent: () => Effect.die("generatePrContent stub not configured for this test"),
@@ -69,34 +70,6 @@ const makeStubRegistry = (
 };
 
 describe("TextGeneration.make", () => {
-  it.effect("explains image rejection for an Agent without structured generation", () =>
-    Effect.gen(function* () {
-      const instanceId = ProviderInstanceId.make("unsupported");
-      const generation = yield* TextGeneration.make.pipe(
-        Effect.provideService(
-          ProviderInstanceRegistry.ProviderInstanceRegistry,
-          makeStubRegistry([makeStubInstance(instanceId, makeStubTextGeneration({}))]),
-        ),
-      );
-      const input = {
-        cwd: process.cwd(),
-        prompt: "Inspect an image",
-        modelSelection: createModelSelection(instanceId, "model"),
-        outputSchema: {},
-      };
-      const error = yield* generation.generateStructured!({
-        ...input,
-        images: [{ mediaType: "image/png", data: "AQID" }],
-      }).pipe(Effect.flip);
-      expect(error).toBeInstanceOf(TextGenerationError);
-      expect(error.message).toContain("Agent cannot read images here");
-      for (const images of [undefined, []]) {
-        const error = yield* generation.generateStructured!({ ...input, images }).pipe(Effect.flip);
-        expect(error.detail).toBe("This provider does not support structured generation.");
-      }
-    }),
-  );
-
   it.effect("retains supplied subject context in the provider prompt", () =>
     Effect.gen(function* () {
       const instanceId = ProviderInstanceId.make("codex");
@@ -216,7 +189,7 @@ it.effect(
       );
       const common = { cwd: "/tmp", modelSelection };
       const requests = [
-        generation.generateStructured!({
+        generation.generateStructured({
           ...common,
           prompt: "No inference",
           outputSchema: { type: "object" },

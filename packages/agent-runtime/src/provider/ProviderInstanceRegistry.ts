@@ -281,15 +281,12 @@ const buildEntry = <R>(input: {
         instance: {
           ...createResult.success,
           textGeneration: {
-            ...generation,
+            generateStructured: (input) => owned(generation.generateStructured(input)),
             generateThreadTitle: (input) => owned(generation.generateThreadTitle(input)),
             generateCommitMessage: (input) => owned(generation.generateCommitMessage(input)),
             generatePrContent: (input) => owned(generation.generatePrContent(input)),
             generateBranchName: (input) => owned(generation.generateBranchName(input)),
             generateReviewGuide: (input) => owned(generation.generateReviewGuide(input)),
-            ...(generation.generateStructured
-              ? { generateStructured: (input) => owned(generation.generateStructured!(input)) }
-              : {}),
           },
           snapshot: {
             ...createResult.success.snapshot,

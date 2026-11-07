@@ -214,6 +214,9 @@ investigation can read the workspace but cannot change it or reach the network.
 
 Ephemeral structured generations follow the requesting client's lifetime. Cancelling a pending
 request interrupts its native utility process and releases temporary resources without stopping
+OpenCode utility requests run in temporary sessions that refuse every tool and answer in the JSON
+their prompt asks for. They still load OpenCode's own configuration and project instructions, stop
+at the caller's time limit, and are removed once they settle, so they never join OpenCode's history.
 the Runtime or other requests. Durable commands keep their receipt and recovery semantics when
 their caller disconnects.
 

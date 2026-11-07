@@ -6,7 +6,10 @@ type ModelSelection = AgentRuntimeLaunch["modelSelection"];
 
 const LIGHT_EFFORTS = ["minimal", "low"] as const;
 
-/** Keep the chosen model and account while selecting its lightest offered utility effort. */
+/**
+ * Keep the chosen model and account while selecting its lightest offered utility effort. OpenCode
+ * offers effort as a model variant.
+ */
 export const lightUtilityModelSelection = (
   selection: ModelSelection,
   providers: Providers,
@@ -15,7 +18,7 @@ export const lightUtilityModelSelection = (
     .find((provider) => provider.instanceId === selection.instanceId)
     ?.models.find((candidate) => candidate.slug === selection.model);
   const effort = model?.capabilities?.optionDescriptors?.find(
-    (option) => option.type === "select" && /effort|reasoning/i.test(option.id),
+    (option) => option.type === "select" && /effort|reasoning|variant/i.test(option.id),
   );
   const light =
     effort?.type === "select"

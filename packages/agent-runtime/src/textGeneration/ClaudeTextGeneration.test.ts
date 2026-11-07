@@ -62,7 +62,7 @@ process.exitCode = ${cli?.exitCode ?? 0};
     const generation = yield* makeClaudeTextGeneration(
       Schema.decodeSync(ClaudeSettings)({ enabled: true, binaryPath }),
     );
-    return yield* generation.generateStructured!({
+    return yield* generation.generateStructured({
       cwd,
       prompt,
       modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },

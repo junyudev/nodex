@@ -464,7 +464,7 @@ export interface InboxAgentChoice extends InboxAgentBinding {
 type InboxProvider = AgentRuntimeOperations["providers.read"]["output"][number];
 type InboxProviderModel = InboxProvider["models"][number];
 
-/** Native utility implementations currently exposing generateStructured. */
+/** Suggestions read a message's images and may search the web, which only these Agents offer here. */
 export const supportsInboxStructuredGeneration = (
   provider: Pick<InboxProvider, "driver">,
 ): boolean => provider.driver === "codex" || provider.driver === "claudeAgent";

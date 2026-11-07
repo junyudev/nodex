@@ -473,5 +473,6 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
 
   return TextGenerationOperations.fromRunner("ClaudeTextGeneration", runClaudeJson, {
     supportsImages: true,
+    enforcesJsonSchema: true,
   });
 });

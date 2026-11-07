@@ -1255,8 +1255,6 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           !target.modelAllowlist.includes(input.input.modelSelection.model)
         )
           return yield* Effect.fail(new Error("This model is unavailable from Nodex."));
-        if (!textGeneration.generateStructured)
-          return yield* Effect.fail(new Error("Structured generation is unavailable"));
         return yield* textGeneration.generateStructured(input.input);
       }
       case "thread.read": {

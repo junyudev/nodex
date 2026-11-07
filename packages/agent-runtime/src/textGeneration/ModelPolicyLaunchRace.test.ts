@@ -123,15 +123,17 @@ for (const driver of ["codex", "claude", "claude-sdk"] as const) {
               }),
             ),
           );
-          const request = (credit ? facade : raw).generateStructured!({
-            cwd: home,
-            prompt: "Fake peer only",
-            modelSelection: selection,
-            outputSchema: { type: "object" },
-            ...(driver === "claude-sdk"
-              ? { images: [{ mediaType: "image/png" as const, data: "AQID" }] }
-              : {}),
-          }).pipe(Effect.provideService(TextGenerationAdmission, admission));
+          const request = (credit ? facade : raw)
+            .generateStructured({
+              cwd: home,
+              prompt: "Fake peer only",
+              modelSelection: selection,
+              outputSchema: { type: "object" },
+              ...(driver === "claude-sdk"
+                ? { images: [{ mediaType: "image/png" as const, data: "AQID" }] }
+                : {}),
+            })
+            .pipe(Effect.provideService(TextGenerationAdmission, admission));
           const task = yield* request.pipe(Effect.result, Effect.forkScoped);
           try {
             yield* Deferred.await(entered);
@@ -194,12 +196,14 @@ it.live("switching off a running credit utility waits for its native process cle
           }),
         ),
       );
-      const task = yield* generation.generateStructured!({
-        cwd: home,
-        prompt: "Fake only",
-        modelSelection: selection,
-        outputSchema: { type: "object" },
-      }).pipe(Effect.result, Effect.forkScoped);
+      const task = yield* generation
+        .generateStructured({
+          cwd: home,
+          prompt: "Fake only",
+          modelSelection: selection,
+          outputSchema: { type: "object" },
+        })
+        .pipe(Effect.result, Effect.forkScoped);
       yield* fs
         .exists(`${home}/started`)
         .pipe(
