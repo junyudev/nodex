@@ -83,6 +83,9 @@ const cardUrl = new URL(card.file, Astro.site).href;
           .catch(() => {});
       })();
     </script>
+    <script>
+      import "../analytics";
+    </script>
   </head>
   <body class="min-h-screen bg-page font-sans text-ink antialiased">
     <slot />

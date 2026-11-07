@@ -2,21 +2,24 @@
 import BaseLayout from "../../layouts/BaseLayout.astro";
 ---
 
-<BaseLayout title="Privacy | Nodex" description="Privacy information for the Nodex landing site.">
+<BaseLayout title="Privacy | Nodex" description="What the Nodex website and desktop app collect.">
   <div class="flex min-h-screen flex-col">
     <main class="mx-auto flex w-full max-w-3xl flex-1 flex-col px-6 py-12 sm:px-10">
       <a href="/" class="mb-10 inline-flex items-center gap-2 text-sm opacity-60 hover:opacity-100">← Back to Nodex</a>
 
       <article class="py-7">
         <h1 class="text-4xl font-semibold tracking-[-0.045em]">Privacy</h1>
-        <p class="mt-3 text-sm opacity-50">Last updated: June 18, 2026</p>
+        <p class="mt-3 text-sm opacity-50">Last updated: November 7, 2026</p>
 
         <div class="mt-8 space-y-7 text-[15px] leading-7 [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-medium [&_h2]:tracking-tight [&_p]:opacity-70">
           <section>
             <h2>What this site collects</h2>
             <p>
-              The Nodex landing site is a static site. It does not use first-party analytics,
-              advertising trackers, or account creation.
+              The Nodex website counts page views and clicks on download buttons, using Statsig. It
+              sets no cookies and stores nothing in your browser, so one visit cannot be connected
+              to another. It does not record what you read, and it stops counting when your browser
+              sends a Do Not Track or Global Privacy Control signal. There is no advertising and no
+              account creation.
             </p>
           </section>
 
@@ -30,20 +33,52 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
           </section>
 
           <section>
-            <h2>Cookies</h2>
+            <h2>Hosting</h2>
             <p>
-              This site does not set first-party cookies. GitHub Pages and linked destinations may
-              apply their own infrastructure or security controls.
+              This site is served by GitHub Pages behind Cloudflare, which keep their own network
+              logs. Nodex reads daily totals of update-check requests from Cloudflare, not
+              individual visitors.
             </p>
           </section>
 
           <section>
-            <h2>Desktop app diagnostics</h2>
+            <h2>Usage analytics in the desktop app</h2>
             <p>
-              Nodex desktop crash diagnostics are off by default. If enabled in the app, sanitized
-              crash reports may be sent to Sentry. Session Replay is a separate opt-in setting for
-              masked renderer replays. Nodex does not enable screenshots, default PII collection,
-              or broad remote log shipping for diagnostics.
+              The app sends anonymous usage analytics to Statsig so we can tell how many people use
+              Nodex and which parts work. It is on by default, says so on first launch, and sends
+              nothing until you have had time to turn it off. Turn it off any time in Settings →
+              General → Privacy, or set <code>DO_NOT_TRACK=1</code>. Turning it off discards
+              anything not yet sent.
+            </p>
+            <p>
+              Each event carries a random ID that is created on your computer and is not connected
+              to your account, plus the app version, release channel, operating system, processor
+              type and language. Events say that something happened: a launch, a conversation
+              started, which Agent and public model it used, how a turn ended and how many tokens
+              it used, how long it took. Prompts, responses, code, titles, file names and paths are
+              never sent, and a model you configured privately is reported only as &ldquo;other&rdquo;.
+              Statsig receives your IP address as any web service does and uses it to derive a
+              country. Settings shows exactly what has been sent.
+            </p>
+          </section>
+
+          <section>
+            <h2>Crash reports in the desktop app</h2>
+            <p>
+              Crash reports go to Sentry so we can fix failures. They are on by default and are
+              scrubbed on your computer first: prompts, transcripts, card text, local paths,
+              credentials and request bodies are removed. Turn them off in Settings → General →
+              Privacy. Session Replay is a separate setting that stays off unless you enable it, and
+              it masks all text and inputs when you do.
+            </p>
+          </section>
+
+          <section>
+            <h2>Your content</h2>
+            <p>
+              Nodex stores your Pages and conversations on your computer. Analytics and crash
+              reports do not include them. Agents you use send your messages to the provider you
+              chose, under that provider's terms.
             </p>
           </section>
 
