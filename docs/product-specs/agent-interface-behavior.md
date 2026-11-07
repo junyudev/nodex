@@ -201,7 +201,8 @@ handles identify the observed occurrence, never whichever tab is selected later.
 Expired observations and changed presentation require a new observation.
 
 `open_in_nodex` opens a selected file, Browser, Terminal, Review, Page, View or
-Canvas in the calling Session's panel, or an explicitly selected Session.
+Canvas in the calling Session's panel, or an explicitly selected Session. Agents use it
+after creating or editing an artifact when showing the result would help the user.
 Hidden Sessions retain their opened tabs without navigation. Its receipt names the
 surface that opened, plus the URL of a Browser tab, so an Agent can report what the
 user sees. Relative paths resolve against the target task's workspace, and workspace
