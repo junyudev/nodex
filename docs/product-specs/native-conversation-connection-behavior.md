@@ -5,17 +5,30 @@
 Settings > Conversations imports Codex and Claude Code conversations as independent Nodex copies.
 Conversations saved by ACP Agents are bound to a chat instead of copied; see
 [ACP Agent behavior](acp-agent-behavior.md#settings-and-composer).
-Browse configured native sources or paste a native conversation ID or a `codex://threads/<id>` link.
-A raw ID searches enabled sources; multiple distinct history directories require an explicit source
-choice. Profiles sharing the same canonical history directory identify the same source conversation.
+Opening the page reads every configured native source to its end, newest first, showing rows as they
+arrive; rows only append while older history is still being read. Leaving the page stops reading, and
+each visit reads afresh. Refresh keeps the current rows until the new read replaces them.
+
+One field searches and looks up. Text narrows the list as it is typed, matching every word against the
+title and the folder in any order and case, across the whole history rather than a loaded page. A
+native conversation ID or a `codex://threads/<id>` link instead looks up that exact conversation, whatever
+the filters are; a raw ID searches enabled sources, and one that exists in several history directories is
+listed once per directory. Agent, Folder and Status filters narrow the list further and intersect with the
+search, and each counts what its choices would show given the others. A folder is that exact directory.
+Conversations stay in recency order because that is the only order several sources can be merged in while
+they are being read.
+
+Profiles sharing the same canonical history directory identify the same source conversation.
 Single selection and batch selection use the same import operation. Every selected conversation has
-its own retry identity and completion result. A completed copy is offered for opening by default;
-an explicit new copy has a new request identity.
+its own retry identity and completion result. Selecting all covers everything the filters show, not only
+the rows currently mounted. A selection survives searching and filtering; the footer says how many
+selected conversations are out of view, and shows them on request, so nothing is imported unseen. An
+import that has not settled stays listed whatever is searched for. A completed copy is offered for opening
+by default; an explicit new copy has a new request identity.
 
 Choose a Project or Projectless destination and an existing working directory. A missing source
 working directory does not prevent discovery or preview; choose an available replacement for the
-copy. Catalog metadata is paginated, including older history. No import silently falls back to a
-home directory.
+copy. No import silently falls back to a home directory.
 The destination Project may have no configured workspace. The imported chat owns its selected
 execution directory; importing does not add or change a Project workspace source.
 

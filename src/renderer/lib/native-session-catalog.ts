@@ -37,5 +37,7 @@ export const importNativeConversation = (input: NativeConversationImportInput) =
 export const pickNativeConversationImportDirectory = () =>
   invokePlainCommand(pickImportDirectoryCommand, { title: "Choose working directory" });
 
+export const readNativeSessionPathContext = () => invokeRendererQuery("shell:path-context:get");
+
 export const readNativeSessionProjects = (after: string | null = null) =>
   invokeRendererQuery("projects:list", { after, first: 100 });

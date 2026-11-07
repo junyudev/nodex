@@ -336,7 +336,7 @@ respect_system_proxy = false
         await openWorkbenchSettings(page);
         await page.getByRole("link", { name: "Conversations", exact: true }).click();
         await page
-          .getByRole("textbox", { name: "Conversation link or ID", exact: true })
+          .getByRole("textbox", { name: "Search conversations or paste a link or ID", exact: true })
           .fill(`codex://threads/${sourceId}`);
         const form = page.getByRole("group", { name: title, exact: true });
         const selection = page.getByRole("group", { name: "Import selection", exact: true });

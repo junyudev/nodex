@@ -5,6 +5,7 @@ import type {
   NativeConversationImportInput,
   NativeConversationImportOutcome,
   NativeConversationImportPreview,
+  NativeConversationImportPreviewResult,
   NativeSessionCatalogPage,
 } from "../../../shared/native-session-catalog";
 import type { ClaudeAgentSettings, ProjectWindow } from "../../../shared/types";
@@ -90,6 +91,7 @@ const makeRuntime = (overrides: Partial<ConversationImportRuntime> = {}) =>
       imported(input),
     ),
     pickDirectory: vi.fn<ConversationImportRuntime["pickDirectory"]>(async () => "/repo/moved"),
+    pathContext: async () => ({ homeDirectory: "/home/me", separator: "/" }),
     ...overrides,
   }) satisfies ConversationImportRuntime;
 
@@ -114,14 +116,25 @@ const click = async (element: HTMLElement) => {
     await Promise.resolve();
   });
 };
-const referenceInput = () =>
-  screen.getByRole("textbox", { name: "Conversation link or ID" }) as HTMLInputElement;
-const paste = async (value: string) => {
+const searchInput = () =>
+  screen.getByRole("textbox", {
+    name: "Search conversations or paste a link or ID",
+  }) as HTMLInputElement;
+const type = async (value: string) => {
   await act(async () => {
-    fireEvent.paste(referenceInput());
-    fireEvent.change(referenceInput(), { target: { value } });
+    fireEvent.change(searchInput(), { target: { value } });
     await Promise.resolve();
   });
+};
+/** Titles in the order the list shows them. */
+const listedTitles = () =>
+  screen
+    .getAllByRole("group")
+    .map((element) => element.getAttribute("aria-labelledby"))
+    .flatMap((id) => (id ? [document.getElementById(id)?.textContent ?? ""] : []));
+const chooseFilter = async (filter: string, name: string | RegExp) => {
+  await openNodexMenu(screen.getByRole("button", { name: `Filter by ${filter}` }));
+  await click(await screen.findByRole(filter === "folder" ? "option" : "menuitem", { name }));
 };
 const row = (title: string) => screen.findByRole("group", { name: title });
 const footer = () => screen.getByRole("group", { name: "Import selection" });
@@ -146,14 +159,15 @@ it("imports a pasted Codex link into the active Project and opens the new chat",
   const runtime = makeRuntime();
   const onOpenThread = vi.fn();
   await renderPage(runtime, { onOpenThread, activeProjectId: "project-nodex" });
-  await paste(`codex://threads/${BILLING}`);
+  await type(`codex://threads/${BILLING}`);
 
   const billing = await row("Migrate billing");
   expect(runtime.preview).toHaveBeenCalledWith({ reference: `codex://threads/${BILLING}` });
   expect(
     within(billing).getByRole("checkbox", { name: "Migrate billing" }).getAttribute("aria-checked"),
   ).toBe("true");
-  expect(referenceInput().value).toBe("");
+  // A link names one conversation, so the list shows just that one.
+  expect(listedTitles()).toEqual(["Migrate billing"]);
   expect(footerButton("Import destination").textContent).toBe("Nodex");
 
   await click(footerButton("Import and open"));
@@ -177,7 +191,6 @@ it("browses every source newest first and batch-imports with one replacement per
   const runtime = makeRuntime();
   const onOpenThread = vi.fn();
   await renderPage(runtime, { onOpenThread });
-  await click(screen.getByRole("button", { name: "Browse" }));
   await row("Tidy logs");
   expect(runtime.list).toHaveBeenCalledWith({ backendKind: "codex" });
   expect(runtime.list).toHaveBeenCalledWith({ backendKind: "claude", instanceConfigId: "work" });
@@ -228,7 +241,7 @@ it("finishes an unknown outcome with its original request even after the destina
     .mockImplementation(async (input) => imported(input));
   const onOpenThread = vi.fn();
   await renderPage(makeRuntime({ importConversation }), { onOpenThread });
-  await paste(BILLING);
+  await type(BILLING);
   await click(footerButton("Import and open"));
 
   const billing = await row("Migrate billing");
@@ -270,13 +283,12 @@ it("keeps one submission per conversation when the page is left and reopened mid
     ),
   });
   const first = await renderPage(runtime);
-  await paste(BILLING);
+  await type(BILLING);
   await row("Migrate billing");
   await click(footerButton("Import"));
   first.unmount();
 
   const second = await renderPage(runtime, { onOpenThread: vi.fn() }, first.ledger);
-  await click(screen.getByRole("button", { name: "Browse" }));
   const billing = await row("Migrate billing");
   expect(within(billing).getByText("Importing…")).toBeTruthy();
   expect(
@@ -306,7 +318,7 @@ it("keeps an unfinished import reachable after leaving the page, even if its sou
     .mockImplementation(async (input) => imported(input));
   const runtime = makeRuntime({ importConversation });
   const first = await renderPage(runtime);
-  await paste(BILLING);
+  await type(BILLING);
   await row("Migrate billing");
   await click(footerButton("Import"));
   await within(await row("Migrate billing")).findByRole("alert");
@@ -318,7 +330,6 @@ it("keeps an unfinished import reachable after leaving the page, even if its sou
     profiles: async () => ({ instances: [] }),
   });
   await renderPage(gone, {}, first.ledger);
-  await click(screen.getByRole("button", { name: "Browse" }));
   const billing = await row("Migrate billing");
   expect(within(billing).getByText("Import again to finish it in Projectless.")).toBeTruthy();
   await click(within(billing).getByRole("checkbox", { name: "Migrate billing" }));
@@ -336,7 +347,7 @@ it("defaults to the active Project even when it is beyond the first page of Proj
     activeProjectId: "project-101",
     projects: [{ id: "project-101", name: "Billing service" }],
   });
-  await paste(BILLING);
+  await type(BILLING);
   await row("Migrate billing");
   expect(footerButton("Import destination").textContent).toBe("Billing service");
   await click(footerButton("Import"));
@@ -356,7 +367,6 @@ it("keeps the active destination and Claude sources when Projects fail to load",
   await renderPage(runtime, { activeProjectId: "project-elsewhere" });
   expect((await screen.findByRole("alert")).textContent).toBe("Projects: Core is restarting.");
 
-  await click(screen.getByRole("button", { name: "Browse" }));
   await row("Fix authentication");
   await click(within(await row("Fix authentication")).getByRole("checkbox"));
   expect(footerButton("Import destination").textContent).toBe("Current Project");
@@ -376,7 +386,6 @@ it("adds Claude sources to a browse that started before profiles loaded", async 
   const profiles = deferred<ClaudeAgentSettings>();
   const runtime = makeRuntime({ profiles: () => profiles.promise });
   await renderPage(runtime);
-  await click(screen.getByRole("button", { name: "Browse" }));
   await row("Migrate billing");
   expect(runtime.list).toHaveBeenCalledTimes(1);
 
@@ -402,12 +411,11 @@ it("offers an existing copy instead of importing the same source again", async (
   });
   const onOpenThread = vi.fn();
   await renderPage(runtime, { onOpenThread });
-  await paste(BILLING);
+  await type(BILLING);
 
   const billing = await row("Migrate billing");
-  expect(screen.getByText("Already imported. Open the existing chat below.")).toBeTruthy();
   expect(within(billing).queryByRole("checkbox")).toBeNull();
-  expect(footerStatus()).toBe("Select conversations to import");
+  expect(footerStatus()).toBe("1 conversation");
   await click(within(billing).getByRole("button", { name: "Open" }));
   await waitFor(() =>
     expect(onOpenThread).toHaveBeenCalledWith("copy-thread", { runtimeSessionId: "copy-session" }),
@@ -423,20 +431,19 @@ it("explains unusable references and keeps a failed lookup retryable", async () 
     .mockResolvedValue({ matches: [billingPreview] });
   await renderPage(makeRuntime({ preview }));
 
-  await paste("https://example.com/not-a-thread");
-  expect((await screen.findByRole("alert")).textContent).toBe(
-    "Paste a codex://threads link or a conversation ID.",
-  );
+  // Anything that isn't a link or an ID is simply searched for.
+  await type("https://example.com/not-a-thread");
+  expect(await screen.findByText("No conversations match.")).toBeTruthy();
   expect(preview).not.toHaveBeenCalled();
 
-  await paste(BILLING);
+  await type(BILLING);
   expect((await screen.findByRole("alert")).textContent).toBe("Native conversation lookup failed.");
   await click(screen.getByRole("button", { name: "Try again" }));
   expect(await screen.findByText("No Codex or Claude Code conversation has this ID.")).toBeTruthy();
-  expect(referenceInput().value).toBe(BILLING);
+  expect(searchInput().value).toBe(BILLING);
 
   await act(async () => {
-    fireEvent.keyDown(referenceInput(), { key: "Enter" });
+    fireEvent.keyDown(searchInput(), { key: "Enter" });
     await Promise.resolve();
   });
   await row("Migrate billing");
@@ -453,7 +460,6 @@ it("reports a source that cannot be read and retries just that source", async ()
       throw new Error("Claude Code is not signed in.");
     });
   await renderPage(makeRuntime({ list }));
-  await click(screen.getByRole("button", { name: "Browse" }));
   expect((await screen.findByRole("alert")).textContent).toBe(
     "Claude Code: Claude Code is not signed in.",
   );
@@ -465,7 +471,7 @@ it("reports a source that cannot be read and retries just that source", async ()
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
-it("reads past pages without importable conversations so more rows only append", async () => {
+it("reads a whole history unprompted, past pages without importable conversations", async () => {
   const list = vi
     .fn<ConversationImportRuntime["list"]>()
     .mockImplementation(async (input) =>
@@ -476,29 +482,47 @@ it("reads past pages without importable conversations so more rows only append",
           : { ...codexPage, entries: [], nextCursor: "older" },
     );
   await renderPage(makeRuntime({ list }));
-  await click(screen.getByRole("button", { name: "Browse" }));
   await row("Tidy logs");
   expect(list).toHaveBeenCalledWith({ backendKind: "codex", cursor: "older" });
   expect(
     screen.getAllByText(/^(Fix authentication|Tidy logs)$/u).map((title) => title.textContent),
   ).toEqual(["Fix authentication", "Tidy logs"]);
-  expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
 });
 
 it("finishes an import after Settings closes without taking the user to it", async () => {
   const reply = deferred<NativeConversationImportOutcome>();
-  const runtime = makeRuntime({ importConversation: vi.fn(() => reply.promise) });
+  let copied = false;
+  const runtime = makeRuntime({
+    importConversation: vi.fn(() => reply.promise),
+    // Coming back reads the source again, which by then knows about the copy.
+    list: vi.fn(async (input) =>
+      input.backendKind === "claude" || !copied
+        ? input.backendKind === "codex"
+          ? codexPage
+          : claudePage
+        : {
+            ...codexPage,
+            entries: codexPage.entries.map((listed) => ({
+              ...listed,
+              importedThreadId: "agent-thread",
+              importedSessionId: "chat",
+            })),
+          },
+    ),
+  });
   const onOpenThread = vi.fn();
   const ledger = createNativeConversationImportLedger();
   const { rerender } = render(page(runtime, ledger, { onOpenThread }));
   await settleAsyncRender();
-  await paste(BILLING);
+  await type(BILLING);
   await row("Migrate billing");
   await click(footerButton("Import and open"));
-  expect(referenceInput().readOnly).toBe(true);
-  expect((screen.getByRole("button", { name: "Browse" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(
+    (screen.getByRole("button", { name: "Refresh conversations" }) as HTMLButtonElement).disabled,
+  ).toBe(true);
 
   rerender(page(runtime, ledger, { onOpenThread, open: false }));
+  copied = true;
   await act(async () => {
     reply.resolve({
       kind: "imported",
@@ -511,9 +535,312 @@ it("finishes an import after Settings closes without taking the user to it", asy
   rerender(page(runtime, ledger, { onOpenThread }));
   const open = await within(await row("Migrate billing")).findByRole("button", { name: "Open" });
   expect(onOpenThread).not.toHaveBeenCalled();
-  expect(referenceInput().readOnly).toBe(false);
+  expect(
+    (screen.getByRole("button", { name: "Refresh conversations" }) as HTMLButtonElement).disabled,
+  ).toBe(false);
   await click(open);
   await waitFor(() =>
     expect(onOpenThread).toHaveBeenCalledWith("agent-thread", { runtimeSessionId: "chat" }),
   );
+});
+
+const entry = (id: string, title: string, cwd: string, updatedAt: number) => ({
+  nativeSessionId: id,
+  title,
+  cwd,
+  updatedAt,
+});
+const SESSION = (index: number) => `0199a7c4-5b7e-7d10-9a3e-${String(index).padStart(12, "0")}`;
+const codexOnly = { profiles: async () => ({ instances: [] }) };
+
+it("finds a conversation on any page by title or folder, in any case", async () => {
+  const list = vi.fn<ConversationImportRuntime["list"]>(async (input) =>
+    input.cursor
+      ? {
+          nativeHome: "/home/.codex",
+          entries: [entry(SESSION(2), "Rewrite the Billing docs", "/repo/landing", 1_000)],
+          nextCursor: null,
+        }
+      : {
+          nativeHome: "/home/.codex",
+          entries: [entry(SESSION(1), "Tidy logs", "/repo/nodex", 2_000)],
+          nextCursor: "older",
+        },
+  );
+  await renderPage(makeRuntime({ ...codexOnly, list }));
+  await row("Rewrite the Billing docs");
+
+  await type("billing DOCS");
+  await waitFor(() => expect(listedTitles()).toEqual(["Rewrite the Billing docs"]));
+  expect(footerStatus()).toBe("1 of 2 conversations");
+
+  await type("landing");
+  await waitFor(() => expect(listedTitles()).toEqual(["Rewrite the Billing docs"]));
+
+  await type("nothing like this");
+  expect(await screen.findByText("No conversations match.")).toBeTruthy();
+  await click(screen.getByRole("button", { name: "Clear filters" }));
+  await waitFor(() => expect(listedTitles()).toEqual(["Tidy logs", "Rewrite the Billing docs"]));
+  expect(searchInput().value).toBe("");
+});
+
+it("narrows by Agent, folder and status, counting what each choice would show", async () => {
+  const list = vi.fn<ConversationImportRuntime["list"]>(async (input) =>
+    input.backendKind === "codex"
+      ? {
+          nativeHome: "/home/.codex",
+          entries: [
+            entry(SESSION(1), "Tidy logs", "/home/me/repo/nodex", 3_000),
+            {
+              ...entry(SESSION(2), "Rewrite docs", "/home/me/repo/landing", 2_000),
+              importedThreadId: "copy-thread",
+              importedSessionId: "copy-session",
+            },
+          ],
+          nextCursor: null,
+        }
+      : {
+          nativeHome: "/profiles/claude-work",
+          entries: [entry(SESSION(3), "Fix authentication", "/home/me/repo/nodex", 1_000)],
+          nextCursor: null,
+        },
+  );
+  await renderPage(makeRuntime({ list }), { onOpenThread: vi.fn() });
+  await row("Fix authentication");
+
+  await chooseFilter("agent", /^Claude Code/u);
+  await waitFor(() => expect(listedTitles()).toEqual(["Fix authentication"]));
+  expect(footerStatus()).toBe("1 of 3 conversations");
+  expect(screen.getByRole("button", { name: "Filter by agent" }).textContent).toBe("Claude Code");
+
+  await chooseFilter("agent", /^All agents/u);
+  await openNodexMenu(screen.getByRole("button", { name: "Filter by folder" }));
+  // Home-relative, fullest folder first, each with its count.
+  expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+    "All folders3",
+    "~/repo/nodex2",
+    "~/repo/landing1",
+  ]);
+  await click(screen.getByRole("option", { name: /^~\/repo\/nodex/u }));
+  await waitFor(() => expect(listedTitles()).toEqual(["Tidy logs", "Fix authentication"]));
+  expect(screen.getByRole("button", { name: "Filter by folder" }).textContent).toBe("nodex");
+
+  await chooseFilter("folder", /^All folders/u);
+  await chooseFilter("status", /^Imported/u);
+  await waitFor(() => expect(listedTitles()).toEqual(["Rewrite docs"]));
+  await chooseFilter("status", /^Not imported/u);
+  await waitFor(() => expect(listedTitles()).toEqual(["Tidy logs", "Fix authentication"]));
+});
+
+it("keeps a selection across searches, and shows what it holds before importing", async () => {
+  const runtime = makeRuntime({
+    ...codexOnly,
+    list: vi.fn(async () => ({
+      nativeHome: "/home/.codex",
+      entries: [
+        entry(SESSION(1), "Tidy logs", "/repo/nodex", 2_000),
+        entry(SESSION(2), "Rewrite docs", "/repo/landing", 1_000),
+      ],
+      nextCursor: null,
+    })),
+  });
+  await renderPage(runtime);
+  await click(within(await row("Tidy logs")).getByRole("checkbox"));
+
+  await type("docs");
+  await waitFor(() => expect(listedTitles()).toEqual(["Rewrite docs"]));
+  expect(footerStatus()).toBe("1 selected · 1 not shown");
+  await click(within(await row("Rewrite docs")).getByRole("checkbox"));
+  expect(footerStatus()).toBe("2 selected · 1 not shown");
+
+  await click(within(footer()).getByRole("button", { name: /2 selected/u }));
+  await waitFor(() => expect(listedTitles()).toEqual(["Tidy logs", "Rewrite docs"]));
+  expect(searchInput().value).toBe("");
+  expect(footerStatus()).toBe("2 selected");
+
+  await click(footerButton("Import 2"));
+  await waitFor(() => expect(footerStatus()).toBe("Imported 2 conversations"));
+  expect(runtime.importConversation).toHaveBeenCalledTimes(2);
+  // Nothing is left to show as selected, so the whole list returns.
+  await waitFor(() => expect(listedTitles()).toEqual(["Tidy logs", "Rewrite docs"]));
+});
+
+it("selects only what the filters show, and tells when that is part of the list", async () => {
+  await renderPage(
+    makeRuntime({
+      ...codexOnly,
+      list: vi.fn(async () => ({
+        nativeHome: "/home/.codex",
+        entries: [
+          entry(SESSION(1), "Tidy logs", "/repo/nodex", 2_000),
+          entry(SESSION(2), "Rewrite docs", "/repo/landing", 1_000),
+        ],
+        nextCursor: null,
+      })),
+    }),
+  );
+  await row("Tidy logs");
+  const selectAll = () =>
+    within(footer()).getByRole("checkbox", { name: "Select all conversations" });
+
+  await click(within(await row("Tidy logs")).getByRole("checkbox"));
+  expect(selectAll().getAttribute("aria-checked")).toBe("mixed");
+
+  await type("docs");
+  await waitFor(() => expect(listedTitles()).toEqual(["Rewrite docs"]));
+  expect(selectAll().getAttribute("aria-checked")).toBe("false");
+  await click(selectAll());
+  expect(selectAll().getAttribute("aria-checked")).toBe("true");
+  expect(footerStatus()).toBe("2 selected · 1 not shown");
+
+  await click(footerButton("Clear"));
+  expect(footerStatus()).toBe("1 of 2 conversations");
+});
+
+it("mounts a long list in steps while selecting all of it", async () => {
+  const observers: IntersectionObserverCallback[] = [];
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(callback: IntersectionObserverCallback) {
+        observers.push(callback);
+      }
+      observe() {}
+      disconnect() {}
+    },
+  );
+  try {
+    await renderPage(
+      makeRuntime({
+        ...codexOnly,
+        list: vi.fn(async () => ({
+          nativeHome: "/home/.codex",
+          entries: Array.from({ length: 150 }, (_, index) =>
+            entry(SESSION(index), `Conversation ${index}`, "/repo/nodex", 10_000 - index),
+          ),
+          nextCursor: null,
+        })),
+      }),
+    );
+    await row("Conversation 0");
+    expect(listedTitles()).toHaveLength(100);
+    expect(footerStatus()).toBe("150 conversations");
+
+    await click(within(footer()).getByRole("checkbox", { name: "Select all conversations" }));
+    expect(footerStatus()).toBe("150 selected");
+    expect(footerButton("Import 150")).toBeTruthy();
+
+    await act(async () => {
+      observers.at(-1)!(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      );
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(listedTitles()).toHaveLength(150));
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it("keeps the list while refreshing, then replaces it whole", async () => {
+  const reread = deferred<NativeSessionCatalogPage>();
+  const list = vi
+    .fn<ConversationImportRuntime["list"]>()
+    .mockResolvedValueOnce({
+      nativeHome: "/home/.codex",
+      entries: [entry(SESSION(1), "Tidy logs", "/repo/nodex", 2_000)],
+      nextCursor: null,
+    })
+    .mockImplementationOnce(() => reread.promise);
+  await renderPage(makeRuntime({ ...codexOnly, list }));
+  await row("Tidy logs");
+
+  await click(screen.getByRole("button", { name: "Refresh conversations" }));
+  expect(listedTitles()).toEqual(["Tidy logs"]);
+
+  await act(async () => {
+    reread.resolve({
+      nativeHome: "/home/.codex",
+      entries: [entry(SESSION(2), "Rewrite docs", "/repo/landing", 3_000)],
+      nextCursor: null,
+    });
+    await Promise.resolve();
+  });
+  await waitFor(() => expect(listedTitles()).toEqual(["Rewrite docs"]));
+});
+
+it("shows what a failing source already gave, resuming it without holding back the others", async () => {
+  const list = vi.fn<ConversationImportRuntime["list"]>(async (input) => {
+    if (input.backendKind === "claude") return claudePage;
+    if (!input.cursor)
+      return {
+        nativeHome: "/home/.codex",
+        entries: [entry(SESSION(1), "Recent work", "/repo/nodex", 5_000)],
+        nextCursor: "older",
+      };
+    if (list.mock.calls.filter(([call]) => call.cursor === "older").length === 1)
+      throw new Error("Codex is restarting.");
+    return {
+      nativeHome: "/home/.codex",
+      entries: [entry(SESSION(2), "Older work", "/repo/nodex", 500)],
+      nextCursor: null,
+    };
+  });
+  await renderPage(makeRuntime({ list }));
+  // Older than anything Codex has given so far, yet Codex no longer bounds the list.
+  await row("Fix authentication");
+  expect((await screen.findByRole("alert")).textContent).toBe("Codex: Codex is restarting.");
+  expect(listedTitles()).toEqual(["Recent work", "Fix authentication"]);
+
+  await click(screen.getByRole("button", { name: "Try again" }));
+  await row("Older work");
+  expect(list).toHaveBeenLastCalledWith({ backendKind: "codex", cursor: "older" });
+  expect(listedTitles()).toEqual(["Recent work", "Fix authentication", "Older work"]);
+});
+
+it("finishes a lookup that outlives leaving the page", async () => {
+  const pending = deferred<NativeConversationImportPreviewResult>();
+  const preview = vi.fn<ConversationImportRuntime["preview"]>(() => pending.promise);
+  const runtime = makeRuntime({ ...codexOnly, preview });
+  const ledger = createNativeConversationImportLedger();
+  const { rerender } = render(page(runtime, ledger));
+  await settleAsyncRender();
+  await type(BILLING);
+  rerender(page(runtime, ledger, { open: false }));
+  await act(async () => {
+    pending.resolve({ matches: [billingPreview] });
+    await Promise.resolve();
+  });
+
+  rerender(page(runtime, ledger));
+  await row("Migrate billing");
+  expect(preview).toHaveBeenCalledTimes(1);
+  expect(listedTitles()).toEqual(["Migrate billing"]);
+});
+
+it("keeps an unfinished import in view whatever is being searched", async () => {
+  const importConversation = vi
+    .fn<ConversationImportRuntime["importConversation"]>()
+    .mockRejectedValue(new Error("Agent Runtime is restarting."));
+  await renderPage(
+    makeRuntime({
+      ...codexOnly,
+      importConversation,
+      list: vi.fn(async () => ({
+        nativeHome: "/home/.codex",
+        entries: [
+          entry(SESSION(1), "Tidy logs", "/repo/nodex", 2_000),
+          entry(SESSION(2), "Rewrite docs", "/repo/landing", 1_000),
+        ],
+        nextCursor: null,
+      })),
+    }),
+  );
+  await click(within(await row("Rewrite docs")).getByRole("checkbox"));
+  await click(footerButton("Import"));
+  await within(await row("Rewrite docs")).findByRole("alert");
+
+  await type("tidy");
+  await waitFor(() => expect(listedTitles()).toEqual(["Rewrite docs", "Tidy logs"]));
 });

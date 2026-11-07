@@ -138,7 +138,7 @@ test("imports Claude history as an independent executable copy with a replacemen
       await page.screenshot({ path: testInfo.outputPath("codex-setup-import-location.png") });
       await page.getByRole("link", { name: "Conversations", exact: true }).click();
       await page
-        .getByRole("textbox", { name: "Conversation link or ID", exact: true })
+        .getByRole("textbox", { name: "Search conversations or paste a link or ID", exact: true })
         .fill(nativeSessionId);
       const form = page.getByRole("group", { name: title, exact: true });
       const selection = page.getByRole("group", { name: "Import selection", exact: true });

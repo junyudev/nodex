@@ -1,4 +1,9 @@
-import { useId, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
+import {
+  abbreviateHomeDirectory,
+  type LocalPathPresentationContext,
+} from "../../../shared/local-path-presentation";
+import { buildCommandPaletteTokenHighlightSegments } from "../../lib/command-palette-highlight";
 import { formatCompactRelativeTime } from "../../lib/compact-relative-time";
 import type {
   NativeConversationCandidate,
@@ -12,6 +17,7 @@ import {
   NodexDropdownSeparator,
   NodexOptionPicker,
   NodexSettingsDropdownTrigger,
+  type NodexOptionPickerOption,
 } from "../ui/dropdown";
 import { NodexCheckbox } from "../ui/settings";
 import { NodexTooltip } from "../ui/tooltip";
@@ -21,12 +27,20 @@ export const conversationTitle = (title: string) => title || "Untitled conversat
 export const conversationSourceName = (source: NativeConversationSource) =>
   source.backendKind === "claude" ? "Claude Code" : "Codex";
 
-/** Absolute paths keep their trailing folders visible when truncated, aligned like LTR text. */
-function ConversationPath({ path }: { path: string }) {
-  return (
-    <span className="block min-w-0 truncate text-left [direction:rtl]">
-      <bdi dir="ltr">{path}</bdi>
-    </span>
+/** The query's words, marked where they appear; an empty query renders the text untouched. */
+function ConversationMatchedText({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return text;
+  return buildCommandPaletteTokenHighlightSegments(text, query).map((segment, index) =>
+    segment.highlight ? (
+      <mark
+        key={index}
+        className="rounded-xs bg-token-editor-find-match-background text-token-foreground"
+      >
+        {segment.text}
+      </mark>
+    ) : (
+      segment.text
+    ),
   );
 }
 
@@ -53,6 +67,8 @@ export interface ConversationImportPendingAttempt {
 
 export function ConversationImportRow({
   candidate,
+  query,
+  pathContext,
   selected,
   cwd,
   pending,
@@ -64,6 +80,9 @@ export function ConversationImportRow({
   onOpen,
 }: {
   candidate: NativeConversationCandidate;
+  /** What the list is searching for, marked in the title and folder. */
+  query: string;
+  pathContext: LocalPathPresentationContext | null;
   selected: boolean;
   /** The directory a new copy would use; null while a missing original has no replacement. */
   cwd: string | null;
@@ -81,11 +100,13 @@ export function ConversationImportRow({
   const { imported } = candidate;
   const missing = !candidate.cwdAvailable;
   const folder = pending?.cwd ?? cwd;
+  const selectable = !imported;
+  const titleContent = <ConversationMatchedText text={title} query={query} />;
 
   let action: ReactNode = null;
   if (imported) {
     action = canOpen ? (
-      <NodexButton size="sm" variant="secondary" disabled={locked} onClick={onOpen}>
+      <NodexButton size="xs" variant="secondary" disabled={locked} onClick={onOpen}>
         {state?.kind === "opening" ? "Opening…" : "Open"}
       </NodexButton>
     ) : (
@@ -102,8 +123,9 @@ export function ConversationImportRow({
     action = cwd ? (
       <NodexTooltip tooltipContent={`Replaces ${candidate.cwd}`}>
         <NodexButton
-          size="sm"
+          size="xs"
           variant="ghost"
+          className="relative z-[1]"
           aria-label="Change folder"
           disabled={locked}
           onClick={onChooseFolder}
@@ -112,43 +134,76 @@ export function ConversationImportRow({
         </NodexButton>
       </NodexTooltip>
     ) : (
-      <NodexButton size="sm" variant="secondary" disabled={locked} onClick={onChooseFolder}>
+      <NodexButton
+        size="xs"
+        variant="secondary"
+        className="relative z-[1]"
+        disabled={locked}
+        onClick={onChooseFolder}
+      >
         Choose folder
       </NodexButton>
     );
   }
 
+  const folderCell = (
+    <span
+      className={cn(
+        "block min-w-0 truncate text-left text-xs [direction:rtl]",
+        folder ? "text-token-text-secondary" : "text-danger",
+      )}
+    >
+      {folder ? (
+        <bdi dir="ltr">
+          <ConversationMatchedText
+            text={abbreviateHomeDirectory(folder, pathContext)}
+            query={query}
+          />
+        </bdi>
+      ) : (
+        "Folder missing"
+      )}
+    </span>
+  );
+
   return (
     <div
       role="group"
       aria-labelledby={titleId}
-      className="flex min-w-0 items-center gap-3 px-4 py-2.5"
-    >
-      {imported ? (
-        <span aria-hidden className="size-3.5 shrink-0" />
-      ) : (
-        <NodexCheckbox
-          id={checkboxId}
-          checked={selected}
-          disabled={locked}
-          onCheckedChange={onToggle}
-        />
+      className={cn(
+        // Inset so the tint sits evenly in the card whether or not a scrollbar holds its gutter.
+        "relative mx-1.5 flex min-w-0 flex-col gap-0.5 rounded-lg px-2.5 py-1.5",
+        selected ? "bg-token-foreground/5" : selectable && "hover:bg-token-list-hover-background",
       )}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex min-w-0 items-center gap-1.5">
+    >
+      <div className="flex min-h-6 min-w-0 items-center gap-3">
+        {selectable ? (
+          <NodexCheckbox
+            id={checkboxId}
+            ariaLabel={title}
+            className="relative z-[1]"
+            checked={selected}
+            disabled={locked}
+            onCheckedChange={onToggle}
+          />
+        ) : (
+          <span aria-hidden className="size-3.5 shrink-0" />
+        )}
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <ConversationAgentMark source={candidate.source} />
-          {imported ? (
-            <span id={titleId} className="min-w-0 truncate text-sm text-token-text-primary">
-              {title}
-            </span>
-          ) : (
+          {selectable ? (
+            // The label's overlay makes the whole row a target for its checkbox.
             <label
               id={titleId}
               htmlFor={checkboxId}
-              className="min-w-0 cursor-interaction truncate text-sm text-token-text-primary"
+              className="min-w-0 cursor-interaction truncate text-sm text-token-text-primary after:absolute after:inset-0 after:content-['']"
             >
-              {title}
+              {titleContent}
             </label>
+          ) : (
+            <span id={titleId} className="min-w-0 truncate text-sm text-token-text-secondary">
+              {titleContent}
+            </span>
           )}
           {candidate.source.profileName ? (
             <span className="shrink-0 text-xs text-token-description-foreground">
@@ -156,33 +211,142 @@ export function ConversationImportRow({
             </span>
           ) : null}
         </div>
-        <div className="flex min-w-0 items-center gap-1.5 text-xs text-token-text-secondary">
-          <ConversationPath path={folder ?? candidate.cwd} />
-          {missing && !folder ? <span className="shrink-0 text-danger">Folder missing</span> : null}
-        </div>
-        {state?.kind === "failed" ? (
-          <p role="alert" className="text-xs text-danger">
-            {state.message}
-          </p>
-        ) : pending && state?.kind !== "importing" && !imported ? (
-          <p className="flex min-w-0 flex-col text-xs">
-            <span role="alert" className="text-danger">
-              {pending.unsettled ?? "This import hasn’t finished."}
-            </span>
-            <span className="text-token-description-foreground">
-              Import again to finish it in {pending.destination}.
-            </span>
-          </p>
-        ) : null}
+        {action}
+        <NodexTooltip tooltipContent={folder ?? candidate.cwd}>
+          {selectable ? (
+            <label
+              htmlFor={checkboxId}
+              className="relative z-[1] w-[27%] max-w-52 shrink-0 cursor-interaction"
+            >
+              {folderCell}
+            </label>
+          ) : (
+            <span className="w-[27%] max-w-52 shrink-0">{folderCell}</span>
+          )}
+        </NodexTooltip>
+        <time
+          className="w-7 shrink-0 text-right text-xs text-token-description-foreground tabular-nums"
+          dateTime={new Date(candidate.updatedAt).toISOString()}
+        >
+          {formatCompactRelativeTime(candidate.updatedAt)}
+        </time>
       </div>
-      <time
-        className="shrink-0 text-xs text-token-description-foreground tabular-nums"
-        dateTime={new Date(candidate.updatedAt).toISOString()}
-      >
-        {formatCompactRelativeTime(candidate.updatedAt)}
-      </time>
-      {action}
+      {state?.kind === "failed" ? (
+        <p role="alert" className="pl-[26px] text-xs text-danger">
+          {state.message}
+        </p>
+      ) : pending && state?.kind !== "importing" && !imported ? (
+        <p className="flex min-w-0 flex-col pl-[26px] text-xs">
+          <span role="alert" className="text-danger">
+            {pending.unsettled ?? "This import hasn’t finished."}
+          </span>
+          <span className="text-token-description-foreground">
+            Import again to finish it in {pending.destination}.
+          </span>
+        </p>
+      ) : null}
     </div>
+  );
+}
+
+const RENDERED_ROWS_STEP = 100;
+
+/**
+ * Scrolls a list of any length: rows mount in steps as they near the viewport, so a whole history
+ * stays cheap to filter. Keying it by what the list shows starts each new result at the top.
+ */
+export function ConversationImportRows<Row>({
+  rows,
+  renderRow,
+  children,
+}: {
+  rows: readonly Row[];
+  renderRow: (row: Row) => ReactNode;
+  /** Notices that lead the list, such as a source that could not be read. */
+  children?: ReactNode;
+}) {
+  const [rendered, setRendered] = useState(RENDERED_ROWS_STEP);
+  const scroller = useRef<HTMLDivElement>(null);
+  const observeSentinel = (sentinel: HTMLDivElement) => {
+    if (typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting))
+          setRendered((current) => current + RENDERED_ROWS_STEP);
+      },
+      { root: scroller.current, rootMargin: "600px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  };
+
+  return (
+    <div
+      ref={scroller}
+      className="flex h-full min-h-0 flex-col overflow-y-auto py-1 [scrollbar-gutter:stable]"
+    >
+      {children}
+      {rows.slice(0, rendered).map(renderRow)}
+      {/* Each step mounts a new sentinel, so one still in range reports again. */}
+      {rendered < rows.length ? (
+        <div key={rendered} ref={observeSentinel} aria-hidden className="h-px shrink-0" />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * One way to narrow the list. Quiet while it lets everything through; tinted once it narrows, so
+ * what is hiding rows can be read from the toolbar.
+ */
+export function ConversationImportFilterPicker({
+  label,
+  allValue,
+  value,
+  valueLabel,
+  options,
+  search = false,
+  disabled = false,
+  onValueChange,
+}: {
+  /** Names the dimension while nothing is chosen, and names the control. */
+  label: string;
+  allValue: string;
+  value: string;
+  valueLabel: string | null;
+  options: readonly NodexOptionPickerOption[];
+  search?: boolean;
+  disabled?: boolean;
+  onValueChange: (value: string) => void;
+}) {
+  const active = value !== allValue;
+  return (
+    <NodexOptionPicker
+      value={value}
+      options={options}
+      disabled={disabled}
+      onValueChange={onValueChange}
+      {...(search
+        ? {
+            search: "filter" as const,
+            searchPlaceholder: `Search ${label.toLowerCase()}s…`,
+            contentClassName: "w-80 max-w-[80vw]",
+            contentMaxHeight: "tall" as const,
+          }
+        : { contentWidth: "sm" as const })}
+      align="end"
+      triggerButton={
+        <NodexSettingsDropdownTrigger
+          aria-label={`Filter by ${label.toLowerCase()}`}
+          className={cn(
+            "max-w-36 shrink-0",
+            active ? "bg-token-foreground/5" : "text-token-text-secondary",
+          )}
+        >
+          <span className="min-w-0 truncate">{active ? valueLabel : label}</span>
+        </NodexSettingsDropdownTrigger>
+      }
+    />
   );
 }
 
@@ -245,16 +409,18 @@ export function ConversationImportDestinationPicker({
   );
 }
 
-/**
- * Present whenever the list is, so selecting never changes the page's height. It sticks to the
- * bottom of the Settings scroll area to stay reachable from anywhere in a long list.
- */
+/** The list's own last row: it says what is selected and acts on it, wherever the list is scrolled. */
 export function ConversationImportFooter({
   selectAll,
   summary,
   children,
 }: {
-  selectAll: { checked: boolean; disabled: boolean; onCheckedChange: (checked: boolean) => void };
+  selectAll: {
+    checked: boolean;
+    indeterminate: boolean;
+    disabled: boolean;
+    onCheckedChange: (checked: boolean) => void;
+  };
   summary: ReactNode;
   children: ReactNode;
 }) {
@@ -262,22 +428,18 @@ export function ConversationImportFooter({
     <div
       role="group"
       aria-label="Import selection"
-      className={cn(
-        "sticky bottom-0 z-[1] flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-b-2xl px-4 py-2.5",
-        "before:pointer-events-none before:absolute before:inset-x-4 before:-top-px before:h-px",
-        "before:bg-token-border before:content-['']",
-      )}
-      style={{ backgroundColor: "var(--color-background-panel, var(--color-token-bg-fog))" }}
+      className="flex min-w-0 shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5"
     >
       <NodexCheckbox
         ariaLabel="Select all conversations"
         checked={selectAll.checked}
+        indeterminate={selectAll.indeterminate}
         disabled={selectAll.disabled}
         onCheckedChange={selectAll.onCheckedChange}
       />
-      <p role="status" className="min-w-0 flex-1 truncate text-xs text-token-text-secondary">
+      <div className="flex min-w-0 flex-1 items-center gap-1 text-xs text-token-text-secondary">
         {summary}
-      </p>
+      </div>
       <div className="ml-auto flex items-center gap-2">{children}</div>
     </div>
   );

@@ -3,6 +3,7 @@ import type {
   NativeConversationImportPreview,
   NativeSessionBackendKind,
   NativeSessionCatalogEntry,
+  NativeSessionCatalogPage,
 } from "../../shared/native-session-catalog";
 
 /** A configured history the user can import from: the active Codex home or one Claude profile. */
@@ -88,22 +89,15 @@ export interface NativeConversationSourceCatalog {
   readonly nextCursor: string | null;
 }
 
-export interface MergedNativeConversations {
-  readonly candidates: readonly NativeConversationCandidate[];
-  /** The source whose next page extends the list; null once every source is exhausted. */
-  readonly next: NativeConversationSourceCatalog | null;
-}
-
 /**
  * Interleaves sources by recency. A source with unread pages bounds the list at its oldest loaded
- * conversation, so loading more appends older rows. A source whose loaded pages had no importable
- * rows cannot bound anything; it is read next, and the catalog reader drains such pages so this
- * stays a transient state. Profiles that resolve to the same history home are one source; the first
- * profile represents it.
+ * conversation, so rows only ever append while history is still being read. A source whose loaded
+ * pages had no importable rows yet says nothing about order. Profiles that resolve to the same
+ * history home are one source; the first profile represents it.
  */
 export function mergeNativeConversationCatalogs(
   catalogs: readonly NativeConversationSourceCatalog[],
-): MergedNativeConversations {
+): readonly NativeConversationCandidate[] {
   const homes = new Set<string>();
   const distinct = catalogs.filter((catalog) => {
     const home = `${catalog.source.backendKind}\n${catalog.nativeHome}`;
@@ -112,25 +106,12 @@ export function mergeNativeConversationCatalogs(
     return true;
   });
   let frontier = Number.NEGATIVE_INFINITY;
-  let next: NativeConversationSourceCatalog | null = null;
-  let nextOldest = Number.NEGATIVE_INFINITY;
   for (const catalog of distinct) {
-    if (catalog.nextCursor === null) continue;
     const oldest = catalog.candidates.at(-1)?.updatedAt;
-    // A source with a cursor but no readable rows yet says nothing about order; read it first.
-    if (oldest === undefined) {
-      if (nextOldest !== Number.POSITIVE_INFINITY) next = catalog;
-      nextOldest = Number.POSITIVE_INFINITY;
-      continue;
-    }
-    frontier = Math.max(frontier, oldest);
-    if (oldest > nextOldest) {
-      next = catalog;
-      nextOldest = oldest;
-    }
+    if (catalog.nextCursor !== null && oldest !== undefined) frontier = Math.max(frontier, oldest);
   }
   const seen = new Set<string>();
-  const candidates = distinct
+  return distinct
     .flatMap((catalog) => catalog.candidates)
     .filter((candidate) => {
       if (candidate.updatedAt < frontier || seen.has(candidate.key)) return false;
@@ -138,7 +119,102 @@ export function mergeNativeConversationCatalogs(
       return true;
     })
     .sort((left, right) => right.updatedAt - left.updatedAt);
-  return { candidates, next };
+}
+
+/**
+ * Reads one source to its end, continuing after `resume` when given. A source that stops advancing
+ * its cursor has ended. Every unfinished step goes to `onProgress`; the result is the whole catalog,
+ * or null once `isCurrent` says nobody wants it any more.
+ */
+export async function readNativeConversationCatalog(input: {
+  readonly source: NativeConversationSource;
+  readonly resume: NativeConversationSourceCatalog | null;
+  readonly list: (cursor: string | null) => Promise<NativeSessionCatalogPage>;
+  /** Import-ledger time, stamped before each read is sent. */
+  readonly now: () => number;
+  readonly isCurrent: () => boolean;
+  readonly onProgress: (catalog: NativeConversationSourceCatalog) => void;
+}): Promise<NativeConversationSourceCatalog | null> {
+  let catalog = input.resume;
+  for (;;) {
+    const cursor = catalog?.nextCursor ?? null;
+    const observedAt = input.now();
+    const page = await input.list(cursor);
+    if (!input.isCurrent()) return null;
+    const candidates = page.entries.map((entry) =>
+      nativeConversationCandidate(input.source, page.nativeHome, entry, observedAt),
+    );
+    catalog = {
+      source: input.source,
+      nativeHome: page.nativeHome,
+      nextCursor: page.nextCursor !== cursor ? page.nextCursor : null,
+      candidates:
+        catalog?.nativeHome === page.nativeHome
+          ? [...catalog.candidates, ...candidates]
+          : candidates,
+    };
+    if (catalog.nextCursor === null) return catalog;
+    input.onProgress(catalog);
+  }
+}
+
+export type NativeConversationStatusFilter = "all" | "not_imported" | "imported" | "selected";
+
+/** What narrows the list. Every dimension is optional; together they intersect. */
+export interface NativeConversationFilters {
+  readonly query: string;
+  readonly sourceKey: string | null;
+  readonly cwd: string | null;
+  readonly status: NativeConversationStatusFilter;
+}
+
+export const NO_NATIVE_CONVERSATION_FILTERS: NativeConversationFilters = {
+  query: "",
+  sourceKey: null,
+  cwd: null,
+  status: "all",
+};
+
+const searchText = (value: string) => value.normalize("NFKC").toLocaleLowerCase();
+
+export const nativeConversationFiltersActive = (filters: NativeConversationFilters) =>
+  filters.query.trim() !== "" ||
+  filters.sourceKey !== null ||
+  filters.cwd !== null ||
+  filters.status !== "all";
+
+/** Every word of the query must appear in the title or the folder, in any order and case. */
+export function filterNativeConversations(
+  candidates: readonly NativeConversationCandidate[],
+  filters: NativeConversationFilters,
+  isSelected: (key: string) => boolean,
+): readonly NativeConversationCandidate[] {
+  const terms = searchText(filters.query).split(/\s+/u).filter(Boolean);
+  return candidates.filter((candidate) => {
+    if (filters.cwd !== null && candidate.cwd !== filters.cwd) return false;
+    if (
+      filters.sourceKey !== null &&
+      nativeConversationSourceKey(candidate.source) !== filters.sourceKey
+    )
+      return false;
+    if (filters.status === "imported" && !candidate.imported) return false;
+    if (filters.status === "not_imported" && candidate.imported) return false;
+    if (filters.status === "selected" && !isSelected(candidate.key)) return false;
+    if (terms.length === 0) return true;
+    const text = searchText(`${candidate.title}\n${candidate.cwd}`);
+    return terms.every((term) => text.includes(term));
+  });
+}
+
+/** How many conversations each folder holds, largest first; ties keep the list's recency order. */
+export function nativeConversationFolderCounts(
+  candidates: readonly NativeConversationCandidate[],
+): readonly { readonly cwd: string; readonly count: number }[] {
+  const counts = new Map<string, number>();
+  for (const { cwd } of candidates) counts.set(cwd, (counts.get(cwd) ?? 0) + 1);
+  return [...counts]
+    .map(([cwd, count]) => ({ cwd, count }))
+    .sort((left, right) => right.count - left.count);
 }
 
 export type NativeConversationImportSelection = Omit<

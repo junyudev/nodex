@@ -50,6 +50,8 @@ export interface NodexCheckboxProps {
   className?: string;
   disabled?: boolean;
   id?: string;
+  /** Some, but not all, of what this checkbox stands for is checked. */
+  indeterminate?: boolean;
   onCheckedChange: (checked: boolean) => void;
 }
 
@@ -71,16 +73,18 @@ export function NodexCheckbox({
   className,
   disabled = false,
   id,
+  indeterminate = false,
   onCheckedChange,
 }: NodexCheckboxProps) {
+  const marked = checked || indeterminate;
   return (
     <button
       id={id}
       type="button"
       role="checkbox"
       aria-label={ariaLabel}
-      aria-checked={checked}
-      data-state={checked ? "checked" : "unchecked"}
+      aria-checked={indeterminate ? "mixed" : checked}
+      data-state={marked ? "checked" : "unchecked"}
       disabled={disabled}
       onClick={() => onCheckedChange(!checked)}
       className={cn(
@@ -94,7 +98,11 @@ export function NodexCheckbox({
         className,
       )}
     >
-      {checked ? <NodexCheckboxCheckIcon /> : null}
+      {indeterminate ? (
+        <span aria-hidden className="h-px w-2 rounded-full bg-current" />
+      ) : checked ? (
+        <NodexCheckboxCheckIcon />
+      ) : null}
     </button>
   );
 }

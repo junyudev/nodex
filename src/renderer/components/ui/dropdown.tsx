@@ -735,9 +735,27 @@ export interface NodexOptionPickerOption {
   readonly searchText?: string;
   readonly leftSlot?: ReactNode;
   readonly subText?: ReactNode;
+  /** A quiet value at the row's end, such as how many items the option holds. */
+  readonly detail?: ReactNode;
   readonly tooltipText?: ReactNode;
   readonly disabled?: boolean;
   readonly allowWrap?: boolean;
+}
+
+function NodexOptionTrailing({
+  detail,
+  selected,
+}: {
+  readonly detail: ReactNode;
+  readonly selected: boolean;
+}) {
+  if (detail == null) return selected ? <NodexDropdownSelectedIcon /> : null;
+  return (
+    <span className="flex shrink-0 items-center gap-1.5 text-xs text-token-description-foreground tabular-nums">
+      {detail}
+      {selected ? <NodexDropdownSelectedIcon /> : null}
+    </span>
+  );
 }
 
 export interface NodexOptionPickerProps {
@@ -827,7 +845,9 @@ function NodexStaticOptionPicker({
             subText={option.subText}
             tooltipText={option.tooltipText}
             allowWrap={option.allowWrap}
-            rightSlot={option.value === value ? <NodexDropdownSelectedIcon /> : null}
+            rightSlot={
+              <NodexOptionTrailing detail={option.detail} selected={option.value === value} />
+            }
           >
             {option.label}
           </NodexDropdownItem>
@@ -898,7 +918,7 @@ function NodexFilterOptionButton({
         leading={option.leftSlot}
         highlight={!option.disabled}
         wrap={option.allowWrap}
-        trailing={selected ? <NodexDropdownSelectedIcon /> : null}
+        trailing={<NodexOptionTrailing detail={option.detail} selected={selected} />}
       >
         <span
           className={cn(
