@@ -525,7 +525,6 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.pull-request.watch":
     case "thread.pull-request-watch.sync":
     case "thread.pull-request.sync":
-    case "thread.title.regeneration.complete":
     case "thread.runtime-mode.set":
     case "thread.interaction-mode.set":
     case "thread.model-selection.set":
@@ -570,21 +569,6 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.merge_back":
       return command.targetThreadId;
   }
-}
-
-function pendingThreadTitleGenerationEffect(
-  commandId: CommandId,
-  threadId: ThreadId,
-  kind:
-    | { readonly type: "initial"; readonly messageId: MessageId }
-    | { readonly type: "regenerate" },
-): PendingOrchestrationEffectV2 {
-  return {
-    id: `effect:${commandId}:thread-title.generate`,
-    commandId,
-    threadId,
-    request: { type: "thread-title.generate", kind },
-  };
 }
 
 const WORKSPACE_PREPARATION_INPUT = "Preparing workspace";
@@ -2642,7 +2626,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.pull-request.watch"
           | "thread.pull-request-watch.sync"
           | "thread.pull-request.sync"
-          | "thread.title.regeneration.complete"
           | "thread.runtime-mode.set"
           | "thread.interaction-mode.set"
           | "thread.model-selection.set"
@@ -3093,7 +3076,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return {
             ...thread,
             archivedAt: now,
-            titleRegeneration: null,
             pullRequests: thread.pullRequests?.map((link) => withPullRequestWatch(link, undefined)),
             updatedAt: now,
           };
@@ -3289,13 +3271,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                       : []),
                   ],
                 }),
-            // regenerateTitle: true arms the in-flight marker; a landing title
-            // or an explicit false (generation failed/abandoned) clears it.
-            ...(command.regenerateTitle === true
-              ? { titleRegeneration: { requestId: command.commandId, startedAt: now } }
-              : command.regenerateTitle === false || command.title !== undefined
-                ? { titleRegeneration: null }
-                : {}),
             updatedAt: now,
           };
         }
@@ -3481,15 +3456,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 }),
             updatedAt: thread.updatedAt,
           };
-        case "thread.title.regeneration.complete":
-          return thread.titleRegeneration?.requestId === command.requestId
-            ? {
-                ...thread,
-                ...(command.title === undefined ? {} : { title: command.title }),
-                titleRegeneration: null,
-                updatedAt: now,
-              }
-            : thread;
         case "thread.runtime-mode.set":
           return { ...thread, runtimeMode: command.runtimeMode, updatedAt: now };
         case "thread.interaction-mode.set":
@@ -3531,7 +3497,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         case "thread.mark-unread":
           return "thread.marked-unread" as const;
         case "thread.metadata.update":
-        case "thread.title.regeneration.complete":
           return "thread.metadata-updated" as const;
         case "thread.pull-request.link":
         case "thread.pull-request.unlink":
@@ -3562,15 +3527,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       occurredAt: now,
       payload: updatedThread,
     });
-
-    if (command.type === "thread.metadata.update" && command.regenerateTitle === true) {
-      yield* Ref.update(effects, (existing) => [
-        ...existing,
-        pendingThreadTitleGenerationEffect(command.commandId, command.threadId, {
-          type: "regenerate",
-        }),
-      ]);
-    }
 
     if (command.type === "thread.archive") {
       const projection = yield* loadProjectionForCommand(
@@ -5607,43 +5563,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           occurredAt: now,
           payload: thread,
         });
-        projection = yield* getProjectionWithPendingEvents(command.threadId, events, command);
-      }
-      const userMessages = projection.messages.filter((message) => message.role === "user");
-      const onlyMaintenanceHistory =
-        userMessages.length > 0 && userMessages.every(isNativeMaintenanceCommand);
-      if (
-        !isNativeMaintenanceCommand(command) &&
-        ((command.titleSeed !== undefined &&
-          (yield* projectionStore
-            .getMessageCount(command.threadId)
-            .pipe(mapDispatchError(command))) === 0) ||
-          (command.createdBy === "user" && onlyMaintenanceHistory))
-      ) {
-        const now = yield* DateTime.now;
-        const thread: OrchestrationV2AppThread = {
-          ...projection.thread,
-          title: command.titleSeed ?? projection.thread.title,
-          titleRegeneration: { requestId: command.commandId, startedAt: now },
-          updatedAt: now,
-        };
-        yield* emit(
-          events,
-          command,
-        )({
-          type: "thread.metadata-updated",
-          threadId: command.threadId,
-          providerInstanceId: thread.providerInstanceId,
-          occurredAt: now,
-          payload: thread,
-        });
-        yield* Ref.update(effects, (existing) => [
-          ...existing,
-          pendingThreadTitleGenerationEffect(command.commandId, command.threadId, {
-            type: "initial",
-            messageId: command.messageId,
-          }),
-        ]);
         projection = yield* getProjectionWithPendingEvents(command.threadId, events, command);
       }
       const modelSelection = command.modelSelection ?? projection.thread.modelSelection;
@@ -12834,7 +12753,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.pull-request-link.sync":
       case "thread.pull-request.watch":
       case "thread.pull-request.sync":
-      case "thread.title.regeneration.complete":
       case "thread.runtime-mode.set":
       case "thread.interaction-mode.set":
       case "thread.model-selection.set":

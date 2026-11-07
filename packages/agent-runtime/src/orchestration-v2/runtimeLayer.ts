@@ -3,7 +3,6 @@ import * as OrchestrationCommandReceipts from "../persistence/OrchestrationComma
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";
 import * as McpAppRequests from "../mcpApps/McpAppRequests.ts";
-import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as CheckpointCaptureService from "./CheckpointCaptureService.ts";
@@ -25,7 +24,6 @@ import * as ProjectionMaintenance from "./ProjectionMaintenance.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderContinuationRequests from "@nodex/provider-core/server/ProviderContinuationRequests";
-import * as ThreadTitleRegenerationService from "./ThreadTitleRegenerationService.ts";
 import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
@@ -246,12 +244,6 @@ const layerThreadManagementProvided = ThreadManagementService.layerWithLegacyImp
   ),
 );
 
-const layerThreadTitleRegenerationProvided = ThreadTitleRegenerationService.layer.pipe(
-  Layer.provide(
-    Layer.mergeAll(layerThreadManagementProvided, ProjectStore.layer, TextGeneration.layer),
-  ),
-);
-
 const layerEffectExecutorProvided = EffectWorker.layerExecutor.pipe(
   Layer.provide(
     Layer.mergeAll(
@@ -261,7 +253,6 @@ const layerEffectExecutorProvided = EffectWorker.layerExecutor.pipe(
       layerProviderTurnControlServiceProvided,
       layerProviderTurnStartServiceProvided,
       layerRuntimeRequestServiceProvided,
-      layerThreadTitleRegenerationProvided,
       layerThreadManagementProvided,
     ),
   ),

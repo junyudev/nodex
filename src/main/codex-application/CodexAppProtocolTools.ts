@@ -41,7 +41,6 @@ import { CodexApplicationRequestInbox } from "../codex-runtime/CodexApplicationR
 import { CodexSidebarSectionSync } from "./CodexSidebarSectionSync";
 import { CodexThreadCatalog } from "./CodexThreadCatalog";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
-import { CodexThreadDescriptionPersistence } from "./CodexThreadDescriptionPersistence";
 import { CodexThreadHandoffRuntime } from "./CodexThreadHandoffRuntime";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
 import { CodexDelegatedMessages } from "./CodexDelegatedMessages";
@@ -154,7 +153,6 @@ export const make: Effect.Effect<
   | CodexSidebarSectionSync
   | CodexThreadCatalog
   | ChatSearch
-  | CodexThreadDescriptionPersistence
   | CodexThreadDirectory
   | CodexThreadHandoffRuntime
   | CodexThreadTitlePersistence
@@ -174,7 +172,6 @@ export const make: Effect.Effect<
   const sectionSync = yield* CodexSidebarSectionSync;
   const catalog = yield* CodexThreadCatalog;
   const chatSearch = yield* ChatSearch;
-  const descriptions = yield* CodexThreadDescriptionPersistence;
   const directory = yield* CodexThreadDirectory;
   const handoffs = yield* CodexThreadHandoffRuntime;
   const titles = yield* CodexThreadTitlePersistence;
@@ -452,17 +449,7 @@ export const make: Effect.Effect<
               ]
             : [],
         );
-        const descriptionByThreadId = new Map(
-          yield* Effect.forEach(listed, (thread) =>
-            descriptions.get(thread.threadId).pipe(
-              Effect.catchCause(() => Effect.succeed(null)),
-              Effect.map((description) => [thread.threadId, description] as const),
-            ),
-          ),
-        );
         const summaryFor = (thread: (typeof listed)[number]): string | null => {
-          const description = descriptionByThreadId.get(thread.threadId)?.trim();
-          if (description) return description.slice(0, CODEX_THREAD_SUMMARY_MAX_CHARS);
           const preview = thread.preview.trim();
           return preview && preview !== (thread.title?.trim() ?? "")
             ? preview.slice(0, CODEX_THREAD_SUMMARY_MAX_CHARS)

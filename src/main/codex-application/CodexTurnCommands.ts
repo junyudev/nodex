@@ -1013,14 +1013,11 @@ export const make: Effect.Effect<
       )
       .pipe(Effect.mapError((cause) => commandError("start", threadId, cause)));
 
-  const scheduleFirstTurnTitle = (plan: CodexTurnStartPlan, hostId: string) =>
+  const scheduleFirstTurnTitle = (plan: CodexTurnStartPlan) =>
     plan.isFirstTurn
-      ? autoTitle.scheduleFirstTurn({
-          hostId,
+      ? autoTitle.schedule({
           threadId: plan.threadId,
           prompt: plan.promptText,
-          cwd: plan.request.cwd ?? null,
-          serviceName: plan.serviceName,
           pastedTextAttachments: plan.autoTitlePastedTextAttachments,
           skipAutoTitleGeneration: plan.skipAutoTitleGeneration,
         })
@@ -2193,7 +2190,7 @@ export const make: Effect.Effect<
             request.threadId,
             new Error("Invalid app context response items"),
           );
-        return yield* scheduleFirstTurnTitle(plan, entry.manager.hostId).pipe(
+        return yield* scheduleFirstTurnTitle(plan).pipe(
           Effect.andThen(
             conversations.runCommand(
               request.threadId,

@@ -515,7 +515,7 @@ const seed = Effect.fnUntraced(function* () {
       id: "effect:checkpoint",
       commandId: CommandId.make("fixture"),
       threadId,
-      request: { type: "thread-title.generate", kind: { type: "regenerate" } },
+      request: { type: "preview.cleanup" },
     },
   ]);
   yield* outbox.claimNext({ workerId: "source-runtime", leaseDurationMs: 60_000 });

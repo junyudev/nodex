@@ -27,7 +27,6 @@ import { CodexThreadDurableProjection } from "./CodexThreadDurableProjection";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
-import { CodexThreadTitleReconsideration } from "./CodexThreadTitleReconsideration";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap, live as entityMapLive } from "./internal/ConversationEntityMap";
 import { createCodexCanonicalHydratedConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
@@ -204,10 +203,6 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
         Effect.provideService(
           CodexThreadGoalRuntime,
           CodexThreadGoalRuntime.of({} as CodexThreadGoalRuntime["Service"]),
-        ),
-        Effect.provideService(
-          CodexThreadTitleReconsideration,
-          CodexThreadTitleReconsideration.of({ observe: () => Effect.void }),
         ),
         Effect.provideService(
           CodexUserInputAutoResolution,

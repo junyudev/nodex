@@ -22,14 +22,8 @@ export type CodexThreadTitlePersistenceInput = Readonly<
 
 export interface CodexThreadTitleSetCommand extends CodexThreadTitlePersistenceInput {
   readonly normalization: "manual" | "trim";
-  /** Marks this title as owned by the automatic title generator. Defaults to manual ownership. */
-  readonly generated?: boolean;
-  /** Applies only while the Core title still has this value; null means untitled. */
-  readonly expectedName?: string | null;
   /** Applies only to a thread that has no committed title. */
   readonly onlyIfUntitled?: boolean;
-  /** Projects the title locally without writing the app-server or Core. */
-  readonly persist?: boolean;
 }
 
 export class CodexThreadTitlePersistenceEffectError extends Data.TaggedError(
@@ -139,7 +133,7 @@ export const make: Effect.Effect<
   });
 
   const project = Effect.fn("CodexThreadTitlePersistence.project")(function* (
-    input: CodexThreadTitlePersistenceInput & { readonly generated?: boolean },
+    input: CodexThreadTitlePersistenceInput,
     hostId: string,
   ) {
     const observedAtMs = yield* Clock.currentTimeMillis;
@@ -219,17 +213,8 @@ export const make: Effect.Effect<
       Effect.gen(function* () {
         const thread = yield* requireCodexThread(normalized.threadId);
         const observedName = yield* currentName(normalized.threadId, thread.thread_name ?? null);
-        const expectedName =
-          normalized.expectedName === undefined
-            ? undefined
-            : normalized.expectedName?.trim() || null;
         if (normalized.onlyIfUntitled && observedName !== null) return false;
-        if (expectedName !== undefined && observedName !== expectedName) return false;
-        yield* project(
-          { ...normalized, generated: normalized.generated ?? false },
-          thread.execution_host_id,
-        );
-        if (normalized.persist === false) return true;
+        yield* project(persisted, thread.execution_host_id);
         yield* setRemote(persisted).pipe(
           Effect.catch((error) => logFailure("app-server", persisted, error)),
           Effect.andThen(
@@ -254,17 +239,8 @@ export const make: Effect.Effect<
       Effect.gen(function* () {
         const thread = yield* requireCodexThread(normalized.threadId);
         const observedName = yield* currentName(normalized.threadId, thread.thread_name ?? null);
-        const expectedName =
-          normalized.expectedName === undefined
-            ? undefined
-            : normalized.expectedName?.trim() || null;
         if (normalized.onlyIfUntitled && observedName !== null) return false;
-        if (expectedName !== undefined && observedName !== expectedName) return false;
-        yield* project(
-          { ...normalized, generated: normalized.generated ?? false },
-          thread.execution_host_id,
-        );
-        if (normalized.persist === false) return true;
+        yield* project(persisted, thread.execution_host_id);
         yield* setRemote(persisted);
         yield* persistWorkspace(persisted);
         return true;

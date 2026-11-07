@@ -282,7 +282,6 @@ const buildEntry = <R>(input: {
           ...createResult.success,
           textGeneration: {
             generateStructured: (input) => owned(generation.generateStructured(input)),
-            generateThreadTitle: (input) => owned(generation.generateThreadTitle(input)),
             generateCommitMessage: (input) => owned(generation.generateCommitMessage(input)),
             generatePrContent: (input) => owned(generation.generatePrContent(input)),
             generateBranchName: (input) => owned(generation.generateBranchName(input)),

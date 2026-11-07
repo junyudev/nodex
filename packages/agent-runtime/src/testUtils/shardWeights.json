@@ -10,7 +10,6 @@
   "src/orchestration-v2/ProviderTurnStartService.memory.test.ts": 6.5,
   "src/orchestration-v2/SelectionRestart.integration.test.ts": 2.5,
   "src/orchestration-v2/SteeringCompletion.integration.test.ts": 2.7,
-  "src/orchestration-v2/ThreadTitleRegenerationService.test.ts": 0.5,
   "src/orchestration-v2/legacy/LegacyV1Cutover.integration.test.ts": 0.5,
   "src/orchestration-v2/testkit/OrchestratorReplayFixtures.integration.test.ts": 53.4,
   "src/orchestration-v2/testkit/OrchestratorReplayRecovery.integration.test.ts": 1.4,

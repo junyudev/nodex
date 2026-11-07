@@ -109,8 +109,7 @@ const missingThread = (threadId: string) =>
   });
 
 const noOpAutoTitle = CodexAutoThreadTitle.of({
-  scheduleFirstTurn: () => Effect.void,
-  scheduleAddedThread: () => Effect.void,
+  schedule: () => Effect.void,
 });
 
 it("uses a child spawn prompt and never guesses from an unavailable parent", () => {
@@ -440,9 +439,7 @@ it.effect("never treats thread/started as a history transport", () =>
   Effect.gen(function* () {
     const stored = coreThread();
     const hydrated: Array<Parameters<CodexConversationProjection["Service"]["hydrate"]>[0]> = [];
-    const addedTitleInputs: Array<
-      Parameters<CodexAutoThreadTitle["Service"]["scheduleAddedThread"]>[0]
-    > = [];
+    const addedTitleInputs: Array<Parameters<CodexAutoThreadTitle["Service"]["schedule"]>[0]> = [];
     const workspace: CoreModuleClients["workspace"] = {
       admitToolOperation: () => Effect.die("Unexpected application tool admission"),
       issueAgentAttribution: () => Effect.die("Unexpected Agent attribution"),
@@ -457,8 +454,7 @@ it.effect("never treats thread/started as a history transport", () =>
       Effect.provideService(
         CodexAutoThreadTitle,
         CodexAutoThreadTitle.of({
-          scheduleFirstTurn: () => Effect.void,
-          scheduleAddedThread: (input) => Effect.sync(() => addedTitleInputs.push(input)),
+          schedule: (input) => Effect.sync(() => addedTitleInputs.push(input)),
         }),
       ),
       Effect.provideService(
@@ -525,14 +521,6 @@ it.effect("never treats thread/started as a history transport", () =>
     assert.strictEqual(hydrated[0]?.pagination.loadedTurnCount, 0);
     assert.isFalse(hydrated[0]?.pagination.hasLoadedOldest);
     assert.strictEqual(hydrated[0]?.pagination.itemsView, "notLoaded");
-    assert.deepEqual(addedTitleInputs, [
-      {
-        hostId: "local",
-        threadId: "thread-a",
-        prompt: "notification preview",
-        cwd: "/repo",
-        serviceName: null,
-      },
-    ]);
+    assert.deepEqual(addedTitleInputs, [{ threadId: "thread-a", prompt: "notification preview" }]);
   }),
 );

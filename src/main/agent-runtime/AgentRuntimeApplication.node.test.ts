@@ -660,7 +660,7 @@ const setup = (
         return (
           state.generatedTitle === null
             ? yield* Effect.fail(new Error("No title model"))
-            : { title: state.generatedTitle, description: "Login fix" }
+            : { title: state.generatedTitle }
         ) as AgentRuntimeOperations[M]["output"];
       if (method === "command.dispatch") {
         const command = (input as AgentRuntimeOperations["command.dispatch"]["input"]).command;

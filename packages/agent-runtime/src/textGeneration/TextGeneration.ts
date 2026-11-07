@@ -23,8 +23,6 @@ export type {
   PrContentGenerationResult,
   ReviewGuideGenerationInput,
   ReviewGuideGenerationResult,
-  ThreadTitleGenerationInput,
-  ThreadTitleGenerationResult,
 } from "@nodex/provider-core/server/textGeneration";
 
 /**
@@ -45,7 +43,6 @@ type TextGenerationOp =
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
-  | "generateThreadTitle"
   | "generateReviewGuide";
 
 const resolveInstance = (
@@ -160,11 +157,6 @@ export const make = Effect.gen(function* () {
     generateReviewGuide: (input) =>
       run("generateReviewGuide", input, (generation, input) =>
         generation.generateReviewGuide(input),
-      ),
-    // Nodex configures no source-control hosts, so titles carry no fetched link context.
-    generateThreadTitle: (input) =>
-      run("generateThreadTitle", input, (generation, input) =>
-        generation.generateThreadTitle(input),
       ),
   });
 });

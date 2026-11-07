@@ -4,10 +4,8 @@ import {
 } from "./codex-conversation-state";
 import { describe, expect, test } from "vite-plus/test";
 import type { Thread, ThreadSettings } from "@nodex/codex-app-server-protocol/v2";
-import { produce } from "immer";
 import type { CodexCanonicalConversationState } from "./codex-conversation-state";
 import {
-  mutateCodexConversationThreadName,
   reduceCodexConversationThreadGoalCleared,
   reduceCodexConversationThreadGoalResumeConfirmationDismissed,
   reduceCodexConversationThreadGoalUpdated,
@@ -233,25 +231,6 @@ describe("Codex 30751 thread metadata", () => {
     expect(renamed.title).toBe("Renamed thread");
   });
 
-  test("tracks generated title ownership and clears it on a manual rename", () => {
-    const generated = produce(buildState(), (draft) =>
-      mutateCodexConversationThreadName(draft, "thread-token", "Generated title", true),
-    );
-    expect(generated.title).toBe("Generated title");
-    expect(generated.generatedTitle).toBe("Generated title");
-
-    const manual = produce(generated, (draft) =>
-      mutateCodexConversationThreadName(draft, "thread-token", "Manual title", false),
-    );
-    expect(manual.title).toBe("Manual title");
-    expect(manual.generatedTitle).toBeNull();
-
-    const sameTitleManual = produce(generated, (draft) =>
-      mutateCodexConversationThreadName(draft, "thread-token", "Generated title", false),
-    );
-    expect(sameTitleManual.generatedTitle).toBeNull();
-  });
-
   test("keeps explicit model settings when fresh raw metadata arrives", () => {
     const before = reduceCodexConversationThreadSettings(buildState(), "thread-token", settings);
     const after = reduceCodexConversationThreadStarted(before, {
@@ -275,7 +254,6 @@ describe("Codex 30751 thread metadata", () => {
     const existing: CodexCanonicalConversationState = {
       ...configured,
       title: "Catalog title",
-      generatedTitle: "Generated title",
       createdAt: 1_000,
       updatedAt: 8_000,
       recencyAt: 7_000,
@@ -316,7 +294,6 @@ describe("Codex 30751 thread metadata", () => {
     });
 
     expect(reconciled.title).toBe("Native title");
-    expect(reconciled.generatedTitle).toBe("Generated title");
     expect(reconciled.createdAt).toBe(1_000);
     expect(reconciled.updatedAt).toBe(9_000);
     expect(reconciled.recencyAt).toBe(7_000);

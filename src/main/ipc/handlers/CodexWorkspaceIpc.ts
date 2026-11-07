@@ -74,7 +74,6 @@ import { CodexQueuedFollowUps } from "../../codex-application/CodexQueuedFollowU
 import { CodexServerRequestResponses } from "../../codex-application/CodexServerRequestResponses";
 import { CodexSidebarSyncRuntime } from "../../codex-application/CodexSidebarSyncRuntime";
 import { CodexSideChatCommands } from "../../codex-application/CodexSideChatCommands";
-import { CodexStructuredThreadTitle } from "../../codex-application/CodexStructuredThreadTitle";
 import { CodexSubagentDirectory } from "../../codex-application/CodexSubagentDirectory";
 import { CodexThreadCatalog } from "../../codex-application/CodexThreadCatalog";
 import { CodexThreadGoalRuntime } from "../../codex-application/CodexThreadGoalRuntime";
@@ -270,7 +269,6 @@ export const live = Layer.effectDiscard(
     const conversationResume = yield* CodexConversationResumeRuntime;
     const nativeFork = yield* CodexConversationFork;
     const queuedFollowUps = yield* CodexQueuedFollowUps;
-    const structuredThreadTitle = yield* CodexStructuredThreadTitle;
     const composerPrediction = yield* CodexComposerPrediction;
     const backgroundProcesses = yield* CodexBackgroundProcesses;
     const subagentDirectory = yield* CodexSubagentDirectory;
@@ -1828,34 +1826,6 @@ export const live = Layer.effectDiscard(
             (cause) => new CodexIpcError({ operation: "codex:thread:name:set", cause }),
           ),
         ),
-    );
-
-    registerEffectPlainCommand(
-      "codex:thread:name:set-generated",
-      (_, threadId: string, name: string) =>
-        threadTitles
-          .set({ threadId, name, normalization: "trim" })
-          .pipe(
-            Effect.mapError(
-              (cause) => new CodexIpcError({ operation: "codex:thread:name:set-generated", cause }),
-            ),
-          ),
-    );
-
-    registerEffectPlainCommand(
-      "codex:thread:title:generate",
-      (_, input: { hostId: string; prompt: string; cwd: string | null }) => {
-        void input.hostId;
-        return structuredThreadTitle.generate(input).pipe(
-          Effect.map((title) => ({ title })),
-          Effect.catch((error) =>
-            Effect.logWarning("Could not generate Thread title").pipe(
-              Effect.annotateLogs({ error: String(error.cause) }),
-              Effect.as({ title: null }),
-            ),
-          ),
-        );
-      },
     );
 
     registerEffectPlainCommand("codex:thread:archive", (_, threadId: string) =>

@@ -16,7 +16,6 @@ const OpenCodeTextGenerationOperation = Schema.Literals([
   "generateCommitMessage",
   "generatePrContent",
   "generateBranchName",
-  "generateThreadTitle",
   "generateReviewGuide",
 ]);
 

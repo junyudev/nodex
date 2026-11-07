@@ -79,7 +79,6 @@ export const metadata = (
   updatedAt: at,
   activeRunId: null,
   worktreePath: null,
-  titleRegeneration: null,
   createdBy: "user",
   creationSource: "web",
   runtimeMode: "full-access",

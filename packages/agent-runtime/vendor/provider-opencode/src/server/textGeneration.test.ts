@@ -381,16 +381,16 @@ it.layer(layerOpenCodeTextGenerationTest)("OpenCodeTextGeneration", (it) => {
     ),
   );
 
-  it.effect("excludes generic files from thread title generation", () =>
+  it.effect("excludes generic files from branch name generation", () =>
     withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (textGeneration) =>
       Effect.gen(function* () {
         runtimeMock.state.promptResult = {
           data: {
-            parts: [{ type: "text", text: '{"title":"Review uploaded report"}' }],
+            parts: [{ type: "text", text: '{"branch":"review-uploaded-report"}' }],
           },
         };
 
-        yield* textGeneration.generateThreadTitle({
+        yield* textGeneration.generateBranchName({
           cwd: process.cwd(),
           message: "Review these attachments.",
           modelSelection: DEFAULT_TEST_MODEL_SELECTION,

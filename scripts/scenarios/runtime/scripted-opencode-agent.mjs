@@ -308,7 +308,7 @@ const server = createServer(async (request, response) => {
         {
           type: "text",
           text: text.includes("JSON Schema")
-            ? JSON.stringify({ title: SCRIPTED_TITLE, description: "Written by the scripted peer" })
+            ? JSON.stringify({ title: SCRIPTED_TITLE })
             : SCRIPTED_TITLE,
         },
       ],

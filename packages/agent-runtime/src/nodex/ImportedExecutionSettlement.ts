@@ -293,7 +293,6 @@ export const settle = Effect.fn("ImportedExecutionSettlement.settle")(function* 
   yield* forEachCopied(
     "orchestration_v2_projection_threads",
     `json_type(payload_json, '$.limitRecovery') = 'object'
-      OR json_type(payload_json, '$.titleRegeneration') = 'object'
       OR EXISTS (SELECT 1 FROM json_each(payload_json, '$.pullRequests') WHERE json_type(value, '$.watch') = 'object')`,
     Schema.toCodecJson(OrchestrationV2AppThread).pipe(Schema.fromJsonString),
     (thread, threadId) =>
@@ -303,7 +302,6 @@ export const settle = Effect.fn("ImportedExecutionSettlement.settle")(function* 
         payload: {
           ...thread,
           limitRecovery: null,
-          titleRegeneration: null,
           pullRequests: thread.pullRequests?.map(({ watch: _watch, ...link }) => link),
           updatedAt: now,
         },

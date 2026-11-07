@@ -312,7 +312,6 @@ export interface ConversationProviderPresentation {
   readonly diagnostics?: () => Promise<
     import("../../../shared/claude-models").ClaudeRuntimeDiagnostics
   >;
-  readonly generateTitle?: () => Promise<string | null>;
   readonly resolveHistoryImage?: (
     reference: import("../../../shared/agent-history-images").AgentHistoryImageReference,
   ) => Promise<string>;

@@ -19,12 +19,10 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildReviewGuidePrompt,
-  buildThreadTitlePrompt,
 } from "./textGenerationPrompts.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
-  sanitizeThreadTitle,
 } from "./textGenerationUtils.ts";
 
 export type Operation = keyof ProviderTextGeneration;
@@ -178,27 +176,6 @@ export function fromRunner(
     return { branch: formatGeneratedBranchName(generated.branch, input.naming) };
   });
 
-  const generateThreadTitle: ProviderTextGeneration["generateThreadTitle"] = Effect.fn(
-    `${name}.generateThreadTitle`,
-  )(function* (input) {
-    const generated = yield* run({
-      operation: "generateThreadTitle",
-      cwd: input.cwd,
-      modelSelection: input.modelSelection,
-      attachments: input.attachments,
-      ...buildThreadTitlePrompt({
-        message: input.message,
-        previousTitle: input.previousTitle,
-        linkedContext: input.linkedContext,
-        attachments: input.attachments,
-      }),
-    });
-    return {
-      title: sanitizeThreadTitle(generated.title),
-      ...(generated.needsRefinement ? { needsRefinement: true } : {}),
-    };
-  });
-
   const generateReviewGuide: ProviderTextGeneration["generateReviewGuide"] = Effect.fn(
     `${name}.generateReviewGuide`,
   )(function* (input) {
@@ -234,7 +211,6 @@ export function fromRunner(
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
-    generateThreadTitle,
     generateReviewGuide,
   } satisfies ProviderTextGeneration;
 }

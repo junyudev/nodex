@@ -182,19 +182,19 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
     (selectedModel) =>
       withFakeCodexEnv(
         {
-          output: JSON.stringify({ title: "Bedrock title" }),
+          output: JSON.stringify({ branch: "bedrock-branch" }),
           models: ["openai.gpt-5.6-luna"],
           requireArg: "--model openai.gpt-5.6-luna",
           forbidArg: "--model gpt-5.6-luna",
         },
         (textGeneration) =>
           Effect.gen(function* () {
-            const result = yield* textGeneration.generateThreadTitle({
+            const result = yield* textGeneration.generateBranchName({
               cwd: process.cwd(),
               message: "Describe this change",
               modelSelection: createModelSelection(ProviderInstanceId.make("codex"), selectedModel),
             });
-            expect(result.title).toBe("Bedrock title");
+            expect(result.branch).toBe("bedrock-branch");
           }),
       ),
   );
@@ -543,85 +543,6 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
             .pipe(Effect.provideService(Scope.Scope, closedScope));
 
           expect(generated.branch).toBe("feat/background-generation");
-        }),
-    ),
-  );
-
-  it.effect("generates thread titles and trims them for sidebar use", () =>
-    withFakeCodexEnv(
-      {
-        output: JSON.stringify({
-          title:
-            '  "Investigate websocket reconnect regressions after worktree restore"  \nignored line',
-        }),
-      },
-      (textGeneration) =>
-        Effect.gen(function* () {
-          const generated = yield* textGeneration.generateThreadTitle({
-            cwd: process.cwd(),
-            message: "Please investigate websocket reconnect regressions after a worktree restore.",
-            modelSelection: DEFAULT_TEST_MODEL_SELECTION,
-          });
-
-          expect(generated.title).toBe(
-            "Investigate websocket reconnect regressions after worktree restore",
-          );
-        }),
-    ),
-  );
-
-  it.effect("returns the refinement signal for an unresolved subject", () =>
-    withFakeCodexEnv(
-      { output: JSON.stringify({ title: "Investigate issue", needsRefinement: true }) },
-      (textGeneration) =>
-        Effect.gen(function* () {
-          expect(
-            yield* textGeneration.generateThreadTitle({
-              cwd: process.cwd(),
-              message: "Fix this",
-              modelSelection: DEFAULT_TEST_MODEL_SELECTION,
-            }),
-          ).toEqual({ title: "Investigate issue", needsRefinement: true });
-        }),
-    ),
-  );
-
-  it.effect("falls back when thread title normalization becomes whitespace-only", () =>
-    withFakeCodexEnv(
-      {
-        output: JSON.stringify({
-          title: '  """   """  ',
-        }),
-      },
-      (textGeneration) =>
-        Effect.gen(function* () {
-          const generated = yield* textGeneration.generateThreadTitle({
-            cwd: process.cwd(),
-            message: "Name this thread.",
-            modelSelection: DEFAULT_TEST_MODEL_SELECTION,
-          });
-
-          expect(generated.title).toBe("New thread");
-        }),
-    ),
-  );
-
-  it.effect("trims whitespace exposed after quote removal in thread titles", () =>
-    withFakeCodexEnv(
-      {
-        output: JSON.stringify({
-          title: `  "' hello world '"  `,
-        }),
-      },
-      (textGeneration) =>
-        Effect.gen(function* () {
-          const generated = yield* textGeneration.generateThreadTitle({
-            cwd: process.cwd(),
-            message: "Name this thread.",
-            modelSelection: DEFAULT_TEST_MODEL_SELECTION,
-          });
-
-          expect(generated.title).toBe("hello world");
         }),
     ),
   );

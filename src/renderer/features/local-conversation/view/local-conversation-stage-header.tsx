@@ -11,7 +11,6 @@ import {
   SessionPinIcon,
   SidePanelSideChatIcon,
   CopyIcon,
-  SlashModelIcon,
   SlashStatusIcon,
   ProjectTaskIcon,
   ForkIcon,
@@ -63,7 +62,6 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
     if (open) setMenuOpenedAt(new Date());
     setMenuOpen(open);
   }, []);
-  const [generatingTitle, setGeneratingTitle] = useState(false);
   const [forking, setForking] = useState(false);
   const forkInFlight = useRef(false);
   const pendingModal = useRef<(() => void) | null>(null);
@@ -71,7 +69,6 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
   const canArchiveThread = Boolean(model.threadId && actions.onArchiveThread);
   const canTogglePin = Boolean(model.threadId && actions.onToggleThreadPin);
   const canSetReminder = Boolean(model.threadId && actions.onSetThreadReminder);
-  const canGenerateTitle = Boolean(model.threadId && provider?.generateTitle);
   const canForkThread = Boolean(model.threadId && actions.onForkThread);
   const canClearContext = Boolean(model.threadId && actions.onClearContext);
   const hasNewWorkActions = canForkThread || canClearContext || model.showSideChatAction;
@@ -82,7 +79,7 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
     actions.onOpenSubagentsPanel,
   );
   // Groups follow the shared chat-actions order: identity, new work, copy, window, runtime, Archive.
-  const hasIdentityActions = canRenameThread || canGenerateTitle || canTogglePin || canSetReminder;
+  const hasIdentityActions = canRenameThread || canTogglePin || canSetReminder;
   const hasRuntimeActions = canOpenNativeTasks || Boolean(provider?.diagnostics);
   const showThreadActions = Boolean(
     model.threadId || model.cwd || model.showSideChatAction || actions.onCopyConversationMarkdown,
@@ -109,16 +106,6 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
       toast.danger("Failed to copy to clipboard");
     }
   }, []);
-
-  const generateTitle = async () => {
-    if (!provider?.generateTitle || generatingTitle) return;
-    setGeneratingTitle(true);
-    await handleAction(async () => {
-      const title = await provider.generateTitle?.();
-      if (!title) throw new Error("Couldn’t generate a title");
-    }, "Couldn’t generate a title");
-    setGeneratingTitle(false);
-  };
 
   const actionsMenu = showThreadActions ? (
     <NodexDropdownMenu
@@ -158,15 +145,6 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
           onSelect={() => actions.onRequestRenameThread?.()}
         >
           Rename
-        </NodexDropdownItem>
-      ) : null}
-      {canGenerateTitle ? (
-        <NodexDropdownItem
-          leftSlot={<SlashModelIcon className={menuIconClassName} />}
-          disabled={generatingTitle}
-          onSelect={() => void generateTitle()}
-        >
-          {generatingTitle ? "Generating title…" : "Generate title"}
         </NodexDropdownItem>
       ) : null}
       {canTogglePin ? (

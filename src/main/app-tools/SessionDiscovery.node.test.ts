@@ -61,7 +61,6 @@ const runtime = (id: string, day: number): RuntimeItem => ({
   updatedAt: at(1),
   activeRunId: null,
   worktreePath: null,
-  titleRegeneration: null,
   status: "idle",
   activeFlags: [],
   cursor: `runtime:${id}`,

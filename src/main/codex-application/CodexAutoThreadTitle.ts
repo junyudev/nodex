@@ -10,33 +10,22 @@ import {
   projectCodexMarkdownToPlainText,
 } from "../../shared/codex-thread-title";
 import type { CodexPromptTextAttachmentInput } from "../../shared/types";
-import type { CodexGeneratedThreadMetadata } from "../codex/thread-title-generator";
 import { CodexAttachments } from "./CodexAttachments";
-import { CodexStructuredThreadTitle } from "./CodexStructuredThreadTitle";
-import { CodexThreadDescriptionPersistence } from "./CodexThreadDescriptionPersistence";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
 
 export interface CodexAutoThreadTitleInput {
-  readonly hostId: string;
   readonly threadId: string;
   readonly prompt: string;
-  readonly cwd: string | null;
-  readonly serviceName?: string | null;
-  /** Pasted sources are bounded to the same excerpt budget as CodexElectron. */
-  readonly pastedTextAttachments?: readonly CodexPromptTextAttachmentInput[];
+  readonly pastedTextAttachments?: readonly CodexPromptTextAttachmentInput[] | undefined;
+  readonly skipAutoTitleGeneration?: boolean | undefined;
 }
-
-export interface CodexFirstTurnReadyTitleInput extends CodexAutoThreadTitleInput {
-  readonly skipAutoTitleGeneration?: boolean;
-}
-
-export type CodexThreadAddedTitleInput = CodexAutoThreadTitleInput;
 
 export interface CodexAutoThreadTitleService {
-  /** Schedules the first-turn title workflow without delaying turn acceptance. */
-  readonly scheduleFirstTurn: (input: CodexFirstTurnReadyTitleInput) => Effect.Effect<void>;
-  /** Handles Threads materialized from metadata when no first-turn callback exists. */
-  readonly scheduleAddedThread: (input: CodexThreadAddedTitleInput) => Effect.Effect<void>;
+  /**
+   * Names an untitled native Thread after its opening prompt without delaying turn acceptance, on
+   * its first turn or when it is materialized from metadata. Only Runtime chats generate titles.
+   */
+  readonly schedule: (input: CodexAutoThreadTitleInput) => Effect.Effect<void>;
 }
 
 export class CodexAutoThreadTitle extends Context.Service<
@@ -47,15 +36,9 @@ export class CodexAutoThreadTitle extends Context.Service<
 export const make: Effect.Effect<
   CodexAutoThreadTitleService,
   never,
-  | CodexAttachments
-  | CodexStructuredThreadTitle
-  | CodexThreadDescriptionPersistence
-  | CodexThreadTitlePersistence
-  | Scope.Scope
+  CodexAttachments | CodexThreadTitlePersistence | Scope.Scope
 > = Effect.gen(function* () {
   const attachments = yield* CodexAttachments;
-  const structuredTitle = yield* CodexStructuredThreadTitle;
-  const descriptions = yield* CodexThreadDescriptionPersistence;
   const titles = yield* CodexThreadTitlePersistence;
   const ownerScope = yield* Scope.Scope;
 
@@ -76,97 +59,37 @@ export const make: Effect.Effect<
       );
     }).pipe(Effect.map((excerpts) => excerpts.filter((excerpt) => excerpt.trim().length > 0)));
 
-  const run = (input: CodexFirstTurnReadyTitleInput | CodexThreadAddedTitleInput) =>
+  const run = (input: CodexAutoThreadTitleInput) =>
     Effect.gen(function* () {
-      if ("skipAutoTitleGeneration" in input && input.skipAutoTitleGeneration === true) {
-        return;
-      }
-
+      if (input.skipAutoTitleGeneration === true) return;
       const prompt = cleanCodexAutoTitlePrompt(input.prompt, CODEX_THREAD_TITLE_PROMPT_MAX_CHARS);
-      const pastedTextExcerpts = yield* readPastedTextExcerpts(input);
-      const generationPrompt = cleanCodexAutoTitlePrompt(
-        [prompt, ...pastedTextExcerpts].filter(Boolean).join("\n\n"),
-        CODEX_THREAD_TITLE_PROMPT_MAX_CHARS,
-      );
-      const provisionalTitle = normalizeCodexManualThreadTitle(
-        projectCodexMarkdownToPlainText(generationPrompt),
+      const excerpts = yield* readPastedTextExcerpts(input);
+      const title = normalizeCodexManualThreadTitle(
+        projectCodexMarkdownToPlainText(
+          cleanCodexAutoTitlePrompt(
+            [prompt, ...excerpts].filter(Boolean).join("\n\n"),
+            CODEX_THREAD_TITLE_PROMPT_MAX_CHARS,
+          ),
+        ),
         CODEX_MANUAL_THREAD_TITLE_MAX_CHARS,
       );
-      if (!generationPrompt || !provisionalTitle) {
-        return;
-      }
-
-      const restoreProvisionalTitle = titles.set({
+      if (!title) return;
+      yield* titles.set({
         threadId: input.threadId,
-        name: provisionalTitle,
+        name: title,
         normalization: "trim",
-        expectedName: provisionalTitle,
+        onlyIfUntitled: true,
       });
-
-      const generateMetadata = structuredTitle.generateMetadata({
-        hostId: input.hostId,
-        prompt: generationPrompt,
-        cwd: input.cwd,
-        ...(input.serviceName?.trim() ? { serviceName: input.serviceName.trim() } : {}),
-      });
-
-      const persistDescription = (
-        metadata: CodexGeneratedThreadMetadata,
-        committed: boolean,
-      ): Effect.Effect<boolean> =>
-        !committed || !metadata.description
-          ? Effect.succeed(committed)
-          : descriptions.set({ threadId: input.threadId, description: metadata.description }).pipe(
-              Effect.catchCause((cause) =>
-                Effect.logWarning("Could not persist automatic Thread description").pipe(
-                  Effect.annotateLogs({ threadId: input.threadId, cause: String(cause) }),
-                  Effect.andThen(Effect.succeed(undefined)),
-                ),
-              ),
-              Effect.as(committed),
-            );
-
-      yield* titles
-        .set({
-          threadId: input.threadId,
-          name: provisionalTitle,
-          normalization: "trim",
-          onlyIfUntitled: true,
-          persist: false,
-        })
-        .pipe(
-          Effect.flatMap((claimed) =>
-            claimed ? generateMetadata : Effect.succeed<CodexGeneratedThreadMetadata | null>(null),
-          ),
-          Effect.flatMap((metadata) =>
-            metadata
-              ? titles
-                  .set({
-                    threadId: input.threadId,
-                    name: metadata.title,
-                    normalization: "trim",
-                    expectedName: provisionalTitle,
-                    generated: true,
-                  })
-                  .pipe(Effect.flatMap((committed) => persistDescription(metadata, committed)))
-              : restoreProvisionalTitle,
-          ),
-          Effect.catchCause((cause) =>
-            Effect.logWarning("Automatic Thread title generation failed").pipe(
-              Effect.annotateLogs({ threadId: input.threadId, cause: String(cause) }),
-              Effect.andThen(restoreProvisionalTitle),
-              Effect.ignore,
-            ),
-          ),
-          Effect.ignore,
-        );
-    });
-
-  const schedule = (input: CodexFirstTurnReadyTitleInput | CodexThreadAddedTitleInput) =>
-    Effect.forkIn(run(input), ownerScope, { startImmediately: true }).pipe(Effect.asVoid);
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Automatic Thread title failed").pipe(
+          Effect.annotateLogs({ threadId: input.threadId, cause: String(cause) }),
+        ),
+      ),
+    );
 
   return CodexAutoThreadTitle.of({
-    scheduleFirstTurn: schedule,
-    scheduleAddedThread: schedule,
+    schedule: (input) =>
+      Effect.forkIn(run(input), ownerScope, { startImmediately: true }).pipe(Effect.asVoid),
   });
 });

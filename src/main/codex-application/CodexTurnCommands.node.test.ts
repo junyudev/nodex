@@ -608,8 +608,7 @@ const makeHarness = (input: {
       Effect.provideService(
         CodexAutoThreadTitle,
         CodexAutoThreadTitle.of({
-          scheduleFirstTurn: () => onTitle?.() ?? Effect.void,
-          scheduleAddedThread: () => Effect.void,
+          schedule: () => onTitle?.() ?? Effect.void,
         }),
       ),
       Effect.provideService(CodexConversationMaterialization, materialization),

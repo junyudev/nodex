@@ -281,8 +281,7 @@ it.effect.each([
           Effect.provideService(
             CodexAutoThreadTitle,
             CodexAutoThreadTitle.of({
-              scheduleFirstTurn: () => Effect.void,
-              scheduleAddedThread: () => Effect.void,
+              schedule: () => Effect.void,
             }),
           ),
           Effect.provideService(

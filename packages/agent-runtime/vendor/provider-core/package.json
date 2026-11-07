@@ -46,7 +46,6 @@
     "./server/textGenerationPolicy": "./src/server/textGenerationPolicy.ts",
     "./server/textGenerationPrompts": "./src/server/textGenerationPrompts.ts",
     "./server/textGenerationUtils": "./src/server/textGenerationUtils.ts",
-    "./server/threadTitleContext": "./src/server/threadTitleContext.ts",
     "./server/usage": "./src/server/usage.ts",
     "./server/usageLimits": "./src/server/usageLimits.ts",
     "./server/ExecutionHost": "./src/server/ExecutionHost.ts",

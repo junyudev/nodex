@@ -78,7 +78,7 @@ it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
       const instance = yield* create({}, noHttp);
       // Text generation goes to the instance's 2.x server, which this test refuses to start.
       yield* Effect.flip(
-        instance.textGeneration.generateThreadTitle({
+        instance.textGeneration.generateBranchName({
           cwd: process.cwd(),
           message: "hello",
           modelSelection: { instanceId: instance.instanceId, model: "opencode/big-pickle" },

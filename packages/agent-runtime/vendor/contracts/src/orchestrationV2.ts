@@ -504,15 +504,6 @@ export const OrchestrationV2AppThread = Schema.Struct({
   lastVisitedAt: Schema.NullOr(Schema.DateTimeUtc).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
-  /** In-flight title regeneration marker; cleared when a new title lands. */
-  titleRegeneration: Schema.optional(
-    Schema.NullOr(
-      Schema.Struct({
-        requestId: CommandId,
-        startedAt: Schema.DateTimeUtc,
-      }),
-    ),
-  ),
   /** Latest accepted rollback. Only its failure is recorded in `rollbackFailure`. */
   rollbackRequestId: Schema.optional(CommandId),
   /** Latest rollback that failed after every retry; cleared when the next rollback starts. */
@@ -2434,15 +2425,6 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
    * back to their local visited state when the field is absent.
    */
   lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
-  /** In-flight title regeneration marker; null/absent when no request is pending. */
-  titleRegeneration: Schema.optional(
-    Schema.NullOr(
-      Schema.Struct({
-        requestId: CommandId,
-        startedAt: Schema.DateTimeUtc,
-      }),
-    ),
-  ),
   deletedAt: Schema.NullOr(Schema.DateTimeUtc),
 });
 export type OrchestrationV2ThreadShell = typeof OrchestrationV2ThreadShell.Type;
@@ -2523,14 +2505,6 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   lastVisitedAt: Schema.NullOr(Schema.DateTimeUtcFromString).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
-  ),
-  titleRegeneration: Schema.optional(
-    Schema.NullOr(
-      Schema.Struct({
-        requestId: CommandId,
-        startedAt: Schema.DateTimeUtcFromString,
-      }),
-    ),
   ),
   deletedAt: Schema.NullOr(Schema.DateTimeUtcFromString),
 }));
@@ -2988,14 +2962,6 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
-  titleRegeneration: Schema.optional(
-    Schema.NullOr(
-      Schema.Struct({
-        requestId: CommandId,
-        startedAt: Schema.DateTimeUtcFromString,
-      }),
-    ),
-  ),
   deletedAt: Schema.NullOr(Schema.DateTimeUtcFromString),
 }));
 export type OrchestrationV2ThreadShellJson = typeof OrchestrationV2ThreadShellJson.Type;
@@ -3324,8 +3290,6 @@ export const OrchestrationV2Command = Schema.Union([
     /** Move product ownership of the root execution tree without replacing its identity or workspace. */
     projectId: Schema.optional(ProjectId),
     title: Schema.optional(TrimmedNonEmptyString),
-    /** Kick off (true) or abandon (false) an async title regeneration. */
-    regenerateTitle: Schema.optional(Schema.Boolean),
     branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
     worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
     expectedWorktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
@@ -3389,13 +3353,6 @@ export const OrchestrationV2Command = Schema.Union([
     linkedPullRequest: Schema.optional(ThreadLinkedPullRequest),
   }),
   Schema.Struct({
-    type: Schema.Literal("thread.title.regeneration.complete"),
-    commandId: CommandId,
-    threadId: ThreadId,
-    requestId: CommandId,
-    title: Schema.optional(TrimmedNonEmptyString),
-  }),
-  Schema.Struct({
     type: Schema.Literal("thread.runtime-mode.set"),
     commandId: CommandId,
     threadId: ThreadId,
@@ -3441,8 +3398,6 @@ export const OrchestrationV2Command = Schema.Union([
     text: Schema.String,
     context: Schema.optional(OrchestrationMessageContext),
     attachments: Schema.Array(ChatAttachment),
-    /** Seed the temporary title and generate a durable replacement for the first message. */
-    titleSeed: Schema.optional(TrimmedNonEmptyString),
     modelSelection: Schema.optional(ModelSelection),
     interactionMode: Schema.optional(ProviderInteractionMode),
     sourcePlanRef: Schema.optional(Schema.Struct({ threadId: ThreadId, planId: PlanId })),

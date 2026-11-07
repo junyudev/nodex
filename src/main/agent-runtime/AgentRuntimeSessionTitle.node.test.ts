@@ -23,9 +23,7 @@ const connectionTo = (providers: readonly unknown[]) => {
     if (method === "text.generate-structured")
       selections.push((payload as { modelSelection: unknown }).modelSelection);
     const output =
-      method === "providers.read"
-        ? (providers as Providers)
-        : { title: "Repair expired login", description: "Refresh the saved token" };
+      method === "providers.read" ? (providers as Providers) : { title: "Repair expired login" };
     return Effect.succeed(output as AgentRuntimeOperations[typeof method]["output"]);
   };
   return { calls, selections, request };

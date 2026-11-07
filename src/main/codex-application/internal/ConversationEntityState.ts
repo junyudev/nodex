@@ -422,7 +422,6 @@ export interface ConversationEntityState {
   readonly renameThread: (input: {
     readonly name: string;
     readonly observedAtMs: number;
-    readonly generated?: boolean;
   }) => boolean;
   readonly acceptThreadGoal: (input: {
     readonly goal: ThreadGoal | null;
@@ -1407,11 +1406,11 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
           );
         }, Date.now());
       },
-      renameThread: ({ name, observedAtMs, generated }) => {
+      renameThread: ({ name, observedAtMs }) => {
         const before = aggregate.document.canonicalState;
         if (!before) return false;
         return mutateCanonicalState((draft) => {
-          mutateCodexConversationThreadName(draft, threadId, name, generated);
+          mutateCodexConversationThreadName(draft, threadId, name);
         }, observedAtMs);
       },
       acceptThreadGoal: ({ goal, appendTranscriptItem, dismissResumeConfirmation }) => {

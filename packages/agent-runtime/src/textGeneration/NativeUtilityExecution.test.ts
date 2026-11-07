@@ -88,12 +88,6 @@ for (const driver of ["codex", "claude"] as const) {
           instanceId: ProviderInstanceId.make(driver),
           model: driver === "codex" ? "codex" : "sonnet",
         };
-        const title = yield* generation.generateThreadTitle({
-          cwd: directory,
-          message: "Inspect exact native execution",
-          modelSelection,
-        });
-        assert.deepEqual(title, { title: "Inspect exact native execution" });
         const guide = yield* generation.generateReviewGuide({
           cwd: directory,
           number: 42,
@@ -155,16 +149,16 @@ for (const driver of ["codex", "claude"] as const) {
           );
         assert.deepEqual(
           accepted.map((row) => row.investigation),
-          [false, true, false, false, false],
+          [true, false, false, false],
         );
         // Only a request that asks for the web may search it, and it stays read-only.
         assert.deepEqual(
           accepted.map((row) => row.web),
-          [false, false, false, false, true],
+          [false, false, false, true],
         );
         // Utility tasks never leave a conversation in the user's native history.
         assert.isTrue(accepted.every((row) => row.ephemeral));
-        assert.strictEqual(accepted[1]?.cwd, yield* fs.realPath(directory));
+        assert.strictEqual(accepted[0]?.cwd, yield* fs.realPath(directory));
         const isolationFlags =
           driver === "codex"
             ? [
@@ -174,7 +168,7 @@ for (const driver of ["codex", "claude"] as const) {
               ]
             : ["--setting-sources", "--strict-mcp-config", "--disable-slash-commands"];
         for (const [index, { args, cwd }] of accepted.entries()) {
-          const isolated = index >= 2;
+          const isolated = index >= 1;
           for (const flag of isolationFlags) assert.strictEqual(args.includes(flag), isolated);
           if (!isolated) continue;
           assert.strictEqual(cwd, yield* fs.realPath(directory));

@@ -285,15 +285,12 @@ export const make: Effect.Effect<
     }
 
     if (thread.ephemeral !== true && thread.threadSource !== "system") {
-      yield* autoTitle.scheduleAddedThread({
-        hostId: input.hostId,
+      yield* autoTitle.schedule({
         threadId: id,
         prompt: resolveCodexThreadAddedTitlePrompt(
           thread,
           parentId ? (conversations.current(parentId)?.readCanonicalState() ?? null) : null,
         ),
-        cwd: thread.cwd ?? persisted.cwd ?? null,
-        serviceName: persisted.service_name ?? null,
       });
     }
   });

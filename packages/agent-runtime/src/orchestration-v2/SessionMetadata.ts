@@ -39,7 +39,6 @@ export interface SessionExecutionMetadata {
   readonly updatedAt: string;
   readonly activeRunId: string | null;
   readonly worktreePath: string | null;
-  readonly titleRegeneration: { readonly requestId: string; readonly startedAt: string } | null;
   readonly latestRunId: string | null;
   readonly runStatus: OrchestrationV2Run["status"] | null;
   readonly activityRunStatus: Exclude<OrchestrationV2ThreadShell["activityRunStatus"], undefined>;
@@ -58,11 +57,6 @@ export interface SessionExecutionMetadata {
   readonly itemCount: number;
   readonly itemCountCoverage: "complete" | "local";
 }
-const decodeTitleRegeneration = Schema.decodeEffect(
-  Schema.fromJsonString(
-    Schema.NullOr(Schema.Struct({ requestId: Schema.String, startedAt: Schema.String })),
-  ),
-);
 const encodeIds = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)));
 const decodePullRequests = Schema.decodeEffect(
   Schema.fromJsonString(Schema.Array(SessionPullRequest)),
@@ -94,7 +88,6 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
     readonly updated_at: string;
     readonly active_run_id: string | null;
     readonly worktree_path: string | null;
-    readonly title_regeneration: string;
     readonly latest_run_id: string | null;
     readonly run_status: SessionExecutionMetadata["runStatus"];
     readonly completed_at: string | null;
@@ -119,7 +112,6 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
       (SELECT active.run_id FROM orchestration_v2_projection_runs active WHERE active.thread_id=t.thread_id
         AND active.status IN ('preparing','starting','running') ORDER BY active.ordinal DESC,active.run_id DESC LIMIT 1) AS active_run_id,
       json_extract(t.payload_json,'$.worktreePath') AS worktree_path,
-      COALESCE(json_extract(t.payload_json,'$.titleRegeneration'),'null') AS title_regeneration,
       run.run_id AS latest_run_id, run.status AS run_status,
       run.completed_at,t.default_provider, COALESCE(t.provider_instance_id,'') AS provider_instance_id,
       COALESCE(json_extract(t.payload_json,'$.modelSelection.model'),'') AS model,
@@ -183,7 +175,6 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
         updatedAt: row.updated_at,
         activeRunId: shell ? shell.activeRunId : row.active_run_id,
         worktreePath: row.worktree_path,
-        titleRegeneration: yield* decodeTitleRegeneration(row.title_regeneration),
         latestRunId: shell ? shell.latestRunId : row.latest_run_id,
         runStatus: shell ? (shell.status === "idle" ? null : shell.status) : row.run_status,
         activityRunStatus: shell?.activityRunStatus ?? null,

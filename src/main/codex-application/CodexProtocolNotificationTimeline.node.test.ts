@@ -33,7 +33,6 @@ import { CodexQueuedFollowUps } from "./CodexQueuedFollowUps";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexThreadDurableProjection } from "./CodexThreadDurableProjection";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
-import { CodexThreadTitleReconsideration } from "./CodexThreadTitleReconsideration";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { makeConversationEntityStateRegistry } from "./internal/ConversationEntityState";
@@ -157,7 +156,6 @@ const fixture = Effect.fn("notificationTimelineTest.fixture")(function* (
             consequences.push("durable");
           }),
       }),
-      Effect.provideService(CodexThreadTitleReconsideration, { observe: () => Effect.void }),
       Effect.provideService(RemoteHostedPipRuntime, {
         observeCodexOccurrence: () =>
           Effect.sync(() => {

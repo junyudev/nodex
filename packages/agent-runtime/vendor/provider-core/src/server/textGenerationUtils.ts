@@ -1,11 +1,7 @@
 import { TextGenerationError } from "@nodex/runtime-contracts";
-import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 const isTextGenerationError = Schema.is(TextGenerationError);
-const decodeJsonThreadTitle = Schema.decodeOption(
-  Schema.fromJsonString(Schema.Struct({ title: Schema.String })),
-);
 
 /** Convert an Effect Schema to a flat JSON Schema object, inlining `$defs` when present. */
 export function toJsonSchemaObject(schema: Schema.Top): unknown {
@@ -50,34 +46,6 @@ export function sanitizePrTitle(raw: string): string {
     return singleLine;
   }
   return "Update project changes";
-}
-
-// Prompts ask for under 40 characters. This cap only stops a runaway model
-// from pushing a paragraph into the sidebar, header, and window title.
-const MAX_THREAD_TITLE_CHARS = 120;
-
-/** Normalise a raw thread title to a single line. Clients truncate for display. */
-export function sanitizeThreadTitle(raw: string): string {
-  // Unwrap a JSON-formatted title before truncation can cut off the closing brace.
-  const decoded = decodeJsonThreadTitle(raw);
-  const title = Option.isSome(decoded) ? decoded.value.title : raw;
-  const normalized = title
-    .trim()
-    .split(/\r?\n/g)[0]
-    ?.trim()
-    .replace(/^['"`]+|['"`]+$/g, "")
-    .trim()
-    .replace(/\s+/g, " ");
-
-  if (!normalized || normalized.trim().length === 0) {
-    return "New thread";
-  }
-
-  if (normalized.length <= MAX_THREAD_TITLE_CHARS) {
-    return normalized;
-  }
-
-  return `${normalized.slice(0, MAX_THREAD_TITLE_CHARS - 3).trimEnd()}...`;
 }
 
 /** CLI name to human-readable label, e.g. "codex" → "Codex CLI (`codex`)" */

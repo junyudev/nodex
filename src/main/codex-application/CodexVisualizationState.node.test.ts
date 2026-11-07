@@ -16,7 +16,6 @@ import {
 import { ProfilePersistedAtoms } from "../local-store/ProfilePersistedAtoms";
 import { PersistedAtomStore } from "../local-store/persisted-atoms";
 import { codexClientThreadIdentityAtomKey } from "../codex/codex-client-thread-identity";
-import { make as makeDescriptions } from "./CodexThreadDescriptionPersistence";
 import { CodexVisualizationState, live } from "./CodexVisualizationState";
 
 const identity = { hostId: "local", threadId: "display", path: "/plot.html" };
@@ -170,7 +169,7 @@ it.effect(
           key: codexClientThreadIdentityAtomKey("local", "native"),
           value: "client-alias",
         });
-        yield* makeDescriptions(store).set({ threadId: "native", description: "Readable title" });
+        store.update({ key: "neighbor", value: "Readable title" });
         store.commitMutation(
           { key: "draft", value: "Authored draft", mutationId: "renderer-draft" },
           "renderer-two",
@@ -188,7 +187,7 @@ it.effect(
           privateContent: null,
           count: 1,
         });
-        assert.deepEqual(yield* makeDescriptions(store).get("native"), "Readable title");
+        assert.strictEqual(store.readState().neighbor, "Readable title");
       }),
     ),
 );

@@ -83,7 +83,6 @@ export const planThreadDeletion = Effect.fn("ThreadDeletion.planThreadDeletion")
         ? { executionHandoff: null }
         : {}),
       deletedAt: projection.thread.deletedAt ?? now,
-      titleRegeneration: null,
       updatedAt: now,
     },
   });

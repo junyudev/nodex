@@ -48,7 +48,6 @@ import * as ProviderTurnStartServiceTestkit from "../ProviderTurnStartService.te
 import * as McpAppModelContext from "../../mcpApps/McpAppModelContext.ts";
 import * as RunExecutionService from "../RunExecutionService.ts";
 import * as RunFinalizationService from "../RunFinalization.ts";
-import * as ThreadTitleRegenerationService from "../ThreadTitleRegenerationService.ts";
 import * as RuntimePolicy from "../RuntimePolicy.ts";
 import * as TurnItemPositionStore from "../TurnItemPositionStore.ts";
 import * as RuntimeRequestService from "../RuntimeRequestService.ts";
@@ -422,12 +421,6 @@ export function layerWithRegistry<Error>(
   const layerRunFinalizationServiceProvided = RunFinalizationService.layer.pipe(
     Layer.provide(Layer.merge(layerCheckpointCaptureServiceProvided, layerStores)),
   );
-  const layerThreadTitleRegenerationTest = Layer.succeed(
-    ThreadTitleRegenerationService.ThreadTitleRegenerationService,
-    ThreadTitleRegenerationService.ThreadTitleRegenerationService.of({
-      execute: () => Effect.void,
-    }),
-  );
   const layerOrchestratorProvided = Orchestrator.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -479,7 +472,6 @@ export function layerWithRegistry<Error>(
         layerProviderTurnControlServiceProvided,
         layerProviderTurnStartServiceProvided,
         layerRuntimeRequestServiceProvided,
-        layerThreadTitleRegenerationTest,
         layerServerSettings,
         layerThreadManagementProvided,
       ),

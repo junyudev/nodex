@@ -527,14 +527,6 @@ function threadDetail(
     runtimeMode: projection.thread.runtimeMode,
     interactionMode: projection.thread.interactionMode,
     linkedPullRequest: projection.thread.linkedPullRequest ?? null,
-    titleRegeneration:
-      projection.thread.titleRegeneration === undefined ||
-      projection.thread.titleRegeneration === null
-        ? null
-        : {
-            requestId: projection.thread.titleRegeneration.requestId,
-            startedAt: DateTime.formatIso(projection.thread.titleRegeneration.startedAt),
-          },
     branch: projection.thread.branch,
     worktreePath: projection.thread.worktreePath,
     parentThreadId: projection.thread.lineage.parentThreadId,

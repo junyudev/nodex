@@ -167,7 +167,6 @@ export function reconcileCodexResumedConversationState(
     draft.ephemeral = existing.ephemeral;
     draft.parentThreadId = existing.parentThreadId;
     draft.sideConversation = existing.sideConversation;
-    draft.generatedTitle = existing.generatedTitle;
     draft.mode = existing.mode;
     draft.threadStartKind = existing.threadStartKind;
     draft.lastInjectedPassiveContextKey = existing.lastInjectedPassiveContextKey;
@@ -217,27 +216,10 @@ export function mutateCodexConversationThreadName(
   state: Draft<CodexCanonicalConversationState>,
   conversationId: string,
   threadName: string | undefined,
-  generated?: boolean,
 ): void {
   if (state.id !== conversationId) return;
   const name = projectCodexMarkdownLabel(threadName) ?? "";
-  if (!name) return;
-  if (state.title === name) {
-    if (generated === true) state.generatedTitle = name;
-    if (generated === false) state.generatedTitle = null;
-    return;
-  }
-  Object.assign(state, {
-    title: name,
-    generatedTitle:
-      generated === true
-        ? name
-        : generated === false
-          ? null
-          : state.generatedTitle === name
-            ? state.generatedTitle
-            : null,
-  });
+  if (name) state.title = name;
 }
 
 export function reduceCodexConversationThreadName(

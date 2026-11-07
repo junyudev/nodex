@@ -35,7 +35,8 @@ Sonnet on Claude Code. The chat's own model titles it when that light model is o
 other Agents, whose catalogs reach many vendors, and on Nodex credit, which only spends on a model the
 person chose. Choosing a model sends each opening prompt to it, and lets it title chats whose own
 Agent cannot generate text. A chosen model that cannot run is never replaced: Settings marks it `Off`
-or `Unavailable` and those chats keep their provisional titles. The generated title replaces only
+or `Unavailable` and those chats keep their provisional titles. Explicit remote native Codex chats keep
+the title of their opening prompt. The generated title replaces only
 the provisional title it was derived from, so a rename that lands first always wins; chats an
 Agent starts keep the title it chose. Forks follow the same order and retain their source Session's title as
 "Fork of …". A worktree fork that stopped before recording its new location completes

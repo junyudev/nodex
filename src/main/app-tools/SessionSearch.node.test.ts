@@ -69,7 +69,6 @@ const meta = (id: string) =>
     updatedAt: at,
     activeRunId: null,
     worktreePath: null,
-    titleRegeneration: null,
     createdBy: "agent",
     creationSource: "mcp",
     runtimeMode: "full-access",

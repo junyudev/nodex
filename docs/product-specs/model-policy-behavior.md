@@ -27,10 +27,9 @@ is independent and grants no model access.
 No forbidden explicit choice is silently replaced. Driver-only delegation, another
 instance's first-model selection, planner candidates, Mobile fallback, Refine fallback,
 automation first-model selection, and native-import fallback exclude Nodex credit.
-Runtime title and source-control utilities resolve their automatic defaults from on,
-non-credit models, including when a Project's default is off. A chat's default title model comes
-from the chat's own Agent, uses only on models, and never moves a credit chat to a model the person
-did not choose.
+Runtime source-control utilities resolve their automatic defaults from on, non-credit models,
+including when a Project's default is off. A chat's default title model comes from the chat's own
+Agent, uses only on models, and never moves a credit chat to a model the person did not choose.
 A saved exact model remains an explicit choice, including when it has been switched off.
 
 ## Settings and pickers

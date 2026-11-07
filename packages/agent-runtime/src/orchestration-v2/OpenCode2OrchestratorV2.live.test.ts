@@ -1038,13 +1038,14 @@ describe.runIf(binaryPath !== undefined && ROOT !== "")("OpenCode 2 live orchest
         assert.isDefined(instance);
         yield* instance!.snapshot.refresh;
 
-        // A thread title, generated in a temporary session on the 2.x server.
-        const title = yield* instance!.textGeneration.generateThreadTitle({
+        // Structured output, generated in a temporary session on the 2.x server.
+        const generated = yield* instance!.textGeneration.generateStructured({
           cwd: work,
-          message: "fix the login redirect loop after oauth",
+          prompt: "Title this task: fix the login redirect loop after oauth",
           modelSelection: MODEL,
+          outputSchema: { type: "object", required: ["title"] },
         });
-        assert.isAbove(title.title.length, 0);
+        assert.isDefined(generated);
 
         const threadId = ThreadId.make("thread:opencode2-live-restart");
         yield* orchestrator.dispatch({

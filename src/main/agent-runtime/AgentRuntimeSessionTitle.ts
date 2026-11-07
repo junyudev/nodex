@@ -8,11 +8,11 @@ import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
 import type { AgentRuntimeTitleModel } from "../../shared/agent-runtime-settings";
 import {
-  buildThreadTitleGenerationPrompt,
-  CODEX_THREAD_TITLE_OUTPUT_SCHEMA,
-  CODEX_THREAD_TITLE_TIMEOUT_MS,
-  parseGeneratedThreadMetadata,
-} from "../codex/thread-title-generator";
+  buildSessionTitlePrompt,
+  parseGeneratedSessionTitle,
+  SESSION_TITLE_OUTPUT_SCHEMA,
+  SESSION_TITLE_TIMEOUT_MS,
+} from "./session-title-prompt";
 import type { AgentRuntimeApplicationConnection } from "./AgentRuntimeApplication";
 
 type ModelSelection = AgentRuntimeLaunch["modelSelection"];
@@ -57,7 +57,7 @@ export const generateSessionTitle = Effect.fn("AgentRuntimeSessionTitle.generate
     readonly modelPolicy: ModelPolicy;
   },
 ) {
-  const prompt = buildThreadTitleGenerationPrompt(input.prompt);
+  const prompt = buildSessionTitlePrompt(input.prompt);
   if (!prompt) return null;
   const providers = yield* connection.request("providers.read", {});
   const selection = titleModelSelection(input, providers);
@@ -67,8 +67,8 @@ export const generateSessionTitle = Effect.fn("AgentRuntimeSessionTitle.generate
     cwd: input.cwd,
     prompt,
     modelSelection: lightUtilityModelSelection(selection, providers),
-    outputSchema: CODEX_THREAD_TITLE_OUTPUT_SCHEMA,
-    timeoutMs: CODEX_THREAD_TITLE_TIMEOUT_MS,
+    outputSchema: SESSION_TITLE_OUTPUT_SCHEMA,
+    timeoutMs: SESSION_TITLE_TIMEOUT_MS,
   });
-  return parseGeneratedThreadMetadata(output)?.title ?? null;
+  return parseGeneratedSessionTitle(output);
 });

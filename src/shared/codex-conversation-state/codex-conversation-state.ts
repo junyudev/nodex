@@ -754,7 +754,6 @@ export interface CodexCanonicalConversationMetadata {
   readonly updatedAt: number;
   readonly recencyAt: number;
   readonly title: string | null;
-  readonly generatedTitle?: string | null;
   readonly latestModel: string;
   readonly latestReasoningEffort: Thread["reasoningEffort"];
   readonly latestCollaborationMode: NonNullable<TurnStartParams["collaborationMode"]>;

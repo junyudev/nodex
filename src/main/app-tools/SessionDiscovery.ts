@@ -65,7 +65,6 @@ export interface SessionListingSummary {
   readonly updatedAt: string | null;
   readonly activeRunId: string | null;
   readonly worktreePath: string | null;
-  readonly titleRegeneration: CatalogItem["titleRegeneration"];
   readonly latestRunId: string | null;
   readonly runStatus: string | null;
   readonly activityRunStatus: string | null;
@@ -204,7 +203,6 @@ export const summaryOf = (item: ListingItem, runtime?: CatalogItem): SessionList
       : null),
   activeRunId: runtime?.activeRunId ?? null,
   worktreePath: runtime?.worktreePath ?? item.task.thread?.managed_worktree_path ?? null,
-  titleRegeneration: runtime?.titleRegeneration ?? null,
   latestRunId: runtime?.latestRunId ?? null,
   runStatus: runtime?.runStatus ?? null,
   activityRunStatus: runtime?.activityRunStatus ?? null,
@@ -262,7 +260,6 @@ export const withSessionMetadata = (
   updatedAt: details.updatedAt,
   activeRunId: details.activeRunId,
   worktreePath: details.worktreePath,
-  titleRegeneration: details.titleRegeneration,
   latestRunId: details.latestRunId,
   runStatus: details.runStatus,
   activityRunStatus: details.activityRunStatus,

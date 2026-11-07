@@ -59,22 +59,6 @@ export interface BranchNameGenerationResult {
   branch: string;
 }
 
-export interface ThreadTitleGenerationInput {
-  linkedContext?: string | undefined;
-  cwd: string;
-  message: string;
-  /** Present when replacing an existing title from the current thread history. */
-  previousTitle?: string | undefined;
-  attachments?: ReadonlyArray<ChatAttachment> | undefined;
-  /** What model and provider to use for generation. */
-  modelSelection: ModelSelection;
-}
-
-export interface ThreadTitleGenerationResult {
-  title: string;
-  needsRefinement?: boolean | undefined;
-}
-
 export interface ReviewGuideStackLayer {
   readonly number: number;
   readonly title: string | null;
@@ -164,10 +148,6 @@ export interface ProviderTextGeneration {
     input: BranchNameGenerationInput,
   ) => Effect.Effect<BranchNameGenerationResult, TextGenerationError>;
 
-  /** Generate a concise thread title from a first message or thread history. */
-  readonly generateThreadTitle: (
-    input: ThreadTitleGenerationInput,
-  ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
 
   /** Explain a change request to the maintainer deciding whether it lands. */
   readonly generateReviewGuide: (

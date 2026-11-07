@@ -19,7 +19,6 @@ import { CodexApplicationRequestInbox } from "../codex-runtime/CodexApplicationR
 import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
 import { CodexSidebarSectionSync } from "./CodexSidebarSectionSync";
 import { CodexThreadCatalog } from "./CodexThreadCatalog";
-import { CodexThreadDescriptionPersistence } from "./CodexThreadDescriptionPersistence";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { CodexThreadHandoffRuntime } from "./CodexThreadHandoffRuntime";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
@@ -145,10 +144,6 @@ const buildTools = (
           calls.titles += 1;
         }),
     } as unknown as CodexThreadTitlePersistence["Service"]),
-    Effect.provideService(CodexThreadDescriptionPersistence, {
-      get: () => Effect.succeed(null),
-      set: () => Effect.void,
-    }),
     Effect.provideService(ConversationCommands, {
       archive: () =>
         Effect.sync(() => {

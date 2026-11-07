@@ -81,7 +81,6 @@ export interface CodexConversationProjectionService {
     readonly threadId: string;
     readonly name: string;
     readonly observedAtMs: number;
-    readonly generated?: boolean;
   }) => Effect.Effect<void, CodexConversationProjectionError>;
   readonly acceptThreadGoal: (input: {
     readonly threadId: string;
@@ -357,7 +356,6 @@ export const make: Effect.Effect<
               conversation.renameThread({
                 name: input.name,
                 observedAtMs: input.observedAtMs,
-                generated: input.generated,
               });
             },
             catch: (cause) =>

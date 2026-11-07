@@ -4,9 +4,9 @@ import { WebSocket } from "ws";
 
 import { describe, expect, test } from "vite-plus/test";
 import {
-  CODEX_THREAD_TITLE_OUTPUT_SCHEMA,
-  parseGeneratedThreadMetadataResponse,
-} from "../../../src/main/codex/thread-title-generator";
+  parseGeneratedSessionTitle,
+  SESSION_TITLE_OUTPUT_SCHEMA,
+} from "../../../src/main/agent-runtime/session-title-prompt";
 
 import {
   responses,
@@ -333,7 +333,7 @@ describe("ScriptedModelServer", () => {
         ).status;
 
       expect(
-        await request("thread_title", [
+        await request("user", [
           {
             type: "message",
             role: "user",
@@ -384,7 +384,7 @@ describe("ScriptedModelServer", () => {
     );
   });
 
-  test("returns valid structured metadata for a native WebSocket title request", async () => {
+  test("returns a valid structured title for a WebSocket title request", async () => {
     await withScriptedModelServer({ exchanges: [] }, async (server) => {
       const webSocket = new WebSocket(`${server.baseUrl.replace("http", "ws")}/v1/responses`);
       try {
@@ -394,8 +394,8 @@ describe("ScriptedModelServer", () => {
           model: "gpt-5.6-luna",
           client_metadata: {
             "x-codex-turn-metadata": JSON.stringify({
-              thread_source: "thread_title",
-              turn_trigger: "thread_title",
+              thread_source: "user",
+              turn_trigger: "user",
             }),
           },
           text: {
@@ -403,7 +403,7 @@ describe("ScriptedModelServer", () => {
               type: "json_schema",
               name: "codex_output_schema",
               strict: true,
-              schema: CODEX_THREAD_TITLE_OUTPUT_SCHEMA,
+              schema: SESSION_TITLE_OUTPUT_SCHEMA,
             },
           },
           input: [
@@ -418,10 +418,7 @@ describe("ScriptedModelServer", () => {
           | { content?: readonly { text?: string }[] }
           | undefined;
         const text = item?.content?.map((part) => part.text ?? "").join("");
-        expect(parseGeneratedThreadMetadataResponse(text)).toEqual({
-          title: "Scripted task",
-          description: "Complete the scripted task",
-        });
+        expect(parseGeneratedSessionTitle(JSON.parse(text ?? "null"))).toBe("Scripted task");
       } finally {
         webSocket.close();
       }
@@ -456,7 +453,7 @@ describe("ScriptedModelServer", () => {
 
         expect(
           await request(
-            "thread_title",
+            "user",
             "Generate a concise UI title for this task whose prompt contains USER_MARKER",
           ),
         ).toContain("Scripted task");
@@ -850,11 +847,10 @@ describe("ScriptedModelServer", () => {
         input: ["unexpected"],
       });
       expect(response.status).toBe(500);
-      // A title prompt inside a chat's own Thread is not a title run, nor is a title Thread's
-      // unrelated request.
+      // A title prompt inside a chat's own Thread is not a title run, nor is an unrelated request.
       for (const [source, prompt] of [
         ["agent_runtime", "Generate a concise UI title for this task"],
-        ["thread_title", "Complete an unrelated task"],
+        ["user", "Complete an unrelated task"],
       ]) {
         const rejected = await postJson(`${server.baseUrl}/v1/responses`, {
           client_metadata: {

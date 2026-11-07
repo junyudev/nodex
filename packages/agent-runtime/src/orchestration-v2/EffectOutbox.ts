@@ -131,13 +131,6 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     type: Schema.Literal("attachment.cleanup"),
     attachmentIds: Schema.Array(Schema.String),
   }),
-  Schema.Struct({
-    type: Schema.Literal("thread-title.generate"),
-    kind: Schema.Union([
-      Schema.Struct({ type: Schema.Literal("initial"), messageId: MessageId }),
-      Schema.Struct({ type: Schema.Literal("regenerate") }),
-    ]),
-  }),
   /** Follows a Stop: sends `thread.stop` to every delegated task under the stopped thread. */
   Schema.Struct({
     type: Schema.Literal("delegated-tasks.stop"),
@@ -156,7 +149,6 @@ export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
   "terminal.cleanup",
   "preview.cleanup",
   "attachment.cleanup",
-  "thread-title.generate",
   "delegated-tasks.stop",
   // Replays after process loss settle the vanished owner; ordinary Stop attempts never retry.
   "provider-task.stop",
@@ -389,17 +381,6 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
                     ? sql`active.effect_type != 'provider-runtime.continue'`
                     : sql`1 = 1`
                 }
-              )
-            )
-            AND (
-              (
-                candidate.effect_type = 'thread-title.generate'
-                AND active.effect_type = 'thread-title.generate'
-              )
-              OR
-              (
-                candidate.effect_type != 'thread-title.generate'
-                AND active.effect_type != 'thread-title.generate'
               )
             )
         )

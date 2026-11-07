@@ -166,8 +166,6 @@ let selectedSubagentHydrateHandler:
     ) => CodexSelectedSubagentHydrateResult | Promise<CodexSelectedSubagentHydrateResult>)
   | null = null;
 let subagentOverviewResult: CodexSubagentOverviewWindow | null = null;
-const generatedThreadTitleResult: unknown = { title: null };
-const generatedThreadTitleError: Error | null = null;
 
 function readFollowerConversationId(
   input: { request?: { params?: unknown } } | undefined,
@@ -1012,14 +1010,7 @@ vi.mock("./local-conversation-deps", () => ({
         return followerActionResult;
       }
 
-      if (channel === "codex:thread:title:generate") {
-        if (generatedThreadTitleError) {
-          throw generatedThreadTitleError;
-        }
-        return generatedThreadTitleResult;
-      }
-
-      if (channel === "codex:thread:name:set-generated" || channel === "codex:thread:name:set") {
+      if (channel === "codex:thread:name:set") {
         return true;
       }
 

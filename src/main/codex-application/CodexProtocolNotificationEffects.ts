@@ -65,7 +65,6 @@ import {
 } from "./CodexThreadDurableProjection";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
-import { CodexThreadTitleReconsideration } from "./CodexThreadTitleReconsideration";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { canUseCodexThreadTimeline } from "./CodexThreadTimelinePolicy";
@@ -145,7 +144,6 @@ export const make: Effect.Effect<
   | CodexThreadDurableProjection
   | CodexSubagentDirectory
   | CodexThreadGoalRuntime
-  | CodexThreadTitleReconsideration
   | CodexUserInputAutoResolution
   | ConversationEntityMap
   | BrowserUseRuntime
@@ -166,7 +164,6 @@ export const make: Effect.Effect<
   const durableThreads = yield* CodexThreadDurableProjection;
   const subagents = yield* CodexSubagentDirectory;
   const threadGoals = yield* CodexThreadGoalRuntime;
-  const titleReconsideration = yield* CodexThreadTitleReconsideration;
   const autoResolution = yield* CodexUserInputAutoResolution;
   const conversations = yield* ConversationEntityMap;
   const browserUse = yield* BrowserUseRuntime;
@@ -275,14 +272,6 @@ export const make: Effect.Effect<
           hasPendingContinuation,
         },
       });
-      if (turn.status === "completed") {
-        yield* titleReconsideration.observe({
-          hostId,
-          threadId,
-          lastAgentMessage: message,
-          hasPendingContinuation,
-        });
-      }
     },
   );
 
