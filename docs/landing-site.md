@@ -46,6 +46,9 @@ WebP encoding; `brew install ffmpeg-full` supplies these on macOS. If ffmpeg
 lacks WebP encoding, the recorder also supports an installed `img2webp`
 (`brew install webp`). Nothing is installed automatically.
 
+Record media you will publish against a production preview: the development server can stretch a
+long demo's timeline by a second or two.
+
 `--base-url` defaults to `http://127.0.0.1:4330`. With several checkouts running, that
 port may serve another checkout's site and the recording silently shows its demos; start
 this checkout's server on a free port and pass it with `--base-url`. `--out` defaults to
@@ -217,6 +220,9 @@ Product demos are scripted re-enactments built from replicas of the interface, n
   Routing preferences, in the app's labels and with the guide's one-line notes from
   `src/shared/inbox-model-guide.ts`; change the replica when the app changes them.
 - Pointing at a chat's model button shows the model that leads it.
+- A plan's delegated parts read as one tree: a quiet rail runs beside them and curves into each
+  part, with no arrowheads, because the parts branch from one plan rather than point somewhere.
+  With nothing between a message and its parts, the rail grows from the message itself.
 - Subagents follow the app's Agent identity: a subagent's card names its Agent and model beside
   the harness mark, the Subagents tab header marks the child's Agent beside its model and effort,
   and its task reads "Sent by" with the sending chat's mark and title, so a Claude lead with

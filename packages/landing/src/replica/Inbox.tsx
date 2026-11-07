@@ -154,23 +154,26 @@ function Suggestion({
       {routeOnly ? null : <p className="text-[14px] leading-[1.625]">{dispatch.prompt}</p>}
       {dispatch.kind === "new_chat" && (dispatch.delegates?.length || dispatch.plan) ? (
         <div className="flex min-w-0 flex-col gap-1 text-[13px] leading-5 text-app-muted">
-          {dispatch.delegates?.map((delegate, index) => (
-            <motion.div
-              key={delegate.work}
-              initial={{ opacity: 0, x: -6 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.18 + index * 0.09, duration: 0.3 }}
-              className="flex min-h-6 min-w-0 items-center gap-1.5"
-            >
-              <span aria-hidden="true" className="shrink-0">
-                ↳
-              </span>
-              <span className="line-clamp-2 min-w-0 flex-1 text-app-fg">{delegate.work}</span>
-              <AgentLabel
-                agent={delegate.agent}
-                className="max-w-[45%] shrink-0 gap-1 [&>svg]:size-3.5"
+          {dispatch.delegates?.map((delegate, index, delegates) => (
+            <div key={delegate.work} className="relative min-w-0 pl-[19px]">
+              <DelegateBranch
+                index={index}
+                last={index === delegates.length - 1}
+                joinsMessage={routeOnly}
               />
-            </motion.div>
+              <motion.div
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: delegateDelay(index), duration: 0.3 }}
+                className="flex min-h-6 min-w-0 items-center gap-1.5"
+              >
+                <span className="line-clamp-2 min-w-0 flex-1 text-app-fg">{delegate.work}</span>
+                <AgentLabel
+                  agent={delegate.agent}
+                  className="max-w-[45%] shrink-0 gap-1 [&>svg]:size-3.5"
+                />
+              </motion.div>
+            </div>
           ))}
           {dispatch.plan && !routeOnly ? (
             <p className="line-clamp-3 whitespace-pre-line">{dispatch.plan}</p>
@@ -178,6 +181,46 @@ function Suggestion({
         </div>
       ) : null}
     </div>
+  );
+}
+
+const DELEGATE_STAGGER_S = 0.09;
+const delegateDelay = (index: number) => 0.18 + index * DELEGATE_STAGGER_S;
+
+/**
+ * One delegated part's piece of the plan's tree: the rail beside it and the branch that curves in.
+ * The rail draws down one part per stagger, so it stays whole while the parts arrive.
+ */
+function DelegateBranch({
+  index,
+  last,
+  joinsMessage,
+}: {
+  readonly index: number;
+  readonly last: boolean;
+  /** With nothing between the message and its parts, the rail grows from the message itself. */
+  readonly joinsMessage: boolean;
+}) {
+  const delay = delegateDelay(index);
+  return (
+    <span aria-hidden="true" className="absolute inset-y-0 left-0 w-3.5">
+      <motion.span
+        initial={{ scaleY: 0 }}
+        animate={{ scaleY: 1 }}
+        transition={{ delay, duration: DELEGATE_STAGGER_S, ease: "linear" }}
+        className={cx(
+          "absolute left-0 origin-top border-l border-app-branch",
+          index > 0 ? "-top-0.5" : joinsMessage ? "-top-2.5" : "top-0",
+          last ? "bottom-[calc(50%+6px)]" : "-bottom-0.5",
+        )}
+      />
+      <motion.span
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: delay + DELEGATE_STAGGER_S / 2, duration: 0.15 }}
+        className="absolute right-0 bottom-1/2 left-0 h-[7px] rounded-bl-[7px] border-b border-l border-app-branch"
+      />
+    </span>
   );
 }
 

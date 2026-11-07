@@ -74,6 +74,8 @@
   --color-app-raised: var(--app-raised);
   --color-app-hover: var(--app-hover);
   --color-app-line: var(--app-line);
+  /* Opaque so a tree's rail and branches can overlap without darkening where they meet. */
+  --color-app-branch: color-mix(in srgb, var(--app-fg) 24%, var(--app-bg));
   --color-app-fg: var(--app-fg);
   --color-app-muted: var(--app-muted);
   --color-app-faint: var(--app-faint);
