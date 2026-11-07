@@ -576,6 +576,123 @@ test("edits an earlier message and continues from it without the later Turns", a
   );
 });
 
+test("gives the model attached context as data and shows only the user's words", async () => {
+  test.setTimeout(150_000);
+  const token = randomUUID();
+  const opening = `Open the conversation ${token}`;
+  const openingReply = `Conversation open ${token}`;
+  const words = `Compare this with the plan ${token}`;
+  const wordsReply = `Compared with the plan ${token}`;
+  const title = `Plan page ${token}`;
+  const reply = (name: string, text: string) =>
+    responses.stream([
+      responses.created(`response_${name}_${token}`),
+      responses.assistantMessage(`message_${name}_${token}`, text, "final_answer"),
+      responses.completed(`response_${name}_${token}`, true),
+    ]);
+  const isThread = (request: ScriptedModelRequest) =>
+    request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE);
+
+  await withScriptedModelServer(
+    {
+      exchanges: [
+        {
+          name: "opening message",
+          match: (request) => isThread(request) && latestUserText(request).includes(opening),
+          respond: reply("opening", openingReply),
+        },
+        {
+          name: "message with attached context",
+          match: (request) => isThread(request) && latestUserText(request).includes(words),
+          respond: (request) => {
+            const delivered = latestUserText(request);
+            expect(delivered).toContain("<nodex_context>");
+            expect(delivered).toContain("nodex-page-reference");
+            expect(delivered).toContain(title);
+            expect(delivered.indexOf(words)).toBeLessThan(delivered.indexOf("<nodex_context>"));
+            return reply("context", wordsReply);
+          },
+        },
+        ...standardCodexBackgroundExchanges(),
+      ],
+    },
+    async (modelServer) => {
+      const harness = await ElectronScenarioHarness.create({
+        label: "scripted-agent-context",
+        cwd: repositoryRoot,
+        prepareAgentRuntime: false,
+        retention: process.env.NODEX_KEEP_SCENARIO_PROFILES === "1" ? "keep" : "dispose",
+        environment: {
+          ...modelServer.loopbackEnvironment(),
+          NODEX_LOG_CONSOLE: "0",
+          NODEX_LOG_FILE: "1",
+          OPENAI_API_KEY: "nodex-scripted-model-test-key",
+        },
+      });
+      fs.writeFileSync(
+        path.join(harness.profile.codexHome, "config.toml"),
+        scriptedCodexConfig(modelServer.baseUrl),
+        { encoding: "utf8", mode: 0o600 },
+      );
+      try {
+        const page = await harness.launch();
+        await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
+        const draft = await createAgentSmokeDraft(
+          page,
+          harness.profile.initialProjectsDirectory,
+          "Scripted Agent context",
+        );
+        const threadId = await sendAgentPrompt(page, draft.projectSessionId, opening);
+        const target = { sessionId: draft.projectSessionId, threadId };
+        await waitForRuntimeCompletedAgentTurn(page, target);
+        await waitForFinalMarker(page, openingReply);
+
+        await invokeIpc(page, "agent-runtime:session:message", {
+          ...target,
+          message: {
+            messageId: randomUUID(),
+            text: words,
+            context: {
+              version: 1,
+              records: [
+                {
+                  kind: "nodex-page-reference",
+                  label: title,
+                  payload: {
+                    pageId: "page-plan",
+                    title,
+                    url: "nodex://pages/page-plan",
+                    selectedBlockIds: [],
+                  },
+                },
+              ],
+            },
+          },
+        });
+        await modelServer.waitForRequest((request) => latestUserText(request).includes(words));
+        await waitForRuntimeCompletedAgentTurn(page, target);
+        await waitForFinalMarker(page, wordsReply);
+
+        // The context stays out of what the person reads and what a later Agent reads back.
+        await expect(page.locator("[data-user-message-bubble='true']")).toHaveText([
+          opening,
+          words,
+        ]);
+        const conversation = await readRuntimeConversation(page, target);
+        expect(JSON.stringify(conversation.snapshot.projection)).not.toContain("<nodex_context>");
+      } catch (error) {
+        const logs = await readBoundedElectronRuntimeLogs(harness.profile);
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)}\n\nElectron runtime logs:\n${logs}`,
+          { cause: error },
+        );
+      } finally {
+        await harness.close();
+      }
+    },
+  );
+});
+
 test("rewrites a message with exactly the images its editor holds", async () => {
   test.setTimeout(180_000);
   const token = randomUUID();
