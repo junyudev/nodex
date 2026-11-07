@@ -557,15 +557,19 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
   };
 
   const userMessageSearchBlocks = collectUserMessageSearchBlocks(buckets);
-  const searchUnits = buildSearchUnits({
-    isStreamingTurn: input.isStreamingTurn,
-    buckets,
-    turn: input.turn,
-    turnId: input.turnId,
-    turnKey,
-    turnSearchKey,
-    userMessageBlocks: userMessageSearchBlocks,
-  });
+  const searchBuckets = buckets;
+  // A running Turn rebuilds on every item, and search reads it far less often than that.
+  let searchUnits: ThreadSearchUnitModel[] | undefined;
+  const readSearchUnits = () =>
+    (searchUnits ??= buildSearchUnits({
+      isStreamingTurn: input.isStreamingTurn,
+      buckets: searchBuckets,
+      turn: input.turn,
+      turnId: input.turnId,
+      turnKey,
+      turnSearchKey,
+      userMessageBlocks: userMessageSearchBlocks,
+    }));
   const userSearchUnitKeyByBlockId = new Map(
     userMessageSearchBlocks.map(
       (block, index) => [block.id, `${turnSearchKey}:user:${index}`] as const,
@@ -758,7 +762,9 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     isBlocked: input.isBlocked,
     liveActivity,
     searchableText: collectSearchableText(resolvedBlocks),
-    searchUnits,
+    get searchUnits() {
+      return readSearchUnits();
+    },
     hasRenderableAgentBodyUnits,
     agentBodyReplyBlockId,
     defaultAgentBodyCollapsed:
