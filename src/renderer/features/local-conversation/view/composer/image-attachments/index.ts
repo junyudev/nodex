@@ -30,6 +30,7 @@ export {
   type ComposerImageAttachmentThumbnailProps,
 } from "./composer-image-attachment-thumbnail";
 export {
+  addCopiedLibraryImages,
   COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE,
   useComposerImageAttachments,
   type ComposerImageAttachmentController,

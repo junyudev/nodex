@@ -74,6 +74,61 @@ const dragMayHoldImage = (transfer: DataTransfer): boolean =>
   );
 
 /**
+ * A Composer's paste into its text field: images go to `take`, and text arrives as its Markdown
+ * source. What an image copied from Nodex was copied with stays in the field.
+ */
+export function pasteIntoMessageField(
+  event: ClipboardEvent<HTMLTextAreaElement>,
+  take: (pasted: ComposerPastedFiles) => boolean,
+): void {
+  if (handleComposerFilePaste(event.nativeEvent, take)) return;
+  const library = takeComposerLibraryImagePaste(event.nativeEvent, take);
+  if (!library) {
+    pasteMarkdownSource(event);
+    return;
+  }
+  event.preventDefault();
+  if (library.text) insertTyped(event.currentTarget, library.text);
+}
+
+/** The drop target of a Composer that takes image files; `onFiles` says whether it took any. */
+export function useMessageImageDrop({
+  enabled,
+  onFiles,
+}: {
+  readonly enabled: boolean;
+  readonly onFiles: (files: readonly File[]) => boolean;
+}) {
+  const drag = useDragDepth();
+  return {
+    /** True while a drag this Composer takes is over its drop target. */
+    active: drag.active,
+    /** Spread on the element that takes dropped images. */
+    target: {
+      onDragEnter: (event: DragEvent<HTMLElement>) => {
+        if (!enabled || !dragMayHoldImage(event.dataTransfer)) return;
+        event.preventDefault();
+        drag.enter();
+      },
+      onDragLeave: () => {
+        drag.leave();
+      },
+      onDragOver: (event: DragEvent<HTMLElement>) => {
+        // Stays open to every file: refusing one here would refuse an image the drop would take.
+        if (!enabled || !event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      },
+      onDrop: (event: DragEvent<HTMLElement>) => {
+        drag.end();
+        if (onFiles(classifyComposerDataTransfer(event.dataTransfer).imageFiles))
+          event.preventDefault();
+      },
+    },
+  };
+}
+
+/**
  * Takes images pasted, dropped, or picked into a Composer and imports each as a Library File;
  * `onImported` attaches them to the draft. A local preview stands in while each one imports.
  * An image the draft imported and then let go of, before it was sent, goes to Trash.
@@ -86,7 +141,6 @@ export function useMessageImageInput({
   readonly onImported: (images: readonly MessageDraftImage[]) => void;
 }) {
   const [uploads, setUploads] = useState<readonly MessageImageUpload[]>([]);
-  const drag = useDragDepth();
   const cancelled = useRef(new Set<string>());
   const previews = useRef(new Map<string, string>());
   useEffect(() => {
@@ -131,6 +185,7 @@ export function useMessageImageInput({
     }
     return true;
   };
+  const drop = useMessageImageDrop({ enabled: access !== null, onFiles: add });
 
   return {
     uploads,
@@ -148,45 +203,15 @@ export function useMessageImageInput({
      * image copied from Nodex is already a Library File, so the draft uses that File itself.
      */
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => {
-      const take = ({ imageFiles, libraryImages }: ComposerPastedFiles) => {
+      pasteIntoMessageField(event, ({ imageFiles, libraryImages }) => {
         if (!access) return false;
         if (libraryImages.length === 0) return add(imageFiles);
         onImported(libraryImages.map(({ fileId, caption }) => ({ fileId, name: caption })));
         return true;
-      };
-      if (handleComposerFilePaste(event.nativeEvent, take)) return;
-      const library = takeComposerLibraryImagePaste(event.nativeEvent, take);
-      if (!library) {
-        pasteMarkdownSource(event);
-        return;
-      }
-      event.preventDefault();
-      if (library.text) insertTyped(event.currentTarget, library.text);
+      });
     },
-    /** True while a drag this Composer takes is over its drop target. */
-    dropActive: drag.active,
-    /** Spread on the element that takes dropped images. */
-    dropTarget: {
-      onDragEnter: (event: DragEvent<HTMLElement>) => {
-        if (!access || !dragMayHoldImage(event.dataTransfer)) return;
-        event.preventDefault();
-        drag.enter();
-      },
-      onDragLeave: () => {
-        drag.leave();
-      },
-      onDragOver: (event: DragEvent<HTMLElement>) => {
-        // Stays open to every file: refusing one here would refuse an image the drop would take.
-        if (!access || !event.dataTransfer.types.includes("Files")) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "copy";
-      },
-      onDrop: (event: DragEvent<HTMLElement>) => {
-        drag.end();
-        if (add(classifyComposerDataTransfer(event.dataTransfer).imageFiles))
-          event.preventDefault();
-      },
-    },
+    dropActive: drop.active,
+    dropTarget: drop.target,
   };
 }
 

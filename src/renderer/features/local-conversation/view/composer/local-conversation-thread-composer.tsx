@@ -14,6 +14,7 @@ import { ThreadTextSelectionAttachments } from "../thread-text-selection-attachm
 import { ApplicationPending } from "@/bootstrap/application-surface";
 import { useComposerRealtimeVoice } from "@/features/realtime-voice/realtime-voice-window";
 import { RealtimeVoiceControls } from "@/features/realtime-voice/realtime-voice-controls";
+import { resolveConversationImageInput } from "../../conversation-image-input";
 import { supportsConversationProviderControl } from "../../conversation-provider-controls";
 import { useComposerPrediction } from "./use-composer-prediction";
 import {
@@ -142,9 +143,7 @@ import {
 import { CLAUDE_PROMPT_KEYWORDS } from "./composer-prompt-keywords";
 import { projectMessageText } from "../../../../../shared/message-agent-input";
 import { materializeWrittenImages } from "@/lib/prompt-file-images";
-import { readAuthorizedImageFile } from "@/lib/library-file-resources";
 import { useLibraryFileReadAuthority } from "@/lib/use-library-navigation";
-import { fileSource } from "../../../../../shared/file-resources";
 import {
   inactiveComposerSuggestionState,
   type ComposerSuggestionState,
@@ -245,6 +244,7 @@ import {
 } from "./composer-draft-capture";
 import { prepareComposerDraftTransferAttachments } from "./composer-draft-transfer-attachments";
 import {
+  addCopiedLibraryImages,
   buildComposerImagePromptInputs,
   classifyComposerDataTransfer,
   ComposerImageAttachmentRow,
@@ -259,7 +259,6 @@ import {
 import {
   type ResolvedComposerImageInput,
   type ImageEditSubmissionIntent,
-  resolveImageInputSupport,
   trackImageEditSubmit,
   trackImageEditSubmitOutcome,
 } from "@/lib/content-image";
@@ -1737,11 +1736,11 @@ function HydratedThreadComposer({
     : model.provider?.imageInputUnavailableReason;
   const imageInputSupported =
     queuedImageInput?.supported ??
-    (supportsConversationProviderControl(model.provider, "images") &&
-      resolveImageInputSupport({
-        models: model.availableModels,
-        selectedModel: model.selectedModel,
-      }));
+    resolveConversationImageInput({
+      provider: model.provider,
+      availableModels: model.availableModels,
+      selectedModel: model.selectedModel,
+    }).supported;
   const handleEditComposerImage = useCallback(
     (attachment: ComposerImageAttachment) => {
       void openComposerImageAttachment({
@@ -2067,14 +2066,10 @@ function HydratedThreadComposer({
       if (isDraftCaptureLocked()) return true;
       if (payload.libraryImages.length > 0) {
         if (!libraryReadAuthority) return false;
-        // An image copied from Nodex attaches as the image itself, read from its Library File.
-        void Promise.all(
-          payload.libraryImages.map(({ fileId }) =>
-            readAuthorizedImageFile(libraryReadAuthority, fileSource(fileId)),
-          ),
-        ).then(
-          (files) => imageAttachmentController.addFiles(files, "paste"),
-          () => toast.danger("Couldn’t attach the copied image", { id: "composer-library-paste" }),
+        addCopiedLibraryImages(
+          imageAttachmentController,
+          libraryReadAuthority,
+          payload.libraryImages,
         );
         return true;
       }

@@ -1,6 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { toast } from "@/components/ui/toast";
+import { readAuthorizedImageFile, type FileReadAuthority } from "@/lib/library-file-resources";
 import type { ComposerPickedFile } from "../../../../../../shared/ipc-api";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../../../shared/codex-host";
+import { fileSource } from "../../../../../../shared/file-resources";
+import type { CopiedLibraryImage } from "../../../../../../shared/markdown";
 import { uploadImageAsset } from "@/lib/assets";
 import { resolveComposerImageMimeType } from "../../../../../../shared/composer-image-input";
 import { isSupportedComposerImageFile } from "./composer-image-data-transfer";
@@ -119,6 +123,20 @@ function resolveFileAttachmentName(file: File, id: string, origin: "paste" | "dr
       .replace(/[^a-z0-9]/giu, "")
       .slice(0, 8) || "image";
   return `${origin === "paste" ? "pasted-image" : "image"}-${idSuffix}.${extension}`;
+}
+
+/** An image copied from Nodex attaches as the image itself, read from its Library File. */
+export function addCopiedLibraryImages(
+  controller: Pick<ComposerImageAttachmentController, "addFiles">,
+  authority: FileReadAuthority,
+  images: readonly CopiedLibraryImage[],
+): void {
+  void Promise.all(
+    images.map(({ fileId }) => readAuthorizedImageFile(authority, fileSource(fileId))),
+  ).then(
+    (files) => controller.addFiles(files, "paste"),
+    () => toast.danger("Couldn’t attach the copied image", { id: "composer-library-paste" }),
+  );
 }
 
 export function useComposerImageAttachments(input: {
