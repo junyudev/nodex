@@ -294,7 +294,7 @@ describe("host Desktop Tools", () => {
     expect(builder.buildDesktopTools(reconciledPlugins())).toEqual({
       server: { command, args, env },
       pluginRoots: [
-        "/reconciled/marketplace/plugins/browser",
+        path.join("/reconciled/marketplace", "plugins", "browser"),
         "/reconciled/chrome",
         "/reconciled/computer-use",
       ],
@@ -307,14 +307,14 @@ describe("host Desktop Tools", () => {
       chromeReady: false,
       computerReady: false,
       expectedBackends: "iab",
-      roots: ["/reconciled/marketplace/plugins/browser"],
+      roots: [path.join("/reconciled/marketplace", "plugins", "browser")],
     },
     {
       backends: ["iab"] as const,
       chromeReady: true,
       computerReady: false,
       expectedBackends: "iab",
-      roots: ["/reconciled/marketplace/plugins/browser"],
+      roots: [path.join("/reconciled/marketplace", "plugins", "browser")],
     },
     {
       backends: ["chrome"] as const,

@@ -343,7 +343,7 @@ it.effect(
       const tools = yield* runtime.desktopTools;
       assert.deepEqual(readiness, ["helper", "plugins"]);
       assert.deepEqual(tools?.pluginRoots, [
-        "/reconciled/marketplace/plugins/browser",
+        path.join("/reconciled/marketplace", "plugins", "browser"),
         "/reconciled/computer-use",
       ]);
       assert.equal(tools?.server.env.BROWSER_USE_AVAILABLE_BACKENDS, "iab");
@@ -351,7 +351,7 @@ it.effect(
       chromeReady = true;
       const all = yield* runtime.desktopTools;
       assert.deepEqual(all?.pluginRoots, [
-        "/reconciled/marketplace/plugins/browser",
+        path.join("/reconciled/marketplace", "plugins", "browser"),
         "/reconciled/chrome",
         "/reconciled/computer-use",
       ]);

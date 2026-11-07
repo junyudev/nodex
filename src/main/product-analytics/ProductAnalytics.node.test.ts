@@ -68,8 +68,13 @@ const harness = (input: {
       ),
     );
     const stored = fs.readFileString(statePath).pipe(Effect.map(decodeState));
+    const waitForEmptyOutbox = settle.pipe(
+      Effect.andThen(stored),
+      Effect.repeat({ until: (state) => state.outbox.length === 0, times: 100 }),
+      Effect.map((state) => assert.deepStrictEqual(state.outbox, [])),
+    );
     yield* settle;
-    return { analytics, changes, requests, sentNames, stored };
+    return { analytics, changes, requests, sentNames, stored, waitForEmptyOutbox };
   });
 
 const inertActivity = inertProductAnalytics.activity;
@@ -132,7 +137,7 @@ it.effect("keeps events through a failed delivery and backs off", () =>
   provided(
     Effect.gen(function* () {
       let status = 503;
-      const { analytics, requests, sentNames, stored } = yield* harness({
+      const { analytics, requests, sentNames, stored, waitForEmptyOutbox } = yield* harness({
         status: () => status,
       });
       yield* analytics.noticeAcknowledged;
@@ -146,7 +151,7 @@ it.effect("keeps events through a failed delivery and backs off", () =>
       status = 202;
       yield* advance(MINUTE);
       assert.strictEqual((yield* Ref.get(requests)).length, 2);
-      assert.strictEqual((yield* stored).outbox.length, 0);
+      yield* waitForEmptyOutbox;
       assert.deepStrictEqual((yield* sentNames).slice(-2), [
         "installation_created",
         "app_launched",
@@ -163,10 +168,10 @@ it.effect("keeps events through a failed delivery and backs off", () =>
 it.effect("a batch the service rejects is dropped rather than retried forever", () =>
   provided(
     Effect.gen(function* () {
-      const { analytics, requests, stored } = yield* harness({ status: () => 400 });
+      const { analytics, requests, waitForEmptyOutbox } = yield* harness({ status: () => 400 });
       yield* analytics.noticeAcknowledged;
       yield* advance(2 * MINUTE);
-      assert.strictEqual((yield* stored).outbox.length, 0);
+      yield* waitForEmptyOutbox;
       assert.strictEqual((yield* Ref.get(requests)).length, 1);
       yield* advance(5 * MINUTE);
       assert.strictEqual((yield* Ref.get(requests)).length, 1);

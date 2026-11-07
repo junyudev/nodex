@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { join, resolve, sep } from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { GitRepositoryIdentity } from "../platform/node/GitRepositoryProbe";
@@ -51,25 +53,26 @@ describe("repositoryFromRemoteUrl", () => {
 });
 
 describe("isOfferedProjectFolder", () => {
+  const home = resolve("/Users/me");
   const places = {
-    home: "/Users/me",
-    nodexHome: "/Users/me/.nodex",
-    temporary: ["/tmp"],
+    home,
+    nodexHome: join(home, ".nodex"),
+    temporary: [tmpdir()],
   };
 
   it("offers ordinary work folders", () => {
-    expect(isOfferedProjectFolder("/Users/me/code/widgets", places)).toBe(true);
-    expect(isOfferedProjectFolder("/Users/me/Downloads-archive", places)).toBe(true);
+    expect(isOfferedProjectFolder(join(home, "code", "widgets"), places)).toBe(true);
+    expect(isOfferedProjectFolder(join(home, "Downloads-archive"), places)).toBe(true);
   });
 
   it.each([
-    "/Users/me",
-    "/Users/me/Downloads/thing",
-    "/Users/me/.codex/worktrees/abc",
-    "/Users/me/.claude/projects",
-    "/Users/me/.nodex/generated/one",
-    "/Users/me/Documents/Codex/scratch",
-    "/tmp/experiment",
+    home,
+    join(home, "Downloads", "thing"),
+    join(home, ".codex", "worktrees", "abc"),
+    join(home, ".claude", "projects"),
+    join(home, ".nodex", "generated", "one"),
+    join(home, "Documents", "Codex", "scratch"),
+    join(tmpdir(), "experiment"),
   ])("does not offer %s", (folder) => {
     expect(isOfferedProjectFolder(folder, places)).toBe(false);
   });
@@ -125,14 +128,16 @@ describe("projectCandidatesFromConversations", () => {
   });
 
   it("shortens a path under the home directory", () => {
+    const home = resolve("/home/me");
+    const folder = join(home, "code", "a");
     const [candidate] = projectCandidatesFromConversations(
-      [conversation("a", "/home/me/code/a", NOW)],
+      [conversation("a", folder, NOW)],
       new Map(),
       NOW,
-      "/home/me",
+      home,
     );
-    expect(candidate?.path).toBe("/home/me/code/a");
-    expect(candidate?.displayPath).toBe("~/code/a");
+    expect(candidate?.path).toBe(folder);
+    expect(candidate?.displayPath).toBe(`~${sep}code${sep}a`);
   });
 
   it("lists Git repositories first, newest activity on top", () => {
@@ -194,7 +199,7 @@ describe("discoverProjects", () => {
           Effect.succeed(
             cursor === null
               ? page([entry("a", "/code/a"), entry("gone", "/code/gone", false)], "next")
-              : page([entry("b", "/code/b"), entry("scratch", "/tmp/scratch")]),
+              : page([entry("b", "/code/b"), entry("scratch", join(tmpdir(), "scratch"))]),
           ),
         probe: (cwd) => Effect.succeed(repository(cwd)),
       });
