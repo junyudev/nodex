@@ -1,6 +1,4 @@
-import { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
 import { expect, it } from "vite-plus/test";
-import { serializeAssistantCitation } from "./assistantCitations.ts";
 import { searchableMessageSegments } from "./threadFindText.ts";
 
 const assistantSegments = (text: string, cwd?: string) =>
@@ -69,24 +67,3 @@ it("indexes skill labels in prose but leaves links and code literal", () => {
   ).toEqual(["Use T3 App Testing now.", "$test-t3-app", "$test-t3-app"]);
 });
 
-it("indexes the citation chip label instead of its link text", () => {
-  const citation = {
-    version: 1 as const,
-    environmentId: EnvironmentId.make("environment"),
-    threadId: ThreadId.make("thread"),
-    messageId: MessageId.make("message"),
-    text: "cited   needle",
-    start: 0,
-    end: 14,
-    prefix: "",
-    suffix: "",
-  };
-  const text = `Please fix ${serializeAssistantCitation(citation)} thanks`;
-  expect(searchableMessageSegments({ role: "user", text, streaming: false })).toEqual([
-    "Please fix cited needle thanks",
-  ]);
-  const commented = serializeAssistantCitation({ ...citation, comment: "my note" });
-  expect(searchableMessageSegments({ role: "user", text: commented, streaming: false })).toEqual([
-    "my note",
-  ]);
-});

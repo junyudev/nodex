@@ -1,5 +1,4 @@
 import type { ChatAttachment } from "@t3tools/contracts";
-import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 
 export type ThreadTitleMessage = {
   readonly role: "user" | "assistant" | "system" | "reasoning";
@@ -39,7 +38,7 @@ export function formatThreadTitleContext(messages: ReadonlyArray<ThreadTitleMess
   const contentsFor = (section: (typeof sections)[number]) => {
     const cached = formatted.get(section.index);
     if (cached !== undefined) return cached;
-    const text = assistantCitationsToPlainText(section.message.text).trim();
+    const text = section.message.text.trim();
     const names = section.message.attachments?.map((attachment) => attachment.name).join(", ");
     const contents = [text, ...(names ? [`[Attachments: ${names}]`] : [])]
       .filter(Boolean)

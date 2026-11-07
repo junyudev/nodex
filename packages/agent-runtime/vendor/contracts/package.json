@@ -8,8 +8,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./settings": "./src/settings.ts",
-    "./relay": "./src/relay.ts"
+    "./settings": "./src/settings.ts"
   },
   "scripts": {
     "typecheck": "tsc-rs --noEmit"

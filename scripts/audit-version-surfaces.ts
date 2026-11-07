@@ -81,18 +81,6 @@ const VERSION_SURFACES: readonly Surface[] = [
     "negotiate the MCP Apps extension",
   ],
   [
-    "packages/agent-runtime/vendor/source-control-azure-devops/src/server/AzureDevOpsPullRequestCli.ts:REST_API_VERSION",
-    "runtimeCompatibility",
-    "Azure DevOps REST adapter",
-    "request the pinned remote API format",
-  ],
-  [
-    "packages/agent-runtime/vendor/source-control-github/src/server/GitHubApi.ts:API_VERSION",
-    "runtimeCompatibility",
-    "GitHub REST adapter",
-    "request the pinned remote API format",
-  ],
-  [
     "src/shared/codex-app-server-version.ts:CODEX_THREAD_TIMELINE_MINIMUM_VERSION",
     "runtimeCompatibility",
     "Codex thread timeline",

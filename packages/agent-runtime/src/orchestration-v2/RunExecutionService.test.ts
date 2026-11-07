@@ -51,7 +51,7 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";
 import * as RunExecutionService from "./RunExecutionService.ts";
-import * as RunFinalizationService from "./RunFinalizationService.ts";
+import * as RunFinalizationService from "./RunFinalization.ts";
 
 const driver = ProviderDriverKind.make("codex");
 

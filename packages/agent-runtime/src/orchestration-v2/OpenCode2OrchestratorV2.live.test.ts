@@ -18,7 +18,6 @@
  * `OPENCODE2_STEP_WAIT` seconds (120 by default).
  */
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
-import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeSqlite from "node:sqlite";
 import { assert, it } from "@effect/vitest";
@@ -124,12 +123,7 @@ const layerMcpRegistry = Layer.succeed(
   }),
 );
 
-const layerPlatformTest = Layer.merge(
-  NodeServices.layer,
-  Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
-    resolveLink: () => Effect.die("unused title link"),
-  }),
-);
+const layerPlatformTest = NodeServices.layer;
 const layerServerConfig = ServerConfig.layerTest(`${ROOT}/work`, { prefix: "t3-opencode2-live-" });
 const layerVcsDriverRegistry = VcsDriverRegistry.layer.pipe(
   Layer.provide(VcsProcess.layer),

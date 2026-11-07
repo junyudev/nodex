@@ -20,7 +20,6 @@ import {
   inlineCodeFilePathCandidate,
   resolveMarkdownFileLinkTarget,
 } from "./markdownLinks.ts";
-import { assistantCitationLabel, parseAssistantCitationHref } from "./assistantCitations.ts";
 import type { OrchestrationV2ConversationMessage } from "@t3tools/contracts";
 import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "./proposedPlanText.ts";
 import { unified } from "unified";
@@ -130,13 +129,6 @@ function markdownThreadFindText(
   };
   const visit = (node: TextTree, inPre = false, inlineSkills = false) => {
     const href = node.properties?.href ?? node.properties?.src;
-    const citation =
-      node.tagName === "a" && typeof href === "string" ? parseAssistantCitationHref(href) : null;
-    if (citation) {
-      // Matches the citation chip, which shows its label instead of the link text.
-      text += assistantCitationLabel(citation);
-      return;
-    }
     {
       let candidate: string | null = null;
       if (node.tagName === "a" && typeof href === "string") {

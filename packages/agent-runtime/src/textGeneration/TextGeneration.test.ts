@@ -18,8 +18,6 @@ import { createModelSelection } from "@t3tools/shared/model";
 import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as TextGeneration from "./TextGeneration.ts";
-import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
-import * as Layer from "effect/Layer";
 import { buildThreadTitlePrompt } from "@t3tools/provider-core/server/textGenerationPrompts";
 
 const makeStubTextGeneration = (
@@ -117,11 +115,6 @@ describe("TextGeneration.make", () => {
           ProviderInstanceRegistry.ProviderInstanceRegistry,
           makeStubRegistry([instance]),
         ),
-        Effect.provide(
-          Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
-            resolveLink: () => Effect.die("Supplied context must not be fetched again"),
-          }),
-        ),
       );
       yield* generation.generateThreadTitle({
         cwd: process.cwd(),
@@ -161,11 +154,6 @@ describe("TextGeneration.make", () => {
           ProviderInstanceRegistry.ProviderInstanceRegistry,
           makeStubRegistry([personal, work]),
         ),
-        Effect.provide(
-          Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
-            resolveLink: () => Effect.die("No link lookup expected"),
-          }),
-        ),
       );
 
       const result = yield* tg.generateBranchName({
@@ -185,11 +173,6 @@ describe("TextGeneration.make", () => {
         Effect.provideService(
           ProviderInstanceRegistry.ProviderInstanceRegistry,
           makeStubRegistry([]),
-        ),
-        Effect.provide(
-          Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
-            resolveLink: () => Effect.die("No link lookup expected"),
-          }),
         ),
       );
 

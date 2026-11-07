@@ -2,11 +2,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
-import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 
 export const layer = Layer.merge(
-  Layer.mock(GitWorkflow.GitWorkflowService)({
+  Layer.mock(GitVcsDriver.GitVcsDriver)({
     pruneWorktrees: () => Effect.void,
     createWorktree: () => Effect.succeed({} as never),
   }),

@@ -30,7 +30,6 @@ import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
-import * as GitWorkflowService from "../git/GitWorkflow.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
@@ -132,9 +131,7 @@ export const layer: Layer.Layer<
     const contextHandoffService = yield* ContextHandoffService.ContextHandoffServiceV2;
     const idAllocator = yield* IdAllocator.IdAllocatorV2;
     const fileSystem = yield* FileSystem.FileSystem;
-    const hostGitWorkflow = yield* Effect.serviceOption(GitWorkflowService.GitWorkflowService);
-    const nativeGit = yield* Effect.serviceOption(GitVcsDriver.GitVcsDriver);
-    const gitWorkflow = Option.getOrUndefined(hostGitWorkflow) ?? Option.getOrUndefined(nativeGit);
+    const git = Option.getOrUndefined(yield* Effect.serviceOption(GitVcsDriver.GitVcsDriver));
     const projects = yield* ProjectService.ProjectService;
     const providerAuth = yield* ProviderAuthService.ProviderAuthService;
     const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
@@ -585,7 +582,7 @@ export const layer: Layer.Layer<
         }
       }
       const { worktreePath, branch } = projection.thread;
-      if (worktreePath !== null && branch !== null && gitWorkflow !== undefined) {
+      if (worktreePath !== null && branch !== null && git !== undefined) {
         const exists = yield* fileSystem
           .exists(worktreePath)
           .pipe(Effect.orElseSucceed(() => true));
@@ -600,9 +597,9 @@ export const layer: Layer.Layer<
               worktreePath,
               branch,
             });
-            yield* gitWorkflow.pruneWorktrees({ cwd: project.workspaceRoot }).pipe(
+            yield* git.pruneWorktrees({ cwd: project.workspaceRoot }).pipe(
               Effect.andThen(
-                gitWorkflow.createWorktree({
+                git.createWorktree({
                   cwd: project.workspaceRoot,
                   refName: branch,
                   path: worktreePath,

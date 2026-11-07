@@ -20,7 +20,7 @@ const providerCore = (file) =>
       root + "/packages/agent-runtime/vendor/provider-core/src/server/" + file + ".ts",
     )
   );
-const [Start, Projection, Run, Sessions, Policy, Id, Sink, Handoff, Git, Project, Auth, Commands] =
+const [Start, Projection, Run, Sessions, Policy, Id, Sink, Handoff, Project, Auth, Commands] =
   await Promise.all([
     app("orchestration-v2/ProviderTurnStartService"),
     app("orchestration-v2/ProjectionStore"),
@@ -30,7 +30,6 @@ const [Start, Projection, Run, Sessions, Policy, Id, Sink, Handoff, Git, Project
     providerCore("IdAllocator"),
     app("orchestration-v2/EventSink"),
     app("orchestration-v2/ContextHandoffService"),
-    app("git/GitWorkflowService"),
     app("project/ProjectService"),
     app("provider/ProviderAuthService"),
     app("orchestration-v2/ThreadCommandExecutor"),
@@ -55,7 +54,6 @@ const dependencies = Layer.mergeAll(
   Id.layer,
   Commands.layer,
   FileSystem.layerNoop({}),
-  Layer.mock(Git.GitWorkflowService)({}),
   Layer.mock(Project.ProjectService)({}),
   Layer.mock(Auth.ProviderAuthService)({}),
   Layer.mock(Projection.ProjectionStoreV2)({
