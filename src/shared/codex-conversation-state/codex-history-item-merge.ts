@@ -1,6 +1,13 @@
 import type { CodexCanonicalItem } from "./codex-conversation-state";
 import { areStructurallyEqual } from "../structural-equality";
 
+const insertionItemId = (mode: CodexHistoryItemMergeMode): string | null =>
+  typeof mode !== "object"
+    ? null
+    : "pageBeforeItemId" in mode
+      ? mode.pageBeforeItemId
+      : mode.snapshotBeforeItemId;
+
 /** Inserts new items before their next resident anchor, preserving resident values on overlap. */
 export function mergeCodexAnchoredHistoryItems<T>(
   existing: readonly T[],
@@ -24,8 +31,9 @@ export function mergeCodexAnchoredHistoryItems<T>(
     result.splice(index, 0, ...pending);
     pending = [];
   }
-  if (typeof direction === "object" && direction.snapshotBeforeItemId !== null) {
-    const index = result.findIndex((item) => identity(item) === direction.snapshotBeforeItemId);
+  const before = insertionItemId(direction);
+  if (before !== null) {
+    const index = result.findIndex((item) => identity(item) === before);
     if (index >= 0) return [...result.slice(0, index), ...pending, ...result.slice(index)];
   }
   return !overlap && direction === "prepend" ? [...pending, ...result] : [...result, ...pending];
@@ -34,7 +42,8 @@ export function mergeCodexAnchoredHistoryItems<T>(
 export type CodexHistoryItemMergeMode =
   | "prepend"
   | "append"
-  | { readonly snapshotBeforeItemId: string | null };
+  | { readonly snapshotBeforeItemId: string | null }
+  | { readonly pageBeforeItemId: string | null };
 
 const isFinalAnswer = (
   item: CodexCanonicalItem,
@@ -81,7 +90,8 @@ export function mergeCodexCanonicalHistoryItems(
   mode: CodexHistoryItemMergeMode,
   { preferIncomingItems = false }: { readonly preferIncomingItems?: boolean } = {},
 ) {
-  const snapshot = typeof mode === "object";
+  const positioned = typeof mode === "object";
+  const snapshot = positioned && "snapshotBeforeItemId" in mode;
   const byId = new Map(existing.map((item) => [item.id, item]));
   const updates = new Map<string, CodexCanonicalItem>();
   const anchors = new Map<string, string>();
@@ -108,7 +118,7 @@ export function mergeCodexCanonicalHistoryItems(
       );
       continue;
     }
-    if (snapshot || !isFinalAnswer(item)) continue;
+    if (positioned || !isFinalAnswer(item)) continue;
     const match = existing.find(
       (candidate) =>
         !updates.has(candidate.id) && isFinalAnswer(candidate) && candidate.text === item.text,
@@ -140,8 +150,9 @@ export function mergeCodexCanonicalHistoryItems(
     pending = [];
   }
   if (pending.length === 0) return { items: result, aliases };
-  if (snapshot && mode.snapshotBeforeItemId !== null) {
-    const index = result.findIndex((item) => item.id === mode.snapshotBeforeItemId);
+  const before = insertionItemId(mode);
+  if (before !== null) {
+    const index = result.findIndex((item) => item.id === before);
     if (index >= 0)
       return { items: [...result.slice(0, index), ...pending, ...result.slice(index)], aliases };
   }

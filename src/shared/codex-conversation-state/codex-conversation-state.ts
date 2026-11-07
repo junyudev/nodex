@@ -1646,6 +1646,7 @@ export function mergeCodexCanonicalTurnState(
     itemsPagination = {
       ...incomingPagination,
       olderCursor: complete ? null : cursor,
+      olderPageBeforeItemId: complete ? undefined : previous?.olderPageBeforeItemId,
       hasLoadedOldest: complete,
       reconnect:
         complete || overlaps

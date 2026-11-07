@@ -250,10 +250,6 @@ test("benchmarks native paginated history without running a model Turn", async (
   const order = (process.env.NODEX_NATIVE_TRANSCRIPT_CORPUS_ORDER ?? "short,long").split(",");
   if (order.some((corpus) => corpus !== "short" && corpus !== "long"))
     throw new Error("Invalid native corpus order");
-  const activeEvictionSetting = process.env.NODEX_NATIVE_TRANSCRIPT_ACTIVE_EVICTION ?? "0";
-  if (activeEvictionSetting !== "0" && activeEvictionSetting !== "1")
-    throw new Error("Native transcript active eviction must be explicitly 0 or 1");
-  const activeEviction = activeEvictionSetting === "1";
   const timelineSetting = process.env.NODEX_NATIVE_TRANSCRIPT_TIMELINE ?? "0";
   if (timelineSetting !== "0" && timelineSetting !== "1")
     throw new Error("Native transcript timeline history must be explicitly 0 or 1");
@@ -264,7 +260,6 @@ test("benchmarks native paginated history without running a model Turn", async (
     const enabledFeatures: readonly DevelopmentFeatureSlug[] = [
       "runtime-metrics",
       ...(timelineEnabled ? (["thread-timeline-history"] as const) : []),
-      ...(activeEviction ? (["active-history-eviction"] as const) : []),
     ];
     const harness = await ElectronScenarioHarness.create({
       label: `native-history-${corpus.corpus}`,
@@ -411,7 +406,6 @@ test("benchmarks native paginated history without running a model Turn", async (
       )) as CodexRendererHostContext;
       expect(hostContext.supportsThreadTimeline).toBe(true);
       expect(hostContext.historyPolicy?.timeline).toBe(timelineEnabled);
-      expect(hostContext.historyPolicy?.activeEviction).toBe(activeEviction);
       if (timelineEnabled) {
         await expect
           .poll(

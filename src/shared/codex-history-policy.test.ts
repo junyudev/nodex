@@ -1,6 +1,5 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import {
-  CodexHistoryPolicy,
   CodexHistoryViewportRegistry,
   projectCodexHistoryViewportBoundary,
 } from "./codex-history-policy";
@@ -13,39 +12,21 @@ describe("history experiment and viewport ownership", () => {
       const boundary = projectCodexHistoryViewportBoundary({
         distanceFromBottom: 0,
         hasPendingScrollTarget: false,
-        viewportRows: [{ kind: "content", turnId: "turn", status: "inProgress", turnItemIds }],
+        viewportRows: [
+          { kind: "content", turnId: "turn", turnIndex: 0, status: "inProgress", turnItemIds },
+        ],
       });
       expect(boundary?.firstProtectedItemId).toBe(count < 500 ? null : String(count - 500));
     },
   );
-  test.each([false, true])("captures the first assigned eviction result %s", (assigned) => {
-    let value: boolean | null | undefined;
-    const read = vi.fn(() => value);
-    const policy = new CodexHistoryPolicy({
-      source: "development-features",
-      scope: "host:local",
-      readThreadTimelineEnabled: () => value,
-      readActiveHistoryEvictionEnabled: read,
-    });
-    expect(policy.readActiveHistoryEvictionEnabled()).toBeUndefined();
-    value = null;
-    expect(policy.readActiveHistoryEvictionEnabled()).toBeUndefined();
-    value = assigned;
-    expect(policy.readActiveHistoryEvictionEnabled()).toBe(assigned);
-    value = !assigned;
-    expect(policy.readActiveHistoryEvictionEnabled()).toBe(assigned);
-    expect(read).toHaveBeenCalledTimes(3);
-    expect(policy.readThreadTimelineEnabled()).toBe(!assigned);
-  });
-
   test("a second viewer null veto persists until that viewer is actually removed", () => {
     const changed = vi.fn();
     const viewports = new CodexHistoryViewportRegistry(changed);
     const first = Symbol();
     const second = Symbol();
-    const boundary = { oldestRenderedTurnId: "turn", firstProtectedItemId: "item" };
-    viewports.set(first, boundary);
-    viewports.set(first, { ...boundary });
+    const boundary = { oldestProtectedTurnId: "turn", firstProtectedItemId: "item" };
+    expect(viewports.set(first, boundary)).toBe(true);
+    expect(viewports.set(first, { ...boundary })).toBe(false);
     viewports.set(second, null);
     expect(viewports.getBoundaries()).toEqual([boundary, null]);
     viewports.set(second, undefined);
@@ -68,10 +49,10 @@ describe("history experiment and viewport ownership", () => {
     const input = {
       distanceFromBottom: 24,
       hasPendingScrollTarget: false,
-      viewportRows: [{ kind: "gap" as const }, live],
+      viewportRows: [live],
     };
     expect(projectCodexHistoryViewportBoundary(input)).toEqual({
-      oldestRenderedTurnId: "live",
+      oldestProtectedTurnId: "live",
       firstProtectedItemId: "1000",
     });
     expect(projectCodexHistoryViewportBoundary({ ...input, distanceFromBottom: 24.1 })).toBeNull();
@@ -81,9 +62,23 @@ describe("history experiment and viewport ownership", () => {
     expect(
       projectCodexHistoryViewportBoundary({
         ...input,
-        retainedRow: { ...live, turnId: "retained", status: "completed", turnIndex: 1 },
+        retainedRows: [{ ...live, turnId: "retained", status: "completed", turnIndex: 1 }],
       }),
-    ).toEqual({ oldestRenderedTurnId: "retained", firstProtectedItemId: null });
+    ).toEqual({ oldestProtectedTurnId: "retained", firstProtectedItemId: null });
+    // A visible gap means older history is being read, so nothing beneath it may be released.
+    expect(
+      projectCodexHistoryViewportBoundary({
+        ...input,
+        viewportRows: [{ kind: "gap", turnIndex: 1 }, live],
+      }),
+    ).toBeNull();
+    // A gap inside the Turn below stays on screen whenever that Turn folds its work.
+    expect(
+      projectCodexHistoryViewportBoundary({
+        ...input,
+        viewportRows: [{ kind: "gap", turnIndex: 1, insideTurn: true }, live],
+      }),
+    ).toEqual({ oldestProtectedTurnId: "live", firstProtectedItemId: "1000" });
     expect(
       projectCodexHistoryViewportBoundary({ ...input, viewportRows: [{ ...live, turnId: null }] }),
     ).toBeNull();
@@ -98,6 +93,6 @@ describe("history experiment and viewport ownership", () => {
         ...input,
         viewportRows: [{ ...live, turnItemIds: ["short"] }],
       }),
-    ).toEqual({ oldestRenderedTurnId: "live", firstProtectedItemId: null });
+    ).toEqual({ oldestProtectedTurnId: "live", firstProtectedItemId: null });
   });
 });

@@ -20,6 +20,11 @@ export interface HistoryViewport {
   readonly viewportStartPx: number;
   readonly viewportEndPx: number;
   readonly gaps: readonly LocalConversationHistoryGapLayout[];
+  /**
+   * A reader away from the live tail reads ahead. At the tail only a gap on screen between Turns is
+   * demanded, so a reader there never rereads what retention just released.
+   */
+  readonly readsAhead: boolean;
 }
 
 type HistoryBoundaryLoader = (boundary: CodexHistoryBoundaryRef) => Promise<unknown>;
@@ -293,15 +298,21 @@ function isFiniteRange(startPx: number, endPx: number): boolean {
   return Number.isFinite(startPx) && Number.isFinite(endPx) && endPx >= startPx;
 }
 
-function distanceFromViewportPx(
-  gapStartPx: number,
-  gapEndPx: number,
-  viewportStartPx: number,
-  viewportEndPx: number,
-): number {
-  if (gapEndPx < viewportStartPx) return viewportStartPx - gapEndPx;
-  if (gapStartPx > viewportEndPx) return gapStartPx - viewportEndPx;
-  return 0;
+/** How far from the viewport a position demands history. */
+export function historyLoadReachPx(readsAhead: boolean): number {
+  return readsAhead ? CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX : 0;
+}
+
+export function isLocalConversationHistoryGapDemanded(
+  gap: LocalConversationHistoryGapLayout,
+  viewport: Pick<HistoryViewport, "viewportStartPx" | "viewportEndPx" | "readsAhead">,
+): boolean {
+  if (!viewport.readsAhead && gap.row.insideTurn) return false;
+  const reachPx = historyLoadReachPx(viewport.readsAhead);
+  return (
+    gap.endPx >= viewport.viewportStartPx - reachPx &&
+    gap.startPx <= viewport.viewportEndPx + reachPx
+  );
 }
 
 /** Selects the closest edge of a nearby gap; equal distances preserve gap and edge order. */
@@ -314,11 +325,7 @@ export function selectLocalConversationHistoryGapBoundary(
   let distance = Infinity;
   for (const gap of input.gaps) {
     if (!isFiniteRange(gap.startPx, gap.endPx)) continue;
-    if (
-      distanceFromViewportPx(gap.startPx, gap.endPx, input.viewportStartPx, input.viewportEndPx) >
-      CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX
-    )
-      continue;
+    if (!isLocalConversationHistoryGapDemanded(gap, input)) continue;
     for (const [boundary, position] of [
       [gap.row.olderBoundary, gap.startPx],
       [gap.row.newerBoundary, gap.endPx],
@@ -351,9 +358,11 @@ export function LocalConversationHistoryGap({
     state?.loading &&
     (sameHistoryBoundary(state.loading, row.olderBoundary) ||
       sameHistoryBoundary(state.loading, row.newerBoundary));
+  const boundary = row.newerBoundary ?? row.olderBoundary;
+  const offersEarlierWork = row.insideTurn === true && boundary !== null;
   return (
     <div
-      aria-hidden={!failure && !loading ? true : undefined}
+      aria-hidden={!failure && !loading && !offersEarlierWork ? true : undefined}
       data-virtualized-turn-content
       data-history-gap-key={row.key}
       style={{ height: row.estimatedHeightPx }}
@@ -372,6 +381,14 @@ export function LocalConversationHistoryGap({
           <ActivitySpinnerIcon className="icon-xs" />
           <span className="sr-only">Loading history</span>
         </span>
+      ) : offersEarlierWork ? (
+        <button
+          type="button"
+          onClick={() => onRetry?.(boundary)}
+          className="text-size-chat-sm text-token-text-secondary hover:text-token-foreground"
+        >
+          Show earlier work
+        </button>
       ) : null}
     </div>
   );

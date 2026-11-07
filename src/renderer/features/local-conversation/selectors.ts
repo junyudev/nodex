@@ -298,10 +298,7 @@ export function hasRecoverableCanonicalTurnItems(
   turn: Pick<CodexCanonicalTurnState, "itemsPagination">,
 ): boolean {
   const pagination = turn.itemsPagination;
-  return (
-    pagination?.hasLoadedOldest === false &&
-    (pagination.itemsView !== "full" || pagination.evicted === true)
-  );
+  return pagination?.hasLoadedOldest === false && pagination.itemsView !== "full";
 }
 
 export function selectVisibleConversationTurnStructure(input: {

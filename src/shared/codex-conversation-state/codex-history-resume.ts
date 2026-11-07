@@ -104,6 +104,7 @@ export function mergeCodexResumedItemsPagination(
   const result: CodexHistoryTurnItemsPagination = {
     ...incoming,
     olderCursor: hasLoadedOldest ? null : olderCursor,
+    olderPageBeforeItemId: hasLoadedOldest ? undefined : existing?.olderPageBeforeItemId,
     hasLoadedOldest,
     itemsView: hasLoadedOldest ? "full" : incoming.itemsView,
     reconnect:

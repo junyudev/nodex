@@ -154,7 +154,7 @@ export class CanonicalCompleteHistoryLoader implements Disposable {
       });
     }
     if (!this.disposed && generation === this.generation)
-      await this.items.loadRemainingTurnItems(id, { includeEvicted: true });
+      await this.items.loadRemainingTurnItems(id);
   }
   private async loadTail(
     id: string,

@@ -4,10 +4,7 @@ import { areStructurallyEqual } from "../../../shared/structural-equality";
 import { useCodexConversationValue } from "./local-conversation-store";
 import { useCodexConversationTranscriptStructure } from "./normalized-transcript-hooks";
 import { selectNormalizedConversationTurnEntries } from "./normalized-transcript-selectors";
-import {
-  hasRecoverableCanonicalTurnItems,
-  type NormalizedConversationTurnEntry,
-} from "./selectors";
+import type { NormalizedConversationTurnEntry } from "./selectors";
 import type { ThreadBodyConversationPresentation } from "./projection/build-thread-body-model";
 import type {
   CodexTranscriptReadOwner,
@@ -163,9 +160,7 @@ export function useConversationBodyPresentation(
           ({ value }) =>
             value.itemSlots.entries.length > 0 ||
             value.details.params.input.length > 0 ||
-            Boolean(value.details.diff?.trim()) ||
-            (value.details.itemsPagination?.evicted === true &&
-              hasRecoverableCanonicalTurnItems(value.details)),
+            Boolean(value.details.diff?.trim()),
         ),
       hasRealtimeHistory:
         structure.itemTimeline?.entries.some(

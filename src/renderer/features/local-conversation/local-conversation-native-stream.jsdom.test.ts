@@ -164,10 +164,10 @@ vi.mock("./local-conversation-deps", () => ({
         sourceEpoch: fixture.sourceEpoch ?? `native-${fixture.generation}`,
         supportsPaginatedHistory: true,
         supportsThreadTimeline: fixture.timelinePage !== null,
+        supportsThreadItemAnchors: true,
         historyPolicy: {
           source: "test",
           timeline: fixture.timelinePage !== null,
-          activeEviction: false,
         },
         supportsTurnApprovalsReviewer: false,
         supportsSearchOccurrences: false,
@@ -1184,11 +1184,9 @@ test("compact history metadata survives text changes and item-ref admission reje
       residentConversationTurns(canonical).map((turn) => ({
         ...turn,
         itemsPagination: {
-          itemsView: "full" as const,
+          itemsView: "summary" as const,
           source: "ordinary" as const,
-          olderCursor: null,
-          olderItemId: message.id,
-          evicted: true,
+          olderCursor: { type: "item" as const, itemId: message.id },
           isLoadingOlder: false,
           hasLoadedOldest: false,
         },
@@ -1293,7 +1291,6 @@ test("compact history metadata survives text changes and item-ref admission reje
     cursor: { type: "item", itemId: message.id },
   });
   expect(follower.readConversation(threadId)!.turnItemsPaginationById![turnId]).toMatchObject({
-    evicted: false,
     hasLoadedOldest: true,
   });
 });

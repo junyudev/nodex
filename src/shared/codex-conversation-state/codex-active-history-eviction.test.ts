@@ -1,224 +1,237 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import { produce, type Draft } from "immer";
-import {
-  createCodexCanonicalHydratedConversationState,
-  type CodexCanonicalConversationState,
-  type CodexCanonicalItem,
+import type {
+  CodexCanonicalConversationState,
+  CodexCanonicalItem,
 } from "./codex-conversation-state";
-import { buildAgentActivityV2CorpusThread } from "./test-fixtures/agent-activity-v2-corpus-provenance";
+import { buildActiveHistoryFixture } from "./test-fixtures/active-history";
 import {
+  applyCodexActiveHistoryEviction,
   CODEX_ACTIVE_HISTORY_PROTECTED_ITEM_TYPES,
-  evictCodexActiveHistory,
+  CodexActiveHistoryWindow,
   isCodexActiveHistoryItemEvictable,
   planCodexActiveHistoryEviction,
-  type CodexActiveHistoryEvictionOptions,
+  type CodexActiveHistoryCapabilities,
+  type CodexActiveHistoryWindowOptions,
 } from "./codex-active-history-eviction";
+import type { CodexHistoryViewportBoundary } from "../codex-history-policy";
 
-function fixture(counts: readonly number[] = [1500]): CodexCanonicalConversationState {
-  const thread = buildAgentActivityV2CorpusThread([]);
-  const state = createCodexCanonicalHydratedConversationState(
-    {
-      ...thread,
-      id: "thread",
-      path: "/synthetic/thread.jsonl",
-      turns: counts.map((count, turnIndex) => ({
-        id: `turn-${turnIndex}`,
-        rootTurnId: null,
-        items: Array.from({ length: count }, (_, index) => ({
-          type: "reasoning" as const,
-          id: `item-${turnIndex}-${index}`,
-          summary: [],
-          content: [],
-        })),
-        itemsView: "full",
-        status: "completed",
-        error: null,
-        startedAt: 1,
-        completedAt: 2,
-        durationMs: 1000,
-      })),
-    },
-    {
-      hostId: "local",
-      model: "model",
-      reasoningEffort: null,
-      cwd: "/workspace",
-      approvalPolicy: "on-request",
-      approvalsReviewer: "user",
-      sandboxPolicy: { type: "readOnly", networkAccess: false },
-      activePermissionProfile: null,
-      runtimeWorkspaceRoots: ["/workspace"],
-    },
-  );
-  const entries = state.turns.map((_, index) => ({
-    key: `entity-${index}`,
-    value: `entity-${index}`,
-  }));
-  return {
-    ...state,
-    turns: [],
-    resumeState: "resumed",
-    turnHistory: {
-      kind: "canonical",
-      history: {
-        generation: 1,
-        isComplete: true,
-        islands: [
-          {
-            id: "island",
-            entries,
-            olderBoundary: { status: "exhausted", boundaryId: "older" },
-            newerBoundary: { status: "exhausted", boundaryId: "newer" },
-          },
-        ],
-        entitiesByKey: Object.fromEntries(
-          state.turns.map((turn, index) => [
-            `entity-${index}`,
-            {
-              ...turn,
-              completedItemIds: Object.fromEntries(turn.items.map((item) => [item.id, true])),
-            },
-          ]),
-        ),
-      },
-    },
-  };
-}
-function options(
-  overrides: Partial<CodexActiveHistoryEvictionOptions> = {},
-): CodexActiveHistoryEvictionOptions {
-  return {
-    viewports: [{ oldestRenderedTurnId: "turn-0", firstProtectedItemId: "item-0-1000" }],
-    supportsThreadItemAnchors: true,
-    supportsPaginatedThreadHistory: true,
-    isFollower: false,
-    hasFollowersOrPendingReconnect: false,
-    readEnabled: () => true,
-    ...overrides,
-  };
-}
-function turn(state: CodexCanonicalConversationState, entityKey = "entity-0") {
-  return state.turnHistory!.history.entitiesByKey[entityKey]!;
-}
+const fixture = buildActiveHistoryFixture;
 
-describe("viewport protected active-history eviction", () => {
-  test("1000 items do not trigger; 1001 trims a safe prefix towards 500", () => {
-    expect(
-      planCodexActiveHistoryEviction(
-        fixture([1000]),
-        options({
-          viewports: [{ oldestRenderedTurnId: "turn-0", firstProtectedItemId: "item-0-999" }],
-        }),
-      ),
-    ).toBeNull();
-    expect(
-      planCodexActiveHistoryEviction(
-        fixture([1001]),
-        options({
-          viewports: [{ oldestRenderedTurnId: "turn-0", firstProtectedItemId: "item-0-501" }],
-        }),
-      ),
-    ).toEqual([{ entityKey: "entity-0", count: 501 }]);
+const capabilities: CodexActiveHistoryCapabilities = {
+  supportsThreadItemAnchors: true,
+  supportsPaginatedThreadHistory: true,
+  isFollower: false,
+  hasFollowersOrPendingReconnect: false,
+};
+const viewingTurn = (
+  turnId: string,
+  firstProtectedItemId: string | null = null,
+): readonly CodexHistoryViewportBoundary[] => [
+  { oldestProtectedTurnId: turnId, firstProtectedItemId },
+];
+const plan = (
+  state: CodexCanonicalConversationState | null,
+  boundaries: readonly (CodexHistoryViewportBoundary | null)[] = [],
+  overrides: Partial<CodexActiveHistoryCapabilities> = {},
+) => planCodexActiveHistoryEviction(state, boundaries, { ...capabilities, ...overrides });
+function release(
+  state: CodexCanonicalConversationState,
+  boundaries: readonly (CodexHistoryViewportBoundary | null)[] = [],
+  cursor: string | null = "older-turns",
+): CodexCanonicalConversationState {
+  const selected = plan(state, boundaries);
+  if (!selected) throw new Error("Expected a release plan");
+  return produce(state, (draft) => applyCodexActiveHistoryEviction(draft, selected, cursor));
+}
+const turn = (state: CodexCanonicalConversationState, entityKey = "entity-0") =>
+  state.turnHistory!.history.entitiesByKey[entityKey]!;
+const itemIds = (state: CodexCanonicalConversationState, entityKey = "entity-0") =>
+  turn(state, entityKey).items.map(({ id }) => id);
+const replaceItem = (
+  state: CodexCanonicalConversationState,
+  index: number,
+  item: { readonly type: string; readonly id: string },
+) =>
+  produce(state, (draft) => {
+    draft.turnHistory!.history.entitiesByKey["entity-0"]!.items[index] =
+      item as Draft<CodexCanonicalItem>;
   });
 
-  test("1500 live items retain the final 500 and release completion evidence of removed items", () => {
+describe("active history retention", () => {
+  test("1000 items stay resident; the 1001st releases a prefix down to 500", () => {
+    expect(plan(fixture([1000]), viewingTurn("turn-0", "item-0-999"))).toBeNull();
+    expect(plan(fixture([1001]), viewingTurn("turn-0", "item-0-501"))?.itemCuts).toEqual([
+      { entityKey: "entity-0", end: 501, retained: new Set() },
+    ]);
+  });
+
+  test("a long running Turn keeps its final 500 items and anchors older history to the first", () => {
     const before = produce(fixture(), (draft) => {
       draft.turnHistory!.history.entitiesByKey["entity-0"]!.status = "inProgress";
     });
-    const after = evictCodexActiveHistory(before, options());
+    const after = release(before, viewingTurn("turn-0", "item-0-1000"));
     expect(turn(after).items).toHaveLength(500);
     expect(turn(after).items[0]!.id).toBe("item-0-1000");
     expect(turn(after).completedItemIds?.["item-0-999"]).toBeUndefined();
     expect(turn(after).completedItemIds?.["item-0-1000"]).toBe(true);
     expect(turn(after).itemsPagination).toMatchObject({
-      olderCursor: null,
-      olderItemId: "item-0-1000",
-      evicted: true,
+      olderCursor: { type: "item", itemId: "item-0-1000" },
+      itemsView: "summary",
       hasLoadedOldest: false,
     });
+    expect(turn(after).itemsPagination?.olderPageBeforeItemId).toBeUndefined();
     expect(turn(before).items).toHaveLength(1500);
   });
 
-  test("a fully emptied older Turn has no invented anchor; the protected Turn remains identical", () => {
-    const before = fixture([600, 501]);
-    const after = evictCodexActiveHistory(
-      before,
-      options({ viewports: [{ oldestRenderedTurnId: "turn-1", firstProtectedItemId: null }] }),
-    );
-    expect(turn(after).items).toEqual([]);
-    expect(turn(after).itemsPagination).toMatchObject({
-      olderCursor: null,
-      evicted: true,
-      hasLoadedOldest: false,
+  test("released items take their per-item timing and lifecycle evidence with them", () => {
+    const before = produce(fixture(), (draft) => {
+      const value = draft.turnHistory!.history.entitiesByKey["entity-0"]!;
+      value.assistantMessageStartedAtMsById = { "item-0-0": 1, "item-0-1400": 2 };
+      value.commandExecutionStartedAtMsById = { "item-0-0": 1 };
+      value.lifecycleStatusByItemId = { "item-0-0": "completed" };
+      value.interruptedCommandExecutionItemIds = ["item-0-0", "item-0-1400"];
     });
-    expect((turn(after).itemsPagination as { olderItemId?: string }).olderItemId).toBeUndefined();
-    expect(turn(after, "entity-1")).toBe(turn(before, "entity-1"));
+    const after = turn(release(before));
+    expect(after.assistantMessageStartedAtMsById).toEqual({ "item-0-1400": 2 });
+    expect(after.commandExecutionStartedAtMsById).toBeUndefined();
+    expect(after.lifecycleStatusByItemId).toBeUndefined();
+    expect(after.interruptedCommandExecutionItemIds).toEqual(["item-0-1400"]);
   });
 
-  test("all viewers protect their earliest common item and null/unknown IDs stop eviction", () => {
-    const before = fixture();
+  test("whole settled Turns leave the topology, behind a loadable boundary", () => {
+    const before = fixture([300, 300, 300, 300]);
+    const after = release(before);
+    const history = after.turnHistory!.history;
+    expect(history.islands[0]!.entries.map(({ value }) => value)).toEqual(["entity-2", "entity-3"]);
+    expect(history.entitiesByKey["entity-0"]).toBeUndefined();
+    expect(history.entitiesByKey["entity-1"]).toBeUndefined();
+    expect(history.generation).toBe(2);
+    expect(history.isComplete).toBe(false);
+    expect(history.islands[0]!.olderBoundary).toMatchObject({
+      status: "available",
+      handle: { cursor: "older-turns", oldestLoadedTurnId: "turn-2" },
+    });
+    expect(after.turnsPagination).toMatchObject({
+      olderCursor: "older-turns",
+      oldestLoadedTurnId: "turn-2",
+      hasLoadedOldest: false,
+    });
+    expect(itemIds(after, "entity-2")).toHaveLength(200);
+    expect(turn(after, "entity-3")).toBe(turn(before, "entity-3"));
+  });
+
+  test("a Turn released whole after a partial one leaves the older part in its own island", () => {
+    const before = produce(fixture([50, 400, 600, 100]), (draft) => {
+      draft.turnHistory!.history.entitiesByKey["entity-0"]!.hookRuns = [{ id: "hook" } as never];
+    });
+    const after = release(before);
+    const history = after.turnHistory!.history;
+    expect(history.islands.map(({ entries }) => entries.map(({ value }) => value))).toEqual([
+      ["entity-0"],
+      ["entity-2", "entity-3"],
+    ]);
+    expect(history.islands[0]).toMatchObject({
+      olderBoundary: { status: "exhausted" },
+      newerBoundary: { status: "exhausted" },
+    });
+    expect(history.islands[1]!.olderBoundary).toMatchObject({
+      status: "available",
+      handle: { cursor: "older-turns", oldestLoadedTurnId: "turn-2" },
+    });
+    expect(itemIds(after)).toEqual(["item-0-49"]);
+    expect(after.turnsPagination).toEqual(before.turnsPagination);
+  });
+
+  test("no viewer lets a background conversation stay bounded; any veto stops it", () => {
+    const state = fixture();
+    expect(plan(state, [])).not.toBeNull();
+    expect(plan(state, [null])).toBeNull();
+    expect(plan(state, [...viewingTurn("turn-0", "item-0-1000"), null])).toBeNull();
+    expect(plan(state, viewingTurn("unknown"))).toBeNull();
+    expect(plan(state, viewingTurn("turn-0", "unknown"))).toBeNull();
+  });
+
+  test("all viewers protect their earliest position", () => {
     expect(
-      planCodexActiveHistoryEviction(
-        before,
-        options({
-          viewports: [
-            { oldestRenderedTurnId: "turn-0", firstProtectedItemId: "item-0-900" },
-            { oldestRenderedTurnId: "turn-0", firstProtectedItemId: "item-0-400" },
-          ],
-        }),
-      ),
-    ).toEqual([{ entityKey: "entity-0", count: 400 }]);
-    for (const viewports of [
-      [],
-      [null],
-      [{ oldestRenderedTurnId: "turn-0", firstProtectedItemId: null }],
-      [{ oldestRenderedTurnId: "turn-0", firstProtectedItemId: "unknown" }],
-      [{ oldestRenderedTurnId: "unknown", firstProtectedItemId: "item" }],
-    ])
-      expect(planCodexActiveHistoryEviction(before, options({ viewports }))).toBeNull();
+      plan(fixture(), [
+        ...viewingTurn("turn-0", "item-0-900"),
+        ...viewingTurn("turn-0", "item-0-400"),
+      ])?.itemCuts,
+    ).toEqual([{ entityKey: "entity-0", end: 400, retained: new Set() }]);
+    expect(plan(fixture([1500, 100]), viewingTurn("turn-0"))).toBeNull();
+  });
+
+  test("a viewer reading an older island does not stop the live tail from being bounded", () => {
+    const state = produce(fixture([1200]), (draft) => {
+      const history = draft.turnHistory!.history;
+      history.entitiesByKey["older-entity"] = {
+        ...history.entitiesByKey["entity-0"]!,
+        turnId: "older-turn",
+        items: [],
+      };
+      history.islands.unshift({
+        id: "older-island",
+        entries: [{ key: "older-entity", value: "older-entity" }],
+        olderBoundary: { status: "exhausted", boundaryId: "older-island:older" },
+        newerBoundary: { status: "opaque", boundaryId: "older-island:newer" },
+      });
+      history.islands[1]!.olderBoundary = { status: "opaque", boundaryId: "island:older" };
+    });
+    expect(plan(state, viewingTurn("older-turn"))?.itemCuts).toEqual([
+      { entityKey: "entity-0", end: 700, retained: new Set() },
+    ]);
+  });
+
+  test("a live tail split from its history is not this window's to release", () => {
+    const state = produce(fixture(), (draft) => {
+      draft.turnHistory!.history.islands[0]!.newerBoundary = {
+        status: "opaque",
+        boundaryId: "newer",
+      };
+    });
+    expect(plan(state)).toBeNull();
   });
 
   test.each([...CODEX_ACTIVE_HISTORY_PROTECTED_ITEM_TYPES, "autoReviewInterruptionWarning"])(
-    "%s stops the prefix and preserves preceding context",
+    "%s keeps its place and the item before it while later history is released around it",
     (type) => {
-      const before = produce(fixture(), (draft) => {
-        draft.turnHistory!.history.entitiesByKey["entity-0"]!.items[100] = {
-          type,
-          id: "unsafe",
-        } as Draft<CodexCanonicalItem>;
+      const before = replaceItem(fixture(), 100, { type, id: "unsafe" });
+      const prefix = plan(before);
+      expect(prefix?.itemCuts).toEqual([{ entityKey: "entity-0", end: 99, retained: new Set() }]);
+      const blockedAtStart = replaceItem(fixture(), 1, { type, id: "unsafe" });
+      const gaps = release(blockedAtStart);
+      expect(itemIds(gaps).slice(0, 2)).toEqual(["item-0-0", "unsafe"]);
+      expect(itemIds(gaps)).toHaveLength(502);
+      expect(turn(gaps).itemsPagination).toMatchObject({
+        olderCursor: { type: "item", itemId: "item-0-1000" },
+        olderPageBeforeItemId: "item-0-1000",
       });
-      expect(planCodexActiveHistoryEviction(before, options())).toEqual([
-        { entityKey: "entity-0", count: 99 },
-      ]);
-      const after = evictCodexActiveHistory(before, options());
-      expect(turn(after).items[0]!.id).toBe("item-0-99");
-      expect(turn(after).items[1]!.id).toBe("unsafe");
     },
   );
 
-  test("running Turns require explicit completion, while completed Turns do not invent this requirement", () => {
-    const before = fixture();
-    const withoutEvidence = produce(before, (draft) => {
+  test("running Turns require explicit completion for every released item", () => {
+    const withoutEvidence = produce(fixture(), (draft) => {
       delete draft.turnHistory!.history.entitiesByKey["entity-0"]!.completedItemIds;
     });
-    expect(planCodexActiveHistoryEviction(withoutEvidence, options())).toEqual([
-      { entityKey: "entity-0", count: 1000 },
+    expect(plan(withoutEvidence)?.itemCuts).toEqual([
+      { entityKey: "entity-0", end: 1000, retained: new Set() },
     ]);
     const running = produce(withoutEvidence, (draft) => {
       draft.turnHistory!.history.entitiesByKey["entity-0"]!.status = "inProgress";
     });
-    expect(planCodexActiveHistoryEviction(running, options())).toBeNull();
-    const falseEvidence = produce(before, (draft) => {
+    expect(plan(running)).toBeNull();
+    const falseEvidence = produce(fixture(), (draft) => {
       const value = draft.turnHistory!.history.entitiesByKey["entity-0"]!;
       value.status = "inProgress";
       value.completedItemIds!["item-0-20"] = false;
     });
-    expect(planCodexActiveHistoryEviction(falseEvidence, options())).toEqual([
-      { entityKey: "entity-0", count: 19 },
+    expect(plan(falseEvidence)?.itemCuts).toEqual([
+      { entityKey: "entity-0", end: 19, retained: new Set() },
     ]);
   });
 
-  test("in-progress/status and explicitly incomplete items are unsafe in every Turn", () => {
+  test("in-progress and explicitly incomplete items are unsafe in every Turn", () => {
     const base = turn(fixture());
     expect(
       isCodexActiveHistoryItemEvictable(
@@ -239,18 +252,19 @@ describe("viewport protected active-history eviction", () => {
     ).toBe(false);
   });
 
-  test("loading, requests, summaries, reconnect, ephemeral and ambiguous topology all prevent eviction", () => {
+  test("pending requests, transient state and foreign conversations prevent release", () => {
     const base = fixture();
-    const cases = [
+    for (const state of [
       { ...base, rolloutPath: "" },
       { ...base, ephemeral: true },
       { ...base, resumeState: "resuming" as const },
+      { ...base, historyMode: "legacy" as const },
       { ...base, turns: [turn(base)] },
-      { ...base, itemTimeline: {} },
+      { ...base, itemTimeline: { entries: [] } as never },
       {
         ...base,
         turnsPagination: {
-          source: "timeline",
+          source: "timeline" as const,
           olderCursor: null,
           oldestLoadedTurnId: null,
           isLoadingOlder: false,
@@ -259,32 +273,23 @@ describe("viewport protected active-history eviction", () => {
       },
       {
         ...base,
-        turnsPagination: {
-          olderCursor: null,
-          oldestLoadedTurnId: null,
-          isLoadingOlder: true,
-          hasLoadedOldest: true,
-        },
-      },
-      produce(base, (draft) => {
-        draft.turnHistory!.history.islands.push({
-          ...draft.turnHistory!.history.islands[0]!,
-          id: "other",
-        });
-      }),
-    ];
-    for (const state of cases)
-      expect(
-        planCodexActiveHistoryEviction(state as CodexCanonicalConversationState, options()),
-      ).toBeNull();
+        requests: [
+          {
+            id: "request",
+            method: "item/plan/requestImplementation",
+            params: { threadId: "thread", turnId: "turn-0", planContent: "plan" },
+          },
+        ],
+      } as CodexCanonicalConversationState,
+    ])
+      expect(plan(state)).toBeNull();
     for (const extra of [
       { isLoadingOlder: true },
       { summaryItemIds: [] },
       { reconnect: { beforeItemId: null, stopItemId: null } },
     ]) {
       const state = produce(base, (draft) => {
-        const value = draft.turnHistory!.history.entitiesByKey["entity-0"]!;
-        value.itemsPagination = {
+        draft.turnHistory!.history.entitiesByKey["entity-0"]!.itemsPagination = {
           itemsView: "full",
           olderCursor: null,
           isLoadingOlder: false,
@@ -292,39 +297,161 @@ describe("viewport protected active-history eviction", () => {
           ...extra,
         };
       });
-      expect(planCodexActiveHistoryEviction(state, options())).toBeNull();
+      expect(plan(state)).toBeNull();
     }
-    const requestState = {
-      ...base,
-      requests: [
-        {
-          id: "request",
-          method: "item/plan/requestImplementation",
-          params: { threadId: "thread", turnId: "turn-0", planContent: "plan" },
-        },
-      ],
-    } satisfies CodexCanonicalConversationState;
-    expect(planCodexActiveHistoryEviction(requestState, options())).toBeNull();
-  });
-
-  test("capabilities, stream followers and unknown/false gate each refuse the candidate", () => {
-    const state = fixture();
     for (const override of [
       { supportsThreadItemAnchors: false },
       { supportsPaginatedThreadHistory: false },
       { isFollower: true },
       { hasFollowersOrPendingReconnect: true },
-      { readEnabled: () => false },
-      { readEnabled: () => undefined },
-      { readEnabled: () => null },
     ])
-      expect(planCodexActiveHistoryEviction(state, options(override))).toBeNull();
-    const read = vi.fn(() => true);
-    expect(
-      planCodexActiveHistoryEviction(fixture([10]), options({ readEnabled: read })),
-    ).toBeNull();
-    expect(read).not.toHaveBeenCalled();
-    expect(planCodexActiveHistoryEviction(state, options({ readEnabled: read }))).not.toBeNull();
-    expect(read).toHaveBeenCalledTimes(1);
+      expect(plan(base, [], override)).toBeNull();
+  });
+
+  test("a plan computed before the topology moved changes nothing", () => {
+    const state = fixture([300, 300, 300, 300]);
+    const selected = plan(state)!;
+    const moved = produce(state, (draft) => {
+      draft.turnHistory!.history.generation += 1;
+    });
+    const after = produce(moved, (draft) =>
+      applyCodexActiveHistoryEviction(draft, selected, "older"),
+    );
+    expect(after).toBe(moved);
+  });
+});
+
+describe("active history window", () => {
+  function harness(initial: CodexCanonicalConversationState) {
+    let state = initial;
+    const scheduled: Array<() => void> = [];
+    const turnPages: Array<{ data: readonly { id: string }[]; nextCursor: string | null }> = [];
+    let activeRead: Promise<unknown> | undefined;
+    const sendRequest = vi.fn(async () => turnPages.shift() ?? { data: [], nextCursor: null });
+    const options: CodexActiveHistoryWindowOptions = {
+      client: {
+        getConversation: () => state,
+        updateConversation: (_id, recipe) => {
+          state = produce(state, recipe);
+        },
+        sendRequest: sendRequest as never,
+      },
+      capabilities: () => capabilities,
+      getActiveRead: () => activeRead,
+      schedule: (work) => {
+        scheduled.push(work);
+        return () => scheduled.splice(scheduled.indexOf(work), 1);
+      },
+      onError: vi.fn(),
+    };
+    const flush = async () => {
+      for (let round = 0; round < 8; round += 1) {
+        const work = scheduled.shift();
+        work?.();
+        await new Promise((resolve) => setTimeout(resolve));
+      }
+    };
+    return {
+      window: new CodexActiveHistoryWindow(options),
+      read: () => state,
+      scheduled,
+      turnPages,
+      sendRequest,
+      setActiveRead: (read: Promise<unknown> | undefined) => {
+        activeRead = read;
+      },
+      flush,
+      onError: options.onError,
+    };
+  }
+
+  test("returns a growing conversation to the target, one pass at a time", async () => {
+    const f = harness(fixture([1500]));
+    f.window.enforce("thread");
+    f.window.enforce("thread");
+    expect(f.scheduled).toHaveLength(1);
+    await f.flush();
+    expect(turn(f.read()).items).toHaveLength(500);
+    expect(f.sendRequest).not.toHaveBeenCalled();
+    expect(f.scheduled).toHaveLength(0);
+  });
+
+  test("finds the older-Turn cursor by reading past the Turns that stay", async () => {
+    const f = harness(fixture([300, 300, 300, 300]));
+    f.turnPages.push({ data: [{ id: "turn-3" }, { id: "turn-2" }], nextCursor: "before-turn-2" });
+    f.window.enforce("thread");
+    await f.flush();
+    expect(f.sendRequest).toHaveBeenCalledWith(
+      "thread/turns/list",
+      {
+        threadId: "thread",
+        cursor: null,
+        limit: 2,
+        sortDirection: "desc",
+        itemsView: "notLoaded",
+      },
+      { priority: "background", source: "tail_history" },
+    );
+    expect(f.read().turnsPagination?.olderCursor).toBe("before-turn-2");
+    expect(f.read().turnHistory!.history.islands[0]!.entries).toHaveLength(2);
+  });
+
+  test("keeps every Turn when the server's Turn list no longer matches", async () => {
+    const f = harness(fixture([300, 300, 300, 300]));
+    f.turnPages.push({ data: [{ id: "turn-3" }, { id: "elsewhere" }], nextCursor: "cursor" });
+    f.window.enforce("thread");
+    await f.flush();
+    expect(f.read().turnHistory!.history.islands[0]!.entries).toHaveLength(4);
+  });
+
+  test("waits for a read in flight, whose response could rebuild what was released", async () => {
+    const f = harness(fixture());
+    let finish = () => {};
+    f.setActiveRead(new Promise<void>((resolve) => (finish = resolve)));
+    f.window.enforce("thread");
+    await f.flush();
+    expect(turn(f.read()).items).toHaveLength(1500);
+    f.setActiveRead(undefined);
+    finish();
+    await f.flush();
+    expect(turn(f.read()).items).toHaveLength(500);
+  });
+
+  test("a viewer re-evaluates only a conversation that was waiting on viewers", async () => {
+    const f = harness(fixture());
+    const viewer = Symbol();
+    f.window.setViewport("thread", viewer, [null]);
+    f.window.enforce("thread");
+    await f.flush();
+    expect(turn(f.read()).items).toHaveLength(1500);
+    f.window.setViewport("thread", viewer, viewingTurn("turn-0", "item-0-1000"));
+    await f.flush();
+    expect(turn(f.read()).items).toHaveLength(500);
+    const planned = vi.spyOn(f, "read");
+    f.window.setViewport("thread", viewer, viewingTurn("turn-0", "item-0-1100"));
+    expect(f.scheduled).toHaveLength(0);
+    planned.mockRestore();
+  });
+
+  test("the last viewer leaving lets the conversation be bounded in the background", async () => {
+    const f = harness(fixture());
+    const viewer = Symbol();
+    f.window.setViewport("thread", viewer, [null]);
+    f.window.enforce("thread");
+    await f.flush();
+    expect(turn(f.read()).items).toHaveLength(1500);
+    f.window.setViewport("thread", viewer, undefined);
+    await f.flush();
+    expect(turn(f.read()).items).toHaveLength(500);
+  });
+
+  test("disposal cancels a scheduled pass", async () => {
+    const f = harness(fixture());
+    f.window.enforce("thread");
+    f.window.dispose();
+    await f.flush();
+    expect(turn(f.read()).items).toHaveLength(1500);
+    f.window.enforce("thread");
+    expect(f.scheduled).toHaveLength(0);
   });
 });

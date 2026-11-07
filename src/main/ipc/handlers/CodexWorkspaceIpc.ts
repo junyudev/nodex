@@ -1120,10 +1120,6 @@ export const live = Layer.effectDiscard(
           historyPolicy: {
             source: "development-features",
             timeline: isDevelopmentFeatureEnabled("thread-timeline-history", config.environment),
-            activeEviction: isDevelopmentFeatureEnabled(
-              "active-history-eviction",
-              config.environment,
-            ),
           },
           supportsThreadRevert: capability.flags.threadRevert,
           supportsThreadQueue: capability.flags.threadQueue,

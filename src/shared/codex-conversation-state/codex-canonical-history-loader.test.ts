@@ -457,27 +457,62 @@ describe("canonical history operation ownership", () => {
     },
   );
 
-  test("evicted prefixes are restored explicitly and ordinary background completion leaves them evicted", async () => {
+  test("released items read back through their anchor and keep their place around retained items", async () => {
     const f = harness();
     f.mutate((draft) => {
       const turn = conversationTurnDraft(
         draft,
         residentConversationTurnEntries(draft)[0]!.address,
       )!;
+      turn.items = [item("kept-plan"), item("anchor")] as typeof turn.items;
       turn.itemsPagination = {
         ...turn.itemsPagination!,
-        evicted: true,
-        olderItemId: "retained",
-        olderCursor: null,
+        itemsView: "summary",
+        olderCursor: { type: "item", itemId: "anchor" },
+        olderPageBeforeItemId: "anchor",
+        hasLoadedOldest: false,
       };
     });
-    f.handle(async () => itemsPage("turn", [item("restored")]));
+    f.handle(async () => ({
+      ...itemsPage("turn", [item("older-b"), item("older-a")]),
+      nextCursor: "next",
+    }));
     using loader = new CanonicalHistoryItemLoader(f.client);
-    await loader.loadRemainingTurnItems("conversation");
-    expect(f.calls).toHaveLength(0);
     await loader.loadTurnItems("conversation", "turn", false, { priority: "interactive" });
-    expect(f.calls[0]?.params.cursor).toEqual({ type: "item", itemId: "retained" });
-    expect(residentConversationTurns(f.read())[0]?.itemsPagination?.evicted).toBe(false);
+    expect(f.calls[0]?.params.cursor).toEqual({ type: "item", itemId: "anchor" });
+    const turn = residentConversationTurns(f.read())[0]!;
+    expect(turn.items.map(({ id }) => id)).toEqual(["kept-plan", "older-a", "older-b", "anchor"]);
+    expect(turn.itemsPagination).toMatchObject({
+      olderCursor: "next",
+      olderPageBeforeItemId: "older-a",
+      hasLoadedOldest: false,
+    });
+  });
+
+  test("a host without item anchors rereads a released Turn from its tail", async () => {
+    const f = harness();
+    f.client.supportsThreadItemAnchors = () => false;
+    f.mutate((draft) => {
+      const turn = conversationTurnDraft(
+        draft,
+        residentConversationTurnEntries(draft)[0]!.address,
+      )!;
+      turn.items = [item("anchor")] as typeof turn.items;
+      turn.itemsPagination = {
+        ...turn.itemsPagination!,
+        itemsView: "summary",
+        olderCursor: { type: "item", itemId: "anchor" },
+        hasLoadedOldest: false,
+      };
+    });
+    f.handle(async () => itemsPage("turn", [item("anchor"), item("older")]));
+    using loader = new CanonicalHistoryItemLoader(f.client);
+    await loader.loadTurnItems("conversation", "turn", false, { priority: "interactive" });
+    expect(f.calls[0]?.params.cursor).toBeNull();
+    expect(residentConversationTurns(f.read())[0]!.items.map(({ id }) => id)).toEqual([
+      "older",
+      "anchor",
+    ]);
   });
 
   test("retires an item response when its pagination object changes during I/O", async () => {

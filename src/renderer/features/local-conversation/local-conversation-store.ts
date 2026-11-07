@@ -240,11 +240,11 @@ import {
   connectLocalTranscript,
   type LocalTranscriptConnection,
 } from "./transcript/local-transcript-connection";
+import { CodexHistoryPolicy } from "../../../shared/codex-history-policy";
 import {
-  CodexHistoryPolicy,
-  CodexHistoryViewportRegistry,
-} from "../../../shared/codex-history-policy";
-import { mutateCodexActiveHistoryEviction } from "../../../shared/codex-conversation-state/codex-active-history-eviction";
+  CODEX_ACTIVE_HISTORY_ENFORCING_NOTIFICATIONS,
+  CodexActiveHistoryWindow,
+} from "../../../shared/codex-conversation-state/codex-active-history-eviction";
 import type {
   CodexNativeNotificationMessage,
   CodexNativeRequestMessage,
@@ -2118,8 +2118,7 @@ export class CodexAppServerManager {
     Set<(update: CodexTranscriptUpdate) => void>
   >();
   private readonly transcriptDisconnects = new Set<() => void>();
-  private readonly historyViewports = new Map<string, CodexHistoryViewportRegistry>();
-  private readonly evictionPending = new Set<string>();
+  private readonly historyWindow: CodexActiveHistoryWindow;
   private readonly historyPolicy: CodexHistoryPolicy;
   private readonly threadsById = new Map<string, Thread>();
   private readonly childMembershipsByParentThreadId = new Map<
@@ -2149,7 +2148,7 @@ export class CodexAppServerManager {
   private readonly ownerHistoryReadBarriers = new Set<string>();
   private readonly historyPageLoadsInFlightByTarget = new Map<
     string,
-    Promise<LocalHistoryPageResult>
+    { readonly threadId: string; readonly promise: Promise<LocalHistoryPageResult> }
   >();
   private readonly pendingArtifactRecoveries = new Map<string, PendingArtifactRecovery>();
   private readonly itemTimelineIndex = new CodexItemTimelineIndex();
@@ -2282,7 +2281,6 @@ export class CodexAppServerManager {
       source: "endpoint-history-policy",
       scope: hostId,
       readThreadTimelineEnabled: () => this.nativeHostContext?.historyPolicy?.timeline,
-      readActiveHistoryEvictionEnabled: () => this.nativeHostContext?.historyPolicy?.activeEviction,
     });
     this.streamState = new ConversationStream({
       hostId,
@@ -2361,6 +2359,7 @@ export class CodexAppServerManager {
         !this.destroyed && this.streamState.getRole(id)?.role === "owner",
       supportsPaginatedHistory: () => this.supportsPaginatedHistory,
       supportsThreadTimeline: () => this.canReadThreadTimeline(),
+      supportsThreadItemAnchors: () => this.nativeHostContext?.supportsThreadItemAnchors === true,
       sendTimelineRequest: async (params, options) => {
         const context = this.nativeHostContext;
         if (!context || !this.canReadThreadTimeline())
@@ -2423,6 +2422,23 @@ export class CodexAppServerManager {
     };
 
     this.historyItemLoader = new CanonicalHistoryItemLoader(this.historyClient);
+    this.historyWindow = new CodexActiveHistoryWindow({
+      client: this.historyClient,
+      capabilities: (id) => ({
+        supportsPaginatedThreadHistory: this.supportsPaginatedHistory,
+        supportsThreadItemAnchors:
+          this.hostId !== "durable" && this.nativeHostContext?.supportsThreadItemAnchors === true,
+        isFollower: this.streamState.getRole(id)?.role === "follower",
+        hasFollowersOrPendingReconnect: this.streamState.hasFollowersOrPendingReconnect(id),
+      }),
+      getActiveRead: (id) => this.activeHistoryRead(id),
+      schedule: (work) => {
+        const timer = setTimeout(work, 0);
+        return () => clearTimeout(timer);
+      },
+      onError: (threadId, error) =>
+        console.warn("Failed to bound conversation history", { threadId, error }),
+    });
     this.streamRecovery = new ConversationStreamRecovery<CodexCanonicalConversationState>({
       conversations: () =>
         [...this.conversationsById.values()].flatMap((value) =>
@@ -2923,6 +2939,8 @@ export class CodexAppServerManager {
     }
     if (!before.hasUnreadTurn && receipt.after.hasUnreadTurn)
       void this.saveReadState(threadId, true, "turn");
+    if (CODEX_ACTIVE_HISTORY_ENFORCING_NOTIFICATIONS.has(event.notification.method))
+      this.historyWindow.enforce(threadId);
   }
 
   private requestLiveComposerPrediction(threadId: string, turnId: string): void {
@@ -3475,13 +3493,8 @@ export class CodexAppServerManager {
         return source;
       },
       (id, viewer, boundaries) => {
-        if (!alive && boundaries !== undefined) return;
-        let registry = this.historyViewports.get(id);
-        if (!registry && boundaries !== undefined) {
-          registry = new CodexHistoryViewportRegistry(() => this.scheduleActiveHistoryEviction(id));
-          this.historyViewports.set(id, registry);
-        }
-        registry?.set(viewer, boundaries);
+        if (alive || boundaries === undefined)
+          this.historyWindow.setViewport(id, viewer, boundaries);
       },
     );
     const disconnect = connectLocalTranscript(service, threadId, listener);
@@ -3496,23 +3509,14 @@ export class CodexAppServerManager {
     return Object.assign(release, { setHistoryViewport: disconnect.setHistoryViewport });
   }
 
-  private scheduleActiveHistoryEviction(threadId: string): void {
-    if (this.destroyed || this.evictionPending.has(threadId)) return;
-    this.evictionPending.add(threadId);
-    queueMicrotask(() => {
-      this.evictionPending.delete(threadId);
-      if (this.destroyed || this.hostId === "durable") return;
-      this.historyClient.updateConversation(threadId, (draft) => {
-        mutateCodexActiveHistoryEviction(draft, {
-          viewports: this.historyViewports.get(threadId)?.getBoundaries() ?? [],
-          supportsPaginatedThreadHistory: this.supportsPaginatedHistory,
-          supportsThreadItemAnchors: this.nativeHostContext?.supportsThreadItemAnchors === true,
-          isFollower: this.streamState.getRole(threadId)?.role === "follower",
-          hasFollowersOrPendingReconnect: this.streamState.hasFollowersOrPendingReconnect(threadId),
-          readEnabled: () => this.historyPolicy.readActiveHistoryEvictionEnabled(),
-        });
-      });
-    });
+  /** Any read whose response could rebuild history that a release has just dropped. */
+  private activeHistoryRead(threadId: string): Promise<unknown> | undefined {
+    for (const load of this.historyPageLoadsInFlightByTarget.values())
+      if (load.threadId === threadId) return load.promise;
+    return (
+      this.completeHistoryLoads.get(threadId)?.promise ??
+      this.historyItemLoader.getActiveRead(threadId)
+    );
   }
 
   start(): void {
@@ -3545,8 +3549,7 @@ export class CodexAppServerManager {
     this.transcriptReadOwners.clear();
     for (const release of this.transcriptDisconnects) release();
     this.transcriptUpdates.clear();
-    this.historyViewports.clear();
-    this.evictionPending.clear();
+    this.historyWindow.dispose();
     this.streamRecovery.dispose();
     for (const callback of this.disposalCallbacks) callback();
     this.disposalCallbacks.clear();
@@ -5041,13 +5044,16 @@ export class CodexAppServerManager {
   ): Promise<LocalHistoryPageResult> {
     const key = codexConversationHistoryPageRequestKey(request);
     const existing = this.historyPageLoadsInFlightByTarget.get(key);
-    if (existing) return existing;
+    if (existing) return existing.promise;
 
     const loadPromise = this.loadHistoryPage(request);
 
-    this.historyPageLoadsInFlightByTarget.set(key, loadPromise);
+    this.historyPageLoadsInFlightByTarget.set(key, {
+      threadId: request.threadId,
+      promise: loadPromise,
+    });
     const release = () => {
-      if (this.historyPageLoadsInFlightByTarget.get(key) === loadPromise) {
+      if (this.historyPageLoadsInFlightByTarget.get(key)?.promise === loadPromise) {
         this.historyPageLoadsInFlightByTarget.delete(key);
       }
     };
@@ -8258,8 +8264,7 @@ export class CodexAppServerManager {
     this.transcriptReadOwners.clear();
     for (const release of this.transcriptDisconnects) release();
     this.transcriptUpdates.clear();
-    this.historyViewports.clear();
-    this.evictionPending.clear();
+    this.historyWindow.clear();
     this.asyncQuestions.clear();
     this.ownerHiddenLifecycleItemTypesByConversationId.clear();
     this.conversationVersionById.clear();
@@ -8752,8 +8757,7 @@ export class CodexAppServerManager {
     this.transcriptReadOwners.get(normalizedThreadId)?.dispose();
     this.transcriptReadOwners.delete(normalizedThreadId);
     this.transcriptUpdates.delete(normalizedThreadId);
-    this.historyViewports.delete(normalizedThreadId);
-    this.evictionPending.delete(normalizedThreadId);
+    this.historyWindow.remove(normalizedThreadId);
     this.conversationActivity.remove(normalizedThreadId);
     this.retention.remove(normalizedThreadId);
     this.asyncQuestions.clear(normalizedThreadId);
@@ -8854,7 +8858,6 @@ export class CodexAppServerManager {
       nextConversation.canonicalState?.itemTimeline,
       evidence?.patches,
     );
-    this.scheduleActiveHistoryEviction(threadId);
     const transcriptListeners = this.transcriptUpdates.get(threadId);
     if (
       transcriptListeners?.size &&

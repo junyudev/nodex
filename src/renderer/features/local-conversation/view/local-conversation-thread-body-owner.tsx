@@ -675,6 +675,12 @@ export function LocalConversationThreadBodyOwner({
     },
     [transcriptOwner],
   );
+  /** A surface that cannot read history back keeps everything it was given. */
+  const keepHistoryInView = useCallback(
+    (boundary: Parameters<typeof reportHistoryViewport>[0]) =>
+      reportHistoryViewport(boundary === undefined ? undefined : null),
+    [reportHistoryViewport],
+  );
   useEffect(() => {
     const viewer = transcriptViewer.current;
     return () => transcriptOwner?.setHistoryViewport(viewer, undefined);
@@ -1433,7 +1439,9 @@ export function LocalConversationThreadBodyOwner({
                 presentation={presentation}
                 entries={virtualizedEntries}
                 historyRows={historyRows}
-                onHistoryRetentionBoundaryChange={reportHistoryViewport}
+                onHistoryRetentionBoundaryChange={
+                  history?.loadBoundary ? reportHistoryViewport : keepHistoryInView
+                }
                 conversationId={conversation?.threadId ?? body.threadId ?? ""}
                 threadCwd={cwd}
                 parentModel={parentModel}

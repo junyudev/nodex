@@ -39,6 +39,7 @@ function gapRow(input: {
   readonly key?: string;
   readonly olderBoundary?: CodexHistoryBoundaryRef | null;
   readonly newerBoundary?: CodexHistoryBoundaryRef | null;
+  readonly insideTurn?: boolean;
 }): GapRow {
   return {
     kind: "gap",
@@ -46,6 +47,7 @@ function gapRow(input: {
     olderBoundary: input.olderBoundary ?? null,
     newerBoundary: input.newerBoundary ?? null,
     estimatedHeightPx: 144,
+    insideTurn: input.insideTurn === true,
   };
 }
 
@@ -57,11 +59,13 @@ function select(input: {
   readonly viewportStartPx?: number;
   readonly viewportEndPx?: number;
   readonly gaps: readonly LocalConversationHistoryGapLayout[];
+  readonly readsAhead?: boolean;
 }) {
   return selectLocalConversationHistoryGapBoundary({
     viewportStartPx: input.viewportStartPx ?? 1000,
     viewportEndPx: input.viewportEndPx ?? 1200,
     gaps: input.gaps,
+    readsAhead: input.readsAhead ?? true,
   });
 }
 
@@ -219,6 +223,7 @@ describe("local conversation history gap controller", () => {
     const fromAbove = select({
       viewportStartPx: 800,
       viewportEndPx: 1_020,
+      readsAhead: true,
       gaps: [layout],
     });
     expect(fromAbove).toBe(older);
@@ -226,9 +231,46 @@ describe("local conversation history gap controller", () => {
     const fromBelow = select({
       viewportStartPx: 1_120,
       viewportEndPx: 1_340,
+      readsAhead: true,
       gaps: [layout],
     });
     expect(fromBelow).toBe(newer);
+  });
+
+  test("a reader away from the live tail reads ahead; at the tail only a gap on screen is demanded", () => {
+    const nearby = boundary("older", "progress:nearby");
+    const gaps = [gapLayout(500, gapRow({ key: "gap:nearby", newerBoundary: nearby }))];
+    expect(select({ gaps, readsAhead: true })).toBe(nearby);
+    expect(select({ gaps, readsAhead: false })).toBeNull();
+    const onScreen = boundary("older", "progress:on-screen");
+    expect(
+      select({
+        readsAhead: false,
+        gaps: [gapLayout(1_100, gapRow({ key: "gap:on-screen", newerBoundary: onScreen }))],
+      }),
+    ).toBe(onScreen);
+  });
+
+  test("a gap inside a Turn waits for a reader away from the tail, even on screen", () => {
+    const earlier = boundary("older", "progress:earlier");
+    const gaps = [
+      gapLayout(1_100, gapRow({ key: "gap:inside", newerBoundary: earlier, insideTurn: true })),
+    ];
+    expect(select({ gaps, readsAhead: false })).toBeNull();
+    expect(select({ gaps, readsAhead: true })).toBe(earlier);
+  });
+
+  test("a gap inside a Turn offers its earlier work on request", () => {
+    const earlier = boundary("older", "progress:earlier");
+    const requested: CodexHistoryBoundaryRef[] = [];
+    const view = render(
+      <LocalConversationHistoryGap
+        row={gapRow({ key: "gap:inside", newerBoundary: earlier, insideTurn: true })}
+        onRetry={(target) => requested.push(target)}
+      />,
+    );
+    fireEvent.click(view.getByRole("button", { name: "Show earlier work" }));
+    expect(requested).toEqual([earlier]);
   });
 
   test("selects only the nearest boundary across all eligible gaps", () => {
@@ -251,6 +293,7 @@ describe("local conversation history gap controller", () => {
     const view = (target: CodexHistoryBoundaryRef) => ({
       viewportStartPx: 900,
       viewportEndPx: 1200,
+      readsAhead: true,
       gaps: [gapLayout(1000, gapRow({ newerBoundary: target }))],
     });
     const requests: CodexHistoryBoundaryRef[] = [];
@@ -277,6 +320,7 @@ describe("local conversation history gap controller", () => {
     const view = {
       viewportStartPx: 900,
       viewportEndPx: 1200,
+      readsAhead: true,
       gaps: [gapLayout(1000, gapRow({ newerBoundary: boundary("older", "retry") }))],
     };
     let calls = 0;
@@ -297,6 +341,7 @@ describe("local conversation history gap controller", () => {
     const view = {
       viewportStartPx: 900,
       viewportEndPx: 1200,
+      readsAhead: true,
       gaps: [gapLayout(1000, gapRow({ newerBoundary: boundary("older", "same") }))],
     };
     let calls = 0;
@@ -316,6 +361,7 @@ describe("local conversation history gap controller", () => {
     const view = {
       viewportStartPx: 900,
       viewportEndPx: 1200,
+      readsAhead: true,
       gaps: [gapLayout(1000, gapRow({ newerBoundary: boundary("older", "clear") }))],
     };
     let calls = 0;
@@ -334,6 +380,7 @@ describe("local conversation history gap controller", () => {
     const view = {
       viewportStartPx: 900,
       viewportEndPx: 1200,
+      readsAhead: true,
       gaps: [gapLayout(1000, gapRow({ newerBoundary: boundary("older", "scroll") }))],
     };
     let calls = 0;
@@ -356,6 +403,7 @@ describe("local conversation history gap controller", () => {
     const viewport = (target: CodexHistoryBoundaryRef) => ({
       viewportStartPx: 900,
       viewportEndPx: 1200,
+      readsAhead: true,
       gaps: [gapLayout(1000, gapRow({ newerBoundary: target }))],
     });
     const loaded: CodexHistoryBoundaryRef[] = [];
@@ -382,7 +430,7 @@ describe("local conversation history gap controller", () => {
     const coordinator = createLocalConversationHistoryGapRequestCoordinator();
     let requests = 0;
     await coordinator.observeViewport(
-      { viewportStartPx: 0, viewportEndPx: 800, gaps: [] },
+      { viewportStartPx: 0, viewportEndPx: 800, gaps: [], readsAhead: false },
       async () => {
         requests += 1;
       },

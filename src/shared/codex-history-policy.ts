@@ -1,5 +1,5 @@
 export interface CodexHistoryViewportBoundary {
-  readonly oldestRenderedTurnId: string;
+  readonly oldestProtectedTurnId: string;
   readonly firstProtectedItemId: string | null;
 }
 export interface CodexHistoryPolicyConfiguration {
@@ -7,23 +7,13 @@ export interface CodexHistoryPolicyConfiguration {
   readonly source: string;
   readonly scope: string;
   readonly readThreadTimelineEnabled: () => boolean | null | undefined;
-  readonly readActiveHistoryEvictionEnabled: () => boolean | null | undefined;
 }
 
-/** One manager lifetime captures the first assigned eviction result, including false. */
 export class CodexHistoryPolicy {
-  private evictionEnabled: boolean | undefined;
   constructor(readonly configuration: CodexHistoryPolicyConfiguration) {}
 
   readThreadTimelineEnabled(): boolean {
     return this.configuration.readThreadTimelineEnabled() === true;
-  }
-
-  readActiveHistoryEvictionEnabled(): boolean | undefined {
-    if (this.evictionEnabled !== undefined) return this.evictionEnabled;
-    const value = this.configuration.readActiveHistoryEvictionEnabled();
-    if (value !== null && value !== undefined) this.evictionEnabled = value;
-    return this.evictionEnabled;
   }
 }
 
@@ -32,6 +22,7 @@ export class CodexHistoryViewportRegistry {
   private readonly viewports = new Map<symbol, readonly (CodexHistoryViewportBoundary | null)[]>();
   constructor(private readonly onChanged: () => void = () => {}) {}
 
+  /** Reports whether the viewer's boundary actually changed. */
   set(
     viewer: symbol,
     value:
@@ -39,10 +30,11 @@ export class CodexHistoryViewportRegistry {
       | readonly (CodexHistoryViewportBoundary | null)[]
       | null
       | undefined,
-  ): void {
+  ): boolean {
     if (value === undefined) {
-      if (this.viewports.delete(viewer)) this.onChanged();
-      return;
+      if (!this.viewports.delete(viewer)) return false;
+      this.onChanged();
+      return true;
     }
     const next = Array.isArray(value) ? value : [value as CodexHistoryViewportBoundary | null];
     const previous = this.viewports.get(viewer);
@@ -51,13 +43,14 @@ export class CodexHistoryViewportRegistry {
       previous.length === next.length &&
       previous.every(
         (boundary, index) =>
-          boundary?.oldestRenderedTurnId === next[index]?.oldestRenderedTurnId &&
+          boundary?.oldestProtectedTurnId === next[index]?.oldestProtectedTurnId &&
           boundary?.firstProtectedItemId === next[index]?.firstProtectedItemId,
       )
     )
-      return;
+      return false;
     this.viewports.set(viewer, next);
     this.onChanged();
+    return true;
   }
 
   getBoundaries(): readonly (CodexHistoryViewportBoundary | null)[] {
@@ -73,35 +66,44 @@ export class CodexHistoryViewportRegistry {
 
 export interface CodexHistoryViewportRow {
   readonly kind: "content" | "gap";
+  readonly turnIndex: number;
+  /** A gap inside the Turn below it, which the reader is not yet asking to read. */
+  readonly insideTurn?: boolean;
   readonly turnId?: string | null;
   readonly status?: "inProgress" | "completed" | "interrupted" | "failed";
   readonly turnItemIds?: readonly (string | undefined)[];
-  readonly turnIndex?: number;
 }
 
-/** The caller supplies the actual viewport without overscan, plus any explicitly retained row. */
+/** Rows within this distance of the bottom count as the reader following the live tail. */
+export const CODEX_HISTORY_VIEWPORT_FOLLOW_PX = 24;
+/** A running Turn keeps this many of its newest items when it is the protected Turn. */
+const CODEX_HISTORY_VIEWPORT_LIVE_ITEMS = 500;
+
+/**
+ * Pass what the viewport shows from the bottom plus every row a surface holds mounted. Retention
+ * waits for the reader to return to the live tail. A visible gap between Turns means older history
+ * is being read, so releasing beneath it would only undo that read.
+ */
 export function projectCodexHistoryViewportBoundary(input: {
   readonly distanceFromBottom: number;
   readonly hasPendingScrollTarget: boolean;
   readonly viewportRows: readonly CodexHistoryViewportRow[];
-  readonly retainedRow?: CodexHistoryViewportRow | null;
+  readonly retainedRows?: readonly CodexHistoryViewportRow[];
 }): CodexHistoryViewportBoundary | null {
-  if (input.distanceFromBottom > 24 || input.hasPendingScrollTarget) return null;
-  const rows = input.viewportRows.filter((row) => row.kind !== "gap");
-  if (input.retainedRow && input.retainedRow.kind !== "gap") {
-    if (
-      input.retainedRow.turnIndex === undefined ||
-      rows.some((row) => row.turnIndex === undefined)
-    )
-      return null;
-    rows.push(input.retainedRow);
-    rows.sort((left, right) => left.turnIndex! - right.turnIndex!);
+  if (input.distanceFromBottom > CODEX_HISTORY_VIEWPORT_FOLLOW_PX || input.hasPendingScrollTarget)
+    return null;
+  let oldest: CodexHistoryViewportRow | null = null;
+  for (const row of [...input.viewportRows, ...(input.retainedRows ?? [])]) {
+    if (row.kind === "gap" && row.insideTurn) continue;
+    if (row.kind === "gap" || !row.turnId) return null;
+    if (!oldest || row.turnIndex < oldest.turnIndex) oldest = row;
   }
-  if (rows.some((row) => !row.turnId)) return null;
-  const row = rows[0];
-  if (!row?.turnId) return null;
+  if (!oldest?.turnId) return null;
   return {
-    oldestRenderedTurnId: row.turnId,
-    firstProtectedItemId: row.status === "inProgress" ? (row.turnItemIds?.at(-500) ?? null) : null,
+    oldestProtectedTurnId: oldest.turnId,
+    firstProtectedItemId:
+      oldest.status === "inProgress"
+        ? (oldest.turnItemIds?.at(-CODEX_HISTORY_VIEWPORT_LIVE_ITEMS) ?? null)
+        : null,
   };
 }

@@ -221,11 +221,10 @@ describe("buildThreadBodyModel", () => {
       status: "completed" as const,
       params: { ...state.turns[0]!.params, input: [] },
       itemsPagination: {
-        itemsView: "full" as const,
+        itemsView: "summary" as const,
         olderCursor: null,
         isLoadingOlder: false,
         hasLoadedOldest: false,
-        evicted: true,
       },
     };
     const input = {
@@ -250,7 +249,7 @@ describe("buildThreadBodyModel", () => {
             turns: [
               {
                 ...turn,
-                itemsPagination: { ...turn.itemsPagination, evicted: false, hasLoadedOldest: true },
+                itemsPagination: { ...turn.itemsPagination, hasLoadedOldest: true },
               },
             ],
           },
@@ -259,7 +258,7 @@ describe("buildThreadBodyModel", () => {
     ).toMatchObject({ turnCount: 0, emptyState: { type: "emptyThread" } });
   });
 
-  test("keeps ordinary empty history shells restoring until content arrives, while evicted rows can recover", () => {
+  test("keeps ordinary empty history shells restoring until content arrives", () => {
     const conversation = withCanonicalState(
       buildConversation({ resumeState: "resuming" }),
       "paginated",
@@ -305,33 +304,6 @@ describe("buildThreadBodyModel", () => {
       threadStartProgress: null,
     };
     expect(buildThreadBodyModel(input).emptyState.type).toBe("resumingThread");
-    expect(
-      buildThreadBodyModel({
-        ...input,
-        conversation: {
-          ...pending,
-          canonicalState: {
-            ...pending.canonicalState,
-            turnHistory: {
-              ...pending.canonicalState.turnHistory,
-              history: {
-                ...topology.topology,
-                entitiesByKey: {
-                  entity: {
-                    ...turn,
-                    itemsPagination: {
-                      ...turn.itemsPagination,
-                      itemsView: "full" as const,
-                      evicted: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      }),
-    ).toMatchObject({ turnCount: 1, emptyState: { type: "none" } });
     expect(pending.resumeState).toBe("resuming");
   });
 

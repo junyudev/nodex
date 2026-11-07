@@ -188,11 +188,10 @@ describe("normalized production transcript rendering", () => {
       ...owner.readTurnDetails(entityKey)!,
       status: "completed" as const,
       itemsPagination: {
-        itemsView: "full" as const,
+        itemsView: "summary" as const,
         olderCursor: null,
         isLoadingOlder: false,
         hasLoadedOldest: false,
-        evicted: true,
       },
     };
     owner.applyEvent({

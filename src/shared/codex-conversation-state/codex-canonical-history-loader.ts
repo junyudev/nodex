@@ -9,6 +9,7 @@ import {
   collectCodexAcceptedServerQueueSubmissions,
 } from "../codex-native-queued-submission";
 import { createGeneratedCodexSchema } from "../generated-codex-schema";
+import { areStructurallyEqual } from "../structural-equality";
 import { CodexHistoryCursorStalled } from "./codex-history-cursor-stalled";
 import { CodexProtocolThreadItemSchema } from "../codex-protocol-thread-item";
 import {
@@ -77,6 +78,8 @@ export interface CanonicalHistoryClient {
   readonly hostId: string;
   supportsPaginatedHistory(): boolean;
   supportsThreadTimeline?(): boolean;
+  /** Item anchors outlive the host that minted them; a host without them rereads from the tail. */
+  supportsThreadItemAnchors?(): boolean;
   sendTimelineRequest?(
     params: ThreadTimelineListParams,
     options?: CanonicalHistoryRequestOptions,
@@ -724,10 +727,13 @@ export class CanonicalHistoryItemLoader implements Disposable {
     await Promise.all(selected.map((id) => this.loadTurnItems(conversationId, id, false, options)));
     return true;
   }
-  async loadRemainingTurnItems(
-    conversationId: string,
-    options: { readonly includeEvicted?: boolean } = {},
-  ): Promise<void> {
+  /** The read a history release must wait for, so its response cannot rebuild what was released. */
+  getActiveRead(conversationId: string): Promise<void> | undefined {
+    for (const load of this.inFlight.values())
+      if (load.conversationId === conversationId && !load.cancelled) return load.promise;
+    return undefined;
+  }
+  async loadRemainingTurnItems(conversationId: string): Promise<void> {
     const initial = this.client.getConversation(conversationId);
     const generation = initial?.turnHistory?.history.generation ?? null;
     while (!this.disposed) {
@@ -739,9 +745,7 @@ export class CanonicalHistoryItemLoader implements Disposable {
         return;
       const turn = residentConversationTurns(current).find(
         (candidate) =>
-          candidate.turnId !== null &&
-          candidate.itemsPagination?.hasLoadedOldest === false &&
-          (options.includeEvicted === true || candidate.itemsPagination.evicted !== true),
+          candidate.turnId !== null && candidate.itemsPagination?.hasLoadedOldest === false,
       );
       if (turn?.turnId == null) return;
       await this.loadTurnItems(conversationId, turn.turnId, true);
@@ -835,9 +839,11 @@ export class CanonicalHistoryItemLoader implements Disposable {
       );
       const pagination = turn?.itemsPagination;
       if (!this.owns(load) || !turn || !pagination || pagination.hasLoadedOldest) return;
-      const cursor = pagination.olderItemId
-        ? { type: "item" as const, itemId: pagination.olderItemId }
-        : pagination.olderCursor;
+      const anchorUnavailable =
+        typeof pagination.olderCursor === "object" &&
+        pagination.olderCursor !== null &&
+        this.client.supportsThreadItemAnchors?.() === false;
+      const cursor = anchorUnavailable ? null : pagination.olderCursor;
       const summaryIds = pagination.summaryItemIds;
       const beforeItems = new Map(turn.items.map((item) => [item.id, item]));
       const preview = !all && summaryIds != null && load.background;
@@ -898,6 +904,7 @@ export class CanonicalHistoryItemLoader implements Disposable {
         const opening = openingItems.find((item) => item.type !== "contextCompaction");
         const incoming = page.items.map((item) => materializeCodexCanonicalProtocolItem(item));
         const reconnect = turn.itemsPagination?.reconnect;
+        const pageBeforeItemId = turn.itemsPagination?.olderPageBeforeItemId;
         const liveItems = new Map(
           turn.items
             .filter((item) => beforeItems.get(item.id) !== item)
@@ -910,7 +917,11 @@ export class CanonicalHistoryItemLoader implements Disposable {
         const merged = mergeCodexCanonicalHistoryItems(
           retained,
           incoming,
-          reconnect ? { snapshotBeforeItemId: reconnect.beforeItemId } : "prepend",
+          reconnect
+            ? { snapshotBeforeItemId: reconnect.beforeItemId }
+            : pageBeforeItemId != null
+              ? { pageBeforeItemId: anchorUnavailable ? null : pageBeforeItemId }
+              : "prepend",
         ).items.map((item) => liveItems.get(item.id) ?? item);
         this.client.updateConversation(
           conversationId,
@@ -921,8 +932,7 @@ export class CanonicalHistoryItemLoader implements Disposable {
             const target = entry ? conversationTurnDraft(draft, entry.address) : undefined;
             if (
               !target?.itemsPagination ||
-              target.itemsPagination.olderCursor !== pagination.olderCursor ||
-              target.itemsPagination.olderItemId !== pagination.olderItemId
+              !areStructurallyEqual(target.itemsPagination.olderCursor, pagination.olderCursor)
             )
               return;
             target.assistantResponseWorkDurationMs = resolveAssistantResponseWorkDurationMs(merged);
@@ -966,8 +976,10 @@ export class CanonicalHistoryItemLoader implements Disposable {
               ...target.itemsPagination,
               summaryItemIds: undefined,
               olderCursor: nextCursor,
-              olderItemId: undefined,
-              evicted: nextCursor === null ? false : target.itemsPagination.evicted,
+              olderPageBeforeItemId:
+                nextCursor === null || pageBeforeItemId == null
+                  ? undefined
+                  : (incoming[0]?.id ?? pageBeforeItemId),
               isLoadingOlder: false,
               hasLoadedOldest: nextCursor === null,
               newestSnapshotItemId:

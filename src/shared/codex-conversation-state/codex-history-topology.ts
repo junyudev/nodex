@@ -1,4 +1,8 @@
-import type { TurnItemsView, UserInput } from "@nodex/codex-app-server-protocol/v2";
+import type {
+  ThreadItemsListCursor,
+  TurnItemsView,
+  UserInput,
+} from "@nodex/codex-app-server-protocol/v2";
 
 export const CODEX_HISTORY_GAP_ESTIMATED_HEIGHT_PX = 144;
 
@@ -32,16 +36,17 @@ export type CodexHistoryBoundary =
 
 export interface CodexHistoryTurnItemsPagination {
   readonly source?: "ordinary" | "timeline";
-  readonly olderItemId?: string;
-  readonly evicted?: boolean;
+  /** Older pages belong before this item, because earlier items stayed resident around a release. */
+  readonly olderPageBeforeItemId?: string;
   readonly newestSnapshotItemId?: string;
   readonly summaryItemIds?: readonly string[];
   readonly reconnect?: {
     readonly beforeItemId: string | null;
     readonly stopItemId: string | null | undefined;
-    readonly olderCursorAfterReconnect?: string | null;
+    readonly olderCursorAfterReconnect?: ThreadItemsListCursor | null;
   };
-  readonly olderCursor: string | null;
+  /** A page cursor, or the resident item a release left older history behind. */
+  readonly olderCursor: ThreadItemsListCursor | null;
   readonly isLoadingOlder: boolean;
   readonly hasLoadedOldest: boolean;
   readonly oldestUserInput?: readonly UserInput[] | null;
@@ -109,6 +114,12 @@ export type CodexHistoryRow =
       readonly olderBoundary: CodexHistoryBoundaryRef | null;
       readonly newerBoundary: CodexHistoryBoundaryRef | null;
       readonly estimatedHeightPx: typeof CODEX_HISTORY_GAP_ESTIMATED_HEIGHT_PX;
+      /**
+       * Opens inside the Turn below it, whose folded work can leave this gap on screen however much
+       * is released. Only a reader away from the live tail or an explicit request demands it, and
+       * retention continues past it.
+       */
+      readonly insideTurn?: boolean;
     };
 
 export type CodexHistoryTopologyErrorCode =

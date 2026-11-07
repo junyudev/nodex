@@ -84,6 +84,8 @@ function TimelineHarness({
         editableTurnIds={new Set()}
         canForkFromTurn={false}
         scrollElement={null}
+        // A partial Turn's older items wait for a reader away from the live tail.
+        initialScrollOffset={itemRef ? 100 : undefined}
         historyTurnItemsRefs={
           itemRef ? { [itemRef.turnId]: { older: itemRef, newer: null } } : undefined
         }

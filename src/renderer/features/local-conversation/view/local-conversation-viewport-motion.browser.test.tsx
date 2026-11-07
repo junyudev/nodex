@@ -980,7 +980,7 @@ test("an earlier message editor keeps its DOM, focus and selection outside the v
     ]);
     expect(editor.value).toBe("Edited request with a preserved selection");
     expect(view.container.querySelectorAll("[data-turn-key]").length).toBeLessThan(12);
-    await waitFor(() => expect(boundary?.oldestRenderedTurnId).toBe("viewport-turn-0"));
+    await waitFor(() => expect(boundary?.oldestProtectedTurnId).toBe("viewport-turn-0"));
     await act(async () => {
       view.readController().scrollToDistanceFromBottomPx(viewport.scrollHeight, "auto", "user");
       await settleFrames(8);
@@ -997,7 +997,7 @@ test("an earlier message editor keeps its DOM, focus and selection outside the v
       await settleFrames(8);
     });
     await waitFor(() => expect(row()).toBeNull());
-    await waitFor(() => expect(boundary?.oldestRenderedTurnId).not.toBe("viewport-turn-0"));
+    await waitFor(() => expect(boundary?.oldestProtectedTurnId).not.toBe("viewport-turn-0"));
   } finally {
     view.dispose();
   }

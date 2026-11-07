@@ -30,6 +30,7 @@ import {
   readConversationTurnListEntryStatus,
 } from "../selectors";
 import {
+  CODEX_HISTORY_VIEWPORT_FOLLOW_PX,
   projectCodexHistoryViewportBoundary,
   type CodexHistoryViewportBoundary,
   type CodexHistoryViewportRow,
@@ -99,7 +100,8 @@ import {
 import {
   createLocalConversationHistoryGapRequestCoordinator,
   createLocalConversationHistoryRequestGate,
-  CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX,
+  historyLoadReachPx,
+  isLocalConversationHistoryGapDemanded,
   LocalConversationHistoryGap,
   type LocalConversationHistoryGapLayout,
   type LocalConversationHistoryGapRow,
@@ -220,21 +222,25 @@ type LocalConversationVirtualizedHistoryRow =
       readonly row: LocalConversationHistoryGapRow;
     };
 
+function readHistoryRowItemIds(
+  entry: LocalConversationVirtualizedTurnListEntry,
+): readonly (string | undefined)[] {
+  if (isCodexRealtimeTimelineEntry(entry)) return [];
+  return isNormalizedConversationTurnEntry(entry) ? entry.turnItemIds : entry.turn.itemIds;
+}
+
 function projectHistoryViewportRow(
   row: LocalConversationVirtualizedHistoryRow,
   turnIndex: number,
 ): CodexHistoryViewportRow {
-  if (row.kind === "gap") return { kind: "gap", turnIndex };
+  if (row.kind === "gap")
+    return { kind: "gap", turnIndex, insideTurn: row.row.insideTurn === true };
   return {
     kind: "content",
     turnId: row.entry.turnId,
     turnIndex,
     status: readTimelineEntryStatus(row.entry),
-    turnItemIds: isCodexRealtimeTimelineEntry(row.entry)
-      ? []
-      : isNormalizedConversationTurnEntry(row.entry)
-        ? row.entry.turnItemIds
-        : row.entry.turn.itemIds,
+    turnItemIds: readHistoryRowItemIds(row.entry),
   };
 }
 
@@ -366,7 +372,12 @@ type LatestTurnHeightChangeHandler = (change: LatestTurnHeightChange) => void;
 interface VirtualizedTurnViewportChange {
   distanceFromBottomPx: number;
   gaps: readonly LocalConversationHistoryGapLayout[];
-  turns: readonly { readonly turnId: string; readonly startPx: number; readonly endPx: number }[];
+  turns: readonly {
+    readonly turnId: string;
+    readonly startPx: number;
+    readonly endPx: number;
+    readonly hasResidentItems: boolean;
+  }[];
   target: { originPx: number; targetPx: number } | null;
   totalHeightPx: number;
   viewportEndPx: number;
@@ -933,14 +944,12 @@ function LocalConversationVirtualizedTurnListCore({
         Math.min(currentLayout.totalHeightPx, currentLayout.totalHeightPx - distanceFromBottomPx),
       );
       const viewportStartPx = Math.max(0, viewportEndPx - viewportHeightPx);
-      const range = resolveVisibleTurnRangeFromBottomDistance({
-        distanceFromBottomPx,
+      const followedRange = resolveVisibleTurnRangeFromBottomDistance({
+        distanceFromBottomPx: 0,
         layout: currentLayout,
         overscanCount: 0,
-        viewportHeightPx,
+        viewportHeightPx: viewportHeightPx + CODEX_HISTORY_VIEWPORT_FOLLOW_PX,
       });
-      const retainedIndex = retainedTurnIndicesRef.current[0];
-      const retainedRow = retainedIndex === undefined ? undefined : rowsRef.current[retainedIndex];
       onHistoryRetentionBoundaryChange?.(
         projectCodexHistoryViewportBoundary({
           distanceFromBottom: distanceFromBottomPx,
@@ -948,12 +957,12 @@ function LocalConversationVirtualizedTurnListCore({
             activePendingTargetRef.current !== null ||
             getPendingRestoreScrollDistanceFromBottomPx() !== null,
           viewportRows: rowsRef.current
-            .slice(range.startIndex, range.endIndex)
-            .map((row, index) => projectHistoryViewportRow(row, range.startIndex + index)),
-          retainedRow:
-            retainedRow && retainedIndex !== undefined
-              ? projectHistoryViewportRow(retainedRow, retainedIndex)
-              : null,
+            .slice(followedRange.startIndex, followedRange.endIndex)
+            .map((row, index) => projectHistoryViewportRow(row, followedRange.startIndex + index)),
+          retainedRows: retainedTurnIndicesRef.current.flatMap((index) => {
+            const row = rowsRef.current[index];
+            return row ? [projectHistoryViewportRow(row, index)] : [];
+          }),
         }),
       );
       const previousViewportEndPx =
@@ -968,7 +977,7 @@ function LocalConversationVirtualizedTurnListCore({
             );
       const previousViewportStartPx = Math.max(0, previousViewportEndPx - viewportHeightPx);
       const gaps: LocalConversationHistoryGapLayout[] = [];
-      const turns: Array<{ turnId: string; startPx: number; endPx: number }> = [];
+      const turns: VirtualizedTurnViewportChange["turns"][number][] = [];
       for (const [index, row] of rowsRef.current.entries()) {
         const startPx = currentLayout.topOffsetsPx[index];
         const heightPx = currentLayout.heightsPx[index];
@@ -978,7 +987,12 @@ function LocalConversationVirtualizedTurnListCore({
           continue;
         }
         if (row.entry.turnId) {
-          turns.push({ turnId: row.entry.turnId, startPx, endPx: startPx + heightPx });
+          turns.push({
+            turnId: row.entry.turnId,
+            startPx,
+            endPx: startPx + heightPx,
+            hasResidentItems: readHistoryRowItemIds(row.entry).length > 0,
+          });
         }
       }
       const target =
@@ -2682,21 +2696,16 @@ export function LocalConversationVirtualizedTurnList({
   }, [latestTurnKey, nativeTurnKeys]);
   const handleViewportChange = useCallback(
     (change: VirtualizedTurnViewportChange) => {
+      const readsAhead = change.distanceFromBottomPx > CODEX_HISTORY_VIEWPORT_FOLLOW_PX;
       if (onLoadHistoryBoundary) {
-        void historyGapRequestCoordinator.observeViewport(
-          {
-            viewportStartPx: change.viewportStartPx,
-            viewportEndPx: change.viewportEndPx,
-            gaps: change.gaps,
-          },
-          onLoadHistoryBoundary,
-        );
-        const hasEligibleGap = change.gaps.some(
-          (gap) =>
-            gap.endPx >= change.viewportStartPx - CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX &&
-            gap.startPx <= change.viewportEndPx + CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX,
-        );
-        if (hasEligibleGap) return;
+        const viewport = {
+          viewportStartPx: change.viewportStartPx,
+          viewportEndPx: change.viewportEndPx,
+          gaps: change.gaps,
+          readsAhead,
+        };
+        void historyGapRequestCoordinator.observeViewport(viewport, onLoadHistoryBoundary);
+        if (change.gaps.some((gap) => isLocalConversationHistoryGapDemanded(gap, viewport))) return;
       }
       turnItemRequestGate.retain(
         new Set(
@@ -2717,14 +2726,13 @@ export function LocalConversationVirtualizedTurnList({
             ? (refs?.newer ?? refs?.older)
             : (refs?.older ?? refs?.newer);
           if (!ref) return [];
+          // At the live tail a partial Turn waits for its reader; only an empty one has to load.
+          if (!readsAhead && turn.hasResidentItems) return [];
           if (unavailableItemKeys.has(codexConversationHistoryTurnItemsRefKey(ref))) return [];
           const edgePx = ref.edge === "older" ? turn.startPx : turn.endPx;
-          if (
-            edgePx < change.viewportStartPx - CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX ||
-            edgePx > change.viewportEndPx + CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX
-          ) {
+          const reachPx = historyLoadReachPx(readsAhead);
+          if (edgePx < change.viewportStartPx - reachPx || edgePx > change.viewportEndPx + reachPx)
             return [];
-          }
           const viewportEdgePx =
             ref.edge === "older" ? change.viewportStartPx : change.viewportEndPx;
           return [{ ref, distance: Math.abs(edgePx - viewportEdgePx) }];

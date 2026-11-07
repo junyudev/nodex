@@ -28,7 +28,6 @@ export interface CodexRendererHostContext {
   readonly historyPolicy?: {
     readonly source: string;
     readonly timeline: boolean | null;
-    readonly activeEviction: boolean | null;
   };
   readonly supportsThreadRevert: boolean;
   readonly supportsThreadQueue: boolean;

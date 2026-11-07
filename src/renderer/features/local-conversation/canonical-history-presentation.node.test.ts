@@ -49,12 +49,10 @@ function fixture() {
     const turn = conversationTurnDraft(draft, residentConversationTurnEntries(draft)[0]!.address)!;
     turn.itemsPagination = {
       source: "ordinary",
-      olderCursor: null,
-      olderItemId: "retained",
-      evicted: true,
+      olderCursor: { type: "item", itemId: "retained" },
       hasLoadedOldest: false,
       isLoadingOlder: false,
-      itemsView: "full",
+      itemsView: "summary",
     };
   });
 }
@@ -140,7 +138,7 @@ test("history admission rejects retired generations, anchors and sources while a
     conversationTurnDraft(
       draft,
       residentConversationTurnEntries(draft)[0]!.address,
-    )!.itemsPagination!.olderItemId = "new-anchor";
+    )!.itemsPagination!.olderCursor = { type: "item", itemId: "new-anchor" };
   });
   const metadata = projectCanonicalHistoryPresentation(before);
   const next = projectCanonicalHistoryPresentation(
@@ -177,7 +175,7 @@ test("history admission rejects retired generations, anchors and sources while a
       residentConversationTurnEntries(draft)[0]!.address,
     )!;
     current.items = [];
-    delete current.itemsPagination!.olderItemId;
+    current.itemsPagination!.olderCursor = null;
   });
   const emptyTurn = residentConversationTurns(empty)[0]!;
   const emptyRef = createCodexConversationHistoryTurnItemsRef({

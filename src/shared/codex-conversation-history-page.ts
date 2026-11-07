@@ -40,13 +40,7 @@ export interface CodexConversationHistoryPageRequest {
 export function codexConversationHistoryTurnItemsProgressKey(
   pagination: Pick<
     CodexHistoryTurnItemsPagination,
-    | "source"
-    | "olderCursor"
-    | "olderItemId"
-    | "evicted"
-    | "hasLoadedOldest"
-    | "itemsView"
-    | "reconnect"
+    "source" | "olderCursor" | "hasLoadedOldest" | "itemsView" | "reconnect"
   >,
   edge: "older" | "newer" = "older",
 ): string {
@@ -54,8 +48,6 @@ export function codexConversationHistoryTurnItemsProgressKey(
     edge,
     pagination.source ?? "ordinary",
     pagination.olderCursor,
-    pagination.olderItemId ?? null,
-    pagination.evicted ?? false,
     pagination.hasLoadedOldest,
     pagination.itemsView,
     pagination.reconnect ?? null,
@@ -94,11 +86,7 @@ export function createCodexConversationHistoryTurnItemsRef(input: {
   ) {
     return null;
   }
-  if (
-    edge !== "older" ||
-    input.pagination.hasLoadedOldest ||
-    (input.pagination.itemsView === "full" && input.pagination.evicted !== true)
-  )
+  if (edge !== "older" || input.pagination.hasLoadedOldest || input.pagination.itemsView === "full")
     return null;
   return {
     turnId: input.turnId,

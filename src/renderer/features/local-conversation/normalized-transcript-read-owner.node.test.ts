@@ -497,8 +497,8 @@ describe("normalized transcript read owner", () => {
   });
 
   test.each([false, true])(
-    "hides a retained prewarm prompt with nonresident opening items (evicted=%s)",
-    (evicted) => {
+    "hides a retained prewarm prompt with nonresident opening items (released=%s)",
+    (released) => {
       const owner = new CodexTranscriptReadOwner(key);
       const snapshot = fixture([]);
       const turn = snapshot.turnsByKey["turn:one"]!;
@@ -519,11 +519,10 @@ describe("normalized transcript read owner", () => {
                   ],
                 },
                 itemsPagination: {
-                  itemsView: evicted ? "full" : "summary",
-                  olderCursor: "opening-page",
+                  itemsView: "summary",
+                  olderCursor: released ? { type: "item", itemId: "tail" } : "opening-page",
                   hasLoadedOldest: false,
                   isLoadingOlder: false,
-                  evicted,
                 },
               },
             },
@@ -787,7 +786,7 @@ describe("normalized transcript read owner", () => {
     const release = owner.subscribeStructure(() => {});
     const one = Symbol("one");
     const two = Symbol("two");
-    const boundary = { oldestRenderedTurnId: "one", firstProtectedItemId: null };
+    const boundary = { oldestProtectedTurnId: "one", firstProtectedItemId: null };
     owner.setHistoryViewport(one, boundary);
     owner.setHistoryViewport(two, null);
     owner.setHistoryViewport(two, undefined);

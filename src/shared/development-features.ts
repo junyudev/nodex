@@ -33,11 +33,6 @@ export const DEVELOPMENT_FEATURE_CATALOG = [
     description: "Read Thread history through native timeline pages.",
     defaultEnabled: false,
   },
-  {
-    slug: "active-history-eviction",
-    description: "Release completed Thread item prefixes protected by active viewports.",
-    defaultEnabled: false,
-  },
 ] as const;
 
 export type DevelopmentFeatureSlug = (typeof DEVELOPMENT_FEATURE_CATALOG)[number]["slug"];

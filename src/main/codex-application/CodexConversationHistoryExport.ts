@@ -1,4 +1,4 @@
-import type { ThreadItem, Turn } from "@nodex/codex-app-server-protocol/v2";
+import type { ThreadItem, ThreadItemsListCursor, Turn } from "@nodex/codex-app-server-protocol/v2";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -278,7 +278,11 @@ export const make: Effect.Effect<
     );
 
   const hydrateCompleteTurn = Effect.fn("CodexConversationHistoryExport.hydrateCompleteTurn")(
-    function* (job: PaginatedExportJob, initialTurn: Turn, initialCursor: string | null) {
+    function* (
+      job: PaginatedExportJob,
+      initialTurn: Turn,
+      initialCursor: ThreadItemsListCursor | null,
+    ) {
       let cursor = initialCursor;
       let items = [...initialTurn.items];
       let bytes = approximateValueBytes({ ...initialTurn, items: [] });
@@ -288,7 +292,7 @@ export const make: Effect.Effect<
       }
       yield* assertTurnBudget(job.threadId, job.jobId, items, bytes);
       const seenItemIds = new Set(items.map((item) => item.id));
-      const seenCursors = new Set<string>();
+      const seenCursors = new Set<ThreadItemsListCursor>();
 
       while (cursor !== null) {
         if (seenCursors.has(cursor)) {

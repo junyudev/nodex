@@ -6,10 +6,7 @@ import type {
 } from "../../../lib/types";
 import type { ThreadBodyModel, ThreadStageRouteInput } from "../thread-stage-types";
 import type { LocalConversationAttachmentState } from "../conversation-attachment-state";
-import {
-  hasRecoverableCanonicalTurnItems,
-  selectVisibleConversationTurnStructure,
-} from "../selectors";
+import { selectVisibleConversationTurnStructure } from "../selectors";
 
 export interface ThreadBodyModelInput {
   activeThreadId: string | null;
@@ -249,10 +246,7 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
           const turn = history.entitiesByKey[entry.value];
           return (
             turn !== undefined &&
-            (turn.items.length > 0 ||
-              turn.params.input.length > 0 ||
-              Boolean(turn.diff?.trim()) ||
-              (turn.itemsPagination?.evicted === true && hasRecoverableCanonicalTurnItems(turn)))
+            (turn.items.length > 0 || turn.params.input.length > 0 || Boolean(turn.diff?.trim()))
           );
         }),
       ));

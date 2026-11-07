@@ -1,6 +1,7 @@
 import type {
   SortDirection,
   ThreadItem,
+  ThreadItemsListCursor,
   ThreadSearchOccurrence,
   Turn,
 } from "@nodex/codex-app-server-protocol/v2";
@@ -314,7 +315,7 @@ export const make = (
       readonly snapshot: CodexAppServerCapabilitySnapshot;
       readonly threadId: string;
       readonly turnId: string;
-      readonly cursor: string | null;
+      readonly cursor: ThreadItemsListCursor | null;
       readonly limit: number;
       readonly sortDirection: SortDirection;
       readonly operation?: "items" | "opening-user";
@@ -525,7 +526,7 @@ export const make = (
         let currentPagination = { ...pagination };
         let completedItemIds: Readonly<Record<string, boolean>> = {};
         let found = selectedItem(currentTurn, itemId);
-        const seenCursors = new Set<string | null>();
+        const seenCursors = new Set<ThreadItemsListCursor | null>();
 
         while (found === null && !currentPagination.hasLoadedOldest) {
           const cursor = currentPagination.olderCursor;

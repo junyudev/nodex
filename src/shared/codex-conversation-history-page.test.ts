@@ -33,33 +33,18 @@ test("item history navigation addresses the incomplete native older cursor", () 
   ).toBeNull();
 });
 
-test("released full Turn history remains navigable through its recovery boundary", () => {
+test("released Turn history remains navigable through its item anchor", () => {
   const pagination = {
-    olderCursor: null,
-    olderItemId: "retained-first",
-    evicted: true,
+    olderCursor: { type: "item" as const, itemId: "retained-first" },
     hasLoadedOldest: false,
     isLoadingOlder: false,
-    itemsView: "full" as const,
+    itemsView: "summary" as const,
   };
   const input = { turnId: "turn", expectedTopologyGeneration: 4, pagination };
   expect(createCodexConversationHistoryTurnItemsRef(input)).toMatchObject({
     turnId: "turn",
     edge: "older",
   });
-  // A completely released Turn resumes at its native tail without an item anchor.
-  expect(
-    createCodexConversationHistoryTurnItemsRef({
-      ...input,
-      pagination: { ...pagination, olderItemId: undefined },
-    }),
-  ).not.toBeNull();
-  expect(
-    createCodexConversationHistoryTurnItemsRef({
-      ...input,
-      pagination: { ...pagination, evicted: false },
-    }),
-  ).toBeNull();
   expect(
     createCodexConversationHistoryTurnItemsRef({
       ...input,
@@ -69,12 +54,12 @@ test("released full Turn history remains navigable through its recovery boundary
   expect(createCodexConversationHistoryTurnItemsRef({ ...input, edge: "newer" })).toBeNull();
   const progress = codexConversationHistoryTurnItemsProgressKey(pagination);
   expect(
-    codexConversationHistoryTurnItemsProgressKey({ ...pagination, olderItemId: "another-first" }),
+    codexConversationHistoryTurnItemsProgressKey({
+      ...pagination,
+      olderCursor: { type: "item", itemId: "another-first" },
+    }),
   ).not.toBe(progress);
   expect(
-    codexConversationHistoryTurnItemsProgressKey({ ...pagination, olderItemId: undefined }),
+    codexConversationHistoryTurnItemsProgressKey({ ...pagination, olderCursor: "page" }),
   ).not.toBe(progress);
-  expect(codexConversationHistoryTurnItemsProgressKey({ ...pagination, evicted: false })).not.toBe(
-    progress,
-  );
 });
