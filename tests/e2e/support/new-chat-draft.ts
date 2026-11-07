@@ -7,8 +7,16 @@ export async function waitForDraftScene(page: Page, sessionId: string): Promise<
   return scene;
 }
 
+/** Opens the first Project's New Chat. The sidebar's own New chat follows whichever is active. */
 export async function openNewChatDraft(page: Page): Promise<Locator> {
-  await page.getByRole("button", { name: "New chat" }).first().click();
+  const project = await page.evaluate(async () => {
+    const projects = (await window.api?.invoke("projects:list")) as
+      | { items: Array<{ name: string }> }
+      | undefined;
+    return projects?.items[0]?.name ?? null;
+  });
+  if (!project) throw new Error("The Profile has no Project to start a chat in");
+  await page.getByRole("button", { name: `Start new chat in ${project}`, exact: true }).click();
   let sessionId: string | null = null;
   await expect
     .poll(

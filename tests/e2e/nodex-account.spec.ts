@@ -236,7 +236,7 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
     await page.screenshot({ path: test.info().outputPath("account-credit.png") });
     await page.getByRole("button", { name: "Back to app", exact: true }).click();
     await page
-      .getByRole("button", { name: /Start new chat in/u })
+      .getByRole("button", { name: /^Start new chat in /u })
       .first()
       .click();
     const search = await openComposerModelPicker(page);

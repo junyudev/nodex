@@ -29,7 +29,7 @@ const openModelsSettings = async (page: Page) => {
 const startNewChat = async (page: Page) => {
   await page.getByRole("button", { name: "Back to app", exact: true }).click();
   await page
-    .getByRole("button", { name: /Start new chat in/u })
+    .getByRole("button", { name: /^Start new chat in /u })
     .first()
     .click();
 };
