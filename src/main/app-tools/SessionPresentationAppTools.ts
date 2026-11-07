@@ -13,6 +13,7 @@ import type { WorkbenchAppToolContext } from "./WorkbenchControl";
 import { make as makeTarget, type SessionPresentationOpening } from "./SessionPresentationTarget";
 import { make as makeWindowSelection } from "./SessionPresentationWindow";
 import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
+import { isAgentPresentedBrowserUrl } from "../../shared/browser-url-policy";
 
 /** What the receipt reports was opened, so an Agent never has to guess how a file is shown. */
 const presentedSurface = (opening: SessionPresentationOpening) => {
@@ -38,6 +39,11 @@ export const make = Effect.gen(function* () {
     if (!schema) return toolFailure("unknown_tool");
     const parsed = parseAppToolArguments(schema, input.arguments);
     if (!parsed.success) return parsed.result;
+    const target = "target" in parsed.data ? parsed.data.target : null;
+    if (target?.kind === "browser" && target.url && !isAgentPresentedBrowserUrl(target.url))
+      return toolFailure("invalid_arguments", "Correct the listed argument fields and try again.", {
+        issues: [{ path: ["target", "url"], message: "File URLs must name a file on this device" }],
+      });
     const caller = yield* resolveAppToolCallingSession(input.caller, workspace);
     const sessionId = parsed.data.sessionId ?? caller?.sessionId;
     if (!sessionId) return toolFailure("session_unavailable");

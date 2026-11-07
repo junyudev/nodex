@@ -1,17 +1,17 @@
 import { idempotencyKeySchema } from "./idempotency-key";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { isAgentPresentedBrowserUrl } from "../browser-url-policy";
 import { WorkbenchWindowReferenceSchema } from "./workbench";
 
 const identity = z.string().min(1).max(512);
 const path = z.string().min(1).max(4_096);
+// Whether a file URL names this device takes URL parsing JSON Schema can't publish; the host
+// checks that before opening it.
 const browserUrl = z
   .string()
   .max(16_384)
   .url()
-  .regex(/^(https?|file):\/\//i, "Use an HTTP, HTTPS or local file URL")
-  .refine(isAgentPresentedBrowserUrl, "File URLs must name a file on this device");
+  .regex(/^(https?|file):\/\//i, "Use an HTTP, HTTPS or local file URL");
 const common = {
   window: WorkbenchWindowReferenceSchema.optional(),
   idempotencyKey: idempotencyKeySchema.optional(),
