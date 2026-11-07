@@ -4,6 +4,31 @@ import { build } from "esbuild";
 import type { ElectronApplication } from "playwright";
 import { expect, test } from "vite-plus/test";
 import { launchTestElectron } from "../../../scripts/testing/launch-electron";
+import type { DiagnosticsSettings } from "../../shared/types";
+
+// The script below is a string, so its settings are typed out here for the compiler to check.
+const SETTINGS: DiagnosticsSettings = {
+  enabled: true,
+  active: true,
+  blockedBy: null,
+  dsn: "https://public@example.invalid/1",
+  environment: "test",
+  release: null,
+  tracesSampleRate: 1,
+  replayEnabled: false,
+  replaysSessionSampleRate: 0,
+  replaysOnErrorSampleRate: 0,
+  envOverrides: {
+    enabled: false,
+    dsn: false,
+    environment: false,
+    release: false,
+    tracesSampleRate: false,
+    replayEnabled: false,
+    replaysSessionSampleRate: false,
+    replaysOnErrorSampleRate: false,
+  },
+};
 
 // Exercise the actual Electron SDK and streamed envelope path without a remote transport.
 test("keeps crash diagnostics and streamed spans private in Electron", async () => {
@@ -25,7 +50,7 @@ test("keeps crash diagnostics and streamed spans private in Electron", async () 
           globalThis.diagnosticsProbe = (async () => {
             await initializeMainSentry({
               appVersion: "0.0.0", arch: process.arch, platform: process.platform, isPackaged: false,
-              settings: { enabled: true, dsn: "https://public@example.invalid/1", tracesSampleRate: 1 },
+              settings: ${JSON.stringify(SETTINGS)},
               subscribeToLogs: () => () => {},
               adapter: {
                 ...electronMainSentryAdapter,

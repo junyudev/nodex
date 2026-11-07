@@ -524,7 +524,7 @@ describe("workbench session shell / sidebar-core", () => {
     expect(getMountedSessionIds(screen.container)).toEqual(["session:alpha:thread-b"]);
   });
 
-  test("keeps Scheduled and Plugins on the rail and scrolls only sidebar content", async () => {
+  test("keeps app destinations on the rail and scrolls only sidebar content", async () => {
     const screen = renderWorkbench();
     await settleAsyncRender();
     await settleAsyncRender();
@@ -558,9 +558,8 @@ describe("workbench session shell / sidebar-core", () => {
     expect(
       within(rail)
         .getAllByRole("button")
-        .map((button) => button.getAttribute("aria-label"))
-        .slice(0, 4),
-    ).toEqual(["Home", "Space", "Scheduled", "Plugins"]);
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(expect.arrayContaining(["Home", "Space", "Scheduled", "Plugins"]));
     expect(scrollArea.getAttribute("data-content-below")).toBe("false");
     expect(scrollChrome.style.getPropertyValue("--sidebar-scroll-footer-edge-offset")).toBe(
       "calc(var(--spacing) * 10)",

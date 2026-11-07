@@ -83,6 +83,9 @@ async function waitForIdle(phone: PhoneChannel, sessionId: string, replies: numb
     });
 }
 
+/** The row's full wording belongs to its presentation; this spec cares that the phone is connected. */
+const CONNECTED_PHONE = /^iOS · Nodex Mobile e2e · .*Connected$/u;
+
 test("a paired phone captures once, follows Agent Runs, answers approvals and loses access when removed", async ({}, testInfo) => {
   test.setTimeout(150_000);
   const harness = await ElectronScenarioHarness.create({
@@ -188,16 +191,12 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
       phone = await identity.connect(true);
       expect((await phone.hello).deviceId).toBeTruthy();
       await expect(page.getByText("Gateway test phone", { exact: true })).toBeVisible();
-      await expect(
-        page.getByText("iOS · Nodex Mobile e2e · Connected", { exact: true }),
-      ).toBeVisible();
+      await expect(page.getByText(CONNECTED_PHONE)).toBeVisible();
       await expect(page.getByRole("img", { name: "Pairing code" })).toHaveCount(0);
       // Prove the saved static key reconnects without the one-time pairing secret.
       await phone.close();
       phone = await identity.connect();
-      await expect(
-        page.getByText("iOS · Nodex Mobile e2e · Connected", { exact: true }),
-      ).toBeVisible();
+      await expect(page.getByText(CONNECTED_PHONE)).toBeVisible();
       return identity;
     });
     const connected = phone!;

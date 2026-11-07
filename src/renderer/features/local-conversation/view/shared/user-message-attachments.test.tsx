@@ -20,6 +20,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** What reached the file system; opening a preview also reports its use. */
+const imageReads = (invoke: { readonly mock: { readonly calls: readonly unknown[][] } }) =>
+  invoke.mock.calls.filter(([channel]) => channel === "read-file-binary");
+
 describe("UserAttachmentStrip", () => {
   test("waits, without reading, until the chat holds the attachment's source", async () => {
     const invoke = vi.fn(async () => ({ contentsBase64: "aW1hZ2U=", mimeType: "image/png" }));
@@ -485,7 +489,7 @@ describe("UserAttachmentStrip", () => {
     });
     expect(view.queryByRole("button", { name: "Next image" })).toBeNull();
     expect(view.queryByRole("button", { name: "Retry image" })).toBeNull();
-    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(imageReads(invoke)).toHaveLength(3);
   });
 
   test("opens a loaded local image from the same bytes after its source disappears", async () => {
@@ -517,7 +521,7 @@ describe("UserAttachmentStrip", () => {
     const dialog = await view.findByRole("dialog", { name: "Image preview" });
     expect(dialog.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,aW1hZ2U=");
     await settleAsyncRender();
-    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(imageReads(invoke)).toHaveLength(1);
   });
 
   test("reads a protocol localImage on its recorded execution host", async () => {

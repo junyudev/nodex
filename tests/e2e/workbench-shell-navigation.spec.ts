@@ -270,11 +270,19 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           await selectAppearance(page, "Light");
           await expectHomeProject();
           const nativeWindow = await harness.application.browserWindow(page);
-          await harness.application.evaluate(({ app }) => app.focus({ steal: true }));
-          await nativeWindow.evaluate((window) => window.webContents.focus());
-          await expect.poll(() => nativeWindow.evaluate((window) => window.isFocused())).toBe(true);
-          await expect.poll(async () => (await readPaint(page)).electronOpaque).toBe(false);
-          const lightPaint = await readPaint(page);
+          // Native material only shows on a focused window, and someone may be using this computer.
+          const readFocusedPaint = async () => {
+            await expect(async () => {
+              await harness.application.evaluate(({ app }) => app.focus({ steal: true }));
+              await nativeWindow.evaluate((window) => window.webContents.focus());
+              expect(await nativeWindow.evaluate((window) => window.isFocused())).toBe(true);
+              await expect
+                .poll(async () => (await readPaint(page)).electronOpaque, { timeout: 2_000 })
+                .toBe(false);
+            }).toPass({ timeout: 20_000 });
+            return readPaint(page);
+          };
+          const lightPaint = await readFocusedPaint();
           claim(
             "Light chrome tints native material once and keeps content opaque",
             {
@@ -298,7 +306,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
             await selectAppearance(page, "Dark"),
           );
           await expectHomeProject();
-          const darkPaint = await readPaint(page);
+          const darkPaint = await readFocusedPaint();
           claim(
             "Dark chrome tints native material once with a distinct sidebar role",
             {
@@ -327,6 +335,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
                 { label: "Home", width: 36, height: 36 },
                 { label: "Space", width: 36, height: 36 },
                 { label: "Scheduled", width: 36, height: 36 },
+                { label: "Insights", width: 36, height: 36 },
                 { label: "Plugins", width: 36, height: 36 },
                 { label: "Account and settings", width: 36, height: 36 },
               ],
