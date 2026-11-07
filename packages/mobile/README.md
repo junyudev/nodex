@@ -72,6 +72,17 @@ vp dlx eas-cli build --profile production --platform all
 
 Supply an Apple Developer team, distribution certificate and provisioning profile for `app.jyu.nodex.mobile`, and an Android upload keystore for Google Play. Set the store build numbers and complete the store privacy and encryption declarations before submission.
 
+## TestFlight
+
+Testers install and update from TestFlight, with no Mac or network shared with the phone. Upload a build from a Mac with Xcode and CocoaPods, using a team API key with the App Manager or Admin role. Signing is managed by Apple, and the build number comes from the commit count.
+
+```sh
+APPLE_TEAM_ID=YOUR_TEAM_ID APPLE_API_KEY_ID=KEY_ID APPLE_API_ISSUER=ISSUER_ID \
+  APPLE_API_KEY_B64="$(base64 < AuthKey_KEY_ID.p8)" vp run ios:testflight
+```
+
+The app must already exist in App Store Connect under `app.jyu.nodex.mobile`, and only the account holder can accept Apple's agreements. A build appears in TestFlight once Apple finishes processing it and its encryption declaration is answered.
+
 Regenerate the bundled artwork with `bash assets/generate.sh` using ImageMagick and librsvg.
 
 ## iOS encrypted notifications

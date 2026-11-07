@@ -35,6 +35,8 @@ export default {
     icon: "./assets/app-icon.icon",
     bundleIdentifier: identifier,
     appleTeamId: process.env.APPLE_TEAM_ID,
+    // Each upload to TestFlight needs a higher number than the last.
+    buildNumber: process.env.MOBILE_BUILD_NUMBER ?? "1",
     entitlements: {
       // An approval holds a Run until answered, so it may break through Focus.
       "com.apple.developer.usernotifications.time-sensitive": true,
@@ -43,6 +45,8 @@ export default {
       NSLocalNetworkUsageDescription:
         "Allow Nodex to connect to your desktop on the local network.",
       NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
+      // What App Store Connect records for standard encryption on a store without France's rules.
+      ITSAppUsesNonExemptEncryption: false,
     },
   },
   android: {

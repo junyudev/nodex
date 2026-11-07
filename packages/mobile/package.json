@@ -10,6 +10,7 @@
     "android": "APP_VARIANT=development EXPO_NO_GIT_STATUS=1 expo prebuild --clean --no-install --platform android && APP_VARIANT=development expo run:android",
     "ios:release": "APP_VARIANT=production EXPO_NO_GIT_STATUS=1 expo prebuild --clean --no-install --platform ios && APP_VARIANT=production expo run:ios --configuration Release --no-bundler",
     "android:release": "APP_VARIANT=production EXPO_NO_GIT_STATUS=1 expo prebuild --clean --no-install --platform android && APP_VARIANT=production expo run:android --variant release --no-bundler",
+    "ios:testflight": "bash scripts/testflight.sh",
     "test": "cd ../.. && vp test run --config vitest.node.config.ts packages/mobile/src",
     "typecheck": "tsc-rs --project tsconfig.json --noEmit"
   },
