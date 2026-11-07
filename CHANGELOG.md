@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Reviewing unsaved edits now shows exactly what they would add to the Page. Word-level changes appear in place, unchanged content folds away, and one sentence says what restoring does or that nothing was lost, so you no longer compare two full copies by eye. Edits that can't be merged can still be copied back with one click, and discarding applies immediately with Undo.
 - Nodex prepaid balances are now counted in credits instead of dollars, at 25 credits to $1. Your balance keeps its value and reads as a whole number, and Top up shows how many credits each amount adds.
 - The macOS installer is about 30% smaller, so first-time downloads finish sooner, and Nodex uses about 250 MB less disk space. Opening the disk image and copying Nodex to Applications take a little longer on a first install.
 - The Windows installer is about a fifth smaller, and installing it takes less disk space.

@@ -92,7 +92,7 @@ export const encodeRecoveryBundle = async (
     if (sectionBytes > CORE_TRANSPORT_BUDGETS.recovery_bundle_bytes)
       throw new RecoveryBundleValidationError(
         "request_too_large",
-        "The complete retained package exceeds the 32 MiB receipt limit. Its original local copy remains exportable.",
+        "These edits are larger than the 32 MiB recovery limit. Export a backup to keep them.",
         sectionBytes,
         CORE_TRANSPORT_BUDGETS.recovery_bundle_bytes,
       );
@@ -189,14 +189,14 @@ export const encodeRecoveryBundle = async (
   if (metadata.length > CORE_TRANSPORT_BUDGETS.recovery_manifest_bytes)
     throw new RecoveryBundleValidationError(
       "manifest_too_large",
-      "Recovery metadata exceeds its receipt limit. Export retains the complete source.",
+      "These edits are too complex to recover here. Export a backup to keep them.",
       metadata.length,
       CORE_TRANSPORT_BUDGETS.recovery_manifest_bytes,
     );
   if (length > CORE_TRANSPORT_BUDGETS.recovery_bundle_bytes)
     throw new RecoveryBundleValidationError(
       "request_too_large",
-      "The complete retained package exceeds the 32 MiB receipt limit. Its original local copy remains exportable.",
+      "These edits are larger than the 32 MiB recovery limit. Export a backup to keep them.",
       length,
       CORE_TRANSPORT_BUDGETS.recovery_bundle_bytes,
     );

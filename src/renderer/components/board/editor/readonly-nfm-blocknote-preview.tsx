@@ -33,7 +33,7 @@ import {
   inlineTintedChipLabelClassName,
   inlineTintedChipVariants,
 } from "@/components/ui/inline-tinted-chip";
-import { readMarkdown } from "../../../../shared/nodex-markdown";
+import { readMarkdown, type MarkdownBlock } from "../../../../shared/nodex-markdown";
 import { resolveLocalImageDisplayUrl } from "@/lib/assets";
 import { resolveAgentConfigChip, type AgentConfigProps } from "./agent-config-chip";
 import type { FileReadAuthority, FilePreviewAuthority } from "@/lib/library-file-resources";
@@ -84,7 +84,8 @@ const READONLY_SELECTION_PRESENTATION = { [BLOCK_SELECTION_PRESENTATION_ATTRIBUT
 
 interface ReadonlyMarkdownBlockNotePreviewProps {
   fileAuthority?: FileReadAuthority | FilePreviewAuthority | null;
-  content: string;
+  /** Markdown, or Blocks already read from it. Keep Blocks stable between renders. */
+  content: string | readonly MarkdownBlock[];
   projectId: string;
   pageId: string;
   historyId?: number | string | null;
@@ -305,14 +306,16 @@ export const readonlyMarkdownBlockNotePreviewSchema = BlockNoteSchema.create({
   styleSpecs: defaultStyleSpecs,
 });
 
-export function createReadonlyNfmPreviewDocument(content: string): ReadonlyPreviewDocument {
-  if (!content.trim()) {
+export function createReadonlyNfmPreviewDocument(
+  content: string | readonly MarkdownBlock[],
+): ReadonlyPreviewDocument {
+  if (typeof content === "string" && !content.trim()) {
     return {
       initialContent: undefined,
     };
   }
 
-  const blocks = readMarkdown(content);
+  const blocks = typeof content === "string" ? readMarkdown(content) : content;
   const initialContent = markdownBlocksForEditor(blocks) as PartialBlock[];
 
   return {

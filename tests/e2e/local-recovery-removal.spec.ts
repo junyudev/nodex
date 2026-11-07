@@ -76,18 +76,18 @@ test("unverified retained edits can be removed without changing the source Page"
       await page.bringToFront();
       await page.getByRole("button", { name: "Content issues", exact: true }).click();
       await page.getByRole("button", { name: "Review edits", exact: true }).first().click();
-      const dialog = page.getByRole("dialog", { name: "Unsaved edits" });
+      const dialog = page.getByRole("dialog", { name: /^Unsaved edits/u });
       await expect(
-        dialog.getByText(/source Library or access context cannot be verified/),
+        dialog.getByText(/can’t tell which Library these edits belong to/u),
       ).toBeVisible();
-      await dialog.getByRole("button", { name: "Remove local draft", exact: true }).click();
-      await expect(dialog.getByText(/This cannot be undone/)).toBeVisible();
+      await dialog.screenshot({ path: test.info().outputPath("local-needs-attention.png") });
+      await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+      await expect(dialog.getByText(/This can’t be undone/u)).toBeVisible();
       await dialog.screenshot({ path: test.info().outputPath("remove-local-draft.png") });
       await dialog.getByRole("button", { name: "Keep", exact: true }).click();
-      await dialog.getByRole("button", { name: "Remove local draft", exact: true }).click();
+      await dialog.getByRole("button", { name: "Remove", exact: true }).click();
       await dialog.getByRole("button", { name: "Remove permanently", exact: true }).click();
-      await expect(dialog.getByText("No unsaved drafts need attention.")).toBeVisible();
-      await dialog.getByRole("button", { name: "Later", exact: true }).click();
+      await expect(dialog).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Content issues", exact: true })).toHaveCount(
         0,
       );

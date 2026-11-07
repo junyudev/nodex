@@ -1,4 +1,4 @@
-import { recoveryReviewEntries } from "./document-recovery-entries";
+import { formatRecoveryTime, recoveryReviewEntries } from "./document-recovery-entries";
 import { contentRoutingIdentityKey } from "../../shared/content-routing-context";
 import type { DocumentRecovery } from "./document-recovery";
 import {
@@ -26,14 +26,14 @@ export function createDocumentRecoveryIssueSource(
         scope: module.scope,
         location: null,
         title: draft.source_title?.trim() || "Unsaved edits",
-        detail:
-          "Earlier edits are retained for review. They do not describe the current document’s save state.",
+        detail: `Edits from ${formatRecoveryTime(draft.created_at)} weren’t saved to this Page. Review what’s different.`,
         actions: [
           {
             kind: "review",
             label: "Review edits",
             scope: module.scope,
-            documentId: draft.document_id,
+            // Opens this draft inside everything its observer lists, so review can move on.
+            documentId: module.documentId,
             draftId: draft.draft_id,
           },
         ],
@@ -46,17 +46,16 @@ export function createDocumentRecoveryIssueSource(
           id: `${module.scope.libraryId}\0local:${source.sourceKey}`,
           scope: module.scope,
           location: null,
-          title:
-            source.sourceKind === "canvas" ? "Retained Canvas edits" : "Retained document edits",
+          title: source.sourceKind === "canvas" ? "Unsaved Canvas edits" : "Unsaved Page edits",
           detail:
             source.failure?.message ??
-            "Retained on this device. Core has not yet confirmed this package.",
+            "These edits are safe on this device and waiting for a recovery copy.",
           actions: [
             {
               kind: "review",
               label: "Review edits",
               scope: module.scope,
-              documentId: source.documentId,
+              documentId: module.documentId,
               sourceKey: source.sourceKey,
             },
           ],
@@ -71,11 +70,11 @@ export function createDocumentRecoveryIssueSource(
           scope: module.scope,
           location: null,
           title: state.localError
-            ? "Couldn’t read local retained edits"
+            ? "Couldn’t read unsaved edits on this device"
             : state.error
-              ? "Couldn’t check received edits"
-              : `${remaining + moreLocal} more retained ${remaining + moreLocal === 1 ? "draft" : "drafts"}`,
-          detail: state.localError ?? state.error ?? "Open the review to see the remaining drafts.",
+              ? "Couldn’t check for unsaved edits"
+              : `${remaining + moreLocal} more with unsaved edits`,
+          detail: state.localError ?? state.error ?? "Open the review to see the rest.",
           actions: [
             {
               kind: "review",

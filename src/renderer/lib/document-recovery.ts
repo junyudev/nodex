@@ -320,7 +320,7 @@ export class DocumentRecovery {
           received.payload_hash !== received.capture_receipt?.stored_payload_hash
         )
           throw new Error(
-            "Core acknowledged another retained package. The local copy is unchanged.",
+            "Nodex confirmed a different recovery copy. These edits are unchanged on this device.",
           );
         this.publish({
           acceptedLocal: { ...this.state.acceptedLocal, [entry.sourceKey]: received.draft_id },
@@ -446,9 +446,10 @@ export class DocumentRecovery {
   }
   retry = async (sourceKey: string): Promise<void> => {
     const entry = this.state.staged.find((value) => value.sourceKey === sourceKey);
-    if (!entry) throw new Error("Refresh the local recovery list before retrying");
+    if (!entry) throw new Error("These edits changed. Refresh before trying again.");
     const epoch = await this.readReceived(false);
-    if (!epoch) throw new Error("Core is unavailable. You can export the retained local package.");
+    if (!epoch)
+      throw new Error("Nodex can’t reach its local data right now. You can still export a backup.");
     try {
       await this.transfer(entry, epoch);
     } catch (error) {
@@ -464,9 +465,9 @@ export class DocumentRecovery {
   };
   removeLocal = async (entry: RecoveryStagingSummary): Promise<void> => {
     if (!this.state.staged.some((value) => value.sourceKey === entry.sourceKey))
-      throw new Error("Refresh the local recovery list before removing this draft");
+      throw new Error("These edits changed. Refresh before removing them.");
     if (this.state.sending.includes(entry.sourceKey))
-      throw new Error("Wait for this draft to finish sending before removing it");
+      throw new Error("Wait for the recovery copy to finish before removing these edits.");
     const store = this.store(entry.sourceKind);
     if (!store) throw new Error("Local recovery storage is unavailable");
     await navigator.locks.request(
@@ -474,9 +475,7 @@ export class DocumentRecovery {
       { ifAvailable: true },
       async (lock) => {
         if (!lock)
-          throw new Error(
-            "This draft is being sent in another window. Try again when sending finishes.",
-          );
+          throw new Error("Another window is saving these edits. Try again when it finishes.");
         await store.remove(entry);
       },
     );
@@ -485,7 +484,7 @@ export class DocumentRecovery {
   };
   exportLocal = async (sourceKey: string): Promise<void> => {
     const entry = this.state.staged.find((value) => value.sourceKey === sourceKey);
-    if (!entry) throw new Error("Refresh the local recovery list before exporting");
+    if (!entry) throw new Error("These edits changed. Refresh before exporting.");
     const store = this.store(entry.sourceKind);
     if (!store) throw new Error("Local recovery storage is unavailable");
     const bytes = await store.export(entry);
@@ -561,9 +560,9 @@ export class DocumentRecovery {
   ): Promise<RecoveryDraftSummary> => {
     const epoch = this.state.storeEpoch;
     const journal = this.checkpoint?.staging;
-    if (!epoch) throw new Error("Refresh the recovery preview before continuing");
+    if (!epoch) throw new Error("Refresh before continuing.");
     if (!journal)
-      throw new Error("Local recovery storage is unavailable. The action has not been sent.");
+      throw new Error("Storage on this device isn’t available, so nothing was changed.");
     const draftId = inspection.summary.draft_id;
     const key = this.pendingKey(draftId);
     let stored = await journal.readOperation(key);
@@ -603,9 +602,7 @@ export class DocumentRecovery {
       draftId,
     );
     if (command.resolve.choice.kind !== choice)
-      throw new Error(
-        "The previous action has not been confirmed. Retry it or refresh its result first.",
-      );
+      throw new Error("Your previous choice hasn’t been confirmed yet. Refresh to see its result.");
     if (legacy) localStorage.removeItem(legacyKey);
     const result = await this.port.apply(command).catch(async (error: unknown) => {
       if (

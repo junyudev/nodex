@@ -106,26 +106,39 @@ still requires that retained runtime. The Library recovery overview observes
 bounded draft summaries after the original document closes; ordinary content
 commits do not reload an empty recovery list.
 
-## Review retained edits
+## Review unsaved edits
 
-`Unsaved edits · Review` opens a shared, root-hosted review dialog. It describes
-retained drafts independently of the current document's save state. Closing the
-dialog or choosing Later keeps the draft pending without opening another alert.
-A protected failed replica also offers Continue editing to start a fresh canonical
+`Unsaved edits · Review` opens a shared, root-hosted review dialog that answers one
+question: what do these edits contain that the current document does not? It
+describes retained drafts independently of the current document's save state.
+Closing the dialog keeps every draft pending without opening another alert. A
+protected failed replica also offers Continue editing to start a fresh canonical
 session. Page and Canvas use the same persisted resolution lifecycle.
 
+Each draft leads with one sentence and one recommended action. The comparison uses
+the merge Core computes, including when Core will not apply it, because a merge
+already accounts for later edits and deletions: what differs is exactly what the
+draft adds. Without a merge, such as after the document was replaced, it uses the
+captured edits, and Blocks found only in the current document fold away as newer.
+A draft that adds nothing says so and recommends Discard.
+
+The comparison reads as one document in Page typography. Added and removed Blocks
+are marked, an edited Block shows its word changes in place, and unchanged Blocks
+fold away around one Block of context. It is presentation only and never decides
+capabilities. A Canvas has no readable difference and offers a direct before and
+after. A preview that exceeds its display budget is explicitly limited; capabilities
+still use the complete retained content, and export remains available.
+
 The list combines bounded local staging and Core summaries without loading package
-contents. Local entries remain visible while Core is unavailable and after the
-original document closes. Each entry distinguishes On this device, Sending,
-Received, and Needs attention, with its own failure and retry action. A received
-package replaces its matching local entry without counting the edits twice.
-Selecting a received draft loads bounded capability metadata and one requested
-read-only preview. A preview that exceeds its display budget is explicitly limited;
-capabilities still use the complete retained content, and export remains available. Current content can be compared with After restoring when a
-safe merge is available, or with Retained draft when no reliable merge exists.
-The Backups settings page also lists Library drafts across documents and
-generations, including drafts whose source no longer exists. Recently handled
-entries remain available there and in the review dialog.
+contents, and appears only when there is more than one entry. Entries read newest
+first. Local entries remain visible while Core is unavailable and after the original
+document closes, showing On this device, Saving or Needs attention with their own
+failure and retry action. A received package replaces its matching local entry
+without counting the edits twice. Resolving an entry moves on to the next one and
+closes the dialog after the last. `Show resolved` adds resolved entries to the list.
+The Backups settings page opens the same review for every Library draft, including
+drafts whose source no longer exists, and shows resolved entries when nothing is
+pending.
 
 Core determines the available actions:
 
@@ -136,19 +149,22 @@ Core determines the available actions:
   owned identities. It is offered only for a complete recoverable package. Packages
   referencing child owners or files without a captured resource closure remain
   pending and exportable; Nodex never marks a partial copy as complete.
-- Discard draft requires an inline confirmation, changes no current content, and
-  can be reversed with Undo discard in Recently handled.
-- Remove local draft permanently removes a selected on-device package after an
-  explicit confirmation, including when its source cannot be verified or Core is
-  unavailable. The confirmation recommends exporting a backup and states that this
-  cannot be undone and does not change current documents. Removal checks the
-  reviewed source revision and removes its local warning; other drafts remain.
-  Transfer and removal share an exclusive cross-window lock. Removal is refused
-  while another coordinator is sending that package. A durable receipt claim also
-  prevents removal if the sending window closes or its response is lost. Retry
-  receipt confirms that same capture; a later rejection cannot clear an earlier
-  uncertain claim.
-- Export saves a `.nodex-recovery` file containing the exact retained payload,
+- Copy new content is the recommendation when Core allows neither. It copies Markdown
+  for only the Blocks the draft adds, so pasting it cannot duplicate the current
+  document. Copy as Markdown copies the whole compared version.
+- Discard changes no current content and applies immediately, because it can be
+  undone: a notification offers Undo, and Undo discard stays available on the
+  resolved entry for 30 days.
+- Remove permanently deletes a selected on-device package after an explicit
+  confirmation, including when its source cannot be verified or Core is unavailable.
+  The confirmation recommends exporting a backup and states that this cannot be
+  undone. Removal checks the reviewed source revision and removes its local warning;
+  other drafts remain. Transfer and removal share an exclusive cross-window lock.
+  Removal is refused while another coordinator is sending that package. A durable
+  receipt claim also prevents removal if the sending window closes or its response
+  is lost. Try again confirms that same capture; a later rejection cannot clear an
+  earlier uncertain claim.
+- Export backup saves a `.nodex-recovery` file containing the exact retained payload,
   integrity metadata and available captured File dependencies. Local packages can
   be exported before Core accepts them, including rejected or unreadable sources.
   Export does not require a preview, resolve the draft, or remove local staging.
@@ -169,7 +185,7 @@ converge on Core's recorded result. A changed preview requires review again.
 ## Protection and retention
 
 Automatic retirement of a local staging row requires Core to durably receive its
-immutable, hash-checked recovery package. Explicit, confirmed Remove local draft
+immutable, hash-checked recovery package. Explicit, confirmed Remove permanently
 is the only user-directed exception and does not claim Core receipt. The acknowledgement must match the
 draft, source revision and exact submitted-byte digest; deleting the row also
 requires that its persisted revision has not changed. Lost replies leave staging bytes

@@ -1,29 +1,58 @@
 import {
-  recoveryReviewEntries,
-  receivedRecoveryKey,
-  stagedRecoveryKey,
-} from "@/lib/document-recovery-entries";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type {
-  RecoveryChoice,
-  RecoveryDraftInspection,
-  RecoveryPreviewResult,
-} from "../../../shared/block-documents/document-recovery";
-import type { DocumentRecovery } from "@/lib/document-recovery";
-import type { ModalCloseProps } from "@/lib/modal-registry";
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
+import { MoreActionsIcon } from "@/components/shared/icons";
+import { NodexButton } from "@/components/ui/button";
 import {
   NodexDialog,
   NodexDialogContent,
-  NodexDialogFrame,
-  NodexDialogHeader,
-  NodexDialogTitle,
   NodexDialogDescription,
-  NodexDialogBody,
-  NodexDialogFooter,
-  NodexDialogAction,
+  NodexDialogTitle,
 } from "@/components/ui/dialog";
-import { RecoveryPreview } from "./recovery-preview";
+import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import { LoadingPlaceholder } from "@/components/ui/loading-placeholder";
+import { toast } from "@/components/ui/toast";
+import { writeTextToClipboard } from "@/lib/clipboard";
+import type { DocumentRecovery } from "@/lib/document-recovery";
+import {
+  formatRecoveryTime,
+  receivedRecoveryKey,
+  recoveryReviewEntries,
+  stagedRecoveryKey,
+  type RecoveryReviewEntry,
+} from "@/lib/document-recovery-entries";
+import {
+  loadRecoveryComparison,
+  orderRecoveryEntries,
+  recoveryDecision,
+  recoveryEntryIsPending,
+  recoveryEntryMeta,
+  recoveryEntryTitle,
+  recoveryNewContentMarkdown,
+  type RecoveryComparison,
+} from "@/lib/document-recovery-review";
+import type { RecoveryStagingSummary } from "@/lib/document-recovery-staging";
+import { toastFailure } from "@/lib/failure-toast";
+import { runWithCleanup } from "@/lib/run-with-cleanup";
+import type { ModalCloseProps } from "@/lib/modal-registry";
+import { cn } from "@/lib/utils";
 import { contentRoutingIdentityKey } from "../../../shared/content-routing-context";
+import type {
+  RecoveryChoice,
+  RecoveryDraftInspection,
+} from "../../../shared/block-documents/document-recovery";
+import { RecoveryDiff } from "./recovery-diff";
+import { useOpenDocumentRecoveryReview } from "./recovery-entry";
+import {
+  RecoveryCanvasPreview,
+  RecoveryDocumentPreview,
+  type RecoveryPreviewContext,
+} from "./recovery-preview";
 
 type RecoveryReviewProps = ModalCloseProps & {
   module: DocumentRecovery;
@@ -41,6 +70,62 @@ export function RecoveryReview(props: RecoveryReviewProps) {
   );
 }
 
+interface RecoveryAction {
+  readonly label: string;
+  readonly run: () => void;
+}
+
+const RESOLVE_FAILURE_TITLE = {
+  restore: "Couldn’t restore these edits",
+  copy: "Couldn’t save a copy",
+  discard: "Couldn’t discard these edits",
+  reopen: "Couldn’t undo the discard",
+  reconcile: "Couldn’t check these edits",
+} as const satisfies Record<RecoveryChoice, string>;
+
+/** Reads what Core allows and the two versions to compare; stale reads stay on screen until replaced. */
+function useReceivedDraft(module: DocumentRecovery, draftId: string | null, requestKey: string) {
+  const [loaded, setLoaded] = useState<{
+    readonly draftId: string;
+    readonly inspection: RecoveryDraftInspection | null;
+    readonly comparison: RecoveryComparison;
+    readonly failure: string | null;
+  } | null>(null);
+  // A new revision of the draft, or of the Library's drafts, is a new read of the same draft.
+  const [request, setRequest] = useState({ key: requestKey, draftId });
+  if (request.key !== requestKey) setRequest({ key: requestKey, draftId });
+  useEffect(() => {
+    const { draftId } = request;
+    if (!draftId) return;
+    let active = true;
+    void (async () => {
+      const inspection = await module.inspect(draftId);
+      if (!active) return;
+      setLoaded((previous) => ({
+        draftId,
+        inspection,
+        comparison:
+          previous?.draftId === draftId ? previous.comparison : ({ kind: "loading" } as const),
+        failure: null,
+      }));
+      const comparison = await loadRecoveryComparison(inspection, module.preview);
+      if (active) setLoaded({ draftId, inspection, comparison, failure: null });
+    })().catch((error: unknown) => {
+      if (active)
+        setLoaded({
+          draftId,
+          inspection: null,
+          comparison: { kind: "loading" },
+          failure: error instanceof Error ? error.message : String(error),
+        });
+    });
+    return () => {
+      active = false;
+    };
+  }, [module, request]);
+  return loaded?.draftId === draftId ? loaded : null;
+}
+
 function RecoveryReviewContent({
   module,
   onClose,
@@ -49,6 +134,8 @@ function RecoveryReviewContent({
   initialSourceKey,
 }: RecoveryReviewProps) {
   const state = useSyncExternalStore(module.subscribe, module.getSnapshot);
+  const openReview = useOpenDocumentRecoveryReview();
+  const bodyRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(
     initialSourceKey
       ? stagedRecoveryKey(initialSourceKey)
@@ -56,152 +143,242 @@ function RecoveryReviewContent({
         ? receivedRecoveryKey(initialDraftId)
         : null,
   );
-  const [inspection, setInspection] = useState<RecoveryDraftInspection | null>(null);
-  const [view, setView] = useState<"retained" | "restored" | "current">("restored");
-  const [preview, setPreview] = useState<RecoveryPreviewResult | null>(null);
+  const [resolvedRequested, setResolvedRequested] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [confirmDiscard, setConfirmDiscard] = useState(false);
-  const [removeTarget, setRemoveTarget] = useState<(typeof state.staged)[number] | null>(null);
-  const [showResolved, setShowResolved] = useState(false);
-  const request = useRef(0);
+  const [confirmingRemoval, setConfirmingRemoval] = useState(false);
+  const [lastDiscard, setLastDiscard] = useState<{
+    readonly draftId: string;
+    readonly title: string;
+  } | null>(null);
+  const { pending, resolved } = orderRecoveryEntries(recoveryReviewEntries(state));
+  // With nothing left to review, what was already resolved is the only reason to be here.
+  const listResolved = resolvedRequested || (!state.loading && pending.length === 0);
   useEffect(() => module.connect(), [module]);
   useEffect(() => {
-    void module.setIncludeResolved(showResolved);
-  }, [module, showResolved]);
-  const entries = recoveryReviewEntries(state).filter(
-    (entry) => entry.kind === "staged" || showResolved || !entry.draft.resolution,
+    void module.setIncludeResolved(listResolved);
+  }, [module, listResolved]);
+  useEffect(
+    () => () => {
+      void module.setIncludeResolved(false);
+    },
+    [module],
   );
+  const listed = listResolved ? [...pending, ...resolved] : pending;
   const redirected = Object.entries(state.acceptedLocal).find(
     ([key]) => stagedRecoveryKey(key) === selected,
   )?.[1];
-  const selectedEntry =
-    entries.find((entry) => entry.key === selected) ??
-    entries.find((entry) => entry.key === receivedRecoveryKey(redirected ?? "")) ??
-    entries[0] ??
+  const entry =
+    listed.find((candidate) => candidate.key === selected) ??
+    listed.find((candidate) => candidate.key === receivedRecoveryKey(redirected ?? "")) ??
+    listed[0] ??
     null;
-  const local = selectedEntry?.kind === "staged" ? selectedEntry.source : null;
-  const draftId = selectedEntry?.kind === "received" ? selectedEntry.draft.draft_id : null;
-  const draftRevision =
-    selectedEntry?.kind === "received" ? selectedEntry.draft.revision : undefined;
-  const inspectionKey = JSON.stringify([draftId, draftRevision, state.previewRevision]);
-  const [inspectionRequest, setInspectionRequest] = useState({ key: inspectionKey, draftId });
-  if (inspectionRequest.key !== inspectionKey)
-    setInspectionRequest({ key: inspectionKey, draftId });
-  if (inspection && inspection.summary.draft_id !== draftId) setInspection(null);
-  useEffect(() => {
-    const { draftId } = inspectionRequest;
-    const version = ++request.current;
-    if (!draftId) return;
-    void module
-      .inspect(draftId)
-      .then((value) => {
-        if (request.current !== version) return;
-        setInspection(value);
-        setError(null);
-        setConfirmDiscard(false);
-        setView((previous) =>
-          previous === "current" && value.current
-            ? "current"
-            : value.can_restore && value.restored
-              ? "restored"
-              : "retained",
-        );
-      })
-      .catch((error: unknown) => {
-        if (request.current === version)
-          setError(error instanceof Error ? error.message : String(error));
-      });
-    return () => {
-      request.current += 1;
-    };
-  }, [module, inspectionRequest]);
-  const current = inspection?.summary.draft_id === draftId ? inspection : null;
-  const [previewRequest, setPreviewRequest] = useState({
-    current,
-    view,
-    revision: state.previewRevision,
-  });
-  if (
-    previewRequest.current !== current ||
-    previewRequest.view !== view ||
-    previewRequest.revision !== state.previewRevision
-  ) {
-    setPreviewRequest({ current, view, revision: state.previewRevision });
-    setPreview(null);
-  }
-  useEffect(() => {
-    const { current, view } = previewRequest;
-    let active = true;
-    if (!current) return;
-    void module
-      .preview(current, view)
-      .then((value) => {
-        if (active) setPreview(value);
-      })
-      .catch((error: unknown) => {
-        if (active)
-          setPreview({
-            kind: "unavailable",
-            explanation: error instanceof Error ? error.message : String(error),
+  const select = (next: RecoveryReviewEntry) => {
+    setSelected(next.key);
+    setConfirmingRemoval(false);
+  };
+
+  const received = entry?.kind === "received" ? entry.draft : null;
+  const draft = useReceivedDraft(
+    module,
+    received?.draft_id ?? null,
+    JSON.stringify([received?.draft_id, received?.revision, state.previewRevision]),
+  );
+  const inspection = draft?.inspection ?? null;
+  const comparison = draft?.comparison ?? ({ kind: "loading" } as const);
+  const decision = inspection ? recoveryDecision(inspection, comparison) : null;
+  const previewContext: RecoveryPreviewContext | null = received
+    ? {
+        scope: module.scope,
+        documentId: received.document_id,
+        draftId: received.draft_id,
+        storeEpoch: state.storeEpoch,
+      }
+    : null;
+
+  const nextPending = () => pending.find((candidate) => candidate.key !== entry?.key) ?? null;
+  const reopenDraft = async (draftId: string) => {
+    const current = await module.inspect(draftId);
+    await module.resolve(current, "reopen");
+    await module.refresh();
+  };
+  const resolve = async (choice: "restore" | "copy" | "discard" | "reopen") => {
+    if (!inspection || busy) return;
+    setBusy(true);
+    setLastDiscard(null);
+    await runWithCleanup(
+      async () => {
+        const result = await module.resolve(inspection, choice);
+        if (choice === "reopen") {
+          await module.refresh();
+          return;
+        }
+        const next = nextPending();
+        if (choice === "restore") toast.success("Edits restored");
+        else if (choice === "copy") toast.success("Saved as a separate copy in your Library");
+        else if (next) setLastDiscard({ draftId: result.draft_id, title });
+        // A toast outside an open modal is inert, so only a closing review can offer Undo there.
+        else
+          toast.info("Edits discarded", {
+            action: {
+              label: "Undo",
+              onClick: () => {
+                void reopenDraft(result.draft_id)
+                  .then(() =>
+                    openReview({
+                      scope: module.scope,
+                      documentId: module.documentId,
+                      draftId: result.draft_id,
+                    }),
+                  )
+                  .catch((error: unknown) => toastFailure(RESOLVE_FAILURE_TITLE.reopen, error));
+              },
+            },
           });
-      });
-    return () => {
-      active = false;
-    };
-  }, [module, previewRequest]);
-  const run = async (choice: RecoveryChoice) => {
-    if (!current || busy) return;
-    setBusy(true);
-    setError(null);
-    await module
-      .resolve(current, choice)
-      .then(async (result) => {
-        setInspection({ ...current, summary: result, can_restore: false, can_copy: false });
-        setConfirmDiscard(false);
-        setShowResolved(true);
-        setSelected(receivedRecoveryKey(result.draft_id));
-        await module.refresh();
-      })
-      .catch((error: unknown) => {
-        setError(error instanceof Error ? error.message : String(error));
-      })
-      .finally(() => setBusy(false));
+        if (next) select(next);
+        else onClose();
+        void module.refresh();
+      },
+      {
+        onError: async (error: unknown) => toastFailure(RESOLVE_FAILURE_TITLE[choice], error),
+        cleanup: () => setBusy(false),
+      },
+    );
   };
-  const removeLocal = async () => {
-    if (!removeTarget || busy) return;
-    setBusy(true);
-    setError(null);
-    await module
-      .removeLocal(removeTarget)
-      .then(() => {
-        setRemoveTarget(null);
-      })
-      .catch((error: unknown) => {
-        setError(error instanceof Error ? error.message : String(error));
-      })
-      .finally(() => setBusy(false));
+  const exportBackup = () =>
+    runWithCleanup(
+      async () => {
+        if (entry?.kind === "staged") await module.exportLocal(entry.source.sourceKey);
+        else if (received) await module.export(received.draft_id);
+        else await exportLocal?.();
+      },
+      { onError: async (error: unknown) => toastFailure("Couldn’t export a backup", error) },
+    );
+  const copy = async (markdown: string) => {
+    if (await writeTextToClipboard(markdown)) toast.success("Copied");
+    else toastFailure("Couldn’t copy these edits");
   };
-  const exportDraft = async () => {
-    try {
-      if (local) await module.exportLocal(local.sourceKey);
-      else if (draftId) await module.export(draftId);
-      else if (exportLocal) await exportLocal();
-    } catch (error) {
-      setError(error instanceof Error ? error.message : String(error));
+  const retryLocal = async (source: RecoveryStagingSummary) => {
+    setBusy(true);
+    await runWithCleanup(() => module.retry(source.sourceKey), {
+      onError: async (error: unknown) => toastFailure("Still couldn’t save a recovery copy", error),
+      cleanup: () => setBusy(false),
+    });
+  };
+  const removeLocal = async (source: RecoveryStagingSummary) => {
+    setBusy(true);
+    await runWithCleanup(
+      async () => {
+        const next = nextPending();
+        await module.removeLocal(source);
+        setConfirmingRemoval(false);
+        if (next) select(next);
+        else onClose();
+      },
+      {
+        onError: async (error: unknown) => toastFailure("Couldn’t remove these edits", error),
+        cleanup: () => setBusy(false),
+      },
+    );
+  };
+
+  const title = entry ? recoveryEntryTitle(entry) : "Unsaved edits";
+  const time = received?.created_at ?? (entry?.kind === "staged" ? entry.source.createdAt : null);
+  const sending = entry?.kind === "staged" && state.sending.includes(entry.source.sourceKey);
+  const listFailure = state.localError ?? state.error;
+  const description = (() => {
+    if (entry?.kind === "staged")
+      return sending
+        ? "Saving a recovery copy…"
+        : entry.source.failure
+          ? "These edits are safe on this device, but Nodex couldn’t save a recovery copy."
+          : "These edits are safe on this device and waiting for a recovery copy.";
+    if (received) return draft?.failure ? "Couldn’t read these edits." : decision?.headline;
+    if (state.loading) return "Checking for unsaved edits…";
+    if (exportLocal)
+      return "These edits are only in this window. Export a backup before closing it.";
+    return listFailure
+      ? "Couldn’t check for unsaved edits."
+      : "Nothing to review. No edits were lost.";
+  })();
+  const detail =
+    entry?.kind === "staged" ? entry.source.failure?.message : (draft?.failure ?? decision?.detail);
+
+  const diff = comparison.kind === "diff" ? comparison.diff : null;
+  const previewAfter =
+    comparison.kind === "diff" || comparison.kind === "document" ? comparison.after : null;
+  const exportAction: RecoveryAction = {
+    label: "Export backup",
+    run: () => void exportBackup(),
+  };
+  const saveCopyAction: RecoveryAction = {
+    label: "Save as a copy",
+    run: () => void resolve("copy"),
+  };
+  const copyAllAction: RecoveryAction | null = previewAfter
+    ? { label: "Copy as Markdown", run: () => void copy(previewAfter.markdown) }
+    : null;
+  const primaryAction = ((): RecoveryAction | null => {
+    if (entry?.kind === "staged")
+      return sending ? null : { label: "Try again", run: () => void retryLocal(entry.source) };
+    if (!entry) return exportLocal ? exportAction : null;
+    switch (decision?.primary) {
+      case "restore":
+        return { label: "Restore edits", run: () => void resolve("restore") };
+      case "copy":
+        return saveCopyAction;
+      case "copy-new":
+        return diff
+          ? { label: "Copy new content", run: () => void copy(recoveryNewContentMarkdown(diff)) }
+          : null;
+      case "copy-all":
+        return copyAllAction;
+      case "discard":
+        return { label: "Discard", run: () => void resolve("discard") };
+      case "reopen":
+        return { label: "Undo discard", run: () => void resolve("reopen") };
+      case "export":
+        return exportAction;
+      default:
+        return null;
     }
-  };
-  const resolution = current?.summary.resolution;
-  const resolvedMessage =
-    resolution === "discarded"
-      ? "Draft discarded. Your current document is unchanged."
-      : resolution === "copied"
-        ? "Saved as a separate copy in your Library."
-        : resolution === "restored"
-          ? "Edits restored and saved."
-          : resolution === "already_saved"
-            ? "These edits were already saved. No action is needed."
-            : null;
+  })();
+  // The menu holds only what the footer does not already show.
+  const menuActions = [
+    inspection?.can_copy ? saveCopyAction : null,
+    copyAllAction,
+    entry || exportLocal ? exportAction : null,
+    pending.length > 0
+      ? {
+          label: resolvedRequested ? "Hide resolved" : "Show resolved",
+          run: () => setResolvedRequested((value) => !value),
+        }
+      : null,
+  ].filter(
+    (action): action is RecoveryAction => action !== null && action.label !== primaryAction?.label,
+  );
+  // Discarding sits beside the decision it competes with, unless it already is the decision.
+  const secondary =
+    entry?.kind === "staged" ? (
+      <NodexButton
+        variant="ghostSecondary"
+        size="sm"
+        disabled={busy || sending}
+        onClick={() => setConfirmingRemoval(true)}
+      >
+        Remove
+      </NodexButton>
+    ) : inspection && !inspection.summary.resolution && decision?.primary !== "discard" ? (
+      <NodexButton
+        variant="ghostSecondary"
+        size="sm"
+        disabled={busy}
+        onClick={() => void resolve("discard")}
+      >
+        Discard
+      </NodexButton>
+    ) : null;
+
+  const hasRail = listed.length > 1 || state.hasMore || state.localHasMore;
   return (
     <NodexDialog
       open
@@ -209,281 +386,326 @@ function RecoveryReviewContent({
         if (!open) onClose();
       }}
     >
-      <NodexDialogContent size="large" className="flex max-h-[85vh] flex-col" showCloseButton>
-        <NodexDialogFrame className="min-h-0">
-          <NodexDialogHeader className="pr-6">
-            <NodexDialogTitle>Unsaved edits</NodexDialogTitle>
-            <NodexDialogDescription>
-              Review retained edits, then choose how to keep them.
+      <NodexDialogContent
+        initialFocus={bodyRef}
+        className={cn(
+          "flex max-h-[min(86vh,780px)] bg-token-main-surface-primary backdrop-blur-none",
+          hasRail ? "h-[min(86vh,780px)] w-[980px]" : "w-[760px]",
+        )}
+      >
+        {hasRail ? (
+          <RecoveryEntryRail
+            pending={pending}
+            resolved={listResolved ? resolved : []}
+            selectedKey={entry?.key ?? null}
+            sending={state.sending}
+            disabled={busy}
+            canLoadMore={state.hasMore || state.localHasMore}
+            onLoadMore={() => void module.loadMore()}
+            onSelect={select}
+          />
+        ) : null}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <header className="flex shrink-0 flex-col gap-0.5 py-4 pr-12 pl-5">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <NodexDialogTitle className="truncate text-base font-semibold">
+                <span className="sr-only">Unsaved edits: </span>
+                {title}
+              </NodexDialogTitle>
+              {time ? (
+                <time
+                  dateTime={time}
+                  className="shrink-0 text-xs text-token-description-foreground tabular-nums"
+                >
+                  {formatRecoveryTime(time)}
+                </time>
+              ) : null}
+            </div>
+            <NodexDialogDescription className="text-sm text-token-text-secondary">
+              {description}
             </NodexDialogDescription>
-          </NodexDialogHeader>
-          <div className="flex items-center gap-3 border-b border-token-border py-2 text-xs">
-            <select
-              aria-label="Retained draft"
-              className="min-w-0 flex-1 bg-transparent text-token-text-secondary"
-              value={selectedEntry?.key ?? ""}
-              onChange={(event) => {
-                setSelected(event.target.value);
-                setRemoveTarget(null);
-                setConfirmDiscard(false);
-              }}
-              disabled={busy}
-            >
-              {entries.map((entry) => (
-                <option key={entry.key} value={entry.key}>
-                  {entry.kind === "staged"
-                    ? `${entry.source.sourceKind === "canvas" ? "Canvas edits" : "Document edits"} · ${state.sending.includes(entry.source.sourceKey) ? "Sending" : entry.source.failure ? "Needs attention" : "On this device"}${entry.source.createdAt ? ` · ${new Date(entry.source.createdAt).toLocaleString()}` : ""}`
-                    : `${entry.draft.source_title || "Retained document"} · ${new Date(entry.draft.created_at).toLocaleString()}${entry.draft.resolution ? " · Handled" : " · Received"}`}
-                </option>
-              ))}
-            </select>
-            <label className="flex shrink-0 items-center gap-1.5 text-token-description-foreground">
-              <input
-                type="checkbox"
-                checked={showResolved}
-                onChange={(event) => setShowResolved(event.target.checked)}
+            {detail ? <p className="text-xs text-token-description-foreground">{detail}</p> : null}
+          </header>
+          {/* Opening lands here, so arrows scroll the comparison and Enter can't resolve by accident. */}
+          <div
+            ref={bodyRef}
+            tabIndex={-1}
+            className="min-h-0 flex-1 overflow-y-auto border-t-[0.5px] border-token-border px-2 py-3 outline-none empty:py-0"
+          >
+            {listFailure ? (
+              <p role="alert" className="flex items-center gap-2 px-3 py-1 text-sm">
+                <span className="min-w-0 flex-1 text-token-text-secondary">{listFailure}</span>
+                <NodexButton variant="ghost" size="xs" onClick={() => void module.refresh()}>
+                  Refresh
+                </NodexButton>
+              </p>
+            ) : null}
+            {received && previewContext ? (
+              <RecoveryComparisonBody
+                comparison={comparison}
+                failed={Boolean(draft?.failure)}
+                context={previewContext}
               />
-              Recently handled
-            </label>
-            {state.hasMore || state.localHasMore ? (
-              <button type="button" onClick={() => void module.loadMore()}>
-                More
-              </button>
             ) : null}
           </div>
-          <NodexDialogBody className="min-h-64 overflow-y-auto">
-            {error || state.error || state.localError ? (
-              <div
-                role="alert"
-                className="mb-4 flex items-center gap-3 text-sm text-token-text-secondary"
-              >
-                <span>{error ?? state.localError ?? state.error}</span>
-                <button
-                  type="button"
-                  className="shrink-0 underline"
-                  onClick={() => {
-                    void module.refresh();
-                  }}
-                >
-                  Refresh
-                </button>
-              </div>
-            ) : null}
-            {resolvedMessage ? (
-              <p role="status" className="mb-4 text-sm text-token-text-secondary">
-                {resolvedMessage}
-              </p>
-            ) : null}
-            {current?.explanation && !resolution ? (
-              <p className="mb-4 text-sm text-token-description-foreground">
-                {current.explanation}
-              </p>
-            ) : null}
-            {local ? (
-              <div className="space-y-3 text-sm text-token-text-secondary">
-                <p role="status">
-                  {state.sending.includes(local.sourceKey)
-                    ? "Sending retained edits"
-                    : local.failure
-                      ? "Needs attention · Retained on this device"
-                      : "Retained on this device"}
-                </p>
-                <p>
-                  {local.failure?.message ??
-                    "These edits are preserved locally and are waiting for Core to confirm receipt."}
-                </p>
-                <p className="text-xs text-token-description-foreground">
-                  You can export this package even while Core is unavailable. Later keeps the
-                  original local copy.
-                </p>
-                <details className="text-xs text-token-description-foreground">
-                  <summary>Details</summary>
-                  <p className="mt-2 break-all">{local.draftId ?? local.sourceKey}</p>
-                  {local.byteLength !== null ? (
-                    <p>{local.byteLength.toLocaleString()} bytes retained</p>
-                  ) : null}
-                  {local.failure?.actual != null && local.failure.limit != null ? (
-                    <p>
-                      Observed: {local.failure.actual.toLocaleString()} · Limit:{" "}
-                      {local.failure.limit.toLocaleString()}
-                    </p>
-                  ) : null}
-                  {!local.scope ? <p>The source Library has not yet been verified.</p> : null}
-                </details>
-              </div>
-            ) : current ? (
+          <footer className="mt-auto flex shrink-0 items-center gap-2 border-t-[0.5px] border-token-border px-4 py-2.5">
+            {confirmingRemoval && entry?.kind === "staged" ? (
               <>
-                <div className="mb-5 flex gap-1" role="group" aria-label="Preview version">
-                  {(
-                    [
-                      ["current", "Current content"],
-                      [
-                        current.can_restore ? "restored" : "retained",
-                        current.can_restore ? "After restoring" : "Retained draft",
-                      ],
-                    ] as const
-                  ).map(([key, label]) => (
-                    <NodexDialogAction
-                      key={key}
-                      size="compact"
-                      aria-pressed={view === key}
-                      tone={view === key ? "primary" : "ghost"}
-                      onClick={() => setView(key)}
-                    >
-                      {label}
-                    </NodexDialogAction>
-                  ))}
+                <p className="min-w-0 flex-1 text-xs text-token-text-secondary">
+                  Permanently remove these edits? This can’t be undone. Export a backup first if you
+                  might need them.
+                </p>
+                <NodexButton
+                  variant="ghostSecondary"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => setConfirmingRemoval(false)}
+                >
+                  Keep
+                </NodexButton>
+                <NodexButton
+                  variant="destructive"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void removeLocal(entry.source)}
+                >
+                  Remove permanently
+                </NodexButton>
+              </>
+            ) : (
+              <>
+                {secondary}
+                <div className="flex min-w-0 flex-1 items-center justify-end gap-1 text-xs text-token-description-foreground">
+                  {lastDiscard ? (
+                    <>
+                      <span role="status" className="min-w-0 truncate">
+                        Discarded “{lastDiscard.title}”
+                      </span>
+                      <NodexButton
+                        variant="ghost"
+                        size="xs"
+                        disabled={busy}
+                        onClick={() => {
+                          const { draftId } = lastDiscard;
+                          setLastDiscard(null);
+                          void reopenDraft(draftId)
+                            .then(() => setSelected(receivedRecoveryKey(draftId)))
+                            .catch((error: unknown) =>
+                              toastFailure(RESOLVE_FAILURE_TITLE.reopen, error),
+                            );
+                        }}
+                      >
+                        Undo
+                      </NodexButton>
+                    </>
+                  ) : null}
                 </div>
-                {preview && preview.kind !== "complete" ? (
-                  <p role="status" className="mb-3 text-sm text-token-description-foreground">
-                    {preview.explanation}
-                  </p>
+                {menuActions.length > 0 ? (
+                  <RecoveryMoreMenu actions={menuActions} disabled={busy} />
                 ) : null}
-                <RecoveryPreview
-                  value={preview?.kind === "complete" ? preview.preview : null}
-                  scope={module.scope}
-                  storeEpoch={state.storeEpoch}
-                  documentId={current.summary.document_id}
-                  draftId={current.summary.draft_id}
-                />
-                <details className="mt-6 text-xs text-token-description-foreground">
-                  <summary className="cursor-pointer">Details</summary>
-                  <p className="mt-2 break-all">
-                    Draft {current.summary.draft_id} ·{" "}
-                    {current.summary.byte_length.toLocaleString()} bytes retained
-                  </p>
-                  <p>
-                    Handled drafts remain available for 30 days. Exporting keeps this draft
-                    available for review.
-                  </p>
-                </details>
-              </>
-            ) : (
-              <p className="text-sm text-token-description-foreground">
-                {state.loading || draftId
-                  ? "Loading retained edits…"
-                  : "No unsaved drafts need attention."}
-              </p>
-            )}
-          </NodexDialogBody>
-          <NodexDialogFooter className="flex-wrap">
-            <NodexDialogAction
-              size="compact"
-              onClick={() => void exportDraft()}
-              disabled={busy || (!local && !draftId && !exportLocal)}
-            >
-              Export
-            </NodexDialogAction>
-            {local ? (
-              <NodexDialogAction
-                size="compact"
-                disabled={busy}
-                onClick={() => {
-                  setBusy(true);
-                  setError(null);
-                  void module
-                    .retry(local.sourceKey)
-                    .catch((error: unknown) =>
-                      setError(error instanceof Error ? error.message : String(error)),
-                    )
-                    .finally(() => setBusy(false));
-                }}
-              >
-                Retry receipt
-              </NodexDialogAction>
-            ) : null}
-            {local && !removeTarget ? (
-              <NodexDialogAction
-                size="compact"
-                tone="danger"
-                disabled={busy || state.sending.includes(local.sourceKey)}
-                onClick={() => setRemoveTarget(local)}
-              >
-                Remove local draft
-              </NodexDialogAction>
-            ) : null}
-            {!resolution && current ? (
-              <NodexDialogAction
-                size="compact"
-                tone="danger"
-                disabled={busy}
-                onClick={() => setConfirmDiscard(true)}
-              >
-                Discard draft
-              </NodexDialogAction>
-            ) : null}
-            {resolution === "discarded" ? (
-              <NodexDialogAction size="compact" disabled={busy} onClick={() => void run("reopen")}>
-                Undo discard
-              </NodexDialogAction>
-            ) : null}
-            <div className="flex-1" />
-            {removeTarget ? (
-              <>
-                <span className="text-xs text-token-text-secondary">
-                  Permanently remove this local draft? Current documents are unchanged. Export first
-                  if you want a backup. This cannot be undone.
-                </span>
-                <NodexDialogAction
-                  size="compact"
-                  disabled={busy}
-                  onClick={() => setRemoveTarget(null)}
-                >
-                  Keep
-                </NodexDialogAction>
-                <NodexDialogAction
-                  size="compact"
-                  tone="danger"
-                  disabled={busy}
-                  onClick={() => void removeLocal()}
-                >
-                  {busy ? "Removing…" : "Remove permanently"}
-                </NodexDialogAction>
-              </>
-            ) : confirmDiscard ? (
-              <>
-                <span className="text-xs text-token-text-secondary">Discard only this draft?</span>
-                <NodexDialogAction size="compact" onClick={() => setConfirmDiscard(false)}>
-                  Keep
-                </NodexDialogAction>
-                <NodexDialogAction
-                  size="compact"
-                  tone="danger"
-                  disabled={busy}
-                  onClick={() => void run("discard")}
-                >
-                  Discard
-                </NodexDialogAction>
-              </>
-            ) : (
-              <>
-                <NodexDialogAction size="compact" onClick={onClose}>
-                  {resolution ? "Done" : "Later"}
-                </NodexDialogAction>
-                {current?.can_restore ? (
-                  <NodexDialogAction
-                    size="compact"
-                    tone="primary"
-                    disabled={busy}
-                    onClick={() => void run("restore")}
-                  >
-                    {busy ? "Restoring…" : "Restore edits"}
-                  </NodexDialogAction>
-                ) : current?.can_copy ? (
-                  <NodexDialogAction
-                    size="compact"
-                    tone="primary"
-                    disabled={busy}
-                    onClick={() => void run("copy")}
-                  >
-                    {busy ? "Saving…" : "Save as a copy"}
-                  </NodexDialogAction>
+                {primaryAction ? (
+                  <NodexButton size="sm" disabled={busy} onClick={primaryAction.run}>
+                    {primaryAction.label}
+                  </NodexButton>
                 ) : null}
               </>
             )}
-          </NodexDialogFooter>
-        </NodexDialogFrame>
+          </footer>
+        </div>
       </NodexDialogContent>
     </NodexDialog>
+  );
+}
+
+function RecoveryComparisonBody({
+  comparison,
+  failed,
+  context,
+}: {
+  readonly comparison: RecoveryComparison;
+  readonly failed: boolean;
+  readonly context: RecoveryPreviewContext;
+}): ReactNode {
+  if (failed) return null;
+  switch (comparison.kind) {
+    case "loading":
+      return (
+        <div aria-hidden="true" className="flex flex-col gap-2 px-3 py-1">
+          <LoadingPlaceholder className="h-3.5 w-3/4 rounded" />
+          <LoadingPlaceholder className="h-3.5 w-full rounded" />
+          <LoadingPlaceholder className="h-3.5 w-2/3 rounded" />
+        </div>
+      );
+    case "diff":
+      return comparison.diff.rows.length > 0 || comparison.diff.title ? (
+        <RecoveryDiff
+          diff={comparison.diff}
+          merged={comparison.merged}
+          files={{ ...comparison.before.files, ...comparison.after.files }}
+          context={context}
+        />
+      ) : null;
+    case "document":
+      return (
+        <div className="px-3">
+          <RecoveryDocumentPreview
+            content={comparison.after.markdown}
+            files={comparison.after.files}
+            context={context}
+          />
+        </div>
+      );
+    case "canvas":
+      return <RecoveryCanvasComparison comparison={comparison} context={context} />;
+    case "unavailable":
+      return null;
+  }
+}
+
+/** A scene has no readable difference, so Canvas keeps a direct before and after. */
+function RecoveryCanvasComparison({
+  comparison,
+  context,
+}: {
+  readonly comparison: Extract<RecoveryComparison, { kind: "canvas" }>;
+  readonly context: RecoveryPreviewContext;
+}) {
+  const [showing, setShowing] = useState<"before" | "after">("after");
+  const value = showing === "before" && comparison.before ? comparison.before : comparison.after;
+  return (
+    <div className="flex h-full min-h-72 flex-col gap-2 px-3">
+      {comparison.before ? (
+        <div role="group" aria-label="Canvas version" className="flex gap-1">
+          {(
+            [
+              ["after", "These edits"],
+              ["before", "Current Canvas"],
+            ] as const
+          ).map(([version, label]) => (
+            <NodexButton
+              key={version}
+              variant="ghost"
+              size="xs"
+              aria-pressed={showing === version}
+              className={cn(showing === version && "bg-token-foreground/10")}
+              onClick={() => setShowing(version)}
+            >
+              {label}
+            </NodexButton>
+          ))}
+        </div>
+      ) : null}
+      <div className="min-h-0 flex-1">
+        <RecoveryCanvasPreview value={value} context={context} />
+      </div>
+    </div>
+  );
+}
+
+function RecoveryMoreMenu({
+  actions,
+  disabled,
+}: {
+  readonly actions: readonly RecoveryAction[];
+  readonly disabled: boolean;
+}) {
+  return (
+    <NodexDropdownMenu
+      align="end"
+      side="top"
+      motion="none"
+      disabled={disabled}
+      triggerTooltipContent="More actions"
+      triggerButton={
+        <NodexButton variant="ghostSecondary" size="icon-sm" aria-label="More actions">
+          <MoreActionsIcon className="icon-sm" />
+        </NodexButton>
+      }
+    >
+      {actions.map((action) => (
+        <NodexDropdownItem key={action.label} onSelect={action.run}>
+          {action.label}
+        </NodexDropdownItem>
+      ))}
+    </NodexDropdownMenu>
+  );
+}
+
+function RecoveryEntryRail({
+  pending,
+  resolved,
+  selectedKey,
+  sending,
+  disabled,
+  canLoadMore,
+  onLoadMore,
+  onSelect,
+}: {
+  readonly pending: readonly RecoveryReviewEntry[];
+  readonly resolved: readonly RecoveryReviewEntry[];
+  readonly selectedKey: string | null;
+  readonly sending: readonly string[];
+  readonly disabled: boolean;
+  readonly canLoadMore: boolean;
+  readonly onLoadMore: () => void;
+  readonly onSelect: (entry: RecoveryReviewEntry) => void;
+}) {
+  const ordered = [...pending, ...resolved];
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const index = ordered.findIndex((candidate) => candidate.key === selectedKey);
+    const next = ordered[index + (event.key === "ArrowDown" ? 1 : -1)];
+    if (next) onSelect(next);
+  };
+  const row = (entry: RecoveryReviewEntry) => {
+    const meta = recoveryEntryMeta(entry, sending);
+    return (
+      <li key={entry.key}>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-current={entry.key === selectedKey || undefined}
+          onClick={() => onSelect(entry)}
+          className={cn(
+            "flex w-full min-w-0 flex-col rounded-lg px-2.5 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border",
+            entry.key === selectedKey ? "bg-token-foreground/10" : "hover:bg-token-foreground/5",
+            !recoveryEntryIsPending(entry) && "opacity-70",
+          )}
+        >
+          <span className="truncate text-sm text-token-text-primary">
+            {recoveryEntryTitle(entry)}
+          </span>
+          <span
+            className={cn(
+              "truncate text-xs",
+              meta.attention ? "text-danger" : "text-token-description-foreground",
+            )}
+          >
+            {meta.label}
+          </span>
+        </button>
+      </li>
+    );
+  };
+  return (
+    <nav
+      aria-label="Unsaved edits"
+      onKeyDown={onKeyDown}
+      className="flex w-60 shrink-0 flex-col gap-3 overflow-y-auto border-r-[0.5px] border-token-border p-2"
+    >
+      {pending.length > 0 ? <ul className="flex flex-col gap-0.5">{pending.map(row)}</ul> : null}
+      {resolved.length > 0 ? (
+        <div>
+          <h3 className="px-2.5 pb-1 text-xs text-token-description-foreground">Resolved</h3>
+          <ul className="flex flex-col gap-0.5">{resolved.map(row)}</ul>
+        </div>
+      ) : null}
+      {canLoadMore ? (
+        <NodexButton variant="ghostSecondary" size="xs" className="self-start" onClick={onLoadMore}>
+          Load more
+        </NodexButton>
+      ) : null}
+    </nav>
   );
 }

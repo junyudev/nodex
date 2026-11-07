@@ -136,11 +136,11 @@ impl OwnedDocumentModule {
                     }
                     let selected = match request.view { RecoveryPreviewView::Current => analysis.current, RecoveryPreviewView::Retained => analysis.retained, RecoveryPreviewView::Restored => analysis.restored };
                     let result = match selected {
-                        None => RecoveryPreviewResult::Unavailable { explanation: analysis.explanation.unwrap_or_else(|| "A preview is unavailable. You can still export the original package.".into()) },
+                        None => RecoveryPreviewResult::Unavailable { explanation: analysis.explanation.unwrap_or_else(|| "A preview isn’t available for these edits.".into()) },
                         Some(preview) => {
                             let byte_length = serde_json::to_vec(&preview).map_err(|_| internal("Recovery preview cannot be encoded"))?.len();
                             if byte_length > MAX_RECOVERY_PREVIEW_BYTES {
-                                RecoveryPreviewResult::Limited { byte_length, explanation: "This preview exceeds the display limit. Export the complete original package to inspect all retained content.".into() }
+                                RecoveryPreviewResult::Limited { byte_length, explanation: "These edits are too large to show here. Export a backup to inspect them.".into() }
                             } else { RecoveryPreviewResult::Complete { preview } }
                         }
                     };
@@ -221,7 +221,7 @@ impl OwnedDocumentModule {
             require_epoch(&tx, &epoch)?;
             let source = authorize_source(&tx, &context, &library_id, &capture.document_id)?;
             if source.is_none() && capture.source_store_epoch != epoch.0 {
-                return Err(invalid_store("This local draft has no verified source in this Library. Its original local copy has been retained."));
+                return Err(invalid_store("These edits don’t belong to a Page in this Library. They’re still safe on this device."));
             }
             if let Some(result) = replay(&tx, &operation_id, &payload_hash)? { return Ok(result); }
             if let Some(existing) = find_summary(&tx, &library_id, &capture.draft_id)? {
@@ -247,7 +247,7 @@ impl OwnedDocumentModule {
                 let retained_file_ids = retained_file_uses(&tx, &capture);
                 let companion_bytes = super::super::recovery_files::capture(&tx, &context, &capture.document_id, &capture.draft_id, retained_file_ids)?;
                 let total_bytes = payload.len().checked_add(companion_bytes).ok_or_else(|| invalid_store("Recovery package is too large"))?;
-                if total_bytes > MAX_DRAFT_BYTES { return Err(recovery_rejection(RecoveryFailureReason::RequestTooLarge, "This package and its File dependency snapshot exceed the recovery limit.", total_bytes, MAX_DRAFT_BYTES)); }
+                if total_bytes > MAX_DRAFT_BYTES { return Err(recovery_rejection(RecoveryFailureReason::RequestTooLarge, "These edits and their files exceed the recovery limit.", total_bytes, MAX_DRAFT_BYTES)); }
                 if bytes + total_bytes as i64 > MAX_LIBRARY_DRAFT_BYTES { return Err(recovery_rejection(RecoveryFailureReason::CapacityExhausted, "Recovery storage is full. Export or handle retained drafts before continuing.", bytes as usize + total_bytes, MAX_LIBRARY_DRAFT_BYTES as usize)); }
                 let summary = find_summary(&tx, &library_id, &capture.draft_id)?.ok_or_else(|| internal("Recovery draft disappeared"))?;
                 let analysis = inspect(&tx, &context, summary.clone(), capture.clone())?;
@@ -314,7 +314,7 @@ impl OwnedDocumentModule {
                     }
                     _ => {
                         return Err(conflict(
-                            "This draft has already been handled. Refresh to see its result.",
+                            "These edits were already resolved. Refresh to see the result.",
                         ));
                     }
                 };
@@ -580,7 +580,7 @@ fn require_revision(
         return Ok(());
     }
     Err(conflict(
-        "This draft changed in another window. Refresh to see its result.",
+        "These edits changed in another window. Refresh to see the result.",
     ))
 }
 
@@ -602,7 +602,7 @@ fn set_resolution(
     });
     let changed = connection.execute("UPDATE document_recovery_drafts SET revision = revision + 1, resolution = ?1, resolved_at = CASE WHEN ?1 IS NULL THEN NULL ELSE strftime('%Y-%m-%dT%H:%M:%fZ','now') END, resolution_operation_id = ?2, target_owner_id = ?3, target_document_id = ?4 WHERE library_id = ?5 AND draft_id = ?6 AND revision = ?7", params![value, operation_id, target.map(|t| t.0), target.map(|t| t.1), library_id, draft_id, revision])?;
     if changed != 1 {
-        return Err(conflict("This draft was handled in another window"));
+        return Err(conflict("These edits were resolved in another window."));
     }
     find_summary(connection, library_id, draft_id)?
         .ok_or_else(|| internal("Recovery draft disappeared"))
@@ -762,7 +762,7 @@ fn inspect_selected(
     let analysis = analyse_content(connection, context, authority.as_ref(), &mut result);
     if let Err(error) = analysis {
         result.explanation = Some(format!(
-            "The retained bytes are safe, but a complete preview is unavailable: {error}"
+            "These edits are safe, but can’t be read for review: {error}"
         ));
         result.can_restore = false;
         result.can_copy = false;
@@ -816,7 +816,7 @@ fn analyse_content(
             )?;
             result.can_copy = copy_is_complete(&retained_materialization, file_snapshot.as_ref());
             if !result.can_copy {
-                result.explanation = Some("This draft references owned content or files that are not included in its retained package. You can export it without discarding the draft.".to_owned());
+                result.explanation = Some("They use nested Pages or files that weren’t captured with them, so Nodex can’t apply them safely.".to_owned());
             }
             let Some(authority) = authority else {
                 return Ok(());
@@ -842,7 +842,7 @@ fn analyse_content(
             }
             if !same_boundary {
                 if result.can_copy {
-                    result.explanation = Some("This draft belongs to an earlier document. Save a copy to keep the current content.".to_owned());
+                    result.explanation = Some("The Page was replaced after these edits, so they can’t be merged. A separate copy keeps them both.".to_owned());
                 }
                 return Ok(());
             }
@@ -886,7 +886,7 @@ fn analyse_content(
                     .is_ok()
                 && ownership_unchanged(&current_materialization, &materialization);
             if barrier && result.can_copy {
-                result.explanation = Some("The document structure changed after these edits. Save a copy to keep both versions.".to_owned());
+                result.explanation = Some("The Page’s structure changed after these edits, so they can’t be merged. A separate copy keeps them both.".to_owned());
             }
         }
         RecoveryDraftContent::Canvas { scene, mutations } => {
@@ -905,7 +905,7 @@ fn analyse_content(
                         .as_ref()
                         .is_some_and(|snapshot| snapshot.covers_canvas(scene));
                 if !result.can_copy {
-                    result.explanation = Some("This Canvas draft references files or Pages that are not included in its retained package. You can export it without discarding the draft.".to_owned());
+                    result.explanation = Some("They use files or Pages that weren’t captured with them, so Nodex can’t apply them safely.".to_owned());
                 }
                 result.available[1] = true;
                 if result.selection.includes(RecoveryPreviewView::Retained) {
@@ -940,7 +940,7 @@ fn analyse_content(
             }
             if !same_boundary {
                 if result.can_copy {
-                    result.explanation = Some("This draft belongs to an earlier Canvas. Save a copy to keep the current content.".to_owned());
+                    result.explanation = Some("The Canvas was replaced after these edits, so they can’t be merged. A separate copy keeps them both.".to_owned());
                 }
                 return Ok(());
             }
@@ -961,13 +961,13 @@ fn analyse_content(
                     .transpose()?
                     .flatten()
                 else {
-                    result.explanation = Some("A retained image slot changed after these edits. Save a copy to preserve the captured image.".to_owned());
+                    result.explanation = Some("An image changed after these edits, so they can’t be merged. A separate copy keeps the original image.".to_owned());
                     return Ok(());
                 };
                 let applied = match apply_canvas_mutation(&restored, &mutation) {
                     Ok(applied) => applied,
                     Err(error) if error.code == StoreErrorCode::InvalidInput => {
-                        result.explanation = Some("This Canvas draft conflicts with the current scene. Its retained copy remains available.".to_owned());
+                        result.explanation = Some("Some elements conflict with the current Canvas, so these edits can’t be merged.".to_owned());
                         return Ok(());
                     }
                     Err(error) => return Err(error),
@@ -1031,7 +1031,7 @@ fn analyse_content(
                 }
             }
             if !exact {
-                result.explanation = Some("Some Canvas elements changed after these edits. The retained draft remains available for review and export.".to_owned());
+                result.explanation = Some("Some elements changed after these edits, so they can’t be merged.".to_owned());
             }
         }
     }
@@ -1278,7 +1278,7 @@ fn prepare_recovery_update(
         &capture.draft_id,
         &retained_materialization,
     )?
-    .ok_or_else(|| conflict("This draft has unresolved File targets"))?;
+    .ok_or_else(|| conflict("These edits use files that weren’t captured with them."))?;
     let plan = crate::library::plan_file_restore(
         connection,
         &context.library_id.0,
@@ -1351,7 +1351,7 @@ impl OwnedDocumentModule {
             require_revision(&summary, &resolve)?;
             require_preview(authority, &resolve)?;
             let analysis = inspect(connection, &context_for_prepare, summary, capture.clone())?;
-            if !analysis.can_restore { return Err(conflict("These edits cannot be merged safely. Review the available recovery options.")); }
+            if !analysis.can_restore { return Err(conflict("These edits can’t be merged safely.")); }
             let (update, restored, file_restore) = prepare_recovery_update(connection, &context_for_prepare, authority, engine, &capture, &operation_id)?;
             if !engine.prepare_update_v1(&update).map_err(engine_error)?.did_change() { return Ok(PreparedUpdate::NoChange); }
             let placement = derive_document_placement_delta(materialization, &restored);
@@ -1636,13 +1636,13 @@ impl OwnedDocumentModule {
             require_revision(&summary, &resolve)?;
             if let Some(authority) = read_document_authority(&tx, &capture.document_id)? { require_preview(&authority, &resolve)?; }
             let inspection = inspect_selected(&tx, &context, summary, capture.clone(), PreviewSelection::One(RecoveryPreviewView::Retained))?;
-            if !inspection.can_copy { return Err(conflict("This draft does not contain a complete recoverable copy. Export it or keep it for later.")); }
+            if !inspection.can_copy { return Err(conflict("These edits can’t be saved as a complete copy.")); }
             let mut preview = inspection.retained.ok_or_else(|| invalid_store("Recovery preview is unavailable"))?;
             let file_restore = if let RecoveryDraftContent::Yjs { state, unintegrated_updates } = &capture.content {
                 let schema = BlockDocumentSchema::from_identity(&capture.schema_key, capture.schema_version).ok_or_else(|| invalid_store("Unsupported retained schema"))?;
                 let engine = decode_retained_yjs(&capture.document_id, state, unintegrated_updates)?;
                 let mut materialization = materialize_engine(&engine, schema)?;
-                let snapshot = retained_file_snapshot(&tx, &library_id, &capture.draft_id, &materialization)?.ok_or_else(|| conflict("This draft has unresolved File targets"))?;
+                let snapshot = retained_file_snapshot(&tx, &library_id, &capture.draft_id, &materialization)?.ok_or_else(|| conflict("These edits use files that weren’t captured with them."))?;
                 let plan = crate::library::plan_file_restore(&tx, &library_id, &operation_id, &snapshot)?;
                 crate::domain::files::remap_block_files(&mut materialization.block_tree, &plan.mapping);
                 let markdown = crate::domain::markdown::materialize_markdown(&materialization.block_tree).map_err(|error| invalid_store(error.to_string()))?.markdown;

@@ -19,6 +19,7 @@ export const NIGHTLY_E2E_SPECS = [
   "tests/e2e/nfm-editor-history.spec.ts",
   "tests/e2e/database-settings.spec.ts",
   "tests/e2e/document-sync-recovery.spec.ts",
+  "tests/e2e/document-recovery-review.spec.ts",
   "tests/e2e/inbox-capture.spec.ts",
   "tests/e2e/mobile-gateway.spec.ts",
   "tests/e2e/inbox-composer-layout.spec.ts",

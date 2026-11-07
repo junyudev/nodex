@@ -367,7 +367,7 @@ test("another coordinator cannot remove a draft during Core reception", async ()
   await started;
   try {
     expect(remover.getSnapshot().sending).toEqual([]);
-    await expect(remover.removeLocal(entry)).rejects.toThrow("another window");
+    await expect(remover.removeLocal(entry)).rejects.toThrow("Another window");
     expect(await store.staging.countSummaries(scope, null)).toBe(1);
   } finally {
     release();
@@ -423,7 +423,7 @@ test.each([false, true])(
     vi.mocked(api.apply).mockRejectedValue(rejected);
     await expect(reopened.retry(entry.sourceKey)).rejects.toThrow("Rejected");
     await expect(reopened.removeLocal(entry)).rejects.toThrow(
-      "Receipt for this draft is unconfirmed",
+      "recovery copy hasn’t been confirmed",
     );
     expect(await store.staging.countSummaries(scope, null)).toBe(1);
     vi.mocked(api.apply).mockImplementation(port().apply);

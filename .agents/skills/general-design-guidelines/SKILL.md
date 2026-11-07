@@ -343,6 +343,13 @@ Compose ordinary dialogs from the shared anatomy:
 
 Complex dialogs may keep a purpose-built internal layout while inheriting the default surface. Use `unstyledContent` only when the dialog content is itself a complete surface, such as a full-screen media viewer or a position-sensitive command palette. Keep this exception explicit at the call site.
 
+### Reversible choices and open modals
+
+- A choice that can be undone applies immediately and offers Undo. Reserve a
+  confirmation for what cannot be taken back.
+- A toast lives outside an open modal, which makes its action inert until the modal
+  closes. While the dialog stays open, offer the action inside it.
+
 ### Modal ownership follows the React tree
 
 A DOM portal changes placement, not React ownership. Events from portaled

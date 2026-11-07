@@ -313,25 +313,24 @@ test("editing, native reorder and cancelled structural waits recover through Ele
       await expect(editor).toHaveCount(0);
       await page.getByRole("button", { name: "Content issues", exact: true }).click();
       await page.getByRole("button", { name: "Review edits", exact: true }).first().click();
-      const dialog = page.getByRole("dialog", { name: "Unsaved edits" });
+      const dialog = page.getByRole("dialog", { name: /^Unsaved edits/u });
       await expect(
         dialog.getByRole("button", { name: "Restore edits", exact: true }),
       ).toBeVisible();
-      await expect(dialog.getByRole("button", { name: "After restoring" })).toHaveAttribute(
-        "aria-pressed",
-        "true",
+      await expect(dialog.getByRole("region", { name: "Title changed" })).toContainText(
+        "recovered draft",
       );
       await dialog.screenshot({ path: test.info().outputPath("retained-edits-review.png") });
       await test.info().attach("retained-edits-review", {
         path: test.info().outputPath("retained-edits-review.png"),
         contentType: "image/png",
       });
-      const exportRecovery = dialog.getByRole("button", { name: "Export", exact: true });
       const exportPath = test.info().outputPath("document-recovery.nodex-recovery");
       await application.evaluate(({ dialog }, destination) => {
         dialog.showSaveDialog = async () => ({ canceled: false, filePath: destination });
       }, exportPath);
-      await exportRecovery.click();
+      await dialog.getByRole("button", { name: "More actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Export backup", exact: true }).click();
       await expect
         .poll(async () => {
           try {
@@ -360,16 +359,13 @@ test("editing, native reorder and cancelled structural waits recover through Ele
         beforeReload,
       );
       // Export is only a backup; discard and its undo are persisted choices.
-      await dialog.getByRole("button", { name: "Discard draft", exact: true }).click();
       await dialog.getByRole("button", { name: "Discard", exact: true }).click();
-      await expect(dialog.getByRole("button", { name: "Undo discard", exact: true })).toBeVisible();
-      await dialog.getByRole("button", { name: "Undo discard", exact: true }).click();
+      await page.getByRole("button", { name: "Undo", exact: true }).click();
       await dialog.getByRole("button", { name: "Restore edits", exact: true }).click();
       await expect
         .poll(async () => (await seed.readPage(manifest.projectId, sourceId)).title)
         .toBe("Edit and recover · recovered draft");
-      await expect(dialog.getByRole("status")).toHaveText("Edits restored and saved.");
-      await dialog.getByRole("button", { name: "Done", exact: true }).click();
+      await expect(dialog).toHaveCount(0);
       await expect(review).toHaveCount(0);
       await expect(audienceReview).toHaveCount(0);
       await page.reload();

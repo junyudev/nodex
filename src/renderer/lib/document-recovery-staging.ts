@@ -88,11 +88,11 @@ export const frozenRecoveryRecord = (row: unknown): FrozenRecoveryRecord | null 
     typeof value.storeEpoch !== "string"
   )
     throw new Error(
-      "The retained package metadata is damaged. Export its original stored representation.",
+      "These edits are damaged on this device. Export a backup to keep what’s stored.",
     );
   const scope = recoveryRecord(value.scope);
   if (!scope || typeof scope.libraryId !== "string")
-    throw new Error("Retained package scope is unavailable");
+    throw new Error("The Library for these edits can’t be verified.");
   contentRoutingIdentityKey({
     libraryId: scope.libraryId,
     routingContext: parseContentRoutingContext(scope.routingContext),
@@ -106,7 +106,9 @@ export const readRetainedSource = async (
   const frozen = frozenRecoveryRecord(row);
   if (!frozen) return legacy(row);
   if ((await recoveryPayloadHash(frozen.bundle.bytes)) !== frozen.bundle.payloadHash)
-    throw new Error("The retained package digest does not match");
+    throw new Error(
+      "These edits don’t match their integrity check. Export a backup to keep what’s stored.",
+    );
   return decodeRecoverySource(frozen.bundle.bytes);
 };
 const text = (value: unknown): string | null =>
@@ -256,7 +258,7 @@ export const verifyRecoveryReceipt = (
         receipt.stored_byte_length !== frozen.bundle.bytes.length))
   )
     throw new Error(
-      "Core did not acknowledge this complete retained package. The local copy is unchanged.",
+      "The recovery copy wasn’t confirmed. These edits are unchanged on this device.",
     );
 };
 
@@ -339,7 +341,7 @@ export class RecoveryStagingStore {
     ]);
     await completed;
     if (!row || !summary || summary.sourceRevision !== entry.sourceRevision)
-      throw new Error("The local package changed. Refresh the recovery list.");
+      throw new Error("These edits changed. Refresh before continuing.");
     return { row, summary };
   }
 
@@ -358,10 +360,12 @@ export class RecoveryStagingStore {
         existing.storeEpoch !== storeEpoch
       )
         throw new Error(
-          "This package belongs to another recovery boundary. Its original local copy is retained.",
+          "These edits belong to another Library or Project. They’re still safe on this device.",
         );
       if ((await recoveryPayloadHash(existing.bundle.bytes)) !== existing.bundle.payloadHash)
-        throw new Error("The local package digest does not match");
+        throw new Error(
+          "These edits don’t match their integrity check. Export a backup to keep what’s stored.",
+        );
       return existing;
     }
     // A matching globally unique Store epoch proves the Library for pre-scope Yjs rows. Earlier epochs remain unbound.
@@ -378,7 +382,7 @@ export class RecoveryStagingStore {
     )
       throw new RecoveryBundleValidationError(
         "source_unverified",
-        "The source Library or access context cannot be verified. Export this local package to keep a backup, or remove it if you no longer need these edits.",
+        "Nodex can’t tell which Library these edits belong to. Export a backup to keep them, or remove them if you no longer need them.",
       );
     const source = this.config.source(row);
     const bundle = await encodeRecoveryBundle(this.config.input(source), summary.sourceRevision);
@@ -420,7 +424,7 @@ export class RecoveryStagingStore {
         frozenRecoveryRecord(current)
       )
         return this.freeze(currentSummary, scope, storeEpoch);
-      throw new Error("The local package changed. Refresh the recovery list.");
+      throw new Error("These edits changed. Refresh before continuing.");
     }
     store.put(this.config.frozenRow(row, frozen));
     directory.put({
@@ -489,7 +493,7 @@ export class RecoveryStagingStore {
       | undefined;
     if (!current || current.sourceRevision !== entry.sourceRevision) {
       await completed;
-      throw new Error("The local package changed. Refresh the recovery list.");
+      throw new Error("These edits changed. Refresh before continuing.");
     }
     directory.put({ ...current, receiptPending: true });
     await completed;
@@ -530,7 +534,9 @@ export class RecoveryStagingStore {
     }
     if (current.receiptPending) {
       await completed;
-      throw new Error("Receipt for this draft is unconfirmed. Retry receipt before removing it.");
+      throw new Error(
+        "The recovery copy hasn’t been confirmed. Try again before removing these edits.",
+      );
     }
     transaction.objectStore(this.config.storeName).delete(current.rawKey);
     directory.delete(entry.sourceKey);

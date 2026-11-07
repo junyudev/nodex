@@ -83,7 +83,9 @@ test("wrong receipt coordinates never clear staging; an old ACK cannot clear a n
     { ...receipt(frozen), source_revision: "other" },
     { ...receipt(frozen), stored_byte_length: 1 },
   ])
-    await expect(store.staging.acknowledge(entry, frozen, wrong)).rejects.toThrow("acknowledge");
+    await expect(store.staging.acknowledge(entry, frozen, wrong)).rejects.toThrow(
+      "wasn’t confirmed",
+    );
   expect(await store.staging.countSummaries(scope, null)).toBe(1);
   await store.quarantine(snapshot("newer"), { maxStateBytes: 200_000 });
   expect(await store.staging.countSummaries(scope, null)).toBe(2);
@@ -101,7 +103,7 @@ test("legacy rows without a verified Library stay discoverable and exportable", 
   const [entry] = (await store.staging.listSummaries(scope, null, null)).entries;
   expect(entry.scope).toBeNull();
   await expect(store.staging.freeze(entry, scope, "another-epoch")).rejects.toThrow(
-    "cannot be verified",
+    "can’t tell which Library",
   );
   const bytes = await store.staging.export(entry);
   expect(new TextDecoder().decode(bytes.subarray(0, 4))).toBe("NDRE");
@@ -177,7 +179,7 @@ test("a receipt claim survives its window and prevents removal until acknowledge
   expect(await sender.staging.claimTransfer(entry)).toBe(false);
   const reopened = new IndexedDbDocumentLocalCheckpointStore(factory, scope);
   await expect(reopened.staging.remove(entry)).rejects.toThrow(
-    "Receipt for this draft is unconfirmed",
+    "recovery copy hasn’t been confirmed",
   );
   expect(await reopened.staging.claimTransfer(entry)).toBe(true);
   await reopened.staging.acknowledge(entry, frozen, receipt(frozen));

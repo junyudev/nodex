@@ -102,7 +102,7 @@ const recoveryAction = (status: NodexYProviderStatus): BlockDocumentSyncIndicato
 const recoveryDetail = (status: NodexYProviderStatus): string =>
   status.recovery?.phase === "protected"
     ? "These edits are kept on this device. Review them or reopen the saved document to continue editing."
-    : "Unsaved edits are only in this window. Export recovery before closing it.";
+    : "Unsaved edits are only in this window. Export a backup before closing it.";
 
 const resetIndicator = (status: NodexYProviderStatus): BlockDocumentSyncIndicatorModel => ({
   phase: status.phase,
@@ -194,8 +194,7 @@ export const resolveBlockDocumentSyncIndicator = ({
       return {
         phase: status.phase,
         label: "Unsaved edits",
-        detail:
-          "Some earlier edits were not saved. Review them while the current document continues syncing.",
+        detail: "Some earlier edits weren’t saved to this Page. Everything else is saved as usual.",
         tone: "warning",
         action: { kind: "review", label: "Review" },
         editingBlocked: false,
