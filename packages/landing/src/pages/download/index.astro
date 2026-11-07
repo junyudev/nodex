@@ -4,7 +4,14 @@ import PlatformIcon from "../../components/PlatformIcon.astro";
 import SiteFooter from "../../components/SiteFooter.astro";
 import SiteNav from "../../components/SiteNav.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import { CHANGELOG_URL, DOWNLOADS, RELEASES_URL, VERSION_LABEL, WINDOWS_AVAILABLE } from "../../lib/site";
+import {
+  CHANGELOG_URL,
+  DOWNLOADS,
+  GOOGLE_PLAY_URL,
+  RELEASES_URL,
+  VERSION_LABEL,
+  WINDOWS_AVAILABLE,
+} from "../../lib/site";
 
 const button =
   "inline-flex h-11 items-center justify-center gap-2 rounded-full px-5 text-[15px] font-medium transition-transform hover:scale-[1.02] active:scale-[0.98]";
@@ -19,7 +26,7 @@ const link = "underline decoration-ink-3/40 underline-offset-[3px] hover:text-in
   title="Download | Nodex"
   ogTitle="Download Nodex"
   socialCard="download"
-  description="Download Nodex for macOS on Apple silicon or Windows 11 on x64 and Arm."
+  description="Download Nodex for macOS on Apple silicon or Windows 11 on x64 and Arm, and Nodex Mobile for iOS and Android."
 >
   <SiteNav />
   <main class="mx-auto max-w-[1000px] px-6 py-16 sm:py-24">
@@ -91,6 +98,48 @@ const link = "underline decoration-ink-3/40 underline-offset-[3px] hover:text-in
         }
       </section>
     </div>
+
+    <section id="mobile" class:list={[card, "mt-4 scroll-mt-20 md:flex-row md:justify-between md:gap-12"]} aria-labelledby="download-mobile">
+      <div class="flex shrink-0 flex-col gap-6">
+        <div class="flex items-center gap-3">
+          <PlatformIcon platform="phone" class="size-6" />
+          <div>
+            <h2 id="download-mobile" class="text-[19px] font-semibold tracking-[-0.02em]">Nodex Mobile</h2>
+            <p class="font-mono text-[12px] tracking-wide text-ink-3">iOS · Android</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-3">
+          <a href={DOWNLOADS.ios} data-download="ios" class:list={[button, filled]}>
+            <PlatformIcon platform="macos" class="size-[17px]" />
+            TestFlight
+          </a>
+          <a href={DOWNLOADS.android} data-download="android" class:list={[button, outlined]}>
+            <PlatformIcon platform="android" class="size-[17px]" />
+            Download APK
+          </a>
+          {
+            GOOGLE_PLAY_URL ? (
+              <a href={GOOGLE_PLAY_URL} data-download="google-play" class:list={[button, outlined]}>
+                Google Play
+              </a>
+            ) : null
+          }
+        </div>
+      </div>
+      <div class="flex max-w-[420px] flex-col gap-3">
+        <p class="text-[15px] leading-relaxed text-pretty text-ink-2">
+          Manage your computer’s chats and Inbox from your phone, over your local network or Tailscale.
+        </p>
+        <ol class:list={[note, "flex list-inside list-decimal flex-col gap-1"]}>
+          <li>Keep Nodex open on your computer and turn on Settings → Mobile.</li>
+          <li>Choose Pair a phone and scan the code with the app.</li>
+        </ol>
+        <p class={note}>
+          Every Nodex release updates the phone app too. TestFlight keeps it current on iPhone; on
+          Android, install the newer APK over the old one and your pairing stays.
+        </p>
+      </div>
+    </section>
 
     <p class="mt-8 text-[14px] text-ink-3">
       Nightly builds and every earlier release are on <a href={RELEASES_URL} class={link}>GitHub Releases</a>.

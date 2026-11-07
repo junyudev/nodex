@@ -1,6 +1,6 @@
 ---
 interface Props {
-  platform: "macos" | "windows";
+  platform: "macos" | "windows" | "android" | "phone";
   class?: string;
 }
 
@@ -12,9 +12,18 @@ const { platform, class: className } = Astro.props;
     <svg viewBox="0 0 17 20" class:list={["-mt-0.5", className]} fill="currentColor" aria-hidden="true">
       <path d="M14.1 10.6c0-2.5 2-3.7 2.1-3.8-1.2-1.7-3-1.9-3.6-1.9-1.5-.2-3 .9-3.8.9-.8 0-2-.9-3.3-.9C3.8 5 2.2 6 1.3 7.6c-1.8 3.1-.5 7.8 1.3 10.3.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8 1.6 0 2 .8 3.3.8 1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9 0 0-2.8-1.1-2.8-4.4Zm-2.5-7.4c.7-.9 1.2-2 1-3.2-1 0-2.3.7-3 1.6-.7.8-1.2 2-1.1 3.1 1.2.1 2.3-.6 3.1-1.5Z" />
     </svg>
-  ) : (
+  ) : platform === "windows" ? (
     <svg viewBox="0 0 16 16" class:list={[className]} fill="currentColor" aria-hidden="true">
       <path d="M0 0h7.6v7.6H0zM8.4 0H16v7.6H8.4zM0 8.4h7.6V16H0zM8.4 8.4H16V16H8.4z" />
+    </svg>
+  ) : platform === "android" ? (
+    <svg viewBox="0 0 24 24" class:list={[className]} fill="currentColor" aria-hidden="true">
+      <path d="M17.6 9.48l1.84-3.18a.38.38 0 0 0-.66-.38l-1.86 3.22a11.4 11.4 0 0 0-9.84 0L5.22 5.92a.38.38 0 0 0-.66.38L6.4 9.48A10.8 10.8 0 0 0 1 18h22a10.8 10.8 0 0 0-5.4-8.52ZM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5Zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5Z" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" class:list={[className]} fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="6.5" y="2.5" width="11" height="19" rx="2.75" />
+      <path d="M10.5 18.5h3" />
     </svg>
   )
 }

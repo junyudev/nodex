@@ -3,11 +3,12 @@ import { SCRIPT as agents } from "./AgentsDemo";
 import type { CaptureDemoId } from "./capture-demos";
 import { SCRIPT as fanout } from "./FanOutDemo";
 import { SCRIPT as hero } from "./HeroDemo";
+import { SCRIPT as mobile } from "./MobileDemo";
 import { SCRIPT as pages } from "./PagesDemo";
 import { SCRIPT as tidy } from "./TidyDemo";
 import { PACING, pacingIssues, type TimelineScript } from "./timeline";
 
-const DEMOS: Record<CaptureDemoId, TimelineScript> = { hero, fanout, agents, pages, tidy };
+const DEMOS: Record<CaptureDemoId, TimelineScript> = { hero, fanout, agents, pages, tidy, mobile };
 
 test.each(Object.entries(DEMOS))("the %s demo never leaves a visitor waiting", (_, script) => {
   expect(pacingIssues(script)).toEqual([]);

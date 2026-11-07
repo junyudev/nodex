@@ -92,10 +92,10 @@ that Chromium never delivered.
 - `src/components/` for shared site navigation, footer, and the social card frame
 - `src/sections/` for the homepage sections, each an Astro component that places one demo island
 - `src/demos/` for the interactive product demos, hydrated with Astro client directives and animated with `motion/react`; `lumen.ts` holds the fictional workspace and the current agent and model names every demo shares
-- `src/replica/` for presentational copies of the desktop UI (window shell, Inbox, chat, Board) that the demos compose
+- `src/replica/` for presentational copies of the desktop UI (window shell, Inbox, chat, Board) and of Nodex Mobile that the demos compose
 - `src/pages/capture/` for the unlisted pages the media recorder captures, including each social card at `/capture/og/<card>/`
 - `src/styles/global.css` for landing-only Tailwind, Geist fonts, and the system-driven dark variant
-- `src/styles/theme.css` for site colors and the app colors the replicas use in each theme
+- `src/styles/theme.css` for site colors and the desktop and phone app colors the replicas use in each theme
 - `src/lib/site.ts` for typed release and install constants
 - `src/lib/social-cards.ts` for the social cards the site publishes
 - `src/changelog.ts` for build-time `CHANGELOG.md` parsing and the entry helpers the changelog page uses
@@ -106,6 +106,7 @@ that Chromium never delivered.
 
 The site is a static multi-page build. It does not use React Router or any client-side routing fallback.
 Download links point at the stable alias assets every GitHub Release carries: `Nodex-latest-arm64.dmg` for macOS and `Nodex-latest-windows-x64.exe` / `Nodex-latest-windows-arm64.exe` for Windows. The homepage's download action follows the visitor's platform. An inline script in `BaseLayout.astro` marks Windows visitors (`data-os="windows"`, plus `data-arch="arm64"` when the browser reports an Arm CPU), and the `windows` and `arm` Tailwind variants switch the action to the matching Windows installer and its SmartScreen note before first paint. Without the script, or on any other platform, the page offers macOS. The nav's Download goes to `/download/`, which lists every build without relying on JavaScript; the visitor's detected Windows architecture is emphasized there.
+The same page's `#mobile` card offers Nodex Mobile: the public TestFlight beta for iPhone and the `Nodex-latest-android.apk` alias every stable release carries, both in `DOWNLOADS` so their clicks count the same way. A Google Play button appears once `GOOGLE_PLAY_URL` names a listing. The homepage's mobile section and Settings > Mobile in the app both point at this card rather than at a store.
 Windows downloads appear only when the release the site describes carries Windows installers: `windowsDownloadsAvailable` in `src/lib/site.ts` compares the root app version with 0.5.0, the last stable release published without them. Once a later release is the oldest one the site can describe, that gate can be removed.
 The homepage release stamp is build-time data: the typed `VERSION_LABEL` constant imports the root app version from the repository `package.json`, so the published site shows the same semver that release automation cuts.
 The changelog page at `/changelog/` is also build-time data: it reads the root `CHANGELOG.md`, shows `Unreleased` first as in development and then each dated release in source order, marks the newest as Latest, and lists every release in a rail that follows the reader. Kinds of change always read Added, Changed, Deprecated, Removed, Fixed, Security. The release in development and the latest release show all their additions and changes; every other list shows its first entries and opens the rest on request. Each entry leads with its first sentence, so write that sentence to stand on its own.
@@ -195,8 +196,8 @@ in the side tab group, where the agent attaches its report and the reader opens 
 only while its chapter plays. The sentence beside the headline is the README's tagline; change
 both together.
 Sections then cover cross-provider delegation, every provider's models and plans in one menu,
-work landing in Pages on a Board, and one plain request that has an agent file a whole backlog,
-followed by a feature grid and a final download call.
+work landing in Pages on a Board, one plain request that has an agent file a whole backlog, and
+reaching all of it from a phone, followed by a feature grid and a final download call.
 
 The hero reaches something worth watching within about a second. Its opening burst sweeps each
 message through the composer in a fraction of a second, and the Inbox plans each one while the
@@ -227,6 +228,14 @@ Product demos are scripted re-enactments built from replicas of the interface, n
   the harness mark, the Subagents tab header marks the child's Agent beside its model and effort,
   and its task reads "Sent by" with the sending chat's mark and title, so a Claude lead with
   Codex subagents reads at a glance.
+- Nodex Mobile's replica draws the app at its real point sizes in its own colors and scales as one
+  device, with a fingertip for a pointer. Its demo stands the phone in front of the computer running
+  the same chats, joined through the routes Settings > Mobile lists, because what sets it apart is
+  that the phone reaches your own computer: a tap travels the line and then changes the computer's
+  sidebar. Both routes stay in every frame, the local network and Tailscale, so any still says so.
+  A screen too narrow for both shows the phone alone under a strip naming the routes.
+- Replicas don't use motion's `layout` animations. Its projection ignores a scaled parent, and a
+  Stage or device always scales, so a row lands in the wrong place.
 - Every demo shares the fictional Lumen workspace in `src/demos/lumen.ts`; never show real
   user data, account names, or paths.
 - Replicas read the app's own artwork where it has some: subagent avatars are loaded from

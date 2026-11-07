@@ -1,6 +1,7 @@
 /*
- * Two layers of color. Site tokens dress the page; app tokens dress the product replicas so
- * they read as the real desktop app in either theme.
+ * Three layers of color. Site tokens dress the page; app tokens dress the product replicas so
+ * they read as the real desktop app in either theme; phone tokens do the same for Nodex Mobile,
+ * following packages/mobile/src/ui/theme.css.
  */
 :root,
 [data-theme="dark"] {
@@ -30,6 +31,22 @@
   --app-shadow:
     0 0 0 0.5px rgb(255 255 255 / 0.12), 0 30px 80px -20px rgb(0 0 0 / 0.75),
     0 12px 28px -12px rgb(0 0 0 / 0.6);
+
+  --phone-surface: #000000;
+  --phone-surface-3: #2a2a2a;
+  --phone-fill: rgb(255 255 255 / 0.1);
+  --phone-glass: rgb(28 28 28 / 0.68);
+  --phone-ink: #ffffff;
+  --phone-ink-2: #b0b0b0;
+  --phone-ink-3: #868686;
+  --phone-line: rgb(255 255 255 / 0.14);
+  --phone-accent: #4d72ee;
+  --phone-danger: #f0776c;
+  --phone-danger-soft: #3a1f1c;
+  --phone-warning: #e3b34f;
+
+  --device-body: #2c2c30;
+  --device-body-2: #17171a;
 }
 
 [data-theme="light"] {
@@ -59,6 +76,22 @@
   --app-shadow:
     0 0 0 0.5px rgb(0 0 0 / 0.14), 0 30px 80px -24px rgb(20 20 40 / 0.28),
     0 10px 24px -12px rgb(20 20 40 / 0.16);
+
+  --phone-surface: #ffffff;
+  --phone-surface-3: #ececec;
+  --phone-fill: rgb(0 0 0 / 0.06);
+  --phone-glass: rgb(255 255 255 / 0.55);
+  --phone-ink: #0d0d0d;
+  --phone-ink-2: #5d5d5d;
+  --phone-ink-3: #8f8f8f;
+  --phone-line: rgb(0 0 0 / 0.1);
+  --phone-accent: #3560e0;
+  --phone-danger: #d13a30;
+  --phone-danger-soft: #fbecea;
+  --phone-warning: #b8801b;
+
+  --device-body: #e4e4e8;
+  --device-body-2: #bdbdc4;
 }
 
 @theme inline {
@@ -85,6 +118,22 @@
   --color-app-accent: var(--app-accent);
   --color-app-primary: var(--app-primary);
   --color-app-on-primary: var(--app-on-primary);
+
+  --color-phone-surface: var(--phone-surface);
+  --color-phone-surface-3: var(--phone-surface-3);
+  --color-phone-fill: var(--phone-fill);
+  --color-phone-glass: var(--phone-glass);
+  --color-phone-ink: var(--phone-ink);
+  --color-phone-ink-2: var(--phone-ink-2);
+  --color-phone-ink-3: var(--phone-ink-3);
+  --color-phone-line: var(--phone-line);
+  --color-phone-accent: var(--phone-accent);
+  --color-phone-danger: var(--phone-danger);
+  --color-phone-danger-soft: var(--phone-danger-soft);
+  --color-phone-warning: var(--phone-warning);
+
+  --color-device-body: var(--device-body);
+  --color-device-body-2: var(--device-body-2);
 
   --color-status-triage: #8e8e93;
   --color-status-plan: #a78bfa;

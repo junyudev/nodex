@@ -2,7 +2,7 @@
 import BaseLayout from "../../layouts/BaseLayout.astro";
 ---
 
-<BaseLayout title="Privacy | Nodex" description="What the Nodex website and desktop app collect.">
+<BaseLayout title="Privacy | Nodex" description="What the Nodex website and apps collect.">
   <div class="flex min-h-screen flex-col">
     <main class="mx-auto flex w-full max-w-3xl flex-1 flex-col px-6 py-12 sm:px-10">
       <a href="/" class="mb-10 inline-flex items-center gap-2 text-sm opacity-60 hover:opacity-100">← Back to Nodex</a>
@@ -27,7 +27,7 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
             <h2>Download and outbound links</h2>
             <p>
               When you click download or repository links, you leave this site and go to
-              third-party services such as GitHub and Homebrew. Those services may collect network
+              third-party services such as GitHub, Homebrew and Apple's TestFlight. Those services may collect network
               logs, browser metadata, and any information you choose to provide there.
             </p>
           </section>
@@ -70,6 +70,22 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
               credentials and request bodies are removed. Turn them off in Settings → General →
               Privacy. Session Replay is a separate setting that stays off unless you enable it, and
               it masks all text and inputs when you do.
+            </p>
+          </section>
+
+          <section>
+            <h2>Nodex Mobile</h2>
+            <p>
+              Nodex Mobile connects directly to Nodex on your computer over your local network or
+              Tailscale, encrypted end to end, with no server of ours in between. It sends no usage
+              analytics or crash reports. Your phone keeps its keys, messages not yet delivered,
+              drafts and a copy of what it last showed you.
+            </p>
+            <p>
+              On iPhone, if you turn notifications on, your computer encrypts each one for your
+              phone before sending it. Our relay and Apple deliver it without being able to read
+              it. They receive your device's notification token to route it, and the relay stores
+              neither the token nor the notification.
             </p>
           </section>
 

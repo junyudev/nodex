@@ -3,6 +3,7 @@ import { useRef } from "react";
 import { ProviderMark, cx } from "../replica/Window";
 import { Stage } from "../replica/Stage";
 import { CAPTURE_DEMOS } from "./capture-demos";
+import { FlowEdge } from "./FlowEdge";
 import { PASSKEY_SUBAGENTS, PROVIDER_NAMES, type AgentChoice } from "./lumen";
 import { useTimeline, type Cue, type TimelineScript } from "./timeline";
 
@@ -83,11 +84,12 @@ export default function FanOutDemo() {
             <svg className="absolute inset-0" width={WIDTH} height={HEIGHT} aria-hidden="true">
               {CHILDREN.map((child, index) =>
                 reached(`start:${index}`) ? (
-                  <Edge
+                  <FlowEdge
                     key={child.name}
-                    index={index}
+                    d={edgePath(index)}
                     color={EDGE_COLOR[child.agent.provider]}
-                    done={reached(`done:${index}`)}
+                    flowing={!reached(`done:${index}`)}
+                    pulse={reached(`done:${index}`) ? "done" : null}
                   />
                 ) : null,
               )}
@@ -166,61 +168,6 @@ function CallLine({ name, detail }: { readonly name: string; readonly detail: st
     >
       <span className="text-ink-2">{name}</span> <span>{detail}</span>
     </motion.span>
-  );
-}
-
-function Edge({
-  index,
-  color,
-  done,
-}: {
-  readonly index: number;
-  readonly color: string;
-  readonly done: boolean;
-}) {
-  const d = edgePath(index);
-  return (
-    <g>
-      <motion.path
-        d={d}
-        fill="none"
-        stroke={color}
-        strokeOpacity={0.35}
-        strokeWidth={1.5}
-        initial={{ pathLength: 0 }}
-        animate={{ pathLength: 1 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-      />
-      {done ? null : (
-        <motion.path
-          d={d}
-          fill="none"
-          stroke={color}
-          strokeWidth={1.5}
-          strokeDasharray="3 9"
-          strokeLinecap="round"
-          initial={{ strokeDashoffset: 0, opacity: 0 }}
-          animate={{ strokeDashoffset: -48, opacity: 1 }}
-          transition={{
-            strokeDashoffset: { duration: 1.2, repeat: Infinity, ease: "linear" },
-            opacity: { delay: 0.4 },
-          }}
-        />
-      )}
-      {done ? (
-        <motion.circle
-          r={4}
-          fill={color}
-          style={{ offsetPath: `path("${d}")` }}
-          initial={{ offsetDistance: "100%", opacity: 1 }}
-          animate={{ offsetDistance: "0%", opacity: 0 }}
-          transition={{
-            offsetDistance: { duration: 0.7, ease: "easeIn" },
-            opacity: { delay: 0.6, duration: 0.2 },
-          }}
-        />
-      ) : null}
-    </g>
   );
 }
 

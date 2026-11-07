@@ -1,0 +1,28 @@
+---
+import MobileDemo from "../demos/MobileDemo";
+import { MOBILE_DOWNLOAD_URL } from "../lib/site";
+import Feature from "./Feature.astro";
+---
+
+<Feature
+  eyebrow="Nodex Mobile · iOS & Android"
+  title="Leave your desk. Not your agents."
+  points={[
+    "See every chat on your computer, with the ones asking for you first. Approve, answer, queue a follow-up or stop a run.",
+    "Drop a thought in the Inbox, even offline, and start the chat it suggests.",
+    "Pair once with a QR code. On iPhone, get an alert when a chat needs you or finishes, encrypted so only your phone can read it.",
+  ]}
+>
+  <Fragment slot="body">
+    Agents keep running on your computer, on your accounts and your files. Your phone reaches them
+    directly, over your local network or Tailscale, encrypted end to end with no Nodex server in
+    between.
+  </Fragment>
+  <p slot="footer" class="mt-1 text-[14px] text-pretty text-ink-3">
+    Needs your computer on, with Nodex open.{" "}
+    <a href={MOBILE_DOWNLOAD_URL} class="whitespace-nowrap text-ink underline decoration-ink-3/40 underline-offset-[3px] hover:decoration-ink">
+      Get the app
+    </a>
+  </p>
+  <MobileDemo client:visible />
+</Feature>
