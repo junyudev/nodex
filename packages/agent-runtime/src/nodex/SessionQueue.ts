@@ -1,4 +1,10 @@
-import { CommandId, RunId, ThreadId, UserInputResponder } from "@t3tools/contracts";
+import {
+  CommandId,
+  OrchestrationMessageContext,
+  RunId,
+  ThreadId,
+  UserInputResponder,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -21,6 +27,7 @@ export const SessionQueueInput = Schema.Struct({
   action: Schema.Literals(["list", "read", "edit", "remove", "reorder", "steer"]),
   queuedId: Schema.optional(RunId),
   text: Schema.optional(Schema.String),
+  context: Schema.optional(OrchestrationMessageContext),
   beforeId: Schema.optional(Schema.NullOr(RunId)),
   cursor: Schema.optional(Schema.String),
   limit: Schema.optional(Schema.Number),
@@ -166,6 +173,7 @@ export const make = Effect.gen(function* () {
           type: "queued-run.edit",
           runId: input.queuedId,
           text: input.text,
+          ...(input.context === undefined ? {} : { context: input.context }),
         });
       case "remove":
         return yield* dispatch({ ...base, type: "queued-run.cancel", runId: input.queuedId });

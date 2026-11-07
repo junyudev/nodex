@@ -1,12 +1,16 @@
-import type { ChatAttachment } from "@t3tools/contracts";
+import type { ChatAttachment, OrchestrationMessageContext } from "@t3tools/contracts";
 
 interface NativeCommandMessage {
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
+  readonly context?: OrchestrationMessageContext | undefined;
 }
 
+/** A command stands alone: anything attached makes the message an ordinary prompt. */
 const nativeCommand = (message: NativeCommandMessage): string | null =>
-  message.attachments.length === 0 ? message.text.trim().toLowerCase() : null;
+  message.attachments.length === 0 && (message.context?.records.length ?? 0) === 0
+    ? message.text.trim().toLowerCase()
+    : null;
 
 /** A native /compact or /logout turn: provider maintenance, not agent work. */
 export function isNativeMaintenanceCommand(message: NativeCommandMessage): boolean {

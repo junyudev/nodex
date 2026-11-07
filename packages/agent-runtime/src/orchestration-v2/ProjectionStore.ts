@@ -1,4 +1,5 @@
 import { isRuntimeDeliveryRun, queuedRunsInDeliveryOrder } from "./QueuedRunOrder.ts";
+import { isNativeCompactCommand } from "./nativeMaintenanceCommand.ts";
 import {
   isRuntimeDeliveryMessage,
   queuedMessageKindSql,
@@ -888,19 +889,13 @@ export function turnStartFactsFromProjection(
           attempts: projection.attempts,
           run,
           compactionMessageIds: new Set(
-            projection.messages
-              .filter(
-                (m) => m.attachments.length === 0 && m.text.trim().toLowerCase() === "/compact",
-              )
-              .map((m) => m.id),
+            projection.messages.filter(isNativeCompactCommand).map((m) => m.id),
           ),
         });
   const provider = projection.providerThreads.find((p) => p.id === run?.providerThreadId);
   return {
     hasConversation: projection.messages.some(
-      (m) =>
-        m.role === "user" &&
-        (m.text.trim().toLowerCase() !== "/compact" || m.attachments.length > 0),
+      (m) => m.role === "user" && !isNativeCompactCommand(m),
     ),
     nextTurnItemOrdinal: Math.max(0, ...projection.turnItems.map((i) => i.ordinal)) + 1,
     providerTurnOrdinal:
@@ -8407,6 +8402,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             const trimChars =
               " \t\n\r\v\f\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff";
             const maintenance = sql`json_array_length(payload_json,'$.attachments') = 0
+          AND COALESCE(json_array_length(payload_json,'$.context.records'),0) = 0
           AND lower(trim(json_extract(payload_json,'$.text'),${trimChars})) IN ('/compact','/logout')`;
             const controlMessage = sql`json_set(json_remove(payload_json,'$.context','$.notification','$.delegatedCompletion'), '$.attachments', json('[]'),
           '$.text', CASE WHEN ${maintenance} THEN lower(trim(json_extract(payload_json,'$.text'),${trimChars})) ELSE '' END)`;
@@ -10921,10 +10917,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             ...projection,
             ...turnStartFactsFromProjection(projection, runId),
             hasConversation: projection.messages.some(
-              (message) =>
-                message.role === "user" &&
-                (message.text.trim().toLowerCase() !== "/compact" ||
-                  message.attachments.length > 0),
+              (message) => message.role === "user" && !isNativeCompactCommand(message),
             ),
             turnItems: projection.turnItems.filter((item) => item.runId === runId),
           })),

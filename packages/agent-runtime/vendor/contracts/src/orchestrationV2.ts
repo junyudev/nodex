@@ -1,4 +1,4 @@
-import { OrchestrationMessageContext } from "./composerContext.ts";
+import { OrchestrationMessageContext } from "./messageContext.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { V2ItemCompletedNotification__ThreadItem } from "@nodex/effect-codex-app-server/schema";

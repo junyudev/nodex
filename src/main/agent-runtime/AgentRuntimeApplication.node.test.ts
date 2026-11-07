@@ -5146,10 +5146,8 @@ it.effect(
         message: { messageId: "message:state", text: "Use the selection" },
       });
       const carried = dispatched("message:state");
-      assert.match(
-        carried.text,
-        /^Use the selection\n\n\[Interactive response state\]\(t3-context:\/\/v1\/nodex-app-context\/\w+\)$/u,
-      );
+      assert.equal(carried.text, "Use the selection");
+      assert.equal(carried.context?.records[0]?.label, "Interactive response state");
       assert.deepEqual(
         (carried.context?.records[0] as { payload: { items: unknown } } | undefined)?.payload.items,
         parts,

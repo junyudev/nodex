@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Searching your chats and reading one from another Agent now shows only what you wrote. Page references, selected text and app data sent with a message used to appear there as raw links.
 - Automatic choices no longer pick a prepaid Nodex model. A subagent that named only a type of Agent, Inbox suggestions, the mobile app and Refine could land on one and spend your credits without you choosing it.
 - Editing a message no longer loses your conversation when one of its images can't be read. The edit now stops before anything is rewound, keeps your draft open, and says the image can't be read instead of showing a system error.
 - MCP tool images and rich results now appear in Claude Code chats, both live and in saved conversations. They used to show as raw JSON.

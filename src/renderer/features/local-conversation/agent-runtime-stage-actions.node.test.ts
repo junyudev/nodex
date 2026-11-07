@@ -573,10 +573,10 @@ describe("Agent Runtime stage commands", () => {
 
   it("keeps the app data of a queued message whose words are edited", async () => {
     const queue = vi.fn().mockResolvedValue({ sequence: 1 });
-    const record = { kind: "nodex-app-context", contextId: "chart", label: "Chart", payload: {} };
+    const record = { kind: "nodex-app-context", label: "Chart", payload: {} };
     const readRunMessage = vi.fn().mockResolvedValue({
       id: "message-1",
-      text: "Compare these\n\n[Chart](t3-context://v1/nodex-app-context/chart)",
+      text: "Compare these",
       context: { version: 1, records: [record] },
     });
     const state = {
@@ -648,7 +648,7 @@ describe("Agent Runtime stage commands", () => {
         runId: "run-1",
         message: expect.objectContaining({
           messageId: "message-1",
-          text: "Compare the first two\n\n[Chart](t3-context://v1/nodex-app-context/chart)",
+          text: "Compare the first two",
           context: { version: 1, records: [record] },
         }),
       }),
@@ -695,12 +695,12 @@ describe("Agent Runtime stage commands", () => {
 
   it("resends an earlier message's images and app data with its rewritten words", async () => {
     const f = fixture();
-    const record = { kind: "nodex-app-context", contextId: "chart", label: "Chart", payload: {} };
+    const record = { kind: "nodex-app-context", label: "Chart", payload: {} };
     f.owner.readSentMessage.mockResolvedValueOnce({
       message: {
         id: "message:run:completed",
         threadId: "child",
-        text: "Compare these\n\n[Chart](t3-context://v1/nodex-app-context/chart)",
+        text: "Compare these",
         context: { version: 1, records: [record] },
         attachments: [],
       } as never,
@@ -722,7 +722,7 @@ describe("Agent Runtime stage commands", () => {
       images: [{ source: "/attachments/chart.png", caption: "chart.png" }],
     });
     expect(f.rewriteMessage.mock.calls[0]![0].message).toMatchObject({
-      text: "Prepared Compare the first two\n\n[Chart](t3-context://v1/nodex-app-context/chart)",
+      text: "Prepared Compare the first two",
       context: { version: 1, records: [record] },
       images: [{ source: "/attachments/chart.png", caption: "chart.png" }],
     });

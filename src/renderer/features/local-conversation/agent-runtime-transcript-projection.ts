@@ -38,7 +38,6 @@ import {
 } from "../../../shared/agent-runtime-attachments";
 import { projectAgentRuntimeSubagentDisplay } from "../../../shared/agent-runtime-subagent-display";
 import { agentBackendKindOfDriver } from "../../../shared/conversation-identity";
-import { agentMessageDisplayText } from "../../../shared/agent-prompt";
 import { getDisplayCommand } from "../../../shared/codex-command-execution";
 import type { CodexTranscriptTurnDetails } from "../../../shared/codex-transcript-projection";
 import { providerFailureCause } from "@nodex/agent-runtime/failure-cause";
@@ -604,7 +603,7 @@ export function projectAgentRuntimeItem(
         content: [
           {
             type: "text",
-            text: agentMessageDisplayText(item.text),
+            text: item.text,
             text_elements: emptyTextElements,
           },
           ...item.attachments
@@ -969,7 +968,7 @@ export function projectAgentRuntimeTurnDetails(input: {
           input: [
             {
               type: "text",
-              text: agentMessageDisplayText(openingItem.text),
+              text: openingItem.text,
               text_elements: emptyTextElements,
             },
             ...openingItem.attachments

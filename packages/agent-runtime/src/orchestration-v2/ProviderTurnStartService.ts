@@ -5,8 +5,9 @@ import {
   withoutRunRecovery,
 } from "./RunRecovery.ts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
-import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
+import { projectMessageForProvider } from "@t3tools/shared/messageContextProjection";
 import { readExecutionHandoff } from "./ExecutionHandoff.ts";
+import { isNativeCompactCommand } from "./nativeMaintenanceCommand.ts";
 import {
   CommandId,
   ORCHESTRATION_V2_NATIVE_SESSION_UNRECOVERABLE_FAILURE_CODE,
@@ -356,9 +357,7 @@ export const layer: Layer.Layer<
                       handoff.delivery === undefined &&
                       projection.messages.some(
                         (message) =>
-                          message.id === source.userMessageId &&
-                          message.attachments.length === 0 &&
-                          message.text.trim().toLowerCase() === "/compact",
+                          message.id === source.userMessageId && isNativeCompactCommand(message),
                       ))),
               ))),
       );
@@ -503,8 +502,7 @@ export const layer: Layer.Layer<
         },
       );
       if (message.attachments.length === 0 && message.text.trimStart().startsWith("/")) {
-        const isEmptyCompaction =
-          message.text.trim().toLowerCase() === "/compact" && !projection.hasConversation;
+        const isEmptyCompaction = isNativeCompactCommand(message) && !projection.hasConversation;
         // Preparing a run may already point the thread at a newly selected
         // provider. Account commands still belong to its last native session.
         const nativeThreads = new Map(
@@ -535,10 +533,7 @@ export const layer: Layer.Layer<
           : yield* Effect.result(
               providerAuth.tryHandlePromptCommand({
                 instanceId: authInstanceId,
-                text: projectComposerContextForProvider({
-                  text: message.text,
-                  records: message.context?.records ?? [],
-                }),
+                text: projectMessageForProvider(message),
                 hasAttachments: false,
               }),
             );
@@ -1369,10 +1364,7 @@ export const layer: Layer.Layer<
         ? continuation === "empty"
           ? ""
           : "Continue where you left off."
-        : projectComposerContextForProvider({
-            text: inputMessage.text,
-            records: inputMessage.context?.records ?? [],
-          });
+        : projectMessageForProvider(inputMessage);
       // Delivered once: this run's provider turn marks the work as told. A
       // restart continuation is prompted by its own text or resumes natively.
       const noteContinuation = projection.restartNoteState.continuation;

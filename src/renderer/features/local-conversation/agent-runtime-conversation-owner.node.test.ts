@@ -2735,7 +2735,7 @@ describe("Agent Runtime prompt navigation", () => {
         {
           runId: "run-1",
           messageId: "message:run-1",
-          prompt: "Align the theme\n\n[Selected page](t3-context://v1/nodex-app-context/context-1)",
+          prompt: "Align the theme",
           response: "a".repeat(256),
           scheduled: true,
         },

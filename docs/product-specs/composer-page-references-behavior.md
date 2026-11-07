@@ -26,15 +26,15 @@ Project. Selecting a Page inserts an inline mention atom that serializes as a ti
 they never become provider-native mention inputs.
 
 Sent messages show beside-Page references as chips above the user's words. The chips retain the
-submitted title and Block selection and open the referenced Page beside that chat. Internal context markers and
-companion text inputs do not appear in the displayed message.
+submitted title and Block selection and open the referenced Page beside that chat. Companion text
+inputs do not appear in the displayed message.
 
 ## Transport and display
 
 `PageReference` contains `pageId`, `titleSnapshot` and `selectedBlockIds`. URLs are derived from the
-Page id. Runtime messages carry one version-1 `nodex-page-reference` context record per reference,
-with payload `{ pageId, title, url, selectedBlockIds }`. A typed context link binds the record to
-the user message; provider projection emits its readable marker and JSON payload as data.
+Page id. Runtime messages carry one `nodex-page-reference` context record per reference, with
+payload `{ pageId, title, url, selectedBlockIds }`. Provider projection follows the user's words
+with each record's label and JSON payload as data.
 
 Direct Codex input carries one ordinary text companion headed `# Page references:` followed by
 an array of the same payloads. The application sidecar `additionalContext["page-references"]`

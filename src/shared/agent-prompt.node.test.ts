@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
+import type { AgentRuntimeMessage } from "./agent-runtime-api";
 import {
-  agentMessageDisplayText,
+  appendAgentAppContext,
   prepareAgentAppContext,
   prepareAgentMessage,
   retainAgentAppContext,
@@ -123,12 +124,8 @@ it("preserves captured app provenance and structured context with images through
   };
   const message = await prepareAgentMessage("Explain this", input, vi.fn(), { images: true });
   // The app's data rides beside the user's words as a context record the Agent reads as data.
-  expect(agentMessageDisplayText(message.text)).toBe("Explain this");
-  expect(message.text).toMatch(
-    /^Explain this\n\n\[[^\]]+\]\(t3-context:\/\/v1\/nodex-app-context\/\w+\)$/u,
-  );
-  const record = (message.context as unknown as { records: { kind: string; payload: unknown }[] })
-    .records[0]!;
+  expect(message.text).toBe("Explain this");
+  const record = message.context!.records[0]!;
   expect(record.kind).toBe("nodex-app-context");
   expect(record.payload).toMatchObject({
     trust: "untrusted",
@@ -156,7 +153,7 @@ it("compiles visualization follow-ups as labeled app data and refuses invalid ca
   const message = await prepareAgentMessage("Follow-up", undefined, vi.fn(), {
     untrustedAppMessage,
   });
-  expect(agentMessageDisplayText(message.text)).toBe("Follow-up");
+  expect(message.text).toBe("Follow-up");
   expect(
     (message.context as unknown as { records: { payload: { items: unknown[] } }[] }).records[0]!
       .payload.items,
@@ -179,14 +176,22 @@ it("keeps a queued message's app data when its words are rewritten", async () =>
     untrustedAppMessage,
   });
   const rewritten = retainAgentAppContext({ text: "Compare only the first two" }, original);
-  expect(agentMessageDisplayText(rewritten.text)).toBe("Compare only the first two");
+  expect(rewritten.text).toBe("Compare only the first two");
   expect(rewritten.context).toEqual(original.context);
-  expect(rewritten.text.replace("Compare only the first two", "Compare these")).toBe(original.text);
 
   // New app data replaces the old; a message that had none gains none.
   const fresh = await prepareAgentMessage("Compare", undefined, vi.fn(), {
     untrustedAppMessage: { ...untrustedAppMessage, sourceId: "chart-2" },
   });
-  expect(retainAgentAppContext(fresh, original)).toBe(fresh);
-  expect(retainAgentAppContext({ text: "Plain" }, { text: "Before" })).toEqual({ text: "Plain" });
+  expect(retainAgentAppContext(fresh, original)).toEqual(fresh);
+  expect(retainAgentAppContext({ text: "Plain" }, {})).toEqual({ text: "Plain" });
+});
+
+it("fits a long label within the limit Agent execution keeps a record under", () => {
+  const message = appendAgentAppContext<Pick<AgentRuntimeMessage, "text" | "context">>(
+    { text: "" },
+    [{ text: "evidence" }],
+    "x".repeat(400),
+  );
+  expect(message.context!.records[0]!.label).toHaveLength(200);
 });

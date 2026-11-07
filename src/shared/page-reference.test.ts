@@ -1,9 +1,5 @@
 import { expect, test, vi } from "vite-plus/test";
-import {
-  prepareAgentMessage,
-  agentMessageDisplayText,
-  retainAgentAppContext,
-} from "./agent-prompt";
+import { prepareAgentMessage, retainAgentAppContext } from "./agent-prompt";
 import { prepareCodexPrompt } from "./codex-prompt-preparation";
 import {
   PAGE_REFERENCE_CONTEXT_KIND,
@@ -15,7 +11,7 @@ import {
   withoutPageReferenceInput,
   type PageReference,
 } from "./page-reference";
-import { projectComposerContextForProvider } from "../../packages/agent-runtime/vendor/shared/src/composerContextReferences";
+import { projectMessageForProvider } from "../../packages/agent-runtime/vendor/shared/src/messageContextProjection";
 
 const references: readonly PageReference[] = [
   { pageId: "page-a", titleSnapshot: "Plan [v2]", selectedBlockIds: ["block-1", "block-2"] },
@@ -29,10 +25,8 @@ test("Runtime retains only Page identity, title and highlighted Block identities
   );
   expect(prepared.context?.records).toEqual([
     {
-      version: 1,
       kind: PAGE_REFERENCE_CONTEXT_KIND,
-      contextId: expect.any(String),
-      label: "Plan v2",
+      label: "Plan [v2]",
       payload: {
         pageId: "page-a",
         title: "Plan [v2]",
@@ -42,15 +36,10 @@ test("Runtime retains only Page identity, title and highlighted Block identities
     },
   ]);
   expect(readRuntimePageReferences(prepared.context)).toEqual(references);
-  expect(agentMessageDisplayText(prepared.text)).toBe("Review");
-  const projected = projectComposerContextForProvider({
-    text: prepared.text,
-    records: prepared.context!.records as Parameters<
-      typeof projectComposerContextForProvider
-    >[0]["records"],
-  });
+  expect(prepared.text).toBe("Review");
+  const projected = projectMessageForProvider(prepared);
   expect(projected).toContain(JSON.stringify(pageReferencePayload(references[0]!)));
-  expect(projected).not.toContain("t3-context://");
+  expect(projected.startsWith("Review\n\n<nodex_context>")).toBe(true);
   expect(
     readRuntimePageReferences(retainAgentAppContext({ text: "Revise" }, prepared).context),
   ).toEqual(references);

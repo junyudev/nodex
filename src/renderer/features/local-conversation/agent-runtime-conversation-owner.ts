@@ -15,7 +15,6 @@ import {
   retainAgentRuntimeContextMetadata,
 } from "./agent-runtime-context-usage";
 import { readRuntimeThreadTextSelections } from "../../../shared/thread-text-selection";
-import { agentMessageDisplayText } from "../../../shared/agent-prompt";
 import {
   resolveAgentReplyPhases,
   type AgentReplyItemRole,
@@ -433,7 +432,7 @@ export class AgentRuntimeConversationOwner {
     if (!this.#queuePage?.entries.some((entry) => entry.runId === runId))
       throw new Error("This queued message is no longer available");
     return {
-      text: agentMessageDisplayText(message.text),
+      text: message.text,
       images,
       ...readRuntimeThreadTextSelections(message.context),
     };
@@ -553,7 +552,7 @@ export class AgentRuntimeConversationOwner {
       previews: [
         {
           itemId: prompt.messageId,
-          promptPreview: truncateCodexPromptRailPreview(agentMessageDisplayText(prompt.prompt)),
+          promptPreview: truncateCodexPromptRailPreview(prompt.prompt),
           responsePreview: truncateCodexPromptRailPreview(prompt.response),
           isHeartbeat: prompt.scheduled,
         },
@@ -977,7 +976,7 @@ export class AgentRuntimeConversationOwner {
                 message?.messageId === row.userMessageId &&
                 message.threadId === this.#target.threadId
               ) {
-                prompt = agentMessageDisplayText(message.text);
+                prompt = message.text;
                 images = row.userItemId
                   ? message.images.map((image) => ({
                       caption: image.name,

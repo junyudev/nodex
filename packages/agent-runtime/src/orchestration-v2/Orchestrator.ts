@@ -9185,13 +9185,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
   ) =>
     Effect.gen(function* () {
-      if (command.text.trim().length === 0) {
-        return yield* new OrchestratorDispatchError({
-          commandId: command.commandId,
-          commandType: command.type,
-          cause: `Queued run ${command.runId} cannot be edited to an empty message.`,
-        });
-      }
       const projection = yield* projectionStore
         .getThreadRecords(command.threadId, ["runs", "messages", "turnItems"], {
           runIds: [command.runId],
@@ -9224,6 +9217,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           commandId: command.commandId,
           commandType: command.type,
           cause: "Runtime deliveries cannot be edited.",
+        });
+      }
+      const editedContext = command.context ?? queuedMessage.context;
+      if (command.text.trim().length === 0 && (editedContext?.records.length ?? 0) === 0) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: `Queued run ${command.runId} cannot be edited to an empty message.`,
         });
       }
       const queuedTurnItem = projection.turnItems.find(

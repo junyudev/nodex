@@ -1002,7 +1002,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     validId(message.messageId) &&
     (message.text.trim().length > 0 ||
       (message.attachments?.length ?? 0) > 0 ||
-      (message.images?.length ?? 0) > 0)
+      (message.images?.length ?? 0) > 0 ||
+      (message.context?.records.length ?? 0) > 0)
       ? Effect.void
       : Effect.fail(failure("message", "A message or attachment is required"));
   const conversation = ({
@@ -3699,14 +3700,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
                   runId: input.queuedId,
                 })
               : null;
-          const text =
-            original && input.text !== undefined
-              ? retainAgentAppContext({ text: input.text }, original, false).text
-              : input.text;
+          const words = input.text === undefined ? undefined : { text: input.text };
+          const revised = words && original ? retainAgentAppContext(words, original, false) : words;
           const agent = yield* CoreApplicationAgent;
           return yield* connection.request("thread.queue-control", {
             ...input,
-            ...(text === undefined ? {} : { text }),
+            ...revised,
             threadId: loaded.threadId,
             ...(agent
               ? {

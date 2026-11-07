@@ -242,6 +242,32 @@ it.effect(
         (yield* store.getRunUserMessage(threadId, firstRun))?.text,
         "Edited queued message",
       );
+      // Attached records stand on their own, and only a message with nothing at all is empty.
+      const record = { kind: "nodex-page-reference", label: "Plan", payload: {} };
+      yield* orchestrator.dispatch({
+        type: "queued-run.edit",
+        threadId,
+        commandId: CommandId.make("edit:queued:context"),
+        runId: firstRun,
+        text: "",
+        context: { version: 1, records: [record] },
+      });
+      assert.deepEqual((yield* store.getRunUserMessage(threadId, firstRun))?.context?.records, [
+        record,
+      ]);
+      assert.equal(
+        (yield* orchestrator
+          .dispatch({
+            type: "queued-run.edit",
+            threadId,
+            commandId: CommandId.make("edit:queued:empty"),
+            runId: firstRun,
+            text: "  ",
+            context: { version: 1, records: [] },
+          })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
       yield* orchestrator.dispatch({
         type: "queued-run.cancel",
         threadId,

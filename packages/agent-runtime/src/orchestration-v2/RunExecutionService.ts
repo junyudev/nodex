@@ -1,5 +1,6 @@
 import { nodexCreditFailure, nodexProviderEvent } from "../nodex/NodexModelPolicy.ts";
 import { makeAssistantStreamingFilter } from "./assistantStreaming.ts";
+import { isNativeCompactCommand } from "./nativeMaintenanceCommand.ts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
   isOrchestrationV2WorkActive,
@@ -2059,9 +2060,7 @@ export const layer: Layer.Layer<
             runtimePolicy: input.runtimePolicy,
             ...(appContext.length === 0 ? {} : { appContext }),
           };
-          const compact =
-            input.message.attachments.length === 0 &&
-            input.message.text.trim().toLowerCase() === "/compact";
+          const compact = isNativeCompactCommand(input.message);
           const startTurn = compact
             ? (input.session.compactThread?.(turnInput) ??
               Effect.fail(

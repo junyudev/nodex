@@ -1069,20 +1069,6 @@ describe("Runtime Turn metadata", () => {
   });
 });
 
-describe("Runtime user messages", () => {
-  test("show only what the user wrote, never the app data sent beside it", () => {
-    const projected = projectAgentRuntimeItem(
-      message({
-        text: "Use the selected variant\n\n[Visualization changes](t3-context://v1/nodex-app-context/0123abcd)",
-      }),
-    );
-    expect(projected).toMatchObject({
-      type: "userMessage",
-      content: [{ type: "text", text: "Use the selected variant" }],
-    });
-  });
-});
-
 describe("Runtime context compaction", () => {
   const compaction = (
     overrides: Partial<Extract<AgentTurnItem, { type: "compaction" }>>,

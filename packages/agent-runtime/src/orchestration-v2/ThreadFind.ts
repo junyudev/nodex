@@ -41,7 +41,6 @@ class TextKey extends Data.Class<{
   text: string;
   role: "user" | "assistant" | "plan";
   streaming: boolean;
-  hasContext: boolean;
   cwd: string | undefined;
   skills: NonNullable<OrchestrationV2SearchThreadInput["skills"]>;
 }> {}
@@ -61,7 +60,6 @@ function textKey(
     role:
       item.type === "proposed_plan" ? "plan" : item.type === "user_message" ? "user" : "assistant",
     streaming: item.type === "assistant_message" && item.streaming,
-    hasContext: item.type === "user_message" && item.context !== undefined,
     cwd,
     skills,
   });
@@ -75,7 +73,6 @@ function parseText(key: TextKey): readonly string[] {
           role: key.role,
           text: key.text,
           streaming: key.streaming,
-          context: key.hasContext ? { version: 1, records: [] } : undefined,
         },
         key.cwd,
         key.skills,

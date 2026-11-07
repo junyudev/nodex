@@ -1,10 +1,5 @@
 import { expect, test, vi } from "vite-plus/test";
-import {
-  prepareAgentMessage,
-  appendAgentAppContext,
-  agentMessageDisplayText,
-  retainAgentAppContext,
-} from "./agent-prompt";
+import { prepareAgentMessage, appendAgentAppContext, retainAgentAppContext } from "./agent-prompt";
 import { prepareCodexPrompt } from "./codex-prompt-preparation";
 import {
   ResponseTextAnnotationSchema,
@@ -39,7 +34,7 @@ test("sends response annotations and side selections as context while preserving
     { text: "My own words", ...selections },
     vi.fn(),
   );
-  expect(agentMessageDisplayText(result.text)).toBe("My own words");
+  expect(result.text).toBe("My own words");
   expect(readRuntimeThreadTextSelections(result.context)).toEqual(selections);
   const serialized = serializeThreadTextSelections(selections);
   expect(serialized).toContain(':codex-annotation{index="N"}');
@@ -75,7 +70,9 @@ test("text-only edits retain original context but an attachment edit can remove 
   expect(readRuntimeThreadTextSelections(retainAgentAppContext(revised, original).context)).toEqual(
     selections,
   );
-  expect(retainAgentAppContext(revised, original, false)).toEqual(revised);
+  const withoutSelections = retainAgentAppContext(revised, original, false);
+  expect(withoutSelections.text).toBe("After");
+  expect(withoutSelections.context?.records).toEqual([]);
 });
 
 test("rejects invalid source bounds at the input boundary", async () => {
@@ -98,5 +95,5 @@ test("editing selections preserves independent app context under its original id
   expect(merged.context?.records).toHaveLength(2);
   expect(merged.context?.records).toContainEqual(original.context?.records[0]);
   expect(readRuntimeThreadTextSelections(merged.context)).toEqual(selections);
-  expect(agentMessageDisplayText(merged.text)).toBe("After");
+  expect(merged.text).toBe("After");
 });

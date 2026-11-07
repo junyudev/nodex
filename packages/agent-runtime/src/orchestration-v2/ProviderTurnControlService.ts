@@ -1,5 +1,5 @@
 import { readModelPolicyFailure } from "../../../../src/shared/model-policy.ts";
-import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
+import { projectMessageForProvider } from "@t3tools/shared/messageContextProjection";
 import {
   MessageId,
   type NodeId,
@@ -398,10 +398,7 @@ export const layer: Layer.Layer<
               providerTurnId: loaded.providerTurn.id,
               message: {
                 messageId: message.id,
-                text: projectComposerContextForProvider({
-                  text: message.text,
-                  records: message.context?.records ?? [],
-                }),
+                text: projectMessageForProvider(message),
                 attachments: message.attachments,
                 createdBy: message.createdBy,
                 creationSource: message.creationSource,

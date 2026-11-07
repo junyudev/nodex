@@ -20,8 +20,6 @@ import {
   inlineCodeFilePathCandidate,
   resolveMarkdownFileLinkTarget,
 } from "./markdownLinks.ts";
-import { upgradeLegacyContextMessage } from "./composerContextLegacy.ts";
-import { parseComposerContextHref } from "./composerContextReferences.ts";
 import { assistantCitationLabel, parseAssistantCitationHref } from "./assistantCitations.ts";
 import type { OrchestrationV2ConversationMessage } from "@t3tools/contracts";
 import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "./proposedPlanText.ts";
@@ -132,10 +130,6 @@ function markdownThreadFindText(
   };
   const visit = (node: TextTree, inPre = false, inlineSkills = false) => {
     const href = node.properties?.href ?? node.properties?.src;
-    if (userMessage && typeof href === "string" && parseComposerContextHref(href)) {
-      flush();
-      return;
-    }
     const citation =
       node.tagName === "a" && typeof href === "string" ? parseAssistantCitationHref(href) : null;
     if (citation) {
@@ -214,14 +208,11 @@ export function searchablePlanSegments(markdown: string, cwd?: string): readonly
 }
 
 export function searchableMessageSegments(
-  message: Pick<OrchestrationV2ConversationMessage, "role" | "text" | "streaming" | "context">,
+  message: Pick<OrchestrationV2ConversationMessage, "role" | "text" | "streaming">,
   cwd?: string,
   skills: readonly InlineSkill[] = [],
 ): readonly string[] | null {
-  if (message.role === "user") {
-    const text = message.context ? message.text : upgradeLegacyContextMessage(message.text).text;
-    return markdownThreadFindText(text, true, cwd, skills);
-  }
+  if (message.role === "user") return markdownThreadFindText(message.text, true, cwd, skills);
   if (message.role !== "assistant") return null;
   return markdownThreadFindText(
     message.text || (message.streaming ? "" : "(empty response)"),

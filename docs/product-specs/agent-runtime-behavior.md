@@ -235,8 +235,11 @@ working directories and list filters organize content and execution.
 Page Chat and Workbench use one Session interface for Agent launch, follow-up messages,
 steering, selected-Run stop, information answers, model selection and planning.
 App-supplied data — interactive response changes or an app's model context — travels beside
-the user's words as a context record rather than inside them. The transcript, queue and
-editing show only what the user wrote; the Agent receives the record as data marked untrusted.
+the user's words as a context record rather than inside them. A message's text is only what the
+user wrote, so the transcript, queue, editing, Session search and Session reads never see
+machine syntax; the Agent receives each record as data in a `<nodex_context>` block after those
+words, marked untrusted. A message may carry records and no words. A slash command with a record
+attached is an ordinary prompt rather than a native command.
 Editing a queued message rewrites only those words: the record it carried stays with it.
 State the user leaves in a chat's interactive responses travels the same way, with their next
 message that starts a Run and once per change; a steer, a queued message or a message that
