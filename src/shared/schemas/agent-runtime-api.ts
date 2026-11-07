@@ -235,7 +235,17 @@ export const AgentRuntimeForkSchema = z
   })
   .strict();
 export const AgentRuntimeHistorySchema = AgentRuntimeTargetSchema.extend({
-  cursor: id,
+  cursor: z.union([
+    id,
+    z
+      .object({
+        type: z.literal("item"),
+        sourceThreadId: id,
+        sourceItemId: id,
+        ordinal: z.number().int().nonnegative().optional(),
+      })
+      .strict(),
+  ]),
   throughEntryId: id.optional(),
   conversationOnly: z.boolean().optional(),
 });

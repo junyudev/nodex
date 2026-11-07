@@ -130,6 +130,27 @@ export function encodeThreadHistoryCursor(input: {
   });
 }
 
+/** An item the reader holds continues older history exactly as the cursor minted for it would. */
+export function threadHistoryPositionCursor(
+  position:
+    | string
+    | {
+        readonly sourceThreadId: string;
+        readonly sourceItemId: string;
+        readonly ordinal?: number | undefined;
+      },
+): string {
+  return typeof position === "string"
+    ? position
+    : encodeThreadHistoryCursor({
+        snapshotSequence: 0,
+        sourceThreadId: position.sourceThreadId,
+        sourceItemId: position.sourceItemId,
+        position: position.ordinal ?? 0,
+        ordinal: position.ordinal,
+      });
+}
+
 export function decodeThreadHistoryCursor(cursor: string): ThreadHistoryCursorPayload {
   if (cursor.length === 0 || cursor.length > THREAD_HISTORY_CURSOR_MAX_LENGTH) {
     throw new InvalidThreadHistoryCursorError();

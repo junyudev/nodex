@@ -3613,3 +3613,282 @@ test.each(["accept", "decline", "cancel"] as const)(
     }
   },
 );
+
+describe("Agent Runtime resident history window", () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const inRun = (runId: string, item: AgentTurnItem) => ({ ...item, runId }) as AgentTurnItem;
+  const commands = (from: number, count: number, runId = "run") =>
+    Array.from({ length: count }, (_, index) => inRun(runId, command(from + index)));
+  const page = (items: readonly AgentTurnItem[], nextCursor: string | null = null) =>
+    ({
+      snapshotSequence: 1,
+      items: items.map(row),
+      nextCursor,
+      hasMoreHistory: nextCursor !== null,
+    }) satisfies AgentHistoryPage;
+  const withRuns = (
+    items: readonly AgentTurnItem[],
+    runs: readonly { readonly id: string; readonly status: "completed" | "running" }[],
+  ): AgentRuntimeConversation => {
+    const initial = conversation(items);
+    const [template] = initial.snapshot.projection.runs;
+    return {
+      ...initial,
+      snapshot: {
+        ...initial.snapshot,
+        projection: {
+          ...initial.snapshot.projection,
+          runs: runs.map((run, index) => ({ ...template!, ...run, ordinal: index + 1 })),
+        },
+      },
+    };
+  };
+  const residentIds = (owner: AgentRuntimeConversationOwner) =>
+    owner.readOwner
+      .readStructure()!
+      .turns.flatMap((turn) => turn.itemIds)
+      .filter((id): id is string => id !== undefined);
+
+  test("a running Turn stays bounded as its items arrive and keeps the newest ones", async () => {
+    const { owner, wire, release } = await open(conversation([]));
+    let largest = 0;
+    let sequence = 2;
+    for (let ordinal = 0; ordinal < 5_000; ordinal += 1) {
+      wire.emit(event(command(ordinal), sequence++));
+      if (ordinal % 50 === 0) {
+        await tick();
+        largest = Math.max(largest, residentIds(owner).length);
+      }
+    }
+    await tick();
+    expect(largest).toBeLessThanOrEqual(1_050);
+    const resident = residentIds(owner);
+    expect(resident.length).toBeLessThanOrEqual(1_000);
+    expect(resident.at(-1)).toBe("command:4999");
+    const entityKey = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
+    expect(owner.readOwner.readItem(entityKey, "command:0")).toBeNull();
+    expect(owner.readOwner.readItem(entityKey, "command:4999")).toMatchObject({
+      type: "commandExecution",
+    });
+    expect(owner.getSnapshot().view?.turnPagination?.hasLoadedOldest).toBe(false);
+    expect(owner.readOwner.readStructure()!.historyComplete).toBe(false);
+    release();
+  });
+
+  test("a reader away from the tail keeps everything until they return", async () => {
+    const { owner, release } = await open(conversation(commands(0, 1_200)));
+    const viewer = Symbol("reader");
+    owner.readOwner.setHistoryViewport(viewer, null);
+    await tick();
+    expect(residentIds(owner)).toHaveLength(1_200);
+    owner.readOwner.setHistoryViewport(viewer, {
+      oldestProtectedTurnId: "run",
+      firstProtectedItemId: "command:700",
+    });
+    await tick();
+    expect(residentIds(owner)).toHaveLength(500);
+    expect(residentIds(owner)[0]).toBe("command:700");
+    owner.readOwner.setHistoryViewport(viewer, undefined);
+    release();
+  });
+
+  test("a settled Turn on screen stays whole while Turns above it leave", async () => {
+    const items = [...commands(0, 700, "run:a"), ...commands(700, 500, "run:b")];
+    const { owner, release } = await open(
+      withRuns(items, [
+        { id: "run:a", status: "completed" },
+        { id: "run:b", status: "completed" },
+      ]),
+    );
+    owner.readOwner.setHistoryViewport(Symbol("reader"), {
+      oldestProtectedTurnId: "run:b",
+      firstProtectedItemId: null,
+    });
+    await tick();
+    const structure = owner.readOwner.readStructure()!;
+    expect(structure.turns.map((turn) => turn.itemIds.length)).toEqual([500]);
+    expect(structure.timeline?.[0]).toMatchObject({ kind: "gap" });
+    release();
+  });
+
+  test("older pages read back through the resident item and restore the Turn", async () => {
+    const released = commands(0, 700);
+    const { owner, wire, release } = await open(conversation(commands(0, 1_200)), [
+      page(released.slice(200), "before-200"),
+      page(released.slice(0, 200)),
+    ]);
+    await tick();
+    expect(residentIds(owner)[0]).toBe("command:700");
+    await expect(owner.loadHistoryBoundary(historyBoundary(owner))).resolves.toBe("applied");
+    expect(wire.port.history).toHaveBeenLastCalledWith({
+      ...target,
+      cursor: {
+        type: "item",
+        sourceThreadId: "thread",
+        sourceItemId: "command:700",
+        ordinal: 700,
+      },
+    });
+    expect(residentIds(owner)[0]).toBe("command:200");
+    await expect(owner.loadHistoryBoundary(historyBoundary(owner))).resolves.toBe("applied");
+    expect(wire.port.history).toHaveBeenLastCalledWith({ ...target, cursor: "before-200" });
+    expect(residentIds(owner)).toEqual(commands(0, 1_200).map(({ id }) => id));
+    expect(owner.getSnapshot().view?.turnPagination?.hasLoadedOldest).toBe(true);
+    release();
+  });
+
+  test("a gap inside a Turn counts as requested once its reader asks, until the next release", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const released = commands(0, 700);
+      const { owner, wire, release } = await open(conversation(commands(0, 1_200)), [
+        page(released.slice(200), "before-200"),
+      ]);
+      await vi.advanceTimersByTimeAsync(1);
+      const gap = () =>
+        owner.readOwner.readStructure()!.timeline!.find((entry) => entry.kind === "gap");
+      expect(gap()).toMatchObject({ insideTurn: true });
+      await owner.loadHistoryBoundary(historyBoundary(owner));
+      expect(gap()).toMatchObject({ insideTurn: false });
+      let sequence = 2;
+      for (const item of commands(1_200, 100)) wire.emit(event(item, sequence++));
+      await vi.advanceTimersByTimeAsync(2_100);
+      expect(residentIds(owner)).toHaveLength(500);
+      expect(gap()).toMatchObject({ insideTurn: true });
+      release();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a gap above a Turn's opening message is an ordinary history gap", async () => {
+    const opening: AgentTurnItem = {
+      ...base("opening", 0),
+      type: "user_message",
+      messageId: "message:opening",
+      text: "start",
+      attachments: [],
+      inputIntent: "turn_start",
+      createdBy: "user",
+      creationSource: "web",
+    };
+    const { owner, release } = await open(conversation([opening, ...commands(1, 10)], "older"));
+    expect(owner.readOwner.readStructure()!.timeline![0]).toMatchObject({
+      kind: "gap",
+      insideTurn: false,
+    });
+    release();
+  });
+
+  test("a live item keeps its place and older pages return around it in order", async () => {
+    const live = { ...command(1), status: "running" as const, completedAt: null };
+    const items = commands(0, 1_200).map((item) => (item.id === live.id ? live : item));
+    const { owner, wire, release } = await open(conversation(items), [page(items.slice(0, 700))]);
+    await tick();
+    const resident = residentIds(owner);
+    expect(resident.slice(0, 3)).toEqual(["command:0", "command:1", "command:700"]);
+    expect(resident).toHaveLength(502);
+    const entityKey = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
+    wire.emit(event({ ...live, status: "completed", completedAt: at }, 2));
+    expect(owner.readOwner.readItem(entityKey, live.id)).toMatchObject({ status: "completed" });
+    await expect(owner.loadHistoryBoundary(historyBoundary(owner))).resolves.toBe("applied");
+    expect(residentIds(owner)).toEqual(items.map(({ id }) => id));
+    release();
+  });
+
+  test("a Turn held above the gap keeps its position as the Turns between it return", async () => {
+    const live = { ...inRun("run:a", command(50)), status: "running" as const, completedAt: null };
+    const runA = commands(0, 100, "run:a").map((item) => (item.id === live.id ? live : item));
+    const runB = commands(100, 400, "run:b");
+    const runC = commands(500, 900, "run:c");
+    const { owner, wire, release } = await open(
+      withRuns(
+        [...runA, ...runB, ...runC],
+        [
+          { id: "run:a", status: "completed" },
+          { id: "run:b", status: "completed" },
+          { id: "run:c", status: "running" },
+        ],
+      ),
+      [page([...runA, ...runB, ...runC.slice(0, 451)])],
+    );
+    await tick();
+    const keyOf = (runId: string) => JSON.stringify(["agent-run", "thread", runId]);
+    const timeline = () =>
+      owner.readOwner
+        .readStructure()!
+        .timeline!.map((entry) => (entry.kind === "gap" ? "gap" : entry.entityKey));
+    expect(timeline()).toEqual([keyOf("run:a"), "gap", keyOf("run:c")]);
+    expect(residentIds(owner)).toContain(live.id);
+    // An update to history the window released does not reappear at the tail.
+    wire.emit(event(inRun("run:b", command(120)), 2));
+    expect(owner.readOwner.readItem(keyOf("run:b"), "command:120")).toBeNull();
+    expect(owner.readOwner.readStructure()!.turnEntityKeys).toEqual([
+      keyOf("run:a"),
+      keyOf("run:c"),
+    ]);
+    await expect(owner.loadHistoryBoundary(historyBoundary(owner))).resolves.toBe("applied");
+    expect(timeline()).toEqual([keyOf("run:a"), keyOf("run:b"), keyOf("run:c")]);
+    expect(residentIds(owner)).toEqual([...runA, ...runB, ...runC].map(({ id }) => id));
+    release();
+  });
+
+  test("a page holds release while in flight and until its reader can reach it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      let finish = (_page: AgentHistoryPage) => {};
+      const { owner, wire, release } = await open(conversation(commands(300, 900), "older"));
+      vi.mocked(wire.port.history).mockImplementation(
+        () => new Promise((resolve) => (finish = resolve)),
+      );
+      const pending = owner.loadHistoryBoundary(historyBoundary(owner));
+      let sequence = 2;
+      for (const item of commands(1_200, 200)) wire.emit(event(item, sequence++));
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(residentIds(owner)).toHaveLength(1_100);
+      finish(page(commands(0, 300)));
+      await pending;
+      await vi.advanceTimersByTimeAsync(1_900);
+      expect(residentIds(owner)).toHaveLength(1_400);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(residentIds(owner)).toHaveLength(500);
+      release();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a jump to older history holds release until the reader can arrive", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const older = commands(0, 300);
+      const opening = {
+        ...older[0]!,
+        id: "opening",
+        type: "user_message",
+        messageId: "message:opening",
+        text: "start",
+        attachments: [],
+        inputIntent: "turn_start",
+        createdBy: "user",
+      } as AgentTurnItem;
+      const items = commands(300, 900);
+      const { owner, wire, release } = await open(conversation(items, "older"), [
+        page([opening, ...older.slice(1)]),
+      ]);
+      const controller = new AbortController();
+      await expect(
+        owner.loadHistoryThroughMessage("message:opening", controller.signal),
+      ).resolves.toBe("applied");
+      expect(residentIds(owner)).toHaveLength(1_200);
+      wire.emit(event(command(1_200), 2));
+      await vi.advanceTimersByTimeAsync(1_900);
+      expect(residentIds(owner)).toHaveLength(1_201);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(residentIds(owner)).toHaveLength(500);
+      release();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

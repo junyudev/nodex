@@ -131,6 +131,7 @@ import {
 import {
   THREAD_HISTORY_PAGE_POLICY,
   THREAD_HISTORY_SNAPSHOT_ROW_LIMIT,
+  threadHistoryPositionCursor,
 } from "../orchestration-v2/threadHistoryPaging.ts";
 import type {
   AgentEvent,
@@ -487,7 +488,15 @@ const AgentRequest = Schema.Union([
     "thread.history",
     Schema.Struct({
       threadId: ThreadId,
-      cursor: Schema.String,
+      cursor: Schema.Union([
+        Schema.String,
+        Schema.Struct({
+          type: Schema.Literal("item"),
+          sourceThreadId: Schema.String,
+          sourceItemId: Schema.String,
+          ordinal: Schema.optional(Schema.Int),
+        }),
+      ]),
       throughEntryId: Schema.optional(Schema.String),
       conversationOnly: Schema.optional(Schema.Boolean),
     }),
@@ -1438,7 +1447,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* orchestrator
           .getThreadHistoryPage(
             input.input.threadId,
-            input.input.cursor,
+            threadHistoryPositionCursor(input.input.cursor),
             input.input.throughEntryId,
             input.input.conversationOnly,
           )

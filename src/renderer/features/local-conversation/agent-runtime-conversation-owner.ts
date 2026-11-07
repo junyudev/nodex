@@ -22,6 +22,7 @@ import {
 import type {
   AgentEvent,
   AgentHistoryPage,
+  AgentHistoryPosition,
   AgentSnapshot,
   AgentTurnItem,
 } from "@nodex/agent-runtime/contracts";
@@ -65,6 +66,12 @@ import {
   type CodexHistoryBoundaryRef,
   type CodexHistoryRow,
 } from "../../../shared/codex-conversation-state/codex-history-topology";
+import {
+  CODEX_ACTIVE_HISTORY_EVICTION_TRIGGER_ITEMS,
+  planCodexHistoryWindow,
+  type CodexHistoryWindowPlan,
+} from "../../../shared/codex-conversation-state/codex-active-history-eviction";
+import type { CodexHistoryViewportBoundary } from "../../../shared/codex-history-policy";
 import { truncateCodexPromptRailPreview } from "../../../shared/codex-prompt-rail-history";
 import { CodexTranscriptReadOwner } from "./normalized-transcript-read-owner";
 import {
@@ -148,6 +155,8 @@ const isTurnOpening = (
   item.type === "user_message" &&
   (item.inputIntent === "turn_start" || item.inputIntent === "queued_turn");
 const runKey = (threadId: string, runId: string) => JSON.stringify(["agent-run", threadId, runId]);
+/** Older history a reader just asked for stays resident until they can reach it. */
+const HISTORY_REVEAL_GRACE_MS = 2_000;
 const emptyChildren: readonly CodexConversationChildMembership[] = [];
 
 function replyItemRole(type: AgentTurnItem["type"] | undefined): AgentReplyItemRole {
@@ -311,7 +320,18 @@ export class AgentRuntimeConversationOwner {
   #historyGeneration = 0;
   #sequence = 0;
   readonly #observers = new Set<{ readonly sequence: number; readonly resolve: () => void }>();
+  /** Identifies the position older pages continue from; a released anchor is keyed by its item. */
   #cursor: string | null = null;
+  /** The item older pages continue before, once retention released what preceded it. */
+  #cursorAnchor: Exclude<AgentHistoryPosition, string> | null = null;
+  /** Set while resident items older than the cursor keep their Turns above the history gap. */
+  #windowAnchorItemId: string | null = null;
+  /** Whether the reader has asked for older history since retention last moved its boundary. */
+  #olderHistoryRequested = false;
+  #viewports: readonly (CodexHistoryViewportBoundary | null)[] = [];
+  #historyWindowTimer: ReturnType<typeof setTimeout> | null = null;
+  #historyHolds = 0;
+  readonly #historyHoldTimers = new Set<ReturnType<typeof setTimeout>>();
   readonly #historyCursors = new Set<string>();
   #transcriptActive = false;
   #transcriptHydrated = false;
@@ -358,12 +378,23 @@ export class AgentRuntimeConversationOwner {
         this.#transcriptActive = true;
         const release = this.retain();
         this.#restart();
-        return () => {
-          this.#transcriptActive = false;
-          this.#clearTranscript();
-          release();
-          if (this.#leases > 0) this.#restart();
-        };
+        return Object.assign(
+          () => {
+            this.#transcriptActive = false;
+            this.#viewports = [];
+            this.#clearTranscript();
+            release();
+            if (this.#leases > 0) this.#restart();
+          },
+          {
+            setHistoryViewport: (
+              boundaries: readonly (CodexHistoryViewportBoundary | null)[],
+            ): void => {
+              this.#viewports = boundaries;
+              this.#scheduleHistoryWindow();
+            },
+          },
+        );
       },
     });
   }
@@ -566,12 +597,14 @@ export class AgentRuntimeConversationOwner {
     // Bounded snapshots omit older Run records; the prompt index names their opening messages.
     const throughEntryId = this.#promptMessageIds.get(runId) ?? this.#run(runId)?.userMessageId;
     if (!throughEntryId) return "stale";
-    while (this.#turnHead(entityKey)?.opening !== true) {
-      const boundary = this.#historyBoundary();
-      if (generation !== this.#generation || !boundary) return "stale";
-      if ((await this.#loadOlderPage(boundary, throughEntryId)) === "stale") return "stale";
-    }
-    return "applied";
+    return this.#holdingHistory(async () => {
+      while (this.#turnHead(entityKey)?.opening !== true) {
+        const boundary = this.#historyBoundary();
+        if (generation !== this.#generation || !boundary) return "stale";
+        if ((await this.#loadOlderPage(boundary, throughEntryId)) === "stale") return "stale";
+      }
+      return "applied";
+    });
   };
   /** Makes an exact user message resident, including steers within a Run and old Runs outside the index. */
   readonly loadHistoryThroughMessage = async (
@@ -583,22 +616,45 @@ export class AgentRuntimeConversationOwner {
       const itemId = this.#messageItems.get(messageId);
       return itemId !== undefined && this.#items.get(itemId)?.sourceThreadId === this.threadId;
     };
-    while (!isResident()) {
-      const boundary = this.#historyBoundary();
-      if (signal.aborted || this.#disposed || generation !== this.#generation || !boundary)
-        return "stale";
-      if ((await this.#loadOlderPage(boundary, messageId)) === "stale") return "stale";
-    }
-    return signal.aborted ? "stale" : "applied";
+    return this.#holdingHistory(async () => {
+      while (!isResident()) {
+        const boundary = this.#historyBoundary();
+        if (signal.aborted || this.#disposed || generation !== this.#generation || !boundary)
+          return "stale";
+        if ((await this.#loadOlderPage(boundary, messageId)) === "stale") return "stale";
+      }
+      return signal.aborted ? "stale" : "applied";
+    });
   };
+  /** Retention waits out a jump's pages, then the moment before its reader arrives. */
+  async #holdingHistory<T>(load: () => Promise<T>): Promise<T> {
+    this.#historyHolds += 1;
+    try {
+      return await load();
+    } finally {
+      this.#historyHolds -= 1;
+      this.#holdForReader();
+    }
+  }
+  #holdForReader(): void {
+    this.#historyHolds += 1;
+    const timer = setTimeout(() => {
+      this.#historyHoldTimers.delete(timer);
+      this.#historyHolds -= 1;
+      this.#scheduleHistoryWindow();
+    }, HISTORY_REVEAL_GRACE_MS);
+    this.#historyHoldTimers.add(timer);
+  }
   #loadOlderPage(
     boundary: CodexHistoryBoundaryRef,
     throughEntryId?: string,
   ): Promise<"applied" | "stale"> {
     if (!this.#isCurrentHistoryBoundary(boundary)) return Promise.resolve("stale");
     if (this.#historyRequest) return this.#historyRequest;
+    this.#olderHistoryRequested = true;
     const generation = this.#generation;
     const cursor = boundary.handle.cursor;
+    const position = this.#cursorAnchor ?? cursor;
     const isCurrent = () =>
       generation === this.#generation && this.#isCurrentHistoryBoundary(boundary);
     const pending = Promise.resolve()
@@ -606,7 +662,7 @@ export class AgentRuntimeConversationOwner {
         isCurrent()
           ? this.#transport.history({
               ...this.#target,
-              cursor,
+              cursor: position,
               ...(throughEntryId === undefined ? {} : { throughEntryId }),
             })
           : null,
@@ -632,6 +688,7 @@ export class AgentRuntimeConversationOwner {
         if (generation !== this.#generation) return;
         this.#patch({ historyLoading: false });
         this.#publishView();
+        this.#holdForReader();
       });
     this.#historyRequest = pending;
     this.#patch({ historyLoading: true });
@@ -671,6 +728,8 @@ export class AgentRuntimeConversationOwner {
     this.#generation += 1;
     this.#releaseEvents?.();
     this.#releaseEvents = null;
+    for (const timer of this.#historyHoldTimers) clearTimeout(timer);
+    this.#historyHoldTimers.clear();
     this.#clearTranscript();
     this.#nodeRuns.clear();
     this.#cohortHeads.clear();
@@ -734,6 +793,7 @@ export class AgentRuntimeConversationOwner {
           if (hasMoreHistory !== (cursor !== null) || cursor?.trim() === "")
             throw new Error("History continuation is invalid");
           this.#cursor = cursor;
+          this.#cursorAnchor = null;
           this.#historyGeneration += 1;
         }
         this.#requests.clear();
@@ -911,9 +971,14 @@ export class AgentRuntimeConversationOwner {
       realtimeItems: {},
     });
     this.#transcriptHydrated = true;
+    this.#scheduleHistoryWindow();
   }
   #clearTranscript(): void {
     this.#transcriptHydrated = false;
+    if (this.#historyWindowTimer !== null) clearTimeout(this.#historyWindowTimer);
+    this.#historyWindowTimer = null;
+    this.#windowAnchorItemId = null;
+    this.#olderHistoryRequested = false;
     this.#historyCursors.clear();
     this.#items.clear();
     this.#messageItems.clear();
@@ -1084,16 +1149,163 @@ export class AgentRuntimeConversationOwner {
     }));
     const boundary = this.#historyBoundary();
     if (!boundary) return content;
+    const anchorKey = this.#items.get(this.#windowAnchorItemId ?? "")?.entityKey;
+    const gapIndex = anchorKey === undefined ? 0 : Math.max(0, this.#turnKeys.indexOf(anchorKey));
+    const below = this.#turnHead(this.#turnKeys[gapIndex] ?? "");
     return [
+      ...content.slice(0, gapIndex),
       {
         kind: "gap",
         key: `agent-history:${this.#historyGeneration}`,
         estimatedHeightPx: CODEX_HISTORY_GAP_ESTIMATED_HEIGHT_PX,
         olderBoundary: null,
         newerBoundary: boundary,
+        insideTurn:
+          !this.#olderHistoryRequested &&
+          below !== undefined &&
+          below.runId !== null &&
+          !below.opening,
       },
-      ...content,
+      ...content.slice(gapIndex),
     ];
+  }
+  /** Whether an item lies in history that older pages have yet to bring back. */
+  #precedesResidentHistory(item: AgentTurnItem): boolean {
+    if (this.#cursor === null) return false;
+    const oldest = this.#items.get(
+      this.#windowAnchorItemId ?? this.#turns.get(this.#turnKeys[0] ?? "")?.itemIds[0] ?? "",
+    );
+    return oldest?.sourceThreadId === item.threadId && item.ordinal < oldest.ordinal;
+  }
+  #isItemLive(itemId: string): boolean {
+    const item = this.#items.get(itemId);
+    return (
+      item === undefined ||
+      workIsActive(item.status) ||
+      this.#liveItemsByRun.get(item.entityKey)?.has(itemId) === true
+    );
+  }
+  #scheduleHistoryWindow(): void {
+    if (
+      this.#historyWindowTimer !== null ||
+      !this.#transcriptHydrated ||
+      this.#items.size <= CODEX_ACTIVE_HISTORY_EVICTION_TRIGGER_ITEMS
+    )
+      return;
+    this.#historyWindowTimer = setTimeout(() => {
+      this.#historyWindowTimer = null;
+      this.#releaseOlderHistory();
+    }, 0);
+  }
+  /** History stays readable from the Runtime, so only what a reader is near needs to stay here. */
+  #releaseOlderHistory(): void {
+    if (
+      this.#disposed ||
+      !this.#transcriptActive ||
+      !this.#transcriptHydrated ||
+      this.#state.connection !== "ready" ||
+      this.#historyRequest !== null ||
+      this.#historyHolds > 0 ||
+      this.#viewports.includes(null)
+    )
+      return;
+    const entries = this.#turnKeys.flatMap((entityKey) => {
+      const turn = this.#turns.get(entityKey);
+      return turn
+        ? [
+            {
+              entityKey,
+              turn: {
+                turnId: turn.details.turnId ?? entityKey,
+                status: turn.details.status,
+                items: turn.itemIds.map((id) => ({ id })),
+              },
+            },
+          ]
+        : [];
+    });
+    const plan = planCodexHistoryWindow({
+      entries,
+      size: entries.reduce((total, { turn }) => total + Math.max(1, turn.items.length), 0),
+      boundaries: this.#viewports,
+      isTurnResidentElsewhere: () => false,
+      isItemReleasable: (turn, index) => !this.#isItemLive(turn.items[index]!.id),
+    });
+    if (plan) this.#applyHistoryWindow(entries, plan);
+  }
+  #applyHistoryWindow(
+    entries: readonly {
+      readonly entityKey: string;
+      readonly turn: { readonly items: readonly { readonly id: string }[] };
+    }[],
+    plan: CodexHistoryWindowPlan,
+  ): void {
+    const lastCut = plan.itemCuts.at(-1);
+    const lastCutEntry = lastCut
+      ? entries.findIndex(({ entityKey }) => entityKey === lastCut.entityKey)
+      : -1;
+    const anchorEntry = Math.max(lastCutEntry, plan.turns?.to ?? 0);
+    const anchorItemId =
+      entries[anchorEntry]!.turn.items[anchorEntry === lastCutEntry ? lastCut!.end : 0]!.id;
+    const anchor = this.#items.get(anchorItemId)!;
+    const changes: CodexTranscriptChange[] = [];
+    const released = new Set<string>();
+    for (const { entityKey, turn } of entries.slice(plan.turns?.from ?? 0, plan.turns?.to ?? 0)) {
+      for (const { id } of turn.items) released.add(id);
+      this.#turns.delete(entityKey);
+      this.#hookRuns.delete(entityKey);
+      this.#liveItemsByRun.delete(entityKey);
+      changes.push({ type: "remove-turn", key: { ...this.readOwner.key, entityKey } });
+    }
+    for (const { entityKey, end, retained } of plan.itemCuts) {
+      const turn = this.#turns.get(entityKey)!;
+      const key = { ...this.readOwner.key, entityKey };
+      const itemIds = turn.itemIds.filter((itemId, index) => {
+        if (index >= end || retained.has(index)) return true;
+        released.add(itemId);
+        changes.push({ type: "item", key: { ...key, itemId }, value: null });
+        return false;
+      });
+      this.#turns.set(entityKey, { ...turn, itemIds });
+      changes.push({
+        type: "item-slots",
+        key,
+        slots: {
+          length: itemIds.length,
+          entries: itemIds.map((itemId, index) => ({ index, itemId })),
+        },
+      });
+    }
+    for (const id of released) this.#items.delete(id);
+    for (const [messageId, itemId] of this.#messageItems)
+      if (released.has(itemId)) this.#messageItems.delete(messageId);
+    for (const [requestId, item] of this.#approvalItems)
+      if (released.has(item.id)) this.#approvalItems.delete(requestId);
+    this.#residentTaskIds.clear();
+    for (const item of this.#items.values())
+      if (item.taskId) this.#residentTaskIds.add(item.taskId);
+    this.#turnKeys = this.#turnKeys.filter((entityKey) => this.#turns.has(entityKey));
+    this.#cursorAnchor = {
+      type: "item",
+      sourceThreadId: anchor.sourceThreadId,
+      sourceItemId: anchor.sourceItemId,
+      ...(anchor.type === "fork" ? {} : { ordinal: anchor.ordinal }),
+    };
+    this.#cursor = JSON.stringify(this.#cursorAnchor);
+    this.#historyCursors.clear();
+    this.#olderHistoryRequested = false;
+    this.#settleWindowAnchor(anchorItemId);
+    changes.push(
+      { type: "structure", timeline: this.#timeline(), turnEntityKeys: this.#turnKeys },
+      { type: "history", resumeState: "resumed", historyComplete: false },
+    );
+    this.#applyChanges(changes);
+    this.#publishView();
+  }
+  /** The default position, the first resident item, needs no anchor of its own. */
+  #settleWindowAnchor(itemId: string | null): void {
+    const first = this.#turns.get(this.#turnKeys[0] ?? "")?.itemIds[0];
+    this.#windowAnchorItemId = itemId === first || this.#cursor === null ? null : itemId;
   }
   #admit(rows: readonly AgentRuntimeProjectedItem[], prepend: boolean): CodexTranscriptChange[] {
     const thread = this.#thread();
@@ -1109,8 +1321,19 @@ export class AgentRuntimeConversationOwner {
       }
     >();
     const newKeys: string[] = [];
-    const first = this.#turnKeys[0];
-    const firstItem = first ? this.#items.get(this.#turns.get(first)?.itemIds[0] ?? "") : undefined;
+    // Older rows land just before the resident run they continue, after any Turn held above it.
+    const windowAnchor = prepend ? this.#items.get(this.#windowAnchorItemId ?? "") : undefined;
+    const first = windowAnchor?.entityKey ?? this.#turnKeys[0];
+    const firstItem =
+      windowAnchor ??
+      (first ? this.#items.get(this.#turns.get(first)?.itemIds[0] ?? "") : undefined);
+    const prependedOrder = prepend ? [...this.#turnKeys] : null;
+    let insertAt = first === undefined ? 0 : Math.max(0, this.#turnKeys.indexOf(first));
+    const passTurn = (entityKey: string | undefined) => {
+      if (!prependedOrder || entityKey === undefined) return;
+      const at = prependedOrder.indexOf(entityKey);
+      if (at >= 0 && at < insertAt) insertAt = at;
+    };
     let runlessKey =
       prepend && firstItem?.runId === null && firstItem.type !== "fork"
         ? firstItem.opening
@@ -1126,7 +1349,10 @@ export class AgentRuntimeConversationOwner {
     const hookTurns = new Set<string>();
     for (let index = rows.length - 1; index >= 0; index -= 1) {
       const row = rows[index]!;
-      if (this.#items.has(row.sourceItemId)) continue;
+      if (this.#items.has(row.sourceItemId)) {
+        passTurn(this.#items.get(row.sourceItemId)!.entityKey);
+        continue;
+      }
       const item = row.item;
       if (item.type === "hook_run") {
         if (item.runId === null) continue;
@@ -1163,7 +1389,11 @@ export class AgentRuntimeConversationOwner {
       if (isTurnOpening(item)) group.opening = item;
       group.subagent ||= item.type === "subagent" || item.type === "thread_created";
       incomingByTurn.set(entityKey, group);
-      if (!this.#turns.has(entityKey) && !newKeys.includes(entityKey)) newKeys.unshift(entityKey);
+      passTurn(entityKey);
+      if (!this.#turns.has(entityKey) && !newKeys.includes(entityKey)) {
+        newKeys.unshift(entityKey);
+        prependedOrder?.splice(insertAt, 0, entityKey);
+      }
       this.#rememberItem(
         {
           entityKey,
@@ -1188,11 +1418,20 @@ export class AgentRuntimeConversationOwner {
       if (isTurnOpening(item) && item.runId === null)
         runlessKey = JSON.stringify(["agent-history", row.sourceThreadId, "before", item.id]);
     }
+    const ordinalOf = (itemId: string) => this.#items.get(itemId)?.ordinal ?? 0;
     for (const [entityKey, incoming] of incomingByTurn) {
       const current = this.#turns.get(entityKey);
-      const itemIds = prepend
-        ? [...incoming.ids, ...(current?.itemIds ?? [])]
-        : [...(current?.itemIds ?? []), ...incoming.ids];
+      // Items retention kept in place can fall between older rows returning around them.
+      const interleaved =
+        prepend &&
+        current !== undefined &&
+        current.itemIds.length > 0 &&
+        ordinalOf(incoming.ids.at(-1)!) > ordinalOf(current.itemIds[0]!);
+      const itemIds = interleaved
+        ? [...incoming.ids, ...current.itemIds].toSorted((a, b) => ordinalOf(a) - ordinalOf(b))
+        : prepend
+          ? [...incoming.ids, ...(current?.itemIds ?? [])]
+          : [...(current?.itemIds ?? []), ...incoming.ids];
       const head = this.#items.get(itemIds[0]!);
       const runId = head?.runId ?? null;
       const details = projectAgentRuntimeTurnDetails({
@@ -1218,7 +1457,7 @@ export class AgentRuntimeConversationOwner {
         hasSubagentActivity: turn.hasSubagentActivity,
       });
       changes.push(
-        current
+        current && !interleaved
           ? {
               type: prepend ? "item-slots-prepend" : "item-slots-append",
               key: { ...this.readOwner.key, entityKey },
@@ -1254,7 +1493,7 @@ export class AgentRuntimeConversationOwner {
     }
     // New Turn metadata and slots must exist before its first addressed body update.
     changes.push(...itemChanges);
-    this.#turnKeys = prepend ? [...newKeys, ...this.#turnKeys] : this.#placeLive(newKeys);
+    this.#turnKeys = prependedOrder ?? this.#placeLive(newKeys);
     return changes;
   }
   #turnHead(entityKey: string): ResidentItem | undefined {
@@ -1386,6 +1625,7 @@ export class AgentRuntimeConversationOwner {
   #prepend(page: AgentHistoryPage): void {
     this.#mergeRewindContext(page.rewindContext);
     this.#cursor = page.nextCursor;
+    this.#cursorAnchor = null;
     const sources = page.items.filter(
       (row) =>
         !this.#items.has(row.item.id) &&
@@ -1393,6 +1633,10 @@ export class AgentRuntimeConversationOwner {
         isAgentRuntimeAsyncQuestion(row.item),
     );
     const changes = this.#admit(page.items, true);
+    this.#settleWindowAnchor(
+      page.items.find((row) => this.#items.has(row.sourceItemId))?.sourceItemId ??
+        this.#windowAnchorItemId,
+    );
     for (const row of sources) this.#captureRequest(row.item, true);
     if (sources.length) this.#reconcileAsyncQuestions();
     changes.push(
@@ -1660,6 +1904,7 @@ export class AgentRuntimeConversationOwner {
             })
           : null;
         if (resident) {
+          const settled = this.#isItemLive(item.id) && !itemIsLive(item);
           this.#rememberItem(resident, item);
           if (value)
             this.#applyChanges([
@@ -1669,7 +1914,8 @@ export class AgentRuntimeConversationOwner {
                 value,
               },
             ]);
-        } else {
+          if (settled) this.#scheduleHistoryWindow();
+        } else if (!this.#precedesResidentHistory(item)) {
           const changes = this.#admit(
             [
               {
@@ -1689,6 +1935,7 @@ export class AgentRuntimeConversationOwner {
               turnEntityKeys: this.#turnKeys,
             });
             this.#applyChanges(changes);
+            this.#scheduleHistoryWindow();
           }
         }
       }
@@ -1827,6 +2074,7 @@ export class AgentRuntimeConversationOwner {
             hasSubagentActivity: turn.hasSubagentActivity,
           },
         ]);
+        this.#scheduleHistoryWindow();
       }
       this.#publishView();
       return;

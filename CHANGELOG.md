@@ -31,6 +31,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Long chats no longer use more memory the longer an Agent runs. A Turn with thousands of messages or file changes now holds only its most recent work in memory, even while it runs and when you are looking elsewhere, and earlier work loads back as you scroll up.
 - Settings → Data controls now lists every archived chat. Most archived chats used to be missing from it, so they couldn't be found or restored there, and restoring some of the ones it did list failed.
 - Searching your chats and reading one from another Agent now shows only what you wrote. Page references, selected text and app data sent with a message used to appear there as raw links.
 - Automatic choices no longer pick a prepaid Nodex model. A subagent that named only a type of Agent, Inbox suggestions, the mobile app and Refine could land on one and spend your credits without you choosing it.

@@ -27,7 +27,11 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as EventStore from "./EventStore.ts";
-import { encodeThreadHistoryCursor, THREAD_HISTORY_PAGE_POLICY } from "./threadHistoryPaging.ts";
+import {
+  encodeThreadHistoryCursor,
+  THREAD_HISTORY_PAGE_POLICY,
+  threadHistoryPositionCursor,
+} from "./threadHistoryPaging.ts";
 import { projectTurnItemForWire } from "./WireProjection.ts";
 
 const layerTest = Layer.mergeAll(EventStore.layer, ProjectionStore.layer, ProjectStore.layer).pipe(
@@ -922,6 +926,34 @@ describe("V2 history materialization", () => {
         );
         assert.deepEqual(absent, ordinary);
       }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect("a resident item continues older history as its own cursor would", () =>
+    Effect.gen(function* () {
+      const projection = yield* setup;
+      const items = Array.from({ length: 30 }, (_, ordinal) =>
+        item(`row:${ordinal}`, ordinal, `text ${ordinal}`),
+      );
+      yield* putItems(items);
+      const anchored = yield* projection.getThreadHistoryPage(
+        threadId,
+        threadHistoryPositionCursor({
+          sourceThreadId: threadId,
+          sourceItemId: "row:20",
+          ordinal: 20,
+        }),
+      );
+      assert.deepEqual(
+        anchored.items.map((row) => row.sourceItemId),
+        items.slice(0, 20).map((entry) => entry.id),
+      );
+      assert.isFalse(anchored.hasMoreHistory);
+      const withoutOrdinal = yield* projection.getThreadHistoryPage(
+        threadId,
+        threadHistoryPositionCursor({ sourceThreadId: threadId, sourceItemId: "row:20" }),
+      );
+      assert.deepEqual(withoutOrdinal.items, anchored.items);
+    }).pipe(Effect.provide(layerTest)),
   );
 
   it.effect("continues partial oversized turns without duplicating or skipping messages", () =>

@@ -4,11 +4,13 @@ import { useLayoutEffect } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type {
   AgentHistoryPage,
+  AgentHistoryPosition,
   AgentSnapshot,
   AgentTurnItem,
 } from "@nodex/agent-runtime/contracts";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import { projectCodexTranscript } from "../../../../shared/codex-transcript-projection";
+import type { CodexHistoryViewportBoundary } from "../../../../shared/codex-history-policy";
 import type { CodexCanonicalUserMessageItem } from "../../../../shared/codex-conversation-state/codex-conversation-state";
 import type {
   AgentRuntimeConversation,
@@ -193,12 +195,12 @@ function conversation(
   };
 }
 interface PendingPage {
-  readonly cursor: string | null | undefined;
+  readonly cursor: AgentHistoryPosition | null | undefined;
   readonly resolve: (page: AgentHistoryPage) => void;
   readonly reject: (cause: Error) => void;
 }
-function historyFixture(items: readonly AgentTurnItem[]) {
-  const initial = conversation(items, "page:0");
+function historyFixture(items: readonly AgentTurnItem[], cursor: string | null = "page:0") {
+  const initial = conversation(items, cursor);
   const requests: PendingPage[] = [];
   let listener: ((event: AgentRuntimeSessionEvent) => void) | undefined;
   let active = 0;
@@ -254,6 +256,28 @@ function historyFixture(items: readonly AgentTurnItem[]) {
         await frames();
       });
     },
+    async emit(items: readonly AgentTurnItem[]) {
+      await act(async () => {
+        for (const payload of items)
+          listener?.({
+            type: "event",
+            ...target,
+            event: {
+              sequence: ++sequence,
+              commandId: null,
+              event: {
+                id: `item:${sequence}`,
+                threadId: target.threadId,
+                occurredAt: at,
+                type: "turn-item.updated",
+                payload,
+              },
+            },
+          });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await frames();
+      });
+    },
     async stream(text: string, runId = "run:100", beforeCommit?: () => void) {
       await act(async () => {
         beforeCommit?.();
@@ -286,8 +310,12 @@ interface MountedHistoryFixture {
   };
 }
 
-function mountHistory(fixture: MountedHistoryFixture) {
+function mountHistory(
+  fixture: MountedHistoryFixture,
+  { protectsViewport = false }: { readonly protectsViewport?: boolean } = {},
+) {
   const store = createMaitaiStore();
+  const viewer = Symbol("history-viewer");
   let controller: LocalConversationThreadScrollControllerValue | null = null;
   let ready = false;
   function Thread({ source }: { source: MountedHistoryFixture }) {
@@ -320,6 +348,13 @@ function mountHistory(fixture: MountedHistoryFixture) {
             }}
             historyRequestSource={source.owner}
             onLoadHistoryBoundary={source.owner.loadHistoryBoundary}
+            {...(protectsViewport
+              ? {
+                  onHistoryRetentionBoundaryChange: (
+                    boundary: CodexHistoryViewportBoundary | null | undefined,
+                  ) => source.owner.readOwner.setHistoryViewport(viewer, boundary),
+                }
+              : {})}
             scrollElement={scroll.scrollElement}
           />
         </LocalConversationThreadScrollLayout>
@@ -390,6 +425,80 @@ function mountHistory(fixture: MountedHistoryFixture) {
 }
 
 describe("automatic thread history in Chromium", () => {
+  const running = (item: AgentTurnItem): AgentTurnItem => ({ ...item, runId: "run" });
+  const command = (ordinal: number): AgentTurnItem =>
+    running({
+      ...base(`command:${ordinal}`, ordinal),
+      type: "command_execution",
+      input: `echo ${ordinal}`,
+      outputOmitted: true,
+      exitCode: 0,
+    });
+  const reply = (ordinal: number): AgentTurnItem =>
+    running({
+      ...base(`reply:${ordinal}`, ordinal),
+      type: "assistant_message",
+      messageId: `message:reply:${ordinal}`,
+      text: `Reply ${ordinal}`,
+      streaming: false,
+    });
+  const residentIds = (owner: AgentRuntimeConversationOwner) =>
+    owner.readOwner
+      .readStructure()!
+      .turns.flatMap((turn) => turn.itemIds)
+      .filter((id): id is string => id !== undefined);
+
+  test.each([
+    {
+      work: "replies and commands",
+      itemAt: (ordinal: number) => (ordinal % 2 ? command(ordinal) : reply(ordinal)),
+      readBack: async (view: ReturnType<typeof mountHistory>) => view.towardTop(0),
+    },
+    {
+      // Consecutive commands fold into one short row, so the gap above them stays on screen.
+      work: "commands alone",
+      itemAt: command,
+      readBack: async (view: ReturnType<typeof mountHistory>) => {
+        await act(async () => {
+          fireEvent.click(view.getByRole("button", { name: "Show earlier work" }));
+          await frames();
+        });
+      },
+    },
+  ])(
+    "a running Turn of $work stays a bounded window while followed, then reads back",
+    async ({ itemAt, readBack }) => {
+      const items = Array.from({ length: 2_400 }, (_, ordinal) => itemAt(ordinal));
+      const fixture = historyFixture(items.slice(0, 40), null);
+      const view = mountHistory(fixture, { protectsViewport: true });
+      try {
+        await view.settle();
+        let largest = 0;
+        for (let next = 40; next < items.length; next += 240) {
+          await fixture.emit(items.slice(next, next + 240));
+          largest = Math.max(largest, residentIds(fixture.owner).length);
+        }
+        const resident = residentIds(fixture.owner);
+        expect(largest).toBeLessThanOrEqual(1_000);
+        expect(resident.at(-1)).toBe(items.at(-1)!.id);
+        expect(getThreadScrollDistanceFromBottomPx(view.viewport())).toBe(0);
+        // Following the tail never rereads what the window released.
+        expect(fixture.requests).toHaveLength(0);
+
+        await readBack(view);
+        await waitFor(() => expect(fixture.requests).toHaveLength(1));
+        const oldest = resident[0]!;
+        expect(fixture.requests[0]!.cursor).toMatchObject({ type: "item", sourceItemId: oldest });
+        const before = items.findIndex((item) => item.id === oldest);
+        await fixture.finish(0, items.slice(0, before), null);
+        expect(residentIds(fixture.owner)).toEqual(items.map(({ id }) => id));
+        expect(view.container.querySelector("[data-history-gap-key]")).toBeNull();
+      } finally {
+        view.dispose();
+      }
+    },
+  );
+
   test("keeps an unreported upward movement out of bottom following through subsequent growth", async () => {
     const prompts = Array.from({ length: 12 }, (_, index): AgentTurnItem => ({
       ...user(index + 40),

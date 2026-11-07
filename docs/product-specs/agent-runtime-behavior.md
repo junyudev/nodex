@@ -274,7 +274,14 @@ owner. Requests are serialized and reconsider viewport demand after each page; s
 hidden pages may continue until the gap moves out of reach or history is exhausted.
 Older pages preserve resident items and the visible reading anchor, including when a page
 adds earlier messages inside an already visible Turn. Page failures expose a retry at that gap while the loaded transcript and Composer remain usable. Missing or
-repeated continuation cursors fail the page instead of looping. Releasing the last transcript reader clears body caches; retained
+repeated continuation cursors fail the page instead of looping. A transcript reader holds a bounded
+window: past 1,000 resident items, the oldest settled history returns to 500, while a Run streams and
+while nobody views the chat, under the viewport rules of the
+[transcript contract](codex-thread-transcript-behavior.md). Anything the Runtime still reports as live
+keeps its place. Released history continues from the first resident item it precedes and reads back in
+order as the reader scrolls toward it or chooses **Show earlier work**; a later update to it waits for
+that read rather than rejoining the tail. Older history a reader just asked for, including a jump's
+target, stays resident for two seconds so they can reach it. Releasing the last transcript reader clears body caches; retained
 controls continue observing metadata until their last reader releases. Captured fork ancestry identifies the source of inherited history.
 
 File changes record every file a tool changed, whichever Agent made them: its operation

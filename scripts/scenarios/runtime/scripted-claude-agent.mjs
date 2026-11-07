@@ -1,6 +1,13 @@
 /** Deterministic native stream-json peer. The production SDK owns all transport behavior. */
 import { createInterface } from "node:readline";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
@@ -9,6 +16,11 @@ if (process.argv.includes("--version")) {
   process.stdout.write("2.1.284 (Claude Code)\n");
   process.exit(0);
 }
+
+const LONG_TURN_BATCH_REPLIES = 260;
+const LONG_TURN_REPLY_PACE_MS = 80;
+const LONG_TURN_REPLY_BODY = "An ordinary line of the reply.\n".repeat(4);
+const LONG_TURN_FILE_BODY = "A written line of an edited file.\n".repeat(600);
 
 const argument = (name) => {
   const assigned = process.argv.find((value) => value.startsWith(`${name}=`));
@@ -431,6 +443,91 @@ for await (const line of createInterface({ input: process.stdin })) {
           `Navigation reply ${label}`,
           ...Array.from({ length: 60 }, (_, line) => `- Step ${line}`),
         ].join("\n"),
+      });
+      result();
+      continue;
+    }
+    // One Turn the test releases batch by batch, so it can measure the app between them.
+    if (incoming.message.content === "Verify long turn") {
+      const signal = (name) => join(cwd, `.long-turn-${name}`);
+      for (let batch = 0; ; batch += 1) {
+        while (!existsSync(signal(`go-${batch}`)) && !existsSync(signal("finish"))) await delay(20);
+        if (existsSync(signal(`finish`))) break;
+        // The test may ask for fewer replies, to nudge the Turn along without filling it further.
+        const count =
+          Number(readFileSync(signal(`go-${batch}`), "utf8")) || LONG_TURN_BATCH_REPLIES;
+        for (let index = 0; index < count; index += 1) {
+          const reply = batch * LONG_TURN_BATCH_REPLIES + index;
+          const assistant = (id, content) => {
+            const message = {
+              id,
+              role: "assistant",
+              model,
+              content: [content],
+              usage: { input_tokens: 12, output_tokens: 4 },
+            };
+            send({
+              type: "assistant",
+              session_id: sessionId,
+              uuid: record("assistant", message),
+              parent_tool_use_id: null,
+              message,
+            });
+          };
+          assistant(`long-turn-${reply}`, {
+            type: "text",
+            text: `Long turn reply ${reply}\n\n${LONG_TURN_REPLY_BODY}`,
+          });
+          // Commands and file changes alternate, so both kinds of work accumulate in the Turn.
+          const toolUseId = `long-turn-tool-${reply}`;
+          const writes = reply % 2 === 1;
+          const filePath = join(cwd, "long-turn", `${reply}.md`);
+          assistant(`long-turn-tool-call-${reply}`, {
+            type: "tool_use",
+            id: toolUseId,
+            name: writes ? "Write" : "Bash",
+            input: writes
+              ? { file_path: filePath, content: LONG_TURN_FILE_BODY }
+              : { command: `echo ${reply}` },
+          });
+          const toolMessage = {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: toolUseId,
+                content: [{ type: "text", text: writes ? "File written." : "ok" }],
+              },
+            ],
+          };
+          send({
+            type: "user",
+            session_id: sessionId,
+            uuid: record("user", toolMessage),
+            parent_tool_use_id: null,
+            message: toolMessage,
+            tool_use_result: writes
+              ? { type: "create", filePath, content: LONG_TURN_FILE_BODY, structuredPatch: [] }
+              : { stdout: "ok", stderr: "", exitCode: 0, interrupted: false },
+          });
+          // An Agent's pace: a flood beyond the bounded event intake fails the attempt by design.
+          await delay(LONG_TURN_REPLY_PACE_MS);
+        }
+        writeFileSync(signal(`done-${batch}`), "");
+      }
+      const finalMessage = {
+        id: "long-turn-final",
+        role: "assistant",
+        model,
+        content: [{ type: "text", text: "Long turn finished" }],
+        usage: { input_tokens: 12, output_tokens: 4 },
+      };
+      send({
+        type: "assistant",
+        session_id: sessionId,
+        uuid: record("assistant", finalMessage),
+        parent_tool_use_id: null,
+        message: finalMessage,
       });
       result();
       continue;

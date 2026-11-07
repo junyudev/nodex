@@ -49,6 +49,16 @@ export type AgentSnapshot = Extract<
   { readonly kind: "snapshot" }
 >;
 export type AgentHistoryPage = AgentWire<OrchestrationV2ThreadHistoryPage>;
+/** An exclusive position in the visible timeline: a page cursor, or an item the reader holds. */
+export type AgentHistoryPosition =
+  | string
+  | {
+      readonly type: "item";
+      readonly sourceThreadId: string;
+      readonly sourceItemId: string;
+      /** The item's place in its own thread; a fork marker has none. */
+      readonly ordinal?: number;
+    };
 export type AgentShellSnapshot = AgentWire<OrchestrationV2ThreadShellSnapshot>;
 export type AgentTurnItem = AgentWire<OrchestrationV2TurnItem>;
 export type AgentTimelinePage = AgentWire<
@@ -704,7 +714,7 @@ export interface AgentRuntimeOperations
   readonly "thread.history": {
     readonly input: {
       readonly threadId: string;
-      readonly cursor: string;
+      readonly cursor: AgentHistoryPosition;
       readonly throughEntryId?: string;
       readonly conversationOnly?: boolean;
     };
