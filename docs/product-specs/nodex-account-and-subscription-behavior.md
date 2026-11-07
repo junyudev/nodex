@@ -14,7 +14,9 @@ They run with the same conversation, tool and workspace behavior as those driver
 
 Signed-out users see no Nodex models. Native Codex, Claude, OpenCode and ACP
 setups remain independent. Automatic defaults never select a prepaid model, and
-[Model policy](model-policy-behavior.md) decides who may start one. An unavailable saved choice fails explicitly rather than spending through a
+[Model policy](model-policy-behavior.md) decides who may start one. A Nodex model chosen in a
+new chat is remembered for the next one, whose composer shows it before anything is sent; a
+chat no composer shows never starts on it. An unavailable saved choice fails explicitly rather than spending through a
 different account or silently choosing another provider.
 
 People spend Nodex credits, not dollars. A credit balance is a whole number with

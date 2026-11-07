@@ -15,6 +15,15 @@ export const openComposerModelPicker = async (page: Page) => {
   return search;
 };
 
+/**
+ * What the Composer's model button shows. The button also holds a hidden measuring copy of every
+ * model's label, so a text assertion on the button itself passes for any model.
+ */
+export const composerModelLabel = (page: Page) =>
+  page.locator(
+    '[data-intelligence-selector-trigger="true"]:visible [data-intelligence-selector-trigger-content="true"]',
+  );
+
 export const refreshComposerModels = async (page: Page): Promise<void> => {
   await openComposerModelPicker(page);
   const refresh = page.getByRole("button", { name: "Refresh models", exact: true });

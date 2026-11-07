@@ -5,14 +5,8 @@ import type {
   InsightsModelDay,
   InsightsUsageSnapshot,
 } from "../../../shared/insights";
-import {
-  axisMaximum,
-  compactNumber,
-  heatStep,
-  modelDisplayName,
-  modelFamily,
-  shareLabel,
-} from "./insights-format";
+import { modelDisplayName } from "../../lib/codex-thread-settings";
+import { axisMaximum, compactNumber, heatStep, modelFamily, shareLabel } from "./insights-format";
 import {
   agentArchetype,
   projectInsights,

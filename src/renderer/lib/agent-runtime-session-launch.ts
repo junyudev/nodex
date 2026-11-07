@@ -9,7 +9,7 @@ import {
   agentRuntimeProviderBackendKind,
   defaultAgentRuntimeModelSelection,
   requireAgentRuntimeModelSelection,
-  type AgentRuntimeCodexDefaults,
+  type AgentRuntimeNewChatDefaults,
 } from "./agent-runtime-model-selection";
 
 /** Programmatic launches use the same Session operation as the shared composer. */
@@ -21,7 +21,8 @@ export async function launchAgentRuntimeSession(
     readonly promptInput?: CodexPromptInput;
     readonly initialPageIds?: readonly string[];
     readonly title?: string;
-    readonly codexDefaults?: AgentRuntimeCodexDefaults;
+    /** No picker shows these launches, so they never count as attended. */
+    readonly newChatDefaults?: Omit<AgentRuntimeNewChatDefaults, "attended">;
     readonly modelSelection?: AgentRuntimeLaunch["modelSelection"];
     readonly onSelectionResolved?: (kind: AgentBackendBinding["kind"]) => void;
     readonly interactionMode?: AgentRuntimeLaunch["interactionMode"];
@@ -38,7 +39,7 @@ export async function launchAgentRuntimeSession(
   const providers = await transport.catalog();
   const { provider, model, selection } = requireAgentRuntimeModelSelection(
     providers,
-    input.modelSelection ?? defaultAgentRuntimeModelSelection(providers, input.codexDefaults),
+    input.modelSelection ?? defaultAgentRuntimeModelSelection(providers, input.newChatDefaults),
   );
   const kind = agentRuntimeProviderBackendKind(provider);
   input.onSelectionResolved?.(kind);

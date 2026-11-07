@@ -3,6 +3,7 @@ import {
   agentRuntimeChoiceKey,
   agentRuntimeComposerChoicesAtom,
   agentRuntimeModelOptionMemoryAtom,
+  agentRuntimeNewChatChoiceAtom,
   rememberAgentModelOptions,
   rememberedAgentModelOptions,
   withAgentRuntimeComposerChoice,
@@ -56,5 +57,18 @@ describe("Agent Runtime Composer choices", () => {
         codex: { gpt: [{ id: "reasoningEffort", value: "high" }], broken: "high" },
       }),
     ).toEqual({ codex: { gpt: [{ id: "reasoningEffort", value: "high" }] } });
+  });
+
+  test("forgets a remembered new chat choice only when it no longer decodes", () => {
+    const remembered = {
+      binding: claude,
+      model: "sonnet",
+      options: [{ id: "effort", value: "max" }],
+    };
+    expect(agentRuntimeNewChatChoiceAtom.decode(remembered)).toEqual(remembered);
+    expect(agentRuntimeNewChatChoiceAtom.decode({ binding: { kind: "retired" }, model: "x" })).toBe(
+      null,
+    );
+    expect(agentRuntimeNewChatChoiceAtom.decode(null)).toBe(null);
   });
 });

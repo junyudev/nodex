@@ -559,9 +559,21 @@ in a message, `ultrathink` and `ultracode`, and explain on hover what each does 
 A model,
 effort and speed change from the composer is one choice, so concurrent choices never
 overwrite each other, and options a newly chosen model does not offer fall back to its
-defaults. A new Codex chat starts from the user's saved Codex model, effort and speed.
-The latest Codex choice also supplies the starting model, effort and speed for later
-new chats. Goal mode is not offered for Runtime chats.
+defaults. Goal mode is not offered for Runtime chats.
+
+New chat remembers its own model. A new chat starts on the last choice made in the composer
+of any unstarted chat, on any Agent, with that choice's effort and other options, in every
+Project and window and across restart. A choice made in a started chat stays with that chat.
+An unstarted chat keeps what was chosen in it, whatever is chosen elsewhere later. Native
+Codex's speed always comes from the global Fast preference, which only Settings and an
+unstarted chat's choice change.
+
+Only another choice replaces the memory. Until the Agent catalog answers, the composer shows
+the remembered choice as it is. A remembered model switched off in Settings → Models stays
+selected and the composer says so. Otherwise, if its Agent no longer offers the model, the
+chat starts on that Agent's default model; if the Agent cannot take messages, it starts on
+Codex's default and then another available Agent's. Later new chats return to the remembered
+choice once it can run again. With no memory, a new chat starts on Codex's default.
 
 Each Thread retains its own speed, including a pending choice for its next message,
 when another chat changes speed or starts concurrently. Returning to a chat restores
@@ -570,7 +582,8 @@ over saved preferences and native model defaults; only an unspecified tier inher
 
 Page and Scheduled actions that start a chat use its saved draft Agent, model, options
 and interaction mode, scoped to that Session and Project. Without a draft choice they
-use the saved Codex model when available, then another available Agent's default model.
+start the way a new chat does, except that a remembered Nodex credit model never starts a
+chat no composer shows; those fall back without spending credit.
 An explicitly chosen unavailable Agent or model fails with a request to choose again;
 it never silently redirects the message to another Agent.
 

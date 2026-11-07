@@ -125,3 +125,16 @@ export const agentRuntimeModelOptionMemoryAtom = persistedAtom<AgentRuntimeModel
   synchronization: "cross-window",
   decode: (value) => decodeEntries(value, (models) => decodeEntries(models, decodeWith(options))),
 });
+
+/**
+ * What a new chat starts on: the last choice made in any unstarted chat's Composer, on any Agent.
+ * It stands apart from the Composer choices so eviction there can never forget it.
+ */
+export const agentRuntimeNewChatChoiceAtom = persistedAtom<AgentModelSelection | null>({
+  debugLabel: "agent-runtime-new-chat-choice",
+  storageKey: "agent-runtime-new-chat-choice-v1",
+  defaultValue: null,
+  hydration: "eager",
+  synchronization: "cross-window",
+  decode: (value) => decodeWith(selection)(value) ?? null,
+});

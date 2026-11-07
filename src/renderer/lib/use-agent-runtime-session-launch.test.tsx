@@ -7,6 +7,7 @@ import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import {
   agentRuntimeChoiceKey,
   agentRuntimeComposerChoicesAtom,
+  agentRuntimeNewChatChoiceAtom,
   type AgentRuntimeComposerChoices,
 } from "../features/local-conversation/agent-runtime-composer-choices";
 import {
@@ -165,4 +166,51 @@ it("does not launch a default Agent if the saved draft choice could not be read"
     ).rejects.toThrow("Choice read failed");
   });
   expect(launch).not.toHaveBeenCalled();
+});
+
+it("starts a launch with no choice of its own from the remembered new chat choice", async () => {
+  const { result, launch } = setup(
+    async () => ({
+      revision: 1,
+      values: {
+        [agentRuntimeNewChatChoiceAtom.storageKey]: {
+          binding,
+          model: "chosen",
+          options: [{ id: "variant", value: "high" }],
+        },
+      },
+    }),
+    [{ ...provider, instanceId: "codex", driver: "codex" }, provider],
+  );
+  await act(async () => {
+    await result.current({ sessionId: "draft", projectId: "project", prompt: "Page task" });
+  });
+  expect(launch).toHaveBeenCalledWith(
+    expect.objectContaining({ modelSelection: { instanceId, model: "chosen" } }),
+  );
+});
+
+it("never spends credit because a Composer once chose it: no picker shows this launch", async () => {
+  const credit = `nodex_codex_${"a".repeat(32)}`;
+  const { result, launch } = setup(
+    async () => ({
+      revision: 1,
+      values: {
+        [agentRuntimeNewChatChoiceAtom.storageKey]: {
+          binding: { kind: "codex", runtimeInstanceId: credit },
+          model: "chosen",
+        },
+      },
+    }),
+    [
+      { ...provider, instanceId: "codex", driver: "codex" },
+      { ...provider, instanceId: credit, driver: "codex", source: "nodex" },
+    ],
+  );
+  await act(async () => {
+    await result.current({ sessionId: "draft", projectId: "project", prompt: "Page task" });
+  });
+  expect(launch).toHaveBeenCalledWith(
+    expect.objectContaining({ modelSelection: { instanceId: "codex", model: "chosen" } }),
+  );
 });

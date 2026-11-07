@@ -29,6 +29,7 @@ import {
   agentRuntimeChoiceKey,
   agentRuntimeComposerChoicesAtom,
   agentRuntimeModelOptionMemoryAtom,
+  agentRuntimeNewChatChoiceAtom,
   rememberAgentModelOptions,
   rememberedAgentModelOptions,
   withAgentRuntimeComposerChoice,
@@ -72,8 +73,6 @@ import {
 } from "../../../shared/agent-runtime-agent-switch";
 import { agentRuntimeForkSource } from "../../../shared/agent-runtime-fork-merge";
 import { formatAgentModelName } from "../../lib/codex-thread-settings";
-import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
-import { CodexReasoningEffortSchema } from "../../../shared/schemas/codex";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
 import { retainAgentAppContext } from "../../../shared/agent-prompt";
 import { createUuidV7 } from "../../../shared/uuid-v7";
@@ -1017,22 +1016,8 @@ export function useAgentRuntimeConversationAdapter(input: {
       ),
     );
   }, [catalogState.providers, input.instances]);
-  const { settings: savedCodexSettings, updateSettings: updateSavedCodexSettings } =
-    useCodexThreadSettings();
   const { serviceTierSettings: savedServiceTier, setServiceTier: saveServiceTier } =
     useCodexServiceTierSettings();
-  // A Codex choice becomes the starting model, effort and speed of later new chats.
-  const rememberCodexChoice = (choice: AgentModelSelection) => {
-    const effort = CodexReasoningEffortSchema.safeParse(
-      choice.options?.find((option) => option.id === "reasoningEffort")?.value,
-    );
-    updateSavedCodexSettings({
-      model: choice.model,
-      ...(effort.success ? { reasoningEffort: effort.data } : {}),
-    });
-    const tier = readAgentRuntimeServiceTier(choice.options);
-    if (tier !== undefined) saveServiceTier(tier, "composer_menu");
-  };
   // Choices persist beside the Composer's prompt draft, across windows and restart.
   const choices = usePersistedAtomValue(agentRuntimeComposerChoicesAtom).value;
   const setChoices = useSetPersistedAtom(agentRuntimeComposerChoicesAtom);
@@ -1040,6 +1025,8 @@ export function useAgentRuntimeConversationAdapter(input: {
     setChoices((current) => withAgentRuntimeComposerChoice(current, key, patch));
   const modelOptionMemory = usePersistedAtomValue(agentRuntimeModelOptionMemoryAtom).value;
   const setModelOptionMemory = useSetPersistedAtom(agentRuntimeModelOptionMemoryAtom);
+  const newChatChoice = usePersistedAtomValue(agentRuntimeNewChatChoiceAtom).value;
+  const setNewChatChoice = useSetPersistedAtom(agentRuntimeNewChatChoiceAtom);
   const draftKey = agentRuntimeChoiceKey.draft(input.sessionId, input.modelProjectId);
   const draft = choices[draftKey] ?? {};
   const draftMode = draft.interactionMode ?? "default";
@@ -1128,7 +1115,11 @@ export function useAgentRuntimeConversationAdapter(input: {
     if (draft.selection) return draft.selection;
     const selected = defaultAgentRuntimeModelSelection(
       providers.filter((entry) => bindingFor(entry.instanceId) !== undefined),
-      { ...savedCodexSettings, serviceTier: savedServiceTier.serviceTier },
+      {
+        remembered: newChatChoice,
+        codexServiceTier: savedServiceTier.serviceTier,
+        attended: true,
+      },
     );
     const binding = selected ? bindingFor(selected.instanceId) : undefined;
     return selected && binding
@@ -1140,7 +1131,11 @@ export function useAgentRuntimeConversationAdapter(input: {
     const whole = catalogLoad.current;
     const preferred = draftSelectionFor(
       await agentRuntimeRuntime
-        .catalog({ instanceIds: ["codex"] })
+        .catalog({
+          instanceIds: [
+            (newChatChoice && agentRuntimeProviderId(newChatChoice.binding)) ?? "codex",
+          ],
+        })
         .catch((): readonly AgentRuntimeProvider[] => []),
     );
     if (agentRuntimeModelSelection(preferred.binding, preferred.model, preferred.options))
@@ -1190,9 +1185,15 @@ export function useAgentRuntimeConversationAdapter(input: {
         : unspent;
     });
   }, [spentChoice, spentDraft, choiceKey, draftKey, setChoices]);
+  // Only a loaded catalog can say the remembered choice is gone, so until then it shows as chosen.
+  const provisionalChoice =
+    !target && !draft.selection && (catalogState.loading || catalogState.error !== null)
+      ? newChatChoice
+      : null;
   const selection =
     (nextSelection ? choice : undefined) ??
     observedSelection ??
+    provisionalChoice ??
     draftSelectionFor(catalogState.providers);
   const provider = providerOf(selection);
   const openSettingsFor = (binding: AgentBackendBinding) =>
@@ -1357,8 +1358,11 @@ export function useAgentRuntimeConversationAdapter(input: {
     if (refusal) throw new Error(refusal);
     if (chosen.binding.kind === "claude")
       nativeIntelligenceIntentOwner.write(intentKey, nextIntent);
-    if (fitted.binding.kind === "codex" && !fitted.binding.runtimeInstanceId)
-      rememberCodexChoice(fitted);
+    // An unstarted chat's choice is where later new chats start; a started chat's stays its own.
+    if (!target && fitted.binding.kind === "codex" && !fitted.binding.runtimeInstanceId) {
+      const tier = readAgentRuntimeServiceTier(fitted.options);
+      if (tier !== undefined) saveServiceTier(tier, "composer_menu");
+    }
     await Promise.all([
       setModelOptionMemory((current) => rememberAgentModelOptions(current, fitted)),
       writeChoice(choiceKey ?? draftKey, {
@@ -1367,6 +1371,7 @@ export function useAgentRuntimeConversationAdapter(input: {
             ? undefined
             : fitted,
       }),
+      ...(target ? [] : [setNewChatChoice(fitted)]),
     ]);
   };
   const prepareFor =
@@ -1470,7 +1475,8 @@ export function useAgentRuntimeConversationAdapter(input: {
       if (request.runInTarget === "cloud") throw new Error("Choose a local workspace");
       // The message shows at once. A draft still waiting for the catalog takes its default Agent's
       // model once that Agent is checked, without waiting for every other Agent's check.
-      const pendingSelection = modelOf(selection) ? null : resolveDefaultSelection();
+      const pendingSelection =
+        modelOf(selection) && !provisionalChoice ? null : resolveDefaultSelection();
       // Its failure is reported where the launch awaits it.
       pendingSelection?.catch(() => {});
       const submission = sessionFirstSubmissionOwner.begin({

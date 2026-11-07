@@ -68,7 +68,7 @@ const STANDARD_SERVICE_TIER = "default";
 
 const admits = (descriptor: AgentRuntimeOptionDescriptor, value: string | boolean) =>
   descriptor.type === "boolean"
-    ? typeof value === "boolean"
+    ? typeof value === "boolean" && !(value && descriptor.unavailableReason)
     : descriptor.options.some((option) => option.id === value);
 
 /**

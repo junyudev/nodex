@@ -214,6 +214,7 @@ describe("codex-thread-settings", () => {
       ]),
     ).toBe("GPT-5.1 Codex Max");
     expect(formatCodexModelLabel("gpt-6-astra", [])).toBe("GPT-6 Astra");
+    expect(formatCodexModelLabel("claude-opus-5-5", [])).toBe("Claude Opus 5.5");
     expect(
       formatCodexModelLabel("gpt-6-astra", [
         { ...MODELS[0]!, id: "gpt-6-astra", displayName: "GPT-6-Astra" },

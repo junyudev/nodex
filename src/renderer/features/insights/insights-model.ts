@@ -1,11 +1,6 @@
 import type { InsightsContentSnapshot, InsightsUsageSnapshot } from "../../../shared/insights";
-import {
-  compactNumber,
-  modelDisplayName,
-  modelFamily,
-  shortDay,
-  type ModelFamily,
-} from "./insights-format";
+import { modelDisplayName } from "../../lib/codex-thread-settings";
+import { compactNumber, modelFamily, shortDay, type ModelFamily } from "./insights-format";
 
 export type InsightsPeriod = "7d" | "30d" | "90d" | "12m" | "all";
 

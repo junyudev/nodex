@@ -140,7 +140,7 @@ Internal helper flows that are not user-facing request starts, such as ephemeral
 
 ## User-Visible Behavior
 
-- If the user selects `Fast` in Settings or the composer menu, Nodex persists the global preference as `"fast"`.
+- If the user selects `Fast` in Settings or in an unstarted chat's composer, Nodex persists the global preference as `"fast"`. A started chat's choice stays with that chat.
 - Subsequent new requests inherit and send `serviceTier: "fast"` unless a caller explicitly overrides it.
 - If the user selects `Standard`, Nodex persists `null`.
 - Subsequent new requests resolve to Standard. Compound execution profiles preserve that explicit

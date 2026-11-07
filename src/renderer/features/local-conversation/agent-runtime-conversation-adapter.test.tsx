@@ -37,7 +37,6 @@ import { MarkdownCore } from "./view/shared/markdown/markdown-core";
 import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import { CodexThreadSettingsProvider } from "../../lib/use-codex-thread-settings";
 import { CodexServiceTierSettingsProvider } from "../../lib/use-codex-service-tier-settings";
-import { THREAD_SETTINGS_STORAGE_KEY } from "../../lib/codex-thread-settings";
 import { CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY } from "../../lib/codex-service-tier-settings";
 import { openCodeSetupRuntime } from "../../lib/opencode-setup-runtime";
 import type { OpenCodeSetupState } from "../../../shared/opencode-setup";
@@ -614,43 +613,55 @@ function SavedSettingsWorkbench({ children }: PropsWithChildren) {
   );
 }
 
+const mountDraft = (
+  sessionId: string,
+  agents: Parameters<typeof useAgentRuntimeConversationAdapter>[0]["instances"] = instances,
+) =>
+  renderHook(
+    () =>
+      useAgentRuntimeConversationAdapter({
+        sessionId,
+        sessionUnread: false,
+        projectId: "project",
+        modelProjectId: "project",
+        instances: agents,
+        onRefresh: async () => {},
+        onOpenThread: () => {},
+        ensureDraft: async () => ({ id: sessionId }),
+      }),
+    { wrapper: SavedSettingsWorkbench },
+  );
+
 describe("Agent Runtime Codex controls", () => {
   afterEach(() => {
-    localStorage.removeItem(THREAD_SETTINGS_STORAGE_KEY);
     localStorage.removeItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY);
   });
 
-  it("starts a new chat from the saved model, effort and speed", async () => {
-    localStorage.setItem(
-      THREAD_SETTINGS_STORAGE_KEY,
-      JSON.stringify({ model: "gpt-mini", reasoningEffort: "high" }),
-    );
-    localStorage.setItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY, "fast");
+  it("starts a new chat from the model, effort and speed an earlier new chat chose", async () => {
     vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider]);
     const launch = vi
       .spyOn(agentRuntimeRuntime, "launch")
-      .mockResolvedValue({ sessionId: "saved-draft", projectId: "project", threadId: "thread" });
+      .mockResolvedValue({ sessionId: "next-draft", projectId: "project", threadId: "thread" });
     vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
-      sessionId: "saved-draft",
+      sessionId: "next-draft",
       projectId: "project",
       threadId: "thread",
       snapshot,
     });
     vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
-    const { result, unmount } = renderHook(
-      () =>
-        useAgentRuntimeConversationAdapter({
-          sessionId: "saved-draft",
-          sessionUnread: false,
-          projectId: "project",
-          modelProjectId: "project",
-          instances,
-          onRefresh: async () => {},
-          onOpenThread: () => {},
-          ensureDraft: async () => ({ id: "saved-draft" }),
-        }),
-      { wrapper: SavedSettingsWorkbench },
-    );
+    const first = mountDraft("first-draft");
+    await waitFor(() => expect(first.result.current.selectedModel).toBe("gpt"));
+    await act(async () => {
+      await first.result.current.actions.onIntelligenceSelectionChange!({
+        kind: "codex",
+        model: "gpt-mini",
+        reasoningEffort: "high",
+        serviceTier: "fast",
+      });
+    });
+    await act(async () => first.unmount());
+
+    const { result, unmount } = mountDraft("next-draft");
     await waitFor(() => expect(result.current.selectedModel).toBe("gpt-mini"));
     expect(result.current.selectedEffort).toBe("high");
     expect(result.current.provider.serviceTier).toBe("fast");
@@ -662,19 +673,19 @@ describe("Agent Runtime Codex controls", () => {
     await act(async () => {
       await result.current.actions.onStartThreadForSession!({
         projectId: "project",
-        sessionId: "saved-draft",
+        sessionId: "next-draft",
         prompt: "Go",
       });
     });
     expect(launch.mock.calls[0]![0].runtimeMode).toBe("full-access");
-    expect(launch.mock.calls[0]![0].modelSelection).toEqual({
-      instanceId: "codex",
-      model: "gpt-mini",
-      options: [
-        { id: "reasoningEffort", value: "high" },
-        { id: "serviceTier", value: "fast" },
-      ],
-    });
+    const launched = launch.mock.calls[0]![0].modelSelection;
+    expect(launched).toMatchObject({ instanceId: "codex", model: "gpt-mini" });
+    expect(new Map(launched.options?.map(({ id, value }) => [id, value]))).toEqual(
+      new Map([
+        ["reasoningEffort", "high"],
+        ["serviceTier", "fast"],
+      ]),
+    );
     await act(async () => unmount());
   });
 
@@ -778,42 +789,6 @@ describe("Agent Runtime Codex controls", () => {
       model: "gpt",
     });
     await act(async () => unmount());
-  });
-
-  it("starts later new chats from the last Codex model, effort and speed chosen", async () => {
-    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider]);
-    const renderDraft = (sessionId: string) =>
-      renderHook(
-        () =>
-          useAgentRuntimeConversationAdapter({
-            sessionId,
-            sessionUnread: false,
-            projectId: "project",
-            modelProjectId: "project",
-            instances,
-            onRefresh: async () => {},
-            onOpenThread: () => {},
-            ensureDraft: async () => ({ id: sessionId }),
-          }),
-        { wrapper: SavedSettingsWorkbench },
-      );
-    const first = renderDraft("first-draft");
-    await waitFor(() => expect(first.result.current.selectedModel).toBe("gpt"));
-    await act(async () => {
-      await first.result.current.actions.onIntelligenceSelectionChange!({
-        kind: "codex",
-        model: "gpt-mini",
-        reasoningEffort: "high",
-        serviceTier: "fast",
-      });
-    });
-    await act(async () => first.unmount());
-
-    const next = renderDraft("next-draft");
-    await waitFor(() => expect(next.result.current.selectedModel).toBe("gpt-mini"));
-    expect(next.result.current.selectedEffort).toBe("high");
-    expect(next.result.current.provider.serviceTier).toBe("fast");
-    await act(async () => next.unmount());
   });
 
   it("keeps overlapping chat launches on their independently selected speed", async () => {
@@ -1303,6 +1278,215 @@ describe("Agent Runtime Agent switching", () => {
     );
     expect(result.current.provider.kind).toBe("codex");
     await act(async () => unmount());
+  });
+});
+
+describe("Agent Runtime new chat memory", () => {
+  const claudeBinding = { kind: "claude" as const, instanceConfigId: "memory-claude" };
+  const claudeId = agentRuntimeProviderId(claudeBinding)!;
+  const configured = [{ binding: claudeBinding, enabled: true, label: "Claude" }];
+  const claudeProvider = {
+    ...provider,
+    instanceId: claudeId,
+    driver: "claudeAgent",
+    displayName: "Claude",
+    models: [
+      { slug: "opus", name: "Opus", isCustom: false, isDefault: true, capabilities: null },
+      { slug: "sonnet", name: "Sonnet", isCustom: false, capabilities: null },
+    ],
+  } as unknown as AgentRuntimeProvider;
+  const entryFor = (
+    result: { current: ReturnType<typeof useAgentRuntimeConversationAdapter> },
+    model: string,
+  ) => result.current.provider.modelCatalog!.entries.find((entry) => entry.model.id === model)!;
+  const choose = async (
+    result: { current: ReturnType<typeof useAgentRuntimeConversationAdapter> },
+    model: string,
+  ) => {
+    await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
+    await act(async () => {
+      await result.current.provider.modelCatalog!.choose(entryFor(result, model).selection);
+    });
+  };
+  const allAgents = () =>
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider, claudeProvider]);
+
+  afterEach(() => {
+    localStorage.removeItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY);
+  });
+
+  it("starts on Codex until a choice is made, then on that choice on any Agent", async () => {
+    allAgents();
+    const first = mountDraft("memory-first", configured);
+    await waitFor(() => expect(first.result.current.selectedModel).toBe("gpt"));
+    expect(first.result.current.provider.kind).toBe("codex");
+    await choose(first.result, "sonnet");
+    await act(async () => first.unmount());
+
+    const next = mountDraft("memory-next", configured);
+    await waitFor(() => expect(next.result.current.provider.modelCatalog?.loading).toBe(false));
+    expect(next.result.current.provider.kind).toBe("claude");
+    expect(next.result.current.selectedModel).toBe("sonnet");
+    await act(async () => next.unmount());
+  });
+
+  it("keeps a started chat's choice, speed included, out of later new chats", async () => {
+    allAgents();
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+      sessionId: "memory-chat",
+      projectId: "project",
+      threadId: "engine-thread",
+      snapshot: agentRuntimeSnapshotFixture({
+        thread: { modelSelection: { instanceId: "codex", model: "gpt" } },
+      }),
+    });
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const draft = mountDraft("memory-draft", configured);
+    await choose(draft.result, "gpt-mini");
+    await act(async () => draft.unmount());
+
+    const chat = renderHook(
+      () =>
+        useAgentRuntimeConversationAdapter({
+          sessionId: "memory-chat",
+          sessionUnread: false,
+          executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+          projectId: "project",
+          modelProjectId: "project",
+          instances: configured,
+          onRefresh: async () => {},
+          onOpenThread: () => {},
+          ensureDraft: async () => ({ id: "memory-chat" }),
+        }),
+      { wrapper: SavedSettingsWorkbench },
+    );
+    await waitFor(() => expect(chat.result.current.state.connection).toBe("ready"));
+    await waitFor(() => expect(chat.result.current.provider.modelCatalog?.loading).toBe(false));
+    await act(async () => {
+      await chat.result.current.actions.onIntelligenceSelectionChange!({
+        kind: "codex",
+        model: "gpt",
+        reasoningEffort: "high",
+        serviceTier: "fast",
+      });
+    });
+    await choose(chat.result, "sonnet");
+    expect(chat.result.current.selectedModel).toBe("sonnet");
+    expect(localStorage.getItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY)).toBeNull();
+    await act(async () => chat.unmount());
+
+    const next = mountDraft("memory-after-chat", configured);
+    await waitFor(() => expect(next.result.current.selectedModel).toBe("gpt-mini"));
+    expect(next.result.current.provider.serviceTier).toBeNull();
+    await act(async () => next.unmount());
+  });
+
+  it("lets a draft keep its own choice while later choices move the memory", async () => {
+    allAgents();
+    const earlier = mountDraft("memory-earlier", configured);
+    await choose(earlier.result, "gpt-mini");
+    const later = mountDraft("memory-later", configured);
+    await choose(later.result, "sonnet");
+    await waitFor(() => expect(earlier.result.current.selectedModel).toBe("gpt-mini"));
+    const fresh = mountDraft("memory-fresh", configured);
+    await waitFor(() => expect(fresh.result.current.selectedModel).toBe("sonnet"));
+    await act(async () => {
+      earlier.unmount();
+      later.unmount();
+      fresh.unmount();
+    });
+  });
+
+  it("shows the remembered choice until the catalog answers, and keeps it through an outage", async () => {
+    const catalog = allAgents();
+    const first = mountDraft("memory-seed", configured);
+    await choose(first.result, "sonnet");
+    await act(async () => first.unmount());
+
+    let answer: (providers: AgentRuntimeProvider[]) => void = () => {};
+    catalog.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const loading = mountDraft("memory-loading", configured);
+    await waitFor(() => expect(loading.result.current.selectedModel).toBe("sonnet"));
+    expect(loading.result.current.provider.modelCatalog?.loading).toBe(true);
+    expect(loading.result.current.provider.kind).toBe("claude");
+    // Claude is gone from what the catalog answers, so this chat starts on Codex instead.
+    await act(async () => {
+      answer([codexProvider]);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(loading.result.current.selectedModel).toBe("gpt"));
+    expect(loading.result.current.provider.kind).toBe("codex");
+    await act(async () => loading.unmount());
+
+    // The memory survives, so the Agent's return brings the choice back.
+    catalog.mockResolvedValue([codexProvider, claudeProvider]);
+    const returned = mountDraft("memory-returned", configured);
+    await waitFor(() => expect(returned.result.current.provider.modelCatalog?.loading).toBe(false));
+    expect(returned.result.current.selectedModel).toBe("sonnet");
+    await act(async () => returned.unmount());
+  });
+
+  it("launches an early first message on the remembered Agent as soon as that Agent is checked", async () => {
+    const catalog = allAgents();
+    const first = mountDraft("memory-early-seed", configured);
+    await choose(first.result, "sonnet");
+    await act(async () => first.unmount());
+
+    catalog.mockImplementation((input) =>
+      input?.instanceIds ? Promise.resolve([claudeProvider]) : new Promise(() => {}),
+    );
+    const launch = vi.spyOn(agentRuntimeRuntime, "launch").mockResolvedValue({
+      sessionId: "memory-early",
+      projectId: "project",
+      threadId: "thread",
+    });
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+      sessionId: "memory-early",
+      projectId: "project",
+      threadId: "thread",
+      snapshot,
+    });
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const { result, unmount } = mountDraft("memory-early", configured);
+    await waitFor(() => expect(result.current.selectedModel).toBe("sonnet"));
+    await act(async () => {
+      await result.current.actions.onStartThreadForSession!({
+        projectId: "project",
+        sessionId: "memory-early",
+        prompt: "Go",
+      });
+    });
+    expect(catalog).toHaveBeenCalledWith({ instanceIds: [claudeId] });
+    expect(launch.mock.calls[0]![0].modelSelection).toMatchObject({
+      instanceId: claudeId,
+      model: "sonnet",
+    });
+    await act(async () => unmount());
+  });
+
+  it("remembers a credit model the person chose, for the next Composer they see", async () => {
+    const nodexProvider = {
+      ...provider,
+      source: "nodex",
+      displayName: "Nodex",
+      instanceId: `nodex_codex_${"a".repeat(32)}`,
+      models: [{ ...provider.models[0]!, slug: "gpt-6.1-sol", name: "GPT-6.1 Sol" }],
+    } as AgentRuntimeProvider;
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider, nodexProvider]);
+    const first = mountDraft("memory-credit");
+    await choose(first.result, "gpt-6.1-sol");
+    await act(async () => first.unmount());
+
+    const next = mountDraft("memory-credit-next");
+    await waitFor(() => expect(next.result.current.provider.modelCatalog?.loading).toBe(false));
+    expect(
+      agentRuntimeProviderId(next.result.current.provider.modelCatalog!.selected.binding),
+    ).toBe(nodexProvider.instanceId);
+    await act(async () => next.unmount());
   });
 });
 

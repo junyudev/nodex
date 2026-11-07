@@ -32,22 +32,6 @@ export const monthName = (day: string) => MONTHS[Number(day.slice(5, 7)) - 1] ??
 
 export const shortDay = (day: string) => `${monthName(day)} ${Number(day.slice(8, 10))}`;
 
-/** `claude-opus-5-5` reads as `Claude Opus 5.5`; `gpt-6.1-sol` as `GPT-6.1 Sol`. */
-export function modelDisplayName(model: string): string {
-  const base = model
-    .replace(/^[a-z0-9-]+\//, "")
-    .replace(/\[[^\]]*\]$/, "")
-    .replace(/-\d{8}$/, "");
-  const words = base.split("-").map((word) => {
-    if (word === "gpt") return "GPT";
-    return /^[a-z]/.test(word) ? `${word[0]!.toUpperCase()}${word.slice(1)}` : word;
-  });
-  return words
-    .join(" ")
-    .replace(/^GPT /, "GPT-")
-    .replace(/(\d) (\d)/g, "$1.$2");
-}
-
 export type ModelFamily = "claude" | "gpt" | "other";
 
 export const modelFamily = (model: string): ModelFamily => {

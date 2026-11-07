@@ -1,11 +1,13 @@
-import { modelIsOn } from "../../shared/model-policy";
+import { modelIsOn, spendsNodexCredit } from "../../shared/model-policy";
 import { isNodexProviderId } from "../../shared/nodex-models";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
+import type { AgentModelSelection } from "../../shared/agent-model-catalog";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
 import type { AgentModelOption } from "../../shared/types";
 import { formatAgentModelName, formatCodexReasoningEffortLabel } from "./codex-thread-settings";
 import {
+  agentRuntimeModelSelection,
   agentRuntimeProviderId,
   applyAgentRuntimeOptionIntent,
   isAgentRuntimeEffortOption,
@@ -14,10 +16,14 @@ import {
 type Provider = AgentRuntimeOperations["providers.read"]["output"][number];
 type ModelSelection = AgentRuntimeLaunch["modelSelection"];
 
-export interface AgentRuntimeCodexDefaults {
-  readonly model?: string;
-  readonly reasoningEffort?: string;
-  readonly serviceTier?: string | null;
+/** What a new chat without its own choice starts from. */
+export interface AgentRuntimeNewChatDefaults {
+  /** The last choice made in an unstarted chat's Composer. */
+  readonly remembered?: AgentModelSelection | null;
+  /** The global Fast preference, which owns native Codex's speed. */
+  readonly codexServiceTier?: string | null;
+  /** The person sees the model before sending, so a remembered credit model may start the chat. */
+  readonly attended?: boolean;
 }
 
 export const isAgentRuntimeProviderAvailable = (provider: Provider): boolean =>
@@ -26,43 +32,65 @@ export const isAgentRuntimeProviderAvailable = (provider: Provider): boolean =>
   provider.status !== "error" &&
   provider.status !== "disabled";
 
-/** A new chat without its own choice uses saved Codex preferences, then an available Agent. */
+/**
+ * A new chat without its own choice starts on the remembered one while its Agent offers it; a
+ * switched-off model stays chosen so the Composer can say so. Otherwise it starts on that Agent's
+ * default model, then Codex's, then another available Agent's. Falling back never spends credit.
+ */
 export function defaultAgentRuntimeModelSelection(
   providers: readonly Provider[],
-  saved: AgentRuntimeCodexDefaults = {},
+  { remembered: choice, codexServiceTier, attended = false }: AgentRuntimeNewChatDefaults = {},
 ): ModelSelection | null {
-  const savedProvider = providers.find((provider) => provider.instanceId === "codex");
-  const savedModel = savedProvider?.models.find((model) => model.slug === saved.model);
-  if (savedModel?.policy?.on === false) return { instanceId: "codex", model: savedModel.slug };
+  const remembered =
+    choice && agentRuntimeModelSelection(choice.binding, choice.model, choice.options);
+  const starting = (
+    provider: Provider,
+    model: Provider["models"][number],
+    options?: ModelSelection["options"],
+  ): ModelSelection => {
+    const fitted = applyAgentRuntimeOptionIntent(
+      model.capabilities?.optionDescriptors ?? [],
+      options,
+      provider.instanceId === "codex" && codexServiceTier !== undefined
+        ? { serviceTier: codexServiceTier }
+        : {},
+    );
+    return {
+      instanceId: provider.instanceId,
+      model: model.slug,
+      ...(fitted.length ? { options: fitted } : {}),
+    };
+  };
+  const rememberedProvider = providers.find(
+    (provider) => provider.instanceId === remembered?.instanceId,
+  );
+  const rememberedModel = rememberedProvider?.models.find(
+    (model) => model.slug === remembered?.model,
+  );
+  if (
+    rememberedProvider &&
+    rememberedModel &&
+    (attended || !spendsNodexCredit(rememberedProvider)) &&
+    (rememberedModel.policy?.on === false || isAgentRuntimeProviderAvailable(rememberedProvider))
+  )
+    return starting(rememberedProvider, rememberedModel, remembered?.options);
   const available = providers
     .map((provider) => ({ ...provider, models: provider.models.filter(modelIsOn) }))
     .filter(
       (provider) =>
-        provider.source !== "nodex" &&
-        !isNodexProviderId(provider.instanceId) &&
+        !spendsNodexCredit(provider) &&
         isAgentRuntimeProviderAvailable(provider) &&
         provider.models.length > 0,
     );
-  const provider = available.find((entry) => entry.instanceId === "codex") ?? available[0];
+  const provider =
+    available.find((entry) => entry.instanceId === remembered?.instanceId) ??
+    available.find((entry) => entry.instanceId === "codex") ??
+    available[0];
   if (!provider) return null;
-  const model =
-    (provider.instanceId === "codex"
-      ? provider.models.find((entry) => entry.slug === saved.model)
-      : undefined) ??
-    provider.models.find((entry) => entry.isDefault) ??
-    provider.models[0]!;
-  const options =
-    provider.instanceId === "codex"
-      ? applyAgentRuntimeOptionIntent(model.capabilities?.optionDescriptors ?? [], undefined, {
-          ...(saved.reasoningEffort ? { reasoningEffort: saved.reasoningEffort } : {}),
-          ...(saved.serviceTier !== undefined ? { serviceTier: saved.serviceTier } : {}),
-        })
-      : [];
-  return {
-    instanceId: provider.instanceId,
-    model: model.slug,
-    ...(options.length ? { options } : {}),
-  };
+  return starting(
+    provider,
+    provider.models.find((entry) => entry.isDefault) ?? provider.models[0]!,
+  );
 }
 
 /** An explicit choice keeps its exact identity and options, or fails without choosing another. */

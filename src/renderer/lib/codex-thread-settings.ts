@@ -170,21 +170,20 @@ export function resolveCodexModelSelection(input: CodexModelSelectionInput): Cod
   };
 }
 
-function formatCodexModelLabelFromId(modelId: string): string {
-  return modelId
-    .split("-")
-    .filter((segment) => segment.length > 0)
-    .map((segment) => {
-      if (segment === "gpt") return "GPT";
-      if (/^[a-z][0-9].*$/.test(segment)) {
-        return `${segment[0]?.toUpperCase() ?? ""}${segment.slice(1)}`;
-      }
-      if (/^[a-z]+$/.test(segment)) {
-        return `${segment[0]?.toUpperCase() ?? ""}${segment.slice(1)}`;
-      }
-      return segment;
-    })
-    .join("-");
+/** `claude-opus-5-5` reads as `Claude Opus 5.5`; `gpt-6.1-sol` as `GPT-6.1 Sol`. */
+export function modelDisplayName(model: string): string {
+  const base = model
+    .replace(/^[a-z0-9-]+\//, "")
+    .replace(/\[[^\]]*\]$/, "")
+    .replace(/-\d{8}$/, "");
+  const words = base.split("-").map((word) => {
+    if (word === "gpt") return "GPT";
+    return /^[a-z]/.test(word) ? `${word[0]!.toUpperCase()}${word.slice(1)}` : word;
+  });
+  return words
+    .join(" ")
+    .replace(/^GPT /, "GPT-")
+    .replace(/(\d) (\d)/g, "$1.$2");
 }
 
 export function resolveCodexReasoningEffortOptions(
@@ -232,7 +231,7 @@ export function formatCodexModelLabel<Model extends Pick<AgentModelOption, "id" 
   const selectedModel = models.find((model) => model.id === modelId);
   const displayName = selectedModel?.displayName.trim();
   return formatAgentModelName(
-    displayName && displayName !== modelId ? displayName : formatCodexModelLabelFromId(modelId),
+    displayName && displayName !== modelId ? displayName : modelDisplayName(modelId),
   );
 }
 

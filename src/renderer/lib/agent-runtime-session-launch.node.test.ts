@@ -259,7 +259,14 @@ it("submits the selected model, effort, speed, planning mode and workspace throu
       projectId: "project",
       prompt: "Task",
       title: "Page section",
-      codexDefaults: { model: "selected", reasoningEffort: "high", serviceTier: "fast" },
+      newChatDefaults: {
+        remembered: {
+          binding: { kind: "codex" },
+          model: "selected",
+          options: [{ id: "reasoningEffort", value: "high" }],
+        },
+        codexServiceTier: "fast",
+      },
       interactionMode: "plan",
       runInTarget: "newWorktree",
       runInEnvironmentPath: "env/config",
