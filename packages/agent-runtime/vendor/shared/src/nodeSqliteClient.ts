@@ -7,6 +7,7 @@
 import * as NodeSqlite from "node:sqlite";
 import * as NodeUtil from "node:util";
 import * as NodeWorkerThreads from "node:worker_threads";
+import * as NodeZlib from "node:zlib";
 
 import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";
@@ -154,10 +155,21 @@ const hasLargeBinding = (params: ReadonlyArray<unknown>): boolean => {
   }
 };
 
+/**
+ * `zstd_text(blob)` reads text stored as a zstd frame. Writer and reader connections both define
+ * it (the reader's copy is in its inline source) so any statement can run on either.
+ */
+const defineStoredTextFunctions = (db: NodeSqlite.DatabaseSync) => {
+  db.function("zstd_text", { deterministic: true }, (value) =>
+    value === null ? null : NodeZlib.zstdDecompressSync(value as Uint8Array).toString("utf8"),
+  );
+};
+
 // Inline worker source also runs in bundles and single-executable builds without module files.
 const readerWorkerSource = `
 const { parentPort, workerData } = require("node:worker_threads");
 const { DatabaseSync } = require("node:sqlite");
+const { zstdDecompressSync } = require("node:zlib");
 let db;
 try {
   // A read-only open cannot be undone by SQL, unlike PRAGMA query_only.
@@ -165,6 +177,9 @@ try {
     readOnly: true,
     allowExtension: workerData.allowExtension,
   });
+  next.function("zstd_text", { deterministic: true }, (value) =>
+    value === null ? null : zstdDecompressSync(value).toString("utf8"),
+  );
   next.exec("PRAGMA busy_timeout = 5000;");
   // Without WAL a reader's shared lock blocks the writer's commits, so refuse.
   const mode = String(next.prepare("PRAGMA journal_mode").get().journal_mode).toLowerCase();
@@ -466,11 +481,14 @@ const make = Effect.fn("makeWithDatabase")(function* (
   const makeConnection = Effect.gen(function* () {
     const scope = yield* Effect.scope;
     const db = yield* Effect.try({
-      try: () =>
-        new NodeSqlite.DatabaseSync(options.filename, {
+      try: () => {
+        const opened = new NodeSqlite.DatabaseSync(options.filename, {
           readOnly: options.readonly ?? false,
           allowExtension: options.allowExtension ?? false,
-        }),
+        });
+        defineStoredTextFunctions(opened);
+        return opened;
+      },
       catch: (cause) =>
         new SqlError({
           reason: classifyError(cause, "Failed to open database", "open"),

@@ -422,7 +422,8 @@ reading all of its tasks. Task prompts, results, workflow bodies and delivery re
 stay out of public metadata snapshots and events. Child history and explicit item
 details provide those bodies. Long text appears as a bounded preview with a truncation
 marker; full copy and export use explicit full-item reads. A control envelope that
-cannot fit fails explicitly rather than exceeding the transport budget.
+cannot fit fails explicitly rather than exceeding the transport budget. History keeps at most
+256 KiB of one command's output: its start and its end, with a marker where the middle was cut.
 A window open long enough to fall behind the retained event tail reloads its conversation.
 
 Agent Session and Task reads share one independent metadata-only timeline window and canonical

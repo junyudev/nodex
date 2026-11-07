@@ -13,10 +13,11 @@ import {
   toolOutputImages,
   toolOutputIndicatesFailure,
 } from "@nodex/runtime-shared/toolOutput";
+import { MAX_STORED_COMMAND_OUTPUT_BYTES } from "./commandOutputStorage.ts";
 
 const MAX_DETAIL_STRING_BYTES = 32_768;
 const MAX_DYNAMIC_VALUE_BYTES = 16_384;
-const MAX_ON_DEMAND_BYTES = 256 * 1024;
+const MAX_ON_DEMAND_BYTES = MAX_STORED_COMMAND_OUTPUT_BYTES;
 const MAX_TIMELINE_TEXT_BYTES = 128 * 1024;
 // Clients do not preview a larger change inline, so it is withheld whole, never cut mid-hunk.
 const MAX_FILE_CHANGE_DIFF_BYTES = 256 * 1024;

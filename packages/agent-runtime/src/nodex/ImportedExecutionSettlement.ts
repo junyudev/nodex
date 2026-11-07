@@ -20,6 +20,7 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
+import { turnItemPayloadSql } from "../orchestration-v2/commandOutputStorage.ts";
 import * as EffectOutbox from "../orchestration-v2/EffectOutbox.ts";
 import { EventSinkV2, type EventSinkV2Error } from "../orchestration-v2/EventSink.ts";
 import { withoutRunRecovery } from "../orchestration-v2/RunRecovery.ts";
@@ -38,6 +39,7 @@ const forEachCopied = Effect.fnUntraced(function* <A>(
   where: string,
   schema: Schema.Codec<A, string>,
   visit: (value: A, threadId: ThreadId) => Effect.Effect<void, EventSinkV2Error | SqlError>,
+  payload = "payload_json",
 ) {
   const sql = yield* SqlClient.SqlClient;
   let after = 0;
@@ -47,7 +49,7 @@ const forEachCopied = Effect.fnUntraced(function* <A>(
       thread_id: string;
       payload_json: string;
     }>(
-      `SELECT rowid AS row_id, thread_id, payload_json FROM ${table}
+      `SELECT rowid AS row_id, thread_id, ${payload} AS payload_json FROM ${table}
        WHERE rowid > ? AND (${where}) ORDER BY rowid LIMIT 200`,
       [after],
     );
@@ -278,6 +280,7 @@ export const settle = Effect.fn("ImportedExecutionSettlement.settle")(function* 
           updatedAt: now,
         },
       }),
+    turnItemPayloadSql("orchestration_v2_projection_turn_items"),
   );
   yield* forEachCopied(
     "orchestration_v2_projection_messages",

@@ -22,6 +22,7 @@ import {
   PENDING_MESSAGE_DELIVERY_PREDICATE,
 } from "./MessageDelivery.ts";
 import { projectTurnItemForWire, projectThreadProjectionForWire } from "./WireProjection.ts";
+import { splitCommandOutput, turnItemPayloadSql } from "./commandOutputStorage.ts";
 import {
   isRestartNoteContinuation,
   pendingRestartCancelledBackgroundWork,
@@ -3965,7 +3966,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             break;
           }
           case "turn-item.updated": {
-            const payloadJson = yield* encodeTurnItemPayload(event.payload);
+            const stored = splitCommandOutput(event.payload);
+            const payloadJson = yield* encodeTurnItemPayload(stored.item);
             const payload = parseEncodedPayload(payloadJson);
             const historical = historicalMessage(event.payload);
             const historicalTextBytes =
@@ -3989,6 +3991,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 updated_at,
                 historical_text_bytes,
                 native_attachment_allowance,
+                output_zstd,
+                output_bytes,
                 payload_json
               )
               VALUES (
@@ -4005,6 +4009,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 ${stringField(payload, "updatedAt")},
                 ${historicalTextBytes},
                 ${nativeAttachmentAllowance},
+                ${stored.output?.zstd ?? null},
+                ${stored.output?.bytes ?? 0},
                 ${payloadJson}
               )
               ON CONFLICT(turn_item_id)
@@ -4021,6 +4027,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 updated_at = excluded.updated_at,
                 historical_text_bytes = excluded.historical_text_bytes,
                 native_attachment_allowance = excluded.native_attachment_allowance,
+                -- A snapshot without output never erases the output already stored.
+                output_zstd = COALESCE(excluded.output_zstd, output_zstd),
+                output_bytes = CASE WHEN excluded.output_zstd IS NULL THEN output_bytes
+                  ELSE excluded.output_bytes END,
                 payload_json = excluded.payload_json
             `;
             if (event.payload.type === "dynamic_tool" && event.payload.status === "completed") {
@@ -4313,8 +4323,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             ? []
             : window === undefined
               ? yield* sql<PayloadRow>`
-                SELECT payload_json
-                FROM orchestration_v2_projection_turn_items
+                SELECT ${sql.literal(turnItemPayloadSql("item"))} AS payload_json
+                FROM orchestration_v2_projection_turn_items AS item
                 WHERE thread_id = ${threadId}
                   ${filter?.turnItemTypes === undefined ? sql`` : sql`AND type IN (SELECT value FROM json_each(${encodeIdList(filter.turnItemTypes)}))`}
                   ${filter?.turnItemIds === undefined ? sql`` : sql`AND turn_item_id IN (SELECT value FROM json_each(${encodeIdList(filter.turnItemIds)}))`}
@@ -4426,7 +4436,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   LIMIT ${Math.min(window.rowLimit, THREAD_HISTORY_PAGE_POLICY.maxItems)}
                 ), costs AS (
                   SELECT candidates.*,
-                    length(CAST(CASE WHEN item.type = 'subagent'
+                    item.output_bytes + length(CAST(CASE WHEN item.type = 'subagent'
                       THEN json_set(json_remove(item.payload_json, '$.prompt', '$.result', '$.progress'), '$.prompt', '', '$.result', NULL)
                       ELSE item.payload_json END AS BLOB)) AS payload_bytes
                   FROM candidates
@@ -4460,7 +4470,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 -- rowid through selection to avoid a second string-key index lookup.
                 SELECT CASE WHEN item.type = 'subagent'
                   THEN json_set(json_remove(item.payload_json, '$.prompt', '$.result', '$.progress'), '$.prompt', '', '$.result', NULL)
-                  ELSE item.payload_json END AS payload_json
+                  ELSE ${sql.literal(turnItemPayloadSql("item"))} END AS payload_json
                 FROM retained
                 CROSS JOIN orchestration_v2_projection_turn_items AS item
                   ON item.rowid = retained.item_rowid
@@ -6357,7 +6367,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           WHEN 'user_message' THEN json_extract(items.payload_json, '$.text')
           WHEN 'assistant_message' THEN json_extract(items.payload_json, '$.text')
           WHEN 'command_execution' THEN 'Command: ' || json_extract(items.payload_json, '$.input') || char(10) ||
-            'Exit code: ' || COALESCE(json_extract(items.payload_json, '$.exitCode'), 'unknown') || char(10) || COALESCE(json_extract(items.payload_json, '$.output'), '')
+            'Exit code: ' || COALESCE(json_extract(items.payload_json, '$.exitCode'), 'unknown') || char(10) || COALESCE(zstd_text(items.output_zstd), '')
           WHEN 'error' THEN json_extract(items.payload_json, '$.failure.message')
           WHEN 'run_interrupt_result' THEN json_extract(items.payload_json, '$.message')
           WHEN 'file_change' THEN 'File change: ' || json_extract(items.payload_json, '$.fileName')
@@ -6899,7 +6909,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ORDER BY message.created_at ASC, message.message_id ASC
             `,
           sql<PayloadRow>`
-              SELECT item.payload_json FROM orchestration_v2_projection_turn_items AS item
+              SELECT ${sql.literal(turnItemPayloadSql("item"))} AS payload_json
+              FROM orchestration_v2_projection_turn_items AS item
               WHERE item.thread_id = ${threadId}
                 AND item.status IN ('pending', 'running', 'waiting')
                 AND (
@@ -8112,8 +8123,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       );
 
     const getTurnItem: ProjectionStoreV2Shape["getTurnItem"] = ({ threadId, itemId }) =>
-      sql<{ payload_json: string }>`SELECT payload_json
-        FROM orchestration_v2_projection_turn_items
+      sql<{
+        payload_json: string;
+      }>`SELECT ${sql.literal(turnItemPayloadSql("item"))} AS payload_json
+        FROM orchestration_v2_projection_turn_items AS item
         WHERE turn_item_id = ${itemId} AND thread_id = ${threadId}`.pipe(
         Effect.flatMap((rows) =>
           rows[0] === undefined
@@ -8154,7 +8167,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 readonly sender_thread_id: string | null;
               }
             >`${lineage}
-          SELECT item.payload_json, source.local,
+          SELECT ${sql.literal(turnItemPayloadSql("item"))} AS payload_json, source.local,
             json_extract(item.payload_json, '$.messageId') AS message_id,
             COALESCE(json_extract(message.payload_json, '$.createdBy'), json_extract(item.payload_json, '$.createdBy')) AS created_by,
             COALESCE(json_extract(message.payload_json, '$.creationSource'), json_extract(item.payload_json, '$.creationSource')) AS creation_source,
@@ -8857,7 +8870,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     item: row.synthetic,
                   };
                 const payloads =
-                  yield* sql<PayloadRow>`SELECT payload_json FROM orchestration_v2_projection_turn_items
+                  yield* sql<PayloadRow>`SELECT ${sql.literal(turnItemPayloadSql("item"))} AS payload_json
+          FROM orchestration_v2_projection_turn_items AS item
           WHERE thread_id = ${row.sourceThreadId} AND turn_item_id = ${row.sourceItemId}`;
                 const decoded = yield* decodeRows(
                   decodeTurnItemPayload,
@@ -9288,7 +9302,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
     const selectShellPendingTurnItemRows = (threadIds?: ReadonlyArray<ThreadId>) =>
       threadIds === undefined
         ? sql<PayloadRow & { readonly thread_id: string }>`
-            SELECT i.thread_id, i.payload_json
+            SELECT i.thread_id, ${sql.literal(turnItemPayloadSql("i"))} AS payload_json
             FROM orchestration_v2_projection_turn_items i
             LEFT JOIN orchestration_v2_projection_runs r
               ON r.run_id = i.run_id
@@ -9300,7 +9314,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               AND (i.run_id IS NULL OR r.status <> 'rolled_back')
           `
         : sql<PayloadRow & { readonly thread_id: string }>`
-            SELECT i.thread_id, i.payload_json
+            SELECT i.thread_id, ${sql.literal(turnItemPayloadSql("i"))} AS payload_json
             FROM orchestration_v2_projection_turn_items i
             LEFT JOIN orchestration_v2_projection_runs r
               ON r.run_id = i.run_id

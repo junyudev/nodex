@@ -1,4 +1,5 @@
 import * as NodeSqlite from "node:sqlite";
+import * as NodeZlib from "node:zlib";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -97,6 +98,29 @@ const makeTempDatabase = Effect.gen(function* () {
   });
   return { filename, other };
 });
+
+it.effect("reads stored text on both the writer and the reader connection", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const directory = yield* fs.makeTempDirectoryScoped();
+    const filename = path.join(directory, "stored-text.sqlite");
+    const text = `日本語 \u0000 ${"line\n".repeat(64)}`;
+    yield* Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`PRAGMA journal_mode = WAL`;
+      yield* sql`CREATE TABLE stored(value BLOB)`;
+      yield* sql`INSERT INTO stored VALUES (${NodeZlib.zstdCompressSync(Buffer.from(text))}), (NULL)`;
+      const read = sql<{ readonly text: string | null }>`
+        SELECT zstd_text(value) AS text FROM stored ORDER BY rowid`;
+      for (const rows of [yield* read, yield* SqliteClient.readOnly(read)])
+        assert.deepEqual(
+          rows.map((row) => row.text),
+          [text, null],
+        );
+    }).pipe(Effect.provide(SqliteClient.layer({ filename, readerWorker: true })));
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
 
 it.effect("keeps another connection from committing between a transaction's read and write", () =>
   Effect.gen(function* () {
