@@ -3,6 +3,7 @@ import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 
@@ -15,6 +16,27 @@ const make = (maxItems = 2, maxBytes = 8) =>
   });
 
 describe("bounded native intake", () => {
+  it.effect("bounds parked SDK frames by bytes while other parked items keep their count", () =>
+    Effect.gen(function* () {
+      const queue = yield* make();
+      const parked: Array<string> = [];
+      BoundedQueue.pushSdkUnsafe(queue, parked, ...Array.from({ length: 1_000 }, () => "frame"));
+      assert.lengthOf(parked, 1_000);
+      BoundedQueue.pushSdkUnsafe(queue, parked, "a".repeat(BoundedQueue.MAX_PROMPT_BYTES));
+      assert.lengthOf(parked, 0, "an overflow releases what the array held");
+      const failure = yield* BoundedQueue.failure(queue);
+      assert.isTrue(BoundedQueue.isOverflow(Option.getOrThrow(failure)));
+      assert.notInclude(Option.getOrThrow(failure).message, "items");
+
+      const counted = yield* make();
+      const held: Array<string> = [];
+      BoundedQueue.pushUnsafe(counted, held, "1", "2");
+      assert.lengthOf(held, 2);
+      BoundedQueue.pushUnsafe(counted, held, "3");
+      assert.lengthOf(held, 0);
+      assert.include(Option.getOrThrow(yield* BoundedQueue.failure(counted)).message, "2 items");
+    }),
+  );
   it.effect(
     "rejects flood without suspending producers and clears accepted bodies on failure",
     () =>

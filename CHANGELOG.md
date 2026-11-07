@@ -35,6 +35,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Claude Code chats no longer stop partway through a long tool call. A long script or file could end the reply and kill the command it was running; how much an Agent streams can no longer end a reply.
 - Long chats no longer use more memory the longer an Agent runs. A Turn with thousands of messages or file changes now holds only its most recent work in memory, even while it runs and when you are looking elsewhere, and earlier work loads back as you scroll up.
 - Settings → Data controls now lists every archived chat. Most archived chats used to be missing from it, so they couldn't be found or restored there, and restoring some of the ones it did list failed.
 - Searching your chats and reading one from another Agent now shows only what you wrote. Page references, selected text and app data sent with a message used to appear there as raw links.

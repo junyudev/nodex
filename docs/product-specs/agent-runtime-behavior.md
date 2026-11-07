@@ -104,7 +104,9 @@ handling of one chat's output, such as falling behind a burst of events, a messa
 large to keep or a failed write, makes only that chat's reply reattach and reconcile; it
 never stops the process serving the others. When a shared process does stop, every reply
 it served recovers on its own as described below, and each failure keeps the reason the
-process ended for Copy diagnostics.
+process ended for Copy diagnostics. How much an Agent streams is never a failure by itself:
+Nodex keeps only the streamed output it reads and limits what it holds by size, so a long
+tool call cannot end a reply however many fragments it arrives in.
 
 Agents retry their own requests first. Nodex shows their reported cause, attempt, limit
 and next attempt time in the shared

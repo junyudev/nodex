@@ -910,7 +910,7 @@ export const layerQueryRunner: Layer.Layer<
 
         const messages = yield* BoundedQueue.make<SDKMessage, ClaudeAgentSdkQueryRunnerError>({
           label: "Claude SDK raw messages",
-          maxBytes: BoundedQueue.MAX_PROMPT_BYTES,
+          ...BoundedQueue.SDK_FRAME_BUDGET,
           mapOverflow: (cause) => queryRunnerError(cause, "message.admission"),
         });
         // Drain the SDK independently of application consumers: its own iterator
@@ -919,6 +919,7 @@ export const layerQueryRunner: Layer.Layer<
           claudeQueryMessages(queryRuntime),
           (cause) => queryRunnerError(cause, "fromAsyncIterable"),
         ).pipe(
+          Stream.filter(isClaudeFrameConsumed),
           Stream.runForEach((message) =>
             BoundedQueue.offer(messages, message).pipe(
               Effect.flatMap((accepted) =>
@@ -2822,6 +2823,17 @@ function terminalStatusFromResult(
 function isClaudeActiveSteeringAbortResult(message: SDKResultMessage): boolean {
   return (
     message.terminal_reason === "aborted_streaming" || message.terminal_reason === "aborted_tools"
+  );
+}
+
+// Claude streams every content delta as its own frame, and one long tool call
+// bursts thousands of them the moment its input is complete. Text and tool input
+// are read from the finished assistant frame, so only thinking deltas have a reader.
+function isClaudeFrameConsumed(message: SDKMessage): boolean {
+  return (
+    message.type !== "stream_event" ||
+    message.event.type !== "content_block_delta" ||
+    message.event.delta.type === "thinking_delta"
   );
 }
 

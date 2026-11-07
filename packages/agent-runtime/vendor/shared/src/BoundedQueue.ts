@@ -12,6 +12,14 @@ export const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 // A 20 MiB image payload expands to about 28 MiB when native prompts encode it as base64.
 export const MAX_PROMPT_BYTES = 32 * 1024 * 1024;
 export const MAX_FRAME_BYTES = DEFAULT_MAX_BYTES;
+/**
+ * Agent SDK frames are tiny and the Agent decides how many there are: one long
+ * model output streams thousands within moments. Only their bytes bound memory.
+ */
+export const SDK_FRAME_BUDGET = {
+  maxItems: Number.POSITIVE_INFINITY,
+  maxBytes: MAX_PROMPT_BYTES,
+} as const;
 const encoder = new TextEncoder();
 
 export class BufferOverflow extends Schema.TaggedError<BufferOverflow>()("BufferOverflow", {
@@ -20,7 +28,8 @@ export class BufferOverflow extends Schema.TaggedError<BufferOverflow>()("Buffer
   maxBytes: Schema.Number,
 }) {
   override get message() {
-    return `${this.label} exceeded its retained message budget (${this.maxItems} items / ${this.maxBytes} bytes).`;
+    const items = Number.isFinite(this.maxItems) ? `${this.maxItems} items / ` : "";
+    return `${this.label} exceeded its retained message budget (${items}${this.maxBytes} bytes).`;
   }
 }
 
@@ -179,7 +188,7 @@ const appendWithinBudget = <A, E, B>(
   self: BoundedQueue<A, E>,
   current: ReadonlyArray<B>,
   values: ReadonlyArray<B>,
-  maxBytes: number,
+  budget: { readonly maxItems: number; readonly maxBytes: number },
 ): Array<B> => {
   if (Option.isSome(self.failure) || self.queue.state._tag !== "Open") return [];
   const cached = retainedWeights.get(current);
@@ -191,12 +200,16 @@ const appendWithinBudget = <A, E, B>(
     overflowUnsafe(self);
     return [];
   }
-  if (current.length + values.length > self.maxItems || bytes > maxBytes) {
+  if (current.length + values.length > budget.maxItems || bytes > budget.maxBytes) {
     failCauseUnsafe(
       self,
       Cause.fail(
         self.mapOverflow(
-          new BufferOverflow({ label: self.label, maxItems: self.maxItems, maxBytes }),
+          new BufferOverflow({
+            label: self.label,
+            maxItems: budget.maxItems,
+            maxBytes: budget.maxBytes,
+          }),
         ),
       ),
     );
@@ -211,7 +224,7 @@ export const appendUnsafe = <A, E, B>(
   self: BoundedQueue<A, E>,
   current: ReadonlyArray<B>,
   ...values: ReadonlyArray<B>
-): Array<B> => appendWithinBudget(self, current, values, self.maxBytes);
+): Array<B> => appendWithinBudget(self, current, values, self);
 
 /** Reject an unfinished native frame before JSON parsing or concatenation. */
 export const assertFrameSize = (bytes: number, label: string, maxBytes = MAX_FRAME_BYTES): void => {
@@ -261,16 +274,23 @@ export const broadcast = <A, E>(options: Parameters<typeof make<A, E>>[0]) =>
     };
   });
 
+/** Updates an array parked in place; a rejected append releases what it held. */
+const replaceRetained = <B>(
+  current: Array<B>,
+  values: ReadonlyArray<B>,
+  next: ReadonlyArray<B>,
+): void => {
+  if (next.length === 0) current.length = 0;
+  else current.push(...values);
+  const cached = retainedWeights.get(next);
+  if (cached !== undefined) retainedWeights.set(current, cached);
+};
+
 export const pushUnsafe = <A, E, B>(
   self: BoundedQueue<A, E>,
   current: Array<B>,
   ...values: ReadonlyArray<B>
-): void => {
-  const next = appendUnsafe(self, current, ...values);
-  current.splice(0, current.length, ...next);
-  const cached = retainedWeights.get(next);
-  if (cached !== undefined) retainedWeights.set(current, cached);
-};
+): void => replaceRetained(current, values, appendUnsafe(self, current, ...values));
 
 /** Terminal transport failure can preserve an already admitted valid prefix. */
 export const failAfterDrain = <A, E>(self: BoundedQueue<A, E>, error: E): Effect.Effect<void> =>
@@ -296,14 +316,9 @@ export const appendSdkUnsafe = <A, E, B>(
   self: BoundedQueue<A, E>,
   current: ReadonlyArray<B>,
   ...values: ReadonlyArray<B>
-): Array<B> => appendWithinBudget(self, current, values, MAX_PROMPT_BYTES);
+): Array<B> => appendWithinBudget(self, current, values, SDK_FRAME_BUDGET);
 export const pushSdkUnsafe = <A, E, B>(
   self: BoundedQueue<A, E>,
   current: Array<B>,
   ...values: ReadonlyArray<B>
-): void => {
-  const next = appendSdkUnsafe(self, current, ...values);
-  current.splice(0, current.length, ...next);
-  const cached = retainedWeights.get(next);
-  if (cached !== undefined) retainedWeights.set(current, cached);
-};
+): void => replaceRetained(current, values, appendSdkUnsafe(self, current, ...values));

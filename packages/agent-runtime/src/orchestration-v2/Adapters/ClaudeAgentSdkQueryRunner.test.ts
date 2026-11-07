@@ -145,7 +145,10 @@ it.effect(
         };
         const original = yield* runner.open(input);
         yield* Deferred.await(closed);
-        assert.equal(produced, BoundedQueue.DEFAULT_MAX_ITEMS + 1);
+        assert.equal(
+          produced,
+          Math.floor(BoundedQueue.MAX_PROMPT_BYTES / BoundedQueue.encodedBytes(message)) + 1,
+        );
         const exit = yield* Effect.exit(original.messages.pipe(Stream.runCollect));
         assert.isTrue(Exit.isFailure(exit));
         if (Exit.isFailure(exit))
@@ -277,4 +280,102 @@ it.live("ends its messages when closed while the CLI is idle", () =>
       ),
     );
   }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+const claudeFrames = (frames: ReadonlyArray<ClaudeSdk.SDKMessage>) => {
+  let index = 0;
+  const query = {
+    next: async () =>
+      index < frames.length
+        ? { done: false as const, value: frames[index++] }
+        : new Promise<never>(() => {}),
+    return: async () => ({ done: true as const, value: undefined }),
+    close: () => {},
+  } as unknown as ClaudeSdk.Query;
+  return { query, drained: () => index === frames.length };
+};
+const contentDelta = (delta: Record<string, unknown>) =>
+  ({
+    type: "stream_event",
+    event: { type: "content_block_delta", index: 0, delta },
+    parent_tool_use_id: null,
+    session_id: "native-burst",
+    uuid: crypto.randomUUID(),
+  }) as unknown as ClaudeSdk.SDKMessage;
+const openBurstSession = (threadId: string) =>
+  Effect.gen(function* () {
+    const runner = yield* ClaudeAgentSdkQueryRunner;
+    return yield* runner.open({
+      threadId: ThreadId.make(threadId),
+      providerSessionId: ProviderSessionId.make(`session-${threadId}`),
+      options: {
+        sessionId: "native-burst",
+        model: "claude-sonnet-4-6",
+        tools: [],
+        permissionMode: "bypassPermissions",
+      },
+    });
+  });
+const withQueryRunner = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  effect.pipe(
+    Effect.provide(
+      layerQueryRunner.pipe(
+        Layer.provide(
+          Layer.succeed(ProviderEventLoggers, { native: undefined, canonical: undefined }),
+        ),
+      ),
+    ),
+    Effect.provide(NodeServices.layer),
+  );
+
+it.live("keeps every frame Nodex reads through a burst it has not consumed yet", () =>
+  withQueryRunner(
+    Effect.gen(function* () {
+      const thinking = Array.from({ length: 2_000 }, () =>
+        contentDelta({ type: "thinking_delta", thinking: "t" }),
+      );
+      const toolInput = Array.from({ length: 5_000 }, () =>
+        contentDelta({ type: "input_json_delta", partial_json: "x" }),
+      );
+      const assistant = {
+        type: "assistant",
+        message: { role: "assistant", content: [] },
+        parent_tool_use_id: null,
+        session_id: "native-burst",
+        uuid: crypto.randomUUID(),
+      } as unknown as ClaudeSdk.SDKMessage;
+      const sdk = claudeFrames([...thinking, ...toolInput, assistant]);
+      const query = vi.spyOn(ClaudeSdk, "query").mockReturnValue(sdk.query);
+      yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
+      const session = yield* openBurstSession("thread-burst");
+      // Nothing reads the session until the SDK has handed over its whole burst.
+      yield* Effect.sleep("1 millis").pipe(Effect.repeat({ until: sdk.drained }));
+      const received = yield* session.messages.pipe(
+        Stream.take(thinking.length + 1),
+        Stream.runCollect,
+      );
+      assert.deepEqual(received, [...thinking, assistant]);
+      yield* session.close;
+    }),
+  ),
+);
+
+it.live("fails a backlog only once its retained bytes exceed the budget", () =>
+  withQueryRunner(
+    Effect.gen(function* () {
+      const large = () =>
+        contentDelta({
+          type: "thinking_delta",
+          thinking: "t".repeat(BoundedQueue.MAX_PROMPT_BYTES / 2 + 1),
+        });
+      const sdk = claudeFrames([large(), large()]);
+      const query = vi.spyOn(ClaudeSdk, "query").mockReturnValue(sdk.query);
+      yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
+      const session = yield* openBurstSession("thread-backlog");
+      yield* Effect.sleep("1 millis").pipe(Effect.repeat({ until: sdk.drained }));
+      const exit = yield* session.messages.pipe(Stream.runDrain, Effect.exit);
+      assert.isTrue(Exit.isFailure(exit));
+      if (Exit.isFailure(exit)) assert.isTrue(BoundedQueue.isOverflow(Cause.squash(exit.cause)));
+    }),
+  ),
 );
