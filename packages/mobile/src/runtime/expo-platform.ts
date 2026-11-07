@@ -1,11 +1,20 @@
-import { nativeApplicationVersion } from "expo-application";
+import { PUSH_RELAY_ORIGIN, type RelayDeviceRequest } from "@nodex/mobile-protocol";
+import {
+  ApplicationReleaseType,
+  applicationId,
+  getIosApplicationReleaseTypeAsync,
+  getIosPushNotificationServiceEnvironmentAsync,
+  nativeApplicationVersion,
+} from "expo-application";
+import Constants from "expo-constants";
 import { getRandomValues } from "expo-crypto";
 import { Directory, File, FileMode, Paths } from "expo-file-system";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
+import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 import Storage from "expo-sqlite/kv-store";
 import { AppState, Platform } from "react-native";
-import type { MobilePlatform, MobileSocket } from "./platform";
+import type { MobilePlatform, MobilePush, MobileSocket, PushPermission } from "./platform";
 
 function openSocket(route: string): MobileSocket {
   const socket = new WebSocket(route);
@@ -33,8 +42,78 @@ function openSocket(route: string): MobileSocket {
   };
 }
 
+const permissionOf = ({ status }: { readonly status: string }): PushPermission =>
+  status === "granted" || status === "denied" ? status : "undetermined";
+
+const registerAddress = async (request: RelayDeviceRequest): Promise<string> => {
+  const response = await fetch(`${PUSH_RELAY_ORIGIN}/v1/devices`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) throw new Error(`The relay answered ${response.status}.`);
+  const { handle } = (await response.json()) as { readonly handle?: unknown };
+  if (typeof handle !== "string") throw new Error("The relay gave no handle.");
+  return handle;
+};
+
+const clearDelivered = async (sessionId: string): Promise<void> => {
+  const presented = await Notifications.getPresentedNotificationsAsync();
+  await Promise.all(
+    presented
+      .filter(({ request }) => {
+        const { trigger } = request;
+        return trigger && "payload" in trigger && trigger.payload?.sessionId === sessionId;
+      })
+      .map(({ request }) => Notifications.dismissNotificationAsync(request.identifier)),
+  );
+};
+
+/**
+ * Which of Apple's services delivers to this build, or null on a simulator. TestFlight and App Store
+ * builds have no provisioning profile to read, and they always use production.
+ */
+const pushEnvironment = async (): Promise<"sandbox" | "production" | null> => {
+  const release = await getIosApplicationReleaseTypeAsync();
+  if (release === ApplicationReleaseType.SIMULATOR) return null;
+  if (release === ApplicationReleaseType.APP_STORE) return "production";
+  return (await getIosPushNotificationServiceEnvironmentAsync()) === "development"
+    ? "sandbox"
+    : "production";
+};
+
+const makePush = (): MobilePush | null => {
+  const group: unknown = Constants.expoConfig?.extra?.pushKeychainGroup;
+  if (Platform.OS !== "ios" || typeof group !== "string" || !applicationId) return null;
+  // The Notification Service Extension reads exactly this item, even while the phone is locked.
+  const keychain = {
+    keychainService: "nodex-push",
+    accessGroup: group,
+    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+  };
+  return {
+    bundleId: applicationId,
+    permission: () => Notifications.getPermissionsAsync().then(permissionOf),
+    requestPermission: () =>
+      Notifications.requestPermissionsAsync({
+        ios: { allowAlert: true, allowSound: true, allowBadge: false },
+      }).then(permissionOf),
+    address: async () => {
+      const environment = await pushEnvironment();
+      if (!environment) return null;
+      const { data } = await Notifications.getDevicePushTokenAsync();
+      return { token: String(data), environment };
+    },
+    readKey: () => SecureStore.getItem("push-key", keychain),
+    writeKey: (key) => SecureStore.setItemAsync("push-key", key, keychain),
+    registerAddress,
+    clearDelivered,
+  };
+};
+
 export const mobilePlatform: MobilePlatform = {
   deviceName: Platform.OS === "ios" ? "iPhone" : "Android phone",
+  push: makePush(),
   platform: Platform.OS === "ios" ? "ios" : "android",
   appVersion: nativeApplicationVersion ?? "unknown",
   storage: {

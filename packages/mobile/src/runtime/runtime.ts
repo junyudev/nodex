@@ -5,6 +5,7 @@ import type {
   InboxScope,
   MobileMethod,
   MobileParams,
+  PushPreferences,
 } from "@nodex/mobile-protocol";
 import * as Clock from "effect/Clock";
 import * as Cause from "effect/Cause";
@@ -22,6 +23,7 @@ import { Connection, makeConnection } from "./connection";
 import { Files, makeFileCache } from "./files";
 import { Lists, makeLists, type ChatListInput } from "./lists";
 import { mintId, retryOperation } from "./operations";
+import { makeNotifications } from "./notifications";
 import { Outbox, makeOutbox } from "./outbox";
 import {
   adaptPlatform,
@@ -55,6 +57,7 @@ const makeApplication = Effect.gen(function* () {
     Effect.provideService(Files, files),
     Effect.provideService(Lists, lists),
   );
+  const notifications = yield* makeNotifications.pipe(withConnection);
   const preferences = new Map<string | null, Projection<Preferences>>();
   function getPreferences(hostId: string | null) {
     const existing = preferences.get(hostId);
@@ -89,12 +92,14 @@ const makeApplication = Effect.gen(function* () {
     lists,
     files,
     chats,
+    notifications,
     getPreferences,
     setPreferences: (hostId: string | null, patch: Partial<Preferences>) =>
       hostId && connection.activeHostId() === hostId
         ? storePreferences(hostId, patch)
         : Effect.void,
     forgetHost: Effect.fnUntraced(function* (hostId: string) {
+      if (connection.activeHostId() === hostId) yield* notifications.stopTellingDesktop;
       yield* connection.forgetHost(hostId);
       yield* outbox.forgetHost(hostId);
       yield* lists.forgetHost(hostId);
@@ -333,6 +338,19 @@ export function createMobileRuntime(
         })),
       markChatRead: (sessionId: string) => {
         managed.runFork(chats.markChatRead(sessionId));
+      },
+    },
+    notifications: {
+      state: app.notifications.state,
+      enable: () => promise(app.notifications.enable),
+      retry: () => promise(app.notifications.retry),
+      setPreferences: (patch: Partial<PushPreferences>) =>
+        promise(app.notifications.setPreferences(patch)),
+      dismissOffer: () => {
+        sync(app.notifications.dismissOffer);
+      },
+      clearDelivered: (sessionId: string) => {
+        managed.runFork(app.notifications.clearDelivered(sessionId));
       },
     },
     getPreferences: app.getPreferences,

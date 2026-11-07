@@ -12,6 +12,10 @@ export function useHosts() {
   return useAtomValue(getRuntime().connection.hosts.atom);
 }
 
+export function useNotifications() {
+  return useAtomValue(getRuntime().notifications.state.atom);
+}
+
 function useHostId() {
   return useAtomValue(getRuntime().connection.hosts.atom, (state) => state.activeHostId);
 }

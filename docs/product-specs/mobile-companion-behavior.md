@@ -119,9 +119,34 @@ line whose placeholder names where a message goes. In use it opens to show its p
 - A connected conversation only its desktop owner can continue is readable, and says so in place of
   the Composer. A question that asks for a secret is answered on the desktop, and the chat says so.
 
+## Notifications
+
+- On iOS, a paired phone can receive notifications while Nodex Mobile is away or closed. The desktop
+  must be on with Nodex open and Mobile access enabled. Notifications do not require a direct network
+  connection from the phone to the desktop.
+- A new approval or question sends an attention notification with the chat title and what is being
+  asked. These notifications are time-sensitive. A request for a secret says to answer on the desktop
+  and never includes the question.
+- A completed Run sends the start of its last assistant reply, or “Finished” when there is none.
+  A failed Run says “Run failed”. Stopping a Run does not send a notification. Child and background
+  work that is absent from the chat list does not notify independently.
+- Notifications are sent only while the phone has no live foreground connection. Settings on the
+  phone has separate switches for when a chat needs you and when it finishes, and a running chat offers
+  them once. Settings > Mobile on the desktop shows whether they are on beside that phone's details.
+- A phone that cannot register says why in Settings and offers a retry. It tries again by itself on
+  each connection.
+- Tapping a notification opens its chat, on the desktop that sent it. Opening a chat clears its
+  notifications, and one chat's notifications group together.
+- A request or Run notifies each phone at most once. Existing state when the gateway starts is quiet;
+  restarting the desktop does not replay notifications. Delivery is best effort, with a short bounded
+  retry for temporary relay failures.
+- Notification text is encrypted for the phone before it leaves the desktop. The push relay routes
+  it to Apple's notification service; it cannot read the chat title, message or chat identity. Removing
+  a phone also removes its notification registration. If the phone cannot open one, it shows a generic
+  alert instead of losing it. Android notifications are not supported yet.
+
 ## Limits
 
 - The desktop must be running with Nodex open. A sleeping or closed computer reads as unreachable.
-- Notifications are not delivered while the app is closed, since that needs a service between phone
-  and desktop.
+- Notifications currently require iOS. A sleeping desktop cannot send them.
 - The app does not browse the Library or edit Pages.

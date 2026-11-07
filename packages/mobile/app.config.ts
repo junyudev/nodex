@@ -35,6 +35,10 @@ export default {
     icon: "./assets/app-icon.icon",
     bundleIdentifier: identifier,
     appleTeamId: process.env.APPLE_TEAM_ID,
+    entitlements: {
+      // An approval holds a Run until answered, so it may break through Focus.
+      "com.apple.developer.usernotifications.time-sensitive": true,
+    },
     infoPlist: {
       NSLocalNetworkUsageDescription:
         "Allow Nodex to connect to your desktop on the local network.",
@@ -52,6 +56,8 @@ export default {
     },
   },
   plugins: [
+    // Xcode mods run in reverse order; copy the app's final build settings after the other plugins.
+    "./plugins/withNotificationDecryption.cjs",
     "./plugins/withAndroidCleartext.cjs",
     [
       "expo-build-properties",
@@ -86,6 +92,12 @@ export default {
       },
     ],
     ["expo-secure-store", { faceIDPermission: false }],
+    ["expo-notifications", { mode: variant === "development" ? "development" : "production" }],
   ],
   experiments: { onDemandFilesystem: true },
+  extra: {
+    pushKeychainGroup: process.env.APPLE_TEAM_ID
+      ? `${process.env.APPLE_TEAM_ID}.${identifier}.push`
+      : null,
+  },
 } satisfies ExpoConfig;

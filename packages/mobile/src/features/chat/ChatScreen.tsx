@@ -7,7 +7,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Markdown } from "../../markdown/Markdown";
 import type { ScreenProps } from "../../navigation/types";
 import { useRootNavigation } from "../../navigation/types";
-import { useChat, useFileUri, type LocalImage } from "../../runtime";
+import {
+  clearChatNotifications,
+  dismissNotificationOffer,
+  enableNotifications,
+  useChat,
+  useFileUri,
+  useNotifications,
+  type LocalImage,
+} from "../../runtime";
 import { Icon, type IconName } from "../../ui/icons";
 import { BottomAnchoredList } from "../../ui/BottomAnchoredList";
 import { ComposerLayout } from "../../ui/ComposerLayout";
@@ -160,6 +168,31 @@ const WorkRow = ({
   );
 };
 
+/**
+ * The moment notifications matter is while something is running, so that is where they are offered,
+ * once. Settings has them from then on.
+ */
+const NotificationOffer = () => {
+  const { available, permission, offerDismissed } = useNotifications();
+  if (!available || permission !== "undetermined" || offerDismissed) return null;
+  return (
+    <FloatingNote
+      icon="bell"
+      text="Hear when this needs you or finishes"
+      action={
+        <View className="flex-row items-center gap-3">
+          <Tap hitSlop={8} onPress={() => void enableNotifications()}>
+            <Txt className="text-sm font-medium">Turn on</Txt>
+          </Tap>
+          <Tap accessibilityLabel="Not now" hitSlop={8} onPress={dismissNotificationOffer}>
+            <Icon name="close" size={15} color="ink-3" />
+          </Tap>
+        </View>
+      }
+    />
+  );
+};
+
 const Row = ({ row, sessionId }: { readonly row: TranscriptRow; readonly sessionId: string }) => {
   switch (row.type) {
     case "user":
@@ -189,6 +222,8 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
   const [sentCount, setSentCount] = useState(0);
   const title = chat?.title ?? route.params.title ?? "";
   const subtitle = [chat?.projectName, chat?.state.agentLabel].filter(Boolean).join(" · ");
+
+  useEffect(() => clearChatNotifications(sessionId), [sessionId]);
 
   useEffect(() => {
     navigation.setOptions({
@@ -254,6 +289,7 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
               text="Waiting for an answer on your desktop."
             />
           ) : null}
+          {chat.state.status === "running" ? <NotificationOffer /> : null}
           {chat.state.queuedCount > 0 ? (
             <FloatingNote
               icon="clock"

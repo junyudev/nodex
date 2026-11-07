@@ -1,9 +1,10 @@
-import type { InboxDecision } from "@nodex/mobile-protocol";
+import type { InboxDecision, PushPreferences } from "@nodex/mobile-protocol";
 import { getRuntime } from "./instance";
 import type { MobileRuntime } from "./runtime";
 
 export type { ConnectionState, SavedHost } from "./connection";
 export type { InboxRow } from "./lists";
+export type { NotificationProblem } from "./notifications";
 export type { PendingCapture } from "./outbox";
 export type { LocalImage } from "./platform";
 export {
@@ -16,7 +17,16 @@ export {
   useChats,
   useChat,
   useFileUri,
+  useNotifications,
 } from "./hooks";
+
+export const enableNotifications = () => getRuntime().notifications.enable();
+export const retryNotifications = () => getRuntime().notifications.retry();
+export const setNotificationPreferences = (patch: Partial<PushPreferences>) =>
+  getRuntime().notifications.setPreferences(patch);
+export const dismissNotificationOffer = () => getRuntime().notifications.dismissOffer();
+export const clearChatNotifications = (sessionId: string) =>
+  getRuntime().notifications.clearDelivered(sessionId);
 
 export const pairWithUri = (uri: string) => getRuntime().connection.pairWithUri(uri);
 export const activateHost = (hostId: string) => getRuntime().connection.activateHost(hostId);

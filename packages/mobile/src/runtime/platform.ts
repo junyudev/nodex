@@ -1,3 +1,4 @@
+import type { RelayDeviceRequest } from "@nodex/mobile-protocol";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
@@ -27,6 +28,24 @@ export interface MobileSocket {
   close(): void;
 }
 
+export type PushPermission = "granted" | "denied" | "undetermined";
+
+/** The system's notifications, on a phone that can receive them from a desktop. */
+export interface MobilePush {
+  bundleId: string;
+  permission(): Promise<PushPermission>;
+  requestPermission(): Promise<PushPermission>;
+  /** Where the system delivers to this phone; null where it cannot, such as a simulator. */
+  address(): Promise<{ token: string; environment: "sandbox" | "production" } | null>;
+  /** The key that opens notifications, kept where the phone's notification extension can read it. */
+  readKey(): string | null;
+  writeKey(key: string): Promise<void>;
+  /** Exchanges an address for the relay's opaque handle. */
+  registerAddress(request: RelayDeviceRequest): Promise<string>;
+  /** Takes one chat's notifications out of Notification Center. */
+  clearDelivered(sessionId: string): Promise<void>;
+}
+
 export interface MobilePlatform {
   deviceName: string;
   platform: "ios" | "android";
@@ -51,6 +70,7 @@ export interface MobilePlatform {
   /** Returns an app-owned temporary image, or the original URI if no copy was needed. */
   compressImage(image: LocalImage, longestSide: number, quality: number): Promise<LocalImage>;
   randomBytes(length: number): Uint8Array;
+  push: MobilePush | null;
   now(): number;
   schedule(callback: () => void, milliseconds: number): () => void;
   socket(route: string): MobileSocket;

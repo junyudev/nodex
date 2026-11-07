@@ -25,7 +25,8 @@ import {
   ScopePickerScreen,
 } from "../features/pickers/PickerScreens";
 import { SettingsScreen } from "../features/settings/SettingsScreen";
-import { useHosts } from "../runtime";
+import { activateHost, useHosts } from "../runtime";
+import { useNotificationRouting } from "../features/notifications/notification-routing";
 import { LIQUID_GLASS } from "../ui/glass";
 import { IconButton } from "../ui/primitives";
 import { useColor } from "../ui/tokens";
@@ -77,6 +78,10 @@ export const RootNavigator = () => {
   const [ready, setReady] = useState(false);
   const paired = hosts.length > 0;
   useIncomingPairing(ready);
+  useNotificationRouting(ready && paired, ({ sessionId, hostId }) => {
+    if (hostId) activateHost(hostId);
+    navigationRef.navigate("Chat", { sessionId });
+  });
   const base = scheme === "dark" ? DarkTheme : DefaultTheme;
   const theme = {
     ...base,

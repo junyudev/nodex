@@ -11,7 +11,13 @@ import {
   type SecureChannel,
 } from "@nodex/mobile-protocol";
 import { z } from "zod";
-import type { LocalImage, MobilePlatform, MobileSocket, MobileSocketEvents } from "./platform";
+import type {
+  LocalImage,
+  MobilePlatform,
+  MobilePush,
+  MobileSocket,
+  MobileSocketEvents,
+} from "./platform";
 
 const deliver = (callback: () => void) => {
   void Promise.resolve().then(callback);
@@ -243,6 +249,7 @@ export function fakePlatform() {
     },
   });
   const platform = {
+    push: null as MobilePush | null,
     deviceName: "Test phone",
     platform: "ios",
     appVersion: "1.0.0",
