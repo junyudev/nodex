@@ -577,6 +577,42 @@ it.effect("uses the continuation prompt when empty turns are unsupported", () =>
   ),
 );
 
+it.effect("tells the Agent to continue when a reply woken by background work fails", () =>
+  withRecovery(
+    ({ started, emit, threadId }) =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        yield* complete(emit, started[0]!);
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make("wake"),
+          threadId,
+          messageId: MessageId.make("message:wake"),
+          text: "Background activity updated",
+          notification: {
+            source: { kind: "background_task" },
+            outcome: "updated",
+            summary: "Background activity updated",
+          },
+          attachments: [],
+          dispatchMode: { type: "queue_after_active" },
+          createdBy: "agent",
+          creationSource: "provider",
+        });
+        yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain();
+        const wake = started[1]!;
+        assert.isTrue(ProviderAdapter.attachesToAgentWake(wake));
+        yield* failTurn(emit, wake);
+        yield* waitRecovery(wake);
+        yield* recover(wake);
+        const recovery = started[2]!;
+        assert.isFalse(ProviderAdapter.attachesToAgentWake(recovery));
+        assert.equal(recovery.message.text, "Continue where you left off.");
+      }),
+    { empty: false },
+  ),
+);
+
 it.effect(
   "resets the streak on current model output and gives later streaks distinct effect ids",
   () =>

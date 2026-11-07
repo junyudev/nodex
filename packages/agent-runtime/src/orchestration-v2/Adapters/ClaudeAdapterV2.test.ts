@@ -271,10 +271,12 @@ function makeClaudeTestTurnInput(input: {
   readonly nativeThreadHasTurns?: boolean;
   readonly messageCreatedBy?: ProviderAdapter.ProviderAdapterV2TurnInput["message"]["createdBy"];
   readonly messageCreationSource?: ProviderAdapter.ProviderAdapterV2TurnInput["message"]["creationSource"];
+  readonly continuation?: ProviderAdapter.ProviderAdapterV2TurnInput["continuation"];
   readonly modelSelection?: ModelSelection;
   readonly runtimePolicy?: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
 }): ProviderAdapter.ProviderAdapterV2TurnInput {
   return {
+    ...(input.continuation === undefined ? {} : { continuation: input.continuation }),
     appThread: makeClaudeTestAppThread(input),
     threadId: input.threadId,
     runId: RunId.make(`run-${input.attemptId}`),
@@ -9482,6 +9484,41 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* awaitUntil(() => harness.terminalEvents().length === 1, "spurious terminal");
         assert.equal(harness.terminalEvents()[0]?.status, "completed");
         assert.lengthOf(harness.offeredMessages, 0);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
+  it.effect("prompts Claude to continue when a woken reply recovers", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-claude-wake-recovery"),
+            text: "Continue where you left off.",
+            attachments: [],
+            messageCreatedBy: "agent",
+            messageCreationSource: "provider",
+            continuation: "prompt",
+          }),
+        );
+
+        // The turn it follows has ended, so only this prompt starts Claude again.
+        assert.lengthOf(harness.offeredMessages, 1);
+        assert.lengthOf(harness.terminalEvents(), 0);
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({ uuid: "wake-recovery-result", result: "Done" }),
+        );
+        yield* awaitUntil(() => harness.terminalEvents().length === 1, "recovery terminal");
+        assert.equal(harness.terminalEvents()[0]?.status, "completed");
       }).pipe(
         Effect.provide(
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),

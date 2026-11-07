@@ -1159,6 +1159,31 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("prompts OpenCode to continue when a woken reply recovers", () =>
+    Effect.gen(function* () {
+      const { runtime, thread } = yield* resumed([
+        out("session.prompt", { sessionID: SESSION, text: "Continue where you left off." }),
+        promptAccepted,
+        event("session.execution.succeeded", { sessionID: SESSION }),
+      ]);
+      const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
+      const input = withLineage(thread);
+      yield* runtime.startTurn({
+        ...input,
+        continuation: "prompt",
+        message: {
+          ...input.message,
+          text: "Continue where you left off.",
+          createdBy: "agent",
+          creationSource: "provider",
+        },
+      });
+      const providerTurn = (yield* Fiber.join(terminal))?.providerTurnId;
+      assert.isDefined(providerTurn);
+      assert.notInclude(providerTurn!, ":wake:");
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("stops a background subagent announced before its call named it", () =>
     Effect.gen(function* () {
       const call = "call-background";

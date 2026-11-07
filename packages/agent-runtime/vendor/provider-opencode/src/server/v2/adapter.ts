@@ -638,9 +638,6 @@ const reportOutcome = (state: string | undefined) =>
 const subagentOutput = (text: string) =>
   /^<subagent\b[^>]*>\n?([\s\S]*?)\n?<\/subagent>$/.exec(text.trim())?.[1] ?? text;
 
-const isContinuation = (turnInput: ProviderAdapter.ProviderAdapterV2TurnInput) =>
-  turnInput.message.createdBy === "agent" && turnInput.message.creationSource === "provider";
-
 /** The native turn id of a continuation turn, which answers a wake and has no prompt. */
 const wakeTurnId = (sessionId: string, attemptId: string) => `${sessionId}:wake:${attemptId}`;
 const isWakeTurn = (turn: OrchestrationV2ProviderTurn) =>
@@ -3536,7 +3533,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           // continuation prompts nothing; it records the report it answers
           // once it takes its execution.
           nativeTurnRef: ref(
-            isContinuation(turnInput)
+            ProviderAdapter.attachesToAgentWake(turnInput)
               ? wakeTurnId(state.sessionId, turnInput.attemptId)
               : turnPromptId(state.sessionId, turnInput.attemptId),
             "weak",
@@ -4026,7 +4023,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
                 });
               }
               // OpenCode already ran this turn on its own; it prompts nothing.
-              if (isContinuation(turnInput)) return yield* runWake(state, turnInput);
+              if (ProviderAdapter.attachesToAgentWake(turnInput)) return yield* runWake(state, turnInput);
               // After a timed-out Stop the server says whether that run is gone. A
               // run still going is stopped again and this turn fails so it can be
               // sent again; a run that is gone may still have its end on the

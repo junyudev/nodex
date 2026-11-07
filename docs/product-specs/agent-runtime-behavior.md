@@ -123,7 +123,9 @@ automatically inside the same reply. The failed attempt stays in the transcript 
 recovery row, the reply stays running, and after a delay Nodex continues the same native
 conversation from where it stopped, without resending the original request; a request
 the Agent never received is sent again unchanged, and a delivery Nodex cannot confirm is
-never retried automatically. Lost connections, including gateway errors from a proxy
+never retried automatically. A reply woken by finished background work recovers the same
+way: the turn it took over has ended, so the Agent is told to continue rather than the
+reply ending as if it had finished. Lost connections, including gateway errors from a proxy
 while offline, retry after 5, 10, 20 and 40 seconds and then every minute, every five
 minutes after the first hour, for as long as it takes. A busy or overloaded service,
 including a model at capacity, retries after 10 and 30 seconds and then 2, 5, 10, 15 and

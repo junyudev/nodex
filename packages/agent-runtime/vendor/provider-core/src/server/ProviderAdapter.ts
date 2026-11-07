@@ -466,6 +466,22 @@ export interface ProviderAdapterV2TurnInput {
   readonly appContext?: ReadonlyArray<{ readonly key: string; readonly text: string }>;
 }
 
+/**
+ * A wake Run takes over a turn the Agent began on its own, so it sends the Agent
+ * nothing. Continuing a Run has no such turn to take over: the one it follows has
+ * ended, and the Agent stays idle until it is told to continue.
+ */
+export function attachesToAgentWake(
+  input: Pick<ProviderAdapterV2TurnInput, "message" | "continuation">,
+): boolean {
+  return (
+    input.message.createdBy === "agent" &&
+    input.message.creationSource === "provider" &&
+    input.continuation !== "prompt" &&
+    input.continuation !== "empty"
+  );
+}
+
 export interface ProviderAdapterV2SteerInput {
   readonly modelPolicyOrigin?: "person" | "nodex-agent" | "agent" | "automatic";
   readonly threadId: ThreadId;

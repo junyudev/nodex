@@ -1409,14 +1409,6 @@ export function acpIsAppOwnedWakeTurn(message: {
   return message.createdBy === "agent" && message.creationSource === "server";
 }
 
-/** A continuation run attaches to wake traffic the agent produced on its own. */
-function acpIsProviderContinuationMessage(message: {
-  readonly createdBy: string;
-  readonly creationSource: string;
-}): boolean {
-  return message.createdBy === "agent" && message.creationSource === "provider";
-}
-
 export function acpCarryoverTerminalShouldClearContinuation(input: {
   readonly continuationOffered: boolean;
   readonly wakeBufferLength: number;
@@ -5214,7 +5206,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           // frame reaches the wake path and opens a continuation run.
           if (
             context.promptSettled &&
-            !acpIsProviderContinuationMessage(context.input.message) &&
+            !ProviderAdapter.attachesToAgentWake(context.input) &&
             flavor.isProviderWakeNotification?.(notification) === true
           ) {
             if (hasDeferredBackgroundWork(context)) {
@@ -7788,7 +7780,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             // after the prior root turn settled; do not re-prompt the ACP session.
             const isContinuationTurn =
               (postSettleContinuationEnabled || followsAgentWorkState) &&
-              acpIsProviderContinuationMessage(turnInput.message);
+              ProviderAdapter.attachesToAgentWake(turnInput);
             const isAppOwnedWakeTurn = acpIsAppOwnedWakeTurn(turnInput.message);
             // An app-owned wake reports on a sibling delegated child and owns
             // none of this session's background work, so it must not discard

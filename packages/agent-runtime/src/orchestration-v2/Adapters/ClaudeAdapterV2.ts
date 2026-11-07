@@ -2837,12 +2837,6 @@ function isClaudeFrameConsumed(message: SDKMessage): boolean {
   );
 }
 
-function isClaudeProviderContinuationTurn(
-  input: ProviderAdapter.ProviderAdapterV2TurnInput,
-): boolean {
-  return input.message.createdBy === "agent" && input.message.creationSource === "provider";
-}
-
 // Root turn output whose owner (the offered prompt or a queued wake turn)
 // the prompt echo decides. Subagent frames, lifecycle frames, and anything
 // else not produced by the root model turn pass straight through.
@@ -8285,7 +8279,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             );
             // Backgrounded work that ends during a user turn wakes the root after
             // it. Drained wake frames replay here too; they were recorded idle.
-            if (!isClaudeProviderContinuationTurn(context.input)) {
+            if (!ProviderAdapter.attachesToAgentWake(context.input)) {
               if (wasBackgroundTask) {
                 yield* recordWakeReport(
                   liveQuery.nativeThreadId,
@@ -8476,7 +8470,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           // does not carry today.
           if (
             isClaudeTaskNotificationOriginResult(message) &&
-            !isClaudeProviderContinuationTurn(context.input) &&
+            !ProviderAdapter.attachesToAgentWake(context.input) &&
             message.num_turns === 0
           ) {
             // Routine lifecycle noise, so debug rather than warning: interrupt
@@ -8501,7 +8495,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           // carried model turns, which nothing on the wire lets us rule out.
           if (
             isClaudeTaskNotificationOriginResult(message) &&
-            !isClaudeProviderContinuationTurn(context.input)
+            !ProviderAdapter.attachesToAgentWake(context.input)
           ) {
             // This user turn ran the wake itself, so no offer will name its work.
             yield* clearWakeReports(liveQuery.nativeThreadId);
@@ -9612,12 +9606,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           );
           const resumeSessionAt = yield* getNativeConversationHeadId(turnInput.providerThread);
           const existing = yield* Ref.get(queryContext);
-          // A continuation prompts nothing: it drains output the live process
+          // A wake turn prompts nothing: it drains output the live process
           // already produced, so it keeps that process whatever its selection.
           if (
             existing !== null &&
             existing.nativeThreadId === nativeThreadId &&
-            isClaudeProviderContinuationTurn(turnInput)
+            ProviderAdapter.attachesToAgentWake(turnInput)
           ) {
             return existing;
           }
@@ -9879,7 +9873,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             // transcript already holds without running a turn, and a session
             // can outlive this database (or be resumed from a copy of it), so
             // a uuid derived from run ids can repeat.
-            const promptUuid = isClaudeProviderContinuationTurn(turnInput)
+            const promptUuid = ProviderAdapter.attachesToAgentWake(turnInput)
               ? null
               : yield* crypto.randomUUIDv4().pipe(
                   Effect.filterOrFail(isClaudePromptUuid),
@@ -9951,15 +9945,15 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               subagentsByToolUseId: new Map(),
               subagentNodesByTaskId: new Map(),
               promptUuid,
-              promptEcho: isClaudeProviderContinuationTurn(turnInput) ? "confirmed" : "pending",
+              promptEcho: ProviderAdapter.attachesToAgentWake(turnInput) ? "confirmed" : "pending",
               promptStarted: false,
               gatedFramesBeforeEcho: 0,
               heldRootFrames: [],
             };
-            // Continuation turns attach to the wake output the CLI already
-            // produced instead of prompting it again: drain the buffered wake
-            // messages into this turn and let any still-streaming messages
-            // follow live. The continuation prompt text never reaches the CLI.
+            // A wake turn attaches to the output the CLI already produced instead
+            // of prompting it again: drain the buffered wake messages into this
+            // turn and let any still-streaming messages follow live. Its message
+            // text never reaches the CLI.
             const userMessage =
               promptUuid === null
                 ? null
@@ -10042,9 +10036,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   return updated;
                 });
                 if (drained.length === 0) {
-                  // Spurious continuation (buffer already lost with a recycled
-                  // session, or a duplicate request): settle immediately instead
-                  // of leaving a run waiting on a prompt that was never sent.
+                  // Spurious wake (buffer already lost with a recycled session,
+                  // or a duplicate request): settle immediately instead of leaving
+                  // a run waiting on a prompt that was never sent.
                   const completedAt = yield* DateTime.now;
                   yield* finalizeActiveTurn({ context, status: "completed", completedAt });
                   return;
