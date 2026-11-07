@@ -127,7 +127,7 @@ test("clears a chat's context so its next message starts fresh on any Agent, kee
       // The chat's panels belong to its Session, not to its context.
       await page.getByRole("button", { name: "New tab", exact: true }).click();
       await page
-        .locator('[data-thread-side-panel-new-tab-action-grid="true"]')
+        .locator("[data-new-tab-scroll-root]")
         .getByRole("button", { name: /^Files/u })
         .click();
       const files = page.getByRole("tab", { name: "Files", exact: true });

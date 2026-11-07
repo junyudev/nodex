@@ -2,11 +2,14 @@ import { expect, type Page } from "@playwright/test";
 
 export const openComposerModelPicker = async (page: Page) => {
   const search = page.getByRole("combobox", { name: "Search models", exact: true });
-  // A picker that was just dismissed may still be animating out; open it once it has gone.
+  const closing = page.locator("[data-ending-style]").filter({ has: search });
+  // A picker that was just dismissed still shows its search while animating out; let it go first.
   await expect(async () => {
+    await expect(closing).toHaveCount(0, { timeout: 1_000 });
     if (!(await search.isVisible()))
       await page.getByRole("button", { name: "Select model", exact: true }).click();
     await expect(search).toBeVisible({ timeout: 1_000 });
+    await expect(closing).toHaveCount(0);
   }).toPass({ timeout: 15_000 });
   // The first catalog read starts Agent execution and probes every provider.
   await expect(page.getByRole("listbox").getByText("Loading models…")).toHaveCount(0, {

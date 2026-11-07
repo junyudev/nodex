@@ -274,7 +274,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
       cwd: worktreePath,
       model: "claude-opus-5",
       effort: "max",
-      permissionMode: "acceptEdits",
+      permissionMode: "bypassPermissions",
       fast: true,
       thinking: true,
       content: "Native Claude lifecycle",
@@ -295,7 +295,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
     });
     expect(
       observations().find(
-        ({ type, permissionMode }) => type === "launch" && permissionMode === "acceptEdits",
+        ({ type, permissionMode }) => type === "launch" && permissionMode === "bypassPermissions",
       ),
     ).toMatchObject({ allowsBypass: true });
 
@@ -315,7 +315,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
       effort: "medium",
       thinking: true,
       fast: false,
-      permissionMode: "acceptEdits",
+      permissionMode: "bypassPermissions",
     });
     await openComposerModelPicker(page);
     await sonnet.click();
@@ -351,9 +351,12 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
 
     // The chat reopens with its history and options, and continues the same Claude session.
     page = await harness.restart();
-    await expect(page.getByText("Native Claude workflow complete", { exact: true })).toBeVisible({
-      timeout: 30_000,
-    });
+    // That text preceded the turn's last step, so a reopened chat keeps it in the folded work.
+    await page
+      .getByRole("button", { name: /^Worked for/u })
+      .first()
+      .click({ timeout: 30_000 });
+    await expect(page.getByText("Native Claude workflow complete", { exact: true })).toBeVisible();
     expect((await control()).snapshot.projection.thread.modelSelection).toEqual(selection);
     expect((await control()).snapshot.projection.thread.worktreePath).toBe(worktreePath);
     const reopened = page

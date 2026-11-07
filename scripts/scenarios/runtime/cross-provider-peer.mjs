@@ -515,13 +515,12 @@ async function answer(prompt, server, native) {
   if (typeof delegation?.reply === "string") return delegation.reply;
   if (!delegation) {
     // One finished task or a batch of siblings that finished before the parent woke.
-    const terminalNotice =
-      /^Delegated tasks? (\S+(?:, \S+)*) reached (?:a terminal state|terminal states)\./u.exec(
-        prompt,
-      );
-    if (terminalNotice) {
+    const finishedTaskIds = [...prompt.matchAll(/^Delegated task (\S+)/gmu)].map(
+      (match) => match[1],
+    );
+    if (finishedTaskIds.length > 0) {
       const summaries = [];
-      for (const taskId of terminalNotice[1].split(", ")) {
+      for (const taskId of finishedTaskIds) {
         const result = await callTool(server, "task_status", { taskId }, native);
         if (result.status !== "completed" || typeof result.summary !== "string")
           throw new Error(
@@ -557,7 +556,7 @@ async function answer(prompt, server, native) {
           target: delegation.target,
           mode: "async",
           timeoutMs: 30_000,
-          clientRequestId: `fixture:${nativeSessionId}:${prompt}:${index}`,
+          idempotencyKey: `fixture:${nativeSessionId}:${prompt}:${index}`,
         },
         native,
       );
@@ -572,7 +571,7 @@ async function answer(prompt, server, native) {
     target: delegation.target,
     mode: delegation.mode ?? "wait",
     timeoutMs: delegation.timeoutMs ?? 30_000,
-    clientRequestId: `fixture:${nativeSessionId}:${prompt}`,
+    idempotencyKey: `fixture:${nativeSessionId}:${prompt}`,
   };
   const result = await callTool(server, "delegate_task", input, native);
   if (delegation.mode !== "async") {
@@ -757,7 +756,9 @@ async function handleCodex(message) {
         emit({ id, error: { code: -32001, message: "Thread missing" } });
         return;
       }
-      servers.set(thread.id, configValue(params.config, "mcp_servers.nodex_app"));
+      // A metadata-only rejoin carries no configuration and leaves the loaded thread's alone.
+      const resumedServer = configValue(params.config, "mcp_servers.nodex_app");
+      if (resumedServer !== undefined) servers.set(thread.id, resumedServer);
       reply(threadResponse(thread, params.model));
       return;
     }
