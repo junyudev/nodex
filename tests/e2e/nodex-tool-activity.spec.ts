@@ -198,7 +198,7 @@ test("Agent tool rows name what they touched in plain language", async () => {
     });
     const draft = await createAgentSmokeDraft(
       page,
-      harness.profile.initialProjectsDirectory,
+      harness.profile.projectsDirectory,
       "Launch workspace",
     );
     await refreshComposerModels(page);
