@@ -343,6 +343,11 @@ absolute directory paths. Task-runner stdout is diagnostic output, never the
 machine-readable directory list. Empty history is an empty array; paths do not
 depend on shell delimiters or GitHub step-output parsing.
 
+`Distribution Metrics` runs daily and reports the change in release downloads, and yesterday's
+update-feed requests when `CLOUDFLARE_ANALYTICS_TOKEN` is set, as product events. It uses a Zone
+Analytics Read token and needs no write access; see
+[Product Analytics Behavior](product-specs/product-analytics-behavior.md#website-and-distribution).
+
 `Nightly Retention` keeps the newest 20 published Nightly releases and every
 release younger than 14 days. It also protects every tag referenced by any
 live Nightly appcast and deletes only immutable releases whose downloaded
