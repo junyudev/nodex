@@ -17,6 +17,7 @@ import {
   ProjectListSchema,
   RpcErrorSchema,
 } from "./models";
+import { PushRegistrationSchema } from "./push";
 
 /** Increment on any change an older peer cannot ignore. A mismatch asks the person to update. */
 export const MOBILE_PROTOCOL_REVISION = 1;
@@ -39,6 +40,14 @@ const define = <Params extends z.ZodType, Result extends z.ZodType>(
  * first attempt, and retried unchanged, so an uncertain delivery can be repeated safely.
  */
 export const mobileMethods = {
+  /**
+   * Where this phone receives notifications from this desktop, replacing what it last said. Sent
+   * again on each connection, since the system can change a phone's address at any time.
+   */
+  "push.register": define(PushRegistrationSchema, empty),
+  /** This phone no longer wants notifications from this desktop. */
+  "push.unregister": define(empty, empty),
+
   "projects.list": define(empty, ProjectListSchema),
   "agents.catalog": define(empty, AgentCatalogSchema),
 

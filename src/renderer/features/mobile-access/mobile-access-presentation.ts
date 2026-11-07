@@ -20,6 +20,7 @@ export const describeDevice = (device: MobileDevice, now: number): string =>
   [
     PLATFORM_NAMES[device.platform] ?? device.platform,
     device.appVersion ? `Nodex Mobile ${device.appVersion}` : null,
+    device.notificationsEnabled ? "Notifications on" : "Notifications off",
     device.connected ? "Connected" : describeLastSeen(device.lastSeenAt, now),
   ]
     .filter(Boolean)

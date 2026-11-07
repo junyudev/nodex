@@ -1,3 +1,4 @@
+import * as MobilePushRelay from "../platform/node/MobilePushRelay";
 import * as MobileGateway from "../mobile-gateway/MobileGateway";
 import * as MobileApplication from "../mobile-gateway/MobileApplication";
 import * as MobileProfileFiles from "../platform/node/MobileProfileFiles";
@@ -167,7 +168,9 @@ const inboxWorkersGraph = Layer.merge(inboxDispatcherLive, inboxDispatchRuntimeL
 const mobileAccess = MobileAccessIpc.live.pipe(
   Layer.provide(MobileGateway.live),
   Layer.provide(MobileApplication.live),
-  Layer.provide(Layer.merge(MobileProfileFiles.live, SecretEncryption.live)),
+  Layer.provide(
+    Layer.mergeAll(MobileProfileFiles.live, SecretEncryption.live, MobilePushRelay.live),
+  ),
 );
 const applicationGraph = Layer.mergeAll(
   RendererIngressLive.live,

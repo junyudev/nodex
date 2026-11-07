@@ -95,6 +95,16 @@ why it is built this way.
   fallback. Phones keep their static keys in the Keychain or Keystore, and Android backups are off so unsent
   captures and cached content stay on the phone. Revoking forgets a device's key
   and closes its channels immediately.
+- **Notifications.** Each paired phone's push handle, notification key and preferences live with its
+  paired-device record in the same operating-system-encrypted private Profile file. They never enter
+  renderer status; Settings receives only whether notifications are on. Removing the phone removes
+  this registration. The phone provides its key over the authenticated encrypted channel, and invalid
+  keys are refused. The desktop seals each notification with ChaCha20-Poly1305 and a fresh random
+  nonce before sending it over HTTPS. The relay can read the opaque routing handle, urgency, delivery
+  timing and ciphertext size, and can resolve the handle to the system push address for Apple delivery.
+  It cannot decrypt notification content, including the chat title, message and Session identity, and
+  never receives the notification key. Secret question prompts are omitted even from the sealed
+  payload. Redirects are refused and delivery is bounded by timeouts and a short retry policy.
 - **Admission.** Handshakes have a deadline. Unauthenticated sockets, channels per device, total
   channels, frame and message sizes, upload sizes and per-channel queues are all bounded. An overflowed
   queue resets to a fresh snapshot rather than growing.
@@ -105,6 +115,19 @@ why it is built this way.
   reads; they are never filesystem paths. Uploads are held in a private temporary directory, verified
   against their declared size, and released when the channel closes.
 - **Logging.** Secrets, keys and message content are never logged.
+
+## Mobile Push Relay
+
+The hosted relay accepts only Nodex's two iOS bundle IDs. Its AES-256-GCM handles hide device tokens
+from desktops and authenticate the token, environment and bundle ID together. A handle is a bearer
+capability to send to that phone; it must stay private. The relay sees the device token while routing
+to APNs, but never receives the key that decrypts notification content. APNs receives a placeholder
+alert and opaque ciphertext. There is no relay database or retained device registration.
+
+Request and APNs payload byte limits apply before delivery. Relay logs contain only status and
+recognized APNs reason codes; tokens, handles, ciphertext and raw upstream errors are excluded.
+The relay has no account authentication or per-device rate limit. Rotating its seal key invalidates
+every existing handle. See the [relay contract and secret setup](../packages/push-relay/README.md).
 
 ## Library File boundaries
 

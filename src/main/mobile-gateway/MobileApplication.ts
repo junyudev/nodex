@@ -1,4 +1,6 @@
 import type { ChatActivity, MobileEventData } from "@nodex/mobile-protocol";
+import * as Context from "effect/Context";
+import { MobilePushEvents, makeMobilePushEvents } from "./push-events";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
@@ -16,8 +18,7 @@ import { nativeActivity } from "./transcript-projection";
 type Topic = MobileEventData<"changed">["topics"][number];
 const topics = ["inbox", "chats", "projects", "agents"] as const;
 
-export const live = Layer.effect(
-  MobileRpc,
+export const live = Layer.effectContext(
   Effect.gen(function* () {
     const database = yield* DatabaseNotifierRuntime;
     const runtime = yield* AgentRuntimeApplication;
@@ -45,7 +46,8 @@ export const live = Layer.effect(
       bufferSize: 16,
     }).pipe(Stream.groupedWithin(128, "250 millis"));
 
-    return MobileRpc.of({
+    const events = yield* makeMobilePushEvents;
+    const rpc = MobileRpc.of({
       open: (send) =>
         Effect.gen(function* () {
           const activity = new Map<string, ChatActivity>();
@@ -122,5 +124,6 @@ export const live = Layer.effect(
           };
         }),
     });
+    return Context.make(MobileRpc, rpc).pipe(Context.add(MobilePushEvents, events));
   }),
 );

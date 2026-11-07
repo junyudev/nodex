@@ -12,6 +12,10 @@ import {
   beginHandshake,
   generateStaticKeyPair,
   parsePairingUri,
+  encodePushKey,
+  openPushPayload,
+  type RelayPushRequest,
+  type PushRegistration,
   type MobileEnvelope,
   type SecureChannel,
   type StaticKeyPair,
@@ -19,6 +23,12 @@ import {
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
+import { type MobilePushEvent } from "./push-events";
+import * as Stream from "effect/Stream";
+import { MobilePushEvents } from "./push-events";
+import { MobilePushRelay } from "../platform/node/MobilePushRelay";
 import * as Result from "effect/Result";
 import * as TestClock from "effect/testing/TestClock";
 import WebSocket from "ws";
@@ -123,9 +133,16 @@ const fixture = Effect.gen(function* () {
   const settings = makeTestApplicationSettings();
   const snapshot = () =>
     settings.snapshot().pipe(Effect.map((value) => ({ ...value, mobileAccessEnabled: enabled })));
+  const events = yield* PubSub.unbounded<MobilePushEvent>();
+  const deliveries = yield* Queue.unbounded<RelayPushRequest>();
+  let relayStatus = 200;
   const dependencies = Layer.mergeAll(
     configLayer({ nodexHome: home, isPackaged: false }),
     profileFiles,
+    Layer.succeed(MobilePushEvents, { events: Stream.fromPubSub(events) }),
+    Layer.succeed(MobilePushRelay, {
+      send: (request) => Queue.offer(deliveries, request).pipe(Effect.as(relayStatus)),
+    }),
     Layer.succeed(ApplicationSettings, {
       ...settings,
       snapshot,
@@ -176,6 +193,15 @@ const fixture = Effect.gen(function* () {
   );
   return {
     home,
+    deliveries,
+    sendPush: (id: string) =>
+      PubSub.publish(events, {
+        id,
+        payload: { kind: "finished" as const, sessionId: "chat", title: "Chat", body: "Done" },
+      }),
+    relayStatus: (status: number) => {
+      relayStatus = status;
+    },
     requests: () => requests,
     holdChatOpenRead: (read: Effect.Effect<void>) => {
       chatOpenRead = read;
@@ -450,4 +476,142 @@ it.effect("terminates a WebSocket whose pending writes exceed the budget", () =>
     }
     expect(yield* Effect.promise(() => peer.close)).toBe(1006);
   }),
+);
+
+it.effect(
+  "binds push registrations to the authenticated phone, persists replacements, and forgets removed phones and expired handles",
+  () =>
+    Effect.gen(function* () {
+      const test = yield* fixture;
+      const device = generateStaticKeyPair(randomBytes);
+      const key = randomBytes(32);
+      const first: PushRegistration = {
+        handle: "first",
+        key: encodePushKey(key),
+        preferences: { needsYou: true, finished: true },
+      };
+      const second: PushRegistration = { ...first, handle: "second" };
+      let route = "";
+      let hostKey = "";
+      let deviceId = "";
+      const connect = (gateway: MobileGateway["Service"], pair = false) =>
+        Effect.gen(function* () {
+          const offer = pair ? parsePairingUri((yield* gateway.beginPairing).pairing!.uri)! : null;
+          if (offer) {
+            route = offer.routes.find((value) => value.includes("127.0.0.1"))!;
+            hostKey = offer.hostKey;
+          }
+          const phone = yield* openSocket(route);
+          const exchange = handshake(
+            hostKey,
+            device,
+            offer ? Buffer.from(offer.secret, "base64url") : undefined,
+          );
+          phone.ws.send(exchange.message);
+          const channel = exchange.finish(yield* Effect.promise(phone.next)).channel;
+          phone.send(channel, { t: "ping" });
+          expect((yield* Effect.promise(() => phone.read(channel))).t).toBe("hello");
+          expect((yield* Effect.promise(() => phone.read(channel))).t).toBe("pong");
+          deviceId = (yield* gateway.status).devices[0]!.id;
+          return (method: string, input: unknown) =>
+            Effect.gen(function* () {
+              phone.send(channel, { t: "req", id: 1, m: method, p: input });
+              return yield* Effect.promise(() => phone.read(channel));
+            });
+        });
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const gateway = yield* MobileGateway;
+          yield* gateway.setEnabled(true);
+          yield* Effect.scoped(
+            Effect.gen(function* () {
+              const rpc = yield* connect(gateway, true);
+              for (const invalidKey of ["not-base64!", encodePushKey(randomBytes(31))])
+                expect(yield* rpc("push.register", { ...first, key: invalidKey })).toMatchObject({
+                  ok: false,
+                  e: { code: "invalid_params" },
+                });
+              expect(yield* rpc("push.register", first)).toMatchObject({ ok: true });
+              expect((yield* gateway.status).devices[0]).toMatchObject({
+                notificationsEnabled: true,
+              });
+              expect(yield* rpc("push.register", second)).toMatchObject({ ok: true });
+              yield* test.sendPush("connected");
+              yield* Effect.yieldNow;
+              expect(yield* Queue.size(test.deliveries)).toBe(0);
+            }),
+          );
+          yield* Effect.yieldNow;
+          // Socket cleanup crosses Node ingress; wait for the public connected observation.
+          yield* gateway.status.pipe(
+            Effect.repeat({ until: (status) => !status.devices[0]?.connected }),
+          );
+          yield* test.sendPush("offline");
+          const delivered = yield* Queue.take(test.deliveries);
+          expect(delivered.handle).toBe("second");
+          expect(openPushPayload(key, delivered.sealed)).toMatchObject({
+            kind: "finished",
+            body: "Done",
+          });
+          expect(
+            yield* Effect.promise(() => readFile(join(test.home, "mobile-access.json"), "utf8")),
+          ).not.toContain(second.key);
+          yield* gateway.setEnabled(false);
+          yield* test.sendPush("disabled");
+          yield* Effect.yieldNow;
+          expect(yield* Queue.size(test.deliveries)).toBe(0);
+        }).pipe(Effect.provide(test.layer)),
+      );
+      // Acquire a fresh gateway over the same private Profile, as after a desktop restart.
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const gateway = yield* MobileGateway;
+          expect((yield* gateway.status).devices[0]).toMatchObject({
+            id: deviceId,
+            notificationsEnabled: true,
+          });
+          yield* gateway.setEnabled(true);
+          route = (yield* gateway.status).routes.find((value) => value.includes("127.0.0.1"))!;
+          yield* test.sendPush("after-restart");
+          expect((yield* Queue.take(test.deliveries)).handle).toBe("second");
+          yield* Effect.scoped(
+            Effect.gen(function* () {
+              const rpc = yield* connect(gateway);
+              expect(yield* rpc("push.unregister", {})).toMatchObject({ ok: true });
+              expect((yield* gateway.status).devices[0]).toMatchObject({
+                notificationsEnabled: false,
+              });
+              expect(yield* rpc("push.register", first)).toMatchObject({ ok: true });
+            }),
+          );
+          yield* gateway.status.pipe(
+            Effect.repeat({ until: (status) => !status.devices[0]?.connected }),
+          );
+          test.relayStatus(410);
+          yield* test.sendPush("expired-handle");
+          yield* Queue.take(test.deliveries);
+          yield* gateway.status.pipe(
+            Effect.repeat({ until: (status) => !status.devices[0]?.notificationsEnabled }),
+          );
+          yield* Effect.scoped(
+            Effect.gen(function* () {
+              const rpc = yield* connect(gateway);
+              expect(yield* rpc("push.register", first)).toMatchObject({ ok: true });
+              expect((yield* gateway.status).devices[0]?.notificationsEnabled).toBe(true);
+              yield* gateway.revoke(deviceId);
+            }),
+          );
+          expect((yield* gateway.status).devices).toEqual([]);
+        }).pipe(Effect.provide(test.layer)),
+      );
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const gateway = yield* MobileGateway;
+          yield* gateway.status.pipe(
+            Effect.repeat({ until: (status) => status.state !== "starting" }),
+          );
+          expect((yield* gateway.status).devices).toEqual([]);
+        }).pipe(Effect.provide(test.layer)),
+      );
+    }),
 );

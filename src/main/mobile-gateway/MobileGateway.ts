@@ -1,4 +1,8 @@
 import {
+  PUSH_KEY_BYTES,
+  PushRegistrationSchema,
+  decodePushKey,
+  type PushRegistration,
   CHANNEL_CLOSE,
   CHANNEL_HANDSHAKE_PAIR,
   CHANNEL_MAX_MESSAGE_BYTES,
@@ -32,7 +36,16 @@ import { listenMobileSocket, type MobileSocket } from "../platform/node/MobileSo
 import { SecretEncryption } from "../platform/SecretEncryption";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { isPrivateMobilePeer, mobileHostName, mobileRoutes } from "./routes";
-import { internal, invokeMobileRpc, MobileRpc, unavailable, type PushMobileEvent } from "./rpc";
+import { makePushDelivery } from "./push-delivery";
+import { MobilePushEvents } from "./push-events";
+import {
+  invalid,
+  internal,
+  invokeMobileRpc,
+  MobileRpc,
+  unavailable,
+  type PushMobileEvent,
+} from "./rpc";
 
 type MobileStatusEffect = Effect.Effect<MobileAccessStatus>;
 export class MobileGateway extends Context.Service<
@@ -74,6 +87,7 @@ const storedDevice = z.object({
   appVersion: z.string().max(32),
   pairedAt: z.number(),
   lastSeenAt: z.number().nullable(),
+  push: PushRegistrationSchema.optional(),
 });
 const storedProfile = z.object({
   publicKey: keySchema,
@@ -120,6 +134,7 @@ export const make = Effect.gen(function* () {
   const settings = yield* ApplicationSettings;
   const secrets = yield* SecretEncryption;
   const rpc = yield* MobileRpc;
+  const pushEvents = yield* MobilePushEvents;
   const clock = yield* Clock.Clock;
   const scope = yield* Scope.Scope;
   const mutex = yield* Semaphore.make(1);
@@ -163,10 +178,13 @@ export const make = Effect.gen(function* () {
       failureMessage,
       hostName,
       routes: currentRoutes,
-      devices: (profile?.devices ?? []).map(({ key: _key, ...device }): MobileDevice => ({
+      devices: (profile?.devices ?? []).map(({ key: _key, push, ...device }): MobileDevice => ({
         ...device,
         lastSeenAt: recent.get(device.id) ?? device.lastSeenAt,
         connected: Boolean(connected.get(device.id)?.size),
+        notificationsEnabled: Boolean(
+          push && (push.preferences.needsYou || push.preferences.finished),
+        ),
       })),
       pairing,
     };
@@ -209,6 +227,83 @@ export const make = Effect.gen(function* () {
     yield* files.write(config.nodexHome, encrypted);
     profile = next;
   });
+
+  const updatePush = (deviceId: string, registration: PushRegistration | undefined) =>
+    mutex.withPermit(
+      Effect.gen(function* () {
+        if (!profile || !enabled || !profile.devices.some((device) => device.id === deviceId))
+          return yield* Effect.fail(unavailable("This phone is no longer connected."));
+        const devices = profile.devices.map((device) => {
+          if (device.id !== deviceId) return device;
+          const { push: _push, ...rest } = device;
+          return registration ? { ...rest, push: registration } : rest;
+        });
+        yield* Effect.uninterruptible(persist({ ...profile, devices })).pipe(
+          Effect.mapError(() => internal()),
+        );
+        yield* publish;
+        return {};
+      }),
+    );
+  const pushHandlers = (deviceId: string) => ({
+    "push.register": (registration: PushRegistration) =>
+      Effect.gen(function* () {
+        const valid = yield* Effect.try({
+          try: () =>
+            keySchema.safeParse(registration.key).success &&
+            decodePushKey(registration.key).length === PUSH_KEY_BYTES,
+          catch: () => invalid("The notification key is invalid."),
+        });
+        if (!valid) return yield* Effect.fail(invalid("The notification key is invalid."));
+        return yield* updatePush(deviceId, registration);
+      }),
+    "push.unregister": () => updatePush(deviceId, undefined),
+  });
+  const hostIdOf = ({ publicKey }: StoredProfile) =>
+    files.keyId(Buffer.from(publicKey, "base64url"));
+  const eligible = (deviceId: string) =>
+    enabled && state === "listening" && !connected.get(deviceId)?.size;
+  const enqueuePush = yield* makePushDelivery({
+    recipients: Effect.sync(() => {
+      if (!profile) return [];
+      const hostId = hostIdOf(profile);
+      return profile.devices.flatMap((device) =>
+        device.push && eligible(device.id)
+          ? [{ deviceId: device.id, hostId, registration: device.push }]
+          : [],
+      );
+    }),
+    isCurrent: ({ deviceId, registration }) =>
+      Effect.sync(
+        () =>
+          eligible(deviceId) &&
+          profile?.devices.some(
+            (device) => device.id === deviceId && device.push === registration,
+          ) === true,
+      ),
+    forget: ({ deviceId, registration }) =>
+      mutex.withPermit(
+        Effect.gen(function* () {
+          if (
+            !profile?.devices.some(
+              (device) => device.id === deviceId && device.push === registration,
+            )
+          )
+            return;
+          const devices = profile.devices.map((device) => {
+            if (device.id !== deviceId) return device;
+            const { push: _push, ...rest } = device;
+            return rest;
+          });
+          yield* Effect.uninterruptible(persist({ ...profile, devices })).pipe(Effect.ignore);
+          yield* publish;
+        }),
+      ),
+  });
+  yield* pushEvents.events.pipe(
+    Stream.runForEach(enqueuePush),
+    Effect.forkScoped({ startImmediately: true }),
+  );
 
   const expire = Effect.gen(function* () {
     if (!offer || offer.expiresAt > now()) return;
@@ -278,7 +373,7 @@ export const make = Effect.gen(function* () {
               const hello = {
                 protocol: MOBILE_PROTOCOL_REVISION,
                 host: {
-                  id: files.keyId(Buffer.from(profile.publicKey, "base64url")),
+                  id: hostIdOf(profile),
                   name: hostName,
                   platform: config.platform,
                   appVersion: config.appVersion,
@@ -368,6 +463,7 @@ export const make = Effect.gen(function* () {
                   appVersion: sanitize(metadata.appVersion, 32),
                   pairedAt: existing?.pairedAt ?? now(),
                   lastSeenAt: now(),
+                  ...(existing?.push ? { push: existing.push } : {}),
                 };
                 // Let a durable write and its in-memory publication settle together before releasing the gate.
                 yield* Effect.uninterruptible(
@@ -467,7 +563,11 @@ export const make = Effect.gen(function* () {
                   );
                   return;
                 }
-                const invoked = invokeMobileRpc(channelRpc.handlers, m, p).pipe(
+                const invoked = invokeMobileRpc(
+                  { ...channelRpc.handlers, ...pushHandlers(deviceId) },
+                  m,
+                  p,
+                ).pipe(
                   Effect.provideService(CoreApplicationAgent, null),
                   Effect.catchDefect(() => Effect.fail(internal())),
                   Effect.timeoutOrElse({

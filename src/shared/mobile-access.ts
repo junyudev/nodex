@@ -6,6 +6,7 @@ export interface MobileDevice {
   pairedAt: number;
   lastSeenAt: number | null;
   connected: boolean;
+  notificationsEnabled: boolean;
 }
 
 export interface MobileAccessStatus {

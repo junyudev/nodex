@@ -49,6 +49,7 @@ re-read over this channel costs less than the machinery to resume one.
 - The app works only while the desktop runs and shares a network or tailnet with the phone. This is
   stated in [Nodex Mobile Behavior](../product-specs/mobile-companion-behavior.md).
 - A relay could later carry the same channel without being trusted with its content, which is the path
-  to reachability away from home. Push notifications would need one too; neither exists yet.
+  to reachability away from home. Notifications use a separate push relay that cannot read their
+  content; see [Security](../SECURITY.md#mobile-gateway).
 - Native connected conversations stay readable but not continuable from a phone until their ownership
   and reconnect semantics are worked out.

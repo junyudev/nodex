@@ -26,7 +26,7 @@ export type MobileHandlers = {
 };
 
 export interface MobileRpcChannel {
-  readonly handlers: MobileHandlers;
+  readonly handlers: Omit<MobileHandlers, "push.register" | "push.unregister">;
   readonly recover: (push: PushMobileEvent, discard: Effect.Effect<void>) => Effect.Effect<void>;
 }
 

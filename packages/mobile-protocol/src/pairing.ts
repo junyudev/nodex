@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { decodeBase64Url, encodeBase64Url, utf8Bytes, utf8Text } from "./encoding";
+
 /** The app's URL scheme, so a phone's system camera can open a pairing QR code directly. */
 export const MOBILE_URL_SCHEME = "nodex-mobile";
 
@@ -17,48 +19,8 @@ export const PairingOfferSchema = z.looseObject({
 });
 export type PairingOffer = z.infer<typeof PairingOfferSchema>;
 
-const BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-
-// URI encoding supplies UTF-8 without relying on browser globals in the mobile runtime.
-const base64UrlEncodeText = (text: string): string => {
-  const bytes = encodeURIComponent(text).replace(/%([0-9A-F]{2})/gu, (_, hex: string) =>
-    String.fromCharCode(Number.parseInt(hex, 16)),
-  );
-  let encoded = "";
-  let buffer = 0;
-  let bits = 0;
-  for (const byte of bytes) {
-    buffer = (buffer << 8) | byte.charCodeAt(0);
-    bits += 8;
-    while (bits >= 6) {
-      bits -= 6;
-      encoded += BASE64URL.charAt((buffer >>> bits) & 63);
-    }
-  }
-  if (bits > 0) encoded += BASE64URL.charAt((buffer << (6 - bits)) & 63);
-  return encoded;
-};
-
-const base64UrlDecodeText = (encoded: string): string => {
-  if (encoded.length % 4 === 1) throw new Error("Invalid base64url length");
-  let escaped = "";
-  let buffer = 0;
-  let bits = 0;
-  for (const char of encoded) {
-    const digit = BASE64URL.indexOf(char);
-    if (digit < 0) throw new Error("Invalid base64url character");
-    buffer = (buffer << 6) | digit;
-    bits += 6;
-    if (bits < 8) continue;
-    bits -= 8;
-    escaped += `%${((buffer >>> bits) & 255).toString(16).padStart(2, "0")}`;
-  }
-  if ((buffer & ((1 << bits) - 1)) !== 0) throw new Error("Invalid base64url trailing bits");
-  return decodeURIComponent(escaped);
-};
-
 export const encodePairingUri = (offer: PairingOffer): string =>
-  `${MOBILE_URL_SCHEME}://pair#${base64UrlEncodeText(JSON.stringify(offer))}`;
+  `${MOBILE_URL_SCHEME}://pair#${encodeBase64Url(utf8Bytes(JSON.stringify(offer)))}`;
 
 /** Returns null for anything that is not a well formed offer. Expiry is the caller's to report. */
 export const parsePairingUri = (uri: string): PairingOffer | null => {
@@ -67,7 +29,7 @@ export const parsePairingUri = (uri: string): PairingOffer | null => {
   if (!trimmed.startsWith(prefix)) return null;
   try {
     const parsed = PairingOfferSchema.safeParse(
-      JSON.parse(base64UrlDecodeText(trimmed.slice(prefix.length))),
+      JSON.parse(utf8Text(decodeBase64Url(trimmed.slice(prefix.length)))),
     );
     return parsed.success ? parsed.data : null;
   } catch {

@@ -15,6 +15,7 @@ const device = (overrides: Partial<MobileDevice> = {}): MobileDevice => ({
   pairedAt: 0,
   lastSeenAt: null,
   connected: false,
+  notificationsEnabled: false,
   ...overrides,
 });
 
@@ -36,14 +37,17 @@ describe("describeLastSeen", () => {
 
 describe("describeDevice", () => {
   test("says a live phone is connected instead of when it was seen", () => {
-    expect(describeDevice(device({ connected: true, lastSeenAt: now - 90_000 }), now)).toBe(
-      "iOS · Nodex Mobile 1.2.0 · Connected",
-    );
+    expect(
+      describeDevice(
+        device({ connected: true, notificationsEnabled: true, lastSeenAt: now - 90_000 }),
+        now,
+      ),
+    ).toBe("iOS · Nodex Mobile 1.2.0 · Notifications on · Connected");
   });
 
   test("names unknown platforms as reported and omits an unknown version", () => {
     expect(describeDevice(device({ platform: "tablet", appVersion: "" }), now)).toBe(
-      "tablet · Not connected yet",
+      "tablet · Notifications off · Not connected yet",
     );
   });
 });
