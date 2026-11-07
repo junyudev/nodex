@@ -1244,10 +1244,7 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
   /**
-   * Null means inherit: the repository's t3.json, then "local". The old
-   * default "local" was never persisted (defaults are stripped on write), so
-   * it now decodes as inherit, which resolves the same way because the old
-   * chain also let t3.json outrank the environment. Null stays off the wire
+   * Null means inherit, which resolves to "local". Null stays off the wire
    * so older clients, which require a literal here, keep decoding.
    */
   defaultThreadEnvMode: OmittedWhenNull(ThreadEnvMode),
@@ -1255,9 +1252,8 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
   /**
-   * Null defers to the repository's t3.json, then to recursive. A value
-   * picked on a newer server decodes as null here rather than failing the
-   * whole settings snapshot for an older client.
+   * Null means recursive. A value picked on a newer server decodes as null
+   * here rather than failing the whole settings snapshot for an older client.
    */
   worktreeSubmodules: ForwardCompatibleNullable(WorktreeSubmodules).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),

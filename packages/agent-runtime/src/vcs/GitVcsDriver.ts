@@ -138,9 +138,7 @@ export interface CreateWorktreeProgress {
   }) => Effect.Effect<void>;
   readonly onSubmodulesStarted?: () => Effect.Effect<void>;
   /** Fires when `.gitmodules` exists but the resolved submodule mode is `"none"`. */
-  readonly onSubmodulesDisabled?: (input: {
-    source: "settings" | "t3.json";
-  }) => Effect.Effect<void>;
+  readonly onSubmodulesDisabled?: () => Effect.Effect<void>;
   readonly onSubmoduleLine?: (line: string) => Effect.Effect<void>;
   readonly onSubmodulesFinished?: (input: {
     ok: boolean;
@@ -152,8 +150,7 @@ export interface CreateWorktreeOptions {
   readonly progress?: CreateWorktreeProgress;
   /**
    * The project-over-environment `worktreeSubmodules` setting. Null (or
-   * omitted, for callers without settings access) defers to the checkout's
-   * own t3.json.
+   * omitted, for callers without settings access) initializes them recursively.
    */
   readonly submodules?: WorktreeSubmodules | null;
   /** The `worktreesDirectory` setting, used when the input has no explicit path. */

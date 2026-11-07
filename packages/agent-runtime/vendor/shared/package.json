@@ -23,7 +23,6 @@
     "./serverSettings": "./src/serverSettings.ts",
     "./backgroundActivitySettings": "./src/backgroundActivitySettings.ts",
     "./projectSettings": "./src/projectSettings.ts",
-    "./t3ProjectFile": "./src/t3ProjectFile.ts",
     "./cliArgs": "./src/cliArgs.ts",
     "./symlink": "./src/symlink.ts",
     "./path": "./src/path.ts",

@@ -25,7 +25,6 @@ import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as ProjectEnrichment from "../project/ProjectEnrichmentService.ts";
 import * as ProjectFavicon from "../project/ProjectFaviconResolver.ts";
 import * as RepositoryIdentity from "../project/RepositoryIdentityResolver.ts";
-import * as ProjectFiles from "../project/T3ProjectFileLoader.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
@@ -140,10 +139,7 @@ const layerBackground = BackgroundPolicy.layer.pipe(
 );
 const layerProjectEnrichment = ProjectEnrichment.layer.pipe(
   Layer.provide(
-    ProjectFavicon.layer.pipe(
-      Layer.provide(ProjectFiles.layer),
-      Layer.provide(WorkspacePaths.layer),
-    ),
+    ProjectFavicon.layer.pipe(Layer.provide(WorkspacePaths.layer)),
   ),
   Layer.provide(RepositoryIdentity.layer),
 );
