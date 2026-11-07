@@ -11,6 +11,8 @@ import {
   resolveOrderedListMargin,
   resolveOrderedListPadding,
 } from "@/lib/ordered-list-groups";
+import { usePageTargetReadModel } from "@/lib/block-reference-queries";
+import { libraryContentRoute } from "../../../shared/content-routing-context";
 import { buildPageDeepLink } from "../../../shared/nodex-deeplink";
 import type { MarkdownBlock, MarkdownInline } from "../../../shared/nodex-markdown";
 import type { ImagePlaceholderReference } from "../../../shared/message-agent-input";
@@ -73,6 +75,18 @@ export function NfmDocument({
         <BlockList blocks={blocks} projectWorkspacePath={projectWorkspacePath} lead={lead} />
       </div>
     </NfmDensityContext.Provider>
+  );
+}
+
+/** A mentioned Page under its current name; an identity never stands in for one. */
+function NfmPageMention({ pageId }: { readonly pageId: string }) {
+  const target = usePageTargetReadModel(libraryContentRoute, pageId).data;
+  return (
+    <PageMentionInlineVisual
+      className="max-w-[18rem] align-baseline"
+      title={buildPageDeepLink({ pageId })}
+      label={target?.status === "available" ? target.page.title.trim() || "Untitled" : "Page"}
+    />
   );
 }
 
@@ -800,13 +814,7 @@ function InlineItem({
       />
     );
   if (item.type === "pageMention")
-    return (
-      <PageMentionInlineVisual
-        className="max-w-[18rem] align-baseline"
-        title={buildPageDeepLink({ pageId: String(props.targetPageId ?? "") })}
-        label={String(props.targetPageId ?? "")}
-      />
-    );
+    return <NfmPageMention pageId={String(props.targetPageId ?? "")} />;
   if (item.type === "dateMention") {
     const payload = normalizeDateMention({ ...props, type: "dateMention" });
     return payload ? (

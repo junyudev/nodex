@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent } from "@testing-library/react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -10,6 +10,12 @@ import { settleAsyncRender, textContent, waitForCodeHighlight } from "../../test
 import { TestQueryProvider } from "../../test/query";
 import { NfmDocument } from "./nfm-renderer";
 import { readMarkdown } from "../../../shared/nodex-markdown";
+
+const mentionTarget = vi.hoisted(() => ({ current: null as unknown }));
+
+vi.mock("@/lib/block-reference-queries", () => ({
+  usePageTargetReadModel: () => ({ data: mentionTarget.current, loading: false, error: null }),
+}));
 
 /** Nodex Markdown read and shown as a Page lays it out. */
 function NfmRenderer({
@@ -180,11 +186,21 @@ describe("NfmRenderer", () => {
     expect(textContent(container).includes("@Yesterday")).toBe(true);
   });
 
-  test("renders Page mentions as lightweight inline references", () => {
+  test("names a mentioned Page without showing its identity", () => {
+    mentionTarget.current = { status: "available", page: { title: "Launch plan" } };
     const { container } = render(<NfmRenderer content={"See <nodex://pages/page-1> now."} />);
 
-    expect(textContent(container).includes("page-1")).toBe(true);
+    expect(textContent(container)).toContain("Launch plan");
+    expect(textContent(container)).not.toContain("page-1");
     expect(container.querySelector('[href="nodex://pages/page-1"]')).toBeNull();
+  });
+
+  test("calls an unresolved Page mention a Page", () => {
+    mentionTarget.current = null;
+    const { container } = render(<NfmRenderer content={"See <nodex://pages/page-1> now."} />);
+
+    expect(textContent(container)).toContain("Page");
+    expect(textContent(container)).not.toContain("page-1");
   });
 
   test("renders consecutive numbered list items in one ordered list with preserved numbering", async () => {
