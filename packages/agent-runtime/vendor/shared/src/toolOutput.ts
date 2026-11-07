@@ -10,7 +10,7 @@ import {
   type HtmlRenderReference,
 } from "./htmlRender.ts";
 import { MCP_APP_OUTPUT_KEY, readMcpAppReference, type McpAppReference } from "./mcpApp.ts";
-import { resolveNodexAppTool } from "./nodexAppMcp.ts";
+import { NODEX_APP_CONTENT_RESULT_TOOL_NAMES, resolveNodexAppTool } from "./nodexAppMcp.ts";
 
 const MAX_PARSED_BYTES = 16_384;
 const MAX_METADATA_BYTES = 8_192;
@@ -19,6 +19,8 @@ const MAX_THREADS = 100;
 const MAX_CONTENT_BLOCKS = 32;
 const MAX_ENVELOPE_DEPTH = 4;
 const MAX_ENVELOPE_NODES = 128;
+const MAX_CONTENT_RESULT_PAGES = 16;
+const MAX_CONTENT_RESULT_TEXT_LENGTH = 512;
 const encoder = new TextEncoder();
 
 interface ResultReadBudget {
@@ -32,7 +34,11 @@ interface ResultEnvelope {
   failed: boolean;
 }
 
+/** A content tool's `data`, reduced in place to what its collapsed transcript row reads. */
+type CompactContentResult = Record<string, unknown>;
+
 interface CompactToolOutput {
+  data?: CompactContentResult;
   isError?: true;
   sessionId?: string;
   threadId?: string;
@@ -109,8 +115,71 @@ function boundedId(value: unknown): string | undefined {
   return Array.from(value).join("");
 }
 
-/** Keeps only IDs and failure metadata used by Nodex's grouped tool summaries. */
-export function compactDynamicToolOutput(value: unknown): CompactToolOutput | undefined {
+function boundedText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() !== ""
+    ? value.slice(0, MAX_CONTENT_RESULT_TEXT_LENGTH)
+    : undefined;
+}
+
+function pickBounded(
+  source: unknown,
+  keys: ReadonlyArray<string>,
+  read: (value: unknown) => string | undefined,
+): Record<string, string> {
+  if (!Predicate.isObject(source)) return {};
+  const picked: Record<string, string> = {};
+  for (const key of keys) {
+    const value = read((source as Record<string, unknown>)[key]);
+    if (value !== undefined) picked[key] = value;
+  }
+  return picked;
+}
+
+/**
+ * Names, identities and counts survive the timeline so a settled row can say what the call
+ * touched, while Page bodies and rows stay behind the on-demand detail read. Keeping the result's
+ * own shape gives the row one way to read both this digest and a complete output. Compacting a
+ * digest again yields the same digest.
+ */
+function compactContentResult(data: Record<PropertyKey, unknown>): CompactContentResult | undefined {
+  const result = data.data;
+  if (!Predicate.isObject(result)) return undefined;
+  const compact: CompactContentResult = pickBounded(result, ["pageId", "pageKey"], boundedId);
+  if (Predicate.isObject(result.resource)) {
+    const title = Predicate.isObject(result.resource.title)
+      ? pickBounded(result.resource.title, ["markdown"], boundedText)
+      : {};
+    compact.resource = {
+      ...pickBounded(result.resource, ["id", "pageKey", "type"], boundedId),
+      ...(Object.keys(title).length === 0 ? {} : { title }),
+    };
+  }
+  if (Array.isArray(result.pages))
+    compact.pages = result.pages
+      .slice(0, MAX_CONTENT_RESULT_PAGES)
+      .map((page) => pickBounded(page, ["pageId", "pageKey"], boundedId));
+  for (const key of ["view", "dataSource"] as const) {
+    const named = pickBounded(result[key], ["name"], boundedText);
+    if (Object.keys(named).length > 0) compact[key] = named;
+  }
+  const collection = Array.isArray(result.results)
+    ? result.results
+    : Array.isArray(result.rows)
+      ? result.rows
+      : undefined;
+  const resultCount = collection?.length ?? result.resultCount;
+  if (typeof resultCount === "number") compact.resultCount = resultCount;
+  return Object.keys(compact).length === 0 ? undefined : compact;
+}
+
+/**
+ * Keeps only IDs and failure metadata used by Nodex's grouped tool summaries, plus, for a known
+ * content tool, the names its row shows.
+ */
+export function compactDynamicToolOutput(
+  value: unknown,
+  toolName?: string | null,
+): CompactToolOutput | undefined {
   const budget: ResultReadBudget = {
     remainingBytes: MAX_PARSED_BYTES,
     remainingNodes: MAX_ENVELOPE_NODES,
@@ -120,6 +189,10 @@ export function compactDynamicToolOutput(value: unknown): CompactToolOutput | un
   const output: CompactToolOutput = result.failed ? { isError: true } : {};
   const data = budget.exceeded ? undefined : result.data;
   if (data !== undefined) {
+    if (resolveNodexAppTool(toolName, NODEX_APP_CONTENT_RESULT_TOOL_NAMES) !== null) {
+      const contentResult = compactContentResult(data);
+      if (contentResult !== undefined) output.data = contentResult;
+    }
     for (const key of [
       "sessionId",
       "threadId",
@@ -172,6 +245,7 @@ export function compactDynamicToolOutput(value: unknown): CompactToolOutput | un
     }
   }
   const oversized = () => encoder.encode(JSON.stringify(output)).byteLength > MAX_METADATA_BYTES;
+  if (oversized()) delete output.data;
   if (oversized()) {
     delete output.threads;
     delete output.threadId;

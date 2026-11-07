@@ -227,3 +227,106 @@ describe("toolOutputImages", () => {
     ]);
   });
 });
+
+describe("compactDynamicToolOutput content results", () => {
+  const envelope = (data: unknown) => ({
+    content: [{ type: "text", text: JSON.stringify({ data }) }],
+  });
+
+  it("keeps a read's name and identity without its body", () => {
+    expect(
+      compactDynamicToolOutput(
+        envelope({
+          resource: {
+            id: "page-1",
+            pageKey: "LAB-13",
+            type: "page",
+            title: { markdown: "Launch plan", etag: "etag" },
+            lifecycle: "active",
+          },
+          content: { format: "markdown", markdown: "secret body" },
+        }),
+        "mcp__nodex_app__fetch",
+      ),
+    ).toEqual({
+      data: {
+        resource: {
+          id: "page-1",
+          pageKey: "LAB-13",
+          type: "page",
+          title: { markdown: "Launch plan" },
+        },
+      },
+    });
+  });
+
+  it("counts results and rows instead of retaining them", () => {
+    expect(
+      compactDynamicToolOutput(
+        envelope({ results: [{ kind: "page", id: "a", title: "A" }, { kind: "page", id: "b" }] }),
+        "nodex_app.search",
+      ),
+    ).toEqual({ data: { resultCount: 2 } });
+    expect(
+      compactDynamicToolOutput(
+        envelope({
+          view: { viewId: "v", name: "Roadmap" },
+          dataSource: { dataSourceId: "d", name: "Tasks", properties: [] },
+          rows: [{ pageId: "a", values: {} }],
+        }),
+        "nodex_app.query_database_view",
+      ),
+    ).toEqual({
+      data: { view: { name: "Roadmap" }, dataSource: { name: "Tasks" }, resultCount: 1 },
+    });
+  });
+
+  it("keeps identities a row can only learn from the result", () => {
+    expect(
+      compactDynamicToolOutput(
+        envelope({
+          pages: [{ pageId: "new", pageKey: null, location: { kind: "library" }, blockIds: ["x"] }],
+          created: 1,
+        }),
+        "mcp__nodex_app__create_pages",
+      ),
+    ).toEqual({ data: { pages: [{ pageId: "new" }] } });
+    expect(
+      compactDynamicToolOutput(
+        envelope({ sourcePageId: "old", pageId: "copy", bodyBlocksCreated: 2 }),
+        "mcp__nodex_app__duplicate_page",
+      ),
+    ).toEqual({ data: { pageId: "copy" } });
+  });
+
+  it("yields the same digest when compacted again", () => {
+    const digest = compactDynamicToolOutput(
+      envelope({ results: [{ id: "a" }], view: { name: "Roadmap" } }),
+      "nodex_app.search",
+    );
+
+    expect(compactDynamicToolOutput(digest, "nodex_app.search")).toEqual(digest);
+  });
+
+  it("is only read for the application's own content tools", () => {
+    const foreign = envelope({ pages: [{ pageId: "x" }], results: [{}] });
+
+    expect(compactDynamicToolOutput(foreign)).toBeUndefined();
+    expect(compactDynamicToolOutput(foreign, "mcp__other__fetch")).toBeUndefined();
+    expect(compactDynamicToolOutput(foreign, "nodex_app.list_projects")).toBeUndefined();
+  });
+
+  it("gives up the digest before an oversized result reaches the timeline", () => {
+    const title = "t".repeat(512);
+    const pages = Array.from({ length: 16 }, (_, index) => ({
+      pageId: `${index}`.padEnd(256, "p"),
+      pageKey: `${index}`.padEnd(256, "k"),
+    }));
+    const output = compactDynamicToolOutput(
+      { structuredContent: { data: { pages, view: { name: title } } } },
+      "nodex_app.create_pages",
+    );
+
+    expect(output).toBeUndefined();
+  });
+});

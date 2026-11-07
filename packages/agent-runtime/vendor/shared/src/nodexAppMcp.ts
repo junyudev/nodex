@@ -62,6 +62,19 @@ export const NODEX_APP_TASK_TOOL_NAMES: ReadonlySet<string> = new Set([
   "stop_workflow",
 ]);
 
+/** Content tools whose results name the Pages a transcript row shows and links. */
+export const NODEX_APP_CONTENT_RESULT_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "fetch",
+  "search",
+  "query_database_view",
+  "query_data_source",
+  "create_pages",
+  "update_page",
+  "advanced_update_page",
+  "move_pages",
+  "duplicate_page",
+]);
+
 const NAMESPACED_TOOL = new RegExp(
   `^(?<server>${NODEX_APP_MCP_SERVER_PATTERN})(?:[.:/]|\\s*·\\s*)(?<tool>.+)$`,
   "i",

@@ -255,7 +255,7 @@ export function projectTurnItemForWire(item: OrchestrationV2TurnItem): Orchestra
     }
     case "dynamic_tool": {
       const { output: rawOutput, mcpToolCall, ...projected } = item;
-      const output = compactDynamicToolOutput(rawOutput);
+      const output = compactDynamicToolOutput(rawOutput, item.toolName);
       return {
         ...projected,
         input: summarizeDynamicValue(item.input),

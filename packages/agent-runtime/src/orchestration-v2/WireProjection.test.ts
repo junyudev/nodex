@@ -55,6 +55,28 @@ const base = {
 };
 
 describe("orchestration V2 wire projection", () => {
+  it("keeps what a content tool's row names while withholding its body", () => {
+    const projected = projectTurnItemForWire({
+      ...base,
+      toolName: "mcp__nodex_app__fetch",
+      input: { id: "page-1" },
+      output: {
+        content: JSON.stringify({
+          data: {
+            resource: { id: "page-1", type: "page", title: { markdown: "Launch plan" } },
+            content: { format: "markdown", markdown: "Private Page body" },
+          },
+        }),
+      },
+    });
+
+    expect(projected.type === "dynamic_tool" ? projected.output : null).toEqual({
+      data: { resource: { id: "page-1", type: "page", title: { markdown: "Launch plan" } } },
+    });
+    expect(projected).toMatchObject({ outputOmitted: true });
+    expect(JSON.stringify(projected)).not.toContain("Private Page body");
+  });
+
   it("persists exact MCP results while history withholds bodies and detail retains indexed image markers", () => {
     const call = {
       type: "mcpToolCall" as const,
