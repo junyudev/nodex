@@ -255,6 +255,18 @@ const DEFAULT_CODEX_SETTINGS = Schema.decodeSync(CodexSettings)({});
 const CODEX_ASSISTANT_DELTA_FLUSH_INTERVAL_MS = 50;
 const CODEX_COMMAND_OUTPUT_TAIL_BYTES = 8 * 1024;
 
+/**
+ * Whether a finished hook has anything to show. Most run on every tool call and succeed silently,
+ * and context a hook injected is for the model alone, so those leave no record. A status message
+ * does not count: it is the hook's configured label, the same on every run.
+ */
+const codexHookRunHasOutcome = (run: {
+  readonly status: string;
+  readonly entries: ReadonlyArray<{ readonly kind: string }>;
+}): boolean =>
+  run.status !== "running" &&
+  (run.status !== "completed" || run.entries.some((entry) => entry.kind !== "context"));
+
 export interface CodexCommandOutputTail {
   readonly bytes: Buffer;
   readonly totalBytes: number;
@@ -5216,6 +5228,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           readonly nodeKind: OrchestrationV2ExecutionNode["kind"];
           readonly running: boolean;
           readonly status: OrchestrationV2TurnItem["status"];
+          /** How long the provider reports the work ran, when it is first seen on completion. */
+          readonly durationMs?: number | null | undefined;
           readonly fields:
             | Pick<
                 Extract<OrchestrationV2TurnItem, { type: "hook_run" }>,
@@ -5250,7 +5264,13 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             driver: CODEX_PROVIDER,
             nativeItemId: input.nativeKey,
           });
-          const { ordinal, startedAt } = yield* resolveItemPosition(context, input.nativeKey);
+          const { ordinal, startedAt } = yield* resolveItemPosition(
+            context,
+            input.nativeKey,
+            input.durationMs == null
+              ? undefined
+              : DateTime.subtract(updatedAt, { milliseconds: Number(input.durationMs) }),
+          );
           yield* emitProviderEvent({
             type: "node.updated",
             driver: CODEX_PROVIDER,
@@ -5298,33 +5318,31 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           });
         });
 
-        const emitHookRun = (
-          payload: CodexSchema.V2HookStartedNotification | CodexSchema.V2HookCompletedNotification,
-        ) =>
-          emitTurnMetadataItem({
-            nativeTurnId: payload.turnId ?? null,
-            nativeKey: `hook-run:${payload.run.id}`,
-            nodeKind: "hook",
-            running: payload.run.status === "running",
-            status:
-              payload.run.status === "running"
-                ? "running"
-                : payload.run.status === "failed"
-                  ? "failed"
-                  : payload.run.status === "stopped"
-                    ? "interrupted"
-                    : "completed",
-            fields: {
-              type: "hook_run",
-              eventName: payload.run.eventName,
-              source: payload.run.source ?? "unknown",
-              sourcePath: payload.run.sourcePath,
-              hookStatus: payload.run.status,
-              statusMessage: payload.run.statusMessage ?? null,
-              entries: payload.run.entries.map(({ kind, text }) => ({ kind, text })),
-            },
-          });
-        yield* registerNotification("hook/started", emitHookRun);
+        const emitHookRun = (payload: CodexSchema.V2HookCompletedNotification) =>
+          codexHookRunHasOutcome(payload.run)
+            ? emitTurnMetadataItem({
+                nativeTurnId: payload.turnId ?? null,
+                nativeKey: `hook-run:${payload.run.id}`,
+                nodeKind: "hook",
+                running: false,
+                status:
+                  payload.run.status === "failed"
+                    ? "failed"
+                    : payload.run.status === "stopped"
+                      ? "interrupted"
+                      : "completed",
+                durationMs: payload.run.durationMs,
+                fields: {
+                  type: "hook_run",
+                  eventName: payload.run.eventName,
+                  source: payload.run.source ?? "unknown",
+                  sourcePath: payload.run.sourcePath,
+                  hookStatus: payload.run.status,
+                  statusMessage: payload.run.statusMessage ?? null,
+                  entries: payload.run.entries.map(({ kind, text }) => ({ kind, text })),
+                },
+              })
+            : Effect.void;
         yield* registerNotification("hook/completed", emitHookRun);
 
         const emitApprovalReview = (

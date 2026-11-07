@@ -348,7 +348,10 @@ const startTurn = (params, source = "turn/start") => {
         executionMode: "sync", scope: "turn", sourcePath: "/fixture/hooks.json", source: "user",
         displayOrder: 0, status: "running", statusMessage: null,
         startedAt: Date.now(), completedAt: null, durationMs: null,
-        entries: [{ kind: "context", text: "Injected hook context must stay hidden" }],
+        entries: [
+          { kind: "context", text: "Injected hook context must stay hidden" },
+          { kind: "warning", text: "The session hook reported a warning." },
+        ],
       };
       notify("hook/started", { threadId: thread().id, turnId: next.id, run });
       const item = { type: "agentMessage", id: `reply-${next.id}`, text: "The hook completed successfully.", phase: "final_answer", delivery: null, memoryCitation: null, questions: null };

@@ -4743,6 +4743,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           durationMs: null,
           entries: [{ kind: "context", text: "Injected for the model" }],
         };
+        const quietRun = { ...run, id: "quiet-hook-run" };
         const review = {
           threadId: nativeThreadId,
           turnId: nativeTurnId,
@@ -4777,7 +4778,25 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                 params: {
                   threadId: nativeThreadId,
                   turnId: nativeTurnId,
-                  run: { ...run, status: "completed", completedAt: 2, durationMs: 1 },
+                  run: {
+                    ...run,
+                    status: "completed",
+                    completedAt: 2,
+                    durationMs: 1,
+                    entries: [...run.entries, { kind: "warning", text: "Check the config" }],
+                  },
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              label: "quiet hook/completed",
+              frame: {
+                method: "hook/completed",
+                params: {
+                  threadId: nativeThreadId,
+                  turnId: nativeTurnId,
+                  run: { ...quietRun, status: "completed", completedAt: 2, durationMs: 1 },
                 },
               },
             },
@@ -4882,12 +4901,17 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         for (const event of harness.events)
           if (event.type === "turn_item.updated") latest.set(event.turnItem.id, event.turnItem);
         const items = [...latest.values()];
-        const hook = items.find((item) => item.type === "hook_run");
-        assert.deepInclude(hook, {
+        // A hook that only injected context for the model has nothing to show.
+        const hooks = items.filter((item) => item.type === "hook_run");
+        assert.lengthOf(hooks, 1);
+        assert.deepInclude(hooks[0], {
           eventName: "sessionStart",
           source: "project",
           hookStatus: "completed",
-          entries: [{ kind: "context", text: "Injected for the model" }],
+          entries: [
+            { kind: "context", text: "Injected for the model" },
+            { kind: "warning", text: "Check the config" },
+          ],
         });
         const reviewItem = items.find((item) => item.type === "approval_review");
         const command = items.find((item) => item.type === "command_execution");

@@ -795,8 +795,10 @@ keep their `nodex_app` presentation.
 
 Lifecycle hooks, automatic reviews, cited memory and the files a command read are Turn
 metadata: they reach the reply's hook indicator and footer details as in any chat, and a
-hook that blocks a prompt explains itself beside that prompt. Context a hook injected for
-the model never appears. Application tool calls show under the `nodex_app` presentation
+hook that blocks a prompt explains itself beside that prompt. A hook appears once it has
+finished and only if it has something to show: it failed, blocked, stopped, or reported a
+warning, feedback or an error. One that succeeded quietly leaves no record. Context a hook
+injected for the model never appears. Application tool calls show under the `nodex_app` presentation
 whatever spelling the Provider reports. Execution plumbing — listing available Agent models, polling or waiting
 for subagent status — never appears in the transcript, and delegating or cancelling a
 subagent appears only as that subagent's row unless the call itself failed. Request

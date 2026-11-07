@@ -13,7 +13,8 @@ all of them. Nothing read an event older than a client's reconnect window, becau
 written in the same transaction already held the current state.
 
 Within the projections, command output took three quarters of the turn item bytes while only
-expanding a command, reading its history as an Agent, or preparing a context handoff used it.
+expanding a command, reading its history as an Agent, or preparing a context handoff used it. Hook
+runs added a row for every tool call, nearly all of them silent successes.
 
 Providers also keep their own conversation records, and our sampling found almost all of this
 content in them. Those records are not a substitute: a Provider can expire them, and each has its
@@ -39,6 +40,8 @@ Each part keeps what its readers need.
   start and its end, because clients read no more than that of one item. Output moves out of
   `payload_json` into a zstd column with its decompressed size beside it. No query filters on it,
   so the JSON fields SQL reads stay in place, and history pages can budget without decompressing.
+- **Hooks record outcomes.** A hook appears once finished, and only if it failed, blocked, stopped
+  or reported something a person can read.
 - **Freed space returns to the disk.** New stores use incremental auto-vacuum. An older store adopts
   it with one VACUUM at startup, once at least a quarter of it is free and the disk has room for
   the rewrite. A failed attempt leaves the store intact, starts normally and waits a week to retry.

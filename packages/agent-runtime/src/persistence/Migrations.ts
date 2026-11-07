@@ -109,6 +109,7 @@ import Migration0091 from "./Migrations/091_MessageWordsWithoutContextLinks.ts";
 import Migration0092 from "./Migrations/092_RetireThreadTitleEffects.ts";
 import Migration0093 from "./Migrations/093_UsageLedger.ts";
 import Migration0094 from "./Migrations/094_CompressCommandOutput.ts";
+import Migration0095 from "./Migrations/095_DropQuietHookRuns.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -217,6 +218,7 @@ export const migrationEntries = [
   [92, "RetireThreadTitleEffects", Migration0092],
   [93, "UsageLedger", Migration0093],
   [94, "CompressCommandOutput", Migration0094],
+  [95, "DropQuietHookRuns", Migration0095],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
