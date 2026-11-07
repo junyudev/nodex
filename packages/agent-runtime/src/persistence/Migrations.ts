@@ -107,6 +107,7 @@ import Migration0088 from "./Migrations/088_McpToolOperations.ts";
 import Migration0090 from "./Migrations/090_ExecutionStoreContinuity.ts";
 import Migration0091 from "./Migrations/091_MessageWordsWithoutContextLinks.ts";
 import Migration0092 from "./Migrations/092_RetireThreadTitleEffects.ts";
+import Migration0093 from "./Migrations/093_UsageLedger.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -213,6 +214,7 @@ export const migrationEntries = [
   [90, "ExecutionStoreContinuity", Migration0090],
   [91, "MessageWordsWithoutContextLinks", Migration0091],
   [92, "RetireThreadTitleEffects", Migration0092],
+  [93, "UsageLedger", Migration0093],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
