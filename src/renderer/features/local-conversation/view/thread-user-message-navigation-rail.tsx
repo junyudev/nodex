@@ -19,7 +19,7 @@ import {
   resolveMarkerNavigationCurrentRangeIds,
 } from "@/components/shared/marker-navigation-rail";
 import { MARKER_NAVIGATION_VIRTUALIZE_AFTER } from "@/components/shared/marker-navigation-window";
-import { logTelemetryEvent } from "@/lib/statsig-telemetry";
+import { recordProductEvent } from "@/lib/product-analytics";
 import type {
   ThreadUserMessageNavigationItem,
   ThreadUserMessageNavigationOutput,
@@ -215,10 +215,9 @@ export function ThreadUserMessageNavigationRail({
       onRevealMissingItem={onRevealItem}
       onItemPreviewIntent={onPreviewItem}
       onClickItem={(item) => {
-        logTelemetryEvent("thread_user_message_navigation", undefined, {
-          ordinal: item.ordinal,
-          itemCount: items.length,
-          navigationMode: "smooth",
+        recordProductEvent({
+          name: "thread_message_navigation",
+          properties: { ordinal: item.ordinal, item_count: items.length },
         });
       }}
       listDataAttributes={{

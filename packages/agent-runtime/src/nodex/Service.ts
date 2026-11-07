@@ -66,6 +66,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import { threadCreatedAnalytics } from "./ExecutionAnalytics.ts";
 import * as Schedule from "effect/Schedule";
 import { createHash } from "node:crypto";
 import * as NetAddress from "effect/net/NetAddress";
@@ -842,6 +843,27 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return instance?.driverKind ?? (yield* providerPolicy.current)[id]?.driver ?? null;
       }),
   };
+  // Only Threads started from now on count, so observation begins at the current sequence.
+  yield* orchestrator
+    .streamStoredEventsFrom({
+      afterSequence: yield* eventSink.latestSequence(),
+      eventType: "thread.created",
+    })
+    .pipe(
+      Stream.runForEach(({ event }) =>
+        Effect.gen(function* () {
+          if (event.type !== "thread.created") return;
+          const driver = yield* sessionMetadataOptions
+            .providerDriver(event.payload.providerInstanceId)
+            .pipe(Effect.orElseSucceed(() => null));
+          const properties = threadCreatedAnalytics(event.payload, driver);
+          if (properties !== null)
+            yield* notify({ type: "product-analytics", name: "thread.created", properties });
+        }),
+      ),
+      Effect.catchCause((cause) => Effect.logWarning("Thread analytics stopped", { cause })),
+      Effect.forkIn(processScope),
+    );
   const textGeneration = yield* TextGeneration;
   const nativeInteraction = yield* NativeInteraction.make(identity.runtimeGeneration, notify).pipe(
     Effect.provide(NativeRuntimePolicy.layerFromProjectStore),

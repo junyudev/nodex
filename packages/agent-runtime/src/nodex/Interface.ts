@@ -1008,6 +1008,12 @@ export type AgentRuntimeNotification =
       readonly source: AgentNativeSource;
     }
   | AgentHostRequest
+  /** An execution fact for the Desktop Host's product analytics; the Runtime never reports it. */
+  | {
+      readonly type: "product-analytics";
+      readonly name: string;
+      readonly properties: Readonly<Record<string, unknown>>;
+    }
   | { readonly type: "ready"; readonly identity: AgentRuntimeIdentity }
   | {
       readonly type: "execution.native-session.closed";

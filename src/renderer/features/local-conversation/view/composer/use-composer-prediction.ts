@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CodexComposerPredictionResult } from "../../../../../shared/codex-composer-prediction";
-import { logTelemetryEvent } from "../../../../lib/statsig-telemetry";
+import { recordProductEvent } from "../../../../lib/product-analytics";
+import { analyticsCode, analyticsModelName } from "../../../../../shared/product-analytics/names";
 import { useConversationRuntimeOverride } from "../../conversation-runtime";
 import { runConversationOperation } from "../../local-conversation-operations";
 import { useComposerPredictionSettings } from "../../composer-prediction-settings";
@@ -18,11 +19,14 @@ const reportInteraction = (
   action: string,
   edited?: boolean,
 ) =>
-  logTelemetryEvent("codex_composer_prediction_interaction", undefined, {
-    action,
-    edited,
-    generationTrigger: prediction.generationTrigger,
-    model: prediction.model,
+  recordProductEvent({
+    name: "composer_prediction_interaction",
+    properties: {
+      action,
+      ...(edited === undefined ? {} : { edited }),
+      trigger: analyticsCode(prediction.generationTrigger),
+      model: analyticsModelName(prediction.model),
+    },
   });
 
 /** Catch-up shares the execution owner's cache with background completion. */
@@ -150,10 +154,13 @@ export function useComposerPrediction({
           ? submittedText !== submission.acceptedText
           : undefined;
       if (submission.accepted) reportInteraction(submission.prediction, "submitted", edited);
-      logTelemetryEvent("codex_composer_prediction_submitted", undefined, {
-        acceptedPrediction: submission.accepted,
-        edited,
-        generationTrigger: submission.prediction.generationTrigger,
+      recordProductEvent({
+        name: "composer_prediction_submitted",
+        properties: {
+          accepted: submission.accepted,
+          ...(edited === undefined ? {} : { edited }),
+          trigger: analyticsCode(submission.prediction.generationTrigger),
+        },
       });
     },
     [],

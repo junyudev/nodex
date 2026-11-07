@@ -283,14 +283,9 @@ export const SETTINGS_SEARCH_PANELS = {
             "masked session replays",
           ]),
           entry(
-            "Share product telemetry",
-            "Send anonymous product events to Statsig. Prompts, transcripts, card text and file paths are never sent.",
-            ["Telemetry", "anonymous product events", "Statsig"],
-          ),
-          entry(
-            "Share web analytics",
-            "Include filtered technical web analytics with product telemetry.",
-            ["technical web analytics"],
+            "Share usage analytics",
+            "Send anonymous counts of how Nodex is used, under a random ID. Prompts, code, titles and file paths are never sent.",
+            ["Telemetry", "anonymous usage", "Statsig", "See what is sent"],
           ),
         ],
       },

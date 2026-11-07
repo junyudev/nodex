@@ -123,9 +123,6 @@ const DiagnosticsUpdate = z
 const TelemetryUpdate = z
   .object({
     enabled: z.boolean(),
-    clientKey: z.string(),
-    environment: z.string(),
-    autoCaptureEnabled: z.boolean(),
   })
   .strict() satisfies z.ZodType<UpdateTelemetrySettingsInput>;
 const ThreadNotificationUpdate = z

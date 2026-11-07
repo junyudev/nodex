@@ -1499,6 +1499,17 @@ export interface IpcApi
     args: [input: UpdateDiagnosticsSettingsInput];
     result: DiagnosticsSettings;
   };
+  "product-analytics:record": { args: [event: unknown]; result: void };
+  "product-analytics:notice:read": {
+    args: [];
+    result: import("./product-analytics/activity").ProductAnalyticsNotice;
+  };
+  "product-analytics:notice:presented": { args: []; result: void };
+  "product-analytics:notice:acknowledge": { args: []; result: void };
+  "product-analytics:activity:read": {
+    args: [];
+    result: import("./product-analytics/activity").ProductAnalyticsActivity;
+  };
   "settings:telemetry:get": { args: []; result: TelemetrySettings };
   "settings:telemetry:update": {
     args: [input: UpdateTelemetrySettingsInput];

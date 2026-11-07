@@ -7,7 +7,6 @@ import { startStartupController } from "./startup-controller";
 const mocks = vi.hoisted(() => ({
   initializeElectronRendererLocalCommitIngress: vi.fn(),
   initializeRendererSentry: vi.fn<() => Promise<void>>(),
-  initializeRendererTelemetry: vi.fn<() => Promise<void>>(),
   mountApplicationRenderer: vi.fn<() => Promise<void>>(),
   registerAppCloseFlushHandler: vi.fn<(handler: () => void) => () => void>(),
 }));
@@ -32,10 +31,6 @@ vi.mock("../lib/electron-renderer-transport", () => ({
 
 vi.mock("../lib/sentry-renderer", () => ({
   initializeRendererSentry: mocks.initializeRendererSentry,
-}));
-
-vi.mock("../lib/statsig-telemetry", () => ({
-  initializeRendererTelemetry: mocks.initializeRendererTelemetry,
 }));
 
 interface BridgeHarness {
@@ -99,7 +94,6 @@ describe("startup controller", () => {
     vi.useFakeTimers();
     mocks.initializeElectronRendererLocalCommitIngress.mockReset();
     mocks.initializeRendererSentry.mockReset().mockResolvedValue(undefined);
-    mocks.initializeRendererTelemetry.mockReset().mockResolvedValue(undefined);
     mocks.mountApplicationRenderer.mockReset().mockResolvedValue(undefined);
     mocks.registerAppCloseFlushHandler.mockReset().mockReturnValue(() => undefined);
     document.body.innerHTML = `<div id="root">${createStartupShellMarkup()}</div>`;

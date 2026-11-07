@@ -106,6 +106,7 @@ const buildHarness = (input: {
       usageMeterSettingsChanges: Stream.empty,
       composerPredictionSettingsChanges: Stream.empty,
       inboxSettingsChanges: Stream.empty,
+      telemetrySettingsChanges: Stream.empty,
       linkOpeningSettingsChanges: Stream.empty,
       acpLaunchConfiguration: () => Effect.die("Unused ACP launch configuration"),
       openCodeLaunchConfiguration: () => Effect.die("Unused OpenCode launch configuration"),

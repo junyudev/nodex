@@ -366,7 +366,6 @@ export const createDevLaunchPlan = (input: {
           NODEX_SENTRY_REPLAYS_SESSION_SAMPLE_RATE: "0",
           NODEX_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: "0",
           NODEX_TELEMETRY_ENABLED: "false",
-          NODEX_TELEMETRY_AUTOCAPTURE_ENABLED: "false",
         }
       : {}),
     SENTRY_ENVIRONMENT: "development",

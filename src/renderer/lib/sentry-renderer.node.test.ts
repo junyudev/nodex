@@ -8,6 +8,8 @@ function buildSettings(
 ): DiagnosticsSettings {
   return {
     enabled,
+    active: enabled,
+    blockedBy: null,
     dsn: enabled ? "https://example.com/1" : "",
     environment: "test",
     release: null,

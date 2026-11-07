@@ -278,6 +278,8 @@ import { TerminalPanel } from "./workbench-terminal-panel";
 import { buildWorkbenchScenePanels } from "./workbench-scene-panels";
 import { useWorkbenchRouteSurfaces } from "./use-workbench-route-surfaces";
 import { WorkbenchCommandPaletteHost } from "./workbench-command-palette-host";
+import { ProductAnalyticsNotice } from "../product-analytics-notice";
+import { recordFeatureUsed, recordPresentedSurfaces } from "@/lib/product-analytics";
 import { openCommandPaletteFolder } from "@/lib/command-palette-projects";
 import { useWorkbenchChromeLayout } from "./use-workbench-chrome-layout";
 import { useWorkbenchChromeCommands } from "@/lib/use-workbench-chrome-commands";
@@ -1056,6 +1058,9 @@ export function WorkbenchRuntime({
     [panelTabPresentationRegistry],
   );
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  useEffect(() => {
+    if (commandPaletteOpen) recordFeatureUsed("command_palette");
+  }, [commandPaletteOpen]);
   const [keyboardShortcutHelpOpen, setKeyboardShortcutHelpOpen] = useState(false);
   const [commandPaletteOpenRequest, setCommandPaletteOpenRequest] = useState({
     tick: 0,
@@ -1455,6 +1460,10 @@ export function WorkbenchRuntime({
   };
   const activeRenderSession = activeSession;
   const activeSessionScene = activeSession ? resolveSessionScene(activeSession) : null;
+  const presentedScene = activeSessionScene ?? activeOwnedScene;
+  useEffect(() => {
+    recordPresentedSurfaces(presentedScene);
+  }, [presentedScene]);
   const updateActiveSessionComposerOverlay = useCallback(
     (patch: Partial<WorkbenchComposerOverlayState>) => {
       if (!activeSession) return;
@@ -5833,6 +5842,7 @@ export function WorkbenchRuntime({
       <ScheduledNavigationProvider value={scheduledNavigation}>
         <WorkbenchNewTabPortProvider port={newTabPort}>
           <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
+          <ProductAnalyticsNotice onManage={() => openSettingsAt("general-settings", "privacy")} />
         </WorkbenchNewTabPortProvider>
       </ScheduledNavigationProvider>
     </AgentSettingsNavigationProvider>

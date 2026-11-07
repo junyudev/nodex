@@ -1,30 +1,24 @@
-import type { TelemetrySettings, TelemetrySettingsEnvOverrides } from "../types";
+import type { TelemetrySettings } from "../types";
+import type { RemoteSignalBlock } from "../product-analytics/remote-signals";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+const REMOTE_SIGNAL_BLOCKS: ReadonlySet<unknown> = new Set<RemoteSignalBlock>([
+  "environment",
+  "do-not-track",
+  "ci",
+  "development-build",
+]);
 
-export function isTelemetrySettingsEnvOverrides(
-  value: unknown,
-): value is TelemetrySettingsEnvOverrides {
-  if (!isRecord(value)) return false;
-
-  return (
-    typeof value.enabled === "boolean" &&
-    typeof value.clientKey === "boolean" &&
-    typeof value.environment === "boolean" &&
-    typeof value.autoCaptureEnabled === "boolean"
-  );
+export function isRemoteSignalBlock(value: unknown): value is RemoteSignalBlock | null {
+  return value === null || REMOTE_SIGNAL_BLOCKS.has(value);
 }
 
 export function isTelemetrySettings(value: unknown): value is TelemetrySettings {
-  if (!isRecord(value)) return false;
-
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
   return (
-    typeof value.enabled === "boolean" &&
-    typeof value.clientKey === "string" &&
-    typeof value.environment === "string" &&
-    typeof value.autoCaptureEnabled === "boolean" &&
-    isTelemetrySettingsEnvOverrides(value.envOverrides)
+    typeof candidate.enabled === "boolean" &&
+    typeof candidate.active === "boolean" &&
+    typeof candidate.managed === "boolean" &&
+    isRemoteSignalBlock(candidate.blockedBy)
   );
 }

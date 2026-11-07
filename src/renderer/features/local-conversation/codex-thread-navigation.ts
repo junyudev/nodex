@@ -1,4 +1,6 @@
 import type { CodexRequestTraceContext } from "../../../shared/codex-request-lifecycle";
+import { analyticsCode } from "../../../shared/product-analytics/names";
+import { recordProductEvent } from "../../lib/product-analytics";
 import {
   codexPerformanceNow,
   startCodexPerformanceSpan,
@@ -32,13 +34,17 @@ export class CodexThreadNavigation {
     private readonly startSpan: CodexThreadNavigationSpanFactory = (attributes, onTerminal) =>
       startCodexPerformanceSpan(
         "desktop.thread_navigation",
-        () => ({
-          threadKind: attributes.threadKind,
-          threadState: attributes.threadState,
-          ...Object.fromEntries(
-            Object.entries(attributes.view ?? {}).map(([key, value]) => [`view.${key}`, value]),
-          ),
-        }),
+        ({ outcome, reason, durationMs }) =>
+          recordProductEvent({
+            name: "thread_opened",
+            value: durationMs,
+            properties: {
+              outcome,
+              reason: analyticsCode(reason),
+              thread_kind: analyticsCode(attributes.threadKind),
+              thread_state: analyticsCode(attributes.threadState),
+            },
+          }),
         {
           onTerminal,
           startedAtMs: codexPerformanceNow(),

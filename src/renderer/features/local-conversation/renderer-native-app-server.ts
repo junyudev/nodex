@@ -19,7 +19,6 @@ import {
   type RendererAppServerRequestOptions,
 } from "./renderer-app-server-request-client";
 import { subscribeCodexAppServerMessage } from "./app-server-message-bus";
-import { CodexRequestAnalytics } from "./codex-request-analytics";
 import { CodexRequestRecorder } from "./codex-request-recorder";
 import { codexTurnFirstResponseTracker } from "./codex-turn-first-response";
 
@@ -27,8 +26,6 @@ export type NativeRequestOptions = Omit<RendererAppServerRequestOptions, "params
 
 export class RendererNativeAppServer implements Disposable {
   private readonly client: RendererAppServerRequestClient;
-
-  private readonly analytics: CodexRequestAnalytics;
 
   private readonly unsubscribeLifecycle: () => void;
 
@@ -41,11 +38,9 @@ export class RendererNativeAppServer implements Disposable {
       hostId,
     );
     const recorder = new CodexRequestRecorder(hostId);
-    this.analytics = new CodexRequestAnalytics();
     this.unsubscribeLifecycle = this.client.addRequestLifecycleListener((event) => {
       recorder.handle(event);
       codexTurnFirstResponseTracker.handleRequestLifecycleEvent(event);
-      if (event.type !== "started") this.analytics.handle(event);
     });
     this.unsubscribeDelivery = subscribeCodexAppServerMessage("mcp-request-delivery", (message) => {
       if (message.hostId === this.hostId) this.client.onDelivery(message.update);
@@ -218,7 +213,6 @@ export class RendererNativeAppServer implements Disposable {
   [Symbol.dispose](): void {
     this.unsubscribeDelivery();
     this.unsubscribeLifecycle();
-    this.analytics[Symbol.dispose]();
     this.client[Symbol.dispose]();
   }
 }

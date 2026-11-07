@@ -1,3 +1,4 @@
+import type { RemoteSignalBlock } from "./product-analytics/remote-signals";
 import type { WorkflowStatusValue } from "./workflow-status";
 import type { components as CoreProtocolComponents } from "@nodex/core-protocol";
 import type { CodexTurnPresentationTicket } from "./nodex-app-tools/turn-presentation";
@@ -1564,13 +1565,6 @@ export interface DiagnosticsSettingsEnvOverrides {
   replaysOnErrorSampleRate: boolean;
 }
 
-export interface TelemetrySettingsEnvOverrides {
-  enabled: boolean;
-  clientKey: boolean;
-  environment: boolean;
-  autoCaptureEnabled: boolean;
-}
-
 export interface ManagedWorktreeConversationRecord {
   threadId: string;
   projectId: string | null;
@@ -1775,6 +1769,9 @@ export interface DiagnosticsSettings {
   replaysSessionSampleRate: number;
   replaysOnErrorSampleRate: number;
   envOverrides: DiagnosticsSettingsEnvOverrides;
+  /** Whether crash reports actually leave this process. */
+  active: boolean;
+  blockedBy: RemoteSignalBlock | null;
 }
 
 export interface UpdateDiagnosticsSettingsInput {
@@ -1789,18 +1786,17 @@ export interface UpdateDiagnosticsSettingsInput {
 }
 
 export interface TelemetrySettings {
+  /** The saved preference, or its environment override. */
   enabled: boolean;
-  clientKey: string;
-  environment: string;
-  autoCaptureEnabled: boolean;
-  envOverrides: TelemetrySettingsEnvOverrides;
+  /** Whether usage analytics actually leave this process. */
+  active: boolean;
+  blockedBy: RemoteSignalBlock | null;
+  /** An environment variable decides, so the switch cannot change anything. */
+  managed: boolean;
 }
 
 export interface UpdateTelemetrySettingsInput {
   enabled: boolean;
-  clientKey: string;
-  environment: string;
-  autoCaptureEnabled: boolean;
 }
 
 export type ThreadNotificationTurnMode = "off" | "unfocused" | "always";

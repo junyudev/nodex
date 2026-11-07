@@ -3,8 +3,9 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 /**
- * Engine modules may record anonymous product events. Nodex does not send execution analytics
- * anywhere, so every recording is discarded and the service holds no network client.
+ * Engine modules record anonymous execution facts here. The Runtime holds no network client for
+ * them: recordings cross the private pipe to the Desktop Host, whose closed catalog decides what,
+ * if anything, is reported.
  */
 export class AnalyticsService extends Context.Service<
   AnalyticsService,
@@ -22,4 +23,13 @@ export class AnalyticsService extends Context.Service<
   );
 }
 
-export const layer = AnalyticsService.layerTest;
+export const layerFromHost = (
+  send: (event: string, properties: Readonly<Record<string, unknown>>) => Effect.Effect<void>,
+) =>
+  Layer.succeed(
+    AnalyticsService,
+    AnalyticsService.of({
+      record: (event, properties = {}) => send(event, properties),
+      flush: Effect.void,
+    }),
+  );

@@ -376,9 +376,6 @@ importers:
       '@statsig/js-client':
         specifier: 3.33.5
         version: 3.33.5
-      '@statsig/web-analytics':
-        specifier: 3.33.5
-        version: 3.33.5
       '@streamdown/cjk':
         specifier: 1.0.4
         version: 1.0.4(@types/mdast@4.0.4)(micromark-util-types@2.0.3)(micromark@4.0.2(supports-color@10.2.2))(react@19.3.1)(supports-color@10.2.2)(unified@11.0.5)
@@ -5303,9 +5300,6 @@ packages:
 
   '@statsig/js-client@3.33.5':
     resolution: {integrity: sha512-QOPoLJQQegNT+onF1fsV6YnR7X8t3Di9bOTLezlAfv6R46QzsuLz+6Oqk9P1n9lWGPhdXHnxUNRohradF9sN2w==}
-
-  '@statsig/web-analytics@3.33.5':
-    resolution: {integrity: sha512-E50tIgCId9WSzd04vQgRxoNER+PogoV4aNXETMDOW6EnTbwbnoNRU0hOy1UoGH48EwZTu0F2E1oHV0l/HVIo9A==}
 
   '@streamdown/cjk@1.0.4':
     resolution: {integrity: sha512-l5IVxqNhQDj9bDTu6h1sqxeEjZI7pW1uZ6Yu79l+9DqfmOkfGF0AJ0+y8oFi1hrFdscGqhXVNGjSgFJgh6Xh3A==}
@@ -11542,9 +11536,6 @@ packages:
   web-namespaces@2.0.1:
     resolution: {integrity: sha512-bKr1DkiNa2krS7qxNtdrtHAmzuYGFQLiQ13TsorsdT6ULTkPLKuu5+GsFpDlg6JFjUTwX2DyhMPG2be8uPrqsQ==}
 
-  web-vitals@5.0.3:
-    resolution: {integrity: sha512-4KmOFYxj7qT6RAdCH0SWwq8eKeXNhAFXR4PmgF6nrWFmrJ41n7lq3UCA6UK0GebQ4uu+XP8e8zGjaDO3wZlqTg==}
-
   web-vitals@6.2.3:
     resolution: {integrity: sha512-Dmy+vdO1UPMqXiAtZSNayhl4f794Bxfd94W4HIj2HlYtczEQfEOon969memlcpcHrTuOKLa5baFjX7WbgmOq+A==}
 
@@ -15270,12 +15261,6 @@ snapshots:
   '@statsig/js-client@3.33.5':
     dependencies:
       '@statsig/client-core': 3.33.5
-
-  '@statsig/web-analytics@3.33.5':
-    dependencies:
-      '@statsig/client-core': 3.33.5
-      '@statsig/js-client': 3.33.5
-      web-vitals: 5.0.3
 
   '@streamdown/cjk@1.0.4(@types/mdast@4.0.4)(micromark-util-types@2.0.3)(micromark@4.0.2(supports-color@10.2.2))(react@19.3.1)(supports-color@10.2.2)(unified@11.0.5)':
     dependencies:
@@ -22379,8 +22364,6 @@ snapshots:
       defaults: 1.0.4
 
   web-namespaces@2.0.1: {}
-
-  web-vitals@5.0.3: {}
 
   web-vitals@6.2.3: {}
 

@@ -1,4 +1,6 @@
+import { analyticsCode } from "../../../shared/product-analytics/names";
 import { startCodexPerformanceSpan } from "../../lib/codex-performance-span";
+import { recordProductEvent } from "../../lib/product-analytics";
 
 import type {
   CodexRequestLifecycleEvent,
@@ -64,11 +66,18 @@ export function startCodexTurnFirstResponseSpan(
 ): CodexTurnFirstResponseSpan {
   return startCodexPerformanceSpan(
     "desktop.turn_submit",
-    {
-      submissionKind: attributes.submissionKind,
-      responseRuntime: attributes.responseRuntime,
-      threadKind: attributes.threadKind,
-    },
+    ({ outcome, reason, durationMs }) =>
+      recordProductEvent({
+        name: "turn_first_response",
+        value: durationMs,
+        properties: {
+          outcome,
+          reason: analyticsCode(reason),
+          submission_kind: analyticsCode(attributes.submissionKind),
+          response_runtime: analyticsCode(attributes.responseRuntime),
+          thread_kind: analyticsCode(attributes.threadKind),
+        },
+      }),
     options,
   );
 }

@@ -77,6 +77,7 @@ import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { ApplicationWindowRuntime } from "../window-runtime/ApplicationWindowRuntime";
 import { ApplicationWindowShellRuntime } from "../window-runtime/ApplicationWindowShellRuntime";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
+import * as ProductAnalyticsPlatform from "../platform/electron/ProductAnalyticsPlatform";
 import * as CodexApplicationLive from "./CodexApplicationLive";
 import * as ConversationApplicationLive from "./ConversationApplicationLive";
 import * as CoreApplicationLive from "./CoreApplicationLive";
@@ -124,7 +125,10 @@ const conversationGraph = ConversationApplicationLive.live.pipe(
       Layer.provideMerge(
         HostApplicationLive.live.pipe(
           Layer.provideMerge(
-            CodexApplicationLive.live.pipe(Layer.provideMerge(CoreApplicationLive.live)),
+            CodexApplicationLive.live.pipe(
+              Layer.provideMerge(CoreApplicationLive.live),
+              Layer.provideMerge(ProductAnalyticsPlatform.live),
+            ),
           ),
         ),
       ),

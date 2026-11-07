@@ -79,6 +79,7 @@ function initializeBootstrapDiagnostics(): Promise<boolean> {
       platform: process.platform,
       settings: getDiagnosticsSettings({
         environment: bootstrapConfig.environment,
+        isPackaged: app.isPackaged,
         settingsPath: bootstrapConfig.profileSettingsPath,
       }),
       adapter: electronMainSentryAdapter,

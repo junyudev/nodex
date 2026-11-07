@@ -24,7 +24,9 @@ import {
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { ProductAnalytics } from "../product-analytics/ProductAnalytics";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { analyticsModelName } from "../../shared/product-analytics/names";
 import { CodexAttachments } from "./CodexAttachments";
 import { requireExactThreadStartProfile } from "./codex-thread-start-profile";
 import { CodexClientThreadIdentity } from "./CodexClientThreadIdentity";
@@ -114,6 +116,7 @@ export const make: Effect.Effect<
   | ProjectWorkspace
   | ApplicationSettings
 > = Effect.gen(function* () {
+  const analytics = yield* ProductAnalytics;
   const attachments = yield* CodexAttachments;
   const clientIdentity = yield* CodexClientThreadIdentity;
   const conversationFork = yield* CodexConversationFork;
@@ -326,6 +329,17 @@ export const make: Effect.Effect<
         codexGatewayGenerationFence(capability),
       )) as unknown as ThreadStartResponse;
       startedThreadId = response.thread.id;
+      // Local Threads are reported from the Agent Runtime; this path starts them on another host.
+      yield* analytics.record({
+        name: "thread_started",
+        properties: {
+          provider: "codex",
+          model: analyticsModelName(response.model),
+          source: "web",
+          actor: "user",
+          host: capability.hostId === gateway.localHostId ? "local" : "remote",
+        },
+      });
       yield* Effect.try({
         try: () => requireExactThreadStartProfile(response, executionProfile),
         catch: (cause) => fail("verify-profile", entry, cause),

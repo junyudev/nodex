@@ -336,8 +336,8 @@ The `[server]` table currently owns these product setting families:
 - automatic backup enablement, interval, count retention, and automatic-snapshot byte budget;
 - deleted-content history retention compatibility setting;
 - automatic app-update checks;
-- opt-in diagnostics and optional renderer Session Replay;
-- opt-in product telemetry and separately opt-in safe web analytics.
+- crash reports and optional renderer Session Replay;
+- usage analytics.
 
 Settings → Backups and Settings → General update the selected Profile document
 through serialized typed Main operations. Unrelated TOML sections survive each
@@ -362,8 +362,11 @@ Supported operational overrides include:
   `NODEX_SENTRY_REPLAY_ENABLED`,
   `NODEX_SENTRY_REPLAYS_SESSION_SAMPLE_RATE`, and
   `NODEX_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE`;
-- `NODEX_TELEMETRY_ENABLED`, `STATSIG_CLIENT_KEY`,
-  `STATSIG_ENVIRONMENT`, and `NODEX_TELEMETRY_AUTOCAPTURE_ENABLED`.
+- `NODEX_TELEMETRY_ENABLED`, and `NODEX_TELEMETRY_ENDPOINT` to send usage analytics
+  to a local test receiver, under which a development build follows the preference
+  as a released build does;
+- `DO_NOT_TRACK`, which turns off crash reports and usage analytics unless their
+  own variable says otherwise. `CI` does the same.
 
 Use the current executable parser for exact boolean/number syntax and bounds.
 Do not add a setting to this reference before adding it to the typed parser,
@@ -371,12 +374,14 @@ Settings snapshot, and behavioral tests.
 
 ## Privacy
 
-Diagnostics, renderer replay, product telemetry, and web analytics are disabled
-by default. Replay is effective only when diagnostics are enabled. Web analytics
-is effective only when product telemetry is enabled and excludes copy text,
-console logs, current-page URLs, forms, clicks, and error/replay payloads from
-the default safe event set. The bundled Browser runtime has its own ambient
-network policy and is not enabled by Nodex telemetry preferences.
+Crash reports (`diagnostics_enabled`) and usage analytics (`telemetry_enabled`)
+default on in released builds, and are silent in development builds, on CI and
+under `DO_NOT_TRACK`. Session replay is off by default and is effective only with
+crash reports. Usage analytics state, including the random installation ID, lives
+in `product-analytics/` in the Profile. See
+[Product Analytics Behavior](product-specs/product-analytics-behavior.md). The
+bundled Browser runtime has its own ambient network policy and is not enabled by
+Nodex telemetry preferences.
 
 ## Link destinations
 

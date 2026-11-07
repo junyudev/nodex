@@ -1,6 +1,5 @@
 import { startInactiveSpan, withActiveSpan } from "@sentry/react";
 import type { CodexRequestTraceContext } from "../../shared/codex-request-lifecycle";
-import { logTelemetryEvent } from "./statsig-telemetry";
 
 export function codexPerformanceNow(): number {
   if (typeof performance !== "undefined") return performance.timeOrigin + performance.now();
@@ -30,6 +29,12 @@ export interface CodexPerformanceSpan {
   recordAnalyticsSuccess(): boolean;
 }
 
+export type CodexPerformanceAnalytics = (result: {
+  readonly outcome: "success" | "failure" | "aborted";
+  readonly reason: string | null;
+  readonly durationMs: number;
+}) => void;
+
 export interface CodexPerformanceSpanStartOptions {
   readonly onTerminal: () => void;
   readonly startedAtMs: number;
@@ -55,9 +60,7 @@ function spanTraceContext(
  */
 export function startCodexPerformanceSpan(
   name: string,
-  analyticsAttributes:
-    | Readonly<Record<string, string | undefined>>
-    | (() => Readonly<Record<string, string | undefined>>),
+  reportAnalytics: CodexPerformanceAnalytics,
   options: CodexPerformanceSpanStartOptions,
 ): CodexPerformanceSpan {
   const root = startInactiveSpan({
@@ -92,11 +95,10 @@ export function startCodexPerformanceSpan(
   const emitAnalytics = (outcome: "success" | "failure" | "aborted", reason: string | null) => {
     if (analyticsRecorded) return;
     analyticsRecorded = true;
-    logTelemetryEvent(name, codexPerformanceNow() - options.startedAtMs, {
+    reportAnalytics({
       outcome,
-      reason: reason ?? undefined,
-      ...(typeof analyticsAttributes === "function" ? analyticsAttributes() : analyticsAttributes),
-      ...Object.fromEntries(Object.entries(marks).map(([key, value]) => [`mark.${key}`, value])),
+      reason,
+      durationMs: Math.round(codexPerformanceNow() - options.startedAtMs),
     });
   };
 

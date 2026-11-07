@@ -198,6 +198,11 @@ const notificationSchema = z.discriminatedUnion("type", [
     claimId: z.string(),
     source: nativeSourceSchema,
   }),
+  z.object({
+    type: z.literal("product-analytics"),
+    name: z.string().min(1).max(128),
+    properties: z.record(z.string(), z.unknown()),
+  }),
   z.object({ type: z.literal("ready"), identity: identitySchema }),
   z.object({
     type: z.literal("event"),
@@ -265,6 +270,10 @@ export interface AgentRuntimeProcessOptions {
   /** Internal scheduler interval; production uses the default. */
   readonly livenessTickMs?: number;
   readonly host: (request: AgentHostRequest) => Effect.Effect<unknown, Error>;
+  readonly productEvent?: (
+    name: string,
+    properties: Readonly<Record<string, unknown>>,
+  ) => Effect.Effect<void>;
 }
 
 export interface AgentRuntimeProcessDelivery {
@@ -516,6 +525,11 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     const notification = decoded.data as AgentRuntimeNotification;
     if (notification.type === "ready") {
       yield* Deferred.succeed(ready, notification.identity);
+      return;
+    }
+    if (notification.type === "product-analytics") {
+      if (options.productEvent)
+        yield* options.productEvent(notification.name, notification.properties);
       return;
     }
     if (notification.type === "host.cancel") {

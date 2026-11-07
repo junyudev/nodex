@@ -10,6 +10,8 @@ import {
 function buildSettings(overrides: Partial<DiagnosticsSettings> = {}): DiagnosticsSettings {
   return {
     enabled: true,
+    active: true,
+    blockedBy: null,
     dsn: "https://example.com/1",
     environment: "test",
     release: "nodex@test",
@@ -61,7 +63,7 @@ describe("main Sentry diagnostics", () => {
     expect(initCount).toBe(0);
   });
 
-  test.each([{ enabled: false }, { dsn: "  " }])(
+  test.each([{ active: false }, { dsn: "  " }])(
     "does not load diagnostics for %o",
     async (settings) => {
       process.env.NODEX_SENTRY_FORCE_TEST = "1";

@@ -3,6 +3,8 @@ import { isDiagnosticsSettings } from "./diagnostics-settings";
 
 const VALID_SETTINGS = {
   enabled: true,
+  active: true,
+  blockedBy: null,
   dsn: "https://example.com/1",
   environment: "test",
   release: null,

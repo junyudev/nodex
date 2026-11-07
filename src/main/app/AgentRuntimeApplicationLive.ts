@@ -1,6 +1,7 @@
 import { modelPolicyCatalog } from "../agent-runtime/model-policy-catalog";
 import { isProviderOn } from "../../shared/model-policy";
 import { NodexAccount } from "../nodex-account/NodexAccount";
+import { ProductAnalytics } from "../product-analytics/ProductAnalytics";
 import {
   managedNodexProviders,
   projectManagedNodexCatalog,
@@ -623,6 +624,7 @@ const supervisor = Layer.effectContext(
       return { configuration, environment, executable };
     });
     const quiescence = yield* makeQuiescence(join(config.nodexHome, "agent-runtime"));
+    const analytics = yield* ProductAnalytics;
     const runtime = yield* makeSupervisor<
       Exclude<
         | Effect.Services<ReturnType<typeof makeHost>>
@@ -648,6 +650,7 @@ const supervisor = Layer.effectContext(
             configuration,
             environment,
             host,
+            productEvent: analytics.recordFromRuntime,
           });
           prepared.set(connection.identity, configuration);
           preparedEnvironment.set(connection.identity, environment);

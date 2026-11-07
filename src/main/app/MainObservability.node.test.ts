@@ -29,6 +29,8 @@ afterEach(() => {
 });
 const settings = (enabled: boolean): DiagnosticsSettings => ({
   enabled,
+  active: enabled,
+  blockedBy: null,
   dsn: "https://example.invalid/1",
   environment: "test",
   release: "nodex@test",

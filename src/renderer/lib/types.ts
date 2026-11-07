@@ -383,7 +383,6 @@ export type {
   DiagnosticsSettings,
   DiagnosticsSettingsEnvOverrides,
   TelemetrySettings,
-  TelemetrySettingsEnvOverrides,
   HistorySettings,
   HistorySettingsEnvOverrides,
   ThreadNotificationTurnMode,

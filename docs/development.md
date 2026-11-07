@@ -336,8 +336,8 @@ frame, decode, pressure and pending-write snapshots for client and router connec
 Thread navigation timing is owned by the ordinary Codex Thread surface. It measures navigation
 and render waits until ready content has painted, including an empty Thread or readable history
 that appears before execution attachment finishes. Hidden windows resume paint measurement when
-visible; Side Chat and provider override surfaces do not claim this measurement. It follows the
-existing performance telemetry preference and omits Thread identifiers from analytics attributes.
+visible; Side Chat and provider override surfaces do not claim this measurement. It reports through
+usage analytics and omits Thread identifiers.
 `database-page-reorder-menu` shows the position-only `Reorder` submenu in a
 Database Page context menu; it does not gate `Move to`, drag ordering, keyboard
 ordering, or bulk ordering. These features default off. Agent/app-server
@@ -1294,3 +1294,12 @@ paths; the execution runtime builds its independent copy as described above. Rus
 - [Nodex Mobile development](../packages/mobile/README.md)
 - [Landing site operations](landing-site.md)
 - [CI architecture and tier ownership](CI.md)
+
+## Usage analytics in development
+
+Development builds send no usage analytics and hold no analytics state. To exercise the pipeline, set
+`NODEX_TELEMETRY_ENABLED=true`, which reports to the Statsig `development` tier, or
+use `NODEX_TELEMETRY_ENDPOINT=<url>` alone to send to a local receiver with the preference in charge. A new event belongs in
+`src/shared/product-analytics/catalog.ts`, which Main enforces, and in
+[Product Analytics Behavior](product-specs/product-analytics-behavior.md). A chart belongs in
+`scripts/analytics/product-dashboard.ts`.

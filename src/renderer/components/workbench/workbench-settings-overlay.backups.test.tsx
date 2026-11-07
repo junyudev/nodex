@@ -100,6 +100,8 @@ function buildDiagnosticsSettings(
 ): DiagnosticsSettings {
   return {
     enabled: false,
+    active: false,
+    blockedBy: null,
     dsn: "",
     environment: "production",
     release: null,
@@ -122,19 +124,7 @@ function buildDiagnosticsSettings(
 }
 
 function buildTelemetrySettings(overrides: Partial<TelemetrySettings> = {}): TelemetrySettings {
-  return {
-    enabled: false,
-    clientKey: "",
-    environment: "production",
-    autoCaptureEnabled: false,
-    envOverrides: {
-      enabled: false,
-      clientKey: false,
-      environment: false,
-      autoCaptureEnabled: false,
-    },
-    ...overrides,
-  };
+  return { enabled: false, active: false, blockedBy: null, managed: false, ...overrides };
 }
 
 async function renderOverlay(path = buildSettingsPath("backups")) {
@@ -182,7 +172,7 @@ async function renderOverlay(path = buildSettingsPath("backups")) {
 }
 
 describe("SettingsRouteShell backups", () => {
-  test("loads and saves the opt-in diagnostics toggle", async () => {
+  test("loads and saves the crash report and session replay toggles", async () => {
     let diagnosticsSettings = buildDiagnosticsSettings();
     const diagnosticsUpdates: UpdateDiagnosticsSettingsInput[] = [];
 
@@ -263,7 +253,7 @@ describe("SettingsRouteShell backups", () => {
     expect(diagnosticsUpdates[0]?.enabled).toBe(true);
     expect(diagnosticsUpdates[0]?.replayEnabled).toBe(false);
     expect(toggle?.getAttribute("aria-checked")).toBe("true");
-    view.getByText("Crash reports are enabled after restart.");
+    view.getByText("Applies after restart.");
     expect(view.queryByText("Session replays require crash reports.")).toBeNull();
 
     const enabledReplayToggle = view.getByRole("switch", { name: "Share session replays" });
@@ -343,7 +333,7 @@ describe("SettingsRouteShell backups", () => {
     const view = await renderOverlay(buildSettingsPath("general-settings"));
     await settleLazyRender();
 
-    await view.findByText("Managed by NODEX_SENTRY_ENABLED. Environment overrides are active.");
+    await view.findByText("Managed by NODEX_SENTRY_ENABLED.");
     const toggle = view.getByRole("switch", { name: "Share crash reports" });
     expect(toggle).not.toBeNull();
     expect((toggle as HTMLButtonElement | null)?.disabled ?? false).toBe(true);
@@ -357,7 +347,7 @@ describe("SettingsRouteShell backups", () => {
     expect(diagnosticsUpdates.length).toBe(0);
   });
 
-  test("loads and saves the opt-in telemetry toggles", async () => {
+  test("saves the usage analytics preference and applies it without a restart", async () => {
     let telemetrySettings = buildTelemetrySettings();
     const telemetryUpdates: UpdateTelemetrySettingsInput[] = [];
 
@@ -381,13 +371,7 @@ describe("SettingsRouteShell backups", () => {
         case "settings:telemetry:update": {
           const input = args[0] as UpdateTelemetrySettingsInput;
           telemetryUpdates.push(input);
-          telemetrySettings = {
-            ...telemetrySettings,
-            enabled: input.enabled,
-            clientKey: input.clientKey,
-            environment: input.environment,
-            autoCaptureEnabled: input.autoCaptureEnabled,
-          };
+          telemetrySettings = { ...telemetrySettings, enabled: input.enabled };
           return telemetrySettings;
         }
         case "app:update:status":
@@ -415,53 +399,26 @@ describe("SettingsRouteShell backups", () => {
     const view = await renderOverlay(buildSettingsPath("general-settings"));
     await settleLazyRender();
 
-    await view.findByText("Web analytics require product telemetry.");
-    const toggle = view.getByRole("switch", { name: "Share product telemetry" });
-    const autoCaptureToggle = view.getByRole("switch", { name: "Share web analytics" });
-    expect(toggle).not.toBeNull();
-    expect(autoCaptureToggle).not.toBeNull();
-    expect(toggle?.getAttribute("aria-checked")).toBe("false");
-    expect((autoCaptureToggle as HTMLButtonElement | null)?.disabled ?? false).toBe(true);
-    view.getByText("Web analytics require product telemetry.");
+    const toggle = await view.findByRole("switch", { name: "Share usage analytics" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
 
     await act(async () => {
-      fireEvent.click(toggle as Element);
+      fireEvent.click(toggle);
       await Promise.resolve();
     });
     await settleAsyncRender();
 
-    expect(telemetryUpdates.length).toBe(1);
-    expect(telemetryUpdates[0]?.enabled).toBe(true);
-    expect(telemetryUpdates[0]?.autoCaptureEnabled).toBe(false);
-    expect(toggle?.getAttribute("aria-checked")).toBe("true");
-    view.getByText("Product telemetry is enabled after restart.");
-    expect(view.queryByText("Web analytics require product telemetry.")).toBeNull();
-
-    const enabledAutoCaptureToggle = view.getByRole("switch", { name: "Share web analytics" });
-    expect(enabledAutoCaptureToggle).not.toBeNull();
-    expect((enabledAutoCaptureToggle as HTMLButtonElement | null)?.disabled ?? false).toBe(false);
-
-    await act(async () => {
-      fireEvent.click(enabledAutoCaptureToggle as Element);
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-
-    expect(telemetryUpdates.length).toBe(2);
-    expect(telemetryUpdates[1]?.enabled).toBe(true);
-    expect(telemetryUpdates[1]?.autoCaptureEnabled).toBe(true);
-    view.getByText("Web analytics are enabled after restart.");
+    expect(telemetryUpdates).toEqual([{ enabled: true }]);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(view.queryByText(/after restart/)).toBeNull();
   });
 
   test("shows disabled telemetry control when env overrides the toggle", async () => {
     const telemetrySettings = buildTelemetrySettings({
       enabled: true,
-      envOverrides: {
-        enabled: true,
-        clientKey: false,
-        environment: false,
-        autoCaptureEnabled: false,
-      },
+      active: true,
+      blockedBy: null,
+      managed: true,
     });
     const telemetryUpdates: UpdateTelemetrySettingsInput[] = [];
 
@@ -510,8 +467,8 @@ describe("SettingsRouteShell backups", () => {
     const view = await renderOverlay(buildSettingsPath("general-settings"));
     await settleLazyRender();
 
-    await view.findByText("Managed by NODEX_TELEMETRY_ENABLED. Environment overrides are active.");
-    const toggle = view.getByRole("switch", { name: "Share product telemetry" });
+    await view.findByText("Managed by NODEX_TELEMETRY_ENABLED.");
+    const toggle = view.getByRole("switch", { name: "Share usage analytics" });
     expect(toggle).not.toBeNull();
     expect((toggle as HTMLButtonElement | null)?.disabled ?? false).toBe(true);
 

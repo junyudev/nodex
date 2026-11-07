@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../local-conversation-operations", () => ({
   runConversationOperation: mocks.operation,
 }));
-vi.mock("../../../../lib/statsig-telemetry", () => ({ logTelemetryEvent: mocks.telemetry }));
+vi.mock("../../../../lib/product-analytics", () => ({ recordProductEvent: mocks.telemetry }));
 
 const clients: QueryClient[] = [];
 const preferenceListeners = new Set<(settings: { enabled: boolean }) => void>();
@@ -161,7 +161,7 @@ it("suppresses a submitted source Turn and records accepted edits only after sen
     await Promise.resolve();
   });
   const submittedEvents = () =>
-    mocks.telemetry.mock.calls.filter(([name]) => name === "codex_composer_prediction_submitted");
+    mocks.telemetry.mock.calls.filter(([event]) => event.name === "composer_prediction_submitted");
   let submission: ReturnType<typeof hook.result.current.beforeSubmit> = null;
   await act(async () => {
     submission = hook.result.current.beforeSubmit();
@@ -181,7 +181,7 @@ it("suppresses a submitted source Turn and records accepted edits only after sen
     hook.result.current.recordSubmitted(submission, "Edited accepted text");
     await Promise.resolve();
   });
-  expect(submittedEvents()[0]?.[2]).toMatchObject({ acceptedPrediction: true, edited: true });
+  expect(submittedEvents()[0]?.[0].properties).toMatchObject({ accepted: true, edited: true });
   hook.rerender({
     hostId: "local",
     threadId: "root",

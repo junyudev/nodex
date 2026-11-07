@@ -62,12 +62,13 @@ import { useComposerPredictionSettings } from "@/features/local-conversation/com
 import { useWindowRestoreSettings } from "../../lib/use-window-restore-settings";
 import { isDiagnosticsSettings } from "../../../shared/diagnostics/diagnostics-settings";
 import { isTelemetrySettings } from "../../../shared/diagnostics/telemetry-settings";
+import type { RemoteSignalBlock } from "../../../shared/product-analytics/remote-signals";
+import { ProductAnalyticsActivityDialog } from "./product-analytics-activity-dialog";
 import { formatCodexThreadDetailLevelLabel } from "../../lib/codex-thread-settings";
 import type {
   DiagnosticsSettings,
   UpdateDiagnosticsSettingsInput,
   TelemetrySettings,
-  UpdateTelemetrySettingsInput,
   CodexThreadDetailLevel,
   ThreadNotificationSettings,
   ThreadNotificationTurnMode,
@@ -81,7 +82,9 @@ import {
 import { NodexSettingsNumberInput, NodexSettingsRow as SettingRow } from "../ui/settings";
 
 const DEFAULT_DIAGNOSTICS_SETTINGS: DiagnosticsSettings = {
-  enabled: false,
+  active: false,
+  blockedBy: null,
+  enabled: true,
   dsn: "",
   environment: "production",
   release: null,
@@ -102,17 +105,24 @@ const DEFAULT_DIAGNOSTICS_SETTINGS: DiagnosticsSettings = {
 };
 
 const DEFAULT_TELEMETRY_SETTINGS: TelemetrySettings = {
-  enabled: false,
-  clientKey: "",
-  environment: "production",
-  autoCaptureEnabled: false,
-  envOverrides: {
-    enabled: false,
-    clientKey: false,
-    environment: false,
-    autoCaptureEnabled: false,
-  },
+  enabled: true,
+  active: false,
+  blockedBy: null,
+  managed: false,
 };
+
+/** Why a Privacy switch cannot do what it shows. */
+function remoteSignalStatus(input: {
+  readonly managedBy: string | null;
+  readonly block: RemoteSignalBlock | null;
+}): string | null {
+  const { block, managedBy } = input;
+  if (managedBy) return `Managed by ${managedBy}.`;
+  if (block === "do-not-track") return "Off because DO_NOT_TRACK is set on this computer.";
+  if (block === "ci") return "Off because this computer is running CI.";
+  if (block === "development-build") return "Development builds send nothing.";
+  return null;
+}
 
 interface SegmentedOption<T extends string> {
   value: T;
@@ -503,6 +513,8 @@ function toDiagnosticsUpdateInput(
 
 export function DiagnosticsSettingRows({ open }: { open: boolean }) {
   const [settings, setSettings] = useState<DiagnosticsSettings>(DEFAULT_DIAGNOSTICS_SETTINGS);
+  // Crash reporting starts with the process, so a change waits for the next launch.
+  const [loadedEnabled, setLoadedEnabled] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(open);
   const [error, setError] = useState<string | null>(null);
 
@@ -521,6 +533,7 @@ export function DiagnosticsSettingRows({ open }: { open: boolean }) {
       .then((result) => {
         if (!isDiagnosticsSettings(result)) throw new Error("Could not load diagnostics settings.");
         setSettings(result);
+        setLoadedEnabled((current) => current ?? result.enabled);
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "Could not load diagnostics settings.");
@@ -588,12 +601,16 @@ export function DiagnosticsSettingRows({ open }: { open: boolean }) {
     [settings],
   );
 
-  const managed = settings.envOverrides.enabled ? "Managed by NODEX_SENTRY_ENABLED." : null;
-  const status = hasDiagnosticsEnvOverride(settings)
-    ? `${managed ?? ""} Environment overrides are active.`.trim()
-    : settings.enabled
-      ? "Crash reports are enabled after restart."
-      : null;
+  const status =
+    remoteSignalStatus({
+      managedBy: settings.envOverrides.enabled ? "NODEX_SENTRY_ENABLED" : null,
+      block: settings.blockedBy,
+    }) ??
+    (hasDiagnosticsEnvOverride(settings)
+      ? "Environment overrides are active."
+      : loadedEnabled !== null && settings.enabled !== loadedEnabled
+        ? "Applies after restart."
+        : null);
   const replayStatus = settings.envOverrides.replayEnabled
     ? "Session Replay is managed by NODEX_SENTRY_REPLAY_ENABLED."
     : !settings.enabled
@@ -643,51 +660,22 @@ export function DiagnosticsSettingRows({ open }: { open: boolean }) {
   );
 }
 
-function hasTelemetryEnvOverride(settings: TelemetrySettings): boolean {
-  return (
-    settings.envOverrides.enabled ||
-    settings.envOverrides.clientKey ||
-    settings.envOverrides.environment ||
-    settings.envOverrides.autoCaptureEnabled
-  );
-}
-
-function toTelemetryUpdateInput(
-  settings: TelemetrySettings,
-  overrides: Partial<UpdateTelemetrySettingsInput>,
-): UpdateTelemetrySettingsInput {
-  return {
-    enabled: settings.enabled,
-    clientKey: settings.clientKey,
-    environment: settings.environment,
-    autoCaptureEnabled: settings.autoCaptureEnabled,
-    ...overrides,
-  };
-}
-
 export function TelemetrySettingRows({ open }: { open: boolean }) {
   const [settings, setSettings] = useState<TelemetrySettings>(DEFAULT_TELEMETRY_SETTINGS);
-  const [busy, setBusy] = useState(open);
+  const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const [previousOpen, setPreviousOpen] = useState(open);
-  if (previousOpen !== open) {
-    setPreviousOpen(open);
-    if (open) {
-      setBusy(true);
-      setError(null);
-    }
-  }
+  const [activityOpen, setActivityOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     void readTelemetrySettings()
       .then((result) => {
-        if (!isTelemetrySettings(result)) throw new Error("Could not load telemetry settings.");
+        if (!isTelemetrySettings(result))
+          throw new Error("Could not load usage analytics settings.");
         setSettings(result);
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Could not load telemetry settings.");
+        setError(err instanceof Error ? err.message : "Could not load usage analytics settings.");
       })
       .finally(() => setBusy(false));
   }, [open]);
@@ -695,18 +683,14 @@ export function TelemetrySettingRows({ open }: { open: boolean }) {
   const handleEnabledChange = useCallback(
     async (enabled: boolean) => {
       const previous = settings;
-      const nextSettings = { ...settings, enabled };
-      setSettings(nextSettings);
+      setSettings({ ...settings, enabled });
       setBusy(true);
       setError(null);
-
       return runWithCleanup(
         async () => {
-          const result = await updateTelemetrySettings(
-            toTelemetryUpdateInput(settings, { enabled }),
-          );
+          const result = await updateTelemetrySettings({ enabled });
           if (!isTelemetrySettings(result)) {
-            throw new Error("Could not save telemetry settings.");
+            throw new Error("Could not save usage analytics settings.");
           }
           setSettings(result);
         },
@@ -714,95 +698,52 @@ export function TelemetrySettingRows({ open }: { open: boolean }) {
           cleanup: () => setBusy(false),
           onError: (err) => {
             setSettings(previous);
-            setError(err instanceof Error ? err.message : "Could not save telemetry settings.");
+            setError(
+              err instanceof Error ? err.message : "Could not save usage analytics settings.",
+            );
           },
         },
       );
     },
     [settings],
   );
-
-  const handleAutoCaptureEnabledChange = useCallback(
-    async (autoCaptureEnabled: boolean) => {
-      const previous = settings;
-      const nextSettings = { ...settings, autoCaptureEnabled };
-      setSettings(nextSettings);
-      setBusy(true);
-      setError(null);
-
-      return runWithCleanup(
-        async () => {
-          const result = await updateTelemetrySettings(
-            toTelemetryUpdateInput(settings, { autoCaptureEnabled }),
-          );
-          if (!isTelemetrySettings(result)) {
-            throw new Error("Could not save telemetry settings.");
-          }
-          setSettings(result);
-        },
-        {
-          cleanup: () => setBusy(false),
-          onError: (err) => {
-            setSettings(previous);
-            setError(err instanceof Error ? err.message : "Could not save telemetry settings.");
-          },
-        },
-      );
-    },
-    [settings],
-  );
-
-  const managed = settings.envOverrides.enabled ? "Managed by NODEX_TELEMETRY_ENABLED." : null;
-  const status = hasTelemetryEnvOverride(settings)
-    ? `${managed ?? ""} Environment overrides are active.`.trim()
-    : settings.enabled
-      ? "Product telemetry is enabled after restart."
-      : null;
-  const autoCaptureStatus = settings.envOverrides.autoCaptureEnabled
-    ? "Web analytics are managed by NODEX_TELEMETRY_AUTOCAPTURE_ENABLED."
-    : !settings.enabled
-      ? "Web analytics require product telemetry."
-      : settings.autoCaptureEnabled
-        ? "Web analytics are enabled after restart."
-        : null;
 
   return (
     <>
       <SettingRow
-        label="Share product telemetry"
+        label="Share usage analytics"
         description={
-          <SettingDescription status={status} error={error}>
-            Send anonymous product events to Statsig. Prompts, transcripts, card text and file paths
-            are never sent.
+          <SettingDescription
+            status={remoteSignalStatus({
+              managedBy: settings.managed ? "NODEX_TELEMETRY_ENABLED" : null,
+              block: settings.blockedBy,
+            })}
+            error={error}
+          >
+            Send anonymous counts of how Nodex is used, under a random ID. Prompts, code, titles and
+            file paths are never sent.{" "}
+            <button
+              type="button"
+              className="text-token-text-link-foreground hover:underline"
+              onClick={() => setActivityOpen(true)}
+            >
+              See what is sent
+            </button>
           </SettingDescription>
         }
       >
         <TogglePill
-          ariaLabel="Share product telemetry"
+          ariaLabel="Share usage analytics"
           value={settings.enabled}
-          disabled={busy || settings.envOverrides.enabled}
+          disabled={busy || settings.managed}
           onChange={(enabled) => {
             void handleEnabledChange(enabled);
           }}
         />
       </SettingRow>
-      <SettingRow
-        label="Share web analytics"
-        description={
-          <SettingDescription status={autoCaptureStatus}>
-            Include filtered technical web analytics with product telemetry.
-          </SettingDescription>
-        }
-      >
-        <TogglePill
-          ariaLabel="Share web analytics"
-          value={settings.autoCaptureEnabled && settings.enabled}
-          disabled={busy || !settings.enabled || settings.envOverrides.autoCaptureEnabled}
-          onChange={(autoCaptureEnabled) => {
-            void handleAutoCaptureEnabledChange(autoCaptureEnabled);
-          }}
-        />
-      </SettingRow>
+      {activityOpen ? (
+        <ProductAnalyticsActivityDialog onClose={() => setActivityOpen(false)} />
+      ) : null}
     </>
   );
 }

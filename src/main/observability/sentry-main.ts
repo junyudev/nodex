@@ -72,7 +72,7 @@ function isTestRuntime(): boolean {
 }
 
 function shouldInitialize(settings: DiagnosticsSettings): boolean {
-  if (!settings.enabled) return false;
+  if (!settings.active) return false;
   if (!settings.dsn.trim()) return false;
   if (isTestRuntime() && process.env.NODEX_SENTRY_FORCE_TEST !== "1") return false;
   return true;

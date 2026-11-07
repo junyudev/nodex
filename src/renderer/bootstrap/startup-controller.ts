@@ -146,19 +146,17 @@ export function startStartupController(): StartupController {
             .catch(() => FAIL_CLOSED_RUNTIME_CAPABILITIES),
         ]),
       );
-      const [application, closeFlush, transport, sentry, telemetry] = await measure("modules", () =>
+      const [application, closeFlush, transport, sentry] = await measure("modules", () =>
         Promise.all([
           import("../application-renderer"),
           import("../lib/app-close-flush"),
           import("../lib/electron-renderer-transport"),
           import("../lib/sentry-renderer"),
-          import("../lib/statsig-telemetry"),
         ]),
       );
       if (disposed) return;
       transport.initializeElectronRendererLocalCommitIngress(api);
       await measure("diagnostics", () => sentry.initializeRendererSentry());
-      void telemetry.initializeRendererTelemetry();
       // Install the full close coordinator before retiring the bootstrap ack.
       const releaseCloseFlushHandoff = closeFlush.registerAppCloseFlushHandler(() => undefined);
       retireStartupCloseFlush();

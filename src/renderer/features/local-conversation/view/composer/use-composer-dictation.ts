@@ -1,3 +1,4 @@
+import { recordFeatureUsed } from "@/lib/product-analytics";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
 import {
@@ -318,6 +319,7 @@ function createComposerDictationOwner(
       callbacks.onUnsupported();
       return;
     }
+    recordFeatureUsed("dictation");
     globalSessionId = null;
     completionCallbacks = null;
     dismissedRecovery = false;

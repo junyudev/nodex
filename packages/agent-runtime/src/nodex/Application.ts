@@ -6,6 +6,8 @@ import * as Service from "./Service.ts";
 import * as Bridge from "./HostBridge.ts";
 import * as RuntimeHomeLease from "./RuntimeHomeLease.ts";
 import * as Environment from "../environment/ServerEnvironment.ts";
+import * as ProviderEventIngestor from "../orchestration-v2/ProviderEventIngestor.ts";
+import * as AnalyticsService from "../telemetry/AnalyticsService.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { AgentRuntimeConfiguration, AgentRuntimeNotification } from "./Interface.ts";
 
@@ -22,8 +24,16 @@ export const layer = (
     Layer.provide(identity),
     Layer.provide(NodeServices.layer),
   );
+  const turnAnalytics = ProviderEventIngestor.layerAnalytics.pipe(
+    Layer.provide(
+      AnalyticsService.layerFromHost((name, properties) =>
+        notify({ type: "product-analytics", name, properties }),
+      ),
+    ),
+  );
   const host = Host.layer(configuration).pipe(
     Layer.provide(Bridge.layerExecutionHost.pipe(Layer.provide(bridge))),
+    Layer.provide(turnAnalytics),
   );
   const startup = Layer.effectDiscard(Runtime.acquireExecution).pipe(Layer.provideMerge(host));
   return Service.layer(notify, configuration.providers).pipe(

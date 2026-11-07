@@ -97,8 +97,8 @@ shared Codex configuration.
 
 General is grouped by what a setting affects, in this order: App (window restore, Terminal shell on Windows, the running
 version with its update actions and preferences, open source licenses), Chats, Writing, Files &
-links, Notifications, Privacy (crash reports, session replays, product telemetry and web analytics)
-and Troubleshooting (app-server request diagnostics). Each preference is its own row; a row's
+links, Notifications, Privacy (crash reports, session replays and usage analytics; see
+[Product Analytics Behavior](product-analytics-behavior.md)) and Troubleshooting (app-server request diagnostics). Each preference is its own row; a row's
 description adds its current state only when that differs from what the switch shows, such as an
 environment override, a prerequisite or a change that applies after restart. A search result for a
 General setting lands on its group. Chats' **Title chats with** chooses the model described in

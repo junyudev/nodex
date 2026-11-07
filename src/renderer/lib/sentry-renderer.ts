@@ -85,7 +85,7 @@ export async function initializeRendererSentry(
   if (isTestRuntime() && !shouldForceTestInitialization()) return false;
 
   const settings = await (input.getSettings ?? loadDiagnosticsSettings)();
-  if (!settings?.enabled || !settings.dsn.trim()) return false;
+  if (!settings?.active || !settings.dsn.trim()) return false;
 
   const adapter = input.adapter ?? (await loadDefaultAdapter());
   const privacyOptions = createSentryPrivacyOptions();

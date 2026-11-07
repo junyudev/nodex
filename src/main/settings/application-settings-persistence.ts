@@ -1,3 +1,4 @@
+import { resolveRemoteSignal } from "../../shared/product-analytics/remote-signals";
 import {
   ModelPolicySchema,
   DEFAULT_MODEL_POLICY,
@@ -182,9 +183,6 @@ interface ServerTomlConfig {
   diagnostics_replays_session_sample_rate?: number;
   diagnostics_replays_on_error_sample_rate?: number;
   telemetry_enabled?: boolean;
-  telemetry_client_key?: string;
-  telemetry_environment?: string;
-  telemetry_auto_capture_enabled?: boolean;
   command_keybindings?: Record<string, unknown>;
   codex_thread_detail_level?: CodexThreadDetailLevel;
   codex_default_mode_request_user_input_enabled?: boolean;
@@ -208,6 +206,8 @@ export interface ApplicationSettingsDocumentSource {
   readonly hostHomeDirectory?: string;
   readonly secretEncryption?: SecretEncryptionAdapter;
   readonly environment: Readonly<NodeJS.ProcessEnv>;
+  /** Remote signals default on only in a released build; development and tests stay silent. */
+  readonly isPackaged?: boolean;
   readonly settingsPath: string;
   readonly document?: SettingsTomlDocument;
 }
@@ -223,14 +223,11 @@ const APP_UPDATES_AUTO_CHECK_DEFAULT = true;
 const WINDOW_RESTORE_POLICY_DEFAULT: WindowRestorePolicy = "all";
 export const DEFAULT_SENTRY_DSN =
   "https://ecf630563128267bf9798a10b45a089a@o4511580306014208.ingest.us.sentry.io/4511580310011904";
-export const DEFAULT_STATSIG_CLIENT_KEY = "client-wpoc5Yx721NAMgJde6jcWUTiEP9kp2Ll9nr4EUxdmiP";
 const DIAGNOSTICS_ENVIRONMENT_DEFAULT = "production";
 const DIAGNOSTICS_TRACES_SAMPLE_RATE_DEFAULT = 0;
 const DIAGNOSTICS_REPLAY_ENABLED_DEFAULT = false;
 const DIAGNOSTICS_REPLAYS_SESSION_SAMPLE_RATE_DEFAULT = 0.1;
 const DIAGNOSTICS_REPLAYS_ON_ERROR_SAMPLE_RATE_DEFAULT = 1;
-const TELEMETRY_ENVIRONMENT_DEFAULT = "production";
-const TELEMETRY_AUTO_CAPTURE_ENABLED_DEFAULT = false;
 const CODEX_THREAD_DETAIL_LEVEL_DEFAULT: CodexThreadDetailLevel = "STEPS_COMMANDS";
 const CODEX_DEFAULT_MODE_REQUEST_USER_INPUT_ENABLED_DEFAULT = true;
 const CODEX_GIT_BRANCH_PREFIX_DEFAULT = "codex/";
@@ -491,8 +488,8 @@ function windowRestoreSettingsFromConfig(config: ServerTomlConfig): WindowRestor
 
 function diagnosticsSettingsFromConfig(
   config: ServerTomlConfig,
-): Omit<DiagnosticsSettings, "envOverrides"> {
-  const enabled = config.diagnostics_enabled === true;
+): Omit<DiagnosticsSettings, "envOverrides" | "active" | "blockedBy"> {
+  const enabled = config.diagnostics_enabled !== false;
   const configuredDsn =
     typeof config.diagnostics_dsn === "string" ? config.diagnostics_dsn.trim() : "";
   const environment =
@@ -529,29 +526,6 @@ function diagnosticsSettingsFromConfig(
     replayEnabled,
     replaysSessionSampleRate,
     replaysOnErrorSampleRate,
-  };
-}
-
-function telemetrySettingsFromConfig(
-  config: ServerTomlConfig,
-): Omit<TelemetrySettings, "envOverrides"> {
-  const enabled = config.telemetry_enabled === true;
-  const configuredClientKey =
-    typeof config.telemetry_client_key === "string" ? config.telemetry_client_key.trim() : "";
-  const environment =
-    typeof config.telemetry_environment === "string" && config.telemetry_environment.trim()
-      ? config.telemetry_environment.trim()
-      : TELEMETRY_ENVIRONMENT_DEFAULT;
-  const autoCaptureEnabled =
-    typeof config.telemetry_auto_capture_enabled === "boolean"
-      ? config.telemetry_auto_capture_enabled
-      : TELEMETRY_AUTO_CAPTURE_ENABLED_DEFAULT;
-
-  return {
-    enabled,
-    clientKey: configuredClientKey || (enabled ? DEFAULT_STATSIG_CLIENT_KEY : ""),
-    environment,
-    autoCaptureEnabled,
   };
 }
 
@@ -739,6 +713,12 @@ export function getDiagnosticsSettings(
     replaysSessionSampleRate,
     replaysOnErrorSampleRate,
     envOverrides,
+    ...resolveRemoteSignal({
+      preference: enabled,
+      override: envOverrides.enabled ? enabled : null,
+      isPackaged: source.isPackaged === true,
+      environment: environmentSource,
+    }),
   };
 }
 
@@ -800,39 +780,22 @@ export function updateDiagnosticsSettings(
 }
 
 export function getTelemetrySettings(source: ApplicationSettingsDocumentSource): TelemetrySettings {
-  const profileServerToml = loadProfileServerTomlConfig(source);
-  const environmentSource = source.environment;
-  const fromToml = telemetrySettingsFromConfig(profileServerToml);
-  const envOverrides = {
-    enabled: environmentSource.NODEX_TELEMETRY_ENABLED !== undefined,
-    clientKey: environmentSource.STATSIG_CLIENT_KEY !== undefined,
-    environment: environmentSource.STATSIG_ENVIRONMENT !== undefined,
-    autoCaptureEnabled: environmentSource.NODEX_TELEMETRY_AUTOCAPTURE_ENABLED !== undefined,
-  };
-
-  const enabled = envOverrides.enabled
-    ? parseBooleanEnv(environmentSource.NODEX_TELEMETRY_ENABLED, fromToml.enabled)
-    : fromToml.enabled;
-  const clientKeyFromEnv = environmentSource.STATSIG_CLIENT_KEY?.trim() ?? "";
-  const clientKey = envOverrides.clientKey
-    ? clientKeyFromEnv
-    : fromToml.clientKey || (enabled ? DEFAULT_STATSIG_CLIENT_KEY : "");
-  const environmentFromEnv = environmentSource.STATSIG_ENVIRONMENT?.trim() ?? "";
-  const environment =
-    envOverrides.environment && environmentFromEnv ? environmentFromEnv : fromToml.environment;
-  const autoCaptureEnabled = envOverrides.autoCaptureEnabled
-    ? parseBooleanEnv(
-        environmentSource.NODEX_TELEMETRY_AUTOCAPTURE_ENABLED,
-        fromToml.autoCaptureEnabled,
-      )
-    : fromToml.autoCaptureEnabled;
-
+  const preference = loadProfileServerTomlConfig(source).telemetry_enabled !== false;
+  const environment = source.environment;
+  const overridden = environment.NODEX_TELEMETRY_ENABLED !== undefined;
+  const enabled = overridden
+    ? parseBooleanEnv(environment.NODEX_TELEMETRY_ENABLED, preference)
+    : preference;
   return {
     enabled,
-    clientKey,
-    environment,
-    autoCaptureEnabled,
-    envOverrides,
+    managed: overridden,
+    ...resolveRemoteSignal({
+      preference: enabled,
+      override: overridden ? enabled : null,
+      // A local test receiver stands in for the real service, so the preference governs as released.
+      isPackaged: source.isPackaged === true || environment.NODEX_TELEMETRY_ENDPOINT !== undefined,
+      environment,
+    }),
   };
 }
 
@@ -843,35 +806,9 @@ export function updateTelemetrySettings(
   if (typeof input.enabled !== "boolean") {
     throw new Error("enabled must be a boolean");
   }
-  if (typeof input.autoCaptureEnabled !== "boolean") {
-    throw new Error("autoCaptureEnabled must be a boolean");
-  }
-
-  const nextSettings = {
-    enabled: input.enabled,
-    clientKey: normalizeOptionalStringInput(input.clientKey, "clientKey"),
-    environment:
-      normalizeOptionalStringInput(input.environment, "environment") ??
-      TELEMETRY_ENVIRONMENT_DEFAULT,
-    autoCaptureEnabled: input.autoCaptureEnabled,
-  };
-
   const profileSettingsPath = getProfileSettingsPath(source);
   const nextToml = readTomlConfig(profileSettingsPath);
-  const nextServer: ServerTomlConfig = {
-    ...(nextToml.server ?? {}),
-    telemetry_enabled: nextSettings.enabled,
-    telemetry_environment: nextSettings.environment,
-    telemetry_auto_capture_enabled: nextSettings.autoCaptureEnabled,
-  };
-  if (nextSettings.clientKey) {
-    nextServer.telemetry_client_key = nextSettings.clientKey;
-  } else {
-    delete nextServer.telemetry_client_key;
-  }
-
-  nextToml.server = nextServer;
-
+  nextToml.server = { ...(nextToml.server ?? {}), telemetry_enabled: input.enabled };
   writeTomlConfig(profileSettingsPath, nextToml);
   return getTelemetrySettings(source);
 }

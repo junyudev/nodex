@@ -221,6 +221,7 @@ export class ApplicationSettings extends Context.Service<
     readonly composerPredictionSettingsChanges: Stream.Stream<ComposerPredictionSettings>;
     /** Latest saved Inbox preferences, for work that waits on them. */
     readonly inboxSettingsChanges: Stream.Stream<InboxSettings>;
+    readonly telemetrySettingsChanges: Stream.Stream<TelemetrySettings>;
     readonly acpLaunchConfiguration: (
       instanceId: string,
     ) => Effect.Effect<ReturnType<typeof getAcpLaunchConfiguration>, ApplicationSettingsError>;
@@ -418,12 +419,14 @@ function applyCommand(
 export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   readonly hostHomeDirectory: string;
   readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly isPackaged?: boolean;
   readonly settingsPath: string;
   readonly secretEncryption?: SecretEncryptionAdapter;
 }) {
   const source: ApplicationSettingsDocumentSource = {
     hostHomeDirectory: input.hostHomeDirectory,
     environment: Object.freeze({ ...input.environment }),
+    ...(input.isPackaged === undefined ? {} : { isPackaged: input.isPackaged }),
     settingsPath: input.settingsPath,
     ...(input.secretEncryption ? { secretEncryption: input.secretEncryption } : {}),
   };
@@ -437,6 +440,8 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   yield* Effect.addFinalizer(() => PubSub.shutdown(composerPredictionChanges));
   const inboxChanges = yield* PubSub.sliding<InboxSettings>(1);
   yield* Effect.addFinalizer(() => PubSub.shutdown(inboxChanges));
+  const telemetryChanges = yield* PubSub.sliding<TelemetrySettings>(1);
+  yield* Effect.addFinalizer(() => PubSub.shutdown(telemetryChanges));
   // The native runtime keeps one home for this Main lifetime; saved changes apply after restart.
   const activeCodexHome = yield* Ref.make<
     | {
@@ -500,6 +505,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     linkOpeningSettingsChanges: SubscriptionRef.changes(linkOpening),
     composerPredictionSettingsChanges: Stream.fromPubSub(composerPredictionChanges),
     inboxSettingsChanges: Stream.fromPubSub(inboxChanges),
+    telemetrySettingsChanges: Stream.fromPubSub(telemetryChanges),
     acpLaunchConfiguration: (instanceId) =>
       writes.withPermits(1)(
         attempt("acp-launch-configuration", () => getAcpLaunchConfiguration(source, instanceId)),
@@ -540,6 +546,8 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
             yield* PubSub.publish(composerPredictionChanges, snapshot.composerPredictions);
           }
           if (command.type === "update-inbox") yield* PubSub.publish(inboxChanges, snapshot.inbox);
+          if (command.type === "update-telemetry")
+            yield* PubSub.publish(telemetryChanges, snapshot.telemetry);
           return snapshot;
         }),
       ),
@@ -554,6 +562,7 @@ export const live: Layer.Layer<ApplicationSettings, never, MainConfig | SecretEn
       return yield* make({
         hostHomeDirectory: config.homeDirectory,
         environment: config.environment,
+        isPackaged: config.isPackaged,
         settingsPath: config.profileSettingsPath,
         secretEncryption: yield* SecretEncryption,
       });

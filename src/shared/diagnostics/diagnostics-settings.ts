@@ -1,3 +1,4 @@
+import { isRemoteSignalBlock } from "./telemetry-settings";
 import type { DiagnosticsSettings, DiagnosticsSettingsEnvOverrides } from "../types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -42,6 +43,8 @@ export function isDiagnosticsSettings(value: unknown): value is DiagnosticsSetti
     Number.isFinite(value.replaysOnErrorSampleRate) &&
     value.replaysOnErrorSampleRate >= 0 &&
     value.replaysOnErrorSampleRate <= 1 &&
-    isDiagnosticsSettingsEnvOverrides(value.envOverrides)
+    isDiagnosticsSettingsEnvOverrides(value.envOverrides) &&
+    typeof value.active === "boolean" &&
+    isRemoteSignalBlock(value.blockedBy)
   );
 }

@@ -253,7 +253,6 @@
     "@sentry/react": "11.9.0",
     "@sentry/vite-plugin": "11.9.0",
     "@statsig/js-client": "3.33.5",
-    "@statsig/web-analytics": "3.33.5",
     "@streamdown/cjk": "1.0.4",
     "@streamdown/code": "2.0.0",
     "@streamdown/math": "1.0.3",
