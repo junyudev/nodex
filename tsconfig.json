@@ -21,6 +21,9 @@
       "path": "./packages/mobile-protocol/tsconfig.json"
     },
     {
+      "path": "./packages/push-relay/tsconfig.json"
+    },
+    {
       "path": "./tsconfig.tooling.json"
     },
     {

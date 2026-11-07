@@ -82,6 +82,10 @@ Desktop Host runs. See
 The phone's own runtime is an Effect application behind a presentation edge; see
 [ADR 0076](adr/0076-mobile-runtime-effect-boundary.md).
 
+The separately hosted Push Relay forwards encrypted iOS notifications to APNs. It owns no content,
+pairing state or database; it opens sealed device routing handles but has no notification decryption
+key. See the [relay delivery and deployment contract](../packages/push-relay/README.md).
+
 ### Optional Nodex account connection
 
 Main owns the optional Profile-scoped Nodex account connection and its OAuth

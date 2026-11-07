@@ -1,0 +1,20 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "functions": {
+    "api/*.ts": {
+      "maxDuration": 15
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/v1/devices",
+      "destination": "/api/devices"
+    },
+    {
+      "source": "/v1/push",
+      "destination": "/api/push"
+    }
+  ],
+  "fluid": true
+}
