@@ -78,12 +78,6 @@ export function isNormalizedConversationTurnEntry(
   return "historyEntityKey" in entry;
 }
 
-export function readConversationTurnListEntry(
-  entry: ConversationTurnListEntry,
-): CodexConversationTurn | null {
-  return isNormalizedConversationTurnEntry(entry) ? entry.readTurn() : entry.turn;
-}
-
 export function materializeConversationTurnListEntry(
   entry: ConversationTurnListEntry,
 ): VisibleConversationTurnEntry | null {

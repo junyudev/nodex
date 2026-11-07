@@ -54,8 +54,6 @@ export const BackupScheduleFormSchema = z
     retentionGiB: Number.parseInt(value.retentionGiB.trim(), 10),
   }));
 
-export type BackupScheduleFormValue = z.output<typeof BackupScheduleFormSchema>;
-
 export const HISTORY_RETENTION_FORM_DEFAULTS: HistoryRetentionFormInput = {
   retentionCount: "1000",
 };
@@ -68,8 +66,6 @@ export const HistoryRetentionFormSchema = z
     retentionCount: Number.parseInt(value.retentionCount.trim(), 10),
   }));
 
-export type HistoryRetentionFormValue = z.output<typeof HistoryRetentionFormSchema>;
-
 export const MANUAL_SNAPSHOT_FORM_DEFAULTS: ManualSnapshotFormInput = {
   label: "",
 };
@@ -81,5 +77,3 @@ export const ManualSnapshotFormSchema = z
   .transform((value) => ({
     label: value.label.trim(),
   }));
-
-export type ManualSnapshotFormValue = z.output<typeof ManualSnapshotFormSchema>;

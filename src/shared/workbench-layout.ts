@@ -384,15 +384,6 @@ export function createDefaultWorkbenchLayoutSnapshotV4(): WorkbenchLayoutSnapsho
   };
 }
 
-export function createDefaultWorkbenchLayoutSnapshotV5(): WorkbenchLayoutSnapshotV5 {
-  return {
-    version: 5,
-    location: { kind: "empty" },
-    databaseSearchByProject: {},
-    scenesByOwnerKey: {},
-  };
-}
-
 export function createDefaultWorkbenchLayoutSnapshotV6(): WorkbenchLayoutSnapshotV6 {
   return {
     version: 6,
@@ -461,15 +452,6 @@ export function getWorkbenchHomeLocationV8(
   return location;
 }
 
-export function getWorkbenchSessionReturnLocationV4(
-  location: WorkbenchLocationV4,
-): WorkbenchSessionLocationV4 {
-  if (location.kind === "session" || location.kind === "empty") {
-    return location;
-  }
-  return location.returnTo;
-}
-
 export function getWorkbenchSceneReturnLocation(
   location: WorkbenchLocation,
 ): WorkbenchSceneLocation {
@@ -490,41 +472,6 @@ export function getWorkbenchActiveSessionId(
 ): string | null {
   const location = getWorkbenchSceneReturnLocation(layout.location);
   return location.kind === "session" ? location.sessionId : null;
-}
-
-export function getRestorableWorkbenchLocationV4(
-  location: WorkbenchLocationV4,
-): WorkbenchLayoutSnapshotV4["location"] {
-  if (location.kind !== "pending-worktree") return location;
-  return location.returnTo;
-}
-
-export function getRestorableWorkbenchLocationV5(
-  location: WorkbenchLocationV5,
-): WorkbenchLayoutSnapshotV5["location"] {
-  if (location.kind !== "pending-worktree") return location;
-  return location.returnTo;
-}
-
-export function getRestorableWorkbenchLocationV6(
-  location: WorkbenchLocationV6,
-): WorkbenchLayoutSnapshotV6["location"] {
-  if (location.kind !== "pending-worktree") return location;
-  return location.returnTo;
-}
-
-export function getRestorableWorkbenchLocationV7(
-  location: WorkbenchLocationV7,
-): WorkbenchLayoutSnapshotV7["location"] {
-  if (location.kind !== "pending-worktree") return location;
-  return location.returnTo;
-}
-
-export function getRestorableWorkbenchLocationV8(
-  location: WorkbenchLocationV8,
-): WorkbenchLayoutSnapshotV8["location"] {
-  if (location.kind !== "pending-worktree") return location;
-  return location.returnTo;
 }
 
 export function getRestorableWorkbenchLocation(

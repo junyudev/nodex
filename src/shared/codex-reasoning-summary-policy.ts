@@ -1,9 +1,5 @@
 import type { ReasoningSummary } from "@nodex/codex-app-server-protocol";
 
-/** The app-server feature that makes readable reasoning summaries available. */
-export const CODEX_CONCURRENT_REASONING_SUMMARIES_FEATURE =
-  "concurrent_reasoning_summaries" as const;
-
 /** Readable reasoning summaries are enabled for locally launched Threads. */
 export const CODEX_CONCURRENT_REASONING_SUMMARIES_ENABLED = true as const;
 

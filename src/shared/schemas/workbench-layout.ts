@@ -20,7 +20,6 @@ import type {
   WorkbenchLocationV4,
   WorkbenchLocationV5,
   WorkbenchLocationV6,
-  WorkbenchLocationV7,
   WorkbenchSceneLocation,
   WorkbenchSceneLocationV7,
   WorkbenchSceneLocationV6,
@@ -140,30 +139,6 @@ export const WorkbenchLibraryLocationTargetSchema = z
     }
     return target;
   }) satisfies z.ZodType<WorkbenchLibraryLocationTarget>;
-
-export const WorkbenchLocationV4Schema = z.discriminatedUnion("kind", [
-  ...WorkbenchSessionLocationV4Schema.options,
-  z.object({
-    kind: z.literal("library"),
-    target: WorkbenchLibraryLocationTargetSchema,
-    returnTo: WorkbenchSessionLocationV4Schema,
-  }),
-  z.object({
-    kind: z.literal("settings"),
-    path: z.string().min(1),
-    returnTo: WorkbenchSessionLocationV4Schema,
-  }),
-  z.object({
-    kind: z.literal("automations"),
-    path: z.string().min(1),
-    returnTo: WorkbenchSessionLocationV4Schema,
-  }),
-  z.object({
-    kind: z.literal("pending-worktree"),
-    clientThreadId: z.string().min(1),
-    returnTo: WorkbenchSessionLocationV4Schema,
-  }),
-]) satisfies z.ZodType<WorkbenchLocationV4>;
 
 const PersistedWorkbenchLocationSchema = z.discriminatedUnion("kind", [
   ...WorkbenchSessionLocationV4Schema.options,
@@ -405,38 +380,6 @@ export const WorkbenchSceneLocationV5Schema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("empty") }).strict(),
 ]) satisfies z.ZodType<WorkbenchSceneLocationV5>;
 
-export const WorkbenchLocationV5Schema = z.discriminatedUnion("kind", [
-  ...WorkbenchSceneLocationV5Schema.options,
-  z
-    .object({
-      kind: z.literal("library"),
-      target: WorkbenchLibraryLocationTargetSchema,
-      returnTo: WorkbenchSceneLocationV5Schema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("settings"),
-      path: z.string().min(1),
-      returnTo: WorkbenchSceneLocationV5Schema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("automations"),
-      path: z.string().min(1),
-      returnTo: WorkbenchSceneLocationV5Schema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("pending-worktree"),
-      clientThreadId: z.string().min(1),
-      returnTo: WorkbenchSceneLocationV5Schema,
-    })
-    .strict(),
-]) satisfies z.ZodType<WorkbenchLocationV5>;
-
 const PersistedWorkbenchLocationV5Schema = z.discriminatedUnion("kind", [
   ...WorkbenchSceneLocationV5Schema.options,
   z
@@ -637,31 +580,6 @@ export const WorkbenchSceneLocationV6Schema = z.discriminatedUnion("kind", [
     .strict(),
 ]) satisfies z.ZodType<WorkbenchSceneLocationV6>;
 
-export const WorkbenchLocationV6Schema = z.discriminatedUnion("kind", [
-  ...WorkbenchSceneLocationV6Schema.options,
-  z
-    .object({
-      kind: z.literal("settings"),
-      path: z.string().min(1),
-      returnTo: WorkbenchSceneLocationV6Schema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("automations"),
-      path: z.string().min(1),
-      returnTo: WorkbenchSceneLocationV6Schema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("pending-worktree"),
-      clientThreadId: z.string().min(1),
-      returnTo: WorkbenchSceneLocationV6Schema,
-    })
-    .strict(),
-]) satisfies z.ZodType<WorkbenchLocationV6>;
-
 const PersistedWorkbenchLocationV6Schema = z.discriminatedUnion("kind", [
   ...WorkbenchSceneLocationV6Schema.options,
   z
@@ -781,21 +699,6 @@ const WorkbenchInboxLocationV7Schema = z
     returnTo: WorkbenchSceneLocationV7Schema,
   })
   .strict();
-
-export const WorkbenchLocationV7Schema = z.discriminatedUnion("kind", [
-  ...WorkbenchSceneLocationV7Schema.options,
-  WorkbenchSettingsLocationV7Schema,
-  WorkbenchAutomationsLocationV7Schema,
-  WorkbenchInboxLocationV7Schema,
-  z
-    .object({
-      kind: z.literal("pending-worktree"),
-      clientThreadId: z.string().min(1),
-      expectedHostId: z.string().min(1).optional(),
-      returnTo: WorkbenchSceneLocationV7Schema,
-    })
-    .strict(),
-]) satisfies z.ZodType<WorkbenchLocationV7>;
 
 const PersistedWorkbenchLocationV7Schema = z.discriminatedUnion("kind", [
   ...WorkbenchSceneLocationV7Schema.options,

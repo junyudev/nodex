@@ -12,15 +12,6 @@ export function getString(
   return typeof value === "string" ? value : undefined;
 }
 
-export function getNumber(
-  candidate: Record<string, unknown> | null,
-  key: string,
-): number | undefined {
-  if (!candidate) return undefined;
-  const value = candidate[key];
-  return typeof value === "number" ? value : undefined;
-}
-
 export function humanizeIdentifier(value: string): string {
   const trimmed = value.trim();
   if (trimmed.length === 0) return "";

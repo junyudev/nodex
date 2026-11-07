@@ -4,8 +4,6 @@ import type { ThreadUserMessageNavigationItem } from "../thread-stage-types";
 import { MIN_THREAD_USER_MESSAGE_NAVIGATION_ITEMS } from "../projection/thread-user-message-navigation-items";
 import type { ThreadUserMessageNavigationRailProps } from "./thread-user-message-navigation-rail";
 
-export const CODEX_USER_MESSAGE_NAVIGATION_FEATURE_FLAG_ID = 2551582477;
-
 const LazyThreadUserMessageNavigationRail = lazy(() =>
   import("./thread-user-message-navigation-rail").then((module) => ({
     default: module.ThreadUserMessageNavigationRail,

@@ -456,7 +456,3 @@ export function snapshotWorkbenchWindowState(state: WorkbenchWindowState): Workb
     },
   };
 }
-
-export const workbenchWindowStateLimits = {
-  maxHistoryEntries: MAX_WORKBENCH_LOCATION_HISTORY,
-};

@@ -14,7 +14,3 @@ export const CLAUDE_ACP_AGENT_DEFINITION = {
   minimumNodeMajor: 22,
   distribution: "user-managed-local-package",
 } as const;
-
-export const ACP_AGENT_DEFINITIONS = [CLAUDE_ACP_AGENT_DEFINITION] as const;
-
-export type AcpAgentDefinitionId = (typeof ACP_AGENT_DEFINITIONS)[number]["id"];

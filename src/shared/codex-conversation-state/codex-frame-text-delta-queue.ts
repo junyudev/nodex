@@ -103,18 +103,6 @@ export function createCodexFrameTextDeltaScheduler(): CodexFrameTextDeltaSchedul
   };
 }
 
-/** Main-process fallback has no visual frame and therefore always uses the exact timeout path. */
-export function createCodexFrameTextDeltaTimeoutScheduler(): CodexFrameTextDeltaScheduler {
-  return {
-    canUseAnimationFrame: () => false,
-    scheduleAnimationFrame: () => () => {},
-    scheduleTimeout: (callback, delayMs) => {
-      const handle = setTimeout(callback, delayMs);
-      return () => clearTimeout(handle);
-    },
-  };
-}
-
 /** Manager-global prose/reasoning scheduler; command output has a separate lifecycle. */
 export class CodexFrameTextDeltaQueue<
   TUpdate extends CodexFrameTextDeltaUpdate = CodexFrameTextDeltaUpdate,

@@ -1,12 +1,5 @@
-import type { DocumentCommitRef } from "../block-documents/contracts";
 import type { BlockTransferRequest } from "../block-transfer";
-import type { ToolFailure } from "./base-schemas";
-import type {
-  CreateInput,
-  CreateOutput,
-  TransferBlocksInput,
-  TransferBlocksOutput,
-} from "./write-schemas";
+import type { TransferBlocksInput } from "./write-schemas";
 import type { NodexAgentTurnContext } from "../nodex-agent-authority";
 
 export interface NodexAgentCallIdentity {
@@ -48,52 +41,6 @@ export type PreparedNodexAgentCreateDestination =
       };
     };
 
-export interface NodexAgentCreatePageCommand extends NodexAgentCallIdentity {
-  readonly projectId: string;
-  readonly requestHash: string;
-  readonly mutationId: string;
-  readonly storeEpoch: string;
-  readonly input: CreateInput;
-  readonly pageId: string;
-  readonly bodyBlockIds: readonly string[];
-  readonly primaryMembershipId: string;
-  readonly targetMembershipId: string;
-  readonly destination: PreparedNodexAgentCreateDestination;
-}
-
-export interface PrepareNodexAgentCreateRequest extends NodexAgentCallIdentity {
-  readonly projectId: string;
-  readonly input: CreateInput;
-}
-
-export type PrepareNodexAgentCreateResult =
-  | {
-      readonly ok: true;
-      readonly value:
-        | { readonly kind: "completed"; readonly output: CreateOutput }
-        | {
-            readonly kind: "prepared";
-            readonly command: NodexAgentCreatePageCommand;
-            readonly documentHeads: readonly NodexAgentDocumentHead[];
-            readonly createdBodyBlockIds: readonly string[];
-            readonly targetMarkdown: string;
-          };
-    }
-  | { readonly ok: false; readonly error: ToolFailure["error"] };
-
-export type ExecuteNodexAgentCreateResult =
-  | {
-      readonly ok: true;
-      readonly value: {
-        readonly output: CreateOutput;
-        readonly duplicate: boolean;
-        readonly documentCommits: readonly DocumentCommitRef[];
-        readonly affectedDatabaseBlockIds: readonly string[];
-        readonly commitSeq: number;
-      };
-    }
-  | { readonly ok: false; readonly error: ToolFailure["error"] };
-
 export interface NodexAgentTransferCommand extends NodexAgentCallIdentity {
   readonly projectId: string;
   readonly requestHash: string;
@@ -104,34 +51,3 @@ export interface NodexAgentTransferCommand extends NodexAgentCallIdentity {
   readonly destination: PreparedNodexAgentCreateDestination;
   readonly documentHeads: readonly NodexAgentDocumentHead[];
 }
-
-export interface PrepareNodexAgentTransferRequest extends NodexAgentCallIdentity {
-  readonly projectId: string;
-  readonly input: TransferBlocksInput;
-}
-
-export type PrepareNodexAgentTransferResult =
-  | {
-      readonly ok: true;
-      readonly value:
-        | { readonly kind: "completed"; readonly output: TransferBlocksOutput }
-        | {
-            readonly kind: "prepared";
-            readonly command: NodexAgentTransferCommand;
-            readonly documentHeads: readonly NodexAgentDocumentHead[];
-          };
-    }
-  | { readonly ok: false; readonly error: ToolFailure["error"] };
-
-export type ExecuteNodexAgentTransferResult =
-  | {
-      readonly ok: true;
-      readonly value: {
-        readonly output: TransferBlocksOutput;
-        readonly duplicate: boolean;
-        readonly documentCommits: readonly DocumentCommitRef[];
-        readonly affectedDatabaseBlockIds: readonly string[];
-        readonly commitSeq: number;
-      };
-    }
-  | { readonly ok: false; readonly error: ToolFailure["error"] };

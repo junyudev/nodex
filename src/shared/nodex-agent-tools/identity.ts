@@ -1,5 +1,4 @@
 export const NODEX_APP_TOOL_NAMESPACE = "nodex_app" as const;
-export const NODEX_APP_V2_TOOLSET_REVISION = 2 as const;
 
 export const NODEX_APP_V2_TOOLS = [
   "get_context",
@@ -34,7 +33,6 @@ export type NodexAgentV3ToolName = (typeof NODEX_APP_V3_TOOLS)[number];
 /** Compact-identity contract published with the schema-v81 cutover. */
 export const NODEX_APP_V5_TOOLSET_REVISION = 5 as const;
 export const NODEX_APP_V5_TOOLS = NODEX_APP_V3_TOOLS;
-export type NodexAgentV5ToolName = (typeof NODEX_APP_V5_TOOLS)[number];
 
 /** Page-key discovery and projection contract. */
 export const NODEX_APP_V6_TOOLSET_REVISION = 6 as const;

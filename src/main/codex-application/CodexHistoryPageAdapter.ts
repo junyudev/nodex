@@ -33,7 +33,6 @@ export const CODEX_HISTORY_TURN_PAGE_SIZE = 5;
 export const CODEX_HISTORY_ITEM_PAGE_SIZE = 100;
 export const CODEX_HISTORY_INITIAL_ITEM_BUDGET = 500;
 export const CODEX_HISTORY_INITIAL_BYTE_BUDGET = 8 * 1024 * 1024;
-export const CODEX_HISTORY_ITEM_BYTE_BUDGET = 8 * 1024 * 1024;
 export type CodexHistoryPagePurpose = "export" | "initial" | "older" | "search" | "tool";
 export type CodexHistoryRequestOptions = Pick<
   CodexGatewayRequestOptions,

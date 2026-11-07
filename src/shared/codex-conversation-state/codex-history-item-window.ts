@@ -1024,16 +1024,6 @@ function appendTransition<TCanonicalItem extends CodexHistoryItemIdentity, TRend
   };
 }
 
-export function appendCodexHistoryItemPage<
-  TCanonicalItem extends CodexHistoryItemIdentity,
-  TRendererItem,
->(
-  window: CodexHistoryItemWindow<TCanonicalItem, TRendererItem>,
-  input: AppendCodexHistoryItemPageInput<TCanonicalItem, TRendererItem>,
-): CodexHistoryItemWindowTransitionResult<TCanonicalItem, TRendererItem> {
-  return appendTransition(window, input);
-}
-
 export function applyCodexHistoryItemWindowMutation<
   TCanonicalItem extends CodexHistoryItemIdentity,
   TRendererItem,

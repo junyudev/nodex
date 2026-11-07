@@ -28,6 +28,3 @@ export function blockUsesPreviewFirstSource(
 ): boolean {
   return schema.blockSchema[blockType]?.content === "plain" && blockType === "mathBlock";
 }
-
-/** @deprecated Prefer the capability-specific selectable or merge predicate. */
-export const blockHasEditableTextContent = blockHasSelectableTextContent;

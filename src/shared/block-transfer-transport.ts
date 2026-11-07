@@ -3,13 +3,10 @@ import {
   parseBlockTransferIntent,
   parseBlockTransferUndoIntent,
   type BlockTransferCommandError,
-  type BlockTransferCommandResult,
   type BlockTransferIntent,
-  type BlockTransferReceipt,
   type BlockTransferUndoIntent,
 } from "./block-transfer";
 import type { DatabaseJsonValue } from "./database-kernel";
-import { parseLocalCommitApply, type LocalCommitApply } from "./local-commit-delivery";
 
 const MAX_ID_LENGTH = 512;
 const MAX_MESSAGE_LENGTH = 4_096;
@@ -192,128 +189,4 @@ export const bindBlockTransferUndoIntent = (
       ),
     };
   }
-};
-
-export const blockTransferTransportFailure = (
-  intent: BlockTransferIntent,
-  error: unknown,
-): BlockTransferCommandResult => ({
-  ok: false,
-  error: blockTransferFailure(
-    "unknown",
-    error instanceof Error ? error.message : "The durable Block transfer writer is unavailable",
-    { operationId: intent.operationId, retryable: true },
-  ),
-});
-
-export const blockTransferHttpStatus = (
-  error: BlockTransferCommandError,
-): 400 | 404 | 409 | 500 | 503 => {
-  if (
-    error.code === "project_not_found" ||
-    error.code === "block_not_found" ||
-    error.code === "target_not_found"
-  ) {
-    return 404;
-  }
-  if (
-    error.code === "store_epoch_mismatch" ||
-    error.code === "operation_id_collision" ||
-    error.code === "source_parent_mismatch" ||
-    error.code === "location_revision_mismatch" ||
-    error.code === "source_head_mismatch" ||
-    error.code === "target_head_mismatch" ||
-    error.code === "membership_revision_mismatch" ||
-    error.code === "transfer_cycle" ||
-    error.code === "recovery_required"
-  ) {
-    return 409;
-  }
-  if (error.code === "unknown") return error.retryable ? 503 : 500;
-  return 400;
-};
-
-interface BlockTransferReceiptWire extends Omit<BlockTransferReceipt, "documentCommits"> {
-  readonly documentCommits: readonly (Omit<
-    BlockTransferReceipt["documentCommits"][number],
-    "update" | "stateVector"
-  > & {
-    readonly updateBase64: string | null;
-    readonly stateVectorBase64: string;
-  })[];
-}
-
-export type BlockTransferHttpWireResult =
-  | {
-      readonly ok: true;
-      readonly value: BlockTransferReceiptWire;
-      readonly localCommit: LocalCommitApply;
-    }
-  | { readonly ok: false; readonly error: BlockTransferCommandError };
-
-const bytesToBase64 = (bytes: Uint8Array): string => {
-  if (typeof Buffer !== "undefined") return Buffer.from(bytes).toString("base64");
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-};
-
-const base64ToBytes = (value: string): Uint8Array => {
-  if (typeof Buffer !== "undefined") return new Uint8Array(Buffer.from(value, "base64"));
-  const binary = atob(value);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
-};
-
-export const encodeBlockTransferHttpResult = (
-  result: BlockTransferCommandResult,
-): BlockTransferHttpWireResult => {
-  if (!result.ok) return result;
-  return {
-    ok: true,
-    localCommit: result.localCommit,
-    value: {
-      ...result.value,
-      documentCommits: result.value.documentCommits.map((commit) => ({
-        documentId: commit.documentId,
-        generation: commit.generation,
-        baseHeadSeq: commit.baseHeadSeq,
-        headSeq: commit.headSeq,
-        updateId: commit.updateId,
-        updateBase64: commit.update ? bytesToBase64(commit.update) : null,
-        stateVectorBase64: bytesToBase64(commit.stateVector),
-      })),
-    },
-  };
-};
-
-export const decodeBlockTransferHttpResult = (value: unknown): BlockTransferCommandResult => {
-  if (!isRecord(value) || typeof value.ok !== "boolean") {
-    throw new BlockTransferContractError("Block transfer response must be a command result");
-  }
-  if (!value.ok) {
-    if (!isRecord(value.error)) {
-      throw new BlockTransferContractError("Block transfer error response is invalid");
-    }
-    return value as unknown as BlockTransferCommandResult;
-  }
-  if (!isRecord(value.value) || !Array.isArray(value.value.documentCommits)) {
-    throw new BlockTransferContractError("Block transfer receipt is invalid");
-  }
-  const receipt = value.value as unknown as BlockTransferReceiptWire;
-  return {
-    ok: true,
-    localCommit: parseLocalCommitApply(value.localCommit),
-    value: {
-      ...receipt,
-      documentCommits: receipt.documentCommits.map((commit) => ({
-        documentId: commit.documentId,
-        generation: commit.generation,
-        baseHeadSeq: commit.baseHeadSeq,
-        headSeq: commit.headSeq,
-        updateId: commit.updateId,
-        update: commit.updateBase64 === null ? null : base64ToBytes(commit.updateBase64),
-        stateVector: base64ToBytes(commit.stateVectorBase64),
-      })),
-    },
-  };
 };

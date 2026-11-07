@@ -304,8 +304,3 @@ export const compileDatabasePagesDrag = (input: {
     move: input.move,
     query: queryFromSnapshot(input.snapshot),
   });
-
-export const compileDatabasePagesDragFromQuery = (input: {
-  readonly move: MovePagesInput;
-  readonly query: DatabaseViewQueryResultV2;
-}): CompiledDatabasePageDrag => compilePageRunFromQuery(input);

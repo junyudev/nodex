@@ -2,7 +2,6 @@ import { z } from "zod";
 import type {
   WindowRestoreSettings,
   WindowSessionBounds,
-  WindowSessionBootstrap,
   WindowSessionCatalog,
   WindowSessionLifecycle,
   WindowSessionNewWindowRequest,
@@ -110,7 +109,3 @@ export const LegacyWindowSessionCatalogV1Schema = z
     ),
   })
   .strict();
-
-export const WindowSessionBootstrapSchema = z.object({
-  session: WindowSessionRecordSchema,
-}) satisfies z.ZodType<WindowSessionBootstrap>;

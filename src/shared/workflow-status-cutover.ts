@@ -10,19 +10,6 @@ export const LEGACY_WORKFLOW_STATUS_ORDER = [
 
 export type LegacyWorkflowStatus = (typeof LEGACY_WORKFLOW_STATUS_ORDER)[number];
 
-export const LEGACY_WORKFLOW_STATUS_LABELS: Readonly<Record<LegacyWorkflowStatus, string>> = {
-  draft: "Draft",
-  backlog: "Backlog",
-  in_progress: "In Progress",
-  in_review: "In Review",
-  done: "Done",
-};
-
-export const LEGACY_WORKFLOW_STATUS_COLUMNS = LEGACY_WORKFLOW_STATUS_ORDER.map((status) => ({
-  id: status,
-  name: LEGACY_WORKFLOW_STATUS_LABELS[status],
-}));
-
 export const WORKFLOW_STATUS_CUTOVER_MAP: Readonly<Record<LegacyWorkflowStatus, WorkflowStatus>> = {
   draft: "triage",
   backlog: "plan",

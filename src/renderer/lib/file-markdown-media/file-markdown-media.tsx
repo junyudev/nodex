@@ -3,13 +3,12 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Streamdown, type Components, type StreamdownProps } from "streamdown";
+import { type Components } from "streamdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import type { Element } from "hast";
 import {
@@ -28,26 +27,7 @@ import {
   resolveFileMarkdownImageSource,
   type FileMarkdownMediaScope,
 } from "./file-markdown-media-model";
-import {
-  FILE_MARKDOWN_IMAGE_TAG,
-  FILE_MARKDOWN_SOURCE_TAG,
-  fileMarkdownMediaRehypePlugins,
-} from "./file-markdown-media-syntax";
-
-/** A distinct public Adapter prevents Streamdown's memo from retaining another resource policy. */
-export function FileMarkdownMediaStreamdown({ components, ...props }: StreamdownProps) {
-  const mediaComponents = useMemo(
-    () => ({ ...components, ...fileMarkdownMediaComponents }),
-    [components],
-  );
-  return (
-    <Streamdown
-      {...props}
-      components={mediaComponents}
-      rehypePlugins={fileMarkdownMediaRehypePlugins}
-    />
-  );
-}
+import { FILE_MARKDOWN_IMAGE_TAG, FILE_MARKDOWN_SOURCE_TAG } from "./file-markdown-media-syntax";
 
 const FileMarkdownMediaContext = createContext<FileMarkdownMediaScope | null>(null);
 const EMPTY_IMAGE_NAMES: ReadonlyMap<string, string> = new Map();

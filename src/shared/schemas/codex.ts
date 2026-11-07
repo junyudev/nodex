@@ -134,25 +134,3 @@ export const CodexThreadSettingsSchema = z.record(z.string(), z.unknown()).trans
 
   return next;
 }) satisfies z.ZodType<CodexThreadSettings>;
-
-const CollaborationModeMapSchema = z.record(z.string(), z.unknown()).transform((value) =>
-  Object.entries(value).reduce<Record<string, CodexCollaborationModeKind>>(
-    (acc, [contextKey, mode]) => {
-      const parsedMode = CodexCollaborationModeKindSchema.safeParse(mode);
-      if (!parsedMode.success) return acc;
-      acc[contextKey] = parsedMode.data;
-      return acc;
-    },
-    {},
-  ),
-);
-
-export const CodexCollaborationModesByContextSchema = z
-  .record(z.string(), z.unknown())
-  .transform((value) => {
-    const rawModes =
-      typeof value.modes === "object" && value.modes !== null && !Array.isArray(value.modes)
-        ? (value.modes as Record<string, unknown>)
-        : value;
-    return CollaborationModeMapSchema.parse(rawModes);
-  });

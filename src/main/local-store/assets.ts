@@ -154,24 +154,6 @@ async function writeAssetBytesAtRoot(
   return absolutePath;
 }
 
-const decodeInlineImageDataUrl = (
-  dataUrl: string,
-): { readonly bytes: Buffer; readonly mimeType: string } => {
-  const match = /^data:([^;,]+);base64,([A-Za-z0-9+/=\s]+)$/u.exec(dataUrl);
-  if (!match?.[1] || !match[2]) {
-    throw new Error("Canvas image must be a base64 data URL");
-  }
-  const mimeType = normalizeMimeType(match[1]);
-  if (!isSupportedImageMimeType(mimeType)) {
-    throw new Error(`Unsupported Canvas image type: ${mimeType}`);
-  }
-  const bytes = Buffer.from(match[2].replace(/\s+/gu, ""), "base64");
-  if (bytes.byteLength > MAX_IMAGE_UPLOAD_BYTES) {
-    throw new Error("Canvas image exceeds 10MB upload limit");
-  }
-  return { bytes, mimeType };
-};
-
 const assertContentAddressedAsset = (absolutePath: string, expectedHash: string): void => {
   const stats = fs.lstatSync(absolutePath);
   if (!stats.isFile() || stats.isSymbolicLink()) {
@@ -250,30 +232,6 @@ const materializeCanvasImageBytesAtRoot = (
     byteLength: bytes.byteLength,
   };
 };
-
-/** One-way import seam; managed filename is content-addressed and idempotent. */
-export function materializeInlineImageAtRoot(
-  dataUrl: string,
-  options: {
-    readonly assetsRootPath: string;
-    readonly namespace: "canvas" | "legacy-card";
-  },
-): { readonly source: string; readonly fileName: string; readonly mimeType: string } {
-  const { bytes, mimeType } = decodeInlineImageDataUrl(dataUrl);
-  if (options.namespace === "canvas") {
-    const result = materializeCanvasImageBytesAtRoot(bytes, mimeType, options.assetsRootPath);
-    return {
-      source: result.source,
-      fileName: result.fileName,
-      mimeType: result.mimeType,
-    };
-  }
-  const contentHash = createHash("sha256").update(bytes).digest("hex");
-  const extension = IMAGE_MIME_TO_EXTENSION[mimeType] ?? "";
-  const fileName = `${options.namespace}-${contentHash}${extension}`;
-  cacheContentAddressedBytes(options.assetsRootPath, fileName, bytes, contentHash);
-  return { source: getAssetSource(fileName), fileName, mimeType };
-}
 
 function materializeCanvasImageAtRoot(
   input: ManagedAssetUploadInput,

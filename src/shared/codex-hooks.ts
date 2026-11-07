@@ -1,13 +1,4 @@
-import type {
-  HookMetadata,
-  HooksListEntry,
-  HooksListParams,
-  HooksListResponse,
-} from "@nodex/codex-app-server-protocol/v2";
-
-export type CodexHookMetadata = HookMetadata;
-export type CodexHooksListEntry = HooksListEntry;
-export type CodexHooksListParams = HooksListParams;
+import type { HooksListResponse } from "@nodex/codex-app-server-protocol/v2";
 export type CodexHooksListResponse = HooksListResponse;
 
 export interface CodexHooksListInput {

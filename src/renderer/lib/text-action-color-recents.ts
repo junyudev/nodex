@@ -131,12 +131,6 @@ export function readTextActionRecentColors(
   }
 }
 
-export function readTextActionRecentColor(
-  storage: TextActionRecentColorStorage | null = readBrowserStorage(),
-): TextActionRecentColor {
-  return readTextActionRecentColors(storage)[0] ?? DEFAULT_TEXT_ACTION_RECENT_COLOR;
-}
-
 export function writeTextActionRecentColors(
   recents: unknown,
   storage: TextActionRecentColorStorage | null = readBrowserStorage(),
@@ -151,13 +145,6 @@ export function writeTextActionRecentColors(
   }
 
   return normalized;
-}
-
-export function writeTextActionRecentColor(
-  recent: unknown,
-  storage: TextActionRecentColorStorage | null = readBrowserStorage(),
-): TextActionRecentColor {
-  return writeTextActionRecentColors([recent], storage)[0] ?? DEFAULT_TEXT_ACTION_RECENT_COLOR;
 }
 
 export function recordTextActionRecentColors(
@@ -175,12 +162,4 @@ export function recordTextActionRecentColors(
   ].slice(0, TEXT_ACTION_RECENT_COLOR_LIMIT);
 
   return writeTextActionRecentColors(nextRecents, storage);
-}
-
-export function recordTextActionRecentColor(
-  kind: TextActionRecentColorKind,
-  color: TextActionColorValue,
-  storage: TextActionRecentColorStorage | null = readBrowserStorage(),
-): TextActionRecentColor | null {
-  return recordTextActionRecentColors(kind, color, storage)?.[0] ?? null;
 }

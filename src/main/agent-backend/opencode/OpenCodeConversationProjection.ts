@@ -3,7 +3,6 @@ import type {
   AgentCanonicalSessionUpdate,
   AgentConversationActor,
   AgentConversationSnapshot,
-  AgentConversationTurn,
 } from "../../../shared/agent-conversation";
 import type { OpenCodeNativeMessage } from "../../platform/node/OpenCodeSdk";
 import {
@@ -216,45 +215,6 @@ export const projectOpenCodeHistory = (
     ...next,
     status: "idle",
     turns: boundAgentConversationTurns(next.turns),
-    revision: snapshot.revision + 1,
-  };
-};
-export const prependOpenCodeHistory = (
-  snapshot: AgentConversationSnapshot,
-  older: AgentConversationSnapshot,
-  hasOlder: boolean,
-  cursor?: string,
-): AgentConversationSnapshot => {
-  const known = new Set(snapshot.turns.map((turn) => turn.nativeUserMessageId));
-  const additions = older.turns.filter((turn) => !known.has(turn.nativeUserMessageId));
-  const firstSequence = snapshot.turns[0]?.sequence ?? 1;
-  const reindexed: readonly AgentConversationTurn[] = additions.map((turn, index) => ({
-    ...turn,
-    sequence: firstSequence - additions.length + index,
-  }));
-  const merged = snapshot.turns.map((turn) => {
-    const previous = older.turns.find(
-      (candidate) => candidate.nativeUserMessageId === turn.nativeUserMessageId,
-    );
-    if (!previous) return turn;
-    const keys = new Set(turn.updates.map((update) => update.key));
-    return {
-      ...turn,
-      updates: [...previous.updates.filter((update) => !keys.has(update.key)), ...turn.updates],
-      createdAt: previous.createdAt ?? turn.createdAt,
-    };
-  });
-  const turns = boundAgentConversationTurns([...reindexed, ...merged]);
-  return {
-    ...snapshot,
-    turns,
-    history: {
-      hasOlder,
-      oldestSequence: turns[0]?.sequence ?? null,
-      cursor,
-      windowSize: 512,
-      windowFull: additions.length > 0 && turns.length === snapshot.turns.length,
-    },
     revision: snapshot.revision + 1,
   };
 };

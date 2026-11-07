@@ -98,8 +98,6 @@ export interface OwnedDocumentInspection {
   readonly materialization: OwnedDocumentMaterialization;
 }
 
-export type RegisteredOwnedDocumentInspection = OwnedDocumentInspection;
-
 export interface BlockDocumentSchemaCapabilities {
   readonly title: boolean;
   readonly blockTree: true;
@@ -365,20 +363,6 @@ export const getOwnedDocumentSchemaRegistration = (input: {
   );
 };
 
-export const getOwnedDocumentSchemaRegistrationForSchema = (input: {
-  readonly schemaKey: string;
-  readonly schemaVersion: number;
-}): OwnedDocumentSchemaRegistration => {
-  const matches = schemaRegistrations.filter(
-    (candidate) =>
-      candidate.schemaKey === input.schemaKey && candidate.schemaVersion === input.schemaVersion,
-  );
-  if (matches.length === 1 && matches[0]) return matches[0];
-  throw new BlockDocumentSchemaError(
-    `Owned Document schema ${input.schemaKey}@${input.schemaVersion} is ${matches.length === 0 ? "not registered" : "ambiguous without an owner type"}`,
-  );
-};
-
 /** Yjs content code must never receive a scene-native Canvas registration. */
 export const getYjsDocumentSchemaAdapter = (input: {
   readonly ownerType: string;
@@ -398,39 +382,6 @@ export const getBlockDocumentSchemaAdapter = (input: {
   if (adapter.contentModel === "block_tree") return adapter;
   throw new BlockDocumentSchemaError(
     `Owned Document ${input.ownerType}/${input.schemaKey}@${input.schemaVersion} does not use the block-tree content model`,
-  );
-};
-
-export const getBlockDocumentSchemaAdapterForSchema = (input: {
-  readonly schemaKey: string;
-  readonly schemaVersion: number;
-}): BlockDocumentSchemaAdapter => {
-  const matches = schemaAdapters.filter(
-    (candidate) =>
-      candidate.schemaKey === input.schemaKey && candidate.schemaVersion === input.schemaVersion,
-  );
-  if (matches.length === 1 && matches[0]) {
-    if (matches[0].contentModel === "block_tree") return matches[0];
-    throw new BlockDocumentSchemaError(
-      `Owned Document schema ${input.schemaKey}@${input.schemaVersion} uses ${matches[0].contentModel}, not the block-tree pipeline`,
-    );
-  }
-  throw new BlockDocumentSchemaError(
-    `Owned Document schema ${input.schemaKey}@${input.schemaVersion} is ${matches.length === 0 ? "not registered" : "ambiguous without an owner type"}`,
-  );
-};
-
-export const getRegisteredBlockDocumentSchemaAdapterForSchema = (input: {
-  readonly schemaKey: string;
-  readonly schemaVersion: number;
-}): RegisteredBlockDocumentSchemaAdapter => {
-  const matches = schemaAdapters.filter(
-    (candidate) =>
-      candidate.schemaKey === input.schemaKey && candidate.schemaVersion === input.schemaVersion,
-  );
-  if (matches.length === 1 && matches[0]) return matches[0];
-  throw new BlockDocumentSchemaError(
-    `Owned Document schema ${input.schemaKey}@${input.schemaVersion} is ${matches.length === 0 ? "not registered" : "ambiguous without an owner type"}`,
   );
 };
 

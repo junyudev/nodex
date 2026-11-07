@@ -1,4 +1,3 @@
-import { useCallback, useSyncExternalStore } from "react";
 import type { PageInput } from "./types";
 
 export type PageDraftOverlay = Pick<Partial<PageInput>, "title" | "assignee">;
@@ -111,28 +110,6 @@ export function clearPageDraftOverlay(projectId: string, pageId: string): void {
 export function getPageDraftOverlay(projectId: string, pageId: string): PageDraftOverlay | null {
   if (projectId.length === 0 || pageId.length === 0) return null;
   const overlay = pageDraftStore.get(projectId, pageId);
-  return overlay === EMPTY_PAGE_DRAFT ? null : overlay;
-}
-
-export function usePageDraftOverlay(projectId?: string, pageId?: string): PageDraftOverlay | null {
-  const resolvedProjectId = projectId?.trim() ?? "";
-  const resolvedPageId = pageId?.trim() ?? "";
-  const canSubscribe = resolvedProjectId.length > 0 && resolvedPageId.length > 0;
-
-  const subscribe = useCallback(
-    (listener: StoreListener) => {
-      if (!canSubscribe) return () => undefined;
-      return pageDraftStore.subscribe(resolvedProjectId, resolvedPageId, listener);
-    },
-    [canSubscribe, resolvedPageId, resolvedProjectId],
-  );
-
-  const getSnapshot = useCallback(() => {
-    if (!canSubscribe) return EMPTY_PAGE_DRAFT;
-    return pageDraftStore.get(resolvedProjectId, resolvedPageId);
-  }, [canSubscribe, resolvedPageId, resolvedProjectId]);
-
-  const overlay = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   return overlay === EMPTY_PAGE_DRAFT ? null : overlay;
 }
 

@@ -57,7 +57,6 @@ export const WorkbenchFocusedTargetSchema = z
     groupId: identity.nullable(),
   })
   .strict();
-export type WorkbenchFocusedTarget = z.infer<typeof WorkbenchFocusedTargetSchema>;
 
 const referenceBase = { id: WorkbenchSurfaceIdSchema, titleSnapshot: z.string().max(2_000) };
 const filePath = WorkbenchAbsoluteFilePathSchema;
@@ -199,11 +198,6 @@ export type WorkbenchSubmitPresentation = Omit<
   z.infer<typeof WorkbenchSubmitPresentationSchema>,
   "selectedTabs"
 > & { readonly selectedTabs: readonly WorkbenchObservedTab[] };
-
-export const PresentationAnchorSchema = WorkbenchSubmitPresentationSchema.extend({
-  windowSessionId: identity,
-  capturedAt: z.string().datetime(),
-});
 export type PresentationAnchor = WorkbenchSubmitPresentation & {
   readonly windowSessionId: string;
   readonly capturedAt: string;
@@ -219,7 +213,6 @@ export const WorkbenchObservedGroupSchema = z
     visible: z.boolean(),
   })
   .strict();
-export type WorkbenchObservedGroup = z.infer<typeof WorkbenchObservedGroupSchema>;
 
 export const WorkbenchObservedPanelSchema = z
   .object({

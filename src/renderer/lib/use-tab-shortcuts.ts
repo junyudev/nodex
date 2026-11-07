@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import type { Tab } from "./use-tabs";
 
 export interface TabShortcutActions {
@@ -70,32 +69,4 @@ export function handleTabShortcut(
   }
 
   return false;
-}
-
-export function useTabShortcuts(actions: TabShortcutActions): void {
-  const { activeTabId, closeTab, onRequestAddTab, setActiveTab, tabs } = actions;
-  useEffect(() => {
-    const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        handleTabShortcut(
-          e,
-          {
-            activeTabId,
-            closeTab,
-            onRequestAddTab,
-            setActiveTab,
-            tabs,
-          },
-          isMac,
-        )
-      ) {
-        e.preventDefault();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [activeTabId, closeTab, onRequestAddTab, setActiveTab, tabs]);
 }

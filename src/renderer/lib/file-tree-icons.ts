@@ -314,8 +314,3 @@ export function getFileTreeIconColor(token: FileTreeIconToken | null | undefined
   const fallback = FILE_TREE_ICON_COLOR_FALLBACKS[colorName];
   return `var(--trees-file-icon-color-${token}, var(--trees-file-icon-color, ${fallback}))`;
 }
-
-export const fileTreeIconTestInternals = {
-  FILE_TREE_ICON_COLOR_FALLBACKS,
-  FILE_TREE_ICON_COLOR_BY_TOKEN,
-};

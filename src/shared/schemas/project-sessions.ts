@@ -20,11 +20,7 @@ import type {
   ProjectSessionThreadLinkInput,
   ProjectSessionUpdateInput,
   ProjectSessionRenameInput,
-  ProjectSessionPinnedInput,
-  ProjectSessionPinnedOrderInput,
-  ProjectSessionUnreadInput,
   ProjectSessionReminderInput,
-  ProjectSessionListOptions,
   ProjectSessionForkInput,
 } from "../types";
 import {
@@ -57,7 +53,6 @@ export const WorkbenchProjectionDbViewTabConfigSchema =
   WorkbenchDbViewSurfaceConfigSchema satisfies z.ZodType<WorkbenchProjectionDbViewTabConfig>;
 export const WorkbenchProjectionPageStageTabConfigSchema =
   WorkbenchPageStageSurfaceConfigSchema satisfies z.ZodType<WorkbenchProjectionPageStageTabConfig>;
-export const WorkbenchProjectionPageFileTabConfigSchema = WorkbenchPageFileSurfaceConfigSchema;
 export const WorkbenchProjectionCanvasStageTabConfigSchema =
   WorkbenchCanvasStageSurfaceConfigSchema satisfies z.ZodType<WorkbenchProjectionCanvasStageTabConfig>;
 
@@ -166,12 +161,6 @@ export const PageChatLinkInputSchema = z
   })
   .strict() satisfies z.ZodType<PageChatLinkInput>;
 
-export const ProjectSessionListOptionsSchema = z
-  .object({
-    includeArchived: z.boolean().optional(),
-  })
-  .optional() satisfies z.ZodType<ProjectSessionListOptions | undefined>;
-
 export const ProjectSessionUpdateInputSchema = z
   .object({
     noThreadFallbackTitle: titleSchema.optional(),
@@ -182,21 +171,9 @@ export const ProjectSessionRenameInputSchema = z.object({
   title: z.string(),
 }) satisfies z.ZodType<ProjectSessionRenameInput>;
 
-export const ProjectSessionPinnedInputSchema = z.object({
-  pinned: z.boolean(),
-}) satisfies z.ZodType<ProjectSessionPinnedInput>;
-
-export const ProjectSessionPinnedOrderInputSchema = z.object({
-  orderedSessionIds: z.array(z.string()),
-}) satisfies z.ZodType<ProjectSessionPinnedOrderInput>;
-
 export const ProjectSessionReminderInputSchema = z.strictObject({
   remindAt: z.iso.datetime({ offset: true }).nullable(),
 }) satisfies z.ZodType<ProjectSessionReminderInput>;
-
-export const ProjectSessionUnreadInputSchema = z.object({
-  unread: z.boolean(),
-}) satisfies z.ZodType<ProjectSessionUnreadInput>;
 
 export const ProjectSessionForkInputSchema = z.object({
   target: z.enum(["local", "newWorktree"]),

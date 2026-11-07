@@ -1,5 +1,4 @@
 import { z } from "zod";
-export type CodexSidebarProjectKind = "local" | "remote";
 
 export type CodexSidebarThreadContainerId =
   | "pinned"

@@ -16,9 +16,3 @@ export function parseJsonStringWithSchema<T>(
     return fallback;
   }
 }
-
-export function parseValueWithSchema<T>(value: unknown, schema: z.ZodType<T>, fallback: T): T {
-  const result = schema.safeParse(value);
-  if (!result.success) return fallback;
-  return result.data;
-}

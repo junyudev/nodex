@@ -1,11 +1,4 @@
 import { SideMenuExtension } from "@blocknote/core/extensions";
-import { DragHandleDotsIcon } from "@/components/shared/icons";
-import { NodexTooltip } from "@/components/ui/tooltip";
-import type { DragEvent } from "react";
-import { cn } from "../../../lib/utils";
-
-export const PROJECTION_ACTION_BTN =
-  "h-7 border border-[var(--border)] rounded-md bg-[var(--card)] text-[var(--foreground-secondary)] px-2.5 inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer transition-all duration-swift ease-out hover:border-[var(--border-strong)] hover:text-[var(--foreground)] hover:bg-[var(--background-secondary)]";
 
 interface ProjectionDragHandleExtension {
   blockDragStart: (
@@ -66,46 +59,4 @@ export function startProjectionBlockDrag(
 
 export function endProjectionBlockDrag(editor: ProjectionDragEditor): void {
   getProjectionDragHandleExtension(editor)?.blockDragEnd();
-}
-
-interface ProjectionDragHandleButtonProps {
-  editor: ProjectionDragEditor;
-  block: ProjectionDragBlock;
-  className?: string;
-  title?: string;
-}
-
-export function ProjectionDragHandleButton({
-  editor,
-  block,
-  className,
-  title = "Drag block",
-}: ProjectionDragHandleButtonProps) {
-  const handleDragStart = (event: DragEvent<HTMLButtonElement>) => {
-    startProjectionBlockDrag(editor, block, event);
-  };
-
-  const handleDragEnd = () => {
-    endProjectionBlockDrag(editor);
-  };
-
-  return (
-    <NodexTooltip tooltipContent={title} side="top">
-      <button
-        type="button"
-        draggable
-        className={cn(
-          PROJECTION_ACTION_BTN,
-          "w-7 cursor-grab justify-center px-0 active:cursor-grabbing",
-          className,
-        )}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        contentEditable={false}
-        aria-label={title}
-      >
-        <DragHandleDotsIcon className="size-3.5" />
-      </button>
-    </NodexTooltip>
-  );
 }

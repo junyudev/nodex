@@ -555,14 +555,6 @@ export const parsePageHistoryCommandResult = (value: unknown): PageHistoryComman
   throw new PageHistoryContractError(`${label}.ok must be boolean`);
 };
 
-export const pageHistoryHttpStatus = (result: PageHistoryCommandResult): 200 | 400 | 404 | 500 => {
-  if (result.ok) return 200;
-  if (result.error.code === "page_not_found") return 404;
-  if (result.error.code === "page_history_corrupt") return 500;
-  if (result.error.code === "unknown") return 500;
-  return 400;
-};
-
 export const pageHistoryTransportFailure = (): PageHistoryCommandResult => ({
   ok: false,
   error: pageHistoryFailure("unknown", "The durable Page history reader is unavailable", true),

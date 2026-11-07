@@ -515,13 +515,6 @@ export type LibraryDatabaseModuleReadResultV2 =
   | { readonly ok: true; readonly value: LibraryDatabaseModuleReadSnapshotV2 }
   | { readonly ok: false; readonly error: DatabaseModuleErrorV2 };
 
-/**
- * Property metadata is intentionally separate from a select-like Property's
- * option registry. The current Property schemas have no mutable config outside
- * that registry, so v2 accepts only an empty object here.
- */
-export type DataSourcePropertyMutationConfigV2 = Readonly<Record<string, never>>;
-
 export interface PutDataSourcePropertyOperationV2 {
   readonly kind: "put_property";
   readonly dataSourceId: DataSourceId;
@@ -1006,8 +999,3 @@ export type LibraryDatabaseApplyResultV2 =
 export type DatabaseApplyResultV2 =
   | LocalCommitCommandSuccess<DatabaseApplyReceiptV2>
   | { readonly ok: false; readonly error: DatabaseModuleErrorV2 };
-
-export interface DatabaseModuleV2 {
-  read(input: DatabaseModuleReadRequestV2): Promise<DatabaseModuleReadResultV2>;
-  apply(input: DatabaseApplyV2): Promise<DatabaseApplyResultV2>;
-}

@@ -6,10 +6,7 @@ import type {
   BrowserLocalServerPreferencesUpdate,
   BrowserSidebarCommand,
   BrowserSidebarContextMenuActionEvent,
-  BrowserSidebarDestroyWebviewRequest,
-  BrowserSidebarImageDragStateEvent,
   BrowserSidebarLocalServerThumbnailRequest,
-  BrowserSidebarOpenNewTabRequest,
   BrowserSidebarTabIdentity,
   BrowserSidebarWebviewDestroyed,
   BrowserSidebarWebviewHostCreated,
@@ -40,17 +37,6 @@ export const BrowserSidebarTabIdentitySchema = z
     browserTabId: BrowserIdSchema,
   })
   .strict() satisfies z.ZodType<BrowserSidebarTabIdentity>;
-
-export const BrowserSidebarOpenNewTabRequestSchema = BrowserSidebarTabIdentitySchema.extend({
-  url: BrowserUrlSchema,
-  background: z.boolean(),
-  openInNewWindow: z.boolean().optional(),
-  browserSurface: z.enum(["downloads", "history"]).optional(),
-}).strict() satisfies z.ZodType<BrowserSidebarOpenNewTabRequest>;
-
-export const BrowserSidebarImageDragStateEventSchema = BrowserSidebarTabIdentitySchema.extend({
-  isActive: z.boolean(),
-}).strict() satisfies z.ZodType<BrowserSidebarImageDragStateEvent>;
 
 export const BrowserGuestImageDragStartedSchema = z
   .object({
@@ -450,12 +436,6 @@ export const BrowserSidebarWebviewDestroyedSchema = BrowserSidebarTabIdentitySch
   disposition: z.enum(["destroyed", "rejected", "cancelled"]),
   webContentsId: z.number().int().positive().optional(),
 }).strict() satisfies z.ZodType<BrowserSidebarWebviewDestroyed>;
-
-export const BrowserSidebarDestroyWebviewRequestSchema = BrowserSidebarTabIdentitySchema.extend({
-  mountGeneration: z.number().int().positive(),
-  reason: z.enum(["closed", "reset", "replaced", "stale", "unmounted", "suspend"]),
-  teardownId: BrowserIdSchema,
-}).strict() satisfies z.ZodType<BrowserSidebarDestroyWebviewRequest>;
 
 function assertBrowserIpcPayloadBudget(value: unknown): void {
   let json: string;

@@ -1,6 +1,5 @@
 export const STAGE_PANEL_MIN_WIDTH = 280;
 export const STAGE_PANEL_MAX_WIDTH = 1400;
-export const STAGE_PANEL_RESIZE_KEYBOARD_STEP = 24;
 export const STAGE_PANEL_RESIZE_LEFT_EDGE = "left" as const;
 export const STAGE_PANEL_RESIZE_RIGHT_EDGE = "right" as const;
 

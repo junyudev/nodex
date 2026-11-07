@@ -1,7 +1,5 @@
 import { Children, isValidElement, type ReactNode } from "react";
-import remarkBreaks from "remark-breaks";
-import { defaultRemarkPlugins, type Components, type MermaidErrorComponentProps } from "streamdown";
-import type { Pluggable } from "unified";
+import { type Components, type MermaidErrorComponentProps } from "streamdown";
 import {
   InlineMarkdownCode,
   INLINE_MARKDOWN_HEADING_CLASS_NAME,
@@ -271,11 +269,6 @@ export const streamdownComponents: Components = {
     );
   },
 };
-
-export const streamdownRemarkPluginsWithBreaks: Pluggable[] = [
-  ...Object.values(defaultRemarkPlugins),
-  remarkBreaks,
-];
 
 export function StreamdownMermaidError({ error }: MermaidErrorComponentProps) {
   return (

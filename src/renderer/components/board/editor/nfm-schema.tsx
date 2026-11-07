@@ -65,5 +65,3 @@ export const nfmSchema = BlockNoteSchema.create({
   },
   styleSpecs: defaultStyleSpecs,
 });
-
-export type NfmSchemaType = typeof nfmSchema;

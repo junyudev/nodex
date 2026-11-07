@@ -57,11 +57,6 @@ interface PendingTurnFirstResponse {
   turnId: string | null;
 }
 
-export function codexTurnFirstResponseNow(): number {
-  if (typeof performance !== "undefined") return performance.timeOrigin + performance.now();
-  return Date.now();
-}
-
 export function startCodexTurnFirstResponseSpan(
   _name: "turn_first_response_visible",
   attributes: Record<string, string>,

@@ -3,7 +3,6 @@ import type { ReviewFileSafety, ReviewSkipReason } from "./types";
 export const REVIEW_TEXT_SAMPLE_BYTES = 8_192;
 export const REVIEW_RENDERABLE_TEXT_MAX_BYTES = 1024 * 1024;
 export const REVIEW_GIT_DIFF_MAX_BYTES = 32 * 1024 * 1024;
-export const REVIEW_UNTRACKED_DIFF_AGGREGATE_MAX_BYTES = 64 * 1024 * 1024;
 export const REVIEW_UNTRACKED_DIFF_CONCURRENCY = 8;
 
 const TEXT_EXTENSIONS = new Set([

@@ -12,13 +12,6 @@ export interface OpenCodeSelection {
   readonly variant: string;
   readonly agent: string;
 }
-export const splitOpenCodeModel = (
-  model: string,
-): { providerID: string; modelID: string } | null => {
-  const slash = model.indexOf("/");
-  if (slash <= 0 || slash === model.length - 1) return null;
-  return { providerID: model.slice(0, slash), modelID: model.slice(slash + 1) };
-};
 export const openCodeConnectedModels = (inventory: OpenCodeInventory): readonly Model[] => {
   const connected = new Set(inventory.providers.connected);
   return inventory.providers.all

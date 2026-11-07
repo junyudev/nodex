@@ -1,5 +1,3 @@
-import type { WorktreeEnvironmentOption } from "@/lib/types";
-
 export const LOCAL_ENVIRONMENT_SELECTIONS_STORAGE_KEY = "local-env-selections-by-workspace";
 
 export type LocalEnvironmentSelectionsByWorkspace = Record<string, string | null>;
@@ -491,24 +489,4 @@ export async function loadLocalEnvironmentConfigSelection({
       workspaceRoot,
     }),
   );
-}
-
-export function resolveLocalEnvironmentOptionSelection({
-  options,
-  selectionsByWorkspace,
-  workspaceRoot,
-}: {
-  options: readonly WorktreeEnvironmentOption[];
-  selectionsByWorkspace: Readonly<LocalEnvironmentSelectionsByWorkspace>;
-  workspaceRoot: string | null | undefined;
-}): string | null {
-  return resolveLocalEnvironmentConfigSelection({
-    canValidateSelection: true,
-    candidates: options.map((option) => ({
-      configPath: option.path,
-      state: "success",
-    })),
-    selectionsByWorkspace,
-    workspaceRoot,
-  });
 }

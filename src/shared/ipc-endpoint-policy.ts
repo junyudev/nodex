@@ -1,23 +1,7 @@
 import type { IpcApi } from "./ipc-api";
-import type { LocalCommitApply, LocalCommitCommandSuccess } from "./local-commit-delivery";
+import type { LocalCommitApply } from "./local-commit-delivery";
 
 export type IpcAcknowledgement = "core_local_commit" | "main_revision" | "plain_result";
-
-export interface RevisionedCommandSuccess<Value> {
-  readonly ok: true;
-  readonly value: Value;
-  readonly revision: number;
-}
-
-export type IpcAcknowledgedCommandResult<
-  Acknowledgement extends IpcAcknowledgement,
-  Value,
-  Failure = never,
-> = Acknowledgement extends "core_local_commit"
-  ? LocalCommitCommandSuccess<Value> | Failure
-  : Acknowledgement extends "main_revision"
-    ? RevisionedCommandSuccess<Value> | Failure
-    : Value | Failure;
 
 export interface IpcQuery<Args extends readonly unknown[], Result> {
   readonly kind: "query";
@@ -875,10 +859,6 @@ export type IpcEndpointPolicy = {
 // repeatedly relates every endpoint's argument/result graph for generic callers.
 export type IpcQueryChannel = QueryEndpointPolicy;
 export type IpcControlChannel = ControlEndpointPolicy;
-export type IpcCommandChannel =
-  | CoreLocalCommitCommandEndpointPolicy
-  | MainRevisionCommandEndpointPolicy
-  | PlainResultCommandEndpointPolicy;
 
 interface CommandChannelsByAcknowledgement {
   readonly core_local_commit: CoreLocalCommitCommandEndpointPolicy;

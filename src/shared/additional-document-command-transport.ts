@@ -224,34 +224,3 @@ export const additionalDocumentCommandTransportFailure = (
       },
     ),
   });
-
-export const additionalDocumentCommandHttpStatus = (
-  error: AdditionalDocumentCommandError,
-): 400 | 404 | 409 | 500 | 503 => {
-  if (
-    error.code === "project_not_found" ||
-    error.code === "source_not_found" ||
-    error.code === "reference_not_found"
-  ) {
-    return 404;
-  }
-  if (
-    error.code === "store_epoch_mismatch" ||
-    error.code === "operation_id_collision" ||
-    error.code === "identity_conflict" ||
-    error.code === "block_revision_conflict" ||
-    error.code === "document_head_conflict" ||
-    error.code === "document_generation_mismatch" ||
-    error.code === "source_referenced" ||
-    error.code === "source_shared"
-  ) {
-    return 409;
-  }
-  if (error.retryable && (error.code === "coordination_failed" || error.code === "unknown")) {
-    return 503;
-  }
-  if (error.code === "document_state_corrupt" || error.code === "unknown") {
-    return 500;
-  }
-  return 400;
-};

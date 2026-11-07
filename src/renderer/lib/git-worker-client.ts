@@ -153,17 +153,4 @@ export class GitWorkerClient {
   }
 }
 
-export function createGitWorkerProbeRequest(nonce: string): GitWorkerRequest {
-  return {
-    type: "worker-request",
-    workerId: "git",
-    request: {
-      id: crypto.randomUUID(),
-      method: "probe",
-      params: { nonce },
-      enqueuedAtMs: Date.now(),
-    },
-  };
-}
-
 export const GIT_WORKER_CLIENT_PROTOCOL_VERSION = GIT_WORKER_PROTOCOL_VERSION;

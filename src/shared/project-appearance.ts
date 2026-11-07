@@ -103,17 +103,6 @@ export const PROJECT_MARKER_ICON_LABELS: Record<ProjectMarkerIcon, string> = {
   plant: "Plant",
 };
 
-export const PROJECT_MARKER_COLOR_VALUES = {
-  black: null,
-  red: { light: "#fa423e", dark: "#ff6764" },
-  orange: { light: "#fb6a22", dark: "#ff8549" },
-  yellow: { light: "#ffc300", dark: "#ffd240" },
-  green: { light: "#04b84c", dark: "#40c977" },
-  blue: { light: "#0285ff", dark: "#339cff" },
-  purple: { light: "#924ff7", dark: "#ad7bf9" },
-  pink: { light: "#ff66ad", dark: "#ff8cc1" },
-} as const satisfies Record<ProjectMarkerColor, { light: string; dark: string } | null>;
-
 export function isProjectAppearanceEqual(
   left: ProjectAppearance,
   right: ProjectAppearance,

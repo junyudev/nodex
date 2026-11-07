@@ -107,11 +107,6 @@ export interface BlockTransferDocumentHead {
   readonly expectedHeadSeq: number;
 }
 
-export interface BlockTransferPreparation {
-  readonly request: BlockTransferRequest;
-  readonly documentHeads: readonly BlockTransferDocumentHead[];
-}
-
 export interface BlockTransferPresentationRoot {
   readonly sourceBlockId: BlockId;
   readonly resultPageId: BlockId;

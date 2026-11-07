@@ -58,39 +58,6 @@ function normalizeCardInput(input: PageInput): CardInputWithDefaults {
   };
 }
 
-function displayPropertyValue(value: string | null | undefined): string {
-  if (!value) return "None";
-  return value
-    .replace(/^p([0-4])-/, "P$1 ")
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
-}
-
-export function resolveBoardImportPreviewLabel(
-  sourceCards: PageInput[],
-  inferredCards: PageInput[],
-): string | undefined {
-  if (sourceCards.length !== inferredCards.length || sourceCards.length === 0) return undefined;
-
-  for (const field of ["priority", "estimate"] as const) {
-    const values = new Set(inferredCards.map((card) => card[field] ?? null));
-    const changed = inferredCards.some(
-      (card, index) => (sourceCards[index]?.[field] ?? null) !== (card[field] ?? null),
-    );
-    if (changed && values.size === 1) {
-      const value = inferredCards[0]?.[field];
-      return `${field === "priority" ? "Priority" : "Estimate"} ${displayPropertyValue(value)}`;
-    }
-  }
-
-  const addedTags = inferredCards.map((card, index) => {
-    const sourceTags = new Set(sourceCards[index]?.tags ?? []);
-    return (card.tags ?? []).filter((tag) => !sourceTags.has(tag));
-  });
-  const sharedAddedTag = addedTags[0]?.find((tag) => addedTags.every((tags) => tags.includes(tag)));
-  return sharedAddedTag ? `Add #${sharedAddedTag}` : undefined;
-}
-
 function dedupeTags(tags: readonly string[]): string[] {
   return Array.from(new Set(tags.filter((tag) => tag.length > 0)));
 }

@@ -1,24 +1,3 @@
-/**
- * V2 is retained only as an honest before/after baseline during the v3
- * migration. Small headroom catches accidental growth without pretending the
- * legacy catalog meets the new common-path design.
- */
-export const NODEX_AGENT_V2_CATALOG_BUDGETS = {
-  namespaceBytes: 550,
-  eagerBytes: 7_000,
-  completeBytes: 41_000,
-  tools: {
-    create: 7_700,
-    edit_database: 3_800,
-    edit_document: 10_300,
-    get_block: 2_750,
-    get_context: 600,
-    query_database: 3_950,
-    search: 3_000,
-    transfer_blocks: 9_900,
-  },
-} as const;
-
 /** Public acceptance budgets for nodex_app@3. */
 export const NODEX_AGENT_V3_CATALOG_BUDGETS = {
   namespaceHintBytes: 200,

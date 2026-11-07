@@ -74,13 +74,6 @@ export class CodexThreadCatalog extends Context.Service<
   }
 >()("nodex/main/codex-application/CodexThreadCatalog") {}
 
-export const CODEX_PINNED_THREAD_LIST_PAGE_SIZE = 200;
-export const CODEX_PINNED_THREAD_LIST_MAX_PAGES = 5;
-export const CODEX_PINNED_THREAD_LIST_MAX_RESULTS = 1_000;
-export const CODEX_PINNED_THREAD_LIST_MAX_PAGE_BYTES = 2 * 1024 * 1024;
-export const CODEX_PINNED_THREAD_LIST_MAX_RESULT_BYTES = 256 * 1024;
-export const CODEX_PINNED_THREAD_LIST_PAGE_DEADLINE = "3 seconds";
-
 const isCoreNotFound = (cause: unknown): boolean =>
   cause instanceof CoreRuntimeError &&
   cause.cause instanceof CoreModuleResponseError &&

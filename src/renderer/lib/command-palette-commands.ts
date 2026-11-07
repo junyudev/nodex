@@ -35,18 +35,6 @@ export function isRemindThreadCommandId(id: string): id is RemindThreadCommandId
   return Object.values(REMIND_THREAD_COMMAND_IDS).some((commandId) => commandId === id);
 }
 
-/** One handler per reminder preset command, each choosing its preset when it runs. */
-export function remindThreadCommandHandlers(
-  run: (presetId: ChatReminderPresetId) => void,
-): Record<RemindThreadCommandId, () => void> {
-  return {
-    remindThreadInOneHour: () => run("in-1-hour"),
-    remindThreadInThreeHours: () => run("in-3-hours"),
-    remindThreadInTheMorning: () => run("next-morning"),
-    remindThreadNextWeek: () => run("next-week"),
-  };
-}
-
 const REMIND_THREAD_COMMAND_TITLES: Readonly<Record<ChatReminderPresetId, string>> = {
   "in-1-hour": "Remind me in 1 hour",
   "in-3-hours": "Remind me in 3 hours",

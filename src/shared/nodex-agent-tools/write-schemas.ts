@@ -183,6 +183,4 @@ export const TransferBlocksDataSchema = z.strictObject({
 export const TransferBlocksOutputSchema = createToolSuccessSchema(TransferBlocksDataSchema);
 
 export type CreateInput = z.infer<typeof CreateInputSchema>;
-export type CreateOutput = z.infer<typeof CreateOutputSchema>;
 export type TransferBlocksInput = z.infer<typeof TransferBlocksInputSchema>;
-export type TransferBlocksOutput = z.infer<typeof TransferBlocksOutputSchema>;

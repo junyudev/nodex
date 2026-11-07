@@ -506,7 +506,6 @@ const INITIAL_CONNECTION: CodexConnectionState = {
 
 const EMPTY_THREADS: CodexThreadSummary[] = [];
 const EMPTY_CONVERSATION_MAP: Record<string, CodexConversationSnapshot> = {};
-const EMPTY_THREAD_SUMMARY_MAP: Record<string, CodexThreadSummary> = {};
 const EMPTY_MODELS: CodexModelOption[] = [];
 const EMPTY_TURNS: CodexConversationTurn[] = [];
 const EMPTY_REQUESTS: CodexConversationServerRequest[] = [];
@@ -841,22 +840,6 @@ function areConversationMapSelectionsEqual(
   }
 
   return true;
-}
-
-function areThreadSummaryMapSelectionsEqual(
-  left: Record<string, CodexThreadSummary>,
-  right: Record<string, CodexThreadSummary>,
-): boolean {
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  if (leftKeys.length !== rightKeys.length) return false;
-  return leftKeys.every((key) => {
-    const leftSummary = left[key];
-    const rightSummary = right[key];
-    return Boolean(
-      leftSummary && rightSummary && areThreadSummariesStructurallyEqual(leftSummary, rightSummary),
-    );
-  });
 }
 
 function subscribeSet<T>(listeners: Set<T>, listener: T): () => void {
@@ -9708,14 +9691,6 @@ export function useConversationBackgroundTerminalRows(
   );
 }
 
-export function useConversationSource(threadId: string | null): CodexConversationSource | null {
-  return useCodexConversationValue(
-    threadId,
-    (conversation) => conversation?.source ?? null,
-    (left, right) => left?.parentThreadId === right?.parentThreadId,
-  );
-}
-
 export function useConversationParentThreadId(threadId: string | null): string | null {
   return useCodexConversationValue(
     threadId,
@@ -9815,26 +9790,6 @@ export function useConversationSubset(
   );
 }
 
-export function useThreadSummarySubset(
-  anchorConversationId: string,
-  threadIds: readonly string[],
-): Record<string, CodexThreadSummary> {
-  const manager = useCodexAppServerManagerForConversationId(anchorConversationId);
-  return useExternalSelector(
-    (listener) => manager.addAnyConversationMetaCallback(listener),
-    () => {
-      if (threadIds.length === 0) return EMPTY_THREAD_SUMMARY_MAP;
-      const summaries: Record<string, CodexThreadSummary> = {};
-      for (const threadId of threadIds) {
-        const summary = manager.readThreadSummary(threadId);
-        if (summary) summaries[threadId] = summary;
-      }
-      return Object.keys(summaries).length > 0 ? summaries : EMPTY_THREAD_SUMMARY_MAP;
-    },
-    areThreadSummaryMapSelectionsEqual,
-  );
-}
-
 export function useLocalConversationConnection(
   conversationId: string | null = null,
 ): CodexConnectionState {
@@ -9874,10 +9829,6 @@ export function useCodexDictationState(): CodexDictationStateSnapshot {
       left.shortcutLabel === right.shortcutLabel &&
       areDictationCapabilitiesEqual(left.capabilities, right.capabilities),
   );
-}
-
-export function useCodexLastHostError(): CodexHostErrorState | null {
-  return useManagerControlSelection((manager) => manager.readLastHostError());
 }
 
 export function useCodexThreadStartProgress(

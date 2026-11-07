@@ -1,4 +1,3 @@
-import { DEFAULT_CODEX_HOST_ID } from "./codex-host";
 import type { RequestId as CodexAppServerRequestId } from "@nodex/codex-app-server-protocol";
 import {
   normalizeDesktopNotificationText,
@@ -6,8 +5,6 @@ import {
   type CodexHeartbeatDecision,
 } from "./codex-turn-notification";
 import { extractCodexThreadSpawnMetadata } from "./codex-subagent-metadata";
-
-export const DEFAULT_CODEX_NOTIFICATION_HOST_ID = DEFAULT_CODEX_HOST_ID;
 
 export type CodexNotificationTurnStatus = "completed" | "failed" | "interrupted";
 

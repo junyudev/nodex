@@ -16,8 +16,6 @@ import type { WorkflowStatusValue } from "./workflow-status";
 import type { PageSearchMatch, PageSearchTextPart } from "./types";
 import type { PortableRichText } from "./block-documents/portable-rich-text";
 import type { BlockTransferUndoToken } from "./block-transfer-undo-token";
-
-export const DEFAULT_LIBRARY_READ_LIMIT = 20 as const;
 export const MAX_LIBRARY_READ_LIMIT = 100 as const;
 export const MAX_LIBRARY_CURSOR_LENGTH = 2_048 as const;
 export const MAX_LIBRARY_QUERY_LENGTH = 256 as const;

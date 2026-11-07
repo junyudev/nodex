@@ -8,15 +8,11 @@ import type {
   Project,
   ProjectSessionSummary,
 } from "../../shared/types";
-import {
-  normalizeCodexManualThreadTitle,
-  resolveCodexElectronDisplayThreadTitle,
-} from "../../shared/codex-thread-title";
+import { resolveCodexElectronDisplayThreadTitle } from "../../shared/codex-thread-title";
 import {
   projectCodexMarkdownLabel,
   projectCodexMarkdownToPlainText,
 } from "../../shared/codex-markdown-text";
-import { MAX_PROJECT_SESSION_TITLE_LENGTH } from "../../shared/schemas/project-sessions";
 import {
   projectAgentBackendBindingFromCore,
   type DesktopProjectWorkspaceThread,
@@ -87,15 +83,6 @@ export const resolveSidebarThreadTitle = (thread: {
 /** Catalog entries keep their source fallback if compact Markdown has no visible text. */
 export const projectCodexCatalogDisplayTitle = (displayTitle: string): string =>
   projectCodexMarkdownToPlainText(displayTitle) || displayTitle;
-
-export const normalizeSidebarSessionFallbackTitle = (thread: {
-  readonly threadName?: string | null;
-  readonly threadPreview?: string | null;
-}): string =>
-  normalizeCodexManualThreadTitle(
-    resolveSidebarThreadTitle(thread),
-    MAX_PROJECT_SESSION_TITLE_LENGTH,
-  ) ?? "New thread";
 
 const buildThreadRuntimeStatus = (
   statusType: CodexThreadStatusType,

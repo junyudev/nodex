@@ -1,4 +1,4 @@
-import { cva, type VariantProps } from "class-variance-authority";
+import { cva } from "class-variance-authority";
 
 /**
  * Shared visual contract for compact, color-tinted atoms embedded in prose.
@@ -26,10 +26,6 @@ export const inlineTintedChipVariants = cva("inline-tinted-chip", {
     interactive: false,
   },
 });
-
-export type InlineTintedChipTone = NonNullable<
-  VariantProps<typeof inlineTintedChipVariants>["tone"]
->;
 
 export const inlineTintedChipIconClassName = "inline-tinted-chip-icon";
 export const inlineTintedChipLabelClassName = "inline-tinted-chip-label";

@@ -24,8 +24,6 @@ import {
   pickPortableCanvasSceneAppState,
   requireCanvasSceneIdentity,
 } from "./canvas-scene";
-
-export const CANVAS_SCENE_HTTP_CONTENT_TYPE = "application/vnd.nodex.canvas-scene.v1+json";
 export const MAX_CANVAS_SCENE_HTTP_RESPONSE_BYTES = MAX_CANVAS_SCENE_SNAPSHOT_BYTES + 64 * 1024;
 
 const encoder = new TextEncoder();
@@ -252,9 +250,6 @@ export const decodeCanvasSceneMutationRequestHttp = (
   throw new TypeError("Canvas scene mutation does not match its route");
 };
 
-export const encodeCanvasSceneSyncResultHttp = (result: CanvasSceneSyncCommandResult): string =>
-  encodeBoundedJson(result, MAX_CANVAS_SCENE_HTTP_RESPONSE_BYTES);
-
 export const decodeCanvasSceneSyncResultHttp = (
   serialized: string,
 ): CanvasSceneSyncCommandResult => {
@@ -293,10 +288,6 @@ export const decodeCanvasSceneSyncResultHttp = (
   };
 };
 
-export const encodeCanvasSceneMutationResultHttp = (
-  result: CanvasSceneMutationCommandResult,
-): string => encodeBoundedJson(result, MAX_CANVAS_SCENE_HTTP_RESPONSE_BYTES);
-
 export const decodeCanvasSceneMutationResultHttp = (
   serialized: string,
 ): CanvasSceneMutationCommandResult => {
@@ -320,9 +311,6 @@ export const decodeCanvasSceneMutationResultHttp = (
   }
   return result;
 };
-
-export const encodeCanvasSceneSseEvent = (event: CanvasSceneRealtimeEvent): string =>
-  encodeBoundedJson(event, MAX_CANVAS_SCENE_HTTP_RESPONSE_BYTES);
 
 export const decodeCanvasSceneSseEvent = (serialized: string): CanvasSceneRealtimeEvent => {
   return parseCanvasSceneRealtimeEvent(

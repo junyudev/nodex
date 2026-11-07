@@ -243,10 +243,3 @@ export const toCoreDatabaseViewPreferencesOverride = (
   rules_override: toCoreDatabaseViewRulesOverride(override.rulesOverride),
   presentation_override: toCoreDatabaseViewPresentationOverride(override.presentationOverride),
 });
-
-export const fromCoreDatabaseViewPreferencesOverride = (
-  override: CoreDatabaseViewPreferencesOverride,
-): DatabaseViewPreferencesOverride => ({
-  rulesOverride: fromCoreDatabaseViewRulesOverride(override.rules_override),
-  presentationOverride: fromCoreDatabaseViewPresentationOverride(override.presentation_override),
-});

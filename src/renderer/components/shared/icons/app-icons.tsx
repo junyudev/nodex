@@ -1228,10 +1228,6 @@ export function AutomationPauseIcon({ className }: IconProps) {
   return <GoalPauseIcon className={className} />;
 }
 
-export function AutomationArchiveIcon({ className }: IconProps) {
-  return <ArchiveIcon className={className} />;
-}
-
 export function AutomationMoreIcon({ className }: IconProps) {
   return <MoreActionsIcon className={className ?? "icon-xs"} />;
 }
@@ -2415,35 +2411,6 @@ export function SlashModelIcon({ className }: IconProps) {
   return <ModelStatusGlyph className={className ?? "icon-xs shrink-0"} />;
 }
 
-export function SlashPersonalityIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={className ?? "icon-xs shrink-0"}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M13.4941 10.1875C13.8503 10.2765 14.0673 10.638 13.9785 10.9941C13.4684 13.0346 11.4669 13.998 10 13.998C9.63273 13.998 9.33496 13.7003 9.33496 13.333C9.33513 12.9659 9.63283 12.668 10 12.668C11.0331 12.668 12.3652 11.9647 12.6885 10.6719C12.7776 10.3159 13.1381 10.0988 13.4941 10.1875Z"
-        fill="currentColor"
-      />
-      <path
-        d="M8.59668 6.3252C8.78558 6.01036 9.1939 5.90796 9.50879 6.09668C9.82338 6.28566 9.92597 6.694 9.7373 7.00879L7.99414 9.91406C7.9274 10.0261 8.00811 10.1688 8.13867 10.1689H9.16699L9.30078 10.1826C9.60373 10.2447 9.83203 10.5127 9.83203 10.834C9.83173 11.1551 9.60366 11.4234 9.30078 11.4854L9.16699 11.499H8.13867C6.97416 11.4989 6.25544 10.2281 6.85449 9.22949L8.59668 6.3252Z"
-        fill="currentColor"
-      />
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M10 2.08496C14.3713 2.08496 17.915 5.62867 17.915 10C17.915 14.3713 14.3713 17.915 10 17.915C5.62867 17.915 2.08496 14.3713 2.08496 10C2.08496 5.62867 5.62867 2.08496 10 2.08496ZM10 3.41504C6.3632 3.41504 3.41504 6.3632 3.41504 10C3.41504 13.6368 6.3632 16.585 10 16.585C13.6368 16.585 16.585 13.6368 16.585 10C16.585 6.3632 13.6368 3.41504 10 3.41504Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
 export function SlashPetIcon({ className }: IconProps) {
   return (
     <svg
@@ -3246,44 +3213,6 @@ export function ReviewHideWhitespaceIcon({ className }: IconProps) {
   );
 }
 
-export function FileTreeChevronIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={cn("shrink-0", className)}
-      aria-hidden="true"
-    >
-      <path
-        d="M12.4697 5.46973C12.7626 5.17684 13.2374 5.17684 13.5303 5.46973C13.8232 5.76262 13.8232 6.23738 13.5303 6.53028L8.53028 11.5303C8.23738 11.8232 7.76262 11.8232 7.46973 11.5303L2.46973 6.53028C2.17684 6.23738 2.17684 5.76262 2.46973 5.46973C2.76262 5.17684 3.23738 5.17684 3.53028 5.46973L8 9.93946L12.4697 5.46973Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-export function FileTreeLockIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={cn("shrink-0", className)}
-      aria-hidden="true"
-    >
-      <path
-        fill="currentColor"
-        d="M4 5.336V4a4 4 0 1 1 8 0v1.336c1.586.54 2 1.843 2 4.664v1c0 4.118-.883 5-5 5H7c-4.117 0-5-.883-5-5v-1c0-2.821.414-4.124 2-4.664M5.5 4v1.054Q6.166 4.998 7 5h2q.834-.002 1.5.054V4a2.5 2.5 0 0 0-5 0m-2 6v1c0 .995.055 1.692.167 2.193.107.483.246.686.35.79s.307.243.79.35c.5.112 1.198.167 2.193.167h2c.995 0 1.692-.055 2.193-.166.483-.108.686-.247.79-.35.104-.105.243-.308.35-.791.112-.5.167-1.198.167-2.193v-1c0-.995-.055-1.692-.166-2.193-.108-.483-.247-.686-.35-.79-.105-.104-.308-.243-.791-.35C10.693 6.555 9.995 6.5 9 6.5H7c-.995 0-1.692.055-2.193.167-.483.107-.686.246-.79.35s-.243.307-.35.79C3.555 8.307 3.5 9.005 3.5 10"
-      />
-    </svg>
-  );
-}
-
 export function PriorityIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg
@@ -3762,37 +3691,6 @@ export function TextActionCommentPencilIcon({ className }: IconProps) {
   return <SuggestEditsGlyph className={cn("size-5 shrink-0", className)} />;
 }
 
-export function TextActionSlidersIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-4 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M3 7.375h6.829a2.501 2.501 0 0 0 4.842 0H17a.625.625 0 1 0 0-1.25h-2.329a2.501 2.501 0 0 0-4.842 0H3a.625.625 0 1 0 0 1.25M12.25 5.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5" />
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M7.75 15.75a2.5 2.5 0 0 0 2.421-1.875H17a.625.625 0 1 0 0-1.25h-6.829a2.5 2.5 0 0 0-4.842 0H3a.625.625 0 1 0 0 1.25h2.329A2.5 2.5 0 0 0 7.75 15.75m0-1.25a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5"
-      />
-    </svg>
-  );
-}
-
-export function TextActionPencilSmallIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      className={cn("size-4 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M11.243 3.457a.803.803 0 0 0-1.13 0l-.554.552a.075.075 0 0 0 0 .106l1.03 1.03a.075.075 0 0 0 .107 0l.547-.546a.1.1 0 0 0 .019-.032.804.804 0 0 0-.02-1.11m-2.246 1.22a.075.075 0 0 0-.106 0l-6.336 6.326a1.1 1.1 0 0 0-.237.393l-.27.87v.002c-.062.232.153.466.389.383l.863-.267q.221-.061.397-.239l6.332-6.331a.075.075 0 0 0 0-.106zm-3.355 6.898a.08.08 0 0 0-.053.022l-1.1 1.1a.075.075 0 0 0 .053.128h9.06a.625.625 0 1 0 0-1.25z" />
-    </svg>
-  );
-}
-
 export function MinimizeIcon({ className }: IconProps) {
   return (
     <svg
@@ -3901,20 +3799,6 @@ export function MoveToIcon({ className }: IconProps) {
       aria-hidden="true"
     >
       <path d="M12.408 4.792a.625.625 0 0 1 .884-.884l4.4 4.4a.625.625 0 0 1 0 .884l-4.4 4.4a.625.625 0 0 1-.884-.884l3.333-3.333H5.25a.875.875 0 0 0-.875.875v5a.625.625 0 1 1-1.25 0v-5c0-1.173.951-2.125 2.125-2.125h10.491z" />
-    </svg>
-  );
-}
-
-export function NfmSideMenuPlayIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M7.814 12.407c0 .295.323.479.58.33l4.165-2.407a.38.38 0 0 0 0-.66L8.394 7.263a.385.385 0 0 0-.58.33z" />
-      <path d="M4.5 4.125A2.125 2.125 0 0 0 2.375 6.25v7.5c0 1.174.951 2.125 2.125 2.125h11a2.125 2.125 0 0 0 2.125-2.125v-7.5A2.125 2.125 0 0 0 15.5 4.125zM3.625 6.25c0-.483.392-.875.875-.875h11c.483 0 .875.392.875.875v7.5a.875.875 0 0 1-.875.875h-11a.875.875 0 0 1-.875-.875z" />
     </svg>
   );
 }

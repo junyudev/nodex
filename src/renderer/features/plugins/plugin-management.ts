@@ -267,9 +267,6 @@ export function useRecommendedSkills(context: PluginContext, input: { refresh?: 
 export function usePluginCreationCapabilities(context: PluginContext) {
   return useQuery(pluginQueryOptions(useScope(context), context, "creation-capabilities", {}));
 }
-export function usePluginHooks(context: PluginContext, selector: PluginSelector) {
-  return useQuery(pluginQueryOptions(useScope(context), context, "plugin-hooks", selector));
-}
 export function useMcpOauthCompletion(context: PluginContext) {
   const scope = useScope(context);
   return useQuery({

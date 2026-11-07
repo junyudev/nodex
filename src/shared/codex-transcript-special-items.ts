@@ -46,9 +46,6 @@ const CodexMultiAgentAgentStateSchema = createGeneratedCodexSchema<CollabAgentSt
 );
 
 export type CodexAutomaticApprovalReviewStatus = GuardianApprovalReview["status"];
-export type CodexAutomaticApprovalReviewRiskLevel = NonNullable<
-  GuardianApprovalReview["riskLevel"]
->;
 
 export type CodexAutomaticApprovalReviewPayload = GuardianApprovalReview & {
   targetItemId: string | null;

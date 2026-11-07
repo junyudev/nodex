@@ -9,7 +9,7 @@ import type {
 import { FILE_IMPORT_MAX_BYTES, FILE_IMPORT_MAX_COUNT } from "../../shared/file-resources";
 import type { PreparedFileBlob } from "../../shared/file-resources";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import { applyLibraryModule, prepareFileBlob } from "./api";
+import { applyLibraryModule } from "./api";
 import { prepareBrowserFiles } from "./library-file-resources";
 
 export interface LibraryFileCommandAuthority {
@@ -192,23 +192,6 @@ async function applyPageEntryChanges(
   return receipt;
 }
 
-export async function importPageEntries(
-  authority: LibraryFileCommandAuthority,
-  pageId: string,
-  expectedManifestRevision: number,
-  files: readonly File[],
-): Promise<LibraryPageFileEntryReceipt> {
-  const operationId = createUuidV7();
-  const prepared = await prepareBrowserFiles(authority.contentRoutingContext, operationId, files);
-  return importPreparedPageEntries(
-    authority,
-    pageId,
-    expectedManifestRevision,
-    operationId,
-    prepared,
-  );
-}
-
 export function importPreparedPageEntries(
   authority: LibraryFileCommandAuthority,
   pageId: string,
@@ -298,35 +281,4 @@ export async function replacePageEntry(
     ],
     operationId,
   );
-}
-
-export async function replaceTextFileContent(
-  authority: LibraryFileCommandAuthority,
-  target: Pick<LibraryFile, "file_id" | "revision" | "head_version" | "default_name" | "mime_type">,
-  text: string,
-): Promise<LibraryFile> {
-  const operationId = createUuidV7();
-  const prepared = await prepareFileBlob(authority.contentRoutingContext, {
-    operationId,
-    source: {
-      kind: "bytes",
-      logicalPath: target.default_name,
-      mimeType: target.mime_type,
-      bytes: new TextEncoder().encode(text),
-    },
-  });
-  const committed = await applyFileChange(
-    authority,
-    {
-      kind: "replace_content",
-      file_id: target.file_id,
-      expected_revision: target.revision,
-      expected_head_version: target.head_version,
-      mime_type: target.mime_type,
-      prepared_blob_receipt_id: prepared.receiptId,
-    },
-    operationId,
-  );
-  if (!committed) throw new Error("File update omitted its committed result");
-  return committed;
 }

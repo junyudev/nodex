@@ -126,7 +126,6 @@ export interface CodexPendingLocalProjectAssignment {
 
 export const CODEX_PENDING_WORKTREE_FALLBACK_LABEL = "Codex Chat";
 export const CODEX_PENDING_WORKTREE_LABEL_MAX_LENGTH = 80;
-export const CODEX_USER_REQUEST_SECTION_MARKER = "## My request for Codex:";
 const CODEX_USER_REQUEST_SECTION_PATTERN = /## My request(?: for Codex)?:/;
 export const CODEX_PENDING_WORKTREE_SETUP_REPAIR_LABEL = "Fix worktree setup";
 

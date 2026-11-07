@@ -1,10 +1,6 @@
-import type { PageInput } from "./types";
-
 export const PAGE_DOCUMENT_PATCH_FIELDS = ["title", "description"] as const;
 
 export type PageDocumentPatchField = (typeof PAGE_DOCUMENT_PATCH_FIELDS)[number];
-
-export type PageMetadataPatch = Partial<Omit<PageInput, PageDocumentPatchField>>;
 
 export const PAGE_DOCUMENT_MUTATION_REQUIRED_MESSAGE =
   "Page title and description belong to the Page Document. Use a Y.Doc Document mutation; whole-body Nodex Markdown replacement is an explicit generation/head-CAS import only.";

@@ -27,9 +27,6 @@ export interface ClaudeResolvedIntelligence {
 /** Native context is a decoration of a concrete model identity, never of `default`. */
 export const claudeModelContext = (model: string | null | undefined): string | undefined =>
   /\[(\d+[km])\]$/iu.exec(model ?? "")?.[1]?.toLowerCase();
-
-export const claudeModelWithContext = (model: string, context?: string): string =>
-  context ? `${model.replace(/\[(?:\d+[km])\]$/iu, "")}[${context}]` : model;
 export interface ClaudeModelTraits {
   readonly effortLevels?: ClaudeEffortLevel[];
   readonly fastMode?: boolean;
@@ -109,18 +106,6 @@ export interface ClaudeDiscovery {
   readonly skills: readonly ClaudeDiscoveredSkill[];
   readonly health: ClaudeHealth;
   readonly revision: string;
-}
-export interface ClaudeHistoryPage {
-  readonly messages: readonly {
-    readonly type: string;
-    readonly uuid: string;
-    readonly session_id: string;
-    readonly message: unknown;
-    readonly parent_tool_use_id: string | null;
-    readonly parent_agent_id: string | null;
-  }[];
-  readonly before: string | null;
-  readonly hasMore: boolean;
 }
 
 export interface ClaudeRuntimeDiagnostics {

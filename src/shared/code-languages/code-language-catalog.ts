@@ -150,10 +150,6 @@ export function resolveCodeLanguage(value: unknown): CodeLanguage {
   return codeLanguageById.get(normalizeCodeLanguageId(value)) ?? codeLanguageById.get("text")!;
 }
 
-export function isSupportedCodeLanguageId(value: unknown): value is string {
-  return typeof value === "string" && codeLanguageById.has(value);
-}
-
 export function getCodeLanguageSearchText(language: CodeLanguage): string {
   return [
     language.label,

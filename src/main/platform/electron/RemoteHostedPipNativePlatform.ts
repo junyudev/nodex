@@ -640,8 +640,3 @@ export const fakeRemoteHostedPipNativePlatform: Effect.Effect<FakeRemoteHostedPi
       }),
     };
   });
-
-export const fakeLayer = (
-  fake: FakeRemoteHostedPipNativePlatform,
-): Layer.Layer<RemoteHostedPipNativePlatform> =>
-  Layer.succeed(RemoteHostedPipNativePlatform, fake.service);

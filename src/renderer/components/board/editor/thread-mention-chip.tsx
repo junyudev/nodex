@@ -40,11 +40,6 @@ export interface ThreadMentionRuntimeValue {
   openSession?: (sessionId: string) => void;
 }
 
-export interface ThreadMentionInlineContentUpdate {
-  type: "threadMention";
-  props: ThreadMentionProps;
-}
-
 const EMPTY_THREADS: Record<string, CodexThreadSummary> = {};
 const EMPTY_RESOLVING_IDS = new Set<string>();
 

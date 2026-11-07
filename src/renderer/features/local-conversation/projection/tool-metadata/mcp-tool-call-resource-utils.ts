@@ -4,10 +4,7 @@ import type {
   ProtocolListMcpServerStatusResponse,
   ProtocolMcpResourceReadResponse,
 } from "../../../../lib/types";
-import {
-  resolveCodexMcpAppResourceMetadata,
-  resolveCodexMcpResourceUriFromMetadata,
-} from "../../../../../shared/codex-mcp-tool-call";
+import { resolveCodexMcpAppResourceMetadata } from "../../../../../shared/codex-mcp-tool-call";
 import type { ThreadMcpAppSidePanelInput } from "../../thread-stage-types";
 import { formatMcpServerName } from "./mcp-tool-call-labels";
 import {
@@ -79,10 +76,6 @@ export function buildMcpAppCapabilityId(input: {
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null) return null;
   return value as Record<string, unknown>;
-}
-
-export function resolveMcpResourceUriFromMeta(meta: unknown): string | null {
-  return resolveCodexMcpResourceUriFromMetadata(meta);
 }
 
 export function resolveMcpAppResourceScopeUri(input: {

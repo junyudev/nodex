@@ -1,13 +1,5 @@
 export type StoreEpoch = string;
 
-export type CoreModuleName =
-  | "library"
-  | "database"
-  | "owned_document"
-  | "project_workspace"
-  | "automation"
-  | "store_administration";
-
 export type CoreAdapterKind = "electron_host" | "loopback_http" | "native_cli" | "agent" | "test";
 
 /** Trusted transport identity. This context is never caller-authored JSON. */

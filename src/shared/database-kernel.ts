@@ -513,99 +513,6 @@ export interface DatabaseMutationRequest {
   readonly operations: readonly DatabaseMutationOperation[];
 }
 
-export interface DatabaseMutationReceipt {
-  readonly operationId: string;
-  readonly projectId: string;
-  readonly storeEpoch: string;
-  readonly operationKinds: readonly DatabaseMutationOperation["kind"][];
-  /** Active Database authorities touched by this atomic receipt. */
-  readonly affectedDatabaseBlockIds: readonly string[];
-  readonly duplicate: boolean;
-  readonly payload: Readonly<Record<string, DatabaseJsonValue>>;
-  readonly commitSeq: number;
-  readonly committedAt: string;
-}
-
-export type DatabaseMutationErrorCode =
-  | "invalid_database_mutation_request"
-  | "store_epoch_mismatch"
-  | "operation_id_collision"
-  | "project_not_found"
-  | "block_identity_collision"
-  | "database_not_found"
-  | "database_not_active"
-  | "database_schema_conflict"
-  | "property_not_found"
-  | "property_conflict"
-  | "property_key_collision"
-  | "property_type_change_with_values"
-  | "property_option_in_use"
-  | "property_in_use"
-  | "property_value_invalid"
-  | "property_value_conflict"
-  | "page_not_found"
-  | "page_not_active"
-  | "membership_conflict"
-  | "membership_identity_collision"
-  | "membership_unchanged"
-  | "view_not_found"
-  | "view_conflict"
-  | "view_identity_collision"
-  | "primary_view_required"
-  | "position_conflict"
-  | "position_anchor_not_found"
-  | "position_anchor_group_mismatch"
-  | "position_group_mismatch"
-  | "rank_rebalance_limit"
-  | "unknown";
-
-const DATABASE_MUTATION_ERROR_CODES = new Set<DatabaseMutationErrorCode>([
-  "invalid_database_mutation_request",
-  "store_epoch_mismatch",
-  "operation_id_collision",
-  "project_not_found",
-  "block_identity_collision",
-  "database_not_found",
-  "database_not_active",
-  "database_schema_conflict",
-  "property_not_found",
-  "property_conflict",
-  "property_key_collision",
-  "property_type_change_with_values",
-  "property_option_in_use",
-  "property_in_use",
-  "property_value_invalid",
-  "property_value_conflict",
-  "page_not_found",
-  "page_not_active",
-  "membership_conflict",
-  "membership_identity_collision",
-  "membership_unchanged",
-  "view_not_found",
-  "view_conflict",
-  "view_identity_collision",
-  "primary_view_required",
-  "position_conflict",
-  "position_anchor_not_found",
-  "position_anchor_group_mismatch",
-  "position_group_mismatch",
-  "rank_rebalance_limit",
-  "unknown",
-]);
-
-export interface DatabaseMutationCommandError {
-  readonly code: DatabaseMutationErrorCode;
-  readonly message: string;
-  readonly retryable: boolean;
-  readonly operationId?: string;
-  readonly expectedRevision?: number;
-  readonly actualRevision?: number;
-}
-
-export type DatabaseMutationCommandResult =
-  | { readonly ok: true; readonly value: DatabaseMutationReceipt }
-  | { readonly ok: false; readonly error: DatabaseMutationCommandError };
-
 export class DatabaseMutationContractError extends Error {
   constructor(message: string) {
     super(message);
@@ -677,24 +584,6 @@ const readUtf8String = (
   throw new DatabaseMutationContractError(
     `${label}.${key} must contain at most ${maximumBytes} UTF-8 bytes`,
   );
-};
-
-const readCanonicalStringArray = (
-  record: Readonly<Record<string, unknown>>,
-  key: string,
-  label: string,
-): readonly string[] => {
-  const value = record[key];
-  if (!Array.isArray(value) || value.length > MAX_COLLECTION_ENTRIES) {
-    throw new DatabaseMutationContractError(`${label}.${key} must be a bounded string array`);
-  }
-  const entries = value.map((entry, index) =>
-    readString({ value: entry }, "value", `${label}.${key}[${index}]`),
-  );
-  if (new Set(entries).size !== entries.length) {
-    throw new DatabaseMutationContractError(`${label}.${key} must not contain duplicate IDs`);
-  }
-  return entries;
 };
 
 const readNullableString = (
@@ -1303,14 +1192,6 @@ const visitViewPropertyIds = (
   config.display.propertyIds.forEach(visit);
 };
 
-export const databaseViewReferencedPropertyIds = (
-  config: DatabaseViewConfigV2,
-): readonly string[] => {
-  const propertyIds = new Set<string>();
-  visitViewPropertyIds(config, (propertyId) => propertyIds.add(propertyId));
-  return [...propertyIds];
-};
-
 export const parseDatabaseViewConfigV2 = (value: unknown): DatabaseViewConfigV2 => {
   const parsed = parseViewConfig(value, "databaseViewConfig", 2) as DatabaseViewConfigV2;
   visitViewPropertyIds(parsed, (propertyId) => {
@@ -1657,14 +1538,6 @@ export const parseDatabaseViewConfigV6 = (value: unknown): DatabaseViewConfigV6 
   parsed.presentation.display.propertyOrder.forEach(parseDataSourcePropertyId);
   return parsed;
 };
-
-export function databaseViewReferencedPropertyIdsV6(
-  config: DatabaseViewConfigV6,
-): readonly string[] {
-  const propertyIds = new Set<string>();
-  visitViewConfigV6PropertyIds(config, (propertyId) => propertyIds.add(propertyId));
-  return [...propertyIds];
-}
 
 const parseViewLayoutDisplayOverride = (
   value: unknown,
@@ -2802,97 +2675,4 @@ export const canonicalizeDatabaseMutationIntent = (value: unknown): string => {
     storeEpoch: request.storeEpoch,
     operations: request.operations,
   });
-};
-
-export const parseDatabaseMutationReceipt = (value: unknown): DatabaseMutationReceipt => {
-  const receipt = readRecord(value, "databaseMutationReceipt");
-  assertExactKeys(receipt, "databaseMutationReceipt", [
-    "operationId",
-    "projectId",
-    "storeEpoch",
-    "operationKinds",
-    "affectedDatabaseBlockIds",
-    "duplicate",
-    "payload",
-    "commitSeq",
-    "committedAt",
-  ]);
-  const supportedKinds = new Set<DatabaseMutationOperation["kind"]>([
-    "create_database",
-    "put_property",
-    "delete_property",
-    "transfer_membership",
-    "put_view",
-    "delete_view",
-    "position_page",
-    "position_pages",
-    "set_value",
-    "set_values",
-    "add_remove_value",
-  ]);
-  if (
-    !Array.isArray(receipt.operationKinds) ||
-    receipt.operationKinds.length < 1 ||
-    receipt.operationKinds.length > MAX_DATABASE_MUTATION_OPERATIONS ||
-    !receipt.operationKinds.every(
-      (kind) =>
-        typeof kind === "string" && supportedKinds.has(kind as DatabaseMutationOperation["kind"]),
-    )
-  ) {
-    throw new DatabaseMutationContractError(
-      "databaseMutationReceipt.operationKinds is unsupported",
-    );
-  }
-  const operationKinds = receipt.operationKinds as DatabaseMutationOperation["kind"][];
-  return {
-    operationId: readString(receipt, "operationId", "databaseMutationReceipt"),
-    projectId: readString(receipt, "projectId", "databaseMutationReceipt"),
-    storeEpoch: readString(receipt, "storeEpoch", "databaseMutationReceipt"),
-    operationKinds,
-    affectedDatabaseBlockIds: readCanonicalStringArray(
-      receipt,
-      "affectedDatabaseBlockIds",
-      "databaseMutationReceipt",
-    ),
-    duplicate: readBoolean(receipt, "duplicate", "databaseMutationReceipt"),
-    payload: readJsonRecord(receipt.payload, "databaseMutationReceipt.payload"),
-    commitSeq: readRevision(receipt, "commitSeq", "databaseMutationReceipt", 1),
-    committedAt: readString(receipt, "committedAt", "databaseMutationReceipt"),
-  };
-};
-
-export const parseDatabaseMutationCommandError = (value: unknown): DatabaseMutationCommandError => {
-  const error = readRecord(value, "databaseMutationError");
-  assertExactKeys(
-    error,
-    "databaseMutationError",
-    ["code", "message", "retryable"],
-    ["operationId", "expectedRevision", "actualRevision"],
-  );
-  if (
-    typeof error.code !== "string" ||
-    !DATABASE_MUTATION_ERROR_CODES.has(error.code as DatabaseMutationErrorCode)
-  ) {
-    throw new DatabaseMutationContractError("databaseMutationError.code is invalid");
-  }
-  return {
-    code: error.code as DatabaseMutationErrorCode,
-    message: readString(error, "message", "databaseMutationError", 4_096),
-    retryable: readBoolean(error, "retryable", "databaseMutationError"),
-    ...(error.operationId === undefined
-      ? {}
-      : {
-          operationId: readOptionalString(error, "operationId", "databaseMutationError"),
-        }),
-    ...(error.expectedRevision === undefined
-      ? {}
-      : {
-          expectedRevision: readRevision(error, "expectedRevision", "databaseMutationError"),
-        }),
-    ...(error.actualRevision === undefined
-      ? {}
-      : {
-          actualRevision: readRevision(error, "actualRevision", "databaseMutationError"),
-        }),
-  };
 };

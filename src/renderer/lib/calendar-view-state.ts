@@ -1,22 +1,13 @@
 import {
   type CalendarRangeState,
-  type PersistedCalendarRangePrefs,
-  migrateCalendarRangePrefs,
   resolveCalendarRangeAnchorOffset,
   resolveCalendarVisibleDayCount,
 } from "./calendar-range";
 import { getVisibleDays } from "./calendar-utils";
 
-const STORAGE_KEY = "nodex-calendar-prefs";
-
 export interface CalendarViewState {
   range: CalendarRangeState;
   anchorDate: Date;
-}
-
-export function todayCalendarStorageKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
 export function normalizeCalendarAnchorDate(value: Date): Date {
@@ -29,42 +20,6 @@ export function shiftCalendarAnchorDateByDays(value: Date, days: number): Date {
   const next = normalizeCalendarAnchorDate(value);
   next.setDate(next.getDate() + days);
   return next;
-}
-
-export function loadCalendarViewState(): CalendarViewState {
-  const today = normalizeCalendarAnchorDate(new Date());
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return { range: migrateCalendarRangePrefs(null), anchorDate: today };
-
-    const parsed = JSON.parse(stored) as Partial<PersistedCalendarRangePrefs> & {
-      dayCount?: unknown;
-    };
-    const range = migrateCalendarRangePrefs(parsed);
-    if (parsed.anchorDate && parsed.savedOn === todayCalendarStorageKey()) {
-      const restored = new Date(parsed.anchorDate);
-      if (!Number.isNaN(restored.getTime())) {
-        return { range, anchorDate: normalizeCalendarAnchorDate(restored) };
-      }
-    }
-
-    return { range, anchorDate: today };
-  } catch {
-    return { range: migrateCalendarRangePrefs(null), anchorDate: today };
-  }
-}
-
-export function saveCalendarViewState(state: CalendarViewState): void {
-  try {
-    const prefs: PersistedCalendarRangePrefs = {
-      ...state.range,
-      anchorDate: state.anchorDate.toISOString(),
-      savedOn: todayCalendarStorageKey(),
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
-  } catch {
-    // ignore
-  }
 }
 
 export function resolveCalendarVisibleDays(state: CalendarViewState): Date[] {

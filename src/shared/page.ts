@@ -34,19 +34,6 @@ export interface Page {
   readonly updatedAt: string;
 }
 
-export type PageRecord = Pick<
-  Page,
-  | "pageId"
-  | "libraryId"
-  | "documentId"
-  | "parent"
-  | "lifecycle"
-  | "parentRevision"
-  | "metadataRevision"
-  | "createdAt"
-  | "updatedAt"
->;
-
 export class PageContractError extends TypeError {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);

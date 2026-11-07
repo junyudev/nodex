@@ -1,7 +1,6 @@
 import {
   MAX_MANAGED_IMAGE_BYTES,
   MAX_MANAGED_RESOURCE_BYTES,
-  type ManagedCanvasImageMaterializationResult,
   type ManagedAssetPreview,
   type ManagedAssetPreviewInput,
   type ManagedResourceSaveResult,
@@ -30,25 +29,9 @@ const saveImageAssetCommand = defineRendererCommand({
   protocol: { kind: "returned_value" },
 });
 
-const materializeCanvasImageCommand = defineRendererCommand({
-  key: "asset.canvas_image.materialize",
-  channel: "asset:canvas-image:materialize",
-  authority: "main",
-  owner: "ManagedAssets",
-  protocol: { kind: "returned_value" },
-});
-
 const saveResourceAssetCommand = defineRendererCommand({
   key: "asset.resource.save",
   channel: "asset:resource:save",
-  authority: "main",
-  owner: "ManagedAssets",
-  protocol: { kind: "returned_value" },
-});
-
-const materializeResourceAssetCommand = defineRendererCommand({
-  key: "asset.resource.materialize",
-  channel: "asset:resource:materialize",
   authority: "main",
   owner: "ManagedAssets",
   protocol: { kind: "returned_value" },
@@ -108,18 +91,6 @@ export async function uploadImageAsset(file: File): Promise<string> {
   return result.source;
 }
 
-export async function materializeCanvasImageAsset(
-  file: File,
-): Promise<ManagedCanvasImageMaterializationResult> {
-  if (file.size > MAX_MANAGED_IMAGE_BYTES) {
-    throw new Error("Image exceeds 10MB upload limit");
-  }
-  return await invokePlainCommand(
-    materializeCanvasImageCommand,
-    fileToUploadInput(file, new Uint8Array(await file.arrayBuffer())),
-  );
-}
-
 function toUploadedResourceAssetResponse(
   result: ManagedResourceSaveResult,
 ): UploadedResourceAssetResponse {
@@ -140,14 +111,6 @@ export async function uploadResourceAsset(file: File): Promise<UploadedResourceA
       saveResourceAssetCommand,
       fileToUploadInput(file, new Uint8Array(await file.arrayBuffer())),
     ),
-  );
-}
-
-export async function materializeLocalResourceAsset(
-  localPath: string,
-): Promise<UploadedResourceAssetResponse> {
-  return toUploadedResourceAssetResponse(
-    await invokePlainCommand(materializeResourceAssetCommand, localPath),
   );
 }
 

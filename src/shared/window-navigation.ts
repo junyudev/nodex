@@ -44,39 +44,14 @@ export type WorkbenchNavigationCommandSource =
 
 export type WorkbenchNavigationDirection = "back" | "forward";
 
-export interface WorkbenchNavigationCommandRequest {
-  tick: number;
-  direction: WorkbenchNavigationDirection;
-  source: WorkbenchNavigationCommandSource;
-}
-
 export interface WorkbenchNavigationCommandState {
   canNavigateBack: boolean;
   canNavigateForward: boolean;
 }
 
 export type WorkbenchPanelTabCycleDirection = "previous" | "next";
-export type WorkbenchPanelTabCycleCommandSource = "keyboard_shortcut" | "menu";
-
-export interface WorkbenchPanelTabCycleCommandRequest {
-  tick: number;
-  direction: WorkbenchPanelTabCycleDirection;
-  source: WorkbenchPanelTabCycleCommandSource;
-}
-
-export type WorkbenchPanelTabCloseCommandSource = "keyboard_shortcut" | "menu";
-
-export interface WorkbenchPanelTabCloseCommandRequest {
-  tick: number;
-  source: WorkbenchPanelTabCloseCommandSource;
-}
 
 export type WorkbenchThreadRenameCommandSource = "keyboard_shortcut" | "menu" | "command_palette";
-
-export interface WorkbenchThreadRenameCommandRequest {
-  tick: number;
-  source: WorkbenchThreadRenameCommandSource;
-}
 
 export type WorkbenchSidebarToggleCommandSource =
   | "sidebar_trigger"
@@ -161,12 +136,4 @@ export function resolveWorkbenchNavigationShortcutLabel(
 ): string {
   const suffix = direction === "back" ? "[" : "]";
   return isMac ? `⌘${suffix}` : `Ctrl+${suffix}`;
-}
-
-export function resolveWorkbenchSidebarToggleShortcutLabel(isMac: boolean): string {
-  return isMac ? "⌘B" : "Ctrl+B";
-}
-
-export function resolveWorkbenchThreadRenameShortcutLabel(isMac: boolean): string {
-  return isMac ? "⌘⌥R" : "Ctrl+Alt+R";
 }

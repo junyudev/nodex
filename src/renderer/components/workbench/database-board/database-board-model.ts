@@ -8,7 +8,6 @@ import type {
   DataSourcePageRowV2,
   DataSourcePropertyRecordV2,
 } from "../../../../shared/database-module-v2";
-import type { DatabaseViewRenderColumn } from "@/lib/database-view-render-model";
 import { databasePropertyOptionDotColor } from "@/components/database/property-value-chip";
 import { columnStyles } from "@/lib/status-presentation";
 
@@ -282,10 +281,3 @@ export const formatDatabaseBoardMetadataTimestamp = (
   ).format(timestamp);
   return `${prefix} ${formatted}`;
 };
-
-export interface DatabaseBoardSubgroupWindow {
-  readonly key: string | null;
-  readonly name: string | null;
-  readonly scopeKey: string;
-  readonly rows: DatabaseViewRenderColumn["rows"];
-}

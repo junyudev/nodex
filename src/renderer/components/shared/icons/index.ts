@@ -7,7 +7,6 @@ export * from "./file-tree-icons";
 export * from "./image-editor-aspect-icons";
 export * from "./image-editor-icons";
 export * from "./priority-value-icon";
-export * from "./rating-icons";
 export * from "./response-copy-icon";
 export * from "./voice-icons";
 export * from "./provider-icons";

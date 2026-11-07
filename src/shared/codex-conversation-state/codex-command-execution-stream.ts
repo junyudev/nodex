@@ -24,11 +24,6 @@ export type CodexCommandOutputNotification = Extract<
   { method: "item/commandExecution/outputDelta" }
 >;
 
-export type CodexTerminalInteractionNotification = Extract<
-  ServerNotification,
-  { method: "item/commandExecution/terminalInteraction" }
->;
-
 export type CodexRawCommandExecution = Extract<ThreadItem, { type: "commandExecution" }>;
 
 export interface CodexTerminalCommandUpdate {

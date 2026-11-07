@@ -3,41 +3,6 @@ export interface CodexTerminalInteractionIdentity {
   readonly itemId: string;
 }
 
-function isHighSurrogate(codeUnit: number): boolean {
-  return codeUnit >= 0xd800 && codeUnit <= 0xdbff;
-}
-
-function isLowSurrogate(codeUnit: number): boolean {
-  return codeUnit >= 0xdc00 && codeUnit <= 0xdfff;
-}
-
-/** UTF-8 byte count without allocating a second encoded copy of an untrusted notification. */
-export function codexUtf8ByteLength(value: string): number {
-  let bytes = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    const codeUnit = value.charCodeAt(index);
-    if (codeUnit <= 0x7f) {
-      bytes += 1;
-      continue;
-    }
-    if (codeUnit <= 0x7ff) {
-      bytes += 2;
-      continue;
-    }
-    if (
-      isHighSurrogate(codeUnit) &&
-      index + 1 < value.length &&
-      isLowSurrogate(value.charCodeAt(index + 1))
-    ) {
-      bytes += 4;
-      index += 1;
-      continue;
-    }
-    bytes += 3;
-  }
-  return bytes;
-}
-
 /** Interpret terminal controls while retaining incomplete input between notifications. */
 export function parseCodexTerminalInput(
   inputBuffer: string,

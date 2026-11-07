@@ -77,7 +77,6 @@ export const DictationRecordingMetadataSchema = z
   });
 
 export type DictationRecordingStatus = z.infer<typeof DictationRecordingStatusSchema>;
-export type DictationRecordingSurface = z.infer<typeof DictationRecordingSurfaceSchema>;
 export type DictationRecordingMetadata = z.infer<typeof DictationRecordingMetadataSchema>;
 
 export interface DictationRecordingCreateInput {

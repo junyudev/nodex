@@ -164,15 +164,6 @@ export function seedProjectSessionDetail(
   return installed;
 }
 
-export function seedProjectSessionDetails(
-  queryClient: QueryClient,
-  sessions: readonly ProjectSession[],
-): void {
-  for (const session of sessions) {
-    seedProjectSessionDetail(queryClient, session);
-  }
-}
-
 export async function prefetchProjectSessionDetail(
   queryClient: QueryClient,
   sessionId: string,

@@ -150,30 +150,12 @@ export const BrowserAnnotationSelectionEventSchema = z
   })
   .strict() satisfies z.ZodType<BrowserAnnotationSelectionEvent>;
 
-export const BrowserAnnotationRoutedSelectionEventSchema = z
-  .object({
-    browserConversationId: z.string().min(1).max(512),
-    browserViewScopeId: z.string().min(1).max(512),
-    browserTabId: z.string().min(1).max(512),
-    selection: BrowserAnnotationSelectionEventSchema,
-  })
-  .strict() satisfies z.ZodType<BrowserAnnotationRoutedSelectionEvent>;
-
 export const BrowserAnnotationAnchorUpdateEventSchema = z
   .object({
     sessionId: z.string().min(1).max(512),
     anchor: BrowserAnnotationAnchorSchema,
   })
   .strict() satisfies z.ZodType<BrowserAnnotationAnchorUpdateEvent>;
-
-export const BrowserAnnotationRoutedAnchorUpdateEventSchema = z
-  .object({
-    browserConversationId: z.string().min(1).max(512),
-    browserViewScopeId: z.string().min(1).max(512),
-    browserTabId: z.string().min(1).max(512),
-    update: BrowserAnnotationAnchorUpdateEventSchema,
-  })
-  .strict() satisfies z.ZodType<BrowserAnnotationRoutedAnchorUpdateEvent>;
 
 export const BrowserAnnotationDesignChangeSchema = z
   .object({

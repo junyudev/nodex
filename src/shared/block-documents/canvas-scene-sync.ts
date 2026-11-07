@@ -44,11 +44,6 @@ export interface CanvasSceneMutationIntent {
   readonly fileAdditions: Readonly<Record<string, CanvasSceneFile>>;
 }
 
-export interface CanvasSceneMutationDelivery {
-  readonly clientSessionId: string;
-  readonly intent: CanvasSceneMutationIntent;
-}
-
 /** Flat process/Core boundary retained while renderer storage uses semantic intent. */
 export interface CanvasSceneMutationRequest extends CanvasSceneMutationIntent {
   readonly clientSessionId: string;
@@ -582,7 +577,3 @@ export const canonicalizeCanvasSceneMutationResult = (
     ...(committedDelta ? { committedDelta } : {}),
   };
 };
-
-export const encodeCanonicalCanvasSceneMutationResult = (
-  result: CanvasSceneMutationResult,
-): string => canonicalStringifyCanvasScene(result);

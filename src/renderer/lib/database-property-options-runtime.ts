@@ -1,5 +1,4 @@
 import type { DatabasePropertyOption } from "../../shared/database-kernel";
-import { MAX_DATA_SOURCE_PROPERTY_OPTIONS } from "../../shared/data-source-option-registry";
 import type {
   DataSourcePropertyRecordV2,
   DatabaseModuleReadResultV2,
@@ -66,61 +65,3 @@ export const propertyOptionWindowMatchesProjection = (
   actualProjectionRevision: number,
 ): boolean =>
   expectedProjectionRevision === null || expectedProjectionRevision === actualProjectionRevision;
-
-export const readPropertyOptionRegistry = async (
-  routingContext: DatabaseViewRoutingContext,
-  property: DataSourcePropertyRecordV2,
-): Promise<readonly DatabasePropertyOption[]> => {
-  if (property.valueType !== "select" && property.valueType !== "multi_select") {
-    return [];
-  }
-  if (property.optionCount > MAX_DATA_SOURCE_PROPERTY_OPTIONS) {
-    throw new Error("Property option registry exceeded its declared bound");
-  }
-  let restartCount = 0;
-  let totalPageCount = 0;
-  while (restartCount <= 3) {
-    let after: string | null = null;
-    let options: readonly DatabasePropertyOption[] = [];
-    let projectionRevision: number | null = null;
-    const seenCursors = new Set<string>();
-    let shouldRestart = false;
-    do {
-      const page = await readPropertyOptionWindow(routingContext, property, after);
-      totalPageCount += 1;
-      if (!propertyOptionWindowMatchesProjection(projectionRevision, page.projectionRevision)) {
-        restartCount += 1;
-        shouldRestart = true;
-        break;
-      }
-      projectionRevision = page.projectionRevision;
-      options = mergePropertyOptionPages(options, page.options);
-      if (options.length > MAX_DATA_SOURCE_PROPERTY_OPTIONS) {
-        throw new Error("Property option registry exceeded its fixed bound");
-      }
-      after = page.nextCursor;
-      if (!after) return options;
-      if (seenCursors.has(after)) {
-        throw new Error("Property option registry returned a repeated cursor");
-      }
-      seenCursors.add(after);
-    } while (totalPageCount < 100 && options.length <= MAX_DATA_SOURCE_PROPERTY_OPTIONS);
-    if (shouldRestart) continue;
-    break;
-  }
-  throw new Error("Property option registry exceeded its declared bound");
-};
-
-export const withPropertyOptions = (
-  property: DataSourcePropertyRecordV2,
-  options: readonly DatabasePropertyOption[],
-): DataSourcePropertyRecordV2 => ({
-  ...property,
-  config: {
-    options: options.map((option) => ({
-      id: option.id,
-      name: option.name,
-      ...(option.color === undefined ? {} : { color: option.color }),
-    })),
-  },
-});

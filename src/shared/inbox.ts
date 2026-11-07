@@ -435,15 +435,6 @@ export interface InboxChangedEvent {
   readonly reason: "inbox" | "sessions" | "content";
 }
 
-export const isInboxChatDispatch = (
-  action: InboxDispatchAction,
-): action is Extract<InboxDispatchAction, { type: "new_chat" | "send_to_chat" }> =>
-  action.type === "new_chat" || action.type === "send_to_chat";
-
-/** A suggestion that still needs the user's decision. */
-export const inboxNeedsDecision = (item: InboxItem): boolean =>
-  item.state === "open" && item.proposal?.state === "open";
-
 /** The Agent runtime that suggests dispatches. */
 export interface InboxAgentBinding {
   readonly instanceId: string;

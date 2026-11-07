@@ -14,11 +14,6 @@ export interface CalendarRangeState {
   multiWeekCount: number;
 }
 
-export interface PersistedCalendarRangePrefs extends CalendarRangeState {
-  anchorDate?: string;
-  savedOn?: string;
-}
-
 export function clampCalendarMultiDayCount(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_MULTI_DAY_COUNT;
   return Math.max(MIN_MULTI_DAY_COUNT, Math.min(Math.round(value), MAX_MULTI_DAY_COUNT));

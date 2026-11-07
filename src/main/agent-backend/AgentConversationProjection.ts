@@ -277,14 +277,6 @@ export const beginAgentConversationTurn = (
   };
 };
 
-export const rebindAgentConversationSession = (
-  snapshot: AgentConversationSnapshot,
-  sessionId: string,
-): AgentConversationSnapshot =>
-  snapshot.status === "closed" || snapshot.sessionId === sessionId
-    ? snapshot
-    : { ...snapshot, sessionId, revision: snapshot.revision + 1 };
-
 export const recoverAgentConversationTurnFailure = (
   snapshot: AgentConversationSnapshot,
   error: unknown,
@@ -306,80 +298,6 @@ export const recoverAgentConversationTurnFailure = (
               }
             : turn,
         ),
-        revision: snapshot.revision + 1,
-      };
-
-export const completeAgentConversationAuthentication = (
-  snapshot: AgentConversationSnapshot,
-  sessionId: string,
-): AgentConversationSnapshot =>
-  snapshot.status === "closed" || snapshot.status === "failed"
-    ? snapshot
-    : {
-        ...snapshot,
-        sessionId,
-        status: "idle",
-        error: null,
-        revision: snapshot.revision + 1,
-      };
-
-/** A dead native process cannot keep any task or tool running in the live registry. */
-const settleAgentRuntime = (
-  snapshot: AgentConversationSnapshot,
-  status: "failed" | "cancelled",
-  error: string | null,
-): AgentConversationSnapshot => {
-  const settleTool = (update: AgentCanonicalSessionUpdate): AgentCanonicalSessionUpdate =>
-    update.kind === "tool-call" && (update.status === "pending" || update.status === "in_progress")
-      ? { ...update, status, detail: error ?? update.detail }
-      : update;
-  return {
-    ...snapshot,
-    liveBackgroundTaskIds: [],
-    tasks: snapshot.tasks?.map((task) =>
-      ["pending", "running", "paused"].includes(task.status)
-        ? { ...task, status, error: error ?? task.error }
-        : task,
-    ),
-    toolCalls: snapshot.toolCalls?.map((call) => ({
-      ...call,
-      update: settleTool(call.update) as Extract<
-        AgentCanonicalSessionUpdate,
-        { kind: "tool-call" }
-      >,
-    })),
-    turns: snapshot.turns.map((turn) => ({
-      ...turn,
-      ...(turn.status === "running"
-        ? { status, error, stopReason: status === "failed" ? "error" : "cancelled" }
-        : {}),
-      updates: turn.updates.map(settleTool),
-    })),
-  };
-};
-
-export const failAgentConversation = (
-  snapshot: AgentConversationSnapshot,
-  error: unknown,
-): AgentConversationSnapshot => {
-  if (snapshot.status === "closed") return snapshot;
-  const message = boundedString(error instanceof Error ? error.message : String(error), 8_192);
-  return {
-    ...settleAgentRuntime(snapshot, "failed", message),
-    status: "failed",
-    error: message,
-    revision: snapshot.revision + 1,
-  };
-};
-
-export const closeAgentConversation = (
-  snapshot: AgentConversationSnapshot,
-): AgentConversationSnapshot =>
-  snapshot.status === "closed"
-    ? snapshot
-    : {
-        ...settleAgentRuntime(snapshot, "cancelled", null),
-        status: "closed",
         revision: snapshot.revision + 1,
       };
 

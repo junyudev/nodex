@@ -278,11 +278,6 @@ export function flattenNfmMoveToRows(sections: readonly NfmMoveToSection[]): Nfm
   return sections.flatMap((section) => section.rows);
 }
 
-export function getInitialNfmMoveToFocusIndex(query: string, rows: readonly NfmMoveToRow[]) {
-  if (!normalizeSearchText(query)) return -1;
-  return rows.length > 0 ? 0 : -1;
-}
-
 export function getInitialNfmMoveToFocusedRowId(query: string, rows: readonly NfmMoveToRow[]) {
   if (!normalizeSearchText(query)) return null;
   return rows[0]?.id ?? null;

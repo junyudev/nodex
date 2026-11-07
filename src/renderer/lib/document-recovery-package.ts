@@ -38,31 +38,6 @@ export const captureDocumentRecovery = (
   source: JSON.parse(encodeRecoveryEnvelope(snapshot)) as unknown,
 });
 
-export const captureCanvasRecovery = (
-  snapshot: QuarantinedCanvasSceneMutation,
-): RecoveryDraftCapture => ({
-  draft_id: `canvas:${snapshot.intent.documentId}:${snapshot.intent.mutationId}`,
-  document_id: snapshot.intent.documentId,
-  source_store_epoch: snapshot.intent.storeEpoch,
-  generation: snapshot.intent.generation,
-  base_head_seq: snapshot.intent.baseHeadSeq,
-  created_at: new Date(snapshot.rejectedAt).toISOString(),
-  schema_key: CANVAS_DOCUMENT_SCHEMA_KEY,
-  schema_version: CANVAS_DOCUMENT_SCHEMA_VERSION,
-  content: {
-    kind: "canvas",
-    scene: snapshot.scene ?? null,
-    mutations: [
-      {
-        elementCandidates: snapshot.intent.elementCandidates,
-        appStateIntents: snapshot.intent.appStateIntents,
-        fileAdditions: snapshot.intent.fileAdditions,
-      },
-    ],
-  },
-  source: JSON.parse(encodeRecoveryEnvelope(snapshot)) as unknown,
-});
-
 /** The production freeze path retains native bytes all the way through IndexedDB and IPC. */
 export const documentRecoveryBundleInput = (
   snapshot: DocumentRecoverySnapshot,

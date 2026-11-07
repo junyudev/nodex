@@ -24,8 +24,6 @@ export type PanelGroupBodyDropData = Record<string | symbol, unknown> & {
   leafId: string;
 };
 
-export type PanelTabDropTargetData = PanelTabRowDropData | PanelGroupBodyDropData;
-
 export type PanelTabDropIntent =
   | {
       kind: "tab-row";

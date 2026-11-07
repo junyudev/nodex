@@ -207,9 +207,3 @@ export function failCodexQueuedFollowUp(
 }
 
 export const completeCodexQueuedFollowUp = removeCodexQueuedFollowUp;
-
-export function clearCodexQueuedFollowUps(
-  state: CodexQueuedFollowUpLedgerState,
-): CodexQueuedFollowUpLedgerState {
-  return replaceEntries(state, []);
-}

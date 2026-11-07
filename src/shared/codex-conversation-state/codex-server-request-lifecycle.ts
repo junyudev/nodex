@@ -1856,20 +1856,6 @@ export function reduceCodexConversationSetupContextPickerResponse(
   return { ...operation, state: next, stateChanged: next !== state };
 }
 
-/** Exact local `B4e` request half for adapters without canonical snapshots. */
-export function completeCodexPlanImplementationRequestRawState(
-  state: CodexServerRequestRawState,
-  turnId: string,
-): CodexServerRequestRawState {
-  return {
-    ...state,
-    requests: state.requests.filter(
-      (request) =>
-        request.method !== "item/plan/requestImplementation" || request.params.turnId !== turnId,
-    ),
-  };
-}
-
 /** Exact turn-start request half: retain only the active turn's private plan request. */
 export function applyCodexPlanImplementationTurnStartedRawState(
   state: CodexServerRequestRawState,
@@ -1914,12 +1900,6 @@ export function mutateCodexCanonicalPlanImplementationCompletion(
       if (item.type === "planImplementation" && "isCompleted" in item) item.isCompleted = true;
     }
   }
-}
-export function completeCodexCanonicalPlanImplementationState(
-  state: CodexCanonicalConversationState,
-  turnId: string,
-): CodexCanonicalConversationState {
-  return produce(state, (draft) => mutateCodexCanonicalPlanImplementationCompletion(draft, turnId));
 }
 export function mutateCodexCanonicalPlanImplementationTurnStarted(
   state: Draft<CodexCanonicalConversationState>,

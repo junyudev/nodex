@@ -588,25 +588,3 @@ export const documentHistoryFailure = (
   const { retryable = false, ...details } = options;
   return { code, message, retryable, ...details };
 };
-
-export const documentHistoryHttpStatus = (
-  error: DocumentHistoryCommandError,
-): 400 | 404 | 409 | 500 | 503 => {
-  if (error.code === "document_not_found" || error.code === "document_version_not_found") {
-    return 404;
-  }
-  if (
-    error.code === "store_epoch_mismatch" ||
-    error.code === "document_not_ready" ||
-    error.code === "document_generation_conflict" ||
-    error.code === "document_head_conflict" ||
-    error.code === "document_version_schema_mismatch"
-  ) {
-    return 409;
-  }
-  if (error.code === "unknown" && error.retryable) return 503;
-  if (error.code === "unknown" || error.code === "document_history_corrupt") {
-    return 500;
-  }
-  return 400;
-};

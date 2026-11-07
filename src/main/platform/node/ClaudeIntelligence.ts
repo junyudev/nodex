@@ -24,13 +24,6 @@ const NativeSettings = z.object({
     .catch(undefined),
 });
 
-export const unknownClaudeIntelligence = (): ClaudeResolvedIntelligence => ({
-  model: null,
-  effort: null,
-  fast: null,
-  thinking: null,
-});
-
 /** Only applied reports model/effort; merged settings describe the native toggles. */
 export function resolveClaudeIntelligence(input: {
   readonly settings: unknown;

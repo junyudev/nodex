@@ -18,11 +18,9 @@ import {
 } from "@/lib/toggle-list/rules-v2-jsonlogic";
 import { priorityClauseIncludesEmpty } from "@/lib/toggle-list/priority-clause";
 import {
-  deriveToggleListFilterRule,
   moveToggleListProperty,
   removeToggleListFieldClause,
   replaceToggleListFieldClause,
-  resolveToggleListPrimarySort,
   setToggleListRulesV2,
   toggleIncludeHostCard,
   toggleShowEmptyEstimate,
@@ -77,74 +75,6 @@ const ICON_BTN =
 
 const GHOST_BTN =
   "inline-flex items-center gap-1 text-xs font-medium text-[var(--foreground-tertiary)] cursor-pointer hover:text-[var(--foreground-secondary)]";
-
-const SUMMARY_BADGE_PRIMARY = "bg-text-info/12 text-info border-(--color-text-info)/20";
-
-/* ------------------------------------------------------------------ */
-/*  Summary badges                                                     */
-/* ------------------------------------------------------------------ */
-
-const BADGE_BASE =
-  "inline-flex items-center gap-1 h-[calc(var(--spacing)*5.5)] px-2 rounded-full text-xs font-medium whitespace-nowrap border";
-
-export function ToggleListSummaryBadges({
-  settings,
-  visibleCount,
-}: {
-  settings: ToggleListSettings;
-  visibleCount: number;
-}) {
-  const filter = deriveToggleListFilterRule(settings.rulesV2);
-  const primarySort = resolveToggleListPrimarySort(settings.rulesV2);
-  const primaryField = primarySort.field;
-  const primaryDirection = primarySort.direction;
-  const selectedPriorityCount = filter.priorities.length + (filter.includeEmptyPriority ? 1 : 0);
-  const totalPriorityCount = TOGGLE_LIST_PRIORITY_ORDER.length + 1;
-
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className={cn(BADGE_BASE, SUMMARY_BADGE_PRIMARY)}>
-        {visibleCount} {visibleCount === 1 ? "page" : "cards"}
-      </span>
-      {filter.statuses.length < TOGGLE_LIST_STATUS_ORDER.length && (
-        <span
-          className={cn(
-            BADGE_BASE,
-            "border-(--border) bg-(--background-secondary) text-(--foreground-secondary)",
-          )}
-        >
-          {filter.statuses.length}/{TOGGLE_LIST_STATUS_ORDER.length} statuses
-        </span>
-      )}
-      {selectedPriorityCount < totalPriorityCount && (
-        <span
-          className={cn(
-            BADGE_BASE,
-            "border-(--border) bg-(--background-secondary) text-(--foreground-secondary)",
-          )}
-        >
-          {selectedPriorityCount}/{totalPriorityCount} priorities
-        </span>
-      )}
-      {filter.tags.length > 0 && (
-        <span
-          className={cn(
-            BADGE_BASE,
-            "border-(--border) bg-(--background-secondary) text-(--foreground-secondary)",
-          )}
-        >
-          {filter.tags.length} {filter.tags.length === 1 ? "tag" : "tags"}: {filter.tagMode}
-        </span>
-      )}
-      <span
-        className={cn(BADGE_BASE, "border-transparent bg-transparent text-(--foreground-tertiary)")}
-      >
-        {TOGGLE_LIST_RANK_FIELD_LABELS[primaryField]}{" "}
-        {primaryDirection === "asc" ? "\u2191" : "\u2193"}
-      </span>
-    </div>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /*  Rules body                                                         */

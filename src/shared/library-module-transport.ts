@@ -21,7 +21,6 @@ import {
   assertExistingCanvasDocumentId,
 } from "./block-documents/canvas-document-identity";
 import {
-  DEFAULT_LIBRARY_READ_LIMIT,
   MAX_LIBRARY_CURSOR_LENGTH,
   MAX_LIBRARY_QUERY_LENGTH,
   MAX_LIBRARY_READ_LIMIT,
@@ -2866,25 +2865,3 @@ export const libraryModuleFailure = (
   message: string,
   retryable = false,
 ): LibraryModuleError => ({ code, message, retryable });
-
-export const libraryModuleHttpStatus = (error: LibraryModuleError): 400 | 404 | 409 | 500 => {
-  if (error.code === "invalid_request" || error.code === "resource_exhausted") return 400;
-  if (error.code === "resource_not_found") return 404;
-  if (
-    error.code === "stale_cursor" ||
-    error.code === "store_epoch_mismatch" ||
-    error.code === "identity_conflict" ||
-    error.code === "revision_conflict" ||
-    error.code === "invalid_parent" ||
-    error.code === "hierarchy_cycle" ||
-    error.code === "project_inactive" ||
-    error.code === "primary_database_bound" ||
-    error.code === "document_conflict"
-  )
-    return 409;
-  if (error.code === "state_corrupt") return 500;
-  return 500;
-};
-
-export const resolveLibraryReadLimit = (limit: number | undefined): number =>
-  limit ?? DEFAULT_LIBRARY_READ_LIMIT;

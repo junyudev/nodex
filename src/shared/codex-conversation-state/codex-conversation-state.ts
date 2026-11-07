@@ -2044,34 +2044,6 @@ export function mergeCodexCanonicalOlderTurnStates(input: {
   return canonicalizeCodexCanonicalTurnIds(staged);
 }
 
-export interface CodexCanonicalTurnHydrationOverlay {
-  readonly approvalPolicy: NonNullable<TurnStartParams["approvalPolicy"]>;
-  readonly approvalsReviewer: NonNullable<TurnStartParams["approvalsReviewer"]>;
-  readonly sandboxPolicy: NonNullable<TurnStartParams["sandboxPolicy"]>;
-  readonly model: string;
-  readonly cwd: string | null;
-  readonly effort: NonNullable<TurnStartParams["effort"]> | null;
-}
-
-/** Exact paged-resume `pe`: overlay response fields without deleting prior profile fields. */
-export function overlayCodexCanonicalTurnHydration(
-  turns: readonly CodexCanonicalTurnState[],
-  overlay: CodexCanonicalTurnHydrationOverlay,
-): CodexCanonicalTurnState[] {
-  return turns.map((turn) => ({
-    ...turn,
-    params: {
-      ...turn.params,
-      approvalPolicy: overlay.approvalPolicy,
-      approvalsReviewer: overlay.approvalsReviewer,
-      sandboxPolicy: overlay.sandboxPolicy,
-      model: overlay.model,
-      cwd: overlay.cwd,
-      effort: overlay.effort,
-    } as CodexCanonicalTurnParams,
-  }));
-}
-
 export function createCodexCanonicalHookRun(
   run: HookRunSummary,
   id: string = run.id,

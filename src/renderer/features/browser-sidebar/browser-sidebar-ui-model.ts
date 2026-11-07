@@ -94,23 +94,6 @@ export function resolveVisibleLocalServers(
   };
 }
 
-export function stepBrowserZoomPercent(current: number, delta: number): number {
-  const clamped = clampBrowserZoomPercent(current);
-  if (delta === 0) return clamped;
-  if (delta > 0) {
-    return (
-      BROWSER_SIDEBAR_ZOOM_OPTIONS.find((option) => option > clamped) ??
-      BROWSER_SIDEBAR_ZOOM_OPTIONS.at(-1) ??
-      clamped
-    );
-  }
-  return (
-    [...BROWSER_SIDEBAR_ZOOM_OPTIONS].reverse().find((option) => option < clamped) ??
-    BROWSER_SIDEBAR_ZOOM_OPTIONS[0] ??
-    clamped
-  );
-}
-
 export function clampBrowserZoomPercent(value: number): number {
   if (!Number.isFinite(value)) return 100;
   return Math.min(500, Math.max(25, Math.round(value)));

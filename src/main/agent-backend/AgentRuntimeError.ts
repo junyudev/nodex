@@ -54,38 +54,3 @@ export const agentRuntimeError = (input: {
     ...(input.protocolCode === undefined ? {} : { protocolCode: input.protocolCode }),
     ...(input.cause === undefined ? {} : { cause: input.cause }),
   });
-
-export const classifyAgentRuntimeError = (input: {
-  readonly operation: string;
-  readonly reason?: AgentRuntimeFailureReason;
-  readonly retryable?: boolean;
-  readonly pid?: number;
-  readonly method?: string;
-  readonly sessionId?: string;
-  readonly cause: unknown;
-}): AgentRuntimeError => {
-  if (Schema.is(AgentRuntimeError)(input.cause)) return input.cause;
-  const requestCode =
-    input.cause && typeof input.cause === "object" && "code" in input.cause
-      ? (input.cause as { readonly code?: unknown }).code
-      : undefined;
-  const protocolCode = typeof requestCode === "number" ? requestCode : undefined;
-  const requestReason =
-    protocolCode === -32800
-      ? "request-cancelled"
-      : protocolCode === -32000
-        ? "authentication-required"
-        : protocolCode === -32002
-          ? "resource-not-found"
-          : "request";
-  return agentRuntimeError({
-    operation: input.operation,
-    reason: input.reason ?? requestReason,
-    retryable: input.retryable ?? false,
-    ...(input.pid === undefined ? {} : { pid: input.pid }),
-    ...(input.method === undefined ? {} : { method: input.method }),
-    ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
-    ...(protocolCode === undefined ? {} : { protocolCode }),
-    cause: input.cause,
-  });
-};

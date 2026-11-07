@@ -143,8 +143,3 @@ export function useWorkbenchPreferences() {
     handleTaskShorthandPagePromotionEnabledChange,
   };
 }
-
-export const workbenchPreferenceTestHelpers = {
-  readThreadSummaryPanelPinnedOpen,
-  writeThreadSummaryPanelPinnedOpen,
-};

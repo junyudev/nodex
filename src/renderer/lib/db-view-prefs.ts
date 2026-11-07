@@ -1,6 +1,5 @@
 import type { DatabasePageSummary, Estimate, Priority } from "@/lib/types";
 import {
-  resolveWorkflowStatusName,
   WORKFLOW_STATUS_ORDER,
   compareWorkflowStatuses,
   type WorkflowStatus,
@@ -11,13 +10,7 @@ import {
   legacyPrioritySelectionIncludesEveryAssigned,
   upgradeLegacyPriority,
 } from "../../shared/priority-cutover";
-import {
-  TOGGLE_LIST_EMPTY_PRIORITY_LABEL,
-  DEFAULT_TOGGLE_LIST_SETTINGS,
-  TOGGLE_LIST_PRIORITY_CHIP_LABELS,
-  TOGGLE_LIST_PRIORITY_ORDER,
-  TOGGLE_LIST_RANK_FIELD_LABELS,
-} from "./toggle-list/types";
+import { DEFAULT_TOGGLE_LIST_SETTINGS, TOGGLE_LIST_PRIORITY_ORDER } from "./toggle-list/types";
 import {
   normalizePriorityClauseIncludeEmpty,
   priorityClauseIncludesEmpty,
@@ -25,16 +18,10 @@ import {
 import {
   buildSortKeyWithEmptyPlacement,
   compareNullableRanks,
-  resolveSortEmptyPlacement,
-  supportsSortEmptyPlacementField,
   type SortEmptyPlacement,
 } from "./sort-empty-placement";
 
-type WorkbenchView = "board" | "list" | "toggle-list" | "calendar";
-
 export type SupportedDbView = "board" | "list" | "toggle-list";
-
-export const SUPPORTED_DB_VIEWS: SupportedDbView[] = ["board", "list", "toggle-list"];
 
 export const DB_VIEW_SORT_FIELDS = [
   "board-order",
@@ -95,14 +82,6 @@ export const DB_VIEW_DISPLAY_PROPERTY_KEYS = [
 
 export type DbViewDisplayPropertyKey = (typeof DB_VIEW_DISPLAY_PROPERTY_KEYS)[number];
 
-export const DB_VIEW_DISPLAY_PROPERTY_LABELS: Record<DbViewDisplayPropertyKey, string> = {
-  priority: "Priority",
-  estimate: "Estimate",
-  status: "Status",
-  tags: "Tags",
-  assignee: "Assignee",
-};
-
 export interface DbViewDisplayPrefs {
   propertyOrder: DbViewDisplayPropertyKey[];
   hiddenProperties: DbViewDisplayPropertyKey[];
@@ -120,12 +99,6 @@ export interface DbViewCardRecord extends DatabasePageSummary {
   columnId: WorkflowStatus;
   columnName: string;
   boardIndex: number;
-}
-
-interface FilterUnion<T> {
-  found: boolean;
-  includeEmpty: boolean;
-  values: T[];
 }
 
 const DEFAULT_FILTER: DbViewFilterSpec = {
@@ -162,14 +135,6 @@ const estimateRank = new Map<Estimate, number>(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isSupportedDbView(value: WorkbenchView): value is SupportedDbView {
-  return SUPPORTED_DB_VIEWS.includes(value as SupportedDbView);
-}
-
-export function viewSupportsDbViewPrefs(view: WorkbenchView): view is SupportedDbView {
-  return isSupportedDbView(view);
 }
 
 export function getDefaultDbViewRules(view: SupportedDbView): DbViewRules {
@@ -228,10 +193,6 @@ function normalizeDbViewPrefsAtBoundary(
   };
 }
 
-export function normalizeDbViewRules(view: SupportedDbView, value: unknown): DbViewRules {
-  return normalizeDbViewRulesAtBoundary(view, value, false);
-}
-
 function normalizeDbViewRulesAtBoundary(
   view: SupportedDbView,
   value: unknown,
@@ -248,10 +209,6 @@ function normalizeDbViewRulesAtBoundary(
 
 export function getAvailableDisplayProperties(view: SupportedDbView): DbViewDisplayPropertyKey[] {
   return [...DB_VIEW_DISPLAY_PROPERTIES_BY_VIEW[view]];
-}
-
-export function viewSupportsDbViewDisplay(view: SupportedDbView): boolean {
-  return getAvailableDisplayProperties(view).length > 0;
 }
 
 export function getDefaultDbViewDisplayPrefs(view: SupportedDbView): DbViewDisplayPrefs {
@@ -454,22 +411,6 @@ function normalizeSortKey(value: unknown): DbViewSortKey | null {
   });
 }
 
-export function cloneDbViewPrefs(prefs: DbViewPrefs): DbViewPrefs {
-  return {
-    rules: {
-      filter: cloneFilterSpec(prefs.rules.filter),
-      sort: cloneSortKeys(prefs.rules.sort),
-    },
-    summaryExpanded: prefs.summaryExpanded,
-    display: {
-      propertyOrder: [...prefs.display.propertyOrder],
-      hiddenProperties: [...prefs.display.hiddenProperties],
-      showEmptyEstimate: prefs.display.showEmptyEstimate,
-      showEmptyPriority: prefs.display.showEmptyPriority,
-    },
-  };
-}
-
 function cloneFilterSpec(filter: DbViewFilterSpec): DbViewFilterSpec {
   return {
     any: filter.any.map((group) => ({
@@ -483,10 +424,6 @@ function cloneFilterSpec(filter: DbViewFilterSpec): DbViewFilterSpec {
 
 function cloneSortKeys(sort: DbViewSortKey[]): DbViewSortKey[] {
   return sort.map((entry) => ({ ...entry }));
-}
-
-export function rulesEqual(left: DbViewRules, right: DbViewRules): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 export function hasActiveDbViewFilters(view: SupportedDbView, rules: DbViewRules): boolean {
@@ -609,140 +546,4 @@ function compareBySortKey(
 
 function normalizeTagSortValue(tags: string[]): string {
   return [...tags].sort((left, right) => left.localeCompare(right)).join(",");
-}
-
-export function getAvailableSortFields(view: SupportedDbView): DbViewSortField[] {
-  if (view === "board") {
-    return ["board-order", "priority", "estimate", "created", "title"];
-  }
-  if (view === "list") {
-    return ["tags", "title", "status", "priority", "estimate", "assignee", "created"];
-  }
-  return ["board-order", "status", "priority", "estimate", "created", "title"];
-}
-
-export function summarizeFilterClauses(
-  rules: DbViewRules,
-  statusOptions: readonly { readonly id: string; readonly name: string }[],
-): Array<{ key: string; label: string; value: string }> {
-  const statusValues = collectUnion<WorkflowStatus>(
-    rules.filter,
-    "status",
-    (value): value is WorkflowStatus => WORKFLOW_STATUS_ORDER.includes(value as WorkflowStatus),
-  );
-  const priorityValues = collectUnion<Priority>(
-    rules.filter,
-    "priority",
-    (value): value is Priority => TOGGLE_LIST_PRIORITY_ORDER.includes(value as Priority),
-  );
-  const tagClause = resolveTagClause(rules.filter);
-  const summaries: Array<{ key: string; label: string; value: string }> = [];
-
-  if (
-    statusValues.found &&
-    statusValues.values.length > 0 &&
-    statusValues.values.length < WORKFLOW_STATUS_ORDER.length
-  ) {
-    summaries.push({
-      key: "status",
-      label: "Status",
-      value: statusValues.values
-        .map((status) => resolveWorkflowStatusName(status, statusOptions))
-        .join(", "),
-    });
-  }
-
-  const totalPriorityCount = TOGGLE_LIST_PRIORITY_ORDER.length + 1;
-  const selectedPriorityCount =
-    priorityValues.values.length + (priorityValues.includeEmpty ? 1 : 0);
-  if (
-    priorityValues.found &&
-    selectedPriorityCount > 0 &&
-    selectedPriorityCount < totalPriorityCount
-  ) {
-    summaries.push({
-      key: "priority",
-      label: "Priority",
-      value: [
-        ...priorityValues.values.map((priority) => TOGGLE_LIST_PRIORITY_CHIP_LABELS[priority]),
-        ...(priorityValues.includeEmpty ? [TOGGLE_LIST_EMPTY_PRIORITY_LABEL] : []),
-      ].join(", "),
-    });
-  }
-
-  if (tagClause && tagClause.values.length > 0) {
-    const modeLabel =
-      tagClause.op === "hasAny" ? "any" : tagClause.op === "hasAll" ? "all" : "none";
-    summaries.push({
-      key: "tags",
-      label: `Tags (${modeLabel})`,
-      value: tagClause.values.join(", "),
-    });
-  }
-
-  return summaries;
-}
-
-export function summarizeSorts(
-  rules: DbViewRules,
-): Array<{ key: string; label: string; value: string }> {
-  return rules.sort.map((entry, index) => ({
-    key: `${entry.field}:${index}`,
-    label: [
-      TOGGLE_LIST_RANK_FIELD_LABELS[entry.field as keyof typeof TOGGLE_LIST_RANK_FIELD_LABELS] ??
-        DB_VIEW_SORT_FIELD_LABELS[entry.field],
-      supportsSortEmptyPlacementField(entry.field) &&
-      resolveSortEmptyPlacement(entry.field, entry.emptyPlacement) === "first"
-        ? "Empty First"
-        : null,
-    ]
-      .filter((value): value is string => Boolean(value))
-      .join(" · "),
-    value: entry.direction === "asc" ? "Ascending" : "Descending",
-  }));
-}
-
-function collectUnion<T>(
-  filter: DbViewFilterSpec,
-  field: DbViewFilterClause["field"],
-  predicate: (value: unknown) => value is T,
-): FilterUnion<T> {
-  const values = new Set<T>();
-  let found = false;
-  let includeEmpty = false;
-
-  for (const group of filter.any) {
-    for (const clause of group.all) {
-      if (clause.field !== field) continue;
-      found = true;
-      if (
-        field === "priority" &&
-        clause.field === "priority" &&
-        priorityClauseIncludesEmpty(clause)
-      ) {
-        includeEmpty = true;
-      }
-      for (const value of clause.values) {
-        if (predicate(value)) {
-          values.add(value);
-        }
-      }
-    }
-  }
-
-  return { found, includeEmpty, values: Array.from(values) };
-}
-
-function resolveTagClause(
-  filter: DbViewFilterSpec,
-): Extract<DbViewFilterClause, { field: "tags" }> | null {
-  for (const group of filter.any) {
-    for (const clause of group.all) {
-      if (clause.field === "tags") {
-        return clause;
-      }
-    }
-  }
-
-  return null;
 }

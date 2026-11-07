@@ -372,43 +372,6 @@ export async function duplicateCanvasInHostPage(input: {
   return { canvasBlockId: identities.canvasId, receipt };
 }
 
-export async function moveCanvasOwnerToPage(input: {
-  readonly routingContext: ContentRoutingContext;
-  readonly canvasBlockId: string;
-  readonly targetPageId: string;
-  readonly targetDocumentGeneration: number;
-  readonly targetDocumentHeadSeq: number;
-  readonly insertion: LibraryPageInsertion;
-  readonly sourceRuntime: CanvasHostDocumentRuntime;
-  readonly operationId?: string;
-}): Promise<LibraryModuleApplyReceipt> {
-  const sourceHost = await prepareCanvasHost(input.sourceRuntime);
-  const target = await readAvailableCanvas(input.routingContext, input.canvasBlockId);
-  if (target.summary.location.kind !== "page") {
-    throw new Error("The Canvas is no longer inside a Page.");
-  }
-  requireCanvasHostStoreEpoch(target.storeEpoch, sourceHost);
-  requireCanvasHostOwner(sourceHost, target.summary.location.pageId);
-  requireCanvasHostDocument(sourceHost, target.summary.location.documentId);
-  return applyLibraryRequestWithExactRetry(input.routingContext, {
-    operationId: input.operationId ?? createUuidV7(),
-    storeEpoch: target.storeEpoch,
-    operation: {
-      kind: "move_canvas",
-      canvasId: input.canvasBlockId,
-      expectedLocationRevision: target.summary.locationRevision,
-      destination: createCanvasPageDestination({
-        pageId: input.targetPageId,
-        documentRevision: {
-          expectedDocumentGeneration: input.targetDocumentGeneration,
-          expectedDocumentHeadSeq: input.targetDocumentHeadSeq,
-        },
-        insertion: input.insertion,
-      }),
-    },
-  });
-}
-
 export async function moveCanvasOwnerBetweenHostPages(input: {
   readonly routingContext: ContentRoutingContext;
   readonly canvasBlockId: string;

@@ -7,8 +7,6 @@ export interface DateMentionInlineContent {
   timeFormat?: DateMentionTimeFormat;
   reminder?: string;
 }
-
-export type DateMentionType = "date" | "datetime" | "daterange" | "datetimerange";
 export type DateMentionValueKind = "date" | "datetime";
 export type DateMentionDateFormat = "relative" | "ll" | "MM/DD/YYYY" | "DD/MM/YYYY" | "YYYY/MM/DD";
 export type DateMentionTimeFormat = "12h" | "24h";
@@ -39,8 +37,6 @@ export const DATE_MENTION_REMINDER_PRESETS = [
   "day:0@09:00",
   "day:1@09:00",
 ] as const;
-
-export type DateMentionReminderPreset = (typeof DATE_MENTION_REMINDER_PRESETS)[number];
 
 export interface DateMentionFormatOptions {
   now?: Date;
@@ -202,19 +198,6 @@ export function createDateMentionDateTimeValue(
     : normalizeUtcOffset(fallbackOffset ?? undefined);
   const resolvedOffset = offset ?? getLocalUtcOffsetForDateTime(safeDate, safeTime);
   return `${safeDate}T${safeTime}:00${resolvedOffset}`;
-}
-
-export function getDateMentionType(
-  input: Partial<DateMentionInlineContent> | undefined,
-): DateMentionType | null {
-  const normalized = normalizeDateMention(input);
-  if (!normalized) return null;
-  const hasEnd = Boolean(normalized.end);
-  const hasTime = isDateMentionDateTimeValue(normalized.start);
-  if (hasEnd && hasTime) return "datetimerange";
-  if (hasEnd) return "daterange";
-  if (hasTime) return "datetime";
-  return "date";
 }
 
 export function normalizeDateMention(
@@ -419,13 +402,6 @@ export function buildDateMentionQueryMatches(
 
 export function parseDateMentionInput(query: string, now = new Date()): string | null {
   return parseLooseDateQuery(normalizeQuery(query), now);
-}
-
-export function isDateMentionQuery(query: string): boolean {
-  const normalized = normalizeQuery(query);
-  if (!normalized) return false;
-  if (parseLooseDateQuery(normalized, new Date())) return true;
-  return /\b(today|tomorrow|yesterday|now|remind|reminder|date)\b/.test(normalized);
 }
 
 export function getReminderLabel(reminder: string | undefined): string {

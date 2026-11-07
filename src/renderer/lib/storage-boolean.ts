@@ -10,16 +10,6 @@ export function normalizeStoredBoolean(value: unknown, defaultValue: boolean): b
   return defaultValue;
 }
 
-export function readStoredBoolean(storageKey: string, defaultValue: boolean): boolean {
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (raw === null) return defaultValue;
-    return normalizeStoredBoolean(raw, defaultValue);
-  } catch {
-    return defaultValue;
-  }
-}
-
 export function writeStoredBoolean(
   storageKey: string,
   value: unknown,

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { lstat, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import type { CodexProjectlessThreadCwdInput, CodexProjectlessWorkspace } from "../../shared/types";
+import type { CodexProjectlessWorkspace } from "../../shared/types";
 
 export type { CodexProjectlessWorkspace } from "../../shared/types";
 
@@ -45,35 +45,6 @@ const nodeProjectlessWorkspaceFileSystem: CodexProjectlessWorkspaceFileSystem = 
 
 export function resolveCodexProjectlessWorkspaceRoot(homeDirectory: string = homedir()): string {
   return path.join(homeDirectory, "Documents", "Nodex");
-}
-
-function parseOptionalNullableStringField(
-  input: Record<string, unknown>,
-  key: "directoryName" | "prompt",
-): string | null | undefined {
-  const value = input[key];
-  if (value === undefined || value === null || typeof value === "string") return value;
-  throw new Error(`${key} must be a string, null, or omitted`);
-}
-
-export function parseCodexProjectlessThreadCwdInput(
-  input: unknown,
-): CodexProjectlessThreadCwdInput {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    throw new Error("Projectless thread cwd input must be an object");
-  }
-
-  const candidate = input as Record<string, unknown>;
-  const createSplitDirectories = candidate.createSplitDirectories;
-  if (createSplitDirectories !== undefined && typeof createSplitDirectories !== "boolean") {
-    throw new Error("createSplitDirectories must be a boolean or omitted");
-  }
-
-  return {
-    prompt: parseOptionalNullableStringField(candidate, "prompt"),
-    directoryName: parseOptionalNullableStringField(candidate, "directoryName"),
-    ...(createSplitDirectories === undefined ? {} : { createSplitDirectories }),
-  };
 }
 
 export function parseCodexProjectlessWorkspace(input: unknown): CodexProjectlessWorkspace {

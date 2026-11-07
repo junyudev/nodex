@@ -118,14 +118,6 @@ export function resolveCodexPermissionRequestTitleModel(
   return { kind: "additional" };
 }
 
-export function formatCodexPermissionAccessLabel(
-  access: CodexPermissionRequestFileSystemAccess,
-): string {
-  if (access === "read") return "Read";
-  if (access === "write") return "Write";
-  return "Read and write";
-}
-
 export function buildCodexGrantedPermissionProfile(
   permissions: RequestPermissionProfile,
 ): GrantedPermissionProfile {

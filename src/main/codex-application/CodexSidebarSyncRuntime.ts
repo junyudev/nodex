@@ -52,12 +52,6 @@ const archivedRuntimeChatItem = (
   projectless: task.projectId === null,
   disabled: false,
 });
-export interface CodexSidebarSyncMetadata {
-  readonly changedProjectIds: readonly string[];
-  readonly projectlessChanged: boolean;
-  readonly materializedSessionIds: readonly string[];
-  readonly failedThreadIds: readonly string[];
-}
 
 export interface CodexSidebarSyncInput {
   readonly includeArchived?: boolean;

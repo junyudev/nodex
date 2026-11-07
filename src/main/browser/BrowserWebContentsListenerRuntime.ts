@@ -42,10 +42,6 @@ function makeRuntimeState(): {
   };
 }
 
-/** Test-only constructor for services whose fake WebContents cannot outlive the test. */
-export const makeBrowserWebContentsListenerRuntimeUnsafe = (): BrowserWebContentsListenerRuntime =>
-  makeRuntimeState().runtime;
-
 /** Owns every Browser guest listener release under the enclosing Main Scope. */
 export const makeBrowserWebContentsListenerRuntime: Effect.Effect<
   BrowserWebContentsListenerRuntime,

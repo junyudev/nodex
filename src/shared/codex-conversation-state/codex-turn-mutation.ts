@@ -1,37 +1,9 @@
-import { produce, type Draft } from "immer";
+import { type Draft } from "immer";
 import type {
   CodexCanonicalConversationState,
   CodexCanonicalItem,
   CodexCanonicalTurnState,
 } from "./codex-conversation-state";
-
-export function replaceCodexCanonicalTurnAt(
-  turns: readonly CodexCanonicalTurnState[],
-  turnIndex: number,
-  turn: CodexCanonicalTurnState,
-): readonly CodexCanonicalTurnState[] {
-  if (turns[turnIndex] === turn) {
-    return turns;
-  }
-
-  const nextTurns = [...turns];
-  nextTurns[turnIndex] = turn;
-  return nextTurns;
-}
-
-/** Exact `_1` collection repair used before every request-caused item upsert. */
-export function ensureCodexCanonicalTurnCollections(
-  turn: CodexCanonicalTurnState,
-): CodexCanonicalTurnState {
-  if (turn.hookRuns !== undefined) {
-    return turn;
-  }
-
-  return {
-    ...turn,
-    hookRuns: [],
-  };
-}
 
 /** Exact `WQ`: replace the first same-ID row regardless of its item type. */
 export function upsertCodexCanonicalItemById(
@@ -86,22 +58,6 @@ export function conversationTurnDraft(
   return address.kind === "canonical"
     ? state.turnHistory?.history.entitiesByKey[address.entityKey]
     : state.turns[address.index];
-}
-
-export function replaceResidentConversationTurn(
-  state: CodexCanonicalConversationState,
-  address: CodexConversationTurnAddress,
-  turn: CodexCanonicalTurnState,
-): CodexCanonicalConversationState {
-  return produce(state, (draft) => {
-    if (address.kind === "canonical") {
-      if (draft.turnHistory)
-        draft.turnHistory.history.entitiesByKey[address.entityKey] =
-          turn as Draft<CodexCanonicalTurnState>;
-      return;
-    }
-    draft.turns[address.index] = turn as Draft<CodexCanonicalTurnState>;
-  });
 }
 
 export function appendConversationTurnDraft(

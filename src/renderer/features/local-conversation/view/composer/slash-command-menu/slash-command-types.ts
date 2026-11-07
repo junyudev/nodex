@@ -21,10 +21,6 @@ export interface ComposerSlashInlineSelection extends ComposerSlashCommandSelect
   clearTrigger: () => void;
 }
 
-export interface ComposerSlashDialogSelection extends ComposerSlashCommandSelection {
-  source: "dialog";
-}
-
 export interface ComposerSlashCommandContentProps {
   close: () => void;
   back: () => void;
@@ -64,10 +60,4 @@ export interface ComposerSlashCommandMatch {
   command: ComposerSlashCommand;
   score: number;
   matchedTitleIndexes: number[];
-}
-
-export interface ComposerSlashMenuViewModel {
-  groups: ComposerSlashCommandGroup[];
-  matches: ComposerSlashCommandMatch[];
-  highlightedCommandId: string | null;
 }

@@ -117,7 +117,3 @@ export function useUsageMeterSettings() {
     updateSettings: owner.update,
   };
 }
-
-export function resetUsageMeterSettingsOwnersForTests(): void {
-  owners = new WeakMap();
-}

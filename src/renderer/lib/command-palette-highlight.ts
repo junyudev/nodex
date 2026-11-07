@@ -9,10 +9,6 @@ export function normalizeCommandPalettePreviewText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function findCodePointSubstring(text: readonly string[], query: readonly string[]): number {
   if (query.length === 0 || query.length > text.length) return -1;
 
@@ -115,86 +111,6 @@ export function buildCommandPaletteTokenHighlightSegments(
   return buildSegmentsFromMatchedIndexes(characters, matchedIndexes);
 }
 
-export function buildCommandPaletteHighlightRegex(terms: string[]): RegExp | null {
-  const normalizedTerms = Array.from(
-    new Set(
-      terms
-        .map((term) => term.trim())
-        .filter(Boolean)
-        .sort((left, right) => right.length - left.length),
-    ),
-  );
-
-  if (normalizedTerms.length === 0) {
-    return null;
-  }
-
-  return new RegExp(`(${normalizedTerms.map(escapeRegExp).join("|")})`, "gi");
-}
-
-export function buildCommandPaletteHighlightSegments(
-  excerpt: string,
-  regex: RegExp | null,
-): CommandPaletteHighlightSegment[] {
-  if (!regex) {
-    return [{ text: excerpt, highlight: false }];
-  }
-
-  const segments: CommandPaletteHighlightSegment[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null = null;
-  regex.lastIndex = 0;
-
-  while ((match = regex.exec(excerpt)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push({
-        text: excerpt.slice(lastIndex, match.index),
-        highlight: false,
-      });
-    }
-
-    segments.push({
-      text: match[0],
-      highlight: true,
-    });
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < excerpt.length) {
-    segments.push({
-      text: excerpt.slice(lastIndex),
-      highlight: false,
-    });
-  }
-
-  return segments.length > 0 ? segments : [{ text: excerpt, highlight: false }];
-}
-
-export function buildCommandPaletteHighlightedSegments(
-  text: string,
-  terms: string[],
-): CommandPaletteHighlightSegment[] | null {
-  const normalizedText = normalizeCommandPalettePreviewText(text);
-  if (!normalizedText) {
-    return null;
-  }
-
-  const regex = buildCommandPaletteHighlightRegex(terms);
-  if (!regex) {
-    return null;
-  }
-
-  regex.lastIndex = 0;
-  if (!regex.test(normalizedText)) {
-    return null;
-  }
-
-  return buildCommandPaletteHighlightSegments(
-    normalizedText,
-    buildCommandPaletteHighlightRegex(terms),
-  );
-}
-
 export interface SearchHighlightPreviewOptions {
   readonly maxCharacters?: number;
   readonly leadingContextCharacters?: number;
@@ -230,37 +146,6 @@ function cropSearchHighlightPreview(
   const end = Math.min(characters.length, Math.max(start + maxCharacters, minimumEnd));
   if (start === 0 && end === characters.length) return text;
   return `${start > 0 ? "…" : ""}${characters.slice(start, end).join("")}${end < characters.length ? "…" : ""}`;
-}
-
-/** Builds one bounded preview from the actual terms reported by a search index. */
-export function buildSearchTermHighlightPreview(
-  excerpt: string,
-  terms: readonly string[],
-  options: SearchHighlightPreviewOptions = {},
-): { excerpt: string; segments: CommandPaletteHighlightSegment[] } | null {
-  const normalizedText = normalizeCommandPalettePreviewText(excerpt);
-  if (!normalizedText) return null;
-
-  const regex = buildCommandPaletteHighlightRegex([...terms]);
-  if (regex) regex.lastIndex = 0;
-  const match = regex?.exec(normalizedText) ?? null;
-  const normalizedExcerpt = cropSearchHighlightPreview(
-    normalizedText,
-    match
-      ? {
-          index: Array.from(normalizedText.slice(0, match.index)).length,
-          length: Array.from(match[0]).length,
-        }
-      : null,
-    options,
-  );
-  return {
-    excerpt: normalizedExcerpt,
-    segments: buildCommandPaletteHighlightSegments(
-      normalizedExcerpt,
-      buildCommandPaletteHighlightRegex([...terms]),
-    ),
-  };
 }
 
 export function buildCommandPaletteQueryHighlightPreview(

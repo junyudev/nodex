@@ -26,8 +26,6 @@ export const DURABLE_CANVAS_SCENE_APP_STATE_KEYS = [
   "viewBackgroundColor",
 ] as const;
 
-const durableAppStateKeys = new Set<string>(DURABLE_CANVAS_SCENE_APP_STATE_KEYS);
-
 export type CanvasSceneJsonValue = BlockPropertyJsonValue;
 export type CanvasSceneElement = Readonly<Record<string, CanvasSceneJsonValue>>;
 
@@ -431,17 +429,6 @@ export const pickPortableCanvasSceneAppState = (
   }
   return durable;
 };
-
-export const isDurableCanvasSceneAppStateKey = (key: string): boolean =>
-  durableAppStateKeys.has(key);
-
-export const canvasSceneElementOrderKey = (
-  element: CanvasSceneElement,
-  fallbackOrdinal: number,
-): string =>
-  typeof element.index === "string" && element.index.length > 0
-    ? element.index
-    : `legacy:${fallbackOrdinal.toString(16).padStart(16, "0")}`;
 
 const readPageReference = (element: CanvasSceneElement): CanvasScenePageReference | null => {
   const customData = element.customData;

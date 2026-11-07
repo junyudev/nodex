@@ -6,7 +6,6 @@ import {
   ENVIRONMENT_NAME_PATTERN,
   createAgentEnvironmentInputSchema,
   AgentEnvironmentValueSchema,
-  type AgentEnvironmentInput,
   type AgentEnvironmentVariable,
 } from "./agent-environment";
 export { ENVIRONMENT_VALUE_LIMIT, ENVIRONMENT_NAME_PATTERN } from "./agent-environment";
@@ -41,7 +40,6 @@ export const ClaudeEnvironmentValueSchema = AgentEnvironmentValueSchema;
 export const ClaudeEnvironmentInputSchema = createAgentEnvironmentInputSchema(
   claudeEnvironmentNameError,
 );
-export type ClaudeEnvironmentInput = AgentEnvironmentInput;
 export type ClaudeEnvironmentVariable = AgentEnvironmentVariable;
 
 export const ClaudeModelTraitsSchema = z

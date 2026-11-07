@@ -309,18 +309,6 @@ export const BrowserCredentialGuestCandidateSchema = z
   })
   .strict();
 
-export const BrowserCredentialGuestFillSchema = z
-  .object({
-    origin: BrowserUrlSchema,
-    username: BrowserUsernameSchema,
-    password: z
-      .string()
-      .min(1)
-      .max(1024 * 1024),
-    kind: z.enum(["generated", "saved"]),
-  })
-  .strict();
-
 export const BrowserContactInfoGuestFillSchema = z
   .object({
     origin: BrowserUrlSchema,

@@ -200,12 +200,6 @@ export const databaseFilterClauseWithProperty = (
   return databaseFilterClauseWithOperator(property, operator);
 };
 
-export const createDatabaseViewSort = (): DatabaseViewSort => ({
-  field: { kind: "title" },
-  direction: "asc",
-  nulls: "last",
-});
-
 export const moveDatabaseViewSort = (
   sorts: readonly DatabaseViewSort[],
   index: number,

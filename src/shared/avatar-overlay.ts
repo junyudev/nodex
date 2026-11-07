@@ -1,15 +1,9 @@
-import type {
-  RemoteHostedPipHostLayout,
-  RemoteHostedPipPoint,
-  RemoteHostedPipViewportRect,
-} from "./remote-hosted-pip";
+import type { RemoteHostedPipPoint, RemoteHostedPipViewportRect } from "./remote-hosted-pip";
 
 export const AVATAR_OVERLAY_ROUTE = "/avatar-overlay";
 export const AVATAR_OVERLAY_HOST_ID = "avatar-overlay";
 export const AVATAR_OVERLAY_COMMAND_CHANNEL = "avatar-overlay:command";
 export const AVATAR_OVERLAY_EVENT_CHANNEL = "avatar-overlay:event";
-export const AVATAR_OVERLAY_TOGGLE_CHANNEL = "avatar-overlay:toggle";
-export const AVATAR_OVERLAY_WAKE_CHANNEL = "avatar-overlay:wake";
 
 export type AvatarOverlayPlacement = "top-start" | "top-end" | "bottom-start" | "bottom-end";
 
@@ -74,8 +68,3 @@ export type AvatarOverlayRendererEvent =
       readonly pointerScreenX: number;
       readonly pointerScreenY: number;
     };
-
-export interface AvatarOverlayHostProjection {
-  readonly layout: RemoteHostedPipHostLayout;
-  readonly webContentsId: number;
-}

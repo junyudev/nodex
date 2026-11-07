@@ -109,13 +109,6 @@ export function isComposerDictationShortcutTargetBlocked(target: EventTarget | n
   return Boolean(target.closest("[data-codex-terminal]"));
 }
 
-export function formatComposerDictationDuration(durationMs: number): string {
-  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-}
-
 const defaultClock: DictationControllerPorts["clock"] = {
   now: () => performance.now(),
   setTimeout: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),

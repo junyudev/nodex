@@ -73,14 +73,6 @@ export function isModalOpen<Props extends ModalCloseProps>(
   return appHandle.get(modalRegistryAtom).modals.some((entry) => entry.component === component);
 }
 
-export function useIsModalOpen<Props extends ModalCloseProps>(
-  component: ComponentType<Props>,
-): boolean {
-  return useScopedAtomValue(modalRegistryAtom).modals.some(
-    (entry) => entry.component === component,
-  );
-}
-
 const NodexModalHostEntry = memo(function NodexModalHostEntry({
   entry,
 }: {

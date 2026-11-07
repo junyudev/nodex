@@ -2,9 +2,7 @@ import { useLayoutEffect, useMemo } from "react";
 import {
   createDefaultWorkbenchLayoutSnapshot,
   type WorkbenchLayoutSnapshot,
-  type WorkbenchLocation,
 } from "../../shared/workbench-layout";
-import type { WorkbenchSceneSnapshot } from "../../shared/workbench-scene";
 import { appScope, scopedDerivedAtom, useScopeHandle, useScopedAtomValue } from "./maitai";
 import {
   getWorkbenchWindowOwner,
@@ -22,13 +20,6 @@ export const workbenchScenesAtom = scopedDerivedAtom(
   (get) => get(workbenchWindowStateAtom)?.scenesByOwnerKey ?? {},
   { debugLabel: "workbench-scenes" },
 );
-
-export function useWorkbenchLocation(): WorkbenchLocation | null {
-  return useScopedAtomValue(workbenchLocationAtom);
-}
-export function useWorkbenchScenes(): Readonly<Record<string, WorkbenchSceneSnapshot>> {
-  return useScopedAtomValue(workbenchScenesAtom);
-}
 
 export function useWorkbenchWindowOwner(initialSnapshot?: WorkbenchLayoutSnapshot) {
   const scope = useScopeHandle(appScope);

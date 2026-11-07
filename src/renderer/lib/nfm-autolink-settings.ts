@@ -1,4 +1,4 @@
-import { normalizeStoredBoolean, writeStoredBoolean } from "./storage-boolean";
+import { normalizeStoredBoolean } from "./storage-boolean";
 import { parse as parseDomain } from "tldts";
 
 export const NFM_AUTOLINK_SETTINGS_STORAGE_KEY = "nodex-nfm-autolink-settings-v1";
@@ -114,28 +114,6 @@ export function writeNfmAutolinkSettings(value: unknown): NfmAutolinkSettings {
     // localStorage may be unavailable.
   }
   return normalized;
-}
-
-export function writeNfmAutolinkBooleanSetting(
-  key: keyof NfmAutolinkSettings,
-  value: unknown,
-): NfmAutolinkSettings {
-  const current = readNfmAutolinkSettings();
-  const next = {
-    ...current,
-    [key]: writeStoredBoolean(
-      `${NFM_AUTOLINK_SETTINGS_STORAGE_KEY}:${key}`,
-      value,
-      DEFAULT_NFM_AUTOLINK_SETTINGS[key],
-    ),
-  };
-  try {
-    localStorage.setItem(NFM_AUTOLINK_SETTINGS_STORAGE_KEY, JSON.stringify(next));
-    localStorage.removeItem(`${NFM_AUTOLINK_SETTINGS_STORAGE_KEY}:${key}`);
-  } catch {
-    // localStorage may be unavailable.
-  }
-  return next;
 }
 
 function hasExplicitProtocol(value: string): boolean {

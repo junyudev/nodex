@@ -35,13 +35,6 @@ export const containsDatabaseBlockDrag = (
   payload: Pick<CrossSurfaceBlockTransferPayload, "displayHints">,
 ): boolean => payload.displayHints.includes("database");
 
-export const isSingleCanvasBlockDrag = (
-  payload: Pick<CrossSurfaceBlockTransferPayload, "displayHints" | "rootBlockIds">,
-): boolean =>
-  payload.rootBlockIds.length === 1 &&
-  payload.displayHints.length === 1 &&
-  payload.displayHints[0] === "canvas";
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 

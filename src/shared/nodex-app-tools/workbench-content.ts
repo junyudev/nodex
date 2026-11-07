@@ -31,7 +31,6 @@ export const WorkbenchValidateContentRequestSchema = z
     token: z.string().uuid(),
   })
   .strict();
-export type WorkbenchValidateContentRequest = z.infer<typeof WorkbenchValidateContentRequestSchema>;
 
 /** An opaque renderer token binds this fence to one mounted editor, not merely a Document. */
 export const WorkbenchPreparedPageContentSchema = z

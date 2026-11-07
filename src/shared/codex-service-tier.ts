@@ -1,5 +1,3 @@
-import type { CodexExecutionProfile } from "./codex-execution-profile";
-
 const STANDARD_SERVICE_TIER_ALIASES = new Set(["default", "standard"]);
 
 /**
@@ -13,10 +11,4 @@ export function normalizeCodexServiceTier(value: unknown): string | null {
   const normalized = value.trim();
   if (!normalized) return null;
   return STANDARD_SERVICE_TIER_ALIASES.has(normalized.toLocaleLowerCase()) ? null : normalized;
-}
-
-export function normalizeCodexExecutionProfile(
-  profile: CodexExecutionProfile,
-): CodexExecutionProfile {
-  return { ...profile, serviceTier: normalizeCodexServiceTier(profile.serviceTier) };
 }

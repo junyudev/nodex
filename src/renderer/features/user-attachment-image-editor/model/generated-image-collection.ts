@@ -1,7 +1,5 @@
 import type { GeneratedImageCollectionState } from "./types";
 import type { GeneratedImageDescriptor } from "@/lib/content-image";
-
-export const IMAGE_PLAYGROUND_ATTACHMENT_PREFIX = "image-playground:";
 export const OPTIMISTIC_IMAGE_EDIT_PREFIX = "optimistic-image-edit:";
 
 export interface GeneratedImageReplacement {

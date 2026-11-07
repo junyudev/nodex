@@ -2,8 +2,6 @@ import type { DatabasePage, PageInput, DatabasePageSummary } from "./types";
 import { plainTextToPortableRichText } from "./block-documents/portable-rich-text";
 import { extractMarkdownText, markdownPreview } from "./nodex-markdown";
 
-export const PAGE_DESCRIPTION_PREVIEW_LENGTH = 240;
-
 export function summarizePageDescription(
   description: string,
 ): Pick<DatabasePageSummary, "descriptionPreview" | "descriptionLength" | "hasDescription"> {

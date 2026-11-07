@@ -7,11 +7,6 @@ import type { ReactEventHandler, ReactNode } from "react";
 import type { ThreadGoal, FeedbackUploadParams } from "@nodex/codex-app-server-protocol/v2";
 import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
 import type {
-  McpWidgetCsp,
-  McpWidgetMetadata,
-} from "../../../shared/mcp-app/mcp-app-resource-contract";
-import type {
-  DatabasePage,
   PageRunInTarget,
   CodexAccountSnapshot,
   CodexBackgroundTerminalRow,
@@ -643,8 +638,6 @@ export type ThreadStageHostActions = Pick<
   | "onOpenTurnDiffFileInSidePanel"
 >;
 
-export type ThreadStageExecutionActions = Omit<ThreadStageActions, keyof ThreadStageHostActions>;
-
 export interface ThreadSummaryPanelAuxiliaryRowOpenInput {
   rowId: string;
   panelId: PanelId;
@@ -670,9 +663,6 @@ export type ThreadOpenSideChatInput =
 export interface ThreadRequestResponseContext {
   conversationId?: string | null;
 }
-
-export type ThreadMcpWidgetCspModel = McpWidgetCsp;
-export type ThreadMcpWidgetMetadataModel = McpWidgetMetadata;
 
 export interface ThreadMcpAppSidePanelInput {
   mcpAppId: string;
@@ -1405,9 +1395,4 @@ export interface ThreadStageScreenProps {
 
 export interface ThreadBodyUiStateOverrides {
   collapsedAgentBodyByTurnId?: Record<string, boolean>;
-}
-
-export interface ThreadOpenPageDataState {
-  loading: boolean;
-  card: DatabasePage | null;
 }

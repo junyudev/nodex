@@ -783,8 +783,6 @@ export const useDatabaseViewPersonalPreference = (
   };
 };
 
-export const databaseViewPresentationPreferencesStorageKey = LEGACY_STORAGE_KEY;
-
 export const resetDatabaseViewPersonalPreferencesForTests = (): void => {
   sharedPersonalStateRegistry.reset();
 };

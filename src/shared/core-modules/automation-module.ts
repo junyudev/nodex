@@ -15,7 +15,6 @@ export type AutomationExecutionEnvironment =
   components["schemas"]["AutomationExecutionEnvironment"];
 export type AutomationDefinitionInput = components["schemas"]["AutomationDefinitionInput"];
 export type AutomationDefinition = components["schemas"]["AutomationDefinition"];
-export type AutomationReasoningEffort = NonNullable<AutomationDefinitionInput["reasoning_effort"]>;
 export type AutomationLeaseStatus = components["schemas"]["AutomationLeaseStatus"];
 export type AutomationLease = components["schemas"]["AutomationLease"];
 export type AutomationRunStatus = components["schemas"]["AutomationRunStatus"];

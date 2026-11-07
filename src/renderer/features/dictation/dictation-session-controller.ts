@@ -1128,22 +1128,3 @@ export class DictationSessionController {
     for (const listener of this.#listeners) listener();
   }
 }
-
-export const createNoopDictationStreamingPort = (): DictationControllerPorts["streaming"] => ({
-  prepare: async () => ({
-    start: async () => undefined,
-    stopAndFlush: async () => undefined,
-    finish: async () => null,
-    split: () => null,
-    hasBoundaries: () => false,
-    recover: async () => "",
-    abort: () => undefined,
-  }),
-});
-
-export const createNoopDictationHistoryPort = (): DictationControllerPorts["history"] => ({
-  create: async () => undefined,
-  append: async () => undefined,
-  finalize: async () => undefined,
-  diagnostics: async () => undefined,
-});

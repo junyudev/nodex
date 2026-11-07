@@ -68,7 +68,6 @@ import type {
   UpdateDiagnosticsSettingsInput,
   TelemetrySettings,
   UpdateTelemetrySettingsInput,
-  WorktreeStartMode,
   CodexThreadDetailLevel,
   ThreadNotificationSettings,
   ThreadNotificationTurnMode,
@@ -1272,26 +1271,6 @@ export function CopyFileReferencesAsLocalPathsSettingControl() {
       ariaLabel="Copy file references as local paths"
       value={copyAsLocalPaths}
       onChange={setCopyAsLocalPaths}
-    />
-  );
-}
-
-export function WorktreeStartModeSettingControl({
-  value,
-  onChange,
-}: {
-  value: WorktreeStartMode;
-  onChange: (value: WorktreeStartMode) => void;
-}) {
-  return (
-    <SegmentedControl<WorktreeStartMode>
-      ariaLabel="New worktree mode"
-      value={value}
-      onChange={onChange}
-      options={[
-        { value: "autoBranch", label: "Auto branch" },
-        { value: "detachedHead", label: "Detached HEAD" },
-      ]}
     />
   );
 }

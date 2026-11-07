@@ -55,29 +55,6 @@ const deliveryResourceId = (resource: DeliveryResource): string => {
   }
 };
 
-export const deliveryResourceKey = (resource: DeliveryResource): string => {
-  switch (resource.kind) {
-    case "library":
-      return JSON.stringify([resource.kind, resource.library_id]);
-    case "project":
-      return JSON.stringify([resource.kind, resource.project_id]);
-    case "page":
-      return JSON.stringify([resource.kind, resource.page_id]);
-    case "document":
-      return JSON.stringify([resource.kind, resource.document_id]);
-    case "database":
-      return JSON.stringify([resource.kind, resource.database_id]);
-    case "data_source":
-      return JSON.stringify([resource.kind, resource.data_source_id]);
-    case "view":
-      return JSON.stringify([resource.kind, resource.view_id]);
-    case "canvas":
-      return JSON.stringify([resource.kind, resource.canvas_id]);
-    case "file":
-      return JSON.stringify([resource.kind, resource.file_id]);
-  }
-};
-
 export const isDeliveryResource = (value: unknown): value is DeliveryResource => {
   if (!isRecord(value) || !isIdentity(value.kind)) return false;
   switch (value.kind) {
@@ -122,11 +99,4 @@ export const compareDeliveryResources = (
   const kindDifference = RESOURCE_KIND_ORDER[left.kind] - RESOURCE_KIND_ORDER[right.kind];
   if (kindDifference !== 0) return kindDifference;
   return compareUtf8(deliveryResourceId(left), deliveryResourceId(right));
-};
-
-export const canonicalizeDeliveryResources = (
-  resources: readonly DeliveryResource[],
-): readonly DeliveryResource[] => {
-  const byKey = new Map(resources.map((resource) => [deliveryResourceKey(resource), resource]));
-  return [...byKey.values()].sort(compareDeliveryResources);
 };

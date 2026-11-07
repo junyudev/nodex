@@ -885,17 +885,3 @@ export function cloneWorkbenchLayoutForNewWindow<Layout extends CloneWorkbenchLa
     ),
   };
 }
-
-export function reconcileWorkbenchSessionViews<Layout extends CloneWorkbenchLayout>(
-  layout: Layout,
-  availableSessionIds: ReadonlySet<string>,
-): Layout {
-  return {
-    ...layout,
-    sessionViewsBySessionId: Object.fromEntries(
-      Object.entries(layout.sessionViewsBySessionId).filter(([sessionId]) =>
-        availableSessionIds.has(sessionId),
-      ),
-    ),
-  };
-}

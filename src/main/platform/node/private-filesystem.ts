@@ -38,9 +38,3 @@ export const verifyPrivatePaths = (
   entries: readonly PrivatePath[],
   coreExecutable: string,
 ): Promise<void> => nativePrivatePaths(entries, coreExecutable, true);
-
-export const makePrivate = (
-  filename: string,
-  directory: boolean,
-  coreExecutable: string,
-): Promise<void> => makePrivatePaths([{ path: filename, directory }], coreExecutable);

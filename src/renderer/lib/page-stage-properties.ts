@@ -1,7 +1,6 @@
 import type { DatabaseJsonValue, DatabasePropertyValueType } from "../../shared/database-kernel";
 import type {
   DatabasePagePropertyVisibilityV2,
-  DataSourcePageValueV2,
   DataSourcePropertyRecordV2,
 } from "../../shared/database-module-v2";
 import {
@@ -247,15 +246,3 @@ export const pageStageSemanticValues = (
   ...(semantic.scheduledEnd?.value ? { scheduledEnd: semantic.scheduledEnd.value } : {}),
   ...(semantic.assignee?.value ? { assignee: semantic.assignee.value } : {}),
 });
-
-export const pageStageValueRecord = (
-  item: PageStageDataSourceProperty,
-): DataSourcePageValueV2 | undefined =>
-  item.valueRevision === 0
-    ? undefined
-    : {
-        propertyId: item.property.propertyId,
-        valueType: item.property.valueType,
-        value: item.value,
-        revision: item.valueRevision,
-      };

@@ -19,7 +19,6 @@ import { InlineReferenceVisual } from "../inline-reference-visual";
 import {
   isTextLikeMimeType,
   useAttachmentPreview,
-  type AttachmentPreviewData,
   type AttachmentPreviewInput,
   type AttachmentPreviewState,
 } from "./attachment-preview";
@@ -27,7 +26,6 @@ import { NfmEditorPopoverContent } from "./nfm-editor-popover-content";
 
 export { isTextLikeMimeType };
 export type { AttachmentPreviewState };
-export type AttachmentPreview = AttachmentPreviewData;
 
 export interface AttachmentProps extends AttachmentPreviewInput {
   name: string;

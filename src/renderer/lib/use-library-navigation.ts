@@ -103,21 +103,6 @@ export const libraryChildrenQueryOptions = (
     staleTime: 30_000,
   });
 
-export const libraryStandaloneRootsQueryOptions = (
-  input: Omit<Extract<LibraryModuleReadRequest["read"], { mode: "standalone_roots" }>, "mode"> = {},
-) =>
-  queryOptions({
-    queryKey: queryKeys.library.standaloneRoots(input),
-    queryFn: () =>
-      requireReadValue(
-        {
-          read: { mode: "standalone_roots", ...input },
-        },
-        "standalone_roots",
-      ),
-    staleTime: 30_000,
-  });
-
 export const libraryCatalogQueryOptions = (
   input: Omit<Extract<LibraryModuleReadRequest["read"], { mode: "catalog" }>, "mode"> = {},
 ) =>
@@ -319,16 +304,6 @@ export const useUndoLibraryPageRelocation = () => {
   };
 };
 
-export const useLibraryChildren = (
-  parent: LibraryNavigationParent,
-  input: Parameters<typeof libraryChildrenQueryOptions>[1] = {},
-  enabled = true,
-) =>
-  useQuery({
-    ...libraryChildrenQueryOptions(parent, input),
-    enabled,
-  });
-
 export const useInfiniteLibraryChildren = (
   parent: LibraryNavigationParent,
   input: Omit<NonNullable<Parameters<typeof libraryChildrenQueryOptions>[1]>, "cursor"> = {},
@@ -354,29 +329,6 @@ export const useInfiniteLibraryChildren = (
     enabled,
   });
 
-export const useInfiniteLibraryStandaloneRoots = (
-  input: Omit<NonNullable<Parameters<typeof libraryStandaloneRootsQueryOptions>[0]>, "cursor"> = {},
-  enabled = true,
-) =>
-  useInfiniteQuery({
-    queryKey: queryKeys.library.standaloneRootPages(input),
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) =>
-      requireReadValue(
-        {
-          read: {
-            mode: "standalone_roots",
-            ...input,
-            ...(pageParam ? { cursor: pageParam } : {}),
-          },
-        },
-        "standalone_roots",
-      ),
-    getNextPageParam: (page) => page.nextCursor ?? undefined,
-    staleTime: 30_000,
-    enabled,
-  });
-
 export const useLibraryPath = (target: LibraryRouteTarget, enabled = true) =>
   useQuery({ ...libraryPathQueryOptions(target), enabled });
 
@@ -395,31 +347,6 @@ export const useLibraryMoveDestinations = (
 ) =>
   useQuery({
     ...libraryMoveDestinationsQueryOptions(target, input),
-    enabled,
-  });
-
-export const useInfiniteLibraryMoveDestinations = (
-  target: LibraryPlacedResourceTarget,
-  input: Omit<Parameters<typeof libraryMoveDestinationsQueryOptions>[1], "cursor">,
-  enabled = true,
-) =>
-  useInfiniteQuery({
-    queryKey: queryKeys.library.moveDestinationPages(target, input),
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) =>
-      requireReadValue(
-        {
-          read: {
-            mode: "move_destinations",
-            target,
-            ...input,
-            ...(pageParam ? { cursor: pageParam } : {}),
-          },
-        },
-        "move_destinations",
-      ),
-    getNextPageParam: (page) => page.nextCursor ?? undefined,
-    staleTime: 30_000,
     enabled,
   });
 

@@ -14,10 +14,8 @@ import type {
   CodexConversationItem,
   CodexDynamicToolCallView,
   CodexScheduledAutomationCreateInput,
-  CodexScheduledAutomationDeleteResponse,
   CodexScheduledAutomationExecutionEnvironment,
   CodexScheduledAutomationKind,
-  CodexScheduledAutomationMutationResponse,
   CodexScheduledAutomationReasoningEffort,
   CodexScheduledAutomationStatus,
   CodexScheduledAutomationUpdateInput,
@@ -541,37 +539,6 @@ export function resolveAutomationUpdateRenderState(
   };
 }
 
-export function applyAutomationUpdateMutationResult(
-  state: AutomationUpdateRenderState,
-  response: CodexScheduledAutomationMutationResponse | CodexScheduledAutomationDeleteResponse,
-): AutomationUpdateRenderState {
-  if ("item" in response && response.item) {
-    const resultMode: AutomationUpdateResultMode =
-      state.displayMode === "suggested-update" ? "update" : "create";
-    return {
-      ...state,
-      automationId: response.item.id,
-      canAccept: false,
-      disabledReason: null,
-      displayMode: resultMode,
-      openLabel: "Open",
-      result: {
-        automationId: response.item.id,
-        deleteStatus: null,
-        mode: resultMode,
-        snapshot: null,
-      },
-      statusLabel: resolveAutomationUpdateStatusLabel({
-        deleteStatus: null,
-        mode: resultMode,
-      }),
-      subtitle: formatCodexScheduledAutomationRruleSummary(response.item.rrule) ?? state.subtitle,
-      title: response.item.name,
-    };
-  }
-  return state;
-}
-
 export function parseCodexAppHandoffArguments(
   call: CodexDynamicToolCallView,
 ): { destinationHostId: string | null; threadId: string } | null {
@@ -878,10 +845,6 @@ export function getDynamicToolRegistryEntry(
 ): DynamicToolRegistryEntry | null {
   if (!call) return null;
   return DYNAMIC_TOOL_REGISTRY_BY_NAMESPACE.get(call.namespace)?.get(call.tool) ?? null;
-}
-
-export function isCodexAppMetaThreadTool(call: CodexDynamicToolCallView | undefined): boolean {
-  return getDynamicToolRegistryEntry(call)?.rendererKind === "codexAppThread";
 }
 
 export function continuesCodexAppLiveActivityBetweenCalls(

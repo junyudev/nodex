@@ -844,9 +844,6 @@ export const canonicalizeDocumentOperationBatch = (value: unknown): string =>
 export const canonicalizeReplaceDocumentFromMarkdown = (value: unknown): string =>
   stableStringify(parseReplaceDocumentFromMarkdown(value));
 
-export const canonicalizeDocumentVersionRestore = (value: unknown): string =>
-  stableStringify(parseDocumentVersionRestore(value));
-
 const withoutMutationAuditIdentity = <
   T extends { readonly actor: unknown; readonly clientSessionId?: string },
 >(

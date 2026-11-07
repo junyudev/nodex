@@ -32,15 +32,6 @@ export interface DictationStreamingSessionStartMessage {
   };
 }
 
-export interface DictationStreamingAudioAppendMessage {
-  readonly type: "audio.append";
-  readonly audio: string;
-}
-
-export interface DictationStreamingSessionCloseMessage {
-  readonly type: "session.close";
-}
-
 export const DICTATION_STREAMING_FAILURE_CODES = [
   "prepare-failed",
   "prepare-timeout",
@@ -60,7 +51,6 @@ export const DICTATION_STREAMING_FAILURE_CODES = [
   "incomplete-transcript",
   "send-failed",
 ] as const;
-export type DictationStreamingFailureCode = (typeof DICTATION_STREAMING_FAILURE_CODES)[number];
 
 export interface DictationStreamingServerError {
   readonly code: string;

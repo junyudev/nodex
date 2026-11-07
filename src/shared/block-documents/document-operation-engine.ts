@@ -83,12 +83,6 @@ export interface PreparedDocumentOperationUpdate {
   readonly titleWriteFenceRequired: boolean;
 }
 
-interface BlockCoordinate {
-  readonly block: BlockTreeNode;
-  readonly parentBlockId: string | null;
-  readonly siblingIndex: number;
-}
-
 const stableStringify = (value: unknown): string => {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
@@ -105,15 +99,6 @@ const stableStringify = (value: unknown): string => {
 
 const flattenBlockTree = (blocks: readonly BlockTreeNode[]): readonly BlockTreeNode[] =>
   blocks.flatMap((block) => [block, ...flattenBlockTree(block.children)]);
-
-const flattenBlockCoordinates = (
-  blocks: readonly BlockTreeNode[],
-  parentBlockId: string | null = null,
-): readonly BlockCoordinate[] =>
-  blocks.flatMap((block, siblingIndex) => [
-    { block, parentBlockId, siblingIndex },
-    ...flattenBlockCoordinates(block.children, block.id),
-  ]);
 
 const collectInsertedIds = (
   operations: readonly DocumentBlockOperation[],
@@ -189,87 +174,6 @@ const patchedStandaloneBlock = (
     ...(content === undefined ? {} : { content }),
     children: [],
   };
-};
-
-const blockSemanticFieldsEqual = (left: BlockTreeNode, right: BlockTreeNode): boolean =>
-  left.type === right.type &&
-  stableStringify(left.props) === stableStringify(right.props) &&
-  stableStringify(left.content) === stableStringify(right.content);
-
-/**
- * Compile an explicit whole-body target into the same stable-ID primitives as
- * normal Agent edits. New nodes are introduced detached, the target hierarchy
- * is arranged, obsolete roots are deleted, then semantic fields are updated.
- */
-export const compileBlockTreeReplacementOperations = (
-  current: readonly BlockTreeNode[],
-  target: readonly BlockTreeNode[],
-): readonly DocumentBlockOperation[] => {
-  const currentCoordinates = flattenBlockCoordinates(current);
-  const targetCoordinates = flattenBlockCoordinates(target);
-  const currentById = new Map(
-    currentCoordinates.map((coordinate) => [coordinate.block.id, coordinate]),
-  );
-  const targetById = new Map(
-    targetCoordinates.map((coordinate) => [coordinate.block.id, coordinate]),
-  );
-  const operations: DocumentBlockOperation[] = [];
-
-  // Every created Block starts as a standalone root. This avoids inserting a
-  // subtree that accidentally reuses a preserved descendant identity.
-  for (const coordinate of targetCoordinates) {
-    if (currentById.has(coordinate.block.id)) continue;
-    operations.push({
-      kind: "insert_block",
-      block: { ...coordinate.block, children: [] },
-    });
-  }
-
-  const arrangeSiblings = (siblings: readonly BlockTreeNode[], parentBlockId?: string): void => {
-    for (let index = siblings.length - 1; index >= 0; index -= 1) {
-      const block = siblings[index];
-      if (!block) continue;
-      const next = siblings[index + 1];
-      operations.push({
-        kind: "move_block",
-        blockId: block.id,
-        ...(parentBlockId ? { parentBlockId } : {}),
-        ...(next ? { beforeBlockId: next.id } : {}),
-      });
-    }
-    siblings.forEach((block) => arrangeSiblings(block.children, block.id));
-  };
-  arrangeSiblings(target);
-
-  // Delete only topmost obsolete roots after every preserved descendant has
-  // moved to its requested target parent.
-  for (const coordinate of currentCoordinates) {
-    if (targetById.has(coordinate.block.id)) continue;
-    if (coordinate.parentBlockId !== null && !targetById.has(coordinate.parentBlockId)) {
-      continue;
-    }
-    operations.push({ kind: "delete_block", blockId: coordinate.block.id });
-  }
-
-  for (const coordinate of targetCoordinates) {
-    const currentCoordinate = currentById.get(coordinate.block.id);
-    if (!currentCoordinate || blockSemanticFieldsEqual(currentCoordinate.block, coordinate.block)) {
-      continue;
-    }
-    operations.push({
-      kind: "update_block",
-      blockId: coordinate.block.id,
-      patch: {
-        type: coordinate.block.type,
-        props: coordinate.block.props,
-        ...(coordinate.block.content === undefined
-          ? { unsetContent: true as const }
-          : { content: coordinate.block.content }),
-      },
-    });
-  }
-
-  return operations;
 };
 
 const replaceBlockContent = (

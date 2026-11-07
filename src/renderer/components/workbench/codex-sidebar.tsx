@@ -43,7 +43,6 @@ import {
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { NodexHoverCard } from "@/components/ui/hover-card";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
 import { toast } from "@/components/ui/toast";
 import { getGitWorkerClient } from "@/lib/api";
 import { openFileLink } from "@/lib/file-system-operations";
@@ -70,7 +69,6 @@ import type {
   ProjectActivitySummary,
   ProjectLifecycleMutationResult,
   ProjectPinnedInput,
-  ProjectSession,
   ProjectUpdateInput,
 } from "@/lib/types";
 import { useProjectAppearanceMutation } from "@/lib/use-project-appearance-mutation";
@@ -80,7 +78,6 @@ import {
   type SidebarThreadRowLiveView,
 } from "@/lib/sidebar-thread-row-live-view";
 import {
-  runtimeSessionTarget,
   runtimeSessionLiveIndicator,
   SESSION_LIVE_INDICATOR_LABELS,
 } from "@/lib/session-execution";
@@ -105,7 +102,6 @@ import {
   workspaceSidebarCommands,
 } from "@/lib/workspace-catalog-commands";
 import {
-  SIDEBAR_NEW_CHAT_ROW_CLASS,
   SIDEBAR_PROJECT_NEW_CHAT_BUTTON_CLASS,
   SidebarProjectNewChatButton,
 } from "./sidebar-new-chat-controls";
@@ -289,70 +285,6 @@ function normalizePrimaryWorkspaceRoot(project: Project) {
 
 function normalizeProjectSources(project: Project): string[] {
   return project.sources.map((source) => source.root).filter((root) => root.trim().length > 0);
-}
-
-export function CodexSidebarTopAction({
-  label,
-  icon,
-  shortcutLabel,
-  active = false,
-  onClick,
-}: {
-  label: string;
-  icon: ReactNode;
-  shortcutLabel?: string;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <div className="shrink-0 px-row-x">
-      <div className="flex flex-col gap-px">
-        <CodexSidebarTopActionButton
-          label={label}
-          icon={icon}
-          shortcutLabel={shortcutLabel}
-          active={active}
-          onClick={onClick}
-        />
-      </div>
-    </div>
-  );
-}
-
-export function CodexSidebarTopActionButton({
-  label,
-  icon,
-  shortcutLabel,
-  active = false,
-  onClick,
-}: {
-  label: string;
-  icon: ReactNode;
-  shortcutLabel?: string;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={cn(SIDEBAR_NEW_CHAT_ROW_CLASS, active && "bg-token-list-hover-background")}
-      aria-current={active ? "page" : undefined}
-      onClick={onClick}
-    >
-      <div className="flex min-w-0 flex-1 items-center gap-2 text-base text-token-foreground">
-        {icon}
-        <span className="truncate">{label}</span>
-      </div>
-      {shortcutLabel ? (
-        <span
-          aria-hidden="true"
-          className="opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
-        >
-          <ShortcutKeycaps keys={[shortcutLabel]} tone="current" />
-        </span>
-      ) : null}
-    </button>
-  );
 }
 
 export function CodexSidebarSection({
@@ -2210,97 +2142,6 @@ function CodexSidebarThreadRowView({
   );
 }
 
-export function CodexThreadRow({
-  session,
-  active,
-  grouped = false,
-  contextMenuOpen = false,
-  hoverCardProjectLabel,
-  hoverCardBranchName,
-  hoverCardOpen,
-  onHoverCardOpenChange,
-  onSelect,
-  onOpenContextMenu,
-  onRenameFromTitleDoubleClick,
-  onTogglePinned,
-}: {
-  session: ProjectSession;
-  active: boolean;
-  grouped?: boolean;
-  contextMenuOpen?: boolean;
-  hoverCardProjectLabel?: string | null;
-  hoverCardBranchName?: string | null;
-  hoverCardOpen?: boolean;
-  onHoverCardOpenChange?: (open: boolean) => void;
-  onSelect: () => void;
-  onOpenContextMenu?: (session: ProjectSession, event: MouseEvent<HTMLElement>) => void;
-  onRenameFromTitleDoubleClick?: (session: ProjectSession, event: MouseEvent<HTMLElement>) => void;
-  onTogglePinned?: (session: ProjectSession) => void | Promise<void>;
-}) {
-  const threadId = session.thread?.threadId ?? session.id;
-  if (session.thread?.parentThreadId) return null;
-  const hostId = session.thread?.executionHostId ?? "local";
-  const local = hostId === "local";
-  const managedWorktreePath = session.thread?.managedWorktreePath ?? null;
-  const item: CodexSidebarThreadItem = {
-    key: `${local ? "local" : "remote"}:${threadId}`,
-    kind: local ? "local" : "remote",
-    backendBinding: session.thread?.backendBinding ?? { kind: "codex" },
-    runLocation: managedWorktreePath
-      ? local
-        ? { kind: "local-worktree", path: managedWorktreePath, phase: "ready" }
-        : { kind: "remote-worktree", hostId, path: managedWorktreePath, phase: "ready" }
-      : local
-        ? { kind: "local-checkout" }
-        : { kind: "remote-checkout", hostId },
-    hostId,
-    threadId,
-    parentThreadId: session.thread?.parentThreadId ?? null,
-    sessionId: session.id,
-    projectId: session.projectId,
-    title: session.displayTitle,
-    preview: session.thread?.threadPreview ?? "",
-    cwd: session.thread?.cwd ?? null,
-    updatedAt: session.thread?.updatedAt ?? Date.parse(session.updatedAt),
-    recencyAt: session.activityAt,
-    createdAt: session.thread?.createdAt ?? Date.parse(session.createdAt),
-    pinned: session.pinned,
-    pinnedOrder: session.pinnedOrder,
-    unread: session.unread,
-    remindAt: session.remindAt,
-    archived: session.archived || session.thread?.archived === true,
-    statusType: (session.thread?.statusType ?? "notLoaded") as CodexSidebarThreadItem["statusType"],
-    statusActiveFlags: (session.thread?.statusActiveFlags ??
-      []) as CodexSidebarThreadItem["statusActiveFlags"],
-    projectless: session.projectId === null,
-    disabled: false,
-  };
-
-  return (
-    <CodexSidebarThreadRow
-      item={item}
-      runtime={runtimeSessionTarget(session)}
-      active={active}
-      grouped={grouped}
-      contextMenuOpen={contextMenuOpen}
-      hoverCardProjectLabel={hoverCardProjectLabel}
-      hoverCardBranchName={hoverCardBranchName}
-      hoverCardOpen={hoverCardOpen}
-      onHoverCardOpenChange={onHoverCardOpenChange}
-      onSelect={onSelect}
-      onOpenContextMenu={
-        onOpenContextMenu ? (_item, event) => onOpenContextMenu(session, event) : undefined
-      }
-      onRenameFromTitleDoubleClick={
-        onRenameFromTitleDoubleClick
-          ? (_item, event) => onRenameFromTitleDoubleClick(session, event)
-          : undefined
-      }
-      onTogglePinned={onTogglePinned ? () => onTogglePinned(session) : undefined}
-    />
-  );
-}
-
 type CodexSidebarActionButtonProps = Omit<ComponentPropsWithoutRef<"button">, "children"> & {
   label: string;
   children: ReactNode;
@@ -2360,10 +2201,6 @@ export function resolveCodexNewChatShortcutLabel() {
 
 export function resolveCodexInboxShortcutLabel() {
   return isMacPlatform() ? "⇧⌘D" : "Ctrl+Shift+D";
-}
-
-export function resolveCodexCommandPaletteShortcutLabel() {
-  return isMacPlatform() ? "⌘K" : "Ctrl+K";
 }
 
 export function resolveCodexPageSearchShortcutLabel() {

@@ -250,28 +250,6 @@ export function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
-/** Check if a date falls within a range of visible days. */
-export function isInVisibleRange(date: Date, visibleDays: Date[]): boolean {
-  if (visibleDays.length === 0) return false;
-  const first = visibleDays[0];
-  const last = visibleDays[visibleDays.length - 1];
-  const nextDay = new Date(last);
-  nextDay.setDate(nextDay.getDate() + 1);
-  return date >= first && date < nextDay;
-}
-
-export interface CalendarEvent {
-  id: string;
-  title: string;
-  columnId: string;
-  columnName: string;
-  scheduledStart: Date;
-  scheduledEnd: Date;
-  priority: string;
-  lane: number;
-  totalLanes: number;
-}
-
 /** Assign lane indices for overlapping events on the same day. */
 export function groupOverlapping<T extends { scheduledStart: Date; scheduledEnd: Date }>(
   events: T[],

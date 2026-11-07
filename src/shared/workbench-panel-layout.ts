@@ -793,29 +793,6 @@ export function pruneEmptyWorkbenchPanelLeaves(
   );
 }
 
-export function removeWorkbenchPanelLeaf(
-  layout: WorkbenchPanelLayout,
-  leafId: string,
-): WorkbenchPanelLayoutV2 {
-  const normalized = normalizeWorkbenchPanelLayout(layout, flattenWorkbenchPanelTabIds(layout), {
-    preferredActiveLeafId: leafId,
-  });
-  const leaves = listWorkbenchPanelLeaves(normalized);
-  const leaf = leaves.find((candidate) => candidate.id === leafId);
-  if (!leaf || leaf.tabIds.length > 0 || leaves.length <= 1) return normalized;
-
-  const removed = removeLeafFromNode(normalized.root, leaf.id);
-  if (!removed.node) return normalized;
-  return normalizeWorkbenchPanelLayout(
-    {
-      ...normalized,
-      root: removed.node,
-      maximizedLeafId: normalized.maximizedLeafId === leaf.id ? null : normalized.maximizedLeafId,
-    },
-    flattenWorkbenchPanelTabIds({ ...normalized, root: removed.node }),
-  );
-}
-
 export function moveWorkbenchPanelLeaf(
   layout: WorkbenchPanelLayout,
   input: MovePanelLeafInput,

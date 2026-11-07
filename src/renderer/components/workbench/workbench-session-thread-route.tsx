@@ -841,14 +841,6 @@ export function SessionThreadPage(
   return <ConnectedSessionThread {...props} />;
 }
 
-export function SessionThreadComposerDock(
-  props: ConnectedSessionThreadProps & {
-    readonly composerDock: NonNullable<ConnectedSessionThreadProps["composerDock"]>;
-  },
-) {
-  return <ConnectedSessionThread {...props} />;
-}
-
 export function ProjectSessionThreadComposerDock({
   session,
   project,

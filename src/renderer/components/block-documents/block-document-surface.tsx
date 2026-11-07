@@ -35,10 +35,7 @@ import {
 } from "@/lib/block-document-surface-runtime";
 import type { DocumentSyncAdapter } from "@/lib/nodex-y-provider";
 import type { EditorSurfaceAwarenessLease } from "@/lib/document-session-registry";
-import type {
-  OwnedBlockDocumentModel,
-  ReadyPageBlockDocumentDescriptor,
-} from "@/lib/owned-block-document";
+import type { ReadyPageBlockDocumentDescriptor } from "@/lib/owned-block-document";
 import {
   PageTitleProjectionPublisher,
   type PageTitleResourceIdentity,
@@ -653,8 +650,3 @@ export function BlockDocumentSurface(props: BlockDocumentSurfaceProps) {
     </OwnedBlockDocumentSurface>
   );
 }
-
-export const isPrimaryOwnedBlockDocumentModel = (
-  model: OwnedBlockDocumentModel,
-): model is Extract<OwnedBlockDocumentModel, { readonly status: "ready" }> =>
-  model.status === "ready";

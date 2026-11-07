@@ -6,8 +6,6 @@ import {
 } from "./priority-presentation";
 
 export const ARCHIVED_CARD_OPTION_ID = "archived";
-export const ARCHIVED_CARD_OPTION_NAME = "Archived";
-export const EMPTY_PRIORITY_OPTION_VALUE = "none";
 
 export type BoardPriorityOption = {
   value: Priority;
@@ -16,33 +14,12 @@ export type BoardPriorityOption = {
   className: string;
 };
 
-export type BoardPrioritySelectOption =
-  | BoardPriorityOption
-  | {
-      value: typeof EMPTY_PRIORITY_OPTION_VALUE;
-      label: string;
-      shortLabel: string;
-      className: string;
-    };
-
 export const BOARD_PRIORITY_OPTIONS: BoardPriorityOption[] = PRIORITY_VALUES.map((value) => ({
   value,
   label: getPriorityLabel(value),
   shortLabel: getPriorityShortLabel(value),
   className: getPriorityClassName(value),
 }));
-
-export const EMPTY_BOARD_PRIORITY_OPTION: BoardPrioritySelectOption = {
-  value: EMPTY_PRIORITY_OPTION_VALUE,
-  label: "No priority",
-  shortLabel: "Empty",
-  className: "bg-(--gray-bg) text-(--foreground-tertiary)",
-};
-
-export const BOARD_PRIORITY_SELECT_OPTIONS: BoardPrioritySelectOption[] = [
-  EMPTY_BOARD_PRIORITY_OPTION,
-  ...BOARD_PRIORITY_OPTIONS,
-];
 
 export const BOARD_PRIORITY_OPTIONS_BY_VALUE = BOARD_PRIORITY_OPTIONS.reduce<
   Record<Priority, BoardPriorityOption>

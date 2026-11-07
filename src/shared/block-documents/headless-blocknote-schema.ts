@@ -107,7 +107,4 @@ export const headlessBlockDocumentSchema = BlockNoteSchema.create({
   },
   styleSpecs: defaultStyleSpecs,
 });
-
-export type HeadlessBlockDocumentEditor = typeof headlessBlockDocumentSchema.BlockNoteEditor;
-export type HeadlessBlockDocumentBlock = typeof headlessBlockDocumentSchema.Block;
 export type HeadlessBlockDocumentPartialBlock = typeof headlessBlockDocumentSchema.PartialBlock;

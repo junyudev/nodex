@@ -1,9 +1,6 @@
-import type { BlockTreeNode, BlockTreeValue } from "./block-document-codec";
+import type { BlockTreeValue } from "./block-document-codec";
 import type { RegisteredOwnedDocumentMaterialization } from "./document-schema-adapters";
-import type { CanvasSceneForwardRestorePlan } from "./canvas-scene";
-import type { BlockId, DocumentId } from "./contracts";
-import type { DocumentBlockOperation } from "./document-operations";
-import type { PortableRichText } from "./portable-rich-text";
+import type { DocumentId } from "./contracts";
 
 export const MAX_DOCUMENT_VERSION_CAUSE_LENGTH = 128;
 export const MAX_DOCUMENT_VERSION_LABEL_LENGTH = 512;
@@ -148,70 +145,4 @@ export interface PrepareDocumentVersionRestore {
   readonly expectedHeadSeq: number;
   readonly clientSessionId?: string;
   readonly actor: DocumentVersionActor;
-}
-
-interface DocumentVersionRestorePlanBase {
-  readonly kind: "document_version_restore";
-  readonly mutationId: string;
-  readonly projectId: string;
-  readonly storeEpoch: string;
-  readonly documentId: DocumentId;
-  readonly generation: number;
-  readonly expectedHeadSeq: number;
-  readonly clientSessionId?: string;
-  readonly actor: DocumentVersionActor;
-  readonly sourceVersion: DocumentVersionSummary;
-  readonly requiresWriteFence: true;
-}
-
-export interface BlockTreeDocumentVersionRestorePlan extends DocumentVersionRestorePlanBase {
-  readonly contentModel: "block_tree";
-  readonly targetTitle?: string;
-  readonly targetRichTitle?: PortableRichText;
-  readonly targetBlockTree: readonly BlockTreeNode[];
-  readonly operations: readonly DocumentBlockOperation[];
-}
-
-export interface CanvasDocumentVersionRestorePlan extends DocumentVersionRestorePlanBase {
-  readonly contentModel: "scene_graph";
-  readonly forwardRestore: CanvasSceneForwardRestorePlan;
-}
-
-export type DocumentVersionRestorePlan =
-  | BlockTreeDocumentVersionRestorePlan
-  | CanvasDocumentVersionRestorePlan;
-
-export type PreparedDocumentVersionRestore =
-  | {
-      readonly kind: "already_current";
-      readonly sourceVersion: DocumentVersionSummary;
-    }
-  | {
-      readonly kind: "operation_plan";
-      readonly plan: DocumentVersionRestorePlan;
-    };
-
-export interface ListBlockChangeHistory {
-  readonly projectId: string;
-  readonly blockId?: BlockId;
-  readonly documentId?: DocumentId;
-  readonly beforeChangeSeq?: number;
-  readonly limit?: number;
-}
-
-export interface BlockChangeHistoryEntry {
-  readonly changeSeq: number;
-  readonly projectId: string;
-  readonly storeEpoch: string;
-  readonly kind: "block_mutation" | "block_relocation";
-  readonly operationId: string | null;
-  readonly mutationKind: string | null;
-  readonly clientSessionId: string | null;
-  readonly actor: DocumentVersionActor;
-  readonly blockIds: readonly BlockId[];
-  readonly documentIds: readonly DocumentId[];
-  readonly databaseBlockIds: readonly BlockId[];
-  readonly fieldIntents: readonly BlockTreeValue[];
-  readonly payload: Readonly<Record<string, BlockTreeValue>>;
-  readonly committedAt: string;
 }

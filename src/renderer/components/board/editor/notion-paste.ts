@@ -5,7 +5,6 @@ import { isEmptyParagraphBlock } from "./nfm-empty-paragraph";
 export const CHROMIUM_WEB_CUSTOM_DATA_MIME = "org.chromium.web-custom-data";
 export const NOTION_BLOCKS_MIME = "text/_notion-blocks-v3-production";
 export const NOTION_MULTI_TEXT_MIME = "text/_notion-multi-text-production";
-export const NOTION_PAGE_SOURCE_MIME = "text/_notion-page-source-production";
 
 type JsonRecord = Record<string, unknown>;
 

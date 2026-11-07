@@ -4,7 +4,6 @@ export * from "./page-document";
 export * from "./synced-block-document";
 export * from "./additional-document-bearing-blocks";
 export * from "./body-only-block-document";
-export * from "./additional-document-bearing-operations";
 export * from "./canvas-document-identity";
 export * from "./canvas-scene";
 export * from "./canvas-scene-sync";

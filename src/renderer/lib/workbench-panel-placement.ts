@@ -152,15 +152,3 @@ export function readPageStagePanelTabPageRef(
     pageId: tab.config.pageId,
   };
 }
-
-export function readCanvasStagePanelTabCanvasRef(
-  tab: WorkbenchTabProjection | null | undefined,
-): { projectId: string; canvasBlockId: string } | null {
-  if (!tab || tab.kind !== "canvas_stage") return null;
-  if (tab.config.routingContext.kind !== "project") return null;
-
-  return {
-    projectId: tab.config.routingContext.projectId,
-    canvasBlockId: tab.config.canvasBlockId,
-  };
-}

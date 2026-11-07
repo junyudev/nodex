@@ -105,15 +105,6 @@ export function parseWorkbenchAutomationCwds(value: string): string[] {
     .filter((item) => item.length > 0);
 }
 
-export function cloneWorkbenchAutomationDraft(
-  draft: WorkbenchAutomationDraft,
-): WorkbenchAutomationDraft {
-  return {
-    ...draft,
-    cwds: [...draft.cwds],
-  };
-}
-
 export function createWorkbenchAutomationDraft(
   input: {
     automation?: CodexScheduledAutomation | null;

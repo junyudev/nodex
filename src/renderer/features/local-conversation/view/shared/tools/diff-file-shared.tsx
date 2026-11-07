@@ -1,5 +1,4 @@
 import type { FileDiffMetadata } from "@pierre/diffs/react";
-import { ChevronRightIcon } from "../../../../../components/shared/icons";
 import { NodexTooltip } from "../../../../../components/ui/tooltip";
 import { cn } from "../../../../../lib/utils";
 import { summarizeUnifiedDiffChanges } from "../../../../../lib/unified-diff-summary";
@@ -149,22 +148,6 @@ export function AnimatedDiffStats({
       >
         -<AnimatedDiffNumber value={deletions} />
       </span>
-    </span>
-  );
-}
-
-export function Chevron({ expanded, className }: { expanded: boolean; className?: string }) {
-  return (
-    <span
-      className={cn(
-        "inline-chevron ml-1 text-token-input-placeholder-foreground transition-opacity duration-200 opacity-0 group-hover/activity-header:opacity-100",
-        expanded && "opacity-100",
-        className,
-      )}
-    >
-      <ChevronRightIcon
-        className={cn("text-current transition-transform duration-200", expanded && "rotate-90")}
-      />
     </span>
   );
 }

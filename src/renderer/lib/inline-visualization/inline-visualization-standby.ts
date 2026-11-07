@@ -92,4 +92,3 @@ export function createInlineVisualizationStandby(
 }
 
 export type InlineVisualizationStandby = ReturnType<typeof createInlineVisualizationStandby>;
-export type InlineVisualizationStandbyClaim = Pick<InlineVisualizationStandby, "claim">;

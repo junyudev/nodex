@@ -7,10 +7,8 @@ import type {
   AppInfo as CodexAppServerAppInfo,
   AskForApproval as CodexAppServerAskForApproval,
   CommandAction as CodexAppServerCommandAction,
-  CommandExecutionRequestApprovalParams as CodexAppServerCommandExecutionRequestApprovalParams,
   ConsumeAccountRateLimitResetCreditOutcome as CodexAppServerRateLimitResetOutcome,
   ConsumeAccountRateLimitResetCreditParams as CodexAppServerRateLimitResetInput,
-  DynamicToolCallOutputContentItem as CodexAppServerDynamicToolCallOutputContentItem,
   DynamicToolCallParams as CodexAppServerDynamicToolCallParams,
   DynamicToolCallResponse as CodexAppServerDynamicToolCallResponse,
   ExecPolicyAmendment as CodexAppServerExecPolicyAmendment,
@@ -34,7 +32,6 @@ import type {
   PermissionsRequestApprovalResponse as CodexAppServerPermissionsRequestApprovalResponse,
   RateLimitResetCredit as CodexAppServerRateLimitResetCredit,
   RateLimitResetCreditsSummary as CodexAppServerRateLimitResetCreditsSummary,
-  SandboxMode as CodexAppServerSandboxMode,
   SandboxPolicy as CodexAppServerSandboxPolicy,
   SkillScope as CodexAppServerSkillScope,
   ReviewStartParams as CodexAppServerReviewStartParams,
@@ -90,7 +87,6 @@ import type {
   CodexCanonicalConversationState,
   CodexCanonicalServerRequest,
 } from "./codex-conversation-state/codex-conversation-state";
-import type { WorkbenchPanelSplitSide } from "./workbench-session-view";
 export type {
   CodexQueuedFollowUp,
   CodexQueuedFollowUpFreshStartResolution,
@@ -163,7 +159,6 @@ import type { Priority } from "./priority";
 
 export type Estimate = "xs" | "s" | "m" | "l" | "xl";
 export type ResourceBlockKind = "text" | "file" | "folder";
-export type ResourceBlockMode = "materialized" | "link";
 
 export type PageRunInTarget = "localProject" | "newWorktree" | "cloud";
 export type WorktreeStartMode = "autoBranch" | "detachedHead";
@@ -757,11 +752,8 @@ export const PROJECT_SESSION_SINGLETON_TAB_KINDS = [
   "review",
 ] as const satisfies readonly WorkbenchTabKind[];
 
-export type ProjectSessionSingletonTabKind = (typeof PROJECT_SESSION_SINGLETON_TAB_KINDS)[number];
-
 export type WorkbenchProjectionDbViewTabConfig = WorkbenchDbViewSurfaceConfig;
 export type WorkbenchProjectionPageStageTabConfig = WorkbenchPageStageSurfaceConfig;
-export type WorkbenchProjectionPageFileTabConfig = WorkbenchPageFileSurfaceConfig;
 export type WorkbenchProjectionCanvasStageTabConfig = WorkbenchCanvasStageSurfaceConfig;
 
 export interface WorkbenchProjectionTerminalTabConfig {
@@ -1070,8 +1062,6 @@ export type WorkbenchProjectionTabVariant = PersistedWorkbenchProjectionTabVaria
 
 export type WorkbenchTabProjection = WorkbenchTabProjectionBase & WorkbenchProjectionTabVariant;
 
-export type WorkbenchBrowserTabProjection = Extract<WorkbenchTabProjection, { kind: "browser" }>;
-
 export interface ProjectSessionThreadLink {
   sessionId: string;
   projectId: string | null;
@@ -1292,70 +1282,10 @@ export interface WorkbenchTabDeleteInput {
   preferredActiveTabId?: string | null;
 }
 
-export interface WorkbenchTabReorderInput {
-  sessionId: string;
-  panelId: PanelId;
-  leafId?: string;
-  orderedTabIds: string[];
-}
-
-export interface WorkbenchTabMoveInput {
-  tabId: string;
-  targetPanelId: PanelId;
-  targetLeafId?: string;
-  targetIndex?: number;
-  preserveEmptyLeafIds?: string[];
-  splitTarget?: {
-    leafId: string;
-    side: WorkbenchPanelSplitSide;
-  };
-}
-
-export interface WorkbenchPanelSplitInput {
-  sessionId: string;
-  panelId: PanelId;
-  leafId: string;
-  side: WorkbenchPanelSplitSide;
-  tabId?: string;
-  preserveEmptyLeafIds?: string[];
-}
-
-export interface WorkbenchPanelEnsureRightLeafInput {
-  sessionId: string;
-  panelId: PanelId;
-  sourceLeafId: string;
-}
-
 export interface WorkbenchPanelEnsureRightLeafResult {
   session: ProjectSession;
   leafId: string;
   created: boolean;
-}
-
-export interface WorkbenchPanelMergeInput {
-  sessionId: string;
-  panelId: PanelId;
-  leafId: string;
-}
-
-export interface WorkbenchPanelActivateInput {
-  sessionId: string;
-  panelId: PanelId;
-  leafId: string;
-  tabId?: string | null;
-}
-
-export interface WorkbenchPanelResizeInput {
-  sessionId: string;
-  panelId: PanelId;
-  branchId: string;
-  ratio: number;
-}
-
-export interface WorkbenchPanelMaximizeInput {
-  sessionId: string;
-  panelId: PanelId;
-  leafId: string | null;
 }
 
 export interface ProjectSessionThreadLinkInput {
@@ -2272,10 +2202,6 @@ export type CodexScheduledAutomationDeleteStatus =
   | "deleted"
   | "not_found";
 
-export interface CodexScheduledAutomationDeleteResult {
-  status: CodexScheduledAutomationDeleteStatus;
-}
-
 export interface CodexScheduledAutomationDeleteInput {
   id: string;
 }
@@ -2448,7 +2374,6 @@ export interface UpdateCodexGitSettingsInput {
 export type CodexServiceTier = CodexAppServerThreadSettings["serviceTier"];
 export type CodexApprovalPolicy = CodexAppServerAskForApproval;
 export type CodexApprovalsReviewer = CodexAppServerApprovalsReviewer;
-export type CodexSandboxMode = CodexAppServerSandboxMode;
 export type CodexSandboxPolicy = CodexAppServerSandboxPolicy;
 
 export type CodexCollaborationModeKind = CodexAppServerModeKind;
@@ -2561,12 +2486,6 @@ export interface CodexProjectlessWorkspace {
 export interface ConversationFirstSubmissionIdentity {
   readonly launchId: string;
   readonly clientUserMessageId: string;
-}
-
-export interface CodexProjectlessThreadCwdInput {
-  prompt?: string | null;
-  directoryName?: string | null;
-  createSplitDirectories?: boolean;
 }
 
 export interface CodexSideChatStartInput {
@@ -3062,8 +2981,6 @@ export type ProtocolCommandExecutionItem = Extract<
 >;
 export type ProtocolMcpToolCallItem = Extract<ProtocolThreadItem, { type: "mcpToolCall" }>;
 export type ProtocolDynamicToolCallItem = Extract<ProtocolThreadItem, { type: "dynamicToolCall" }>;
-export type ProtocolDynamicToolCallOutputContentItem =
-  CodexAppServerDynamicToolCallOutputContentItem;
 export type ProtocolDynamicToolCallParams = CodexAppServerDynamicToolCallParams;
 export type ProtocolDynamicToolCallResponse = CodexAppServerDynamicToolCallResponse;
 export type ProtocolCommandAction = CodexAppServerCommandAction;
@@ -3077,8 +2994,6 @@ export type ProtocolMcpServerStatus = CodexAppServerMcpServerStatus;
 export type ProtocolListMcpServerStatusResponse = CodexAppServerListMcpServerStatusResponse;
 export type ProtocolAppInfo = CodexAppServerAppInfo;
 export type ProtocolExperimentalFeature = CodexAppServerExperimentalFeature;
-export type ProtocolCommandExecutionApprovalParams =
-  CodexAppServerCommandExecutionRequestApprovalParams;
 export type ProtocolExecPolicyAmendment = CodexAppServerExecPolicyAmendment;
 export type ProtocolNetworkApprovalContext = CodexAppServerNetworkApprovalContext;
 
@@ -3642,12 +3557,6 @@ export interface CodexPlanImplementationServerRequest {
 }
 
 export type CodexPlanImplementationRequest = CodexPlanImplementationServerRequest;
-
-export interface CodexMcpElicitationOption {
-  value: string;
-  label: string;
-  description?: string;
-}
 
 export interface CodexMcpServerElicitationRequest {
   type: "mcpServerElicitation";

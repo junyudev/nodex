@@ -1,8 +1,6 @@
 import { atom, createStore, type Atom, type PrimitiveAtom, type WritableAtom } from "jotai";
 import type { QueryClient } from "@tanstack/react-query";
 
-export type ScopeKey = string | number | boolean | symbol | object | null | undefined;
-
 export interface ScopeDefinition<Key, Descriptor = Key> {
   readonly debugLabel: string;
   readonly parent: ScopeDefinition<unknown, never> | null;
