@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.5.2] - 2026-11-08
+
+### Added
+
 - A new Profile now opens on a short setup instead of a sample Project. It shows which Agents Nodex found, lets you sign in or install the ones you want, or add Nodex credits if you'd rather pay as you go, offers the projects you've already used with Codex and Claude Code, and lands on New Chat with a first task ready to send. Nothing is created until you choose it, and `Run setup again` in Settings replays it.
 - Insights shows what your agents did across this device, and turns it into a card you can share. Open it from the rail to see tokens, models, cost at API list price, messages, how many agents ran at once, tasks finished and Pages written, including Claude Code and Codex history from before you installed Nodex. Reading that history takes one click to allow and keeps only counts on your device. Share makes a Skyline or Receipt image to copy, save or post, with no project names or prompts on it.
 - Archiving a chat now lets you take it back. A toast appears right away: Undo restores the chat and returns you to it, and View opens your archived chats.
