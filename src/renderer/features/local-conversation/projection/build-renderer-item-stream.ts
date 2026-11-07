@@ -548,10 +548,6 @@ function resolveRequestSearchableText(request: CodexTurnScopedConversationReques
       .trim();
   }
 
-  if (request.type === "setupCodexStep") {
-    return request.step;
-  }
-
   return request.planContent.trim();
 }
 

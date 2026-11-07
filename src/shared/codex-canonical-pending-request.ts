@@ -6,8 +6,6 @@ import type {
   CodexCanonicalServerRequest,
   CodexOptionPickerOption,
   CodexOptionPickerRequest,
-  CodexSetupCodexStepRequest,
-  CodexUserInputQuestion,
   CodexUserInputRequest,
 } from "./types";
 
@@ -21,15 +19,9 @@ interface OptionPickerArguments {
   skipLabel: string | null;
 }
 
-interface OnboardingInputArguments {
-  questions: CodexUserInputQuestion[];
-}
-
 export interface CodexCanonicalPendingRequestBucket {
   latestUserInputRequest: CodexUserInputRequest | null;
-  latestOnboardingInputRequest: CodexUserInputRequest | null;
   latestOptionPickerRequest: CodexOptionPickerRequest | null;
-  latestSetupCodexStepRequest: CodexSetupCodexStepRequest | null;
 }
 
 const EMPTY_CANONICAL_PENDING_REQUEST_BUCKETS = new Map<
@@ -39,11 +31,6 @@ const EMPTY_CANONICAL_PENDING_REQUEST_BUCKETS = new Map<
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  const allowed = new Set(keys);
-  return Object.keys(value).every((key) => allowed.has(key));
 }
 
 function parseOption(value: unknown): CodexOptionPickerOption | null {
@@ -88,58 +75,6 @@ function parseOptionPickerArguments(value: unknown): OptionPickerArguments | nul
   };
 }
 
-function parseOnboardingQuestion(value: unknown): CodexUserInputQuestion | null {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["id", "header", "question", "options"])) return null;
-  if (
-    typeof value.id !== "string" ||
-    typeof value.question !== "string" ||
-    !Array.isArray(value.options)
-  ) {
-    return null;
-  }
-  if (value.header !== undefined && value.header !== null && typeof value.header !== "string")
-    return null;
-  if (value.options.length < 2) return null;
-  const options = value.options.map(parseOption);
-  if (options.some((option) => option === null)) return null;
-  return {
-    id: value.id,
-    header: value.header ?? value.question,
-    question: value.question,
-    isOther: true,
-    options: options.map((option) => ({
-      label: option?.label ?? "",
-      description: option?.description ?? "",
-    })),
-  };
-}
-
-function parseOnboardingInputArguments(value: unknown): OnboardingInputArguments | null {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["questions"]) || !Array.isArray(value.questions)) {
-    return null;
-  }
-  if (value.questions.length < 1 || value.questions.length > 3) return null;
-  const questions = value.questions.map(parseOnboardingQuestion);
-  if (questions.some((question) => question === null)) return null;
-  return {
-    questions: questions.filter(
-      (question): question is CodexUserInputQuestion => question !== null,
-    ),
-  };
-}
-
-function parseSetupStep(value: unknown): CodexSetupCodexStepRequest["step"] | "complete" | null {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["step"])) return null;
-  if (
-    value.step !== "role" &&
-    value.step !== "task" &&
-    value.step !== "context" &&
-    value.step !== "complete"
-  )
-    return null;
-  return value.step;
-}
-
 function isDynamicToolCallRequest(
   request: CodexCanonicalServerRequest,
 ): request is DynamicToolCallRequest {
@@ -154,9 +89,7 @@ function getOrCreateBucket(
   if (existing) return existing;
   const bucket: CodexCanonicalPendingRequestBucket = {
     latestUserInputRequest: null,
-    latestOnboardingInputRequest: null,
     latestOptionPickerRequest: null,
-    latestSetupCodexStepRequest: null,
   };
   buckets.set(turnId, bucket);
   return bucket;
@@ -178,26 +111,6 @@ function buildOptionPickerRequest(input: {
     turnId: input.turnId,
     itemId: input.itemId,
     ...input.arguments,
-    createdAt: input.createdAt,
-  };
-}
-
-function buildSetupStepRequest(input: {
-  conversation: CodexConversationRequestContext;
-  request: CodexCanonicalServerRequest;
-  turnId: string;
-  itemId: string;
-  step: CodexSetupCodexStepRequest["step"];
-  createdAt: number;
-}): CodexSetupCodexStepRequest {
-  return {
-    type: "setupCodexStep",
-    requestId: input.request.id,
-    projectId: input.conversation.projectId,
-    threadId: input.conversation.threadId,
-    turnId: input.turnId,
-    itemId: input.itemId,
-    step: input.step,
     createdAt: input.createdAt,
   };
 }
@@ -239,47 +152,15 @@ function projectDynamicRequest(input: {
 }): void {
   const { request } = input;
   const bucket = getOrCreateBucket(input.buckets, request.params.turnId);
-  if (request.params.tool === "request_onboarding_input") {
-    if (bucket.latestOnboardingInputRequest) return;
-    const parsed = parseOnboardingInputArguments(request.params.arguments);
-    if (!parsed) return;
-    bucket.latestOnboardingInputRequest = {
-      type: "userInput",
-      requestId: request.id,
-      projectId: input.conversation.projectId,
-      threadId: input.conversation.threadId,
-      turnId: request.params.turnId,
-      itemId: request.params.callId,
-      isBlocking: true,
-      questions: parsed.questions,
-      isOnboardingDynamicInput: true,
-      createdAt: input.createdAt,
-    };
-    return;
-  }
-  if (request.params.tool === "request_option_picker") {
-    if (bucket.latestOptionPickerRequest) return;
-    const parsed = parseOptionPickerArguments(request.params.arguments);
-    if (!parsed) return;
-    bucket.latestOptionPickerRequest = buildOptionPickerRequest({
-      conversation: input.conversation,
-      request,
-      turnId: request.params.turnId,
-      itemId: request.params.callId,
-      arguments: parsed,
-      createdAt: input.createdAt,
-    });
-    return;
-  }
-  if (request.params.tool !== "setup_codex_step" || bucket.latestSetupCodexStepRequest) return;
-  const step = parseSetupStep(request.params.arguments);
-  if (!step || step === "complete") return;
-  bucket.latestSetupCodexStepRequest = buildSetupStepRequest({
+  if (request.params.tool !== "request_option_picker" || bucket.latestOptionPickerRequest) return;
+  const parsed = parseOptionPickerArguments(request.params.arguments);
+  if (!parsed) return;
+  bucket.latestOptionPickerRequest = buildOptionPickerRequest({
     conversation: input.conversation,
     request,
     turnId: request.params.turnId,
     itemId: request.params.callId,
-    step,
+    arguments: parsed,
     createdAt: input.createdAt,
   });
 }
@@ -322,19 +203,6 @@ export function buildCodexCanonicalPendingRequestBuckets(
       });
       continue;
     }
-    if (request.method === "item/tool/requestSetupCodexContextPicker") {
-      const bucket = getOrCreateBucket(buckets, request.params.turnId);
-      if (bucket.latestSetupCodexStepRequest) continue;
-      bucket.latestSetupCodexStepRequest = buildSetupStepRequest({
-        conversation,
-        request,
-        turnId: request.params.turnId,
-        itemId: `setup-context:${String(request.id)}`,
-        step: "context",
-        createdAt: index,
-      });
-      continue;
-    }
     if (!isDynamicToolCallRequest(request)) continue;
     projectDynamicRequest({ buckets, conversation, request, createdAt: index });
   }
@@ -345,23 +213,13 @@ export function selectCanonicalInteractiveRequestForTurn(
   bucket: CodexCanonicalPendingRequestBucket | null | undefined,
 ): CodexCanonicalInteractivePendingRequest | null {
   if (!bucket) return null;
-  return (
-    bucket.latestUserInputRequest ??
-    bucket.latestOnboardingInputRequest ??
-    bucket.latestOptionPickerRequest ??
-    bucket.latestSetupCodexStepRequest
-  );
+  return bucket.latestUserInputRequest ?? bucket.latestOptionPickerRequest;
 }
 
 /** Classifies validated native dynamic requests without a presentation snapshot. */
 export function classifyCanonicalDynamicInteractiveRequest(
   request: DynamicToolCallRequest,
-): "userInput" | "optionPicker" | "setupCodexStep" | null {
-  if (request.params.tool === "request_onboarding_input")
-    return parseOnboardingInputArguments(request.params.arguments) ? "userInput" : null;
-  if (request.params.tool === "request_option_picker")
-    return parseOptionPickerArguments(request.params.arguments) ? "optionPicker" : null;
-  if (request.params.tool !== "setup_codex_step") return null;
-  const step = parseSetupStep(request.params.arguments);
-  return step && step !== "complete" ? "setupCodexStep" : null;
+): "optionPicker" | null {
+  if (request.params.tool !== "request_option_picker") return null;
+  return parseOptionPickerArguments(request.params.arguments) ? "optionPicker" : null;
 }

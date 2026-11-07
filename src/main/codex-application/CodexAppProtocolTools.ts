@@ -362,21 +362,6 @@ export const make: Effect.Effect<
           `Unsupported dynamic tool namespace: ${params.namespace ?? "<none>"}`,
         );
       }
-      if (params.tool === "setup_codex_step") {
-        const valid =
-          Object.keys(args).length === 1 &&
-          (args.step === "role" ||
-            args.step === "task" ||
-            args.step === "context" ||
-            args.step === "complete");
-        if (!valid)
-          return buildCodexAppDynamicToolFailure("setup_codex_step received invalid arguments.");
-        return args.step === "complete"
-          ? buildCodexAppDynamicToolSuccess({ completed: true })
-          : buildCodexAppDynamicToolFailure(
-              "setup_codex_step interactive steps must be handled by the app.",
-            );
-      }
       if (params.tool === "read_thread_terminal") {
         const snapshot = yield* terminals.getThreadSnapshot(params.threadId);
         if (!snapshot)

@@ -636,24 +636,16 @@ describe("local-conversation selectors", () => {
         options: [{ label: "UI" }],
       },
     };
-    const setupRequest: CodexCanonicalServerRequest = {
-      id: "setup-1",
-      method: "item/tool/call",
-      params: {
-        threadId: "thread_1",
-        turnId: "turn_1",
-        callId: "setup-call-1",
-        namespace: "codex_app",
-        tool: "setup_codex_step",
-        arguments: { step: "task" },
-      },
+    const otherRequest: CodexCanonicalServerRequest = {
+      ...optionRequest,
+      id: "option-2",
     };
 
     const first = buildConversation({ turns, requests, canonicalRequests: [optionRequest] });
-    const second = buildConversation({ turns, requests, canonicalRequests: [setupRequest] });
+    const second = buildConversation({ turns, requests, canonicalRequests: [otherRequest] });
 
     expect(selectPrimaryConversationRequest(first)?.type).toBe("optionPicker");
-    expect(selectPrimaryConversationRequest(second)?.type).toBe("setupCodexStep");
+    expect(selectPrimaryConversationRequest(second)?.requestId).toBe("option-2");
     expect(selectConversationLiveRequests(first) === selectConversationLiveRequests(second)).toBe(
       false,
     );

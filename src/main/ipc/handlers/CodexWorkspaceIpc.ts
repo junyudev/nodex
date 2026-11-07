@@ -1498,7 +1498,6 @@ export const live = Layer.effectDiscard(
               "item/tool/requestUserInput",
               "mcpServer/elicitation/request",
               "item/tool/requestOptionPicker",
-              "item/tool/requestSetupCodexContextPicker",
             ].includes(input.method)
           )
             return false;
@@ -1512,15 +1511,6 @@ export const live = Layer.effectDiscard(
               (response.freeformAnswer !== null && typeof response.freeformAnswer !== "string")
             )
               return false;
-          } else if (input.method === "item/tool/requestSetupCodexContextPicker") {
-            const response = input.response;
-            if (
-              !response ||
-              !["continue", "skip", "dismiss"].includes(response.action) ||
-              !Array.isArray(response.selectedSources) ||
-              !response.selectedSources.every((value) => typeof value === "string")
-            )
-              return false;
           } else {
             const decoder: Schema.ConstraintDecoder<unknown> =
               SERVER_REQUEST_RESPONSES[input.method];
@@ -1532,8 +1522,7 @@ export const live = Layer.effectDiscard(
         if (
           method !== "currentTime/read" &&
           method !== "mcpServer/elicitation/request" &&
-          method !== "item/tool/call" &&
-          method !== "item/tool/requestSetupCodexContextPicker"
+          method !== "item/tool/call"
         )
           return false;
         const occurrence = yield* requestInbox.resolveOccurrence({
@@ -1542,21 +1531,6 @@ export const live = Layer.effectDiscard(
           method,
         });
         if (!occurrence || occurrence.occurrenceId !== input.occurrenceId) return false;
-        if (method === "item/tool/requestSetupCodexContextPicker") {
-          const response = input.effect.response;
-          if (
-            !response ||
-            !["continue", "skip", "dismiss"].includes(response.action) ||
-            !Array.isArray(response.selectedSources) ||
-            !response.selectedSources.every((value) => typeof value === "string")
-          )
-            return false;
-          return yield* requestInbox.settle(
-            occurrence,
-            { kind: "result", value: response },
-            input.trace,
-          );
-        }
         const decoder: Schema.ConstraintDecoder<unknown> = SERVER_REQUEST_RESPONSES[method];
         const response = yield* Schema.decodeUnknownEffect(decoder)(input.effect.response);
         return yield* requestInbox.settle(
@@ -2022,31 +1996,6 @@ export const live = Layer.effectDiscard(
           .pipe(
             Effect.mapError(
               (cause) => new CodexIpcError({ operation: "codex:option-picker:respond", cause }),
-            ),
-          ),
-    );
-
-    registerEffectControl(
-      "codex:setup-context-picker:respond",
-      (_, conversationId: string, requestId: CodexProtocolRequestId, response) =>
-        serverRequestResponses
-          .setupContextPicker({ threadId: conversationId, requestId, response })
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new CodexIpcError({ operation: "codex:setup-context-picker:respond", cause }),
-            ),
-          ),
-    );
-
-    registerEffectControl(
-      "codex:setup-codex-step:respond",
-      (_, conversationId: string, requestId: CodexProtocolRequestId, response) =>
-        serverRequestResponses
-          .setupCodexStep({ threadId: conversationId, requestId, response })
-          .pipe(
-            Effect.mapError(
-              (cause) => new CodexIpcError({ operation: "codex:setup-codex-step:respond", cause }),
             ),
           ),
     );

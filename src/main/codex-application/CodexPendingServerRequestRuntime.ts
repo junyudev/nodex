@@ -59,7 +59,7 @@ export interface CodexPendingPrivateServerRequest extends PendingServerRequestBa
   readonly request: Extract<
     CodexServerRequest,
     {
-      method: "item/tool/requestOptionPicker" | "item/tool/requestSetupCodexContextPicker";
+      method: "item/tool/requestOptionPicker";
     }
   >;
 }

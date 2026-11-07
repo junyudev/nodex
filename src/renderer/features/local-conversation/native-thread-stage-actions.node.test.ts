@@ -13,7 +13,6 @@ test("native execution has no implicit Codex handlers while shared Session navig
     onQueueingEnabledChange: vi.fn(),
     onCompactThread: codexExecution,
     onRetryThreadAttachment: codexExecution,
-    onRespondSetupCodexStep: codexExecution,
     onUploadFeedback: codexExecution,
   } as unknown as ThreadStageActions;
   const actions = composeNativeThreadStageActions(host, { onSendPrompt: nativePrompt });
@@ -23,12 +22,7 @@ test("native execution has no implicit Codex handlers while shared Session navig
   await actions.onOpenThread("target");
   expect(archive).toHaveBeenCalledOnce();
   expect(open).toHaveBeenCalledWith("target");
-  for (const key of [
-    "onCompactThread",
-    "onRetryThreadAttachment",
-    "onRespondSetupCodexStep",
-    "onUploadFeedback",
-  ] as const)
+  for (const key of ["onCompactThread", "onRetryThreadAttachment", "onUploadFeedback"] as const)
     expect(actions[key]).toBeUndefined();
   expect(codexExecution).not.toHaveBeenCalled();
 });

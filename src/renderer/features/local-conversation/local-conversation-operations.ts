@@ -34,8 +34,6 @@ const controlChannels = [
   "codex:dynamic-tool-call:respond",
   "codex:mcp-elicitation:respond",
   "codex:option-picker:respond",
-  "codex:setup-codex-step:respond",
-  "codex:setup-context-picker:respond",
   "codex:subagents:selected:hydrate",
   "codex:app-server:request",
   "codex:thread:history-hydration:prepare",

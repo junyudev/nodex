@@ -46,7 +46,6 @@ function isPendingRequestItem(
     item.type === "approval" ||
     item.type === "userInput" ||
     item.type === "optionPicker" ||
-    item.type === "setupCodexStep" ||
     item.type === "permissionRequest" ||
     item.type === "implementPlan"
   );
@@ -150,7 +149,7 @@ export function bucketizeTurnItems(input: BucketizeTurnItemsInput): ThreadTurnRe
         continue;
       }
 
-      if (item.type === "optionPicker" || item.type === "setupCodexStep") {
+      if (item.type === "optionPicker") {
         buckets.interactiveRequestItem = item;
         continue;
       }

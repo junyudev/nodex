@@ -125,18 +125,8 @@ export function CodexUserInputRequestCard({
     hostId,
     runtime.sessionId ?? null,
   ]);
-  const viewRequest = request.isOnboardingDynamicInput
-    ? {
-        ...request,
-        questions: request.questions.map((question) => ({
-          ...question,
-          isOther: true,
-          otherPlaceholder: "Something else",
-        })),
-      }
-    : request;
   const draftRequest = {
-    ...viewRequest,
+    ...request,
     draftIdentity: JSON.stringify([request.turnId, request.itemId]),
   };
   const { initialDraft, saveDraft, clearDraft } = useCodexUserInputDraft(
@@ -178,7 +168,7 @@ export function CodexUserInputRequestCard({
           claimed ||
           autoResolution !== null ||
           (await isUserInputAutoResolutionTracked(conversationId, request.requestId, hostId));
-        if (request.isOnboardingDynamicInput || tracked) {
+        if (tracked) {
           await onRespond(nextRequest.requestId, {});
           return;
         }

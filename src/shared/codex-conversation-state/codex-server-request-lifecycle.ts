@@ -27,8 +27,6 @@ import type {
   CodexCanonicalRequestSyntheticItem,
   CodexCanonicalServerRequest,
   CodexCanonicalServerRequestExtension,
-  CodexCanonicalSetupContextPickerResponse,
-  CodexCanonicalSetupCodexStepResponse,
   CodexCanonicalConversationState,
 } from "./codex-conversation-state";
 import {
@@ -92,12 +90,6 @@ export type CodexServerRequestAutoResponseEffect =
       readonly method: "item/tool/call";
       readonly requestId: RequestId;
       readonly response: DynamicToolCallResponse;
-    }
-  | {
-      readonly type: "respond";
-      readonly method: "item/tool/requestSetupCodexContextPicker";
-      readonly requestId: RequestId;
-      readonly response: CodexCanonicalSetupContextPickerResponse;
     };
 
 export type CodexServerRequestLifecycleEffect =
@@ -816,7 +808,6 @@ export function isCodexCanonicalPrivateServerRequest(
 ): request is CodexCanonicalServerRequestExtension {
   return (
     request.method === "item/tool/requestOptionPicker" ||
-    request.method === "item/tool/requestSetupCodexContextPicker" ||
     request.method === "item/plan/requestImplementation"
   );
 }
@@ -933,11 +924,6 @@ function requestThreadId(request: CodexCanonicalServerRequest): string | null {
     : null;
 }
 
-function hasOnlyKeys(record: Record<string, unknown>, keys: readonly string[]): boolean {
-  const allowed = new Set(keys);
-  return Object.keys(record).every((key) => allowed.has(key));
-}
-
 function isOption(value: unknown): boolean {
   if (!isRecord(value) || typeof value.label !== "string") return false;
   return (
@@ -959,35 +945,6 @@ function isValidOptionPickerArguments(value: JsonValue): boolean {
       value.skipLabel === null ||
       typeof value.skipLabel === "string")
   );
-}
-
-function isValidOnboardingArguments(value: JsonValue): boolean {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["questions"])) return false;
-  if (!Array.isArray(value.questions)) return false;
-  if (value.questions.length < 1 || value.questions.length > 3) return false;
-  return value.questions.every(
-    (question) =>
-      isRecord(question) &&
-      hasOnlyKeys(question, ["id", "header", "question", "options"]) &&
-      typeof question.id === "string" &&
-      (question.header === undefined ||
-        question.header === null ||
-        typeof question.header === "string") &&
-      typeof question.question === "string" &&
-      Array.isArray(question.options) &&
-      question.options.length >= 2 &&
-      question.options.every(isOption),
-  );
-}
-
-function parseSetupStep(value: JsonValue): "role" | "task" | "context" | "complete" | null {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["step"])) return null;
-  return value.step === "role" ||
-    value.step === "task" ||
-    value.step === "context" ||
-    value.step === "complete"
-    ? value.step
-    : null;
 }
 
 function invalidDynamicToolCallResponse(tool: string): DynamicToolCallResponse {
@@ -1171,34 +1128,8 @@ function reduceRawDynamicToolCallRequest(
       namespace: CODEX_APP_TOOL_NAMESPACE,
       tool: candidate,
     });
-  if (isCodexAppTool("setup_codex_step")) {
-    const step = parseSetupStep(args);
-    if (step === null) {
-      return emptyRawResult(state, "responded", [
-        {
-          type: "respond",
-          method: request.method,
-          requestId: request.id,
-          response: invalidDynamicToolCallResponse(tool),
-        },
-      ]);
-    }
-    if (step !== "complete") {
-      return changedRawResult(appendRawStoredRequest(state, request), "stored");
-    }
-  }
-
-  if (
-    isCodexAppTool("request_option_picker") ||
-    isCodexAppTool("request_onboarding_input") ||
-    isCodexAppTool("setup_codex_context_picker")
-  ) {
-    const valid = isCodexAppTool("request_option_picker")
-      ? isValidOptionPickerArguments(args)
-      : isCodexAppTool("request_onboarding_input")
-        ? isValidOnboardingArguments(args)
-        : true;
-    if (!valid) {
+  if (isCodexAppTool("request_option_picker")) {
+    if (!isValidOptionPickerArguments(args)) {
       return emptyRawResult(state, "responded", [
         {
           type: "respond",
@@ -1264,15 +1195,6 @@ export function reduceCodexServerRequestRawState(
     case "item/tool/requestOptionPicker":
     case "item/plan/requestImplementation":
       return changedRawResult(appendRawStoredRequest(state, request), "stored");
-    case "item/tool/requestSetupCodexContextPicker":
-      return emptyRawResult(state, "responded", [
-        {
-          type: "respond",
-          method: request.method,
-          requestId: request.id,
-          response: { action: "dismiss", selectedSources: [] },
-        },
-      ]);
     case "item/tool/call":
       return reduceRawDynamicToolCallRequest(state, request);
     case "mcpServer/elicitation/request": {
@@ -1480,86 +1402,20 @@ export function reduceCodexServerRequestUserInputResponseRawState(
   );
 }
 
-function isStoredDynamicToolRequest(
-  request: CodexCanonicalServerRequest | undefined,
-  tool: "request_onboarding_input" | "setup_codex_step",
-): request is DynamicToolCallRequest {
-  return (
-    request?.method === "item/tool/call" &&
-    hasCodexDynamicToolIdentity(request.params, {
-      namespace: CODEX_APP_TOOL_NAMESPACE,
-      tool,
-    })
-  );
-}
-
-export function reduceCodexServerRequestOnboardingInputResponseRawState(
-  state: CodexServerRequestRawState,
-  requestId: RequestId,
-): CodexServerRequestRawLifecycleResult {
-  const request = state.requests.find((candidate) => candidate.id === requestId);
-  if (!isStoredDynamicToolRequest(request, "request_onboarding_input")) {
-    return emptyRawResult(state, "ignored");
-  }
-  return selectedRawReplyResult(state, [request]);
-}
-
-export function reduceCodexServerRequestSetupCodexStepResponseRawState(
-  state: CodexServerRequestRawState,
-  requestId: RequestId,
-  response: CodexCanonicalSetupCodexStepResponse,
-): CodexServerRequestRawLifecycleResult {
-  const request = state.requests.find((candidate) => candidate.id === requestId);
-  if (!isStoredDynamicToolRequest(request, "setup_codex_step")) {
-    return emptyRawResult(state, "ignored");
-  }
-  const requestStep = parseSetupStep(request.params.arguments);
-  if (requestStep === "complete" || requestStep !== response.step) {
-    return emptyRawResult(state, "ignored");
-  }
-  return selectedRawReplyResult(state, [request]);
-}
-
-function reduceCodexServerRequestStoredPickerResponseRawState(
-  state: CodexServerRequestRawState,
-  requestId: RequestId,
-  expected: {
-    readonly directMethod:
-      | "item/tool/requestOptionPicker"
-      | "item/tool/requestSetupCodexContextPicker";
-    readonly dynamicTool: "request_option_picker" | "setup_codex_context_picker";
-  },
-): CodexServerRequestRawLifecycleResult {
-  const request = state.requests.find((candidate) => candidate.id === requestId);
-  const supported =
-    request?.method === expected.directMethod ||
-    (request?.method === "item/tool/call" &&
-      hasCodexDynamicToolIdentity(request.params, {
-        namespace: CODEX_APP_TOOL_NAMESPACE,
-        tool: expected.dynamicTool,
-      }));
-  if (!request || !supported) return emptyRawResult(state, "ignored");
-  return selectedRawReplyResult(state, [request]);
-}
-
 export function reduceCodexServerRequestOptionPickerResponseRawState(
   state: CodexServerRequestRawState,
   requestId: RequestId,
 ): CodexServerRequestRawLifecycleResult {
-  return reduceCodexServerRequestStoredPickerResponseRawState(state, requestId, {
-    directMethod: "item/tool/requestOptionPicker",
-    dynamicTool: "request_option_picker",
-  });
-}
-
-export function reduceCodexServerRequestSetupContextPickerResponseRawState(
-  state: CodexServerRequestRawState,
-  requestId: RequestId,
-): CodexServerRequestRawLifecycleResult {
-  return reduceCodexServerRequestStoredPickerResponseRawState(state, requestId, {
-    directMethod: "item/tool/requestSetupCodexContextPicker",
-    dynamicTool: "setup_codex_context_picker",
-  });
+  const request = state.requests.find((candidate) => candidate.id === requestId);
+  const supported =
+    request?.method === "item/tool/requestOptionPicker" ||
+    (request?.method === "item/tool/call" &&
+      hasCodexDynamicToolIdentity(request.params, {
+        namespace: CODEX_APP_TOOL_NAMESPACE,
+        tool: "request_option_picker",
+      }));
+  if (!request || !supported) return emptyRawResult(state, "ignored");
+  return selectedRawReplyResult(state, [request]);
 }
 
 function sameStringSet(
@@ -1774,48 +1630,6 @@ export function reduceCodexConversationMcpElicitationResponse(
   return { ...operation, state: next, stateChanged: next !== state };
 }
 
-export function mutateCodexConversationOnboardingInputResponse(
-  state: Draft<CodexCanonicalConversationState>,
-  requestId: RequestId,
-): RequestMutation {
-  return mutateCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestOnboardingInputResponseRawState(raw, requestId),
-  );
-}
-
-export function reduceCodexConversationOnboardingInputResponse(
-  state: CodexCanonicalConversationState,
-  requestId: RequestId,
-): CodexServerRequestLifecycleResult {
-  let operation!: RequestMutation;
-  const next = produce(state, (draft) => {
-    operation = mutateCodexConversationOnboardingInputResponse(draft, requestId);
-  });
-  return { ...operation, state: next, stateChanged: next !== state };
-}
-
-export function mutateCodexConversationSetupCodexStepResponse(
-  state: Draft<CodexCanonicalConversationState>,
-  requestId: RequestId,
-  response: CodexCanonicalSetupCodexStepResponse,
-): RequestMutation {
-  return mutateCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestSetupCodexStepResponseRawState(raw, requestId, response),
-  );
-}
-
-export function reduceCodexConversationSetupCodexStepResponse(
-  state: CodexCanonicalConversationState,
-  requestId: RequestId,
-  response: CodexCanonicalSetupCodexStepResponse,
-): CodexServerRequestLifecycleResult {
-  let operation!: RequestMutation;
-  const next = produce(state, (draft) => {
-    operation = mutateCodexConversationSetupCodexStepResponse(draft, requestId, response);
-  });
-  return { ...operation, state: next, stateChanged: next !== state };
-}
-
 export function mutateCodexConversationOptionPickerResponse(
   state: Draft<CodexCanonicalConversationState>,
   requestId: RequestId,
@@ -1832,26 +1646,6 @@ export function reduceCodexConversationOptionPickerResponse(
   let operation!: RequestMutation;
   const next = produce(state, (draft) => {
     operation = mutateCodexConversationOptionPickerResponse(draft, requestId);
-  });
-  return { ...operation, state: next, stateChanged: next !== state };
-}
-
-export function mutateCodexConversationSetupContextPickerResponse(
-  state: Draft<CodexCanonicalConversationState>,
-  requestId: RequestId,
-): RequestMutation {
-  return mutateCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestSetupContextPickerResponseRawState(raw, requestId),
-  );
-}
-
-export function reduceCodexConversationSetupContextPickerResponse(
-  state: CodexCanonicalConversationState,
-  requestId: RequestId,
-): CodexServerRequestLifecycleResult {
-  let operation!: RequestMutation;
-  const next = produce(state, (draft) => {
-    operation = mutateCodexConversationSetupContextPickerResponse(draft, requestId);
   });
   return { ...operation, state: next, stateChanged: next !== state };
 }

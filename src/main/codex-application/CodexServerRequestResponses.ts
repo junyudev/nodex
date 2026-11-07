@@ -15,17 +15,11 @@ import * as Stream from "effect/Stream";
 import type {
   CodexCanonicalConversationState,
   CodexCanonicalOptionPickerResponse,
-  CodexCanonicalSetupCodexStepResponse,
-  CodexCanonicalSetupContextPickerResponse,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
 import {
   reduceCodexConversationMcpElicitationResponse,
-  reduceCodexConversationOnboardingInputResponse,
   reduceCodexConversationOptionPickerResponse,
-  reduceCodexConversationSetupCodexStepResponse,
-  reduceCodexConversationSetupContextPickerResponse,
   reduceCodexConversationUserInputResponse,
-  reduceCodexServerRequestSetupCodexStepResponseRawState,
   type CodexServerRequestLifecycleResult,
   type CodexServerRequestRawLifecycleResult,
 } from "../../shared/codex-conversation-state/codex-server-request-lifecycle";
@@ -75,18 +69,6 @@ export interface CodexOptionPickerResponseInput {
   readonly response: CodexCanonicalOptionPickerResponse;
 }
 
-export interface CodexSetupContextPickerResponseInput {
-  readonly threadId: string;
-  readonly requestId: RequestId;
-  readonly response: CodexCanonicalSetupContextPickerResponse;
-}
-
-export interface CodexSetupCodexStepResponseInput {
-  readonly threadId: string;
-  readonly requestId: RequestId;
-  readonly response: CodexCanonicalSetupCodexStepResponse;
-}
-
 export interface CodexServerRequestResponsesService {
   readonly native: (
     input: CodexNativeUserResponseInput,
@@ -99,12 +81,6 @@ export interface CodexServerRequestResponsesService {
   ) => Effect.Effect<boolean, CodexServerRequestResponseProjectionError>;
   readonly optionPicker: (
     input: CodexOptionPickerResponseInput,
-  ) => Effect.Effect<boolean, CodexServerRequestResponseProjectionError>;
-  readonly setupContextPicker: (
-    input: CodexSetupContextPickerResponseInput,
-  ) => Effect.Effect<boolean, CodexServerRequestResponseProjectionError>;
-  readonly setupCodexStep: (
-    input: CodexSetupCodexStepResponseInput,
   ) => Effect.Effect<boolean, CodexServerRequestResponseProjectionError>;
   readonly declineAll: (
     threadId: string,
@@ -253,8 +229,7 @@ export const make: Effect.Effect<
             );
           break;
         }
-        case "item/tool/requestOptionPicker":
-        case "item/tool/requestSetupCodexContextPicker": {
+        case "item/tool/requestOptionPicker": {
           const first = inbox.find("private", input.requestId, sameConnection);
           if (!first || !matches(first) || first.request.method !== input.method) return false;
           inbox
@@ -288,33 +263,6 @@ export const make: Effect.Effect<
         entry.threadId === input.threadId &&
         (!connection ||
           (entry.hostId === connection.hostId && entry.generation === connection.generation));
-      const canonicalRequest = before.requests.find(
-        (candidate) => candidate.id === input.requestId,
-      );
-      if (
-        canonicalRequest?.method === "item/tool/call" &&
-        hasCodexDynamicToolIdentity(canonicalRequest.params, {
-          namespace: CODEX_APP_TOOL_NAMESPACE,
-          tool: "request_onboarding_input",
-        })
-      ) {
-        const pending = inbox.find(
-          "dynamic-tool",
-          input.requestId,
-          (candidate) =>
-            candidate.disposition === "stored" &&
-            matches(candidate) &&
-            hasCodexDynamicToolIdentity(candidate.request.params, {
-              namespace: CODEX_APP_TOOL_NAMESPACE,
-              tool: "request_onboarding_input",
-            }),
-        );
-        if (!pending) return null;
-        const lifecycle = reduceCodexConversationOnboardingInputResponse(before, input.requestId);
-        return lifecycle.selectedRequests.length === 0
-          ? null
-          : { before, lifecycle, normalized, pending, onboarding: true as const };
-      }
       const pending = inbox.find("user-input", input.requestId, matches);
       if (!pending) return null;
       const lifecycle = reduceCodexConversationUserInputResponse(
@@ -325,7 +273,7 @@ export const make: Effect.Effect<
       );
       return lifecycle.selectedRequests.length === 0
         ? null
-        : { before, lifecycle, normalized, pending, onboarding: false as const };
+        : { before, lifecycle, normalized, pending };
     }).pipe(
       Effect.flatMap((prepared) => {
         if (!prepared) return Effect.succeed(false);
@@ -334,34 +282,12 @@ export const make: Effect.Effect<
             entry.threadId === input.threadId &&
             entry.hostId === prepared.pending.hostId &&
             entry.generation === prepared.pending.generation;
-          if (prepared.onboarding) {
-            const selected = inbox.takeAll(
-              "dynamic-tool",
-              input.requestId,
-              (candidate) => candidate.disposition === "stored" && matches(candidate),
+          const selected = inbox.takeAll("user-input", input.requestId, matches);
+          for (const [index, entry] of selected.entries()) {
+            inbox.complete(
+              entry,
+              index === 0 ? { answers: prepared.normalized.protocol } : CodexAppServerNoResponse,
             );
-            let completed = false;
-            for (const entry of selected) {
-              const matches = hasCodexDynamicToolIdentity(entry.request.params, {
-                namespace: CODEX_APP_TOOL_NAMESPACE,
-                tool: "request_onboarding_input",
-              });
-              inbox.complete(
-                entry,
-                !completed && matches
-                  ? dynamicToolSuccess({ answers: prepared.normalized.protocol })
-                  : CodexAppServerNoResponse,
-              );
-              completed ||= matches;
-            }
-          } else {
-            const selected = inbox.takeAll("user-input", input.requestId, matches);
-            for (const [index, entry] of selected.entries()) {
-              inbox.complete(
-                entry,
-                index === 0 ? { answers: prepared.normalized.protocol } : CodexAppServerNoResponse,
-              );
-            }
           }
           inbox.abandonIdentity(input.threadId, input.requestId, prepared.pending);
           events.publish({
@@ -377,9 +303,7 @@ export const make: Effect.Effect<
             }),
           ),
           Effect.andThen(
-            prepared.onboarding
-              ? Effect.void
-              : autoResolution.observeResponse(input.threadId, input.requestId, prepared.pending),
+            autoResolution.observeResponse(input.threadId, input.requestId, prepared.pending),
           ),
           Effect.as(true),
         );
@@ -464,27 +388,16 @@ export const make: Effect.Effect<
   const mcpElicitation: CodexServerRequestResponsesService["mcpElicitation"] = (input) =>
     runSerial(input.threadId, mcpElicitationInTransaction(input));
 
-  const storedPickerInTransaction = (
-    input:
-      | (CodexOptionPickerResponseInput & { readonly kind: "option" })
-      | (CodexSetupContextPickerResponseInput & { readonly kind: "context" }),
-  ) =>
+  const optionPickerInTransaction = (input: CodexOptionPickerResponseInput) =>
     sync(() => {
       const conversation = aggregate(input.threadId);
       const before = conversation?.readCanonicalState();
       if (!conversation || !before) return null;
-      const lifecycle =
-        input.kind === "option"
-          ? reduceCodexConversationOptionPickerResponse(before, input.requestId)
-          : reduceCodexConversationSetupContextPickerResponse(before, input.requestId);
+      const lifecycle = reduceCodexConversationOptionPickerResponse(before, input.requestId);
       const request = lifecycle.selectedRequests[0];
       if (!request) return null;
-      const directMethod =
-        input.kind === "option"
-          ? "item/tool/requestOptionPicker"
-          : "item/tool/requestSetupCodexContextPicker";
-      const dynamicTool =
-        input.kind === "option" ? "request_option_picker" : "setup_codex_context_picker";
+      const directMethod = "item/tool/requestOptionPicker";
+      const dynamicTool = "request_option_picker";
       const isDirect = request.method === directMethod;
       const isDynamic =
         request.method === "item/tool/call" &&
@@ -533,74 +446,7 @@ export const make: Effect.Effect<
       ),
     );
   const optionPicker: CodexServerRequestResponsesService["optionPicker"] = (input) =>
-    runSerial(input.threadId, storedPickerInTransaction({ ...input, kind: "option" }));
-  const setupContextPicker: CodexServerRequestResponsesService["setupContextPicker"] = (input) =>
-    runSerial(input.threadId, storedPickerInTransaction({ ...input, kind: "context" }));
-
-  const setupCodexStepInTransaction = (input: CodexSetupCodexStepResponseInput) =>
-    sync(() => {
-      const conversation = aggregate(input.threadId);
-      const projection = conversation?.readServerRequestState();
-      if (!conversation || !projection) return null;
-      const canonical = projection.canonicalState;
-      const lifecycle = canonical
-        ? reduceCodexConversationSetupCodexStepResponse(canonical, input.requestId, input.response)
-        : reduceCodexServerRequestSetupCodexStepResponseRawState(
-            projection.rawState,
-            input.requestId,
-            input.response,
-          );
-      if (lifecycle.selectedRequests.length === 0) return null;
-      const result = (() => {
-        switch (input.response.step) {
-          case "role":
-            return {
-              action: input.response.action,
-              selectedRoles: [...input.response.selectedRoles],
-            };
-          case "task":
-            return { action: input.response.action, answers: input.response.answers };
-          case "context":
-            return {
-              action: input.response.action,
-              selectedSources: [...input.response.selectedSources],
-            };
-        }
-      })();
-      let completed = false;
-      for (const entry of inbox.takeAll(
-        "dynamic-tool",
-        input.requestId,
-        (candidate) => candidate.disposition === "stored" && candidate.threadId === input.threadId,
-      )) {
-        const matches = hasCodexDynamicToolIdentity(entry.request.params, {
-          namespace: CODEX_APP_TOOL_NAMESPACE,
-          tool: "setup_codex_step",
-        });
-        inbox.complete(
-          entry,
-          !completed && matches ? dynamicToolSuccess(result) : CodexAppServerNoResponse,
-        );
-        completed ||= matches;
-      }
-      inbox.abandonIdentity(input.threadId, input.requestId);
-      return canonical
-        ? {
-            kind: "canonical" as const,
-            before: canonical,
-            lifecycle: lifecycle as CodexServerRequestLifecycleResult,
-          }
-        : {
-            kind: "raw" as const,
-            lifecycle: lifecycle as CodexServerRequestRawLifecycleResult,
-          };
-    }).pipe(
-      Effect.flatMap((prepared) =>
-        prepared ? commit(input.threadId, prepared).pipe(Effect.as(true)) : Effect.succeed(false),
-      ),
-    );
-  const setupCodexStep: CodexServerRequestResponsesService["setupCodexStep"] = (input) =>
-    runSerial(input.threadId, setupCodexStepInTransaction(input));
+    runSerial(input.threadId, optionPickerInTransaction(input));
 
   const declineAllInTransaction = (
     threadId: string,
@@ -618,22 +464,14 @@ export const make: Effect.Effect<
                   answers: {},
                 }).pipe(Effect.asVoid);
               case "item/tool/requestOptionPicker":
-                return storedPickerInTransaction({
+                return optionPickerInTransaction({
                   threadId,
                   requestId: request.id,
-                  kind: "option",
                   response: {
                     action: "dismiss",
                     selectedOptions: [],
                     freeformAnswer: null,
                   },
-                }).pipe(Effect.asVoid);
-              case "item/tool/requestSetupCodexContextPicker":
-                return storedPickerInTransaction({
-                  threadId,
-                  requestId: request.id,
-                  kind: "context",
-                  response: { action: "dismiss", selectedSources: [] },
                 }).pipe(Effect.asVoid);
               case "mcpServer/elicitation/request":
                 return mcpElicitationInTransaction({
@@ -705,8 +543,6 @@ export const make: Effect.Effect<
     userInput,
     mcpElicitation,
     optionPicker,
-    setupContextPicker,
-    setupCodexStep,
     declineAll: (threadId) => runSerial(threadId, declineAllInTransaction(threadId)),
     declineAllInTransaction,
   });

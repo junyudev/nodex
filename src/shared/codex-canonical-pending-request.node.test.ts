@@ -115,29 +115,9 @@ describe("canonical pending request projection", () => {
   });
 
   test("uses the exact per-turn interactive family priority", () => {
-    const onboarding = dynamicRequest({
-      id: "onboarding",
-      tool: "request_onboarding_input",
-      arguments: {
-        questions: [
-          {
-            id: "task",
-            question: "What should Codex do first?",
-            options: [{ label: "Build" }, { label: "Review", description: "Review code" }],
-          },
-        ],
-      },
-    });
     const option = directOptionPicker("option", "Option");
-    const setup = dynamicRequest({
-      id: "setup",
-      tool: "setup_codex_step",
-      arguments: { step: "role" },
-    });
     const conversation = buildConversation([
       option,
-      setup,
-      onboarding,
       {
         ...agentActivityV2UserInputRequest,
         params: {
@@ -152,36 +132,7 @@ describe("canonical pending request projection", () => {
 
     expect(selected?.type).toBe("userInput");
     expect(selected?.requestId).toBe(agentActivityV2UserInputRequest.id);
-    expect(bucket?.latestOnboardingInputRequest?.isOnboardingDynamicInput).toBe(true);
-    expect(bucket?.latestOnboardingInputRequest?.questions[0]?.header).toBe(
-      "What should Codex do first?",
-    );
     expect(bucket?.latestOptionPickerRequest?.requestId).toBe("option");
-    expect(bucket?.latestSetupCodexStepRequest?.step).toBe("role");
-  });
-
-  test("normalizes direct setup context but preserves the target selector's unreachable legacy context gap", () => {
-    const directContext: CodexCanonicalServerRequest = {
-      id: "direct-context",
-      method: "item/tool/requestSetupCodexContextPicker",
-      params: { threadId: THREAD_ID, turnId: TURN_ID },
-    };
-    const dynamicComplete = dynamicRequest({
-      id: "complete",
-      tool: "setup_codex_step",
-      arguments: { step: "complete" },
-    });
-    const unreachableLegacyContext = dynamicRequest({
-      id: "legacy-context",
-      tool: "setup_codex_context_picker",
-      arguments: {},
-    });
-    const bucket = buildCodexCanonicalPendingRequestBuckets(
-      buildConversation([unreachableLegacyContext, dynamicComplete, directContext]),
-    ).get(TURN_ID);
-
-    expect(bucket?.latestSetupCodexStepRequest?.requestId).toBe("direct-context");
-    expect(bucket?.latestSetupCodexStepRequest?.step).toBe("context");
   });
 
   test("ignores malformed dynamic input before it can replace a valid family request", () => {

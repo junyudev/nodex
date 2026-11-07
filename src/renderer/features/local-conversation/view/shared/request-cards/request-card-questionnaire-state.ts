@@ -47,15 +47,6 @@ export const REQUEST_INPUT_COMPOSER_POLICY: RequestQuestionnairePolicy = {
   requireAllAnswers: false,
 };
 
-export const SETUP_TASK_FORM_POLICY: RequestQuestionnairePolicy = {
-  choiceBehavior: {
-    kind: "advanceOnActivation",
-    acknowledgementMs: 0,
-  },
-  presentation: "form",
-  requireAllAnswers: false,
-};
-
 export const EXPLICIT_REQUEST_FORM_POLICY: RequestQuestionnairePolicy = {
   choiceBehavior: {
     kind: "selectOnly",

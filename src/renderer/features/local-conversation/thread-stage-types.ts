@@ -11,7 +11,6 @@ import type {
   CodexAccountSnapshot,
   CodexBackgroundTerminalRow,
   CodexCanonicalOptionPickerResponse,
-  CodexCanonicalSetupCodexStepResponse,
   CodexCollaborationModeKind,
   CodexComposerChatGptConversation,
   CodexComposerIntent,
@@ -541,11 +540,6 @@ export interface ThreadStageActions {
   onRespondOptionPicker?: (
     requestId: CodexProtocolRequestId,
     response: CodexCanonicalOptionPickerResponse,
-    context?: ThreadRequestResponseContext,
-  ) => Promise<void>;
-  onRespondSetupCodexStep?: (
-    requestId: CodexProtocolRequestId,
-    response: CodexCanonicalSetupCodexStepResponse,
     context?: ThreadRequestResponseContext,
   ) => Promise<void>;
   onResolvePlanImplementationRequest: (threadId: string, turnId: string) => Promise<void>;

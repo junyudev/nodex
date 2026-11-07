@@ -195,7 +195,7 @@ describe("dynamic tool registry", () => {
     });
     const completedSetup = dynamicCall({
       namespace: "unsupported_namespace",
-      tool: "setup_codex_step",
+      tool: "request_option_picker",
       arguments: { step: "complete" },
     });
 

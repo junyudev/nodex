@@ -373,7 +373,6 @@ export function areConversationLiveRequestsEqual(
       return (
         left.questions === right.questions &&
         left.isBlocking === right.isBlocking &&
-        left.isOnboardingDynamicInput === right.isOnboardingDynamicInput &&
         left.autoResolutionMs === right.autoResolutionMs
       );
     case "optionPicker":
@@ -385,8 +384,6 @@ export function areConversationLiveRequestsEqual(
         left.submitLabel === right.submitLabel &&
         left.skipLabel === right.skipLabel
       );
-    case "setupCodexStep":
-      return right.type === "setupCodexStep" && left.step === right.step;
     case "mcpServerElicitation":
       return (
         right.type === "mcpServerElicitation" &&
@@ -483,7 +480,6 @@ export function isBlockingConversationRequest(request: CodexConversationLiveRequ
   return (
     (request.type === "userInput" && request.isBlocking) ||
     request.type === "optionPicker" ||
-    request.type === "setupCodexStep" ||
     request.type === "mcpServerElicitation"
   );
 }

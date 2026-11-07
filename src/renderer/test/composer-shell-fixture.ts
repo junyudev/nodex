@@ -5,7 +5,6 @@ import type {
   CodexConversationItem,
   CodexConversationSnapshot,
   CodexConversationTurn,
-  CodexCanonicalServerRequest,
   CodexDictationStateSnapshot,
   CodexModelOption,
   CodexReasoningEffortOption,
@@ -21,13 +20,9 @@ export type ComposerShellFixturePreset =
   | "background-permission-option"
   | "implement-plan"
   | "file-approval-lane"
-  | "onboarding-input-lane"
   | "permission-lane"
   | "mcp-elicitation-lane"
-  | "option-picker-lane"
-  | "setup-role-lane"
-  | "setup-task-lane"
-  | "setup-context-lane";
+  | "option-picker-lane";
 
 const FIXTURE_PROJECT_ID = "composer-project";
 const FIXTURE_WORKSPACE_PATH = "/workspace/nodex";
@@ -673,53 +668,6 @@ const REQUEST_CARD_FIXTURES = {
     createdAt: 1,
   },
 };
-type FixtureDynamicToolArguments = Extract<
-  CodexCanonicalServerRequest,
-  { method: "item/tool/call" }
->["params"]["arguments"];
-
-function buildDynamicRequest(input: {
-  id: string;
-  tool: string;
-  arguments: FixtureDynamicToolArguments;
-}): CodexCanonicalServerRequest {
-  return {
-    id: input.id,
-    method: "item/tool/call",
-    params: {
-      threadId: FIXTURE_THREAD_ID,
-      turnId: "turn_fixture_streaming",
-      callId: `call_${input.id}`,
-      namespace: "codex_app",
-      tool: input.tool,
-      arguments: input.arguments,
-    },
-  };
-}
-
-function buildOnboardingInputRequestConversation(): CodexConversationSnapshot {
-  return buildStreamingConversation({
-    canonicalRequests: [
-      buildDynamicRequest({
-        id: "onboarding_fixture_active",
-        tool: "request_onboarding_input",
-        arguments: {
-          questions: [
-            {
-              id: "first_goal",
-              question: "What should Codex help you accomplish first?",
-              options: [
-                { label: "Build a feature", description: "Start with implementation." },
-                { label: "Review code", description: "Start with a focused review." },
-              ],
-            },
-          ],
-        },
-      }),
-    ],
-  });
-}
-
 function buildPermissionRequestConversation(): CodexConversationSnapshot {
   return buildStreamingConversation({
     requests: [
@@ -801,27 +749,6 @@ function buildOptionPickerRequestConversation(): CodexConversationSnapshot {
       },
     ],
   });
-}
-
-function buildSetupStepRequestConversation(
-  step: "role" | "task" | "context",
-): CodexConversationSnapshot {
-  const request: CodexCanonicalServerRequest =
-    step === "context"
-      ? {
-          id: "setup_context_fixture_active",
-          method: "item/tool/requestSetupCodexContextPicker",
-          params: {
-            threadId: FIXTURE_THREAD_ID,
-            turnId: "turn_fixture_streaming",
-          },
-        }
-      : buildDynamicRequest({
-          id: `setup_${step}_fixture_active`,
-          tool: "setup_codex_step",
-          arguments: { step },
-        });
-  return buildStreamingConversation({ canonicalRequests: [request] });
 }
 
 function buildBackgroundPermissionOptionConversation(): {
@@ -944,13 +871,9 @@ function buildComposerConversationFixture(preset: ComposerShellFixturePreset): {
   const builders = {
     "implement-plan": buildImplementPlanConversation,
     "file-approval-lane": buildFileApprovalRequestConversation,
-    "onboarding-input-lane": buildOnboardingInputRequestConversation,
     "permission-lane": buildPermissionRequestConversation,
     "mcp-elicitation-lane": buildMcpElicitationRequestConversation,
     "option-picker-lane": buildOptionPickerRequestConversation,
-    "setup-role-lane": () => buildSetupStepRequestConversation("role"),
-    "setup-task-lane": () => buildSetupStepRequestConversation("task"),
-    "setup-context-lane": () => buildSetupStepRequestConversation("context"),
   } satisfies Record<
     Exclude<ComposerShellFixturePreset, "background-activity" | "background-permission-option">,
     () => CodexConversationSnapshot

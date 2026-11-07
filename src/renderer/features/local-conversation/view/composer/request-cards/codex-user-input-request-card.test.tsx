@@ -410,34 +410,6 @@ describe("CodexUserInputRequestCard", () => {
     }
   });
 
-  test("forces the Other path and empty-response dismiss for onboarding dynamic input", async () => {
-    const log: string[] = [];
-    const { getByPlaceholderText, getByText } = renderWithMaitai(
-      <TooltipProvider>
-        <CodexUserInputRequestCard
-          conversationId="thread_1"
-          request={{
-            ...ordinaryRequest,
-            requestId: "onboarding-input",
-            isOnboardingDynamicInput: true,
-          }}
-          onRespond={async (requestId, answers) => {
-            log.push(`respond:${requestId}:${JSON.stringify(answers)}`);
-          }}
-        />
-      </TooltipProvider>,
-    );
-    await settleAsyncRender();
-
-    expect((getByPlaceholderText("Something else") as HTMLTextAreaElement).value).toBe("");
-    await act(async () => {
-      fireEvent.click(getByText("Dismiss"));
-      await settleAsyncRender();
-    });
-
-    expect(JSON.stringify(log)).toBe(JSON.stringify(["respond:onboarding-input:{}"]));
-  });
-
   test("uses interrupt fallback when no matching auto-resolution entry exists", async () => {
     const log: string[] = [];
     const { getByText, unmount } = renderWithMaitai(

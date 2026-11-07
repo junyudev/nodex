@@ -137,7 +137,6 @@ function isPendingProjectionRequest(
     case "mcpServer/elicitation/request":
     case "item/tool/call":
     case "item/tool/requestOptionPicker":
-    case "item/tool/requestSetupCodexContextPicker":
     case "item/plan/requestImplementation":
     case "account/chatgptAuthTokens/refresh":
     case "attestation/generate":
@@ -163,7 +162,6 @@ function isStateSyntheticCauseRequest(
     case "item/fileChange/requestApproval":
     case "item/tool/call":
     case "item/tool/requestOptionPicker":
-    case "item/tool/requestSetupCodexContextPicker":
     case "item/plan/requestImplementation":
     case "account/chatgptAuthTokens/refresh":
     case "attestation/generate":

@@ -6,7 +6,6 @@ import {
   type CodexCanonicalConversationState,
   type CodexCanonicalOptionPickerRequest,
   type CodexCanonicalPlanImplementationRequest,
-  type CodexCanonicalSetupContextPickerRequest,
   type CodexCanonicalTurnParams,
 } from "./codex-conversation-state";
 import {
@@ -17,15 +16,11 @@ import {
   createCodexCanonicalPlanImplementationRequest,
   normalizeCodexCanonicalMcpElicitation,
   reduceCodexConversationMcpElicitationResponse,
-  reduceCodexConversationOnboardingInputResponse,
   reduceCodexConversationOptionPickerResponse,
   reduceCodexConversationServerRequest,
   reduceCodexConversationServerRequestResolved,
-  reduceCodexConversationSetupContextPickerResponse,
   reduceCodexConversationUserInputResponse,
   reduceCodexServerRequestOptionPickerResponseRawState,
-  reduceCodexServerRequestSetupCodexStepResponseRawState,
-  reduceCodexServerRequestSetupContextPickerResponseRawState,
   reduceCodexServerRequestRawState,
   shouldAutomaticallyAcceptCodexMcpElicitation,
   type CodexServerRequestRawState,
@@ -820,7 +815,24 @@ describe("Codex 30751 server-request lifecycle", () => {
     expect(exactDuplicateIds?.kind).toBe("unsupportedOpenAIForm");
   });
 
-  test("validates special dynamic calls before storing and dispatches ordinary or complete calls", () => {
+  test("does not give foreign namespaces codex_app lifecycle behavior", () => {
+    const foreignPicker = {
+      ...agentActivityV2DynamicOptionPickerRequest,
+      id: "foreign-picker",
+      params: {
+        ...agentActivityV2DynamicOptionPickerRequest.params,
+        namespace: "nodex_app",
+        arguments: { question: "This would be invalid for codex_app" },
+      },
+    } satisfies ServerRequest;
+
+    const picker = reduceCodexConversationServerRequest(buildState(), foreignPicker, context());
+
+    expect(picker.disposition).toBe("dispatched");
+    expect(picker.effects[0]?.type).toBe("dispatchDynamicToolCall");
+  });
+
+  test("validates special dynamic calls before storing and dispatches ordinary calls", () => {
     const valid = reduceCodexConversationServerRequest(
       buildState(),
       agentActivityV2DynamicOptionPickerRequest,
@@ -835,56 +847,6 @@ describe("Codex 30751 server-request lifecycle", () => {
       },
     } satisfies ServerRequest;
     const invalid = reduceCodexConversationServerRequest(buildState(), invalidRequest, context());
-    const invalidOnboardingRequest = {
-      ...agentActivityV2DynamicToolRequest,
-      id: "invalid-onboarding",
-      params: {
-        ...agentActivityV2DynamicToolRequest.params,
-        namespace: "codex_app",
-        tool: "request_onboarding_input",
-        arguments: {
-          questions: [
-            {
-              id: "role",
-              question: "Choose a role",
-              options: [{ label: "Only one option" }],
-            },
-          ],
-        },
-      },
-    } satisfies ServerRequest;
-    const invalidOnboarding = reduceCodexConversationServerRequest(
-      buildState(),
-      invalidOnboardingRequest,
-      context(),
-    );
-    const setupRole = {
-      ...agentActivityV2DynamicToolRequest,
-      id: "setup-role",
-      params: {
-        ...agentActivityV2DynamicToolRequest.params,
-        namespace: "codex_app",
-        tool: "setup_codex_step",
-        arguments: { step: "role" },
-      },
-    } satisfies ServerRequest;
-    const setupComplete = {
-      ...setupRole,
-      id: "setup-complete",
-      params: { ...setupRole.params, arguments: { step: "complete" } },
-    } satisfies ServerRequest;
-    const invalidSetup = {
-      ...setupRole,
-      id: "setup-invalid",
-      params: { ...setupRole.params, arguments: { step: "role", unexpected: true } },
-    } satisfies ServerRequest;
-    const role = reduceCodexConversationServerRequest(buildState(), setupRole, context());
-    const complete = reduceCodexConversationServerRequest(buildState(), setupComplete, context());
-    const rejectedSetup = reduceCodexConversationServerRequest(
-      buildState(),
-      invalidSetup,
-      context(),
-    );
     const ordinary = reduceCodexConversationServerRequest(
       buildState(),
       agentActivityV2DynamicToolRequest,
@@ -900,187 +862,7 @@ describe("Codex 30751 server-request lifecycle", () => {
         ? invalid.effects[0].response.success
         : null,
     ).toBe(false);
-    expect(invalidOnboarding.disposition).toBe("responded");
-    expect(invalidOnboarding.state.requests.length).toBe(0);
-    expect(
-      invalidOnboarding.effects[0]?.type === "respond" &&
-        invalidOnboarding.effects[0].method === "item/tool/call"
-        ? invalidOnboarding.effects[0].response.success
-        : null,
-    ).toBe(false);
-    expect(role.disposition).toBe("stored");
-    expect(complete.effects[0]?.type).toBe("dispatchDynamicToolCall");
-    expect(rejectedSetup.disposition).toBe("responded");
-    expect(rejectedSetup.state.requests.length).toBe(0);
-    expect(
-      rejectedSetup.effects[0]?.type === "respond" &&
-        rejectedSetup.effects[0].method === "item/tool/call"
-        ? rejectedSetup.effects[0].response.success
-        : null,
-    ).toBe(false);
     expect(ordinary.effects[0]?.type).toBe("dispatchDynamicToolCall");
-  });
-
-  test("does not give foreign namespaces codex_app lifecycle behavior", () => {
-    const foreignSetup = {
-      ...agentActivityV2DynamicToolRequest,
-      id: "foreign-setup",
-      params: {
-        ...agentActivityV2DynamicToolRequest.params,
-        namespace: "nodex_app",
-        tool: "setup_codex_step",
-        arguments: { step: "role" },
-      },
-    } satisfies ServerRequest;
-    const foreignPicker = {
-      ...agentActivityV2DynamicOptionPickerRequest,
-      id: "foreign-picker",
-      params: {
-        ...agentActivityV2DynamicOptionPickerRequest.params,
-        namespace: "nodex_app",
-        arguments: { question: "This would be invalid for codex_app" },
-      },
-    } satisfies ServerRequest;
-
-    const setup = reduceCodexConversationServerRequest(buildState(), foreignSetup, context());
-    const picker = reduceCodexConversationServerRequest(buildState(), foreignPicker, context());
-
-    expect(setup.disposition).toBe("dispatched");
-    expect(setup.effects[0]?.type).toBe("dispatchDynamicToolCall");
-    expect(picker.disposition).toBe("dispatched");
-    expect(picker.effects[0]?.type).toBe("dispatchDynamicToolCall");
-  });
-
-  test("routes onboarding replies through the first strict-ID dynamic request and removes every match", () => {
-    const onboarding = {
-      ...agentActivityV2DynamicToolRequest,
-      id: 73,
-      params: {
-        ...agentActivityV2DynamicToolRequest.params,
-        namespace: "codex_app",
-        tool: "request_onboarding_input",
-        arguments: {
-          questions: [
-            {
-              id: "role",
-              header: null,
-              question: "Choose a role",
-              options: [{ label: "Engineer" }, { label: "Designer", description: null }],
-            },
-          ],
-        },
-      },
-    } satisfies ServerRequest;
-    const duplicate = {
-      ...onboarding,
-      params: { ...onboarding.params, callId: "onboarding-duplicate" },
-    } satisfies ServerRequest;
-    const textual = { ...onboarding, id: "73" } satisfies ServerRequest;
-    const pending = {
-      ...buildState(),
-      requests: [onboarding, duplicate, textual],
-    };
-
-    const replied = reduceCodexConversationOnboardingInputResponse(pending, 73);
-
-    expect(replied.disposition).toBe("resolved");
-    expect(replied.selectedRequests.length).toBe(1);
-    expect(replied.selectedRequests[0] === onboarding).toBe(true);
-    expect(replied.state.requests.length).toBe(1);
-    expect(replied.state.requests[0] === textual).toBe(true);
-    expect(replied.state.turns[0]?.items.length).toBe(0);
-
-    const wrongTool = { ...agentActivityV2DynamicToolRequest, id: 73 } satisfies ServerRequest;
-    const wrongFirst = {
-      ...pending,
-      requests: [wrongTool, onboarding],
-    };
-    const ignored = reduceCodexConversationOnboardingInputResponse(wrongFirst, 73);
-    expect(ignored.disposition).toBe("ignored");
-    expect(ignored.state === wrongFirst).toBe(true);
-
-    const replayedMalformedOnboarding = {
-      ...onboarding,
-      params: {
-        ...onboarding.params,
-        arguments: { replayedWithoutIngressValidation: true },
-      },
-    } satisfies ServerRequest;
-    const replayedReply = reduceCodexConversationOnboardingInputResponse(
-      {
-        ...pending,
-        requests: [replayedMalformedOnboarding],
-      },
-      73,
-    );
-    expect(replayedReply.disposition).toBe("resolved");
-    expect(replayedReply.selectedRequests[0] === replayedMalformedOnboarding).toBe(true);
-    expect(replayedReply.state.requests.length).toBe(0);
-  });
-
-  test("validates setup-step replies against the first stored request and original step", () => {
-    const requestFor = (step: "role" | "task" | "context") =>
-      ({
-        ...agentActivityV2DynamicToolRequest,
-        id: `setup-${step}`,
-        params: {
-          ...agentActivityV2DynamicToolRequest.params,
-          namespace: "codex_app",
-          tool: "setup_codex_step",
-          arguments: { step },
-        },
-      }) satisfies ServerRequest;
-    const cases = [
-      {
-        request: requestFor("role"),
-        response: { step: "role", action: "submit", selectedRoles: ["engineer"] } as const,
-      },
-      {
-        request: requestFor("task"),
-        response: {
-          step: "task",
-          action: "submit",
-          answers: { first_task: { answers: ["Ship parity"] } },
-        } as const,
-      },
-      {
-        request: requestFor("context"),
-        response: { step: "context", action: "continue", selectedSources: ["repo"] } as const,
-      },
-    ];
-
-    for (const entry of cases) {
-      const raw: CodexServerRequestRawState = {
-        threadId: THREAD_ID,
-        turns: [],
-        requests: [entry.request, entry.request],
-        hasUnreadTurn: true,
-      };
-      const replied = reduceCodexServerRequestSetupCodexStepResponseRawState(
-        raw,
-        entry.request.id,
-        entry.response,
-      );
-      expect(replied.disposition).toBe("resolved");
-      expect(replied.selectedRequests.length).toBe(1);
-      expect(replied.state.requests.length).toBe(0);
-      expect(replied.state.hasUnreadTurn).toBe(true);
-    }
-
-    const roleRequest = requestFor("role");
-    const mismatched: CodexServerRequestRawState = {
-      threadId: THREAD_ID,
-      turns: [],
-      requests: [roleRequest],
-      hasUnreadTurn: true,
-    };
-    const ignored = reduceCodexServerRequestSetupCodexStepResponseRawState(
-      mismatched,
-      roleRequest.id,
-      { step: "context", action: "dismiss", selectedSources: [] },
-    );
-    expect(ignored.disposition).toBe("ignored");
-    expect(ignored.state === mismatched).toBe(true);
   });
 
   test("handles one-shot responses, missing turns, private plan replacement, and classification", () => {
@@ -1198,7 +980,7 @@ describe("Codex 30751 server-request lifecycle", () => {
     expect(canonicalTurnStarted.hasUnreadTurn).toBe(true);
   });
 
-  test("stores turnless MCP and option pickers while dismissing setup-context pickers", () => {
+  test("stores turnless MCP and option pickers", () => {
     const turnlessMcp = {
       ...agentActivityV2McpElicitationRequest,
       id: "turnless-mcp",
@@ -1220,12 +1002,6 @@ describe("Codex 30751 server-request lifecycle", () => {
         skipLabel: null,
       },
     } satisfies CodexCanonicalOptionPickerRequest;
-    const setupPicker = {
-      id: "setup-picker",
-      method: "item/tool/requestSetupCodexContextPicker",
-      params: { threadId: THREAD_ID, turnId: TURN_ID },
-    } satisfies CodexCanonicalSetupContextPickerRequest;
-
     const mcpPending = reduceCodexConversationServerRequest(buildState(), turnlessMcp, context());
     const mcpResolved = reduceCodexConversationServerRequestResolved(
       mcpPending.state,
@@ -1237,30 +1013,16 @@ describe("Codex 30751 server-request lifecycle", () => {
       optionPicker,
       context(),
     );
-    const bothPickers = reduceCodexConversationServerRequest(
-      optionPending.state,
-      setupPicker,
-      context(),
-    );
-
     expect(mcpPending.state.requests[0] === turnlessMcp).toBe(true);
     expect(mcpPending.state.turns[0]?.items.length).toBe(0);
     expect(mcpPending.state.hasUnreadTurn).toBe(true);
     expect(mcpResolved.state.requests.length).toBe(0);
     expect(mcpResolved.state.turns[0]?.items.length).toBe(0);
-    expect(bothPickers.state.requests.length).toBe(1);
-    expect(bothPickers.state.requests[0] === optionPicker).toBe(true);
-    expect(bothPickers.effects).toEqual([
-      {
-        type: "respond",
-        method: setupPicker.method,
-        requestId: setupPicker.id,
-        response: { action: "dismiss", selectedSources: [] },
-      },
-    ]);
-    expect(bothPickers.state.turns[0]?.items.length).toBe(0);
+    expect(optionPending.state.requests.length).toBe(1);
+    expect(optionPending.state.requests[0] === optionPicker).toBe(true);
+    expect(optionPending.effects).toEqual([]);
+    expect(optionPending.state.turns[0]?.items.length).toBe(0);
     expect(classifyCodexCanonicalServerRequest(optionPicker).source).toBe("private");
-    expect(classifyCodexCanonicalServerRequest(setupPicker).source).toBe("private");
   });
 
   test("stored picker replies validate the first strict-id envelope and remove every same-id occurrence", () => {
@@ -1277,11 +1039,6 @@ describe("Codex 30751 server-request lifecycle", () => {
         skipLabel: null,
       },
     } satisfies CodexCanonicalOptionPickerRequest;
-    const directSetup = {
-      id: 301,
-      method: "item/tool/requestSetupCodexContextPicker",
-      params: { threadId: THREAD_ID, turnId: TURN_ID },
-    } satisfies CodexCanonicalSetupContextPickerRequest;
     const dynamicOption = {
       id: 301,
       method: "item/tool/call",
@@ -1297,22 +1054,6 @@ describe("Codex 30751 server-request lifecycle", () => {
         },
       },
     } satisfies ServerRequest;
-    const dynamicSetup = {
-      id: "setup-302",
-      method: "item/tool/call",
-      params: {
-        threadId: THREAD_ID,
-        turnId: TURN_ID,
-        callId: "dynamic-setup",
-        namespace: "codex_app",
-        tool: "setup_codex_context_picker",
-        arguments: {},
-      },
-    } satisfies ServerRequest;
-    const directSetupDuplicate = {
-      ...directSetup,
-      id: dynamicSetup.id,
-    } satisfies CodexCanonicalSetupContextPickerRequest;
     const unrelated = agentActivityV2DynamicToolRequest;
     const rawState = (
       requests: CodexServerRequestRawState["requests"],
@@ -1323,16 +1064,8 @@ describe("Codex 30751 server-request lifecycle", () => {
       hasUnreadTurn: true,
     });
 
-    const wrongFirst = reduceCodexServerRequestOptionPickerResponseRawState(
-      rawState([directSetup, directOption, dynamicOption]),
-      directOption.id,
-    );
-    expect(wrongFirst.disposition).toBe("ignored");
-    expect(wrongFirst.stateChanged).toBe(false);
-    expect(wrongFirst.state.requests.length).toBe(3);
-
     const optionReply = reduceCodexServerRequestOptionPickerResponseRawState(
-      rawState([directOption, unrelated, dynamicOption, directSetup]),
+      rawState([directOption, unrelated, dynamicOption]),
       directOption.id,
     );
     expect(optionReply.selectedRequests[0] === directOption).toBe(true);
@@ -1341,7 +1074,7 @@ describe("Codex 30751 server-request lifecycle", () => {
     );
     expect(optionReply.state.hasUnreadTurn).toBe(true);
     const canonicalOptionReply = reduceCodexConversationOptionPickerResponse(
-      { ...buildState(), requests: [directOption, unrelated, dynamicOption, directSetup] },
+      { ...buildState(), requests: [directOption, unrelated, dynamicOption] },
       directOption.id,
     );
     expect(canonicalOptionReply.selectedRequests[0] === directOption).toBe(true);
@@ -1349,23 +1082,6 @@ describe("Codex 30751 server-request lifecycle", () => {
       JSON.stringify([unrelated.id]),
     );
     expect(canonicalOptionReply.state.hasUnreadTurn).toBe(false);
-
-    const setupReply = reduceCodexServerRequestSetupContextPickerResponseRawState(
-      rawState([dynamicSetup, unrelated, directSetupDuplicate]),
-      dynamicSetup.id,
-    );
-    expect(setupReply.selectedRequests[0] === dynamicSetup).toBe(true);
-    expect(JSON.stringify(setupReply.state.requests.map((request) => request.id))).toBe(
-      JSON.stringify([unrelated.id]),
-    );
-    const canonicalSetupReply = reduceCodexConversationSetupContextPickerResponse(
-      { ...buildState(), requests: [dynamicSetup, unrelated, directSetupDuplicate] },
-      dynamicSetup.id,
-    );
-    expect(canonicalSetupReply.selectedRequests[0] === dynamicSetup).toBe(true);
-    expect(JSON.stringify(canonicalSetupReply.state.requests.map((request) => request.id))).toBe(
-      JSON.stringify([unrelated.id]),
-    );
   });
 
   test("applies user replies while exposing raw transport selection", () => {

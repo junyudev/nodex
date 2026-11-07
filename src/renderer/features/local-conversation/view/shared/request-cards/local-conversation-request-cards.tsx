@@ -62,7 +62,6 @@ const USER_INPUT_FOCUS_TARGET_ATTRIBUTE = "data-user-input-focus-target";
 export {
   EXPLICIT_REQUEST_FORM_POLICY,
   REQUEST_INPUT_COMPOSER_POLICY,
-  SETUP_TASK_FORM_POLICY,
   buildRequestQuestionSignature,
   buildUserInputAnswers,
   createInitialRequestQuestionnaireDraft,

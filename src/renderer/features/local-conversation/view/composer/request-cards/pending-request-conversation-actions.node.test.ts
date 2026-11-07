@@ -22,9 +22,6 @@ function createActions(log: string[]): ThreadStageActions {
     onRespondOptionPicker: async (requestId, _response, context) => {
       log.push(`option:${requestId}:${context?.conversationId}`);
     },
-    onRespondSetupCodexStep: async (requestId, _response, context) => {
-      log.push(`setup:${requestId}:${context?.conversationId}`);
-    },
     onResolvePlanImplementationRequest: async () => {},
     onEnqueueQueuedFollowUp: async () => {},
     onRemoveQueuedFollowUp: async () => {},
@@ -56,17 +53,11 @@ describe("bindPendingRequestConversationActions", () => {
       selectedOptions: [],
       freeformAnswer: null,
     });
-    await bound.respondSetupCodexStep("setup_1", {
-      step: "context",
-      action: "dismiss",
-      selectedSources: [],
-    });
 
     expect(log).toEqual([
       "user-input:input_1:thread_1",
       "mcp:mcp_1:thread_1",
       "option:option_1:thread_1",
-      "setup:setup_1:thread_1",
     ]);
   });
 });

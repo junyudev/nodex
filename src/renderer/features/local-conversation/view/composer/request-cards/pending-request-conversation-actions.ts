@@ -8,12 +8,6 @@ type OptionPickerResponse = Parameters<NonNullable<ThreadStageActions["onRespond
 type OptionPickerRequestId = Parameters<
   NonNullable<ThreadStageActions["onRespondOptionPicker"]>
 >[0];
-type SetupCodexStepResponse = Parameters<
-  NonNullable<ThreadStageActions["onRespondSetupCodexStep"]>
->[1];
-type SetupCodexStepRequestId = Parameters<
-  NonNullable<ThreadStageActions["onRespondSetupCodexStep"]>
->[0];
 
 interface BindPendingRequestConversationActionsInput {
   actions: ThreadStageActions;
@@ -42,12 +36,6 @@ export function bindPendingRequestConversationActions({
       response: OptionPickerResponse,
     ) => {
       await actions.onRespondOptionPicker?.(requestId, response, context);
-    },
-    respondSetupCodexStep: async (
-      requestId: SetupCodexStepRequestId,
-      response: SetupCodexStepResponse,
-    ) => {
-      await actions.onRespondSetupCodexStep?.(requestId, response, context);
     },
   };
 }

@@ -109,11 +109,6 @@ const fixture = (hostId = "local", follower = false) => {
         method: "item/tool/requestOptionPicker",
         params: { threadId: "thread", turnId: "source", question: "Choose setup", options: [] },
       },
-      {
-        id: "setup-picker",
-        method: "item/tool/requestSetupCodexContextPicker",
-        params: { threadId: "thread", turnId: "source" },
-      },
     );
     draft.requests.push({
       id: "approval",

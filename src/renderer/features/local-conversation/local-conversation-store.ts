@@ -346,7 +346,6 @@ import type {
   CodexBackgroundTerminalRow,
   PageRunInTarget,
   CodexCanonicalOptionPickerResponse,
-  CodexCanonicalSetupCodexStepResponse,
   CodexConversationSource,
   CodexConversationCapabilityFlags,
   CodexConversationChildMembership,
@@ -451,13 +450,9 @@ import {
   mutateCodexCanonicalPlanImplementationCompletion,
   mutateCodexConversationUserInputResponse,
   mutateCodexConversationMcpElicitationResponse,
-  mutateCodexConversationOnboardingInputResponse,
   mutateCodexConversationOptionPickerResponse,
-  mutateCodexConversationSetupCodexStepResponse,
   reduceCodexConversationOptionPickerResponse,
-  reduceCodexConversationSetupContextPickerResponse,
   reduceCodexServerRequestOptionPickerResponseRawState,
-  reduceCodexServerRequestSetupContextPickerResponseRawState,
   type CodexServerRequestRawState,
 } from "../../../shared/codex-conversation-state/codex-server-request-lifecycle";
 import { type CodexThreadMetadataEffect } from "../../../shared/codex-conversation-state/codex-thread-metadata";
@@ -1892,22 +1887,15 @@ function attachOwnerApprovalRequestToItem(
 function hasOwnerStoredInteractiveResponseTarget(
   conversation: CodexConversationSnapshot,
   requestId: CodexProtocolRequestId,
-  kind: "optionPicker" | "setupContextPicker",
 ): boolean {
   const state = conversation.canonicalState;
   if (state && state.id !== conversation.threadId) return false;
   if (!state) {
     const raw = ownerRawServerRequestState(conversation);
-    const result =
-      kind === "optionPicker"
-        ? reduceCodexServerRequestOptionPickerResponseRawState(raw, requestId)
-        : reduceCodexServerRequestSetupContextPickerResponseRawState(raw, requestId);
+    const result = reduceCodexServerRequestOptionPickerResponseRawState(raw, requestId);
     return result.selectedRequests.length > 0;
   }
-  const lifecycle =
-    kind === "optionPicker"
-      ? reduceCodexConversationOptionPickerResponse(state, requestId)
-      : reduceCodexConversationSetupContextPickerResponse(state, requestId);
+  const lifecycle = reduceCodexConversationOptionPickerResponse(state, requestId);
   return lifecycle.selectedRequests.length > 0;
 }
 
@@ -1993,7 +1981,6 @@ function projectOwnerServerRequestToConversation(
       break;
     }
     case "item/tool/requestOptionPicker":
-    case "item/tool/requestSetupCodexContextPicker":
       break;
     case "item/plan/requestImplementation": {
       if (typeof request.id !== "string") break;
@@ -7877,11 +7864,7 @@ export class CodexAppServerManager {
     conversationId: string,
     response: Exclude<
       CodexNativeUserResponse,
-      {
-        readonly method:
-          | "item/tool/requestOptionPicker"
-          | "item/tool/requestSetupCodexContextPicker";
-      }
+      { readonly method: "item/tool/requestOptionPicker" }
     >,
   ): Promise<boolean> {
     const role = this.streamState.getRole(conversationId);
@@ -8038,20 +8021,6 @@ export class CodexAppServerManager {
         Object.entries(answers).map(([id, values]) => [id, { answers: values }]),
       ),
     };
-    const request = this.conversationsById
-      .get(conversationId)
-      ?.canonicalRequests?.find((candidate) => candidate.id === requestId);
-    if (
-      request?.method === "item/tool/call" &&
-      hasCodexDynamicToolIdentity(request.params, {
-        namespace: CODEX_APP_TOOL_NAMESPACE,
-        tool: "request_onboarding_input",
-      })
-    ) {
-      return this.commitNativeDynamicToolResponse(conversationId, requestId, response, (draft) =>
-        mutateCodexConversationOnboardingInputResponse(draft, requestId),
-      );
-    }
     const native: CodexNativeUserResponse = {
       method: "item/tool/requestUserInput",
       requestId,
@@ -8104,36 +8073,6 @@ export class CodexAppServerManager {
     );
   }
 
-  async respondSetupCodexStep(
-    conversationId: string,
-    requestId: CodexProtocolRequestId,
-    response: CodexCanonicalSetupCodexStepResponse,
-  ): Promise<boolean> {
-    return (await this.respondSetupCodexStepRequest(conversationId, requestId, response)).accepted;
-  }
-
-  private async respondSetupCodexStepRequest(
-    conversationId: string,
-    requestId: CodexProtocolRequestId,
-    response: CodexCanonicalSetupCodexStepResponse,
-  ): Promise<OwnerServerRequestReplyResult> {
-    const request = this.conversationsById
-      .get(conversationId)
-      ?.canonicalRequests?.find((candidate) => candidate.id === requestId);
-    if (
-      request?.method !== "item/tool/call" ||
-      !hasCodexDynamicToolIdentity(request.params, {
-        namespace: CODEX_APP_TOOL_NAMESPACE,
-        tool: "setup_codex_step",
-      })
-    ) {
-      return { accepted: false };
-    }
-    return this.commitNativeDynamicToolResponse(conversationId, requestId, response, (draft) =>
-      mutateCodexConversationSetupCodexStepResponse(draft, requestId, response),
-    );
-  }
-
   async respondOptionPicker(
     conversationId: string,
     requestId: CodexProtocolRequestId,
@@ -8148,10 +8087,7 @@ export class CodexAppServerManager {
     response: CodexCanonicalOptionPickerResponse,
   ): Promise<OwnerServerRequestReplyResult> {
     const conversation = this.conversationsById.get(conversationId);
-    if (
-      !conversation ||
-      !hasOwnerStoredInteractiveResponseTarget(conversation, requestId, "optionPicker")
-    )
+    if (!conversation || !hasOwnerStoredInteractiveResponseTarget(conversation, requestId))
       return { accepted: false };
     const request = conversation.canonicalRequests?.find((candidate) => candidate.id === requestId);
     if (request?.method === "item/tool/requestOptionPicker") {
@@ -10440,20 +10376,6 @@ export function useCodexAppServerControl(
       ),
     [managerForConversation],
   );
-  const respondSetupCodexStep = useCallback(
-    async (
-      conversationId: string,
-      requestId: CodexProtocolRequestId,
-      response: CodexCanonicalSetupCodexStepResponse,
-    ) =>
-      managerForConversation(conversationId).respondSetupCodexStep(
-        conversationId,
-        requestId,
-        response,
-      ),
-    [managerForConversation],
-  );
-
   const setThreadModel = useCallback(
     (model: string) => {
       const normalizedModel = normalizeThreadSettingsModel(model);
@@ -10540,7 +10462,6 @@ export function useCodexAppServerControl(
     respondMcpElicitation,
 
     respondOptionPicker,
-    respondSetupCodexStep,
 
     setThreadModel,
     setThreadReasoningEffort,

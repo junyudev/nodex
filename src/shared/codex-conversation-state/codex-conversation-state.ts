@@ -115,49 +115,11 @@ export interface CodexCanonicalOptionPickerRequest {
   };
 }
 
-export interface CodexCanonicalSetupContextPickerRequest {
-  readonly id: RequestId;
-  readonly method: "item/tool/requestSetupCodexContextPicker";
-  readonly params: {
-    readonly threadId: string;
-    readonly turnId: string;
-  };
-}
-
 export interface CodexCanonicalOptionPickerResponse {
   readonly action: "submit" | "skip" | "dismiss";
   readonly selectedOptions: readonly string[];
   readonly freeformAnswer: string | null;
 }
-
-export interface CodexCanonicalSetupContextPickerResponse {
-  readonly action: "continue" | "skip" | "dismiss";
-  readonly selectedSources: readonly string[];
-}
-
-export type CodexCanonicalSetupCodexStepResponse =
-  | {
-      readonly step: "role";
-      readonly action: "submit" | "skip" | "dismiss";
-      readonly selectedRoles: readonly string[];
-    }
-  | {
-      readonly step: "task";
-      readonly action: "submit" | "skip" | "dismiss";
-      readonly answers: Readonly<
-        Record<
-          string,
-          {
-            readonly answers: readonly string[];
-          }
-        >
-      >;
-    }
-  | {
-      readonly step: "context";
-      readonly action: "continue" | "skip" | "dismiss";
-      readonly selectedSources: readonly string[];
-    };
 
 export interface CodexCanonicalPlanImplementationRequest {
   readonly id: RequestId;
@@ -171,7 +133,6 @@ export interface CodexCanonicalPlanImplementationRequest {
 
 export type CodexCanonicalServerRequestExtension =
   | CodexCanonicalOptionPickerRequest
-  | CodexCanonicalSetupContextPickerRequest
   | CodexCanonicalPlanImplementationRequest;
 
 /**

@@ -236,19 +236,10 @@ describe("LocalConversationComposerShell", () => {
     const cases = [
       ["mcp-elicitation-lane", "mcpServerElicitation"],
       ["option-picker-lane", "optionPicker"],
-      ["onboarding-input-lane", "userInput:onboarding"],
-      ["setup-role-lane", "setupCodexStep:role"],
-      ["setup-task-lane", "setupCodexStep:task"],
-      ["setup-context-lane", "setupCodexStep:context"],
     ] as const;
     const projected = cases.map(([preset, expected]) => {
       const request = buildComposerShellFixture(preset).composerShell.activeRequest?.request;
-      const actual =
-        request?.type === "userInput" && request.isOnboardingDynamicInput
-          ? `${request.type}:onboarding`
-          : request?.type === "setupCodexStep"
-            ? `${request.type}:${request.step}`
-            : request?.type;
+      const actual = request?.type;
       return `${expected}=${actual ?? "missing"}`;
     });
 

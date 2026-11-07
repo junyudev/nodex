@@ -81,9 +81,6 @@ export function createRemoteCodexStageActions(input: {
     onRespondOptionPicker: async (requestId, response) => {
       await control.respondOptionPicker(threadId, requestId, response);
     },
-    onRespondSetupCodexStep: async (requestId, response) => {
-      await control.respondSetupCodexStep(threadId, requestId, response);
-    },
     onResolvePlanImplementationRequest: async (requested, turnId) => {
       await control.removePlanImplementationRequest(requireThread(requested), turnId);
     },

@@ -1106,21 +1106,6 @@ describe("LocalConversationThreadBody", () => {
         },
       },
     ],
-    [
-      "setup step",
-      {
-        id: "setup-request",
-        method: "item/tool/call",
-        params: {
-          threadId: "thread_1",
-          turnId: "turn_1",
-          callId: "setup-call",
-          namespace: "codex_app",
-          tool: "setup_codex_step",
-          arguments: { step: "task" },
-        },
-      },
-    ],
   ])(
     "blocks Thinking when a canonical %s reaches the reconstructed body",
     async (_label, request) => {

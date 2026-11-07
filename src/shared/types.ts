@@ -128,9 +128,6 @@ export type {
   CodexCanonicalResumedProfileTurnParams,
   CodexCanonicalServerRequest,
   CodexCanonicalServerRequestExtension,
-  CodexCanonicalSetupContextPickerRequest,
-  CodexCanonicalSetupContextPickerResponse,
-  CodexCanonicalSetupCodexStepResponse,
   CodexCanonicalConversationMetadata,
   CodexCanonicalTurnContext,
   CodexCanonicalTurnParams,
@@ -3498,7 +3495,6 @@ export interface CodexUserInputRequest {
   itemId: string;
   questions: CodexUserInputQuestion[];
   isBlocking: boolean;
-  isOnboardingDynamicInput?: boolean;
   autoResolutionMs?: number | null;
   createdAt: number;
 }
@@ -3524,22 +3520,9 @@ export interface CodexOptionPickerRequest {
   createdAt: number;
 }
 
-/** Renderer view model for the role/task/context setup request switch. */
-export interface CodexSetupCodexStepRequest {
-  type: "setupCodexStep";
-  requestId: CodexAppServerRequestId;
-  projectId: string | null;
-  threadId: string;
-  turnId: string;
-  itemId: string;
-  step: "role" | "task" | "context";
-  createdAt: number;
-}
-
 export type CodexCanonicalInteractivePendingRequest =
   | CodexUserInputRequest
-  | CodexOptionPickerRequest
-  | CodexSetupCodexStepRequest;
+  | CodexOptionPickerRequest;
 
 export interface CodexPlanImplementationServerRequest {
   type: "implementPlan";
@@ -4469,8 +4452,7 @@ export type CodexConversationServerRequest =
 
 export type CodexConversationLiveRequest =
   | CodexConversationServerRequest
-  | CodexOptionPickerRequest
-  | CodexSetupCodexStepRequest;
+  | CodexOptionPickerRequest;
 
 export interface CodexConversationSnapshot extends CodexThreadSummary {
   /** Current context occupancy is distinct from token billing totals. */

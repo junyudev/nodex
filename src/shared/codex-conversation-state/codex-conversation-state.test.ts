@@ -38,7 +38,6 @@ import {
   type CodexCanonicalProtocolItem,
   type CodexCanonicalProtocolRequest,
   type CodexCanonicalRequestSyntheticItem,
-  type CodexCanonicalSetupContextPickerRequest,
   type CodexCanonicalTurnParams,
   type CodexCanonicalWorktreeInitItem,
   type CodexProtocolServerRequestOf,
@@ -83,7 +82,6 @@ function collectAllGeneratedCorpusRequests(): ServerRequest[] {
       if (event.type === "request") {
         switch (event.request.method) {
           case "item/tool/requestOptionPicker":
-          case "item/tool/requestSetupCodexContextPicker":
           case "item/plan/requestImplementation":
             break;
           default:
@@ -120,15 +118,6 @@ const optionPickerRequest = {
     skipLabel: null,
   },
 } satisfies CodexCanonicalOptionPickerRequest;
-
-const setupContextPickerRequest = {
-  id: "setup-context-302",
-  method: "item/tool/requestSetupCodexContextPicker",
-  params: {
-    threadId: AGENT_ACTIVITY_V2_CORPUS_THREAD_ID,
-    turnId: AGENT_ACTIVITY_V2_CORPUS_TURN_ID,
-  },
-} satisfies CodexCanonicalSetupContextPickerRequest;
 
 const planImplementationRequest = {
   id: "implement-plan:turn-activity-v2-corpus",
@@ -362,7 +351,6 @@ describe("protocol-backed canonical conversation state", () => {
       ...agentActivityV2PendingResolvedRequestCases.map((requestCase) => requestCase.request),
       agentActivityV2DynamicOptionPickerRequest,
       optionPickerRequest,
-      setupContextPickerRequest,
       planImplementationRequest,
     ];
     const thread = buildAgentActivityV2CorpusThread(items);

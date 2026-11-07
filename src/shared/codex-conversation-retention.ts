@@ -51,9 +51,7 @@ export function projectCodexConversationAfterUnsubscribe(
   else if (request && request.type !== "implementPlan") {
     statusType = "active";
     statusActiveFlags = [
-      request.type === "userInput" ||
-      request.type === "optionPicker" ||
-      request.type === "setupCodexStep"
+      request.type === "userInput" || request.type === "optionPicker"
         ? "waitingOnUserInput"
         : "waitingOnApproval",
     ];

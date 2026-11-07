@@ -268,8 +268,6 @@ import type {
   CodexRateLimitResetInput,
   CodexRateLimitResetResult,
   CodexCanonicalOptionPickerResponse,
-  CodexCanonicalSetupContextPickerResponse,
-  CodexCanonicalSetupCodexStepResponse,
   CodexBackgroundProcessRow,
   CodexBackgroundProcessRunActionInput,
   CodexSubagentOverviewReadInput,
@@ -3031,22 +3029,6 @@ export interface IpcApi
       conversationId: string,
       requestId: CodexProtocolRequestId,
       response: CodexCanonicalOptionPickerResponse,
-    ];
-    result: boolean;
-  };
-  "codex:setup-context-picker:respond": {
-    args: [
-      conversationId: string,
-      requestId: CodexProtocolRequestId,
-      response: CodexCanonicalSetupContextPickerResponse,
-    ];
-    result: boolean;
-  };
-  "codex:setup-codex-step:respond": {
-    args: [
-      conversationId: string,
-      requestId: CodexProtocolRequestId,
-      response: CodexCanonicalSetupCodexStepResponse,
     ];
     result: boolean;
   };

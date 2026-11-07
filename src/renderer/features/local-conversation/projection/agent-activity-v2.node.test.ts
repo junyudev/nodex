@@ -156,7 +156,7 @@ function buildDynamicBlock(input: { namespace?: string; tool: string; completed?
     callId: `dynamic-${input.tool}`,
     namespace: input.namespace ?? "codex_app",
     tool: input.tool,
-    arguments: input.tool === "setup_codex_step" ? { step: "complete" } : {},
+    arguments: {},
     status: input.completed === false ? ("inProgress" as const) : ("completed" as const),
     contentItems: null,
     success: true,
@@ -394,7 +394,7 @@ describe("agent activity v2 type boundary", () => {
     });
     const completedSetup = buildDynamicBlock({
       namespace: "unsupported_namespace",
-      tool: "setup_codex_step",
+      tool: "request_option_picker",
     });
     const automation = buildDynamicBlock({ tool: "automation_update" });
 

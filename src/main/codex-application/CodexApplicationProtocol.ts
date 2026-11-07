@@ -521,7 +521,6 @@ export const make: Effect.Effect<
           break;
         }
         case "item/tool/requestOptionPicker":
-        case "item/tool/requestSetupCodexContextPicker":
           pending.register({
             hostId,
             generation,
@@ -556,14 +555,6 @@ export const make: Effect.Effect<
       if (request.params.namespace === NODEX_APP_TOOL_NAMESPACE) {
         return buildCodexAppDynamicToolFailure(
           "Nodex content tools are available through native MCP. Use the nodex_app MCP server instead of this retired dynamic tool.",
-        );
-      }
-      if (
-        request.params.namespace === CODEX_APP_TOOL_NAMESPACE &&
-        request.params.tool === "setup_codex_step"
-      ) {
-        return buildCodexAppDynamicToolFailure(
-          "Interactive setup is unavailable through application tools. Continue in the Nodex interface.",
         );
       }
       if (request.params.namespace === CODEX_APP_TOOL_NAMESPACE) {

@@ -274,7 +274,6 @@ export type CanonicalRetentionRequestKind =
   | "permissionRequest"
   | "userInput"
   | "optionPicker"
-  | "setupCodexStep"
   | "implementPlan"
   | null;
 
@@ -394,7 +393,6 @@ export function selectCanonicalRetentionRequestKind(
     );
     if (interactive.includes("userInput")) return "userInput";
     if (interactive.includes("optionPicker")) return "optionPicker";
-    if (interactive.includes("setupCodexStep")) return "setupCodexStep";
     if (turn.items.some((item) => item.type === "userInputResponse" && !item.completed))
       return "userInput";
     if (

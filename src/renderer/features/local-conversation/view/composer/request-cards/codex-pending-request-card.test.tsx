@@ -2,11 +2,7 @@ import { describe, expect, vi, test } from "vite-plus/test";
 import { createElement } from "react";
 import { act, fireEvent } from "@testing-library/react";
 import { NodexTooltipProvider as TooltipProvider } from "@/components/ui/tooltip";
-import type {
-  CodexOptionPickerRequest,
-  CodexPlanImplementationRequest,
-  CodexSetupCodexStepRequest,
-} from "@/lib/types";
+import type { CodexOptionPickerRequest, CodexPlanImplementationRequest } from "@/lib/types";
 import { renderWithMaitai as render } from "@/test/thread-maitai";
 import { settleAsyncRender } from "@/test/dom";
 import { installWindowApi } from "@/test/browser-globals";
@@ -100,10 +96,6 @@ function createActions(log: string[]): ThreadStageActions {
       log.push(
         `option:${requestId}:${response.action}:${response.selectedOptions.join(",")}:${context?.conversationId ?? "none"}`,
       );
-    },
-    onRespondSetupCodexStep: async (requestId, response, context) => {
-      const value = response.step === "role" ? response.selectedRoles.join(",") : response.action;
-      log.push(`setup:${requestId}:${response.step}:${value}:${context?.conversationId ?? "none"}`);
     },
     onResolvePlanImplementationRequest: async (threadId, turnId) => {
       log.push(`resolve:${threadId}:${turnId}`);
@@ -291,7 +283,7 @@ describe("CodexPendingRequestCard", () => {
     ]);
   });
 
-  test("routes canonical option and setup cards through their owning conversation", async () => {
+  test("routes a canonical option card through its owning conversation", async () => {
     const { CodexPendingRequestCard } = await import("./codex-pending-request-card");
     const log: string[] = [];
     const actions = createActions(log);
@@ -324,36 +316,7 @@ describe("CodexPendingRequestCard", () => {
     });
     optionView.unmount();
 
-    const setupEntry: ThreadComposerShellPendingRequestModel = {
-      conversationId: "thread-setup",
-      surface: "activeThread",
-      request: {
-        type: "setupCodexStep",
-        requestId: "setup-1",
-        projectId: "project_1",
-        threadId: "thread-setup",
-        turnId: "turn-setup",
-        itemId: "setup-item",
-        step: "role",
-        createdAt: 1,
-      } satisfies CodexSetupCodexStepRequest,
-    };
-    const setupView = render(<CodexPendingRequestCard entry={setupEntry} actions={actions} />);
-    await act(async () => {
-      fireEvent.click(setupView.getByRole("checkbox", { name: "Engineering" }));
-      await settleAsyncRender();
-    });
-    await act(async () => {
-      fireEvent.click(setupView.getByText("Continue"));
-      await settleAsyncRender();
-    });
-
-    expect(JSON.stringify(log)).toBe(
-      JSON.stringify([
-        "option:73:submit:Composer:thread-option",
-        "setup:setup-1:role:engineering:thread-setup",
-      ]),
-    );
+    expect(JSON.stringify(log)).toBe(JSON.stringify(["option:73:submit:Composer:thread-option"]));
   });
 
   test("freeform implement-plan follow-ups do not force default mode", async () => {

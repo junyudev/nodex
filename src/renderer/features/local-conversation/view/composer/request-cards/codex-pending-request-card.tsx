@@ -5,7 +5,6 @@ import type {
 import { CodexImplementPlanRequestCard } from "./codex-implement-plan-request-card";
 import { CodexMcpElicitationRequestCard } from "./codex-mcp-elicitation-request-card";
 import { CodexOptionPickerRequestCard } from "./codex-option-picker-request-card";
-import { CodexSetupCodexStepRequestCard } from "./codex-setup-codex-step-request-card";
 import { CodexUserInputRequestCard } from "./codex-user-input-request-card";
 import type { ComposerIntelligenceController } from "../use-composer-intelligence-controller";
 import { buildComposerIntelligenceTurnOverrides } from "../composer-intelligence-selection";
@@ -56,13 +55,6 @@ export function CodexPendingRequestCard({
         <CodexOptionPickerRequestCard
           request={entry.request}
           onRespond={conversationActions.respondOptionPicker}
-        />
-      );
-    case "setupCodexStep":
-      return (
-        <CodexSetupCodexStepRequestCard
-          request={entry.request}
-          onRespond={conversationActions.respondSetupCodexStep}
         />
       );
     case "implementPlan":

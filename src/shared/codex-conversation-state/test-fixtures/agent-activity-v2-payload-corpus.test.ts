@@ -91,7 +91,7 @@ describe("agent activity v2 representative payload corpus", () => {
     expect(agentActivityV2ItemFamilyCorpus.length).toBe(20);
     expect(agentActivityV2PendingResolvedRequestCases.length).toBe(5);
     expect(agentActivityV2OneShotRequestCases.length).toBe(7);
-    expect(agentActivityV2BundleOnlyRequestMethods.length).toBe(3);
+    expect(agentActivityV2BundleOnlyRequestMethods.length).toBe(2);
     expect(AGENT_ACTIVITY_V2_CORPUS_TARGET.version).toBe("26.707.30751");
     expect(AGENT_ACTIVITY_V2_CORPUS_TARGET.build).toBe(5018);
     expect(AGENT_ACTIVITY_V2_CORPUS_TARGET.asarSha256).toBe(

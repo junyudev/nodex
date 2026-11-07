@@ -10,7 +10,6 @@ import { z } from "zod";
 import type {
   CodexCanonicalOptionPickerRequest,
   CodexCanonicalPlanImplementationRequest,
-  CodexCanonicalSetupContextPickerRequest,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
 import {
   createGeneratedCodexSchema,
@@ -37,7 +36,6 @@ export type CodexPrivateServerRequest =
   | CodexMcpUserVerificationServerRequest
   | CodexCanonicalOptionPickerRequest
   | CodexCanonicalPlanImplementationRequest
-  | CodexCanonicalSetupContextPickerRequest
   | CodexInboxItemsCreateServerRequest;
 
 export type CodexServerRequest = ServerRequest | CodexPrivateServerRequest;
@@ -121,14 +119,6 @@ const PrivateServerRequestSchema = z.discriminatedUnion("method", [
   }),
   z.object({
     id: RequestIdSchema,
-    method: z.literal("item/tool/requestSetupCodexContextPicker"),
-    params: z.object({
-      threadId: z.string(),
-      turnId: z.string(),
-    }),
-  }),
-  z.object({
-    id: RequestIdSchema,
     method: z.literal("item/plan/requestImplementation"),
     params: z.object({
       threadId: z.string(),
@@ -150,7 +140,6 @@ const PrivateServerRequestSchema = z.discriminatedUnion("method", [
 const privateServerRequestMethods = new Set<CodexPrivateServerRequest["method"]>([
   "mcpServer/elicitation/request",
   "item/tool/requestOptionPicker",
-  "item/tool/requestSetupCodexContextPicker",
   "item/plan/requestImplementation",
   "inbox-items-create",
 ]);

@@ -366,8 +366,6 @@ type ControlEndpointPolicy =
   | "workbench-agent:reply"
   | "codex:scheduled-automations:heartbeat-enabled-changed"
   | "codex:scheduled-automations:heartbeat-thread-state-changed"
-  | "codex:setup-codex-step:respond"
-  | "codex:setup-context-picker:respond"
   | "codex:sidebar:sync"
   | "codex:subagents:selected:hydrate"
   | "codex:app-server:request"

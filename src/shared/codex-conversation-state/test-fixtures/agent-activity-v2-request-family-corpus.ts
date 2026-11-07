@@ -639,11 +639,6 @@ export const agentActivityV2BundleOnlyRequestMethods = [
     evidence: "h59fr3q5.pretty.js:91850-91868,96097-96103",
   },
   {
-    method: "item/tool/requestSetupCodexContextPicker",
-    requestProjection: "ignore",
-    evidence: "h59fr3q5.pretty.js:91871-91889,96097-96103",
-  },
-  {
     method: "item/plan/requestImplementation",
     requestProjection: "ignore",
     evidence: "h59fr3q5.pretty.js:96126-96129",
@@ -658,7 +653,6 @@ function isGeneratedServerRequest(
   request: CodexCanonicalServerRequest,
 ): request is ServerRequest {
   return request.method !== "item/tool/requestOptionPicker"
-    && request.method !== "item/tool/requestSetupCodexContextPicker"
     && request.method !== "item/plan/requestImplementation";
 }
 

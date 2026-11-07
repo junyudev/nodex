@@ -1025,9 +1025,7 @@ vi.mock("./local-conversation-deps", () => ({
       if (
         channel === "codex:user-input:respond" ||
         channel === "codex:mcp-elicitation:respond" ||
-        channel === "codex:option-picker:respond" ||
-        channel === "codex:setup-context-picker:respond" ||
-        channel === "codex:setup-codex-step:respond"
+        channel === "codex:option-picker:respond"
       ) {
         if (ownerRequestResponseHandler) {
           return await ownerRequestResponseHandler(channel, args);
@@ -9017,7 +9015,7 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("owner onboarding, option-picker, and setup-step replies remove only their canonical raw requests", async () => {
+  test("owner option-picker replies remove only their canonical raw request", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
@@ -9063,68 +9061,6 @@ describe("local-conversation-store", () => {
       dispatchCodexAppServerMessage("native-request", {
         type: "nativeRequest",
         generation: resumeThreadGeneration,
-        occurrenceId: "native-69:1",
-        occurrenceToken: 1,
-        hostId: "local",
-        request: {
-          id: "onboarding-owner-1",
-          method: "item/tool/call",
-          params: {
-            threadId,
-            turnId,
-            callId: "call-onboarding-owner-1",
-            namespace: "codex_app",
-            tool: "request_onboarding_input",
-            arguments: {
-              questions: [
-                {
-                  id: "first_task",
-                  header: "Start",
-                  question: "What should Codex do first?",
-                  options: [{ label: "Audit" }, { label: "Build" }],
-                },
-              ],
-            },
-          },
-        },
-      });
-      await flushAsyncWork();
-      expect(manager.readConversation(threadId)?.canonicalRequests?.[0]?.id).toBe(
-        "onboarding-owner-1",
-      );
-      expect(String(manager.readConversation(threadId)?.turns[0]?.items.length ?? -1)).toBe("0");
-
-      invokeRecords = [];
-      expect(
-        await manager.respondUserInput("onboarding-owner-1", { first_task: ["Audit"] }, threadId),
-      ).toBe(true);
-      let conversation = manager.readConversation(threadId);
-      const onboardingCall = invokeRecords.find(
-        (record) => record.channel === "codex:app-server:respond",
-      );
-      expect(onboardingCall?.args[0]).toMatchObject({
-        request: { params: { threadId } },
-        effect: {
-          method: "item/tool/call",
-          requestId: "onboarding-owner-1",
-          response: { success: true },
-        },
-      });
-      expect(
-        (
-          onboardingCall?.args[0] as
-            | { effect?: { response?: { contentItems?: Array<{ text?: string }> } } }
-            | undefined
-        )?.effect?.response?.contentItems?.[0]?.text,
-      ).toBe(JSON.stringify({ answers: { first_task: { answers: ["Audit"] } } }));
-      expect(String(conversation?.canonicalRequests?.length ?? -1)).toBe("0");
-      expect(String(conversation?.requests.length ?? -1)).toBe("0");
-      expect(String(conversation?.turns[0]?.items.length ?? -1)).toBe("0");
-
-      invokeRecords = [];
-      dispatchCodexAppServerMessage("native-request", {
-        type: "nativeRequest",
-        generation: resumeThreadGeneration,
         occurrenceId: "native-70:2",
         occurrenceToken: 2,
         hostId: "local",
@@ -9159,62 +9095,6 @@ describe("local-conversation-store", () => {
       });
       expect(String(manager.readConversation(threadId)?.canonicalRequests?.length ?? -1)).toBe("0");
 
-      invokeRecords = [];
-      dispatchCodexAppServerMessage("native-request", {
-        type: "nativeRequest",
-        generation: resumeThreadGeneration,
-        occurrenceId: "native-71:3",
-        occurrenceToken: 3,
-        hostId: "local",
-        request: {
-          id: "setup-role-owner-3",
-          method: "item/tool/call",
-          params: {
-            threadId,
-            turnId,
-            callId: "call-setup-role-owner-3",
-            namespace: "codex_app",
-            tool: "setup_codex_step",
-            arguments: { step: "role" },
-          },
-        },
-      });
-      await flushAsyncWork();
-      expect(manager.readConversation(threadId)?.canonicalRequests?.[0]?.id).toBe(
-        "setup-role-owner-3",
-      );
-
-      invokeRecords = [];
-      const roleResponse = {
-        step: "role" as const,
-        action: "submit" as const,
-        selectedRoles: ["engineer"],
-      };
-      expect(
-        await manager.respondSetupCodexStep(threadId, "setup-role-owner-3", roleResponse),
-      ).toBe(true);
-      conversation = manager.readConversation(threadId);
-      const setupCall = invokeRecords.find(
-        (record) => record.channel === "codex:app-server:respond",
-      );
-      expect(setupCall?.args[0]).toMatchObject({
-        request: { params: { threadId } },
-        effect: {
-          method: "item/tool/call",
-          requestId: "setup-role-owner-3",
-          response: { success: true },
-        },
-      });
-      expect(
-        (
-          setupCall?.args[0] as
-            | { effect?: { response?: { contentItems?: Array<{ text?: string }> } } }
-            | undefined
-        )?.effect?.response?.contentItems?.[0]?.text,
-      ).toBe(JSON.stringify(roleResponse));
-      expect(String(conversation?.canonicalRequests?.length ?? -1)).toBe("0");
-      expect(String(conversation?.requests.length ?? -1)).toBe("0");
-      expect(String(conversation?.turns[0]?.items.length ?? -1)).toBe("0");
       expect(
         invokeRecords.some((record) => record.channel === "peer:threadStreamStateChanged"),
       ).toBe(true);
@@ -9225,7 +9105,7 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("follower onboarding routes to its owner while picker and setup replies use native occurrences", async () => {
+  test("follower picker replies use native occurrences", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
@@ -9255,26 +9135,6 @@ describe("local-conversation-store", () => {
         ],
         canonicalRequests: [
           {
-            id: "onboarding-follower-1",
-            method: "item/tool/call",
-            params: {
-              threadId,
-              turnId,
-              callId: "call-onboarding-follower-1",
-              namespace: "codex_app",
-              tool: "request_onboarding_input",
-              arguments: {
-                questions: [
-                  {
-                    id: "first_task",
-                    question: "What should Codex do first?",
-                    options: [{ label: "Audit" }, { label: "Build" }],
-                  },
-                ],
-              },
-            },
-          },
-          {
             id: "option-picker-follower-2",
             method: "item/tool/requestOptionPicker",
             params: {
@@ -9285,15 +9145,13 @@ describe("local-conversation-store", () => {
             },
           },
           {
-            id: "setup-task-follower-3",
-            method: "item/tool/call",
+            id: "option-picker-follower-3",
+            method: "item/tool/requestOptionPicker",
             params: {
               threadId,
               turnId,
-              callId: "call-setup-task-follower-3",
-              namespace: "codex_app",
-              tool: "setup_codex_step",
-              arguments: { step: "task" },
+              question: "Choose another slice",
+              options: [{ label: "Store" }],
             },
           },
         ],
@@ -9326,13 +9184,7 @@ describe("local-conversation-store", () => {
         sourceClientId: "owner-a",
       });
 
-      expect(
-        await manager.respondUserInput(
-          "onboarding-follower-1",
-          { first_task: ["Audit"] },
-          threadId,
-        ),
-      ).toBe(true);
+      await flushAsyncWork();
       const optionResponse = {
         action: "submit" as const,
         selectedOptions: ["Surface"],
@@ -9341,69 +9193,19 @@ describe("local-conversation-store", () => {
       expect(
         await manager.respondOptionPicker(threadId, "option-picker-follower-2", optionResponse),
       ).toBe(true);
-      const taskResponse = {
-        step: "task" as const,
-        action: "skip" as const,
-        answers: { first_task: { answers: ["Ship parity"] } },
-      };
       expect(
-        await manager.respondSetupCodexStep(threadId, "setup-task-follower-3", taskResponse),
-      ).toBe(true);
-
-      const followerActions = invokeRecords
-        .filter((record) => record.channel === "peer:requestThreadFollower")
-        .map(
-          (record) =>
-            record.args[0] as {
-              conversationId?: string;
-              request?: {
-                method?: string;
-                params?: {
-                  type?: string;
-                  conversationId?: string;
-                  requestId?: string;
-                  answers?: Record<string, string[]>;
-                  response?: unknown;
-                };
-              };
-            },
-        );
-      expect(followerActions).toHaveLength(1);
-      expect(followerActions).toMatchObject([
-        {
-          hostId: "local",
-          targetClientId: "owner-a",
-          request: {
-            method: "thread-follower-submit-user-input",
-            params: {
-              conversationId: threadId,
-              requestId: "onboarding-follower-1",
-              response: { answers: { first_task: { answers: ["Audit"] } } },
-            },
-          },
-        },
-      ]);
+        invokeRecords.filter((record) => record.channel === "peer:requestThreadFollower"),
+      ).toHaveLength(0);
       expect(
         invokeRecords
           .filter((record) => record.channel === "codex:app-server:respond")
           .map((record) => record.args[0]),
       ).toMatchObject([
         {
-          occurrenceId: "special-follower:1",
-          occurrenceToken: 2,
+          occurrenceId: "special-follower:0",
+          occurrenceToken: 1,
           method: "item/tool/requestOptionPicker",
           response: optionResponse,
-        },
-        {
-          occurrenceId: "special-follower:2",
-          occurrenceToken: 3,
-          effect: {
-            method: "item/tool/call",
-            response: {
-              success: true,
-              contentItems: [{ type: "inputText", text: JSON.stringify(taskResponse) }],
-            },
-          },
         },
       ]);
       expect(
@@ -9413,7 +9215,7 @@ describe("local-conversation-store", () => {
         JSON.stringify(
           manager.readConversation(threadId)?.canonicalRequests?.map((request) => request.id) ?? [],
         ),
-      ).toBe(JSON.stringify(["onboarding-follower-1"]));
+      ).toBe(JSON.stringify(["option-picker-follower-3"]));
       expect(String(manager.readConversation(threadId)?.turns[0]?.items.length ?? -1)).toBe("0");
     } finally {
       followerActionResult = null;
@@ -19634,21 +19436,6 @@ describe("local-conversation-store", () => {
             allowMultiple: false,
             submitLabel: "Submit",
             skipLabel: null,
-          },
-        },
-      });
-      dispatchCodexAppServerMessage("native-request", {
-        type: "nativeRequest",
-        generation: resumeThreadGeneration,
-        occurrenceId: "native-157:6",
-        occurrenceToken: 6,
-        hostId: "local",
-        request: {
-          id: "setup-1",
-          method: "item/tool/requestSetupCodexContextPicker",
-          params: {
-            threadId: "thread-1",
-            turnId: "turn-1",
           },
         },
       });
