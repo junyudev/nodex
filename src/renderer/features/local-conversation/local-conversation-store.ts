@@ -7165,45 +7165,55 @@ export class CodexAppServerManager {
           return response as import("@nodex/codex-app-server-protocol/v2/ThreadRevertResponse").ThreadRevertResponse;
         },
         applyRevert: (_id, response, removed) => {
-          this.historyClient.updateConversation(id, (draft) =>
-            mutateCodexCanonicalRevert(
-              draft,
-              response,
-              new Set(removed.map((turn) => turn.turnId)),
+          // Commit the removed history before the replacement can dispatch.
+          flushSync(() =>
+            this.historyClient.updateConversation(id, (draft) =>
+              mutateCodexCanonicalRevert(
+                draft,
+                response,
+                new Set(removed.map((turn) => turn.turnId)),
+              ),
             ),
           );
           this.acceptPendingArtifactHistory(id);
         },
-        start: async (request, original, preparedPrompt) => {
+        prepareStart: async (request, original, preparedPrompt) => {
           const clientUserMessageId = createOwnerClientUserMessageId();
-          const turnStart = await runConversationOperation("codex:turn:native:prepare", {
-            threadId: id,
-            prompt: options.message,
-            presentationTicket,
-            clientUserMessageId,
-            preparedPrompt,
-            originalRequest: { ...request, clientUserMessageId },
-            sourceContext: {
-              attachments: original.params.attachments,
-              commentAttachments: original.params.commentAttachments,
-
-              writingBlockContextPrepared: options.writingBlockContextPrepared,
-              mcpAppModelContextAttachments: original.mcpAppModelContextAttachments,
-            },
-          });
+          const release = () =>
+            runConversationOperation("codex:turn:native:release", clientUserMessageId);
           try {
-            const materialized = await this.inspectOwnerTurnStart(turnStart);
-            return await this.executeOwnerOptimisticTurnTransaction({
+            const turnStart = await runConversationOperation("codex:turn:native:prepare", {
               threadId: id,
+              prompt: options.message,
+              presentationTicket,
               clientUserMessageId,
-              canonicalParams: materialized.params,
-              execution: materialized,
-              turnContext: turnStart.context,
-              request: (submission) =>
-                this.executePreparedNativeTurn(turnStart, materialized.request, submission),
+              preparedPrompt,
+              originalRequest: { ...request, clientUserMessageId },
+              sourceContext: {
+                attachments: original.params.attachments,
+                commentAttachments: original.params.commentAttachments,
+
+                writingBlockContextPrepared: options.writingBlockContextPrepared,
+                mcpAppModelContextAttachments: original.mcpAppModelContextAttachments,
+              },
             });
-          } finally {
-            await runConversationOperation("codex:turn:native:release", clientUserMessageId);
+            const materialized = await this.inspectOwnerTurnStart(turnStart);
+            return {
+              start: () =>
+                this.executeOwnerOptimisticTurnTransaction({
+                  threadId: id,
+                  clientUserMessageId,
+                  canonicalParams: materialized.params,
+                  execution: materialized,
+                  turnContext: turnStart.context,
+                  request: (submission) =>
+                    this.executePreparedNativeTurn(turnStart, materialized.request, submission),
+                }),
+              release,
+            };
+          } catch (error) {
+            await release();
+            throw error;
           }
         },
       },

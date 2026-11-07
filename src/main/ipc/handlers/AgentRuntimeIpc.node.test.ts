@@ -66,6 +66,11 @@ const setup = Effect.gen(function* () {
       }),
   };
   const application = {
+    rewriteMessage: (input: unknown) =>
+      Effect.sync(() => {
+        calls.push(input);
+        return { sequence: 17 };
+      }),
     stopBackground: (input: { taskIds: readonly string[] }) =>
       Effect.sync(() => {
         calls.push(input);
@@ -430,4 +435,31 @@ it.effect("authorizes and validates a restart before delegating to the Superviso
     yield* restart(f.event(1), input);
     assert.deepEqual(f.calls, ["restart:one"]);
   }).pipe(Effect.scoped),
+);
+
+it.effect("rewrite admission validates all image inputs before reaching the application", () =>
+  Effect.gen(function* () {
+    const f = yield* setup;
+    const input = {
+      sessionId: "session",
+      threadId: "thread",
+      requestId: "edit",
+      runId: "old-run",
+      message: { messageId: "replacement", text: "", images: [{ source: "/new.png" }] },
+    };
+    const handler = f.handlers.get("agent-runtime:session:rewrite-message")!;
+    const event = f.event(1);
+    const result = yield* handler(event, input);
+    assert.deepEqual(result, { sequence: 17 });
+    assert.deepEqual(f.calls, [input]);
+    const rejected = yield* handler(event, {
+      ...input,
+      message: {
+        ...input.message,
+        images: Array.from({ length: 21 }, () => ({ source: "/new.png" })),
+      },
+    }).pipe(Effect.result);
+    assert.strictEqual(rejected._tag, "Failure");
+    assert.deepEqual(f.calls, [input]);
+  }),
 );

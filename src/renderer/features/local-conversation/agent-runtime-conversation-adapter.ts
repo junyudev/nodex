@@ -687,8 +687,9 @@ export function createAgentRuntimeStageActions(input: {
         await input.prepare(promptInput.text, promptInput),
         original.message,
       );
-      await transport.rollback({ ...target, requestId: createUuidV7(), runId: request.turnId });
-      const accepted = await transport.message({
+      const accepted = await transport.rewriteMessage({
+        requestId: createUuidV7(),
+        runId: request.turnId,
         ...target,
         presentationTicket,
         message: {

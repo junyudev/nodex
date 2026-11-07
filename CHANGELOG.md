@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Editing a message no longer loses your conversation when one of its images can't be read. The edit now stops before anything is rewound, keeps your draft open, and says the image can't be read instead of showing a system error.
 - MCP tool images and rich results now appear in Claude Code chats, both live and in saved conversations. They used to show as raw JSON.
 - “Allow for this chat” in Claude Code chats now lasts for the whole chat. Claude used to ask again after you pressed Stop, changed models, or restarted Nodex.
 - Windows updates install reliably while Nodex is running. An update could stop with an error when a Nodex process was exiting at the same moment, or on a busy computer. A failed update now records why.

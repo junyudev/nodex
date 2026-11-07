@@ -64,6 +64,29 @@ it("fits only the images over their share of what one message carries", async ()
   expect(fit).not.toHaveBeenCalled();
 });
 
+it("says an image can't be read in words a person can act on, keeping the system's error", async () => {
+  const missing = path.join(tmpdir(), "nodex-native-images-missing", "gone.png");
+  const fromFile = prepareNativePromptImages(
+    [{ source: missing }],
+    () => {
+      throw new Error("not called");
+    },
+    unused,
+  );
+  await expect(fromFile).rejects.toThrow("An image can’t be read");
+  await expect(fromFile).rejects.not.toThrow(missing);
+  await expect(fromFile).rejects.toMatchObject({ cause: { code: "ENOENT" } });
+  await expect(
+    prepareNativePromptImages(
+      [{ source: "nodex://assets/gone.png" }],
+      () => {
+        throw new Error("ENOENT: cache/media/gone.png");
+      },
+      unused,
+    ),
+  ).rejects.toThrow("An image can’t be read");
+});
+
 it("rejects what cannot be sent as an image at all", async () => {
   const read = () => ({ mimeType: "image/png", bytes: new Uint8Array(6 * MB) });
   await expect(

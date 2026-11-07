@@ -187,8 +187,8 @@ export const live = Layer.effectDiscard(
     yield* ipc.handlePlainCommand("agent-runtime:session:clear-context", (event, value) =>
       handle(event, Inputs.AgentRuntimeClearContextSchema, value, application.clearContext),
     );
-    yield* ipc.handlePlainCommand("agent-runtime:session:rollback", (event, value) =>
-      handle(event, Inputs.AgentRuntimeRollbackSchema, value, application.rollback),
+    yield* ipc.handlePlainCommand("agent-runtime:session:rewrite-message", (event, value) =>
+      handle(event, Inputs.AgentRuntimeRewriteMessageSchema, value, application.rewriteMessage),
     );
     yield* ipc.handlePlainCommand("agent-runtime:session:retry-preparation", (event, value) =>
       handle(event, Inputs.AgentRuntimePreparationRetrySchema, value, application.retryPreparation),

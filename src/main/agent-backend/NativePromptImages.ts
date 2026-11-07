@@ -32,6 +32,10 @@ const types = new Map<string, AgentPromptImage["mediaType"]>([
 export const isNativePromptImageType = (mimeType: string): boolean =>
   [...types.values()].some((type) => type === mimeType);
 
+/** What a person can act on; the path and the system's error stay in the cause. */
+const unreadableImage = (cause: unknown): Error =>
+  new Error("An image can’t be read. Remove it or add it again.", { cause });
+
 const toPromptImage = ({ mediaType, bytes }: PromptImageBytes): AgentPromptImage => ({
   mediaType,
   data: Buffer.from(bytes).toString("base64"),
@@ -52,7 +56,12 @@ export async function prepareNativePromptImages(
     let bytes: Uint8Array;
     let mediaType: AgentPromptImage["mediaType"] | undefined;
     if (parseAssetSource(source)) {
-      const asset = readManaged(source);
+      let asset: ReturnType<typeof readManaged>;
+      try {
+        asset = readManaged(source);
+      } catch (cause) {
+        throw unreadableImage(cause);
+      }
       bytes = asset.bytes;
       mediaType = [...types.values()].find((type) => type === asset.mimeType);
     } else if (source.startsWith("data:")) {
@@ -65,7 +74,9 @@ export async function prepareNativePromptImages(
       const filePath = source.startsWith("file:") ? fileURLToPath(source) : source;
       if (!path.isAbsolute(filePath)) throw new Error("Attach a local image file");
       mediaType = types.get(path.extname(filePath).toLowerCase());
-      const file = await open(filePath, "r");
+      const file = await open(filePath, "r").catch((cause: unknown) => {
+        throw unreadableImage(cause);
+      });
       try {
         const stat = await file.stat();
         if (!stat.isFile() || stat.size > MAX_SOURCE_BYTES)

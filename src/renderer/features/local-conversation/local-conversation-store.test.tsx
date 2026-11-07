@@ -137,6 +137,7 @@ let nativeTurnsListResult:
 let nativeTurnsReadGate: Promise<void> | null = null;
 let ownerTurnStartResult: TurnStartResponse | null = null;
 let ownerTurnStartError: Error | null = null;
+let ownerEditPreparationFailure: "prepare" | "inspect" | "revert" | null = null;
 let ownerTurnStartHandler: (() => void) | null = null;
 let ownerTurnStartGate: (() => Promise<void>) | null = null;
 const ownerTurnExecutionOverride: { value?: CodexPreparedTurnExecution } = {};
@@ -438,6 +439,7 @@ vi.mock("./local-conversation-deps", () => ({
       }
       if (channel === "codex:turn:native-steer:inspect") return nativeSteerFixture;
       if (channel === "codex:turn:native:prepare") {
+        if (ownerEditPreparationFailure === "prepare") throw new Error("Image unavailable");
         const input = args[0] as { originalRequest: unknown; passiveContextIntent?: "ordinary" };
         return {
           request: input.originalRequest,
@@ -454,6 +456,7 @@ vi.mock("./local-conversation-deps", () => ({
           : { passiveContextKey: input.passiveContextKey };
       }
       if (channel === "codex:turn:native:inspect") {
+        if (ownerEditPreparationFailure === "inspect") throw new Error("Image unavailable");
         const request = (
           args[0] as { request: import("@nodex/codex-app-server-protocol/v2").TurnStartParams }
         ).request;
@@ -835,6 +838,7 @@ vi.mock("./local-conversation-deps", () => ({
           return await serverQueueRequestHandler(input.request.method, input.request.params);
         }
         if (input.request?.method === "thread/revert") {
+          if (ownerEditPreparationFailure === "revert") throw new Error("Revert failed");
           return ownerEditRevertResult;
         }
         if (
@@ -21823,6 +21827,16 @@ describe("local-conversation-store", () => {
       );
       expect(resumeIndex >= 0).toBe(true);
       expect(revertIndex > resumeIndex).toBe(true);
+      const preparationIndex = invokeRecords.findIndex(
+        (record) => record.channel === "codex:turn:native:inspect",
+      );
+      const revertRecordIndex = invokeRecords.findIndex(
+        (record) =>
+          record.channel === "codex:app-server:request" &&
+          (record.args[0] as { request?: { method: string } }).request?.method === "thread/revert",
+      );
+      expect(preparationIndex).toBeGreaterThanOrEqual(0);
+      expect(preparationIndex).toBeLessThan(revertRecordIndex);
       expect(startIndex > revertIndex).toBe(true);
       const revertItems = manager.readConversation("thread-1")?.turns[0]?.items ?? [];
       expect(revertItems.find((item) => item.itemId === "hook-feedback")?.hookFeedback).toBe(true);
@@ -22134,6 +22148,49 @@ describe("local-conversation-store", () => {
       manager.destroy();
     }
   });
+
+  test.each(["prepare", "inspect", "revert"] as const)(
+    "owner edit releases prepared input and preserves history when %s fails",
+    async (failure) => {
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+      try {
+        resumeThreadResult = withPaginatedCanonicalState({
+          ...buildConversation("thread-1", "project-1"),
+          turns: [
+            {
+              threadId: "thread-1",
+              turnId: "turn-latest",
+              status: "completed",
+              itemIds: ["user"],
+              items: [buildUserMessage("thread-1", "turn-latest", "user", "Original")],
+            },
+          ],
+        });
+        await manager.requestThreadStreamResume("thread-1");
+        invokeRecords = [];
+        ownerEditPreparationFailure = failure;
+        await expect(
+          manager.editUserTurn("thread-1", "turn-latest", "Replacement"),
+        ).rejects.toThrow(failure === "revert" ? "Revert failed" : "Image unavailable");
+        expect(manager.readConversation("thread-1")?.turns[0]?.turnId).toBe("turn-latest");
+        expect(invokeRecords.some((record) => record.channel === "codex:turn:native:release")).toBe(
+          true,
+        );
+        const methods = recordedNativeRequests().map(
+          (record) => (record.args[0] as { request?: { method: string } }).request?.method,
+        );
+        expect(methods.includes("thread/revert")).toBe(failure === "revert");
+        expect(methods).not.toContain("turn/start");
+      } finally {
+        ownerEditPreparationFailure = null;
+        resumeThreadResult = null;
+        manager.destroy();
+      }
+    },
+  );
 
   test("owner edit revalidates after settings preparation when a native turn starts", async () => {
     invokeCalls = [];

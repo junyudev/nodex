@@ -288,6 +288,7 @@ const setup = (
     generatedTitle: null as string | null,
     supersededTitle: false,
     supersededArchive: false,
+    rejectAttachmentPersistence: false,
     rollbackImmediate: true,
     rollbackFails: false,
     messageReplay: null as AgentRuntimeOperations["thread.message-replay"]["output"],
@@ -1210,7 +1211,9 @@ const setup = (
           delivery: "queued",
         } as AgentRuntimeOperations[M]["output"];
       }
-      if (method === "attachments.persist")
+      if (method === "attachments.persist") {
+        if (state.rejectAttachmentPersistence)
+          return yield* Effect.fail(new Error("Persistence failed"));
         return {
           attachments: (
             input as AgentRuntimeOperations["attachments.persist"]["input"]
@@ -1222,6 +1225,7 @@ const setup = (
             sizeBytes: attachment.sizeBytes,
           })),
         } as AgentRuntimeOperations[M]["output"];
+      }
       if (method === "thread.item" || method === "thread.item.full")
         return null as AgentRuntimeOperations[M]["output"];
       if (method === "thread.attachment")
@@ -2902,8 +2906,13 @@ it.effect(
           ],
         },
       });
-      const target = { sessionId: opened.sessionId, requestId: "edit", runId: "run:edit" };
-      assert.deepEqual(yield* owner.rollback(target), { rolledBack: true });
+      const target = {
+        sessionId: opened.sessionId,
+        requestId: "edit",
+        runId: "run:edit",
+        message: { messageId: "replacement", text: "edited" },
+      };
+      yield* owner.rewriteMessage(target);
       assert.deepEqual(fixture.calls.find((call) => call.method === "run.outcome")?.input, {
         threadId: opened.threadId,
         messageId: "original-message",
@@ -2911,14 +2920,14 @@ it.effect(
       assert.isFalse(fixture.calls.some((call) => call.method === "thread.snapshot"));
       fixture.state.rollbackFails = true;
       assert.equal(
-        (yield* owner.rollback({ ...target, requestId: "failed" }).pipe(Effect.result))._tag,
+        (yield* owner.rewriteMessage({ ...target, requestId: "failed" }).pipe(Effect.result))._tag,
         "Failure",
       );
       fixture.state.denyAgent = true;
       const before = fixture.calls.filter((call) => call.method === "thread.rollback").length;
       assert.equal(
         (yield* owner
-          .rollback(target)
+          .rewriteMessage(target)
           .pipe(Effect.provideService(CoreApplicationAgent, agent), Effect.result))._tag,
         "Failure",
       );
@@ -7652,4 +7661,67 @@ it.effect("aligns inactive bound roots with restored Session placement and archi
     assert.isNotNull(thread.archivedAt);
     assert.equal(f.state.storeCoordinate, "profile:restored-placement");
   }),
+);
+
+it.effect(
+  "rewrites persist replacement images before rollback and leave history intact on preparation failure",
+  () =>
+    Effect.gen(function* () {
+      let rejectImages = false;
+      const f = setup({
+        subscribeExecutionChanges: Effect.succeed(Stream.succeed(undefined)),
+        prepareImages: () =>
+          rejectImages
+            ? Effect.fail(new Error("Image unreadable"))
+            : Effect.succeed([{ mediaType: "image/png", data: "aW1hZ2U=" }]),
+      });
+      const owner = yield* f.owner;
+      const opened = yield* owner.launch({
+        ...launch,
+        modelSelection: { instanceId: "codex", model: "model-a" },
+      });
+      const current = f.snapshots.get(opened.threadId)!;
+      f.snapshots.set(opened.threadId, {
+        ...current,
+        projection: {
+          ...current.projection,
+          runs: [
+            {
+              id: "run:edit",
+              threadId: opened.threadId,
+              userMessageId: "original-message",
+              ordinal: 1,
+              status: "completed",
+            } as never,
+          ],
+        },
+      });
+      const original = f.snapshots.get(opened.threadId);
+      const input = {
+        sessionId: opened.sessionId,
+        runId: "run:edit",
+        requestId: "rewrite",
+        message: { messageId: "replacement", text: "", images: [{ source: "/new.png" }] },
+      };
+      rejectImages = true;
+      const failed = yield* owner.rewriteMessage(input).pipe(Effect.result);
+      assert.strictEqual(failed._tag, "Failure");
+      assert.isFalse(f.calls.some((call) => call.method === "thread.rollback"));
+      assert.strictEqual(f.snapshots.get(opened.threadId), original);
+      rejectImages = false;
+      f.state.rejectAttachmentPersistence = true;
+      assert.strictEqual((yield* owner.rewriteMessage(input).pipe(Effect.result))._tag, "Failure");
+      assert.isFalse(f.calls.some((call) => call.method === "thread.rollback"));
+      assert.strictEqual(f.snapshots.get(opened.threadId), original);
+      f.state.rejectAttachmentPersistence = false;
+      const before = f.calls.length;
+      yield* owner.rewriteMessage(input);
+      const calls = f.calls.slice(before);
+      const persisted = calls.findIndex((call) => call.method === "attachments.persist");
+      const rollback = calls.findIndex((call) => call.method === "thread.rollback");
+      const dispatch = calls.findIndex((call) => call.method === "command.dispatch");
+      assert.isAtLeast(persisted, 0);
+      assert.isAbove(rollback, persisted);
+      assert.isAbove(dispatch, rollback);
+    }),
 );

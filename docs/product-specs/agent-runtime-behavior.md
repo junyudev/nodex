@@ -425,11 +425,12 @@ root checkpoint and a Provider Turn; the first local Run targets the conversatio
 Cancelled queue or delivery records that never entered the conversation do not count as
 predecessors. Failed Runs do not record checkpoints, so the message immediately after a
 failed Run cannot be edited. A rewind never reaches further back to an older recorded
-point. Editing a sent user message first admits a conversation rewind to just before that message's Run and waits
-for that exact Run to become rolled back before submitting replacement content; every
-later Run leaves the conversation with it. The replacement keeps the original message's
-images and app context, and is compiled before the rewind so a message the Agent cannot
-accept discards nothing. Document Agent config is resolved during this preflight so
+point. Editing a sent user message is one operation: it prepares the replacement, which
+compiles it and persists its images, then admits a conversation rewind to just before that
+message's Run and waits for that exact Run to become rolled back before dispatching the
+replacement; every later Run leaves the conversation with it. The replacement keeps the
+original message's images and app context. Because preparation comes first, a message the
+Agent cannot accept or an image that cannot be read discards nothing. Document Agent config is resolved during this preflight so
 image admission uses the effective model before history changes. Queued or active
 work and native background tasks block editing.
 Only Providers that explicitly advertise native rollback to an earlier Turn offer

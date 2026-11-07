@@ -577,7 +577,7 @@ describe("workbench session shell / automations-conversation", () => {
     ).toBe(true);
   });
 
-  test("inline message edit settles Session rollback before dispatching the replacement prompt", async () => {
+  test("inline message edit submits one prepared Session rewrite", async () => {
     renderWorkbench({
       sessionsByProject: {
         alpha: [
@@ -606,11 +606,11 @@ describe("workbench session shell / automations-conversation", () => {
     });
     await settleAsyncRender();
 
-    const rollback = invokeCalls.findIndex((call) => call[0] === "agent-runtime:session:rollback");
-    const message = invokeCalls.findIndex((call) => call[0] === "agent-runtime:session:message");
-    expect(rollback).toBeGreaterThanOrEqual(0);
-    expect(message).toBeGreaterThan(rollback);
-    expect(invokeCalls[rollback]?.[1]).toMatchObject({
+    const message = invokeCalls.findIndex(
+      (call) => call[0] === "agent-runtime:session:rewrite-message",
+    );
+    expect(message).toBeGreaterThanOrEqual(0);
+    expect(invokeCalls[message]?.[1]).toMatchObject({
       sessionId: "session:alpha:database-view",
       threadId: "thread-alpha",
       runId: "turn-latest",

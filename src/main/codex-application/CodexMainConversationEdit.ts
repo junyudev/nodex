@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import type { ThreadRevertResponse } from "@nodex/codex-app-server-protocol/v2";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
@@ -20,6 +21,7 @@ import {
   type CanonicalEditOptions,
 } from "../../shared/codex-conversation-state/codex-owner-edit";
 
+import { createUuidV7 } from "../../shared/uuid-v7";
 import { mutateCodexCanonicalRevert } from "../../shared/codex-conversation-state/codex-revert-state";
 
 export class CodexMainConversationEdit extends Context.Service<
@@ -98,30 +100,35 @@ export const make = Effect.gen(function* () {
                       Date.now(),
                     );
                 },
-                start: (request, original, preparedPrompt) =>
+                prepareStart: (request, original, preparedPrompt) =>
                   callbacks.runPromise(
-                    Effect.gen(function* () {
-                      const prepared = yield* turns.prepareNativeStart(
-                        id,
-                        options.message,
-                        { preparedPrompt },
-                        request,
-                        {
-                          attachments: original.params.attachments,
-                          commentAttachments: original.params.commentAttachments,
-
-                          writingBlockContextPrepared: options.writingBlockContextPrepared,
-                          mcpAppModelContextAttachments: original.mcpAppModelContextAttachments,
-                        },
-                      );
-                      return yield* Effect.gen(function* () {
+                    Effect.suspend(() => {
+                      const clientUserMessageId = createUuidV7();
+                      const release = () => turns.releasePreparedNativeStart(clientUserMessageId);
+                      return Effect.gen(function* () {
+                        const prepared = yield* turns.prepareNativeStart(
+                          id,
+                          options.message,
+                          { preparedPrompt, clientUserMessageId },
+                          { ...request, clientUserMessageId },
+                          {
+                            attachments: original.params.attachments,
+                            commentAttachments: original.params.commentAttachments,
+                            writingBlockContextPrepared: options.writingBlockContextPrepared,
+                            mcpAppModelContextAttachments: original.mcpAppModelContextAttachments,
+                          },
+                        );
                         const materialized = yield* turns.inspectPreparedNativeStart(prepared);
-                        return yield* turns.executePreparedNativeStart(materialized.request);
+                        return {
+                          start: () =>
+                            callbacks.runPromise(
+                              turns.executePreparedNativeStart(materialized.request),
+                            ),
+                          release,
+                        };
                       }).pipe(
-                        Effect.ensuring(
-                          Effect.sync(() =>
-                            turns.releasePreparedNativeStart(prepared.request.clientUserMessageId!),
-                          ),
+                        Effect.onExit((exit) =>
+                          Exit.isFailure(exit) ? Effect.sync(release) : Effect.void,
                         ),
                       );
                     }),

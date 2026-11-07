@@ -2689,10 +2689,7 @@ describe("Agent Runtime sent-image edit admission", () => {
         },
         images,
       });
-      const rollback = vi
-        .spyOn(agentRuntimeRuntime, "rollback")
-        .mockResolvedValue({ rolledBack: true });
-      const send = vi.spyOn(agentRuntimeRuntime, "message");
+      const send = vi.spyOn(agentRuntimeRuntime, "rewriteMessage");
       if (accepted) send.mockResolvedValue({ sequence: 1 });
       else send.mockRejectedValue(new Error("This model does not support image attachments."));
       const { result, unmount } = renderHook(
@@ -2725,18 +2722,14 @@ describe("Agent Runtime sent-image edit admission", () => {
           else await expect(editing).rejects.toThrow("does not support image");
         });
         if (accepted) {
-          expect(rollback).toHaveBeenCalledOnce();
+          expect(send).toHaveBeenCalledOnce();
           expect(send).toHaveBeenCalledWith(
             expect.objectContaining({
               ...target,
               message: expect.objectContaining({ images }),
             }),
           );
-          expect(rollback.mock.invocationCallOrder[0]).toBeLessThan(
-            send.mock.invocationCallOrder[0]!,
-          );
         } else {
-          expect(rollback).not.toHaveBeenCalled();
           expect(send).not.toHaveBeenCalled();
         }
       } finally {

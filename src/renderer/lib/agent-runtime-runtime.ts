@@ -12,7 +12,7 @@ import type {
   AgentRuntimeModeInput,
   AgentRuntimeClearContextInput,
   AgentRuntimeCompactInput,
-  AgentRuntimeRollbackInput,
+  AgentRuntimeRewriteMessageInput,
   AgentRuntimeTaskStopInput,
   AgentRuntimeBackgroundStopInput,
   AgentRuntimeBackgroundOutputInput,
@@ -169,9 +169,9 @@ const clearContext = defineRendererCommand({
   protocol: { kind: "returned_value" },
   trace: { scopeKind: "session" },
 });
-const rollback = defineRendererCommand({
-  key: "agent_runtime.session.rollback",
-  channel: "agent-runtime:session:rollback",
+const rewriteMessage = defineRendererCommand({
+  key: "agent_runtime.session.rewrite_message",
+  channel: "agent-runtime:session:rewrite-message",
   authority: "external",
   owner: "AgentRuntimeConversationOwner",
   protocol: { kind: "returned_value" },
@@ -270,7 +270,9 @@ export interface AgentRuntimeRendererTransport {
   readonly clearContext: (
     input: AgentRuntimeClearContextInput,
   ) => Promise<{ readonly cleared: true }>;
-  readonly rollback: (input: AgentRuntimeRollbackInput) => Promise<{ readonly rolledBack: true }>;
+  readonly rewriteMessage: (
+    input: AgentRuntimeRewriteMessageInput,
+  ) => Promise<{ readonly sequence: number; readonly sideChatTitle?: string }>;
   readonly stopTask: (input: AgentRuntimeTaskStopInput) => Promise<{ readonly sequence: number }>;
   readonly stopBackground: (
     input: AgentRuntimeBackgroundStopInput,
@@ -350,7 +352,7 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   setModes: (input) => invokePlainCommand(setModes, input),
   compact: (input) => invokePlainCommand(compact, input),
   clearContext: (input) => invokePlainCommand(clearContext, input),
-  rollback: (input) => invokePlainCommand(rollback, input),
+  rewriteMessage: (input) => invokePlainCommand(rewriteMessage, input),
   stopTask: (input) => invokePlainCommand(stopTask, input),
   stopBackground: (input) => invokePlainCommand(stopBackground, input),
   backgroundOutput: (input) =>

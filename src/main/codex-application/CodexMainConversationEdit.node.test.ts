@@ -23,7 +23,10 @@ import { residentConversationTurns } from "../../shared/codex-conversation-state
 import type { TurnStartParams } from "@nodex/codex-app-server-protocol/v2";
 import type { ConversationFollowerTurnStart } from "../../shared/codex-thread-follower-request";
 
-const makeEditFixture = Effect.fnUntraced(function* (hostId = "local") {
+const makeEditFixture = Effect.fnUntraced(function* (
+  hostId = "local",
+  failure?: "prepare" | "inspect" | "revert",
+) {
   let state = produce(
     conversationFixture("thread", [turnFixture("message"), turnFixture("automatic")]),
     (draft) => {
@@ -71,6 +74,7 @@ const makeEditFixture = Effect.fnUntraced(function* (hostId = "local") {
       requestOnHost: (_host: string, method: string, params: unknown) =>
         Effect.sync(() => {
           calls.push(method);
+          if (failure === "revert") throw new Error("revert failed");
           assert.strictEqual(method, "thread/revert");
           assert.deepEqual(params, { threadId: "thread", beforeTurnId: "message" });
           return {
@@ -106,13 +110,16 @@ const makeEditFixture = Effect.fnUntraced(function* (hostId = "local") {
       ) =>
         Effect.sync(() => {
           calls.push("prepare");
+          if (failure === "prepare") throw new Error("prepare failed");
           assert.deepEqual(overrides?.preparedPrompt?.inputItems, request.input);
           assert.deepEqual(overrides?.preparedPrompt?.pendingInputItems, request.input);
           admitted = { request: { ...request, clientUserMessageId: "edit" }, context };
           return admitted;
         }),
       inspectPreparedNativeStart: (operation: ConversationFollowerTurnStart) =>
-        Effect.succeed({ request: operation.request }),
+        failure === "inspect"
+          ? Effect.fail(new Error("image preparation failed"))
+          : Effect.succeed({ request: operation.request }),
       executePreparedNativeStart: () =>
         Effect.sync(() => {
           calls.push("start");
@@ -170,14 +177,14 @@ for (const { name, message, writtenImages, expectedText, expectedImages } of [
           writtenImages,
           writingBlockContextPrepared: true,
         });
-        assert.deepEqual(calls, ["settings", "thread/revert", "prepare", "start", "release"]);
+        assert.deepEqual(calls, ["settings", "prepare", "thread/revert", "start", "release"]);
         const admitted = readAdmitted();
         assert.deepEqual(admitted?.request.input, [
           { type: "text", text: expectedText, text_elements: [] },
           { type: "localImage", path: "/image.png" },
           ...expectedImages,
         ]);
-        assert.strictEqual(admitted?.request.cwd, "/returned");
+        assert.strictEqual(admitted?.request.cwd, "/workspace/project");
         assert.strictEqual(admitted?.context?.writingBlockContextPrepared, true);
         assert.strictEqual(residentConversationTurns(readState()).length, 0);
       }).pipe(Effect.provide(callbacks)),
@@ -218,8 +225,8 @@ it.effect("Main edit preserves remote history when a managed image has no bytes"
     assert.deepEqual(calls, [
       "settings",
       "settings",
-      "thread/revert",
       "prepare",
+      "thread/revert",
       "start",
       "release",
     ]);
@@ -231,3 +238,19 @@ it.effect("Main edit preserves remote history when a managed image has no bytes"
     assert.strictEqual(residentConversationTurns(readState()).length, 0);
   }).pipe(Effect.provide(callbacks)),
 );
+
+for (const failure of ["prepare", "inspect", "revert"] as const)
+  it.effect(`Main edit keeps history and releases preparation when ${failure} fails`, () =>
+    Effect.gen(function* () {
+      const f = yield* makeEditFixture("local", failure);
+      const original = f.readState();
+      const result = yield* f.service
+        .edit("local", "thread", { turnId: "message", message: "new" })
+        .pipe(Effect.result);
+      assert.strictEqual(result._tag, "Failure");
+      assert.strictEqual(f.readState(), original);
+      assert.isFalse(f.calls.includes("start"));
+      assert.strictEqual(f.calls.includes("thread/revert"), failure === "revert");
+      assert.isTrue(f.calls.includes("release"));
+    }).pipe(Effect.provide(callbacks)),
+  );

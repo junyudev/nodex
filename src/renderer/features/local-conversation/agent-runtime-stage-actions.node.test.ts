@@ -19,7 +19,7 @@ function fixture() {
     threadId: "fork-thread",
   });
   const openFork = vi.fn().mockResolvedValue(undefined);
-  const rollback = vi.fn().mockResolvedValue({ rolledBack: true });
+  const rewriteMessage = vi.fn().mockResolvedValue({ sequence: 8 });
   const onSideChatTitle = vi.fn();
   const prepare = vi.fn(async (text: string) => ({ text: `Prepared ${text}` }));
   let sourceCurrent = true;
@@ -74,7 +74,7 @@ function fixture() {
       queue,
       queueMessage,
       fork,
-      rollback,
+      rewriteMessage,
     } as unknown as AgentRuntimeRendererTransport,
     openFork,
     prepare,
@@ -92,7 +92,7 @@ function fixture() {
     queueMessage,
     fork,
     openFork,
-    rollback,
+    rewriteMessage,
     owner,
     actions,
     retireSource: () => {
@@ -256,7 +256,7 @@ describe("Agent Runtime stage commands", () => {
     });
     expect(f.message).not.toHaveBeenCalled();
     expect(f.prepare).not.toHaveBeenCalled();
-    expect(f.rollback).not.toHaveBeenCalled();
+    expect(f.rewriteMessage).not.toHaveBeenCalled();
     f.setRuns([{ id: "newer", ordinal: 5, status: "completed" }]);
     await expect(f.actions.onCompactAndRetry!("failed")).rejects.toThrow(
       "can no longer be continued",
@@ -277,7 +277,7 @@ describe("Agent Runtime stage commands", () => {
         message: expect.objectContaining({ text: "Prepared Continue from where you left off." }),
       }),
     );
-    expect(f.rollback).not.toHaveBeenCalled();
+    expect(f.rewriteMessage).not.toHaveBeenCalled();
     expect(f.owner.readSentMessage).not.toHaveBeenCalled();
   });
 
@@ -655,38 +655,40 @@ describe("Agent Runtime stage commands", () => {
     );
   });
 
-  it("waits for native rollback settlement before submitting the edited message", async () => {
+  it("submits a rewrite through exactly one Main call and waits for its observation", async () => {
     const f = fixture();
-    let settle!: (value: { rolledBack: true }) => void;
-    f.rollback.mockImplementation(
+    let settle!: (value: { sequence: number }) => void;
+    f.rewriteMessage.mockImplementation(
       () =>
         new Promise((resolve) => {
           settle = resolve;
         }),
     );
-    const edited = f.actions.onEditUserTurn!({
+    const edit = f.actions.onEditUserTurn!({
       threadId: "child",
       turnId: "run:completed",
       message: "Edited",
     });
-    await vi.waitFor(() => expect(f.rollback).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(f.rewriteMessage).toHaveBeenCalledOnce());
     expect(f.message).not.toHaveBeenCalled();
-    settle({ rolledBack: true });
-    await edited;
-    expect(f.rollback.mock.calls[0]![0]).toMatchObject({ ...f.target, runId: "run:completed" });
-    expect(f.message.mock.calls[0]![0]).toMatchObject({
+    expect(f.owner.whenObserved).not.toHaveBeenCalled();
+    settle({ sequence: 42 });
+    await edit;
+    expect(f.rewriteMessage.mock.calls[0]![0]).toMatchObject({
       ...f.target,
-      message: { text: "Prepared Edited" },
+      runId: "run:completed",
+      message: { text: "Prepared Edited", images: [] },
     });
-    f.rollback.mockRejectedValue(new Error("Native rollback refused"));
+    expect(f.owner.whenObserved).toHaveBeenCalledWith(42);
+    f.rewriteMessage.mockRejectedValueOnce(new Error("Image preparation failed"));
     await expect(
       f.actions.onEditUserTurn!({
         threadId: "child",
         turnId: "run:completed",
-        message: "Unsafe edit",
+        message: "Unsafe",
       }),
-    ).rejects.toThrow("Native rollback refused");
-    expect(f.message).toHaveBeenCalledTimes(1);
+    ).rejects.toThrow("Image preparation failed");
+    expect(f.message).not.toHaveBeenCalled();
   });
 
   it("resends an earlier message's images and app data with its rewritten words", async () => {
@@ -713,7 +715,7 @@ describe("Agent Runtime stage commands", () => {
       text: "Compare the first two",
       images: [{ source: "/attachments/chart.png", caption: "chart.png" }],
     });
-    expect(f.message.mock.calls[0]![0].message).toMatchObject({
+    expect(f.rewriteMessage.mock.calls[0]![0].message).toMatchObject({
       text: "Prepared Compare the first two\n\n[Chart](t3-context://v1/nodex-app-context/chart)",
       context: { version: 1, records: [record] },
       images: [{ source: "/attachments/chart.png", caption: "chart.png" }],
@@ -725,9 +727,13 @@ describe("Agent Runtime stage commands", () => {
     f.prepare.mockRejectedValueOnce(new Error("This Agent connection does not support images"));
 
     await expect(
-      f.actions.onEditUserTurn!({ threadId: "child", turnId: "run:completed", message: "Edited" }),
+      f.actions.onEditUserTurn!({
+        threadId: "child",
+        turnId: "run:completed",
+        message: "Edited",
+      }),
     ).rejects.toThrow("does not support images");
-    expect(f.rollback).not.toHaveBeenCalled();
+    expect(f.rewriteMessage).not.toHaveBeenCalled();
     expect(f.message).not.toHaveBeenCalled();
   });
   it("keeps queued submissions and Run controls bound to the selected child", async () => {

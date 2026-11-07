@@ -34,11 +34,15 @@ export interface CanonicalEditClient {
     response: ThreadRevertResponse,
     turns: readonly CodexCanonicalTurnState[],
   ) => void;
-  readonly start: (
+  /** Capture bytes and validate before revert; clean up locally if preparation rejects. */
+  readonly prepareStart: (
     request: TurnStartParams,
     original: CodexCanonicalTurnState,
     preparedPrompt: PreparedCodexPrompt,
-  ) => Promise<unknown>;
+  ) => Promise<{
+    readonly start: () => Promise<unknown>;
+    readonly release: () => void | Promise<void>;
+  }>;
 }
 
 export function replaceCanonicalEditedPrompt(original: string, message: string): string {
@@ -103,20 +107,24 @@ export async function editCanonicalUserTurn(
   input.push(
     ...prepared.inputItems.filter((item) => item.type === "image" || item.type === "localImage"),
   );
-  const response = await client.revert(id, original.turnId);
-  const { thread } = response;
-  client.applyRevert(id, response, removed);
-  const cwd = thread.cwd || state.cwd || undefined;
-  await client.start(
+  // Freeze the current execution workspace with the retained bytes before changing history.
+  const start = await client.prepareStart(
     {
       threadId: id,
       turnTrigger: "edit_user_message",
       input,
-      cwd,
+      cwd: state.cwd || undefined,
       serviceTier: options.serviceTier,
       additionalContext: options.additionalContext,
     },
     original,
     { ...prepared, inputItems: input, pendingInputItems: input },
   );
+  try {
+    const response = await client.revert(id, original.turnId);
+    client.applyRevert(id, response, removed);
+    await start.start();
+  } finally {
+    await start.release();
+  }
 }

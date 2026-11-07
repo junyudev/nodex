@@ -2607,27 +2607,48 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     },
   );
 
+  const dispatchPreparedMessage = Effect.fn("AgentRuntimeApplication.dispatchPreparedMessage")(
+    function* (
+      input: Parameters<typeof prepareMessageDispatch>[0],
+      preparedDispatch: Effect.Success<ReturnType<typeof prepareMessageDispatch>>,
+      outgoing: AgentRuntimeMessage,
+      queueAfterActive = false,
+    ) {
+      const { connection, loaded, prepared, interactive, agent } = preparedDispatch;
+      const result = yield* dispatch(
+        connection,
+        messageCommand(
+          loaded.threadId,
+          outgoing,
+          input.intent,
+          agent,
+          queueAfterActive || prepared.hasConfig,
+        ),
+        input.modeLimit,
+      );
+      if (!agent)
+        yield* recordAcceptedUserMessage(core, input.sessionId, prepared.message.messageId);
+      const sideChatTitle = yield* titleSideChatRequest(
+        connection,
+        loaded,
+        prepared.message,
+        agent,
+      );
+      if (interactive) yield* options.interactiveState!.sent(loaded.threadId, interactive.key);
+      return { ...result, ...(sideChatTitle ? { sideChatTitle } : {}) };
+    },
+  );
   const message = Effect.fn("AgentRuntimeApplication.message")(function* (
     input: Parameters<typeof prepareMessageDispatch>[0],
     queueAfterActive = false,
   ) {
-    const { connection, loaded, prepared, interactive, outgoing, agent } =
-      yield* prepareMessageDispatch(input, queueAfterActive);
-    const result = yield* dispatch(
-      connection,
-      messageCommand(
-        loaded.threadId,
-        yield* prepareMessage(connection, loaded.threadId, outgoing),
-        input.intent,
-        agent,
-        queueAfterActive || prepared.hasConfig,
-      ),
-      input.modeLimit,
+    const prepared = yield* prepareMessageDispatch(input, queueAfterActive);
+    const outgoing = yield* prepareMessage(
+      prepared.connection,
+      prepared.loaded.threadId,
+      prepared.outgoing,
     );
-    if (!agent) yield* recordAcceptedUserMessage(core, input.sessionId, prepared.message.messageId);
-    const sideChatTitle = yield* titleSideChatRequest(connection, loaded, prepared.message, agent);
-    if (interactive) yield* options.interactiveState!.sent(loaded.threadId, interactive.key);
-    return { ...result, ...(sideChatTitle ? { sideChatTitle } : {}) };
+    return yield* dispatchPreparedMessage(input, prepared, outgoing, queueAfterActive);
   });
 
   /** The same intake preparation as interactive messages, with canonical delivery receipts. */
@@ -3105,7 +3126,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     }
   });
   const rollback = Effect.fn("AgentRuntimeApplication.rollback")(function* (
-    input: import("../../shared/agent-runtime-api").AgentRuntimeRollbackInput,
+    input: import("../../shared/agent-runtime-api").AgentRuntimeRewriteMessageInput,
   ) {
     if (!validId(input.requestId) || !validId(input.runId))
       return yield* failure("rollback", "Rollback identity is invalid");
@@ -3144,6 +3165,19 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     if (Option.isNone(result))
       return yield* failure("rollback", "Rollback observation ended before settlement");
     return { rolledBack: true as const };
+  });
+  const rewriteMessage = Effect.fn("AgentRuntimeApplication.rewriteMessage")(function* (
+    input: import("../../shared/agent-runtime-api").AgentRuntimeRewriteMessageInput,
+  ) {
+    // Admission, model support, byte loading and persistence all precede the destructive rewind.
+    const prepared = yield* prepareMessageDispatch(input);
+    const outgoing = yield* prepareMessage(
+      prepared.connection,
+      prepared.loaded.threadId,
+      prepared.outgoing,
+    );
+    yield* rollback(input);
+    return yield* dispatchPreparedMessage(input, prepared, outgoing);
   });
   const settleCleanup = Effect.fn("AgentRuntimeApplication.settleCleanup")(function* (
     connection: AgentRuntimeApplicationConnection,
@@ -4200,8 +4234,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     queueMessage: (input: Parameters<typeof message>[0]) =>
       ownedWrite("queue-message", message(input, true).pipe(Effect.scoped)),
     queue: (input: Parameters<typeof queue>[0]) => ownedWrite("queue", queue(input)),
-    rollback: (input: Parameters<typeof rollback>[0]) =>
-      ownedWrite("rollback", rollback(input).pipe(Effect.scoped)),
+    rewriteMessage: (input: Parameters<typeof rewriteMessage>[0]) =>
+      ownedWrite("rewrite-message", rewriteMessage(input).pipe(Effect.scoped)),
     stopTask: (input: import("../../shared/agent-runtime-api").AgentRuntimeTaskStopInput) =>
       ownedWrite(
         "stop-task",

@@ -139,7 +139,7 @@ export const AgentRuntimeModesSchema = AgentRuntimeTargetSchema.extend({
 });
 export const AgentRuntimeCompactSchema = AgentRuntimeTargetSchema.extend({ requestId: id });
 export const AgentRuntimeClearContextSchema = AgentRuntimeTargetSchema.extend({ requestId: id });
-export const AgentRuntimeRollbackSchema = AgentRuntimeTargetSchema.extend({
+export const AgentRuntimeRewriteMessageSchema = AgentRuntimeMessageInputSchema.extend({
   requestId: id,
   runId: id,
 });

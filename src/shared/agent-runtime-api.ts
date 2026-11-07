@@ -182,7 +182,7 @@ export type AgentRuntimeRunInput = AgentRuntimeSessionTarget & { readonly runId:
 export type AgentRuntimeQueuedPreview = AgentRuntimeOperations["thread.queued-preview"]["output"];
 export type AgentRuntimeRunMessage = AgentRuntimeOperations["thread.run-message"]["output"];
 export type AgentRuntimePromptIndex = AgentRuntimeOperations["thread.prompt-index"]["output"];
-export type AgentRuntimeRollbackInput = AgentRuntimeSessionTarget & {
+export type AgentRuntimeRewriteMessageInput = AgentRuntimeMessageInput & {
   readonly requestId: string;
   readonly runId: string;
 };
@@ -441,9 +441,9 @@ export interface AgentRuntimeIpcApi {
     args: [input: AgentRuntimeClearContextInput];
     result: { readonly cleared: true };
   };
-  "agent-runtime:session:rollback": {
-    args: [input: AgentRuntimeRollbackInput];
-    result: { readonly rolledBack: true };
+  "agent-runtime:session:rewrite-message": {
+    args: [input: AgentRuntimeRewriteMessageInput];
+    result: { readonly sequence: number; readonly sideChatTitle?: string };
   };
   "agent-runtime:session:retry-preparation": {
     args: [input: AgentRuntimePreparationRetryInput];

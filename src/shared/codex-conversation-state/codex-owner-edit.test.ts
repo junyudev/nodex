@@ -109,10 +109,15 @@ function harness(
         mutateCodexCanonicalRevert(draft, result, new Set(turns.map((turn) => turn.turnId))),
       );
     },
-    start: async (request, _original, preparedPrompt) => {
+    prepareStart: async (request, _original, preparedPrompt) => {
       expect(preparedPrompt.inputItems).toEqual(request.input);
       expect(preparedPrompt.pendingInputItems).toEqual(request.input);
-      starts.push(request);
+      return {
+        start: async () => {
+          starts.push(request);
+        },
+        release: vi.fn(),
+      };
     },
   };
   return { client, calls, starts, read: () => state };
@@ -215,7 +220,10 @@ test.each(["  rewritten\n\ntext  ", "", "![web](https://example.com/web.png)"])(
       { type: "mention", name: "notes", path: "/notes.md" },
     ];
     const f = harness({ input: original });
-    await editCanonicalUserTurn(f.client, "id", { turnId: "message", message });
+    await editCanonicalUserTurn(f.client, "id", {
+      turnId: "message",
+      message,
+    });
     expect(f.starts[0]?.input).toEqual([
       original[0],
       { type: "text", text: message, text_elements: [] },
@@ -231,7 +239,10 @@ test("editing an earlier message reverts it with every later user Turn", async (
       { id: "latest", input: [{ type: "text", text: "latest", text_elements: [] }] },
     ],
   });
-  await editCanonicalUserTurn(f.client, "id", { turnId: "message", message: "rewritten" });
+  await editCanonicalUserTurn(f.client, "id", {
+    turnId: "message",
+    message: "rewritten",
+  });
 
   expect(f.calls).toEqual(["settings", "revert:message"]);
   expect(f.starts[0]?.input).toEqual([
@@ -253,7 +264,10 @@ test("editing waits for every later Turn to settle", async () => {
   });
 
   await expect(
-    editCanonicalUserTurn(f.client, "id", { turnId: "message", message: "rewritten" }),
+    editCanonicalUserTurn(f.client, "id", {
+      turnId: "message",
+      message: "rewritten",
+    }),
   ).rejects.toThrow("Cannot edit a message while a turn is in progress.");
   expect(f.calls).toEqual(["settings"]);
   expect(f.starts).toEqual([]);
@@ -261,7 +275,10 @@ test("editing waits for every later Turn to settle", async () => {
 
 test("editing an attachment-only message sends the new text alongside its image", async () => {
   const f = harness({ input: [{ type: "image", fileId: "file_123" }] });
-  await editCanonicalUserTurn(f.client, "id", { turnId: "message", message: "Describe it" });
+  await editCanonicalUserTurn(f.client, "id", {
+    turnId: "message",
+    message: "Describe it",
+  });
 
   expect(f.starts[0]?.input).toEqual([
     { type: "text", text: "Describe it", text_elements: [] },
@@ -274,7 +291,10 @@ test.each([{ historyMode: "legacy" as const }, { ephemeral: true }, { supportsRe
   async (options) => {
     const f = harness(options);
     await expect(
-      editCanonicalUserTurn(f.client, "id", { turnId: "message", message: "new" }),
+      editCanonicalUserTurn(f.client, "id", {
+        turnId: "message",
+        message: "new",
+      }),
     ).rejects.toThrow("Editing messages requires");
     expect(f.calls).toEqual(["settings"]);
     expect(f.starts).toEqual([]);
@@ -289,4 +309,54 @@ test("prompt editing replaces only the last request marker and resets plain text
     ),
   ).toBe("one\n## My request:\nquoted\n## My request:\nnew\n");
   expect(replaceCanonicalEditedPrompt("plain old", "new")).toBe("new");
+});
+
+test.each(["revert", "start", "success"])(
+  "prepared native resources are released on %s",
+  async (failure) => {
+    const f = harness();
+    const release = vi.fn();
+    const prepareStart = async () => {
+      return {
+        start: async () => {
+          if (failure === "start") throw new Error("start failed");
+        },
+        release,
+      };
+    };
+    const revert = vi.fn(async () => {
+      if (failure === "revert") throw new Error("revert failed");
+      return {} as ThreadRevertResponse;
+    });
+    const edit = editCanonicalUserTurn(
+      { ...f.client, prepareStart, revert, applyRevert: () => {} },
+      "id",
+      { turnId: "message", message: "text" },
+    );
+    if (failure === "success") await edit;
+    else await expect(edit).rejects.toThrow(`${failure} failed`);
+    expect(release).toHaveBeenCalledOnce();
+    expect(revert).toHaveBeenCalledOnce();
+  },
+);
+
+test("native preparation failure leaves revert and history untouched", async () => {
+  const f = harness();
+  const original = f.read();
+  const revert = vi.fn(f.client.revert);
+  await expect(
+    editCanonicalUserTurn(
+      {
+        ...f.client,
+        revert,
+        prepareStart: async () => {
+          throw new Error("Image capture failed");
+        },
+      },
+      "id",
+      { turnId: "message", message: "new" },
+    ),
+  ).rejects.toThrow("Image capture failed");
+  expect(revert).not.toHaveBeenCalled();
+  expect(f.read()).toBe(original);
 });
