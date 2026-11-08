@@ -11,6 +11,14 @@ Runs and history; the Desktop Host's Mobile Gateway is the phone's only way in. 
 desktop, on the desktop's accounts and files, so the desktop must be on with Nodex open. A phone
 holds its keys, its unsent captures, its drafts, and a cache of what it last saw.
 
+## Getting the app
+
+- Every desktop release ships Nodex Mobile with the same version, and the download page offers
+  it. On iPhone it is a public TestFlight beta, which keeps it up to date. On Android it is an APK:
+  installing a newer one over the last keeps the phone's pairing, drafts and unsent captures.
+- Every Android release is signed with the same key, which a future store listing keeps, so an
+  installed copy can always update.
+
 ## Turning it on and pairing
 
 - Mobile access is off by default, per Profile, in Settings > Mobile. While it is off, nothing

@@ -429,6 +429,18 @@ const VERSION_SURFACES: readonly Surface[] = [
     "reject unsupported immutable release manifests",
   ],
   [
+    "scripts/release/bundle.ts:COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS",
+    "durableFormat",
+    "Release Bundle manifest",
+    "verify published releases that carry every desktop target",
+  ],
+  [
+    "scripts/release/bundle.ts:RELEASE_HISTORY_SCHEMA_VERSIONS",
+    "durableFormat",
+    "Release Bundle manifest",
+    "read every published release bundle as update history",
+  ],
+  [
     "scripts/scenarios/contracts.ts:SCENARIO_MANIFEST_VERSION",
     "durableFormat",
     "scenario harness",

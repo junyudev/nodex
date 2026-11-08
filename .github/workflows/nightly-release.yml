@@ -148,6 +148,24 @@ jobs:
       source_tree: ${{ needs.certification.outputs.source_tree }}
       retention_days: 14
 
+  mobile-distribution:
+    name: build Nodex Mobile
+    if: needs.resolve.outputs.should_release == 'true'
+    needs: [resolve, certification]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/_mobile-distribution.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.source_sha }}
+      source_tree: ${{ needs.certification.outputs.source_tree }}
+      retention_days: 14
+    secrets:
+      android_release_keystore_b64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_B64 }}
+      android_release_keystore_password: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+      apple_api_issuer: ${{ secrets.APPLE_API_ISSUER }}
+      apple_api_key_b64: ${{ secrets.APPLE_API_KEY_B64 }}
+      apple_api_key_id: ${{ secrets.APPLE_API_KEY_ID }}
+
   finalize-sparkle:
     if: needs.resolve.outputs.should_release == 'true'
     needs: [resolve, distribution, windows-distribution]
@@ -175,7 +193,7 @@ jobs:
 
   assemble:
     if: needs.resolve.outputs.should_release == 'true'
-    needs: [resolve, distribution, windows-distribution, finalize-sparkle]
+    needs: [resolve, distribution, windows-distribution, mobile-distribution, finalize-sparkle]
     permissions:
       actions: read
       contents: read

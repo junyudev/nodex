@@ -1,5 +1,7 @@
 import type { ExpoConfig } from "expo/config";
 
+import { version as desktopVersion } from "../../package.json";
+
 const pairingScheme = "nodex-mobile";
 const cameraPermission = "Allow Nodex to scan a pairing code from your desktop.";
 
@@ -22,10 +24,16 @@ if (variant !== "development" && variant !== "production") {
 }
 const { name, identifier, schemes } = variants[variant];
 
+// A release stamps the phone app with the desktop release it ships beside; see
+// scripts/release/mobile.ts. Development builds take the source version and the first build.
+const version = process.env.NODEX_MOBILE_VERSION ?? desktopVersion;
+const iosBuild = process.env.NODEX_MOBILE_IOS_BUILD ?? "1";
+const androidVersionCode = Number(process.env.NODEX_MOBILE_ANDROID_VERSION_CODE ?? "1");
+
 export default {
   name,
   slug: "nodex-mobile",
-  version: "0.1.0",
+  version,
   platforms: ["ios", "android"],
   scheme: [...schemes],
   userInterfaceStyle: "automatic",
@@ -35,8 +43,7 @@ export default {
     icon: "./assets/app-icon.icon",
     bundleIdentifier: identifier,
     appleTeamId: process.env.APPLE_TEAM_ID,
-    // Each upload to TestFlight needs a higher number than the last.
-    buildNumber: process.env.MOBILE_BUILD_NUMBER ?? "1",
+    buildNumber: iosBuild,
     entitlements: {
       // An approval holds a Run until answered, so it may break through Focus.
       "com.apple.developer.usernotifications.time-sensitive": true,
@@ -51,6 +58,8 @@ export default {
   },
   android: {
     package: identifier,
+    // An installed APK only takes an update with a higher version code.
+    versionCode: androidVersionCode,
     // Unsent captures and what a phone last saw stay on the phone, and its keys cannot be restored.
     allowBackup: false,
     adaptiveIcon: {
@@ -63,6 +72,7 @@ export default {
     // Xcode mods run in reverse order; copy the app's final build settings after the other plugins.
     "./plugins/withNotificationDecryption.cjs",
     "./plugins/withAndroidCleartext.cjs",
+    "./plugins/withAndroidReleaseSigning.cjs",
     [
       "expo-build-properties",
       {

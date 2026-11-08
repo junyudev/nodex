@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION } from "../package-provenance.mjs";
 import type { ArchitectureBuildManifest } from "./bundle";
 import { sha256File, type ReleaseIdentity } from "./model";
+import { makeMobileReleaseFixture } from "./mobile-release.fixture";
 import { createWindowsArchitectureUpdate } from "./windows-updates";
 import { WINDOWS_ARCHITECTURES, windowsInstallerName } from "./targets";
 
@@ -184,5 +185,11 @@ export function makeReleaseFixture(root: string, channel: "stable" | "nightly" =
   );
   const identityPath = join(root, "identity.json");
   writeFileSync(identityPath, JSON.stringify(identity));
-  return { ...windows, arm64Directory, arm64UpdateDirectory, identityPath };
+  return {
+    ...windows,
+    ...makeMobileReleaseFixture(root, identity),
+    arm64Directory,
+    arm64UpdateDirectory,
+    identityPath,
+  };
 }

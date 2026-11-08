@@ -27,10 +27,12 @@ import {
   type SparkleArchitectureUpdateManifest,
 } from "./sparkle-manifest";
 
-import { makeWindowsReleaseFixture } from "./windows-release.fixture";
+import { makeMobileBuild, makeMobileReleaseFixture } from "./mobile-release.fixture";
+import { fixtureIdentity, makeWindowsReleaseFixture } from "./windows-release.fixture";
 
 let fixture = "";
-let windows: ReturnType<typeof makeWindowsReleaseFixture>;
+let windows: ReturnType<typeof makeWindowsReleaseFixture> &
+  ReturnType<typeof makeMobileReleaseFixture>;
 const VERSION = "0.2.2";
 const PREVIOUS_VERSION = "0.2.1";
 const BUILD_VERSION = "1.0.1";
@@ -185,7 +187,10 @@ const makeUpdate = (
 
 beforeEach(() => {
   fixture = mkdtempSync(join(tmpdir(), "nodex-release-bundle-"));
-  windows = makeWindowsReleaseFixture(fixture);
+  windows = {
+    ...makeWindowsReleaseFixture(fixture),
+    ...makeMobileReleaseFixture(fixture, fixtureIdentity()),
+  };
 });
 
 afterEach(() => {
@@ -204,7 +209,7 @@ test("assembles the complete macOS and Windows signed release closure", () => {
     version: VERSION,
   });
 
-  expect(bundle.schemaVersion).toBe(4);
+  expect(bundle.schemaVersion).toBe(5);
   expect(bundle.assets.map(({ name }) => name).sort()).toEqual(
     [
       `Nodex-${VERSION}-appcast-arm64.xml`,
@@ -212,6 +217,8 @@ test("assembles the complete macOS and Windows signed release closure", () => {
       `Nodex-${VERSION}-update-arm64.json`,
       `Nodex-${PREVIOUS_VERSION}-to-${VERSION}-arm64.delta`,
       "Nodex-latest-arm64.dmg",
+      `Nodex-${VERSION}-android.apk`,
+      "Nodex-latest-android.apk",
       "release-identity.json",
       ...["x64", "arm64"].flatMap((architecture) => [
         `Nodex-${VERSION}-windows-${architecture}.exe`,
@@ -221,6 +228,11 @@ test("assembles the complete macOS and Windows signed release closure", () => {
       ]),
     ].sort(),
   );
+  // The certified iOS build travels with the bundle for TestFlight, never as a public asset.
+  expect(readFileSync(join(output, "testflight", `Nodex-${VERSION}-ios.ipa`), "utf8")).toBe(
+    `ios:${VERSION}`,
+  );
+  expect(bundle.assets.some(({ name }) => name.endsWith(".ipa"))).toBe(false);
   expect(bundle.assets.some(({ name }) => name.endsWith(".blockmap"))).toBe(false);
   expect(bundle.assets.some(({ name }) => name === "latest-mac.yml")).toBe(false);
   expect(
@@ -537,4 +549,79 @@ test("rejects unlisted architecture artifacts", () => {
       version: VERSION,
     }),
   ).toThrow("architecture artifacts do not match");
+});
+
+test("ships the exact certified APK under its versioned name and the stable alias", () => {
+  const arm64 = makeArchitecture("arm64");
+  const output = join(fixture, "output");
+  const bundle = assembleReleaseBundle({
+    ...windows,
+    arm64Directory: arm64,
+    arm64UpdateDirectory: makeUpdate("arm64", arm64),
+    outputDirectory: output,
+    sourceSha: SOURCE_SHA,
+    version: VERSION,
+  });
+  const apks = bundle.assets.filter(({ role }) => role === "android-apk");
+  expect(new Set(apks.map(({ sha256 }) => sha256))).toEqual(
+    new Set([bundle.mobile.android.artifact.sha256]),
+  );
+  expect(bundle.mobile.android.app).toEqual({
+    id: "app.jyu.nodex.mobile",
+    version: VERSION,
+    build: "1",
+  });
+  expect(bundle.mobile.ios.app.build).toBe(BUILD_VERSION);
+
+  const manifest = JSON.parse(readFileSync(join(output, "release-bundle.json"), "utf8"));
+  const aliased = {
+    ...manifest,
+    assets: manifest.assets.map((asset: { name: string; sha256: string }) =>
+      asset.name === "Nodex-latest-android.apk" ? { ...asset, sha256: "f".repeat(64) } : asset,
+    ),
+  };
+  expect(() => parseReleaseBundleManifest(aliased)).toThrow("exact APK");
+  const { mobile: _mobile, ...withoutMobile } = manifest;
+  expect(() => parseReleaseBundleManifest(withoutMobile)).toThrow("invalid");
+});
+
+test("refuses a phone build signed by anyone but Nodex", () => {
+  const arm64 = makeArchitecture("arm64");
+  const androidDirectory = makeMobileBuild(join(fixture, "debug"), "android", fixtureIdentity(), {
+    signer: "e".repeat(64),
+  });
+  expect(() =>
+    assembleReleaseBundle({
+      ...windows,
+      androidDirectory,
+      arm64Directory: arm64,
+      arm64UpdateDirectory: makeUpdate("arm64", arm64),
+      outputDirectory: join(fixture, "output"),
+      sourceSha: SOURCE_SHA,
+      version: VERSION,
+    }),
+  ).toThrow("signer");
+});
+
+test("still reads published desktop-only bundles as history", () => {
+  const arm64 = makeArchitecture("arm64");
+  const output = join(fixture, "output");
+  assembleReleaseBundle({
+    ...windows,
+    arm64Directory: arm64,
+    arm64UpdateDirectory: makeUpdate("arm64", arm64),
+    outputDirectory: output,
+    sourceSha: SOURCE_SHA,
+    version: VERSION,
+  });
+  const { mobile: _mobile, ...current } = JSON.parse(
+    readFileSync(join(output, "release-bundle.json"), "utf8"),
+  );
+  const desktopOnly = {
+    ...current,
+    schemaVersion: 4,
+    assets: current.assets.filter(({ role }: { role: string }) => role !== "android-apk"),
+  };
+  expect(parseReleaseHistoryBundle(desktopOnly).mobile).toBeUndefined();
+  expect(() => parseReleaseBundleManifest(desktopOnly)).toThrow("invalid");
 });

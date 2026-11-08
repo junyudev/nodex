@@ -39,7 +39,7 @@ import {
   type SparkleFileIdentity,
 } from "./sparkle-manifest";
 import type { MacArchitecture } from "./bundle";
-import { parseReleaseHistoryBundle, RELEASE_BUNDLE_SCHEMA_VERSION } from "./bundle";
+import { parseReleaseHistoryBundle, RELEASE_HISTORY_SCHEMA_VERSIONS } from "./bundle";
 import { verifySparkleAppcastContract } from "./sparkle-appcast-contract";
 
 import {
@@ -623,10 +623,7 @@ export function fetchSparkleHistory(options: {
     const rawBundle = JSON.parse(readFileSync(bundlePath, "utf8")) as {
       readonly schemaVersion?: unknown;
     };
-    if (
-      rawBundle.schemaVersion !== 3 &&
-      rawBundle.schemaVersion !== RELEASE_BUNDLE_SCHEMA_VERSION
-    ) {
+    if (!RELEASE_HISTORY_SCHEMA_VERSIONS.includes(rawBundle.schemaVersion as number)) {
       rmSync(releaseRoot, { force: true, recursive: true });
       continue;
     }

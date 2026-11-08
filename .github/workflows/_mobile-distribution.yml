@@ -1,0 +1,206 @@
+name: Mobile Distribution
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Exact protected-main commit to build
+        required: true
+        type: string
+      source_tree:
+        description: Exact certified Git tree to build.
+        required: true
+        type: string
+      retention_days:
+        description: Artifact retention period
+        default: 14
+        required: false
+        type: number
+    secrets:
+      android_release_keystore_b64:
+        required: true
+      android_release_keystore_password:
+        required: true
+      apple_api_issuer:
+        required: true
+      apple_api_key_b64:
+        required: true
+      apple_api_key_id:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android distribution
+    runs-on: ubuntu-latest
+    environment: mobile-distribution
+    env:
+      RELEASE_OUTPUT: ${{ github.workspace }}/.generated/release-mobile/android
+      RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_SOURCE_TREE: ${{ inputs.source_tree }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.source_sha }}
+      - uses: ./.github/actions/setup-vite-plus
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nodex-release-identity-${{ inputs.source_sha }}
+          path: ${{ runner.temp }}/identity
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nodex-source-certification-${{ inputs.source_sha }}
+          path: ${{ runner.temp }}/certification
+
+      - name: Verify exact clean release source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${RELEASE_SOURCE_SHA}"
+          test "$(git rev-parse 'HEAD^{tree}')" = "${RELEASE_SOURCE_TREE}"
+          test -z "$(git status --porcelain)"
+          vp install --frozen-lockfile
+          node -e '
+            const certificate = require(process.argv[1]);
+            if (certificate.schemaVersion !== 1
+              || certificate.sourceSha !== process.env.RELEASE_SOURCE_SHA
+              || certificate.sourceTree !== process.env.RELEASE_SOURCE_TREE) {
+              throw new Error("Release source certification does not match the exact source tree");
+            }
+          ' "${RUNNER_TEMP}/certification/source-certification.json"
+          vp run release:verify:identity -- --identity "${RUNNER_TEMP}/identity/release-identity.json" --head "${RELEASE_SOURCE_SHA}" --output "${RUNNER_TEMP}/source.json"
+
+      - name: Prepare the Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${JAVA_HOME_21_X64:-}" && test -n "${ANDROID_HOME:-}"
+          echo "JAVA_HOME=${JAVA_HOME_21_X64}" >> "${GITHUB_ENV}"
+          sdkmanager="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          yes | "${sdkmanager}" --licenses > /dev/null
+          "${sdkmanager}" --install "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
+
+      - name: Build and verify the signed APK
+        env:
+          ANDROID_RELEASE_KEYSTORE_B64: ${{ secrets.android_release_keystore_b64 }}
+          NODEX_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.android_release_keystore_password }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${ANDROID_RELEASE_KEYSTORE_B64}" || -z "${NODEX_ANDROID_KEYSTORE_PASSWORD}" ]]; then
+            echo "Missing the Android release keystore." >&2
+            exit 1
+          fi
+          export NODEX_ANDROID_KEYSTORE="${RUNNER_TEMP}/android-release.p12"
+          trap 'rm -f "${NODEX_ANDROID_KEYSTORE}"' EXIT
+          (umask 077 && printf '%s' "${ANDROID_RELEASE_KEYSTORE_B64}" | base64 -d > "${NODEX_ANDROID_KEYSTORE}")
+          unset ANDROID_RELEASE_KEYSTORE_B64
+          vp run release:build:android -- \
+            --identity "${RUNNER_TEMP}/identity/release-identity.json" \
+            --output "${RELEASE_OUTPUT}"
+
+      - name: Summarize Android build
+        shell: bash
+        run: |
+          {
+            echo "## Android build"
+            echo
+            echo '```json'
+            cat "${RELEASE_OUTPUT}/mobile-build.json"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nodex-mobile-android-${{ inputs.source_sha }}
+          path: ${{ env.RELEASE_OUTPUT }}/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}
+
+  ios:
+    name: iOS distribution
+    runs-on: macos-26
+    environment: mobile-distribution
+    env:
+      RELEASE_OUTPUT: ${{ github.workspace }}/.generated/release-mobile/ios
+      RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_SOURCE_TREE: ${{ inputs.source_tree }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.source_sha }}
+      - uses: ./.github/actions/setup-vite-plus
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nodex-release-identity-${{ inputs.source_sha }}
+          path: ${{ runner.temp }}/identity
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nodex-source-certification-${{ inputs.source_sha }}
+          path: ${{ runner.temp }}/certification
+
+      - name: Verify exact clean release source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${RELEASE_SOURCE_SHA}"
+          test "$(git rev-parse 'HEAD^{tree}')" = "${RELEASE_SOURCE_TREE}"
+          test -z "$(git status --porcelain)"
+          vp install --frozen-lockfile
+          node -e '
+            const certificate = require(process.argv[1]);
+            if (certificate.schemaVersion !== 1
+              || certificate.sourceSha !== process.env.RELEASE_SOURCE_SHA
+              || certificate.sourceTree !== process.env.RELEASE_SOURCE_TREE) {
+              throw new Error("Release source certification does not match the exact source tree");
+            }
+          ' "${RUNNER_TEMP}/certification/source-certification.json"
+          vp run release:verify:identity -- --identity "${RUNNER_TEMP}/identity/release-identity.json" --head "${RELEASE_SOURCE_SHA}" --output "${RUNNER_TEMP}/source.json"
+
+      - name: Ensure CocoaPods
+        shell: bash
+        run: |
+          command -v pod >/dev/null || HOMEBREW_NO_AUTO_UPDATE=1 brew install cocoapods
+          pod --version
+
+      - name: Build and verify the App Store-signed IPA
+        env:
+          APPLE_API_ISSUER: ${{ secrets.apple_api_issuer }}
+          APPLE_API_KEY_B64: ${{ secrets.apple_api_key_b64 }}
+          APPLE_API_KEY_ID: ${{ secrets.apple_api_key_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${APPLE_API_KEY_B64}" || -z "${APPLE_API_KEY_ID}" || -z "${APPLE_API_ISSUER}" ]]; then
+            echo "Missing App Store Connect credentials." >&2
+            exit 1
+          fi
+          vp run release:build:ios -- \
+            --identity "${RUNNER_TEMP}/identity/release-identity.json" \
+            --output "${RELEASE_OUTPUT}"
+
+      - name: Summarize iOS build
+        shell: bash
+        run: |
+          {
+            echo "## iOS build"
+            echo
+            echo '```json'
+            cat "${RELEASE_OUTPUT}/mobile-build.json"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nodex-mobile-ios-${{ inputs.source_sha }}
+          path: ${{ env.RELEASE_OUTPUT }}/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}
