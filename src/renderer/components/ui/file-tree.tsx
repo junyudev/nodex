@@ -24,6 +24,7 @@ import {
 import { runSyncWithCleanup } from "@/lib/run-with-cleanup";
 import { cn } from "@/lib/utils";
 import { withFileTreeElement } from "./file-tree-dom";
+import { FileTreeFocusDescription } from "./file-tree-focus-description";
 import { FileTreeLoadingRows } from "./file-tree-loading-rows";
 import { fileTreeCss, REVIEW_FILE_TREE_CSS, type FileTreeThemeOptions } from "./file-tree-theme";
 
@@ -49,6 +50,8 @@ export interface FileTreeProps extends FileTreeThemeOptions {
   readonly gitStatus?: FileTreeOptions["gitStatus"];
   readonly icons?: FileTreeOptions["icons"];
   readonly renderRowDecoration?: FileTreeOptions["renderRowDecoration"];
+  /** The full description a keyboard-focused row shows, such as its real path. */
+  readonly describePath?: (path: string) => string | null;
   readonly initialScrollTop?: number;
   readonly revealSelectedPath?: boolean;
   readonly revealSelectedPathScrollOffset?: FileTreeScrollOffset;
@@ -191,6 +194,7 @@ function FileTreeContent({
   gitStatus,
   icons = DEFAULT_ICONS,
   renderRowDecoration,
+  describePath,
   initialScrollTop = 0,
   revealSelectedPath = false,
   revealSelectedPathScrollOffset = "nearest",
@@ -335,7 +339,7 @@ function FileTreeContent({
     model.setIcons(icons);
   }, [icons, model]);
 
-  return (
+  const tree = (
     <FileTreeLoadingRows rows={loadingRows}>
       <PierreFileTree
         model={model}
@@ -353,6 +357,13 @@ function FileTreeContent({
         onPointerOver={onPointerOver}
       />
     </FileTreeLoadingRows>
+  );
+  return describePath ? (
+    <FileTreeFocusDescription model={model} describe={describePath}>
+      {tree}
+    </FileTreeFocusDescription>
+  ) : (
+    tree
   );
 }
 

@@ -153,6 +153,13 @@ export function WorkspaceFileTree({
         {...(model.sectioned
           ? { sort: sortWorkspaceFileChangesTree, gitStatus: model.gitStatus }
           : {})}
+        describePath={(treePath) => {
+          if (treePath === ALL_FILES_ROOT) return allFilesStatus?.title ?? null;
+          const item = resolveWorkspaceFileChangesTreePath(model, treePath);
+          return item?.relativePath && workspaceRoot
+            ? resolveWorkspaceTreeFilePath(workspaceRoot, item.relativePath)
+            : null;
+        }}
         renderRowDecoration={({ item }) =>
           model.sectioned && item.path === ALL_FILES_ROOT ? allFilesStatus : null
         }

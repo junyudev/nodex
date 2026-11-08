@@ -192,6 +192,34 @@ describe("shared file tree navigation", () => {
     expect(view.queryByRole("status")).toBeNull();
   });
 
+  test("describes the keyboard-focused row in full and stops on pointer input", async () => {
+    const view = render(
+      <div style={{ height: 200, width: 280 }}>
+        <FileTree
+          ariaLabel="Files"
+          appearance="workspace"
+          paths={["src/a-file-with-a-long-name.ts"]}
+          expandedPaths={["src"]}
+          selectedPath={null}
+          describePath={(path) => `/workspace/${path}`}
+        />
+      </div>,
+    );
+    await act(settle);
+    await act(async () => userEvent.click(getRow(view.container, "src/")));
+    expect(view.queryByRole("tooltip")).toBeNull();
+    await act(async () => userEvent.keyboard("{ArrowRight}{ArrowDown}"));
+    await act(settle);
+    const row = getRow(view.container, "src/a-file-with-a-long-name.ts");
+    expect((await view.findByRole("tooltip")).textContent).toBe(
+      "/workspace/src/a-file-with-a-long-name.ts",
+    );
+    expect(row.getAttribute("aria-description")).toBe("/workspace/src/a-file-with-a-long-name.ts");
+    await act(async () => userEvent.click(getRow(view.container, "src/")));
+    await waitFor(() => expect(view.queryByRole("tooltip")).toBeNull());
+    expect(row.hasAttribute("aria-description")).toBe(false);
+  });
+
   test("bounds mounted rows and reveals the requested file in a large tree", async () => {
     const paths = Array.from(
       { length: 2_000 },

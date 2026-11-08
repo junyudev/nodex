@@ -133,6 +133,10 @@ export function ReviewFileTree({
               expandedPaths={filter.trim() ? filteredExpansion : expandedPaths}
               selectedPath={visibleSelectedPath}
               revealSelectedPath
+              describePath={(path) => {
+                const entry = byTreePath.get(path);
+                return entry ? (entry.openPath ?? entry.displayPath) : path.replace(/\/$/, "");
+              }}
               renderRowDecoration={({ item }) => {
                 if (item.kind !== "file") return null;
                 const entry = byTreePath.get(item.path);

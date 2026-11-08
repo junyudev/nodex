@@ -63,7 +63,10 @@ export interface NodexTooltipProps
       | "positionMethod"
       | "sticky"
     > {
-  children: ReactNode;
+  /** The trigger; omitted when `anchor` places the tooltip against an element it does not own. */
+  children?: ReactNode;
+  /** Shows the tooltip against this element instead of a trigger child; open state is controlled. */
+  anchor?: Element | null;
   tooltipContent: ReactNode;
   shortcutLabel?: string;
   disabled?: boolean;
@@ -83,6 +86,7 @@ export interface NodexTooltipProps
 
 export function NodexTooltip({
   children,
+  anchor,
   tooltipContent,
   shortcutLabel,
   disabled = false,
@@ -132,7 +136,7 @@ export function NodexTooltip({
   }, [isControlled, onOpenChange, open, uncontrolledOpen]);
 
   const tooltipDisabled = disabled || tooltipContent == null;
-  if (!isValidElement(children)) {
+  if (anchor === undefined && !isValidElement(children)) {
     throw new Error("NodexTooltip requires one concrete interactive child");
   }
 
@@ -159,16 +163,19 @@ export function NodexTooltip({
       }}
       disableHoverablePopup={!hoverable}
     >
-      <TooltipPrimitive.Trigger
-        ref={triggerRef as ComponentPropsWithRef<typeof TooltipPrimitive.Trigger>["ref"]}
-        render={children}
-        delay={resolvedDelay}
-        closeDelay={closeDelay}
-        aria-describedby={!tooltipDisabled && resolvedOpen ? tooltipId : undefined}
-      />
+      {isValidElement(children) && anchor === undefined ? (
+        <TooltipPrimitive.Trigger
+          ref={triggerRef as ComponentPropsWithRef<typeof TooltipPrimitive.Trigger>["ref"]}
+          render={children}
+          delay={resolvedDelay}
+          closeDelay={closeDelay}
+          aria-describedby={!tooltipDisabled && resolvedOpen ? tooltipId : undefined}
+        />
+      ) : null}
       <TooltipPrimitive.Portal>
         <TooltipPrimitive.Positioner
           data-slot="tooltip-positioner"
+          anchor={anchor ?? undefined}
           align={align}
           alignOffset={alignOffset}
           side={side}
