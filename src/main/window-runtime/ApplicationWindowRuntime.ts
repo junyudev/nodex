@@ -72,14 +72,8 @@ export class ApplicationWindowRuntime extends Context.Service<
   ApplicationWindowCoordinator & {
     readonly create: (session: WindowSessionRecord) => BrowserWindow;
     readonly rendererLoaded: Stream.Stream<number>;
-    readonly syncTitle: (window: BrowserWindow) => void;
   }
 >()("nodex/main/window-runtime/ApplicationWindowRuntime") {}
-
-const syncApplicationWindowTitle = (platform: NodeJS.Platform, window: BrowserWindow): void => {
-  if ((platform !== "darwin" && platform !== "win32") || window.isDestroyed()) return;
-  window.setTitle("Nodex");
-};
 
 /** Installs post-Core feature authorities onto pre-existing canonical windows. */
 export const live = (
@@ -292,7 +286,6 @@ export const live = (
             window.isFocused(),
           ),
         );
-        syncApplicationWindowTitle(options.platform, window);
         window.on("focus", () =>
           callbacks.fork(
             options.rendererConversations.setClientForegrounded(
@@ -388,7 +381,6 @@ export const live = (
           );
           captureMainException(cause, { tags: { phase } });
         },
-        syncTitle: (window) => syncApplicationWindowTitle(options.platform, window),
         windows: options.windows,
       });
       yield* options.rendererLoaded.pipe(
@@ -429,7 +421,6 @@ export const live = (
         prepareQuit,
         create,
         rendererLoaded: options.rendererLoaded,
-        syncTitle: (window) => syncApplicationWindowTitle(options.platform, window),
       });
     }),
   );

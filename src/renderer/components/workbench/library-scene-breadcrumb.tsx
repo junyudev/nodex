@@ -97,13 +97,21 @@ export function useLibrarySceneNavigation(scene: WorkbenchSceneSnapshot | null):
   };
 }
 
-export function LibrarySceneBreadcrumb({ scene }: { readonly scene: WorkbenchSceneSnapshot }) {
+export interface LibrarySceneTitles {
+  readonly surface: WorkbenchSurfaceDescriptor | null;
+  readonly root: LibraryPlacedResourceTarget | null;
+  /** The Library root the active surface belongs to. */
+  readonly rootTitle: string;
+  /** The active surface below that root; null when the surface is the root itself. */
+  readonly childTitle: string | null;
+}
+
+/** Names Space's active surface the way its breadcrumb and its window title present it. */
+export function useLibrarySceneTitles(scene: WorkbenchSceneSnapshot | null): LibrarySceneTitles {
   const navigation = useLibrarySceneNavigation(scene);
   const surface = navigation.activeSurface;
   const target = libraryTargetForLibrarySurface(surface);
   const root = navigation.activeRoot;
-  const Icon =
-    root?.kind === "database" ? BoardIcon : root?.kind === "canvas" ? CanvasIcon : PageIcon;
   const surfaceTitle = usePresentedPageTitle(
     surface?.kind === "page_stage" ? surface.config.pageId : null,
     surface?.titleSnapshot ?? "Untitled",
@@ -141,6 +149,13 @@ export function LibrarySceneBreadcrumb({ scene }: { readonly scene: WorkbenchSce
       : target && root && (target.kind === "view" || !areLibraryResourceTargetsEqual(target, root))
         ? surfaceTitle
         : null;
+  return { surface, root, rootTitle, childTitle };
+}
+
+export function LibrarySceneBreadcrumb({ scene }: { readonly scene: WorkbenchSceneSnapshot }) {
+  const { surface, root, rootTitle, childTitle } = useLibrarySceneTitles(scene);
+  const Icon =
+    root?.kind === "database" ? BoardIcon : root?.kind === "canvas" ? CanvasIcon : PageIcon;
 
   return (
     <AppShellHeaderContentRegistrar

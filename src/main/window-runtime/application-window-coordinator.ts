@@ -21,7 +21,6 @@ export interface ApplicationWindowCoordinatorOptions {
     readonly operation: "acquire" | "rollback";
     readonly windowSessionId?: string;
   }) => void;
-  readonly syncTitle: (window: BrowserWindow) => void;
   readonly windows: WindowRuntimeService;
 }
 
@@ -129,7 +128,6 @@ export const createApplicationWindowCoordinator = (
       input,
       window && !window.isDestroyed() ? captureWindowSessionBounds(window) : undefined,
     );
-    if (window) options.syncTitle(window);
     return { session };
   };
   const flushDictationRecording = (webContentsId: number): void => {
@@ -150,12 +148,7 @@ export const createApplicationWindowCoordinator = (
       accepting = false;
       options.windows.beginApplicationQuit();
     },
-    bootstrap: (webContentsId) => {
-      const session = options.windows.bootstrap(webContentsId);
-      const window = options.windows.get(webContentsId);
-      if (window) options.syncTitle(window);
-      return { session };
-    },
+    bootstrap: (webContentsId) => ({ session: options.windows.bootstrap(webContentsId) }),
     focusLast,
     openDictationRecording: (recordingId) => {
       if (!accepting) return false;

@@ -276,6 +276,7 @@ import { WorkbenchCanvasStagePanel } from "./workbench-canvas-stage-panel";
 import { WorkbenchDatabaseViewSurface } from "./workbench-database-view-surface";
 import { WorkbenchLibraryPageSurface } from "./workbench-library-page-surface";
 import { LibrarySceneBreadcrumb, useLibrarySceneNavigation } from "./library-scene-breadcrumb";
+import { WorkbenchWindowTitle } from "./workbench-window-title";
 import { PagesTabPicker } from "./pages-tab-picker";
 import { SpaceHome } from "./space-home";
 import { TerminalPanel } from "./workbench-terminal-panel";
@@ -5507,6 +5508,13 @@ export function WorkbenchRuntime({
   const workbench = (
     <PageTitleProjectionProvider currentLibraryId={currentLibraryId} store={pageTitleStore}>
       {currentLibraryId ? <ContentRecoveryObserver libraryId={currentLibraryId} /> : null}
+      <WorkbenchWindowTitle
+        location={workbenchWindow.location}
+        session={activeRenderSession}
+        sessionProject={activeSessionProject}
+        project={activeProject}
+        libraryScene={libraryScenePresentation?.scene ?? null}
+      />
       <span role="status" aria-live="polite" className="sr-only">
         {contentIssueCount > 0
           ? `${contentIssueCount} content ${contentIssueCount === 1 ? "issue needs" : "issues need"} attention`

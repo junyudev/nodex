@@ -524,6 +524,14 @@ same way:
 vp run dev --home "$HOME/repo/nodex/runs.local/sidebar-pagination" --seed sidebar/pagination
 ```
 
+`window/titles` creates the Atlas and Beacon Projects, a threadless chat in each,
+and the Q4 roadmap Page in Space, for reviewing native window titles across
+several windows. `tests/e2e/window-titles.spec.ts` consumes it:
+
+```bash
+vp run dev --home "$HOME/repo/nodex/runs.local/window-titles" --seed window/titles
+```
+
 `scheduled/ask-in-inbox` creates five scheduled tasks, a Dependency policy runbook,
 and Inbox messages for waiting, skipped, and failed runs. The dependency task has
 fallen due three times while waiting; a projectless reading list waits in the

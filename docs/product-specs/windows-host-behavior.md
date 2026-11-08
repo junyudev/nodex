@@ -193,8 +193,9 @@ minimum width. Menu accelerators use Win, Alt, Ctrl, Shift order with `+` separa
 
 Native caption height is `round(36 × combined app zoom)`. Caption symbols follow
 the selected Light, Dark or System appearance, including later native theme changes.
-The native window title stays Nodex. Native double-click maximize/restore and Snap
-Layouts retain operating-system ownership.
+The native window title names the window's content and ends with `— Nodex`, as
+[Workbench Shell](./workbench-shell.md) describes. Native double-click
+maximize/restore and Snap Layouts retain operating-system ownership.
 
 Windows keeps Mica while unfocused. Windows versions without supported Mica, or
 without GPU compositing, use an opaque themed surface. Full-window image previews

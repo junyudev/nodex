@@ -48,7 +48,6 @@ describe("application window coordinator", () => {
       create,
       focusedWindow: () => null,
       reportFailure: vi.fn(),
-      syncTitle: vi.fn(),
       windows: {
         acquireSessionForNewWindow: () => ({ kind: "new", session: session("recovery") }),
         getLastFocused: () => current,
@@ -85,7 +84,6 @@ describe("application window coordinator", () => {
       create,
       focusedWindow: () => source,
       reportFailure: vi.fn(),
-      syncTitle: vi.fn(),
       windows: {
         getLastFocused: () => source,
         hasClosedSessionAvailable: () => false,
@@ -119,7 +117,6 @@ describe("application window coordinator", () => {
       },
       focusedWindow: () => null,
       reportFailure,
-      syncTitle: vi.fn(),
       windows: {
         acquireSessionForNewWindow: () => acquired,
         getLastFocused: () => null,
@@ -149,7 +146,6 @@ describe("application window coordinator", () => {
       create,
       focusedWindow: () => null,
       reportFailure: vi.fn(),
-      syncTitle: vi.fn(),
       windows: {
         acquireSessionForNewWindow,
         cloneSessionForWindow,
@@ -181,7 +177,6 @@ describe("application window coordinator", () => {
         create,
         focusedWindow: () => null,
         reportFailure: vi.fn(),
-        syncTitle: vi.fn(),
         windows: {
           all: () => all,
           beginApplicationQuit,

@@ -354,7 +354,6 @@ export const live = (
               },
             });
             if (options.platform === "win32") {
-              window.on("page-title-updated", (event) => event.preventDefault());
               const publishFullscreen = () =>
                 safeSendToWindow(window, "electron-window:fullscreen-changed", [
                   { fullscreen: window.isFullScreen() },
