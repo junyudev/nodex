@@ -202,7 +202,8 @@ export function buildAndroidDistribution(options: MobileBuildOptions): MobileBui
   )
     throw new Error("Android APK identity does not match its Release Identity.");
   return record("android", identity, apk, outputDirectory, ANDROID_SIGNING_CERTIFICATE_SHA256, {
-    java: toolVersion("java", ["--version"]),
+    // Gradle builds with JAVA_HOME when it is set, whatever `java` the PATH finds first.
+    java: toolVersion(env.JAVA_HOME ? join(env.JAVA_HOME, "bin/java") : "java", ["--version"]),
     buildTools: buildTools.split("/").at(-1) ?? "unknown",
   });
 }
