@@ -3,11 +3,11 @@
 ## **IMPORTANT Global Instructions for Agents:**
 
 - Always commit changes after all edits are done. Do not leave uncommitted changes at the end of a task.
+- Rules in this file state their reasons. Apply them with judgment: when a reason clearly does not apply to your task, adapt and say so in the handoff. The hard limits are the data, privacy, and desktop-inspection rules.
 - This app has no real users or real data yet. Prefer long-term architectural correctness over short-term compatibility. Breaking changes, schema migrations, and large refactors are acceptable when they make the product model simpler and more coherent.
 - For frontend design, prioritize an elegant, information-dense layout with minimal logical/visual redundancy and shallow nesting.
 - Keep implementation notes, docs, changelog entries, commit messages, and handoff summaries product-native: describe what Nodex does and why, without surfacing private provenance, comparative targets, or reconstruction details unless the user explicitly asks for research notes.
 - Do not read repository contents via web crawling from `raw.githubusercontent.com` because it is not stable for agent workflows. For remote repository inspection, clone the repository into a temporary local directory and read files from the local clone instead.
-- DO NOT write tests that only assert a source file contains a string (source-string tests); that is redundant with the implementation and does not validate behavior.
 - Read [official doc of codex-app-server](https://developers.openai.com/codex/app-server.md) when dealing with codex-app-server.
 
 ### Desktop UI inspection boundary
@@ -135,9 +135,8 @@ Use these docs as the source of truth:
 
 ## Documentation Update Rules
 
-Documentation maintenance is an active, required responsibility for every agent task.
-Whenever a user asks you to fix a defect or corrects your previous work, repair the immediate issue and complete a recurrence-prevention review before handoff: determine whether a fresh coding agent without the current conversation could make the same mistake, then encode any enduring constraint at the narrowest effective seam.
-Prefer executable enforcement such as types, validation, architecture, or a meaningful regression test; update the owning documentation or agent instructions under the routing rules below when executable enforcement does not make the lesson sufficiently obvious or complete, and do not add redundant prose for a one-off issue already fully protected by an executable regression boundary.
+Keep the docs true: when behavior, contracts, or workflows change, update the narrowest source of truth in the same change.
+When you fix a defect or the user corrects your work, consider whether a fresh agent without this conversation could make the same mistake. If it could, leave the lesson at the narrowest effective seam: preferably executable (a type, validation, architecture, or a meaningful regression test), otherwise the owning document under the routing below. Skip prose for a one-off issue a test already guards.
 Write current specifications and release notes entirely in canonical product language. Keep compatibility decoder and migration details in code and fixtures.
 When behavior changes, update the narrowest source-of-truth doc:
 
@@ -171,54 +170,44 @@ Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** 
 - Open each bullet with a sentence that stands on its own; the public changelog shows it as the entry's lead and the rest as detail.
 - Prefer impact-oriented wording, not implementation wording.
 
-## Testing Expectations
+## Verification
 
-- Use a two-tier validation strategy: run targeted checks while iterating, then run risk-appropriate handoff checks once after the final edit set is stable.
-- Match targeted test commands to their runtime:
-  - Node/shared tests outside native Core/bridge contracts: `vp test run --config vitest.node.config.ts <path-to-test>`
-  - All Main `.node.test.ts` files and shared Yjs/Yrs bridge tests: `vp run test:core-client <path-to-test>`
-  - Renderer/jsdom tests: `vp test run --config vitest.renderer.config.ts <path-to-test>`
-  - Main/store tests: `vp run test:main <path-to-test>`
-  - Electron integration tests: `vp run test:integration <path-to-test>`
-  - Playwright Electron E2E: `vp run test:e2e tests/e2e/<spec>.spec.ts`
-- Only the curated Nightly set runs Electron E2E automatically; the remaining specs can still drift silently from the UI they drive. When you rename, move or remove a UI surface, accessible name or `data-*` hook, `git grep` `tests/e2e/` for it, then update and run every spec that uses it.
-- Pass a focused Playwright E2E file directly as a Vite+ `ADDITIONAL_ARGS` value. Do not insert a standalone `--` before the file: `vp run test:e2e -- tests/e2e/<spec>.spec.ts` expands to `playwright test ... -- tests/e2e/<spec>.spec.ts`, and Playwright collects the full suite instead of the requested file.
-- For a focused E2E run, verify Playwright's collection banner matches the intended test count (normally `Running 1 test`). If it starts collecting the full suite, interrupt it immediately and correct the invocation instead of waiting for unrelated E2Es.
-- Never invoke `vitest.main.config.ts` or `vitest.integration.config.ts` directly with host Node. Those suites must use the repository scripts so Electron-built native addons load under Electron's ABI.
-- Match checks to the changed surface while iterating:
-  - Pure helpers/domain logic: run the related unit test file.
-  - Renderer workflow changes: run the related renderer test(s) plus `vp run typecheck` when types or props changed.
-  - Main process/store/protocol/migration changes: run the nearest relevant unit or integration test before any broader handoff checks.
-  - Styling or copy-only UI changes: run one complete semantic alias (`vp run typecheck` or `vp run lint`) when TypeScript/TSX files changed; review visual parity at the UI evidence boundary below.
-- For docs-only changes, skip code checks unless the docs change generated artifacts or executable examples. Validate the markdown diff directly and state that no code checks were needed.
-- Prefer tests that prove behavior or domain contracts over tests that mirror implementation details. Avoid trivial UI assertions such as long `className`/Tailwind string matching, broad `textContent.includes(...)`, or "X contains Y string" checks unless the string is a real user-visible or accessibility contract.
-- For UI parity work, put numeric/state rules in pure helpers with boundary tests, keep renderer integration tests to a small number of critical user workflows, and review visual details at the UI evidence boundary below.
-- Renderer React tests must be act-clean. Treat any `act(...)` warning as a failing test: fix the test before handoff instead of ignoring console output.
-- For renderer interactions that can schedule React updates, prefer Testing Library async patterns (`findBy*`, `waitFor`, awaited helpers) and make assertions only after the UI has settled.
-- When a renderer test uses low-level `fireEvent`, window/document events, timers, resize/drag gestures, or imperative callbacks instead of a higher-level awaited helper, wrap the interaction in `await act(async () => { ...; await Promise.resolve(); })`, then wait for the observable DOM/API outcome. Use `try/finally` to release drag/resize gestures so failed assertions do not leak body styles or global listeners into later tests.
-- Default to `vp run dev --home <absolute-task-home> --seed <scenario-id>` for product UI iteration and manual visual review. Use or extend the nearest authoritative scenario for integrated product states.
-- Put component interactions, transient states, input boundaries, and accessibility contracts in focused renderer tests; use Chromium when the contract depends on real layout, selection, pointer events, observers, or computed styles. Keep pressure fixtures in their owning tests with a smaller authoritative behavior path. Reuse these boundaries rather than creating a component gallery or a parallel display state model.
-- Choose the isolated-scenario consumer by the boundary under test:
-  - Use `withCoreScenario` for current-schema Project/Page/Database correctness that does not need Electron.
-  - Use `withElectronScenario` or `ElectronScenarioHarness` for production Electron/preload/Main/Core workflows, window lifecycle, restart, and native gestures.
-  - Reopen a seeded home with `vp run dev --home <dir>` for a persistent integrated UI environment with HMR; run the scenario's dedicated Electron E2E spec for deterministic UI verification.
-  - Keep historical/corrupt storage and pressure fixtures visibly separate from authoritative public-operation scenarios. Direct SQL is allowed only when storage shape or scale is the explicit subject, and pressure evidence must retain a smaller authoritative path test.
-- When behavior plausibly depends on a user's real data shape, history length, asset closure, migration history, or production scale, prefer an additional local pass against a disposable Profile snapshot in the primary checkout's `runs.local/`. Create it with `vp run dev --home <absolute-snapshot-home> --from-profile <profile-home>` using the path convention above; never point development Core at the live Profile, copy `nodex.db`/WAL files by hand, or symlink Profile data. Real-Profile passes supplement focused deterministic coverage and never replace a regression test that can be distilled into an authoritative scenario.
-- Treat Profile snapshots as local evidence: do not use them in CI, commit them, upload their databases/assets/logs, or attach screenshots/traces containing user content. The snapshot excludes Agent credentials; import authentication only through the launcher's explicit private-file flags when the test actually needs Agent execution.
-- Every scenario-backed correctness test gets a fresh writable Profile. A generated current-schema snapshot may be copied as an immutable source only after measured seed cost justifies it; never share a live writable Store across tests.
-- Choose final checks from the actual risk and changed runtime rather than from a fixed command list:
-  - Run the relevant targeted tests for every behavior change.
-  - For TypeScript source or contract changes, normally run `vp run typecheck` once the edit set is stable.
-  - `typecheck`, `lint`, and `check:semantic` are the same full semantic gate and share cache results; one successful alias covers types and lint. For a targeted lint investigation, use `vp lint <paths>`. Use `vp run --no-cache check:semantic` to force real analysis, with run options before the task name.
-  - Lint warnings beyond the per-file/rule baseline fail; after fixing warnings, run `vp run lint:baseline`. Use `oxlint-disable-next-line <rule> -- <reason>` for deliberate exceptions; never raise the baseline to admit new warnings.
-  - React Compiler coverage is ratcheted by `vp run react-compiler:check`; after fixing bailouts, run `vp run react-compiler:baseline`. Remove manual memoization only from functions the compiler compiles; see `docs/FRONTEND.md`.
-  - Run `vp run build` when build configuration, application entrypoints, packaging, bundling, or a reported build/startup failure is involved.
-  - Before pushing to protected `main` without a pull request, run `vp run verify:static`. Main CI's static repository contracts (version-surface, workflow, ownership and dependency audits) are not covered by `typecheck` or `check`, and a branch pushed without a pull request never runs them.
-  - Run `vp run test` for broad cross-cutting refactors, release validation, or changes whose impact cannot be bounded by targeted suites. It is not required for every isolated code change.
-  - Run `vp run test:all` only for an explicit full release gate or when the changed release tooling itself requires it.
-- Treat a stronger real-world check as evidence, not as an automatic reason to stack every broader check on top of it. For example, a migration fix may be best covered by focused migration tests plus a disposable copy of a representative database.
-- Parallelize checks only when they are independent and resource contention is unlikely. Do not prefer parallel execution when it could make Electron or renderer suites flaky.
-- In the handoff, summarize the checks run and their outcomes, including any unresolved failures. Briefly explain intentionally skipped broader checks when their omission might otherwise be surprising.
+You decide what to verify. Aim for confidence that matches the change's risk: read the diff and the commits it lands on, skip checks the change cannot affect, and go deeper where it is risky, cross-cutting, or unfamiliar. One strong real-world check can replace a stack of broader suites.
+
+In the handoff, say what you ran and how it went, and what you skipped and why. Never present unverified work as verified.
+
+### Runners
+
+Each runtime has its own runner; the wrong one fails, or passes, for the wrong reasons.
+
+- Node and shared tests outside native Core/bridge contracts: `vp test run --config vitest.node.config.ts <path>`
+- Main `.node.test.ts` files and shared Yjs/Yrs bridge tests: `vp run test:core-client <path>`
+- Renderer/jsdom: `vp test run --config vitest.renderer.config.ts <path>`; Chromium (`*.browser.test.tsx`): `vp test run --config vitest.browser.config.ts <path>`
+- Main/store: `vp run test:main <path>`; Electron integration: `vp run test:integration <path>`. Their native addons are built for Electron's ABI, so never run `vitest.main.config.ts` or `vitest.integration.config.ts` directly with host Node.
+- Electron E2E: `vp run test:e2e tests/e2e/<spec>.spec.ts`. A standalone `--` before the file makes Playwright collect the whole suite; a focused run's banner reads `Running 1 test`.
+- Semantic gate: `vp run typecheck`, the same task as `lint` and `check:semantic` with a shared cache, covers types and lint; `vp run --no-cache check:semantic` forces real analysis.
+- Broader: `vp run build` for build configuration, entrypoints, packaging, or startup failures; `vp run test` when targeted suites cannot bound a change's impact; `vp run test:all` for a release gate.
+- Electron and renderer suites can turn flaky when run in parallel with each other.
+
+### Blind spots
+
+- Only the curated Nightly set runs Electron E2E automatically, so other specs drift silently. When you rename, move, or remove a UI surface, accessible name, or `data-*` hook, `git grep` `tests/e2e/` and update the specs that use it; run them when the change could plausibly break them.
+- Pushing to `main` without a pull request skips Main CI's static repository contracts (version surface, workflows, ownership, dependency audits); `vp run verify:static` covers them.
+- CI fails on lint warnings above the per-file baseline and on new React Compiler bailouts. After removing some, `vp run lint:baseline` or `vp run react-compiler:baseline` records the lower counts. Never raise a baseline to admit new ones; mark a deliberate lint exception with `oxlint-disable-next-line <rule> -- <reason>`.
+
+### Writing tests
+
+- Test behavior and domain contracts, not implementation. Avoid source-string checks, long `className` matching, and broad `textContent.includes(...)` unless the string is a real user-visible or accessibility contract.
+- Renderer tests are act-clean: an `act(...)` warning is a failing test. Prefer awaited Testing Library patterns. Wrap low-level events, timers, and gestures in `await act(async () => { ...; await Promise.resolve(); })`, then await the observable outcome, and release gestures in `try/finally`.
+- Renderer seams and conventions live in `docs/FRONTEND.md`; scenario consumers, fixture classes, and evidence boundaries live in `docs/development.md`.
+
+### Real data
+
+- Never point development Core at the live Profile, copy `nodex.db`/WAL files by hand, or symlink Profile data. Snapshot it with `vp run dev --home <absolute-snapshot-home> --from-profile <profile-home>` under the primary checkout's `runs.local/`.
+- Snapshots are local evidence: keep them out of CI and commits, do not upload their databases, assets, or logs, and do not attach screenshots or traces with user content. Import Agent authentication only through the launcher's private-file flags, and only when the test needs Agent execution.
+- A snapshot pass helps when behavior plausibly depends on real data shape, history, or scale. It supplements a distilled regression test and never replaces one.
+
+For UI iteration and visual review, `vp run dev --home <absolute-task-home> --seed <scenario-id>` gives a seeded, persistent environment with HMR.
 
 ### Electron HTML5 DnD E2E
 
@@ -231,7 +220,7 @@ Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** 
 ## Commit and PR Expectations
 
 - Keep changes scoped and atomic.
-- Before merging a branch into `main`, including a requested rebase-and-merge, rewrite its unpublished history into atomic Conventional Commits. Fold `wip`, review-fix, style, and formatting commits into the commits they complete, never merge a fix for a defect the same branch introduced as its own commit, and confirm that each resulting commit typechecks.
+- Before merging a branch into `main`, including a requested rebase-and-merge, rewrite its unpublished history into atomic Conventional Commits. Fold `wip`, review-fix, style, and formatting commits into the commits they complete, and never merge a fix for a defect the same branch introduced as its own commit. The merged result must typecheck; intermediate commits need not be verified one by one.
 - Use Conventional Commits: `<type>(<scope>): <description>`, omitting the scope when it adds no value. Common types include `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `build`, `ci`, and `perf`.
 - Write a concise, imperative, human-readable subject that explains why the change matters. Prefer the user, product, reliability, or performance outcome over the implementation mechanism.
   - Bad: `perf(server): negotiate permessage-deflate on the websocket`

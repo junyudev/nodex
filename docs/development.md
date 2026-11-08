@@ -781,6 +781,13 @@ Choose evidence by the behavior under test:
 | Pure state transitions and domain rules                                               | Owning helper/domain tests                                                               |
 | Large-data, scale, and convergence behavior                                           | Owning pressure fixtures and tests, paired with a smaller authoritative operation path   |
 
+Scenario consumers follow the boundary under test: `withCoreScenario` for
+current-schema Project, Page, and Database correctness that does not need
+Electron; `withElectronScenario` or `ElectronScenarioHarness` for production
+Electron, preload, Main, and Core workflows, window lifecycle, restart, and
+native gestures. A seeded scenario's dedicated Electron E2E spec owns its
+deterministic UI assertions.
+
 Reuse these mechanisms for UI verification. Keep fixture data with its test or
 subsystem owner instead of introducing a separate component gallery or parallel
 display state model. Fixture classes and runtime commands are detailed below.
