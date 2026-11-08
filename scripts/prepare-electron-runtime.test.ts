@@ -197,7 +197,11 @@ test("recovers dropped downloads through Electron's pinned downloader before pub
     response.end(readFileSync(setup.archivePath));
   });
   const downloader = upstreamDownloader(project, server.url);
-  const options = { ...project, installer: { ...project.installer!, ...downloader } };
+  const options = {
+    ...project,
+    installer: { ...project.installer!, ...downloader },
+    retryDelaysMs: [0, 0],
+  };
   try {
     const executable = await prepareElectronRuntime(options);
     expect(downloader.attempts()).toBe(3);
@@ -218,7 +222,11 @@ test("bounds persistent transport failures without publishing an Electron distri
   const downloader = upstreamDownloader(project, server.url);
   try {
     await expect(
-      prepareElectronRuntime({ ...project, installer: { ...project.installer!, ...downloader } }),
+      prepareElectronRuntime({
+        ...project,
+        installer: { ...project.installer!, ...downloader },
+        retryDelaysMs: [0, 0],
+      }),
     ).rejects.toThrow("fetch failed");
     expect(downloader.attempts()).toBe(3);
     expect(setup.counters().extractions).toBe(0);
@@ -238,6 +246,7 @@ test("retries the connection timeout preserved in native fetch's cause", async (
   let attempts = 0;
   const executable = await prepareElectronRuntime({
     ...project,
+    retryDelaysMs: [0],
     installer: {
       ...project.installer!,
       downloadArtifact: async (input) => {
@@ -258,7 +267,7 @@ test("retries the connection timeout preserved in native fetch's cause", async (
   expect(setup.counters()).toEqual({ downloads: 1, extractions: 1 });
 });
 
-test.each([403, 404, 503])("does not retry an HTTP %s response", async (status) => {
+test.each([403, 404])("does not retry an HTTP %s response", async (status) => {
   const setup = fixture();
   const project = setup.project("http-error");
   const server = await archiveServer((_request, response) => {
@@ -270,6 +279,56 @@ test.each([403, 404, 503])("does not retry an HTTP %s response", async (status) 
       prepareElectronRuntime({ ...project, installer: { ...project.installer!, ...downloader } }),
     ).rejects.toThrow(`Response code ${status}`);
     expect(downloader.attempts()).toBe(1);
+    expect(setup.counters().extractions).toBe(0);
+    expect(existsSync(setup.cachedExecutable)).toBe(false);
+  } finally {
+    await server.close();
+  }
+});
+
+test.each([429, 502, 503, 504])(
+  "rides out an HTTP %s answer from the release host before publishing",
+  async (status) => {
+    const setup = fixture();
+    const project = setup.project("gateway-error");
+    let requests = 0;
+    const server = await archiveServer((_request, response) => {
+      requests++;
+      if (requests === 1) {
+        response.writeHead(status).end();
+        return;
+      }
+      response.end(readFileSync(setup.archivePath));
+    });
+    const downloader = upstreamDownloader(project, server.url);
+    try {
+      const executable = await prepareElectronRuntime({
+        ...project,
+        installer: { ...project.installer!, ...downloader },
+        retryDelaysMs: [0],
+      });
+      expect(downloader.attempts()).toBe(2);
+      expect(readFileSync(executable, "utf8")).toBe("electron executable");
+    } finally {
+      await server.close();
+    }
+  },
+);
+
+test("bounds a release host that keeps failing at its gateway", async () => {
+  const setup = fixture();
+  const project = setup.project("failing-gateway");
+  const server = await archiveServer((_request, response) => response.writeHead(504).end());
+  const downloader = upstreamDownloader(project, server.url);
+  try {
+    await expect(
+      prepareElectronRuntime({
+        ...project,
+        installer: { ...project.installer!, ...downloader },
+        retryDelaysMs: [0, 0],
+      }),
+    ).rejects.toThrow("Response code 504");
+    expect(downloader.attempts()).toBe(3);
     expect(setup.counters().extractions).toBe(0);
     expect(existsSync(setup.cachedExecutable)).toBe(false);
   } finally {
