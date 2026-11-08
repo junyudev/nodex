@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.5.3] - 2026-11-08
+
+### Added
+
 - Nodex's Dock icon now shows how many chats are unread. It counts the same chats the sidebar marks unread across every Project, updates as soon as you read one anywhere, including on your phone, and clears when Nodex closes. Turn it off with Badges in Nodex's notification settings in System Settings.
 - Get Nodex Mobile from its public TestFlight beta on iPhone, or download the Android app from nodex.jyu.app/download. Every Nodex release now ships the phone app with the same version, so the phone and the computer it pairs with stay able to talk; TestFlight keeps the iPhone app current, and a newer APK installs over the old one without losing your pairing.
 - Each Nodex window is now named after what it shows, so you can tell windows apart in the Window menu, Mission Control, the Dock and window switchers. A chat window shows the chat and its Project, such as `Fix flaky E2E — nodex`; a Project, Page or Database window shows its name; and titles follow renames and Page title edits as they happen. On Windows the title ends with Nodex.
