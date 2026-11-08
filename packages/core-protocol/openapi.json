@@ -35874,6 +35874,21 @@
               },
               {
                 "type": "object",
+                "description": "How many chats the chat list shows as unread, across every Project.",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "unread_chat_count"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "required": [
                   "kind"
                 ],
@@ -51911,6 +51926,26 @@
                               {
                                 "type": "null"
                               }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "count",
+                          "kind"
+                        ],
+                        "properties": {
+                          "count": {
+                            "type": "integer",
+                            "format": "int32",
+                            "minimum": 0
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "unread_chat_count"
                             ]
                           }
                         }

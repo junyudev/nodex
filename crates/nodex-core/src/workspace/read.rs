@@ -83,6 +83,9 @@ pub(super) fn read(
                 next_wake_at: Some(wake_at),
             })
         }
+        ProjectWorkspaceRead::UnreadChatCount => Ok(ProjectWorkspaceReadValue::UnreadChatCount {
+            count: super::session_listing::read_unread_chat_count(connection, library_id)?,
+        }),
         ProjectWorkspaceRead::InboxChatTargets {
             scope,
             query,

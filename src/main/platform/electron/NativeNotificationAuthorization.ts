@@ -17,9 +17,10 @@ const NativeAuthorization = Schema.Literals([
   "provisional",
 ]);
 
-interface NativeNotificationBridge {
+export interface NativeNotificationBridge {
   readonly readAuthorization: () => Promise<unknown>;
   readonly requestAuthorization: () => Promise<unknown>;
+  readonly setBadgeCount: (count: number) => void;
 }
 
 const require = createRequire(import.meta.url);
@@ -33,7 +34,10 @@ export interface NativeNotificationAuthorizationService {
 export const makeNativeNotificationAuthorization = Effect.fnUntraced(function* (options: {
   readonly platform: string;
   readonly isSupported: () => boolean;
-  readonly loadBridge: () => NativeNotificationBridge;
+  readonly loadBridge: () => Pick<
+    NativeNotificationBridge,
+    "readAuthorization" | "requestAuthorization"
+  >;
 }) {
   if (!hostCapabilities(options.platform).nativeNotificationAuthorization) {
     const read = Effect.sync((): DesktopNotificationAuthorization =>
@@ -41,7 +45,7 @@ export const makeNativeNotificationAuthorization = Effect.fnUntraced(function* (
     );
     return { read, request: read } satisfies NativeNotificationAuthorizationService;
   }
-  let bridge: NativeNotificationBridge | undefined;
+  let bridge: ReturnType<typeof options.loadBridge> | undefined;
   const binding = () => (bridge ??= options.loadBridge());
   const read = Effect.tryPromise(() => binding().readAuthorization()).pipe(
     Effect.flatMap(Schema.decodeUnknownEffect(NativeAuthorization)),
@@ -66,6 +70,20 @@ export class NativeNotificationAuthorization extends Context.Service<
   NativeNotificationAuthorizationService
 >()("nodex/main/platform/electron/NativeNotificationAuthorization") {}
 
+/** The running bundle's UserNotifications bridge, packaged or built for this worktree. */
+export const loadNativeNotificationBridge = (config: MainConfig["Service"]) =>
+  require(
+    config.isPackaged
+      ? join(config.resourcesPath, "native", "nodex-notifications.node")
+      : join(
+          config.projectRootPath,
+          ".generated",
+          "notifications-runtime",
+          config.arch,
+          "nodex-notifications.node",
+        ),
+  ) as NativeNotificationBridge;
+
 export const live: Layer.Layer<NativeNotificationAuthorization, never, MainConfig> = Layer.effect(
   NativeNotificationAuthorization,
   Effect.gen(function* () {
@@ -73,18 +91,7 @@ export const live: Layer.Layer<NativeNotificationAuthorization, never, MainConfi
     return yield* makeNativeNotificationAuthorization({
       platform: config.platform,
       isSupported: () => Notification.isSupported(),
-      loadBridge: () =>
-        require(
-          config.isPackaged
-            ? join(config.resourcesPath, "native", "nodex-notifications.node")
-            : join(
-                config.projectRootPath,
-                ".generated",
-                "notifications-runtime",
-                config.arch,
-                "nodex-notifications.node",
-              ),
-        ) as NativeNotificationBridge,
+      loadBridge: () => loadNativeNotificationBridge(config),
     });
   }),
 );

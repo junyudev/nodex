@@ -122,6 +122,27 @@ napi_value StartAuthorization(napi_env env, bool request) {
   return promise;
 }
 
+// The system badge follows the person's Badges switch and notification authorization for this bundle.
+napi_value SetBadgeCount(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  int64_t count = 0;
+  if (napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc != 1 ||
+      napi_get_value_int64(env, argv[0], &count) != napi_ok || count < 0) {
+    napi_throw_type_error(env, nullptr, "Badge count must be a non-negative integer");
+    return nullptr;
+  }
+  @try {
+    [UNUserNotificationCenter.currentNotificationCenter setBadgeCount:(NSInteger)count withCompletionHandler:nil];
+  } @catch (NSException *exception) {
+    napi_throw_error(env, nullptr, exception.reason.UTF8String ?: "The app badge is unavailable");
+    return nullptr;
+  }
+  napi_value undefined;
+  napi_get_undefined(env, &undefined);
+  return undefined;
+}
+
 napi_value ReadAuthorization(napi_env env, napi_callback_info) { return StartAuthorization(env, false); }
 napi_value RequestAuthorization(napi_env env, napi_callback_info) { return StartAuthorization(env, true); }
 
@@ -129,8 +150,9 @@ napi_value Init(napi_env env, napi_value exports) {
   napi_property_descriptor properties[] = {
     {"readAuthorization", nullptr, ReadAuthorization, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"requestAuthorization", nullptr, RequestAuthorization, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"setBadgeCount", nullptr, SetBadgeCount, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
-  if (napi_define_properties(env, exports, 2, properties) != napi_ok) {
+  if (napi_define_properties(env, exports, 3, properties) != napi_ok) {
     napi_throw_error(env, nullptr, "Unable to initialize native notification authorization");
     return nullptr;
   }

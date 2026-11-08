@@ -55,6 +55,8 @@ pub enum ProjectWorkspaceTaskPlacementScope {
 pub enum ProjectWorkspaceRead {
     /// The earliest chat reminder or unfinished delivery, at most one item.
     NextSessionReminder,
+    /// How many chats the chat list shows as unread, across every Project.
+    UnreadChatCount,
     QueuedMessageState,
     ThreadReadState {
         identity_key: String,
@@ -274,6 +276,9 @@ pub enum ProjectWorkspaceReadValue {
         session: Option<ProjectWorkspaceSessionSummary>,
         delivery: Option<ProjectWorkspaceSessionReminderDelivery>,
         next_wake_at: Option<String>,
+    },
+    UnreadChatCount {
+        count: u32,
     },
     CodexThreadSession {
         thread: Box<ProjectWorkspaceThread>,

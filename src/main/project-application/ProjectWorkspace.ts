@@ -332,6 +332,8 @@ export interface ProjectWorkspaceService {
     command: ProjectSessionOpenedCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly nextSessionReminder: ProjectWorkspaceEffect<SessionReminderWork | null>;
+  /** How many chats the chat list shows as unread, across every Project. */
+  readonly unreadChatCount: ProjectWorkspaceEffect<number>;
   readonly consumeSessionReminder: (
     sessionId: string,
     remindAt: string,
@@ -1559,6 +1561,9 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
     );
     const service = ProjectWorkspace.of({
       setProjectSessionReminder,
+      unreadChatCount: read("session.unread.count", { kind: "unread_chat_count" }).pipe(
+        Effect.map((snapshot) => expectVariant(snapshot, "unread_chat_count").count),
+      ),
       nextSessionReminder: read("session.reminder.next", { kind: "next_session_reminder" }).pipe(
         Effect.flatMap((snapshot) => {
           const value = expectVariant(snapshot, "next_session_reminder");

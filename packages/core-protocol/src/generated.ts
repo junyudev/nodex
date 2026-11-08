@@ -8527,6 +8527,9 @@ export interface components {
                 readonly kind: "next_session_reminder";
             } | {
                 /** @enum {string} */
+                readonly kind: "unread_chat_count";
+            } | {
+                /** @enum {string} */
                 readonly kind: "queued_message_state";
             } | {
                 readonly identity_key: string;
@@ -12151,6 +12154,11 @@ export interface components {
                     readonly kind: "next_session_reminder";
                     readonly next_wake_at?: string | null;
                     readonly session?: components["schemas"]["ProjectWorkspaceSessionSummary"] | null;
+                } | {
+                    /** Format: int32 */
+                    readonly count: number;
+                    /** @enum {string} */
+                    readonly kind: "unread_chat_count";
                 } | {
                     /** @enum {string} */
                     readonly kind: "codex_thread_session";

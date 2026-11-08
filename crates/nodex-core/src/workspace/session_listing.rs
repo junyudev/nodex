@@ -14,6 +14,34 @@ use nodex_core_contracts::workspace::{
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, params_from_iter};
 
+/// The chat list's members in one archive lane: a Session that is no side chat, whose Thread, if
+/// any, is a root, in no Project or one of this Library's Projects that the lane shows. Binds `?1`
+/// to the Library and `?2` to the lane, over `session`, its `thread` and its `project`.
+const CHAT_LIST_LANE: &str = "NOT EXISTS (SELECT 1 FROM project_session_side_chats side \
+     WHERE side.session_id = session.id) AND session.archived = ?2 \
+   AND (session.project_id IS NULL OR (project.library_id = ?1 \
+     AND (?2 = 1 OR project.lifecycle <> 'archived'))) \
+   AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL)";
+
+/// Unread chats among those the chat list shows, across every Project.
+pub(super) fn read_unread_chat_count(
+    connection: &Connection,
+    library_id: &str,
+) -> Result<u32, StoreError> {
+    let count: i64 = connection.query_row(
+        &format!(
+            "SELECT COUNT(*) FROM project_sessions session \
+             LEFT JOIN project_session_threads link ON link.session_id = session.id \
+             LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
+             LEFT JOIN projects project ON project.id = session.project_id \
+             WHERE {CHAT_LIST_LANE} AND session.unread = 1"
+        ),
+        rusqlite::params![library_id, 0_i64],
+        |row| row.get(0),
+    )?;
+    u32::try_from(count).map_err(|_| invalid("Unread chat count exceeds its bound"))
+}
+
 pub(super) struct SessionListingFilter<'a> {
     pub archived: bool,
     pub order: ProjectWorkspaceSessionOrder,
@@ -167,10 +195,7 @@ pub(super) fn read_session_window(
          LEFT JOIN workspace_sidebar_sections project_section
            ON project_section.section_id = project_item.section_id
            AND project_section.library_id = ?1 AND project_section.lifecycle = 'active'
-         WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND session.archived = ?2
-           AND (session.project_id IS NULL OR (project.library_id = ?1
-             AND (?2 = 1 OR project.lifecycle <> 'archived')))
-           AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL)
+         WHERE {CHAT_LIST_LANE}
            AND (?3 IS NULL OR session.project_id = ?3)
            AND (?4 IS NULL OR instr(lower(COALESCE(thread.thread_name, session.no_thread_fallback_title)), lower(?4)) > 0
              OR instr(lower(COALESCE(thread.thread_preview, '')), lower(?4)) > 0)
@@ -261,6 +286,78 @@ mod tests {
         ProjectWorkspaceReadValue, ProjectWorkspaceSidebarSectionItemRef,
         ProjectWorkspaceThreadPatch, ProjectWorkspaceThreadStatus,
     };
+
+    #[test]
+    fn counts_unread_chats_exactly_as_the_chat_list_shows_them() {
+        let workspace = seeded_workspace();
+        create_project(&workspace.module, "create-project-shown", "project:shown");
+        create_project(
+            &workspace.module,
+            "create-project-archived",
+            "project:archived",
+        );
+        for (index, (session, project)) in [
+            ("projectless", None),
+            ("in-project", Some("project:shown")),
+            ("read", None),
+            ("archived", None),
+            ("side-chat", None),
+            ("child", None),
+            ("archived-project", Some("project:archived")),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            create_session_thread(
+                &workspace.module,
+                &format!("create-{session}"),
+                &format!("session:{session}"),
+                &format!("thread:{session}"),
+                project,
+                i64::try_from(index).expect("small index"),
+            );
+        }
+        let count = || {
+            let ProjectWorkspaceReadValue::UnreadChatCount { count } =
+                read(&workspace.module, ProjectWorkspaceRead::UnreadChatCount)
+            else {
+                panic!("Unread chat count expected")
+            };
+            count
+        };
+        assert_eq!(count(), 0);
+        workspace
+            .kernel
+            .writer()
+            .call(|connection| {
+                connection.execute(
+                    "UPDATE project_sessions SET unread = 1 WHERE id <> 'session:read'",
+                    [],
+                )?;
+                connection.execute(
+                    "UPDATE project_sessions SET archived = 1, archived_at = ?1 \
+                     WHERE id = 'session:archived'",
+                    [crate::workspace::test_support::NOW],
+                )?;
+                connection.execute(
+                    "INSERT INTO project_session_side_chats(session_id, source_session_id) \
+                     VALUES ('session:side-chat', 'session:projectless')",
+                    [],
+                )?;
+                connection.execute(
+                    "UPDATE codex_threads SET parent_thread_id = 'thread:projectless' \
+                     WHERE thread_id = 'thread:child'",
+                    [],
+                )?;
+                connection.execute(
+                    "UPDATE projects SET lifecycle = 'archived' WHERE id = 'project:archived'",
+                    [],
+                )?;
+                Ok(())
+            })
+            .expect("seed chat list visibility");
+        assert_eq!(count(), 2);
+    }
 
     #[test]
     fn foreground_opens_are_durable_deduped_and_do_not_change_activity_or_unread() {

@@ -25,6 +25,7 @@ type NotificationObserver = typeof globalThis & {
     payload: ObservedNotification;
     instance: Electron.Notification;
   }[];
+  __badgeCounts: number[];
 };
 
 /** Observe the actual Electron payload and native callbacks without sending an OS alert. */
@@ -39,13 +40,17 @@ async function observeNotifications(application: ElectronApplication): Promise<v
     require(bridgePath);
     const cached = require.cache[bridgePath];
     if (!cached) throw new Error("Native permission bridge did not enter the module cache");
+    const scope = globalThis as NotificationObserver;
+    scope.__notificationEvidence = [];
+    scope.__badgeCounts = [];
     // The isolated scenario supplies authorization; the real notification policy still runs.
     cached.exports = {
       readAuthorization: async () => "authorized",
       requestAuthorization: async () => "authorized",
+      setBadgeCount: (count: number) => {
+        scope.__badgeCounts.push(count);
+      },
     };
-    const scope = globalThis as NotificationObserver;
-    scope.__notificationEvidence = [];
     Notification.isSupported = () => true;
     Notification.prototype.show = function () {
       scope.__notificationEvidence.push({
@@ -64,6 +69,10 @@ async function observeNotifications(application: ElectronApplication): Promise<v
     };
   }, process.cwd());
 }
+
+/** The app icon badge as Nodex last set it, or null before this observer saw a change. */
+const readBadge = (application: ElectronApplication) =>
+  application.evaluate(() => (globalThis as NotificationObserver).__badgeCounts.at(-1) ?? null);
 
 const readNotifications = (application: ElectronApplication) =>
   application.evaluate(() =>
@@ -212,6 +221,8 @@ test("completion notifications show the ended Run's reply and open its Session",
       notification.body,
     );
     claim("Completion offers a native follow-up reply", true, notification.hasReply);
+    await expect.poll(() => readBadge(harness.application)).toBe(1);
+    claim("The app badge counts the unread chat", 1, await readBadge(harness.application));
     await showObservedPayload(page, notification);
     await page.waitForTimeout(1_000);
     await page.getByRole("button", { name: "Open notification", exact: true }).click();
@@ -219,6 +230,8 @@ test("completion notifications show the ended Run's reply and open its Session",
     await expect(returnedScene).toBeVisible();
     await expect(returnedScene.getByText("通知内容已更新。", { exact: true })).toBeVisible();
     claim("Click returns to the completed Session", true, await returnedScene.isVisible());
+    await expect.poll(() => readBadge(harness.application)).toBe(0);
+    claim("Reading the chat clears the app badge", 0, await readBadge(harness.application));
     await harness.application.evaluate(() => {
       (globalThis as NotificationObserver).__notificationEvidence[0]!.instance.emit("click", {});
     });

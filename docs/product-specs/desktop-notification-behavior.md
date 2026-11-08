@@ -346,6 +346,21 @@ conversation. Whether a Session is a side chat and which Session it came from
 are read from Core's execution binding, not from live activity. A side chat
 whose source cannot be resolved does not notify.
 
+## App badge
+
+The app icon shows how many chats the chat list shows as unread, across every
+Project. Core counts them with the chat list's own membership rules: root
+chats that are not side chats or archived, in no Project or an unarchived one.
+Delegated children and side chats never add to it.
+
+The badge follows every chat organization change, Project change and Core
+restart, whichever window, phone, Agent tool or CLI made it, and does not depend
+on window focus. On macOS it is set through the notification center, so it
+appears only while Nodex may notify and the system's Badges switch for Nodex is
+on. Linux launchers that support counts show it; Windows has no app badge. The
+first count after launch replaces a badge an earlier run left behind, and
+closing the Profile clears it.
+
 ## Chat reminders
 
 A chat reminder is one nullable instant on its Session. At the chosen time, Desktop

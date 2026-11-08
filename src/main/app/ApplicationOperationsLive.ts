@@ -28,6 +28,7 @@ import { live as projectionDeliveryLive } from "../core-runtime/ProjectionDelive
 import { live as coreEventHubLive } from "../core-runtime/CoreEventHub";
 import { live as sessionReminderLive } from "../host-runtime/SessionReminderRuntime";
 import { live as reminderSchedulerLive } from "../host-runtime/ReminderSchedulerRuntime";
+import { live as unreadBadgeLive } from "../host-runtime/UnreadBadgeRuntime";
 import { CodexPlatform } from "./CodexApplicationLive";
 import { MainConfig } from "./MainConfig";
 import { live as agentBackendApplicationLive } from "../agent-backend/AgentBackendApplication";
@@ -84,9 +85,11 @@ const projectionDelivery = projectionDeliveryLive.pipe(
   Layer.provideMerge(coreApplicationProjection),
 );
 const coreEvents = coreEventHubLive({}).pipe(Layer.provideMerge(projectionDelivery));
-const reminders = Layer.merge(reminderSchedulerLive({}), sessionReminderLive).pipe(
-  Layer.provideMerge(coreEvents),
-);
+const reminders = Layer.mergeAll(
+  reminderSchedulerLive({}),
+  sessionReminderLive,
+  unreadBadgeLive,
+).pipe(Layer.provideMerge(coreEvents));
 const agentBackends = agentBackendApplicationLive.pipe(
   Layer.provideMerge(Layer.merge(agentBackendRegistryLive, nativeMetadata)),
   Layer.provideMerge(reminders),

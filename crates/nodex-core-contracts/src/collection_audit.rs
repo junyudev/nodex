@@ -71,6 +71,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::PageChatActivitySummaries { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::ManagedWorktreeLifecycleSnapshot => ReadBudgetPolicy::FixedDomain,
         ProjectWorkspaceRead::NextSessionReminder
+        | ProjectWorkspaceRead::UnreadChatCount
         | ProjectWorkspaceRead::ProjectBootstrap
         | ProjectWorkspaceRead::Project { .. }
         | ProjectWorkspaceRead::Session { .. }
