@@ -1,4 +1,4 @@
-import { expect, test } from "vite-plus/test";
+import { expect, test, vi } from "vite-plus/test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -6,12 +6,17 @@ import path from "node:path";
 import { load as parse } from "js-yaml";
 
 import {
-  copySparkleHistory,
   isEligibleSparkleHistoryRelease,
-  selectLatestSparkleHistoryAppcast,
+  normalizeGeneratedAppcast,
   readSparkleHistoryManifest,
   writeSparkleHistoryManifest,
 } from "./sparkle";
+import { verifySparkleAppcastContract } from "./sparkle-appcast-contract";
+
+vi.mock("./signing", () => ({
+  signFile: () => `${"A".repeat(86)}==`,
+  runWithPrivateKey: () => "",
+}));
 
 test("round-trips empty and delimiter-containing history paths through a manifest", () => {
   const root = mkdtempSync(path.join(tmpdir(), "sparkle-history-manifest-"));
@@ -109,16 +114,6 @@ if (args.includes("release:fetch:sparkle-history")) {
   },
 );
 
-test("selects Sparkle history by semantic version rather than filename order", () => {
-  expect(
-    selectLatestSparkleHistoryAppcast([
-      "/history/Nodex-0.2.9-appcast-arm64.xml",
-      "/history/Nodex-0.2.10-appcast-arm64.xml",
-      "/history/unrelated.xml",
-    ]),
-  ).toBe("/history/Nodex-0.2.10-appcast-arm64.xml");
-});
-
 test("accepts only immutable published releases as delta history", () => {
   expect(
     isEligibleSparkleHistoryRelease({
@@ -142,28 +137,74 @@ test("accepts only immutable published releases as delta history", () => {
   ).toBe(false);
 });
 
-test("keeps actual archive names when preparing mixed ZIP and tar.xz delta history", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "sparkle-mixed-history-"));
+test("normalizes a delta whose source build has no item in the published feed", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sparkle-delta-source-"));
   try {
-    const history = path.join(root, "history");
-    const output = path.join(root, "output");
-    mkdirSync(history);
-    mkdirSync(output);
-    const oldName = "Nodex-0.5.1-arm64.zip";
-    const newName = "Nodex-0.5.2-arm64.tar.xz";
-    for (const name of [oldName, newName, "unrelated.zip"]) {
-      writeFileSync(path.join(history, name), name);
-    }
-    const archives = copySparkleHistory([history], output);
-    expect([...archives.entries()].sort()).toEqual([
-      ["0.5.1", path.join(output, oldName)],
-      ["0.5.2", path.join(output, newName)],
+    const version = "0.5.2-nightly.20261107.2397";
+    const buildVersion = "1.23.97";
+    const fromVersion = "0.5.2-nightly.20261105.2307";
+    const fromBuildVersion = "1.23.7";
+    const tag = `v${version}`;
+    const fullPath = path.join(root, `Nodex-${version}-arm64.tar.xz`);
+    const deltaName = `Nodex${buildVersion}-${fromBuildVersion}.delta`;
+    const appcastPath = path.join(root, "appcast.xml");
+    writeFileSync(
+      appcastPath,
+      `
+      <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel><item>
+        <sparkle:version>${buildVersion}</sparkle:version>
+        <sparkle:shortVersionString>${version}</sparkle:shortVersionString>
+        <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+        <enclosure url="https://example.com/full.tar.xz"/>
+        <sparkle:deltas>
+          <enclosure url="https://example.com/${deltaName}" sparkle:deltaFrom="${fromBuildVersion}"/>
+        </sparkle:deltas>
+      </item></channel></rss>
+    `,
+    );
+    writeFileSync(fullPath, "full update");
+    writeFileSync(path.join(root, deltaName), "delta update");
+
+    const options = {
+      appcastPath,
+      architecture: "arm64" as const,
+      buildVersion,
+      currentFullPath: fullPath,
+      privateKey: "fixture-key",
+      publishedAt: "2026-11-07T23:09:00Z",
+      signUpdate: "fixture-signer",
+      tag,
+      version,
+      workingDirectory: root,
+    };
+    expect(() => normalizeGeneratedAppcast({ ...options, history: new Map() })).toThrow(
+      "Generated delta source build 1.23.7 is not in verified history.",
+    );
+    const history = new Map([
+      [
+        fromBuildVersion,
+        { archivePath: path.join(root, `Nodex-${fromVersion}-arm64.tar.xz`), version: fromVersion },
+      ],
     ]);
-    for (const archive of archives.values()) {
-      expect(readFileSync(archive, "utf8")).toBe(path.basename(archive));
-    }
-    writeFileSync(path.join(history, "Nodex-0.5.1-arm64.tar.xz"), "duplicate");
-    expect(() => copySparkleHistory([history], output)).toThrow("Duplicate Sparkle history");
+    const normalized = normalizeGeneratedAppcast({ ...options, history });
+    const renamed = `Nodex-${fromVersion}-to-${version}-arm64.delta`;
+    expect(normalized.deltas).toEqual([
+      expect.objectContaining({ fromBuildVersion, fromVersion, toVersion: version, name: renamed }),
+    ]);
+    expect(readFileSync(path.join(root, renamed), "utf8")).toBe("delta update");
+    const xml = readFileSync(appcastPath, "utf8");
+    verifySparkleAppcastContract(xml, {
+      ...normalized,
+      architecture: "arm64",
+      target: { version, buildVersion },
+    });
+    writeFileSync(
+      appcastPath,
+      xml.replace("</channel>", "<item><title>Older release</title></item></channel>"),
+    );
+    expect(() => normalizeGeneratedAppcast({ ...options, history })).toThrow(
+      "Generated appcast must contain only the current release item.",
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

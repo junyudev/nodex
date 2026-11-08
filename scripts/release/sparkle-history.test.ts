@@ -1,10 +1,18 @@
 import { expect, test } from "vite-plus/test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION } from "../package-provenance.mjs";
-import { fetchSparkleHistory } from "./sparkle";
+import { stageSparkleDeltaSources, fetchSparkleHistory } from "./sparkle";
 import { sha256File } from "./model";
 
 const VERSION = "0.2.3-nightly.20260820.1185";
@@ -191,7 +199,21 @@ test.skipIf(process.platform === "win32").each([
         return;
       }
       const compatible = bundleSchema === 3 && schema === PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION;
-      expect(fetch()).toEqual(compatible ? [path.join(output, VERSION)] : []);
+      const directories = fetch();
+      expect(directories).toEqual(compatible ? [path.join(output, VERSION)] : []);
+      if (compatible) {
+        const stage = path.join(root, "stage");
+        mkdirSync(stage);
+        const archives = stageSparkleDeltaSources(directories, stage);
+        expect(archives.get("1.11.85")).toEqual({
+          archivePath: path.join(stage, fixture.fullName),
+          version: VERSION,
+        });
+        expect(readdirSync(stage)).toEqual([fixture.fullName]);
+        expect(() => stageSparkleDeltaSources(directories, stage)).toThrow(
+          "Duplicate Sparkle history",
+        );
+      }
       expect(existsSync(path.join(output, VERSION))).toBe(compatible);
       expect(
         readFileSync(path.join(root, "downloads.jsonl"), "utf8")
