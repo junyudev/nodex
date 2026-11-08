@@ -81,7 +81,7 @@ test("decodes, plays and seeks local audio/video from packaged and Vite origins"
         },
       });
       const page = await application.firstWindow();
-      await expect.poll(() => page.url()).toBe(rendererUrl);
+      await page.waitForURL(rendererUrl, { waitUntil: "domcontentloaded" });
       const mediaRanges: { source: string; range: string; status: number }[] = [];
       page.on("response", (response) => {
         const request = response.request();
