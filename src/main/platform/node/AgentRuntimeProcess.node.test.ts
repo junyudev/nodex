@@ -808,6 +808,12 @@ it.live.skipIf(process.platform === "win32")(
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
+/**
+ * For tests that hold work while the process keeps answering checks: six silent ticks must stay
+ * longer than a busy runner takes to answer one, or a late pong reads as the process going quiet.
+ */
+const ANSWERING_TICK_MS = 20;
+
 const observeResponsive = (connection: Effect.Success<ReturnType<typeof acquire>>) =>
   Effect.gen(function* () {
     const states: boolean[] = [];
@@ -822,7 +828,7 @@ it.live.skipIf(process.platform === "win32")(
   "a watched read stuck while the process answers is unresponsive until its own reply",
   () =>
     Effect.gen(function* () {
-      const connection = yield* acquire(undefined, 10);
+      const connection = yield* acquire(undefined, ANSWERING_TICK_MS);
       const states = yield* observeResponsive(connection);
       const deliveries = yield* connection.subscribeNotifications;
       const read = yield* connection
@@ -853,7 +859,7 @@ it.live.skipIf(process.platform === "win32")(
   "a read nobody waits for anymore stops counting even while its reply is still owed",
   () =>
     Effect.gen(function* () {
-      const connection = yield* acquire(undefined, 10);
+      const connection = yield* acquire(undefined, ANSWERING_TICK_MS);
       const states = yield* observeResponsive(connection);
       const deliveries = yield* connection.subscribeNotifications;
       const read = yield* connection
@@ -867,19 +873,19 @@ it.live.skipIf(process.platform === "win32")(
       );
       yield* Fiber.interrupt(read);
       assert.deepEqual(states, [true, false, true]);
-      yield* Effect.sleep(10 * (AGENT_RUNTIME_STALLED_READ_TICKS + 10));
+      yield* Effect.sleep(ANSWERING_TICK_MS * (AGENT_RUNTIME_STALLED_READ_TICKS + 10));
       assert.deepEqual(states, [true, false, true]);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
 it.live("work outside the watched reads may take as long as it needs", () =>
   Effect.gen(function* () {
-    const connection = yield* acquire(undefined, 5);
+    const connection = yield* acquire(undefined, ANSWERING_TICK_MS);
     const states = yield* observeResponsive(connection);
     const deliveries = yield* connection.subscribeNotifications;
     yield* connection.request("project.read", { projectId: "held" }).pipe(Effect.forkScoped);
     yield* Stream.runHead(deliveries);
-    yield* Effect.sleep(5 * (AGENT_RUNTIME_STALLED_READ_TICKS + 10));
+    yield* Effect.sleep(ANSWERING_TICK_MS * (AGENT_RUNTIME_STALLED_READ_TICKS + 10));
     assert.deepEqual(states, [true]);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
