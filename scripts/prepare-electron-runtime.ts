@@ -21,7 +21,10 @@ import { replaceOwnedDirectory } from "./replace-owned-directory";
 
 const RECEIPT_NAME = ".nodex-electron.json";
 const RECIPE = "dist-v1";
-const DOWNLOAD_RETRY_DELAYS_MS = [1_000, 2_000] as const;
+/** About two minutes, enough to ride out a release host that is briefly failing at its gateway. */
+const DOWNLOAD_RETRY_DELAYS_MS = [1_000, 5_000, 15_000, 30_000, 60_000] as const;
+/** Gateway and rate-limit answers clear on their own; any other HTTP status is final. */
+const TRANSIENT_HTTP_STATUSES = new Set([429, 502, 503, 504]);
 const TRANSIENT_DOWNLOAD_CODES = new Set([
   "EAI_AGAIN",
   "ECONNREFUSED",
@@ -56,6 +59,8 @@ export interface PrepareElectronRuntimeOptions {
   readonly platform?: string;
   readonly arch?: string;
   readonly installer?: ElectronInstaller;
+  /** Waits between download attempts, primarily for isolated verification. */
+  readonly retryDelaysMs?: readonly number[];
 }
 
 function executableRelativePath(platform: string): string {
@@ -117,17 +122,30 @@ function isTransientDownloadError(error: unknown): boolean {
     ) {
       return true;
     }
+    // Electron's downloader keeps the HTTP response on its error: a fetch Response or a got one.
+    const response = (
+      cause as { readonly response?: { readonly status?: unknown; readonly statusCode?: unknown } }
+    ).response;
+    const status = response?.status ?? response?.statusCode;
+    if (typeof status === "number" && TRANSIENT_HTTP_STATUSES.has(status)) return true;
   }
   return false;
 }
 
-/** Only transport failures are retried; archive verification and extraction remain fail-fast. */
-async function downloadElectronArchive(installer: ElectronInstaller, archive: ElectronArchive) {
+/**
+ * Transport failures and transient gateway answers are retried; any other HTTP status, archive
+ * verification and extraction remain fail-fast.
+ */
+async function downloadElectronArchive(
+  installer: ElectronInstaller,
+  archive: ElectronArchive,
+  retryDelaysMs: readonly number[],
+) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await installer.downloadArtifact(archive);
     } catch (error) {
-      const delay = DOWNLOAD_RETRY_DELAYS_MS[attempt];
+      const delay = retryDelaysMs[attempt];
       if (delay === undefined || !isTransientDownloadError(error)) throw error;
       await new Promise<void>((resolve) => setTimeout(resolve, delay));
     }
@@ -185,13 +203,11 @@ export async function prepareElectronRuntime(
             "extract"
           >),
         };
-        const archivePath = await downloadElectronArchive(installer, {
-          arch,
-          artifactName: "electron",
-          checksums,
-          platform,
-          version,
-        });
+        const archivePath = await downloadElectronArchive(
+          installer,
+          { arch, artifactName: "electron", checksums, platform, version },
+          options.retryDelaysMs ?? DOWNLOAD_RETRY_DELAYS_MS,
+        );
         const metadata = lstatSync(archivePath);
         if (!metadata.isFile() || metadata.isSymbolicLink()) {
           throw new Error("Electron archive must be a regular file.");
