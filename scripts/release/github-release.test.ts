@@ -1,6 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { afterEach, expect, test, vi } from "vite-plus/test";
-import { planPublication, planTag, verifyReleaseAttestation } from "./github-release";
+import {
+  planPublication,
+  planTag,
+  readGitHubRelease,
+  verifyReleaseAttestation,
+} from "./github-release";
 
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
 
@@ -54,6 +59,89 @@ test("release tag planning never moves an existing tag", () => {
   expect(planTag(null, sourceSha)).toBe("create");
   expect(planTag(sourceSha, sourceSha)).toBe("reuse");
   expect(() => planTag("b".repeat(40), sourceSha)).toThrow("never move");
+});
+
+const repo = "junyudev/nodex";
+const stableTag = "v0.5.2";
+const asset = { digest: `sha256:${"a".repeat(64)}`, name: "Nodex-latest-arm64.dmg", size: 10 };
+const stableRelease = {
+  tag_name: stableTag,
+  draft: false,
+  immutable: true,
+  prerelease: false,
+  assets: [asset],
+};
+const missingPublishedRelease = () =>
+  Object.assign(new Error("Not Found"), {
+    status: 1,
+    stderr: "gh: Not Found (HTTP 404)\n",
+    stdout: JSON.stringify({ message: "Not Found", status: "404" }),
+  });
+
+test("reads only the exact tag for a published release", () => {
+  vi.mocked(execFileSync).mockReturnValueOnce(JSON.stringify(stableRelease));
+
+  expect(readGitHubRelease(repo, stableTag)).toEqual(stableRelease);
+  expect(execFileSync).toHaveBeenCalledExactlyOnceWith(
+    "gh",
+    ["api", `repos/${repo}/releases/tags/${stableTag}`],
+    expect.objectContaining({ timeout: 30_000 }),
+  );
+});
+
+test("finds an unpublished draft by pending tag and verifies its asset digests", () => {
+  vi.mocked(execFileSync)
+    .mockImplementationOnce(() => {
+      throw missingPublishedRelease();
+    })
+    .mockReturnValueOnce(JSON.stringify({ data: { repository: { release: { databaseId: 73 } } } }))
+    .mockReturnValueOnce(JSON.stringify({ ...stableRelease, draft: true, immutable: false }));
+
+  expect(planPublication(readGitHubRelease(repo, stableTag), expected, false)).toEqual({
+    kind: "resume-draft",
+    missingAssetNames: ["release-bundle.json"],
+  });
+  expect(execFileSync).toHaveBeenNthCalledWith(
+    2,
+    "gh",
+    expect.arrayContaining(["graphql", "owner=junyudev", "name=nodex", `tag=${stableTag}`]),
+    expect.objectContaining({ timeout: 30_000 }),
+  );
+  expect(execFileSync).toHaveBeenLastCalledWith(
+    "gh",
+    ["api", `repos/${repo}/releases/73`],
+    expect.objectContaining({ timeout: 30_000 }),
+  );
+});
+
+test("distinguishes a missing draft from an unavailable repository", () => {
+  const lookup = vi.mocked(execFileSync);
+  lookup
+    .mockImplementationOnce(() => {
+      throw missingPublishedRelease();
+    })
+    .mockReturnValueOnce(JSON.stringify({ data: { repository: { release: null } } }));
+  expect(readGitHubRelease(repo, stableTag)).toBeNull();
+
+  lookup
+    .mockImplementationOnce(() => {
+      throw missingPublishedRelease();
+    })
+    .mockReturnValueOnce(JSON.stringify({ data: { repository: null } }));
+  expect(() => readGitHubRelease(repo, stableTag)).toThrow("could not resolve the repository");
+});
+
+test("a permission or network failure does not authorize creating a release", () => {
+  const failure = Object.assign(new Error("GitHub lookup failed"), {
+    status: 1,
+    stderr: "gh: Resource not accessible by integration (HTTP 403)",
+  });
+  vi.mocked(execFileSync).mockImplementationOnce(() => {
+    throw failure;
+  });
+
+  expect(() => readGitHubRelease(repo, stableTag)).toThrow(failure);
+  expect(execFileSync).toHaveBeenCalledTimes(1);
 });
 
 const tag = "v0.4.1-nightly.20261022.1679";

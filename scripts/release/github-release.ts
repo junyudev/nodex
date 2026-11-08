@@ -112,7 +112,7 @@ const missingReleaseAttestationDigest = (error: unknown, tag: string): string | 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const isMissingAttestationResponse = (error: unknown): boolean => {
+const isGitHubNotFound = (error: unknown): boolean => {
   if (commandFailureOutput(error, "stderr") !== "gh: Not Found (HTTP 404)") return false;
   const stdout = commandFailureOutput(error, "stdout");
   if (stdout === null) return false;
@@ -157,7 +157,7 @@ const releaseAttestationIsMissing = (repo: string, tag: string, digest: string):
       ),
     );
   } catch (error) {
-    if (isMissingAttestationResponse(error)) return true;
+    if (isGitHubNotFound(error)) return true;
     throw error;
   }
   if (
@@ -283,10 +283,56 @@ export function planPublication(
   return { kind: "resume-draft", missingAssetNames };
 }
 
-const readRelease = (repo: string, tag: string): GitHubRelease | null => {
-  const response = gh(["api", `repos/${repo}/releases`, "--paginate", "--slurp"]);
-  const releases = (JSON.parse(response) as GitHubRelease[][]).flat();
-  return releases.find((release) => release.tag_name === tag) ?? null;
+export const readGitHubRelease = (repo: string, tag: string): GitHubRelease | null => {
+  const releases = `repos/${repo}/releases`;
+  const read = (endpoint: string): GitHubRelease => {
+    const release = JSON.parse(gh(["api", endpoint], { timeoutMs: 30_000 })) as GitHubRelease;
+    if (
+      release.tag_name !== tag ||
+      typeof release.draft !== "boolean" ||
+      typeof release.prerelease !== "boolean" ||
+      !Array.isArray(release.assets)
+    )
+      throw new Error("GitHub release lookup returned an unexpected release.");
+    return release;
+  };
+  try {
+    return read(`${releases}/tags/${encodeURIComponent(tag)}`);
+  } catch (error) {
+    if (!isGitHubNotFound(error)) throw error;
+  }
+
+  // REST's by-tag endpoint only finds published releases. GraphQL resolves a
+  // pending draft tag to its database ID without reading the release history.
+  const [owner, name] = repo.split("/");
+  const response: unknown = JSON.parse(
+    gh(
+      [
+        "api",
+        "graphql",
+        "-f",
+        "query=query($owner:String!,$name:String!,$tag:String!){repository(owner:$owner,name:$name){release(tagName:$tag){databaseId}}}",
+        "-f",
+        `owner=${owner}`,
+        "-f",
+        `name=${name}`,
+        "-f",
+        `tag=${tag}`,
+      ],
+      { timeoutMs: 30_000 },
+    ),
+  );
+  if (!isRecord(response) || !isRecord(response.data) || !isRecord(response.data.repository))
+    throw new Error("GitHub could not resolve the repository for a draft release lookup.");
+  const pending = response.data.repository.release;
+  if (pending === null) return null;
+  if (
+    !isRecord(pending) ||
+    !Number.isSafeInteger(pending.databaseId) ||
+    Number(pending.databaseId) < 1
+  )
+    throw new Error("GitHub draft release lookup returned an invalid release ID.");
+  return read(`${releases}/${pending.databaseId}`);
 };
 
 export function inspectNightlyRemoteCandidate(
@@ -303,7 +349,7 @@ export function inspectNightlyRemoteCandidate(
     reference ? resolveTagTargetSha(repo, reference) : null,
     identity.sourceSha,
   );
-  const release = readRelease(repo, identity.tag);
+  const release = readGitHubRelease(repo, identity.tag);
   if (!release) return { decision: "publish", tagPlan };
   if (tagPlan !== "reuse")
     throw new Error("Existing Nightly release has no exact immutable tag target.");
@@ -488,7 +534,7 @@ export function publishGitHubRelease(options: {
   const bundlePath = resolve(options.bundlePath);
   const bundle = parseReleaseBundleManifest(JSON.parse(readFileSync(bundlePath, "utf8")));
   const expected = expectedLocalAssets(bundlePath);
-  const release = readRelease(options.repo, bundle.tag);
+  const release = readGitHubRelease(options.repo, bundle.tag);
   const prerelease = bundle.releaseIdentity.channel === "nightly";
   const plan = planPublication(release, expected, prerelease);
   const filesByName = new Map(
@@ -524,7 +570,7 @@ export function publishGitHubRelease(options: {
       gh(["release", "upload", bundle.tag, ...missingPaths, "--repo", options.repo]);
     }
     const completedDraft = planPublication(
-      readRelease(options.repo, bundle.tag),
+      readGitHubRelease(options.repo, bundle.tag),
       expected,
       prerelease,
     );
@@ -554,7 +600,7 @@ export async function verifyRemoteRelease(options: {
   readonly requireImmutable?: boolean;
 }): Promise<void> {
   const { assets: expected, bundle } = readPublishedReleaseIndex(options.bundlePath);
-  const release = readRelease(options.repo, bundle.tag);
+  const release = readGitHubRelease(options.repo, bundle.tag);
   const prerelease = bundle.releaseIdentity.channel === "nightly";
   const plan = planPublication(release, expected, prerelease);
   if (plan.kind !== "verify-published" || !release)

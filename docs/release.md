@@ -233,8 +233,10 @@ the current candidate still requires the complete current inventory and exact
 Release Bundle hashes. Adding a Skill reference must not make a valid older
 mirror impossible to upgrade.
 
-Downstream publishing tools are pinned to the protected workflow commit, separately
-from the immutable application source. Skills are regenerated and smoke-tested
+Publishing tools are pinned to the protected workflow commit, separately from
+the immutable application source. The GitHub publisher reads one release by
+tag, using the draft's database ID when needed. Recovery verifies the exact
+Bundle and existing asset digests before reusing a draft. Skills are regenerated and smoke-tested
 from the release source, then passed by absolute path to those publishing tools.
 Homebrew casks are derived from the verified Bundle using the pinned promotion
 tools and keyword-free download URLs; do not emit the deprecated `verified:`
