@@ -122,7 +122,7 @@ export const live: Layer.Layer<
           );
           if (!result.accepted) return Effect.succeed(false);
           if (result.presentedInForeground) {
-            events.publish({ kind: "rendererConversationPresentedInForeground", value: threadId });
+            events.publish({ kind: "conversationSeen", value: threadId });
           }
           return userInputAutoResolution
             .reevaluatePresentation({ hostId, conversationId: threadId })

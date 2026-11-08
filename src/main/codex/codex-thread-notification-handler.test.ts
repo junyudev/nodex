@@ -64,7 +64,7 @@ function setup(
   source.eventListener = makeCodexThreadNotificationHandler({
     getSettings: () => settings,
     isAppForegrounded: () => foregrounded,
-    isConversationPresentedInForeground: () => presented,
+    isConversationSeen: () => presented,
     resolveTargetClientId: () => "renderer-1",
     showNotification: (notification, _targetClientId, onAction) => {
       shown.push(notification);
@@ -194,20 +194,20 @@ describe("Codex thread notification handler", () => {
     expect(disabled.shown).toHaveLength(0);
   });
 
-  test("shapes root turns and applies app focus without using conversation visibility", () => {
-    const runtime = setup();
-    runtime.setPresented(true);
-    runtime.source.eventListener?.({
-      type: "turn-completed",
+  test("shapes root turns and stays quiet while Nodex or the chat itself is in front of the person", () => {
+    const turn = (turnId: string, status: "completed" | "interrupted" = "completed") => ({
+      type: "turn-completed" as const,
       hostId: "local",
       conversation: conversation(),
-      turnId: "turn-1",
-      status: "interrupted",
-      lastAgentMessage: "Stopped safely",
+      turnId,
+      status,
+      lastAgentMessage: status === "interrupted" ? "Stopped safely" : "Hidden",
       heartbeatAssistantMessage: null,
       automationNotificationDecision: null,
       hasPendingContinuation: false,
     });
+    const runtime = setup();
+    runtime.source.eventListener?.(turn("turn-1", "interrupted"));
     expect(runtime.shown).toMatchObject([
       {
         id: "turn-turn-1",
@@ -219,18 +219,18 @@ describe("Codex thread notification handler", () => {
     ]);
 
     runtime.setForegrounded(true);
-    runtime.source.eventListener?.({
-      type: "turn-completed",
-      hostId: "local",
-      conversation: conversation(),
-      turnId: "turn-2",
-      status: "completed",
-      lastAgentMessage: "Hidden",
-      heartbeatAssistantMessage: null,
-      automationNotificationDecision: null,
-      hasPendingContinuation: false,
-    });
+    runtime.source.eventListener?.(turn("turn-2"));
+    // No window is focused, but the chat is open on a phone in the person's hand.
+    runtime.setForegrounded(false);
+    runtime.setPresented(true);
+    runtime.source.eventListener?.(turn("turn-3"));
     expect(runtime.shown).toHaveLength(1);
+
+    const always = setup({ turnMode: "always", questionsEnabled: true });
+    always.setForegrounded(true);
+    always.setPresented(true);
+    always.source.eventListener?.(turn("turn-4"));
+    expect(always.shown).toHaveLength(1);
   });
 
   test("suppresses child question notifications", () => {

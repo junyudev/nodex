@@ -5,7 +5,6 @@ import type {
   DesktopNotificationPayload,
   ThreadNotificationSettings,
 } from "../../shared/types";
-import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import { nativeSideChatTabId, runtimeSideChatTabId } from "../../shared/side-chat-tab";
 import {
   buildCodexApprovalNotificationId,
@@ -22,13 +21,15 @@ import {
   resolveCodexQuestionNotificationTitle,
   resolveCodexTurnNotificationBody,
   resolveCodexTurnNotificationTitle,
+  type CodexNotificationConversationFacts,
   type CodexThreadNotificationEvent,
 } from "../../shared/codex-thread-notification";
 
 export interface CodexThreadNotificationHandlerOptions {
   getSettings: () => ThreadNotificationSettings;
   isAppForegrounded: () => boolean;
-  isConversationPresentedInForeground: (conversationId: string) => boolean;
+  /** The conversation is in front of the person, in a focused window or on a phone. */
+  isConversationSeen: (hostId: string, conversation: CodexNotificationConversationFacts) => boolean;
   resolveTargetClientId: (conversationId: string) => string | null;
   showNotification: (
     notification: DesktopNotificationPayload,
@@ -168,7 +169,7 @@ export const makeCodexThreadNotificationHandler =
       if (
         settings.turnMode === "off" ||
         (settings.turnMode === "unfocused" && options.isAppForegrounded()) ||
-        options.isConversationPresentedInForeground(event.conversation.conversationId)
+        options.isConversationSeen(event.hostId, event.conversation)
       )
         return;
       const id = JSON.stringify([
@@ -189,7 +190,7 @@ export const makeCodexThreadNotificationHandler =
       const decision = decideCodexTurnNotification(event, {
         turnMode: settings.turnMode,
         isAppForegrounded: options.isAppForegrounded(),
-        includeTurnNotifications: event.hostId === DEFAULT_CODEX_HOST_ID,
+        isConversationSeen: options.isConversationSeen(event.hostId, event.conversation),
       });
       if (decision.type === "suppress") {
         options.logger?.debug("[desktop-notifications] suppressed", {
@@ -216,9 +217,7 @@ export const makeCodexThreadNotificationHandler =
 
     const decision = decideCodexRequestNotification(event.conversation, {
       enabled: settings.questionsEnabled,
-      isConversationPresentedInForeground: options.isConversationPresentedInForeground(
-        event.conversation.conversationId,
-      ),
+      isConversationSeen: options.isConversationSeen(event.hostId, event.conversation),
     });
     if (decision.type === "suppress") {
       options.logger?.debug("[desktop-notifications] suppressed", {

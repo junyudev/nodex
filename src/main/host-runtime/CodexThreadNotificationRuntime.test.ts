@@ -17,6 +17,7 @@ import { CodexRendererPresentationRegistry } from "../codex-application/CodexRen
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { DesktopNotificationRuntime } from "./DesktopNotificationRuntime";
 import { RendererClientRuntime } from "./RendererClientRuntime";
+import { UserPresence } from "./UserPresence";
 import {
   ApplicationSettings,
   make as makeApplicationSettings,
@@ -54,6 +55,7 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
               isPresentedInForeground: () => false,
               resolvePresentedSurfaceClient: () => "renderer-1",
             } as never),
+            Layer.succeed(UserPresence, { isSeen: () => false } as never),
             Layer.succeed(DesktopNotificationRuntime, {
               show: (
                 _notification: never,
@@ -107,7 +109,7 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
       },
     });
     yield* PubSub.publish(applicationEvents, {
-      kind: "rendererConversationPresentedInForeground",
+      kind: "conversationSeen",
       value: "thread-1",
     });
     yield* Effect.yieldNow;
@@ -116,7 +118,7 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
 
     yield* Scope.close(scope, Exit.void);
     yield* PubSub.publish(applicationEvents, {
-      kind: "rendererConversationPresentedInForeground",
+      kind: "conversationSeen",
       value: "thread-1",
     });
     yield* Effect.yieldNow;

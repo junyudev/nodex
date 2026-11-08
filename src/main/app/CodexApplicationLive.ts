@@ -47,6 +47,7 @@ import {
   CodexPreferences,
   live as codexPreferencesLive,
 } from "../codex-application/CodexPreferences";
+import * as UserPresence from "../host-runtime/UserPresence";
 import {
   CodexRendererPresentationRegistry,
   make as makeCodexRendererPresentationRegistry,
@@ -416,6 +417,9 @@ const readState = Layer.effect(CodexThreadReadState, makeCodexThreadReadState).p
 const mainManagers = Layer.effect(CodexMainConversationManagers, makeMainConversationManagers).pipe(
   Layer.provideMerge(readState),
 );
+const userPresence = UserPresence.live.pipe(
+  Layer.provideMerge(Layer.mergeAll(events, rendererPresentation)),
+);
 const userInputAutoResolution = Layer.effect(
   CodexUserInputAutoResolution,
   makeCodexUserInputAutoResolution,
@@ -433,6 +437,7 @@ const applicationServices = Layer.mergeAll(
   codexPreferencesLive,
   events,
   rendererPresentation,
+  userPresence,
   readState,
   mainManagers,
   userInputAutoResolution,
@@ -463,6 +468,7 @@ export const live: Layer.Layer<
   | CodexPreferences
   | CodexApplicationEventHub
   | CodexRendererPresentationRegistry
+  | UserPresence.UserPresence
   | CodexThreadReadState
   | CodexMainConversationManagers
   | CodexUserInputAutoResolution

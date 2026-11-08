@@ -25,6 +25,30 @@ it.effect("retains foreground presentation until a client's last surface closes"
   }),
 );
 
+it.effect("a locked screen puts no window in front of the person until it unlocks", () =>
+  Effect.gen(function* () {
+    const registry = yield* make;
+    registry.setClientForegrounded("renderer-a", true);
+    registry.setPresented("thread-a", "renderer-a", "surface-a", true);
+    registry.setPresented("thread-b", "renderer-b", "surface-b", true);
+    assert.deepEqual(registry.setScreenLocked(true), [
+      { hostId: "local", conversationId: "thread-a" },
+    ]);
+    assert.isFalse(registry.hasForegroundClient());
+    assert.isFalse(registry.isPresentedInForeground("thread-a"));
+    // Focus that changes behind the lock takes effect once it opens.
+    registry.setClientForegrounded("renderer-b", true);
+    registry.setClientForegrounded("renderer-a", false);
+    assert.isFalse(registry.isPresentedInForeground("thread-b"));
+    assert.deepEqual(registry.setScreenLocked(true), []);
+    assert.deepEqual(registry.setScreenLocked(false), [
+      { hostId: "local", conversationId: "thread-b" },
+    ]);
+    assert.isTrue(registry.isPresentedInForeground("thread-b"));
+    assert.isFalse(registry.isPresentedInForeground("thread-a"));
+  }),
+);
+
 it.effect(
   "retires one client's surfaces and admits a later connection with the same identity",
   () =>

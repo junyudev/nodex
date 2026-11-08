@@ -4,6 +4,7 @@ import {
   PUSH_TITLE_MAX_CHARS,
   decodePushKey,
   sealPushPayload,
+  type PushPayload,
   type PushRegistration,
 } from "@nodex/mobile-protocol";
 import * as Effect from "effect/Effect";
@@ -11,7 +12,6 @@ import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
 import { MobileProfileFiles } from "../platform/node/MobileProfileFiles";
 import { MobilePushRelay } from "../platform/node/MobilePushRelay";
-import type { MobilePushEvent } from "./push-events";
 
 export interface PushRecipient {
   readonly deviceId: string;
@@ -29,17 +29,16 @@ export const makePushDelivery = Effect.fn("MobilePushDelivery.make")(function* (
 }) {
   const files = yield* MobileProfileFiles;
   const relay = yield* MobilePushRelay;
-  const queue = yield* Queue.dropping<{ recipient: PushRecipient; event: MobilePushEvent }>(128);
-  const seen = new Set<string>();
-  const deliver = (recipient: PushRecipient, event: MobilePushEvent) =>
+  const queue = yield* Queue.dropping<{ recipient: PushRecipient; event: PushPayload }>(128);
+  const deliver = (recipient: PushRecipient, event: PushPayload) =>
     Effect.gen(function* () {
       const attempt = Effect.gen(function* () {
         if (!(yield* options.isCurrent(recipient))) return;
         const payload = {
-          ...event.payload,
+          ...event,
           hostId: recipient.hostId,
-          title: truncate(event.payload.title, PUSH_TITLE_MAX_CHARS),
-          body: truncate(event.payload.body, PUSH_BODY_MAX_CHARS),
+          title: truncate(event.title, PUSH_TITLE_MAX_CHARS),
+          body: truncate(event.body, PUSH_BODY_MAX_CHARS),
         };
         const sealed = sealPushPayload(
           decodePushKey(recipient.registration.key),
@@ -76,15 +75,12 @@ export const makePushDelivery = Effect.fn("MobilePushDelivery.make")(function* (
     ).pipe(Effect.forkScoped);
   }
   yield* Effect.addFinalizer(() => Queue.shutdown(queue));
-  return (event: MobilePushEvent) =>
+  return (event: PushPayload) =>
     Effect.gen(function* () {
-      if (seen.has(event.id)) return;
-      seen.add(event.id);
       const recipients = yield* options.recipients;
       for (const recipient of recipients) {
         const preferences = recipient.registration.preferences;
-        if (event.payload.kind === "needs_you" ? !preferences.needsYou : !preferences.finished)
-          continue;
+        if (event.kind === "needs_you" ? !preferences.needsYou : !preferences.finished) continue;
         yield* Queue.offer(queue, { recipient, event });
       }
     });

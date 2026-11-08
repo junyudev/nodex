@@ -9,6 +9,7 @@ import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { DesktopNotificationRuntime } from "./DesktopNotificationRuntime";
 import { RendererClientRuntime } from "./RendererClientRuntime";
+import { UserPresence } from "./UserPresence";
 
 const logger = getLogger({ component: "codex-thread-notification-runtime" });
 
@@ -21,12 +22,14 @@ export const live: Layer.Layer<
   | CodexRendererPresentationRegistry
   | DesktopNotificationRuntime
   | RendererClientRuntime
+  | UserPresence
   | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const events = yield* CodexApplicationEventHub;
     const applicationSettings = yield* ApplicationSettings;
     const conversations = yield* CodexRendererPresentationRegistry;
+    const presence = yield* UserPresence;
     const notifications = yield* DesktopNotificationRuntime;
     const rendererClients = yield* RendererClientRuntime;
     const windows = yield* WindowRuntime;
@@ -35,8 +38,12 @@ export const live: Layer.Layer<
     const handle = makeCodexThreadNotificationHandler({
       getSettings: () => currentSettings,
       isAppForegrounded: () => conversations.hasForegroundClient(),
-      isConversationPresentedInForeground: (conversationId) =>
-        conversations.isPresentedInForeground(conversationId),
+      isConversationSeen: (hostId, conversation) =>
+        presence.isSeen({
+          conversationId: conversation.conversationId,
+          hostId,
+          sessionId: conversation.runtimeSessionId,
+        }),
       resolveTargetClientId: (conversationId) => {
         const presenting = conversations.resolvePresentedSurfaceClient(conversationId);
         if (presenting) return presenting;
@@ -74,7 +81,7 @@ export const live: Layer.Layer<
     );
     yield* events.events.pipe(
       Stream.runForEach((event) => {
-        if (event.kind === "rendererConversationPresentedInForeground") {
+        if (event.kind === "conversationSeen") {
           return Effect.sync(() => notifications.dismiss({ conversationId: event.value }));
         }
         if (event.kind !== "threadNotification") return Effect.void;

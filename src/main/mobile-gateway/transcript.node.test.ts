@@ -17,7 +17,18 @@ import { CodexNativeThreadLookup } from "../codex-application/CodexNativeThreadL
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { UserPresence } from "../host-runtime/UserPresence";
 import { makeMobileTranscript } from "./transcript";
+
+/** Records which chats the phone holds in front of the person. */
+const recordingPresence = (views: string[]) =>
+  ({
+    showOnPhone: ({ sessionId, conversationId }) =>
+      Effect.acquireRelease(
+        Effect.sync(() => views.push(`show ${sessionId} ${conversationId}`)),
+        () => Effect.sync(() => views.push(`hide ${sessionId}`)),
+      ),
+  }) as Pick<UserPresence["Service"], "showOnPhone"> as UserPresence["Service"];
 
 it.effect(
   "watermarks a reopened snapshot ahead of queued patches and preserves revisions during recovery",
@@ -28,6 +39,7 @@ it.effect(
       let title = "Start";
       let historyRevision = 0;
       const sessionId = "session";
+      const views: string[] = [];
       const refresh = (next: string) =>
         Effect.gen(function* () {
           title = next;
@@ -68,6 +80,7 @@ it.effect(
         Effect.provideService(CodexNativeThreadLookup, {} as CodexNativeThreadLookup["Service"]),
         Effect.provideService(CodexGateway, {} as CodexGateway["Service"]),
         Effect.provideService(ProjectWorkspace, {} as ProjectWorkspace["Service"]),
+        Effect.provideService(UserPresence, recordingPresence(views)),
       );
 
       const transcript = yield* makeTranscript((event, data) =>
@@ -79,6 +92,8 @@ it.effect(
       yield* refresh("First update"); // This invalidation has no changes to send.
       yield* refresh("Second update");
       expect(yield* open).toMatchObject({ title: "Second update", revision: 2 });
+      // Reopening a watched chat keeps its one view in front of the person.
+      expect(views).toEqual(["show session thread"]);
       expect(yield* Queue.take(queued)).toEqual({
         event: "chat.patch",
         data: { sessionId, revision: 1, ops: [{ op: "title", title: "First update" }] },
@@ -111,6 +126,8 @@ it.effect(
         event: "chat.snapshot",
         data: { title: "History replaced", revision: 3 },
       });
+      yield* transcript.handlers["chat.close"]({ sessionId });
+      expect(views).toEqual(["show session thread", "hide session"]);
     }),
 );
 
@@ -157,6 +174,7 @@ it.effect("keeps slow chat reads independent and recovery snapshots uninterrupte
       Effect.provideService(CodexNativeThreadLookup, {} as CodexNativeThreadLookup["Service"]),
       Effect.provideService(CodexGateway, {} as CodexGateway["Service"]),
       Effect.provideService(ProjectWorkspace, {} as ProjectWorkspace["Service"]),
+      Effect.provideService(UserPresence, recordingPresence([])),
     );
     const transcript = yield* makeTranscript((event, data) =>
       Effect.sync(() => {

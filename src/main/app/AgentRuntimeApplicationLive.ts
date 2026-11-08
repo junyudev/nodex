@@ -95,7 +95,7 @@ import { shellQuote } from "../platform/node/NodexCliShell";
 import { openCodeExecutableEnvironment } from "../platform/node/OpenCodeExecutable";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
-import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
+import { UserPresence } from "../host-runtime/UserPresence";
 import { createOperationId } from "../core-runtime/operation-identity";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { run as runSessionNotifications } from "../agent-runtime/AgentRuntimeSessionNotifications";
@@ -368,7 +368,7 @@ const supervisor = Layer.effectContext(
     const userInputAutoResolution = yield* makeUserInputAutoResolution({
       transitions: activity.transitions,
     });
-    const presented = yield* CodexRendererPresentationRegistry;
+    const presence = yield* UserPresence;
     const applicationEvents = yield* CodexApplicationEventHub;
     const projects = yield* ProjectWorkspace;
     const modules = yield* CoreModules;
@@ -381,7 +381,8 @@ const supervisor = Layer.effectContext(
       );
     yield* runSessionNotifications({
       transitions: activity.transitions,
-      isPresentedInForeground: presented.isPresentedInForeground,
+      isSeen: ({ rootThreadId, sessionId }) =>
+        presence.isSeen({ conversationId: rootThreadId, sessionId }),
       readSession: Effect.fn("AgentRuntimeSessionNotifications.readSession")(function* (
         sessionId: string,
       ) {
@@ -409,14 +410,6 @@ const supervisor = Layer.effectContext(
           operationId: createOperationId("agent-runtime.session.unread"),
           payload: { sessionId, unread: true },
         }),
-      turnMayShow: settings.snapshot().pipe(
-        Effect.map(
-          ({ notifications }) =>
-            notifications.turnMode === "always" ||
-            (notifications.turnMode === "unfocused" && !presented.hasForegroundClient()),
-        ),
-        Effect.orElseSucceed(() => true),
-      ),
       publish: (event) => {
         applicationEvents.publish({ kind: "threadNotification", value: event });
         // Session notifications finish their unread write before publishing read activity.

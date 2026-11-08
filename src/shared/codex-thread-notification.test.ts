@@ -5,11 +5,13 @@ import {
   buildCodexRequestNotificationOccurrenceId,
   decideCodexRequestNotification,
   decideCodexTurnNotification,
+  decideCodexTurnOccurrence,
   isCodexNotificationChildConversation,
   resolveCodexQuestionNotificationBody,
   resolveCodexApprovalNotificationBody,
   resolveCodexApprovalNotificationTitle,
   resolveCodexTurnNotificationBody,
+  resolveCodexTurnNotificationReply,
   type CodexNotificationConversationFacts,
   type CodexTurnCompletedNotificationEvent,
 } from "./codex-thread-notification";
@@ -96,8 +98,8 @@ describe("codex thread notification policy", () => {
 
   test("does not blanket suppress system, ephemeral-like, or side conversations", () => {
     const policy = {
-      includeTurnNotifications: true,
       isAppForegrounded: false,
+      isConversationSeen: false,
       turnMode: "unfocused" as const,
     };
     expect(
@@ -123,8 +125,8 @@ describe("codex thread notification policy", () => {
 
   test("applies turn suppression in reference order for every terminal status", () => {
     const always = {
-      includeTurnNotifications: true,
       isAppForegrounded: true,
+      isConversationSeen: true,
       turnMode: "always" as const,
     };
     for (const status of ["completed", "failed", "interrupted"] as const) {
@@ -174,12 +176,10 @@ describe("codex thread notification policy", () => {
         always,
       ),
     ).toEqual({ type: "suppress", reason: "pending-continuation" });
-    expect(
-      decideCodexTurnNotification(turn(), {
-        ...always,
-        includeTurnNotifications: false,
-      }),
-    ).toEqual({ type: "suppress", reason: "remote-host-turn" });
+    expect(decideCodexTurnNotification(turn({ hostId: "remote" }), always)).toEqual({
+      type: "suppress",
+      reason: "remote-host-turn",
+    });
     expect(
       decideCodexTurnNotification(turn(), {
         ...always,
@@ -192,13 +192,34 @@ describe("codex thread notification policy", () => {
         turnMode: "unfocused",
       }),
     ).toEqual({ type: "suppress", reason: "app-focused" });
+    // A chat open on a phone is in front of the person even while no window is focused.
+    expect(
+      decideCodexTurnNotification(turn(), {
+        ...always,
+        isAppForegrounded: false,
+        turnMode: "unfocused",
+      }),
+    ).toEqual({ type: "suppress", reason: "conversation-presented" });
+  });
+
+  test("the occurrence decision is shared by every channel and ignores desktop settings", () => {
+    expect(decideCodexTurnOccurrence(turn())).toEqual({ type: "show" });
+    expect(decideCodexTurnOccurrence(turn({ status: "interrupted" }))).toEqual({ type: "show" });
+    expect(decideCodexTurnOccurrence(turn({ hasPendingContinuation: true }))).toEqual({
+      type: "suppress",
+      reason: "pending-continuation",
+    });
+    expect(
+      decideCodexTurnOccurrence(turn({ conversation: conversation({ parentThreadId: "parent" }) })),
+    ).toEqual({ type: "suppress", reason: "child-conversation" });
+    expect(resolveCodexTurnNotificationReply(turn({ lastAgentMessage: "  " }))).toBeNull();
   });
 
   test("suppresses requests only for settings, real children, or foreground presentation", () => {
     expect(
       decideCodexRequestNotification(conversation(), {
         enabled: true,
-        isConversationPresentedInForeground: false,
+        isConversationSeen: false,
       }),
     ).toEqual({ type: "show" });
     expect(
@@ -208,20 +229,20 @@ describe("codex thread notification policy", () => {
         }),
         {
           enabled: true,
-          isConversationPresentedInForeground: false,
+          isConversationSeen: false,
         },
       ),
     ).toEqual({ type: "suppress", reason: "child-conversation" });
     expect(
       decideCodexRequestNotification(conversation(), {
         enabled: true,
-        isConversationPresentedInForeground: true,
+        isConversationSeen: true,
       }),
     ).toEqual({ type: "suppress", reason: "conversation-presented" });
     expect(
       decideCodexRequestNotification(conversation(), {
         enabled: false,
-        isConversationPresentedInForeground: false,
+        isConversationSeen: false,
       }),
     ).toEqual({ type: "suppress", reason: "setting-disabled" });
   });

@@ -16,9 +16,9 @@ it.effect("fans out ordered application events and closes them with the Main Sco
     yield* Effect.yieldNow;
 
     events.publish({ kind: "pendingWorktreesChanged", value: [] });
-    events.publish({ kind: "rendererConversationPresentedInForeground", value: "thread-1" });
+    events.publish({ kind: "conversationSeen", value: "thread-1" });
 
-    const expectedKinds = ["pendingWorktreesChanged", "rendererConversationPresentedInForeground"];
+    const expectedKinds = ["pendingWorktreesChanged", "conversationSeen"];
     assert.deepEqual(
       (yield* Fiber.join(first)).map((event) => event.kind),
       expectedKinds,
@@ -29,7 +29,7 @@ it.effect("fans out ordered application events and closes them with the Main Sco
     );
 
     yield* Scope.close(scope, Exit.void);
-    events.publish({ kind: "rendererConversationPresentedInForeground", value: "ignored" });
+    events.publish({ kind: "conversationSeen", value: "ignored" });
     assert.deepEqual(yield* Stream.runCollect(events.events), []);
   }),
 );

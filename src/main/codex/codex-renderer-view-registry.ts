@@ -12,7 +12,9 @@ interface PresentedRendererView {
  */
 export class CodexRendererViewRegistry {
   private presentationOrder = 0;
-  private readonly foregroundClientIds = new Set<string>();
+  /** A locked screen shows no window, so no client is in the foreground while it is locked. */
+  private screenLocked = false;
+  private readonly focusedClientIds = new Set<string>();
   private readonly presentedSurfaceIdsByConversationAndClient = new Map<
     string,
     Map<string, Set<string>>
@@ -82,15 +84,29 @@ export class CodexRendererViewRegistry {
     if (!normalizedClientId) return [];
 
     if (foregrounded) {
-      this.foregroundClientIds.add(normalizedClientId);
+      this.focusedClientIds.add(normalizedClientId);
     } else {
-      this.foregroundClientIds.delete(normalizedClientId);
+      this.focusedClientIds.delete(normalizedClientId);
     }
+    return this.conversationsPresentedBy(new Set([normalizedClientId]));
+  }
 
+  /** Returns the conversations whose foreground presentation the lock changed. */
+  setScreenLocked(locked: boolean): string[] {
+    if (this.screenLocked === locked) return [];
+    this.screenLocked = locked;
+    return this.conversationsPresentedBy(this.focusedClientIds);
+  }
+
+  private isForegroundClient(clientId: string): boolean {
+    return !this.screenLocked && this.focusedClientIds.has(clientId);
+  }
+
+  private conversationsPresentedBy(clientIds: ReadonlySet<string>): string[] {
     const affectedConversationIds: string[] = [];
     for (const [conversationId, surfacesByClient] of this
       .presentedSurfaceIdsByConversationAndClient) {
-      if (surfacesByClient.has(normalizedClientId)) {
+      if ([...surfacesByClient.keys()].some((clientId) => clientIds.has(clientId))) {
         affectedConversationIds.push(conversationId);
       }
     }
@@ -103,13 +119,13 @@ export class CodexRendererViewRegistry {
     );
     if (!surfacesByClient) return false;
     for (const clientId of surfacesByClient.keys()) {
-      if (this.foregroundClientIds.has(clientId)) return true;
+      if (this.isForegroundClient(clientId)) return true;
     }
     return false;
   }
 
   hasForegroundClient(): boolean {
-    return this.foregroundClientIds.size > 0;
+    return !this.screenLocked && this.focusedClientIds.size > 0;
   }
 
   resolvePresentedSurfaceClient(conversationId: string): string | null {
@@ -128,7 +144,7 @@ export class CodexRendererViewRegistry {
   removeClient(clientId: string): string[] {
     const normalizedClientId = clientId.trim();
     if (!normalizedClientId) return [];
-    this.foregroundClientIds.delete(normalizedClientId);
+    this.focusedClientIds.delete(normalizedClientId);
 
     const affectedConversationIds = new Set<string>();
     for (const [conversationId, surfacesByClient] of this
@@ -151,7 +167,8 @@ export class CodexRendererViewRegistry {
 
   reset(): void {
     this.presentationOrder = 0;
-    this.foregroundClientIds.clear();
+    this.screenLocked = false;
+    this.focusedClientIds.clear();
     this.presentedSurfaceIdsByConversationAndClient.clear();
     this.presentedViewsByConversationId.clear();
   }

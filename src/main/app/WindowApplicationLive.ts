@@ -186,28 +186,33 @@ const applicationWindows = Layer.unwrap(
     const events = yield* CodexApplicationEventHub;
     const presentation = yield* CodexRendererPresentationRegistry;
     const autoResolution = yield* CodexUserInputAutoResolution;
+    // A conversation that comes back in front of the person withdraws what was waiting for it.
+    const foregroundChanged = (conversations: ReturnType<typeof presentation.setScreenLocked>) =>
+      Effect.forEach(
+        conversations,
+        (conversation) => {
+          if (
+            presentation.isPresentedInForeground(conversation.conversationId, conversation.hostId)
+          )
+            events.publish({ kind: "conversationSeen", value: conversation.conversationId });
+          return autoResolution.reevaluatePresentation(conversation);
+        },
+        { discard: true },
+      );
     const rendererConversations = {
       setClientForegrounded: (clientId: string | null | undefined, foregrounded: boolean) => {
         if (!clientId) return Effect.void;
-        return Effect.sync(() => presentation.setClientForegrounded(clientId, foregrounded)).pipe(
-          Effect.flatMap((conversationIds) =>
-            Effect.forEach(
-              conversationIds,
-              (conversationId) => {
-                if (foregrounded) {
-                  events.publish({
-                    kind: "rendererConversationPresentedInForeground",
-                    value: conversationId.conversationId,
-                  });
-                }
-                return autoResolution.reevaluatePresentation(conversationId);
-              },
-              { discard: true },
-            ),
-          ),
+        return Effect.suspend(() =>
+          foregroundChanged(presentation.setClientForegrounded(clientId, foregrounded)),
         );
       },
     };
+    const desktop = yield* ElectronDesktop;
+    for (const locked of [true, false])
+      yield* desktop.onPowerEvent(
+        locked ? "lock-screen" : "unlock-screen",
+        Effect.suspend(() => foregroundChanged(presentation.setScreenLocked(locked))),
+      );
     const desktopNotifications = yield* DesktopNotificationRuntime;
     const config = yield* MainConfig;
     const mcpAppSandbox = yield* McpAppSandboxRuntime;

@@ -25,7 +25,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
-import { type MobilePushEvent } from "./push-events";
+import type { PushPayload } from "@nodex/mobile-protocol";
 import * as Stream from "effect/Stream";
 import { MobilePushEvents } from "./push-events";
 import { MobilePushRelay } from "../platform/node/MobilePushRelay";
@@ -133,7 +133,7 @@ const fixture = Effect.gen(function* () {
   const settings = makeTestApplicationSettings();
   const snapshot = () =>
     settings.snapshot().pipe(Effect.map((value) => ({ ...value, mobileAccessEnabled: enabled })));
-  const events = yield* PubSub.unbounded<MobilePushEvent>();
+  const events = yield* PubSub.unbounded<PushPayload>();
   const deliveries = yield* Queue.unbounded<RelayPushRequest>();
   let relayStatus = 200;
   const dependencies = Layer.mergeAll(
@@ -194,11 +194,8 @@ const fixture = Effect.gen(function* () {
   return {
     home,
     deliveries,
-    sendPush: (id: string) =>
-      PubSub.publish(events, {
-        id,
-        payload: { kind: "finished" as const, sessionId: "chat", title: "Chat", body: "Done" },
-      }),
+    sendPush: (sessionId: string) =>
+      PubSub.publish(events, { kind: "finished", sessionId, title: "Chat", body: "Done" }),
     relayStatus: (status: number) => {
       relayStatus = status;
     },

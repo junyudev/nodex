@@ -11,7 +11,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Your phone now hears from Nodex only when you're away from your computer. A chat you're watching on the desktop no longer buzzes your phone. The phone is told at once when the computer's screen is locked or nobody has used it for five minutes, and otherwise only if you walk away before touching the computer again. Answering, opening the chat anywhere, or a newer notification in the same chat withdraws one that is still waiting. A chat open on your phone no longer raises a desktop notification or turns unread, and opening it there clears its desktop notifications. A locked screen counts as out of sight on the desktop too, so chats that finish while it is locked turn unread and notify as usual. Chat reminders now reach your phone as well.
+
 ### Fixed
+
+- Your phone no longer says a chat finished while it is about to continue with a queued message or delegated results, and no longer sends a finish and a question for the same moment. Phone notifications now follow exactly the same rules as desktop notifications.
 
 ## [0.5.2] - 2026-11-08
 

@@ -7,8 +7,11 @@ Active
 ## Purpose
 
 This document is the source of truth for Nodex OS-level notifications produced
-by Codex task lifecycle events, Agent Runtime Sessions, and chat reminders. Browser
-delivery, in-app toasts, Page reminders, and remote cloud-task watchers are separate features.
+by Codex task lifecycle events, Agent Runtime Sessions, and chat reminders, and for the
+presence that decides whether anyone needs telling. Phone notifications consume the same
+occurrences and presence; their delivery rules are in
+[Nodex Mobile Behavior](mobile-companion-behavior.md#notifications). Browser delivery, in-app
+toasts, Page reminders, and remote cloud-task watchers are separate features.
 
 ## Notification Families
 
@@ -29,25 +32,50 @@ and unsupported private requests do not produce desktop notifications.
 
 ## Ownership and Ordering
 
-The feature has four owners:
+The feature has five owners:
 
 1. `CodexProtocolNotificationEffects` publishes a typed application occurrence
    only after the canonical conversation transition or pending-request state
    change has committed. Hydration and renderer snapshot projection are not
    producers. Agent Runtime Sessions publish the same occurrences from Main's
    Session activity transitions (see [Agent Runtime Sessions](#agent-runtime-sessions)).
-2. The pure Codex notification handler decides policy, settings, focus,
+   Every channel, desktop and phone, consumes these occurrences; none derives its own.
+2. `UserPresence` answers where the person is (see [Presence](#presence)).
+3. The pure Codex notification handler decides policy, settings, focus,
    presentation, host, and target renderer; its Main-scoped runtime owns event
    subscription and action admission.
-3. `DesktopNotificationRuntime` owns Electron `Notification` instances, exact
+4. `DesktopNotificationRuntime` owns Electron `Notification` instances, exact
    occurrence records, and their native callback lifecycle.
-4. `WorkbenchCommandIngress` owns renderer action ingress. Workbench session
+5. `WorkbenchCommandIngress` owns renderer action ingress. Workbench session
    and panel commands perform navigation before any reply or question action.
 
 One raw lifecycle occurrence emits at most one domain event. Owner/follower
 renderer state, cold snapshots, and repeated projections cannot create another
 OS notification. Re-showing the same native ID replaces the existing native
 record; replacement is lifecycle behavior, not producer deduplication.
+
+## Presence
+
+A conversation is **seen** while it is in front of the person:
+
+- a focused Workbench window presents it while the screen is unlocked; or
+- Nodex Mobile shows it on a phone with a live connection.
+
+A locked screen puts no window in the foreground. Locking withdraws foreground
+presentation from every window, and unlocking restores it to the focused window,
+which counts as presenting its conversations again. Main tracks window
+presentation per `(rendererClientId, conversationId, surfaceId)` and phone views
+per open chat, so closing one duplicate surface or one phone view does not clear
+another that remains visible. Stream ownership is not presentation.
+
+A conversation becoming seen, in a window or on a phone, dismisses all desktop
+notifications for it and withdraws a phone notification still waiting for it.
+Seen conversations are not marked unread and produce no request notifications.
+
+Presence also answers whether the person stayed at this computer after an
+occurrence: input after it means they were here, and a locked screen or five
+minutes without input means they left. Phone delivery uses this answer; desktop
+notifications do not.
 
 ## Child Classification
 
@@ -82,7 +110,9 @@ notifications does not change OS permission.
 
 ## Turn Policy
 
-Turn policy is evaluated in this order:
+Turn policy is evaluated in this order. Steps 1–6 decide whether the occurrence
+is worth telling anyone and are shared by every channel; steps 7–9 belong to the
+desktop.
 
 1. non-default hosts do not emit turn notifications;
 2. an automation-level `DONT_NOTIFY` suppresses;
@@ -93,7 +123,7 @@ Turn policy is evaluated in this order:
 6. a terminal-specific pending continuation suppresses;
 7. `turnMode === "off"` suppresses;
 8. `turnMode === "unfocused"` suppresses while any Workbench window is
-   foregrounded;
+   foregrounded, or while the conversation is seen;
 9. otherwise show.
 
 Pending continuation is exact to the terminal state:
@@ -125,15 +155,10 @@ An input request is shown only when:
 
 - the corresponding app preference is enabled;
 - the conversation is not a real child; and
-- no foreground renderer is actually presenting that conversation.
+- the conversation is not seen.
 
 Request policy does not consult `turnMode`. A foreground app showing another
 task does not suppress the request.
-
-Presentation is surface-aware. Main tracks
-`(rendererClientId, conversationId, surfaceId)`, so unmounting one duplicate
-surface does not clear another surface that remains visible. Stream ownership
-is not presentation.
 
 Request presentation is:
 
@@ -155,9 +180,8 @@ dismissal of the question family:
 
 - `question-${hostId}-${requestId}`
 
-Presenting a conversation in a foreground renderer dismisses all notifications
-for that conversation. Window disposal dismisses records targeted to that
-renderer. The native runtime also supports exact notification-ID and exact
+A conversation becoming seen dismisses all notifications for that conversation.
+Window disposal dismisses records targeted to that renderer. The native runtime also supports exact notification-ID and exact
 navigation-path dismissal.
 
 ## Native IDs and Presentation
@@ -266,13 +290,13 @@ permission from the renderer's browser permission or platform support check.
 
 A live asynchronous Agent message produces one question notification for its first question,
 scoped by host, Thread, Turn, and question identity. Its body is `Nodex has a question`.
-It uses the ordinary question preference and foreground-presentation suppression rules.
+It uses the ordinary question preference and seen-conversation suppression rules.
 History loading and repeated item completion do not produce another notification.
 
 Opening the notification first navigates to its Thread, then opens the question panel only
 if its Turn is still running. It has no inline reply or blocking-request identity. A stale
 notification cannot send text or start another Turn. Accepted answers and Turn completion
-dismiss the corresponding question notifications; foreground presentation also dismisses
+dismiss the corresponding question notifications; seeing the conversation also dismisses
 notifications through the ordinary visibility boundary.
 
 ## Agent Runtime Sessions
@@ -288,7 +312,7 @@ title is the Session title, and its host is the local host.
   that will wake the root, is a pending continuation for every terminal state;
   a queued follow-up that starts next suppresses completed and failed but not
   interrupted. The body is the ended Run's last root assistant reply, read from its durable
-  outcome by exact Run identity only when turn policy could show the notification.
+  outcome by exact Run identity whenever the Run has no pending continuation.
   This remains available after native execution authority is released, including
   failed or interrupted Runs. A newer Run or child reply cannot supply its body;
   an absent reply uses the ordinary completion fallback. Missed terminal status
@@ -304,10 +328,10 @@ title is the Session title, and its host is the local host.
   question notification. One identity follows the waiting episode across Run changes and is
   withdrawn when the Session stops waiting.
 
-Either event marks the Session unread in Core unless a focused window presents
-its conversation or the Session is archived. A Runtime conversation reports its
-presentation through the same registry as native chats, so a visible root is not
-marked unread; showing a delegated child does not present its root. Process
+Either event marks the Session unread in Core unless its conversation is seen or
+the Session is archived. A Runtime conversation reports its presentation through
+the same registry as native chats, so a visible root is not marked unread;
+showing a delegated child does not present its root. Process
 restarts and missed observations reread activity without producing notifications.
 
 Its navigation path names the Session (`session:<id>/thread:<root>`), so opening
@@ -337,9 +361,8 @@ reminder; Agent messages and merely reading the chat leave it in place.
 One Profile-scoped Desktop owner arms a single timer for the earliest reminder. Core
 organization changes from any window, Agent tool, or CLI re-arm it. Startup, restored
 Core connectivity, and system resume catch up overdue reminders without periodic
-polling. A focused window presenting that conversation consumes the reminder without
-an unread write or notification. This uses the same surface-aware presentation
-registry as Session task notifications.
+polling. A seen conversation consumes the reminder without an unread write or
+notification, using the same [presence](#presence) as Session task notifications.
 
 Otherwise delivery uses the same unread owner as `set_session_unread`: Core for
 Runtime Sessions and threadless drafts, authenticated Codex identity read state for
@@ -349,6 +372,6 @@ native Threads. Its notification title is the chat title and its body is
 Native notification attempts settle before presentation and are not replayed after
 restart. System permission or process termination can prevent visible delivery.
 The existing turn notification preference and native authorization gate apply;
-suppressed or denied presentation does not undo the unread transition. Opening the
-chat in a focused conversation surface dismisses its reminder notification through
-the ordinary notification lifecycle.
+suppressed or denied presentation does not undo the unread transition. Seeing the chat
+dismisses its reminder notification through the ordinary notification lifecycle. A
+paired phone receives the reminder as a phone notification while the person is away.

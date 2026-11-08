@@ -12,6 +12,8 @@ export interface CodexRendererPresentationRegistryService {
     clientId: string,
     foregrounded: boolean,
   ) => readonly Conversation[];
+  /** While the screen is locked no window is in the foreground. */
+  readonly setScreenLocked: (locked: boolean) => readonly Conversation[];
   readonly setPresented: (
     conversationId: string,
     clientId: string,
@@ -73,6 +75,7 @@ export const make: Effect.Effect<CodexRendererPresentationRegistryService, never
           return [];
         return targets(views.setClientForegrounded(normalizedClientId, foregrounded));
       },
+      setScreenLocked: (locked) => (closed ? [] : targets(views.setScreenLocked(locked))),
       setPresented: (conversationId, clientId, surfaceId, presented, hostId = "local") => {
         const normalizedClientId = normalize(clientId);
         if (

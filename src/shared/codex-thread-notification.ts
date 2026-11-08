@@ -4,6 +4,7 @@ import {
   type CodexHeartbeatAssistantMessage,
   type CodexHeartbeatDecision,
 } from "./codex-turn-notification";
+import { DEFAULT_CODEX_HOST_ID } from "./codex-host";
 import { extractCodexThreadSpawnMetadata } from "./codex-subagent-metadata";
 
 export type CodexNotificationTurnStatus = "completed" | "failed" | "interrupted";
@@ -116,12 +117,13 @@ export type CodexNotificationDecision =
 export interface CodexTurnNotificationPolicyFacts {
   turnMode: "off" | "unfocused" | "always";
   isAppForegrounded: boolean;
-  includeTurnNotifications: boolean;
+  /** The conversation is in front of the person, in a focused window or on a phone. */
+  isConversationSeen: boolean;
 }
 
 export interface CodexRequestNotificationPolicyFacts {
   enabled: boolean;
-  isConversationPresentedInForeground: boolean;
+  isConversationSeen: boolean;
 }
 
 export function isCodexNotificationChildConversation(
@@ -131,11 +133,14 @@ export function isCodexNotificationChildConversation(
   return (extractCodexThreadSpawnMetadata(conversation.source).parentThreadId ?? "").length > 0;
 }
 
-export function decideCodexTurnNotification(
+/**
+ * Whether a finished turn is worth telling the person at all, before any channel applies its own
+ * settings or presence. Desktop notifications and phone pushes share this decision.
+ */
+export function decideCodexTurnOccurrence(
   event: CodexTurnCompletedNotificationEvent,
-  policy: CodexTurnNotificationPolicyFacts,
 ): CodexNotificationDecision {
-  if (!policy.includeTurnNotifications) {
+  if (event.hostId !== DEFAULT_CODEX_HOST_ID) {
     return { type: "suppress", reason: "remote-host-turn" };
   }
   if (event.automationNotificationDecision === "DONT_NOTIFY") {
@@ -156,11 +161,23 @@ export function decideCodexTurnNotification(
   if (event.hasPendingContinuation) {
     return { type: "suppress", reason: "pending-continuation" };
   }
+  return { type: "show" };
+}
+
+export function decideCodexTurnNotification(
+  event: CodexTurnCompletedNotificationEvent,
+  policy: CodexTurnNotificationPolicyFacts,
+): CodexNotificationDecision {
+  const occurrence = decideCodexTurnOccurrence(event);
+  if (occurrence.type === "suppress") return occurrence;
   if (policy.turnMode === "off") {
     return { type: "suppress", reason: "setting-disabled" };
   }
   if (policy.turnMode === "unfocused" && policy.isAppForegrounded) {
     return { type: "suppress", reason: "app-focused" };
+  }
+  if (policy.turnMode === "unfocused" && policy.isConversationSeen) {
+    return { type: "suppress", reason: "conversation-presented" };
   }
   return { type: "show" };
 }
@@ -175,10 +192,24 @@ export function decideCodexRequestNotification(
   if (isCodexNotificationChildConversation(conversation)) {
     return { type: "suppress", reason: "child-conversation" };
   }
-  if (policy.isConversationPresentedInForeground) {
+  if (policy.isConversationSeen) {
     return { type: "suppress", reason: "conversation-presented" };
   }
   return { type: "show" };
+}
+
+/** What the turn has to say for itself: heartbeat copy first, then the final reply. */
+export function resolveCodexTurnNotificationReply(
+  event: Pick<
+    CodexTurnCompletedNotificationEvent,
+    "heartbeatAssistantMessage" | "lastAgentMessage"
+  >,
+): string | null {
+  const heartbeat = event.heartbeatAssistantMessage;
+  return (
+    (heartbeat?.notificationMessage ?? heartbeat?.visibleText ?? event.lastAgentMessage)?.trim() ||
+    null
+  );
 }
 
 export function resolveCodexTurnNotificationBody(
@@ -187,11 +218,7 @@ export function resolveCodexTurnNotificationBody(
     "heartbeatAssistantMessage" | "lastAgentMessage"
   >,
 ): string {
-  const heartbeat = event.heartbeatAssistantMessage;
-  return (
-    (heartbeat?.notificationMessage ?? heartbeat?.visibleText ?? event.lastAgentMessage)?.trim() ||
-    "Nodex finished a turn."
-  );
+  return resolveCodexTurnNotificationReply(event) ?? "Nodex finished a turn.";
 }
 
 export function resolveCodexTurnNotificationTitle(title: string | null): string {

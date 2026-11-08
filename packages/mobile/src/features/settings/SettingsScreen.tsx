@@ -103,7 +103,7 @@ const NotificationSettings = () => {
         ) : null}
       </RowGroup>
       <Txt className="px-1 pt-2 text-xs text-ink-3">
-        Sent by your desktop while it is on and open, and readable only on this phone.
+        Sent by your desktop while you're away from it, and readable only on this phone.
       </Txt>
     </View>
   );

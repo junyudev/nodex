@@ -17,14 +17,13 @@ import { expect } from "vitest";
 import { live as files } from "../platform/node/MobileProfileFiles";
 import { make as relay, MobilePushRelay } from "../platform/node/MobilePushRelay";
 import { makePushDelivery, type PushRecipient } from "./push-delivery";
-import type { MobilePushEvent } from "./push-events";
+import type { PushPayload } from "@nodex/mobile-protocol";
 
-const event = (
-  id: string,
-  kind: MobilePushEvent["payload"]["kind"] = "finished",
-): MobilePushEvent => ({
-  id,
-  payload: { kind, sessionId: "chat", title: "🙂".repeat(160), body: "🙂".repeat(300) },
+const event = (sessionId: string, kind: PushPayload["kind"] = "finished"): PushPayload => ({
+  kind,
+  sessionId,
+  title: "🙂".repeat(160),
+  body: "🙂".repeat(300),
 });
 
 it.effect("posts only sealed payloads to an injectable relay and forgets 410 registrations", () =>
@@ -79,14 +78,13 @@ it.effect("posts only sealed payloads to an injectable relay and forgets 410 reg
     expect(Object.keys(first).sort()).toEqual(["handle", "sealed", "urgency"]);
     expect(first.urgency).toBe("time-sensitive");
     const opened = openPushPayload(key, first.sealed);
-    expect(opened).toMatchObject({ kind: "needs_you", sessionId: "chat" });
+    expect(opened).toMatchObject({ kind: "needs_you", sessionId: "first" });
     expect(Array.from(opened!.title)).toHaveLength(PUSH_TITLE_MAX_CHARS);
     expect(Array.from(opened!.body)).toHaveLength(PUSH_BODY_MAX_CHARS);
     yield* enqueue(event("second"));
     const second = yield* Queue.take(requests);
     expect(second.urgency).toBe("active");
     expect(second.sealed).not.toBe(first.sealed);
-    yield* enqueue(event("first", "needs_you"));
     recipient.registration.handle = "gone";
     yield* enqueue(event("gone"));
     yield* Queue.take(requests);

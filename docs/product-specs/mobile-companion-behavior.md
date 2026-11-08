@@ -133,21 +133,33 @@ line whose placeholder names where a message goes. In use it opens to show its p
 - On iOS, a paired phone can receive notifications while Nodex Mobile is away or closed. The desktop
   must be on with Nodex open and Mobile access enabled. Notifications do not require a direct network
   connection from the phone to the desktop.
-- A new approval or question sends an attention notification with the chat title and what is being
-  asked. These notifications are time-sensitive. A request for a secret says to answer on the desktop
-  and never includes the question.
-- A completed Run sends the start of its last assistant reply, or “Finished” when there is none.
-  A failed Run says “Run failed”. Stopping a Run does not send a notification. Child and background
-  work that is absent from the chat list does not notify independently.
-- Notifications are sent only while the phone has no live foreground connection. Settings on the
-  phone has separate switches for when a chat needs you and when it finishes, and a running chat offers
-  them once. Settings > Mobile on the desktop shows whether they are on beside that phone's details.
+- The phone hears about exactly what the desktop considers worth telling, decided once for both: a
+  chat finishing, failing or stopping, asking for an approval or an answer, and a chat reminder
+  coming due. Work that continues by itself, such as a queued follow-up or delegated work that will
+  wake the chat, is not a finish. Child and background work that is absent from the chat list does
+  not notify independently, and a side chat's reply stays beside the chat it came from.
+- The phone is for when you are away from the computer. Something that happens while you are at it
+  is left to the desktop, which shows it in the window or as its own notification. The phone is told
+  at once when the desktop's screen is locked or nobody has used it for five minutes. Otherwise it is
+  told only if you leave without touching the computer again: once the screen locks or five minutes
+  pass with no input. Answering the request, opening the chat in a focused window or on a phone, or a
+  newer notification in the same chat withdraws one that is still waiting.
+- Nothing is sent about a chat open on a phone with a live connection, and nothing is sent to a phone
+  with a live foreground connection; the app shows it live instead. Opening a chat on the phone also
+  withdraws its desktop notifications and keeps it read on the desktop.
+- An approval or question says what is being asked, and a reminder says you asked to come back.
+  These are attention notifications and are time-sensitive. A request for a secret says to answer on
+  the desktop and never includes the question. A finished Run sends the start of its last assistant
+  reply, or “Finished” (“Stopped” for a stopped Run) when there is none. A failed Run says “Run
+  failed”.
+- Settings on the phone has separate switches for when a chat needs you and when it finishes, and a
+  running chat offers them once. Reminders follow the first. Settings > Mobile on the desktop shows
+  whether they are on beside that phone's details.
 - A phone that cannot register says why in Settings and offers a retry. It tries again by itself on
   each connection.
 - Tapping a notification opens its chat, on the desktop that sent it. Opening a chat clears its
   notifications, and one chat's notifications group together.
-- A request or Run notifies each phone at most once. Existing state when the gateway starts is quiet;
-  restarting the desktop does not replay notifications. Delivery is best effort, with a short bounded
+- Restarting the desktop does not replay notifications. Delivery is best effort, with a short bounded
   retry for temporary relay failures.
 - Notification text is encrypted for the phone before it leaves the desktop. The push relay routes
   it to Apple's notification service; it cannot read the chat title, message or chat identity. Removing

@@ -35,7 +35,6 @@ const activity = (
 
 const harness = (options: {
   readonly presented?: boolean;
-  readonly turnMayShow?: boolean;
   readonly settings?: Partial<ThreadNotificationSettings>;
   readonly runStatus?: string;
   readonly reply?: string | null;
@@ -78,7 +77,7 @@ const harness = (options: {
   const handle = makeCodexThreadNotificationHandler({
     getSettings: () => ({ turnMode: "always", questionsEnabled: true, ...options.settings }),
     isAppForegrounded: () => options.presented ?? false,
-    isConversationPresentedInForeground: () => options.presented ?? false,
+    isConversationSeen: () => options.presented ?? false,
     resolveTargetClientId: () => "client",
     showNotification: (notification) => shown.push(notification),
     dismissNotification: (selector) => dismissed.push(selector),
@@ -90,7 +89,7 @@ const harness = (options: {
       transitions: Stream.fromIterable(
         transitions.map((transition) => ({ ...transition, connection })),
       ),
-      isPresentedInForeground: () => options.presented ?? false,
+      isSeen: () => options.presented ?? false,
       readSession: (sessionId) =>
         sessionId === options.unreadableSessionId
           ? Effect.fail(
@@ -108,7 +107,6 @@ const harness = (options: {
               sideChatSource: sessionId === "session:a" ? (options.sideChatSource ?? null) : null,
             }),
       markUnread: (sessionId) => Effect.sync(() => unread.push(sessionId)),
-      turnMayShow: Effect.succeed(options.turnMayShow ?? true),
       publish: (event) => {
         if (event.type === "turn-completed") unreadAtCompletion.push([...unread]);
         if (event.type === "user-input-requested") unreadAtQuestion.push([...unread]);
@@ -178,16 +176,18 @@ it.effect("an automatic wake Run after delegated results notifies once it finish
   }),
 );
 
-it.effect("presented Sessions stay read and suppressed turns never read the reply", () =>
+it.effect("a seen Session stays read and its completion carries the reply for other channels", () =>
   Effect.gen(function* () {
-    const h = harness({ presented: true, turnMayShow: false, settings: { turnMode: "unfocused" } });
+    const h = harness({ presented: true, settings: { turnMode: "unfocused" } });
     yield* h.deliver([
       transition(activity("running"), null, { runId: "run:1", status: "completed" }),
     ]);
     assert.deepEqual(h.unread, []);
-    assert.strictEqual(h.events.length, 1);
     assert.deepEqual(h.shown, []);
-    assert.deepEqual(h.requests, []);
+    const event = h.events[0];
+    assert.isTrue(
+      event?.type === "turn-completed" && event.lastAgentMessage === "Done. The board is updated.",
+    );
   }),
 );
 

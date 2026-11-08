@@ -8,7 +8,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { ProjectSession } from "../../shared/types";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
-import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
+import { UserPresence } from "./UserPresence";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { createOperationId } from "../core-runtime/operation-identity";
 import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
@@ -105,7 +105,7 @@ export const live = Layer.effect(
     const workspace = yield* ProjectWorkspace;
     const core = yield* CoreAuthority;
     const events = yield* CodexApplicationEventHub;
-    const presentation = yield* CodexRendererPresentationRegistry;
+    const presence = yield* UserPresence;
     const desktop = yield* ElectronDesktop;
     const setUnread = yield* makeSetSessionUnread;
     const owner = yield* make({
@@ -120,10 +120,12 @@ export const live = Layer.effect(
       markUnread: (session) =>
         setUnread(session, true, createOperationId("session.reminder.unread")),
       isPresented: (session) =>
-        presentation.isPresentedInForeground(
-          session.executionRef?.threadId ?? session.thread?.threadId ?? `session:${session.id}`,
-          session.thread?.executionHostId,
-        ),
+        presence.isSeen({
+          conversationId:
+            session.executionRef?.threadId ?? session.thread?.threadId ?? `session:${session.id}`,
+          hostId: session.thread?.executionHostId,
+          sessionId: session.id,
+        }),
       notify: (session, remindAt) =>
         events.publish({
           kind: "threadNotification",

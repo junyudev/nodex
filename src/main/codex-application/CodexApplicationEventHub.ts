@@ -16,7 +16,8 @@ export type CodexApplicationEvent =
   | { readonly kind: "codex"; readonly value: IpcEvents["codex:event"] }
   | { readonly kind: "threadNotification"; readonly value: CodexThreadNotificationEvent }
   | { readonly kind: "hostMessage"; readonly value: CodexHostMessage }
-  | { readonly kind: "rendererConversationPresentedInForeground"; readonly value: string }
+  /** A conversation came in front of the person, in a focused window or on a phone. */
+  | { readonly kind: "conversationSeen"; readonly value: string }
   | {
       readonly kind: "conversationReadStateCommitted";
       readonly value: { readonly threadId: string; readonly hasUnreadTurn: boolean };

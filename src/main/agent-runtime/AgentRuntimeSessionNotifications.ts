@@ -27,15 +27,13 @@ export interface AgentRuntimeNotificationSession {
 
 export interface AgentRuntimeSessionNotificationOptions {
   readonly transitions: Stream.Stream<AgentRuntimeActivityTransition>;
-  /** A focused window currently presents this root Thread's conversation. */
-  readonly isPresentedInForeground: (rootThreadId: string) => boolean;
+  /** The person has this chat in front of them, in a focused window or on a phone. */
+  readonly isSeen: (chat: { readonly rootThreadId: string; readonly sessionId: string }) => boolean;
   readonly readSession: (
     sessionId: string,
   ) => Effect.Effect<AgentRuntimeNotificationSession | null, unknown>;
   readonly markUnread: (sessionId: string) => Effect.Effect<void, unknown>;
-  /** Whether turn policy could show a notification now; otherwise the reply is not read. */
-  readonly turnMayShow: Effect.Effect<boolean>;
-  /** The desktop notification owner applies settings, focus and presentation policy. */
+  /** Desktop notifications and phone pushes each apply their own settings and presence. */
   readonly publish: (event: CodexThreadNotificationEvent) => void;
 }
 
@@ -117,7 +115,7 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
       const sideChatSource = session.sideChatSource;
       // A side chat's attention already waits on its source Session; only its replies notify.
       if (sideChatSource && !turnCompleted) return;
-      if (!session.archived && !session.unread && !options.isPresentedInForeground(rootThreadId))
+      if (!session.archived && !session.unread && !options.isSeen({ rootThreadId, sessionId }))
         yield* options.markUnread(sessionId);
       // A side chat opens as a tab of its source Session, never as a Scene of its own.
       const parentNavigationPath = sideChatSource?.rootThreadId
@@ -138,13 +136,12 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
         const hasPendingContinuation =
           after?.status === "background" ||
           (after?.status === "running" && status !== "interrupted");
-        const lastAgentMessage =
-          !hasPendingContinuation && (yield* options.turnMayShow)
-            ? yield* finalReply(
-                transition,
-                outcome === undefined ? yield* readOutcome(transition, endedRun.runId) : outcome,
-              )
-            : null;
+        const lastAgentMessage = !hasPendingContinuation
+          ? yield* finalReply(
+              transition,
+              outcome === undefined ? yield* readOutcome(transition, endedRun.runId) : outcome,
+            )
+          : null;
         options.publish({
           type: "turn-completed",
           hostId: DEFAULT_CODEX_HOST_ID,

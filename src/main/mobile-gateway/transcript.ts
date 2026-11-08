@@ -17,6 +17,7 @@ import { makeSessionObservation } from "../agent-runtime/AgentRuntimeSessionObse
 import { makeNativeSessionHistory } from "../app-tools/NativeSessionHistory";
 import type { SessionSourceContent } from "../app-tools/SessionHistoryRead";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
+import { UserPresence } from "../host-runtime/UserPresence";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { makeMobileChatCommands } from "./chat-commands";
 import {
@@ -83,6 +84,7 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
   const resolveNative = yield* makeNativeSessionHistory;
   const database = yield* DatabaseNotifierRuntime;
   const projects = yield* ProjectWorkspace;
+  const presence = yield* UserPresence;
 
   const nativeWindow = (row: ProjectSession, cursor?: string) =>
     Effect.gen(function* () {
@@ -327,6 +329,14 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
             const reads = yield* Semaphore.make(1);
             const watched: Watched = { scope, current };
             watching.set(sessionId, watched);
+            // A chat the phone watches over a live channel is in front of the person.
+            yield* presence
+              .showOnPhone({
+                sessionId,
+                conversationId: row.executionRef?.threadId ?? row.thread?.threadId ?? null,
+                hostId: row.thread?.executionHostId,
+              })
+              .pipe(Scope.provide(scope));
             const applyRefresh = (next: Read, reset: boolean) =>
               lane.withPermit(
                 Effect.gen(function* () {
