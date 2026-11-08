@@ -28,7 +28,8 @@ export class SystemActivity extends Context.Service<
 export const live: Layer.Layer<SystemActivity> = Layer.effect(
   SystemActivity,
   Effect.gen(function* () {
-    const locks = yield* Effect.acquireRelease(PubSub.unbounded<void>(), PubSub.shutdown);
+    // A lock is a signal, not a queue: listeners only need to know one happened since they looked.
+    const locks = yield* Effect.acquireRelease(PubSub.sliding<void>(1), PubSub.shutdown);
     const onLock = () => {
       PubSub.publishUnsafe(locks, undefined);
     };
