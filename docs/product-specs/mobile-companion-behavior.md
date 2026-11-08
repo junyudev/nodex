@@ -57,7 +57,8 @@ holds its keys, its unsent captures, its drafts, and a cache of what it last saw
 - The app reconnects on its own and at once when it returns to the foreground. Its header shows the
   state only when it is not connected. A standing notice floats above the Composer, on Home and in an
   open chat. It says what the state means and offers the fix: `Retry` while the desktop is unreachable, `Pair again` when the desktop
-  no longer knows this phone, and an update prompt when the two versions cannot talk. What is already
+  no longer knows this phone, and `Update` when the two versions cannot talk, which opens TestFlight
+  on iPhone or the download page on Android. What is already
   on screen stays readable, and the notice holds steady while the app keeps retrying.
 
 ## One screen, one Composer
