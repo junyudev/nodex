@@ -9,6 +9,9 @@ import {
 
 const TARGETS = ["arm64", "windows-arm64", "windows-x64"];
 const WINDOWS_WORKFLOW = "./.github/workflows/_windows-distribution.yml";
+const MOBILE_WORKFLOW = "./.github/workflows/_mobile-distribution.yml";
+/** Only a stable release opens a build to the public TestFlight beta. */
+const TESTFLIGHT_CALLERS = new Set(["release.yml", "release-recovery.yml"]);
 const RELEASE_CALLERS = [
   "release.yml",
   "nightly-release.yml",
@@ -69,6 +72,20 @@ export function verifyReleaseDistributionWorkflows(
     requireRecord(validationPackage.with, "Windows validation inputs").release !== false
   )
     throw new Error("Windows validation must reuse native distribution with updates disabled.");
+  const mobile = requireRecord(
+    requireRecord(workflows.get("_mobile-distribution.yml"), "Mobile implementation").jobs,
+    "Mobile jobs",
+  );
+  for (const [platform, runner] of [
+    ["android", "ubuntu-latest"],
+    ["ios", "macos-26"],
+  ] as const) {
+    const job = requireRecord(mobile[platform], `Mobile ${platform}`);
+    if (job["runs-on"] !== runner || job.environment !== "mobile-distribution")
+      throw new Error(
+        `Mobile ${platform} must build on ${runner} in the protected mobile-distribution environment.`,
+      );
+  }
   for (const filename of RELEASE_CALLERS) {
     const caller = requireRecord(workflows.get(filename), filename);
     const callerJobs = requireRecord(caller.jobs, `${filename} jobs`);
@@ -83,6 +100,22 @@ export function verifyReleaseDistributionWorkflows(
     )
       throw new Error(`${filename} must consume the official Windows distribution.`);
     assertNeeds(distribution, ["certification"], filename);
+    const mobileDistribution = requireRecord(
+      callerJobs["mobile-distribution"],
+      `${filename} mobile distribution`,
+    );
+    if (mobileDistribution.uses !== MOBILE_WORKFLOW || mobileDistribution.steps)
+      throw new Error(`${filename} must consume the official mobile distribution.`);
+    assertNeeds(mobileDistribution, ["certification"], filename);
+    const testflight = callerJobs.testflight;
+    if (TESTFLIGHT_CALLERS.has(filename)) {
+      const job = requireRecord(testflight, `${filename} TestFlight`);
+      if (job.uses || job.environment !== "testflight" || job["runs-on"] !== "macos-26")
+        throw new Error(`${filename} TestFlight must stay in a direct protected macOS job.`);
+      assertNeeds(job, ["promote"], filename);
+    } else if (testflight !== undefined) {
+      throw new Error(`${filename} must not publish to TestFlight; only stable releases do.`);
+    }
     const finalizer = requireRecord(callerJobs["finalize-sparkle"], `${filename} finalizer`);
     if (
       finalizer.uses ||
@@ -99,7 +132,7 @@ export function verifyReleaseDistributionWorkflows(
     assertNeeds(finalizer, ["distribution", "windows-distribution"], filename);
     assertNeeds(
       requireRecord(callerJobs.assemble, `${filename} assembly`),
-      ["distribution", "windows-distribution", "finalize-sparkle"],
+      ["distribution", "windows-distribution", "mobile-distribution", "finalize-sparkle"],
       filename,
     );
     if (
@@ -107,19 +140,29 @@ export function verifyReleaseDistributionWorkflows(
       (!String(finalizer.if).includes("needs.windows-distribution.result == 'success'") ||
         !String(requireRecord(callerJobs.assemble, "Recovery assembly").if).includes(
           "needs.windows-distribution.result == 'success'",
+        ) ||
+        !String(requireRecord(callerJobs.assemble, "Recovery assembly").if).includes(
+          "needs.mobile-distribution.result == 'success'",
         ))
     )
-      throw new Error("Recovery must reject a failed Windows distribution even with always().");
+      throw new Error(
+        "Recovery must reject a failed Windows or mobile distribution even with always().",
+      );
   }
 }
 
 export function verifyRepositoryReleaseDistribution(): void {
-  const files = ["_windows-distribution.yml", "windows.yml", ...RELEASE_CALLERS];
+  const files = [
+    "_windows-distribution.yml",
+    "_mobile-distribution.yml",
+    "windows.yml",
+    ...RELEASE_CALLERS,
+  ];
   verifyReleaseDistributionWorkflows(
     new Map(files.map((file) => [file, readWorkflow(path.join(workflowsDirectory, file))])),
   );
   process.stdout.write(
-    "Verified complete native release distributions and protected finalizers.\n",
+    "Verified complete native and mobile release distributions and protected finalizers.\n",
   );
 }
 

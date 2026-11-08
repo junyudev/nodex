@@ -7,7 +7,7 @@ import { verifyWindowsReleaseAssets } from "./windows-updates";
 import {
   parseReleaseBundleManifest,
   parseReleaseHistoryBundle,
-  RELEASE_BUNDLE_SCHEMA_VERSION,
+  COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS,
   type ReleaseBundleManifest,
 } from "./bundle";
 import {
@@ -234,7 +234,7 @@ export const readPublishedReleaseIndex = (bundlePath: string) => {
   const resolvedBundle = resolve(bundlePath);
   assertRegularFile(resolvedBundle);
   const bundle = parseReleaseHistoryBundle(JSON.parse(readFileSync(resolvedBundle, "utf8")));
-  if (bundle.schemaVersion !== RELEASE_BUNDLE_SCHEMA_VERSION) {
+  if (!COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS.includes(bundle.schemaVersion)) {
     throw new Error("Published release verification requires a complete Release Bundle.");
   }
   const checksumPath = verifyChecksumAllowlist(resolvedBundle, bundle);

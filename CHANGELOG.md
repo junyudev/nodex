@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Get Nodex Mobile from its public TestFlight beta on iPhone, or download the Android app from nodex.jyu.app/download. Every Nodex release now ships the phone app with the same version, so the phone and the computer it pairs with stay able to talk; TestFlight keeps the iPhone app current, and a newer APK installs over the old one without losing your pairing.
+
 ### Changed
 
 ### Fixed

@@ -10,6 +10,8 @@ import {
 import { extractReleaseNotes } from "./changelog";
 import { publishBrowserRuntime } from "./browser-runtime";
 import { buildWindowsDistribution } from "./windows-distribution";
+import { buildAndroidDistribution, buildIosDistribution } from "./mobile-distribution";
+import { publishTestFlight } from "./testflight";
 import { finalizeWindowsArchitectureUpdate } from "./windows-updates";
 import { buildMacDistribution } from "./distribution";
 import { generateHomebrewCaskFromBundle } from "./homebrew";
@@ -238,6 +240,23 @@ const main = async (): Promise<void> => {
     });
     return;
   }
+  if (command === "build-android" || command === "build-ios") {
+    const build = command === "build-android" ? buildAndroidDistribution : buildIosDistribution;
+    build({
+      cwd: projectRoot,
+      identityPath: required(flags, "identity"),
+      outputDirectory: required(flags, "output"),
+    });
+    return;
+  }
+  if (command === "publish-testflight") {
+    const bundlePath = flags.get("bundle");
+    const receipt = await publishTestFlight(
+      bundlePath ? { bundlePath } : { buildDirectory: required(flags, "build-dir") },
+    );
+    writeJson(flags.get("output"), receipt);
+    return;
+  }
   if (command === "finalize-windows") {
     const architecture = required(flags, "arch");
     const channel = required(flags, "channel");
@@ -266,6 +285,8 @@ const main = async (): Promise<void> => {
       windowsArm64Directory: required(flags, "windows-arm64-dir"),
       windowsX64UpdateDirectory: required(flags, "windows-x64-update-dir"),
       windowsArm64UpdateDirectory: required(flags, "windows-arm64-update-dir"),
+      androidDirectory: required(flags, "android-dir"),
+      iosDirectory: required(flags, "ios-dir"),
       identityPath: required(flags, "identity"),
       outputDirectory: required(flags, "output"),
     });

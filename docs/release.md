@@ -43,12 +43,16 @@ manifest and its signed update against one release identity, then emits:
 - `Nodex-<displayVersion>-windows-x64.exe` and `Nodex-<displayVersion>-windows-arm64.exe`
 - stable-only `Nodex-latest-windows-x64.exe` and `Nodex-latest-windows-arm64.exe` aliases with identical bytes
 - signed Windows appcast snapshots and closed update manifests for each CPU
+- `Nodex-<displayVersion>-android.apk` and the stable-only `Nodex-latest-android.apk` alias
+  with identical bytes
 - `release-identity.json`
 - `release-bundle.json`
 - `SHA256SUMS`
 - `release-notes.md` for the publisher (not a public asset)
+- `testflight/`, the certified iOS build that TestFlight receives (not a public asset)
 
-Every Release Bundle requires macOS arm64, Windows x64, and Windows arm64.
+Every Release Bundle requires macOS arm64, Windows x64, Windows arm64, and both
+Nodex Mobile builds; see [Nodex Mobile](#nodex-mobile).
 A failed or missing native build, installed-app probe, or finalizer blocks assembly
 and publication. Stable includes the Windows aliases; Nightly carries only
 versioned installers, matching its versioned macOS DMG policy. Delta history must
@@ -127,6 +131,43 @@ Distribution runs this probe again against the extracted notarized
 full-update App's exact `Contents/Resources` closure with packaged native peer
 authorization enabled; a successful staging probe cannot substitute for it.
 
+## Nodex Mobile
+
+The phone app ships in lockstep with the desktop release it was built from, because
+a phone and a desktop connect only at the same protocol revision. The Release
+Module derives its store versions from the Release Identity
+(`scripts/release/mobile.ts`): a stable release keeps `x.y.z`, a Nightly takes the
+`x.y.(z+1)` it leads up to, iOS builds use the Apple build version and Android
+version codes use the first-parent ordinal, so builds rise across both channels.
+`_mobile-distribution.yml` builds both platforms from the exact certified source
+for Release, Nightly, Rehearsal and Recovery:
+
+- **Android** builds on `ubuntu-latest` for 64-bit Arm. The APK must carry the
+  Release Identity's versions and exactly one signer, the Nodex release
+  certificate pinned as `ANDROID_SIGNING_CERTIFICATE_SHA256`; a debug-signed
+  build never enters a bundle. An installed APK accepts updates only from that
+  key. A Google Play listing must enroll the same key in Play App Signing, so
+  people who installed the APK can update through Play.
+- **iOS** builds on `macos-26` with Apple's cloud-managed App Store signing
+  through the App Store Connect key, and the exported IPA must carry the
+  release's versions and the Nodex team for the app and its notification
+  extension. The bundle certifies it under `testflight/` without publishing it.
+
+After a stable release is published, the direct `testflight` job uploads exactly
+that certified IPA, waits for Apple to process it, names the desktop release in
+its tester notes, adds it to the external **Public beta** group behind the
+download page's TestFlight link, and submits it to Beta App Review. Every step is
+idempotent: a build App Store Connect already holds is reused, and Recovery can
+finish an existing build's group and review steps after the private IPA has
+expired, but never uploads a rebuilt one. Nightly and Rehearsal build and verify
+both apps without publishing them; internal testers receive every uploaded build.
+`vp run ios:testflight` in `packages/mobile` sends a clean checkout's Nightly
+build to internal testers through the same path.
+
+Beta App Review covers the first build of each version, usually within a day.
+Change the mobile protocol revision only when the phone app can be approved
+before the desktop release that requires it reaches people.
+
 ## Release Identity
 
 `package.json` remains the canonical source version. The Release Module derives
@@ -189,6 +230,8 @@ environment secrets are resolved only by direct jobs.
 | Environment                 | Authority                                                                      |
 | --------------------------- | ------------------------------------------------------------------------------ |
 | `macos-distribution`        | Apple signing/notarization; Sentry upload once from production arm64           |
+| `mobile-distribution`       | Sign the Android APK and the App Store iOS build                               |
+| `testflight`                | Upload the certified iOS build and submit it to the public TestFlight beta     |
 | `sparkle-feed-finalization` | Sign macOS and Windows appcasts and enclosures after every native build passes |
 | `release-publish`           | Job-scoped repository `contents: write` only                                   |
 | `official-skills-publish`   | Publish the verified artifact to `NodexApp/skills`                             |
@@ -197,14 +240,15 @@ environment secrets are resolved only by direct jobs.
 
 Configure these repository Action secrets:
 
-| Secret                                                      | Required authority                                                         |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `CSC_LINK`, `CSC_KEY_PASSWORD`                              | Base64 Developer ID Application `.p12` certificate and its export password |
-| `APPLE_API_KEY_B64`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER` | App Store Connect notarization key                                         |
-| `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`         | Release/source-map upload for the Nodex project                            |
-| `NODEX_SKILLS_GITHUB_TOKEN`                                 | Fine-grained Contents read/write on `NodexApp/skills` only                 |
-| `HOMEBREW_TAP_GITHUB_TOKEN`                                 | Fine-grained Contents read/write on `junyudev/homebrew-tap` only           |
-| `NODEXAPP_GITHUB_IO_TOKEN`                                  | Fine-grained Contents read/write on `NodexApp/NodexApp.github.io` only     |
+| Secret                                                              | Required authority                                                                                                                          |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CSC_LINK`, `CSC_KEY_PASSWORD`                                      | Base64 Developer ID Application `.p12` certificate and its export password                                                                  |
+| `APPLE_API_KEY_B64`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`         | App Store Connect team key with the App Manager or Admin role: notarization, iOS signing and TestFlight                                     |
+| `ANDROID_RELEASE_KEYSTORE_B64`, `ANDROID_RELEASE_KEYSTORE_PASSWORD` | Base64 PKCS12 Android release keystore (alias `nodex`) and its password; keep an offline copy, since no other key can update installed APKs |
+| `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`                 | Release/source-map upload for the Nodex project                                                                                             |
+| `NODEX_SKILLS_GITHUB_TOKEN`                                         | Fine-grained Contents read/write on `NodexApp/skills` only                                                                                  |
+| `HOMEBREW_TAP_GITHUB_TOKEN`                                         | Fine-grained Contents read/write on `junyudev/homebrew-tap` only                                                                            |
+| `NODEXAPP_GITHUB_IO_TOKEN`                                          | Fine-grained Contents read/write on `NodexApp/NodexApp.github.io` only                                                                      |
 
 Configure `SPARKLE_ED25519_PRIVATE_KEY` as an environment secret on
 `sparkle-feed-finalization`, not as a repository-wide secret and not as a
@@ -623,6 +667,7 @@ A valid version transition runs this sequence:
     preserving existing feeds on ordinary site deploys and atomically projecting
     all three signed architecture snapshots on release deploys. Public feed bytes and every
     enclosure are checked after push.
+12. Upload the certified iOS build to TestFlight and submit it to the public beta.
 
 Sentry source maps are uploaded only by the production arm64 build. Main, preload,
 and renderer uploads use `SENTRY_RELEASE=nodex@<version>` so their app identity
@@ -651,7 +696,7 @@ transition for the supplied version. Its behavior is idempotent:
 - matching draft: verify every existing asset digest, upload only missing
   assets, then publish;
 - matching published release: verify it, then retry the independently
-  idempotent Agent Skills, Homebrew, and landing/feed promotion jobs;
+  idempotent Agent Skills, Homebrew, landing/feed promotion and TestFlight jobs;
 - retained cross-run artifacts are restored with `gh run download`, which owns
   GitHub's archive redirect and extraction behavior before bundle verification;
 - matching Agent Skills tag and tree: reuse it; a conflicting tree or version

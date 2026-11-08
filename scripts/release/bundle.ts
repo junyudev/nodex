@@ -31,14 +31,32 @@ import {
 } from "./targets";
 import { parseWindowsArchitectureUpdateManifest } from "./windows-updates";
 import { readConfiguredPublicKey, verifyFileSignature } from "./signing";
+import {
+  ANDROID_LATEST_APK,
+  MOBILE_BUILD_MANIFEST,
+  MOBILE_PLATFORMS,
+  mobileAppFor,
+  mobileArtifactName,
+  readMobileBuildDirectory,
+  type MobileApp,
+  type MobileArtifact,
+  type MobilePlatform,
+} from "./mobile";
 export type { MacArchitecture } from "./targets";
-export const RELEASE_BUNDLE_SCHEMA_VERSION = 4;
+export const RELEASE_BUNDLE_SCHEMA_VERSION = 5;
+/** Bundles that carry every desktop target; schema 5 adds Nodex Mobile. */
+export const COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS: readonly number[] = [4, 5];
+/** Every bundle a published release may carry, back to the last macOS-only format. */
+export const RELEASE_HISTORY_SCHEMA_VERSIONS: readonly number[] = [3, 4, 5];
+/** Where a bundle keeps its certified iOS build: TestFlight receives it, GitHub never does. */
+export const TESTFLIGHT_DIRECTORY = "testflight";
 
 export interface ReleaseArtifactIdentity {
   readonly architecture?: ReleaseArchitecture;
   readonly bytes: number;
   readonly name: string;
   readonly role:
+    | "android-apk"
     | "windows-installer"
     | "dmg"
     | "sparkle-appcast"
@@ -80,6 +98,13 @@ export interface ArchitectureBuildManifest {
   readonly version: string;
 }
 
+/** One phone build a release ships: its manifest, store versions and exact artifact. */
+export interface ReleaseBundleMobileBuild {
+  readonly manifestSha256: string;
+  readonly app: MobileApp;
+  readonly artifact: MobileArtifact;
+}
+
 export interface ReleaseBundleManifest {
   readonly agentSkills: AgentSkillsIdentity;
   readonly architectures: Readonly<
@@ -93,6 +118,7 @@ export interface ReleaseBundleManifest {
     >
   >;
   readonly assets: readonly ReleaseArtifactIdentity[];
+  readonly mobile: Readonly<Record<MobilePlatform, ReleaseBundleMobileBuild>>;
   readonly runtimeLocks: ArchitectureBuildManifest["runtimeLocks"];
   readonly schemaVersion: typeof RELEASE_BUNDLE_SCHEMA_VERSION;
   readonly releaseIdentity: ReleaseIdentity;
@@ -104,6 +130,7 @@ export interface ReleaseBundleManifest {
 
 const SHA_PATTERN = /^[a-f0-9]{64}$/u;
 const ARTIFACT_ROLES = new Set<ReleaseArtifactIdentity["role"]>([
+  "android-apk",
   "windows-installer",
   "dmg",
   "sparkle-appcast",
@@ -270,9 +297,50 @@ export function parseArchitectureBuildManifest(value: unknown): ArchitectureBuil
   } as ArchitectureBuildManifest;
 }
 
-type ReleaseHistoryBundle = Omit<ReleaseBundleManifest, "schemaVersion" | "architectures"> & {
-  readonly schemaVersion: 3 | 4;
+type ReleaseHistoryBundle = Omit<
+  ReleaseBundleManifest,
+  "schemaVersion" | "architectures" | "mobile"
+> & {
+  readonly schemaVersion: 3 | 4 | 5;
   readonly architectures: Readonly<Partial<ReleaseBundleManifest["architectures"]>>;
+  readonly mobile?: ReleaseBundleManifest["mobile"];
+};
+
+const parseMobileBuilds = (
+  value: unknown,
+  identity: ReleaseIdentity,
+): ReleaseBundleManifest["mobile"] => {
+  if (!isRecord(value) || JSON.stringify(Object.keys(value).sort()) !== '["android","ios"]')
+    throw new Error("Release Bundle mobile builds are invalid.");
+  const builds = Object.fromEntries(
+    MOBILE_PLATFORMS.map((platform) => {
+      const build = value[platform];
+      if (!isRecord(build) || !isRecord(build.app) || !isRecord(build.artifact))
+        throw new Error(`Release Bundle ${platform} build is invalid.`);
+      const parsed: ReleaseBundleMobileBuild = {
+        manifestSha256: assertSha(String(build.manifestSha256), `${platform} build manifest`),
+        app: {
+          id: String(build.app.id),
+          version: String(build.app.version),
+          build: String(build.app.build),
+        },
+        artifact: {
+          name: String(build.artifact.name),
+          bytes: Number(build.artifact.bytes),
+          sha256: assertSha(String(build.artifact.sha256), `${platform} build artifact`),
+        },
+      };
+      if (
+        !isDeepStrictEqual(parsed.app, mobileAppFor(platform, identity)) ||
+        parsed.artifact.name !== mobileArtifactName(platform, identity.version) ||
+        !Number.isSafeInteger(parsed.artifact.bytes) ||
+        parsed.artifact.bytes <= 0
+      )
+        throw new Error(`Release Bundle ${platform} build does not match its release identity.`);
+      return [platform, parsed];
+    }),
+  );
+  return builds as ReleaseBundleManifest["mobile"];
 };
 
 /** History may consume the last macOS-only bundle format; production admission requires every target. */
@@ -288,9 +356,13 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
   if (!isRecord(value)) throw new Error("Release Bundle manifest is invalid.");
   const candidate = value as Partial<ReleaseHistoryBundle>;
   const macOnlyHistory = allowHistory && candidate.schemaVersion === 3;
+  const hasMobile = candidate.schemaVersion === RELEASE_BUNDLE_SCHEMA_VERSION;
   const architectures = macOnlyHistory ? (["arm64"] as const) : RELEASE_ARCHITECTURES;
   if (
-    (!macOnlyHistory && candidate.schemaVersion !== RELEASE_BUNDLE_SCHEMA_VERSION) ||
+    !(allowHistory ? RELEASE_HISTORY_SCHEMA_VERSIONS : [RELEASE_BUNDLE_SCHEMA_VERSION]).includes(
+      candidate.schemaVersion as number,
+    ) ||
+    hasMobile !== (candidate.mobile !== undefined) ||
     typeof candidate.version !== "string" ||
     typeof candidate.tag !== "string" ||
     typeof candidate.sourceSha !== "string" ||
@@ -348,6 +420,7 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
   assertSha(candidate.runtimeLocks.sparkleSha256, "Release Bundle Sparkle runtime lock");
   if (!macOnlyHistory)
     assertSha(candidate.runtimeLocks.nodeSha256 ?? "", "Release Bundle Node runtime lock");
+  const mobile = hasMobile ? parseMobileBuilds(candidate.mobile, releaseIdentity) : undefined;
   const assets = candidate.assets.map(parseArtifact);
   const names = assets.map(({ name }) => name);
   if (new Set(names).size !== names.length)
@@ -398,6 +471,14 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
             `windows-${architecture}`,
           ] as const,
         ])),
+    ...(mobile
+      ? ([
+          [mobile.android.artifact.name, "android-apk", undefined],
+          ...(releaseIdentity.channel === "stable"
+            ? ([[ANDROID_LATEST_APK, "android-apk", undefined]] as const)
+            : []),
+        ] as const)
+      : []),
     ...(hasEmbeddedIdentity
       ? [["release-identity.json", "release-identity", undefined] as const]
       : []),
@@ -424,6 +505,14 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
       );
     }
   }
+  if (mobile) {
+    const apk = mobile.android.artifact;
+    for (const name of [apk.name, ANDROID_LATEST_APK]) {
+      const asset = assets.find((candidate) => candidate.name === name);
+      if (asset && (asset.sha256 !== apk.sha256 || asset.bytes !== apk.bytes))
+        throw new Error("Every Android download must be the exact APK the release certified.");
+    }
+  }
   const requiredNames = new Set<string>(required.map(([name]) => name));
   for (const asset of assets) {
     if (requiredNames.has(asset.name)) continue;
@@ -447,7 +536,14 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
   if (assets.some(({ name }) => name.endsWith(".blockmap") || name === "latest-mac.yml")) {
     throw new Error("Release Bundle contains obsolete electron-updater assets.");
   }
-  return { ...candidate, agentSkills, assets, releaseIdentity, version } as ReleaseHistoryBundle;
+  return {
+    ...candidate,
+    agentSkills,
+    assets,
+    ...(mobile ? { mobile } : {}),
+    releaseIdentity,
+    version,
+  } as ReleaseHistoryBundle;
 }
 
 const ensureEmptyDirectory = (directory: string): void => {
@@ -670,6 +766,8 @@ export function assembleReleaseBundle(options: {
   readonly windowsX64UpdateDirectory: string;
   readonly windowsArm64UpdateDirectory: string;
   readonly windowsPublicKey?: string;
+  readonly androidDirectory: string;
+  readonly iosDirectory: string;
   readonly outputDirectory: string;
   readonly identityPath?: string;
   readonly sourceSha?: string;
@@ -709,7 +807,7 @@ export function assembleReleaseBundle(options: {
   }
 
   const publicFiles: Array<{
-    readonly architecture: ReleaseArchitecture;
+    readonly architecture: ReleaseArchitecture | undefined;
     readonly path: string;
     readonly role: ReleaseArtifactIdentity["role"];
   }> = [];
@@ -717,7 +815,7 @@ export function assembleReleaseBundle(options: {
     root: string,
     sourceName: string,
     role: ReleaseArtifactIdentity["role"],
-    architecture: ReleaseArchitecture,
+    architecture: ReleaseArchitecture | undefined,
     targetName = sourceName,
   ): void => {
     const target = join(output, targetName);
@@ -817,6 +915,32 @@ export function assembleReleaseBundle(options: {
   if (windows[0][2] !== windows[1][2])
     throw new Error("Windows builds must share one Node runtime lock.");
 
+  const mobile = Object.fromEntries(
+    MOBILE_PLATFORMS.map((platform) => {
+      const directory = platform === "android" ? options.androidDirectory : options.iosDirectory;
+      const build = readMobileBuildDirectory(directory, platform, releaseIdentity);
+      if (platform === "android") {
+        const root = resolve(directory);
+        copy(root, build.manifest.artifact.name, "android-apk", undefined);
+        if (releaseIdentity.channel === "stable")
+          copy(root, build.manifest.artifact.name, "android-apk", undefined, ANDROID_LATEST_APK);
+      } else {
+        const testflight = join(output, TESTFLIGHT_DIRECTORY);
+        mkdirSync(testflight);
+        copyFileSync(build.manifestPath, join(testflight, MOBILE_BUILD_MANIFEST));
+        copyFileSync(build.artifactPath, join(testflight, build.manifest.artifact.name));
+      }
+      return [
+        platform,
+        {
+          manifestSha256: sha256File(build.manifestPath),
+          app: build.manifest.app,
+          artifact: build.manifest.artifact,
+        },
+      ];
+    }),
+  ) as ReleaseBundleManifest["mobile"];
+
   const identityTarget = join(output, "release-identity.json");
   writeFileSync(identityTarget, `${JSON.stringify(releaseIdentity, null, 2)}\n`, "utf8");
   const assets = [
@@ -839,6 +963,7 @@ export function assembleReleaseBundle(options: {
       },
     },
     assets,
+    mobile,
     runtimeLocks: { ...arm64.runtimeLocks, nodeSha256: windows[0][2] },
     schemaVersion: RELEASE_BUNDLE_SCHEMA_VERSION,
     releaseIdentity,
