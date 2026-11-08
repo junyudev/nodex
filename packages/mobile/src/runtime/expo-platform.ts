@@ -14,7 +14,14 @@ import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 import Storage from "expo-sqlite/kv-store";
 import { AppState, Platform } from "react-native";
-import type { MobilePlatform, MobilePush, MobileSocket, PushPermission } from "./platform";
+import { chatOfNotificationRequest } from "./notification-payload";
+import type {
+  DeliveredChat,
+  MobilePlatform,
+  MobilePush,
+  MobileSocket,
+  PushPermission,
+} from "./platform";
 
 function openSocket(route: string): MobileSocket {
   const socket = new WebSocket(route);
@@ -57,14 +64,17 @@ const registerAddress = async (request: RelayDeviceRequest): Promise<string> => 
   return handle;
 };
 
+const delivered = async (): Promise<readonly DeliveredChat[]> =>
+  (await Notifications.getPresentedNotificationsAsync()).flatMap(({ request }) => {
+    const chat = chatOfNotificationRequest(request);
+    return chat ? [chat] : [];
+  });
+
 const clearDelivered = async (sessionId: string): Promise<void> => {
   const presented = await Notifications.getPresentedNotificationsAsync();
   await Promise.all(
     presented
-      .filter(({ request }) => {
-        const { trigger } = request;
-        return trigger && "payload" in trigger && trigger.payload?.sessionId === sessionId;
-      })
+      .filter(({ request }) => chatOfNotificationRequest(request)?.sessionId === sessionId)
       .map(({ request }) => Notifications.dismissNotificationAsync(request.identifier)),
   );
 };
@@ -107,6 +117,7 @@ const makePush = (): MobilePush | null => {
     readKey: () => SecureStore.getItem("push-key", keychain),
     writeKey: (key) => SecureStore.setItemAsync("push-key", key, keychain),
     registerAddress,
+    delivered,
     clearDelivered,
   };
 };

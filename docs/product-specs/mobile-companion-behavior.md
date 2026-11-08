@@ -159,6 +159,11 @@ line whose placeholder names where a message goes. In use it opens to show its p
   each connection.
 - Tapping a notification opens its chat, on the desktop that sent it. Opening a chat clears its
   notifications, and one chat's notifications group together.
+- When the app connects to a desktop, and whenever that desktop's chats change while it is
+  connected, it clears that desktop's notifications for chats that are no longer unread there,
+  including chats read on the desktop, archived or gone from the chat list. Notifications from
+  another desktop wait for that desktop. A closed app cannot withdraw anything, so a notification
+  for a chat read on the desktop stays until the app next opens.
 - Restarting the desktop does not replay notifications. Delivery is best effort, with a short bounded
   retry for temporary relay failures.
 - Notification text is encrypted for the phone before it leaves the desktop. The push relay routes

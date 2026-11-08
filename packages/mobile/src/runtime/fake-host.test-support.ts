@@ -71,6 +71,8 @@ export class FakeHost {
     else if (request.m === "agents.catalog") reply({ providers: [], defaultChoice: null });
     else if (request.m === "inbox.window" || request.m === "chats.list")
       reply({ items: [], nextCursor: null });
+    else if (request.m === "chats.unread")
+      reply({ sessionIds: (request.p as { sessionIds: string[] }).sessionIds });
     else reply({});
   };
 

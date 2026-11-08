@@ -2,7 +2,7 @@ import { decodePushKey, encodePairingUri, PUSH_KEY_BYTES } from "@nodex/mobile-p
 import * as Scheduler from "effect/Scheduler";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { FakeHost, fakePlatform } from "./fake-host.test-support";
-import type { MobilePush, PushPermission } from "./platform";
+import type { DeliveredChat, MobilePush, PushPermission } from "./platform";
 import { createMobileRuntime, type MobileRuntime } from "./runtime";
 
 const route = "ws://host-a:3000/mobile";
@@ -16,6 +16,7 @@ class FakePush implements MobilePush {
   relayFails = false;
   readonly addressesRegistered: string[] = [];
   readonly cleared: string[] = [];
+  shown: DeliveredChat[] = [];
   constructor(
     private current: PushPermission,
     private readonly answer: PushPermission = "granted",
@@ -37,16 +38,19 @@ class FakePush implements MobilePush {
     this.addressesRegistered.push(token);
     return Promise.resolve(`handle-for-${token.slice(0, 4)}`);
   };
+  delivered = () => Promise.resolve([...this.shown]);
   clearDelivered = (sessionId: string) => {
     this.cleared.push(sessionId);
+    this.shown = this.shown.filter((chat) => chat.sessionId !== sessionId);
     return Promise.resolve();
   };
 }
 
-const setup = async (push: FakePush | null) => {
+const setup = async (push: FakePush | null, configure?: (host: FakeHost) => void) => {
   const platform = fakePlatform();
   platform.push = push;
   const host = new FakeHost();
+  configure?.(host);
   platform.routes.set(route, host);
   const runtime = createMobileRuntime(platform, {
     scheduler: new Scheduler.MixedScheduler("sync"),
@@ -208,6 +212,55 @@ describe("notifications", () => {
     await tick(100);
     await on;
     expect(runtime.notifications.state.getState().problem).toBe("desktop");
+  });
+
+  it("clear notifications for chats the desktop read or put away, once connected", async () => {
+    const push = new FakePush("granted");
+    push.shown = [
+      { sessionId: "read", hostId: "host-a" },
+      { sessionId: "unread", hostId: "host-a" },
+      { sessionId: "read", hostId: "host-a" },
+      { sessionId: "elsewhere", hostId: "host-b" },
+      { sessionId: "unattributed", hostId: null },
+    ];
+    const { host } = await setup(push, (host) => {
+      const reply = host.onRequest;
+      host.onRequest = (request, respond, fail) => {
+        if (request.m === "chats.unread") respond({ sessionIds: ["unread"] });
+        else reply(request, respond, fail);
+      };
+    });
+    await tick(300);
+    // Only this desktop's notifications are its to judge.
+    expect(host.requests.filter(({ m }) => m === "chats.unread").map(({ p }) => p)).toEqual([
+      { sessionIds: ["read", "unread"] },
+    ]);
+    expect(push.cleared).toEqual(["read"]);
+  });
+
+  it("tidy again when the desktop's chats change, and leave them to a desktop that can't tell", async () => {
+    const push = new FakePush("granted");
+    const { host } = await setup(push);
+    await tick(300);
+    push.shown = [{ sessionId: "read-later", hostId: "host-a" }];
+    const reply = host.onRequest;
+    host.onRequest = (request, respond, fail) => {
+      if (request.m === "chats.unread") fail("Unknown method", false, "unknown_method");
+      else reply(request, respond, fail);
+    };
+    host.emit({ t: "evt", k: "changed", d: { topics: ["chats"] } });
+    await tick(300);
+    expect(push.cleared).toEqual([]);
+    host.onRequest = (request, respond, fail) => {
+      if (request.m === "chats.unread") respond({ sessionIds: [] });
+      else reply(request, respond, fail);
+    };
+    host.emit({ t: "evt", k: "changed", d: { topics: ["inbox"] } });
+    await tick(300);
+    expect(push.cleared).toEqual([]);
+    host.emit({ t: "evt", k: "changed", d: { topics: ["chats"] } });
+    await tick(300);
+    expect(push.cleared).toEqual(["read-later"]);
   });
 
   it("clear one chat's delivered notifications", async () => {

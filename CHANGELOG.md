@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Nodex Mobile clears notifications for chats you've already read on your computer. As soon as the app connects, and whenever your chats change while it's open, notifications for chats that are read, archived or gone from your chat list leave Notification Center.
 - Your phone now hears from Nodex only when you're away from your computer. A chat you're watching on the desktop no longer buzzes your phone. The phone is told at once when the computer's screen is locked or nobody has used it for five minutes, and otherwise only if you walk away before touching the computer again. Answering, opening the chat anywhere, or a newer notification in the same chat withdraws one that is still waiting. A chat open on your phone no longer raises a desktop notification or turns unread, and opening it there clears its desktop notifications. A locked screen counts as out of sight on the desktop too, so chats that finish while it is locked turn unread and notify as usual. Chat reminders now reach your phone as well.
 
 ### Fixed

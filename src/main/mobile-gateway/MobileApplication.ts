@@ -105,6 +105,7 @@ export const live = Layer.effectContext(
               "projects.list": catalog.projects,
               "agents.catalog": catalog.agents,
               "chats.list": catalog.chats,
+              "chats.unread": catalog.unread,
             },
             recover: (recover, discard) =>
               history

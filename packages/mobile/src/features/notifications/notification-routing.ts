@@ -2,7 +2,7 @@ import * as Notifications from "expo-notifications";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 
-import { chatOfNotification } from "./notification-payload";
+import { chatOfNotification } from "../../runtime/notification-payload";
 
 // A notification arrives while the app is open only in the moment before the desktop sees it connect.
 Notifications.setNotificationHandler({

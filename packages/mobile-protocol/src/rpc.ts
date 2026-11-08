@@ -104,6 +104,11 @@ export const mobileMethods = {
     }),
     ChatListSchema,
   ),
+  /** Of these chats, the ones the chat list still shows as unread. */
+  "chats.unread": define(
+    z.looseObject({ sessionIds: z.array(z.string()).max(100) }),
+    z.looseObject({ sessionIds: z.array(z.string()) }),
+  ),
   "chats.start": define(
     z.looseObject({
       /** Chosen once; the same identities replay the same chat. */

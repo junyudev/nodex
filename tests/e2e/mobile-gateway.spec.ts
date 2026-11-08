@@ -14,6 +14,7 @@ import {
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import type { ScriptedAcpScenario } from "../../scripts/scenarios/runtime/scripted-acp-agent";
 import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
+import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { invokeIpc } from "./support/editor-scenario";
 import { MobilePhone, PhoneConnectionClosed, type PhoneChannel } from "./support/mobile-phone";
 import { openWorkbenchSettings } from "./support/workbench-settings";
@@ -331,6 +332,20 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
           .filter((entry) => entry.method === "session/request_permission")
           .map((entry) => entry.outcome),
       ).toEqual(["selected", "selected"]);
+      // The phone asks which of its notified chats are still unread, as the chat list shows them.
+      const markUnread = (unread: boolean) =>
+        invokeIpc(page, "project-sessions:mark-unread", {
+          operationId: createBoundedOperationId("e2e.mobile.session.unread"),
+          payload: { sessionId, unread },
+        });
+      await markUnread(true);
+      expect(
+        await connected.request("chats.unread", { sessionIds: [sessionId, createUuidV7()] }),
+      ).toEqual({ sessionIds: [sessionId] });
+      await markUnread(false);
+      expect(await connected.request("chats.unread", { sessionIds: [sessionId] })).toEqual({
+        sessionIds: [],
+      });
     });
 
     await test.step("remove the phone through Settings and refuse its saved key", async () => {

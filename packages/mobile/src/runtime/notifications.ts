@@ -120,12 +120,44 @@ export const makeNotifications = Effect.gen(function* () {
     state.setState({ offerDismissed: true });
   });
 
+  /**
+   * A chat read on the desktop, archived or otherwise gone from the chat list needs no notification
+   * any more. Only this desktop's notifications are its to judge, a hundred chats at a time. A desktop
+   * that cannot answer leaves them in place.
+   */
+  const tidyDelivered = Effect.gen(function* () {
+    const link = connection.activeLink();
+    if (!push || !link) return;
+    const hostId = link.hello.host.id;
+    const delivered = yield* attempt(() => push.delivered());
+    const sessionIds = [
+      ...new Set(delivered.filter((chat) => chat.hostId === hostId).map((chat) => chat.sessionId)),
+    ].slice(0, 100);
+    if (sessionIds.length === 0) return;
+    const { sessionIds: unread } = yield* connection.rpc.request("chats.unread", { sessionIds });
+    const stillUnread = new Set(unread);
+    yield* Effect.forEach(
+      sessionIds.filter((sessionId) => !stillUnread.has(sessionId)),
+      (sessionId) => attempt(() => push.clearDelivered(sessionId)),
+      { discard: true },
+    );
+  }).pipe(Effect.ignore);
+
   // The runtime is built synchronously, so what the system answers arrives after it.
   yield* refreshPermission.pipe(Effect.forkScoped({ startImmediately: true }));
   yield* connection.state.changes.pipe(
     Stream.runForEach(({ status }) =>
       status === "connected" ? refreshPermission.pipe(Effect.andThen(tellDesktop)) : Effect.void,
     ),
+    Effect.forkScoped({ startImmediately: true }),
+  );
+
+  yield* Stream.merge(
+    connection.state.changes.pipe(Stream.filter(({ status }) => status === "connected")),
+    connection.rpc.events("changed").pipe(Stream.filter(({ topics }) => topics.includes("chats"))),
+  ).pipe(
+    Stream.debounce("250 millis"),
+    Stream.runForEach(() => tidyDelivered),
     Effect.forkScoped({ startImmediately: true }),
   );
 

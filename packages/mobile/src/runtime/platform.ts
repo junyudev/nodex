@@ -42,8 +42,15 @@ export interface MobilePush {
   writeKey(key: string): Promise<void>;
   /** Exchanges an address for the relay's opaque handle. */
   registerAddress(request: RelayDeviceRequest): Promise<string>;
+  /** The chats behind notifications still in Notification Center, with the desktop that sent each. */
+  delivered(): Promise<readonly DeliveredChat[]>;
   /** Takes one chat's notifications out of Notification Center. */
   clearDelivered(sessionId: string): Promise<void>;
+}
+
+export interface DeliveredChat {
+  readonly sessionId: string;
+  readonly hostId: string | null;
 }
 
 export interface MobilePlatform {

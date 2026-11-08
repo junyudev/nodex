@@ -125,6 +125,30 @@ export const rankedChatPage = (
   };
 };
 
+/** Of the chats a phone asks about, the ones the chat list still shows as unread. */
+export const unreadChats =
+  (core: CoreModules["Service"]): MobileHandlers["chats.unread"] =>
+  ({ sessionIds }) =>
+    Effect.gen(function* () {
+      if (sessionIds.length === 0) return { sessionIds: [] };
+      // The chat list's own membership rules decide, so an archived or hidden chat is not unread.
+      const response = yield* core.workspace
+        .read({
+          kind: "session_window",
+          archived: false,
+          order: "identity",
+          session_ids: [...new Set(sessionIds)],
+          window: { first: 100 },
+        })
+        .pipe(Effect.mapError(listUnavailable));
+      if (response.value.kind !== "session_window") return yield* Effect.fail(listUnavailable());
+      return {
+        sessionIds: response.value.sessions.items
+          .filter((row) => row.task.session.unread)
+          .map((row) => row.task.session.id),
+      };
+    });
+
 export const makeMobileCatalog = Effect.gen(function* () {
   const core = yield* CoreModules;
   const runtime = yield* AgentRuntimeApplication;
@@ -183,6 +207,8 @@ export const makeMobileCatalog = Effect.gen(function* () {
         libraryInboxCount: counts.library,
       };
     });
+
+  const unread = unreadChats(core);
 
   const chats: MobileHandlers["chats.list"] = (input) =>
     Effect.gen(function* () {
@@ -327,5 +353,5 @@ export const makeMobileCatalog = Effect.gen(function* () {
         ),
       );
     });
-  return { projects, agents, chats, agentChoice, observeActivity };
+  return { projects, agents, chats, unread, agentChoice, observeActivity };
 });
