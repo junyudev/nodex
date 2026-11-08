@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   buildWorkspaceFileChangesTreeModel,
+  readWorkspaceFileTreeExpansion,
   resolveWorkspaceFileChangesTreePath,
 } from "./workspace-file-changes-tree-model";
 
@@ -31,7 +32,7 @@ describe("workspace changes tree", () => {
       kind: "directory",
     });
     expect(resolveWorkspaceFileChangesTreePath(model, "missing.ts")).toBeNull();
-    expect(model.defaultExpandedPaths).toEqual([
+    expect(model.expandedPaths).toEqual([
       "Changed files",
       "All files",
       "Changed files/src",
@@ -85,7 +86,7 @@ describe("workspace changes tree", () => {
     expect(model.matchingChangedFileCount).toBe(1);
     expect(model.paths).toContain("Changed files/src/useWorkspace.ts");
     expect(model.paths).toContain("All files/src/useWorkspace.ts");
-    expect(model.defaultExpandedPaths).toContain("All files/src");
+    expect(model.expandedPaths).toContain("All files/src");
     const empty = buildWorkspaceFileChangesTreeModel({
       ...input,
       browsePaths: [],
@@ -106,7 +107,7 @@ describe("workspace changes tree", () => {
       });
       expect(model.paths).toEqual(["src/", "src/a.ts"]);
       expect(model.sectioned).toBe(false);
-      expect(model.defaultExpandedPaths).toEqual(["src"]);
+      expect(model.expandedPaths).toEqual(["src"]);
       expect(resolveWorkspaceFileChangesTreePath(model, "src/a.ts")).toMatchObject({
         section: "all",
         relativePath: "src/a.ts",
@@ -130,12 +131,39 @@ describe("workspace changes tree", () => {
       browsePaths: [],
       state: { changedCollapsed: true, allCollapsed: true, collapsedChangedPaths: ["a"] },
     });
-    expect(model.defaultExpandedPaths).toEqual([]);
+    expect(model.expandedPaths).toEqual([]);
     const file = [...model.itemsByPath.values()].find(
       (item) => item.relativePath === "a" && item.kind === "file",
     );
     expect(file?.treePath).toBe("Changed files/a\u2063");
     expect(resolveWorkspaceFileChangesTreePath(model, file!.treePath)?.relativePath).toBe("a");
     expect(model.decorationsByPath.get(file!.treePath)).toBe("deleted");
+  });
+
+  test("maps tree expansion back to browse folders and section collapse", () => {
+    const model = buildWorkspaceFileChangesTreeModel({
+      changedFiles: [
+        { path: "src/a.ts", status: "modified" },
+        { path: "lib/b.ts", status: "added" },
+      ],
+      browsePaths: [{ path: "src", kind: "directory" }],
+      expandedPaths: ["", "src", "src/nested"],
+      state: { collapsedChangedPaths: ["gone"] },
+    });
+    expect(model.expandedPaths).toContain("All files/src/nested");
+    expect(
+      readWorkspaceFileTreeExpansion(
+        model,
+        ["All files", "All files/All files", "All files/src/nested", "Changed files/src"],
+        { collapsedChangedPaths: ["gone"] },
+      ),
+    ).toEqual({
+      expandedPaths: ["All files", "src/nested"],
+      changes: {
+        changedCollapsed: true,
+        allCollapsed: false,
+        collapsedChangedPaths: ["gone", "lib"],
+      },
+    });
   });
 });

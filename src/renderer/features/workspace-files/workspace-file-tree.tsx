@@ -7,12 +7,13 @@ import { FileTree, getFileTreeEventPath } from "@/components/ui/file-tree";
 import { preloadSourceViewer } from "@/components/ui/lazy-source-viewer";
 import {
   buildWorkspaceFileChangesTreeModel,
+  readWorkspaceFileTreeExpansion,
   resolveWorkspaceFileChangesTreePath,
   sortWorkspaceFileChangesTree,
   WORKSPACE_ALL_FILES_SECTION,
-  WORKSPACE_CHANGED_FILES_SECTION,
   type WorkspaceFileChange,
   type WorkspaceFileChangesTreeItem,
+  type WorkspaceFileTreeExpansion,
 } from "./workspace-file-changes-tree-model";
 import type { WorkspaceFileChangesNavigationState } from "./workspace-file-navigation-state";
 
@@ -21,20 +22,15 @@ export interface WorkspaceFileTreePath {
   readonly kind: "directory" | "file";
 }
 
-export interface WorkspaceFileTreeState {
-  /** Expanded browse folders, relative to the workspace root, including `""`. */
-  readonly expandedPaths: readonly string[];
-  readonly scrollTop: number;
-  /** Present when the tree is split into Changed files and All files. */
-  readonly changes?: Omit<WorkspaceFileChangesNavigationState, "selectedSection">;
-}
-
 export interface WorkspaceFileTreeProps {
   readonly workspaceRoot?: string | null;
   readonly composerChatKey?: ComposerChatKey | null;
   /** Browse entries, or the file search's matches while `searchQuery` is set. */
   readonly paths: readonly WorkspaceFileTreePath[];
-  readonly expandedPaths: ReadonlySet<string>;
+  /** Expanded browse folders, relative to the workspace root; the root is implied. */
+  readonly expandedPaths: readonly string[];
+  /** Expanded browse folders whose entries are still loading. */
+  readonly loadingDirectoryPaths?: readonly string[];
   /** Root-relative path of the open file, or of a folder with a trailing `/`. */
   readonly selectedPath: string | null;
   readonly searchQuery: string;
@@ -54,7 +50,9 @@ export interface WorkspaceFileTreeProps {
   readonly onOpen: (path: string, mode: "preview" | "durable") => void;
   /** Opens a Changed files entry; falls back to `onOpen`. */
   readonly onOpenChange?: (path: string, mode: "preview" | "durable") => void;
-  readonly onStateChange: (state: WorkspaceFileTreeState) => void;
+  /** The user expanded or collapsed browse folders or sections; search results never report. */
+  readonly onExpansionChange: (expansion: WorkspaceFileTreeExpansion) => void;
+  readonly onScrollTopChange?: (scrollTop: number) => void;
 }
 
 export function toPierreWorkspaceTreePaths(paths: readonly WorkspaceFileTreePath[]): string[] {
@@ -64,11 +62,12 @@ export function toPierreWorkspaceTreePaths(paths: readonly WorkspaceFileTreePath
 }
 
 const ALL_FILES_ROOT = `${WORKSPACE_ALL_FILES_SECTION}/`;
-const stripTrailingSlash = (path: string) => path.replace(/\/$/, "");
+const NO_PATHS: readonly string[] = [];
 
 export function WorkspaceFileTree({
   paths,
   expandedPaths,
+  loadingDirectoryPaths = NO_PATHS,
   selectedPath,
   searchQuery,
   changes,
@@ -83,7 +82,8 @@ export function WorkspaceFileTree({
   className,
   onOpen,
   onOpenChange = onOpen,
-  onStateChange,
+  onExpansionChange,
+  onScrollTopChange,
 }: WorkspaceFileTreeProps) {
   const searching = searchQuery.trim().length > 0;
   const model = useMemo(
@@ -100,7 +100,7 @@ export function WorkspaceFileTree({
   const selectedTreePath = useMemo(() => {
     if (searching || !selectedPath) return null;
     if (!model.sectioned) return selectedPath;
-    const relativePath = stripTrailingSlash(selectedPath);
+    const relativePath = selectedPath.replace(/\/$/, "");
     if (changesState?.selectedSection !== "all") {
       for (const item of model.itemsByPath.values()) {
         if (
@@ -140,7 +140,14 @@ export function WorkspaceFileTree({
         decorationAlignment={model.sectioned ? "end" : "inline"}
         className={className}
         paths={model.paths}
-        expandedPaths={model.defaultExpandedPaths}
+        expandedPaths={model.expandedPaths}
+        loadingDirectoryPaths={
+          searching
+            ? NO_PATHS
+            : model.sectioned
+              ? loadingDirectoryPaths.map((path) => `${WORKSPACE_ALL_FILES_SECTION}/${path}`)
+              : loadingDirectoryPaths
+        }
         selectedPath={selectedTreePath}
         flattenEmptyDirectories={model.flattenEmptyDirectories}
         {...(model.sectioned
@@ -171,35 +178,13 @@ export function WorkspaceFileTree({
         onPointerOver={(event) => {
           if (getFileTreeEventPath(event.nativeEvent, true)) preloadSourceViewer();
         }}
-        onStateChange={(state) => {
-          if (searching) return;
-          if (!model.sectioned) {
-            onStateChange({
-              expandedPaths: ["", ...state.expandedPaths],
-              scrollTop: state.scrollTop,
-            });
-            return;
-          }
-          const expanded = new Set(state.expandedPaths.map(stripTrailingSlash));
-          const browseExpanded: string[] = [""];
-          const collapsedChangedPaths: string[] = [];
-          for (const item of model.itemsByPath.values()) {
-            if (item.kind !== "directory" || !item.relativePath) continue;
-            const isExpanded = expanded.has(stripTrailingSlash(item.treePath));
-            if (item.section === "all" && isExpanded) browseExpanded.push(item.relativePath);
-            if (item.section === "changed" && !isExpanded)
-              collapsedChangedPaths.push(item.relativePath);
-          }
-          onStateChange({
-            expandedPaths: browseExpanded,
-            scrollTop: state.scrollTop,
-            changes: {
-              changedCollapsed: !expanded.has(WORKSPACE_CHANGED_FILES_SECTION),
-              allCollapsed: !expanded.has(WORKSPACE_ALL_FILES_SECTION),
-              collapsedChangedPaths,
-            },
-          });
+        onExpandedPathsChange={(treeExpandedPaths) => {
+          if (!searching)
+            onExpansionChange(
+              readWorkspaceFileTreeExpansion(model, treeExpandedPaths, changesState),
+            );
         }}
+        onScrollTopChange={searching ? undefined : onScrollTopChange}
       />
     </FileTreeContextMenu>
   );

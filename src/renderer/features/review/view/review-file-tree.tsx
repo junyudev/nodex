@@ -9,7 +9,7 @@ import {
   fileTreeCommentIcon,
   fileTreeCommentSprite,
 } from "@/components/shared/icons/file-tree-comment-decoration";
-import { buildFileTreePaths, buildFileTreeExpandedPaths } from "@/lib/file-tree-paths";
+import { buildFileTreePaths, buildFileTreeAncestorPaths } from "@/lib/file-tree-paths";
 import { reviewFileTreeGitStatus } from "@/lib/review-file-tree-model";
 import type { GitReviewFileStatus } from "@/lib/types";
 import { RIGHT_PANEL_COMPOSER_OVERLAY_ZERO_RESERVE_VALUE } from "@/lib/right-panel-composer-overlay-reserve";
@@ -72,7 +72,7 @@ export function ReviewFileTree({
   );
   const visibleSelectedPath =
     mapped.find(({ entry }) => entry.displayPath === selectedPath)?.treePath ?? null;
-  const filteredExpansion = useMemo(() => buildFileTreeExpandedPaths(paths), [paths]);
+  const filteredExpansion = useMemo(() => buildFileTreeAncestorPaths(paths), [paths]);
   const icons = useMemo(
     () => ({
       set: "complete" as const,
@@ -155,8 +155,8 @@ export function ReviewFileTree({
                 const entry = path ? byTreePath.get(path) : undefined;
                 if (entry?.displayPath === selectedPath) onSelectPath(entry.displayPath);
               }}
-              onStateChange={(state) => {
-                if (!filter.trim()) onExpandedPathsChange(state.expandedPaths);
+              onExpandedPathsChange={(paths) => {
+                if (!filter.trim()) onExpandedPathsChange(paths);
               }}
             />
           </FileTreeContextMenu>

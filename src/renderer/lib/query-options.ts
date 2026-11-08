@@ -362,11 +362,13 @@ export function mcpResourceQueryOptions(params: ProtocolMcpResourceReadParams) {
   });
 }
 
+/** Listings read again when a tree shows them after five seconds; nothing watches the folder. */
 export function workspaceDirectoryQueryOptions(input: WorkspaceDirectoryEntriesInput) {
   return queryOptions({
     queryKey: queryKeys.workspaceFiles.directory(input),
     queryFn: () =>
       invoke("workspace-directory-entries", input) as Promise<WorkspaceDirectoryEntriesResult>,
+    staleTime: 5_000,
   });
 }
 

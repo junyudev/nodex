@@ -1,12 +1,12 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { GitStatus } from "@pierre/trees";
 import type { GitReviewFileStatus } from "../../shared/types";
-import { buildFileTreeExpandedPaths } from "./file-tree-paths";
+import { buildFileTreeAncestorPaths } from "./file-tree-paths";
 
 export function buildReviewFileTreeDefaultExpandedPaths(
   entries: readonly { readonly displayPath: string }[],
 ): string[] {
-  return buildFileTreeExpandedPaths(entries.map((entry) => entry.displayPath));
+  return buildFileTreeAncestorPaths(entries.map((entry) => entry.displayPath));
 }
 
 /** A turn patch describes its own change, independently of today's worktree status. */

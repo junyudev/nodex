@@ -9,7 +9,6 @@ import {
   useEffectEvent,
   useLayoutEffect,
   lazy,
-  useMemo,
   useRef,
   useState,
   Suspense,
@@ -79,11 +78,8 @@ import {
   resolveWorkspaceFileBreadcrumb,
   resolveWorkspaceFilePathVariants,
 } from "./workspace-file-header-model";
-import {
-  WorkspaceFileTree,
-  type WorkspaceFileTreePath,
-  type WorkspaceFileTreeState,
-} from "./workspace-file-tree";
+import { WorkspaceFileTree, type WorkspaceFileTreePath } from "./workspace-file-tree";
+import type { WorkspaceFileTreeExpansion } from "./workspace-file-changes-tree-model";
 import {
   normalizeWorkspaceFileNavigationState,
   selectWorkspaceFileNavigationPath,
@@ -617,24 +613,44 @@ export function WorkspaceFilesPanel({
     previewState.status === "loaded" &&
     (showsSource || (view?.kind === "rich" && view.previewKind === "markdown"));
 
+  const scheduleNavigationWrite = useCallback(() => {
+    if (navigationWriteTimeoutRef.current !== null) {
+      window.clearTimeout(navigationWriteTimeoutRef.current);
+    }
+    navigationWriteTimeoutRef.current = window.setTimeout(() => {
+      navigationWriteTimeoutRef.current = null;
+      setStoredNavigationState(navigationStateRef.current);
+    }, WORKSPACE_NAVIGATION_STATE_WRITE_DELAY_MS);
+  }, [setStoredNavigationState]);
+
   const publishNavigationState = useCallback(
     (input: WorkspaceFileNavigationState) => {
       const nextState = normalizeWorkspaceFileNavigationState(input);
       navigationStateRef.current = nextState;
       setNavigationState((current) => (current === nextState ? current : nextState));
-      if (navigationWriteTimeoutRef.current !== null) {
-        window.clearTimeout(navigationWriteTimeoutRef.current);
-      }
-      navigationWriteTimeoutRef.current = window.setTimeout(() => {
-        navigationWriteTimeoutRef.current = null;
-        setStoredNavigationState(navigationStateRef.current);
-      }, WORKSPACE_NAVIGATION_STATE_WRITE_DELAY_MS);
+      scheduleNavigationWrite();
     },
-    [setStoredNavigationState],
+    [scheduleNavigationWrite],
+  );
+
+  /** The tree restores scroll itself while mounted, so scrolling only persists the position. */
+  const recordTreeScrollTop = useCallback(
+    (scrollTop: number) => {
+      navigationStateRef.current = normalizeWorkspaceFileNavigationState({
+        ...navigationStateRef.current,
+        scrollTop,
+      });
+      scheduleNavigationWrite();
+    },
+    [scheduleNavigationWrite],
   );
 
   useEffect(() => {
-    if (navigationWriteTimeoutRef.current !== null) return;
+    if (
+      navigationWriteTimeoutRef.current !== null ||
+      storedNavigationState === navigationStateRef.current
+    )
+      return;
     navigationStateRef.current = storedNavigationState;
     setNavigationState((current) =>
       current === storedNavigationState ? current : storedNavigationState,
@@ -661,17 +677,12 @@ export function WorkspaceFilesPanel({
     [setStoredNavigationState],
   );
 
-  const expandedPaths = useMemo(
-    () => new Set(navigationState.expandedPaths),
-    [navigationState.expandedPaths],
-  );
   const directoryTree = useWorkspaceDirectoryTree({
     workspaceRoot,
-    expandedPaths,
+    expandedPaths: navigationState.expandedPaths,
     enabled: localFile,
   });
   const directoryError = directoryTree.error;
-  const rootDirectoryPending = directoryTree.isPending("");
   const fileChanges = useWorkspaceFileChanges(workspaceRoot, {
     enabled: localFile && treeVisible,
   });
@@ -1082,9 +1093,11 @@ export function WorkspaceFilesPanel({
           text: "Unavailable",
           title: directoryError instanceof Error ? directoryError.message : "Unable to load files",
         }
-      : rootDirectoryPending
+      : directoryTree.isLoading
         ? { text: "Loading…", title: "Loading directory entries…" }
-        : null;
+        : directoryTree.isRefreshing
+          ? { text: "Refreshing…", title: "Refreshing directory entries…" }
+          : null;
 
   const openTreeEntry = useCallback(
     async (path: string, mode: "preview" | "durable", showChanges?: WorkspaceFileShowChanges) => {
@@ -1101,14 +1114,13 @@ export function WorkspaceFilesPanel({
     [hostId, onOpenFileTab, tab.panelId, workspaceRoot],
   );
 
-  const updateTreeState = useCallback(
-    (state: WorkspaceFileTreeState) => {
+  const updateTreeExpansion = useCallback(
+    (expansion: WorkspaceFileTreeExpansion) => {
       const current = navigationStateRef.current;
       publishNavigationState({
         ...current,
-        expandedPaths: state.expandedPaths,
-        scrollTop: state.scrollTop,
-        ...(state.changes ? { changes: { ...current.changes, ...state.changes } } : {}),
+        expandedPaths: ["", ...expansion.expandedPaths],
+        ...(expansion.changes ? { changes: { ...current.changes, ...expansion.changes } } : {}),
       });
     },
     [publishNavigationState],
@@ -1649,7 +1661,8 @@ export function WorkspaceFilesPanel({
                                 : null
                             }
                             paths={treePaths}
-                            expandedPaths={expandedPaths}
+                            expandedPaths={navigationState.expandedPaths}
+                            loadingDirectoryPaths={directoryTree.loadingDirectoryPaths}
                             selectedPath={selectedTreePath}
                             searchQuery={debouncedSearchQuery}
                             changes={fileChanges.files}
@@ -1661,7 +1674,8 @@ export function WorkspaceFilesPanel({
                             onOpenChange={(path, mode) =>
                               openTreeSectionEntry("changed", path, mode)
                             }
-                            onStateChange={updateTreeState}
+                            onExpansionChange={updateTreeExpansion}
+                            onScrollTopChange={recordTreeScrollTop}
                           />
                         ) : directoryError && !navigationState.searchQuery.trim() ? (
                           <div className="px-3 py-2 text-xs text-danger">
@@ -1674,7 +1688,7 @@ export function WorkspaceFilesPanel({
                             {searchError ??
                               (searchPending
                                 ? "Searching files…"
-                                : rootDirectoryPending
+                                : directoryTree.isLoading
                                   ? "Loading directory entries…"
                                   : navigationState.searchQuery.trim()
                                     ? "No matching files"

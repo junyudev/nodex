@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Folders in the Files tree collapse again when a folder inside them is open. Previously the open folder inside kept reopening its parent; now it keeps its own state and is open again when you reopen the parent. Large folders also show a loading row until their entries arrive, and scrolling long folders no longer slows the Files panel.
 - Your phone no longer says a chat finished while it is about to continue with a queued message or delegated results, and no longer sends a finish and a question for the same moment. Phone notifications now follow exactly the same rules as desktop notifications.
 
 ## [0.5.2] - 2026-11-08

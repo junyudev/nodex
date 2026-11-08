@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import { parsePatchFiles } from "@pierre/diffs";
 import { reviewFileStatusFromDiff, reviewFileTreeGitStatus } from "./review-file-tree-model";
-import { buildFileTreePaths, buildFileTreeExpandedPaths } from "./file-tree-paths";
+import { buildFileTreePaths, buildFileTreeAncestorPaths } from "./file-tree-paths";
 
 describe("file tree projection", () => {
   test("retains real identities through duplicate labels and file/directory collisions", () => {
@@ -23,7 +23,7 @@ describe("file tree projection", () => {
     ).toEqual(mapped.map((item) => item.treePath));
   });
   test("expands all unique ancestor directories", () => {
-    expect(buildFileTreeExpandedPaths(["src/a/one.ts", "src/a/two.ts", "src/b/file.ts"])).toEqual([
+    expect(buildFileTreeAncestorPaths(["src/a/one.ts", "src/a/two.ts", "src/b/file.ts"])).toEqual([
       "src",
       "src/a",
       "src/b",

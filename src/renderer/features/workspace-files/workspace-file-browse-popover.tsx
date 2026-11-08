@@ -36,17 +36,21 @@ function WorkspaceFileBrowseTree({
 }) {
   const { directoryPath, selectedChild, expandSelected } = listing;
   // Expansion is relative to the listed folder; the directory reads are relative to the root.
-  const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(
-    () => new Set(["", ...(expandSelected && selectedChild ? [selectedChild] : [])]),
+  const [expandedPaths, setExpandedPaths] = useState<readonly string[]>(() =>
+    expandSelected && selectedChild ? [selectedChild] : [],
   );
   const tree = useWorkspaceDirectoryTree({
     workspaceRoot,
-    expandedPaths: new Set([...expandedPaths].map((path) => joinPath(directoryPath, path))),
+    directoryPath,
+    expandedPaths: expandedPaths.map((path) => joinPath(directoryPath, path)),
   });
   const prefix = directoryPath ? `${directoryPath}/` : "";
-  const paths = tree.paths.flatMap((entry) =>
-    entry.path.startsWith(prefix) ? [{ ...entry, path: entry.path.slice(prefix.length) }] : [],
-  );
+  const relative = (path: string) => (path.startsWith(prefix) ? path.slice(prefix.length) : null);
+  const paths = tree.paths.flatMap((entry) => {
+    const path = relative(entry.path);
+    return path === null ? [] : [{ ...entry, path }];
+  });
+  const loadingDirectoryPaths = tree.loadingDirectoryPaths.flatMap((path) => relative(path) ?? []);
   if (paths.length === 0) {
     return tree.error ? (
       <div className="px-2 py-2 text-sm text-tertiary" role="alert">
@@ -54,7 +58,7 @@ function WorkspaceFileBrowseTree({
       </div>
     ) : (
       <div className="px-2 py-2 text-sm text-tertiary" role="status">
-        {tree.isPending(directoryPath) ? "Loading…" : "This folder is empty"}
+        {tree.isLoading ? "Loading…" : "This folder is empty"}
       </div>
     );
   }
@@ -63,13 +67,14 @@ function WorkspaceFileBrowseTree({
       workspaceRoot={joinPath(workspaceRoot, directoryPath)}
       paths={paths}
       expandedPaths={expandedPaths}
+      loadingDirectoryPaths={loadingDirectoryPaths}
       selectedPath={selectedChild ? (expandSelected ? `${selectedChild}/` : selectedChild) : null}
       searchQuery=""
       surface="dropdown"
       revealSelectedPath
       revealSelectedPathScrollOffset="center"
       onOpen={(path, mode) => onOpenFile(joinPath(directoryPath, path), mode)}
-      onStateChange={(state) => setExpandedPaths(new Set(state.expandedPaths))}
+      onExpansionChange={(expansion) => setExpandedPaths(expansion.expandedPaths)}
     />
   );
 }

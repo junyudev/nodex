@@ -1,8 +1,8 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { describe, expect, test } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
-import { FileTree, type FileTreeState } from "./file-tree";
+import { FileTree } from "./file-tree";
 import { applyRendererThemeForTest, installRendererThemeFixture } from "@/test/renderer-theme";
 import {
   applyTypographyPreferences,
@@ -22,13 +22,62 @@ function getTreeRoot(container: HTMLElement): ShadowRoot {
   if (!root) throw new Error("Expected a mounted file tree");
   return root;
 }
-function getRow(container: HTMLElement, path: string): HTMLElement {
-  const row = getTreeRoot(container).querySelector<HTMLElement>(
-    `[role="treeitem"][data-item-path="${path}"]`,
+function findRow(container: HTMLElement, path: string): HTMLElement | null {
+  return getTreeRoot(container).querySelector<HTMLElement>(
+    `[role="treeitem"][data-item-path="${path}"]:not([data-file-tree-sticky-row])`,
   );
+}
+function getRow(container: HTMLElement, path: string): HTMLElement {
+  const row = findRow(container, path);
   if (!row) throw new Error(`Missing file tree row: ${path}`);
   return row;
 }
+
+/** Folder listings that arrive a moment after the folder expands, as workspace reads do. */
+const LISTINGS: Record<string, readonly string[]> = {
+  "": ["outer/", "readme.md"],
+  outer: ["outer/inner/", "outer/x.ts"],
+  "outer/inner": ["outer/inner/y.ts"],
+};
+function LazyTree({
+  sorted,
+  onExpanded,
+}: {
+  sorted: boolean;
+  onExpanded?: (paths: readonly string[]) => void;
+}) {
+  const [expandedPaths, setExpandedPaths] = useState<readonly string[]>([]);
+  const [loaded, setLoaded] = useState<ReadonlySet<string>>(new Set([""]));
+  const pending = expandedPaths.filter((path) => !loaded.has(path));
+  useEffect(() => {
+    if (pending.length === 0) return;
+    const timer = setTimeout(() => setLoaded((current) => new Set([...current, ...pending])), 150);
+    return () => clearTimeout(timer);
+  }, [pending]);
+  return (
+    <div style={{ height: 240, width: 280 }}>
+      <FileTree
+        ariaLabel="Files"
+        appearance="workspace"
+        paths={["", ...expandedPaths]
+          .filter((path) => loaded.has(path))
+          .flatMap((path) => LISTINGS[path] ?? [])}
+        expandedPaths={expandedPaths}
+        loadingDirectoryPaths={pending}
+        selectedPath={null}
+        {...(sorted ? { sort: () => 0 } : {})}
+        onExpandedPathsChange={(paths) => {
+          onExpanded?.(paths);
+          setExpandedPaths(paths);
+        }}
+      />
+    </div>
+  );
+}
+const loadSettled = async () => {
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  await settle();
+};
 
 describe("shared file tree navigation", () => {
   test("updates shadow-root filename typography with UI preferences without remounting rows", async () => {
@@ -76,20 +125,16 @@ describe("shared file tree navigation", () => {
   test("preserves folder focus through controlled expansion and opens files from the keyboard", async () => {
     const selections: string[][] = [];
     function Harness() {
-      const [state, setState] = useState<FileTreeState>({
-        expandedPaths: ["src"],
-        selectedPath: null,
-        scrollTop: 0,
-      });
+      const [expandedPaths, setExpandedPaths] = useState<readonly string[]>(["src"]);
       return (
         <div style={{ height: 200, width: 280 }}>
           <FileTree
             ariaLabel="Files"
             appearance="workspace"
             paths={["src/one.ts", "src/two.ts"]}
-            expandedPaths={state.expandedPaths}
-            selectedPath={state.selectedPath}
-            onStateChange={setState}
+            expandedPaths={expandedPaths}
+            selectedPath={null}
+            onExpandedPathsChange={setExpandedPaths}
             onSelectionChange={(selection) => selections.push([...selection])}
           />
         </div>
@@ -105,6 +150,46 @@ describe("shared file tree navigation", () => {
     await act(settle);
     expect(getRow(view.container, "src/one.ts").getAttribute("aria-selected")).toBe("true");
     expect(selections.at(-1)).toEqual(["src/one.ts"]);
+  });
+
+  for (const sorted of [false, true])
+    test(`collapses a folder that contains an expanded folder${sorted ? " with sorted sections" : ""}`, async () => {
+      const reported: (readonly string[])[] = [];
+      const view = render(
+        <LazyTree sorted={sorted} onExpanded={(paths) => reported.push(paths)} />,
+      );
+      await act(settle);
+      await act(async () => userEvent.click(getRow(view.container, "outer/")));
+      await act(loadSettled);
+      await act(async () => userEvent.click(getRow(view.container, "outer/inner/")));
+      await act(loadSettled);
+      expect(getRow(view.container, "outer/inner/y.ts")).toBeDefined();
+
+      await act(async () => userEvent.click(getRow(view.container, "outer/")));
+      await act(loadSettled);
+      expect(getRow(view.container, "outer/").getAttribute("aria-expanded")).toBe("false");
+      expect(findRow(view.container, "outer/inner/")).toBeNull();
+      // The child keeps its own expansion, and comes back open with its parent.
+      expect(reported.at(-1)).toEqual(["outer/inner"]);
+      await act(async () => userEvent.click(getRow(view.container, "outer/")));
+      await act(loadSettled);
+      expect(getRow(view.container, "outer/inner/").getAttribute("aria-expanded")).toBe("true");
+      expect(getRow(view.container, "outer/inner/y.ts")).toBeDefined();
+    });
+
+  test("shows an inert placeholder row while an expanded folder loads", async () => {
+    const view = render(<LazyTree sorted={false} />);
+    await act(settle);
+    await act(async () => userEvent.click(getRow(view.container, "outer/")));
+    await act(settle);
+    const placeholder = getRow(view.container, "outer/.nodex-loading");
+    expect(placeholder.hasAttribute("data-file-tree-loading")).toBe(true);
+    expect(placeholder.getAttribute("aria-label")).toBe("Loading directory entries…");
+    expect(view.getByRole("status").textContent).toBe("Loading directory entries…");
+    await act(loadSettled);
+    expect(findRow(view.container, "outer/.nodex-loading")).toBeNull();
+    expect(getRow(view.container, "outer/x.ts")).toBeDefined();
+    expect(view.queryByRole("status")).toBeNull();
   });
 
   test("bounds mounted rows and reveals the requested file in a large tree", async () => {
@@ -156,8 +241,8 @@ describe("shared file tree navigation", () => {
           expandedPaths={[]}
           selectedPath={null}
           initialScrollTop={initialScrollTop}
-          onStateChange={(state) => {
-            saved = state.scrollTop;
+          onScrollTopChange={(scrollTop) => {
+            saved = scrollTop;
           }}
         />
       </div>

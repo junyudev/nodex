@@ -273,19 +273,17 @@ vi.mock("./workspace-file-tree", () => ({
     selectedPath,
     searchQuery,
     onOpen,
-    onStateChange,
+    onExpansionChange,
+    onScrollTopChange,
   }: {
     paths: Array<{ path: string; kind: "directory" | "file" }>;
-    expandedPaths: ReadonlySet<string>;
+    expandedPaths: readonly string[];
     initialScrollTop?: number;
     selectedPath: string | null;
     searchQuery: string;
     onOpen: (path: string, mode: "preview" | "durable") => void;
-    onStateChange?: (state: {
-      expandedPaths: readonly string[];
-      selectedPath: string | null;
-      scrollTop: number;
-    }) => void;
+    onExpansionChange: (expansion: { expandedPaths: readonly string[] }) => void;
+    onScrollTopChange?: (scrollTop: number) => void;
   }) => (
     <div
       role="tree"
@@ -293,16 +291,7 @@ vi.mock("./workspace-file-tree", () => ({
       data-initial-scroll-top={initialScrollTop}
       data-selected-path={selectedPath}
     >
-      <button
-        type="button"
-        onClick={() =>
-          onStateChange?.({
-            expandedPaths: [...expandedPaths],
-            selectedPath,
-            scrollTop: 420,
-          })
-        }
-      >
+      <button type="button" onClick={() => onScrollTopChange?.(420)}>
         Scroll tree
       </button>
       {paths
@@ -315,10 +304,8 @@ vi.mock("./workspace-file-tree", () => ({
             key={item.path}
             onClick={() => {
               if (item.kind === "directory") {
-                onStateChange?.({
-                  expandedPaths: [...expandedPaths, item.path],
-                  selectedPath,
-                  scrollTop: initialScrollTop ?? 0,
+                onExpansionChange({
+                  expandedPaths: [...expandedPaths.filter(Boolean), item.path],
                 });
                 return;
               }

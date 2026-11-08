@@ -4,7 +4,7 @@ import {
   type GitStatusEntry,
 } from "@pierre/trees";
 import type { GitReviewFileSummary } from "@/lib/types";
-import { buildFileTreeExpandedPaths, buildFileTreePaths } from "@/lib/file-tree-paths";
+import { buildFileTreeAncestorPaths, buildFileTreePaths } from "@/lib/file-tree-paths";
 import { createFuzzyQueryScorer } from "@/lib/settings-search-score";
 import type { WorkspaceFileTreePath } from "./workspace-file-tree";
 
@@ -35,7 +35,8 @@ export interface WorkspaceFileChangesTreeModel {
   readonly itemsByPath: ReadonlyMap<string, WorkspaceFileChangesTreeItem>;
   readonly gitStatus: readonly GitStatusEntry[];
   readonly decorationsByPath: ReadonlyMap<string, GitStatusEntry["status"]>;
-  readonly defaultExpandedPaths: readonly string[];
+  /** Tree folders whose own expansion is open. */
+  readonly expandedPaths: readonly string[];
   readonly changedFileCount: number;
   readonly matchingChangedFileCount: number;
 }
@@ -94,7 +95,7 @@ export function buildWorkspaceFileChangesTreeModel({
     return key;
   };
   const addParents = (section: WorkspaceFileTreeSection, path: string) => {
-    for (const parent of buildFileTreeExpandedPaths([path])) add(section, parent, "directory");
+    for (const parent of buildFileTreeAncestorPaths([path])) add(section, parent, "directory");
   };
   if (sectioned) {
     add("changed", "", "directory");
@@ -139,10 +140,10 @@ export function buildWorkspaceFileChangesTreeModel({
     ? [...sorted.filter(inChanged), ...sorted.filter((path) => !inChanged(path))]
     : sorted;
   const allExpanded = searching
-    ? buildFileTreeExpandedPaths(mappedFiles.map(({ treePath }) => treePath))
+    ? buildFileTreeAncestorPaths(mappedFiles.map(({ treePath }) => treePath))
     : [...expandedPaths].filter(Boolean);
   const collapsedChanged = new Set(state.collapsedChangedPaths);
-  const defaultExpandedPaths = sectioned
+  const treeExpandedPaths = sectioned
     ? [
         ...(!state.changedCollapsed ? [WORKSPACE_CHANGED_FILES_SECTION] : []),
         ...(!state.allCollapsed ? [WORKSPACE_ALL_FILES_SECTION] : []),
@@ -165,7 +166,7 @@ export function buildWorkspaceFileChangesTreeModel({
     itemsByPath: items,
     gitStatus,
     decorationsByPath: new Map(gitStatus.map(({ path, status }) => [path, status])),
-    defaultExpandedPaths: [...new Set(defaultExpandedPaths)],
+    expandedPaths: [...new Set(treeExpandedPaths)],
     changedFileCount: changed.length,
     matchingChangedFileCount: matchingChanged.length,
   };
@@ -177,4 +178,41 @@ export function resolveWorkspaceFileChangesTreePath(
   treePath: string,
 ): WorkspaceFileChangesTreeItem | null {
   return model.itemsByPath.get(treePath) ?? model.itemsByPath.get(`${treePath}/`) ?? null;
+}
+
+export interface WorkspaceFileTreeExpansion {
+  /** Expanded browse folders, relative to the workspace root, without the root. */
+  readonly expandedPaths: readonly string[];
+  /** Present when the tree is split into Changed files and All files. */
+  readonly changes?: Required<WorkspaceFileChangesTreeState>;
+}
+
+/**
+ * Maps the tree's expanded folders back to browse and section state. Changed-section folders the
+ * tree does not show keep their recorded collapse.
+ */
+export function readWorkspaceFileTreeExpansion(
+  model: WorkspaceFileChangesTreeModel,
+  treeExpandedPaths: readonly string[],
+  state: WorkspaceFileChangesTreeState = {},
+): WorkspaceFileTreeExpansion {
+  if (!model.sectioned) return { expandedPaths: treeExpandedPaths.filter(Boolean) };
+  const expanded = new Set(treeExpandedPaths);
+  const allPrefix = `${WORKSPACE_ALL_FILES_SECTION}/`;
+  const collapsedChanged = new Set(state.collapsedChangedPaths);
+  for (const item of model.itemsByPath.values()) {
+    if (item.section !== "changed" || item.kind !== "directory" || !item.relativePath) continue;
+    if (expanded.has(item.treePath.replace(/\/$/, ""))) collapsedChanged.delete(item.relativePath);
+    else collapsedChanged.add(item.relativePath);
+  }
+  return {
+    expandedPaths: treeExpandedPaths.flatMap((path) =>
+      path.startsWith(allPrefix) ? [path.slice(allPrefix.length)] : [],
+    ),
+    changes: {
+      changedCollapsed: !expanded.has(WORKSPACE_CHANGED_FILES_SECTION),
+      allCollapsed: !expanded.has(WORKSPACE_ALL_FILES_SECTION),
+      collapsedChangedPaths: [...collapsedChanged],
+    },
+  };
 }

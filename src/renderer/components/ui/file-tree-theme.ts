@@ -60,6 +60,9 @@ const SHARED_RULES = `
 [data-file-tree-virtualized-scroll='true'] { scrollbar-gutter: auto; }
 [role='treeitem'], [role='treeitem'] * { cursor: var(--cursor-interaction) !important; }
 [data-item-type='file'][data-item-path$='/']:has([data-item-section='content']:empty) { display: none; }
+/* A loading folder's placeholder row shows only its slotted skeleton. */
+[data-file-tree-loading] > [data-item-section='icon'] { visibility: hidden; }
+[data-file-tree-loading] > [data-item-section='content'] > :not(slot) { display: none; }
 [data-item-git-status='added'] > [data-item-section='git'] > span,
 [data-item-git-status='deleted'] > [data-item-section='git'] > span,
 [data-item-git-status='modified'] > [data-item-section='git'] > span { font-size: 0; }

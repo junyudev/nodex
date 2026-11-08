@@ -127,7 +127,7 @@ import {
   buildReviewFileTreeDefaultExpandedPaths,
   reviewFileStatusFromDiff,
 } from "@/lib/review-file-tree-model";
-import { buildFileTreeExpandedPaths } from "@/lib/file-tree-paths";
+import { buildFileTreeAncestorPaths } from "@/lib/file-tree-paths";
 import { ReviewFileTree } from "@/features/review/view/review-file-tree";
 import {
   filterReviewCodeCommentsForPath,
@@ -3199,7 +3199,7 @@ export function ReviewDiffPanel({
   }, [reviewSourceBucketKey, setRouteState, snapshot.files]);
 
   const selectedAncestorPaths = useMemo(
-    () => (selectedDisplayPath ? buildFileTreeExpandedPaths([selectedDisplayPath]) : []),
+    () => (selectedDisplayPath ? buildFileTreeAncestorPaths([selectedDisplayPath]) : []),
     [selectedDisplayPath],
   );
 
