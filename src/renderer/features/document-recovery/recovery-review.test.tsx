@@ -4,6 +4,7 @@ import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { toast } from "@/components/ui/toast";
+import { openNodexMenu, settleAsyncRender } from "@/test/dom";
 import { renderWithMaitai } from "@/test/thread-maitai";
 import { DocumentRecovery, type DocumentRecoveryPort } from "@/lib/document-recovery";
 import type { RecoveryDraftInspection } from "../../../shared/block-documents/document-recovery";
@@ -166,13 +167,21 @@ const renderReview = async (
       await Promise.resolve();
     });
   };
+  // The trigger's own press ingress, then the frame in which closing the menu returns focus to it
+  // and its tooltip positions itself, all inside act.
   const clickMenuItem = async (name: string) => {
-    await click("More actions");
+    const trigger = await view.findByRole("button", { name: "More actions" }, { timeout: 5_000 });
+    await waitFor(() => expect((trigger as HTMLButtonElement).disabled).toBe(false), {
+      timeout: 5_000,
+    });
+    await openNodexMenu(trigger);
     const item = await view.findByRole("menuitem", { name });
     await act(async () => {
       fireEvent.click(item);
-      await Promise.resolve();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     });
+    await waitFor(() => expect(view.queryByRole("menu")).toBeNull());
+    await settleAsyncRender();
   };
   return { module, close, view, click, clickMenuItem };
 };
@@ -432,7 +441,9 @@ test("edits on this device can be kept, or permanently removed after confirming"
   await click("Remove permanently");
   await waitFor(() => expect(module.getSnapshot().stagedCount).toBe(0));
   await waitFor(() => expect(close).toHaveBeenCalledOnce());
-  expect(await store.nextRecovery("document:offline")).toBeNull();
+  // Removing publishes the review's last updates while the store finishes; let both land in act.
+  await settleAsyncRender();
+  expect(await act(async () => store.nextRecovery("document:offline"))).toBeNull();
   expect(port.apply).not.toHaveBeenCalled();
   view.unmount();
 });
