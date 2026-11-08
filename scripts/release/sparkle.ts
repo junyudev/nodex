@@ -169,11 +169,12 @@ const directEnclosures = (item: Element): Element[] => {
 const normalizedReleaseUrl = (tag: string, name: string): string =>
   `https://github.com/junyudev/nodex/releases/download/${tag}/${encodeURIComponent(name)}`;
 
-const normalizeGeneratedAppcast = (options: {
+export const normalizeGeneratedAppcast = (options: {
   readonly appcastPath: string;
   readonly architecture: MacArchitecture;
   readonly buildVersion: string;
   readonly currentFullPath: string;
+  readonly history: ReadonlyMap<string, SparkleHistoryArchive>;
   readonly privateKey: string;
   readonly publishedAt: string;
   readonly signUpdate: string;
@@ -189,19 +190,15 @@ const normalizeGeneratedAppcast = (options: {
     throw new Error("Generated Sparkle appcast is invalid XML.");
   }
   const items = document.getElementsByTagName("item");
-  let currentItem: Element | null = null;
-  const displayVersionByBuildVersion = new Map<string, string>();
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items.item(index);
-    if (!item) continue;
-    const shortVersion = textFor(item, "shortVersionString") ?? textFor(item, "version");
-    const buildVersion = textFor(item, "version");
-    if (shortVersion && buildVersion) displayVersionByBuildVersion.set(buildVersion, shortVersion);
-    if (!currentItem && shortVersion === options.version && buildVersion === options.buildVersion) {
-      currentItem = item;
-    }
+  const currentItem = items.item(0);
+  if (
+    items.length !== 1 ||
+    !currentItem ||
+    textFor(currentItem, "shortVersionString") !== options.version ||
+    textFor(currentItem, "version") !== options.buildVersion
+  ) {
+    throw new Error("Generated appcast must contain only the current release item.");
   }
-  if (!currentItem) throw new Error("Generated appcast does not contain the current release item.");
   const fullEnclosures = directEnclosures(currentItem);
   if (fullEnclosures.length !== 1)
     throw new Error("Current appcast item must contain one full enclosure.");
@@ -231,12 +228,13 @@ const normalizeGeneratedAppcast = (options: {
     if (!enclosure) continue;
     const fromBuildVersion = enclosure.getAttributeNS(SPARKLE_NAMESPACE, "deltaFrom");
     if (!fromBuildVersion) continue;
-    const fromVersion = displayVersionByBuildVersion.get(fromBuildVersion);
-    if (!fromVersion) {
+    const source = options.history.get(fromBuildVersion);
+    if (!source) {
       throw new Error(
-        `Generated appcast has no display version for delta source build ${fromBuildVersion}.`,
+        `Generated delta source build ${fromBuildVersion} is not in verified history.`,
       );
     }
+    const fromVersion = source.version;
     const originalUrl = enclosure.getAttribute("url");
     if (!originalUrl) throw new Error("Generated Sparkle delta omits its URL.");
     const originalName = decodeURIComponent(new URL(originalUrl).pathname.split("/").at(-1) ?? "");
@@ -309,72 +307,32 @@ export const verifySparkleDeltaRoundTrip = (options: {
   }
 };
 
-export function selectLatestSparkleHistoryAppcast(paths: readonly string[]): string | null {
-  const candidates: Array<{ readonly buildVersion: string; readonly path: string }> = [];
-  for (const candidatePath of paths) {
-    const nameMatch = /^Nodex-(.+)-appcast-arm64\.xml$/u.exec(path.basename(candidatePath));
-    if (!nameMatch) continue;
-    if (!existsSync(candidatePath)) {
-      try {
-        candidates.push({
-          buildVersion: normalizeAppleBuildVersion(nameMatch[1]),
-          path: candidatePath,
-        });
-      } catch {
-        // A Nightly appcast needs its XML build version and cannot be inferred from the filename.
-      }
-      continue;
-    }
-    const document = new DOMParser().parseFromString(
-      readFileSync(candidatePath, "utf8"),
-      "application/xml",
-    );
-    const buildVersions = [
-      ...Array.from({ length: document.getElementsByTagName("item").length }, (_, index) => index),
-    ]
-      .map((index) => document.getElementsByTagName("item").item(index))
-      .map((item) => (item ? textFor(item, "version") : null))
-      .filter((value): value is string => value !== null);
-    const buildVersion = buildVersions.sort((left, right) => compareBuildVersions(right, left))[0];
-    if (buildVersion) candidates.push({ buildVersion, path: candidatePath });
-  }
-  return (
-    candidates
-      .sort((left, right) => compareBuildVersions(right.buildVersion, left.buildVersion))
-      .at(0)?.path ?? null
-  );
+interface SparkleHistoryArchive {
+  readonly archivePath: string;
+  readonly version: string;
 }
 
-export const copySparkleHistory = (
+/** Stage full archives for delta generation without importing previous feed items. */
+export const stageSparkleDeltaSources = (
   directories: readonly string[],
   workingDirectory: string,
-): ReadonlyMap<string, string> => {
-  const candidatePaths: string[] = [];
-  const archives = new Map<string, string>();
+): ReadonlyMap<string, SparkleHistoryArchive> => {
+  const archives = new Map<string, SparkleHistoryArchive>();
   for (const directory of directories) {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (!entry.isFile()) continue;
-      const archiveMatch = /^Nodex-(.+)-arm64\.(?:tar\.xz|zip)$/u.exec(entry.name);
-      if (archiveMatch || entry.name.includes("appcast")) {
-        const destination = path.join(workingDirectory, entry.name);
-        if (archiveMatch) {
-          const version = normalizeReleaseVersion(archiveMatch[1]);
-          const previous = archives.get(version);
-          if (previous && previous !== destination) {
-            throw new Error(`Duplicate Sparkle history archives for ${version}.`);
-          }
-          archives.set(version, destination);
-        }
-        if (!existsSync(destination)) copyFileSync(path.join(directory, entry.name), destination);
-        if (entry.name.includes("appcast") && entry.name.endsWith(".xml")) {
-          candidatePaths.push(destination);
-        }
-      }
+    const bundle = parseReleaseHistoryBundle(
+      JSON.parse(readFileSync(path.join(directory, "release-bundle.json"), "utf8")),
+    );
+    const { buildVersion, version } = bundle.releaseIdentity;
+    const full = bundle.assets.find(
+      (asset) => asset.role === "sparkle-full" && asset.architecture === "arm64",
+    );
+    if (!full) throw new Error(`Sparkle history ${version} has no macOS full archive.`);
+    const archivePath = path.join(workingDirectory, full.name);
+    if (archives.has(buildVersion) || existsSync(archivePath)) {
+      throw new Error(`Duplicate Sparkle history archive for build ${buildVersion}.`);
     }
-  }
-  const latestAppcast = selectLatestSparkleHistoryAppcast(candidatePaths);
-  if (latestAppcast) {
-    copyFileSync(latestAppcast, path.join(workingDirectory, "appcast.xml"));
+    copyFileSync(path.join(directory, full.name), archivePath);
+    archives.set(buildVersion, { archivePath, version });
   }
   return archives;
 };
@@ -408,7 +366,7 @@ export async function finalizeSparkleArchitectureUpdate(
       // Sparkle removes both extensions when locating a tar archive's notes.
       path.join(workingRoot, `Nodex-${version}-${options.architecture}.md`),
     );
-    const historyArchives = copySparkleHistory(options.historyDirectories ?? [], workingRoot);
+    const history = stageSparkleDeltaSources(options.historyDirectories ?? [], workingRoot);
     const currentAppPath = extractSparkleArchive(fullPath, path.join(workingRoot, "current-app"));
     const identity = readAppIdentity(currentAppPath);
     if (
@@ -432,8 +390,8 @@ export async function finalizeSparkleArchitectureUpdate(
         "--embed-release-notes",
         "--link",
         "https://nodex.jyu.app/",
-        "--maximum-versions",
-        "3",
+        "--versions",
+        identity.buildVersion,
         "--maximum-deltas",
         "5",
         "-o",
@@ -449,6 +407,7 @@ export async function finalizeSparkleArchitectureUpdate(
       architecture: options.architecture,
       buildVersion: identity.buildVersion,
       currentFullPath: fullPath,
+      history,
       privateKey: options.privateKey,
       publishedAt: options.publishedAt,
       signUpdate,
@@ -462,7 +421,7 @@ export async function finalizeSparkleArchitectureUpdate(
         currentAppPath,
         delta,
         workingDirectory: workingRoot,
-        sourceArchivePath: historyArchives.get(delta.fromVersion),
+        sourceArchivePath: history.get(delta.fromBuildVersion)?.archivePath,
       });
     }
     const appcastName = `Nodex-${version}-appcast-${options.architecture}.xml`;

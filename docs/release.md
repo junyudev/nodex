@@ -337,6 +337,10 @@ verifies the immutable Release Bundle and update-manifest digests before checkin
 package-format compatibility. The finalizer skips older package formats before
 downloading the full archives and rejects malformed or invalid candidates. An empty
 compatible history publishes a full update without deltas.
+Each feed contains one release item for its channel and architecture. Prior
+archives are inputs to delta generation, and their verified Release Identities
+map source build numbers to display versions and archive files for round-trip
+verification. The generated feed references only enclosures in the new Bundle.
 
 Compatible history moves between fetch and finalization as a JSON manifest of
 absolute directory paths. Task-runner stdout is diagnostic output, never the
