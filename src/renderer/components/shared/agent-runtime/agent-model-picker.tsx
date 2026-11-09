@@ -50,7 +50,6 @@ import { toast } from "@/components/ui/toast";
 import {
   IntelligenceSelectorTrigger,
   INTELLIGENCE_SELECTOR_SIDE_OFFSET_PX,
-  useIntelligenceSelectorTriggerGeometry,
 } from "./intelligence-selector-trigger";
 import {
   IntelligenceControlsHeader,
@@ -380,15 +379,6 @@ export function AgentModelPicker(
   const reasoningEffort =
     shown.effort ??
     (native?.selected.thinking === false ? THINKING_OFF_EFFORT_STOP : selection.reasoningEffort);
-  const labels = [
-    ...catalog.entries.map((entry) => ({
-      id: agentModelKey(entry.binding, entry.model.id),
-      modelLabel: entry.model.displayName,
-      reasoningLabel: "",
-    })),
-    { id: "selected", modelLabel, reasoningLabel },
-  ];
-  const geometry = useIntelligenceSelectorTriggerGeometry(labels);
   // A model with a thinking switch but no effort levels shows that switch as a mode.
   const thinkingSwitch =
     native?.capabilities.disableThinking === true && reasoningOptions.length === 0;
@@ -584,7 +574,6 @@ export function AgentModelPicker(
       side={props.triggerStyle === "settings" ? "bottom" : "top"}
       align="end"
       sideOffset={INTELLIGENCE_SELECTOR_SIDE_OFFSET_PX}
-      alignOffset={props.triggerButton ? undefined : geometry.alignOffset}
       contentClassName="w-[288px]"
       triggerButton={
         props.triggerButton ??
@@ -620,9 +609,6 @@ export function AgentModelPicker(
         ) : (
           <IntelligenceSelectorTrigger
             ref={triggerRef}
-            geometry={geometry}
-            isOpen={open}
-            labelCandidates={labels}
             modelLabel={modelLabel}
             reasoningLabel={reasoningLabel}
             reasoningEffort={reasoningEffort}
