@@ -431,6 +431,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 203,
         apply: migrate_v202_to_v203,
     },
+    MigrationStep {
+        from_revision: 203,
+        to_revision: 204,
+        apply: migrate_v203_to_v204,
+    },
 ];
 
 fn resolve_migration_path(
@@ -640,7 +645,12 @@ fn migrate_store(
         .map_err(|_| internal("Migration time exceeds SQLite integer range"))?;
 
     with_schema_rebuild_transaction(connection, |transaction| {
+        // Delivery packets use the current actor-bound hash contract. Retire the
+        // rebuildable window before any older migration rewrites its receipts.
         for step in steps {
+            if step.from_revision == 196 {
+                super::local_commit::reset_delivery_window(transaction)?;
+            }
             let source = published_format(step.from_revision)?;
             let target = published_format(step.to_revision)?;
             let context = MigrationContext {
@@ -2635,6 +2645,114 @@ fn migrate_v199_to_v200(
     Ok(())
 }
 
+/// A Space gains its people in one step: its existing person becomes its Owner Member, Scheduled
+/// tasks become clock Automations, a chat's unread state, pin and reminder become that Member's own,
+/// every Page gains Work and a Turn, and attribution names a Member, an Agent or a Service. The
+/// script reshapes the schema and moves what SQL can express; Core's decoders finish the rest in
+/// the same transaction.
+fn migrate_v203_to_v204(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    let legacy_alter_table: bool =
+        connection.pragma_query_value(None, "legacy_alter_table", |row| row.get(0))?;
+    connection.pragma_update(None, "legacy_alter_table", true)?;
+    connection.execute_batch(include_str!("../../schema/migrations/v203_to_v204.sql"))?;
+    // "You" is how Nodex shows each reader their own Member; a stored name never claims it.
+    connection.execute(
+        "UPDATE members SET display_name=?1",
+        [crate::library::default_owner_name()],
+    )?;
+    rename_default_workflow_stages(connection)?;
+    members_migration::migrate(connection)?;
+    migrate_automation_clock_state(connection, context.completed_at_unix_ms)?;
+    // Delivery packets now carry actor-bound rows. Retire the bounded, rebuildable window
+    // instead of decoding or resealing its old snapshots.
+    super::local_commit::reset_delivery_window(connection)?;
+    super::actors_migration::backfill(connection)?;
+    connection.execute_batch(
+        "ALTER TABLE library_files DROP COLUMN created_by_actor_id; \
+         ALTER TABLE file_versions DROP COLUMN actor_id;",
+    )?;
+    connection.pragma_update(None, "legacy_alter_table", legacy_alter_table)?;
+    let now: String =
+        connection.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ','now')", [], |row| {
+            row.get(0)
+        })?;
+    crate::workspace::page_turn::initialize(connection, "migration:v204", &now)?;
+    // A waiting Turn the upgrade finds starts quietly; only later episodes notify.
+    connection.execute(
+        "UPDATE page_turn_notification_intents SET claimed_at=created_at WHERE claimed_at IS NULL",
+        [],
+    )?;
+    let (members, automations): (i64, i64) = connection.query_row(
+        "SELECT (SELECT count(*) FROM members),(SELECT count(*) FROM automations)",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            json!({"members": members, "automations": automations, "projection_delivery_reset": true}).to_string()],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+/// The default workflow's Plan, Doing and Review read as Todo, In Progress and In Review, and
+/// every Status registry gains Canceled. Every registry stays authoritative, including deleted
+/// Properties and Sources retained only by dormant memberships, so none is filtered by lifecycle.
+/// A renamed option keeps its identity and colour; a person's own names are kept.
+fn rename_default_workflow_stages(connection: &Connection) -> Result<(), StoreError> {
+    let registries = connection
+        .prepare("SELECT data_source_id,config_json FROM data_source_properties WHERE id='status'")?
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for (source, raw) in registries {
+        let mut config: Value =
+            serde_json::from_str(&raw).map_err(|_| corrupt("Invalid Status registry"))?;
+        let options = config
+            .get_mut("options")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| corrupt("Status registry has no options"))?;
+        for option in options.iter_mut() {
+            let renamed = match (option["id"].as_str(), option["name"].as_str()) {
+                (Some("plan"), Some("Plan")) => Some("Todo"),
+                (Some("doing"), Some("Doing")) => Some("In Progress"),
+                (Some("review"), Some("Review")) => Some("In Review"),
+                _ => None,
+            };
+            if let Some(name) = renamed {
+                option["name"] = json!(name);
+            }
+        }
+        if !options.iter().any(|option| option["id"] == "canceled") {
+            options.push(json!({"id":"canceled","name":"Canceled"}));
+        }
+        connection.execute(
+            "UPDATE data_source_properties SET config_json=?2 WHERE data_source_id=?1 AND id='status'",
+            params![source, config.to_string()],
+        )?;
+    }
+    Ok(())
+}
+
+/// Clock Automations run in the machine's own timezone. A Scheduled claim carried no action snapshot,
+/// so an unstarted Run claim whose task changed since cannot run the retained definition as if
+/// it were the original action: it settles as failed. Every decision then freezes the Automation it
+/// carries out.
+fn migrate_automation_clock_state(connection: &Connection, now_ms: i64) -> Result<(), StoreError> {
+    connection.execute(
+        "UPDATE automations SET timezone=?1",
+        [crate::automation::schedule::local_timezone()?],
+    )?;
+    connection.execute("UPDATE automation_execution_leases SET status='cancelled',reason_code='automation_changed',settled_at_ms=MAX(claimed_at_ms,?1) WHERE status='claimed' AND purpose='run' AND automation_revision<>(SELECT automation_revision FROM automations WHERE automations.automation_id=automation_execution_leases.automation_id) AND EXISTS(SELECT 1 FROM automation_decisions decision WHERE decision.dispatch_id=automation_execution_leases.dispatch_id AND decision.page_id IS NULL) AND NOT EXISTS(SELECT 1 FROM automation_execution_runs run WHERE run.dispatch_id=automation_execution_leases.dispatch_id AND run.session_id IS NOT NULL)",[now_ms])?;
+    connection.execute("UPDATE automation_decisions SET status='failed',failure_message='The Automation changed before this execution could start',due_at_ms=NULL WHERE dispatch_id IN(SELECT dispatch_id FROM automation_execution_leases WHERE status='cancelled' AND reason_code='automation_changed')",[])?;
+    connection.execute("UPDATE automation_execution_runs SET status='ARCHIVED',archived_reason='automation_changed' WHERE status='IN_PROGRESS' AND session_id IS NULL AND dispatch_id IN(SELECT dispatch_id FROM automation_execution_leases WHERE status='cancelled' AND reason_code='automation_changed')",[])?;
+    crate::automation::clock::backfill_snapshots(connection)
+}
+
 fn migrate_v200_to_v201(
     connection: &Connection,
     context: &MigrationContext,
@@ -2935,16 +3053,11 @@ pub(crate) fn migrate_inbox_content_bases(connection: &Connection) -> Result<(),
             });
         Ok(json!({"page_id":old.page_id,"content_hash":hash}))
     }
-    for (table, key) in [
-        ("inbox_proposals", "proposal_id"),
-        ("inbox_suggestion_requests", "request_id"),
-        ("core_automation_firings", "dispatch_id"),
+    for (table, key, column) in [
+        ("inbox_proposals", "proposal_id", "basis_json"),
+        ("inbox_suggestion_requests", "request_id", "basis_json"),
+        ("core_automation_firings", "dispatch_id", "hold_basis_json"),
     ] {
-        let column = if table == "core_automation_firings" {
-            "hold_basis_json"
-        } else {
-            "basis_json"
-        };
         let rows = connection
             .prepare(&format!("SELECT {key},{column} FROM {table}"))?
             .query_map([], |row| {
@@ -2981,7 +3094,7 @@ pub(crate) fn migrate_inbox_content_bases(connection: &Connection) -> Result<(),
                         break;
                     }
                     let count = content.images.len();
-                    inputs.push(crate::workspace::frozen_input_for_content(
+                    inputs.push(v194_inbox_frozen_input(
                         connection,
                         &library_id,
                         &old.page_id,
@@ -3021,6 +3134,67 @@ pub(crate) fn migrate_inbox_content_bases(connection: &Connection) -> Result<(),
         }
     }
     Ok(())
+}
+
+/// A current-schema authored content fixture crosses the frozen v194 storage seam
+/// only while exercising that migration, then restores today's names for API assertions.
+#[cfg(test)]
+pub(crate) fn migrate_current_inbox_content_bases_for_test(
+    connection: &Connection,
+) -> Result<(), StoreError> {
+    connection
+        .execute_batch("ALTER TABLE automation_decisions RENAME TO core_automation_firings;")?;
+    let migrated = migrate_inbox_content_bases(connection);
+    connection
+        .execute_batch("ALTER TABLE core_automation_firings RENAME TO automation_decisions;")?;
+    migrated
+}
+
+/// The v194 backfill runs before later Inbox columns exist. Keep its metadata
+/// projection pinned to that revision rather than calling the current read model.
+fn v194_inbox_frozen_input(
+    connection: &Connection,
+    library_id: &str,
+    page_id: &str,
+    content: crate::workspace::inbox_content::MessageContent,
+    image_offset: usize,
+) -> Result<Value, StoreError> {
+    let (source_kind, session, thread, run, project, label, kind, submitted, scope, provisional, title, automation, dispatch) = connection.query_row(
+        "SELECT entry.source_kind,entry.source_session_id,entry.source_thread_id,entry.source_turn_id,entry.source_project_id,entry.source_label,entry.kind,entry.submitted_at,entry.scope_project_id,entry.provisional_title,COALESCE(body.title,''),entry.source_automation_id,entry.source_dispatch_id FROM inbox_entries entry JOIN pages page ON page.block_id=entry.page_id LEFT JOIN document_materializations body ON body.document_id=page.document_id WHERE entry.page_id=?1 AND entry.library_id=?2",
+        params![page_id,library_id],
+        |row| Ok((row.get::<_,String>(0)?,row.get::<_,Option<String>>(1)?,row.get::<_,Option<String>>(2)?,row.get::<_,Option<String>>(3)?,row.get::<_,Option<String>>(4)?,row.get::<_,Option<String>>(5)?,row.get::<_,Option<String>>(6)?,row.get::<_,String>(7)?,row.get::<_,Option<String>>(8)?,row.get::<_,Option<String>>(9)?,row.get::<_,String>(10)?,row.get::<_,Option<String>>(11)?,row.get::<_,Option<String>>(12)?)),
+    )?;
+    let source = match source_kind.as_str() {
+        "user" => json!({"kind":"user"}),
+        "agent" => {
+            json!({"kind":"agent","session_id":session,"thread_id":thread,"run_id":run,"project_id":project,"label":label.unwrap_or_else(||"Agent".to_owned())})
+        }
+        "command_line" => {
+            json!({"kind":"command_line","project_id":project,"label":label.unwrap_or_else(||"Command line".to_owned())})
+        }
+        "scheduled_task" => {
+            json!({"kind":"scheduled_task","automation_id":automation.unwrap_or_default(),"dispatch_id":dispatch.unwrap_or_default(),"project_id":project,"label":label.unwrap_or_default()})
+        }
+        _ => return Err(corrupt("Stored Inbox request source is invalid")),
+    };
+    let numbers = content
+        .images
+        .iter()
+        .enumerate()
+        .map(|(index, image)| (image.source.clone(), image_offset + index + 1))
+        .collect();
+    let body = crate::workspace::inbox_content::agent_markdown(&content, &numbers, usize::MAX)?;
+    Ok(json!({
+        "input": {
+            "page_id":page_id,
+            "page_key":crate::database::current_page_key_for_page(connection,library_id,page_id)?,
+            "body":body,"images":content.images,"source":source,"kind":kind,"submitted_at":submitted,
+            "scope":scope.map_or_else(||json!({"kind":"library"}),|project_id|json!({"kind":"project","project_id":project_id})),
+            "basis":{"page_id":page_id,"content_hash":content.fingerprint()},
+            "title_provisional":provisional.as_deref()==Some(title.as_str())
+        },
+        "content":content
+    }))
 }
 
 fn migrate_v192_to_v193(
@@ -3378,7 +3552,7 @@ fn initialize_fresh_profile(connection: &Connection, now: u64) -> Result<(), Sto
         [],
     )?;
     connection.execute(
-        "INSERT INTO core_automation_runtime_metadata( \
+        "INSERT INTO automation_clock_metadata( \
                id, jitter_salt, created_at_unix_ms \
              ) VALUES (1, lower(hex(randomblob(16))), ?1)",
         [now],
@@ -3629,18 +3803,216 @@ fn test_current_store_template() -> Result<&'static Mutex<Connection>, StoreErro
         .ok_or_else(|| corrupt("Test Store template was not initialized"))
 }
 
-/// Rewinds a Store built at the current schema to v202, so tests can reproduce upgrades from
-/// predecessors whose data was created through current Modules.
+// Temporary participants let current semantic writers author exact historical fixtures.
+#[cfg(test)]
+fn prepare_historical_actor_columns(connection: &Connection) -> Result<(), StoreError> {
+    let present: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('local_commits') WHERE name='actor_json')",
+        [],
+        |r| r.get(0),
+    )?;
+    if present {
+        return Ok(());
+    }
+    connection.execute_batch("ALTER TABLE local_commits ADD COLUMN actor_json TEXT; ALTER TABLE local_commits ADD COLUMN authorizing_member_id TEXT;")?;
+    let mut current = Connection::open_in_memory()?;
+    install_current_schema(&mut current)?;
+    for name in [
+        "members",
+        "local_profile_members",
+        "mutation_actors",
+        "member_session_unread",
+        "session_requesting_members",
+        "session_run_members",
+        "member_inbox_preferences",
+        "page_work_grants",
+        "agent_actor_labels",
+    ] {
+        let sql: String =
+            current.query_row("SELECT sql FROM sqlite_schema WHERE name=?1", [name], |r| {
+                r.get(0)
+            })?;
+        connection.execute_batch(&sql)?;
+    }
+    connection.execute("INSERT INTO members(id,library_id,display_name,lifecycle,role) SELECT 'fixture-member:'||id,id,'You','active','owner' FROM libraries",[])?;
+    connection.execute("INSERT INTO local_profile_members SELECT profile_id,id,'fixture-member:'||id FROM libraries",[])?;
+    let entries: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='inbox_entries')",
+        [],
+        |r| r.get(0),
+    )?;
+    if entries {
+        connection.execute_batch("ALTER TABLE inbox_entries ADD COLUMN actor_json TEXT; ALTER TABLE inbox_entries ADD COLUMN author_member_id TEXT;")?;
+    }
+    Ok(())
+}
+#[cfg(test)]
+fn finish_historical_actor_columns(connection: &Connection) -> Result<(), StoreError> {
+    let present: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('local_commits') WHERE name='actor_json')",
+        [],
+        |r| r.get(0),
+    )?;
+    if !present {
+        return Ok(());
+    }
+    connection.execute_batch("ALTER TABLE local_commits DROP COLUMN actor_json; ALTER TABLE local_commits DROP COLUMN authorizing_member_id; DROP TABLE agent_actor_labels; DROP TABLE page_work_grants; DROP TABLE member_inbox_preferences; DROP TABLE session_run_members; DROP TABLE session_requesting_members; DROP TABLE member_session_unread; DROP TABLE mutation_actors; DROP TABLE local_profile_members; DROP TABLE members;")?;
+    let entries: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('inbox_entries') WHERE name='actor_json')",
+        [],
+        |r| r.get(0),
+    )?;
+    if entries {
+        connection.execute_batch("ALTER TABLE inbox_entries DROP COLUMN actor_json; ALTER TABLE inbox_entries DROP COLUMN author_member_id;")?;
+    }
+    Ok(())
+}
+
+// Historical storage fixtures use today's canonical writer only during authoring,
+// then remove these participants before validating their exact predecessor schema.
+#[cfg(test)]
+fn prepare_current_inbox_capture_columns(connection: &Connection) -> Result<(), StoreError> {
+    prepare_historical_actor_columns(connection)?;
+    connection.execute_batch(
+        "ALTER TABLE core_automation_leases RENAME TO automation_execution_leases;
+        ALTER TABLE core_automation_firings RENAME TO automation_decisions;
+        ALTER TABLE automation_decisions ADD COLUMN frozen_action_json TEXT NOT NULL DEFAULT '{}';
+        ALTER TABLE automation_decisions ADD COLUMN automation_name TEXT NOT NULL DEFAULT '';
+        ALTER TABLE pages ADD COLUMN status_person_revision INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE project_session_pages ADD COLUMN status_fence INTEGER;
+        ALTER TABLE project_session_pages ADD COLUMN status_moved INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE project_session_pages ADD COLUMN report_status_moved INTEGER;
+        ALTER TABLE inbox_entries ADD COLUMN status_fence INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE inbox_handoffs ADD COLUMN question_response_json TEXT;
+        ALTER TABLE inbox_entries ADD COLUMN purpose TEXT;
+        ALTER TABLE inbox_entries ADD COLUMN subject_session_id TEXT;
+        ALTER TABLE inbox_entries ADD COLUMN subject_page_id TEXT;
+        ALTER TABLE inbox_entries ADD COLUMN reply_to_page_id TEXT;
+        ALTER TABLE inbox_entries ADD COLUMN nodex_idempotency_key TEXT;
+        ALTER TABLE inbox_proposals ADD COLUMN explicit_request INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE inbox_proposals ADD COLUMN confirmed_by TEXT;
+        ALTER TABLE inbox_proposals ADD COLUMN auto_confirm_pending INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE data_source_relation_edges ADD COLUMN target_data_source_id TEXT REFERENCES data_sources(id);",
+    )?;
+    let mut current = Connection::open_in_memory()?;
+    install_current_schema(&mut current)?;
+    let sql: String = current.query_row(
+        "SELECT sql FROM sqlite_schema WHERE name='inbox_routing_deliveries'",
+        [],
+        |r| r.get(0),
+    )?;
+    connection.execute_batch(&sql)?;
+    let active_chats: String = current.query_row(
+        "SELECT sql FROM sqlite_schema WHERE name='page_active_chats'",
+        [],
+        |r| r.get(0),
+    )?;
+    connection.execute_batch(&active_chats)?;
+    Ok(())
+}
+#[cfg(test)]
+fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), StoreError> {
+    finish_historical_actor_columns(connection)?;
+    connection.execute_batch(
+        "ALTER TABLE automation_execution_leases RENAME TO core_automation_leases;
+        UPDATE inbox_entries SET source_kind='scheduled_task' WHERE source_kind='automation';
+        ALTER TABLE automation_decisions DROP COLUMN automation_name;
+        ALTER TABLE automation_decisions DROP COLUMN frozen_action_json;
+        ALTER TABLE automation_decisions RENAME TO core_automation_firings;
+        DROP TABLE page_active_chats;
+        ALTER TABLE inbox_entries DROP COLUMN status_fence;
+        ALTER TABLE project_session_pages DROP COLUMN report_status_moved;
+        ALTER TABLE project_session_pages DROP COLUMN status_moved;
+        ALTER TABLE project_session_pages DROP COLUMN status_fence;
+        ALTER TABLE pages DROP COLUMN status_person_revision;
+        ALTER TABLE inbox_handoffs DROP COLUMN question_response_json;
+        DROP TABLE inbox_routing_deliveries;
+        ALTER TABLE data_source_relation_edges DROP COLUMN target_data_source_id;
+        ALTER TABLE inbox_entries DROP COLUMN purpose;
+        ALTER TABLE inbox_entries DROP COLUMN subject_session_id;
+        ALTER TABLE inbox_entries DROP COLUMN subject_page_id;
+        ALTER TABLE inbox_entries DROP COLUMN reply_to_page_id;
+        ALTER TABLE inbox_entries DROP COLUMN nodex_idempotency_key;
+        ALTER TABLE inbox_proposals DROP COLUMN auto_confirm_pending;
+        ALTER TABLE inbox_proposals DROP COLUMN confirmed_by;
+        ALTER TABLE inbox_proposals DROP COLUMN explicit_request;",
+    )?;
+    Ok(())
+}
+
+/// Rewinds a Store built at the current schema to the published v203 schema, so tests can
+/// reproduce the upgrade from data written by current Modules.
+#[cfg(test)]
+pub(super) fn rewind_v204_to_v203(connection: &Connection) -> Result<(), StoreError> {
+    // Renaming a reshaped table away must leave other tables' references on its name, which
+    // SQLite guarantees only with foreign keys off and legacy ALTER TABLE semantics.
+    let foreign_keys: bool =
+        connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
+    let legacy_alter_table: bool =
+        connection.pragma_query_value(None, "legacy_alter_table", |row| row.get(0))?;
+    connection.pragma_update(None, "foreign_keys", false)?;
+    if connection.pragma_query_value(None, "foreign_keys", |row| row.get::<_, bool>(0))? {
+        return Err(internal("Rewinding a Store requires foreign keys off"));
+    }
+    connection.pragma_update(None, "legacy_alter_table", true)?;
+    connection.execute_batch(include_str!("../../tests/fixtures/rewind-v204-to-v203.sql"))?;
+    connection.pragma_update(None, "legacy_alter_table", legacy_alter_table)?;
+    connection.pragma_update(None, "foreign_keys", foreign_keys)?;
+    Ok(())
+}
+
+/// Rewinds a v203 Store to the v202 schema. Editor history lifetimes lose their Host start time.
 #[cfg(test)]
 pub(super) fn rewind_v203_to_v202(connection: &Connection) -> Result<(), StoreError> {
     connection.execute_batch(include_str!("../../tests/fixtures/rewind-v203-to-v202.sql"))?;
     Ok(())
 }
 
-/// Rewinds a Store built at the current schema to v200; v202 changed no schema.
+/// Rewinds a Store built at the current schema to the published v202 schema, so tests can
+/// reproduce every upgrade from v202 with data written by current Modules.
+#[cfg(test)]
+pub(super) fn rewind_current_to_v202(connection: &Connection) -> Result<(), StoreError> {
+    rewind_v204_to_v203(connection)?;
+    rewind_v203_to_v202(connection)?;
+    connection.execute(
+        "DELETE FROM core_store_migration_history WHERE target_revision > 202",
+        [],
+    )?;
+    connection.pragma_update(None, "user_version", 202)?;
+    Ok(())
+}
+
+/// Applies every step from the published v202 schema to the current one, in the order opening a
+/// released v202 Store applies them.
+#[cfg(test)]
+pub(super) fn migrate_v202_to_current(
+    connection: &Connection,
+    backup_name: &str,
+) -> Result<(), StoreError> {
+    for step in MIGRATION_STEPS
+        .iter()
+        .filter(|step| step.from_revision >= 202)
+    {
+        (step.apply)(
+            connection,
+            &MigrationContext {
+                source_revision: step.from_revision,
+                target_revision: step.to_revision,
+                backup_name: backup_name.into(),
+                source_schema_fingerprint: published_format(step.from_revision)?.schema_fingerprint,
+                target_schema_fingerprint: published_format(step.to_revision)?.schema_fingerprint,
+                completed_at_unix_ms: 1,
+            },
+        )?;
+    }
+    Ok(())
+}
+
+/// Rewinds a Store built at the current schema to v200, so tests can reproduce upgrades from
+/// predecessors whose data was created through current Modules; v202 changed no schema.
 #[cfg(test)]
 pub(super) fn rewind_current_to_v200(connection: &Connection) -> Result<(), StoreError> {
-    rewind_v203_to_v202(connection)?;
+    rewind_current_to_v202(connection)?;
     connection.execute_batch(include_str!("../../tests/fixtures/rewind-v201-to-v200.sql"))?;
     Ok(())
 }
@@ -3713,6 +4085,273 @@ mod tests {
                 .count(),
         )
         .expect("migration count fits i64")
+    }
+
+    /// A current Store holding one Space, rewound to the published v202 schema.
+    fn rewound_v202_store(
+        seed: &str,
+    ) -> (nodex_platform::test_support::TempDir, PathBuf, Connection) {
+        let profile = tempdir().unwrap();
+        let path = profile.path().join("nodex.db");
+        let mut c = open_writer(&path).unwrap();
+        prepare_profile_store(&mut c, profile.path()).unwrap();
+        c.execute_batch(seed).unwrap();
+        with_schema_rebuild_transaction(&mut c, rewind_current_to_v202).unwrap();
+        validate_schema_identity(&c, 202).unwrap();
+        (profile, path, c)
+    }
+
+    const ONE_SPACE: &str = "INSERT INTO profiles(id,created_at,updated_at) VALUES('own','2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z'); INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES('own-space','own','2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z');";
+
+    #[test]
+    fn team_migration_preserves_identity_backs_up_and_reopens_once() {
+        let (profile, path, mut c) = rewound_v202_store(&format!(
+            "{ONE_SPACE} INSERT INTO project_sessions(id,no_thread_fallback_title,created_at,updated_at,activity_at) VALUES('work','Work','2026-11-03T00:00:00.000Z','2026-11-03T00:00:00.000Z',1793664000000);"
+        ));
+        let mut events = Vec::new();
+        let prepared = prepare_profile_store_with_observer(&mut c, profile.path(), &mut |event| {
+            events.push(event)
+        })
+        .unwrap();
+        assert_eq!(prepared.migrated_from_version, Some(202));
+        assert_migration_events(&events, 202);
+        validate_current_store(&c).unwrap();
+        let (backup, evidence): (String, String) = c
+            .query_row(
+                "SELECT backup_name,evidence_json FROM core_store_migration_history WHERE source_revision=203 AND target_revision=204",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert!(
+            prepare_migration_backup_directory(profile.path())
+                .unwrap()
+                .join(backup)
+                .is_file()
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&evidence).unwrap(),
+            json!({"members": 1, "automations": 0, "projection_delivery_reset": true})
+        );
+        assert_eq!(
+            c.query_row(
+                "SELECT no_thread_fallback_title FROM project_sessions WHERE id='work'",
+                [],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            "Work"
+        );
+        c.execute(
+            "UPDATE libraries SET name='Platform' WHERE id='own-space'",
+            [],
+        )
+        .unwrap();
+        drop(c);
+        let mut reopened = open_writer(&path).unwrap();
+        assert_eq!(
+            prepare_profile_store(&mut reopened, profile.path())
+                .unwrap()
+                .migrated_from_version,
+            None
+        );
+        assert_eq!(
+            reopened
+                .query_row(
+                    "SELECT (SELECT name FROM libraries WHERE id='own-space'),(SELECT count(*) FROM core_store_migration_history WHERE target_revision=204)",
+                    [],
+                    |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+                )
+                .unwrap(),
+            ("Platform".to_owned(), 1)
+        );
+    }
+
+    #[test]
+    fn team_migration_converges_from_the_frozen_v202_schema() {
+        let mut c = Connection::open_in_memory().unwrap();
+        c.execute_batch(include_str!("../../tests/fixtures/schema-v202.sql"))
+            .unwrap();
+        c.execute_batch("INSERT INTO operational_journal_state(id,operation_identity_cutover_at,updated_at) VALUES(1,'2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z');").unwrap();
+        validate_schema_identity(&c, 202).unwrap();
+        with_schema_rebuild_transaction(&mut c, |transaction| {
+            migrate_v202_to_current(transaction, "team-fixture.db")
+        })
+        .unwrap();
+        validate_schema_identity(&c, 204).unwrap();
+        let mut fresh = Connection::open_in_memory().unwrap();
+        install_current_schema(&mut fresh).unwrap();
+        assert_eq!(
+            super::super::schema::read_schema_inventory(&c).unwrap(),
+            super::super::schema::read_schema_inventory(&fresh).unwrap()
+        );
+        // The rewinds used by upgrade tests restore each exact published predecessor.
+        with_schema_rebuild_transaction(&mut c, rewind_v204_to_v203).unwrap();
+        validate_schema_identity(&c, 203).unwrap();
+        with_schema_rebuild_transaction(&mut c, rewind_v203_to_v202).unwrap();
+        validate_schema_identity(&c, 202).unwrap();
+    }
+
+    #[test]
+    fn each_space_owner_takes_their_account_name_and_the_space_stays_personal_and_unnamed() {
+        let (profile, _path, mut c) = rewound_v202_store(
+            "INSERT INTO profiles(id,created_at,updated_at) VALUES('own','2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z'),('crew','2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z'); INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES('own-space','own','2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z'),('crew-space','crew','2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z');",
+        );
+        assert_eq!(
+            prepare_profile_store(&mut c, profile.path())
+                .unwrap()
+                .migrated_from_version,
+            Some(202)
+        );
+        validate_current_store(&c).unwrap();
+        let spaces = c
+            .prepare("SELECT library.id,library.name,library.hosted,library.space_kind,member.display_name,member.role,member.lifecycle,member.revision FROM libraries library JOIN local_profile_members local ON local.library_id=library.id JOIN members member ON member.id=local.member_id ORDER BY library.id")
+            .unwrap()
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, i64>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?,
+                    r.get::<_, i64>(7)?,
+                ))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        let owner = crate::library::default_owner_name();
+        assert_eq!(
+            spaces,
+            ["crew-space", "own-space"].map(|id| (
+                id.to_owned(),
+                None,
+                0,
+                "personal".to_owned(),
+                owner.clone(),
+                "owner".to_owned(),
+                "active".to_owned(),
+                1
+            ))
+        );
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM members", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        // "You" is how Nodex shows each reader their own Member; a stored name never claims it,
+        // whether a Member is renamed or joins a team Space.
+        assert!(
+            c.execute(
+                "UPDATE members SET display_name=' YOU ' WHERE library_id='own-space'",
+                []
+            )
+            .is_err()
+        );
+        c.execute(
+            "UPDATE libraries SET space_kind='team' WHERE id='crew-space'",
+            [],
+        )
+        .unwrap();
+        assert!(
+            c.execute(
+                "INSERT INTO members(id,library_id,display_name,lifecycle,role) VALUES('bob','crew-space','You','active','member')",
+                []
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn default_draft_migration_gives_each_existing_draft_to_the_local_member() {
+        let (profile, _path, mut c) = rewound_v202_store(ONE_SPACE);
+        c.execute_batch("INSERT INTO project_sessions(id,project_id,no_thread_fallback_title,is_default_draft,created_at,updated_at,activity_at) VALUES('draft',NULL,'New chat',1,'2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z',1793491200000);").unwrap();
+        prepare_profile_store(&mut c, profile.path()).unwrap();
+        validate_current_store(&c).unwrap();
+        let (opener, local): (String, String) = c
+            .query_row(
+                "SELECT opener.member_id, local.member_id FROM session_requesting_members opener, local_profile_members local WHERE opener.session_id='draft' AND opener.message_id='session:created'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(opener, local);
+    }
+
+    #[test]
+    fn member_attention_migration_keeps_the_local_members_unread_pins_order_and_reminders() {
+        let (profile, _path, mut c) = rewound_v202_store(ONE_SPACE);
+        let session = |id: &str,
+                       pinned: i64,
+                       order: &str,
+                       remind: &str,
+                       archived: i64,
+                       unread: i64| {
+            format!(
+                "INSERT INTO project_sessions(id,project_id,no_thread_fallback_title,pinned,pinned_order,archived,unread,created_at,updated_at,remind_at,activity_at) VALUES('{id}',NULL,'{id}',{pinned},{order},{archived},{unread},'2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z',{remind},1793491200000);"
+            )
+        };
+        c.execute_batch(&[
+            session("first", 1, "7", "'2026-11-02T00:00:00.000Z'", 0, 0),
+            session("second", 1, "NULL", "NULL", 0, 1),
+            session("loose", 0, "NULL", "NULL", 0, 0),
+            session("old", 1, "2", "'2026-11-03T00:00:00.000Z'", 1, 0),
+            "INSERT INTO project_session_reminder_deliveries VALUES('delivery','loose','2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z');".into(),
+        ].concat()).unwrap();
+        assert_eq!(
+            prepare_profile_store(&mut c, profile.path())
+                .unwrap()
+                .migrated_from_version,
+            Some(202)
+        );
+        validate_current_store(&c).unwrap();
+        let local: String = c
+            .query_row("SELECT member_id FROM local_profile_members", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        let rows = |sql: &str| {
+            c.prepare(sql)
+                .unwrap()
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                    ))
+                })
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap()
+        };
+        // Order survives, a pin without one follows it, and archived chats keep no attention.
+        assert_eq!(
+            rows(
+                "SELECT member_id,session_id,CAST(pinned_order AS TEXT) FROM member_session_pins ORDER BY pinned_order"
+            ),
+            [
+                (local.clone(), "first".into(), "0".into()),
+                (local.clone(), "second".into(), "1".into())
+            ]
+        );
+        assert_eq!(
+            rows("SELECT member_id,session_id,remind_at FROM member_session_reminders"),
+            [(
+                local.clone(),
+                "first".into(),
+                "2026-11-02T00:00:00.000Z".into()
+            )]
+        );
+        assert_eq!(
+            rows("SELECT member_id,session_id,delivery_id FROM member_session_reminder_deliveries"),
+            [(local.clone(), "loose".into(), "delivery".into())]
+        );
+        assert_eq!(
+            rows("SELECT member_id,session_id,'unread' FROM member_session_unread"),
+            [(local, "second".into(), "unread".into())]
+        );
     }
 
     #[test]
@@ -3940,6 +4579,7 @@ mod tests {
     fn v147_migration_repairs_durable_and_personal_filter_json() {
         let mut connection = Connection::open_in_memory().expect("Store");
         install_current_schema(&mut connection).expect("current schema");
+        rewind_current_to_v202(&connection).expect("published v202 schema");
         crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
             &connection,
         )
@@ -4907,7 +5547,15 @@ mod tests {
             .expect("Agent token key");
         let jitter = connection
             .query_row(
-                "SELECT jitter_salt FROM core_automation_runtime_metadata WHERE id = 1",
+                if connection
+                    .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+                    .unwrap()
+                    >= 204
+                {
+                    "SELECT jitter_salt FROM automation_clock_metadata WHERE id=1"
+                } else {
+                    "SELECT jitter_salt FROM core_automation_runtime_metadata WHERE id = 1"
+                },
                 [],
                 |row| row.get::<_, String>(0),
             )
@@ -7962,13 +8610,67 @@ mod tests {
         );
     }
 
-    // These historical fixtures author the canonical Page closure through today's
-    // public writer, then remove its extra Inbox participants before validating the
-    // exact predecessor. Runtime writers never support an older physical schema.
-    fn prepare_historical_inbox_capture(connection: &mut Connection) -> Result<(), StoreError> {
+    // Historical fixtures temporarily borrow only the current Inbox, report and
+    // Workspace participants used by their operations, then restore the predecessor.
+    // Runtime writers never support an older physical schema.
+    const HISTORICAL_WORK_PARTICIPANTS: [&str; 11] = [
+        "page_workspaces",
+        "session_workspaces",
+        "page_pull_requests",
+        "coordinator",
+        "coordinator_managed_sessions",
+        "coordinator_event_batches",
+        "coordinator_work_events",
+        "execution_holds",
+        "session_execution_observations",
+        "page_turn_episodes",
+        "page_turn_dirty",
+    ];
+    const HISTORICAL_REPORT_COLUMNS: [&str; 5] = [
+        "report_outcome TEXT CHECK(report_outcome IN ('ready','blocked','failed','dropped'))",
+        "report_summary TEXT",
+        "report_at TEXT",
+        "report_run_id TEXT",
+        "report_revision INTEGER NOT NULL DEFAULT 0 CHECK(report_revision >= 0)",
+    ];
+    fn prepare_historical_work_reports(connection: &Connection) -> Result<(), StoreError> {
+        prepare_historical_actor_columns(connection)?;
+        for column in HISTORICAL_REPORT_COLUMNS {
+            connection.execute_batch(&format!(
+                "ALTER TABLE project_session_pages ADD COLUMN {column}"
+            ))?;
+        }
         let mut fresh = Connection::open_in_memory()?;
         install_current_schema(&mut fresh)?;
-        let firing_schema: String = fresh.query_row(
+        for name in HISTORICAL_WORK_PARTICIPANTS {
+            let sql: String = fresh.query_row(
+                "SELECT sql FROM sqlite_schema WHERE name=?1",
+                [name],
+                |row| row.get(0),
+            )?;
+            connection.execute_batch(&sql)?;
+        }
+        Ok(())
+    }
+    fn finish_historical_work_reports(connection: &Connection) -> Result<(), StoreError> {
+        finish_historical_actor_columns(connection)?;
+        for name in HISTORICAL_WORK_PARTICIPANTS.iter().rev() {
+            connection.execute_batch(&format!("DROP TABLE {name}"))?;
+        }
+        for column in HISTORICAL_REPORT_COLUMNS.iter().rev() {
+            let name = column.split_whitespace().next().unwrap_or_default();
+            connection.execute_batch(&format!(
+                "ALTER TABLE project_session_pages DROP COLUMN {name}"
+            ))?;
+        }
+        Ok(())
+    }
+
+    fn prepare_historical_inbox_capture(connection: &mut Connection) -> Result<(), StoreError> {
+        prepare_historical_work_reports(connection)?;
+        let published = Connection::open_in_memory()?;
+        published.execute_batch(include_str!("../../tests/fixtures/schema-v202.sql"))?;
+        let firing_schema: String = published.query_row(
             "SELECT sql FROM sqlite_schema WHERE name='core_automation_firings'",
             [],
             |row| row.get(0),
@@ -7981,10 +8683,13 @@ mod tests {
             "ALTER TABLE inbox_entries ADD COLUMN source_automation_id TEXT;
             ALTER TABLE inbox_entries ADD COLUMN source_dispatch_id TEXT;",
         )?;
+        prepare_current_inbox_capture_columns(connection)?;
         Ok(())
     }
 
     fn finish_historical_inbox_capture(connection: &Connection) -> Result<(), StoreError> {
+        finish_current_inbox_capture_columns(connection)?;
+        finish_historical_work_reports(connection)?;
         restore_historical_inbox_bases(connection)?;
         connection
             .execute_batch("ALTER TABLE inbox_suggestion_requests DROP COLUMN inputs_json;")?;
@@ -8017,24 +8722,25 @@ mod tests {
         let prepared = prepare_profile_store(&mut connection, profile.path()).unwrap();
         assert_eq!(prepared.migrated_from_version, Some(197));
         validate_schema_identity(&connection, CURRENT_STORE_REVISION).unwrap();
+        let local = "(SELECT member_id FROM local_profile_members LIMIT 1)";
         let organization: (i64, i64, Option<String>) = connection
             .query_row(
-                "SELECT pinned,unread,remind_at FROM project_sessions WHERE id='reminder-chat'",
+                &format!("SELECT EXISTS(SELECT 1 FROM member_session_pins pin WHERE pin.session_id=project_sessions.id AND pin.member_id={local}),EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=project_sessions.id AND attention.member_id={local}),(SELECT remind_at FROM member_session_reminders reminder WHERE reminder.session_id=project_sessions.id) FROM project_sessions WHERE id='reminder-chat'"),
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
         assert_eq!(organization, (1, 1, None));
-        connection.execute("UPDATE project_sessions SET remind_at='2026-01-02T00:00:00.000Z' WHERE id='reminder-chat'", []).unwrap();
+        connection.execute(&format!("INSERT INTO member_session_reminders(member_id,session_id,remind_at) VALUES({local},'reminder-chat','2026-01-02T00:00:00.000Z')"), []).unwrap();
         connection.execute("UPDATE project_sessions SET archived=1,archived_at='2026-01-01T00:00:00.000Z' WHERE id='reminder-chat'", []).unwrap();
-        let reminder: Option<String> = connection
+        let attention: (i64, i64) = connection
             .query_row(
-                "SELECT remind_at FROM project_sessions WHERE id='reminder-chat'",
+                "SELECT (SELECT count(*) FROM member_session_reminders WHERE session_id='reminder-chat'),(SELECT count(*) FROM member_session_pins WHERE session_id='reminder-chat')",
                 [],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
-        assert_eq!(reminder, None);
+        assert_eq!(attention, (0, 0));
         assert_eq!(
             prepare_profile_store(&mut connection, profile.path())
                 .unwrap()
@@ -8075,7 +8781,12 @@ mod tests {
         module
             .apply(
                 &BoundModuleContext {
+                    actor: nodex_core_contracts::Actor::Service {
+                        kind: nodex_core_contracts::ServiceKind::Maintenance,
+                    },
+                    authorizing_member_id: None,
                     editor_history_owner: None,
+                    principal: None,
                     agent_attribution: None,
                     profile_id: ProfileId(profile_id.clone()),
                     library_id: LibraryId(library_id.clone()),
@@ -8088,6 +8799,7 @@ mod tests {
                     operation_id: format!("send:waiting:{}", random_uuid_v7().unwrap()),
                     store_epoch: StoreEpoch(epoch.clone()),
                     intent: ProjectWorkspaceIntent::SendInboxMessage {
+                        reply_to_page_id: None,
                         expected_store_epoch: Some(epoch),
                         page_id: "page:waiting".into(),
                         document_id: "document:waiting".into(),
@@ -8148,6 +8860,10 @@ mod tests {
                 )
             })
             .unwrap();
+        predecessor
+            .writer()
+            .call(|c| prepare_historical_actor_columns(c))
+            .unwrap();
         let module = ProjectWorkspaceModule::new(&profile_id, &library_id, &predecessor).unwrap();
         module.seed_rootless_default_project_for_test();
         let (data_source_id, revision, entries): (String, i64, i64) = predecessor
@@ -8162,6 +8878,7 @@ mod tests {
                     )?;
                     Ok(())
                 })?;
+                finish_historical_actor_columns(connection)?;
                 validate_migration_source(connection, 185)?;
                 Ok(connection.query_row(
                     "SELECT layout.data_source_id, layout.revision, count(entry.property_id) \
@@ -8174,6 +8891,10 @@ mod tests {
             })
             .expect("historical Page layout");
         assert!(entries > 1);
+        predecessor
+            .writer()
+            .call(|c| finish_historical_actor_columns(c))
+            .unwrap();
         drop(module);
         drop(predecessor);
 
@@ -8259,7 +8980,12 @@ mod tests {
             })
             .unwrap();
         let context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId(profile_id.clone()),
             library_id: LibraryId(library_id.clone()),
@@ -8286,6 +9012,7 @@ mod tests {
             apply(
                 &format!("send:{id}"),
                 ProjectWorkspaceIntent::SendInboxMessage {
+                    reply_to_page_id: None,
                     expected_store_epoch: Some(epoch.clone()),
                     page_id: format!("page:{id}"),
                     document_id: format!("document:{id}"),
@@ -8482,7 +9209,7 @@ mod tests {
     }
 
     #[test]
-    fn waiting_firing_schema_enforces_one_waiting_message_and_tracks_page_lifecycle() {
+    fn waiting_automation_decision_schema_enforces_one_waiting_message_and_tracks_page_lifecycle() {
         let mut connection = Connection::open_in_memory().unwrap();
         install_current_schema(&mut connection).unwrap();
         connection
@@ -8490,22 +9217,22 @@ mod tests {
             .unwrap();
         super::super::legacy_visibility_migration::install_test_maintenance_context(&connection)
             .unwrap();
-        connection.execute("INSERT INTO codex_scheduled_automations(automation_id,kind,status,name,created_at,updated_at) VALUES ('task','cron','ACTIVE','Report',1,1)",[]).unwrap();
+        connection.execute("INSERT INTO automations(automation_id,owner_member_id,condition_text,timezone,jitter_salt,kind,status,name,created_at,updated_at) VALUES ('task','owner','Clock','UTC','salt','cron','ACTIVE','Report',1,1)",[]).unwrap();
         for (index, status) in [(1, "failed"), (2, "held")] {
             let page = format!("page:{index}");
             let dispatch = format!("dispatch:{index}");
             connection.execute("INSERT INTO blocks(id,library_id,type,lifecycle,created_at,updated_at) VALUES (?1,'library','page','active','2026-10-27T00:00:00Z','2026-10-27T00:00:00Z')",[&page]).unwrap();
-            connection.execute("INSERT INTO core_automation_firings(dispatch_id,automation_id,status,page_id,first_scheduled_for_ms,last_scheduled_for_ms,missed_count,hold_basis_json,created_at_ms,updated_at_ms) VALUES (?1,'task',?2,?3,?4,?4,2,'{}',?4,?4)",params![dispatch,status,page,index]).unwrap();
+            connection.execute("INSERT INTO automation_decisions(dispatch_id,automation_id,status,page_id,first_scheduled_for_ms,last_scheduled_for_ms,missed_count,hold_basis_json,created_at_ms,updated_at_ms) VALUES (?1,'task',?2,?3,?4,?4,2,'{}',?4,?4)",params![dispatch,status,page,index]).unwrap();
         }
         connection
             .execute(
-                "UPDATE core_automation_firings SET waiting_in_inbox=1 WHERE dispatch_id='dispatch:1'",
+                "UPDATE automation_decisions SET waiting_in_inbox=1 WHERE dispatch_id='dispatch:1'",
                 [],
             )
             .unwrap();
         let conflict = connection
             .execute(
-                "UPDATE core_automation_firings SET waiting_in_inbox=1 WHERE dispatch_id='dispatch:2'",
+                "UPDATE automation_decisions SET waiting_in_inbox=1 WHERE dispatch_id='dispatch:2'",
                 [],
             )
             .unwrap_err();
@@ -8517,15 +9244,15 @@ mod tests {
         // Leaving the Inbox releases the slot for the task's next waiting firing.
         connection
             .execute_batch(
-                "UPDATE core_automation_firings SET waiting_in_inbox=0 WHERE dispatch_id='dispatch:1';
-                 UPDATE core_automation_firings SET waiting_in_inbox=1,due_at_ms=3 WHERE dispatch_id='dispatch:2';
+                "UPDATE automation_decisions SET waiting_in_inbox=0 WHERE dispatch_id='dispatch:1';
+                 UPDATE automation_decisions SET waiting_in_inbox=1,due_at_ms=3 WHERE dispatch_id='dispatch:2';
                  UPDATE blocks SET lifecycle='archived' WHERE id='page:2';",
             )
             .unwrap();
         let firing_state = |dispatch: &str| {
             connection
                 .query_row(
-                    "SELECT status,waiting_in_inbox,due_at_ms FROM core_automation_firings WHERE dispatch_id=?1",
+                    "SELECT status,waiting_in_inbox,due_at_ms FROM automation_decisions WHERE dispatch_id=?1",
                     [dispatch],
                     |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, Option<i64>>(2)?)),
                 )
@@ -8534,7 +9261,7 @@ mod tests {
         assert_eq!(firing_state("dispatch:2"), ("withdrawn".into(), 0, None));
         connection
             .execute_batch(
-                "UPDATE core_automation_firings SET waiting_in_inbox=1,due_at_ms=3 WHERE dispatch_id='dispatch:1';
+                "UPDATE automation_decisions SET waiting_in_inbox=1,due_at_ms=3 WHERE dispatch_id='dispatch:1';
                  DELETE FROM blocks WHERE id='page:1';",
             )
             .unwrap();
@@ -8560,6 +9287,8 @@ mod tests {
         kernel
             .writer()
             .call(|connection| {
+                prepare_current_inbox_capture_columns(connection)?;
+                prepare_historical_work_reports(connection)?;
                 connection.pragma_update(None, "ignore_check_constraints", true)?;
                 connection.execute_batch("ALTER TABLE inbox_suggestion_requests ADD COLUMN inputs_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(inputs_json) AND json_type(inputs_json) = 'array');")?;
                 Ok(())
@@ -8569,7 +9298,12 @@ mod tests {
         let module = ProjectWorkspaceModule::new(&profile_id, &library_id, &kernel).unwrap();
         module.seed_rootless_default_project_for_test();
         let host = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId(profile_id),
             library_id: LibraryId(library_id),
@@ -8602,6 +9336,7 @@ mod tests {
             apply(
                 &format!("send:{id}"),
                 ProjectWorkspaceIntent::SendInboxMessage {
+                    reply_to_page_id: None,
                     expected_store_epoch: None,
                     page_id: format!("page:{id}"),
                     document_id: format!("document:{id}"),
@@ -8663,6 +9398,7 @@ mod tests {
             apply(
                 "send:erased",
                 ProjectWorkspaceIntent::SendInboxMessage {
+                    reply_to_page_id: None,
                     expected_store_epoch: None,
                     page_id: "page:erased".into(),
                     document_id: "document:erased".into(),
@@ -8674,8 +9410,8 @@ mod tests {
             // Historical scheduled metadata is the subject; erasure itself uses the host operation.
             kernel.writer().call(|connection| {
                 connection.execute("INSERT INTO codex_scheduled_automations(automation_id,kind,status,name,prompt,rrule,launch,created_at,updated_at) VALUES ('task:erased','cron','PAUSED','Daily report','Prepare the daily report.','FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0','ask',1,1)",[])?;
-                connection.execute("UPDATE inbox_entries SET source_kind='scheduled_task',source_label='Daily report',source_automation_id='task:erased',source_dispatch_id='firing:erased' WHERE page_id='page:erased'",[])?;
-                connection.execute("INSERT INTO core_automation_firings(dispatch_id,automation_id,status,waiting_in_inbox,page_id,first_scheduled_for_ms,last_scheduled_for_ms,hold_basis_json,created_at_ms,updated_at_ms) SELECT 'firing:erased','task:erased','held',1,'page:erased',1,1,json_object('page_id','page:erased','generation',document.generation,'head_seq',document.head_seq,'placement_revision',block.placement_revision),1,1 FROM pages page JOIN documents document ON document.id=page.document_id JOIN blocks block ON block.id=page.block_id WHERE page.block_id='page:erased'",[])?;
+                connection.execute("UPDATE inbox_entries SET source_kind='automation',source_label='Daily report',source_automation_id='task:erased',source_dispatch_id='firing:erased' WHERE page_id='page:erased'",[])?;
+                connection.execute("INSERT INTO automation_decisions(dispatch_id,automation_id,status,waiting_in_inbox,page_id,first_scheduled_for_ms,last_scheduled_for_ms,hold_basis_json,created_at_ms,updated_at_ms) SELECT 'firing:erased','task:erased','held',1,'page:erased',1,1,json_object('page_id','page:erased','generation',document.generation,'head_seq',document.head_seq,'placement_revision',block.placement_revision),1,1 FROM pages page JOIN documents document ON document.id=page.document_id JOIN blocks block ON block.id=page.block_id WHERE page.block_id='page:erased'",[])?;
                 Ok(())
             }).unwrap();
             apply(
@@ -8718,7 +9454,9 @@ mod tests {
             },
         );
         kernel.writer().call(move |connection| {
+            finish_current_inbox_capture_columns(connection)?;
             restore_historical_inbox_bases(connection)?;
+            finish_historical_work_reports(connection)?;
             connection.execute_batch("ALTER TABLE inbox_suggestion_requests DROP COLUMN inputs_json;")?;
             // This storage fixture was authored by the current persistence path;
             // restore the source revision's derivation coordinate with its schema.
@@ -8749,18 +9487,9 @@ mod tests {
             .unwrap();
         assert_eq!(
             steps,
-            vec![
-                (193, 194),
-                (194, 195),
-                (195, 196),
-                (196, 197),
-                (197, 198),
-                (198, 199),
-                (199, 200),
-                (200, 201),
-                (201, 202),
-                (202, 203)
-            ]
+            (193..CURRENT_STORE_REVISION)
+                .map(|revision| (revision, revision + 1))
+                .collect::<Vec<_>>()
         );
         let states = connection
             .prepare("SELECT page_id,suggestion_state FROM inbox_entries ORDER BY page_id")
@@ -8846,7 +9575,7 @@ mod tests {
             );
         }
         if erased_firing {
-            let (state,json):(String,String)=connection.query_row("SELECT status,hold_basis_json FROM core_automation_firings WHERE dispatch_id='firing:erased'",[],|row|Ok((row.get(0)?,row.get(1)?))).unwrap();
+            let (state,json):(String,String)=connection.query_row("SELECT status,hold_basis_json FROM automation_decisions WHERE dispatch_id='firing:erased'",[],|row|Ok((row.get(0)?,row.get(1)?))).unwrap();
             assert_eq!(state, "withdrawn");
             let basis: nodex_core_contracts::inbox::ProjectWorkspaceInboxPageBasis =
                 serde_json::from_str(&json).unwrap();
@@ -8947,17 +9676,17 @@ mod tests {
             super::super::schema::read_schema_inventory(&connection).unwrap(),
             super::super::schema::read_schema_inventory(&fresh).unwrap()
         );
-        let launch: String = connection
+        let mode: String = connection
             .query_row(
-                "SELECT launch FROM codex_scheduled_automations WHERE automation_id='saved-task'",
+                "SELECT mode FROM automations WHERE automation_id='saved-task'",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(launch, "automatic");
+        assert_eq!(mode, "run");
         assert_eq!(
             connection
-                .query_row("SELECT count(*) FROM core_automation_firings", [], |r| r
+                .query_row("SELECT count(*) FROM automation_decisions", [], |r| r
                     .get::<_, i64>(0))
                 .unwrap(),
             0
@@ -9038,7 +9767,9 @@ mod tests {
                 &provenance.0
             )
             .unwrap(),
-            nodex_core_contracts::library::LibraryPageFileAttachmentActor::Unknown
+            nodex_core_contracts::library::LibraryPageFileAttachmentActor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance
+            }
         );
         assert_eq!(provenance.1, None);
         validate_current_store(&connection).unwrap();
@@ -9373,7 +10104,7 @@ mod tests {
         let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
         install_current_schema(&mut connection).unwrap();
         with_schema_rebuild_transaction(&mut connection, |transaction| {
-            rewind_v203_to_v202(transaction)?;
+            rewind_current_to_v202(transaction)?;
             validate_schema_identity(transaction, 202)?;
             transaction.execute_batch(
                 "INSERT INTO profiles(id, created_at, updated_at) VALUES ('profile', 'now', 'now');
@@ -9510,4 +10241,123 @@ mod tests {
             0
         );
     }
+    #[test]
+    fn team_migration_retires_old_delivery_packets_and_preserves_receipts() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(include_str!("../../tests/fixtures/schema-v202.sql"))
+            .unwrap();
+        // Storage fixture: old projection packets are opaque historical evidence.
+        // Migration must discard them without decoding their retired row schema.
+        connection.execute_batch(r#"INSERT INTO operational_journal_state(id,commit_head_seq,operation_identity_cutover_at,updated_at) VALUES(1,3,strftime('%Y-%m-%dT%H:%M:%fZ','now'),'2026-11-03');
+            INSERT INTO local_commits(commit_seq,store_epoch,operation_id,committed_at,projection_impact_json,canonical_hash) VALUES(3,'epoch','old-row','2026-11-03','{}',printf('%064d',0));
+            INSERT INTO local_commit_retention_metadata VALUES('epoch',3,0,0);
+            INSERT INTO local_commit_delivery_atoms(store_epoch,commit_seq,atom_order,atom_id,atom_kind,required_resources_json,payload_json,payload_hash) VALUES('epoch',3,0,printf('%064d',0),'database_changed','[{"kind":"view","view_id":"view:old"}]','{"row":{}}',printf('%064d',0));
+            INSERT INTO core_module_receipts(module_name,operation_id,profile_id,adapter_kind,operation_kind,store_epoch,request_hash,result_json,local_commit_seq,committed_at) VALUES('database','old-row','profile','test','edit','epoch',printf('%064d',0),'{"saved":true}',3,'2026-11-03');"#).unwrap();
+        with_schema_rebuild_transaction(&mut connection, |c| {
+            migrate_v202_to_current(c, "work-row.db")
+        })
+        .unwrap();
+        validate_schema_identity(&connection, 204).unwrap();
+        for table in [
+            "local_commits",
+            "local_commit_retention_metadata",
+            "local_commit_delivery_atoms",
+        ] {
+            assert_eq!(
+                connection
+                    .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                        .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+        }
+        assert_eq!(connection.query_row("SELECT result_json,local_commit_seq FROM core_module_receipts WHERE operation_id='old-row'", [], |r| Ok((r.get::<_,String>(0)?,r.get::<_,Option<i64>>(1)?))).unwrap(), (r#"{"saved":true}"#.into(),None));
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT commit_head_seq,replay_floor_seq FROM operational_journal_state",
+                    [],
+                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+                )
+                .unwrap(),
+            (3, 4)
+        );
+    }
+
+    #[test]
+    fn team_migration_backfills_blocked_by_for_existing_workflow_sources_and_page_layouts() {
+        let profile = tempdir().unwrap();
+        let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+        install_current_schema(&mut connection).unwrap();
+        super::super::legacy_visibility_migration::install_test_maintenance_context(&connection)
+            .unwrap();
+        let now = "2026-11-03T00:00:00.000Z";
+        connection.execute("INSERT INTO operational_journal_state(id,commit_head_seq,operation_identity_cutover_at,updated_at) VALUES (1,3,?1,?1)", [now]).unwrap();
+        connection
+            .execute(
+                "INSERT INTO profiles(id,created_at,updated_at) VALUES ('profile',?1,?1)",
+                [now],
+            )
+            .unwrap();
+        connection.execute("INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES ('library','profile',?1,?1)", [now]).unwrap();
+        connection.execute("INSERT INTO blocks(id,library_id,type,lifecycle,created_at,updated_at) VALUES ('database','library','database','active',?1,?1)", [now]).unwrap();
+        crate::database::create_database_authority_records(
+            &connection,
+            "library",
+            "database",
+            "source",
+            "view",
+            "Work",
+            now,
+        )
+        .unwrap();
+        // Recreate the published predecessor without the work-graph participants.
+        connection.execute_batch("DELETE FROM data_source_page_layout_entries WHERE property_id='blocked_by'; DELETE FROM data_source_relation_properties WHERE property_id='blocked_by'; DELETE FROM data_source_properties WHERE id='blocked_by';").unwrap();
+        with_schema_rebuild_transaction(&mut connection, rewind_current_to_v202).unwrap();
+        validate_schema_identity(&connection, 202).unwrap();
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v202_to_current(transaction, "work-graph.db")
+        })
+        .unwrap();
+        let definition = connection.query_row("SELECT property.name, relation.target_data_source_id, relation.cardinality, layout.visibility FROM data_source_properties property JOIN data_source_relation_properties relation ON relation.data_source_id=property.data_source_id AND relation.property_id=property.id JOIN data_source_page_layout_entries layout ON layout.data_source_id=property.data_source_id AND layout.property_id=property.id WHERE property.id='blocked_by'", [], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?,row.get::<_,String>(2)?,row.get::<_,String>(3)?))).unwrap();
+        assert_eq!(
+            definition,
+            (
+                "Waits for".into(),
+                "source".into(),
+                "many".into(),
+                "hide_when_empty".into()
+            )
+        );
+        assert_eq!(connection.query_row("SELECT count(*) FROM data_source_property_values WHERE property_id='blocked_by'", [], |row| row.get::<_, i64>(0)).unwrap(), 0);
+        validate_schema_identity(&connection, 204).unwrap();
+        assert_eq!(
+            connection
+                .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+                .unwrap(),
+            204
+        );
+        assert_eq!(connection.query_row("SELECT commit_head_seq,replay_floor_seq FROM operational_journal_state WHERE id=1", [], |row| Ok((row.get::<_,i64>(0)?,row.get::<_,i64>(1)?))).unwrap(), (3,4));
+        drop(connection);
+        let connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+        validate_schema_identity(&connection, 204).unwrap();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM data_source_properties WHERE id='blocked_by'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+    }
 }
+
+#[path = "members_migration.rs"]
+mod members_migration;
+
+#[cfg(test)]
+#[path = "team_migration_tests.rs"]
+mod team_migration_tests;
