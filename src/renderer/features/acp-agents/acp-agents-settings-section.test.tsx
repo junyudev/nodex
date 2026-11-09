@@ -1,8 +1,11 @@
+import type { ComponentProps } from "react";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { NodexModalHost } from "@/lib/modal-registry";
 import { renderWithAppMaitai } from "@/test/app-maitai";
+import { settleLazyRender } from "@/test/dom";
+import type AcpAuthTerminal from "./acp-auth-terminal";
 import { createAcpAgentsOwner } from "./acp-agents-owner";
 import { AcpAgentsSettingsSection } from "./acp-agents-settings-section";
 import { acpProviderId } from "./acp-agent-model";
@@ -19,6 +22,16 @@ import {
   readyInspection,
   registryInstance,
 } from "./acp-agents.test-fixtures";
+
+// xterm cannot open without a canvas 2D context, which jsdom lacks; the terminal's own
+// Chromium suite covers it. Here it shows what the account hands it.
+vi.mock("./acp-auth-terminal", () => ({
+  default: ({ output }: ComponentProps<typeof AcpAuthTerminal>) => (
+    <pre role="group" aria-label="Sign-in terminal">
+      {output}
+    </pre>
+  ),
+}));
 
 const press = async (element: HTMLElement) =>
   act(async () => {
@@ -137,21 +150,31 @@ describe("ACP Agents settings", () => {
       { name: "QODER_PERSONAL_ACCESS_TOKEN", value: "pat-123", sensitive: true },
     ]);
 
-    main.runtime.startAuth.mockResolvedValueOnce(
-      ok(
-        authState({
-          phase: "waiting",
-          flowId: "flow",
-          interaction: { type: "terminal", id: "terminal", output: "", outputOffset: 0 },
-        }),
-      ),
-    );
+    const output = "Open https://qoder.test/device and enter ABCD\r\n";
+    const waiting = authState({
+      phase: "waiting",
+      flowId: "flow",
+      interaction: { type: "terminal", id: "terminal", output, outputOffset: output.length },
+    });
+    main.runtime.startAuth.mockResolvedValueOnce(ok(waiting));
+    main.runtime.readAuth.mockResolvedValue(ok(waiting));
     await press(terminal);
     expect(main.runtime.startAuth).toHaveBeenCalledWith({
       instanceId: "qoder-main",
       methodId: "login",
     });
     await view.findByText("Sign in using the terminal below.");
+    await settleLazyRender();
+    expect(view.getByRole("group", { name: "Sign-in terminal" }).textContent).toBe(output);
+
+    // Finishing the sign-in closes the terminal and ends the owner's polling with it.
+    main.runtime.readAuth.mockResolvedValue(ok(authState({ phase: "succeeded" })));
+    await waitFor(() => expect(view.queryByRole("group", { name: "Sign-in terminal" })).toBeNull());
+    const reads = main.runtime.readAuth.mock.calls.length;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    });
+    expect(main.runtime.readAuth).toHaveBeenCalledTimes(reads);
   });
 
   test("only a sign-in started in this window can be cancelled from it", async () => {
@@ -197,6 +220,8 @@ describe("ACP Agents settings", () => {
     main.runtime.readAuth.mockResolvedValue(ok(own));
     await press(await view.findByRole("button", { name: "Open Qoder login" }));
     await view.findByText("Sign in using the terminal below.");
+    await settleLazyRender();
+    expect(view.getByRole("group", { name: "Sign-in terminal" })).toBeTruthy();
     expect(main.runtime.cancelAuth).not.toHaveBeenCalled();
 
     await press(view.getByRole("button", { name: "Cancel" }));
