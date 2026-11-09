@@ -295,6 +295,15 @@ export function describeInboxOutcome(
   if (item.outcome === "kept") {
     return { ...KEPT, label: keptLabel(item.kind), inProgress: false };
   }
+  if (item.proposal?.action.type === "plan" && item.proposal.state === "completed") {
+    return {
+      ...DONE,
+      label: `Planned ${item.proposal.createdPageIds?.length ?? item.proposal.action.steps.length} cards`,
+      canReturn: false,
+      done: null,
+      inProgress: false,
+    };
+  }
   if (item.outcome === "done") {
     return {
       ...DONE,
@@ -405,6 +414,7 @@ export function describeInboxOutcome(
 
 /** A decision this window just made, described before Core's handled message arrives. */
 export type InboxDecision =
+  | { readonly kind: "plan"; readonly count: number }
   | { readonly kind: "keep" }
   | { readonly kind: "done" }
   /** A scheduled task's waiting run, confirmed to run now. */
@@ -422,6 +432,14 @@ export type InboxDecision =
 /** What a message shows in its place in the Inbox between the decision and folding away. */
 export function describeInboxDecision(item: InboxItem, decision: InboxDecision): InboxOutcome {
   switch (decision.kind) {
+    case "plan":
+      return {
+        ...DONE,
+        label: `Planned ${decision.count} cards`,
+        canReturn: false,
+        done: null,
+        inProgress: false,
+      };
     case "keep":
       return { ...KEPT, label: keptLabel(inboxEntryKind(item)), inProgress: false };
     case "done":
@@ -481,6 +499,9 @@ export function describeInboxAction(
   },
 ): InboxActionPresentation {
   switch (action.type) {
+    case "plan":
+      // Confirming creates the cards and starts those that wait for nothing.
+      return { verb: "Start plan", target: `Start ${action.steps.length} cards` };
     case "keep":
       return { verb: "Keep", target: "Keep" };
     case "new_chat":

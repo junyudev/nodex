@@ -374,12 +374,15 @@ impl QueryContext<'_> {
         Ok(rows.items)
     }
     fn append_history(&self, id: &str, rows: &mut QueryRows) -> Result<(), StoreError> {
+        // History names each change's Actor relative to whoever reads it.
+        let reader =
+            crate::infrastructure::actors::requesting_member(self.connection, self.context)?;
         let mut before = None;
         loop {
             let page = history::page_history(
                 self.connection,
                 self.library_id,
-                self.project_id(),
+                Some(&reader),
                 id,
                 before,
                 Some(100),

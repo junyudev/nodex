@@ -705,6 +705,9 @@ pub enum DatabaseRowsTarget {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DatabaseRead {
+    WorkContext {
+        page_id: String,
+    },
     CatalogWindow {
         window: CollectionWindowRequest,
     },
@@ -782,6 +785,19 @@ pub enum DatabaseRead {
         page_ids: Vec<String>,
     },
     RowDetail {
+        page_id: String,
+    },
+    /// Ready Pages, ordered by Page and Project identity; limit 1..100 (default 100).
+    ReadyWork {
+        after_page_id: Option<String>,
+        project_id: Option<String>,
+        limit: Option<u32>,
+    },
+    Blocking {
+        page_id: String,
+        window: CollectionWindowRequest,
+    },
+    Prerequisites {
         page_id: String,
     },
     RelationTargetWindow {
@@ -898,6 +914,9 @@ pub struct DatabasePropertyOption {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DatabaseReadValue {
+    WorkContext {
+        value: PageWorkContext,
+    },
     CatalogWindow {
         databases: CollectionWindow<DatabaseDescriptor>,
     },
@@ -957,6 +976,15 @@ pub enum DatabaseReadValue {
     },
     RowDetail {
         value: Box<DatabaseRowDetail>,
+    },
+    ReadyWork {
+        pages: Vec<ReadyWorkPage>,
+    },
+    Blocking {
+        pages: CollectionWindow<DatabaseWorkPage>,
+    },
+    Prerequisites {
+        value: DatabasePrerequisitesSummary,
     },
     RelationTargetWindow {
         value: DatabaseRelationTargetWindow,
@@ -1217,6 +1245,44 @@ pub struct DatabaseRowDetail {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DatabaseWorkPage {
+    pub page_id: String,
+    pub page_key: Option<String>,
+    pub title: String,
+    pub status: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DatabasePrerequisitesSummary {
+    pub unsatisfied_count: u32,
+    /// First three unsatisfied targets, sorted by Page identity. Unavailable targets
+    /// keep their identity with an empty title, null status and null key.
+    pub blockers: Vec<DatabaseWorkPage>,
+}
+
+/// Bounded work facts carried by every Database row, independently of its selected Properties.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DatabaseWorkSummary {
+    pub unsatisfied_count: u32,
+    pub blockers: Vec<DatabaseWorkPage>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct WorkPrerequisite {
+    pub page_id: String,
+    pub satisfied: bool,
+    pub satisfying_revision: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ReadyWorkPage {
+    pub page_id: String,
+    pub project_id: String,
+    pub prerequisites: Vec<WorkPrerequisite>,
+    pub readiness_epoch: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct DatabaseRowSummary {
     pub page_id: String,
     pub page_key: Option<String>,
@@ -1229,6 +1295,7 @@ pub struct DatabaseRowSummary {
     /// Canonical Property values. Select-like values are stable option IDs.
     pub database_values: BTreeMap<String, Value>,
     pub intrinsic_properties: BTreeMap<String, Value>,
+    pub work: DatabaseWorkSummary,
     pub database_value_revisions: BTreeMap<String, i64>,
     pub metadata_revision: i64,
     pub parent_revision: i64,
@@ -1789,4 +1856,18 @@ mod tests {
             );
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct PageWorkContext {
+    pub page: DatabaseWorkPage,
+    pub project_id: String,
+    pub prerequisites: Vec<PageWorkPrerequisite>,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct PageWorkPrerequisite {
+    pub page: DatabaseWorkPage,
+    pub satisfied: bool,
+    pub satisfying_revision: Option<String>,
+    pub latest_report: Option<crate::workspace::PageWorkReport>,
 }

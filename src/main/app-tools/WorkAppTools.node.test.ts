@@ -1,9 +1,11 @@
+import { startWorkSchema } from "../../shared/nodex-app-tools/work-schema";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { reportWorkSchema } from "../../shared/nodex-app-tools/work-schema";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import type { ProjectWorkspaceApplyInput } from "../core-client/types";
+import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
@@ -38,6 +40,7 @@ it.effect(
       let linked = false;
       const applied: ProjectWorkspaceApplyInput[] = [];
       const execute = yield* makeWithCapture(() => Effect.succeed(authority)).pipe(
+        Effect.provideService(WorkApplication, {} as never),
         Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
         Effect.provideService(CoreModules, {
           workspace: {
@@ -89,3 +92,76 @@ it("uses a strict bounded tool schema without caller-authored identity", () => {
   ])
     assert.isFalse(reportWorkSchema.safeParse({ ...input.arguments, ...patch }).success);
 });
+
+it.effect("start_work admits the caller's stable operation and records a valid Page start", () =>
+  Effect.gen(function* () {
+    const inputs: unknown[] = [];
+    const callers: unknown[] = [];
+    let refusal: string | null = null;
+    const execute = yield* makeWithCapture(() => Effect.succeed(authority)).pipe(
+      Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
+      Effect.provideService(CoreModules, {
+        workspace: { admitToolOperation: createAppToolAdmissionFixture().admitToolOperation },
+      } as never),
+      Effect.provideService(WorkApplication, {
+        // Core attributes the start, and checks Nodex's consent, from the ambient Turn provenance.
+        startWork: (input: unknown) =>
+          Effect.flatMap(CoreApplicationAgent, (caller) => {
+            callers.push(caller);
+            if (refusal)
+              return Effect.fail(
+                coreRuntimeError({
+                  operation: "workspace.apply",
+                  reason: "operation",
+                  retryable: false,
+                  cause: new CoreModuleResponseError({
+                    code: "unauthorized",
+                    message: refusal,
+                    retryable: false,
+                  } as never),
+                }),
+              );
+            inputs.push(input);
+            return Effect.succeed({
+              value: { pageId: "page", sessionId: "session", launchId: "launch" },
+            });
+          }),
+      } as never),
+    );
+    const invocation = {
+      ...input,
+      name: "start_work",
+      arguments: {
+        pageId: "page",
+        agent: { instanceId: "codex", model: "model" },
+        idempotencyKey: "start:page",
+      },
+    };
+    const result = yield* execute(invocation);
+    const replay = yield* execute(invocation);
+    assert.isUndefined(result.isError);
+    assert.deepInclude(result.structuredContent, {
+      recorded: true,
+      pageId: "page",
+      sessionId: "session",
+      launchId: "launch",
+    });
+    assert.deepEqual(inputs[0], inputs[1]);
+    assert.deepEqual(result.structuredContent, replay.structuredContent);
+    assert.isTrue(startWorkSchema.safeParse(invocation.arguments).success);
+    assert.isFalse(startWorkSchema.safeParse({ ...invocation.arguments, again: true }).success);
+    assert.deepInclude(callers[0] as object, { profile_id: "profile" });
+    assert.deepInclude((callers[0] as { authority: object }).authority, {
+      thread_id: "caller",
+      turn_id: "turn",
+    });
+
+    refusal = "Nodex starts only Pages that start on their own";
+    const refused = yield* execute({
+      ...invocation,
+      arguments: { pageId: "asked", idempotencyKey: "start:asked" },
+    });
+    assert.isTrue(refused.isError);
+    assert.include(JSON.stringify(refused.content), refusal);
+  }),
+);

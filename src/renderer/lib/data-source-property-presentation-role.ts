@@ -28,6 +28,7 @@ export const resolveDataSourcePropertyPresentationRole = (input: {
     case "scheduled_end":
       return { kind: "schedule_boundary" };
     case "task_parent":
+    case "blocked_by":
     case null:
       return { kind: "typed", valueType: input.valueType };
   }

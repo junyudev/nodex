@@ -79,6 +79,7 @@ const interpreter = (options: { hostId?: string; afterRead?: () => void } = {}) 
       Effect.provideService(CodexGateway, {} as never),
       Effect.provideService(CodexNativeThreadLookup, {} as never),
       Effect.provideService(TemporaryAssets, {} as never),
+      Effect.provideService(WorkApplication, {} as never),
     )
     .pipe(
       Effect.provideService(CodexTurnPresentation, {} as never),

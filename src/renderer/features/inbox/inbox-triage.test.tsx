@@ -843,6 +843,55 @@ describe("The message menu", () => {
   });
 });
 
+describe("A plan", () => {
+  const plan = proposal({
+    action: {
+      type: "plan",
+      summary: "Build the settings export in three steps.",
+      steps: [
+        {
+          key: "api",
+          projectId: "project:nodex",
+          title: "Export API",
+          body: "Add the export endpoint.",
+          agent: null,
+          blockedBy: [],
+        },
+        {
+          key: "ui",
+          projectId: "project:site",
+          title: "Export button",
+          body: "Add the button.",
+          agent: null,
+          blockedBy: ["api"],
+        },
+        {
+          key: "docs",
+          projectId: "project:site",
+          title: "Document export",
+          body: "Write the docs.",
+          agent: null,
+          blockedBy: ["api", "ui"],
+        },
+      ],
+    },
+    summary: "Build the settings export in three steps.",
+  });
+
+  test("lists the cards it would create, where they land and what they wait for", async () => {
+    const commands = renderTriage({ item: item({ proposal: plan }) });
+    const steps = screen.getByTestId("inbox-plan-steps");
+    expect(within(steps).getAllByRole("listitem")).toHaveLength(3);
+    expect(within(steps).getByText("Export button")).toBeTruthy();
+    expect(within(steps).getByText("after 1")).toBeTruthy();
+    expect(within(steps).getByText("after 1, 2")).toBeTruthy();
+    expect(within(steps).getAllByText("Site")).toHaveLength(2);
+    expect(lastButtonName()).toBe("Start 3 cards");
+    await click("Start 3 cards");
+    await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(plan));
+  });
+});
+
     const onReply = vi.fn();
     renderTriage({
       }),

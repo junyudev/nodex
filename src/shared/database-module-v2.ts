@@ -1,4 +1,10 @@
 import type {
+  BlockingWindow,
+  PrerequisitesSummary,
+  ReadyWorkPage,
+  WorkSummary,
+} from "./work-graph";
+import type {
   DatabaseId,
   DatabaseViewId,
   DataSourceId,
@@ -207,6 +213,8 @@ export interface DataSourcePageRowV2 {
   };
   readonly effectiveGroupKey: string | null;
   readonly effectiveSubgroupKey: string | null;
+  /** Bounded work facts, independent of the View's selected Properties. */
+  readonly work: WorkSummary;
   /** Exact-head Page body projection supplied by native Database authority. */
   readonly bodyMarkdown?: string;
   /** Exact-head intrinsic values requested by complete Page projections. */
@@ -304,6 +312,22 @@ export interface DatabasePageLayoutV2 {
 }
 
 export type DatabaseReadV2 = (
+  | {
+      readonly target: { readonly kind: "library" };
+      readonly mode: "ready_work";
+      readonly afterPageId?: string;
+      readonly projectId?: string;
+      readonly limit?: number;
+    }
+  | {
+      readonly target: { readonly kind: "page"; readonly pageId: string };
+      readonly mode: "prerequisites";
+    }
+  | {
+      readonly target: { readonly kind: "page"; readonly pageId: string };
+      readonly mode: "blocking";
+      readonly window?: { readonly after?: string | null; readonly first?: number };
+    }
   | {
       readonly target: { readonly kind: "project_default" };
       readonly mode: "database";
@@ -405,6 +429,9 @@ export type DatabaseReadV2 = (
 };
 
 export type DatabaseReadValueV2 =
+  | { readonly kind: "ready_work"; readonly value: readonly ReadyWorkPage[] }
+  | { readonly kind: "prerequisites"; readonly value: PrerequisitesSummary }
+  | { readonly kind: "blocking"; readonly value: BlockingWindow }
   | {
       readonly kind: "catalog_window";
       readonly value: DatabaseCatalogWindowV2;

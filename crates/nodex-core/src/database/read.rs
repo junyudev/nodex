@@ -413,6 +413,9 @@ pub(crate) fn read_at_commit_head(
         .flatten();
     let store_epoch = crate::document::read_store_epoch(connection)?;
     let mut value = match request {
+        DatabaseRead::WorkContext { page_id } => DatabaseReadValue::WorkContext {
+            value: super::work_graph::work_context(connection, library_id, &page_id)?,
+        },
         DatabaseRead::CatalogWindow { window } => DatabaseReadValue::CatalogWindow {
             databases: catalog_window(
                 connection,
@@ -889,6 +892,31 @@ pub(crate) fn read_at_commit_head(
                 )?,
             }
         }
+        DatabaseRead::ReadyWork {
+            project_id,
+            limit,
+            after_page_id,
+        } => DatabaseReadValue::ReadyWork {
+            pages: super::work_graph::ready_work(
+                connection,
+                library_id,
+                project_id.as_deref(),
+                limit,
+                after_page_id.as_deref(),
+            )?,
+        },
+        DatabaseRead::Blocking { page_id, window } => DatabaseReadValue::Blocking {
+            pages: super::work_graph::blocking(
+                connection,
+                library_id,
+                &page_id,
+                commit_head,
+                &window,
+            )?,
+        },
+        DatabaseRead::Prerequisites { page_id } => DatabaseReadValue::Prerequisites {
+            value: super::work_graph::prerequisites(connection, library_id, &page_id)?,
+        },
         DatabaseRead::RelationTargetWindow { address, window } => {
             let _database_id =
                 database_for_source(connection, library_id, &address.data_source_id)?;
@@ -1099,7 +1127,7 @@ fn hydrate_relation_previews(
                 })
                 .collect::<Vec<_>>();
             if selected.iter().all(std::collections::BTreeSet::is_empty) {
-                return Ok(());
+                return super::work_graph::hydrate_summaries(connection, &mut value.rows.items);
             }
             super::relation_projection::hydrate_row_previews(
                 connection,

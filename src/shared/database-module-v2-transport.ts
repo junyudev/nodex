@@ -1,3 +1,9 @@
+import {
+  parseBlockingWindow,
+  parsePrerequisitesSummary,
+  parseReadyWorkPages,
+  parseWorkSummary,
+} from "./work-graph";
 import { WORKFLOW_STATUS_ORDER } from "./workflow-status";
 import { stableStringifyBlockPropertyJson } from "./block-property-mutations";
 import {
@@ -1744,6 +1750,48 @@ const parseDatabaseReadV2 = (value: unknown): DatabaseReadV2 => {
       : readRevision(read.minimumCommitSeq, "databaseModuleReadV2.read.minimumCommitSeq");
   const readBarrier = minimumCommitSeq === undefined ? {} : { minimumCommitSeq };
 
+  if (target.kind === "library" && mode === "ready_work") {
+    assertExactKeys(target, "ReadyWork target", ["kind"]);
+    assertExactKeys(
+      read,
+      "ReadyWork",
+      ["target", "mode"],
+      ["projectId", "limit", "minimumCommitSeq", "afterPageId"],
+    );
+    const limit =
+      read.limit === undefined ? undefined : readRevision(read.limit, "ReadyWork limit");
+    if (limit !== undefined && (limit < 1 || limit > 100))
+      throw new TypeError("ReadyWork limit must be between 1 and 100");
+    const projectId = readOptionalString(read.projectId, "ReadyWork projectId");
+    const afterPageId = readOptionalString(read.afterPageId, "ReadyWork afterPageId");
+    return {
+      target: { kind: "library" },
+      mode,
+      ...(projectId === undefined ? {} : { projectId }),
+      ...(afterPageId === undefined ? {} : { afterPageId }),
+      ...(limit === undefined ? {} : { limit }),
+      ...readBarrier,
+    };
+  }
+  if (target.kind === "page" && (mode === "blocking" || mode === "prerequisites")) {
+    assertExactKeys(target, "Work Page target", ["kind", "pageId"]);
+    assertExactKeys(
+      read,
+      "Work Page read",
+      ["target", "mode"],
+      mode === "blocking" ? ["window", "minimumCommitSeq"] : ["minimumCommitSeq"],
+    );
+    const pageId = readString(target.pageId, "Work Page pageId");
+    return mode === "blocking"
+      ? {
+          target: { kind: "page", pageId },
+          mode,
+          window: parseReadWindow(read.window, "Blocking"),
+          ...readBarrier,
+        }
+      : { target: { kind: "page", pageId }, mode, ...readBarrier };
+  }
+
   if (target.kind === "project_default") {
     assertExactKeys(target, "databaseModuleReadV2.read.target", ["kind"]);
     if (mode === "database") {
@@ -2459,6 +2507,7 @@ const parsePageRow = (value: unknown, label: string): DataSourcePageRowV2 => {
       "effectiveGroupKey",
       "effectiveSubgroupKey",
       "taskParent",
+      "work",
     ],
     ["bodyMarkdown", "intrinsicProperties"],
   );
@@ -2527,6 +2576,7 @@ const parsePageRow = (value: unknown, label: string): DataSourcePageRowV2 => {
     ...(bodyMarkdown === undefined ? {} : { bodyMarkdown }),
     ...(intrinsicProperties === undefined ? {} : { intrinsicProperties }),
     taskParent,
+    work: parseWorkSummary(row.work),
     position,
     effectiveGroupKey:
       row.effectiveGroupKey === null
@@ -2592,6 +2642,12 @@ const parseDataSourceQueryResult = (value: unknown, label: string): DataSourceQu
 const parseReadValue = (value: unknown): DatabaseReadValueV2 => {
   const result = readRecord(value, "databaseModuleReadV2.value");
   assertExactKeys(result, "databaseModuleReadV2.value", ["kind", "value"]);
+  if (result.kind === "ready_work")
+    return { kind: result.kind, value: parseReadyWorkPages(result.value) };
+  if (result.kind === "prerequisites")
+    return { kind: result.kind, value: parsePrerequisitesSummary(result.value) };
+  if (result.kind === "blocking")
+    return { kind: result.kind, value: parseBlockingWindow(result.value) };
   if (result.kind === "catalog_window") {
     const window = readRecord(result.value, "databaseModuleReadV2.value.value");
     assertExactKeys(window, "databaseModuleReadV2.value.value", [

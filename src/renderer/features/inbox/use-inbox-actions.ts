@@ -179,6 +179,8 @@ export function useInboxActions(
     chat: InboxChat | null,
   ): InboxDecision => {
     switch (action.type) {
+      case "plan":
+        return { kind: "plan", count: action.steps.length };
       case "keep":
         return { kind: "keep" };
       case "move_to_project":

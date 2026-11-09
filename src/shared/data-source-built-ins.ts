@@ -14,6 +14,7 @@ export const BUILT_IN_DATA_SOURCE_PROPERTY_DEFINITIONS = {
   scheduled_end: { valueType: "datetime" },
   assignee: { valueType: "text" },
   task_parent: { valueType: "relation" },
+  blocked_by: { valueType: "relation" },
 } as const satisfies Readonly<
   Record<BuiltInDataSourcePropertyId, { readonly valueType: DatabasePropertyValueType }>
 >;

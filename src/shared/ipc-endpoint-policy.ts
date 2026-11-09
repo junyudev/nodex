@@ -450,6 +450,7 @@ type CoreLocalCommitCommandEndpointPolicy =
   | "inbox:edit"
   | "inbox:confirm"
   | "inbox:dispatch"
+  | "work:start"
   | "inbox:keep"
   | "inbox:delete"
   | "inbox:set-state"

@@ -11,10 +11,11 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 pub(crate) const PRIORITY_PROPERTY_ID: &str = "priority";
 pub(crate) const STATUS_PROPERTY_ID: &str = "status";
-pub(crate) const TASK_PARENT_PROPERTY_ID: &str = "task_parent";
-pub(crate) const IN_PROGRESS_STATUS_OPTION_ID: &str = "doing";
 pub(crate) const COMPLETED_STATUS_OPTION_ID: &str = "done";
-const BUILT_IN_PROPERTY_IDS: [&str; 9] = [
+// Reserved but removable, like Priority: absence means no prerequisites. Empty values
+// use the generic Relation convention (no header, revision zero), not Parent's roots.
+pub(crate) const BLOCKED_BY_PROPERTY_ID: &str = "blocked_by";
+pub(crate) const TASK_PARENT_PROPERTY_ID: &str = "task_parent";
     STATUS_PROPERTY_ID,
     PRIORITY_PROPERTY_ID,
     "estimate",
@@ -24,6 +25,7 @@ const BUILT_IN_PROPERTY_IDS: [&str; 9] = [
     "scheduled_end",
     "assignee",
     TASK_PARENT_PROPERTY_ID,
+    BLOCKED_BY_PROPERTY_ID,
 ];
 const STATUS_OPTION_IDS: [&str; 5] = ["triage", "plan", "doing", "review", "done"];
 const ESTIMATE_OPTION_IDS: [&str; 5] = ["xs", "s", "m", "l", "xl"];
@@ -85,8 +87,12 @@ pub(crate) fn is_custom_option_id(value: &str) -> bool {
     is_compact_scoped_id(value, "o_")
 }
 
+pub(crate) fn is_built_in_property_id(value: &str) -> bool {
+    BUILT_IN_PROPERTY_IDS.contains(&value)
+}
+
 pub(crate) fn is_canonical_property_id(value: &str) -> bool {
-    BUILT_IN_PROPERTY_IDS.contains(&value) || is_custom_property_id(value)
+    is_built_in_property_id(value) || is_custom_property_id(value)
 }
 
 pub(crate) fn is_canonical_option_id(property_id: &str, option_id: &str) -> bool {
@@ -131,6 +137,13 @@ pub(crate) fn schema_matches_canonical_property(
             DatabasePropertySchema::Relation {
                 target_data_source_id,
                 cardinality: DatabaseRelationCardinality::One,
+            } if target_data_source_id == data_source_id
+        ),
+        BLOCKED_BY_PROPERTY_ID => matches!(
+            schema,
+            DatabasePropertySchema::Relation {
+                target_data_source_id,
+                cardinality: DatabaseRelationCardinality::Many,
             } if target_data_source_id == data_source_id
         ),
         _ => is_custom_property_id(property_id),

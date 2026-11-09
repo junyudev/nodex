@@ -1,3 +1,4 @@
+import { projectCoreWorkSummary } from "./work-graph";
 import type { components } from "@nodex/core-protocol";
 import type { DataSourcePageRowV2, DataSourcePropertyRecordV2 } from "./database-module-v2";
 import type { DataSourceId } from "./database-identities";
@@ -22,6 +23,7 @@ export const projectCoreDatabaseQueryRow = (
     input.properties.map((property) => [property.propertyId, property] as const),
   );
   return {
+    work: projectCoreWorkSummary(row.work),
     pageKey: row.page_key ?? null,
     page: {
       pageId: row.page_id,

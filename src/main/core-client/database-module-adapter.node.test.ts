@@ -1324,3 +1324,115 @@ describe("Core Database Module Adapter", () => {
     expect(result && "projectId" in result).toBe(false);
   });
 });
+
+test("reads work graph windows and readiness through the typed Database adapter", async () => {
+  const client = new FakeCoreClient();
+  const adapter = createCoreLibraryDatabaseModuleAdapter({
+    client,
+    libraryId: identity.libraryId,
+    storeEpoch: identity.storeEpoch,
+  });
+  client.enqueueDatabaseRead({
+    contract_version: 30,
+    store_epoch: identity.storeEpoch,
+    commit_head: 22,
+    value: {
+      kind: "blocking",
+      pages: {
+        items: [
+          { page_id: "page:dependent", page_key: "NODEX-12", title: "Dependent", status: "plan" },
+        ],
+        next_cursor: null,
+        authority: { projection_revision: 22 },
+      },
+    },
+  });
+  await expect(
+    adapter.read({
+      read: {
+        target: { kind: "page", pageId: "page:prerequisite" },
+        mode: "blocking",
+        window: { first: 1 },
+      },
+    }),
+  ).resolves.toMatchObject({
+    ok: true,
+    value: {
+      value: {
+        kind: "blocking",
+        value: {
+          pages: [
+            { pageId: "page:dependent", pageKey: "NODEX-12", title: "Dependent", status: "plan" },
+          ],
+          nextCursor: null,
+          projectionRevision: 22,
+        },
+      },
+    },
+  });
+  expect(client.databaseReads[0]).toEqual({
+    kind: "blocking",
+    page_id: "page:prerequisite",
+    window: { first: 1, after: null },
+  });
+  client.enqueueDatabaseRead({
+    contract_version: 30,
+    store_epoch: identity.storeEpoch,
+    commit_head: 23,
+    value: {
+      kind: "ready_work",
+      pages: [
+        {
+          page_id: "page:dependent",
+          project_id: "project:work",
+          },
+          prerequisites: [
+            {
+              page_id: "page:prerequisite",
+              satisfied: true,
+              satisfying_revision: "status:membership:2",
+            },
+          ],
+          readiness_epoch: "page:dependent:epoch",
+        },
+      ],
+    },
+  });
+  await expect(
+    adapter.read({
+      read: {
+        target: { kind: "library" },
+        mode: "ready_work",
+        projectId: "project:work",
+        afterPageId: "page:first",
+        limit: 10,
+      },
+    }),
+  ).resolves.toMatchObject({
+    ok: true,
+    value: {
+      value: {
+        kind: "ready_work",
+        value: [
+          {
+            pageId: "page:dependent",
+            projectId: "project:work",
+            prerequisites: [
+              {
+                pageId: "page:prerequisite",
+                satisfied: true,
+                satisfyingRevision: "status:membership:2",
+              },
+            ],
+          },
+        ],
+      },
+    },
+  });
+  expect(client.databaseReads[1]).toEqual({
+    kind: "ready_work",
+    project_id: "project:work",
+    after_page_id: "page:first",
+    limit: 10,
+  });
+});

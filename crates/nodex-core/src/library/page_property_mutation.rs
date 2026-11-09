@@ -550,6 +550,8 @@ fn resolve_intrinsic(
         }
         None => (0, Value::Null),
     };
+            .map_err(|error| property_value_invalid(&path, &error.message))?;
+    }
     if current_revision != *expected_revision {
         return Err(rejected(
             LibraryBlockPropertyMutationErrorCode::PropertyConflict,
@@ -885,6 +887,36 @@ fn validate_intrinsic_value(
         path,
         &format!("Intrinsic Property {path} is invalid"),
     ))
+}
+
+/// Verified Agent identity cannot create a new automatic-launch grant, including
+/// when execution configuration is copied onto a different Page.
+    context: &BoundModuleContext,
+    current_value: &Value,
+    value: &Value,
+) -> Result<(), StoreError> {
+    {
+        return Ok(());
+    }
+    Err(StoreError::new(
+        StoreErrorCode::InvalidInput,
+        false,
+    ))
+}
+
+    let valid = |value: &str, bound: usize| {
+        !value.is_empty()
+            && value.len() <= bound
+            && value == value.trim()
+            && !value.chars().any(char::is_control)
+    };
+    {
+        return Err(StoreError::new(
+            StoreErrorCode::InvalidInput,
+            false,
+        ));
+    }
+    Ok(work)
 }
 
 fn valid_branch_name(value: &str) -> bool {
@@ -1638,4 +1670,15 @@ fn sqlite_now(connection: &Connection) -> Result<String, StoreError> {
 
 fn internal(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::Internal, message, false)
+}
+
+/// Initialize execution on a freshly created plan Page, under the enclosing Workspace scope.
+pub(crate) fn initialize_agent_work(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    page_id: &str,
+    selection: &nodex_core_contracts::library::AgentWorkSelection,
+    now: &str,
+) -> Result<(), StoreError> {
+    refresh_page_intrinsic_projection(connection, page_id, now)
 }

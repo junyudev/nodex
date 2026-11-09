@@ -53,6 +53,12 @@ pub enum ProjectWorkspaceTaskPlacementScope {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceRead {
+    PageWorkLaunch {
+        launch_id: String,
+    },
+    PageWorkOutbox {
+        limit: u32,
+    },
     ReadCoordinator,
     ReadManagedSession {
         session_id: String,
@@ -299,6 +305,12 @@ pub enum ProjectWorkspaceRead {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceReadValue {
+    PageWorkLaunch {
+        launch: Option<PageWorkLaunch>,
+    },
+    PageWorkOutbox {
+        launches: Vec<PageWorkLaunch>,
+    },
     ReadCoordinator {
         session_id: Option<String>,
     },
@@ -1701,6 +1713,22 @@ pub struct ProjectWorkspaceCreatedPage {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceIntent {
+    /// Host renders and freezes the brief. Automatic admission also fences the current ready epoch.
+    StartPageWork {
+        page_id: String,
+        selection: Option<crate::library::AgentWorkSelection>,
+        session_id: String,
+        launch_id: String,
+        message_id: String,
+        brief: String,
+        again: bool,
+        expected_readiness_epoch: Option<String>,
+    },
+    SettlePageWorkLaunch {
+        launch_id: String,
+        accepted_at: Option<String>,
+        rejection: Option<String>,
+    },
     BindCoordinator {
         session_id: String,
     },
@@ -2374,6 +2402,8 @@ pub struct ProjectWorkspaceCodexThreadObservation {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceCommitValue {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inbox_created_page_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_page: Option<ProjectWorkspaceCreatedPage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2607,4 +2637,19 @@ mod tests {
 pub struct ThreadUnreadEntry {
     pub execution_host_key: String,
     pub thread_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct PageWorkLaunch {
+    pub launch_id: String,
+    pub page_id: String,
+    pub project_id: String,
+    pub session_id: String,
+    pub message_id: String,
+    pub selection: crate::library::AgentWorkSelection,
+    pub brief: String,
+    pub again: bool,
+    pub created_at: String,
+    pub accepted_at: Option<String>,
+    pub rejection: Option<String>,
 }

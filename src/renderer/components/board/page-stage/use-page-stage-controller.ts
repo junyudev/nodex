@@ -30,6 +30,7 @@ interface UsePageStageControllerResult {
   page: PageStageCorePage | null;
   contentRoutingContext: ContentRoutingContext;
   propertyControls: PageStagePropertyControls;
+  savePage: (updates: Partial<PageInput>) => void;
   title: string;
   saving: boolean;
   limitMainContentWidth: boolean;
@@ -365,6 +366,8 @@ export function usePageStageController(
     page,
     contentRoutingContext,
     propertyControls,
+    /** Saves Page metadata outside Source Properties, such as its Agent work. */
+    savePage: saveProperty,
     title,
     saving,
     limitMainContentWidth,

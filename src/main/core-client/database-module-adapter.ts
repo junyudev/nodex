@@ -1,3 +1,4 @@
+import { projectCorePrerequisites, projectCoreWorkPage } from "../../shared/work-graph";
 import type {
   DatabaseApplyOperationV2,
   DatabaseApplyResultV2,
@@ -121,6 +122,17 @@ const toCoreRead = (read: DatabaseReadV2): DatabaseRead => {
         kind: "data_source",
         data_source_id: read.target.dataSourceId,
       };
+    case "ready_work":
+      return {
+        kind: "ready_work",
+        project_id: read.projectId ?? null,
+        limit: read.limit ?? null,
+        after_page_id: read.afterPageId ?? null,
+      };
+    case "blocking":
+      return { kind: "blocking", page_id: read.target.pageId, window: coreWindow(read.window) };
+    case "prerequisites":
+      return { kind: "prerequisites", page_id: read.target.pageId };
     case "page_layout":
       return {
         kind: "page_layout",
@@ -1346,6 +1358,31 @@ const hydrateCoreReadValue = async (
       },
     };
   }
+  if (value.kind === "ready_work")
+    return {
+      kind: value.kind,
+      value: value.pages.map((page) => ({
+        pageId: page.page_id,
+        projectId: page.project_id,
+        readinessEpoch: page.readiness_epoch,
+        prerequisites: page.prerequisites.map((prerequisite) => ({
+          pageId: prerequisite.page_id,
+          satisfied: prerequisite.satisfied,
+          satisfyingRevision: prerequisite.satisfying_revision ?? null,
+        })),
+      })),
+    };
+  if (value.kind === "prerequisites")
+    return { kind: value.kind, value: projectCorePrerequisites(value.value) };
+  if (value.kind === "blocking")
+    return {
+      kind: value.kind,
+      value: {
+        pages: value.pages.items.map(projectCoreWorkPage),
+        nextCursor: value.pages.next_cursor ?? null,
+        projectionRevision: value.pages.authority.projection_revision,
+      },
+    };
   if (value.kind === "relation_target_window") {
     return {
       kind: value.kind,

@@ -238,10 +238,26 @@ fn serializer_upgrade_rebuilds_exact_text_without_content_or_identity_changes() 
     )
     .unwrap()
     .1;
-    let prepared = prepare_profile_store(&mut connection, home.path()).unwrap();
-    assert_eq!(prepared.migrated_from_version, Some(199));
-    assert_eq!(prepared.schema_version, CURRENT_STORE_REVISION);
+    // The serializer's preservation contract is checked at its own migration boundary;
+    // later steps may backfill workflow schema or retire rebuildable delivery evidence.
+    with_schema_rebuild_transaction(&mut connection, |c| {
+        migrate_v199_to_v200(
+            c,
+            &MigrationContext {
+                source_revision: 199,
+                target_revision: 200,
+                backup_name: "serializer-fixture.db".into(),
+                source_schema_fingerprint: published_format(199)?.schema_fingerprint,
+                target_schema_fingerprint: published_format(200)?.schema_fingerprint,
+                completed_at_unix_ms: 1,
+            },
+        )
+    })
+    .unwrap();
     assert_eq!(unaffected(&connection), before);
+    let prepared = prepare_profile_store(&mut connection, home.path()).unwrap();
+    assert_eq!(prepared.migrated_from_version, Some(200));
+    assert_eq!(prepared.schema_version, CURRENT_STORE_REVISION);
     assert_eq!(rows(&connection, fields), materializations);
     assert_eq!(
         rows(
@@ -345,6 +361,7 @@ fn serializer_upgrade_rebuilds_exact_text_without_content_or_identity_changes() 
         &connection,
         "SELECT * FROM document_materializations ORDER BY document_id",
     );
+    let after_upgrades = unaffected(&connection);
     drop(connection);
     let mut connection = open_writer(&home.path().join("nodex.db")).unwrap();
     assert_eq!(
@@ -360,7 +377,7 @@ fn serializer_upgrade_rebuilds_exact_text_without_content_or_identity_changes() 
         ),
         all_current
     );
-    assert_eq!(unaffected(&connection), before);
+    assert_eq!(unaffected(&connection), after_upgrades);
     assert_eq!(
         fs::read_dir(home.path().join("backups")).unwrap().count(),
         backups

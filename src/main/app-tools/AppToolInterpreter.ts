@@ -98,6 +98,7 @@ export const make = Effect.gen(function* () {
       input.name !== "send_to_inbox" &&
       input.name !== "report_work" &&
       input.name !== "inbox_suggest" &&
+      input.name !== "start_work" &&
       input.name !== "fork_session" &&
       input.name !== "merge_session_back" &&
       input.name !== "handoff_session" &&
@@ -129,6 +130,7 @@ export const make = Effect.gen(function* () {
     if (input.name === "handoff_session") return yield* sessionHandoffTools(input);
     if (input.name === "get_handoff_status") return yield* handoffStatusTools(input);
       return yield* coordinatorTools(input);
+    if (input.name === "report_work" || input.name === "start_work") return yield* workTools(input);
     if (input.name === "send_to_inbox") return yield* inboxTools(input);
     if (
       input.name === "create_session" ||

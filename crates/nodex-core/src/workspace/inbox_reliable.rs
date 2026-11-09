@@ -250,6 +250,15 @@ pub(in crate::workspace) fn apply_reliable(
                     }
                     require_basis(connection, &proposal.page_ids, &basis)?;
                     if confirmed_by == InboxConfirmedBy::Nodex {
+                        if matches!(
+                            proposal.action,
+                            ProjectWorkspaceInboxDispatchAction::Plan { .. }
+                        ) || matches!(
+                            action,
+                            Some(ProjectWorkspaceInboxDispatchAction::Plan { .. })
+                        ) {
+                            return Err(invalid("Only the user may confirm a plan"));
+                        }
                         require_host(context)?;
                         require_automatic_confirmation(
                             connection,
@@ -626,6 +635,24 @@ fn decide(
     require_live_entries(connection, library_id, pages)?;
     let inbox_scope = require_one_scope(connection, pages)?;
     let action = normalize_action(connection, library_id, inbox_scope.as_deref(), action)?;
+    if let ProjectWorkspaceInboxDispatchAction::Plan { summary, steps } = &action {
+        if context.agent_attribution.is_some() {
+            return Err(invalid("Only the user may confirm a plan"));
+        }
+        return super::plan::confirm(
+            connection,
+            library_id,
+            context,
+            scope,
+            operation_id,
+            proposal_id,
+            pages,
+            summary,
+            steps,
+            selection,
+            now,
+        );
+    }
     let statuses = ImpliedStatuses::read(connection, pages)?;
     if let Some(selection) = selection
         && (selection.model_selection.instance_id.trim().is_empty()
@@ -638,11 +665,41 @@ fn decide(
     {
         return Err(invalid("A new chat requires its resolved Agent selection"));
     }
+    let relocation_project = match &action {
+        ProjectWorkspaceInboxDispatchAction::MoveToProject { project_id } => {
+            Some(project_id.clone())
+        }
+        ProjectWorkspaceInboxDispatchAction::NewChat { project_id, .. } => project_id.clone(),
+        ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, .. } => {
+            super::super::session_mutation::require_session(connection, library_id, session_id)?
+                .project_id
+        }
+        _ => None,
+    };
+    let only_library_inbox = matches!(
+        action,
+        ProjectWorkspaceInboxDispatchAction::SendToChat { .. }
+    );
+    let library_home = if only_library_inbox {
+        read_registry(connection, library_id)?.map(|home| home.data_source_id)
+    } else {
+        None
+    };
     let mut tokens = Vec::new();
-    if let ProjectWorkspaceInboxDispatchAction::MoveToProject { project_id } = &action {
-        let home = project_home(connection, library_id, project_id)?
+    if let Some(project_id) = relocation_project {
+        let home = project_home(connection, library_id, &project_id)?
             .ok_or_else(|| not_found("The Project has no active Database"))?;
         for (position, page_id) in pages.iter().enumerate() {
+            let current_source = connection.query_row(
+                "SELECT data_source_id FROM data_source_page_memberships WHERE page_block_id=?1 AND removed_at IS NULL",
+                [page_id], |row| row.get::<_, String>(0),
+            ).optional()?;
+            if current_source.as_deref() == Some(home.data_source_id.as_str()) {
+                continue;
+            }
+            if only_library_inbox && (library_home.is_none() || current_source != library_home) {
+                continue;
+            }
             let move_id = format!("{operation_id}:inbox-move:{position}");
             let outcome = crate::library::move_inbox_page_in_scope(
                 connection,
@@ -662,7 +719,10 @@ fn decide(
                 assets_root,
                 Some(scope),
             )?;
-            if let Some(token) = outcome
+            if matches!(
+                action,
+                ProjectWorkspaceInboxDispatchAction::MoveToProject { .. }
+            ) && let Some(token) = outcome
                 .committed
                 .value
                 .block_transfer
@@ -979,7 +1039,7 @@ pub(in crate::workspace) fn stop_suggestion(
 }
 
 /// A new request replaces prior work, while each member keeps its last visible advice.
-fn supersede_requests(
+pub(super) fn supersede_requests(
     connection: &Connection,
     pages: &[String],
     now: &str,
@@ -1132,6 +1192,14 @@ fn settle_request(
     }
     let inbox_scope = require_one_scope(connection, &pages)?;
     for suggestion in suggestions {
+        if suggestion.explicit_request
+            && matches!(
+                suggestion.action,
+                ProjectWorkspaceInboxDispatchAction::Plan { .. }
+            )
+        {
+            return Err(invalid("A plan always requires user confirmation"));
+        }
         let action = normalize_action(
             connection,
             library_id,

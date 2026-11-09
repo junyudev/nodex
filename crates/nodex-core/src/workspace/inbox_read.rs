@@ -860,6 +860,20 @@ fn read_proposal(
             nodex_core_contracts::inbox::InboxQuestionResponse,
         >(connection, proposal_id, "question_response_json")?
         .is_some(),
+        created_page_ids: if matches!(&action, ProjectWorkspaceInboxDispatchAction::Plan { .. }) {
+            connection
+                .query_row(
+                    "SELECT page_ids_json FROM inbox_plan_results WHERE proposal_id=?1",
+                    [proposal_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .map(|json| serde_json::from_str(&json).map_err(|_| corrupt("Invalid plan result")))
+                .transpose()?
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        },
         failure_kind: connection
             .query_row(
                 "SELECT failure_kind FROM inbox_proposals WHERE proposal_id=?1",

@@ -41,6 +41,14 @@ correctable mistake does not fail the request.
 
 Nodex knows what it already dispatched, so a message that clearly continues ongoing work goes to
 
+Work handed to a Project chat is that Project's card. Confirming a new chat moves
+the message Page into the Project's primary Database in the same decision; sending
+a Page still in the Library Inbox Database to an existing Project chat does the
+same. It receives the Project's Page key, appears on its Board and follows the
+handling's Status while keeping Owner, Assignee, Workspace and thread follows.
+Plan steps are created in their chosen Projects' Databases. Projectless chats keep
+their Pages in the Library Inbox Database. The original entry keeps its intake
+
 Nodex marks each new-chat or send-to-chat suggestion that answers a request the person themselves
 clearly made. For those, its prompt is only a short routing note: the chat receives the person's
 own words unchanged. A routing note has at most thirty words and no additions; Nodex corrects
@@ -109,7 +117,18 @@ When one message asks for several distinct pieces of work that must happen in or
 different Projects, Nodex may propose a plan instead of one chat. Its strip lists each step: the
 Project, title, Agent and what it waits for. Confirming the plan creates each step as a Page in its
 
+A plan has 2–8 steps with unique local keys. Every prerequisite names another step and the
+complete graph must be acyclic. A Project Inbox plans only in its own Project; the Library
+Inbox may plan across eligible Projects, including prerequisites across Projects. Each step
+has a title of at most 120 characters and a Nodex Markdown body of at most 4,000 characters.
+Its Agent is an offered choice or the Inbox chat default frozen when the person confirms.
+
+Ready steps start through the Host scheduler after this transaction commits.
+
 ## Application tools
 
 - `report_work { pageId?, outcome, summary }`: any chat linked to a Page reports its work on it.
   `pageId` may be omitted when the chat is linked to exactly one Page.
+- `start_work { pageId, agent? }`: any Agent starts a Page's work in a new managed chat. Nodex
+  Page, whose Turn already asks the person. Its starts read as Nodex on behalf of the consenting
+  person, and another Agent's as that Agent on behalf of the person it works for.

@@ -206,6 +206,50 @@ fn automatic_inbox_confirmation_enforces_source_intent_basis_and_action_in_the_t
                 entry(m, "page:request").proposal.unwrap().confirmed_by,
                 Some(InboxConfirmedBy::Nodex)
             );
+            // Another Member reads whose request it was, not their own.
+            let owner = local_member(&w);
+            let name: String = w
+                .kernel
+                .writer()
+                .call(move |c| {
+                    c.execute("UPDATE libraries SET space_kind='team' WHERE id='library-1'",[])?;
+                    c.execute("INSERT INTO members(id,library_id,display_name,lifecycle,role) VALUES('bob','library-1','Bob','active','member')",[])?;
+                    c.execute("INSERT INTO member_devices(id,library_id,member_id,label,credential_hash,created_at,last_seen) VALUES('bob','library-1','bob','Device','bob',unixepoch(),unixepoch())",[])?;
+                    c.execute("INSERT INTO member_sessions(id,device_id,token_hash,created_at,expires_at) VALUES('bob','bob','bob',unixepoch(),unixepoch()+3600)",[])?;
+                    Ok(c.query_row("SELECT display_name FROM members WHERE id=?1",[&owner],|r|r.get(0))?)
+                })
+                .unwrap();
+            let bob = BoundModuleContext {
+                adapter: AdapterKind::RemoteMember,
+                principal: Some(nodex_core_contracts::RemotePrincipal {
+                    space_id: "library-1".into(),
+                    member_id: "bob".into(),
+                    device_id: "bob".into(),
+                    session_id: "bob".into(),
+                    role: nodex_core_contracts::library::MemberRole::Member,
+                }),
+                ..host()
+            };
+            let ProjectWorkspaceReadValue::ActivityWindow { rows } = m
+                .read(
+                    &bob,
+                    nodex_core_contracts::ModuleReadRequest {
+                        contract_version: nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        read: ProjectWorkspaceRead::ActivityWindow {
+                            scope: nodex_core_contracts::inbox::ProjectWorkspaceInboxScope::All,
+                            filter: nodex_core_contracts::sources::ActivityFilter::All,
+                            window: nodex_core_contracts::collection::CollectionWindowRequest {
+                                after: None,
+                                first: Some(100),
+                            },
+                        },
+                    },
+                )
+                .unwrap()
+                .value
+            else {
+                panic!("Activity window")
+            };
             assert_eq!(outbox(m).len(), 1);
             assert!(
                 !outbox(m)[0]
@@ -390,5 +434,102 @@ fn routing_delivery_fixes_recipient_and_first_deadline_and_bounds_unsettled_requ
             assert_eq!(events[0].dedupe_key, "attention:work:still-pending");
         }
     }
+}
+
+fn assign_agent(w: &TestWorkspace, operation: &str, page: &str, auto_start: bool, revision: i64) {
+    use nodex_core_contracts::LIBRARY_CONTRACT_VERSION;
+    use nodex_core_contracts::library::*;
+    let owner = local_member(w);
+    crate::library::LibraryModule::new("profile-1", "library-1", &w.kernel)
+        .apply(
+            &context(),
+            ModuleApplyRequest {
+                contract_version: LIBRARY_CONTRACT_VERSION,
+                operation_id: operation.into(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: LibraryIntent::ApplyBlockPropertyMutation {
+                    mutation: Box::new(LibraryBlockPropertyMutation {
+                        actor: serde_json::json!({"kind":"host"}),
+                        client_session_id: None,
+                        fields: vec![LibraryBlockPropertyFieldMutation::IntrinsicSet {
+                            block_id: page.into(),
+                            property_key: "work".into(),
+                            expected_revision: revision,
+                            value: serde_json::json!({"owner":owner,"assignee":{"kind":"agent","instance_id":"codex","model":"gpt","effort":null},"auto_start":auto_start}),
+                        }],
+                    }),
+                },
+            },
+        )
+        .unwrap();
+}
+fn agent_start(session: &str, page: &str, launch: &str) -> ProjectWorkspaceIntent {
+    agent_command(
+        session,
+        ProjectWorkspaceIntent::StartPageWork {
+            page_id: page.into(),
+            selection: None,
+            session_id: format!("chat:{launch}"),
+            launch_id: format!("launch:{launch}"),
+            message_id: format!("message:{launch}"),
+            brief: "Work".into(),
+            again: false,
+            expected_readiness_epoch: None,
+            expected_turn_episode: None,
+        },
+    )
+}
+
+#[test]
+fn nodex_starts_only_work_that_may_start_on_its_own_and_reads_as_nodex() {
+    let w = seeded_workspace();
+    runtime_session(&w.module, "nodex", None, true);
+    runtime_session(&w.module, "helper", Some(PROJECT), false);
+    let page = "019d0000-0000-7000-8000-000000000091";
+    let other = "019d0000-0000-7000-8000-000000000093";
+    create_work_page(&w, page);
+    create_work_page(&w, other);
+    assign_agent(&w, "assign-ask", page, false, 1);
+    // Ready work without consent is the person's Turn to start; Nodex cannot take it.
+    assert_eq!(
+        apply_host_error(&w.module, "nodex:ask", agent_start("nodex", page, "asked")),
+        CoreErrorCode::Unauthorized
+    );
+    assert_eq!(count(&w, "SELECT count(*) FROM page_work_launches"), 0);
+    assign_agent(&w, "assign-consent", page, true, 2);
+    apply_host(
+        &w.module,
+        "nodex:consented",
+        agent_start("nodex", page, "consented"),
+    );
+    let launch = super::super::test_support::activity_rows(&w.module)
+        .into_iter()
+        .find(|row| row.id == "launch:launch:consented")
+        .unwrap();
+    let member = local_member(&w);
+    assert_eq!(
+        launch.actor,
+        nodex_core_contracts::Actor::Agent {
+            session_id: "nodex".into(),
+            run_id: Some("run:test".into()),
+            on_behalf_of: member,
+        }
+    );
+    assert_eq!(launch.actor_label, "by Nodex on behalf of You");
+    // Another Agent still starts work for the person it serves, under its own name.
+    assign_agent(&w, "assign-helper", other, false, 1);
+    apply_host(
+        &w.module,
+        "helper:start",
+        agent_start("helper", other, "helper"),
+    );
+    let helper = super::super::test_support::activity_rows(&w.module)
+        .into_iter()
+        .find(|row| row.id == "launch:launch:helper")
+        .unwrap();
+    assert!(
+        matches!(helper.actor, nodex_core_contracts::Actor::Agent { ref session_id, .. } if session_id == "helper")
+    );
+    assert_eq!(helper.actor_label, "by Agent on behalf of You");
 }
 

@@ -920,6 +920,9 @@ use the canonical Runtime writer and stable command identities.
 
 Work tools follow [Coordinator behavior](coordinator-behavior.md#application-tools):
 `report_work` lets a chat linked to a Page report its work there, and `start_work` lets
+any Agent start a Page's work in a new managed chat, attributed to that Agent; neither
+can grant a Page an unattended start, and Nodex starts only work a person let start on
+its own. `inbox_suggest`, `write_turn_note` and `answer_inbox_question` belong to Nodex: Core refuses them
 from any Session other than the Profile's Coordinator. Host input to the Coordinator
 and managed-chat work updates are server-created messages, never the person's own, and
 read `Sent by Nodex`. The Host attaches Nodex's standing instructions, and those of a

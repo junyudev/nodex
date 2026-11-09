@@ -1,3 +1,4 @@
+import { deliverChatLaunch } from "../work-application/chat-launch-delivery";
 import { createHash } from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -197,6 +198,7 @@ export const make = Effect.gen(function* () {
           "rejected",
         );
       const selection = inboxExecutionSelectionFromCore(work.execution_selection);
+      const threadId = yield* deliverChatLaunch(runtime, {
         launchId: work.launch_id,
         messageFingerprint: inboxDispatchFingerprint(work),
         acceptedAt: Date.parse(work.confirmed_at),
@@ -207,6 +209,7 @@ export const make = Effect.gen(function* () {
         interactionMode: selection.interactionMode,
         message,
       });
+      return yield* inbox.completeDispatch(work, threadId);
     }
     if (session.executionRef) {
       if (

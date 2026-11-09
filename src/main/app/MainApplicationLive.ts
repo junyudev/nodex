@@ -144,31 +144,7 @@ const interactionsGraph = ConversationApplicationLive.interactions.pipe(
 const protocolGraph = ConversationApplicationLive.protocol.pipe(
   Layer.provideMerge(interactionsGraph),
 );
-const operationsGraph = ApplicationOperationsLive.live.pipe(Layer.provideMerge(protocolGraph));
-const administration = Layer.unwrap(
-  Effect.gen(function* () {
-    const application = yield* AgentRuntimeApplication;
-    const runtime = yield* AgentRuntimeSupervisor;
-    return storeAdministrationLayer({
-      restore: {
-        prepare: application.stopRunningReplies(),
-        withStopped: (use) => runtime.withStopped(use, { retireOnSuccess: true }),
-      },
-    });
-  }),
-);
-const administrationGraph = administration.pipe(Layer.provideMerge(operationsGraph));
-// Inbox erasure shares the administration owner, after execution is composed.
-const inboxGraph = inboxApplicationLive.pipe(Layer.provideMerge(administrationGraph));
-const automationGraph = automationExecutionLive.pipe(Layer.provideMerge(inboxGraph));
-const scheduledGraph = scheduledAutomationLive().pipe(Layer.provideMerge(automationGraph));
-const schedulesGraph = storeAdministrationSchedulerLive({}).pipe(
-  Layer.provideMerge(scheduledGraph),
-);
-const hostGraph = AgentRuntimeApplicationLive.hostTools.pipe(Layer.provideMerge(schedulesGraph));
-// Recovered Inbox work can call app tools as soon as its first provider starts.
-const inboxWorkersGraph = Layer.merge(inboxDispatcherLive, inboxDispatchRuntimeLive).pipe(
-  Layer.provideMerge(hostGraph),
+const operationsGraph = ApplicationOperationsLive.live.pipe(Layer.provideMerge(workGraph));
 );
 const mobileAccess = MobileAccessIpc.live.pipe(
   Layer.provide(MobileGateway.live),

@@ -300,6 +300,8 @@ fn validate_current_document_projections(connection: &Connection) -> Result<(), 
 
 /// Validates semantic authority encoded by the current Store contract.
 pub(crate) fn validate_store_semantics(connection: &Connection) -> Result<(), StoreError> {
+    let invalid_targets: i64 = connection.query_row("SELECT count(*) FROM data_source_relation_edges edge JOIN data_sources source ON source.id=edge.source_data_source_id LEFT JOIN data_sources target ON target.id=edge.target_data_source_id WHERE edge.target_data_source_id IS NOT NULL AND (edge.property_id<>'blocked_by' OR target.library_id IS NOT source.library_id)", [], |row| row.get(0))?;
+    expect_zero(invalid_targets, "invalid prerequisite Source authority")?;
     validate_store_semantics_for_view_contract(
         connection,
         DatabaseViewStorageContract::V6,
@@ -863,6 +865,7 @@ fn validate_database_relation_invariants(connection: &Connection) -> Result<(), 
     )?;
     expect_zero(invalid, "inconsistent Relation Property authority records")?;
 
+    crate::database::work_graph::validate_graph(connection, StoreErrorCode::StoreCorrupt)?;
     let parents = connection
         .prepare(
             "SELECT child.page_block_id, edge.target_page_block_id \

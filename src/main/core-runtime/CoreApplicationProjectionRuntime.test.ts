@@ -42,6 +42,7 @@ it.effect(
           }),
         projectSessionInvalidations: Stream.empty,
         inboxInvalidations: Stream.empty,
+        workInvalidations: Stream.empty,
         projectInvalidations: Stream.empty,
       });
       const automationRouting = AutomationRoutingIndex.of({

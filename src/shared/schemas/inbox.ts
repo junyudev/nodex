@@ -84,6 +84,29 @@ const additions = z
   .default([]);
 
 export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    type: z.literal("plan"),
+    summary: z.string().trim().min(1).max(200),
+    steps: z
+      .array(
+        z.strictObject({
+          key: id,
+          projectId: id,
+          title: z.string().trim().min(1).max(120),
+          body: z.string().max(4000),
+          agent: z
+            .strictObject({
+              instanceId: id,
+              model: id,
+              effort: z.string().trim().min(1).max(128).nullable(),
+            })
+            .nullable(),
+          blockedBy: z.array(id).max(7),
+        }),
+      )
+      .min(2)
+      .max(8),
+  }),
   z
     .object({
       type: z.literal("run_task"),

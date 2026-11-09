@@ -3229,6 +3229,7 @@ fn summary_from_row(row: &Row<'_>, sort_component_count: usize) -> rusqlite::Res
             has_description: row.get::<_, i64>(7)? != 0,
             database_values,
             intrinsic_properties,
+            work: Default::default(),
             database_value_revisions,
             metadata_revision: row.get(11)?,
             parent_revision: row.get(12)?,

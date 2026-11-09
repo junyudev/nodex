@@ -27,7 +27,7 @@ import { sameInboxAgentChoice } from "./inbox-agent-model";
 type ActionType = InboxDispatchAction["type"];
 
 const ACTION_LABELS: Readonly<Record<ActionType, string>> = {
-  run_task: "Run task",
+  plan: "Plan",
   keep: "Keep",
   new_chat: "New chat",
   send_to_chat: "Send to chat",
@@ -35,7 +35,7 @@ const ACTION_LABELS: Readonly<Record<ActionType, string>> = {
 };
 
 const CONFIRM_LABELS: Readonly<Record<ActionType, string>> = {
-  run_task: "Run",
+  plan: "Start plan",
   keep: "Keep",
   new_chat: "Start chat",
   send_to_chat: "Send",
@@ -56,12 +56,11 @@ export interface InboxDispatchFiring {
  * A firing runs its task or is handed on like any message; skipping it is `Mark done`, so it
  * offers no Keep. Other messages cannot run a task.
  */
-const actionTypesFor = (firing: InboxDispatchFiring | null | undefined): readonly ActionType[] =>
-  (Object.keys(ACTION_LABELS) as ActionType[]).filter((type) =>
-    firing ? type !== "keep" : type !== "run_task",
+  (Object.keys(ACTION_LABELS) as ActionType[]).filter(
   );
 
 export interface InboxDispatchDraft {
+  readonly plan?: Extract<InboxDispatchAction, { type: "plan" }>;
   readonly proposal?: InboxProposal;
   readonly chat?: InboxChat | null;
   readonly basis?: readonly InboxPageBasis[];
@@ -80,6 +79,14 @@ export function draftFromAction(
   fallbackPrompt: string,
 ): InboxDispatchDraft {
   switch (action.type) {
+    case "plan":
+      return {
+        type: "plan",
+        plan: action,
+        projectId: null,
+        sessionId: null,
+        prompt: fallbackPrompt,
+      };
     case "keep":
       return { type: "keep", projectId: null, sessionId: null, prompt: fallbackPrompt };
     // The editor writes plain text: the additions kept on the row become paragraphs of it.
@@ -144,6 +151,8 @@ export function draftForInboxItem(
 export function actionFromDraft(draft: InboxDispatchDraft): InboxDispatchAction | null {
   const prompt = draft.prompt.trim();
   switch (draft.type) {
+    case "plan":
+      return draft.plan ?? null;
     case "keep":
       return { type: "keep" };
     case "new_chat":

@@ -89,6 +89,9 @@ export function DatabaseListRow({
   readonly onRemovePageChatRelation?: (sessionId: string) => Promise<void> | void;
 }) {
   const dnd = useDatabaseListPageDnd(item);
+  // A row offers its chats only inside a Project, which is also where its work can start.
+    row: item.row,
+  });
   const setListDndNodeRef = dnd.setNodeRef;
   const [pageDragHandle, setPageDragHandle] = useState<HTMLButtonElement | null>(null);
   const { setElementRef: setPageDragSourceRef } = useDatabaseViewPageDragSource(pragmaticDragData, {
@@ -379,6 +382,7 @@ export function DatabaseListRow({
               onRemoveRelation={onRemovePageChatRelation}
             />
           ) : null}
+          {workChip}
           {inlineProperties}
         </div>
       </div>

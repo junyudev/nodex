@@ -59,6 +59,16 @@ pub(super) fn read(
     request: ProjectWorkspaceRead,
 ) -> Result<ProjectWorkspaceReadValue, StoreError> {
     match request {
+        ProjectWorkspaceRead::PageWorkLaunch { launch_id } => {
+            Ok(ProjectWorkspaceReadValue::PageWorkLaunch {
+                launch: super::page_work::launch(connection, &launch_id)?,
+            })
+        }
+        ProjectWorkspaceRead::PageWorkOutbox { limit } => {
+            Ok(ProjectWorkspaceReadValue::PageWorkOutbox {
+                launches: super::page_work::outbox(connection, limit)?,
+            })
+        }
         ProjectWorkspaceRead::ReadCoordinator => Ok(ProjectWorkspaceReadValue::ReadCoordinator {
             session_id: super::coordinator::binding(connection)?,
         }),

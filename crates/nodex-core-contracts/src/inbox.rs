@@ -90,6 +90,11 @@ pub enum ProjectWorkspaceInboxProposalState {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProjectWorkspaceInboxDispatchAction {
+    /// Create reviewed cards and their automatic work grants as one decision.
+    Plan {
+        summary: String,
+        steps: Vec<InboxPlanStep>,
+    },
     /// Keep the entries open as notes, todos, or questions.
     Keep,
     /// Start a new chat in one active Project, or a projectless chat.
@@ -123,6 +128,35 @@ pub enum ProjectWorkspaceInboxDispatchAction {
         #[serde(default)]
         agent: Option<ProjectWorkspaceInboxChatAgent>,
     },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct InboxPlanAgent {
+    pub instance_id: String,
+    pub model: String,
+    #[serde(deserialize_with = "required_plan_value")]
+    #[schema(required = true)]
+    pub effort: Option<String>,
+}
+
+fn required_plan_value<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error> {
+    Option::<T>::deserialize(deserializer)
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct InboxPlanStep {
+    pub key: String,
+    pub project_id: String,
+    pub title: String,
+    pub body: String,
+    #[serde(deserialize_with = "required_plan_value")]
+    #[schema(required = true)]
+    pub agent: Option<InboxPlanAgent>,
+    pub blocked_by: Vec<String>,
 }
 
 /// An Agent instance and, when chosen, its model, effort and speed. Unset choices use the
@@ -287,6 +321,9 @@ pub struct ProjectWorkspaceInboxChat {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxProposal {
     pub answered_question: bool,
+    /// Created cards in plan-step order; empty until confirmation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub created_page_ids: Vec<String>,
     pub failure_kind: Option<ProjectWorkspaceInboxFailureKind>,
     /// Current member fingerprints, fenced when the user confirms.
     pub basis: Vec<ProjectWorkspaceInboxPageBasis>,

@@ -94,6 +94,7 @@ test("shows Nodex's Inbox, managed work and the work graph", async ({}, testInfo
       await openProjectBoard(page);
       const card = (key: string) =>
         page.locator('[data-board-uuid-v7="' + manifest.pageIdsByKey[key] + '"]:visible');
+      await expect(card("startedRequest")).toHaveCount(1);
       await expect(card("ask").getByRole("button", { name: "Start", exact: true })).toBeVisible();
       await expect(card("done")).toHaveCount(1);
       await expect(

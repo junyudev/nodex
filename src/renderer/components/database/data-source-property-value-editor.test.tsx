@@ -351,6 +351,44 @@ describe("DataSourcePropertyValueEditor", () => {
     expect(view.queryByRole("button", { name: "Create “New signal”" })).toBeNull();
   });
 
+    const onPatchRelation = vi.fn();
+    const view = render(
+      <DataSourcePropertyValueEditor
+        property={{
+          ...statusProperty,
+          propertyId: parseDataSourcePropertyId("blocked_by"),
+          ...testPropertySemantics("relation"),
+          schema: {
+            kind: "relation",
+            targetDataSourceId: statusProperty.dataSourceId,
+            cardinality: "many",
+          },
+          valueType: "relation",
+          optionCount: 0,
+        }}
+        value={null}
+        revision={0}
+        disabled={false}
+        relationSourcePageId="page:self"
+        relationCandidates={[
+          { pageId: "page:self", title: "Current task" },
+          { pageId: "page:other", title: "Prerequisite" },
+        ]}
+        onChange={vi.fn()}
+        onPatchRelation={onPatchRelation}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(view.queryByRole("option", { name: "Current task" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(view.getByRole("option", { name: "Prerequisite" }));
+      await Promise.resolve();
+    });
+    expect(onPatchRelation).toHaveBeenCalledWith({ addPageIds: ["page:other"], removeEdgeIds: [] });
+  });
+
   test("keeps self-targets available for ordinary self-Relations", async () => {
     const onPatchRelation = vi.fn();
     const property: DataSourcePropertyRecordV2 = {

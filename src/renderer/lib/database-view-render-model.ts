@@ -88,7 +88,10 @@ export interface DatabaseViewRenderRow {
   readonly dueDate?: Date;
   readonly scheduledStart?: Date;
   readonly scheduledEnd?: Date;
-  readonly assignee?: string;
+  readonly work?: {
+    readonly unsatisfiedCount: number;
+    readonly firstBlocker: { readonly pageKey: string | null; readonly title: string } | null;
+  };
   readonly documentGeneration: number;
   readonly documentHeadSeq: number;
   readonly metadataRevision: number;
@@ -239,6 +242,12 @@ export const projectDataSourcePageRowToDatabaseViewRenderRow = (
     ...(scheduledStart ? { scheduledStart } : {}),
     ...(scheduledEnd ? { scheduledEnd } : {}),
     ...(assignee ? { assignee } : {}),
+    work: {
+      unsatisfiedCount: row.work.unsatisfiedCount,
+      firstBlocker: row.work.blockers[0]
+        ? { pageKey: row.work.blockers[0].pageKey, title: row.work.blockers[0].title }
+        : null,
+    },
     documentGeneration: row.page.documentGeneration,
     documentHeadSeq: row.page.documentHeadSeq,
     metadataRevision: row.page.metadataRevision,

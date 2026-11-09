@@ -10,6 +10,9 @@ mod coordinator;
 mod coordinator_tests;
 mod execution;
 mod inbox;
+mod page_work;
+#[cfg(test)]
+mod page_work_tests;
 pub(crate) use inbox::reliable::discard_replaced_dispatches as discard_replaced_inbox_dispatches;
 pub(crate) mod inbox_content;
 mod inbox_read;

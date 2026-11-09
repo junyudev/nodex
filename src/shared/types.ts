@@ -273,7 +273,7 @@ export interface DatabasePage {
   recurrence?: RecurrenceConfig;
   reminders?: ReminderConfig[];
   scheduleTimezone?: string;
-  assignee?: string;
+  work?: WorkSummary;
   runInTarget?: PageRunInTarget;
   runInLocalPath?: string;
   runInBaseBranch?: string;

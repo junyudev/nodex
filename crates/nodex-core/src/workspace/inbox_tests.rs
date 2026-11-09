@@ -7722,3 +7722,315 @@ fn inbox_confirmation_rolls_back_managed_membership_with_a_rejected_handoff() {
 
 #[path = "inbox_nodex_tests.rs"]
 mod nodex_tests;
+
+mod plans {
+    use super::*;
+    use nodex_core_contracts::inbox::{InboxConfirmedBy, InboxPlanAgent, InboxPlanStep};
+    fn plan(second_project: &str) -> ProjectWorkspaceInboxDispatchAction {
+        ProjectWorkspaceInboxDispatchAction::Plan {
+            summary: "Prepare and implement".into(),
+            steps: vec![
+                InboxPlanStep {
+                    key: "a".into(),
+                    project_id: PROJECT.into(),
+                    title: "Prepare".into(),
+                    body: "Write **a brief**.\n\n- Include tests".into(),
+                    agent: Some(InboxPlanAgent {
+                        instance_id: "codex".into(),
+                        model: "chosen".into(),
+                        effort: Some("high".into()),
+                    }),
+                    blocked_by: vec![],
+                },
+                InboxPlanStep {
+                    key: "b".into(),
+                    project_id: second_project.into(),
+                    title: "Implement".into(),
+                    body: "Use the brief.".into(),
+                    agent: None,
+                    blocked_by: vec!["a".into()],
+                },
+            ],
+        }
+    }
+    fn confirmation(
+        module: &ProjectWorkspaceModule,
+        confirmed_by: InboxConfirmedBy,
+    ) -> ProjectWorkspaceIntent {
+        ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            confirmed_by,
+            expected_store_epoch: "epoch-1".into(),
+            proposal_id: "proposal:plan".into(),
+            expected_revision: 1,
+            action: None,
+            session_id: None,
+            basis: proposal_basis(module, "proposal:plan"),
+            execution_selection: Some(selection()),
+        }
+    }
+    #[test]
+    fn plan_confirmation_creates_complete_automatic_graph_atomically_and_replays() {
+        let w = seeded_workspace();
+        super::super::test_support::create_project(&w.module, "create:other", "project:other");
+        send(&w.module, "plan", "Prepare and implement");
+        propose(
+            &w.module,
+            "proposal:plan",
+            &pending(&w.module).remove(0),
+            plan("project:other"),
+        );
+        let confirm = confirmation(&w.module, InboxConfirmedBy::User);
+        assert!(
+            w.module
+                .apply(
+                    &host(),
+                    request(
+                        "confirm:nodex",
+                        confirmation(&w.module, InboxConfirmedBy::Nodex)
+                    )
+                )
+                .is_err()
+        );
+        let before = count(&w, "SELECT count(*) FROM pages");
+        w.kernel.writer().call(|c| {c.execute_batch("CREATE TRIGGER fail_plan BEFORE INSERT ON inbox_plan_results BEGIN SELECT RAISE(ABORT,'injected plan failure'); END;")?;Ok(())}).unwrap();
+        assert!(
+            w.module
+                .apply(&host(), request("confirm:plan", confirm.clone()))
+                .is_err()
+        );
+        assert_eq!(count(&w, "SELECT count(*) FROM pages"), before);
+        assert_eq!(
+            count(
+                &w,
+            ),
+            0
+        );
+        assert_eq!(
+            window(&w.module, ProjectWorkspaceInboxWindowFilter::Inbox).len(),
+            1
+        );
+        w.kernel
+            .writer()
+            .call(|c| {
+                c.execute_batch("DROP TRIGGER fail_plan;")?;
+                Ok(())
+            })
+            .unwrap();
+        let applied = w
+            .module
+            .apply(&host(), request("confirm:plan", confirm.clone()))
+            .unwrap();
+        let ids = applied.committed.value.inbox_created_page_ids.clone();
+        assert_eq!(ids.len(), 2);
+        assert_eq!(count(&w, "SELECT count(*) FROM pages"), before + 2);
+        assert_eq!(
+            count(
+                &w,
+            ),
+            2
+        );
+        assert_eq!(
+            count(
+                &w,
+                "SELECT count(*) FROM data_source_relation_edges WHERE property_id='blocked_by'"
+            ),
+            1
+        );
+        assert_eq!(count(&w, "SELECT count(*) FROM page_work_launches"), 0);
+        assert_eq!(
+            count(
+                &w,
+            ),
+            2
+        );
+        assert!(window(&w.module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
+        let handled = window(&w.module, ProjectWorkspaceInboxWindowFilter::Processed).remove(0);
+        assert_eq!(handled.state, ProjectWorkspaceInboxEntryState::Done);
+        let proposal = handled.proposal.unwrap();
+        assert_eq!(proposal.summary, "Planned 2 cards");
+        assert_eq!(proposal.created_page_ids, ids);
+        assert_eq!(proposal.confirmed_by, Some(InboxConfirmedBy::User));
+        let replay = w
+            .module
+            .apply(&host(), request("confirm:plan", confirm))
+            .unwrap();
+        assert!(replay.committed.receipt.mutation.duplicate);
+        assert_eq!(replay.committed.value.inbox_created_page_ids, ids);
+        assert_eq!(count(&w, "SELECT count(*) FROM pages"), before + 2);
+        let database = crate::database::DatabaseModule::new("profile-1", "library-1", &w.kernel);
+        let ready = database
+            .read(
+                &host(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: nodex_core_contracts::database::DatabaseRead::ReadyWork {
+                        project_id: None,
+                        limit: Some(100),
+                        after_page_id: None,
+                    },
+                },
+            )
+            .unwrap();
+        let nodex_core_contracts::database::DatabaseReadValue::ReadyWork { pages } = ready.value
+        else {
+            panic!()
+        };
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0].page_id, ids[0]);
+        assert_eq!(
+            Some("high")
+        );
+        let detail = database
+            .read(
+                &host(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: nodex_core_contracts::database::DatabaseRead::RowDetail {
+                        page_id: ids[0].clone(),
+                    },
+                },
+            )
+            .unwrap();
+        let nodex_core_contracts::database::DatabaseReadValue::RowDetail { value } = detail.value
+        else {
+            panic!()
+        };
+        assert_eq!(value.body_markdown, "Write **a brief**.\n\n- Include tests");
+        assert_eq!(
+        );
+        assert_eq!(value.summary.work.unsatisfied_count, 0);
+
+        let context = database
+            .read(
+                &host(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: nodex_core_contracts::database::DatabaseRead::WorkContext {
+                        page_id: ids[1].clone(),
+                    },
+                },
+            )
+            .unwrap();
+        let nodex_core_contracts::database::DatabaseReadValue::WorkContext { value } =
+            context.value
+        else {
+            panic!()
+        };
+        assert_eq!(value.prerequisites[0].page.page_id, ids[0]);
+        assert_eq!(value.prerequisites[0].page.title, "Prepare");
+        assert!(!value.prerequisites[0].satisfied);
+    }
+    #[test]
+    fn grouped_plan_requires_all_members_and_explicit_user_review() {
+        use nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestedDispatch;
+        let w = seeded_workspace();
+        send(&w.module, "first", "Prepare a brief");
+        send(&w.module, "second", "Then implement it");
+        let pages = vec!["page:first".into(), "page:second".into()];
+        grouped_request(&w.module, "request:plan", pages.clone());
+        let mut settlement = ProjectWorkspaceIntent::SettleInboxSuggestion {
+            automatic_dispatch: true,
+            request_id: "request:plan".into(),
+            generation: 1,
+            titles: vec![],
+            suggestions: vec![ProjectWorkspaceInboxSuggestedDispatch {
+                explicit_request: true,
+                proposal_id: "proposal:plan".into(),
+                page_ids: pages.clone(),
+                action: plan(PROJECT),
+                entry_kind: None,
+                summary: "Prepare and implement".into(),
+                rationale: None,
+            }],
+            produced_by: None,
+            error: None,
+        };
+        assert_eq!(
+            apply_host_error(&w.module, "settle:explicit", settlement.clone()),
+            CoreErrorCode::InvalidInput
+        );
+        let ProjectWorkspaceIntent::SettleInboxSuggestion { suggestions, .. } = &mut settlement
+        else {
+            panic!()
+        };
+        suggestions[0].explicit_request = false;
+        suggestions[0].page_ids.pop();
+        assert_eq!(
+            apply_host_error(&w.module, "settle:partial", settlement.clone()),
+            CoreErrorCode::InvalidInput
+        );
+        let ProjectWorkspaceIntent::SettleInboxSuggestion { suggestions, .. } = &mut settlement
+        else {
+            panic!()
+        };
+        suggestions[0].page_ids = pages;
+        apply_host(&w.module, "settle:plan", settlement);
+        assert!(outbox(&w.module).is_empty());
+        apply_host(
+            &w.module,
+            "confirm:group",
+            confirmation(&w.module, InboxConfirmedBy::User),
+        );
+        let history = window(&w.module, ProjectWorkspaceInboxWindowFilter::Processed);
+        assert_eq!(history.len(), 2);
+        assert_eq!(
+            history[0].proposal.as_ref().unwrap().created_page_ids.len(),
+            2
+        );
+        assert_eq!(history[0].proposal, history[1].proposal);
+    }
+    #[test]
+    fn plan_core_validates_graph_bounds_and_project_scope() {
+        let w = seeded_workspace();
+        send_to(&w.module, "scoped", "Plan in this Project", Some(PROJECT));
+        let entry = pending(&w.module).remove(0);
+        for (index, kind) in [
+            "cycle",
+            "unknown",
+            "duplicate",
+            "self",
+            "foreign",
+            "title",
+            "body",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let mut action = plan(PROJECT);
+            let ProjectWorkspaceInboxDispatchAction::Plan { steps, .. } = &mut action else {
+                panic!()
+            };
+            match *kind {
+                "cycle" => steps[0].blocked_by = vec!["b".into()],
+                "unknown" => steps[1].blocked_by = vec!["missing".into()],
+                "duplicate" => steps[1].key = "a".into(),
+                "self" => steps[0].blocked_by = vec!["a".into()],
+                "foreign" => steps[1].project_id = "other".into(),
+                "title" => steps[0].title = "x".repeat(121),
+                "body" => steps[0].body = "x".repeat(4001),
+                _ => unreachable!(),
+            }
+            assert!(
+                w.module
+                    .apply(
+                        &host(),
+                        request(
+                            &format!("invalid:{index}"),
+                            ProjectWorkspaceIntent::ProposeInboxDispatch {
+                                proposal_id: format!("invalid:{index}"),
+                                page_ids: vec![entry.page_id.clone()],
+                                basis: vec![entry.basis.clone()],
+                                action,
+                                entry_kind: None,
+                                summary: "Plan".into(),
+                                rationale: None,
+                                produced_by: None
+                            }
+                        )
+                    )
+                    .is_err(),
+                "{kind}"
+            );
+        }
+    }
+}

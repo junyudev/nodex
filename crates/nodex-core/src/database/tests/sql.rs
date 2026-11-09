@@ -873,8 +873,8 @@ fn query_schema_avoids_management_scans_and_value_revisions_are_read_once_per_pa
             assert!(rows?.len() > 2);
             assert_eq!(
                 reads.load(Ordering::Relaxed),
-                4,
-                "each Page reads one shared revision map and its task-parent Relation revision"
+                6,
+                "each Page reads one shared revision map and its two built-in Relation revisions"
             );
             Ok(())
         })

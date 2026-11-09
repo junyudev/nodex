@@ -359,14 +359,17 @@ fn v196_deleted_pages_keep_readable_restore_evidence_and_verified_receipts() {
         Ok(())
     }).unwrap();
     prepare_profile_store(&mut connection, home.path()).unwrap();
-    let commit: i64 = connection
+    let commit: Option<i64> = connection
         .query_row(
             "SELECT local_commit_seq FROM core_module_receipts WHERE operation_id=?1",
             [&delete_operation],
             |row| row.get(0),
         )
         .unwrap();
-    let manifest = super::super::local_commit::read_manifest(&connection, commit).unwrap();
+    assert!(
+        commit.is_none(),
+        "the later graph migration retires the rebuildable delivery window"
+    );
     let raw: String = connection
         .query_row(
             "SELECT result_json FROM core_module_receipts WHERE operation_id=?1",
@@ -374,9 +377,10 @@ fn v196_deleted_pages_keep_readable_restore_evidence_and_verified_receipts() {
             |row| row.get(0),
         )
         .unwrap();
+    let receipt: Value = serde_json::from_str(&raw).unwrap();
     assert_eq!(
-        manifest.receipt.result_hash,
-        hex::encode(Sha256::digest(raw.as_bytes()))
+        receipt["value"]["page_lifecycle"]["delete_evidence"]["membership"]["status"],
+        json!("doing")
     );
     drop(connection);
     let kernel = SqliteStoreKernel::open(home.path()).unwrap();

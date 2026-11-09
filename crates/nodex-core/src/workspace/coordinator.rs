@@ -1,6 +1,7 @@
 //! Workspace owns Coordinator identity, work facts, and the immutable delivery outbox.
 use super::{
     ProjectWorkspaceApplyOutcome,
+    mutation::{WorkspaceMutationEffects, finish_mutation, finish_no_op},
     session_mutation::{require_session, sqlite_now, validate_id},
 };
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
@@ -227,6 +228,7 @@ pub(super) fn apply(
             if summary.trim().is_empty() || summary.chars().count() > 4000 {
                 return Err(invalid("Work summary must contain 1–4000 characters"));
             }
+            let page = reported_page(connection, library, &session, page_id.as_deref())?;
             crate::library::require_page_read_access(connection, library, &page)?;
             let revision: i64 = connection.query_row("UPDATE project_session_pages SET report_outcome=?3,report_summary=?4,report_at=?5,report_run_id=?6,report_revision=report_revision+1 WHERE session_id=?1 AND page_id=?2 RETURNING report_revision", params![session,page,literal(outcome),summary,now,report_run_id], |r| r.get(0)).optional()?.ok_or_else(|| denied("The reporting Session is not linked to this Page"))?;
             if managed(connection, &session)?.is_some() {
@@ -274,7 +276,23 @@ pub(super) fn apply(
                 }
                 if connection.execute("UPDATE coordinator_managed_sessions SET observed_json=?2,observed_revision=observed_revision+1 WHERE session_id=?1 AND observed_revision=?3", params![item.session_id,encoded,item.expected_revision])? != 1 { return Err(conflict("Managed Session observation revision changed")); }
             }
+            let mut inserted = false;
             for (i, event) in events.iter().enumerate() {
+                inserted |= insert_event(connection, operation, i, event, &now)?;
+            }
+            // A duplicate wake must not publish another invalidation and wake its own scheduler.
+            if !inserted && observed.is_empty() {
+                return finish_no_op(
+                    connection,
+                    context,
+                    epoch,
+                    operation,
+                    hash,
+                    "coordinator",
+                    vec![],
+                    sessions,
+                    &now,
+                );
             }
         }
         ProjectWorkspaceIntent::CreateEventBatch {
@@ -333,11 +351,23 @@ pub(super) fn apply(
     }
         },
 }
+pub(super) fn insert_event(
     connection: &Connection,
     operation: &str,
     index: usize,
     event: &CoordinatorWorkEventInput,
     now: &str,
+) -> Result<bool, StoreError> {
+    // Composite keys include bounded Page/Session identities and revision tokens.
+    if event.dedupe_key.is_empty()
+        || event.dedupe_key.len() > 2048
+        || event.dedupe_key.trim() != event.dedupe_key
+        || event.dedupe_key.chars().any(char::is_control)
+    {
+        return Err(invalid(
+            "Work event dedupe_key must contain 1–2048 canonical bytes",
+        ));
+    }
     if let Some(id) = &event.session_id {
         validate_id("session_id", id)?;
     }
@@ -357,6 +387,7 @@ pub(super) fn apply(
         _ => false,
     };
     let inserted = connection.execute("INSERT INTO coordinator_work_events(event_id,dedupe_key,kind,session_id,page_id,payload_json,created_at,resolved_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8) ON CONFLICT(dedupe_key) DO NOTHING", params![crate::domain::identity::stable_uuid_v7("coordinator", operation, &index.to_string()),event.dedupe_key,literal(&event.kind),event.session_id,event.page_id,payload,now,if already_started { Some(now) } else { None }])?;
+    Ok(inserted > 0)
 }
 
 pub(super) fn work_descriptor(
@@ -369,4 +400,53 @@ pub(super) fn work_descriptor(
         latest_report,
         managed_session_count,
     })
+}
+
+/// A chat reports on one of its own linked Pages, named by ID or by the Page key it was given in
+/// its brief; when it names none or one it is not linked to, the refusal lists what it may name.
+fn reported_page(
+    connection: &Connection,
+    library: &str,
+    session: &str,
+    named: Option<&str>,
+) -> Result<String, StoreError> {
+    let linked = connection
+        .prepare("SELECT page_id FROM project_session_pages WHERE session_id=?1 ORDER BY linked_at, page_id LIMIT 50")?
+        .query_map([session], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut keyed = Vec::with_capacity(linked.len());
+    for id in linked {
+        let key = crate::database::current_page_key_for_page(connection, library, &id)?;
+        keyed.push((id, key));
+    }
+    let found = match named {
+        Some(value) => {
+            let value = value.trim();
+            keyed.iter().find(|(id, key)| {
+                id == value
+                    || key
+                        .as_deref()
+                        .is_some_and(|key| key.eq_ignore_ascii_case(value))
+            })
+        }
+        None if keyed.len() == 1 => keyed.first(),
+    };
+    if let Some((id, _)) = found {
+        return Ok(id.clone());
+    }
+    let choices = keyed
+        .iter()
+        .map(|(id, key)| key.clone().unwrap_or_else(|| id.clone()))
+        .collect::<Vec<_>>();
+    Err(invalid(&match (named, choices.is_empty()) {
+        (_, true) => "This chat is not linked to a Page to report on".to_owned(),
+        (None, false) => format!(
+            "This chat works on several Pages; pass pageId as one of: {}",
+            choices.join(", ")
+        ),
+        (Some(value), false) => format!(
+            "This chat is not linked to {value}; pass pageId as one of: {}",
+            choices.join(", ")
+        ),
+    }))
 }

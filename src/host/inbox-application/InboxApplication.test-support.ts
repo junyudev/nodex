@@ -79,6 +79,10 @@ const coreModulesOver = (client: ScenarioClient) => {
         coreRuntimeError({ operation, reason: "operation", retryable: false, cause }),
     });
   return CoreModules.of({
+    database: {
+      read: (read: Parameters<ScenarioClient["databaseRead"]>[0]) =>
+        call("database.read", () => client.databaseRead(read)),
+    },
     workspace: {
       read: (read: Parameters<ScenarioClient["workspaceRead"]>[0]) =>
         call("workspace.read", () => client.workspaceRead(read)),
@@ -109,7 +113,9 @@ export const inboxOverRealCore = (
 ) =>
   Effect.gen(function* () {
     const { context } = yield* scenario;
+    const core = coreModulesOver(context.client);
     const inbox = yield* makeInboxApplication.pipe(
+      Effect.provideService(CoreModules, core),
       Effect.provideService(StoreAdministration, {
         requestErasure,
       } as unknown as StoreAdministration["Service"]),
@@ -121,6 +127,13 @@ export const inboxOverRealCore = (
         snapshot: () => Effect.sync(() => ({ inbox: inboxSettings() })),
       } as unknown as ApplicationSettings["Service"]),
     );
+    return {
+      inbox,
+      core,
+      identity: context.runtime.identity,
+      client: context.client,
+      projectId: context.manifest.projectId,
+    };
   });
 
 export const bindTestCoordinator = (client: CoreScenarioContext["client"]) =>

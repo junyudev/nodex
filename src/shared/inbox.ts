@@ -57,6 +57,7 @@ export const INBOX_ENTRY_KINDS = [
 
 /** The exact action a dispatch suggestion asks the user to authorize. */
 export type InboxDispatchAction =
+  | { readonly type: "plan"; readonly summary: string; readonly steps: readonly InboxPlanStep[] }
   | { readonly type: "keep" }
   | {
       readonly type: "new_chat";
@@ -81,6 +82,15 @@ export type InboxDispatchAction =
       /** What this run uses instead of the task's own Agent selection. */
       readonly agent: InboxAgentChoice | null;
     };
+
+/** A card created by a reviewed plan; keys are local to that plan. */
+export interface InboxPlanStep {
+  readonly key: string;
+  readonly projectId: string;
+  readonly title: string;
+  readonly body: string;
+  readonly blockedBy: readonly string[];
+}
 
 /** A new chat with nothing chosen beyond its destination and prompt. */
 export const inboxNewChatAction = (
@@ -191,6 +201,7 @@ export interface InboxChat {
 
 export interface InboxProposal {
   readonly answeredQuestion?: boolean;
+  readonly createdPageIds?: readonly string[];
   readonly failureKind: "rejected" | "unavailable" | "unknown" | null;
   readonly proposalId: string;
   readonly revision: number;
@@ -395,6 +406,7 @@ export type InboxPreparedConfirmation =
   | ({ readonly kind: "direct" } & InboxDispatchInput);
 
 export interface InboxDecisionResult {
+  readonly createdPageIds?: readonly string[];
   readonly undoToken: string | null;
 }
 

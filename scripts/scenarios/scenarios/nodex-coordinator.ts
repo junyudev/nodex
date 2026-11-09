@@ -210,6 +210,7 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
     pageIds: [started.pageId],
     action: {
       type: "new_chat",
+      projectId: project.id,
       agent: {
         instanceId: COORDINATOR_AGENT.selection.instanceId,
         model: COORDINATOR_AGENT.selection.model,
@@ -318,6 +319,7 @@ const inspect = async (
   return requireNodexCoordinatorFacts({
     scenarioId: manifest.scenarioId,
     scenarioRevision: manifest.scenarioRevision,
+    cardCount: (await port.readBoard(manifest.projectId, manifest.databaseViewId)).totalRows,
     managedChatCount,
     reportCounts: counts,
     planSteps: plan.action.steps.map(({ key, blockedBy }) => ({ key, blockedBy })),

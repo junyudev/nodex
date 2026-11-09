@@ -51,6 +51,13 @@ intents, and selection.
   content, and it cannot be archived while it is the Inbox's.
 - A message sent to a Project's Inbox becomes a Page in that Project's Database,
   in Triage, with the Project's Page key. It is on the Project's Board at once.
+- Confirming a new chat in a Project puts its message Pages in that Project's
+  primary Database as part of the same decision. Sending a Library Inbox Page
+  to an existing Project chat moves it there too. The Page gets the Project's
+  key and appears on its Board; Status follows the handling, and Owner,
+  Assignee, Workspace and thread follows stay with the Page. A projectless chat
+  keeps the Page in the Library Inbox Database. A plan creates each step's card
+  directly in its chosen Project's Database.
 - The whole message, read as message text, becomes the Page body, and the stream
   bubble renders that body as the Page holds it now, images included; see
   [Message Content Behavior](./message-content-behavior.md). An edit made in the

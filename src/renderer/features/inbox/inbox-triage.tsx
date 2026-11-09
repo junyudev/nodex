@@ -42,6 +42,7 @@ import { InboxGroupMembers, type InboxGroupMember } from "./inbox-group-members"
 import { MessageText } from "@/components/message/message-document";
 import { inboxDraftFromBody, type InboxDraft } from "./inbox-capture-state";
 import { InboxMessageEditor } from "./inbox-message-editor";
+import { InboxPlanSteps } from "./inbox-plan-steps";
 import { INBOX_EASE_OUT } from "./inbox-stream-item";
 import { InboxOutcomeLine } from "./inbox-outcome";
 import {
@@ -330,10 +331,11 @@ function SuggestionStrip({
   firingLine,
   dropped,
   onToggleAddition,
+  planSteps,
 }: {
   readonly proposal: InboxProposal;
-  /** For a scheduled task's run, how it will go; its instructions are the message above. */
-  readonly firingLine: string | null;
+  /** The cards a plan would create, laid out by the caller that knows Projects and Agents. */
+  readonly planSteps?: ReactNode;
   /** Additions unchecked on this row. */
   readonly dropped: readonly number[];
   readonly onToggleAddition: (index: number) => void;
@@ -366,6 +368,7 @@ function SuggestionStrip({
       ) : (
         <p className="min-w-0 text-sm leading-snug">{proposal.summary}</p>
       )}
+      {action.type === "plan" ? planSteps : null}
       {isChatAction(action) && action.additions.length > 0 ? (
         <ul className="flex min-w-0 flex-col gap-1.5">
           {action.additions.map((addition, index) => {
@@ -729,6 +732,15 @@ export function InboxTriage({
                 firingLine={item.firing ? describeInboxFiring(item.firing, task, now) : null}
                 dropped={edit?.dropped ?? []}
                 onToggleAddition={(index) => toggleAddition(proposal.proposalId, index)}
+                planSteps={
+                  proposal.action.type === "plan" ? (
+                    <InboxPlanSteps
+                      steps={proposal.action.steps}
+                      projects={projects}
+                      agents={agents}
+                    />
+                  ) : null
+                }
               />
             </Settle>
           ),
@@ -929,6 +941,7 @@ export function InboxTriage({
           actions: (
             <Row>
               {onReply ? (
+              ) : null}
             </Row>
           ),
         };

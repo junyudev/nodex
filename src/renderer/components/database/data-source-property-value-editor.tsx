@@ -8,6 +8,7 @@ import {
   createCustomOptionId,
   isCustomDataSourcePropertyId,
   TASK_PARENT_PROPERTY_ID,
+  BLOCKED_BY_PROPERTY_ID,
 } from "../../../shared/database-identities";
 import type { DatabaseJsonValue } from "../../../shared/database-kernel";
 import { resolveDataSourcePropertyPresentationRole } from "@/lib/data-source-property-presentation-role";
@@ -251,7 +252,10 @@ export function DataSourcePropertyValueEditor({
         value={value}
         candidates={relationCandidates}
         excludedPageId={
-          property.propertyId === TASK_PARENT_PROPERTY_ID ? relationSourcePageId : undefined
+          property.propertyId === TASK_PARENT_PROPERTY_ID ||
+          property.propertyId === BLOCKED_BY_PROPERTY_ID
+            ? relationSourcePageId
+            : undefined
         }
         cardinality={property.schema.kind === "relation" ? property.schema.cardinality : "many"}
         disabled={disabled}

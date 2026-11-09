@@ -77,6 +77,10 @@ pub(crate) fn create_database_authority_records(
             super::property_semantics::TASK_PARENT_PROPERTY_ID
         ],
     )?;
+    connection.execute(
+        "INSERT INTO data_source_relation_properties(data_source_id, property_id, target_data_source_id, cardinality) VALUES (?1, 'blocked_by', ?1, 'many')",
+        [data_source_id],
+    )?;
     let current_view_config = json!({
         "schemaKey": "nodex.database-view",
         "schemaVersion": 6,
@@ -179,12 +183,16 @@ fn initial_property_definitions(
         ("due_date", "Due date", "date", json!({})),
         ("scheduled_start", "Scheduled start", "datetime", json!({})),
         ("scheduled_end", "Scheduled end", "datetime", json!({})),
-        ("assignee", "Assignee", "text", json!({})),
     ];
     if includes_task_parent {
         definitions.push((
             super::property_semantics::TASK_PARENT_PROPERTY_ID,
             "Parent",
+            "relation",
+            json!({}),
+        ));
+        definitions.push((
+            super::property_semantics::BLOCKED_BY_PROPERTY_ID,
             "relation",
             json!({}),
         ));

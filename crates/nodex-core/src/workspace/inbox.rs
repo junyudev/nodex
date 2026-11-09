@@ -10,6 +10,8 @@
 
 #[path = "inbox_nodex.rs"]
 pub(super) mod nodex;
+#[path = "inbox_plan.rs"]
+pub(super) mod plan;
 #[path = "inbox_reliable.rs"]
 pub(super) mod reliable;
 #[path = "inbox_reply.rs"]
@@ -1251,7 +1253,9 @@ fn supersede_failed_proposals(
 
 fn user_summary(action: &ProjectWorkspaceInboxDispatchAction) -> String {
     match action {
-        ProjectWorkspaceInboxDispatchAction::RunTask { .. } => "Run task".to_owned(),
+        ProjectWorkspaceInboxDispatchAction::Plan { steps, .. } => {
+            format!("Plan {} cards", steps.len())
+        }
         ProjectWorkspaceInboxDispatchAction::Keep => "Keep as a note".to_owned(),
         ProjectWorkspaceInboxDispatchAction::NewChat { .. } => "Start a new chat".to_owned(),
         ProjectWorkspaceInboxDispatchAction::SendToChat { .. } => {
@@ -1284,11 +1288,9 @@ fn apply_confirmation(
     }
     let encoded_action = action_json(action)?;
     match action {
-        ProjectWorkspaceInboxDispatchAction::RunTask {
-            automation_id,
-            dispatch_id,
-            agent,
-        } => {
+        ProjectWorkspaceInboxDispatchAction::Plan { .. } => {
+            Err(internal("Plan must be confirmed inside its creation scope"))
+        }
             scheduled::admit(
                 connection,
                 library_id,
@@ -2209,16 +2211,10 @@ fn normalize_action(
     action: &ProjectWorkspaceInboxDispatchAction,
 ) -> Result<ProjectWorkspaceInboxDispatchAction, StoreError> {
     match action {
-        ProjectWorkspaceInboxDispatchAction::RunTask {
-            automation_id,
-            dispatch_id,
-            agent,
-        } => {
-            validate_id("automation_id", automation_id)?;
-            validate_id("dispatch_id", dispatch_id)?;
-            Ok(ProjectWorkspaceInboxDispatchAction::RunTask {
-                automation_id: automation_id.clone(),
-                dispatch_id: dispatch_id.clone(),
+        ProjectWorkspaceInboxDispatchAction::Plan { summary, steps } => {
+            plan::validate(connection, library_id, scope, summary, steps)?;
+            Ok(action.clone())
+        }
                 agent: agent.as_ref().map(normalize_chat_agent).transpose()?,
             })
         }

@@ -62,6 +62,7 @@ const MAX_OCCURRENCE_KEY_LENGTH: usize = 1_024;
 
 #[derive(Default)]
 struct MutationEffects {
+    blocked_by_changed: bool,
     database_ids: BTreeSet<String>,
     data_source_ids: BTreeSet<String>,
     page_ids: BTreeSet<String>,
@@ -196,6 +197,9 @@ pub(crate) fn apply_in_transaction(
                     &mut effects,
                 )?;
             }
+            if effects.blocked_by_changed {
+                super::work_graph::validate_graph(connection, StoreErrorCode::InvalidInput)?;
+            }
             if let Some(outcome) = data_history::finish(connection, history, request.intent.len())?
             {
                 effects.operation_outcomes.push(outcome);
@@ -270,6 +274,9 @@ pub(crate) fn apply_as_collaborator(
             committed_at,
             &mut effects,
         )?;
+    }
+    if effects.blocked_by_changed {
+        super::work_graph::validate_graph(connection, StoreErrorCode::InvalidInput)?;
     }
     refresh_scheduled_page_indexes(connection, &effects.page_ids, committed_at)?;
     Ok(DatabaseReceipt {
@@ -2614,6 +2621,8 @@ fn edit_relation_value(
     if !outcome.changed {
         return Ok(());
     }
+    effects.blocked_by_changed |=
+        address.property_id == super::property_semantics::BLOCKED_BY_PROPERTY_ID;
     record_relation_outcomes(
         connection,
         library_id,
@@ -5296,18 +5305,7 @@ fn deterministic_membership_id(data_source_id: &str, page_id: &str) -> String {
 }
 
 fn is_built_in_property(property_id: &str) -> bool {
-    matches!(
-        property_id,
-        "status"
-            | "priority"
-            | "estimate"
-            | "tags"
-            | "due_date"
-            | "scheduled_start"
-            | "scheduled_end"
-            | "assignee"
-            | "task_parent"
-    )
+    super::property_semantics::is_built_in_property_id(property_id)
 }
 
 #[allow(clippy::too_many_arguments)]

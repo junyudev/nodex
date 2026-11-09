@@ -42,11 +42,26 @@ export const inboxDispatchActionFromCore = (
   action: CoreInboxDispatchAction,
 ): InboxDispatchAction => {
   switch (action.type) {
-    case "run_task":
+    case "plan":
       return {
-        type: "run_task",
-        automationId: action.automation_id,
-        dispatchId: action.dispatch_id,
+        type: "plan",
+        summary: action.summary,
+        steps: action.steps.map((step) => ({
+          key: step.key,
+          projectId: step.project_id,
+          title: step.title,
+          body: step.body,
+          agent: step.agent
+            ? {
+                instanceId: step.agent.instance_id,
+                model: step.agent.model,
+                effort: step.agent.effort,
+              }
+            : null,
+          blockedBy: step.blocked_by,
+        })),
+      };
+      return {
         agent: action.agent ? inboxChatAgentFromCore(action.agent) : null,
       };
     case "keep":
@@ -87,7 +102,25 @@ const chatAgentToCore = (agent: InboxAgentChoice): CoreInboxChatAgent => ({
 
 export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInboxDispatchAction => {
   switch (action.type) {
-    case "run_task":
+    case "plan":
+      return {
+        type: "plan",
+        summary: action.summary,
+        steps: action.steps.map((step) => ({
+          key: step.key,
+          project_id: step.projectId,
+          title: step.title,
+          body: step.body,
+          agent: step.agent
+            ? {
+                instance_id: step.agent.instanceId,
+                model: step.agent.model,
+                effort: step.agent.effort,
+              }
+            : null,
+          blocked_by: [...step.blockedBy],
+        })),
+      };
       return {
         type: "run_task",
         automation_id: action.automationId,
@@ -158,7 +191,7 @@ export const inboxSourceFromCore = (source: CoreInboxSource): InboxSource => {
   switch (source.kind) {
     case "scheduled_task":
       return {
-        kind: "scheduled_task",
+      return {
         automationId: source.automation_id,
         dispatchId: source.dispatch_id,
         projectId: source.project_id ?? null,
@@ -222,6 +255,7 @@ export const inboxChatFromCore = (chat: CoreInboxChat): InboxChat => ({
 });
 
 const proposalFromCore = (proposal: CoreInboxProposal): InboxProposal => ({
+  createdPageIds: proposal.created_page_ids ?? [],
   answeredQuestion: proposal.answered_question,
   proposalId: proposal.proposal_id,
   revision: proposal.revision,

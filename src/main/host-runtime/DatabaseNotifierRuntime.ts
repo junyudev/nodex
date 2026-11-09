@@ -52,6 +52,7 @@ export class DatabaseNotifierRuntime extends Context.Service<
     readonly projectSessionInvalidations: Stream.Stream<ProjectSessionsChangeEvent>;
     readonly inboxInvalidations: Stream.Stream<InboxChangedEvent>;
     readonly projectInvalidations: Stream.Stream<ProjectsChangeEvent>;
+    readonly workInvalidations: Stream.Stream<void>;
   }
 >()("nodex/main/host-runtime/DatabaseNotifierRuntime") {}
 
@@ -120,42 +121,7 @@ export const live: Layer.Layer<DatabaseNotifierRuntime, never, WindowRuntime> = 
           windowCount: windows.count(),
         });
       });
-      yield* broadcast("project-sessions-changed", event);
-      yield* PubSub.publish(projectSessionInvalidations, event);
-    });
-    const notifyInboxChanged = Effect.fn("DatabaseNotifierRuntime.notifyInboxChanged")(function* (
-      event: InboxChangedEvent,
-    ) {
-      if (!accepting) return;
-      yield* broadcast("inbox-changed", event);
-      yield* PubSub.publish(inboxInvalidations, event);
-    });
-    const notifyDatabaseChanged = Effect.fn("DatabaseNotifierRuntime.notifyDatabaseChanged")(
-      function* (event: DatabaseChangeEvent) {
-        yield* broadcast("database-changed", event);
-        if (
-          !event.libraryId ||
-          (event.affectedDatabaseIds.length === 0 &&
-            (event.affectedDataSourceIds?.length ?? 0) === 0 &&
-            (event.affectedPageIds?.length ?? 0) === 0 &&
-            (event.affectedViewIds?.length ?? 0) === 0)
-        ) {
-          return;
-        }
-        yield* notifyLibraryNavigationChanged({
-          version: LIBRARY_NAVIGATION_EVENT_VERSION,
-          libraryId: event.libraryId,
-          storeEpoch: event.storeEpoch,
-          commitSeq: event.commitSeq,
-          changeKind: "database",
-          affectedParentKeys: [
-            "library",
-            "catalog",
-            ...event.affectedDatabaseIds.map((id) => `database:${id}`),
-          ],
-          affectedPageIds: event.affectedPageIds ?? [],
-          affectedDatabaseIds: event.affectedDatabaseIds.map(parseDatabaseId),
-          affectedViewIds: (event.affectedViewIds ?? []).map(parseDatabaseViewId),
+        yield* PubSub.publish(workInvalidations, undefined);
         });
       },
     );

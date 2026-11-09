@@ -291,6 +291,85 @@ fn coordinator_managed_state_projects_to_sessions_and_invalidates_on_each_toggle
     );
 }
 #[test]
+fn a_chat_on_several_pages_reports_by_the_page_key_from_its_brief() {
+    let w = seeded_workspace();
+    coordinator(&w);
+    apply(&w.module, "work", launch("work"));
+    create_project(&w.module, "project:work:create", "project:work");
+    let pages = [
+        "019d0000-0000-7000-8000-0000000000a1",
+        "019d0000-0000-7000-8000-0000000000a3",
+    ];
+    for (index, page) in pages.iter().enumerate() {
+        apply(
+            &w.module,
+            &format!("create:{index}"),
+            ProjectWorkspaceIntent::CreatePageFor {
+                target: ProjectWorkspacePageCreationTarget::Project {
+                    project_id: "project:work".into(),
+                },
+                page_id: (*page).into(),
+                document_id: format!("019d0000-0000-7000-8000-0000000000b{index}"),
+                title: format!("Work {index}"),
+            },
+        );
+        apply(
+            &w.module,
+            &format!("link:{index}"),
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: "work".into(),
+                intent: ProjectSessionIntent::LinkPage {
+                    page_id: (*page).into(),
+                },
+            },
+        );
+    }
+    let key = |page: &str| {
+        w.kernel
+            .readers()
+            .read_default(|c| {
+                Ok(
+                    crate::database::current_page_key_for_page(c, "library-1", page)?
+                        .expect("Project Pages carry keys"),
+                )
+            })
+            .unwrap()
+    };
+    let (first, second) = (key(pages[0]), key(pages[1]));
+    // Naming nothing is ambiguous; the refusal says which Pages the chat may name.
+    let ambiguous = w
+        .module
+        .apply(&context(), request("ambiguous", report(None, "Done")))
+        .unwrap_err();
+    assert!(ambiguous.message.contains(&first) && ambiguous.message.contains(&second));
+    let foreign = w
+        .module
+        .apply(
+            &context(),
+            request("foreign", report(Some("NOPE-9"), "Done")),
+        )
+        .unwrap_err();
+    assert!(foreign.message.contains("not linked to NOPE-9"));
+    apply(
+        &w.module,
+        "by-key",
+        report(Some(&second.to_lowercase()), "Second is done."),
+    );
+    let reported = w
+        .kernel
+        .readers()
+        .read_default(|c| {
+            Ok(c.query_row(
+                "SELECT page_id FROM project_session_pages WHERE session_id='work' AND report_outcome='ready'",
+                [],
+                |r| r.get::<_, String>(0),
+            )?)
+        })
+        .unwrap();
+    assert_eq!(reported, pages[1]);
+}
+
+#[test]
 fn coordinator_observation_and_event_dedupe_are_one_fenced_transaction() {
     let w = seeded_workspace();
     apply(&w.module, "work", launch("work"));
@@ -652,4 +731,55 @@ fn managed_chat_sweep_is_bounded_and_reaches_live_sessions_in_identity_order() {
             )
             .is_err()
     );
+}
+
+#[test]
+fn coordinator_duplicate_capture_does_not_wake_event_consumers() {
+    let w = seeded_workspace();
+    let intent = ProjectWorkspaceIntent::RecordWorkEvents {
+        events: vec![event("same")],
+        observed: vec![],
+    };
+    apply(&w.module, "capture:one", intent.clone());
+    let result = w
+        .module
+        .apply(&context(), request("capture:duplicate", intent))
+        .unwrap();
+    assert!(result.event.is_none());
+    assert_eq!(pending(&w).len(), 1);
+}
+
+#[test]
+fn coordinator_composite_work_keys_fit_full_page_identities_and_stay_bounded() {
+    let w = seeded_workspace();
+    let key = format!(
+        "ready_to_start:{}:{}:{}",
+        "p".repeat(512),
+        "p".repeat(512),
+        "e".repeat(64)
+    );
+    apply(
+        &w.module,
+        "long-key",
+        ProjectWorkspaceIntent::RecordWorkEvents {
+            events: vec![event(&key)],
+            observed: vec![],
+        },
+    );
+    assert_eq!(pending(&w)[0].dedupe_key, key);
+    let rejected = w
+        .module
+        .apply(
+            &context(),
+            request(
+                "oversized-key",
+                ProjectWorkspaceIntent::RecordWorkEvents {
+                    events: vec![event(&"k".repeat(2049))],
+                    observed: vec![],
+                },
+            ),
+        )
+        .unwrap_err();
+    assert_eq!(rejected.code, CoreErrorCode::InvalidInput);
+    assert_eq!(pending(&w).len(), 1);
 }

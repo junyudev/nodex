@@ -14,6 +14,7 @@ import { testPropertySemantics } from "../../shared/testing/database-property-re
 import { upgradeDatabaseViewConfigV2 } from "../../shared/database-view-presentation";
 import {
   buildDatabaseViewRenderModel,
+  projectDataSourcePageRowToDatabaseViewRenderRow,
   databaseViewConditionalColorForOption,
   withPublishedDatabaseViewDefinition,
 } from "./database-view-render-model";
@@ -176,6 +177,37 @@ const makeSnapshot = (
 };
 
 describe("Database View render model", () => {
+  test("projects row work without complete Page intrinsics", () => {
+    const snapshot = makeSnapshot();
+    if (snapshot.value.kind !== "query") throw new Error("Missing query fixture");
+    const query = snapshot.value.value;
+    const row = query.rows[0]!;
+    const agent = { instanceId: "agent:codex", model: "gpt-6-luna", effort: null };
+    for (const launch of ["ask", "automatic"] as const) {
+      const projected = projectDataSourcePageRowToDatabaseViewRenderRow(
+        {
+          ...row,
+          work: {
+            unsatisfiedCount: 4,
+            blockers: [
+              { pageId: "prerequisite", pageKey: "NODEX-12", title: "Set up", status: "plan" },
+              { pageId: "other", pageKey: null, title: "Other", status: "triage" },
+            ],
+          },
+        },
+        query.properties,
+      );
+      expect(projected.work).toEqual({
+        unsatisfiedCount: 4,
+        firstBlocker: { pageKey: "NODEX-12", title: "Set up" },
+      });
+    }
+    expect(
+      projectDataSourcePageRowToDatabaseViewRenderRow(
+        query.properties,
+      ).work,
+  });
+
   test("maps durable option colors onto conditional surface colors", () => {
     expect(databaseViewConditionalColorForOption("purple")).toBe("purple");
     expect(databaseViewConditionalColorForOption("teal")).toBe("green");

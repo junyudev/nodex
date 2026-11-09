@@ -900,6 +900,47 @@ parent-removal promotion policy without creating another storage authority.
 Relation supports contains/not-contains/empty/not-empty filters and is not
 sortable or groupable in this release.
 
+### Work prerequisites and Agent work
+
+(`blocked_by`), a reserved cardinality-many Page Relation. Its descriptor defaults to its own
+Data Source, and work edges may name prerequisites in other Project Sources. Each edge retains
+its target Source; moving the target elsewhere leaves it unsatisfied until restored. It can be renamed,
+removed, and restored like Priority. Its schema remains fixed. It uses ordinary
+Relation patches and retains unavailable targets. Core validates the complete
+resulting graph once per transaction: self-dependencies and cycles are rejected
+with `invalid_input` and a cycle path. Retained edges remain acyclic across
+membership and lifecycle changes. The picker excludes the current Page.
+an unsatisfied count, up to three blockers with Page identity/key/title/Status,
+facts do not require complete Page intrinsic hydration or per-card reads.
+The separate Page prerequisites read retains its count and blocker preview.
+
+
+The bounded Database `ReadyWork` read returns active Pages in active Projects'
+and all prerequisites satisfied. A prerequisite active in its retained target Source is
+`after_page_id` continuation so Pages waiting for a go-ahead cannot hide later
+ready work. The read itself does not start work or change Status.
+
+Starting work creates a new managed Session in the Page's active Project, links
+the Page, and hands it off (`triage`/`plan` to `doing`) in one Core transaction.
+It also records a `started` event and freezes the brief, Agent selection, launch
+prerequisite's key, title, Status, and latest report summary. Starting a Page
+replays reuse the original Session and frozen brief.
+
+Main delivers frozen launches through the same local-chat admission and launch
+path as Inbox dispatches. A lost reply is reconciled against Runtime admission
+`start_work` is available to any verified Agent and accepts a Page and optional
+Agent selection; it cannot grant automatic launch or start another attempt. Core
+records the start as that Agent's command. For the Coordinator it also requires the
+selection is its Agent Assignee; the start acts for the granting Member.
+
+The Main scheduler checks ready work at startup, on Database, Library, and
+Workspace changes, and every 60 seconds. Automatic launches use a stable identity
+from the Page and readiness epoch. Core rechecks that epoch and automatic consent
+inside the start transaction. Ask Pages record one `ready_to_start` event per
+epoch for Nodex, including their satisfied prerequisites. Zero-prerequisite
+Pages follow the same launch policy. Duplicate work-event captures publish no
+new invalidation.
+
 Removing a Property requires explicit confirmation and is blocked while a View
 still references it. Core rechecks the current schema and View references at
 commit time. A removed Property first enters the Source's recoverable Deleted

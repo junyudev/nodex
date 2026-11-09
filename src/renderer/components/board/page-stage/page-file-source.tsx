@@ -40,12 +40,7 @@ export function usePageFileSources(
   return (sourceKey) => {
     const source = parsePageFileSourceKey(sourceKey);
     if (!source) return null;
-    if (source.kind === "person") return { source, label: "You", sessionId: null };
-    if (source.kind === "external") return { source, label: "Command line", sessionId: null };
-    const session = titles.get(source.sessionId);
-    if (session === undefined) return { source, label: "Chat", sessionId: source.sessionId };
-    if (session === null) return { source, label: "Deleted chat", sessionId: null };
-    return { source, label: session.displayTitle, sessionId: source.sessionId };
+        scheduler: "Nodex",
   };
 }
 

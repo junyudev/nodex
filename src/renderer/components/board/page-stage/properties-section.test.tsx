@@ -5,6 +5,7 @@ import type { ReactElement } from "react";
 import type { PageStageCorePage } from "@/lib/page-stage-page";
 import { renderWithAppMaitai } from "@/test/app-maitai";
 import { TestQueryProvider } from "@/test/query";
+import { inboxAgentsFixture } from "@/features/inbox/inbox-agents.test-support";
 import { PageStagePropertiesSection } from "./properties-section";
 import type { PageStageController } from "./use-page-stage-controller";
 import type { PageStagePropertyControls } from "./use-page-stage-properties";
@@ -25,6 +26,10 @@ const api = vi.hoisted(() => ({
 const modal = vi.hoisted(() => ({ openModal: vi.fn() }));
 
 vi.mock("@/lib/api", () => api);
+vi.mock("@/features/inbox/inbox-agent-picker", async (original) => ({
+  ...(await original<typeof import("@/features/inbox/inbox-agent-picker")>()),
+  useInboxAgents: () => inboxAgentsFixture(),
+}));
 vi.mock("@/lib/modal-registry", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/modal-registry")>()),
   openModal: modal.openModal,
@@ -163,13 +168,14 @@ describe("PageStagePropertiesSection", () => {
 
     expect(view.getByRole("region", { name: "Properties" })).toBeTruthy();
     expect(view.queryByRole("button", { name: "Add Page Files" })).toBeNull();
-    const more = await view.findByRole("button", { name: "1 more property" });
+    const more = await view.findByRole("button", { name: "2 more properties" });
     expect(more.getAttribute("aria-expanded")).toBe("false");
     await act(async () => {
       fireEvent.click(more);
       await Promise.resolve();
     });
     expect(more.getAttribute("aria-expanded")).toBe("true");
+    // A Project Page that names no Agent offers one behind the same disclosure.
     const files = view.getByRole("button", { name: "Add Page Files" });
     await act(async () => {
       fireEvent.click(files);
@@ -197,7 +203,7 @@ describe("PageStagePropertiesSection", () => {
     );
 
     expect(view.queryByRole("button", { name: "Add chat" })).toBeNull();
-    const more = await view.findByRole("button", { name: "2 more properties" });
+    const more = await view.findByRole("button", { name: "3 more properties" });
     await act(async () => {
       fireEvent.click(more);
       await Promise.resolve();
@@ -274,7 +280,7 @@ describe("PageStagePropertiesSection", () => {
       />,
     );
 
-    await view.findByRole("button", { name: "1 more property" });
+    await view.findByRole("button", { name: "2 more properties" });
 
     expect(view.queryByText("Nodex")).toBeNull();
     expect(view.queryByText("No thread yet")).toBeNull();
@@ -386,7 +392,7 @@ describe("PageStagePropertiesSection", () => {
     const view = renderProperties(<PageStagePropertiesSection controller={buildController()} />);
 
     expect(await view.findByRole("treeitem", { name: "brief.txt" })).toBeTruthy();
-    expect(view.queryByRole("button", { name: /more propert/u })).toBeNull();
+    expect(await view.findByRole("button", { name: "1 more property" })).toBeTruthy();
   });
 
   test("keeps Files represented in the body behind the disclosure without calling them Empty", async () => {
@@ -402,7 +408,7 @@ describe("PageStagePropertiesSection", () => {
     );
 
     const view = renderProperties(<PageStagePropertiesSection controller={buildController()} />);
-    const more = await view.findByRole("button", { name: "1 more property" });
+    const more = await view.findByRole("button", { name: "2 more properties" });
     expect(view.queryByRole("treeitem", { name: "image.png" })).toBeNull();
 
     await act(async () => {

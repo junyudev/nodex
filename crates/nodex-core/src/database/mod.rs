@@ -13,6 +13,7 @@ mod relation;
 mod relation_projection;
 pub(crate) mod view_contract;
 mod window;
+pub(crate) mod work_graph;
 
 pub(crate) const MAX_PROPERTY_OPTIONS: usize = 100;
 pub(crate) const MAX_DATA_SOURCE_PROPERTIES: usize = 200;
@@ -8654,5 +8655,593 @@ mod tests {
         assert!(!groups.grouped);
         assert_eq!(groups.total_rows, 1);
         assert!(groups.groups.is_empty());
+    }
+    fn work_graph_fixture(kernel: &SqliteStoreKernel) -> DatabaseModule {
+        seed_grouped_fixture(
+            kernel,
+            ["page:a", "page:b", "page:c", "page:d", "page:e"]
+                .into_iter()
+                .map(|page_id| GroupRowSpec {
+                    page_id,
+                    title: page_id,
+                    value_json: Some("\"triage\""),
+                    rank_key: Some("1000"),
+                })
+                .collect(),
+        )
+    }
+
+    fn graph_patch(page: &str, adds: &[&str], removes: &[String]) -> DatabaseIntent {
+        DatabaseIntent::EditPropertyValues {
+            edits: vec![DatabasePropertyValueMutation {
+                expected_membership_revision: None,
+                address: DatabasePagePropertyAddress {
+                    page_id: page.into(),
+                    data_source_id: SOURCE_ID.into(),
+                    property_id: "blocked_by".into(),
+                },
+                edit: DatabasePropertyValueEdit::PatchSet {
+                    delta: DatabasePropertySetDelta::Relation {
+                        add_page_ids: adds.iter().map(|id| (*id).into()).collect(),
+                        remove_edge_ids: removes.to_vec(),
+                    },
+                },
+            }],
+        }
+    }
+
+    fn graph_apply(
+        module: &DatabaseModule,
+        id: &str,
+        intents: Vec<DatabaseIntent>,
+    ) -> Result<DatabaseApplyOutcome, CoreError> {
+        module.apply(
+            &context(),
+            ModuleApplyRequest {
+                contract_version: DATABASE_CONTRACT_VERSION,
+                store_epoch: StoreEpoch("epoch-1".into()),
+                operation_id: id.into(),
+                intent: intents,
+            },
+        )
+    }
+
+    fn graph_read(module: &DatabaseModule, read: DatabaseRead) -> DatabaseReadValue {
+        module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read,
+                },
+            )
+            .unwrap()
+            .value
+    }
+
+    fn graph_set_work_result(
+        kernel: &SqliteStoreKernel,
+        context: &BoundModuleContext,
+        id: &str,
+        revision: i64,
+        value: Value,
+    ) -> crate::library::LibraryApplyOutcome {
+        use nodex_core_contracts::library::*;
+        LibraryModule::new("profile-1", "library-1", kernel)
+            .apply(
+                context,
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    store_epoch: StoreEpoch("epoch-1".into()),
+                    operation_id: id.into(),
+                    intent: LibraryIntent::ApplyBlockPropertyMutation {
+                        mutation: Box::new(LibraryBlockPropertyMutation {
+                            actor: json!({"kind": "host"}),
+                            client_session_id: None,
+                            fields: vec![LibraryBlockPropertyFieldMutation::IntrinsicSet {
+                                value,
+                            }],
+                        }),
+                    },
+                },
+            )
+            .unwrap()
+    }
+
+    fn graph_set_work(
+        kernel: &SqliteStoreKernel,
+        context: &BoundModuleContext,
+        id: &str,
+        revision: i64,
+        value: Value,
+    ) -> nodex_core_contracts::library::LibraryBlockPropertyMutationOutcome {
+        graph_set_work_result(kernel, context, id, revision, value)
+            .committed
+            .value
+            .block_property_mutation
+            .unwrap()
+            .outcome
+    }
+
+    fn agent_work(launch: &str) -> Value {
+    }
+
+    #[test]
+    fn work_graph_rejects_self_direct_indirect_and_batch_cycles_atomically() {
+        let directory = tempdir().unwrap();
+        let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
+        let module = work_graph_fixture(&kernel);
+        for (id, edits) in [
+            ("self", vec![graph_patch("page:a", &["page:a"], &[])]),
+            (
+                "direct",
+                vec![
+                    graph_patch("page:a", &["page:b"], &[]),
+                    graph_patch("page:b", &["page:a"], &[]),
+                ],
+            ),
+            (
+                "indirect",
+                vec![
+                    graph_patch("page:a", &["page:b"], &[]),
+                    graph_patch("page:b", &["page:c"], &[]),
+                    graph_patch("page:c", &["page:a"], &[]),
+                ],
+            ),
+        ] {
+            let error = graph_apply(&module, id, edits).unwrap_err();
+            assert_eq!(error.code, CoreErrorCode::InvalidInput);
+            assert!(
+                error.message.contains("page:a"),
+                "cycle identifies the Page"
+            );
+            let DatabaseReadValue::Blocking { pages } = graph_read(
+                &module,
+                DatabaseRead::Blocking {
+                    page_id: "page:b".into(),
+                    window: Default::default(),
+                },
+            ) else {
+                panic!()
+            };
+            assert!(
+                pages.items.is_empty(),
+                "the entire rejected batch rolls back"
+            );
+        }
+        graph_apply(
+            &module,
+            "a-b",
+            vec![graph_patch("page:a", &["page:b"], &[])],
+        )
+        .unwrap();
+        graph_apply(
+            &module,
+            "b-c",
+            vec![graph_patch("page:b", &["page:c"], &[])],
+        )
+        .unwrap();
+        let error = graph_apply(
+            &module,
+            "c-a",
+            vec![graph_patch("page:c", &["page:a"], &[])],
+        )
+        .unwrap_err();
+        assert_eq!(error.code, CoreErrorCode::InvalidInput);
+        for id in ["page:a", "page:b", "page:c"] {
+            assert!(error.message.contains(id));
+        }
+        let DatabaseReadValue::RelationTargetWindow { value } = graph_read(
+            &module,
+            DatabaseRead::RelationTargetWindow {
+                address: DatabasePagePropertyAddress {
+                    page_id: "page:a".into(),
+                    data_source_id: SOURCE_ID.into(),
+                    property_id: "blocked_by".into(),
+                },
+                window: Default::default(),
+            },
+        ) else {
+            panic!()
+        };
+        let edge = match &value.targets.items[0] {
+            nodex_core_contracts::database::DatabaseRelationTargetItem::Visible {
+                edge_id, ..
+            } => edge_id.clone(),
+            _ => panic!(),
+        };
+        // A temporary cycle is legal if a later removal in this same batch breaks it.
+        graph_apply(
+            &module,
+            "reverse-a-b",
+            vec![
+                graph_patch("page:b", &["page:a"], &[]),
+                graph_patch("page:a", &[], &[edge]),
+            ],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn work_graph_blocking_is_a_bounded_incoming_read_and_summaries_count_blockers() {
+        let directory = tempdir().unwrap();
+        let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
+        let module = work_graph_fixture(&kernel);
+        graph_apply(
+            &module,
+            "edges",
+            vec![
+                graph_patch("page:a", &["page:b", "page:c", "page:d", "page:e"], &[]),
+                graph_patch("page:c", &["page:b"], &[]),
+            ],
+        )
+        .unwrap();
+        let DatabaseReadValue::Blocking { pages } = graph_read(
+            &module,
+            DatabaseRead::Blocking {
+                page_id: "page:b".into(),
+                window: CollectionWindowRequest {
+                    first: Some(1),
+                    after: None,
+                },
+            },
+        ) else {
+            panic!()
+        };
+        assert_eq!(pages.items[0].page_id, "page:a");
+        assert!(pages.next_cursor.is_some());
+        let DatabaseReadValue::Blocking { pages } = graph_read(
+            &module,
+            DatabaseRead::Blocking {
+                page_id: "page:b".into(),
+                window: CollectionWindowRequest {
+                    first: Some(1),
+                    after: pages.next_cursor,
+                },
+            },
+        ) else {
+            panic!()
+        };
+        assert_eq!(pages.items[0].page_id, "page:c");
+        assert!(pages.next_cursor.is_none());
+        let DatabaseReadValue::Prerequisites { value } = graph_read(
+            &module,
+            DatabaseRead::Prerequisites {
+                page_id: "page:a".into(),
+            },
+        ) else {
+            panic!()
+        };
+        assert_eq!(value.unsatisfied_count, 4);
+        assert_eq!(value.blockers.len(), 3);
+        assert_eq!(value.blockers[0].status.as_deref(), Some("triage"));
+        let DatabaseReadValue::RowsById { value } = graph_read(
+            &module,
+            DatabaseRead::RowsById {
+                target: nodex_core_contracts::database::DatabaseRowsTarget::ProjectDefault,
+                page_ids: vec!["page:a".into()],
+            },
+        ) else {
+            panic!()
+        };
+        assert_eq!(value.rows[0].work.unsatisfied_count, 4);
+    }
+
+    #[test]
+    fn work_graph_rows_include_agent_launch_without_selected_properties_and_refresh_after_edits() {
+        let directory = tempdir().unwrap();
+        let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
+        let module = work_graph_fixture(&kernel);
+        graph_apply(
+            &module,
+            "row:edges",
+            vec![graph_patch("page:a", &["page:b"], &[])],
+        )
+        .unwrap();
+        let read = || {
+            let DatabaseReadValue::DataSourceQuery { value } = graph_read(
+                &module,
+                DatabaseRead::DataSourceQuery {
+                    data_source_id: SOURCE_ID.into(),
+                    query: nodex_core_contracts::database::DatabaseDataSourceQuery {
+                        cursor: None,
+                        limit: Some(10),
+                        projection_property_ids: Some(Vec::new()),
+                        filter: DatabaseViewFilter::Group {
+                            operator: DatabaseViewFilterGroupOperator::And,
+                            children: Vec::new(),
+                        },
+                        sort: Vec::new(),
+                    },
+                },
+            ) else {
+                panic!("row query");
+            };
+            value
+                .rows
+                .items
+                .into_iter()
+                .find(|row| row.page_id == "page:a")
+                .unwrap()
+        };
+        let initial = read();
+        assert_eq!(initial.work.unsatisfied_count, 1);
+        assert_eq!(initial.work.blockers[0].page_id, "page:b");
+        for (index, value, launch) in [
+            (
+                0,
+                agent_work("ask"),
+            ),
+            (
+                1,
+                agent_work("automatic"),
+            ),
+            (2, Value::Null, None),
+        ] {
+            let edited = graph_set_work_result(
+                &kernel,
+                &context(),
+                &format!("row:work:{index}"),
+                index,
+                value,
+            );
+            let manifest = kernel
+                .readers()
+                .read_default(|connection| {
+                    crate::infrastructure::local_commit::read_manifest(
+                        connection,
+                        edited.committed.commit_seq,
+                    )
+                })
+                .unwrap();
+            assert!(
+                manifest.projection_effects.iter().any(|effect| matches!(
+                    &effect.scope.scope,
+                    LocalProjectionScope::DatabaseView { .. }
+                )),
+                "intrinsic edits refresh the Board/List projection"
+            );
+            let row = read();
+            for effect in &manifest.projection_effects {
+                if let Some(LocalProjectionPatch::DatabaseRowUpsert { row: delivered, .. }) =
+                    &effect.patch
+                {
+                    assert_eq!(
+                        delivered.work, row.work,
+                        "inline updates carry the same work facts as canonical reads"
+                    );
+                }
+            }
+            assert!(row.metadata_revision > initial.metadata_revision);
+            assert_eq!(row.work.unsatisfied_count, 1);
+            assert_eq!(
+                row.work
+            );
+        }
+    }
+
+    #[test]
+    fn work_graph_automatic_consent_uses_verified_provenance_and_validates_shape() {
+        use nodex_core_contracts::library::{
+            LibraryBlockPropertyMutationErrorCode as Code,
+            LibraryBlockPropertyMutationOutcome as Outcome,
+        };
+        let directory = tempdir().unwrap();
+        let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
+        let _module = work_graph_fixture(&kernel);
+        let mut agent = context();
+        agent.adapter = AdapterKind::Agent;
+        agent.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
+            session_id: "session:agent".into(),
+            backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
+        });
+        let result = graph_set_work(&kernel, &agent, "agent-auto", 0, agent_work("automatic"));
+        assert!(
+            matches!(result, Outcome::Rejected { error } if error.code == Code::PropertyValueInvalid)
+        );
+        let mut host = context();
+        host.adapter = AdapterKind::ElectronHost;
+        assert!(matches!(
+            graph_set_work(&kernel, &host, "host-auto", 0, agent_work("automatic")),
+            Outcome::Committed { .. }
+        ));
+        let copied = LibraryModule::new("profile-1", "library-1", &kernel)
+            .apply(
+                &agent,
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    store_epoch: StoreEpoch("epoch-1".into()),
+                    operation_id: "agent-copy-automatic".into(),
+                    intent: LibraryIntent::DuplicatePage {
+                        source_page_id: "page:a".into(),
+                        destination:
+                            nodex_core_contracts::library::LibraryPageWriteDestination::Library {
+                                at: None,
+                            },
+                    },
+                },
+            )
+            .unwrap_err();
+        assert_eq!(copied.code, CoreErrorCode::InvalidInput);
+        assert!(matches!(
+            graph_set_work(&kernel, &agent, "agent-retain", 1, agent_work("automatic")),
+            Outcome::Committed { .. }
+        ));
+        assert!(matches!(
+            graph_set_work(&kernel, &agent, "agent-ask", 2, agent_work("ask")),
+            Outcome::Committed { .. }
+        ));
+        assert!(
+            matches!(graph_set_work(&kernel, &agent, "agent-escalate", 3, agent_work("automatic")), Outcome::Rejected { error } if error.code == Code::PropertyValueInvalid)
+        );
+        assert!(matches!(
+            graph_set_work(&kernel, &host, "host-null", 3, Value::Null),
+            Outcome::Committed { .. }
+        ));
+        for (index, bad) in [json!({}), json!({"selection":{"instanceId":"a","model":"b"},"launch":"ask"}), json!({"selection":{"instanceId":"a","model":"b","effort":null,"extra":true},"launch":"ask"}), json!({"selection":{"instanceId":"a","model":"b","effort":"x".repeat(129)},"launch":"ask"}), json!({"selection":{"instanceId":"a","model":"b","effort":null},"launch":"yes"})].into_iter().enumerate() {
+            assert!(matches!(graph_set_work(&kernel, &host, &format!("bad:{index}"), 4, bad), Outcome::Rejected { error } if error.code == Code::PropertyValueInvalid));
+        }
+    }
+
+    #[test]
+    fn work_graph_readiness_requires_active_primary_work_no_chat_and_satisfied_prerequisites() {
+        let directory = tempdir().unwrap();
+        let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
+        let module = work_graph_fixture(&kernel);
+        let ready = || {
+            let DatabaseReadValue::ReadyWork { pages } = module
+                .read(
+                    &library_context(AdapterKind::Test),
+                    ModuleReadRequest {
+                        contract_version: DATABASE_CONTRACT_VERSION,
+                        read: DatabaseRead::ReadyWork {
+                            after_page_id: None,
+                            project_id: None,
+                            limit: Some(10),
+                        },
+                    },
+                )
+                .unwrap()
+                .value
+            else {
+                panic!()
+            };
+            pages
+        };
+        assert!(ready().is_empty());
+        graph_set_work(&kernel, &context(), "assign", 0, agent_work("ask"));
+        assert_eq!(ready().len(), 1);
+        let empty_epoch = ready()[0].readiness_epoch.clone();
+        graph_apply(
+            &module,
+            "block-a",
+            vec![graph_patch("page:a", &["page:b", "page:c"], &[])],
+        )
+        .unwrap();
+        assert!(ready().is_empty());
+        let set_status = |id: &str, page: &str, status: &str, rev: i64| {
+            graph_apply(
+                &module,
+                id,
+                vec![DatabaseIntent::EditPropertyValues {
+                    edits: vec![DatabasePropertyValueMutation {
+                        expected_membership_revision: None,
+                        address: DatabasePagePropertyAddress {
+                            page_id: page.into(),
+                            data_source_id: SOURCE_ID.into(),
+                            property_id: "status".into(),
+                        },
+                        edit: DatabasePropertyValueEdit::Replace {
+                            expected_value_revision: rev,
+                            value: DatabasePropertyValueInput::Select {
+                                option_id: status.into(),
+                            },
+                        },
+                    }],
+                }],
+            )
+            .unwrap()
+        };
+        set_status("b-done", "page:b", "done", 1);
+        assert!(ready().is_empty(), "every prerequisite must be satisfied");
+        set_status("c-done", "page:c", "done", 1);
+        for (table, key, id) in [
+            ("blocks", "id", "page:a"),
+            ("data_sources", "id", SOURCE_ID),
+            ("database_containers", "block_id", DATABASE_ID),
+        ] {
+            kernel
+                .writer()
+                .call(move |c| {
+                    c.execute(
+                        &format!("UPDATE {table} SET lifecycle='archived' WHERE {key}=?1"),
+                        [id],
+                    )?;
+                    Ok(())
+                })
+                .unwrap();
+            assert!(ready().is_empty(), "inactive work context is not ready");
+            kernel
+                .writer()
+                .call(move |c| {
+                    c.execute(
+                        &format!("UPDATE {table} SET lifecycle='active' WHERE {key}=?1"),
+                        [id],
+                    )?;
+                    Ok(())
+                })
+                .unwrap();
+        }
+        let pages = ready();
+        assert_eq!(pages.len(), 1);
+        assert!(pages[0].prerequisites[0].satisfied);
+        assert_ne!(pages[0].readiness_epoch, empty_epoch);
+        assert_eq!(pages[0].readiness_epoch, ready()[0].readiness_epoch);
+            .into_iter()
+            .enumerate()
+        {
+            set_status(&format!("stage:{i}"), "page:a", stage, i as i64 + 1);
+            assert_eq!(!ready().is_empty(), matches!(stage, "triage" | "plan"));
+        }
+        set_status("reopen-b", "page:b", "plan", 2);
+        assert!(ready().is_empty());
+        assert_eq!(ready().len(), 1);
+        assert_ne!(pages[0].readiness_epoch, ready()[0].readiness_epoch);
+        kernel
+            .writer()
+            .call(|c| {
+                c.execute(
+                    "UPDATE blocks SET lifecycle='archived' WHERE id='page:b'",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        assert!(ready().is_empty());
+        kernel
+            .writer()
+            .call(|c| {
+                c.execute("UPDATE blocks SET lifecycle='active' WHERE id='page:b'", [])?;
+                c.execute(
+                    "UPDATE projects SET lifecycle='archived' WHERE id='project-1'",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        assert!(ready().is_empty());
+        kernel.writer().call(|c| { c.execute("UPDATE projects SET lifecycle='active', database_block_id=NULL WHERE id='project-1'", [])?; Ok(()) }).unwrap();
+        assert!(ready().is_empty());
+        kernel.writer().call(|c| { c.execute("UPDATE projects SET database_block_id=?1 WHERE id='project-1'", [DATABASE_ID])?; c.execute("INSERT INTO project_sessions(id,project_id,no_thread_fallback_title,created_at,updated_at,activity_at) VALUES ('session:linked','project-1','Linked',?1,?1,unixepoch(?1)*1000)", [NOW])?; c.execute("INSERT INTO project_session_pages(session_id,page_id,linked_at) VALUES ('session:linked','page:a',?1)", [NOW])?; Ok(()) }).unwrap();
+        assert!(ready().is_empty());
+        let DatabaseReadValue::ReadyWork { pages } = graph_read(
+            &module,
+            DatabaseRead::ReadyWork {
+                after_page_id: None,
+                project_id: Some("another-project".into()),
+                limit: Some(10),
+            },
+        ) else {
+            panic!()
+        };
+        assert!(pages.is_empty());
+    }
+
+    #[test]
+    fn work_graph_deep_validation_detects_retained_cycles() {
+        let directory = tempdir().unwrap();
+        let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
+        let module = work_graph_fixture(&kernel);
+        graph_apply(
+            &module,
+            "a-b",
+            vec![graph_patch("page:a", &["page:b"], &[])],
+        )
+        .unwrap();
+        kernel.writer().call(|c| {
+            super::create_page_key_namespace(c, "library-1", DATABASE_ID, Some("WORK"), "Work", NOW)?;
+            c.execute("INSERT INTO data_source_property_values(data_source_id,membership_id,property_id,value_type,value_json,revision,updated_at) VALUES (?1,'membership:page:b','blocked_by','relation','null',1,?2)", params![SOURCE_ID, NOW])?;
+            c.execute("INSERT INTO data_source_relation_edges(edge_id,source_data_source_id,source_membership_id,property_id,target_page_block_id,created_at) VALUES (?1,?2,'membership:page:b','blocked_by','page:a',?3)", params!["a".repeat(64), SOURCE_ID, NOW])?;
+        }).unwrap();
     }
 }

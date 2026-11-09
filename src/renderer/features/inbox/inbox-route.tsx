@@ -1,6 +1,7 @@
 import { useInboxClock } from "./use-inbox-clock";
 import { consumeInboxEntryOpen, useInboxEntryOpen } from "../../lib/inbox-entry-navigation";
 import { openNodex } from "../../lib/inbox-runtime";
+import { startWork } from "../../lib/work-graph-runtime";
 import { readableIpcError } from "@/lib/ipc-error-message";
 import { toast } from "@/components/ui/toast";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -340,9 +341,7 @@ export function InboxRoute({
   const contentRef = useRef<HTMLDivElement>(null);
   // The Inbox reads like a conversation, oldest first; History reads newest first.
   const inboxItems = view === "inbox" ? departures.items.toReversed() : [];
-  const linkedChats = usePageChatActivitySummaries(inboxItems.map((item) => item.pageId));
-  // The last messages decided still say where they went before the Inbox reads as clear.
-  const shownItems = view === "inbox" ? inboxItems : stream.items;
+  // A Nodex post about a card that no chat works on yet can start it from the post.
   const nowMs = useInboxClock();
   const policy = inboxSuggestionPolicy(settings, agents.providers, nowMs);
   const suggestionsOffered = inboxSuggestionsOffered(policy);

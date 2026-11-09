@@ -619,6 +619,53 @@ describe("Page Detail metadata runtime", () => {
     ]);
   });
 
+  test("writes Agent work and clears it through the Page intrinsic revision", async () => {
+    const requests: BlockPropertyMutationRequestV2[] = [];
+    const work = {
+    } as const;
+    const source = detail(false);
+    const deps = dependencies({ detail: source, requests, refreshes: [] });
+    expect(
+      await commitPageDetailMetadataPatch({
+        projectId: "project-1",
+        pageId: "page-1",
+        operationId: "assign-work",
+        dependencies: deps,
+      }),
+    ).toEqual({ status: "updated", didMutate: true });
+    expect(requests[0].fields).toEqual([
+      {
+        scope: "intrinsic",
+        blockId: "page-1",
+        operation: "set",
+        expectedRevision: 0,
+        value: work,
+      },
+    ]);
+    const assigned: PageDetail = {
+      ...source,
+      intrinsicProperties: [
+        ...source.intrinsicProperties,
+      ],
+    };
+    expect(
+      await commitPageDetailMetadataPatch({
+        projectId: "project-1",
+        pageId: "page-1",
+        operationId: "clear-work",
+        dependencies: dependencies({ detail: assigned, requests, refreshes: [] }),
+      }),
+    ).toEqual({ status: "updated", didMutate: true });
+    expect(requests[1].fields).toEqual([
+      {
+        scope: "intrinsic",
+        blockId: "page-1",
+        operation: "set",
+        expectedRevision: 4,
+      },
+    ]);
+  });
+
   test("writes Page intrinsic fields without inventing Data Source coordinates", async () => {
     const requests: BlockPropertyMutationRequestV2[] = [];
     const refreshes: string[] = [];

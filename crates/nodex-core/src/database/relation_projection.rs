@@ -34,10 +34,12 @@ relation_values AS MATERIALIZED (
     AND value.value_type = 'relation'
     AND json_type(value.value_json) = 'null'
 ),
-target_candidates(target_data_source_id, page_id) AS MATERIALIZED (
+target_candidates(target_data_source_id, page_id, property_id, effective_source_id) AS MATERIALIZED (
   SELECT DISTINCT
     relation_value.target_data_source_id,
-    edge.target_page_block_id
+    edge.target_page_block_id,
+    relation_value.property_id,
+    COALESCE(edge.target_data_source_id, relation_value.target_data_source_id)
   FROM relation_values relation_value
   CROSS JOIN data_source_relation_edges edge
   WHERE edge.source_data_source_id = ?1
@@ -48,12 +50,14 @@ target_facts AS MATERIALIZED (
   SELECT
     candidate.target_data_source_id,
     candidate.page_id,
+    candidate.property_id,
+    candidate.effective_source_id,
     block.lifecycle,
     materialization.title,
     EXISTS(
       SELECT 1
       FROM data_source_page_memberships membership
-      WHERE membership.data_source_id = candidate.target_data_source_id
+      WHERE membership.data_source_id = candidate.effective_source_id
         AND membership.page_block_id = candidate.page_id
         AND membership.removed_at IS NULL
     ) AS active_membership
@@ -97,6 +101,7 @@ visible_counts AS (
   FROM relation_properties relation_property
   JOIN target_facts fact
     ON fact.target_data_source_id = relation_property.target_data_source_id
+   AND fact.property_id = relation_property.property_id
   CROSS JOIN data_source_relation_edges edge
     INDEXED BY idx_data_source_relation_edges_property_target
   JOIN relation_values relation_value
@@ -108,6 +113,7 @@ visible_counts AS (
     AND edge.source_data_source_id = ?1
     AND edge.property_id = relation_property.property_id
     AND edge.target_page_block_id = fact.page_id
+   AND fact.effective_source_id = COALESCE(edge.target_data_source_id, relation_property.target_data_source_id)
   GROUP BY relation_value.membership_id, relation_value.property_id
 )
 SELECT
@@ -138,6 +144,8 @@ SELECT
         AND edge.property_id = relation_value.property_id
         AND fact.target_data_source_id = relation_value.target_data_source_id
         AND fact.page_id = edge.target_page_block_id
+        AND fact.property_id = relation_value.property_id
+        AND fact.effective_source_id = COALESCE(edge.target_data_source_id, relation_value.target_data_source_id)
         AND fact.lifecycle IS NOT NULL
         AND fact.title IS NOT NULL
       ORDER BY edge.target_page_block_id
@@ -321,7 +329,8 @@ pub(crate) fn hydrate_row_previews(
         &memberships,
     )?
     .previews;
-    hydrate_rows(rows, previews)
+    hydrate_rows(rows, previews)?;
+    super::work_graph::hydrate_summaries(connection, rows)
 }
 
 /// Hydrates bounded Relation previews from the current Library for the selected rows.
@@ -361,6 +370,7 @@ pub(crate) fn hydrate_agent_row_previews(
         previews_for_selected_memberships(connection, library_id, data_source_id, &memberships)?
             .previews;
     hydrate_rows(rows, previews)?;
+    super::work_graph::hydrate_summaries(connection, rows)?;
     Ok(targets.len())
 }
 
@@ -450,7 +460,7 @@ mod tests {
                  ) WITHOUT ROWID;
                  CREATE TABLE data_source_relation_edges(\
                    edge_id TEXT, source_data_source_id TEXT, source_membership_id TEXT, \
-                   property_id TEXT, target_page_block_id TEXT,\
+                   property_id TEXT, target_page_block_id TEXT, target_data_source_id TEXT,\
                    PRIMARY KEY(source_data_source_id, source_membership_id, property_id,\
                      target_page_block_id), UNIQUE(edge_id)\
                  ) WITHOUT ROWID;
@@ -573,7 +583,7 @@ mod tests {
                  ), target(value) AS (\
                    SELECT 1 UNION ALL SELECT value + 1 FROM target WHERE value < ?2\
                  )
-                 INSERT INTO data_source_relation_edges
+                 INSERT INTO data_source_relation_edges(edge_id, source_data_source_id, source_membership_id, property_id, target_page_block_id)
                  SELECT printf('%064x', (source.value - 1) * ?2 + target.value), \
                    'source:data', printf('source:%03d', source.value), 'p_blocked0', \
                    printf('target:%05d', target.value)
@@ -667,6 +677,40 @@ mod tests {
     #[test]
     fn sqlite_boundary_returns_only_top_k_relation_targets() {
         assert_bounded_projection(8, 128);
+    }
+
+    #[test]
+    fn prerequisite_previews_keep_each_edges_frozen_source_after_a_move() {
+        let connection = fixture(2, 1);
+        connection.execute_batch("UPDATE data_source_relation_properties SET property_id='blocked_by'; UPDATE data_source_property_values SET property_id='blocked_by'; UPDATE data_source_relation_edges SET property_id='blocked_by';
+          INSERT INTO data_sources VALUES ('moved:data','library:relation','database:owner');
+          UPDATE pages SET parent_id='moved:data';
+          UPDATE data_source_page_memberships SET data_source_id='moved:data';
+          UPDATE data_source_relation_edges SET target_data_source_id=CASE WHEN source_membership_id='source:001' THEN 'target:data' ELSE 'moved:data' END;").unwrap();
+        let batch = previews_for_memberships(
+            &connection,
+            "library:relation",
+            None,
+            "source:data",
+            &["source:001", "source:002"],
+        )
+        .unwrap();
+        for (membership, expected_state) in [
+            ("source:001", "out_of_source"),
+            ("source:002", "active_in_target_source"),
+        ] {
+            let preview = &batch.previews[&(membership.into(), "blocked_by".into())];
+            assert_eq!(preview.total_count, 1);
+            assert_eq!(preview.unavailable_count, 0);
+            assert_eq!(preview.targets.len(), 1);
+            let DatabaseRelationTargetItem::Visible {
+                membership_state, ..
+            } = &preview.targets[0]
+            else {
+                panic!()
+            };
+            assert_eq!(membership_state, expected_state);
+        }
     }
 
     #[test]

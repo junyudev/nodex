@@ -416,11 +416,13 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
     linkedChatsSignal !== "attention" &&
     !currentQuietPropertiesState.linkedChats.visible;
   const collapsedPropertyCount =
-    hiddenRows.length + [filesCollapsed, relatedChatsCollapsed].filter(Boolean).length;
+    hiddenRows.length +
   const collapsedPropertyLabel = formatPageStageQuietPropertyCountLabel(
     collapsedPropertyCount,
     propertiesExpanded,
   );
+  const page = controller.page;
+    />
   const linkedChatsRow = controller.hasRelatedChatsRow ? (
     <RelatedChatsPropertyRow controller={controller} />
   ) : null;

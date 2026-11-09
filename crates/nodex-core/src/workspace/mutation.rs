@@ -738,6 +738,7 @@ pub(super) fn apply(
                         &sqlite_now(transaction)?,
                     )
                 }
+                ProjectWorkspaceIntent::StartPageWork { .. } | ProjectWorkspaceIntent::SettlePageWorkLaunch { .. } => super::page_work::apply(transaction,&context,&library_id,&store_epoch,&request.operation_id,&request_hash,admitted_intent),
                 ProjectWorkspaceIntent::CreateSession {
                     session_id,
                     project_id,
@@ -1439,6 +1440,7 @@ pub(super) fn finish_no_op(
             )?;
             let committed = crate::ModuleWriterResult {
                 value: ProjectWorkspaceCommitValue {
+                    inbox_created_page_ids: Vec::new(),
                     created_page: None,
                     inbox_undo_token: None,
                     affected_project_ids: project_ids.clone(),
@@ -1606,6 +1608,16 @@ pub(super) fn seal_mutation_with_created_page(
                 })
             } else {
                 None
+            },
+            inbox_created_page_ids: if effects.operation_kind == "inbox_confirm_plan" {
+                let json = connection.query_row(
+                    "SELECT page_ids_json FROM inbox_plan_results WHERE operation_id=?1",
+                    [operation_id],
+                    |row| row.get::<_, String>(0),
+                )?;
+                serde_json::from_str(&json).map_err(|_| internal("Invalid plan result"))?
+            } else {
+                Vec::new()
             },
             created_page,
             inbox_undo_token: connection

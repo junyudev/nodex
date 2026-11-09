@@ -213,7 +213,19 @@ describe("native Database Page projections", () => {
       description_length: 0,
       has_description: false,
       database_values: { status: "triage", tags: ["o_AAAAAAAA"] },
+      work: {
+        unsatisfied_count: 1,
+        blockers: [
+          {
+            page_id: "page:prerequisite",
+            page_key: "NODEX-12",
+            title: "Prerequisite",
+            status: "plan",
+          },
+        ],
+      },
       intrinsic_properties: {
+        },
         "run.target": "localProject",
         "run.localPath": null,
         "run.baseBranch": null,
@@ -248,6 +260,18 @@ describe("native Database Page projections", () => {
     expect(projectCoreDatabaseRowSummary(row)).toMatchObject({
       id: "page:defaults",
       status: "triage",
+      },
+      work: {
+        unsatisfiedCount: 1,
+        blockers: [
+          {
+            pageId: "page:prerequisite",
+            pageKey: "NODEX-12",
+            title: "Prerequisite",
+            status: "plan",
+          },
+        ],
+      },
       tags: ["o_AAAAAAAA"],
       priority: undefined,
       estimate: undefined,

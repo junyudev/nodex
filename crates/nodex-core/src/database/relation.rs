@@ -262,7 +262,21 @@ pub(crate) fn apply_value_edit(
         });
     }
     let additions = desired.difference(&current).cloned().collect::<Vec<_>>();
-    validate_active_targets(connection, &definition.target_data_source_id, &additions)?;
+    if property_id == "blocked_by" {
+        for target in &additions {
+            let source: String = connection
+                .query_row(
+                    "SELECT parent_id FROM pages WHERE block_id=?1 AND parent_kind='data_source'",
+                    [target],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .ok_or_else(|| not_found("Prerequisite must be a Database Page"))?;
+            validate_active_targets(connection, &source, std::slice::from_ref(target))?;
+        }
+    } else {
+        validate_active_targets(connection, &definition.target_data_source_id, &additions)?;
+    }
     if property_id == TASK_PARENT_PROPERTY_ID {
         let pages = [DatabaseTaskParentPage {
             page_id: page_id.clone(),
@@ -310,8 +324,8 @@ pub(crate) fn apply_value_edit(
     let mut insert = connection.prepare(
         "INSERT INTO data_source_relation_edges(\
            edge_id, source_data_source_id, source_membership_id, property_id, \
-           target_page_block_id, created_at\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+           target_page_block_id, created_at, target_data_source_id\
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, CASE WHEN ?4='blocked_by' THEN (SELECT parent_id FROM pages WHERE block_id=?5 AND parent_kind='data_source') END)",
     )?;
     for target_page_id in additions {
         insert.execute(params![
@@ -350,13 +364,17 @@ pub(crate) fn copy_relation_edges(
 ) -> Result<(), StoreError> {
     let edges = connection
         .prepare(
-            "SELECT property_id, target_page_block_id \
+            "SELECT property_id, target_page_block_id, target_data_source_id \
              FROM data_source_relation_edges \
              WHERE source_data_source_id = ?1 AND source_membership_id = ?2 \
              ORDER BY property_id, target_page_block_id",
         )?
         .query_map(params![data_source_id, source_membership_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     if edges.is_empty() {
@@ -365,10 +383,10 @@ pub(crate) fn copy_relation_edges(
     let mut insert = connection.prepare(
         "INSERT INTO data_source_relation_edges(\
            edge_id, source_data_source_id, source_membership_id, property_id, \
-           target_page_block_id, created_at\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+           target_page_block_id, created_at, target_data_source_id\
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
     )?;
-    for (property_id, target_page_id) in edges {
+    for (property_id, target_page_id, target_source) in edges {
         if property_id == TASK_PARENT_PROPERTY_ID {
             continue;
         }
@@ -379,6 +397,7 @@ pub(crate) fn copy_relation_edges(
             property_id,
             target_page_id,
             now,
+            target_source,
         ])?;
     }
     Ok(())
@@ -1109,13 +1128,13 @@ pub(crate) fn target_window(
         .transpose()?;
     let mut statement = connection.prepare(
         "WITH ranked AS (\
-           SELECT edge_id, target_page_block_id, \
+           SELECT edge_id, target_page_block_id, target_data_source_id, \
              row_number() OVER (ORDER BY target_page_block_id) AS ordinal \
            FROM data_source_relation_edges \
            WHERE source_data_source_id = ?1 AND source_membership_id = ?2 \
              AND property_id = ?3\
          ) \
-         SELECT edge_id, target_page_block_id, ordinal FROM ranked \
+         SELECT edge_id, target_page_block_id, ordinal, target_data_source_id FROM ranked \
          WHERE ordinal > COALESCE(?4, 0) ORDER BY ordinal LIMIT ?5",
     )?;
     let targets_with_ordinals = statement
@@ -1133,20 +1152,22 @@ pub(crate) fn target_window(
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, i64>(2)?,
+                    row.get::<_, Option<String>>(3)?
+                        .unwrap_or_else(|| target_source.clone()),
                 ))
             },
         )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let target_keys = targets_with_ordinals
         .iter()
-        .map(|(_, page_id, _)| (target_source.clone(), page_id.clone()))
+        .map(|(_, page_id, _, source)| (source.clone(), page_id.clone()))
         .collect::<BTreeSet<_>>();
     let projected = project_targets(connection, library_id, project_id, &target_keys)?;
     let candidates = targets_with_ordinals
         .into_iter()
-        .map(|(edge_id, page_id, ordinal)| {
+        .map(|(edge_id, page_id, ordinal, source)| {
             let item = projected
-                .get(&(target_source.clone(), page_id.clone()))
+                .get(&(source, page_id.clone()))
                 .cloned()
                 .unwrap_or(ProjectedRelationTarget::Unavailable)
                 .with_edge(edge_id);

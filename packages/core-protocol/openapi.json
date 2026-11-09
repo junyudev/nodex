@@ -6718,300 +6718,49 @@
               }
             }
           },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "CollectionWindow_DatabaseRelationTargetItem": {
-        "type": "object",
-        "required": [
-          "items",
-          "authority"
-        ],
-        "properties": {
-          "authority": {
-            "$ref": "#/components/schemas/CollectionWindowAuthority"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "oneOf": [
-                {
-                  "type": "object",
-                  "required": [
-                    "edge_id",
-                    "page_id",
-                    "title",
-                    "lifecycle",
-                    "membership_state",
-                    "kind"
-                  ],
-                  "properties": {
-                    "edge_id": {
-                      "type": "string"
-                    },
-                    "kind": {
-                      "type": "string",
-                      "enum": [
-                        "visible"
-                      ]
-                    },
-                    "lifecycle": {
-                      "type": "string"
-                    },
-                    "membership_state": {
-                      "type": "string"
-                    },
-                    "page_id": {
-                      "type": "string"
-                    },
-                    "title": {
-                      "type": "string"
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "edge_id",
-                    "kind"
-                  ],
-                  "properties": {
-                    "edge_id": {
-                      "type": "string"
-                    },
-                    "kind": {
-                      "type": "string",
-                      "enum": [
-                        "unavailable"
-                      ]
-                    }
-                  }
-                }
-              ]
+            "type": "object",
+            "required": [
+              "expected_revision",
+              "kind"
+            ],
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              "inbox_summary": {
+                "type": [
+                  "string",
+              "inbox_title": {
+                  "null"
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "complete_run_for_review"
             }
           },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "CollectionWindow_DatabaseRowSummary": {
-        "type": "object",
-        "required": [
-          "items",
-          "authority"
-        ],
-        "properties": {
-          "authority": {
-            "$ref": "#/components/schemas/CollectionWindowAuthority"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "page_id",
-                "lifecycle",
-                "title",
-                "rich_title",
-                "description_preview",
-                "description_length",
-                "has_description",
-                "database_values",
-                "intrinsic_properties",
-                "database_value_revisions",
-                "metadata_revision",
-                "parent_revision",
-                "document_id",
-                "document_generation",
-                "document_head_seq",
-                "membership_id",
-                "membership_revision",
-                "membership_created_at",
-                "created_at",
-                "updated_at",
-                "task_parent_value_revision"
-              ],
-              "properties": {
-                "created_at": {
-                  "type": "string"
-                },
-                "database_value_revisions": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "integer",
-                    "format": "int64"
-                  },
-                  "propertyNames": {
-                    "type": "string"
-                  }
-                },
-                "database_values": {
-                  "type": "object",
-                  "description": "Canonical Property values. Select-like values are stable option IDs.",
-                  "additionalProperties": {},
-                  "propertyNames": {
-                    "type": "string"
-                  }
-                },
-                "description_length": {
-                  "type": "integer",
-                  "format": "int64"
-                },
-                "description_preview": {
-                  "type": "string"
-                },
-                "document_generation": {
-                  "type": "integer",
-                  "format": "int64"
-                },
-                "document_head_seq": {
-                  "type": "integer",
-                  "format": "int64"
-                },
-                "document_id": {
-                  "type": "string"
-                },
-                "effective_group_key": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "effective_subgroup_key": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "has_description": {
-                  "type": "boolean"
-                },
-                "intrinsic_properties": {
-                  "type": "object",
-                  "additionalProperties": {},
-                  "propertyNames": {
-                    "type": "string"
-                  }
-                },
-                "lifecycle": {
-                  "type": "string"
-                },
-                "membership_created_at": {
-                  "type": "string"
-                },
-                "membership_id": {
-                  "type": "string"
-                },
-                "membership_revision": {
-                  "type": "integer",
-                  "format": "int64"
-                },
-                "metadata_revision": {
-                  "type": "integer",
-                  "format": "int64"
-                },
-                "page_id": {
-                  "type": "string"
-                },
-                "page_key": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "parent_revision": {
-                  "type": "integer",
-                  "format": "int64"
-                },
-                "position_order": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int64"
-                },
-                "position_revision": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int64"
-                },
-                "rank_key": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "rich_title": {},
-                "task_parent_page_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "task_parent_value_revision": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "Revision of the standard `task_parent` Relation value. This remains\npopulated for root tasks, which have no Relation edge."
-                },
-                "task_sibling_rank": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "title": {
-                  "type": "string"
-                },
-                "updated_at": {
-                  "type": "string"
-                }
+          {
+            "type": "object",
+            "required": [
+              "run_id",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "inbox_summary": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "inbox_title": {
+                "type": "string",
+                "type": "string"
               }
             }
           },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "CollectionWindow_DatabaseViewContextRow": {
-        "type": "object",
-        "required": [
-          "items",
-          "authority"
-        ],
-        "properties": {
-          "authority": {
-            "$ref": "#/components/schemas/CollectionWindowAuthority"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "summary",
-                "move_etag"
-              ],
-              "properties": {
-                "move_etag": {
-                  "type": "string"
-                },
-                "summary": {
-                  "$ref": "#/components/schemas/DatabaseRowSummary"
-                }
+          {
               }
             }
           },
@@ -7213,6 +6962,7 @@
               "string",
               "null"
             ]
+          "status": {
           }
         }
       },
@@ -7308,6 +7058,7 @@
               "string",
               "null"
             ]
+          "status": {
           }
         }
       },
@@ -9050,6 +8801,8 @@
             }
           },
                 "page_key": {
+                "work": {
+                  "$ref": "#/components/schemas/DatabaseWorkSummary"
               }
             }
           },
@@ -12723,8 +12476,8 @@
               "kind"
             ],
             "properties": {
-              "date_format": {
-                "$ref": "#/components/schemas/DatabaseDateFormat"
+                "type": "array",
+                "items": {
               },
               "kind": {
                 "type": "string",
@@ -12745,8 +12498,8 @@
               "kind"
             ],
             "properties": {
-              "cardinality": {
-                "$ref": "#/components/schemas/DatabaseRelationCardinality"
+                "type": "integer",
+                "type": "integer",
               },
               "kind": {
                 "type": "string",
@@ -12771,11 +12524,7 @@
               "kind"
             ],
             "properties": {
-              "add_option_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
+                "type": "integer",
               },
               "kind": {
                 "type": "string",
@@ -13498,16 +13247,21 @@
           }
         ]
       },
-      "DatabaseViewCollapsedOccurrences": {
+      "DatabaseListMoveUndoRecipe": {
         "type": "object",
         "required": [
-          "targets"
+          "view_id",
+          "data_source_id",
+          "property_states",
+          "restore_runs"
         ],
         "properties": {
-          "targets": {
+          "post_order_runs": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/DatabaseViewDisclosureTarget"
+              "$ref": "#/components/schemas/DatabaseListMoveRestoreRun"
+            }
+          },
             }
           }
         }
@@ -15327,9 +15081,14 @@
             "type": "integer",
             "format": "int64"
           },
-          "head_seq": {
-            "type": "integer",
+            "type": [
+              "integer",
             "format": "int64"
+            "type": "integer",
+            "type": [
+          "title": {
+          "work": {
+            "$ref": "#/components/schemas/DatabaseWorkSummary"
           }
         }
       },
@@ -15389,7 +15148,7 @@
           {
             "type": "object",
             "required": [
-              "request",
+              "page_id",
               "kind"
             ],
             "properties": {
@@ -15831,38 +15590,43 @@
           }
         }
       },
-      "DocumentRecoveryArtifact": {
+      "DatabaseViewHierarchy": {
         "type": "object",
         "description": "Exact rejected input, retained separately from committed content. It is not a full document backup.",
         "required": [
-          "artifact_id",
-          "document_id",
-          "store_epoch",
-          "generation",
-          "update_id",
-          "client_session_id",
-          "base_head_seq",
-          "update",
-          "update_hash",
-          "created_at",
-          "expires_at"
+          "showSubPages",
+          "nestedSubPages"
         ],
         "properties": {
-          "artifact_id": {
-            "type": "string"
+          "nestedSubPages": {
+            "type": "boolean"
           },
-          "base_head_seq": {
-            "type": "integer",
-            "format": "int64"
+          "showSubPages": {
+        "properties": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
-          "client_session_id": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "string"
-          },
-          "document_id": {
-            "type": "string"
+          "show_sub_pages": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+        "enum": [
+          "board",
+      "DatabaseViewLayoutDisplay": {
+        "type": "object",
+        "required": [
+          "fields",
+        ],
+        "properties": {
+            "type": "array",
+            "items": {
+            }
           },
           "expires_at": {
             "type": "string"
@@ -15871,8 +15635,15 @@
             "type": "integer",
             "format": "int64"
           },
-          "store_epoch": {
-            "$ref": "#/components/schemas/StoreEpoch"
+          "showEmptyGroups": {
+            "type": "boolean"
+        "additionalProperties": false
+      "DatabaseViewLayoutDisplayOverrideInput": {
+        "type": "object",
+              "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseViewFieldInput"
+            }
           },
           "update": {
             "type": "array",
@@ -15885,8 +15656,7 @@
           "update_hash": {
             "type": "string"
           },
-          "update_id": {
-            "type": "string"
+            ]
           }
         }
       },
@@ -16406,6 +16176,7 @@
       },
       "EditorHistoryBlockChange": {
         "type": "object",
+        "description": "Bounded work facts carried by every Database row, independently of its selected Properties.",
         "required": [
           "blockId"
         ],
@@ -16457,45 +16228,7 @@
               "null"
             ]
           },
-          "props": {
-            "type": "object",
-            "additionalProperties": {},
-            "propertyNames": {
-              "type": "string"
-            }
-          },
-          "type": {
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
-      },
-      "EditorHistoryPatch": {
-        "type": "object",
-        "required": [
-          "changes"
-        ],
-        "properties": {
-          "changes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/EditorHistoryBlockChange"
-            }
-          }
-        },
-        "additionalProperties": false
-      },
-      "EventEnvelope": {
-        "type": "object",
-        "required": [
-          "transport_version",
-          "packet"
-        ],
-        "properties": {
-          "packet": {
-            "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
-          },
-          "transport_version": {
+          "unsatisfied_count": {
             "type": "integer",
             "format": "int32",
             "minimum": 0
@@ -17543,8 +17276,7 @@
               "source"
             ],
             "properties": {
-              "excerpt": {
-                "type": "string"
+                    "type": "null"
               },
               "property_id": {
                 "type": "string"
@@ -17615,8 +17347,7 @@
               "kind"
             ],
             "properties": {
-              "id": {
-                "type": "string"
+                "type": [
               },
               "kind": {
                 "type": "string",
@@ -17684,20 +17415,7 @@
           }
         ]
       },
-      "LibraryAgentSearchScope": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "library"
-                ]
-              }
+            "items": {
             }
           },
           {
@@ -17718,40 +17436,12 @@
               }
             }
           },
-          {
-            "type": "object",
-            "required": [
-              "data_source_id",
-              "kind"
-            ],
-            "properties": {
-              "data_source_id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "data_source"
-                ]
-              }
+            "type": "array",
+            "items": {
             }
           },
-          {
-            "type": "object",
-            "required": [
-              "page_id",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "page"
-                ]
-              },
-              "page_id": {
-                "type": "string"
-              }
+            "type": "array",
+            "items": {
             }
           }
         ]
@@ -17872,49 +17562,8 @@
               }
             ]
           },
-          {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/LibraryAgentSurfaceMetadata"
-              },
-              {
-                "type": "object",
-                "required": [
-                  "database_id",
-                  "data_source_id",
-                  "view_id",
-                  "layout"
-                ],
-                "properties": {
-                  "data_source_id": {
-                    "type": "string"
-                  },
-                  "database_id": {
-                    "type": "string"
-                  },
-                  "layout": {
-                    "$ref": "#/components/schemas/DatabaseViewLayout"
-                  },
-                  "view_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "database_view"
-                    ]
-                  }
-                }
-              }
-            ]
+            "type": "array",
+            "items": {
           },
           {
             "allOf": [
@@ -18281,11 +17930,7 @@
         "properties": {
           "body": {
           },
-          "fields": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LibraryBlockPropertyFieldMutation"
-            }
+          "title": {
           }
         }
       },
@@ -19581,34 +19226,71 @@
         ]
       },
           },
-          {
-            "type": "object",
-            "required": [
-              "sourceBlockId",
-              "targetBlockId",
-              "kind"
-            ],
-            "properties": {
-              "displayHint": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+      "InboxPlanAgent": {
+        "type": "object",
+        "required": [
+          "instance_id",
+          "model",
+          "effort"
+        ],
+        "properties": {
+          "effort": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instance_id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "InboxPlanStep": {
+        "type": "object",
+        "required": [
+          "key",
+          "project_id",
+          "title",
+          "body",
+          "agent",
+          "blocked_by"
+        ],
+        "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InboxPlanAgent"
               },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "block"
-                ]
-              },
-              "sourceBlockId": {
-                "type": "string"
-              },
-              "targetBlockId": {
-                "type": "string"
+              {
+                "type": "null"
               }
+            ]
+          },
+          "blocked_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           },
+          "body": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "InboxQuestionResponse": {
         "type": "object",
         "description": "Frozen person answer delivered with the reply entry's stable handoff identity.",
@@ -34082,48 +33764,67 @@
               },
               {
                 "type": "object",
+                "description": "Host renders and freezes the brief. Automatic admission also fences the current ready epoch.",
                 "required": [
-                  "file_id",
+                  "page_id",
+                  "session_id",
+                  "launch_id",
+                  "message_id",
+                  "brief",
+                  "again",
                   "kind"
                 ],
                 "properties": {
-                  "file_id": {
+                  "again": {
+                    "type": "boolean"
+                  },
+                  "brief": {
                     "type": "string"
                   },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "file"
+                  "expected_readiness_epoch": {
+                    "type": [
+                      "string",
+                      "null"
                     ]
-                  }
-                }
+                  },
+                      "start_page_work"
+                  "launch_id": {
+                  "message_id": {
+                    "type": "string"
+                  },
+                  "page_id": {
+                    "type": "string"
+                  },
+                  "selection": {
+                        "$ref": "#/components/schemas/AgentWorkSelection"
+                  "session_id": {
               },
               {
                 "type": "object",
                 "required": [
-                  "file_id",
-                  "source",
+                  "launch_id",
                   "kind"
                 ],
                 "properties": {
-                  "file_id": {
-                    "type": "string"
+                  "accepted_at": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "file_presentation"
+                      "settle_page_work_launch"
                     ]
                   },
-                  "source": {
-                    "$ref": "#/components/schemas/LibraryFileReadSource"
+                  "launch_id": {
                   },
-                  "version": {
+                  "rejection": {
                     "type": [
-                      "integer",
+                      "string",
                       "null"
-                    ],
-                    "format": "int64"
+                    ]
                   }
                 }
               },
@@ -49753,8 +49454,9 @@
                           "kind"
                         ],
                         "properties": {
-                          "databases": {
-                            "$ref": "#/components/schemas/CollectionWindow_DatabaseDescriptor"
+                            "type": "array",
+                            "items": {
+                            }
                           },
                           "kind": {
                             "type": "string",
@@ -51412,34 +51114,32 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "yjs_sync"
+                              "page_work_launch"
                             ]
                           },
-                          "update": {
-                            "type": "array",
-                            "items": {
-                              "type": "integer",
-                              "format": "int32",
-                              "minimum": 0
-                            }
+                          "launch": {
+                                "$ref": "#/components/schemas/PageWorkLaunch"
                           }
                         }
                       },
                       {
                         "type": "object",
                         "required": [
-                          "resource",
+                          "launches",
                           "kind"
                         ],
                         "properties": {
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "update_resource"
+                              "page_work_outbox"
                             ]
                           },
-                          "resource": {
-                            "$ref": "#/components/schemas/DocumentUpdateResource"
+                          "launches": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/PageWorkLaunch"
+                            }
                           }
                         }
                       },
@@ -53594,6 +53294,27 @@
           }
         },
         "additionalProperties": false
+      },
+      "WorkPrerequisite": {
+        "type": "object",
+        "required": [
+          "page_id",
+          "satisfied"
+        ],
+        "properties": {
+          "page_id": {
+            "type": "string"
+          },
+          "satisfied": {
+            "type": "boolean"
+          },
+          "satisfying_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "WorkReportOutcome": {
         "type": "string",

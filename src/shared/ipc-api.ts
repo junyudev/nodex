@@ -1087,6 +1087,10 @@ export interface IpcApi
   "inbox:entry": { args: [pageId: string]; result: import("./inbox").InboxItem | null };
   "inbox:open-nodex": { args: []; result: string };
   "inbox:reset-nodex": { args: []; result: void };
+  "work:start": {
+    args: [input: import("./work-application").StartWorkInput & { readonly operationId: string }];
+    result: CoreLocalCommitResult<import("./work-application").StartWorkResult>;
+  };
   "inbox:send": {
     args: [input: import("./inbox").InboxSendInput];
     result: CoreLocalCommitResult<import("./inbox").InboxSendResult>;

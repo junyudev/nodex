@@ -33,6 +33,7 @@ enum ReadBudgetPolicy {
 
 fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
     match read {
+        ProjectWorkspaceRead::PageWorkLaunch { .. } => ReadBudgetPolicy::Identity,
         | ProjectWorkspaceRead::ReadManagedSession { .. }
         | ProjectWorkspaceRead::ReadEventBatch { .. } => ReadBudgetPolicy::Identity,
         ProjectWorkspaceRead::ReadManagedSessions { .. }
@@ -112,6 +113,7 @@ fn query_policy(read: &crate::query::QueryRead) -> ReadBudgetPolicy {
 
 fn database_policy(read: &DatabaseRead) -> ReadBudgetPolicy {
     match read {
+        DatabaseRead::WorkContext { .. } => ReadBudgetPolicy::BoundedBatch,
         DatabaseRead::CatalogWindow { .. }
         | DatabaseRead::DataSourceWindow { .. }
         | DatabaseRead::PropertyWindow { .. }
@@ -125,6 +127,9 @@ fn database_policy(read: &DatabaseRead) -> ReadBudgetPolicy {
         | DatabaseRead::ViewContext { .. }
         | DatabaseRead::RelationTargetWindow { .. }
         | DatabaseRead::RelationCandidateWindow { .. } => ReadBudgetPolicy::CollectionWindow,
+        DatabaseRead::Blocking { .. } => ReadBudgetPolicy::CollectionWindow,
+        DatabaseRead::ReadyWork { .. } => ReadBudgetPolicy::BoundedQuery,
+        DatabaseRead::Prerequisites { .. } => ReadBudgetPolicy::Identity,
         DatabaseRead::RowsById { .. } => ReadBudgetPolicy::BoundedBatch,
         DatabaseRead::PageKeyPrefixPreview { .. } | DatabaseRead::PageKeyNamespace { .. } => {
             ReadBudgetPolicy::Identity

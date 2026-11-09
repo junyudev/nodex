@@ -408,6 +408,7 @@ pub(super) fn execute_page_copy(
         &source.document_id,
         None,
     )?;
+    require_copy_work_consent(connection, context, &plan)?;
     let target_page_id = plan
         .block_ids
         .get(source_page_id)
@@ -1583,6 +1584,34 @@ fn embedded_page(page_id: &str) -> MaterializedBlockNode {
         content: None,
         children: Vec::new(),
     }
+}
+
+fn require_copy_work_consent(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    plan: &CopyPlan,
+) -> Result<(), StoreError> {
+    if context.agent_attribution.is_none() {
+        return Ok(());
+    }
+    let source_ids = plan
+        .documents
+        .iter()
+        .map(|document| document.source_owner_id.as_str())
+        .collect::<Vec<_>>();
+    let source_ids = serde_json::to_string(&source_ids)
+        .map_err(|_| internal("Copied Page identities cannot be encoded"))?;
+    let work_values = connection.prepare(
+        "SELECT property.value_json FROM json_each(?1) source \
+    )?.query_map([source_ids], |row| row.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    for value in work_values {
+        let value = serde_json::from_str(&value)
+            context,
+            &serde_json::Value::Null,
+            &value,
+        )?;
+    }
+    Ok(())
 }
 
 fn invalid(message: impl Into<String>) -> StoreError {

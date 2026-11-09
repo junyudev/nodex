@@ -169,6 +169,7 @@ export const projectPageDetailToStageModel = (
       requireIntrinsic(detail, "run.environmentPath").value,
       "Page environment path",
     ),
+    ),
     revision: detail.page.metadataRevision,
     created,
   };

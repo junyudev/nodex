@@ -274,6 +274,10 @@ export const make = Effect.gen(function* () {
   ): InboxMutation<InboxDecisionResult> =>
     apply(operation, intent, operationId).pipe(
       Effect.map((apply) => ({
+        value: {
+          undoToken: apply.outcome.inbox_undo_token ?? null,
+          createdPageIds: apply.outcome.inbox_created_page_ids ?? [],
+        },
         apply,
       })),
     );
@@ -459,14 +463,30 @@ export const make = Effect.gen(function* () {
       yield* resolveInboxModel(runtime, action.agent).pipe(
         Effect.mapError(fail("prepare-confirmation")),
       );
+    if (action.type === "plan") {
+      for (const step of action.steps) {
+        if (!step.agent) continue;
+        yield* resolveInboxModel(runtime, {
+          instanceId: step.agent.instanceId,
+          model: step.agent.model,
+          reasoningEffort: step.agent.effort,
+          serviceTier: null,
+        }).pipe(Effect.mapError(fail("prepare-confirmation")));
+      }
+    }
+    const needsDefault = action.type === "plan" && action.steps.some((step) => step.agent === null);
+    // Freeze the Inbox default for null plan selections as well as new chats.
     const modelSelection =
+      action.type === "new_chat" || needsDefault
         ? yield* resolveInboxModel(
             runtime,
+            (action.type === "new_chat" ? action.agent : null) ??
               (yield* settings.snapshot().pipe(Effect.mapError(fail("prepare-confirmation")))).inbox
                 .chatAgent,
           ).pipe(Effect.mapError(fail("prepare-confirmation")))
         : null;
     const executionSelection =
+      (action.type === "new_chat" || action.type === "plan") && modelSelection
         ? { modelSelection, interactionMode: "default" as const }
         : null;
     const prepared = {

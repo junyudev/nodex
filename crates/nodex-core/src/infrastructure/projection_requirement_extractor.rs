@@ -52,6 +52,19 @@ pub(crate) fn extract(patch: &LocalProjectionPatch) -> Result<ProjectionRequirem
             {
                 collect_relation_targets(value, &mut required_resources)?;
             }
+            required_resources.extend(row.work.blockers.iter().filter_map(|blocker| {
+                // Unavailable edges expose identity alone. Live target metadata carries
+                // a target Page requirement, just like a Relation preview.
+                if blocker.title.is_empty()
+                    && blocker.page_key.is_none()
+                    && blocker.status.is_none()
+                {
+                    return None;
+                }
+                Some(ResourceKey::Page {
+                    page_id: blocker.page_id.clone(),
+                })
+            }));
             (subject, required_resources)
         }
         LocalProjectionPatch::DatabaseRowRemove {
@@ -155,7 +168,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn relation_preview_targets_are_exact_projection_requirements() {
+    fn relation_and_prerequisite_previews_have_exact_projection_requirements() {
         let patch = LocalProjectionPatch::DatabaseRowUpsert {
             project_id: "project:reader".to_owned(),
             database_id: "database:board".to_owned(),
@@ -196,6 +209,23 @@ mod tests {
                         }
                     }),
                 )]),
+                work: nodex_core_contracts::database::DatabaseWorkSummary {
+                    unsatisfied_count: 2,
+                    blockers: vec![
+                        nodex_core_contracts::database::DatabaseWorkPage {
+                            page_id: "page:prerequisite".into(),
+                            page_key: Some("NODEX-12".into()),
+                            title: "Prerequisite".into(),
+                            status: Some("plan".into()),
+                        },
+                        nodex_core_contracts::database::DatabaseWorkPage {
+                            page_id: "page:unavailable-prerequisite".into(),
+                            page_key: None,
+                            title: String::new(),
+                            status: None,
+                        },
+                    ],
+                },
                 intrinsic_properties: BTreeMap::new(),
                 database_value_revisions: BTreeMap::new(),
                 task_parent_page_id: None,
@@ -234,6 +264,9 @@ mod tests {
             vec![
                 ResourceKey::Project {
                     project_id: "project:reader".to_owned(),
+                },
+                ResourceKey::Page {
+                    page_id: "page:prerequisite".to_owned(),
                 },
                 ResourceKey::Page {
                     page_id: "page:row".to_owned(),

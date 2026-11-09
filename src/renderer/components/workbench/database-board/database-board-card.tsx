@@ -293,6 +293,9 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
     generation: row.documentGeneration,
     headSeq: row.documentHeadSeq,
   });
+  // Where the Page's Agent work stands leads its properties; a live chat speaks in the title row.
+    row,
+  });
   const authority = model.query.rows.find((candidate) => candidate.page.pageId === row.pageId);
   if (!authority) return null;
   const description = row.preview.trim();
@@ -460,6 +463,7 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
               data-database-board-property-row="true"
               className="flex min-w-0 flex-wrap items-center gap-1"
             >
+              {workState}
               {propertySlots.map((slot) => {
                 const binding = propertyBinding(slot.property);
                 return (

@@ -141,9 +141,9 @@ export function InboxAgentPicker({
   readonly purpose: InboxAgentPurpose;
   /**
    * `inbox` for the Inbox's own choice; `message` for one decision's chat, which can become the
-   * Inbox's.
+   * Inbox's; `page` for the Agent a Page names for its own work.
    */
-  readonly scope: "inbox" | "message";
+  readonly scope: "inbox" | "message" | "page";
   readonly value: InboxAgentChoice;
   readonly onChange: (next: InboxAgentChoice) => void;
   /** `field` fills a form or panel row, `inline` sits beside a send button, or a caller's trigger. */

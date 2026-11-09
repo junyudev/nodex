@@ -1509,9 +1509,15 @@ pub(crate) fn rebase_store_epoch(
     store_epoch: &str,
 ) -> Result<(), StoreError> {
     validate_identity(store_epoch, "LocalCommit Store epoch")?;
+    reset_delivery_window(connection)
+}
+
+/// Invalidates rebuildable delivery evidence after a Store replacement or a
+/// migration that changes projection contracts. Semantic receipts remain intact;
+/// retained cursors repair from canonical state at the existing durable head.
+pub(crate) fn reset_delivery_window(connection: &Connection) -> Result<(), StoreError> {
     connection.execute_batch("PRAGMA defer_foreign_keys = ON;")?;
-    // A Store replacement rotates the authorization epoch, so every existing
-    // delivery cursor must resync from semantic state. Keeping and resealing
+    // Existing delivery cursors must resync from semantic state. Keeping and resealing
     // the old delivery graph made restore cost proportional to all retained
     // operations. Instead, cut one canonical resync checkpoint at the durable
     // head and discard only the bounded, rebuildable delivery window.
@@ -1522,6 +1528,17 @@ pub(crate) fn rebase_store_epoch(
         [],
     )?;
     connection.execute("DELETE FROM projection_scope_heads", [])?;
+    // Schema-rebuild migrations disable foreign-key cascades. Retire the whole
+    // bounded delivery closure in either transaction mode before its parent rows.
+    connection.execute_batch(
+        "DELETE FROM local_commit_retention_metadata;
+         DELETE FROM local_commit_delivery_atoms;
+         DELETE FROM local_commit_effects;
+         DELETE FROM local_commit_documents;
+         DELETE FROM local_commit_library_effects;
+         DELETE FROM local_commit_sealed_projection_effects;
+         DELETE FROM local_commit_relocation_obligations;",
+    )?;
     connection.execute("DELETE FROM local_commits", [])?;
     connection.execute(
         "UPDATE operational_journal_state \
@@ -1532,7 +1549,11 @@ pub(crate) fn rebase_store_epoch(
              updated_at = ?3 WHERE id = 1",
         params![
             previous_head,
-            previous_head.saturating_add(1),
+            if previous_head == 0 {
+                0
+            } else {
+                previous_head.saturating_add(1)
+            },
             connection.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", [], |row| {
                 row.get::<_, String>(0)
             },)?,

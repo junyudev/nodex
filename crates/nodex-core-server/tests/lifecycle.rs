@@ -569,12 +569,13 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     );
     let database_read = response_json(&database_read);
     assert_eq!(database_read["status"], "ok");
-    assert_eq!(
-        database_read["payload"]["value"]["properties"]["items"]
-            .as_array()
-            .map(Vec::len),
-        Some(9)
-    );
+    let properties = database_read["payload"]["value"]["properties"]["items"]
+        .as_array()
+        .expect("Database properties");
+    assert!(properties.iter().any(|property| {
+        property["property_id"] == "blocked_by"
+            && property["schema"]["kind"] == "relation"
+    }));
 
     let database_apply_body = serde_json::json!({
         "contract_version": DATABASE_CONTRACT_VERSION,

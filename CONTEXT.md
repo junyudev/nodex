@@ -438,6 +438,8 @@ The standard **Task Parent** is a non-owning cardinality-one self-Relation on a
 Data Source Page. Its children have one shared manual order independent of any
 View's personal sorting or presentation.
 
+Page's Prerequisites, including Pages in other Projects. Each edge retains its
+target Data Source, so a moved prerequisite remains unsatisfied until restored.
 
 ### Database View
 
