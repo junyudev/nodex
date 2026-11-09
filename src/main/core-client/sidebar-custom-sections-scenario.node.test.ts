@@ -6,7 +6,10 @@ import {
   SIDEBAR_CUSTOM_SECTIONS_SCENARIO_ID,
 } from "../../../scripts/scenarios/scenarios/sidebar-custom-sections";
 
-describe("sidebar/custom-sections over the real Core transport", () => {
+// The pager boundary needs 51 drafts, so this seed makes ~57 sequential durable Core writes,
+// about ten times a typical scenario. It shares the development seed sandbox's budget for the
+// same seed: a loaded runner slows every commit, and nothing here waits on a clock.
+describe("sidebar/custom-sections over the real Core transport", { timeout: 90_000 }, () => {
   test("materializes mixed placement, aggregate activity, and a pager boundary", async () => {
     await withCoreScenario(
       { scenarioId: SIDEBAR_CUSTOM_SECTIONS_SCENARIO_ID },
