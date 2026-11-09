@@ -3,9 +3,9 @@ import * as Effect from "effect/Effect";
 import type { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { runtimeSessionHistory } from "./RuntimeSessionHistory";
 
-it.effect(
-  "continues Runtime windows by exact source identity and reports a removed anchor as stale",
-  () =>
+it.effect.each([undefined, { threadId: "runtime:child" }])(
+  "continues Runtime windows by exact source identity and reports removed anchors with execution=%j",
+  (execution) =>
     Effect.gen(function* () {
       const calls: unknown[] = [];
       let missing = false;
@@ -38,6 +38,8 @@ it.effect(
             }),
         } as unknown as AgentRuntimeApplication["Service"],
         "session:a",
+        undefined,
+        execution,
       );
       const first = yield* source.page({
         order: "newest_first",
@@ -63,6 +65,7 @@ it.effect(
       });
       assert.deepEqual(calls[1], {
         sessionId: "session:a",
+        ...(execution ? { threadId: execution.threadId } : {}),
         view: "messages",
         order: "newest_first",
         limit: 1,
@@ -78,6 +81,7 @@ it.effect(
       assert.isNotNull(forward.tailCursor);
       assert.deepEqual(calls[2], {
         sessionId: "session:a",
+        ...(execution ? { threadId: execution.threadId } : {}),
         view: "messages",
         order: "oldest_first",
         limit: 1,

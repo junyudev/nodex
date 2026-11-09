@@ -33,6 +33,10 @@ import * as EventStore from "./EventStore.ts";
 import * as ProjectionReplay from "./testkit/ProjectionReplay.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
+import { taskHistorySource } from "../mcp/TaskHistoryRead.ts";
+import { readHistory } from "../nodex/HistoryRead.ts";
+import { buildBoundedThreadStreamSnapshot } from "./ThreadStream.ts";
+import { readUserQuestion } from "../nodex/PendingUserQuestions.ts";
 import { decodeCodexAsyncQuestionReplies } from "../nodex/CodexConventions.ts";
 import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 
@@ -1181,5 +1185,264 @@ it.effect(
           );
       }
       assert.deepEqual((yield* orchestrator.getThreadRecords(threadId, ["runs"])).runs, runs);
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect(
+  "reads a delegated child's history across an async answer after completion and its follow-up Run",
+  () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const root = ThreadId.make("history:parent");
+      const child = ThreadId.make("history:child");
+      for (const threadId of [root, child])
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make(`create:${threadId}`),
+          threadId,
+          projectId: ProjectId.make("history:project"),
+          title: "Question history",
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdBy: "user",
+          creationSource: "web",
+        });
+      const thread = (yield* projections.getThreadRecords(child, [])).thread;
+      yield* projections.apply({
+        id: EventId.make("history:lineage"),
+        type: "thread.created",
+        threadId: child,
+        occurredAt: now,
+        payload: {
+          ...thread,
+          lineage: { parentThreadId: root, relationshipToParent: "subagent", rootThreadId: root },
+        },
+      });
+      const runId = RunId.make("history:run:1");
+      yield* projections.apply({
+        id: EventId.make("history:completed-run"),
+        type: "run.created",
+        threadId: child,
+        occurredAt: now,
+        payload: {
+          id: runId,
+          threadId: child,
+          ordinal: 1,
+          providerInstanceId: instanceId,
+          modelSelection,
+          providerThreadId: null,
+          userMessageId: MessageId.make("history:prompt"),
+          rootNodeId: null,
+          activeAttemptId: null,
+          status: "completed",
+          requestedAt: now,
+          startedAt: now,
+          completedAt: now,
+          checkpointId: null,
+          contextHandoffId: null,
+        },
+      });
+      const nodeId = NodeId.make("history:question-node");
+      const requestId = RuntimeRequestId.make("history:question");
+      yield* projections.apply({
+        id: EventId.make("history:node"),
+        type: "node.updated",
+        threadId: child,
+        occurredAt: now,
+        payload: {
+          id: nodeId,
+          threadId: child,
+          runId,
+          parentNodeId: null,
+          rootNodeId: nodeId,
+          kind: "user_input_request",
+          status: "waiting",
+          countsForRun: false,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          runtimeRequestId: requestId,
+          checkpointScopeId: null,
+          startedAt: now,
+          completedAt: null,
+        },
+      });
+      yield* projections.apply({
+        id: EventId.make("history:request"),
+        type: "runtime-request.updated",
+        threadId: child,
+        occurredAt: now,
+        payload: {
+          id: requestId,
+          nodeId,
+          providerTurnId: null,
+          nativeRequestRef: null,
+          kind: "user_input",
+          status: "pending",
+          responseCapability: { type: "message", replyFormat: "codex_question_reply" },
+          createdAt: now,
+          resolvedAt: null,
+        },
+      });
+      const base = {
+        threadId: child,
+        runId,
+        nodeId: null,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        title: null,
+        startedAt: now,
+        completedAt: now,
+        updatedAt: now,
+      };
+      for (let ordinal = 1; ordinal <= 130; ordinal++)
+        yield* projections.apply({
+          id: EventId.make(`history:command:${ordinal}`),
+          type: "turn-item.updated",
+          threadId: child,
+          occurredAt: now,
+          payload: {
+            ...base,
+            id: TurnItemId.make(`history:item:${ordinal}`),
+            ordinal,
+            type: "command_execution",
+            status: "completed",
+            input: "inspect",
+            output: `result ${ordinal}`,
+          },
+        });
+      const questionId = TurnItemId.make("history:question-item");
+      yield* projections.apply({
+        id: EventId.make("history:question-card"),
+        type: "turn-item.updated",
+        threadId: child,
+        occurredAt: now,
+        payload: {
+          ...base,
+          id: questionId,
+          nodeId,
+          ordinal: 131,
+          completedAt: null,
+          type: "user_input_request",
+          status: "waiting",
+          requestId,
+          responseMode: "message",
+          questions: [
+            {
+              id: "branch",
+              header: "Branch",
+              question: "Which branch?",
+              options: [],
+              required: false,
+              allowCustomAnswer: true,
+            },
+          ],
+        },
+      });
+      const control = buildBoundedThreadStreamSnapshot({
+        ...(yield* projections.getThreadSnapshotWindow(child, {
+          controlOnly: true,
+          rowLimit: 0,
+          requiredRequestId: requestId,
+        })),
+        requiredRequestId: requestId,
+        compactTurnItems: true,
+      });
+      assert.notProperty(readUserQuestion(control.projection, requestId), "error");
+      const source = taskHistorySource(orchestrator, child);
+      const beforeAnswer = yield* source.page({
+        order: "oldest_first",
+        view: "activity",
+        limit: 500,
+        maxCharsPerItem: 8000,
+      });
+      yield* orchestrator.dispatch({
+        type: "runtime-request.respond",
+        commandId: CommandId.make("history:answer"),
+        threadId: child,
+        requestId,
+        answers: { branch: "main" },
+        respondedBy: { kind: "agent", senderThreadId: root, senderSessionId: "parent-session" },
+        requirePending: true,
+      });
+      const following = (yield* projections.getThreadRecords(child, ["runs"])).runs.find(
+        (run) => run.id !== runId,
+      );
+      assert.ok(following);
+      yield* projections.apply({
+        id: EventId.make("history:follow-up-completed"),
+        type: "run.updated",
+        threadId: child,
+        occurredAt: now,
+        payload: { ...following, status: "completed", startedAt: now, completedAt: now },
+      });
+      yield* projections.apply({
+        id: EventId.make("history:reply"),
+        type: "turn-item.updated",
+        threadId: child,
+        occurredAt: now,
+        payload: {
+          ...base,
+          id: TurnItemId.make("history:follow-up-reply"),
+          runId: following.id,
+          ordinal: yield* projections.getNextTurnItemOrdinal(child),
+          type: "assistant_message",
+          status: "completed",
+          messageId: MessageId.make("history:reply-message"),
+          text: "Used main.",
+          streaming: false,
+        },
+      });
+      const tail = yield* source.page({
+        order: "oldest_first",
+        view: "activity",
+        limit: 17,
+        maxCharsPerItem: 8000,
+        cursor: beforeAnswer.tailCursor!,
+      });
+      assert.include(
+        tail.items.map((row) => row.reference.itemId),
+        "history:follow-up-reply",
+      );
+      const read = (order: "oldest_first" | "newest_first", cursor?: string) =>
+        readHistory({
+          source,
+          binding: "history:binding",
+          request: {
+            ownerId: "parent-session:child",
+            view: "activity",
+            order,
+            limit: 17,
+            maxCharsPerItem: 8000,
+            ...(cursor ? { cursor } : {}),
+          },
+          wrap: (history) => ({ history }),
+        });
+      const ids: string[][] = [];
+      for (const order of ["oldest_first", "newest_first"] as const) {
+        const seen: string[] = [];
+        let cursor: string | undefined;
+        do {
+          const { history } = yield* read(order, cursor);
+          assert.equal(history.availability, "available");
+          if (history.availability !== "available")
+            return yield* Effect.die("Missing child history");
+          seen.push(...history.items.map((item) => item.id));
+          cursor = history.page.nextCursor ?? undefined;
+        } while (cursor);
+        ids.push(seen);
+      }
+      assert.deepEqual(ids[0], ids[1]!.toReversed());
+      assert.lengthOf(ids[0]!, 134);
+      assert.lengthOf(new Set(ids[0]), 134);
+      assert.include(ids[0]!, questionId);
+      assert.equal(ids[0]!.at(-1), "history:follow-up-reply");
     }).pipe(Effect.provide(layerTest)),
 );
