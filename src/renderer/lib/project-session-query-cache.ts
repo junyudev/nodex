@@ -1,7 +1,13 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { ProjectSessionsChangeEvent } from "../../shared/ipc-api";
 import type { ConversationIdentity } from "../../shared/conversation-identity";
-import type { ProjectSession, ProjectSessionSummary, ProjectSessionSummaryWindow } from "./types";
+import type {
+  ProjectSession,
+  ProjectSessionSummary,
+  ProjectSessionSummaryWindow,
+  SessionSideChatWindow,
+  SessionSideChatWindowInput,
+} from "./types";
 import { projectSessionDetailQueryOptions } from "./query-options";
 import { queryKeys } from "./query-keys";
 import { invokeRendererQuery } from "./renderer-command";
@@ -185,6 +191,14 @@ export async function readCurrentProjectSessionDetail(
     sessionId,
   )) as ProjectSession | null;
   return session;
+}
+
+/** Read one bounded page; use nextCursor to continue the source's attached chats. */
+export function listSessionSideChats(
+  sourceSessionId: string,
+  input?: SessionSideChatWindowInput,
+): Promise<SessionSideChatWindow> {
+  return invokeRendererQuery("project-sessions:side-chats", sourceSessionId, input);
 }
 
 export async function invalidateProjectSessionScope(

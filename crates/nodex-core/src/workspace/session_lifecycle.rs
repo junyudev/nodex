@@ -220,7 +220,7 @@ pub(super) fn delete_session(
     session_id: &str,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("session_id", session_id)?;
-    // A Member deletes no shared chat; they close only a side chat of their own.
+    // A Member deletes only a side chat of their own.
     if context.adapter == nodex_core_contracts::AdapterKind::RemoteMember {
         let principal = context.principal.as_ref().ok_or_else(|| {
             StoreError::new(
@@ -239,24 +239,45 @@ pub(super) fn delete_session(
         )?;
     }
     let authority = require_session(connection, library_id, session_id)?;
-    if let Some(thread_id) = &authority.thread_id {
-        super::sidebar_pins::clear_thread_projection(connection, thread_id)?;
+    let session_ids = super::session_side_chats::attached_session_ids(connection, session_id)?;
+    let mut thread_ids = Vec::new();
+    let mut project_ids = Vec::new();
+    let mut scopes = Vec::new();
+    for id in session_ids.iter().rev() {
+        let current = require_session(connection, library_id, id)?;
+        if let Some(thread_id) = &current.thread_id {
+            super::sidebar_pins::clear_thread_projection(connection, thread_id)?;
+            thread_ids.push(thread_id.clone());
+        }
+        // The root keeps its operation receipt identity; every descendant needs its own.
+        let cleanup_id = if id == session_id {
+            operation_id.to_owned()
+        } else {
+            crate::domain::identity::stable_uuid_v7(operation_id, "session_execution_cleanup", id)
+        };
+        super::agent_runtime_cleanup::enqueue(
+            connection,
+            library_id,
+            &cleanup_id,
+            id,
+            current.project_id.as_deref(),
+        )?;
+        // Runtime consumers remain until native execution cleanup is acknowledged.
+        connection.execute("DELETE FROM session_workspaces WHERE session_id=?1 AND NOT EXISTS(SELECT 1 FROM project_session_execution_bindings WHERE session_id=?1)",[id])?;
+        if connection.execute("DELETE FROM project_sessions WHERE id = ?1", [id])? != 1 {
+            return Err(corrupt("Project Session disappeared during deletion"));
+        }
+        if let Some(project_id) = &current.project_id {
+            project_ids.push(project_id.clone());
+        }
+        let scope = project_session_scope(current.project_id.as_deref());
+        if !scopes.contains(&scope) {
+            scopes.push(scope);
+        }
     }
-    super::agent_runtime_cleanup::enqueue(
-        connection,
-        library_id,
-        operation_id,
-        session_id,
-        authority.project_id.as_deref(),
-    )?;
-    // Runtime consumers remain until native execution cleanup is acknowledged.
-    connection.execute("DELETE FROM session_workspaces WHERE session_id=?1 AND NOT EXISTS(SELECT 1 FROM project_session_execution_bindings WHERE session_id=?1)",[session_id])?;
-    let changed = connection.execute("DELETE FROM project_sessions WHERE id = ?1", [session_id])?;
-    if changed != 1 {
-        return Err(corrupt("Project Session disappeared during deletion"));
-    }
-    let now = sqlite_now(connection)?;
-    finish_session_mutation(
+    project_ids.sort();
+    project_ids.dedup();
+    finish_lifecycle_mutation(
         connection,
         library_id,
         context,
@@ -264,11 +285,13 @@ pub(super) fn delete_session(
         operation_id,
         request_hash,
         "delete_session",
-        session_id,
-        &authority,
-        authority.thread_id.iter().cloned().collect(),
-        SessionInvalidationKind::SummaryAndDetail,
-        now,
+        project_ids,
+        session_ids,
+        thread_ids,
+        scopes,
+        authority.project_id.as_deref(),
+        &[],
+        sqlite_now(connection)?,
     )
 }
 
@@ -347,6 +370,32 @@ pub(super) fn move_session(
             ));
         }
     }
+    let source_project_id = connection.query_row(
+        "SELECT source.project_id FROM project_session_side_chats side \
+         JOIN project_sessions source ON source.id = side.source_session_id WHERE side.session_id = ?1",
+        [session_id], |row| row.get::<_, Option<String>>(0),
+    ).optional()?;
+    if source_project_id.is_some_and(|source| source.as_deref() != project_id) {
+        return Err(invalid(
+            "A side chat must stay in its source Session's Project",
+        ));
+    }
+    let session_ids = super::session_side_chats::attached_session_ids(connection, session_id)?;
+    let mut thread_ids = authority.thread_id.iter().cloned().collect::<Vec<_>>();
+    for id in session_ids.iter().filter(|id| id.as_str() != session_id) {
+        let child = require_session(connection, library_id, id)?;
+        connection.execute(
+            "UPDATE project_sessions SET project_id = ?1, manual_rank = NULL, updated_at = ?2 WHERE id = ?3",
+            params![project_id, now, id],
+        )?;
+        connection.execute(
+            "UPDATE codex_threads SET project_id = ?1 WHERE thread_id IN (\
+               SELECT thread_id FROM project_session_threads WHERE session_id = ?2\
+             )",
+            params![project_id, id],
+        )?;
+        thread_ids.extend(child.thread_id);
+    }
     let changed = connection.execute(
         "UPDATE project_sessions SET project_id = ?1, manual_rank = NULL, updated_at = ?2 \
          WHERE id = ?3",
@@ -391,8 +440,8 @@ pub(super) fn move_session(
         request_hash,
         "move_session",
         project_ids,
-        vec![session_id.to_owned()],
-        authority.thread_id.iter().cloned().collect(),
+        session_ids,
+        thread_ids,
         summary_scopes,
         project_id.or(authority.project_id.as_deref()),
         &[],

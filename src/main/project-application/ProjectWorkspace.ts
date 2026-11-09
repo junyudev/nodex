@@ -19,6 +19,7 @@ import {
   SessionLinkedPageSummaryInputSchema,
   PageChatLinkInputSchema,
   PageChatWindowInputSchema,
+  SessionSideChatWindowInputSchema,
   ProjectSessionCreateInputSchema,
   ProjectSessionRenameInputSchema,
   ProjectSessionReminderInputSchema,
@@ -40,6 +41,8 @@ import type {
   ProjectSession,
   SessionManagedState,
   ProjectSessionSummaryWindow,
+  SessionSideChatWindow,
+  SessionSideChatWindowInput,
   ProjectSessionSummaryWindowInput,
   ProjectSessionThreadLink,
   ProjectSessionThreadLinkInput,
@@ -311,6 +314,10 @@ export interface ProjectWorkspaceService {
   readonly setSessionManaged: (
     command: ProjectSessionManagedCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<SessionManagedState>>;
+  readonly listSessionSideChats: (
+    sourceSessionId: string,
+    input?: SessionSideChatWindowInput,
+  ) => ProjectWorkspaceEffect<SessionSideChatWindow>;
   readonly getProjectSession: (sessionId: string) => ProjectWorkspaceEffect<ProjectSession | null>;
   readonly updateProjectSession: (
     command: ProjectSessionUpdateCommandInput,
@@ -747,6 +754,34 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       return yield* requireSession(sessionId).pipe(
         Effect.catch((error) => (isNotFound(error) ? Effect.succeed(null) : Effect.fail(error))),
       );
+    });
+
+    const listSessionSideChats = Effect.fn("ProjectWorkspace.listSessionSideChats")(function* (
+      sourceSessionId: string,
+      input: SessionSideChatWindowInput = {},
+    ) {
+      const parsed = yield* evaluate("session.side-chats", () =>
+        SessionSideChatWindowInputSchema.parse(input),
+      );
+      const snapshot = yield* read("session.side-chats", {
+        kind: "session_side_chats",
+        source_session_id: sourceSessionId,
+        window: { after: parsed.after ?? null, first: parsed.first ?? 50 },
+      });
+      return yield* evaluate("session.side-chats", () => {
+        const window = expectVariant(snapshot, "session_side_chats").side_chats;
+        return {
+          items: window.items.map((item) => ({
+            sessionId: item.session_id,
+            displayTitle: item.display_title,
+            createdAt: item.created_at,
+            updatedAt: item.updated_at,
+            archived: item.archived,
+          })),
+          nextCursor: window.next_cursor ?? null,
+          projectionRevision: window.authority.projection_revision,
+        } satisfies SessionSideChatWindow;
+      });
     });
 
     const listProjectSessionSummaryWindow = Effect.fn(
@@ -1744,6 +1779,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       listProjectSessionSummaryWindow,
       readSidebarOverview,
       getProjectSession: readSession,
+      listSessionSideChats,
       updateProjectSession,
       renameProjectSession,
       ensureDefaultDraftProjectSession,

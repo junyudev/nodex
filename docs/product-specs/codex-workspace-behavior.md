@@ -39,6 +39,16 @@ to Chats removes its Project membership without discarding its workspace,
 conversation or queued work. Project movement does not request folder or content
 permission.
 
+Attached Agent Runtime side chats share their source Session's Project. Moving a
+source moves its attached descendants in the same transaction; a side chat cannot
+move away independently. Permanently deleting a Session also deletes all attached
+side chats recursively, with a separate durable execution-cleanup receipt for each
+bound Session. Archiving a Session leaves its side chats attached and readable.
+The source's side-chat read returns a bounded cursor window of direct children,
+including archived chats, ordered by creation time newest first and Session identity
+for ties. Each item carries its Session identity, display title, creation and update
+times, and archived state.
+
 Archived, deleted, internal helper, Side chat, reviewer, and parent-linked child
 Threads do not become root sidebar Chats. If late ancestry proves that a row is
 a child agent, Nodex removes its root-Chat presentation while preserving it for

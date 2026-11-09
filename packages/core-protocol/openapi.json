@@ -10631,6 +10631,55 @@
           }
         }
       },
+      "CollectionWindow_ProjectWorkspaceSessionSideChatSummary": {
+        "type": "object",
+        "required": [
+          "items",
+          "authority"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Presentation metadata for one attached side chat; execution stays runtime-owned.",
+              "required": [
+                "session_id",
+                "display_title",
+                "created_at",
+                "updated_at",
+                "archived"
+              ],
+              "properties": {
+                "archived": {
+                  "type": "boolean"
+                },
+                "created_at": {
+                  "type": "string"
+                },
+                "display_title": {
+                  "type": "string"
+                },
+                "session_id": {
+                  "type": "string"
+                },
+                "updated_at": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "CollectionWindow_ProjectWorkspaceSidebarOrderEntry": {
         "type": "object",
         "required": [
@@ -42454,6 +42503,29 @@
               },
               {
                 "type": "object",
+                "description": "Direct attached children, including archived chats, newest creation first.",
+                "required": [
+                  "source_session_id",
+                  "window",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "session_side_chats"
+                    ]
+                  },
+                  "source_session_id": {
+                    "type": "string"
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "description": "The external runtime identity reserved for one Session; execution remains runtime-owned.",
                 "required": [
                   "session_id",
@@ -61867,6 +61939,24 @@
                                 "type": "null"
                               }
                             ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "side_chats",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "session_side_chats"
+                            ]
+                          },
+                          "side_chats": {
+                            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceSessionSideChatSummary"
                           }
                         }
                       },

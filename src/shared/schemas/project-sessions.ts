@@ -11,6 +11,7 @@ import type {
   SessionLinkedPageSummaryInput,
   PageChatLinkInput,
   PageChatWindowInput,
+  SessionSideChatWindowInput,
   WorkbenchProjectionDbViewTabConfig,
   WorkbenchProjectionFilesTabConfig,
   WorkbenchProjectionTabConfig,
@@ -145,6 +146,13 @@ export const PageChatActivitySummaryInputSchema = z
     pageIds: boundedUniqueIds(MAX_PAGE_CHAT_ACTIVITY_IDS),
   })
   .strict() satisfies z.ZodType<PageChatActivitySummaryInput>;
+
+export const SessionSideChatWindowInputSchema = z
+  .object({
+    after: z.string().min(1).nullable().optional(),
+    first: z.number().int().min(1).max(200).optional(),
+  })
+  .strict() satisfies z.ZodType<SessionSideChatWindowInput>;
 
 export const PageChatWindowInputSchema = z
   .object({

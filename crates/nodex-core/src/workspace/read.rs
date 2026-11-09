@@ -620,6 +620,19 @@ pub(super) fn read(
                 start: super::inbox::session_start(connection, library_id, &session_id)?,
             })
         }
+        ProjectWorkspaceRead::SessionSideChats {
+            source_session_id,
+            window,
+        } => Ok(ProjectWorkspaceReadValue::SessionSideChats {
+            side_chats: super::session_side_chats::read_window(
+                connection,
+                library_id,
+                commit_head,
+                &member,
+                &source_session_id,
+                &window,
+            )?,
+        }),
         ProjectWorkspaceRead::AgentRuntimeSessionBinding { session_id } => {
             Ok(ProjectWorkspaceReadValue::AgentRuntimeSessionBinding {
                 binding: super::agent_runtime_binding::read_binding(
@@ -984,6 +997,15 @@ pub(super) fn project(
         created_at: row.created_at,
         updated_at: row.updated_at,
     })
+}
+
+pub(super) fn read_session_summary(
+    connection: &Connection,
+    library_id: &str,
+    session_id: &str,
+    member: &str,
+) -> Result<Option<ProjectWorkspaceSessionSummary>, StoreError> {
+    Ok(read_session(connection, library_id, session_id, member)?.map(session_summary))
 }
 
 fn read_session(

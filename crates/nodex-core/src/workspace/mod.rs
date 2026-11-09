@@ -72,6 +72,7 @@ mod session_mutation;
 mod session_order;
 #[cfg(test)]
 mod session_reminder_tests;
+mod session_side_chats;
 mod session_usage;
 mod sidebar;
 mod sidebar_builtin;

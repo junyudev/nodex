@@ -102,6 +102,8 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
         ),
       on: () => Effect.die("unused"),
     });
+    const sideChatInputs: unknown[] = [];
+    const sideChatWindow = { items: [], nextCursor: "next", projectionRevision: 17 };
     const linkedPageInputs: SessionLinkedPageSummaryInput[] = [];
     const linkedPageResult = {
       summaries: [],
@@ -151,6 +153,11 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
         Effect.sync(() => {
           openedInputs.push(command);
           return { value: undefined, apply: applied };
+        }),
+      listSessionSideChats: (sourceSessionId: string, input: unknown) =>
+        Effect.sync(() => {
+          sideChatInputs.push({ sourceSessionId, input });
+          return sideChatWindow;
         }),
       listBuiltinSidebarOrder: () =>
         Effect.succeed({
@@ -250,7 +257,7 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       scope,
     );
 
-    assert.strictEqual(handlers.size, 55);
+    assert.strictEqual(handlers.size, 56);
     assert.isTrue(handlers.has("projects:create"));
     assert.isTrue(handlers.has("project-sessions:start"));
     assert.isTrue(handlers.has("project-sessions:set-reminder"));
@@ -292,6 +299,22 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       yield* handlers.get("project-sessions:managed")!(rendererEvent(17), "session:one"),
       managedState,
     );
+    const sideInput = { after: "cursor", first: 1 };
+    const sideWindow = yield* handlers.get("project-sessions:side-chats")!(
+      rendererEvent(17),
+      "source",
+      sideInput,
+    );
+    assert.deepEqual(sideWindow, sideChatWindow);
+    assert.deepEqual(sideChatInputs, [{ sourceSessionId: "source", input: sideInput }]);
+    assert.isTrue(
+      Exit.isFailure(
+        yield* Effect.exit(
+          handlers.get("project-sessions:side-chats")!(rendererEvent(99), "source", sideInput),
+        ),
+      ),
+    );
+    assert.equal(sideChatInputs.length, 1);
 
     const pageInput: CreatePageForCommand = {
       for: { kind: "session", sessionId: "session:one" },

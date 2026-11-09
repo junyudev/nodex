@@ -66,6 +66,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         ProjectWorkspaceRead::ThreadReadState { .. }
         | ProjectWorkspaceRead::ProjectWindow { .. }
         | ProjectWorkspaceRead::SessionWindow { .. }
+        | ProjectWorkspaceRead::SessionSideChats { .. }
         | ProjectWorkspaceRead::TaskWindow { .. }
         | ProjectWorkspaceRead::SidebarOverview { .. }
         | ProjectWorkspaceRead::ChildThreadWindow { .. }

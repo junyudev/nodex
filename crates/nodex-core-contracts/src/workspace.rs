@@ -255,6 +255,11 @@ pub enum ProjectWorkspaceRead {
     SessionStart {
         session_id: String,
     },
+    /// Direct attached children, including archived chats, newest creation first.
+    SessionSideChats {
+        source_session_id: String,
+        window: CollectionWindowRequest,
+    },
     /// The external runtime identity reserved for one Session; execution remains runtime-owned.
     AgentRuntimeSessionBinding {
         session_id: String,
@@ -573,6 +578,9 @@ pub enum ProjectWorkspaceReadValue {
     /// Absent once the chat has started, or when no Inbox decision started it.
     SessionStart {
         start: Option<ProjectWorkspaceSessionStart>,
+    },
+    SessionSideChats {
+        side_chats: CollectionWindow<ProjectWorkspaceSessionSideChatSummary>,
     },
     AgentRuntimeSessionBinding {
         binding: Option<ProjectWorkspaceAgentRuntimeSessionBinding>,
@@ -1878,6 +1886,16 @@ pub struct ProjectWorkspaceSessionReminderDelivery {
 pub struct ProjectWorkspaceSessionExecutionRef {
     pub runtime_id: String,
     pub thread_id: String,
+}
+
+/// Presentation metadata for one attached side chat; execution stays runtime-owned.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSessionSideChatSummary {
+    pub session_id: String,
+    pub display_title: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub archived: bool,
 }
 
 /// A stable Session-to-runtime link, without provider, Run, or transcript projections.

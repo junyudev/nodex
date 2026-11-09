@@ -19,11 +19,11 @@ use rusqlite::{Connection, OptionalExtension, params};
 pub(super) fn enqueue(
     connection: &Connection,
     library_id: &str,
-    operation_id: &str,
+    cleanup_id: &str,
     session_id: &str,
     project_id: Option<&str>,
 ) -> Result<(), StoreError> {
-    connection.execute("INSERT INTO nodex_agent_runtime_execution_cleanups(cleanup_id, library_id, session_id, project_id, runtime_id, runtime_thread_id, created_at) SELECT ?1, ?2, ?3, ?4, runtime_id, runtime_thread_id, ?5 FROM project_session_execution_bindings WHERE session_id = ?3", params![operation_id, library_id, session_id, project_id, sqlite_now(connection)?])?;
+    connection.execute("INSERT INTO nodex_agent_runtime_execution_cleanups(cleanup_id, library_id, session_id, project_id, runtime_id, runtime_thread_id, created_at) SELECT ?1, ?2, ?3, ?4, runtime_id, runtime_thread_id, ?5 FROM project_session_execution_bindings WHERE session_id = ?3", params![cleanup_id, library_id, session_id, project_id, sqlite_now(connection)?])?;
     Ok(())
 }
 

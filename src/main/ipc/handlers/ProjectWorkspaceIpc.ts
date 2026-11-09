@@ -499,6 +499,9 @@ export const live: Layer.Layer<
         return window;
       }),
     );
+    yield* invokeEffectQuery("project-sessions:side-chats", (_, sourceSessionId, input) =>
+      projects.listSessionSideChats(sourceSessionId, input),
+    );
     yield* invokeEffectQuery("project-sessions:get", (_, sessionId) =>
       Effect.gen(function* () {
         const startedAt = getDevRuntimeMetricStart();

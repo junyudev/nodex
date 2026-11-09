@@ -1048,3 +1048,63 @@ it.effect(
       yield* Scope.close(scope, Exit.void);
     }),
 );
+
+it.effect("reads a bounded source side-chat window and validates pagination before Core", () =>
+  Effect.gen(function* () {
+    const observed: Array<Parameters<CoreModuleClients["workspace"]["read"]>[0]> = [];
+    const reads: CoreModuleClients["workspace"]["read"] = (input) => {
+      if (input.kind !== "session_side_chats") return Effect.die("Unexpected Core read");
+      observed.push(input);
+      return Effect.succeed({
+        contract_version: CORE_CLIENT_REQUIREMENTS.modules.find(
+          (entry) => entry.module === "project_workspace",
+        )!.contract_version,
+        store_epoch: "epoch:test",
+        commit_head: 12,
+        value: {
+          kind: "session_side_chats",
+          side_chats: {
+            items: [
+              {
+                session_id: "side:one",
+                display_title: "Investigation",
+                archived: true,
+                created_at: "2026-11-09T00:00:00.000Z",
+                updated_at: "2026-11-09T01:00:00.000Z",
+              },
+            ],
+            next_cursor: "next",
+            authority: { projection_revision: 12 },
+          },
+        },
+      } satisfies ProjectWorkspaceReadSnapshot);
+    };
+    const { scope, workspace } = yield* open(core(reads));
+    const window = yield* workspace.listSessionSideChats("source", { after: "cursor", first: 1 });
+    assert.deepEqual(observed, [
+      {
+        kind: "session_side_chats",
+        source_session_id: "source",
+        window: { after: "cursor", first: 1 },
+      },
+    ]);
+    assert.deepEqual(window, {
+      items: [
+        {
+          sessionId: "side:one",
+          displayTitle: "Investigation",
+          archived: true,
+          createdAt: "2026-11-09T00:00:00.000Z",
+          updatedAt: "2026-11-09T01:00:00.000Z",
+        },
+      ],
+      nextCursor: "next",
+      projectionRevision: 12,
+    });
+    assert.isTrue(
+      Exit.isFailure(yield* Effect.exit(workspace.listSessionSideChats("source", { first: 201 }))),
+    );
+    assert.equal(observed.length, 1);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);

@@ -414,6 +414,8 @@ import type {
   ProjectSessionForkInput,
   ProjectSessionForkResult,
   ProjectSessionSummaryWindow,
+  SessionSideChatWindow,
+  SessionSideChatWindowInput,
   ProjectSessionSummaryWindowInput,
   ProjectSessionThreadLink,
   ProjectSessionThreadLinkInput,
@@ -1282,6 +1284,10 @@ export interface IpcApi
   "workspace:tasks:list": {
     args: [projectId: string | null, input?: ProjectSessionSummaryWindowInput];
     result: ProjectSessionSummaryWindow;
+  };
+  "project-sessions:side-chats": {
+    args: [sourceSessionId: string, input?: SessionSideChatWindowInput];
+    result: SessionSideChatWindow;
   };
   "project-sessions:get": {
     args: [sessionId: string];

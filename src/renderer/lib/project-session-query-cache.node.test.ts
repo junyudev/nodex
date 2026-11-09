@@ -1,9 +1,10 @@
 import { QueryClient } from "@tanstack/react-query";
-import { describe, expect, test } from "vite-plus/test";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import type { ProjectSession, ProjectSessionSummaryWindow } from "./types";
 import { queryKeys } from "./query-keys";
 import {
   getCachedProjectSessionDetail,
+  listSessionSideChats,
   invalidateProjectSessionScope,
   preferNewestProjectSessionSummaryWindow,
   projectSessionToSummary,
@@ -395,4 +396,15 @@ describe("project session query cache", () => {
     expect(queryClient.getQueryState(databaseKey)?.isInvalidated).toBe(false);
     queryClient.clear();
   });
+});
+
+afterEach(() => vi.unstubAllGlobals());
+
+test("reads one attached chat window without losing its continuation", async () => {
+  const window = { items: [], nextCursor: "next", projectionRevision: 12 };
+  const invoke = vi.fn(async () => window);
+  vi.stubGlobal("window", { api: { invoke } });
+  const input = { after: "cursor", first: 25 };
+  await expect(listSessionSideChats("source", input)).resolves.toBe(window);
+  expect(invoke).toHaveBeenCalledExactlyOnceWith("project-sessions:side-chats", "source", input);
 });

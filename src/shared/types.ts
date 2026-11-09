@@ -1230,6 +1230,26 @@ export interface ProjectSessionSummaryWindowInput extends ProjectSessionListOpti
   first?: number;
 }
 
+/** Direct attached side chats, including archived chats, newest creation first. */
+export interface SessionSideChatSummary {
+  readonly sessionId: string;
+  readonly displayTitle: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly archived: boolean;
+}
+
+export interface SessionSideChatWindowInput {
+  readonly after?: string | null;
+  readonly first?: number;
+}
+
+export interface SessionSideChatWindow {
+  readonly items: readonly SessionSideChatSummary[];
+  readonly nextCursor: string | null;
+  readonly projectionRevision: number;
+}
+
 export interface ProjectSessionSummaryWindow {
   items: ProjectSessionSummary[];
   nextCursor: string | null;

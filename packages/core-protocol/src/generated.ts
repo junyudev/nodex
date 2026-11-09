@@ -2683,6 +2683,17 @@ export interface components {
             }[];
             readonly next_cursor?: string | null;
         };
+        readonly CollectionWindow_ProjectWorkspaceSessionSideChatSummary: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly {
+                readonly archived: boolean;
+                readonly created_at: string;
+                readonly display_title: string;
+                readonly session_id: string;
+                readonly updated_at: string;
+            }[];
+            readonly next_cursor?: string | null;
+        };
         readonly CollectionWindow_ProjectWorkspaceSidebarOrderEntry: {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
@@ -10250,6 +10261,11 @@ export interface components {
                 readonly session_id: string;
             } | {
                 /** @enum {string} */
+                readonly kind: "session_side_chats";
+                readonly source_session_id: string;
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
+                /** @enum {string} */
                 readonly kind: "agent_runtime_session_binding";
                 readonly session_id: string;
             } | {
@@ -14643,6 +14659,10 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "session_start";
                     readonly start?: components["schemas"]["ProjectWorkspaceSessionStart"] | null;
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "session_side_chats";
+                    readonly side_chats: components["schemas"]["CollectionWindow_ProjectWorkspaceSessionSideChatSummary"];
                 } | {
                     readonly binding?: components["schemas"]["ProjectWorkspaceAgentRuntimeSessionBinding"] | null;
                     /** @enum {string} */

@@ -272,6 +272,7 @@ type QueryEndpointPolicy =
   | "project-sessions:get"
   | "project-sessions:managed"
   | "project-sessions:start"
+  | "project-sessions:side-chats"
   | "projects:activity-summaries"
   | "projects:bootstrap"
   | "projects:get"
