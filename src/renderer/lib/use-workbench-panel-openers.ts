@@ -1,5 +1,6 @@
 import { localProjectSourceRoots } from "../../shared/project-sources";
 import { runWithCleanup } from "./run-with-cleanup";
+import { omitRecordKey } from "./utils";
 import type { prepareWorkbenchSceneSurfaceClose } from "./workbench-scene-command-lifecycle";
 import { openSessionPageFileTab, type OpenPageFileTabHandler } from "./workbench-page-file-opener";
 export type { OpenPageFileTabInput, OpenPageFileTabHandler } from "./workbench-page-file-opener";
@@ -125,15 +126,6 @@ type SideChatReuseCandidate = SideChatSelectionCandidate &
     | { readonly native: SideChatPanelTab; readonly sideChatSessionId: null }
     | { readonly native: null; readonly sideChatSessionId: string }
   );
-
-function omitRecordKey<Value>(
-  record: Readonly<Record<string, Value>>,
-  key: string,
-): Record<string, Value> {
-  if (!(key in record)) return record;
-  const { [key]: _omitted, ...rest } = record;
-  return rest;
-}
 
 export const IMAGE_SIDE_PANEL_AUTO_EXPANDED_STORAGE_KEY = "image-side-panel-auto-expanded-v1";
 
@@ -639,9 +631,14 @@ export function useWorkbenchPanelOpeners({
                 : tab,
             ),
           }));
+          const slotKey = makeWorkbenchSessionPanelSlotKey(
+            activeSession.id,
+            native.panelId,
+            leafId,
+          );
           controller.updateSideChatActiveTabByPanel((current) => ({
             ...current,
-            [makeWorkbenchSessionPanelSlotKey(activeSession.id, native.panelId, leafId)]: native.id,
+            [slotKey]: native.id,
           }));
           if (native.threadId)
             composerDraftIntents.set(

@@ -31,6 +31,7 @@ import {
   type PageTitleProjectionStore,
 } from "@/lib/page-title-projection-store";
 import { getPanelNewTabAction } from "@/lib/workbench-panel-actions";
+import { omitRecordKey } from "@/lib/utils";
 import { terminalSessionStore } from "@/lib/terminal-session-store";
 import type { WorkbenchPanelController } from "@/lib/use-workbench-panel-controller";
 import type { useWorkbenchPanelCommandRouter } from "@/lib/use-workbench-panel-command-router";
@@ -767,11 +768,9 @@ export function useWorkbenchPanelProjection({
                         onUpdateSessionViewTab(tab.id, { title });
                     }}
                     onInitialSubmissionSettled={() =>
-                      controller.updateSideChatCreations((current) => {
-                        if (!current[sideChatSessionId]) return current;
-                        const { [sideChatSessionId]: _settled, ...rest } = current;
-                        return rest;
-                      })
+                      controller.updateSideChatCreations((current) =>
+                        omitRecordKey(current, sideChatSessionId),
+                      )
                     }
                     onRetry={() => void retrySideChatCreation(sideChatSessionId)}
                     onClose={() => void closeTab(tab.id)}

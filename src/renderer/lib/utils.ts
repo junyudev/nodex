@@ -25,3 +25,17 @@ const mergeClasses = extendTailwindMerge<"icon-size">({
 export function cn(...inputs: ClassValue[]) {
   return mergeClasses(clsx(inputs));
 }
+
+/**
+ * The record without `key`, or the same record when it has no such key, so state updaters keep
+ * their identity when nothing changes. A plain helper keeps the computed-key destructuring out of
+ * compiled components and hooks.
+ */
+export function omitRecordKey<Value>(
+  record: Readonly<Record<string, Value>>,
+  key: string,
+): Readonly<Record<string, Value>> {
+  if (!Object.hasOwn(record, key)) return record;
+  const { [key]: _omitted, ...rest } = record;
+  return rest;
+}
