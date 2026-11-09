@@ -1101,6 +1101,10 @@ export interface IpcApi
     args: [input: import("./work-application").AcceptWorkInput];
     result: CoreLocalCommitResult<void>;
   };
+  "work:host-status": {
+    args: [];
+    result: import("@nodex/core-protocol").components["schemas"]["HostAvailability"];
+  };
   "work:turn": {
     args: [pageId: string];
     result: {
@@ -1327,6 +1331,10 @@ export interface IpcApi
   "project-sessions:managed": {
     args: [sessionId: string];
     result: SessionManagedState;
+  };
+  "project-sessions:start": {
+    args: [sessionId: string];
+    result: import("./types").ProjectSessionStart | null;
   };
   "project-sessions:set-managed": {
     args: [command: ProjectSessionManagedCommandInput];

@@ -5,6 +5,12 @@ import * as Fiber from "effect/Fiber";
 import { makeSessionDetailsFixture } from "@nodex/agent-runtime/orchestration/testkit/SessionDetailsFixture";
 import { layerMemory } from "../../../packages/agent-runtime/src/persistence/Sqlite";
 import { readSessionDetails } from "@nodex/agent-runtime/orchestration/SessionReadDetails";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { CodexThreadDirectory } from "../../main/codex-application/CodexThreadDirectory";
+import { CodexNativeThreadLookup } from "../../main/codex-application/CodexNativeThreadLookup";
+import { CodexGateway } from "../../main/codex-runtime/CodexGateway";
+import { live as nativeManagedChatFacts } from "../../main/codex-application/NativeManagedChatFacts";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
 import { make } from "./ManagedChatFacts";
 import { diffManagedChatObservation as diff } from "./managed-chat-observation";
 
@@ -22,6 +28,7 @@ const owner = (
   gateway: unknown = {},
 ) =>
   make.pipe(
+    Effect.provide(nativeManagedChatFacts),
     Effect.provideService(CoreModules, core as never),
     Effect.provideService(AgentRuntimeApplication, runtime as never),
     Effect.provideService(CodexThreadDirectory, directory as never),

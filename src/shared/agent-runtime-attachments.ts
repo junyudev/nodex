@@ -49,3 +49,20 @@ export const buildAgentRuntimeToolResultImageSource = (reference: {
     itemId: reference.itemId,
     attachmentId: `tool-result:${reference.contentIndex}`,
   });
+
+const REPLY_PICTURE = "reply-picture:";
+
+/**
+ * A picture a reply shows from a file on the machine that ran its chat, named by the address the
+ * reply wrote. Only that reply's own pictures are read under it, and only a picture's bytes; an
+ * address too long to name is null and shows unavailable.
+ */
+export const replyPictureAttachmentId = (address: string): string | null => {
+  const id = REPLY_PICTURE + address;
+  return address.length > 0 && identity(id) ? id : null;
+};
+
+export const parseReplyPictureAttachmentId = (attachmentId: string): string | null =>
+  attachmentId.startsWith(REPLY_PICTURE) && attachmentId.length > REPLY_PICTURE.length
+    ? attachmentId.slice(REPLY_PICTURE.length)
+    : null;

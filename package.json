@@ -165,6 +165,7 @@
     "verify:renderer-command-boundaries": "tsx scripts/ci/verify-renderer-command-boundaries.ts",
     "verify:renderer-ui-boundaries": "tsx scripts/ci/verify-renderer-ui-boundaries.ts",
     "verify:token-color-utilities": "tsx scripts/ci/verify-token-color-utilities.ts",
+    "verify:host-boundaries": "tsx scripts/ci/verify-host-boundaries.ts",
     "verify:effect-boundaries": "tsx scripts/ci/verify-effect-boundaries.ts",
     "verify:source-type-ownership": "tsx scripts/ci/verify-source-type-ownership.ts",
     "tooling:verify": "tsx scripts/ci/verify-tooling-contracts.ts",
@@ -216,7 +217,8 @@
   },
   "dependencies": {
     "@sentry/electron": "8.3.0",
-    "node-pty": "1.1.0"
+    "node-pty": "1.1.0",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@agentclientprotocol/sdk": "2.0.2",

@@ -81,6 +81,8 @@ export function projectSessionToSummary(session: ProjectSession): ProjectSession
     archivedAt: session.archivedAt,
     unread: session.unread,
     remindAt: session.remindAt,
+    canManage: session.canManage,
+    canStop: session.canStop,
     thread: session.thread,
     executionRef: session.executionRef ?? null,
     createdAt: session.createdAt,
@@ -234,17 +236,30 @@ export async function invalidateProjectSessionScope(
     }),
   );
 
+  // What a chat's reader may do follows Core's chat: a Run that Core has since attributed to its
+  // Member, or a message another Member sent, changes which messages are theirs to edit and
+  // which work they may stop, while the Runs the reader names stay the same.
   if (event.detailInvalidation.kind === "all") {
     invalidations.push(
       queryClient.invalidateQueries({
         queryKey: [...queryKeys.projectSessions.all(), "detail"],
       }),
+      queryClient.invalidateQueries({
+        queryKey: [...queryKeys.projectSessions.all(), "start"],
+      }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.agentRuntime.memberActionsAll() }),
     );
     await Promise.all(invalidations);
     return;
   }
 
   const sessionIds = event.detailInvalidation.sessionIds;
+  for (const sessionId of sessionIds)
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agentRuntime.memberActionsOf(sessionId),
+      }),
+    );
   if (event.changeType === "delete" || event.changeType === "archive") {
     for (const sessionId of sessionIds) {
       queryClient.removeQueries({
@@ -260,6 +275,10 @@ export async function invalidateProjectSessionScope(
     invalidations.push(
       queryClient.invalidateQueries({
         queryKey: queryKeys.projectSessions.detail(sessionId),
+        exact: true,
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.projectSessions.start(sessionId),
         exact: true,
       }),
     );

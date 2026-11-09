@@ -3,8 +3,13 @@ import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifierRuntime";
+import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { resolveInboxModel } from "../inbox-application/InboxRuntimeSelection";
 import { spaceHeld } from "../work-application/execution-holds";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { getLogger } from "../../main/logging/logger";
 import { CoordinatorSession } from "./CoordinatorSession";
 import {
   assessmentIdentity,

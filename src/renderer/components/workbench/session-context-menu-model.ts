@@ -16,6 +16,7 @@ import {
 } from "@/lib/session-execution";
 import { sessionForkDestinations, type SessionForkDestination } from "@/lib/session-fork";
 import { chatReminderPresets, describeChatReminder } from "@/lib/chat-reminder";
+import { isHostedChat } from "@/lib/hosted-chat";
 
 export const SESSION_CONTEXT_MENU_MOVE_TO_PROJECT_PREFIX = "session.moveToProject:";
 export const SESSION_CONTEXT_MENU_MOVE_TO_SECTION_PREFIX = "session.moveToSection:";
@@ -163,8 +164,9 @@ export function buildSessionContextMenuItems(
   input: SessionContextMenuInput,
 ): NativeContextMenuItem[] {
   const { session } = input;
+  const hosted = isHostedChat();
   const execution = resolveSessionExecution(session);
-  const canMoveProject = resolveSessionProjectMove(execution) !== null;
+  const canMoveProject = resolveSessionProjectMove(session) !== null;
   const markdownExport = resolveSessionMarkdownExport(execution);
   // Native non-Codex history exports from its open conversation, not from the Session menu.
   const offersMarkdownExport = execution.kind !== "native" || markdownExport !== null;
@@ -193,7 +195,7 @@ export function buildSessionContextMenuItems(
                 : SESSION_CONTEXT_MENU_ACTION_IDS.fork,
             label: destination.label,
             enabled: true,
-            iconKey: destination.iconKey,
+            iconKey: destination.target === "newWorktree" ? "worktree" : "fork",
           })),
         },
       ]
@@ -236,28 +238,32 @@ export function buildSessionContextMenuItems(
           },
         ]
       : []),
-    {
-      id: "session.section",
-      type: "submenu",
-      label: "Section",
-      iconKey: "section",
-      submenu: [
-        ...(input.sections ?? []).map((section) => ({
-          id:
-            input.directSectionId === section.sectionId
-              ? SESSION_CONTEXT_MENU_ACTION_IDS.removeFromSection
-              : sessionMoveToSectionActionId(section.sectionId),
-          label: `${input.directSectionId === section.sectionId ? "✓ " : ""}${section.name ?? "Untitled section"}`,
-          enabled: true,
-        })),
-        ...((input.sections?.length ?? 0) > 0 ? [{ type: "separator" as const }] : []),
-        {
-          id: SESSION_CONTEXT_MENU_ACTION_IDS.newSection,
-          label: "New section…",
-          enabled: true,
-        },
-      ],
-    },
+    ...(hosted
+      ? []
+      : [
+          {
+            id: "session.section",
+            type: "submenu" as const,
+            label: "Section",
+            iconKey: "section" as const,
+            submenu: [
+              ...(input.sections ?? []).map((section) => ({
+                id:
+                  input.directSectionId === section.sectionId
+                    ? SESSION_CONTEXT_MENU_ACTION_IDS.removeFromSection
+                    : sessionMoveToSectionActionId(section.sectionId),
+                label: `${input.directSectionId === section.sectionId ? "✓ " : ""}${section.name ?? "Untitled section"}`,
+                enabled: true,
+              })),
+              ...((input.sections?.length ?? 0) > 0 ? [{ type: "separator" as const }] : []),
+              {
+                id: SESSION_CONTEXT_MENU_ACTION_IDS.newSection,
+                label: "New section…",
+                enabled: true,
+              },
+            ],
+          },
+        ]),
   ];
 
   const copyItems: NativeContextMenuItem[] = [
@@ -309,7 +315,16 @@ export function buildSessionContextMenuItems(
     },
   ];
 
+  const markUnread: NativeContextMenuItem = {
+    id: SESSION_CONTEXT_MENU_ACTION_IDS.markUnread,
+    label: session.unread ? "Mark as read" : "Mark as unread",
+    enabled: true,
+    iconKey: "unread",
+    accelerator: "Shift+CommandOrControl+U",
+  };
+  // Pins and reminders are each Member's own. The chat's owner or a Space Owner renames and
   // archives a chat every Member shares; Nodex management stays out of a team Space's chats.
+  const lifecycleItems: NativeContextMenuItem[] = [
     {
       id: SESSION_CONTEXT_MENU_ACTION_IDS.togglePin,
       label: session.pinned ? "Unpin" : "Pin",
@@ -317,31 +332,47 @@ export function buildSessionContextMenuItems(
       iconKey: session.pinned ? "unpin" : "pin",
       accelerator: "Alt+CommandOrControl+P",
     },
-    {
-      id: SESSION_CONTEXT_MENU_ACTION_IDS.rename,
-      label: "Rename",
-      enabled: true,
-      iconKey: "rename",
-      accelerator: "Alt+CommandOrControl+R",
-    },
-    {
-      id: SESSION_CONTEXT_MENU_ACTION_IDS.markUnread,
-      label: session.unread ? "Mark as read" : "Mark as unread",
-      enabled: true,
-      iconKey: "unread",
-      accelerator: "Shift+CommandOrControl+U",
-    },
+    ...(session.canManage
+      ? [
+          {
+            id: SESSION_CONTEXT_MENU_ACTION_IDS.rename,
+            label: "Rename",
+            enabled: true,
+            iconKey: "rename" as const,
+            accelerator: "Alt+CommandOrControl+R",
+          },
+        ]
+      : []),
+    markUnread,
     buildSessionReminderSubmenu(session.remindAt, input.now ?? new Date()),
-    {
-      id: SESSION_CONTEXT_MENU_ACTION_IDS.archive,
-      label: "Archive",
-      enabled: true,
-      iconKey: "archive",
-      accelerator: "Shift+CommandOrControl+A",
-    },
+    ...(!hosted && !session.archived
+      ? [
+          {
+            id: SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged,
+            type: "checkbox" as const,
+            label: "Managed by Nodex",
+            checked: session.managed,
+            enabled: true,
+          },
+        ]
+      : []),
+    ...(session.canManage
+      ? [
+          {
+            id: SESSION_CONTEXT_MENU_ACTION_IDS.archive,
+            label: "Archive",
+            enabled: true,
+            iconKey: "archive" as const,
+            accelerator: "Shift+CommandOrControl+A",
+          },
+        ]
+      : []),
+  ];
+
+  return [
+    ...lifecycleItems,
     ...(forkItems.length > 0 ? [{ type: "separator" as const }, ...forkItems] : []),
-    { type: "separator" },
-    ...organizationItems,
+    ...(organizationItems.length > 0 ? [{ type: "separator" as const }, ...organizationItems] : []),
     { type: "separator" },
     {
       id: "session.copy",

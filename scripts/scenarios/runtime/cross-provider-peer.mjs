@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import readline from "node:readline";
+import { execFile } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 
 const kind = path.basename(process.argv[1]).startsWith("claude") ? "claude" : "codex";
@@ -11,7 +12,9 @@ if (process.argv.includes("--version")) {
   console.log(kind === "claude" ? "2.1.284 (Claude Code)" : "codex-cli 0.145.0-alpha.15");
   process.exit(0);
 }
-const home = process.env.NODEX_TEST_CROSS_PROVIDER_HOME;
+const home =
+  process.env.NODEX_TEST_CROSS_PROVIDER_HOME ??
+  path.resolve(path.dirname(process.argv[1]), "../../../..");
 if (!home) throw new Error("The native peer requires its owned fixture home");
 const record = (event) =>
   fs.appendFileSync(path.join(home, "native.jsonl"), `${JSON.stringify({ kind, ...event })}\n`);
@@ -92,6 +95,25 @@ if (kind === "claude" && passkeys() && argument("--output-format") === "json") {
   emit({
     structured_output: { title: "Passkey sign-in", description: "Add passkey sign-in to Lumen." },
   });
+  process.exit(0);
+}
+if (
+  kind === "codex" &&
+  ["team-host", "mobile-gateway"].includes(plan().scenario) &&
+  process.argv.includes("exec")
+) {
+  let prompt = "";
+  for await (const chunk of process.stdin) prompt += chunk;
+  fs.writeFileSync(
+    argument("--output-last-message"),
+    JSON.stringify({
+      title: prompt.includes("Nodex is ready.")
+        ? "Nodex"
+        : plan().scenario === "mobile-gateway"
+          ? "Phone work"
+          : "Host runner task",
+    }),
+  );
   process.exit(0);
 }
 const model = argument("--model") ?? (passkeys() ? "claude-opus-5-5" : "claude-sonnet-5-5");
@@ -508,6 +530,111 @@ async function answerPasskeys(prompt, server, native) {
   return "The sign-in UI and session flow are ready for review. The delegated work will report here as it finishes.";
 }
 
+const hostQuestions = new Map();
+function emitAsyncQuestion(native, prefix, text, options) {
+  const questionItem = {
+    type: "agentMessage",
+    id: `${prefix}-question:${native.turnId}`,
+    text,
+    phase: "commentary",
+    delivery: "async",
+    memoryCitation: null,
+    questions: [{ title: text, options }],
+  };
+  state = load();
+  state.threads[native.threadId].turns
+    .find((turn) => turn.id === native.turnId)
+    .items.push(questionItem);
+  persist();
+  notify("item/started", { ...native, item: questionItem, startedAtMs: Date.now() });
+  notify("item/completed", { ...native, item: questionItem, completedAtMs: Date.now() });
+}
+
+/** A 4×4 PNG a host tool returns, for a Member's desktop to read back through the host. */
+const HOST_SCREENSHOT_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAEElEQVR4nGPQzrkJRwzEcQBLchcBrdrRDQAAAABJRU5ErkJggg==";
+
+async function answerHosted(prompt, server, native) {
+  const recipe = plan();
+  const marker = path.join(home, `host-work-${native.threadId}`);
+  if (fs.existsSync(marker) && prompt.includes("Show the host screenshot")) {
+    codexActivity(native, {
+      type: "mcpToolCall",
+      id: randomUUID(),
+      server: "host_fixture",
+      tool: "screenshot",
+      status: "completed",
+      arguments: {},
+      appContext: null,
+      mcpAppUi: null,
+      pluginId: null,
+      readOnlyHint: null,
+      result: {
+        content: [{ type: "image", data: HOST_SCREENSHOT_PNG, mimeType: "image/png" }],
+        structuredContent: null,
+        _meta: null,
+      },
+      error: null,
+      durationMs: 1,
+    });
+    return "Here is the host screenshot.";
+  }
+  if (fs.existsSync(marker))
+    return prompt.includes("<send_user_message_question_reply>")
+      ? await finishHostedAnswer(prompt, server, native)
+      : "Host received your reply.";
+  if (!prompt.startsWith("# ") || !prompt.includes(`Page ID: ${recipe.pageId}`))
+    return "Nodex is monitoring the team Space.";
+  fs.writeFileSync(marker, recipe.pageId);
+  const shellEnvironment = { ...process.env, CODEX_THREAD_ID: native.threadId };
+  for (let index = 0; index < process.argv.length - 1; index++) {
+    if (process.argv[index] !== "-c") continue;
+    const value = process.argv[index + 1];
+    const override = /^shell_environment_policy\.set\.([^=]+)=(.*)$/u.exec(value);
+    if (override) shellEnvironment[override[1]] = JSON.parse(override[2]);
+    if (value.startsWith("shell_environment_policy.set={")) {
+      for (const pair of value.matchAll(/("(?:[^"\\]|\\.)*")=("(?:[^"\\]|\\.)*")/gu))
+        shellEnvironment[JSON.parse(pair[1])] = JSON.parse(pair[2]);
+    }
+  }
+  const shell = (command) =>
+    new Promise((resolve) => {
+      execFile(
+        "/bin/sh",
+        ["-c", command],
+        {
+          cwd: load().threads[native.threadId].cwd,
+          env: shellEnvironment,
+          encoding: "utf8",
+          timeout: 10_000,
+        },
+        (error, stdout, stderr) => resolve({ status: error ? 1 : 0, stdout, stderr }),
+      );
+    });
+  const location = await shell("pwd; git branch --show-current");
+  const privatePaths = await shell(
+    'test -z "${NODEX_CORE_HOME-}" && test -z "${NODEX_HOST_CORE_AUTH-}" && ! test -r "${NODEX_CORE_HOME}/core.auth" && ! test -r "${NODEX_HOME}/run/core/core.auth"',
+  );
+  const context = await shell("nodex --json context");
+  const admin = await shell("nodex --json serve status --home /unavailable-private-core");
+  record({
+    event: "host.security",
+    secretsAbsent: privatePaths.status === 0,
+    contentAvailable: context.status === 0,
+    adminRefused: admin.status !== 0,
+    adminMessage: admin.stdout || admin.stderr,
+    contextMessage: context.status === 0 ? "available" : context.stdout || context.stderr,
+  });
+  if (privatePaths.status !== 0 || context.status !== 0 || admin.status === 0)
+    throw new Error("Host Agent shell security contract failed");
+  const observed = await callTool(server, "read_session", {}, native);
+  record({ event: "host.session", sessionId: observed.sessionId });
+  record({
+    event: "host.work",
+    ...native,
+    cwd: load().threads[native.threadId].cwd,
+    shell: location,
+  });
   if (recipe.questionMode === "blocking") {
     const requestId = `host-question:${native.turnId}`;
     const response = await new Promise((resolve) => {
@@ -538,10 +665,47 @@ async function answerPasskeys(prompt, server, native) {
     });
     return finishHostedAnswer(JSON.stringify(response), server, native);
   }
+  emitAsyncQuestion(native, "host", "Which scope should the host use?", ["Project", "Library"]);
+  record({ event: "host.question", ...native });
+  return "The host is waiting for your scope choice.";
+}
+
+async function finishHostedAnswer(prompt, server, native) {
+  const pageId = fs.readFileSync(path.join(home, `host-work-${native.threadId}`), "utf8");
+  const response = prompt;
+  record({ event: "host.answer", ...native, response });
+  fs.writeFileSync(
+    path.join(load().threads[native.threadId].cwd, "host-result.txt"),
+    "Host work verified.\n",
+  );
+  await callTool(
+    server,
+    "report_work",
+    {
+      pageId,
+      outcome: "ready",
+      summary: "Host work verified after the member answered.",
+    },
+    native,
+  );
+  return "Host work is ready. The member answered the question.";
+}
+
+  if (!prompt.includes("<send_user_message_question_reply>")) {
+    if (!prompt.includes(`Page ID: ${plan().pageId}`)) return "Nodex is monitoring your work.";
+    emitAsyncQuestion(native, "mobile", "Which scope should the phone use?", [
+      "Project",
+      "Library",
+    ]);
+    record({ event: "mobile.question", ...native });
+    return "The phone's work is waiting for your scope choice.";
+  }
+  record({ event: "mobile.answer", ...native, response: prompt });
 async function answer(prompt, server, native) {
+  if (plan().scenario === "team-host") return await answerHosted(prompt, server, native);
   if (passkeys()) return await answerPasskeys(prompt, server, native);
-  const plan = JSON.parse(fs.readFileSync(path.join(home, "plan.json"), "utf8"));
-  const delegation = plan[prompt];
+  const recipe = plan();
+  const delegation = recipe[prompt];
   if (typeof delegation?.reply === "string") return delegation.reply;
   if (!delegation) {
     // One finished task or a batch of siblings that finished before the parent woke.
@@ -714,7 +878,25 @@ async function handleCodex(message) {
       });
       return;
     case "account/rateLimits/read":
-      reply({ rateLimits: null });
+      reply({
+        ordinaryUsageAllowed: true,
+        rateLimits: {
+          limitId: "codex",
+          limitName: "Codex",
+          normalModelSlug: "gpt-5.5",
+          primary: null,
+          secondary: null,
+          credits: null,
+          individualLimit: null,
+          spendControlReached: false,
+          planType: "plus",
+          rateLimitReachedType: null,
+        },
+        rateLimitsByLimitId: null,
+        rateLimitResetCredits: null,
+        accountId: null,
+        rateLimitUpsell: null,
+      });
       return;
     case "model/list":
       reply({
@@ -725,6 +907,16 @@ async function handleCodex(message) {
             displayName: passkeys() ? "GPT-6.1 Sol" : "GPT-5.5",
             description: "Native fixture",
             hidden: false,
+            upgrade: null,
+            upgradeInfo: null,
+            availabilityNux: null,
+            modelSpecialty: null,
+            supportsPersonality: false,
+            multiAgentVersion: null,
+            additionalSpeedTiers: [],
+            serviceTiers: [],
+            defaultServiceTier: null,
+            availableAccessPrograms: null,
             supportedReasoningEfforts: [
               { reasoningEffort: "medium", description: "Balanced" },
               { reasoningEffort: "high", description: "High" },
@@ -806,6 +998,25 @@ async function handleCodex(message) {
       reply({ thread: state.threads[params.threadId] });
       return;
     }
+    case "thread/revert": {
+      // An edited message rewinds the thread to the turns before the one it opened.
+      state = load();
+      const thread = state.threads[params.threadId];
+      const before = thread?.turns.findIndex((turn) => turn.id === params.beforeTurnId) ?? -1;
+      if (!thread || before < 0) {
+        emit({ id, error: { code: -32001, message: "Turn missing" } });
+        return;
+      }
+      thread.turns = thread.turns.slice(0, before);
+      persist();
+      record({ event: "revert", threadId: thread.id, beforeTurnId: params.beforeTurnId });
+      reply({
+        thread: { ...thread, turns: [] },
+        turnsBackwardsCursor: null,
+        itemsBackwardsCursor: null,
+      });
+      return;
+    }
     case "thread/turns/list": {
       state = load();
       const turns = state.threads[params.threadId]?.turns ?? [];
@@ -858,6 +1069,17 @@ async function handleCodex(message) {
           ?.filter((value) => value.type === "text")
           .map((value) => value.text)
           .join("\n") ?? "";
+      if (plan().scenario === "team-host" && prompt.includes("Refuse this hosted reply")) {
+        record({ event: "host.refused", threadId: params.threadId });
+        emit({
+          id,
+          error: {
+            code: -32600,
+            message: "The host fixture refused this reply before native acceptance",
+          },
+        });
+        return;
+      }
       state = load();
       const priorItems = [
         ...(state.threads[params.threadId].injectedItems ?? []),
@@ -875,7 +1097,14 @@ async function handleCodex(message) {
       persist();
       reply({ turn });
       notify("turn/started", { threadId: params.threadId, turn });
-      record({ event: "prompt", threadId: params.threadId, turnId, prompt, priorItems });
+      // Pictures arrive beside the text; the record keeps each one's kind and media type.
+      const inputs = (params.input ?? [])
+        .filter((value) => value.type !== "text")
+        .map((value) => ({
+          type: value.type,
+          mimeType: /^data:([^;,]+)/u.exec(value.url ?? "")?.[1] ?? null,
+        }));
+      record({ event: "prompt", threadId: params.threadId, turnId, prompt, priorItems, inputs });
       const heldPrompt = process.env.NODEX_TEST_NATIVE_HOLD_PROMPT;
       const releaseFile = process.env.NODEX_TEST_NATIVE_RELEASE_FILE;
       if (
@@ -1098,6 +1327,12 @@ record({ event: "launch", nativeSessionId, resumed: argument("--resume") !== und
 const input = readline.createInterface({ input: process.stdin });
 for await (const line of input) {
   const message = JSON.parse(line);
+  if (!message.method && hostQuestions.has(message.id)) {
+    const resolve = hostQuestions.get(message.id);
+    hostQuestions.delete(message.id);
+    resolve(message.result);
+    continue;
+  }
   // Independent requests remain responsive while one parent waits for its delegated child.
   void (kind === "codex" ? handleCodex(message) : handleClaude(message)).catch((cause) => {
     record({ event: "error", message: String(cause) });

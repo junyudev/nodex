@@ -6,7 +6,10 @@ import { lightTap } from "../../ui/primitives";
 import { showFailure, showSnack } from "../../ui/snackbar";
 import { decisionReversal } from "./inbox-presentation";
 
-/** Runs a decision, then offers what it allows next: the chat it started, or undo. */
+/**
+ * Runs a decision, then offers what it allows next: the chat it started, or undo. A chat a message
+ * starts opens through that message, which shows it starting and opens it once its host has.
+ */
 export const useDecide = () => {
   const navigation = useRootNavigation();
   return async (pageId: string, decision: InboxDecision, done: string): Promise<void> => {
@@ -16,7 +19,13 @@ export const useDecide = () => {
       if (sessionId) {
         showSnack({
           text: done,
-          action: { label: "Open", run: () => navigation.navigate("Chat", { sessionId }) },
+          action: {
+            label: "Open",
+            run: () =>
+              decision.type === "accept" || decision.type === "start_chat"
+                ? navigation.navigate("Message", { pageId: entryId, openChat: sessionId })
+                : navigation.navigate("Chat", { sessionId }),
+          },
         });
         return;
       }

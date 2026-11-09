@@ -7,7 +7,12 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { fixture, row, metadata, fact, type Fact } from "./ChatSearch.test-support";
-import { projectChat, type ChatListingItem } from "./ChatCatalogProjection";
+import {
+  MEMBER_CHAT_CATALOG_MAX_ENTRIES,
+  projectChat,
+  type ChatListingItem,
+} from "./ChatCatalogProjection";
+import { HostInvocation } from "../../host/HostInvocation";
 
 it.effect("searches all 250 chats across Providers and returns bounded ranked rows", () =>
   Effect.scoped(
@@ -466,6 +471,78 @@ it.effect("includes time waiting in the Codex queue in each query's deadline", (
       assert.equal((yield* Fiber.join(first)).sources[1]!.state, "timed_out");
       assert.equal((yield* Fiber.join(second)).sources[1]!.state, "timed_out");
       assert.deepEqual(scans, ["first"]);
+    }),
+  ),
+);
+
+it.effect(
+  "searches a Member's chats through the host with their own authority, fresh and bounded",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const rows = [row("deploy", "Deploy the app"), row("other", "Other subject")];
+        const { service, invocations } = fixture({
+          rows: () => rows,
+          nativeCodex: false,
+          search: () =>
+            Effect.succeed({
+              runtimeId: "runtime",
+              items: [fact("other", "the deploy checklist")],
+              nextCursor: null,
+              coverage: "indexed",
+              startCursor: null,
+            }),
+          resolve: () =>
+            Effect.succeed({
+              runtimeId: "runtime",
+              items: [fact("other", "the deploy checklist")],
+            }),
+        });
+        const search = yield* service;
+        const asMember = <A, E, R>(effect: Effect.Effect<A, E, R>, proof: string) =>
+          effect.pipe(Effect.provideService(HostInvocation, proof));
+
+        // The desktop's own search warms its catalog; a Member's never reuses it.
+        yield* search.search({ query: "deploy", limit: 5 });
+        const desktopReads = invocations.length;
+        const alice = yield* asMember(search.search({ query: "deploy", limit: 5 }), "alice-proof");
+        assert.deepEqual(
+          alice.matches.map(({ chat }) => chat.sessionId),
+          ["deploy"],
+        );
+        yield* asMember(search.search({ query: "deploy", limit: 5 }), "bob-proof");
+        assert.deepEqual(invocations.slice(desktopReads), ["alice-proof", "bob-proof"]);
+
+        // Message history comes from the host's Runtime; it runs no native Codex of its own.
+        const messages = yield* asMember(
+          search.searchMessages({ query: "deploy", limit: 5 }),
+          "alice-proof",
+        );
+        assert.deepEqual(
+          messages.matches.map(({ chat }) => chat.sessionId),
+          ["other"],
+        );
+        assert.deepEqual(messages.sources, [
+          { source: "runtime", state: "complete" },
+          { source: "codex", state: "unavailable" },
+        ]);
+      }),
+    ),
+);
+
+it.effect("bounds a Member's catalog to their most recent chats", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const rows = Array.from({ length: MEMBER_CHAT_CATALOG_MAX_ENTRIES + 1 }, (_, index) =>
+        row(String(index), `Chat ${index}`),
+      );
+      const { service } = fixture({ rows: () => rows, nativeCodex: false });
+      const search = yield* service;
+      const result = yield* search
+        .search({ query: "", limit: 5 })
+        .pipe(Effect.provideService(HostInvocation, "alice-proof"));
+      assert.equal(result.complete, false);
+      assert.equal((yield* search.search({ query: "", limit: 5 })).complete, true);
     }),
   ),
 );

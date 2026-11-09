@@ -1,6 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import { Effect } from "effect";
 import type { components } from "@nodex/core-protocol";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
 import { make } from "./ChannelSender";
 import { GitHubChannelAdapter, ChannelSendError } from "./GitHubChannelAdapter";
 import { item } from "./channel-test-fixture";

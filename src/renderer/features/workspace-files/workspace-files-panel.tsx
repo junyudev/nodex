@@ -1,3 +1,4 @@
+import { localProjectSourceRoots } from "../../../shared/project-sources";
 import { useFileSearch } from "@/lib/use-file-search";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
@@ -204,7 +205,11 @@ function resolveWorkspaceRoot(tab: WorkspaceFilesTab, project: Project | null): 
   const configuredRoot = tab.config.workspaceRoot?.trim();
   if (configuredRoot) return configuredRoot;
   if (tab.config.hostId && tab.config.hostId !== "local") return null;
-  return project?.primaryWorkspaceRoot?.trim() || project?.sources[0]?.root.trim() || null;
+  return (
+    project?.primaryWorkspaceRoot?.trim() ||
+    localProjectSourceRoots(project?.sources ?? [])[0]?.trim() ||
+    null
+  );
 }
 
 function parentDirectory(path: string): string {

@@ -1,3 +1,4 @@
+import { localProjectSourceRoots } from "../../shared/project-sources";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -45,7 +46,7 @@ test.each(listScenarioIds())(
         ),
       ).toBe(true);
       // Includes the bootstrap Project and secondary Projects, not just the manifest's primary one.
-      const roots = projects.flatMap((project) => project.sources.map(({ root }) => root));
+      const roots = projects.flatMap((project) => localProjectSourceRoots(project.sources));
       expect(roots.length).toBeGreaterThan(0);
       expect(new Set(roots)).toEqual(new Set([source]));
       const gitRoot = (

@@ -129,6 +129,13 @@ export const InboxProposalSchema = z.looseObject({
   producedBy: z.string().nullable().default(null),
   action: InboxProposalActionSchema,
   failureMessage: z.string().nullable(),
+  /**
+   * How a delivery failed: refused, its host unable to run it, or sent without confirmation. An
+   * unconfirmed delivery may have reached its chat, so it is never sent again automatically.
+   */
+  failureKind: z.enum(["rejected", "unavailable", "unknown"]).nullable().default(null),
+  /** Whether Retry can deliver it again as it stands; otherwise it needs a new decision. */
+  retryable: z.boolean().default(false),
 });
 export type InboxProposal = z.infer<typeof InboxProposalSchema>;
 
@@ -328,6 +335,16 @@ export const ChatRequestSchema = z.discriminatedUnion("kind", [
 ]);
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;
 
+/** A chat its Inbox decision has not started yet: how it is getting on, and its retry. */
+export const ChatStartSchema = z.looseObject({
+  state: z.enum(["starting", "uncertain", "failed"]),
+  /** Present when the Space host could not start it, or may have. */
+  reason: z.string().nullable(),
+  /** The Inbox decision `inbox.decide` sends again, when Core would admit it. */
+  retry: z.looseObject({ entryId: z.string(), proposalId: z.string() }).nullable(),
+});
+export type ChatStart = z.infer<typeof ChatStartSchema>;
+
 export const ChatStateSchema = z.looseObject({
   status: ChatStatusSchema,
   activeRunId: z.string().nullable(),
@@ -336,6 +353,8 @@ export const ChatStateSchema = z.looseObject({
   agentLabel: z.string().nullable(),
   /** Null when this phone can send; otherwise why it cannot. */
   sendBlockedReason: z.string().nullable(),
+  /** Present while an Inbox decision has not started this chat. */
+  start: ChatStartSchema.nullable().optional(),
 });
 export type ChatState = z.infer<typeof ChatStateSchema>;
 

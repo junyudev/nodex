@@ -17,7 +17,7 @@ const PROJECT: Project = {
   name: "Nodex",
   description: "",
   appearance: DEFAULT_PROJECT_APPEARANCE,
-  sources: [{ root: "/Users/asc/repo/nodex", order: 0 }],
+  sources: [{ kind: "directory" as const, path: "/Users/asc/repo/nodex", order: 0 }],
   primaryWorkspaceRoot: "/Users/asc/repo/nodex",
   pinned: false,
   pinnedOrder: null,

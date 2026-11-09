@@ -5,6 +5,7 @@ mod agent_runtime_binding;
 mod agent_runtime_cleanup;
 mod app_tool_operation;
 mod channels;
+mod chat_stewardship;
 mod child_thread_window;
 mod codex_thread_navigation;
 mod coordinator;
@@ -14,6 +15,9 @@ mod execution;
 pub(crate) mod execution_holds;
 #[cfg(test)]
 mod execution_holds_tests;
+mod host_chat;
+pub use host_chat::HostChatAction;
+mod host_response;
 mod inbox;
 pub(crate) use inbox::scheduled::{
     PreparedRunPages, bind_automation_run_pages, prepare_automation_run_pages,
@@ -39,7 +43,6 @@ pub(crate) mod inbox_content;
 mod inbox_projection;
 mod inbox_read;
 mod inbox_serialization;
-pub(crate) use inbox_read::frozen_input_for_content;
 #[cfg(test)]
 pub(crate) use inbox_read::{
     FrozenSuggestionInput, frozen_input_for_content,
@@ -119,6 +122,50 @@ pub struct ProjectWorkspaceModule {
 }
 
 impl ProjectWorkspaceModule {
+    /// Admit an execution-owner response for the authenticated Member. Runtime
+    /// request identity is verified again by the execution owner before dispatch.
+    pub fn authorize_host_response(
+        &self,
+        principal: &nodex_core_contracts::RemotePrincipal,
+        session: &str,
+        run: Option<&str>,
+        request: &str,
+    ) -> Result<(), CoreError> {
+        let Some(readers) = &self.readers else {
+            return Err(unavailable("Project Workspace Module has no durable store"));
+        };
+        readers
+            .read_default(|connection| {
+                let transaction = connection.unchecked_transaction()?;
+                host_response::authorize(
+                    &transaction,
+                    &self.library_id,
+                    principal,
+                    session,
+                    run,
+                    request,
+                )
+            })
+            .map_err(core_error)
+    }
+
+    /// Admit a Member's action on a chat its Space host runs, from Core's own Store.
+    pub fn authorize_host_chat(
+        &self,
+        principal: &nodex_core_contracts::RemotePrincipal,
+        action: HostChatAction<'_>,
+    ) -> Result<(), CoreError> {
+        let Some(readers) = &self.readers else {
+            return Err(unavailable("Project Workspace Module has no durable store"));
+        };
+        readers
+            .read_default(|connection| {
+                let transaction = connection.unchecked_transaction()?;
+                host_chat::authorize(&transaction, &self.library_id, principal, action)
+            })
+            .map_err(core_error)
+    }
+
     pub fn new(
         profile_id: impl Into<String>,
         library_id: impl Into<String>,
@@ -368,7 +415,5 @@ fn unavailable(message: &str) -> CoreError {
 fn corrupt(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::StoreCorrupt, message, false)
 }
-
-pub(crate) use page_chat::link_pages;
 
 pub(crate) use inbox::scheduled::record_automation_changes;

@@ -25,7 +25,7 @@ import {
   createEmptyCodexPreparedPrompt,
   prepareCodexPrompt,
 } from "../../shared/codex-prompt-preparation";
-import { CodexTurnPresentation } from "./CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import {
   makeTestTurnPresentation,
   testSubmitPresentation,

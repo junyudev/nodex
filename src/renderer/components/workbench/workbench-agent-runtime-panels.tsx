@@ -1,3 +1,4 @@
+import { useRunStopCapabilities } from "@/lib/use-chat-capabilities";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { agentRuntimeSubagentApprovalsQueryOptions } from "@/features/local-conversation/agent-runtime-subagent-overview";
 import { composerDraftIntents } from "@/lib/composer-draft-intents";
@@ -332,6 +333,11 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
   const approvalThreads = useQuery(
     agentRuntimeSubagentApprovalsQueryOptions(input.sessionId, input.threadId, state.source),
   ).data;
+  // Each subagent answers for the Run that started it, as Core admits its stop.
+  const canStopRun = useRunStopCapabilities(
+    input.sessionId,
+    state.source?.active.items.map((task) => task.runId) ?? [],
+  );
   const [attachment, setAttachment] = useState(0);
   const isCurrentAttachment = useEffectEvent(
     (requestAttachment: number) => requestAttachment === attachment,
@@ -545,7 +551,12 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
       <div className="min-h-0 flex-1">
         <SubagentsPanelOverviewContent
           rootThreadId={input.threadId}
-          overview={projectAgentRuntimeSubagentOverview(input.threadId, source, approvalThreads)}
+          overview={projectAgentRuntimeSubagentOverview(
+            input.threadId,
+            source,
+            approvalThreads,
+            canStopRun,
+          )}
           onSelect={(row) => input.onSelect(projectSubagentOverviewRowToOpenPayload(row))}
           isStopping={(row) => {
             const task = taskForRow(row);
@@ -553,6 +564,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
               task !== undefined && isAgentRuntimeTaskStopping(stopping, input.sessionId, task.id)
             );
           }}
+          // A row offers Stop only where its own `canStop` says this reader may.
           onStop={(row) => {
             const task = taskForRow(row);
             if (!task) return;

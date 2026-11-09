@@ -34,6 +34,8 @@ export async function stopAgentRuntimeTask(
       threadId: task.parentThreadId,
       requestId: createUuidV7(),
       taskId: task.taskId,
+      // Admitted for, and bound to, the Run that started the task.
+      runId: task.ownerRunId,
     });
     return;
   }
@@ -147,8 +149,10 @@ export function createAgentRuntimeDelegatedTaskPort(
   sessionId: string,
   transport: AgentRuntimeTaskStopTransport,
   store: AgentRuntimeDelegatedTaskStore = agentRuntimeDelegatedTasks,
+  canStop: ConversationDelegatedTaskPort["canStop"] = () => true,
 ): ConversationDelegatedTaskPort {
   return {
+    canStop,
     subscribe: store.subscribe,
     isStopping: (taskId) => store.isStopping(sessionId, taskId),
     settle: (taskId) => store.settle(sessionId, taskId),

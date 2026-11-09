@@ -265,6 +265,7 @@ function ConnectedThreadStageHeader({
     input.activeThreadSummary?.threadId === activeThreadId ? input.activeThreadSummary : null;
   const cwd = useConversationCwd(activeThreadId) ?? activeSummary?.cwd ?? null;
   const canUseLocalRepository = Boolean(
+    !isHostedChat() &&
     actions.onForkThread &&
     cwd &&
     (activeSummary?.executionHostId ?? DEFAULT_CODEX_HOST_ID) === DEFAULT_CODEX_HOST_ID,
@@ -701,23 +702,28 @@ export function ConnectedThreadStageFooter({
   const account = useLocalConversationAccount();
   const dictation = useCodexDictationState();
 
+  // A hosted chat's workspace is on its Space host; no path here belongs to it.
+  const hostedChat = isHostedChat();
   const workspaceSearchContext = useMemo(
     () =>
-      resolveWorkspaceSearchContext({
-        hostId,
-        projectRoots:
-          hostId === DEFAULT_CODEX_HOST_ID
-            ? (input.projectWorkspaceRoots ??
-              (input.projectWorkspacePath ? [input.projectWorkspacePath] : []))
-            : (conversationSnapshot?.canonicalState?.currentPermissions?.runtimeWorkspaceRoots ??
-              []),
-        executionCwd: cwd ?? input.newThreadTarget?.runInEnvironmentPath ?? null,
-        workspaceBrowserRoot: conversationSnapshot?.projectlessWorkspaceBrowserRoot ?? null,
-        isWorktree:
-          Boolean(summaryFields.managedWorktreePath) ||
-          input.newThreadTarget?.runInTarget === "newWorktree",
-      }),
+      hostedChat
+        ? null
+        : resolveWorkspaceSearchContext({
+            hostId,
+            projectRoots:
+              hostId === DEFAULT_CODEX_HOST_ID
+                ? (input.projectWorkspaceRoots ??
+                  (input.projectWorkspacePath ? [input.projectWorkspacePath] : []))
+                : (conversationSnapshot?.canonicalState?.currentPermissions
+                    ?.runtimeWorkspaceRoots ?? []),
+            executionCwd: cwd ?? input.newThreadTarget?.runInEnvironmentPath ?? null,
+            workspaceBrowserRoot: conversationSnapshot?.projectlessWorkspaceBrowserRoot ?? null,
+            isWorktree:
+              Boolean(summaryFields.managedWorktreePath) ||
+              input.newThreadTarget?.runInTarget === "newWorktree",
+          }),
     [
+      hostedChat,
       hostId,
       input.projectWorkspaceRoots,
       input.projectWorkspacePath,
@@ -732,6 +738,7 @@ export function ConnectedThreadStageFooter({
   const composerPluginCwds = workspaceSearchContext?.skillRoots ?? [];
   const queryClient = useQueryClient();
   // The composer's catalogs come from this desktop's own Codex; a hosted chat's are its host's.
+  const desktopCatalogs = runtime.kind === "codex" && !hostedChat;
   const composerPluginsQuery = useQuery({
     ...codexComposerPluginsListQueryOptions(composerPluginCwds, hostId),
     enabled: desktopCatalogs && workspaceSearchContext !== null,
@@ -756,12 +763,20 @@ export function ConnectedThreadStageFooter({
   const { refetch: refetchComposerSkills } = composerSkillsQuery;
   const claudeSkillsReload =
     input.provider?.kind === "claude" ? input.provider.refreshSkills : null;
+  // A hosted chat's skills are its host's: reloading asks the host's catalog again.
+  const hostedSkillsReload = hostedChat ? (input.provider?.refreshSkills ?? null) : null;
   const skillsReloadControl = useMemo<ConversationSkillsReloadControl | null>(() => {
+    if (hostedSkillsReload)
+      return {
+        provider: runtime.kind === "claude" ? "claude" : "codex",
+        reload: hostedSkillsReload,
+      };
     if (runtime.kind !== "codex") {
       return runtime.kind === "claude" && claudeSkillsReload
         ? { provider: "claude", reload: claudeSkillsReload }
         : null;
     }
+    if (!desktopCatalogs) return null;
     if (!workspaceSearchContext) return null;
     const { hostId: executionHostId, skillRoots } = workspaceSearchContext;
     const options = codexComposerSkillsListQueryOptions(skillRoots, executionHostId);
@@ -772,15 +787,28 @@ export function ConnectedThreadStageFooter({
         queryClient.setQueryData(options.queryKey, skills);
       },
     };
-  }, [runtime.kind, claudeSkillsReload, workspaceSearchContext, queryClient]);
+  }, [
+    runtime.kind,
+    claudeSkillsReload,
+    hostedSkillsReload,
+    desktopCatalogs,
+    workspaceSearchContext,
+    queryClient,
+  ]);
   const onComposerCapabilitiesChanged = actions.onComposerCapabilitiesChanged;
   const refreshComposerCapabilities = useCallback(async () => {
-    if (runtime.kind !== "codex") {
+    // Only this desktop's own Codex catalogs refetch here; refetching ignores `enabled`.
+    if (!desktopCatalogs) {
       await onComposerCapabilitiesChanged?.();
       return;
     }
     await Promise.all([refetchComposerPlugins(), refetchComposerSkills()]);
-  }, [runtime.kind, refetchComposerPlugins, refetchComposerSkills, onComposerCapabilitiesChanged]);
+  }, [
+    desktopCatalogs,
+    refetchComposerPlugins,
+    refetchComposerSkills,
+    onComposerCapabilitiesChanged,
+  ]);
   const actionsWithComposerCapabilityRefresh = useMemo<ThreadStageActions>(
     () => ({
       ...actions,
@@ -983,20 +1011,20 @@ export function ConnectedThreadStageFooter({
       composerScopeIdentity,
       dictation,
       composerPlugins: runtime.kind === "codex" ? (composerPluginsQuery.data ?? []) : [],
-      composerPluginsLoading: runtime.kind === "codex" && composerPluginsQuery.isPending,
-      composerSkills:
-        runtime.kind === "codex"
-          ? (composerSkillsQuery.data ?? [])
-          : supportsConversationProviderControl(input.provider, "skills")
-            ? [...(input.provider?.skills ?? [])]
-            : [],
-      composerSkillsLoading: runtime.kind === "codex" && composerSkillsQuery.isPending,
+      composerPluginsLoading: desktopCatalogs && composerPluginsQuery.isPending,
+      // A hosted chat offers the skills its Space host's Agents report, read through the host.
+      composerSkills: desktopCatalogs
+        ? (composerSkillsQuery.data ?? [])
+        : supportsConversationProviderControl(input.provider, "skills")
+          ? [...(input.provider?.skills ?? [])]
+          : [],
+      composerSkillsLoading: desktopCatalogs && composerSkillsQuery.isPending,
       composerApps: runtime.kind === "codex" ? (composerAppsQuery.data ?? []) : [],
-      composerAppsLoading: runtime.kind === "codex" && composerAppsQuery.isPending,
+      composerAppsLoading: desktopCatalogs && composerAppsQuery.isPending,
       composerSites: runtime.kind === "codex" ? (composerSitesQuery.data?.sites ?? []) : [],
       composerSitesAvailable:
         runtime.kind === "codex" && composerSitesQuery.data?.available === true,
-      composerSitesLoading: runtime.kind === "codex" && composerSitesQuery.isPending,
+      composerSitesLoading: desktopCatalogs && composerSitesQuery.isPending,
       composerChatGptConversations:
         runtime.kind === "codex"
           ? (composerChatGptConversationsQuery.data?.conversations ?? [])
@@ -1004,9 +1032,10 @@ export function ConnectedThreadStageFooter({
       composerChatGptConversationsAvailable:
         runtime.kind === "codex" && composerChatGptConversationsQuery.data?.available === true,
       composerChatGptConversationsLoading:
-        runtime.kind === "codex" && composerChatGptConversationsQuery.isPending,
+        desktopCatalogs && composerChatGptConversationsQuery.isPending,
     }),
     [
+      desktopCatalogs,
       activeThreadId,
       activeTurn,
       archived,

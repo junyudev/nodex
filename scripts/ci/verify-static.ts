@@ -103,6 +103,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "Effect runtime boundaries",
   },
   {
+    command: ["run", "verify:host-boundaries"],
+    group: "repository-contracts",
+    id: "host-boundaries",
+    name: "Electron-independent host kernel",
+  },
+  {
     command: ["run", "core:module-boundaries"],
     group: "repository-contracts",
     id: "module-boundaries",

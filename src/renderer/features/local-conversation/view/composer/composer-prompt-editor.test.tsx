@@ -20,6 +20,7 @@ function renderPromptEditor({
   value,
   singleLine = false,
   allowSlashCommands = true,
+  allowMentions = true,
   onKeyDown = vi.fn(() => false),
   onLargeTextPaste,
   onPasteFiles,
@@ -31,6 +32,7 @@ function renderPromptEditor({
   promptKeywords?: Parameters<typeof ComposerPromptEditor>[0]["promptKeywords"];
   singleLine?: boolean;
   allowSlashCommands?: boolean;
+  allowMentions?: boolean;
   onKeyDown?: (event: KeyboardEvent) => boolean;
   onLargeTextPaste?: (text: string) => boolean;
   onPasteFiles?: Parameters<typeof ComposerPromptEditor>[0]["onPasteFiles"];
@@ -47,6 +49,7 @@ function renderPromptEditor({
       disabled={false}
       singleLine={singleLine}
       allowSlashCommands={allowSlashCommands}
+      allowMentions={allowMentions}
       onChange={onChange}
       onKeyDown={onKeyDown}
       onLargeTextPaste={onLargeTextPaste}
@@ -534,6 +537,20 @@ describe("ComposerPromptEditor", () => {
       query: "bro",
     });
     expect(suggestionStates.at(-1)?.query).toBe("bro");
+  });
+
+  test("keeps @ and $ as typed words where a message carries only words", () => {
+    const { editorRef } = renderPromptEditor({ value: "Use ", allowMentions: false });
+    act(() => {
+      editorRef.current?.focusAtEnd();
+      editorRef.current?.insertText("@notes and $deploy");
+    });
+    expect(editorRef.current?.getSuggestionState().active).toBe(false);
+    act(() => {
+      editorRef.current?.toggleContextSuggestions();
+    });
+    expect(editorRef.current?.getSuggestionState().active).toBe(false);
+    expect(editorRef.current?.getText()).toBe("Use @notes and $deploy");
   });
 
   test("derives typed at-mention suggestions and inserts an atomic persisted mention", () => {

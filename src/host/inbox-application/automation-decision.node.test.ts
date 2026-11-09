@@ -1,6 +1,10 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { AutomationClaim } from "../automation-application/AutomationApplication";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { StoreAdministration } from "../../main/core-runtime/StoreAdministration";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { DEFAULT_INBOX_SETTINGS } from "../../shared/inbox";
 import { InboxDispatchActionSchema } from "../../shared/schemas/inbox";
 import {
@@ -8,6 +12,11 @@ import {
   inboxDispatchActionToCore,
   inboxItemFromCore,
   type CoreInboxItem,
+} from "../../main/core-client/inbox-adapter";
+import type {
+  ProjectWorkspaceApplyInput,
+  ProjectWorkspaceRead,
+} from "../../main/core-client/types";
 import { make } from "./InboxApplication";
 import { automationDecisionCapture, automationDecisionTitle } from "./automation-decision";
 

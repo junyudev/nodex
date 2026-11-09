@@ -8,13 +8,18 @@ import {
   NodexDropdownSelectedIcon,
   NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
+import { isRemoteSpace, rendererSpace } from "@/lib/renderer-space";
 import { COMPOSER_PICKER_ITEM_CLASS_NAME } from "../shared/inline-composer-picker";
 
-/** Agent drafts execute on the local host, independently of their worktree choice. */
+/**
+ * Where an Agent draft runs, independently of its worktree choice: this computer, or in a team
+ * Space its host, which a team window names by the Space's name.
+ */
 export function NewChatLocationSelector({ disabled = false }: { disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const matches = "this computer".includes(search.trim().toLocaleLowerCase());
+  const location = isRemoteSpace() ? rendererSpace().name : "This computer";
+  const matches = location.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
 
   return (
     <NodexDropdownMenu
@@ -38,7 +43,7 @@ export function NewChatLocationSelector({ disabled = false }: { disabled?: boole
           className="inline-flex h-7 min-w-0 items-center gap-1.5 rounded-lg border border-transparent px-2 text-sm text-token-foreground outline-hidden hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-token-focus-border data-popup-open:bg-token-foreground/5 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <LocalStatusIcon className="icon-xs shrink-0" />
-          <span className="min-w-0 truncate">This computer</span>
+          <span className="min-w-0 truncate">{location}</span>
         </button>
       }
     >
@@ -57,7 +62,7 @@ export function NewChatLocationSelector({ disabled = false }: { disabled?: boole
           rightSlot={<NodexDropdownSelectedIcon />}
           onSelect={() => setOpen(false)}
         >
-          This computer
+          {location}
         </NodexDropdownItem>
       ) : (
         <NodexDropdownMessage compact>No matching locations</NodexDropdownMessage>

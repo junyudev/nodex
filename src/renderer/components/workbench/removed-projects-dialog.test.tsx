@@ -17,7 +17,7 @@ function makeRemovedProject(): Project {
     name: "Removed Alpha",
     description: "",
     appearance: { color: "black", marker: { kind: "icon", icon: "folder" } },
-    sources: [{ root: "/repo/removed-alpha", order: 0 }],
+    sources: [{ kind: "directory" as const, path: "/repo/removed-alpha", order: 0 }],
     primaryWorkspaceRoot: "/repo/removed-alpha",
     pinned: false,
     pinnedOrder: null,

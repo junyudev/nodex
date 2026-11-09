@@ -106,6 +106,7 @@ const makeHarness = (
     config: CodexSshExecutionHostConfig,
     signal?: AbortSignal,
   ) => ReturnType<RemoteExecutionHostTransport["ensureReady"]>,
+  nativeEndpoints = true,
 ) => {
   let settings: CodexExecutionHostSettings = { sshHosts: [] };
   const registered = new Map<string, CodexExecutionHostConfig>();
@@ -206,6 +207,7 @@ const makeHarness = (
     nodexHome: "/profile",
     remoteWorktreeWorkerBundlePath: "/app/remote-worktree-worker.cjs",
     factories,
+    nativeEndpoints: nativeEndpoints ? gateway : undefined,
   }).pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -218,6 +220,22 @@ const makeHarness = (
   );
   return { failedHosts, layer, registered, removed, shutdowns, workerRequests };
 };
+
+it.effect("owns local workers without native SSH sessions and refuses remote acquisition", () =>
+  Effect.gen(function* () {
+    const harness = makeHarness(undefined, undefined, false);
+    const scope = yield* Scope.make();
+    const context = yield* Layer.buildWithScope(harness.layer, scope);
+    const hosts = Context.get(context, ExecutionHostRuntime);
+    assert.strictEqual((yield* hosts.resolve("local")).descriptor.kind, "local");
+    const remote = yield* Effect.exit(hosts.updateSettings({ sshHosts: [sshHost("remote")] }));
+    assert.isTrue(Exit.isFailure(remote));
+    assert.deepEqual([...harness.registered.keys()], []);
+    assert.deepEqual(harness.workerRequests, []);
+    yield* Scope.close(scope, Exit.void);
+    assert.deepEqual(yield* hosts.hosts(), []);
+  }),
+);
 
 it.effect("owns local and dynamic SSH host resources until its Scope closes", () =>
   Effect.gen(function* () {

@@ -52,6 +52,8 @@ function projectSession(threadId: string | null = null): ProjectSession {
     archived: false,
     archivedAt: null,
     remindAt: null,
+    canManage: true,
+    canStop: true,
     unread: false,
     thread: threadId
       ? {

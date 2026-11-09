@@ -30,6 +30,7 @@ pub(crate) fn validate_current_store(connection: &Connection) -> Result<(), Stor
     validate_schema_identity(connection, CURRENT_STORE_REVISION)?;
     validate_core_metadata(connection)?;
     validate_store_semantics(connection)?;
+    validate_member_default_drafts(connection)?;
     validate_current_document_projections(connection)?;
     let invalid: i64 = connection.query_row("SELECT (SELECT count(*) FROM coordinator c JOIN coordinator_managed_sessions m ON m.session_id=c.session_id) + (SELECT count(*) FROM coordinator c JOIN project_sessions session ON session.id=c.session_id WHERE session.project_id IS NOT NULL OR NOT EXISTS(SELECT 1 FROM project_session_execution_bindings binding WHERE binding.session_id=c.session_id)) + (SELECT count(*) FROM project_session_pages WHERE (report_outcome IS NULL AND (report_summary IS NOT NULL OR report_at IS NOT NULL OR report_revision<>0)) OR (report_outcome IS NOT NULL AND (report_summary IS NULL OR length(trim(report_summary))=0 OR length(report_summary)>4000 OR report_at IS NULL OR report_revision<1)))", [], |r|r.get(0))?;
     expect_zero(invalid, "invalid Coordinator membership or work reports")?;
@@ -697,6 +698,23 @@ fn validate_default_draft_sessions(connection: &Connection) -> Result<(), StoreE
         |row| row.get(0),
     )?;
     expect_zero(invalid, "invalid default-draft Project Sessions")
+}
+
+/// Each Member opens at most one default draft in each Project, and one without a Project.
+fn validate_member_default_drafts(connection: &Connection) -> Result<(), StoreError> {
+    let repeated: i64 = connection.query_row(
+        "SELECT count(*) FROM (SELECT 1 FROM project_sessions session \
+           LEFT JOIN session_requesting_members opener \
+             ON opener.session_id = session.id AND opener.message_id = 'session:created' \
+           WHERE session.is_default_draft = 1 \
+           GROUP BY session.project_id, opener.member_id HAVING count(*) > 1)",
+        [],
+        |row| row.get(0),
+    )?;
+    expect_zero(
+        repeated,
+        "repeated default-draft Project Sessions for one Member",
+    )
 }
 
 fn validate_page_chat_links(connection: &Connection) -> Result<(), StoreError> {

@@ -12,6 +12,7 @@ import type {
   CoreInboxDispatchContext,
   CoreInboxSuggestionInput,
   CoreInboxSuggestionRequest,
+} from "../../main/core-client/inbox-adapter";
 
 /** Identity depends only on the request fence, never on mutable routing context. */
 export const inboxRoutingIdentity = (

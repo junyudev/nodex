@@ -23,6 +23,8 @@ function makeSession(hasThread = false): ProjectSession {
     archived: false,
     archivedAt: null,
     remindAt: null,
+    canManage: true,
+    canStop: true,
     unread: false,
     thread: hasThread
       ? {

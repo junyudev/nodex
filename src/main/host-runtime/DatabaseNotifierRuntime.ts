@@ -55,6 +55,11 @@ export class DatabaseNotifierRuntime extends Context.Service<
 >()("nodex/main/host-runtime/DatabaseNotifierRuntime") {}
 
 /** Owns Core projection broadcasts and typed in-process observation for one Main Scope. */
+export interface ProjectionNotificationSink {
+  readonly publish: (channel: string, payload: unknown) => void;
+  readonly windowCount: () => number;
+}
+export const layer = (sink: ProjectionNotificationSink): Layer.Layer<DatabaseNotifierRuntime> =>
   Layer.effect(
     DatabaseNotifierRuntime,
     Effect.gen(function* () {
@@ -82,30 +87,7 @@ export class DatabaseNotifierRuntime extends Context.Service<
         payload: unknown,
       ) {
         if (!accepting) return;
-        const event = { projectId, changeType } satisfies ProjectsChangeEvent;
-        yield* broadcast("projects-changed", event);
-        yield* PubSub.publish(projectInvalidations, event);
-      },
-    );
-    const notifyProjectSessionInvalidation = Effect.fn(
-      "DatabaseNotifierRuntime.notifyProjectSessionInvalidation",
-    )(function* (event: ProjectSessionsChangeEvent) {
-      if (!accepting) return;
-      yield* Effect.sync(() => {
-        const scopeKey = event.summaryScopes
-          .map((scope) => (scope.kind === "project" ? scope.projectId : scope.kind))
-          .join(",");
-        logDevRuntimeMetric("project_sessions_changed.notification", {
-          scopeKey,
-          summaryScopeCount: event.summaryScopes.length,
-          changeType: event.changeType,
-          detailScope: event.detailInvalidation.kind,
-          detailSessionCount:
-            event.detailInvalidation.kind === "sessions"
-              ? event.detailInvalidation.sessionIds.length
-              : 0,
-          windowCount: windows.count(),
-        });
+        yield* Effect.sync(() => sink.publish(channel, payload));
       });
       const notifyLibraryNavigationChanged = Effect.fn(
         "DatabaseNotifierRuntime.notifyLibraryNavigationChanged",
@@ -141,6 +123,7 @@ export class DatabaseNotifierRuntime extends Context.Service<
               event.detailInvalidation.kind === "sessions"
                 ? event.detailInvalidation.sessionIds.length
                 : 0,
+            windowCount: sink.windowCount(),
           });
         });
         yield* broadcast("project-sessions-changed", event);
@@ -199,15 +182,5 @@ export class DatabaseNotifierRuntime extends Context.Service<
     }),
   );
 
-    return DatabaseNotifierRuntime.of({
-      notifyDatabaseChanged,
-      notifyLibraryNavigationChanged,
-      notifyProjectsChanged,
-      notifyProjectSessionInvalidation,
-      notifyInboxChanged,
-      projectSessionInvalidations: Stream.fromPubSub(projectSessionInvalidations),
-      inboxInvalidations: Stream.fromPubSub(inboxInvalidations),
-      projectInvalidations: Stream.fromPubSub(projectInvalidations),
-    });
-  }),
-);
+/** Headless consumers observe the same projections without window delivery. */
+export const headless = layer({ publish: () => {}, windowCount: () => 0 });

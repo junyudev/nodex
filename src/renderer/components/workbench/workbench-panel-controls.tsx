@@ -195,12 +195,14 @@ export function EmptyRightPane({
 export function ToolbarIconButton({
   label,
   pressed,
+  disabled = false,
   className,
   onClick,
   children,
 }: {
   label: string;
   pressed?: boolean;
+  disabled?: boolean;
   className?: string;
   onClick: () => void;
   children: ReactNode;
@@ -209,6 +211,7 @@ export function ToolbarIconButton({
     <NodexTooltip tooltipContent={label} side="bottom">
       <button
         type="button"
+        disabled={disabled}
         className={cn(
           TOOLBAR_BUTTON_BASE_CLASS,
           pressed ? TOOLBAR_BUTTON_SECONDARY_CLASS : TOOLBAR_BUTTON_GHOST_CLASS,

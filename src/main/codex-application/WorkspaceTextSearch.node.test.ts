@@ -22,7 +22,7 @@ import type {
   WorkspaceTextSearchEvent,
   WorkspaceTextSearchRequest,
 } from "../../shared/workspace-text-search";
-import { CodexPlatform } from "../app/CodexApplicationLive";
+import { CodexPlatform } from "../../host/ProviderPlatform";
 import { testLayer as mainConfigLayer } from "../app/MainConfig";
 import {
   live as platformLive,

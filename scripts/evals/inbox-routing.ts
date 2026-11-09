@@ -6,13 +6,13 @@ import type { CoreInboxDispatchContext } from "../../src/main/core-client/inbox-
 import {
   inboxAgentCandidates,
   inboxDefaultChatCandidate,
-} from "../../src/main/inbox-application/inbox-agent-candidates";
+} from "../../src/host/inbox-application/inbox-agent-candidates";
 import {
   renderInboxRoutingRequest,
   INBOX_PROMPT_VERSION,
   validateInboxSuggestions,
   type InboxSuggestionAgents,
-} from "../../src/main/inbox-application/inbox-suggestions";
+} from "../../src/host/inbox-application/inbox-suggestions";
 import { DEFAULT_INBOX_SETTINGS } from "../../src/shared/inbox";
 
 type Action = "keep" | "new_chat" | "send_to_chat" | "move_to_project";

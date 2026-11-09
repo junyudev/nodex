@@ -6,6 +6,7 @@ use nodex_platform::{
     private_fs::{self, EntryKind},
     process::{self},
 };
+use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
@@ -89,13 +90,45 @@ pub enum ClientError {
 
 #[derive(Clone, Debug)]
 pub struct CoreClient {
-    socket: PathBuf,
+    socket: CoreEndpoint,
     auth: String,
     connection_id: String,
     connection_binding: String,
     agent_attribution: Option<String>,
     pub descriptor: RuntimeDescriptor,
     pub handshake: HandshakeResponse,
+}
+
+#[derive(Clone, Debug)]
+enum CoreEndpoint {
+    Local(PathBuf),
+    Agent(SocketAddr),
+}
+
+trait HttpStream: Read + Write {}
+impl<T: Read + Write> HttpStream for T {}
+
+impl CoreEndpoint {
+    fn open(
+        &self,
+        timeout: Duration,
+        expected_pid: Option<u32>,
+    ) -> io::Result<Box<dyn HttpStream>> {
+        match self {
+            Self::Local(path) => {
+                let stream = local_endpoint::connect(path, expected_pid)?;
+                stream.set_read_timeout(Some(timeout))?;
+                stream.set_write_timeout(Some(timeout))?;
+                Ok(Box::new(stream))
+            }
+            Self::Agent(address) => {
+                let stream = TcpStream::connect_timeout(address, timeout)?;
+                stream.set_read_timeout(Some(timeout))?;
+                stream.set_write_timeout(Some(timeout))?;
+                Ok(Box::new(stream))
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -115,9 +148,10 @@ impl CoreClient {
             &runtime.descriptor.actual_store_format,
         )
         .map_err(|mismatches| ClientError::ProtocolIncompatible(format!("{mismatches:?}")))?;
+        let socket = CoreEndpoint::Local(runtime.socket);
         let connection_id = format!("native-cli:{}", random_hex(16)?);
         let handshake = request_json::<_, HandshakeResponse>(
-            &runtime.socket,
+            &socket,
             &runtime.auth,
             "/core/v1/handshake",
             &HandshakeRequest {
@@ -133,7 +167,7 @@ impl CoreClient {
         )?;
         validate_handshake(&runtime.descriptor, &handshake)?;
         Ok(Self {
-            socket: runtime.socket,
+            socket,
             auth: runtime.auth,
             connection_id,
             connection_binding: handshake.connection_binding.clone(),
@@ -141,6 +175,52 @@ impl CoreClient {
             descriptor: runtime.descriptor,
             handshake,
         })
+    }
+
+    /// A Host-owned content audience supplies a bound Native CLI connection. No private
+    /// Profile path, Core bearer, administration route or local-launch fallback is needed.
+    pub fn connect_agent(endpoint: &str, credential: &str) -> Result<Self, ClientError> {
+        let address: SocketAddr = endpoint
+            .strip_prefix("http://")
+            .and_then(|address| address.parse().ok())
+            .filter(|address: &SocketAddr| address.ip().is_loopback() && address.port() != 0)
+            .ok_or_else(|| {
+                ClientError::InvalidRuntime("Agent endpoint must be numeric loopback HTTP".into())
+            })?;
+        if credential.is_empty() || credential.len() > 1024 || !valid_header(credential) {
+            return Err(ClientError::InvalidRuntime(
+                "Invalid Agent Turn credential".into(),
+            ));
+        }
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct AgentContext {
+            descriptor: RuntimeDescriptor,
+            handshake: HandshakeResponse,
+        }
+        let socket = CoreEndpoint::Agent(address);
+        let context: AgentContext =
+            request_without_body(&socket, credential, "/agent/context", &[])?;
+        evaluate_compatibility(
+            &core_client_requirements(),
+            &context.descriptor.manifest,
+            &context.descriptor.actual_store_format,
+        )
+        .map_err(|mismatches| ClientError::ProtocolIncompatible(format!("{mismatches:?}")))?;
+        validate_handshake(&context.descriptor, &context.handshake)?;
+        Ok(Self {
+            socket,
+            auth: credential.to_owned(),
+            connection_id: "scoped-agent-cli".into(),
+            connection_binding: context.handshake.connection_binding.clone(),
+            agent_attribution: None,
+            descriptor: context.descriptor,
+            handshake: context.handshake,
+        })
+    }
+
+    pub fn is_scoped_agent(&self) -> bool {
+        matches!(self.socket, CoreEndpoint::Agent(_))
     }
 
     /// Presents a Core-issued Agent attribution credential on content requests, so Core
@@ -161,6 +241,16 @@ impl CoreClient {
     ) -> Result<nodex_core_contracts::team::ListenerInfo, ClientError> {
         self.connected_request(
             "/core/v1/admin/space/listen",
+            &request,
+            ContextHeaders::default(),
+        )
+    }
+    pub fn space_prepare(
+        &self,
+        request: nodex_core_contracts::team::ListenRequest,
+    ) -> Result<nodex_core_contracts::team::SpaceIdentity, ClientError> {
+        self.connected_request(
+            "/core/v1/admin/space/prepare",
             &request,
             ContextHeaders::default(),
         )
@@ -805,9 +895,9 @@ fn connected_stream_request(
     scope: ContextHeaders<'_>,
     maximum_response_bytes: usize,
 ) -> Result<RawHttpResponse, ClientError> {
-    let mut stream = local_endpoint::connect(&client.socket, Some(client.descriptor.pid))?;
-    stream.set_read_timeout(Some(REQUEST_TIMEOUT))?;
-    stream.set_write_timeout(Some(REQUEST_TIMEOUT))?;
+    let mut stream = client
+        .socket
+        .open(REQUEST_TIMEOUT, Some(client.descriptor.pid))?;
     write!(
         stream,
         "{method} {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nContent-Type: application/octet-stream\r\nContent-Length: {byte_length}\r\nConnection: close\r\n",
@@ -1145,7 +1235,7 @@ fn validate_handshake(
 }
 
 fn request_json<Request: Serialize, Response: DeserializeOwned>(
-    socket: &Path,
+    socket: &CoreEndpoint,
     auth: &str,
     path: &str,
     request: &Request,
@@ -1156,7 +1246,7 @@ fn request_json<Request: Serialize, Response: DeserializeOwned>(
 }
 
 fn request_without_body<Response: DeserializeOwned>(
-    socket: &Path,
+    socket: &CoreEndpoint,
     auth: &str,
     path: &str,
     headers: &[(&str, &str)],
@@ -1165,7 +1255,7 @@ fn request_without_body<Response: DeserializeOwned>(
 }
 
 fn request_bytes<Response: DeserializeOwned>(
-    socket: &Path,
+    socket: &CoreEndpoint,
     auth: &str,
     method: &str,
     path: &str,
@@ -1177,7 +1267,7 @@ fn request_bytes<Response: DeserializeOwned>(
 }
 
 fn request_raw_bytes(
-    socket: &Path,
+    socket: &CoreEndpoint,
     auth: &str,
     method: &str,
     path: &str,
@@ -1206,9 +1296,7 @@ fn request_raw_bytes(
         MAX_ORDINARY_JSON_RESPONSE_BYTES
     };
     let request_timeout = request_timeout(path);
-    let mut stream = local_endpoint::connect(socket, None)?;
-    stream.set_read_timeout(Some(request_timeout))?;
-    stream.set_write_timeout(Some(request_timeout))?;
+    let mut stream = socket.open(request_timeout, None)?;
     let content_type = headers
         .iter()
         .find(|(key, _)| key.eq_ignore_ascii_case("content-type"))
@@ -1237,6 +1325,36 @@ fn request_raw_bytes(
     stream.write_all(body)?;
 
     read_raw_response(&mut BufReader::new(stream), maximum_response_bytes)
+}
+
+#[cfg(test)]
+mod scoped_agent_tests {
+    use super::*;
+
+    #[test]
+    fn agent_connections_refuse_remote_ambiguous_or_injected_endpoints_before_connecting() {
+        for endpoint in [
+            "http://192.0.2.1:443",
+            "https://127.0.0.1:443",
+            "http://localhost:443",
+            "http://127.0.0.1:0",
+            "http://127.0.0.1:443/path",
+        ] {
+            assert!(
+                matches!(
+                    CoreClient::connect_agent(endpoint, "turn"),
+                    Err(ClientError::InvalidRuntime(_))
+                ),
+                "{endpoint}"
+            );
+        }
+        for credential in ["", "turn\r\nAuthorization: Bearer host"] {
+            assert!(matches!(
+                CoreClient::connect_agent("http://127.0.0.1:1", credential),
+                Err(ClientError::InvalidRuntime(_))
+            ));
+        }
+    }
 }
 
 /// All native responses share framing checks, including chunked binary exports.

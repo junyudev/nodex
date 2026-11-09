@@ -304,6 +304,7 @@ const AgentRequest = Schema.Union([
       threadId: ThreadId,
       commandId: CommandId,
       taskIds: OrchestrationV2BackgroundTaskIds,
+      runId: Schema.optional(RunId),
     }),
   ),
   request(
@@ -317,6 +318,7 @@ const AgentRequest = Schema.Union([
       taskId: NodeId,
       commandId: CommandId,
       reason: Schema.optional(Schema.String),
+      runId: Schema.optional(RunId),
     }),
   ),
   request(

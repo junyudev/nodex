@@ -164,9 +164,17 @@ for (const entry of readdirSync(path.join(repositoryRoot, "src/main/local-store"
 const expectedRoutes = new Set([
   "/core/v1/admin/shutdown",
   "/core/v1/admin/space/listen",
+  "/core/v1/admin/space/prepare",
   "/core/v1/admin/space/name",
   // A Member renames only their own Member; the writer admits it per command.
   "/core/v1/admin/space/member-name",
+  // Execution-owner queue administration stays on the private Host listener.
+  "/core/v1/admin/host/register",
+  "/core/v1/admin/host/poll",
+  "/core/v1/admin/host/complete",
+  // Members reach only the bounded, explicitly admitted execution-owner surface.
+  "/core/v1/host/availability",
+  "/core/v1/host/call",
   "/core/v1/admin/space/invite",
   "/core/v1/admin/space/devices",
   // Transport counters are local Owner diagnostics, never a remote Member route.

@@ -18,6 +18,7 @@ const activityTask = (taskId: string, overrides: Partial<ActivityTask> = {}): Ac
   description: null,
   command: null,
   startedAt: null,
+  runId: null,
   ...overrides,
 });
 
@@ -56,6 +57,7 @@ describe("Agent Runtime background tasks", () => {
         owner: null,
         startedAtMs: Date.parse("2026-10-28T10:00:00.000Z"),
         stoppable: true,
+        canStop: true,
         stopping: false,
       },
       {
@@ -66,6 +68,7 @@ describe("Agent Runtime background tasks", () => {
         owner: null,
         startedAtMs: null,
         stoppable: true,
+        canStop: true,
         stopping: true,
       },
       {
@@ -76,6 +79,7 @@ describe("Agent Runtime background tasks", () => {
         owner: "Audit auth",
         startedAtMs: null,
         stoppable: true,
+        canStop: true,
         stopping: false,
       },
     ]);
@@ -110,6 +114,37 @@ describe("Agent Runtime background tasks", () => {
     expect(wire.stopBackground.mock.calls.map(([input]) => input)).toEqual([
       expect.objectContaining({ sessionId: "session", threadId: "root", taskIds: ["one"] }),
       expect.objectContaining({ sessionId: "session", threadId: "child", taskIds: ["three"] }),
+    ]);
+  });
+});
+
+describe("Who stops a shared chat's background tasks", () => {
+  it("lets each task answer for the Run that started it, whichever Run is current", async () => {
+    const wire = transport();
+    const store = createAgentRuntimeDelegatedTaskStore();
+    // Bob's earlier Run left a dev server; Alice's current Run left a monitor; one names no Run.
+    const activity = [
+      activityTask("bob-server", { runId: "bob-run" }),
+      activityTask("alice-monitor", { kind: "monitor", runId: "alice-run" }),
+      activityTask("unknown", { runId: null }),
+      activityTask("bob-watch", { kind: "monitor", runId: "bob-run" }),
+    ];
+    const bobMayStop = (runId: string | null) => runId === "bob-run";
+    const tasks = projectAgentRuntimeBackgroundTasks(activity, () => false, bobMayStop);
+    expect(tasks.map(({ id, canStop }) => [id, canStop])).toEqual([
+      ["bob-server", true],
+      ["alice-monitor", false],
+      ["unknown", false],
+      ["bob-watch", true],
+    ]);
+    const background = createAgentRuntimeBackgroundTasks("session", activity, tasks, wire, store);
+    // Another Member's task stops for no one but those who may stop its Run.
+    await background.stop("alice-monitor");
+    expect(wire.stopBackground).not.toHaveBeenCalled();
+    // Stop all reaches only Bob's work, in one request admitted for his Run.
+    await background.stop();
+    expect(wire.stopBackground.mock.calls.map(([input]) => input)).toEqual([
+      expect.objectContaining({ taskIds: ["bob-server", "bob-watch"], runId: "bob-run" }),
     ]);
   });
 });

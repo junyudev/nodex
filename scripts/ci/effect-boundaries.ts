@@ -65,6 +65,7 @@ const effectAdapterAreas = new Set([
 ]);
 
 const effectApplicationRoots = [
+  "src/host/",
   "packages/agent-runtime/src/nodex/",
   "packages/mobile/src/runtime/",
   "src/main/agent-runtime/",
@@ -97,6 +98,7 @@ const lifecycleBypassingCalls = new Set([
 ]);
 
 const staticApplicationRoots = new Set([
+  "src/host/HostKernel.ts",
   "src/main/app/ApplicationOperationsLive.ts",
   "src/main/app/ApplicationStateLive.ts",
   "src/main/app/CodexApplicationLive.ts",
@@ -203,6 +205,7 @@ function isEffectAdapter(path: string): boolean {
 }
 
 const nodeRuntimeEntries = new Set([
+  "src/host/serve-entry.ts",
   "packages/agent-runtime/scripts/acp-mock-agent.ts",
   "packages/agent-runtime/src/nodex/entry.ts",
   "packages/agent-runtime/src/nodex/Daemon.ts",

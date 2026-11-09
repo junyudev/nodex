@@ -1,6 +1,10 @@
+import { make as makeContentTools } from "../../host/HostContentTools";
 import type { AppToolInvocation } from "../app-tools/AppToolInvocationInbox";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { AgentHostTool } from "@nodex/agent-runtime/contracts";
+import {
+  makeControlsWithCapture as makeSessionControls,
+  makeCommands as makeSessionCommands,
+} from "../app-tools/NativeSessionTools";
 import * as Effect from "effect/Effect";
 import { makeWithCapture as makeAccount } from "../app-tools/AccountAppTools";
 import { makeWithCapture as makeTerminal } from "../app-tools/TerminalAppTools";
@@ -8,24 +12,25 @@ import { makeWithCapture as makePlugin } from "../app-tools/PluginAppTools";
 import { makeWithCapture as makeWorkspace } from "../app-tools/WorkspaceAppTools";
 import { makeWithCapture as makeSession } from "../app-tools/SessionAppTools";
 import { makeWithCapture as makeWorkbench } from "../app-tools/WorkbenchAppTools";
-import { makeWithCapture as makeAutomation } from "../app-tools/AutomationAppTools";
-import { makeWithCapture as makeInbox } from "../app-tools/InboxAppTools";
-import { make as makeSessionCommands } from "../app-tools/RuntimeSessionCommands";
+
 import { makeWithCapture as makeHandoff } from "../app-tools/SessionHandoffAppTools";
 import { makeWithCapture as makeHandoffStatus } from "../app-tools/HandoffStatusAppTools";
-import { make as makeObservation } from "../app-tools/SessionObservation";
+import { make as makeObservation } from "../app-tools/NativeSessionObservation";
 import { SessionObservation } from "../app-tools/SessionObservation";
 import { SessionWaiter, make as makeWaiter } from "../app-tools/SessionWaiter";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { GitWorkerRuntime } from "../host-runtime/GitWorkerRuntime";
+import { appToolGroups } from "../../shared/nodex-app-tools/catalog";
 import { captureHostedAppToolAuthority, type AppToolCaller } from "../app-tools/AppToolCaller";
 import { toolFailure, toolSuccess } from "../app-tools/app-tool-result";
 
+import {
+  hostToolGroupByName,
+  type AgentRuntimeHostToolExecutor,
+} from "../../host/HostToolExecutor";
 /** Application content semantics are shared; execution identity comes from the Runtime Host. */
 export const make = Effect.gen(function* () {
-  const content = yield* makeContentTools(captureHostedAppToolAuthority);
-  const query = yield* makeContentQueries(captureHostedAppToolAuthority);
-  const dependencies = yield* WorkspaceDependencyRuntime;
+  const content = yield* makeContentTools;
   const workspace = yield* ProjectWorkspace;
   const git = yield* GitWorkerRuntime;
   const account = yield* makeAccount(captureHostedAppToolAuthority);
@@ -50,7 +55,7 @@ export const make = Effect.gen(function* () {
       return toolSuccess({
         backend: caller.backend,
         transport: "native_mcp",
-        tools: [...names],
+        tools: [...hostToolGroupByName.keys()],
         contentAccess: "full_profile",
       });
     if (name === "list_projects") {
@@ -93,6 +98,7 @@ export const make = Effect.gen(function* () {
   });
   // Exhaustiveness ties advertisement to execution: a new group requires its executor here.
   const executors = {
+    ...content,
     terminal,
     plugin,
     sessionControls,
@@ -113,6 +119,7 @@ export const make = Effect.gen(function* () {
     name: string,
     input: Record<string, unknown>,
   ) {
+    const group = hostToolGroupByName.get(name);
     if (!group) return toolFailure("tool_unavailable");
     if (!(yield* captureHostedAppToolAuthority(caller)))
       return toolFailure("authority_unavailable");

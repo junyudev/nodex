@@ -113,19 +113,63 @@ fn verified_device(
     Ok(device)
 }
 
+fn bind_run_requester(
+    c: &rusqlite::Connection,
+    session: &str,
+    run: Option<&str>,
+    message: Option<&str>,
+) -> Result<(), StoreError> {
+    let Some(run) = run else { return Ok(()) };
+    let Some(message) = message else {
+        c.execute("INSERT OR IGNORE INTO session_run_members(session_id,run_id,member_id) SELECT ?1,?2,member_id FROM session_requesting_members WHERE session_id=?1 ORDER BY accepted_at DESC,message_id DESC LIMIT 1", params![session,run])?;
+        return Ok(());
+    };
+    // An Automation's message speaks for its Owner's standing grant, whichever host dispatches it.
+    let member = match crate::automation::firing::message_requester(c, session, message)? {
+        Some(owner) => Some(owner),
+        None => c.query_row("SELECT member_id FROM session_requesting_members WHERE session_id=?1 AND message_id=?2", params![session,message], |r| r.get(0)).optional()?,
+    };
+    let Some(member) = member else {
+        return Err(StoreError::new(
+            StoreErrorCode::MissingDependencies,
+            "The Runtime input message is awaiting Member acceptance evidence",
+            true,
+        ));
+    };
+    // Exact Runtime input refines an observation's provisional latest-message capture, and names
+    // the message, so Core can tell whether another Member has replied after it.
+    c.execute("INSERT INTO session_run_members(session_id,run_id,member_id,message_id) VALUES(?1,?2,?3,?4) ON CONFLICT(session_id,run_id) DO UPDATE SET member_id=excluded.member_id,message_id=excluded.message_id",params![session,run,member,message])?;
+    Ok(())
+}
+
 impl LibraryMembership {
+    /// The execution owner verifies the Run; Core freezes its requesting Member
+    /// before issuing a credential, even if the first observation has not arrived.
+    pub fn bind_agent_attribution(
         &self,
         session: &str,
         run: Option<&str>,
+        message: Option<&str>,
         backend: nodex_core_contracts::agent::AgentBackendKind,
     ) -> Result<(), StoreError> {
         let session = session.to_owned();
+        let run = run.map(str::to_owned);
+        let message = message.map(str::to_owned);
+        if message.is_some() && run.is_none() {
+            return Err(invalid("Message attribution requires its Run"));
+        }
+        let space = self.space.clone();
         let label = match backend {
             nodex_core_contracts::agent::AgentBackendKind::Codex => "Codex",
             nodex_core_contracts::agent::AgentBackendKind::Claude => "Claude",
             nodex_core_contracts::agent::AgentBackendKind::OpenCode => "OpenCode",
             nodex_core_contracts::agent::AgentBackendKind::Acp => "Agent",
         };
+            bind_run_requester(c, &session, run.as_deref(), message.as_deref())?;
+            crate::infrastructure::actors::for_session(c, &space, &session, run.clone())?;
+            c.execute("INSERT INTO agent_actor_labels(session_id,run_key,label) VALUES(?1,?2,?3) ON CONFLICT(session_id,run_key) DO UPDATE SET label=excluded.label", params![session,run.as_deref().unwrap_or_default(),label])?;
+            Ok(())
+        }))
     }
     pub fn actor(
         &self,

@@ -1,6 +1,7 @@
 import { sameExecutionHoldScope } from "../../shared/work-application";
 import * as Effect from "effect/Effect";
 import type { components } from "@nodex/core-protocol";
+import type { CoreModuleClients } from "../../main/core-runtime/CoreModules";
 export type HoldTarget = components["schemas"]["ExecutionHoldTarget"];
 export const effectiveHolds = Effect.fn("ExecutionHolds.effective")(function* (
   core: CoreModuleClients,
@@ -32,6 +33,7 @@ export const heldThreadIds = Effect.fn("ExecutionHolds.heldThreadIds")(function*
   const roots: string[] = [];
   let after: string | null = null;
   do {
+    const result: import("../../main/core-client/types").ProjectWorkspaceReadSnapshot =
       yield* core.workspace.read(
         { kind: "held_session_window", after_session_id: after, limit: 100 },
         undefined,
@@ -59,6 +61,7 @@ export const scopeHeld = Effect.fn("ExecutionHolds.scopeHeld")(function* (
 ) {
   let after: string | null = null;
   do {
+    const result: import("../../main/core-client/types").ProjectWorkspaceReadSnapshot =
       yield* core.workspace.read(
         { kind: "execution_holds", after_key: after, limit: 100 },
         undefined,

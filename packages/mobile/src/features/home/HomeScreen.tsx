@@ -256,7 +256,7 @@ export const HomeScreen = () => {
           ) : (
             <Composer
               draftKey="new-chat"
-              placeholder={chatProject ? `Start a chat in ${chatProject.name}` : "Start a chat"}
+              placeholder="Start a chat"
               sendLabel="Start chat"
               canSend={connection.status === "connected"}
               sending={starting}

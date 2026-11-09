@@ -275,10 +275,19 @@ function applyComposerSuggestionTransaction(
 }
 
 export function createComposerSuggestionPlugin(
-  options: { allowSlashCommands?: boolean } = {},
+  options: {
+    allowSlashCommands?: boolean;
+    /**
+     * Whether `@` and `$` offer files, Pages, skills and apps. A conversation that takes only
+     * words, as a chat on a team Space's host does, keeps them as typed text.
+     */
+    allowMentions?: () => boolean;
+  } = {},
 ): Plugin<ComposerSuggestionState> {
   const admitted = (suggestion: ComposerSuggestionState) =>
-    options.allowSlashCommands === false && suggestion.kind === "slash-command"
+    (options.allowSlashCommands === false && suggestion.kind === "slash-command") ||
+    ((suggestion.kind === "at-mention" || suggestion.kind === "skill-mention") &&
+      options.allowMentions?.() === false)
       ? inactiveComposerSuggestionState()
       : suggestion;
   return new Plugin<ComposerSuggestionState>({

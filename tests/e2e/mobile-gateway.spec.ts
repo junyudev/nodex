@@ -269,6 +269,28 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
       await expect(row).toHaveCount(0);
     });
 
+      const turn = await invokeIpc(page, "work:turn", pageId);
+      if (!turn.activeChat) throw new Error("The phone's Page has no active chat");
+      const sessionId = turn.activeChat.session_id;
+      await expect
+        .poll(async () => {
+          const { snapshot } = await invokeIpc(page, "agent-runtime:session:read", { sessionId });
+          return snapshot.projection.runs.map((run) => run.status);
+        })
+        .toEqual(["completed"]);
+      await expect
+        .poll(async () => {
+          const { snapshot } = await invokeIpc(page, "agent-runtime:session:read", { sessionId });
+          return snapshot.projection.runs.map((run) => run.status);
+        })
+        .toEqual(["completed", "completed"]);
+      const native = readFileSync(path.join(harness.profile.runRoot, "native.jsonl"), "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { event: string; threadId?: string });
+      const asked = native.find((item) => item.event === "mobile.question");
+      expect(asked?.threadId).toBeTruthy();
+      expect(native.find((item) => item.event === "mobile.answer")?.threadId).toBe(asked!.threadId);
     await test.step("start a chat and follow patches through approval and a follow-up", async () => {
       const providerInstanceId = agentRuntimeProviderId({
         kind: "acp",
@@ -360,6 +382,15 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
     });
     completed = true;
   } finally {
+    const nativeLog = path.join(harness.profile.runRoot, "native.jsonl");
+    if (existsSync(nativeLog)) {
+      const output = testInfo.outputPath("native.jsonl");
+      writeFileSync(output, readFileSync(nativeLog));
+      await testInfo.attach("mobile-gateway-native.jsonl", {
+        path: output,
+        contentType: "application/x-ndjson",
+      });
+    }
     if (!completed) {
       if (phone) {
         await testInfo

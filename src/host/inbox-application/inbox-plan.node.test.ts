@@ -1,9 +1,13 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { WorkApplication, make as makeWork } from "../work-application/WorkApplication";
 import { make as makeScheduler } from "../work-application/WorkScheduler";
 import { captureInbox, inboxOverRealCore } from "./InboxApplication.test-support";
 import { createBoundedOperationId } from "../../shared/operation-identity";
+import { inboxPageBasisToCore } from "../../main/core-client/inbox-adapter";
 import { DEFAULT_INBOX_SETTINGS } from "../../shared/inbox";
 
 const catalog: AgentRuntimeApplication["Service"]["catalog"] = () =>

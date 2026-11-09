@@ -400,6 +400,8 @@ export interface AgentRuntimeOperations
       readonly threadId: string;
       readonly commandId: string;
       readonly taskIds: ReadonlyArray<string>;
+      /** When set, every task must be work of this Run. */
+      readonly runId?: string;
     };
     readonly output: { readonly stopping: ReadonlyArray<string> };
   };
@@ -417,6 +419,8 @@ export interface AgentRuntimeOperations
       readonly taskId: string;
       readonly commandId: string;
       readonly reason?: string;
+      /** When set, the task must have been started by this Run. */
+      readonly runId?: string;
     };
     readonly output: { readonly taskId: string; readonly status: string };
   };

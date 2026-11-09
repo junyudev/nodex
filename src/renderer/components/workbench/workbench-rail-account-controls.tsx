@@ -1,3 +1,4 @@
+import { isRemoteSpace } from "@/lib/renderer-space";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useUsageMeterSettings } from "@/features/usage-meters/usage-meter-settings";
 import { useRef, useState } from "react";
@@ -267,13 +268,15 @@ export function WorkbenchRailAccountControls({
   claudeUsage,
 }: WorkbenchRailAccountControlsProps) {
   const { settings: meters } = useUsageMeterSettings();
+  // A team window never reads this desktop's own Codex account; its Agents run on its host.
+  const codexMeter = meters.codex && !isRemoteSpace();
   const [loginBusy, setLoginBusy] = useState(false);
   const accountState = resolveRailAccountState(account ?? null, connection);
   const showUsageMeter = Boolean(
-    meters.codex && accountState.kind === "signedIn" && connection && onRefreshAccount && onLogout,
+    codexMeter && accountState.kind === "signedIn" && connection && onRefreshAccount && onLogout,
   );
   const showSignIn = Boolean(
-    meters.codex &&
+    codexMeter &&
     accountState.kind === "signedOut" &&
     onStartChatGptLogin &&
     onStartApiKeyLogin &&
@@ -406,7 +409,7 @@ export function WorkbenchRailAccountControls({
             onApiKeyLogin={(apiKey) => void handleApiKeyLogin(apiKey)}
             onCancelLogin={(loginId) => void handleCancelLogin(loginId)}
           />
-        ) : meters.codex &&
+        ) : codexMeter &&
           (accountState.kind === "loading" || accountState.kind === "unavailable") ? (
           <RailUsagePlaceholder
             provider="codex"

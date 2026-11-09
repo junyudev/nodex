@@ -96,6 +96,15 @@ pub(super) fn turn_reply(
     )?;
     let target=connection.query_row("SELECT runtime_id,runtime_thread_id FROM project_session_execution_bindings WHERE session_id=?1",[&session],|r|Ok(ProjectWorkspaceSessionExecutionRef{runtime_id:r.get(0)?,thread_id:r.get(1)?})).optional()?;
     connection.execute("INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id,target_execution_ref_json,question_response_json) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![proposal,epoch,body,reliable::handoff_identity(&proposal,"launch",epoch),reliable::handoff_identity(&proposal,"message",epoch),target.map(|v|serde_json::to_string(&v)).transpose().map_err(|_|internal("Reply target cannot be encoded"))?,response.map(serde_json::to_string).transpose().map_err(|_|internal("Answer cannot be encoded"))?])?;
+    // The accepted handoff is the continuation's input, even after its original
+    // native Turn and the Member's Host invocation have ended.
+    super::super::session_mutation::accept_person_message(
+        connection,
+        &session,
+        &reliable::handoff_identity(&proposal, "message", epoch),
+        &crate::infrastructure::actors::requesting_member(connection, context)?,
+        now,
+    )?;
     let mut effects = simple_effects("inbox_turn_reply", now);
     effects.page_ids.push(page.into());
     effects.session_ids.push(session);

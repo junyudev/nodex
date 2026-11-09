@@ -6,7 +6,7 @@ import type {
   WorkbenchObservedTab,
 } from "../../shared/nodex-app-tools/workbench";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
-import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import { makeTestTurnPresentation } from "../codex-application/CodexTurnPresentation.test-support";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";

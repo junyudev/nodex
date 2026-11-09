@@ -35,7 +35,7 @@ import type {
 import type { GlobalDictationRendererEvent } from "../../shared/global-dictation";
 import { APP_RENDERER_URL } from "../../shared/app-renderer-policy";
 import { MainConfig } from "../app/MainConfig";
-import { CodexPlatform } from "../app/CodexApplicationLive";
+import { CodexPlatform } from "../../host/ProviderPlatform";
 import { ClipboardSafePasteService } from "../dictation/clipboard-safe-paste-service";
 import { makeSharedMicrophoneAuthority } from "../dictation/SharedMicrophoneAuthority";
 import { makeDictationHotkeyCapture } from "../dictation/DictationHotkeyCapture";

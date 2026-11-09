@@ -12,7 +12,7 @@ import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import type { ManagedWorktreeSettings } from "../../shared/types";
-import { AutomationApplication } from "../automation-application/AutomationApplication";
+import { AutomationApplication } from "../../host/automation-application/AutomationApplication";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
 import {
   resolveManagedWorktreeId,

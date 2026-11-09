@@ -25,7 +25,7 @@ function makeProject(input: {
     name: input.name ?? input.id,
     description: "",
     appearance: { color: "black", marker: { kind: "icon", icon: "folder" } },
-    sources: roots.map((root, order) => ({ root, order })),
+    sources: roots.map((root, order) => ({ kind: "directory" as const, path: root, order })),
     primaryWorkspaceRoot: input.primaryWorkspaceRoot ?? roots[0] ?? null,
     pinned: false,
     pinnedOrder: null,

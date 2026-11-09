@@ -1,3 +1,4 @@
+import { localProjectSourceRoots } from "../../shared/project-sources";
 import type { Project } from "./types";
 import type { ProjectAppearance } from "../../shared/project-appearance";
 
@@ -15,7 +16,11 @@ function normalizeSearchText(value: string): string {
 }
 
 function getPrimaryWorkspaceRoot(project: Project): string | null {
-  return project.primaryWorkspaceRoot?.trim() || project.sources[0]?.root.trim() || null;
+  return (
+    project.primaryWorkspaceRoot?.trim() ||
+    localProjectSourceRoots(project.sources)[0]?.trim() ||
+    null
+  );
 }
 
 export function formatNewChatProjectSelectorOption(project: Project): NewChatProjectSelectorOption {

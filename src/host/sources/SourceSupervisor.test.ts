@@ -2,6 +2,8 @@ import { describe, expect } from "vitest";
 import { it } from "@effect/vitest";
 import { Clock, Deferred, Effect, Fiber } from "effect";
 import type { components } from "@nodex/core-protocol";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { CodexGitProbe } from "../../main/codex-application/CodexGitProbe";
 import {
   GitHubSourceAdapter,
   SourceReadError,
@@ -51,6 +53,7 @@ function harness(
   const inputs: PollInput[] = [];
   const core = {
     workspace: {
+      read: (request: import("../../main/core-client/types").ProjectWorkspaceRead) =>
         Effect.sync(() => {
           if (request.kind === "page_workspace_window")
             return { value: { kind: "page_workspace_window", workspaces: [] } };

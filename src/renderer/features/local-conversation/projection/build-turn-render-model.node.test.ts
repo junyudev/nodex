@@ -1537,6 +1537,24 @@ describe("closing message action visibility", () => {
   });
 });
 
+test("a person's own message another Member has replied after shows Edit unavailable, with why", () => {
+  const selectTurnRenderModel = createTurnRenderModelSelector();
+  const turn = buildTurn({ status: "completed", items: [buildUserItem(), buildAssistantItem()] });
+  const actions = (input: { canEditTurnUserPrefix: boolean; userTurnEditRefusal?: string }) =>
+    selectTurnRenderModel({ entry: buildVisibleEntry(turn, true), ...input }).buckets.userItems.at(
+      -1,
+    )?.userMessageActions;
+  expect(
+    actions({
+      canEditTurnUserPrefix: false,
+      userTurnEditRefusal: "Someone else has replied since",
+    }),
+  ).toMatchObject({ canEdit: false, editUnavailableReason: "Someone else has replied since" });
+  expect(actions({ canEditTurnUserPrefix: true })).toMatchObject({ canEdit: true });
+  expect(actions({ canEditTurnUserPrefix: true })).not.toHaveProperty("editUnavailableReason");
+  expect(actions({ canEditTurnUserPrefix: false })).not.toHaveProperty("editUnavailableReason");
+});
+
 test.each([100_000, -100_000])(
   "worked duration stays on one clock with execution-host skew of %sms",
   (skew) => {

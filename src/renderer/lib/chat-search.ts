@@ -19,8 +19,9 @@ const MESSAGE_SEARCH_CACHE_ENTRIES = 32;
 const NO_MATCHES: readonly ChatSearchMatch[] = [];
 
 /**
- * Every chat picker finds chats here. Main owns the catalog and ranks it with the same
- * kernel the Agent session search uses, so pickers only render bounded results.
+ * Every chat picker finds chats here. The window's Space ranks its catalog with the same
+ * kernel the Agent session search uses, so pickers only render bounded results: this desktop
+ * for its own chats, the Space host for a team window's.
  */
 export function searchChats(input: ChatSearchInput): Promise<ChatSearchResult> {
   return invoke("chats:search", { ...input, limit: clampLimit(input.limit) });

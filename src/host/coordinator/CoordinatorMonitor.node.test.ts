@@ -2,6 +2,11 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
 import type { components } from "@nodex/core-protocol";
+import type {
+  ProjectWorkspaceApplyInput,
+  ProjectWorkspaceRead,
+} from "../../main/core-client/types";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
 import { ManagedChatFacts } from "./ManagedChatFacts";
 import { make } from "./CoordinatorMonitor";
 import {

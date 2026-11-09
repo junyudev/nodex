@@ -7,6 +7,7 @@ import { queryKeys } from "../query-keys";
 import { workspaceFileBinaryQueryOptions } from "../query-options";
 import { conversationMediaDataUrl } from "./media-target";
 import { classifyImageAssetSource } from "./image-source";
+import { isHostedChat } from "../hosted-chat";
 import type { ContentImageScope } from "./content-image-scope";
 
 export const CONTENT_IMAGE_GC_TIME_MS = 5 * 60_000;
@@ -52,8 +53,22 @@ async function readAdmittedContentImage(
   const runtime = parseAgentRuntimeAttachmentSource(source);
   const history = parseAgentHistoryImageSource(source);
   if (runtime) {
-    if (!context.resolveRuntimeAttachment) throw new Error("Image attachment is unavailable");
-    source = await context.resolveRuntimeAttachment(runtime);
+    const resolve = context.resolveRuntimeAttachment;
+    if (!resolve) throw new Error("Image attachment is unavailable");
+    // A recorded attachment never changes, so a chat resolves it once while it holds the source,
+    // whether to a file here or to the picture's own bytes.
+    source = await queryClient.fetchQuery({
+      queryKey: queryKeys.conversationImages.attachment(
+        context.hostId,
+        context.conversationId,
+        context.sourceIdentity,
+        runtime,
+      ),
+      queryFn: () => resolve(runtime),
+      retry: false,
+      staleTime: force ? 0 : Infinity,
+      gcTime: CONTENT_IMAGE_GC_TIME_MS,
+    });
     const kind = classifyImageAssetSource(source).kind;
     if (kind !== "local" && !/^data:image\/(?:png|jpeg|gif|webp);base64,/iu.test(source))
       throw new Error("Invalid image attachment");
@@ -80,6 +95,8 @@ async function readAdmittedContentImage(
     });
   if (classified.kind !== "local" || !classified.localPath)
     throw new Error("Image file is unavailable");
+  // A hosted chat's file is on its Space's host, read only as one of the chat's attachments.
+  if (isHostedChat()) throw new Error("Image file is unavailable");
 
   const path = classified.localPath.replaceAll("\\", "/");
   const result = await queryClient.fetchQuery({

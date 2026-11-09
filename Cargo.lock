@@ -1216,6 +1216,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "clap",
+ "fs2",
  "getrandom 0.4.3",
  "hex",
  "jsonschema",

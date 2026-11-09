@@ -16,7 +16,12 @@ import {
 import {
   AgentRuntimeApplication,
   agentRuntimeFailureReason,
+} from "../../main/agent-runtime/AgentRuntimeApplication";
 import { CoordinatorSession } from "../coordinator/CoordinatorSession";
+import type { CoreInboxSuggestionRequest } from "../../main/core-client/inbox-adapter";
+import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifierRuntime";
+import { getLogger } from "../../main/logging/logger";
+import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { InboxApplication, type InboxApplicationError } from "./InboxApplication";
 import {
   INBOX_SUGGESTION_BATCH,

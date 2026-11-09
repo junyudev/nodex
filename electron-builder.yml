@@ -38,8 +38,11 @@ files:
   - "!node_modules/node-pty/build/Release/.forge-meta"
   - "!node_modules/node-pty/**/*.{pdb,ipdb,iobj,lib,exp}"
 asarUnpack:
+  - "node_modules/sharp/**"
+  - "node_modules/@img/**"
   - "**/*.node"
   - "node_modules/node-pty/**"
+  - "out/main/**"
 npmRebuild: true
 extraResources:
   # Stock-Node programs and their verified dependencies live outside Electron ASAR.

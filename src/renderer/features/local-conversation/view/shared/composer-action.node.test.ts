@@ -43,6 +43,32 @@ describe("resolveStageThreadsComposerActionState", () => {
     });
   });
 
+  test("shows another Member's running chat as one this reader cannot stop, and why, yet can steer", () => {
+    const reason = "Only the person who started this, or a Space Owner, can stop it.";
+    expect(
+      resolveStageThreadsComposerActionState({
+        ...baseInput,
+        isThreadRunning: true,
+        interruptUnavailableReason: reason,
+      }),
+    ).toEqual({
+      action: "stop",
+      primarySubmitAction: null,
+      alternateSubmitAction: null,
+      label: "Stop",
+      disabled: true,
+      unavailableReason: reason,
+    });
+    const steering = resolveStageThreadsComposerActionState({
+      ...baseInput,
+      isThreadRunning: true,
+      hasDraftContent: true,
+      interruptUnavailableReason: reason,
+    });
+    expect(steering).toMatchObject({ primarySubmitAction: "steer", disabled: false });
+    expect(steering.unavailableReason).toBeUndefined();
+  });
+
   test("disables stop action while an interrupt request is pending", () => {
     const result = resolveStageThreadsComposerActionState({
       ...baseInput,

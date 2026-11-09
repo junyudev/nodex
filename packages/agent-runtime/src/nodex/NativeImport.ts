@@ -1,7 +1,5 @@
 import { Buffer } from "node:buffer";
 import * as nodePath from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { fromMarkdown } from "mdast-util-from-markdown";
 import type { ThreadItemEntry } from "@nodex/codex-app-server-protocol/v2";
 import {
   CommandId,
@@ -35,6 +33,8 @@ import { persistChatAttachments } from "../assets/PersistChatAttachments.ts";
 import { importChatAttachments } from "../assets/ImportChatAttachments.ts";
 import { parseBase64DataUrl } from "../imageMime.ts";
 import { nativeSessionMediaResources } from "./NativeAttachmentResource.ts";
+import { localMarkdownImagePaths } from "./MarkdownImages.ts";
+import { resolveMarkdownImagePath } from "./MarkdownImagePaths.ts";
 import * as Base64 from "effect/encoding/Base64";
 import * as Mime from "effect/http/Mime";
 import * as Option from "effect/Option";
@@ -544,70 +544,3 @@ const persistImages = Effect.fn("NativeImport.persistImages")(function* (
   if (limit) return yield* fail(limit);
   return { attachments: copied, unavailableImages, importedImageLinks };
 });
-
-type MarkdownNode = {
-  readonly type: string;
-  readonly url?: string;
-  readonly identifier?: string;
-  readonly children?: readonly MarkdownNode[];
-};
-
-/** Parse actual images, including references; code examples never acquire attachment ownership. */
-export function localMarkdownImagePaths(
-  text: string,
-  platform: "win32" | "posix",
-): readonly string[] {
-  const pending: MarkdownNode[] = [fromMarkdown(text)];
-  const images: MarkdownNode[] = [];
-  const definitions = new Map<string, string>();
-  while (pending.length > 0) {
-    const node = pending.pop()!;
-    if (
-      node.type === "definition" &&
-      node.identifier &&
-      node.url &&
-      !definitions.has(node.identifier)
-    )
-      definitions.set(node.identifier, node.url);
-    if (node.type === "image" || node.type === "imageReference") images.push(node);
-    if (node.children) pending.push(...node.children.toReversed());
-  }
-  return [
-    ...new Set(images.flatMap((node) => node.url ?? definitions.get(node.identifier ?? "") ?? [])),
-  ]
-    .filter((url) => url.length > 0 && !url.startsWith("#"))
-    .filter((url) => platform === "win32" || !url.startsWith("//"))
-    .filter(
-      (url) =>
-        windowsDrivePrefix.test(url) || !/^[a-z][a-z0-9+.-]*:/iu.test(url) || /^file:/iu.test(url),
-    );
-}
-
-const windowsDrivePrefix = /^[a-z]:/iu;
-const windowsAbsolutePath = /^[a-z]:[\\/]/iu;
-const windowsUncPath = /^(?:\\\\|\/\/)[^\\/]+[\\/][^\\/]+/u;
-
-/** Resolve authored image URLs on their source host; foreign native paths are never guessed. */
-export function resolveMarkdownImagePath(
-  sourcePath: string,
-  sourceCwd: string,
-  platform: "win32" | "posix",
-): string {
-  const windows = platform === "win32";
-  if (windowsDrivePrefix.test(sourcePath) || windowsUncPath.test(sourcePath)) {
-    if (!windows)
-      throw new Error(
-        "A reply in this conversation links a Windows image path this computer cannot read.",
-      );
-    if (!windowsAbsolutePath.test(sourcePath) && !windowsUncPath.test(sourcePath))
-      throw new Error("A reply in this conversation links a relative Windows image path.");
-    return nodePath.win32.normalize(decodeURIComponent(sourcePath));
-  }
-  const path = windows ? nodePath.win32 : nodePath.posix;
-  const url = new URL(sourcePath, pathToFileURL(`${sourceCwd}${path.sep}`, { windows }));
-  if (!windows && /^\/[a-z]:[\\/]/iu.test(url.pathname))
-    throw new Error(
-      "A reply in this conversation links a Windows image path this computer cannot read.",
-    );
-  return fileURLToPath(url, { windows });
-}

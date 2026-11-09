@@ -82,6 +82,115 @@ handshake deadlines and slow-reader write timeouts. These controls protect local
 administration and interactive execution capacity. They do not constitute a
 filesystem sandbox or a disk-storage quota.
 
+Hosted conversation access uses an explicit semantic relay through Core. Its
+generation-local queue holds at most 32 calls, each with a 25-second lifetime,
+at most 1 MiB of input and 16 MiB of output. Only the local execution owner may
+poll and complete calls. Registration replaces the previous relay generation
+and retires its outstanding invocation proofs. Core rechecks membership before
+delivery and response publication. A remote Member cannot register a Host,
+forge its invocation header or select an administration operation. A hosted
+reply names its images and files only as Library Files the Member saved over their
+own authenticated connection, at most 12 per message; no Device path, image bytes
+or local Agent configuration path crosses the relay. The host reads each File
+through Core with the Member's invocation before the Runtime receives a private
+copy, so the Library's read rules and the Member's revocation apply to it. A
+desktop uploads only the files its person attached or mentioned, opening regular
+files without following links and refusing folders.
+
+A hosted chat's attachments are read through one host owner, shared by the relay and
+the phone façade. A read names a Session, item and attachment identity from the
+transcript, never a host path; the Runtime resolves it within that Session's visible
+history and its own attachment store, opening only regular files without following
+links. Before every range the owner reads the chat through Core with the Member's
+invocation, so Core's Session read rules, Device revocation and Member removal apply
+mid-download, and it refuses outright without a Member invocation. Each range is at
+most 1 MiB, pinned to the version of the first, and counts against the Device and
+Member byte budgets. The owner names a picture's type from its leading bytes and
+reports any other bytes claiming an image type as opaque. A desktop draws only a
+whole PNG, JPEG, GIF or WebP picture, never one larger than a chat can hold, reads
+at most two at a time and keeps them only in that Space's renderer cache.
+
+Person-authored hosted commands retain the Core-admitted Member. An accepted
+chat-message mutation additionally requires the exact live Session and message
+identity from its delivery request. Core decides each hosted chat action from its own
+Store when the call is admitted, when it is delivered and whenever its invocation
+reaches Core; the call's JSON only names the chats. A fork requires a chat of the
+Member's Space, and the new chat's Agent Runtime binding is admitted only with the
+live fork call's exact Session and launch identity, so the forking Member owns it. A
+side chat requires a chat the Member may reply to, and its binding the live call's
+exact source chat as well. Saving or closing a side chat belongs to the Member who
+opened it; a Member deletes a Session only to close their own side chat, through that
+live call, and never on their own connection. An edit
+rewrites only the requesting Member's own message: Core knows each Run's opening
+message from the Runtime's attribution, and refuses the edit, and the rewritten
+message's acceptance, once any other Member's message was accepted after it. A Member's Inbox decision, including one that
+starts a chat, is admitted only with a live invocation proof from the Space host,
+which resolves its Agent from the host's catalog; Core refuses it on the Member's
+own HTTPS connection. Delivering the confirmed chat remains Host-only work. The proof expires when the call settles;
+it never grants general Host or Agent attribution authority.
+Core derives the Actor from that verified Member rather than the relay's local
+connection. Agent credential issuance binds the Run to its Runtime-verified input message
+and Core's accepted Member evidence, including queued work; later messages
+cannot change that delegation. Shared
+producer writes retain their Service Actor. Automatic Nodex bootstrap records
+the local operator's authorization separately from Service authorship.
+Hosted Inbox, Turn attention and
+unread reads use the requesting Member. Answers require the captured question
+recipient, while execution approvals require the Page Owner. Core checks this
+entitlement before queueing, at delivery and when the invocation accesses Core;
+the Runtime separately verifies the original pending request before dispatch.
+
+A chat's shared state changes only for its owner or a Space Owner: its title, archive
+state and Project, its compacted or cleared context, including Compact and retry, and
+merging it back. Stopping a Run's work, its background tasks and subagents included,
+also belongs to that Run's requester. A relayed stop names the Run whose work it is, and the
+host's Runtime stops only a subagent, delegated or background task that Run started, so a
+Member cannot reach another Run's work by naming their own; work whose Run is unknown stops
+only for the chat owner and Space Owners. Ownership comes from Core's own record of who
+started the chat, never from who replied last, so a reply grants no management. One
+Core rule answers every check: Core's writer for every Member command, whether it
+arrives over the Member's HTTPS connection or carried by the Space host with their
+invocation proof, and the host relay for each relayed call's exact Session and Run,
+from a desktop or a phone, before delivering it and whenever that invocation reaches
+Core, each after rechecking the Member's current session and the Owner's role. The local
+Profile and verified Agent work keep their own authority. Session reads tell each reader
+whether they may manage the chat and stop its work, so clients never derive the rule.
+
+Host administration secrets are owner-only: the Core bearer, server private key,
+and Store containing credential hashes must retain private native ownership and
+permissions. Host admission verifies those files and refuses broader permissions
+or aliases without silently repairing them. Agent processes receive a scrubbed
+environment; host capability variables, shell injection variables and Core home
+paths are excluded. The headless CLI shell bootstrap skips host-account startup
+files and replaces the native shell environment table after filtering configured
+entries. Explicit provider credentials remain provider capabilities.
+
+The headless host encrypts sensitive settings with authenticated AES-256-GCM.
+Its private `settings.key` remains in the Core home and is checked with the other
+administration material. It never travels into the execution home or Agent
+environment. This protects persisted settings from accidental disclosure; an
+account that can read both key and ciphertext can decrypt them. Desktop settings
+continue to use the operating system's credential encryption.
+
+A configured `agentRunner` wraps execution using a trusted executable and argv;
+the host never parses its launcher as shell code. Separate OS identity is optional.
+Beyond numeric loopback, host admission requires `agentRunner` or explicit
+`--allow-same-user-agents` acknowledgement. Same-user execution must carry a warning
+in logs and host status. Mode bits and environment scrubbing do not isolate native
+code running as Core's OS user: it can discover and read that user's private files.
+Use a dedicated host account and a separate Runner identity for OS isolation.
+
+The scoped Agent content audience is loopback-only and checks the captured Turn's
+authority on every request. It forwards bounded content operations through its own
+Native CLI connection and forces the Core-issued Agent attribution and Project
+scope. Caller-supplied connection, execution-priority and attribution headers never
+cross this audience. Administration, enrollment, Host handshake, maintenance and
+credential issuance are refused. Replacing a Turn binding retires the previous
+credential; a changed Core generation also refuses it. Agent CLI connections have
+no private Profile path or local-Core launch fallback. Personal desktop CLI
+bindings retain their local transport. Extracting a host kernel alone does not
+enable serving or remote execution. Treat Pages, repository content, attachments
+and provider output as untrusted instructions, never membership authority.
 See [Team Space behavior](product-specs/team-space-behavior.md).
 
 ## Mutation audit identity
@@ -138,60 +247,8 @@ an alias never replaces a receipt or execution identity.
 
 Nodex is local-first. Main risks are malformed local inputs, accidental data loss, renderer capability abuse, and stale or incorrectly attributed Agent execution. Native execution follows each chat's permission mode: narrower modes keep the Agent inside its workspace boundary and route native permission requests to the person, while Full access requires explicit confirmation. Agents can never answer execution approvals, and delegated work cannot exceed its caller's mode. Content access through Nodex tools is Profile-wide in every mode; connection and execution identity remain enforced.
 
-## Mobile Gateway
-
-The Mobile Gateway is Nodex's only network listener. A paired phone can do what a person at a trusted
-window can, including starting Agents, so the gateway treats the network as hostile and a device as
-fully trusted once proven. [ADR 0075](adr/0075-phone-access-through-an-encrypted-gateway.md) records
-why it is built this way.
-
-- **Off by default.** Nothing listens until a person enables it for the Profile; disabling closes the
-  listener and every channel.
-- **Peers.** The listener binds IPv4 and destroys a connection whose remote address is not loopback,
-  RFC 1918, CGNAT `100.64.0.0/10` or link-local before reading any bytes. This limits exposure; it is
-  not authentication, since a proxy or port forward can present a private address.
-- **Channel.** All traffic is Noise over one WebSocket: `IKpsk1` to pair, `IK` afterwards, with
-  X25519, ChaCha20-Poly1305 and SHA-256, verified against published vectors. The first handshake
-  message can be replayed, so nothing is granted, consumed, registered or executed until an
-  authenticated transport frame arrives: the phone must first send an encrypted ping. Any frame that
-  fails authentication closes the connection.
-  WebSocket close codes are unauthenticated hints. Paired keys survive them. During unfinished
-  pairing, an unknown-device or pairing-rejected hint clears the pending identity, so a forged hint
-  can force a new pairing code. Route racing still prefers any successful authenticated connection
-  over those hints.
-- **Pairing.** An offer has a fresh 32-byte secret, is held only in memory, works once and lasts five
-  minutes. Failed attempts do not count against it: guessing 256 random bits is not feasible, and a
-  limit would let anyone on the network cancel someone else's pairing. It reaches a window only as the
-  answer to that window's own request, never in a broadcast, and leaves the computer only as a QR code
-  or a link a person chooses to show or copy. Anyone who obtains it within that time can pair.
-  Going the other way, a pairing link that opens the phone app from outside could point at someone
-  else's machine, so the app names that desktop and asks before connecting; scanning or pasting a
-  code in the app is already a deliberate choice.
-- **Keys.** The Host's static key and the device list live in one private Profile file encrypted with
-  the operating system's secret storage. If that is unavailable, enabling fails; there is no plaintext
-  fallback. Phones keep their static keys in the Keychain or Keystore, and Android backups are off so unsent
-  captures and cached content stay on the phone. Revoking forgets a device's key
-  and closes its channels immediately.
-- **Notifications.** Each paired phone's push handle, notification key and preferences live with its
-  paired-device record in the same operating-system-encrypted private Profile file. They never enter
-  renderer status; Settings receives only whether notifications are on. Removing the phone removes
-  this registration. The phone provides its key over the authenticated encrypted channel, and invalid
-  keys are refused. The desktop seals each notification with ChaCha20-Poly1305 and a fresh random
-  nonce before sending it over HTTPS. The relay can read the opaque routing handle, urgency, delivery
-  timing and ciphertext size, and can resolve the handle to the system push address for Apple delivery.
-  It cannot decrypt notification content, including the chat title, message and Session identity, and
-  never receives the notification key. Secret question prompts are omitted even from the sealed
-  payload. Redirects are refused and delivery is bounded by timeouts and a short retry policy.
-- **Admission.** Handshakes have a deadline. Unauthenticated sockets, channels per device, total
-  channels, frame and message sizes, upload sizes and per-channel queues are all bounded. An overflowed
-  queue resets to a fresh snapshot rather than growing.
-- **Authority.** Calls pass through the same application Interfaces as a trusted window and carry no
-  Agent provenance. There are no per-phone permissions, so a lost unlocked phone holds this Profile's
-  access until it is removed in Settings.
-- **Files.** File references are opaque and resolved through authenticated Library and attachment
-  reads; they are never filesystem paths. Uploads are held in a private temporary directory, verified
-  against their declared size, and released when the channel closes.
-- **Logging.** Secrets, keys and message content are never logged.
+  and uploads stay within the admitted Space and bounded channel lifetime. A chat's
+  attachments use the same Member-invoked host owner as a team desktop.
 
 ## Mobile Push Relay
 

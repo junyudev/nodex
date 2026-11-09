@@ -55,6 +55,7 @@ it.effect("registers and releases the Git worker renderer ingress with the Main 
                 isolatedRunId: null,
                 isDefaultApp: false,
                 isPackaged: false,
+                markdownModulePath: "/tmp/nodex_markdown_bg.wasm",
                 nodexHome: "/tmp/nodex-test",
                 profileSettingsPath: "/tmp/nodex-test/config.toml",
                 platform: "darwin",

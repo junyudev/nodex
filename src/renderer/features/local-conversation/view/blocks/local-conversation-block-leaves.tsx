@@ -1091,6 +1091,17 @@ export function UserMessageBubble({
                         >
                           <EditMessageIcon />
                         </ThreadActionIconButton>
+                      ) : userActions?.editUnavailableReason ? (
+                        // Unavailable rather than absent: the person sent it and learns why.
+                        <ThreadActionIconButton
+                          label={footerText("Edit message")}
+                          tooltip={userActions.editUnavailableReason}
+                          aria-disabled="true"
+                          aria-description={userActions.editUnavailableReason}
+                          className="cursor-default opacity-40"
+                        >
+                          <EditMessageIcon />
+                        </ThreadActionIconButton>
                       ) : null}
                     </div>
                   </ThreadMessageActionRow>

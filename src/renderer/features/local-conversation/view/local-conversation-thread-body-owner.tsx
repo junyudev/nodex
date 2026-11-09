@@ -1448,6 +1448,9 @@ export function LocalConversationThreadBodyOwner({
                 projectWorkspacePath={projectWorkspacePath}
                 projectlessOutputDirectory={projectlessOutputDirectory}
                 editableTurnIds={editableTurnIds}
+                {...(capabilityFlags.canEditUserTurns && capabilityFlags.userTurnEditRefusals
+                  ? { userTurnEditRefusals: capabilityFlags.userTurnEditRefusals }
+                  : {})}
                 canForkFromTurn={canForkFromTurn}
                 initialCollapsedAgentBodyByTurnSearchKey={
                   initialUiState?.collapsedAgentBodyByTurnId

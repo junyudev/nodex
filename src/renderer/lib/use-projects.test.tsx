@@ -18,7 +18,7 @@ function makeProject(id: string, name = id): Project {
     name,
     description: "",
     appearance: { color: "black", marker: { kind: "icon", icon: "folder" } },
-    sources: [{ root: `/tmp/${id}`, order: 0 }],
+    sources: [{ kind: "directory" as const, path: `/tmp/${id}`, order: 0 }],
     primaryWorkspaceRoot: `/tmp/${id}`,
     pinned: false,
     pinnedOrder: null,

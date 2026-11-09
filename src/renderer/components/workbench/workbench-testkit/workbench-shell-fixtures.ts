@@ -78,7 +78,9 @@ export function makeProject(id = "alpha", name = "Alpha", primarySourceRoot?: st
       color: "black",
       marker: { kind: "icon", icon: "folder" },
     },
-    sources: normalizedPrimarySourceRoot ? [{ root: normalizedPrimarySourceRoot, order: 0 }] : [],
+    sources: normalizedPrimarySourceRoot
+      ? [{ kind: "directory", path: normalizedPrimarySourceRoot, order: 0 }]
+      : [],
     primaryWorkspaceRoot: normalizedPrimarySourceRoot,
     pinned: false,
     pinnedOrder: null,
@@ -515,6 +517,8 @@ export function makeSession(overrides: SessionFixtureOverrides = {}): ProjectSes
     archived: sessionOverrides.archived ?? false,
     archivedAt: sessionOverrides.archivedAt ?? null,
     remindAt: sessionOverrides.remindAt ?? null,
+    canManage: true,
+    canStop: true,
     unread: sessionOverrides.unread ?? false,
   };
 }

@@ -17,6 +17,7 @@
   },
   "include": [
     "src/main/**/*.ts",
+    "src/host/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
     "scripts/**/*.ts",

@@ -265,6 +265,11 @@ pub(super) fn apply(
                 &request.intent,
             )?;
             let context = crate::infrastructure::actors::workspace(transaction, &context, &request.intent)?;
+            if matches!(admitted_intent, ProjectWorkspaceIntent::PauseWork { .. } | ProjectWorkspaceIntent::ResumeWork { .. }) {
+                super::execution_holds::require_person(&context)?;
+                if matches!(request.intent,ProjectWorkspaceIntent::AgentCommand { .. }) {
+                    return Err(StoreError::new(StoreErrorCode::Unauthorized,"Only a person may pause or resume work",false));
+                }
             }
             // An Agent command retry belongs to its caller root across Turns. Admission above
             // still checks the current Turn's persisted authority before receipt replay.
@@ -1362,7 +1367,7 @@ fn create_project(
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_project_input(project_id, description)?;
     require_unarchived_project_capacity(connection, library_id)?;
-    let sources = normalize_source_roots(source_roots)?;
+    let sources = normalize_space_sources(connection, library_id, source_roots)?;
     let name = normalize_project_name(name, &sources)?;
     let appearance = appearance
         .map(normalize_project_appearance)
@@ -1605,8 +1610,18 @@ pub(super) fn seal_mutation_with_created_page(
             | "create_agent_runtime_session"
             | "ensure_default_draft_session"
             | "create_session_in_sidebar_section"
+    ) && let Some(member) = context
+        .actor
+        .member_id()
+        .or(context.authorizing_member_id.as_deref())
     {
         for session in &effects.session_ids {
+            super::chat_stewardship::record_owner(
+                connection,
+                session,
+                member,
+                &effects.committed_at,
+            )?;
         }
     }
     if effects.operation_kind.starts_with("inbox_")
@@ -1777,7 +1792,9 @@ fn update_project(
         .map(normalize_project_appearance)
         .transpose()
         .map_err(invalid)?;
-    let sources = source_roots.map(normalize_source_roots).transpose()?;
+    let sources = source_roots
+        .map(|sources| normalize_space_sources(connection, library_id, sources))
+        .transpose()?;
     let now = sqlite_now(connection)?;
     let project_catalog_change = if sources.is_some() {
         ProjectCatalogChangeKind::SourcesUpdated
@@ -2445,6 +2462,39 @@ fn derive_project_resource_name(project_name: &str, suffix: &str) -> String {
     format!("{}…{suffix}", prefix.trim_end())
 }
 
+fn normalize_space_sources(
+    connection: &Connection,
+    library: &str,
+    values: &[String],
+) -> Result<Vec<ProjectSource>, StoreError> {
+    let kind: String = connection.query_row(
+        [library],
+        |row| row.get(0),
+    )?;
+    if kind != "team" {
+        return normalize_source_roots(values);
+    }
+    if values.len() > MAX_SOURCE_ROOTS {
+        return Err(invalid("Project sources exceed their bound"));
+    }
+    let mut seen = BTreeSet::new();
+    values
+        .iter()
+        .filter(|value| seen.insert(value.as_str()))
+        .map(|value| {
+            if !nodex_core_contracts::workspace::is_canonical_repository_remote(value) {
+                return Err(invalid(
+                    "Team Project sources require canonical HTTPS Git remotes",
+                ));
+            }
+            Ok(ProjectSource {
+                root: value.clone(),
+                root_key: value.clone(),
+            })
+        })
+        .collect()
+}
+
 fn normalize_source_roots(values: &[String]) -> Result<Vec<ProjectSource>, StoreError> {
     if values.len() > MAX_SOURCE_ROOTS {
         return Err(invalid("Project source roots exceed their bound"));
@@ -2868,6 +2918,7 @@ mod tests {
                 request(
                     "fresh-inbox-message",
                     ProjectWorkspaceIntent::SendInboxMessage {
+                        reply_to_page_id: None,
                         expected_store_epoch: None,
                         page_id: "page:inbox".to_owned(),
                         document_id: "document:inbox".to_owned(),

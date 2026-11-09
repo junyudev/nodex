@@ -308,6 +308,8 @@ interface LocalConversationVirtualizedTurnListProps {
   projectlessOutputDirectory?: string | null;
   /** Turns whose user message can be rewritten; every later Turn leaves with the edit. */
   editableTurnIds: ReadonlySet<string>;
+  /** Why a person's own message cannot be edited, by its Turn. */
+  userTurnEditRefusals?: Readonly<Record<string, string>>;
   canForkFromTurn: boolean;
   initialCollapsedAgentBodyByTurnSearchKey?: Readonly<Record<string, boolean>>;
   onEditUserTurn?: (input: UserTurnEdit) => void | Promise<void>;
@@ -483,6 +485,7 @@ interface MeasuredTurnProps {
   projectlessOutputDirectory?: string | null;
   initialCollapsedOverride?: boolean;
   canEditTurnUserPrefix: boolean;
+  userTurnEditRefusal?: string;
   canForkTurn: boolean;
   onEditUserTurn?: (input: UserTurnEdit) => void | Promise<void>;
   onForkTurnMessage?: (input: {
@@ -525,6 +528,7 @@ function MeasuredTurnComponent({
   projectlessOutputDirectory,
   initialCollapsedOverride,
   canEditTurnUserPrefix,
+  userTurnEditRefusal,
   canForkTurn,
   onEditUserTurn,
   onForkTurnMessage,
@@ -596,6 +600,7 @@ function MeasuredTurnComponent({
           persistedCollapsed={collapsedOverride ?? undefined}
           onSetCollapsed={setCollapsedOverride}
           canEditTurnUserPrefix={canEditTurnUserPrefix}
+          userTurnEditRefusal={userTurnEditRefusal}
           canForkTurn={canForkTurn}
           projectWorkspacePath={projectWorkspacePath}
           projectlessOutputDirectory={projectlessOutputDirectory}
@@ -665,6 +670,7 @@ const MeasuredTurn = memo(
     left.projectlessOutputDirectory === right.projectlessOutputDirectory &&
     left.initialCollapsedOverride === right.initialCollapsedOverride &&
     left.canEditTurnUserPrefix === right.canEditTurnUserPrefix &&
+    left.userTurnEditRefusal === right.userTurnEditRefusal &&
     left.canForkTurn === right.canForkTurn &&
     left.onEditUserTurn === right.onEditUserTurn &&
     left.onForkTurnMessage === right.onForkTurnMessage &&
@@ -700,6 +706,7 @@ function LocalConversationVirtualizedTurnListCore({
   projectWorkspacePath,
   projectlessOutputDirectory,
   editableTurnIds,
+  userTurnEditRefusals,
   canForkFromTurn,
   initialCollapsedAgentBodyByTurnSearchKey,
   onEditUserTurn,
@@ -2219,6 +2226,9 @@ function LocalConversationVirtualizedTurnListCore({
                 initialCollapsedAgentBodyByTurnSearchKey?.[entry.turnSearchKey]
               }
               canEditTurnUserPrefix={entry.turnId !== null && editableTurnIds.has(entry.turnId)}
+              {...(entry.turnId !== null && userTurnEditRefusals?.[entry.turnId]
+                ? { userTurnEditRefusal: userTurnEditRefusals[entry.turnId] }
+                : {})}
               canForkTurn={
                 canForkFromTurn &&
                 !isCodexRealtimeTimelineEntry(entry) &&

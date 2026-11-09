@@ -12,7 +12,7 @@ const project = (id: string, root: string): Project => ({
   bindingRevision: 1,
   description: "",
   appearance: { color: "black", marker: { kind: "icon", icon: "folder" } },
-  sources: [{ root, order: 0 }],
+  sources: [{ kind: "directory" as const, path: root, order: 0 }],
   primaryWorkspaceRoot: root,
   pinned: false,
   pinnedOrder: null,
@@ -56,7 +56,7 @@ test("an unregistered folder creates a named Project and opens its chat composer
 test("opening one folder does not reuse a multi-folder Project with another working directory", async () => {
   const api = ports();
   const multiRoot = project("multi", "/work/primary");
-  multiRoot.sources.push({ root: "/work/new-project", order: 1 });
+  multiRoot.sources.push({ kind: "directory" as const, path: "/work/new-project", order: 1 });
   api.readProjects.mockResolvedValue(window([multiRoot]));
   await openCommandPaletteProjectFolder(api);
   expect(api.createProject).toHaveBeenCalledExactlyOnceWith({

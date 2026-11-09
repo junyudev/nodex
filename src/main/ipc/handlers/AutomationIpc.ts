@@ -11,8 +11,8 @@ import type {
   PageOccurrenceUpdateInput,
 } from "../../../shared/types";
 import { MainConfig } from "../../app/MainConfig";
-import { AutomationApplication } from "../../automation-application/AutomationApplication";
-import { AutomationExecution } from "../../automation-application/AutomationExecution";
+import { AutomationApplication } from "../../../host/automation-application/AutomationApplication";
+import { AutomationExecution } from "../../../host/automation-application/AutomationExecution";
 import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";

@@ -11,7 +11,8 @@ import { cn } from "../../ui/cn";
 import { Glass } from "../../ui/glass";
 import { Icon } from "../../ui/icons";
 import { Chip, Field, IconButton, Tap, lightTap } from "../../ui/primitives";
-import { showFailure } from "../../ui/snackbar";
+import { showFailure, showSnack } from "../../ui/snackbar";
+import { primaryControl } from "./primary-control";
 import { useDraft, useHomeState } from "../home/home-state";
 
 const assetToImage = (asset: ImagePicker.ImagePickerAsset, index: number): LocalImage => ({
@@ -59,6 +60,7 @@ export const Composer = ({
   onSend,
   onSendLongPress,
   onStop,
+  stopUnavailableReason = null,
   sendLabel = "Send",
   autoFocus,
 }: {
@@ -78,6 +80,11 @@ export const Composer = ({
   ) => void | Promise<boolean>;
   /** When present and the Composer is empty, the primary control stops the Run. */
   readonly onStop?: () => void;
+  /**
+   * Why the reader may not stop the Run, without `onStop`: the empty Composer still shows Stop,
+   * unavailable, and tapping it says why.
+   */
+  readonly stopUnavailableReason?: string | null;
   readonly sendLabel?: string;
   readonly autoFocus?: boolean;
 }) => {
@@ -94,8 +101,16 @@ export const Composer = ({
   }));
 
   const hasContent = draft.text.trim().length > 0 || draft.images.length > 0;
-  const stopping = onStop !== undefined && !hasContent;
-  const ready = stopping || (hasContent && canSend && !sending);
+  const control = primaryControl({
+    hasContent,
+    canSend,
+    sending,
+    canStop: onStop !== undefined,
+    stopUnavailableReason,
+  });
+  const { ready } = control;
+  const stopping = control.kind === "stop";
+  const stopReason = control.kind === "stop" ? control.unavailableReason : null;
   const open = attaching || (chips !== undefined && (focused || hasContent));
 
   const addImages = async (pick: () => Promise<readonly LocalImage[]>) => {
@@ -140,7 +155,9 @@ export const Composer = ({
     <Tap
       accessibilityLabel={stopping ? "Stop" : sendLabel}
       accessibilityState={{ disabled: !ready }}
-      disabled={!ready}
+      {...(stopReason !== null ? { accessibilityHint: stopReason } : {})}
+      // An unavailable Stop still answers a tap with why.
+      disabled={!ready && stopReason === null}
       hitSlop={6}
       className={cn(
         "h-10 w-10 items-center justify-center rounded-full",
@@ -152,7 +169,8 @@ export const Composer = ({
       onPress={() => {
         if (stopping) {
           lightTap();
-          onStop?.();
+          if (stopReason !== null) showSnack({ text: stopReason });
+          else onStop?.();
           return;
         }
         submit(onSend);

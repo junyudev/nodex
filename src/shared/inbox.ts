@@ -244,6 +244,17 @@ export interface InboxProposal {
   readonly updatedAt: string;
 }
 
+/**
+ * Whether Retry can deliver a failed decision again as it stands, by Core's rule: a chat only when
+ * its host was unavailable, and an Automation run unless its delivery is uncertain. Anything else needs a
+ * new decision, so no Device offers Retry for it.
+ */
+export const inboxDispatchRetryable = (
+  proposal: Pick<InboxProposal, "failureKind" | "action">,
+): boolean =>
+  proposal.failureKind === "unavailable" ||
+  (proposal.action.type === "execute_decision" && proposal.failureKind !== "unknown");
+
 /** The message Page's current workflow Status option and display name. */
 export interface InboxPageStatus {
   readonly id: string;
@@ -581,6 +592,14 @@ export const inboxModelEffort = (
   );
 };
 
+/**
+ * An Agent whose status check ended without an answer, as Codex's first check does when it times
+ * out while its model catalog loads. The Runtime checks it again until it settles, so it is
+ * loading rather than missing.
+ */
+export const isInboxProviderSettling = (provider: InboxProvider): boolean =>
+  provider.enabled && provider.status === "error" && provider.auth.status === "unknown";
+
 export const isInboxProviderUsable = (provider: InboxProvider): boolean =>
   provider.enabled &&
   provider.status !== "error" &&
@@ -620,7 +639,10 @@ export type InboxModelResolution =
       readonly provider: InboxProvider;
       readonly model: InboxProviderModel;
     }
-  /** The Agent is usable but has not reported its models yet; a catalog refresh probes it. */
+  /**
+   * The Agent has not reported its models yet, or its status check is still settling; a catalog
+   * refresh probes it.
+   */
   | { readonly kind: "pending"; readonly provider: InboxProvider }
   | { readonly kind: "unavailable"; readonly message: string };
 
@@ -634,6 +656,8 @@ export function resolveInboxModel(
   purpose: "chat" | "suggestion",
 ): InboxModelResolution {
   const provider = providers.find((candidate) => candidate.instanceId === choice.instanceId);
+  // A slow first check must not make a configured Agent look missing.
+  if (provider && isInboxProviderSettling(provider)) return { kind: "pending", provider };
   if (!provider || !isInboxProviderUsable(provider))
     return { kind: "unavailable", message: "The configured Agent is unavailable" };
   if (purpose === "suggestion" && !supportsInboxStructuredGeneration(provider))

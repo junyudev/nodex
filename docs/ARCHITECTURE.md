@@ -18,9 +18,12 @@ flowchart LR
     Renderer["Sandboxed React renderer"] --> Preload["Typed preload bridge"]
     Preload --> Main["Electron Main / Desktop Host"]
     Main --> Core["Detached Rust Core"]
+    Serve["Headless Space host"] --> Kernel
+    Serve --> Core
     CLI["Native CLI"] --> Core
     Core --> Store["SQLite + Yrs/Canvas Documents"]
-    Main --> Agent["Supervised Agent Runtime / execution SQLite"]
+    Main --> Kernel["Space host kernel"]
+    Kernel --> Agent["Supervised Agent Runtime / execution SQLite"]
     Agent --> Codex["Pinned native Codex app-server"]
     Agent --> ACP["Capability-negotiated ACP Agents"]
     Agent --> Claude["Native Claude Code via Agent SDK"]
@@ -72,16 +75,9 @@ Core Modules -> Electron / renderer / transport presentation
 
 ### Nodex Mobile
 
-The Main-owned Mobile Gateway is Nodex's only network ingress and is off by default. A paired phone
-reaches semantic Main Interfaces as a human ingress over one end-to-end encrypted channel; the
-gateway holds pairing state and adapts view models, and adds no data authority. Its listener
-belongs to the Profile's Main Scope, so it stays available with every window closed while the
-Desktop Host runs. See
-[Nodex Mobile Behavior](product-specs/mobile-companion-behavior.md),
-[Security](SECURITY.md#mobile-gateway) and [ADR 0075](adr/0075-phone-access-through-an-encrypted-gateway.md).
-The phone's own runtime is an Effect application behind a presentation edge; see
-[ADR 0076](adr/0076-mobile-runtime-effect-boundary.md).
+### Nodex Mobile
 
+and the phone's [Effect boundary](adr/0076-mobile-runtime-effect-boundary.md).
 ### External Sources
 
 Core owns Library-scoped Source configuration, leased read positions, immutable
@@ -175,10 +171,9 @@ Runtime owns native retirement, the durable execution fence and permit release; 
 continues to record facts. See [Coordinator Pause](product-specs/coordinator-behavior.md#pause).
 
 Stock-Node programs and their dependencies live as detached Resources, outside
-Electron ASAR and its unpacked companion. The standalone Agent Runtime owns the
-bundled SDK and native executable for the Claude provider. Main's native discovery
-and history adapters load that same verified dependency closure. Configured Agent
-executables remain authoritative. Packaging invariants live in
+Electron ASAR and its unpacked companion. The standalone Agent Runtime owns the packaged Claude SDK and its native executable.
+Main's native discovery and history adapters load that same verified dependency closure;
+configured Agent executables remain authoritative. Packaging invariants live in
 [the desktop runtime documentation](release-windows.md#runtime-closure).
 
 The Session set follows the execution store's conversations. The Store and the execution
@@ -316,11 +311,49 @@ That class continues through the serialized Store writer rather than ending at r
 
 Store formats and migration sequences are implementation/recovery contracts, not architecture prose. Their executable authority is under [`crates/nodex-core/src/infrastructure`](../crates/nodex-core/src/infrastructure), [`crates/nodex-core/schema`](../crates/nodex-core/schema), and the corresponding Core tests. Operational expectations belong in [Reliability](RELIABILITY.md).
 
+Team Project sources are canonical Git repository identities. Only the execution
+Host resolves them through its private clone mapping, and every launch on that Host
+(Page work, Inbox chats, phone chats) asks its Agent Runtime owner where work runs
+rather than reading a Project's local source path. Core retains repository and
+Page Workspace identity and execution metadata; desktops never interpret host
+locations as local filesystem instructions. Shared Project sources contain remote
+identities, while personal Project sources remain local directory bindings. See [Team hosting](team-space-hosting.md).
+
 ### Electron Main / Desktop Host
 
+The Electron-independent application kernel lives in [`src/host`](../src/host).
+It owns Agent Runtime composition, workspace/worktree workers and the shared Work, Inbox, Coordinator,
+Sources, clock and event Automation, hold-enforcement and notification-intent producers
+for one Space. Core remains the durable admission, intent and content authority;
+Runtime remains the sole execution and history writer. The kernel composes
+app-owned Effect services in its embedding process Scope, without a second
+runtime or shutdown coordinator. Main embeds it for the personal Space.
 The headless serve process embeds the same kernel for a team Space, and delivers every
 Member's chat reminders there; Core keeps pins, reminders and unread state per Member,
 and a desktop presents only its own Member's. Core relays
+authenticated Member reads and person commands to that Space's execution owner;
+the Runtime retains transcript ownership. Core decides each person action on a hosted
+chat from its own Store when it admits, delivers and uses the call, and admits the
+chats or messages the action creates only with that live call's exact proof. A hosted chat's attachments have one
+kernel reader for every Device form factor: desktops reach it through the relay and
+phones through their façade, naming each attachment by its transcript identities.
+Files a Member sends a hosted chat travel the other way as Library Files: every Device
+saves them over its own authenticated connection, and the kernel's one message owner
+reads them with the Member's invocation. Relay invocation identity never grants
+the remote caller local administration or producer authority. Core derives its
+Member Actor and attention audience from the invocation, while Agent Runs retain
+their captured requesting Member and shared producers use Service Actors.
+
+The Desktop supplies typed ports for native Agent tools, submission presentation,
+application tools, image fitting, projection broadcasts and notification
+presentation. Browser, Computer Use, windows, tray, dialogs, renderer IPC and
+OS notifications remain Desktop resources. A missing notification presentation
+sink leaves the Core intent unclaimed. Portable content and Session tools share
+one application implementation. Native conversation observation, attachments,
+questions and controls are explicit desktop ports; the headless host advertises
+only supported tools and uses its sole Runtime writer for Session operations. The static host dependency check resolves
+the actual kernel graph and rejects Electron imports.
+
 The Space connection registry owns a stable Core-authored identity and a separate
 authority/client scope for each Space. Core owns the Space name; enrollment and
 connection discovery refresh encrypted desktop caches, independently of transport
@@ -331,6 +364,9 @@ loss, identity drift and access withdrawal fence only that Space; only the
 personal authority retains fatal-Core relaunch and local process supervision.
 Content IPC carries an explicit Space envelope. Main verifies it against the
 sending renderer's fixed Space and resolves that connection without fallback.
+Electron reaches only channels the process registered, so every Space-routed
+channel is registered process-wide before any Space opens, and a Space serves only
+channels the process routes.
 Remote requests never acquire the personal conversation peer service. Desktop
 settings, window management, device input and installation analytics carry no
 Space and run on the desktop in every window ([Space IPC policy](../src/shared/space-ipc-policy.ts));
@@ -341,10 +377,9 @@ Main's scoped [WebContents destruction owner](../src/main/platform/electron/WebC
 shares one native `destroyed` listener per WebContents across renderer requests, subscriptions,
 and sandbox guests. Consumers release their registration when their own lifetime ends;
 request and subscription Effects bind that release to cancellation or Scope finalization.
-Renderer queries belong to their requesting WebContents and their IPC registration.
-When either owner ends, Main interrupts and awaits the query before releasing its dependencies,
-and the physical invocation settles normally. A dependency that fails while its caller remains
-alive still rejects the invocation.
+Renderer queries belong to their requesting WebContents and IPC registration.
+When either owner ends, Main interrupts and awaits the query before releasing its
+dependencies; a live caller still receives dependency failures.
 Direct native destruction listeners outside this owner are forbidden by the Main lint boundary.
 
 [`src/main`](../src/main) owns the non-transactional desktop boundary:
@@ -945,6 +980,8 @@ The Agent Runtime owns each bound Session's execution root, Runs, provider sessi
 history, delegated descendants, machine-wide Run admission and durable result delivery. Main
 supplies capacity configuration; the Runtime owns durable priority and native-lifetime permits
 ([admission contract](product-specs/agent-runtime-behavior.md#machine-admission-and-queue)).
+Its projections are that durable history; the event log is a bounded delivery tail that cannot
+rebuild them, as [ADR 0077](adr/0077-bounded-execution-history.md) records. It also owns admission receipts
 for remote Native messages; the Native execution owner performs producer writes and resolves
 uncertain delivery through producer evidence. Immutable staged launch input and owned resources
 belong to the Runtime; execution begins only after Core admits the product binding. Core owns the product

@@ -465,8 +465,10 @@ export function InboxDispatchEditor({
             }
           />
         ) : null}
-        {draft.type === "new_chat" ? (
+        {draft.type === "new_chat" && (draft.agent || agents.settingsReady) ? (
           // What the chat starts on sits beside the button that starts it, as in the composer.
+          // Until the Inbox's settings arrive its default is unknown, so it is left out rather
+          // than guessed; the chat still starts on that default.
           <InboxAgentPicker
             agents={agents}
             purpose="chat"

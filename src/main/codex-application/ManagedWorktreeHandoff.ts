@@ -1,3 +1,4 @@
+import { localProjectSourceRoots } from "../../shared/project-sources";
 import { randomUUID } from "node:crypto";
 import * as path from "node:path";
 import * as Cause from "effect/Cause";
@@ -252,8 +253,8 @@ export const live: Layer.Layer<
             }
             const destinationRepositoryPaths =
               destinationHost.descriptor.kind === "local"
-                ? owningProject.sources
-                    .map((source) => source.root.trim())
+                ? localProjectSourceRoots(owningProject.sources)
+                    .map((root) => root.trim())
                     .filter((root) => path.isAbsolute(root))
                 : destinationHost.descriptor.repositoryRoots;
             const additionalRoots = entry.source.workspaceRoots.filter(
@@ -332,7 +333,7 @@ export const live: Layer.Layer<
               new Error("Current-host checkout/worktree toggling is only configured locally"),
             );
           }
-          const checkoutRoot = owningProject.sources[0]?.root.trim() ?? "";
+          const checkoutRoot = localProjectSourceRoots(owningProject.sources)[0]?.trim() ?? "";
           if (!checkoutRoot || !path.isAbsolute(checkoutRoot)) {
             return yield* error(
               "prepare-current-host",

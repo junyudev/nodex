@@ -10,17 +10,17 @@
     "version": "1.0.0"
   },
   "paths": {
-    "/core/v1/admin/shutdown": {
+    "/core/v1/admin/host/complete": {
       "post": {
         "tags": [
-          "api"
+          "team_api"
         ],
-        "operationId": "shutdown",
+        "operationId": "host_complete",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ShutdownRequest"
+                "$ref": "#/components/schemas/HostCompletion"
               }
             }
           },
@@ -28,11 +28,11 @@
         },
         "responses": {
           "200": {
-            "description": "Core shutdown acknowledged",
+            "description": "Complete an admitted Host call",
             "content": {
-              "application/json": {
+              "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/ShutdownResponse"
+                  "type": "boolean"
                 }
               }
             }
@@ -90,48 +90,17 @@
         }
       }
     },
-    "/core/v1/blobs/prepare": {
+    "/core/v1/admin/host/poll": {
       "post": {
         "tags": [
-          "api"
+          "team_api"
         ],
-        "operationId": "prepare_blob",
-        "parameters": [
-          {
-            "name": "operation_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "store_epoch",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "idempotency_slot",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "operationId": "host_poll",
         "requestBody": {
           "content": {
-            "application/octet-stream": {
+            "application/json": {
               "schema": {
-                "type": "array",
-                "items": {
-                  "type": "integer",
-                  "format": "int32",
-                  "minimum": 0
-                }
+                "$ref": "#/components/schemas/HostLease"
               }
             }
           },
@@ -139,11 +108,18 @@
         },
         "responses": {
           "200": {
-            "description": "Prepared File blob",
+            "description": "Bounded execution-owner work",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PreparedBlobReceipt"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/HostInvocation"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               }
             }
@@ -161,31 +137,29 @@
         }
       }
     },
-    "/core/v1/events": {
-      "get": {
+    "/core/v1/admin/host/register": {
+      "post": {
         "tags": [
-          "api"
+          "team_api"
         ],
-        "operationId": "events",
-        "parameters": [
-          {
-            "name": "after",
-            "in": "query",
-            "description": "Last committed event sequence observed",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
+        "operationId": "host_register",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostRegistration"
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "Server-sent committed Module events",
+            "description": "Register the local execution owner",
             "content": {
-              "text/event-stream": {
+              "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EventEnvelope"
+                  "$ref": "#/components/schemas/HostLease"
                 }
               }
             }
@@ -512,58 +486,17 @@
         }
       }
     },
-    "/core/v1/modules/automation/apply": {
+    "/core/v1/admin/space/prepare": {
       "post": {
         "tags": [
-          "api"
+          "team_api"
         ],
-        "operationId": "automation_apply",
-        "parameters": [
-          {
-            "name": "x-nodex-request-id",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-class",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/CoreRequestClass"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-deadline-ms",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
+        "operationId": "prepare",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AutomationApplyRequest"
+                "$ref": "#/components/schemas/ListenRequest"
               }
             }
           },
@@ -571,11 +504,11 @@
         },
         "responses": {
           "200": {
-            "description": "Committed module mutation",
+            "description": "Local Owner prepares a team Space without listening",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AutomationApplyResponse"
+                  "$ref": "#/components/schemas/SpaceIdentity"
                 }
               }
             }
@@ -1255,18 +1188,47 @@
         }
       }
     },
+    "/core/v1/host/availability": {
+      "get": {
         "tags": [
+          "team_api"
         ],
+        "operationId": "host_availability",
+        "responses": {
+          "200": {
+            "description": "Execution owner availability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostAvailability"
                 }
+              }
             }
           },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
             }
           }
+        }
+      }
+    },
+    "/core/v1/host/call": {
+      "post": {
+        "tags": [
+          "team_api"
         ],
+        "operationId": "host_call",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
+                "$ref": "#/components/schemas/HostCall"
               }
             }
           },
@@ -1274,9 +1236,11 @@
         },
         "responses": {
           "200": {
+            "description": "Authenticated bounded execution-owner response",
             "content": {
               "application/json": {
                 "schema": {
+                  "$ref": "#/components/schemas/HostCallResult"
                 }
               }
             }
@@ -3292,16 +3256,12 @@
           "backend": {
             "$ref": "#/components/schemas/AgentBackendKind"
           },
-          "inline_update": {
+          "message_id": {
             "type": [
-              "array",
+              "string",
               "null"
             ],
-            "items": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
+            "description": "Runtime-verified input message; Core derives its Member from acceptance evidence."
           },
           "run_id": {
             "type": [
@@ -11848,6 +11808,7 @@
         "type": "object",
         "required": [
           "code",
+          "message",
           "retryable",
           "recovery"
         ],
@@ -15466,6 +15427,7 @@
       "DatabasePageKeyPrefixAvailability": {
         "type": "string",
         "enum": [
+          "available",
           "current",
           "reserved"
         ]
@@ -15474,6 +15436,7 @@
         "type": "object",
         "required": [
           "prefix",
+          "availability",
           "next_number",
           "example_keys"
         ],
@@ -15484,6 +15447,7 @@
               "null"
             ]
           },
+          "availability": {
             "$ref": "#/components/schemas/DatabasePageKeyPrefixAvailability"
           },
           "example_keys": {
@@ -18902,6 +18866,7 @@
             }
           },
           "title_changed": {
+            "type": "boolean"
           },
           "touched_block_ids": {
             "type": "array",
@@ -18958,6 +18923,7 @@
         ]
       },
       "DocumentOwnerCommand": {
+        "oneOf": [
           {
             "type": "object",
             "required": [
@@ -19039,6 +19005,7 @@
               "kind"
             ],
             "properties": {
+              "host": {
                 "$ref": "#/components/schemas/DocumentHeadRevision"
               },
               "kind": {
@@ -19069,6 +19036,7 @@
             ],
             "properties": {
               "before": {
+                "oneOf": [
                   {
                     "$ref": "#/components/schemas/DocumentSpaceAnchor"
                   },
@@ -19109,6 +19077,7 @@
             "properties": {
               "before_block_id": {
                 "type": [
+                  "string",
                   "null"
                 ]
               },
@@ -19177,6 +19146,7 @@
           "deleted_block_ids": {
             "type": "array",
             "items": {
+              "type": "string"
             }
           },
           "document_heads": {
@@ -19224,6 +19194,7 @@
             "format": "int64"
           },
           "owner_block_id": {
+            "type": "string"
           }
         }
       },
@@ -19245,6 +19216,7 @@
         ],
         "properties": {
           "artifact_id": {
+            "type": "string"
           },
           "base_head_seq": {
             "type": "integer",
@@ -20420,148 +20392,190 @@
           }
         }
       },
-      "LibraryCanvasTarget": {
+      "HostAvailability": {
+        "type": "object",
+        "required": [
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean"
+          }
+        }
+      },
+      "HostCall": {
+        "type": "object",
+        "required": [
+          "operation",
+          "input"
+        ],
+        "properties": {
+          "input": {},
+          "operation": {
+            "$ref": "#/components/schemas/HostOperation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "HostCallResult": {
         "oneOf": [
           {
             "type": "object",
             "required": [
-              "canvas_id",
+              "value",
               "status"
             ],
             "properties": {
               "status": {
                 "type": "string",
                 "enum": [
-                  "missing"
+                  "ok"
                 ]
-              }
+              },
+              "value": {}
             }
           },
           {
             "type": "object",
             "required": [
-              "canvas_id",
-              "library_id",
+              "message",
               "status"
             ],
             "properties": {
-              "canvas_id": {
-                "type": "string"
-              },
-              "library_id": {
+              "message": {
                 "type": "string"
               },
               "status": {
                 "type": "string",
                 "enum": [
-                  "deleted"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "summary",
-              "status"
-            ],
-            "properties": {
-              "status": {
-                "type": "string",
-                "enum": [
-                  "available"
+                  "error"
                 ]
               }
             }
           }
         ]
       },
-      "LibraryCatalogEntry": {
+      "HostCompletion": {
         "type": "object",
         "required": [
-          "target",
-          "title",
-          "kind",
-          "lifecycle",
-          "location_label",
-          "updated_at",
-          "location_revision",
-          "metadata_revision"
+          "token",
+          "id",
+          "result"
         ],
         "properties": {
-          "kind": {
-            "$ref": "#/components/schemas/LibraryCatalogKind"
-          },
-          "lifecycle": {
-            "$ref": "#/components/schemas/LibraryLifecycle"
-          },
-          "location_label": {
+          "id": {
             "type": "string"
           },
-          "location_revision": {
-            "type": "integer",
-            "format": "int64"
+          "result": {
+            "$ref": "#/components/schemas/HostCallResult"
           },
-          "metadata_revision": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "target": {
-            "$ref": "#/components/schemas/LibraryPlacedResourceTarget"
-          },
-          "title": {
+          "token": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "HostInvocation": {
+        "type": "object",
+        "required": [
+          "id",
+          "credential",
+          "call"
+        ],
+        "properties": {
+          "call": {
+            "$ref": "#/components/schemas/HostCall"
           },
-          "updated_at": {
+          "credential": {
+            "type": "string",
+            "description": "Private, short-lived proof of the Member who admitted this exact call."
+          },
+          "id": {
             "type": "string"
           }
         }
       },
-      "LibraryCatalogKind": {
-        "type": "string",
-        "enum": [
-          "page",
-          "database",
-          "canvas"
-        ]
-      },
-      "LibraryContentAssetKind": {
-        "type": "string",
-        "enum": [
-          "image",
-          "attachment"
-        ]
-      },
-      "LibraryContentAssetReference": {
+      "HostLease": {
         "type": "object",
         "required": [
-          "sourceBlockId",
-          "kind",
-          "source"
+          "token"
         ],
         "properties": {
-          "fileId": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "kind": {
-            "$ref": "#/components/schemas/LibraryContentAssetKind"
-          },
-          "managedFileName": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "source": {
-            "type": "string"
-          },
-          "sourceBlockId": {
+          "token": {
             "type": "string"
           }
-        }
+        },
+        "additionalProperties": false
+      },
+      "HostOperation": {
+        "type": "string",
+        "description": "Only these semantic operations may cross from a Member to the execution owner.",
+        "enum": [
+          "activity",
+          "connection",
+          "providers",
+          "session_read",
+          "session_control",
+          "session_inspect",
+          "thread_identity",
+          "session_history",
+          "session_message",
+          "session_respond",
+          "session_stop",
+          "session_stop_task",
+          "session_cancel_task",
+          "session_stop_background",
+          "session_background_output",
+          "session_prompt_turns",
+          "session_prompt_index",
+          "session_queue",
+          "session_queue_read",
+          "session_item",
+          "session_attachment",
+          "session_overview",
+          "session_queued_preview",
+          "session_run_message",
+          "session_start",
+          "session_fork",
+          "session_side_chat_create",
+          "session_side_chat_save",
+          "session_side_chat_discard",
+          "session_merge_back",
+          "session_rewrite_message",
+          "session_compact",
+          "session_clear_context",
+          "session_rename",
+          "session_archive",
+          "session_unarchive",
+          "session_move",
+          "work_start",
+          "workspace_refresh",
+          "coordinator_open",
+          "inbox_settings",
+          "inbox_reply_destination",
+          "inbox_send",
+          "inbox_prepare_confirmation",
+          "inbox_confirm",
+          "inbox_dispatch",
+          "inbox_chat_targets",
+          "inbox_request_suggestion",
+          "inbox_stop_suggestion",
+          "inbox_retry_dispatch",
+          "chat_search",
+          "chat_search_messages"
+        ]
+      },
+      "HostRegistration": {
+        "type": "object",
+        "required": [
+          "instance"
+        ],
+        "properties": {
+          "instance": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "HttpErrorResponse": {
         "oneOf": [
@@ -42176,6 +42190,25 @@
               },
               {
                 "type": "object",
+                "description": "How a chat started from an Inbox decision is getting on: starting, or why it could not.",
+                "required": [
+                  "session_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "session_start"
+                    ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "description": "The external runtime identity reserved for one Session; execution remains runtime-owned.",
                 "required": [
                   "session_id",
@@ -42926,6 +42959,32 @@
                     "type": "string"
                   },
                   "page_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "What the reading Member may do with each named Run of a chat: edit its opening message and\nstop its work, decided by the rules Core applies when the Space host carries either out.",
+                "required": [
+                  "session_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "session_member_actions"
+                    ]
+                  },
+                  "run_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Runs the reader might edit or stop, such as a subagent's or a task's own Run; at most 200."
+                  },
+                  "session_id": {
                     "type": "string"
                   }
                 }
@@ -45239,18 +45298,26 @@
         ]
       },
       "ProjectSource": {
+        "oneOf": [
           {
             "type": "object",
             "required": [
+              "path",
+              "order",
               "kind"
             ],
             "properties": {
               "kind": {
                 "type": "string",
                 "enum": [
+                  "directory"
                 ]
               },
+              "order": {
+                "type": "integer",
+                "format": "int64"
               },
+              "path": {
                 "type": "string"
               }
             }
@@ -45258,22 +45325,27 @@
           {
             "type": "object",
             "required": [
+              "remote",
+              "order",
               "kind"
             ],
             "properties": {
               "kind": {
                 "type": "string",
                 "enum": [
+                  "repository"
                 ]
               },
+              "order": {
                 "type": "integer",
                 "format": "int64"
               },
+              "remote": {
                 "type": "string"
               }
             }
           }
-        }
+        ]
       },
       "ProjectWorkspaceAgentConfigOption": {
         "type": "object",
@@ -52089,6 +52161,47 @@
           }
         }
       },
+      "ProjectWorkspaceSessionStart": {
+        "type": "object",
+        "description": "A chat its Inbox decision has not started yet, with the reason it could not.",
+        "required": [
+          "proposal_id",
+          "page_id",
+          "state",
+          "retryable"
+        ],
+        "properties": {
+          "failure_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page_id": {
+            "type": "string",
+            "description": "The Inbox message the chat was started from."
+          },
+          "proposal_id": {
+            "type": "string",
+            "description": "The decision that starts this chat; retrying sends it again."
+          },
+          "retryable": {
+            "type": "boolean",
+            "description": "Core would start it again now; any Member who reads the chat may retry it."
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProjectWorkspaceSessionStartState"
+          }
+        }
+      },
+      "ProjectWorkspaceSessionStartState": {
+        "type": "string",
+        "enum": [
+          "starting",
+          "uncertain",
+          "failed"
+        ]
+      },
       "ProjectWorkspaceSessionSummary": {
         "type": "object",
         "required": [
@@ -52100,6 +52213,8 @@
           "managed",
           "archived",
           "unread",
+          "can_manage",
+          "can_stop",
           "created_at",
           "updated_at"
         ],
@@ -52116,6 +52231,14 @@
               "string",
               "null"
             ]
+          },
+          "can_manage": {
+            "type": "boolean",
+            "description": "The reader may manage this chat: rename, archive or restore it, move it, compact or clear\nits context and merge it back. They started it, or they own the Space."
+          },
+          "can_stop": {
+            "type": "boolean",
+            "description": "The reader may stop the chat's current work, its subagents and tasks included: they may\nmanage it, or they asked for its current Run."
           },
           "created_at": {
             "type": "string"
@@ -61221,6 +61344,31 @@
                       },
                       {
                         "type": "object",
+                        "description": "Absent once the chat has started, or when no Inbox decision started it.",
+                        "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "session_start"
+                            ]
+                          },
+                          "start": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/ProjectWorkspaceSessionStart"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
                         "required": [
                           "kind"
                         ],
@@ -61877,17 +62025,17 @@
                       {
                         "type": "object",
                         "required": [
-                          "counts",
+                          "actions",
                           "kind"
                         ],
                         "properties": {
-                          "counts": {
-                            "$ref": "#/components/schemas/ProjectWorkspaceInboxCounts"
+                          "actions": {
+                            "$ref": "#/components/schemas/SessionMemberActions"
                           },
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "inbox_counts"
+                              "session_member_actions"
                             ]
                           }
                         }
@@ -62600,6 +62748,30 @@
           "interrupted"
         ]
       },
+      "SessionMemberActions": {
+        "type": "object",
+        "description": "A chat's Runs as the reading Member may act on them, from Core's own records. Whether they may\nmanage the chat or interrupt its current Run comes with every session read.",
+        "required": [
+          "runs"
+        ],
+        "properties": {
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionRunActions"
+            }
+          }
+        }
+      },
+      "SessionMessageEdit": {
+        "type": "string",
+        "description": "A Member edits only their own message, and only while no other Member has posted after it.",
+        "enum": [
+          "available",
+          "replied_since",
+          "unavailable"
+        ]
+      },
       "SessionRequest": {
         "type": "object",
         "required": [
@@ -62628,6 +62800,27 @@
             "$ref": "#/components/schemas/RemotePrincipal"
           },
           "session_token": {
+            "type": "string"
+          }
+        }
+      },
+      "SessionRunActions": {
+        "type": "object",
+        "required": [
+          "run_id",
+          "edit",
+          "can_stop"
+        ],
+        "properties": {
+          "can_stop": {
+            "type": "boolean",
+            "description": "Whether the reader may stop this Run's work, its subagents and tasks: they asked for the\nRun, they own the chat, or they own the Space."
+          },
+          "edit": {
+            "$ref": "#/components/schemas/SessionMessageEdit",
+            "description": "Whether the reader may edit the message that opened this Run."
+          },
+          "run_id": {
             "type": "string"
           }
         }
@@ -64107,29 +64300,20 @@
           }
         }
       },
-      "ShutdownResponse": {
+      "SpaceIdentity": {
         "type": "object",
         "required": [
+          "space_id",
           "space_name",
+          "owner_member_id",
+          "fingerprint"
         ],
         "properties": {
-          "retry_after_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
+          "fingerprint": {
+            "type": "string"
           },
-          "runtime": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeGenerationIdentity"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "owner_member_id": {
+            "type": "string"
           },
           "space_id": {
             "type": "string"
@@ -64158,6 +64342,11 @@
           "name": {
             "type": "string"
           },
+          "space_id": {
+            "type": "string"
+          }
+        }
+      },
       "SqlBinding": {
         "type": "object",
         "required": [

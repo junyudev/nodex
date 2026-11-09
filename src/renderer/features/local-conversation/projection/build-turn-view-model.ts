@@ -50,6 +50,8 @@ interface BuildTurnViewModelInput {
   isStreamingTurn: boolean;
   isBlocked: boolean;
   canEditTurnUserPrefix?: boolean;
+  /** Why the person's own message here cannot be edited, when Core refuses it. */
+  userTurnEditRefusal?: string;
   canForkTurn?: boolean;
   allowCopyWhileStreaming?: boolean;
   showTimestampWithoutActions?: boolean;
@@ -205,7 +207,7 @@ function resolveAssistantMessageSentAt(turn: CodexConversationTurn | null): numb
 
 function applyUserMessageActions(
   userItems: ThreadTranscriptBlockModel[],
-  input: Pick<BuildTurnViewModelInput, "canEditTurnUserPrefix" | "turn"> & {
+  input: Pick<BuildTurnViewModelInput, "canEditTurnUserPrefix" | "userTurnEditRefusal" | "turn"> & {
     hookStats: HookStats | null;
     fallbackHookStats: HookStats | null;
     isTurnPrefix?: boolean;
@@ -231,6 +233,12 @@ function applyUserMessageActions(
         Boolean(input.canEditTurnUserPrefix) &&
         block.entry.hookFeedback !== true &&
         index === userItems.length - 1,
+      ...(input.userTurnEditRefusal &&
+      !input.canEditTurnUserPrefix &&
+      block.entry.hookFeedback !== true &&
+      index === userItems.length - 1
+        ? { editUnavailableReason: input.userTurnEditRefusal }
+        : {}),
       sentAtMs:
         block.entry.deliveryStatus === "not-sent" || input.isTurnPrefix === false
           ? null

@@ -138,16 +138,16 @@ pub(super) fn read_managed_worktree_lifecycle_snapshot(
                  WHERE project_id = ?1 ORDER BY \"order\", created, root_key",
             )?
             .query_map([&project_id], |row| {
-                Ok(ProjectSource {
-                    root: row.get(0)?,
-                    order: row.get(1)?,
-                })
+                Ok(ProjectSource::from_identity(row.get(0)?, row.get(1)?))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         projects.push(ProjectWorkspaceManagedWorktreeProjectProtection {
             project_id,
             lifecycle,
-            primary_workspace_root: sources.first().map(|source| source.root.clone()),
+            primary_workspace_root: sources
+                .first()
+                .and_then(ProjectSource::local_path)
+                .map(str::to_owned),
             sources,
         });
     }

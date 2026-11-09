@@ -1,4 +1,6 @@
+import { localProjectSourceRoots } from "../../../shared/project-sources";
 import { isRemoteSpace } from "@/lib/renderer-space";
+import { isHostedChat } from "@/lib/hosted-chat";
 import { SpaceSwitcher } from "@/features/spaces/space-switcher";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { requestInboxEntryOpen } from "../../lib/inbox-entry-navigation";
@@ -1124,6 +1126,9 @@ export function WorkbenchRuntime({
     setPendingWorktreeClientThreadId(null);
   }, [setPendingWorktreeClientThreadId]);
   useEffect(() => {
+    // Worktrees still being prepared belong to this desktop's own chats; a hosted chat's host
+    // prepares its own.
+    if (isHostedChat()) return undefined;
     let disposed = false;
     let receivedSubscription = false;
     const applyEntries = (entries: readonly CodexPendingWorktreeEntry[]) => {
@@ -1944,7 +1949,7 @@ export function WorkbenchRuntime({
             projects.find(
               (project) =>
                 project.primaryWorkspaceRoot === entry.sourceWorkspaceRoot ||
-                project.sources.some((source) => source.root === entry.sourceWorkspaceRoot),
+                localProjectSourceRoots(project.sources).includes(entry.sourceWorkspaceRoot),
             ) ?? null;
           openLocalEnvironmentsSettings({
             projectId: sourceProject?.id ?? null,
@@ -1982,7 +1987,7 @@ export function WorkbenchRuntime({
       const result = await createPendingWorktree(
         buildStableWorktreeCreateInput({
           sourceWorkspaceRoot,
-          sourceWorkspaceRoots: project.sources.map((source) => source.root),
+          sourceWorkspaceRoots: localProjectSourceRoots(project.sources),
           label: projectName,
         }),
       );

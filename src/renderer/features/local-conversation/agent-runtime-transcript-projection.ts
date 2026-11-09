@@ -35,12 +35,15 @@ import { projectCodexItemViewToTranscriptEntry } from "../../../shared/codex-tra
 import {
   buildAgentRuntimeAttachmentSource,
   buildAgentRuntimeToolResultImageSource,
+  replyPictureAttachmentId,
 } from "../../../shared/agent-runtime-attachments";
 import { projectAgentRuntimeSubagentDisplay } from "../../../shared/agent-runtime-subagent-display";
 import { agentBackendKindOfDriver } from "../../../shared/conversation-identity";
 import { getDisplayCommand } from "../../../shared/codex-command-execution";
 import type { CodexTranscriptTurnDetails } from "../../../shared/codex-transcript-projection";
 import { providerFailureCause } from "@nodex/agent-runtime/failure-cause";
+import { localMarkdownImagePaths } from "@nodex/agent-runtime/markdown-images";
+import { isHostedChat } from "@/lib/hosted-chat";
 import {
   isWaitingForNetworkMessage,
   type ConversationRecovery,
@@ -521,6 +524,32 @@ function attachmentSource(item: AgentTurnItem, attachmentId: string): string {
   });
 }
 
+/**
+ * The pictures a reply shows from files, each from a copy its chat owns: the copies an import
+ * kept and, in a chat on its Space's host, each picture the host reads from its own files for
+ * the Member. This desktop never reads a path on the host as one of its own.
+ */
+function replyMarkdownImages(
+  item: Extract<AgentTurnItem, { type: "assistant_message" }>,
+): readonly CodexImportedMarkdownImage[] {
+  const imported = importedMarkdownImages(item);
+  if (!isHostedChat()) return imported;
+  const linked = new Set(imported.map(({ sourcePath }) => sourcePath));
+  // The host's own path style is unknown here; a Windows host's UNC paths still read as files.
+  const hosted = localMarkdownImagePaths(item.text, "posix").flatMap((address) => {
+    const picture = replyPictureAttachmentId(address);
+    if (linked.has(address) || picture === null) return [];
+    return [
+      {
+        sourcePath: address,
+        name: address.split(/[\\/]/u).at(-1) || "Image",
+        source: attachmentSource(item, picture),
+      },
+    ];
+  });
+  return [...imported, ...hosted];
+}
+
 function importedMarkdownImages(
   item: Extract<AgentTurnItem, { type: "assistant_message" }>,
 ): readonly CodexImportedMarkdownImage[] {
@@ -538,12 +567,16 @@ function importedMarkdownImages(
   });
 }
 
+/** Steps whose picture is the step itself: a picture viewed, including on import, or generated. */
+const PICTURE_TOOLS: ReadonlySet<string> = new Set(["imageView", "imageGeneration"]);
+
 /**
- * An imported inspection is recognized by its typed picture record (an owned copy or a missing
- * source), which survives output omission on the wire; its output body is never consulted.
+ * A picture step is recognized by its typed picture record (an owned copy or a missing source),
+ * which survives output omission on the wire; its output body is never consulted.
  */
-const isImportedImageView = (item: Extract<AgentTurnItem, { type: "dynamic_tool" }>) =>
-  item.toolName === "imageView" &&
+const isPictureStep = (item: Extract<AgentTurnItem, { type: "dynamic_tool" }>) =>
+  item.toolName !== null &&
+  PICTURE_TOOLS.has(item.toolName) &&
   (Boolean(item.unavailableImages?.length) ||
     Boolean(item.attachments?.some((attachment) => attachment.type === "image")));
 
@@ -620,7 +653,7 @@ export function projectAgentRuntimeItem(
       };
     }
     case "assistant_message": {
-      const importedImages = importedMarkdownImages(item);
+      const importedImages = replyMarkdownImages(item);
       return {
         type: "agentMessage",
         id,
@@ -693,10 +726,16 @@ export function projectAgentRuntimeItem(
     case "file_search":
       return notice(item, item.pattern ? `Search files: ${item.pattern}` : "Search files");
     case "dynamic_tool": {
-      // File inspections use the provider's path, independently of retained tool-result bytes.
-      if (item.status === "completed" && item.viewedImagePath)
-        return { type: "imageView", id, path: item.viewedImagePath };
-      if (isImportedImageView(item)) {
+      // A file inspection shows the copy of what the Agent saw, or else the provider's path.
+      if (item.status === "completed" && item.viewedImagePath) {
+        const copy = item.attachments?.find((attachment) => attachment.type === "image");
+        return {
+          type: "imageView",
+          id,
+          path: copy ? attachmentSource(item, copy.id) : item.viewedImagePath,
+        };
+      }
+      if (isPictureStep(item)) {
         const copy = item.attachments?.find((attachment) => attachment.type === "image");
         if (copy) return { type: "imageView", id, path: attachmentSource(item, copy.id) };
         const missing = unavailableImages(item);

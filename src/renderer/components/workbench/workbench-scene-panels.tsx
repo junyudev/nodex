@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { isRemoteSpace } from "@/lib/renderer-space";
+import { REMOTE_FILESYSTEM_REASON } from "../../../shared/space-connection";
 import { BrowserTabFavicon } from "@/features/browser-sidebar/browser-tab-favicon";
 import { requestTerminalFocus } from "@/lib/terminal-focus";
 import { isPanelActionTargetAllowed, type PanelNewTabAction } from "@/lib/workbench-panel-actions";
@@ -140,6 +141,8 @@ function makePanelItems(
         reorderable: !preview && surface.id !== scene.primary?.id,
         splittable: !preview && surface.id !== scene.primary?.id,
         renderPanel: (_close, context) =>
+          isRemoteSpace() && ["files", "terminal", "review"].includes(surface.kind) ? (
+            <p className="p-3 text-sm text-token-text-secondary">{REMOTE_FILESYSTEM_REASON}</p>
           ) : (
             renderSurface(surface, {
               active: context.active,

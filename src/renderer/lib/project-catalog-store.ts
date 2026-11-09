@@ -1,5 +1,6 @@
 import type { LocalCommitApply } from "../../shared/local-commit-delivery";
 import type { ProjectUpdateCommandInput, ProjectUpdateInput } from "../../shared/types";
+import { projectSourceIdentity, projectSourceFromIdentity } from "../../shared/project-sources";
 import {
   beginRendererOwnerTrace,
   recordRendererOwnerTrace,
@@ -204,7 +205,7 @@ export function createProjectCatalogStore({
       ...(updates.description !== undefined ? { description: updates.description } : {}),
       ...(updates.appearance !== undefined ? { appearance: updates.appearance } : {}),
       ...(updates.sources !== undefined
-        ? { sources: updates.sources.map((root, order) => ({ root, order })) }
+        ? { sources: updates.sources.map(projectSourceFromIdentity) }
         : {}),
     };
     return next.name === value.name &&
@@ -234,7 +235,9 @@ export function createProjectCatalogStore({
 
   const equalSources = (left: Project["sources"], right: readonly string[]): boolean =>
     left.length === right.length &&
-    left.every((source, index) => source.order === index && source.root === right[index]);
+    left.every(
+      (source, index) => source.order === index && projectSourceIdentity(source) === right[index],
+    );
 
   const materializesUpdates = (canonical: Project, updates: ProjectUpdateInput): boolean =>
     (updates.name === undefined || canonical.name === updates.name) &&

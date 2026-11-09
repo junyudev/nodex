@@ -139,6 +139,13 @@ fn remote_members_read_and_reply_to_turns_with_member_bound_receipts() {
             Some("  Proceed unchanged.  ")
         );
         assert_eq!(delivery.question_response.is_some(), answer);
+        let session = delivery.session_id.clone();
+        let message = delivery.message_id.clone();
+        let captured: String = w.kernel.readers().read_default(move |c| {
+            Ok(c.query_row("SELECT member_id FROM session_requesting_members WHERE session_id=?1 AND message_id=?2", rusqlite::params![session, message], |r| r.get(0))?)
+        }).expect("an accepted reply retains its authenticated requesting Member");
+        assert_eq!(captured, "person");
+
         assert_eq!(count(&w, "SELECT count(*) FROM inbox_entries"), 0);
     }
 }
@@ -331,5 +338,98 @@ fn queued_member_withdrawal(withdrawal: &'static str) {
             "SELECT count(*) FROM blocks WHERE id='019d0000-0000-7000-8000-000000000099'"
         ),
         0
+    );
+}
+
+#[test]
+fn a_member_starts_a_chat_from_the_inbox_and_the_host_keeps_delivery() {
+    let w = seeded_workspace();
+    let bob = member(&w, "bob");
+    apply_member(
+        &w,
+        &bob,
+        "bob:capture",
+        ProjectWorkspaceIntent::SendInboxMessage {
+            reply_to_page_id: None,
+            expected_store_epoch: None,
+            page_id: "page:bob-idea".into(),
+            document_id: "document:bob-idea".into(),
+            body: "Draft the release notes".into(),
+            title: None,
+            project_id: None,
+        },
+    )
+    .unwrap();
+    let start = |person: &BoundModuleContext, operation: &str, id: &str| {
+        apply_member(
+            &w,
+            person,
+            operation,
+            ProjectWorkspaceIntent::DispatchInboxEntries {
+                expected_store_epoch: "epoch-1".into(),
+                basis: pages_basis(&w.module, vec!["page:bob-idea".into()]),
+                execution_selection: Some(selection()),
+                proposal_id: format!("proposal:{id}"),
+                page_ids: vec!["page:bob-idea".into()],
+                action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                    project_id: None,
+                    prompt: "Draft the release notes".into(),
+                    additions: vec![],
+                    agent: None,
+                },
+                session_id: Some(format!("session:{id}")),
+            },
+        )
+    };
+    // Only a person's decision starts Agent work; other connections cannot.
+    for adapter in [AdapterKind::NativeCli, AdapterKind::LoopbackHttp] {
+        let caller = BoundModuleContext { adapter, ..host() };
+        let refused = start(&caller, "other:start", "other").unwrap_err();
+        assert_eq!(
+            refused.code,
+            nodex_core_contracts::CoreErrorCode::Unauthorized
+        );
+    }
+    start(&bob, "bob:start", "bob").unwrap();
+
+    let ProjectWorkspaceReadValue::InboxDispatchOutbox { dispatches } = read(
+        &w.module,
+        ProjectWorkspaceRead::InboxDispatchOutbox { limit: 16 },
+    ) else {
+        panic!("Expected the dispatch outbox")
+    };
+    assert_eq!(dispatches.len(), 1);
+    assert_eq!(dispatches[0].session_id, "session:bob");
+    let (requester, actor): (String, String) = w
+        .kernel
+        .readers()
+        .read_default(|c| {
+            Ok(c.query_row(
+                "SELECT requester.member_id, json_extract(proposal.confirmed_actor_json,'$.member_id') \
+                 FROM session_requesting_members requester, inbox_proposals proposal \
+                 WHERE requester.session_id='session:bob' AND proposal.proposal_id='proposal:bob'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?)
+        })
+        .unwrap();
+    assert_eq!((requester.as_str(), actor.as_str()), ("bob", "bob"));
+
+    // Delivering the chat stays with the host's execution owner.
+    let delivery = apply_member(
+        &w,
+        &bob,
+        "bob:deliver",
+        ProjectWorkspaceIntent::CompleteInboxDispatch {
+            proposal_id: "proposal:bob".into(),
+            expected_revision: dispatches[0].revision,
+            message_id: dispatches[0].message_id.clone(),
+            dispatched_thread_id: Some("thread:bob".into()),
+        },
+    )
+    .unwrap_err();
+    assert_eq!(
+        delivery.code,
+        nodex_core_contracts::CoreErrorCode::Unauthorized
     );
 }

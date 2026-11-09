@@ -207,9 +207,14 @@ fn validate_scope(
     }
     Ok(())
 }
+pub(super) fn require_person(context: &BoundModuleContext) -> Result<(), StoreError> {
     if context.agent_attribution.is_some()
         || !matches!(
             context.adapter,
+            AdapterKind::ElectronHost
+                | AdapterKind::NativeCli
+                | AdapterKind::RemoteMember
+                | AdapterKind::Test
         )
     {
         return Err(StoreError::new(
@@ -218,6 +223,20 @@ fn validate_scope(
             false,
         ));
     }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn apply(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library: &str,
+    epoch: &str,
+    operation: &str,
+    hash: &str,
+    intent: &ProjectWorkspaceIntent,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    require_person(context)?;
     let (scope, pause) = match intent {
         ProjectWorkspaceIntent::PauseWork { scope } => (scope, true),
         ProjectWorkspaceIntent::ResumeWork { scope } => (scope, false),
@@ -227,6 +246,15 @@ fn validate_scope(
     let (kind, id) = coordinates(scope, library);
     let now = sqlite_now(connection)?;
     let changed = if pause {
+        let actor: String = if let Some(principal) = &context.principal {
+            principal.member_id.clone()
+        } else {
+            connection.query_row(
+                "SELECT member_id FROM local_profile_members WHERE library_id=?1",
+                [library],
+                |r| r.get(0),
+            )?
+        };
         let revision = crate::infrastructure::local_commit::head(connection)? + 1;
         connection.execute("INSERT INTO execution_holds(scope_kind,scope_id,actor,revision,paused_at) VALUES(?1,?2,?3,?4,?5) ON CONFLICT DO NOTHING",params![kind,id,actor,revision,now])?
     } else {

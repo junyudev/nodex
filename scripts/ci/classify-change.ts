@@ -50,6 +50,7 @@ const isRendererPath = (path: string): boolean =>
 
 const isElectronMainPath = (path: string): boolean =>
   path.startsWith("src/main/") ||
+  path.startsWith("src/host/") ||
   path.startsWith("src/preload/") ||
   path === "electron.vite.config.ts" ||
   path === "electron-builder.yml" ||
@@ -180,7 +181,11 @@ const testSuitesForPaths = (paths: readonly string[]): readonly AppTestSuite[] =
       add("core-client", "main", "integration");
       continue;
     }
-    if (path.startsWith("src/main/") || path.startsWith("src/preload/")) {
+    if (
+      path.startsWith("src/main/") ||
+      path.startsWith("src/host/") ||
+      path.startsWith("src/preload/")
+    ) {
       add("core-client", "main", "integration");
       continue;
     }

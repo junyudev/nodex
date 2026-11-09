@@ -14,6 +14,8 @@ const exec = promisify(execFile);
 
 test("joins a team Space, collaborates live and keeps personal work isolated through revocation", async ({}, testInfo) => {
   test.setTimeout(240_000);
+  const screenshots =
+    process.env.NODEX_TEAM_SPACE_SCREENSHOTS ?? testInfo.outputPath("screenshots");
   await mkdir(screenshots, { recursive: true });
   await withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (host) => {
     const cli = async <Value>(...args: string[]): Promise<Value> => {

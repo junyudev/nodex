@@ -134,9 +134,13 @@ impl Core {
         decode_response(&response)
     }
     fn enroll(&self) -> EnrollmentResponse {
+        self.enroll_as(MemberRole::Member, "Bob")
+    }
+    fn enroll_as(&self, role: MemberRole, name: &str) -> EnrollmentResponse {
         let invite = self
             .local
             .space_invite(InviteRequest {
+                role,
                 member_id: None,
             })
             .unwrap();
@@ -144,6 +148,7 @@ impl Core {
             "/enroll",
             "",
             None,
+            json!({"code":invite.code,"device_label":"Test device","display_name":name}),
         );
         assert_eq!(status, 200, "{response}");
         serde_json::from_value(response).unwrap()
@@ -1086,10 +1091,342 @@ fn remote_attention_belongs_to_the_requesting_member() {
     );
 }
         "intent":{"kind":"create_project","project_id":"push-project","name":"Push","description":"","source_roots":["/tmp/nodex-push-test"]}}));
+        // The refused handshake carries a whole HTTP response; box it so the closure stays small.
         "intent":{"kind":"create_project","project_id":"phone-project","name":"Phone","description":"","source_roots":["https://git.example/team/phone"]}}));
     for attempt in 0..DEVICE_REQUESTS_PER_MINUTE + 10 {
+#[test]
+fn member_inbox_decisions_start_work_only_through_the_space_host() {
+    use tungstenite::{Message, client::IntoClientRequest};
+    let core = Core::start();
+    let device = core.enroll();
+    let session = core.session(&device.device_credential);
+    let remote_id = random_id();
+    let (status, value) =
+        core.handshake(&session.session_token, &remote_id, ClientKind::RemoteMember);
+    assert_eq!(status, 200, "{value}");
+    let remote: HandshakeResponse = serde_json::from_value(value).unwrap();
+    let (status, lease) = core.local_request(
+        "/core/v1/admin/host/register",
+        None,
+        json!({"instance":random_id()}),
+    );
+    assert_eq!(status, 200, "{lease}");
+    let host_id = random_id();
+    let (status, host) = core.local_request(
+        "/core/v1/handshake",
+        None,
+        serde_json::to_value(HandshakeRequest {
+            requirements: core_client_requirements(),
+            client: ClientIdentity {
+                kind: ClientKind::ElectronHost,
+                build_id: "inbox-host".into(),
+            },
+            connection_id: host_id.clone(),
+            expected_generation: RuntimeGenerationIdentity::from(&core.local.descriptor),
+        })
+        .unwrap(),
+    );
+    assert_eq!(status, 200, "{host}");
+    let host: HandshakeResponse = serde_json::from_value(host).unwrap();
+    let host_binding = Some((host_id.as_str(), host.connection_binding.as_str()));
+    let mut request = format!(
+        "{}/core/v1/phone",
+        core.info.url.replace("https://", "wss://")
+    )
+    .into_client_request()
+    .unwrap();
+    request.headers_mut().insert(
+        "authorization",
+        format!("Bearer {}", session.session_token).parse().unwrap(),
+    );
+    let (mut phone, _) =
+        tungstenite::client(request, core.tls(&core.info.fingerprint).unwrap()).unwrap();
+    let (_, open) = core.local_request("/core/v1/host/phone/poll", None, lease.clone());
+    assert_eq!(open["kind"], "open");
+    phone
+        .send(Message::text(
+            json!({"t":"req","id":1,"m":"inbox.decide","p":{}}).to_string(),
+        ))
+        .unwrap();
+    let (_, decide) = core.local_request("/core/v1/host/phone/poll", None, lease.clone());
+    assert_eq!(decide["kind"], "request");
+    let proof = decide["credential"].as_str().unwrap();
+    let envelope = |intent: Value| {
+        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+            "store_epoch":host.store_epoch,"operation_id":team_operation_id(),"intent":intent})
+    };
+    let carried = |path: &str, body: Value| {
+        let (status, value) = core.local_request_proof(path, host_binding, body, Some(proof));
+        assert_eq!(status, 200, "{value}");
+        value
+    };
+    let (_, initialized) = core.local_request("/core/v1/modules/workspace/apply",host_binding,
         envelope(json!({"kind":"create_project","project_id":"inbox-project","name":"Inbox","description":"","source_roots":[]})));
+    assert_eq!(initialized["status"], "ok", "{initialized}");
+    let captured = carried(
+        "/core/v1/modules/workspace/apply",
+        envelope(
+            json!({"kind":"send_inbox_message","page_id":"019d0000-0000-7000-8000-000000000301",
+            "document_id":"019d0000-0000-7000-8000-000000000302","body":"Draft the release notes"}),
+        ),
+    );
+    assert_eq!(captured["status"], "ok", "{captured}");
+    let context = carried(
+        "/core/v1/modules/workspace/read",
+        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+            "read":{"kind":"inbox_dispatch_context","page_ids":["019d0000-0000-7000-8000-000000000301"]}}),
+    );
+    let basis = context["payload"]["value"]["context"]["entries"][0]["basis"].clone();
+    let start = json!({"kind":"dispatch_inbox_entries","expected_store_epoch":host.store_epoch,
+        "proposal_id":"019d0000-0000-7000-8000-000000000303","page_ids":["019d0000-0000-7000-8000-000000000301"],
+        "basis":[basis],"session_id":"019d0000-0000-7000-8000-000000000304",
+        "execution_selection":{"model_selection":{"instanceId":"codex","model":"gpt"},"interaction_mode":"default"},
+        "action":{"type":"new_chat","project_id":null,"prompt":"Draft the release notes"}});
 
+    // The Member's own HTTPS connection cannot turn a decision into Agent work directly.
+    let (status, direct) = core.request(
+        "/core/v1/modules/workspace/apply",
+        &session.session_token,
+        Some((remote_id.as_str(), remote.connection_binding.as_str())),
+        envelope(start.clone()),
+    );
+    assert_eq!(status, 200, "{direct}");
+    assert_eq!(direct["status"], "error", "{direct}");
+    assert_eq!(
+        direct["payload"]["message"],
+        "Inbox decisions are confirmed through the Space host"
+    );
+    // The Space host carries the same decision with the Member's live invocation proof.
+    let started = carried("/core/v1/modules/workspace/apply", envelope(start));
+    assert_eq!(started["status"], "ok", "{started}");
+}
+
+/// One enrolled Member's authenticated HTTPS connection to the Space.
+struct Remote<'a> {
+    core: &'a Core,
+    token: String,
+    id: String,
+    binding: String,
+    store_epoch: String,
+}
+impl<'a> Remote<'a> {
+    fn connect(core: &'a Core, enrollment: &EnrollmentResponse) -> Self {
+        let session = core.session(&enrollment.device_credential);
+        let id = random_id();
+        let (status, value) = core.handshake(&session.session_token, &id, ClientKind::RemoteMember);
+        assert_eq!(status, 200, "{value}");
+        let handshake: HandshakeResponse = serde_json::from_value(value).unwrap();
+        Self {
+            core,
+            token: session.session_token,
+            id,
+            binding: handshake.connection_binding,
+            store_epoch: handshake.store_epoch,
+        }
+    }
+    fn apply(&self, intent: Value) -> Value {
+        let (status, value) = self.core.request(
+            "/core/v1/modules/workspace/apply",
+            &self.token,
+            Some((&self.id, &self.binding)),
+            json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                "store_epoch":self.store_epoch,"operation_id":team_operation_id(),"intent":intent}),
+        );
+        assert_eq!(status, 200, "{value}");
+        value
+    }
+    fn read(&self, read: Value) -> Value {
+        let (status, value) = self.core.request(
+            "/core/v1/modules/workspace/read",
+            &self.token,
+            Some((&self.id, &self.binding)),
+            json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,"read":read}),
+        );
+        assert_eq!(status, 200, "{value}");
+        assert_eq!(value["status"], "ok", "{value}");
+        value["payload"]["value"].clone()
+    }
+}
+
+#[test]
+fn a_chats_owner_and_space_owners_change_it_and_stop_its_work_while_other_members_cannot() {
+    let core = Core::start();
+    let bob = core.enroll_as(MemberRole::Member, "Bob");
+    let carol = core.enroll_as(MemberRole::Member, "Carol");
+    let dana = core.enroll_as(MemberRole::Owner, "Dana");
+    let (bob, carol, dana) = (
+        Remote::connect(&core, &bob),
+        Remote::connect(&core, &carol),
+        Remote::connect(&core, &dana),
+    );
+    let host_id = random_id();
+    let (status, host) = core.local_request(
+        "/core/v1/handshake",
+        None,
+        serde_json::to_value(HandshakeRequest {
+            requirements: core_client_requirements(),
+            client: ClientIdentity {
+                kind: ClientKind::ElectronHost,
+                build_id: "stewardship-host".into(),
+            },
+            connection_id: host_id.clone(),
+            expected_generation: RuntimeGenerationIdentity::from(&core.local.descriptor),
+        })
+        .unwrap(),
+    );
+    assert_eq!(status, 200, "{host}");
+    let host: HandshakeResponse = serde_json::from_value(host).unwrap();
+    let host_binding = Some((host_id.as_str(), host.connection_binding.as_str()));
+    let envelope = |intent: Value| {
+        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+            "store_epoch":host.store_epoch,"operation_id":team_operation_id(),"intent":intent})
+    };
+    let local_apply = |intent: Value| {
+        let (status, value) = core.local_request(
+            "/core/v1/modules/workspace/apply",
+            host_binding,
+            envelope(intent),
+        );
+        assert_eq!(status, 200, "{value}");
+        assert_eq!(value["status"], "ok", "{value}");
+    };
+    for project in ["steward-project", "steward-other"] {
+        local_apply(
+            json!({"kind":"create_project","project_id":project,"name":project,
+            "description":"","source_roots":[format!("https://git.example/team/{project}")]}),
+        );
+    }
+    // Bob's Start makes him the chat's owner.
+    let page = "019d0000-0000-7000-8000-000000000401";
+    local_apply(
+        json!({"kind":"create_page_for","for":{"kind":"project","project_id":"steward-project"},
+        "page_id":page,"document_id":"019d0000-0000-7000-8000-000000000402","title":"Bob's work"}),
+    );
+    let started = bob.apply(json!({"kind":"start_page_work","page_id":page,
+        "selection":{"instanceId":"codex","model":"model","effort":null},"session_id":"bob-chat",
+        "launch_id":"bob-launch","message_id":"bob-message","brief":"Work","again":false,
+        "expected_readiness_epoch":null,"expected_turn_episode":null}));
+    assert_eq!(started["status"], "ok", "{started}");
+    let chat = json!({"kind":"session","session_id":"bob-chat"});
+    let rename = |title: &str| json!({"kind":"mutate_session","session_id":"bob-chat","intent":{"kind":"rename","title":title}});
+    let archive = |archived: bool| json!({"kind":"mutate_session","session_id":"bob-chat","intent":{"kind":"set_archived","archived":archived}});
+    let mv =
+        |project: &str| json!({"kind":"move_session","session_id":"bob-chat","project_id":project});
+    let refused = |value: Value| {
+        assert_eq!(value["status"], "error", "{value}");
+        assert_eq!(value["payload"]["code"], "unauthorized", "{value}");
+        assert_eq!(
+            value["payload"]["message"],
+            "Only the person who started this chat or a Space Owner can do this"
+        );
+    };
+
+    // Each reader learns from Core whether the chat is theirs to change and its work to stop.
+    let capabilities = |member: &Remote| {
+        let session = member.read(chat.clone())["session"].clone();
+        (session["can_manage"].clone(), session["can_stop"].clone())
+    };
+    assert_eq!(capabilities(&bob), (json!(true), json!(true)));
+    assert_eq!(capabilities(&carol), (json!(false), json!(false)));
+    assert_eq!(capabilities(&dana), (json!(true), json!(true)));
+
+    // Another Member cannot rename, move or archive it, directly or through the Space host.
+    refused(carol.apply(rename("Carol's title")));
+    refused(carol.apply(mv("steward-other")));
+    refused(carol.apply(archive(true)));
+    let (status, lease) = core.local_request(
+        "/core/v1/admin/host/register",
+        None,
+        json!({"instance":random_id()}),
+    );
+    assert_eq!(status, 200, "{lease}");
+    std::thread::scope(|scope| {
+        let call = scope.spawn(|| {
+            core.request(
+                "/core/v1/host/call",
+                &carol.token,
+                Some((&carol.id, &carol.binding)),
+                json!({"operation":"session_rename","input":{}}),
+            )
+        });
+        let (status, invocation) =
+            core.local_request("/core/v1/admin/host/poll", None, lease.clone());
+        assert_eq!(status, 200, "{invocation}");
+        let proof = invocation["credential"].as_str().unwrap();
+        let (status, carried) = core.local_request_proof(
+            "/core/v1/modules/workspace/apply",
+            host_binding,
+            envelope(rename("Carried for Carol")),
+            Some(proof),
+        );
+        assert_eq!(status, 200, "{carried}");
+        refused(carried);
+        core.local_request(
+            "/core/v1/admin/host/complete",
+            None,
+            json!({"token":lease["token"],"id":invocation["id"],"result":{"status":"ok","value":null}}),
+        );
+        assert_eq!(call.join().unwrap().0, 200);
+    });
+    assert_eq!(
+        bob.read(chat.clone())["session"]["display_title"],
+        "Bob's work"
+    );
+
+    // The chat's owner and a Space Owner can.
+    assert_eq!(bob.apply(rename("Release notes"))["status"], "ok");
+    assert_eq!(bob.apply(mv("steward-other"))["status"], "ok");
+    assert_eq!(dana.apply(archive(true))["status"], "ok");
+    let archived = carol.read(chat.clone())["session"].clone();
+    assert_eq!(archived["display_title"], "Release notes");
+    assert_eq!(archived["project_id"], "steward-other");
+    assert_eq!(archived["archived"], true);
+    refused(carol.apply(archive(false)));
+    assert_eq!(bob.apply(archive(false))["status"], "ok");
+    assert_eq!(carol.read(chat)["session"]["archived"], false);
+
+    // Stopping the chat's work follows the same rule, before the host ever sees the call.
+    let target = json!({"sessionId":"bob-chat","threadId":"thread","requestId":"request"});
+    let stops = [
+        ("session_stop", json!({"runId":"run"})),
+        ("session_stop_task", json!({"runId":"run","taskId":"task"})),
+        ("session_cancel_task", json!({"taskId":"task"})),
+        ("session_stop_background", json!({"taskIds":["task"]})),
+    ];
+    let host_call = |member: &Remote, operation: &str, extra: &Value| {
+        let mut input = target.clone();
+        input
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        core.request(
+            "/core/v1/host/call",
+            &member.token,
+            Some((&member.id, &member.binding)),
+            json!({"operation":operation,"input":input}),
+        )
+    };
+    for (operation, extra) in &stops {
+        let (status, value) = host_call(&carol, operation, extra);
+        assert_eq!(status, 403, "{operation}: {value}");
+    }
+    for member in [&bob, &dana] {
+        for (operation, extra) in &stops {
+            std::thread::scope(|scope| {
+                let call = scope.spawn(|| host_call(member, operation, extra));
+                let (status, invocation) =
+                    core.local_request("/core/v1/admin/host/poll", None, lease.clone());
+                assert_eq!(status, 200, "{invocation}");
+                assert_eq!(invocation["call"]["operation"], *operation);
+                core.local_request(
+                    "/core/v1/admin/host/complete",
+                    None,
+                    json!({"token":lease["token"],"id":invocation["id"],"result":{"status":"ok","value":null}}),
+                );
+                assert_eq!(call.join().unwrap().0, 200, "{operation}");
+            });
+        }
+    }
 }
 
 #[test]
@@ -1202,7 +1539,140 @@ fn each_member_keeps_their_own_pins_and_reminders_on_a_shared_chat() {
         |member: &Remote| member.read(json!({"kind":"unread_chat_count"}))["count"].clone();
     assert_eq!((unread(&bob), unread(&carol)), (json!(1), json!(0)));
     assert_eq!(next_reminder()["session"], Value::Null);
+}
+
+#[test]
+fn hosted_chat_attachments_are_read_with_the_members_authority_until_withdrawal() {
+    let core = Core::start();
+    let bob = core.enroll();
+    let session = core.session(&bob.device_credential);
+    let remote_id = random_id();
+    let (status, value) =
+        core.handshake(&session.session_token, &remote_id, ClientKind::RemoteMember);
+    assert_eq!(status, 200, "{value}");
+    let remote: HandshakeResponse = serde_json::from_value(value).unwrap();
     let (remote_connection_id, remote_connection_binding) =
+        (remote_id.as_str(), remote.connection_binding.as_str());
+    let remote_binding = Some((remote_connection_id, remote_connection_binding));
+    let (status, lease) = core.local_request(
+        "/core/v1/admin/host/register",
+        None,
+        json!({"instance":random_id()}),
+    );
+    assert_eq!(status, 200, "{lease}");
+    let host_id = random_id();
+    let (status, host) = core.local_request(
+        "/core/v1/handshake",
+        None,
+        serde_json::to_value(HandshakeRequest {
+            requirements: core_client_requirements(),
+            client: ClientIdentity {
+                kind: ClientKind::ElectronHost,
+                build_id: "attachment-host".into(),
+            },
+            connection_id: host_id.clone(),
+            expected_generation: RuntimeGenerationIdentity::from(&core.local.descriptor),
+        })
+        .unwrap(),
+    );
+    assert_eq!(status, 200, "{host}");
+    let host: HandshakeResponse = serde_json::from_value(host).unwrap();
+    let host_binding = Some((host_id.as_str(), host.connection_binding.as_str()));
+    let (_, created) = core.local_request("/core/v1/modules/workspace/apply", host_binding,
+        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,"store_epoch":host.store_epoch,
+        "operation_id":team_operation_id(),"intent":{"kind":"create_session","session_id":"photo-chat",
+        "project_id":null,"title":"Photos","initial_page_ids":[]}}));
+    assert_eq!(created["status"], "ok", "{created}");
+    // The host reads the chat as the invoking Member before it reads any of its attachments.
+    let read_chat = |proof: &str, session_id: &str| {
+        core.local_request_proof(
+            "/core/v1/modules/workspace/read",
+            host_binding,
+            json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+            "read":{"kind":"session","session_id":session_id}}),
+            Some(proof),
+        )
+        .1
+    };
+    let range = |offset: u64, version: Option<&str>| {
+        let mut input = json!({"sessionId":"photo-chat","itemId":"phone-message","attachmentId":"photo",
+            "offset":offset,"length":1_048_576});
+        if let Some(version) = version {
+            input["version"] = json!(version);
+        }
+        json!({"operation":"session_attachment","input":input})
+    };
+    let complete = |invocation: &Value, value: Value| {
+        core.local_request(
+            "/core/v1/admin/host/complete",
+            None,
+            json!({"token":lease["token"],"id":invocation["id"],"result":{"status":"ok","value":value}}),
+        )
+    };
+    // A withdrawn Member's response may end before its body, so only the status line is read.
+    let call_status = |body: Value| {
+        let mut tls = core.tls(&core.info.fingerprint).unwrap();
+        let bytes = serde_json::to_vec(&body).unwrap();
+        let (id, binding) = (remote_connection_id, remote_connection_binding);
+        write!(tls,"POST /core/v1/host/call HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nx-nodex-connection-id: {id}\r\nx-nodex-connection-binding: {binding}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",session.session_token,bytes.len()).unwrap();
+        tls.write_all(&bytes).unwrap();
+        tls.flush().unwrap();
+        let mut line = String::new();
+        BufReader::new(tls).read_line(&mut line).unwrap();
+        line.split_whitespace()
+            .nth(1)
+            .unwrap()
+            .parse::<u16>()
+            .unwrap()
+    };
+
+    let chunk = json!({"base64":"iVBORw0KGgo=","totalBytes":16,"mimeType":"image/png",
+        "name":"photo.png","version":"pinned"});
+    std::thread::scope(|scope| {
+        let call = scope.spawn(|| {
+            core.request(
+                "/core/v1/host/call",
+                &session.session_token,
+                remote_binding,
+                range(0, None),
+            )
+        });
+        let (status, invocation) =
+            core.local_request("/core/v1/admin/host/poll", None, lease.clone());
+        assert_eq!(status, 200, "{invocation}");
+        assert_eq!(invocation["call"]["operation"], "session_attachment");
+        let proof = invocation["credential"].as_str().unwrap();
+        // Core's own Session read admits this Space's chat for Bob, and nothing else.
+        let chat = read_chat(proof, "photo-chat");
+        assert_eq!(chat["status"], "ok", "{chat}");
+        assert_eq!(chat["payload"]["value"]["session"]["id"], "photo-chat");
+        assert_eq!(read_chat(proof, "another-chat")["status"], "error");
+        assert_eq!(complete(&invocation, chunk.clone()).1, true);
+        let (status, answered) = call.join().unwrap();
+        assert_eq!(status, 200, "{answered}");
+        assert_eq!(answered, json!({"status":"ok","value":chunk}));
+    });
+
+    // Revoking the Device between two ranges refuses the read in progress and every later one.
+    std::thread::scope(|scope| {
+        let call = scope.spawn(|| call_status(range(8, Some("pinned"))));
+        let (_, invocation) = core.local_request("/core/v1/admin/host/poll", None, lease.clone());
+        let proof = invocation["credential"].as_str().unwrap();
+        assert_eq!(read_chat(proof, "photo-chat")["status"], "ok");
+        core.local
+            .space_revoke(RevokeDeviceRequest {
+                device_id: bob.device_id.clone(),
+            })
+            .unwrap();
+        let refused = read_chat(proof, "photo-chat");
+        assert_eq!(refused["status"], "error", "{refused}");
+        assert_eq!(refused["payload"]["code"], "unauthorized", "{refused}");
+        assert_eq!(complete(&invocation, chunk.clone()).0, 503);
+        assert_ne!(call.join().unwrap(), 200);
+    });
+    assert_eq!(call_status(range(0, None)), 401);
+}
+
 #[test]
 fn a_space_rename_reaches_each_members_live_event_stream() {
     let core = Core::start();
@@ -1279,3 +1749,835 @@ fn members_name_themselves_and_the_local_owner_starts_with_a_real_name() {
     assert_eq!(owner().display_name, "Jun Yu");
 }
 
+#[test]
+fn explicit_shutdown_stops_a_core_whose_listener_started_with_it() {
+    // A listener restored or requested at startup begins waiting for drain before the
+    // local server does, and the execution owner keeps a long poll open; an explicit
+    // shutdown must still stop every part of Core within the owner's release deadline.
+    for operator_address in [None, Some("127.0.0.1:0")] {
+        let mut core = Core::start();
+        core.restart(operator_address);
+        let (status, lease) = core.local_request(
+            "/core/v1/admin/host/register",
+            None,
+            json!({"instance":random_id()}),
+        );
+        assert_eq!(status, 200, "{lease}");
+        std::thread::scope(|scope| {
+            let poll = scope.spawn(|| core.local_request("/core/v1/admin/host/poll", None, lease));
+            std::thread::sleep(Duration::from_millis(200));
+            let requested = Instant::now();
+            assert_eq!(
+                core.local.shutdown().unwrap().status,
+                nodex_core_protocol::ShutdownStatus::Draining
+            );
+            assert_eq!(poll.join().unwrap(), (200, Value::Null));
+            assert!(
+                requested.elapsed() < Duration::from_secs(2),
+                "a draining Core ends its execution owner's poll"
+            );
+        });
+        let until = Instant::now() + Duration::from_secs(4);
+        while core.child.try_wait().unwrap().is_none() {
+            assert!(
+                Instant::now() < until,
+                "Core stayed draining ({operator_address:?})"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let lifecycle: Value = serde_json::from_slice(
+            &fs::read(core.home.path().join("run/core/lifecycle.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(lifecycle["current"]["phase"], "stopped", "{lifecycle}");
+        assert_eq!(lifecycle["current"]["stop_outcome"], "success");
+    }
+}
+
+
+/// A remote Member's enrolled Device with its live session and authenticated connection.
+struct RemoteMember {
+    enrollment: EnrollmentResponse,
+    session: SessionResponse,
+    connection: (String, String),
+}
+
+/// One team Space whose execution host has registered, with three remote Members: Alice, who
+/// starts chats, Bob, who has no part in them, and Olivia, a Space Owner.
+struct HostedChats {
+    core: Core,
+    lease: Value,
+    host: (String, String),
+    store_epoch: String,
+    alice: RemoteMember,
+    bob: RemoteMember,
+    olivia: RemoteMember,
+}
+impl HostedChats {
+    fn start() -> Self {
+        let core = Core::start();
+        let alice = Self::member(&core, MemberRole::Member, "Alice");
+        let bob = Self::member(&core, MemberRole::Member, "Bob");
+        let olivia = Self::member(&core, MemberRole::Owner, "Olivia");
+        let (status, lease) = core.local_request(
+            "/core/v1/admin/host/register",
+            None,
+            json!({"instance":random_id()}),
+        );
+        assert_eq!(status, 200, "{lease}");
+        let host_id = random_id();
+        let (status, host) = core.local_request(
+            "/core/v1/handshake",
+            None,
+            serde_json::to_value(HandshakeRequest {
+                requirements: core_client_requirements(),
+                client: ClientIdentity {
+                    kind: ClientKind::ElectronHost,
+                    build_id: "hosted-chats".into(),
+                },
+                connection_id: host_id.clone(),
+                expected_generation: RuntimeGenerationIdentity::from(&core.local.descriptor),
+            })
+            .unwrap(),
+        );
+        assert_eq!(status, 200, "{host}");
+        let host: HandshakeResponse = serde_json::from_value(host).unwrap();
+        let chats = Self {
+            core,
+            lease,
+            host: (host_id, host.connection_binding),
+            store_epoch: host.store_epoch.clone(),
+            alice,
+            bob,
+            olivia,
+        };
+        let created = chats.host_apply(
+            None,
+            json!({"kind":"create_session","session_id":"chat","project_id":null,
+                "title":"Release notes","initial_page_ids":[]}),
+        );
+        assert_eq!(created["status"], "ok", "{created}");
+        chats
+    }
+    /// A newly enrolled Member's own authenticated connection.
+    fn member(core: &Core, role: MemberRole, name: &str) -> RemoteMember {
+        let enrollment = core.enroll_as(role, name);
+        let session = core.session(&enrollment.device_credential);
+        let id = random_id();
+        let (status, value) = core.handshake(&session.session_token, &id, ClientKind::RemoteMember);
+        assert_eq!(status, 200, "{value}");
+        let handshake: HandshakeResponse = serde_json::from_value(value).unwrap();
+        RemoteMember {
+            enrollment,
+            session,
+            connection: (id, handshake.connection_binding),
+        }
+    }
+    fn host_binding(&self) -> Option<(&str, &str)> {
+        Some((self.host.0.as_str(), self.host.1.as_str()))
+    }
+    /// A Project Workspace write by the execution owner, carrying a Member's invocation if any.
+    fn host_apply(&self, proof: Option<&str>, intent: Value) -> Value {
+        self.core
+            .local_request_proof(
+                "/core/v1/modules/workspace/apply",
+                self.host_binding(),
+                json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    "store_epoch":self.store_epoch,"operation_id":team_operation_id(),"intent":intent}),
+                proof,
+            )
+            .1
+    }
+    fn call(&self, member: &RemoteMember, operation: &str, input: Value) -> (u16, Value) {
+        self.core.request(
+            "/core/v1/host/call",
+            &member.session.session_token,
+            Some((member.connection.0.as_str(), member.connection.1.as_str())),
+            json!({"operation":operation,"input":input}),
+        )
+    }
+    /// Core refuses the call before it reaches the host.
+    fn refused(&self, member: &RemoteMember, operation: &str, input: Value) -> Value {
+        let (status, refused) = self.call(member, operation, input);
+        assert_ne!(status, 200, "{refused}");
+        refused
+    }
+    /// Core delivers the call to the host, which acts on it with its invocation proof.
+    fn admitted<R>(
+        &self,
+        member: &RemoteMember,
+        operation: &str,
+        input: Value,
+        act: impl FnOnce(&str) -> R,
+    ) -> R {
+        let (completed, answered, acted) = self.delivered(member, operation, input, act);
+        assert_eq!(completed, 200);
+        assert_eq!(answered, 200);
+        acted
+    }
+    /// The host's completion status, the Member's response status and what the host did.
+    fn delivered<R>(
+        &self,
+        member: &RemoteMember,
+        operation: &str,
+        input: Value,
+        act: impl FnOnce(&str) -> R,
+    ) -> (u16, u16, R) {
+        std::thread::scope(|scope| {
+            let call = scope.spawn(|| self.call_status(member, operation, input));
+            let (status, invocation) =
+                self.core
+                    .local_request("/core/v1/admin/host/poll", None, self.lease.clone());
+            assert_eq!(status, 200, "{invocation}");
+            assert_eq!(invocation["call"]["operation"], operation, "{invocation}");
+            let acted = act(invocation["credential"].as_str().unwrap());
+            let (completed, _) = self.core.local_request(
+                "/core/v1/admin/host/complete",
+                None,
+                json!({"token":self.lease["token"],"id":invocation["id"],
+                    "result":{"status":"ok","value":null}}),
+            );
+            (completed, call.join().unwrap(), acted)
+        })
+    }
+    /// A withdrawn Member's response may end before its body, so only its status is read.
+    fn call_status(&self, member: &RemoteMember, operation: &str, input: Value) -> u16 {
+        let mut tls = self.core.tls(&self.core.info.fingerprint).unwrap();
+        let bytes = serde_json::to_vec(&json!({"operation":operation,"input":input})).unwrap();
+        let (id, binding) = &member.connection;
+        write!(tls,"POST /core/v1/host/call HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nx-nodex-connection-id: {id}\r\nx-nodex-connection-binding: {binding}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",member.session.session_token,bytes.len()).unwrap();
+        tls.write_all(&bytes).unwrap();
+        tls.flush().unwrap();
+        let mut line = String::new();
+        BufReader::new(tls).read_line(&mut line).unwrap();
+        line.split_whitespace().nth(1).unwrap().parse().unwrap()
+    }
+    /// The chat a launch proof creates, bound to this host's Runtime.
+    fn launch(&self, proof: &str, session: &str, launch: &str, side_chat: Option<&str>) -> Value {
+        let mut intent = json!({"kind":"create_agent_runtime_session","session_id":session,
+            "project_id":null,"title":"Fork","initial_page_ids":[],"runtime_id":"runtime",
+            "runtime_thread_id":format!("thread:{session}"),"launch_request_id":launch});
+        if let Some(source) = side_chat {
+            intent["side_chat_source_session_id"] = json!(source);
+        }
+        self.host_apply(Some(proof), intent)
+    }
+    /// Who a chat answers to, read from Core's own evidence.
+    fn requester(&self, session: &str) -> String {
+        let database = rusqlite::Connection::open_with_flags(
+            self.core.home.path().join("nodex.db"),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )
+        .unwrap();
+        database
+            .query_row(
+                "SELECT member_id FROM session_requesting_members WHERE session_id=?1 AND message_id='session:created'",
+                [session],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+}
+
+#[test]
+fn any_member_who_reads_a_hosted_chat_forks_it_as_their_own() {
+    let chats = HostedChats::start();
+    let fork = |session: &str| {
+        json!({"source":{"sessionId":"chat"},"sessionId":session,"requestId":format!("{session}:launch"),
+            "acceptedAt":1,"environment":"same-directory"})
+    };
+    // Bob had no part in the chat; reading it is enough to fork it.
+    let proof = chats.admitted(&chats.bob, "session_fork", fork("bob-fork"), |proof| {
+        // The proof creates exactly the fork it was issued for, and no other chat.
+        let other = chats.launch(proof, "other", "bob-fork:launch", None);
+        assert_eq!(other["status"], "error", "{other}");
+        let side = chats.launch(proof, "bob-fork", "bob-fork:launch", Some("chat"));
+        assert_eq!(side["status"], "error", "{side}");
+        let created = chats.launch(proof, "bob-fork", "bob-fork:launch", None);
+        assert_eq!(created["status"], "ok", "{created}");
+        proof.to_owned()
+    });
+    assert_eq!(chats.requester("bob-fork"), chats.bob.enrollment.member_id);
+    // The proof ends with its call, and a Member's own connection cannot launch the fork.
+    let expired = chats.launch(&proof, "late-fork", "late-fork:launch", None);
+    assert_eq!(expired["status"], "error", "{expired}");
+    let (status, direct) = chats.core.request(
+        "/core/v1/modules/workspace/apply",
+        &chats.alice.session.session_token,
+        Some((
+            chats.alice.connection.0.as_str(),
+            chats.alice.connection.1.as_str(),
+        )),
+        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+            "store_epoch":chats.store_epoch,"operation_id":team_operation_id(),
+            "intent":{"kind":"create_agent_runtime_session","session_id":"direct","project_id":null,
+                "title":"Fork","initial_page_ids":[],"runtime_id":"runtime",
+                "runtime_thread_id":"thread:direct","launch_request_id":"direct"}}),
+    );
+    assert_eq!(status, 200, "{direct}");
+    assert_eq!(direct["status"], "error", "{direct}");
+    // A chat that is not in this Space cannot be forked by anyone.
+    let missing = chats.refused(
+        &chats.olivia,
+        "session_fork",
+        json!({"source":{"sessionId":"elsewhere"},"sessionId":"olivia-fork",
+            "requestId":"olivia-fork:launch","acceptedAt":1,"environment":"same-directory"}),
+    );
+    assert!(missing.to_string().contains("unavailable"), "{missing}");
+}
+
+impl HostedChats {
+    /// A Project Workspace write on a Member's own authenticated connection.
+    fn member_apply(&self, member: &RemoteMember, intent: Value) -> Value {
+        let (status, value) = self.core.request(
+            "/core/v1/modules/workspace/apply",
+            &member.session.session_token,
+            Some((member.connection.0.as_str(), member.connection.1.as_str())),
+            json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                "store_epoch":self.store_epoch,"operation_id":team_operation_id(),"intent":intent}),
+        );
+        assert_eq!(status, 200, "{value}");
+        value
+    }
+    /// The chats the Member's sidebar lists without a Project.
+    fn listed(&self, member: &RemoteMember) -> Vec<String> {
+        let read = self.member_read(
+            member,
+            json!({"kind":"task_window","project_id":null,"window":{"first":50}}),
+        );
+        assert_eq!(read["status"], "ok", "{read}");
+        read["payload"]["value"]["tasks"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|task| task["session"]["id"].as_str().unwrap().to_owned())
+            .collect()
+    }
+}
+
+#[test]
+fn a_member_starts_a_hosted_chat_of_their_own_from_their_own_draft() {
+    let chats = HostedChats::start();
+    let draft = |member: &RemoteMember, session: &str| {
+        let ensured = chats.member_apply(
+            member,
+            json!({"kind":"ensure_default_draft_session","session_id":session,
+                "project_id":null,"title":"New chat"}),
+        );
+        assert_eq!(ensured["status"], "ok", "{ensured}");
+    };
+    // Each Member opens a draft of their own, which no one else lists or starts.
+    draft(&chats.alice, "alice-draft");
+    draft(&chats.bob, "bob-draft");
+    draft(&chats.alice, "alice-second-draft");
+    assert_eq!(
+        chats.requester("alice-draft"),
+        chats.alice.enrollment.member_id
+    );
+    assert_eq!(chats.requester("bob-draft"), chats.bob.enrollment.member_id);
+    let bob_lists = chats.listed(&chats.bob);
+    assert!(bob_lists.contains(&"bob-draft".to_owned()), "{bob_lists:?}");
+    assert!(
+        !bob_lists.contains(&"alice-draft".to_owned()),
+        "{bob_lists:?}"
+    );
+    assert!(
+        !chats
+            .listed(&chats.alice)
+            .contains(&"alice-second-draft".to_owned())
+    );
+    let start = |session: &str| {
+        json!({"sessionId":session,"launchId":format!("{session}:launch"),"acceptedAt":1,
+            "projectId":null,"title":"New chat","message":{"messageId":format!("{session}:message"),"text":"Hello"},
+            "modelSelection":{"instanceId":"codex","model":"gpt-6-luna"},"interactionMode":"default"})
+    };
+    let refused = chats.refused(&chats.bob, "session_start", start("alice-draft"));
+    assert!(refused.to_string().contains("another Member"), "{refused}");
+    // Bob starts his own draft; the host's proof launches exactly it, and it stays his.
+    chats.admitted(&chats.bob, "session_start", start("bob-draft"), |proof| {
+        let other = chats.launch(proof, "alice-draft", "bob-draft:launch", None);
+        assert_eq!(other["status"], "error", "{other}");
+        let created = chats.launch(proof, "bob-draft", "bob-draft:launch", None);
+        assert_eq!(created["status"], "ok", "{created}");
+        // The proof still carries the start's first message once its launch bound the chat.
+        let message = chats.host_apply(
+            Some(proof),
+            json!({"kind":"mutate_session","session_id":"bob-draft",
+                "intent":{"kind":"record_user_message","message_id":"bob-draft:message"}}),
+        );
+        assert_eq!(message["status"], "ok", "{message}");
+    });
+    assert_eq!(chats.requester("bob-draft"), chats.bob.enrollment.member_id);
+    let mut again = start("bob-draft");
+    again["launchId"] = json!("bob-draft:again");
+    let started = chats.refused(&chats.bob, "session_start", again);
+    assert!(started.to_string().contains("already started"), "{started}");
+    // A new chat without a draft is its starter's too.
+    chats.admitted(
+        &chats.olivia,
+        "session_start",
+        start("olivia-chat"),
+        |proof| {
+            let created = chats.launch(proof, "olivia-chat", "olivia-chat:launch", None);
+            assert_eq!(created["status"], "ok", "{created}");
+        },
+    );
+    assert_eq!(
+        chats.requester("olivia-chat"),
+        chats.olivia.enrollment.member_id
+    );
+    assert!(chats.can_manage(&chats.olivia, "olivia-chat"));
+    assert!(!chats.can_manage(&chats.bob, "olivia-chat"));
+}
+
+impl HostedChats {
+    /// A Project Workspace read on a Member's own authenticated connection.
+    fn member_read(&self, member: &RemoteMember, read: Value) -> Value {
+        let (status, value) = self.core.request(
+            "/core/v1/modules/workspace/read",
+            &member.session.session_token,
+            Some((member.connection.0.as_str(), member.connection.1.as_str())),
+            json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                "read":read}),
+        );
+        assert_eq!(status, 200, "{value}");
+        value
+    }
+    /// What the Member may do with a chat, as every session read tells them.
+    fn capabilities(&self, member: &RemoteMember, session: &str) -> (bool, bool) {
+        let read = self.member_read(member, json!({"kind":"session","session_id":session}));
+        assert_eq!(read["status"], "ok", "{read}");
+        let session = &read["payload"]["value"]["session"];
+        (
+            session["can_manage"].as_bool().unwrap(),
+            session["can_stop"].as_bool().unwrap(),
+        )
+    }
+    fn can_manage(&self, member: &RemoteMember, session: &str) -> bool {
+        self.capabilities(member, session).0
+    }
+}
+
+#[test]
+fn a_hosted_side_chat_answers_to_the_member_who_opened_it() {
+    let chats = HostedChats::start();
+    let alice = &chats.alice;
+    let side = json!({"source":{"sessionId":"chat"},"sessionId":"alice-side",
+        "requestId":"alice-side:launch","acceptedAt":1});
+    chats.admitted(alice, "session_side_chat_create", side, |proof| {
+        // The proof binds exactly a side chat of the chat it named.
+        for source in [None, Some("elsewhere")] {
+            let refused = chats.launch(proof, "alice-side", "alice-side:launch", source);
+            assert_eq!(refused["status"], "error", "{refused}");
+        }
+        let created = chats.launch(proof, "alice-side", "alice-side:launch", Some("chat"));
+        assert_eq!(created["status"], "ok", "{created}");
+    });
+    assert_eq!(chats.requester("alice-side"), alice.enrollment.member_id);
+    assert!(chats.can_manage(alice, "alice-side"));
+    assert!(!chats.can_manage(&chats.bob, "alice-side"));
+
+    // Saving and closing belong to Alice alone; merging it back, to her and the Space Owners.
+    let save = json!({"source":{"sessionId":"alice-side"},"sessionId":"saved",
+        "requestId":"saved:launch","acceptedAt":1});
+    let merge = json!({"sessionId":"alice-side","requestId":"merge"});
+    let close = json!({"sessionId":"alice-side","requestId":"close"});
+    for member in [&chats.bob, &chats.olivia] {
+        let refused = chats.refused(member, "session_side_chat_save", save.clone());
+        assert!(refused.to_string().contains("another Member"), "{refused}");
+        chats.refused(member, "session_side_chat_discard", close.clone());
+    }
+    let refused = chats.refused(&chats.bob, "session_merge_back", merge.clone());
+    assert!(
+        refused
+            .to_string()
+            .contains("started this chat or a Space Owner"),
+        "{refused}"
+    );
+    chats.admitted(&chats.olivia, "session_merge_back", merge.clone(), |_| ());
+    chats.admitted(alice, "session_merge_back", merge, |_| ());
+    chats.admitted(alice, "session_side_chat_save", save, |proof| {
+        let saved = chats.launch(proof, "saved", "saved:launch", None);
+        assert_eq!(saved["status"], "ok", "{saved}");
+    });
+    assert_eq!(chats.requester("saved"), alice.enrollment.member_id);
+    // A saved chat is no side chat; it closes like any other chat, which no Device deletes.
+    chats.refused(
+        alice,
+        "session_side_chat_discard",
+        json!({"sessionId":"saved","requestId":"close-saved"}),
+    );
+    chats.admitted(alice, "session_side_chat_discard", close, |proof| {
+        let shared = chats.host_apply(
+            Some(proof),
+            json!({"kind":"delete_session","session_id":"chat"}),
+        );
+        assert_eq!(shared["status"], "error", "{shared}");
+        let closed = chats.host_apply(
+            Some(proof),
+            json!({"kind":"delete_session","session_id":"alice-side"}),
+        );
+        assert_eq!(closed["status"], "ok", "{closed}");
+    });
+    let (status, direct) = chats.core.request(
+        "/core/v1/modules/workspace/apply",
+        &alice.session.session_token,
+        Some((alice.connection.0.as_str(), alice.connection.1.as_str())),
+        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+            "store_epoch":chats.store_epoch,"operation_id":team_operation_id(),
+            "intent":{"kind":"delete_session","session_id":"saved"}}),
+    );
+    assert_eq!(status, 200, "{direct}");
+    assert_eq!(direct["status"], "error", "{direct}");
+
+    // An archived chat takes no new side chat from anyone.
+    let archived = chats.host_apply(
+        None,
+        json!({"kind":"mutate_session","session_id":"chat","intent":{"kind":"set_archived","archived":true}}),
+    );
+    assert_eq!(archived["status"], "ok", "{archived}");
+    let refused = chats.refused(
+        &chats.olivia,
+        "session_side_chat_create",
+        json!({"source":{"sessionId":"chat"},"sessionId":"late-side",
+            "requestId":"late-side:launch","acceptedAt":1}),
+    );
+    assert!(
+        refused.to_string().contains("Restore this chat"),
+        "{refused}"
+    );
+}
+
+impl HostedChats {
+    /// A Member's message reaches the chat through the host, which records its acceptance.
+    fn send(&self, member: &RemoteMember, message: &str) {
+        self.send_in(member, "chat", message);
+    }
+    fn send_in(&self, member: &RemoteMember, session: &str, message: &str) {
+        let input = json!({"sessionId":session,"message":{"messageId":message,"text":message},
+            "delivery":"send"});
+        self.admitted(member, "session_message", input, |proof| {
+            let accepted = self.accept_in(proof, session, message);
+            assert_eq!(accepted["status"], "ok", "{accepted}");
+        });
+    }
+    fn accept(&self, proof: &str, message: &str) -> Value {
+        self.accept_in(proof, "chat", message)
+    }
+    fn accept_in(&self, proof: &str, session: &str, message: &str) -> Value {
+        self.host_apply(
+            Some(proof),
+            json!({"kind":"mutate_session","session_id":session,
+                "intent":{"kind":"record_user_message","message_id":message}}),
+        )
+    }
+    /// The Runtime reports the message that opened a Run before its Agent acts.
+    fn run(&self, run: &str, message: &str) {
+        self.run_in("chat", run, message);
+    }
+    fn run_in(&self, session: &str, run: &str, message: &str) {
+        let (status, attributed) = self.core.local_request(
+            "/core/v1/agent-attributions",
+            self.host_binding(),
+            json!({"session_id":session,"run_id":run,"message_id":message,"backend":"codex"}),
+        );
+        assert_eq!(status, 200, "{attributed}");
+    }
+    /// The host observes `run` as the chat's current work.
+    fn working(&self, session: &str, run: &str, revision: u64) {
+        let observed = self.host_apply(
+            None,
+            json!({"kind":"record_session_execution","session_id":session,
+                "expected_revision":revision,"observation":{"state":"working","runId":run,
+                "runStartedAt":0,"pendingRequestIds":[],"pendingRequests":[],"queue":null,
+                "terminalStatus":null,"personStopped":false,"stalled":false,
+                "progressFingerprint":run,"progressSince":0},"events":[],"resolved_request_ids":[]}),
+        );
+        assert_eq!(observed["status"], "ok", "{observed}");
+    }
+    fn edits(&self, member: &RemoteMember) -> Value {
+        let read = self.member_read(
+            member,
+            json!({"kind":"session_member_actions","session_id":"chat","run_ids":["r1","r2"]}),
+        );
+        assert_eq!(read["status"], "ok", "{read}");
+        let runs = read["payload"]["value"]["actions"]["runs"]
+            .as_array()
+            .unwrap();
+        runs.iter()
+            .map(|run| json!({"run_id":run["run_id"],"edit":run["edit"]}))
+            .collect()
+    }
+}
+
+#[test]
+fn a_member_edits_their_own_message_until_someone_else_replies() {
+    let chats = HostedChats::start();
+    let (alice, bob) = (&chats.alice, &chats.bob);
+    let edit = |run: &str, message: &str| {
+        json!({"sessionId":"chat","runId":run,"requestId":format!("{message}:request"),
+            "message":{"messageId":message,"text":"Edited"}})
+    };
+    chats.send(alice, "m1");
+    chats.run("r1", "m1");
+    // Only Alice edits her message; an Owner's role does not make it theirs.
+    for member in [bob, &chats.olivia] {
+        let refused = chats.refused(member, "session_rewrite_message", edit("r1", "x1"));
+        assert!(
+            refused.to_string().contains("Only the person who sent"),
+            "{refused}"
+        );
+    }
+    chats.admitted(
+        alice,
+        "session_rewrite_message",
+        edit("r1", "m1-edited"),
+        |proof| {
+            let accepted = chats.accept(proof, "m1-edited");
+            assert_eq!(accepted["status"], "ok", "{accepted}");
+        },
+    );
+    chats.run("r1-edited", "m1-edited");
+    assert_eq!(
+        chats.edits(alice),
+        json!([{"run_id":"r1","edit":"available"},{"run_id":"r2","edit":"unavailable"}])
+    );
+
+    // Once Bob replies, the earlier message is no longer Alice's alone to rewrite.
+    chats.send(bob, "m2");
+    chats.run("r2", "m2");
+    let refused = chats.refused(alice, "session_rewrite_message", edit("r1", "m1-again"));
+    assert!(
+        refused
+            .to_string()
+            .contains("Someone else has replied since"),
+        "{refused}"
+    );
+    assert_eq!(
+        chats.edits(alice),
+        json!([{"run_id":"r1","edit":"replied_since"},{"run_id":"r2","edit":"unavailable"}])
+    );
+    assert_eq!(
+        chats.edits(bob),
+        json!([{"run_id":"r1","edit":"unavailable"},{"run_id":"r2","edit":"available"}])
+    );
+
+    // Core decides again when the host acts: a reply arriving meanwhile ends the edit.
+    chats.admitted(
+        bob,
+        "session_rewrite_message",
+        edit("r2", "m2-edited"),
+        |proof| {
+            chats.send(alice, "m3");
+            let refused = chats.accept(proof, "m2-edited");
+            assert_eq!(refused["status"], "error", "{refused}");
+        },
+    );
+    // So does Bob's revoked Device, after the call was admitted.
+    chats.send(alice, "m4");
+    chats.run("r4", "m4");
+    let (completed, answered, ()) = chats.delivered(
+        alice,
+        "session_rewrite_message",
+        edit("r4", "m4-edited"),
+        |proof| {
+            chats
+                .core
+                .local
+                .space_revoke(RevokeDeviceRequest {
+                    device_id: alice.enrollment.device_id.clone(),
+                })
+                .unwrap();
+            let refused = chats.accept(proof, "m4-edited");
+            assert_eq!(refused["status"], "error", "{refused}");
+        },
+    );
+    assert_eq!(completed, 503);
+    assert_ne!(answered, 200);
+}
+
+#[test]
+fn a_hosted_chats_owner_and_space_owners_compact_and_clear_it() {
+    let chats = HostedChats::start();
+    let (alice, bob, olivia) = (&chats.alice, &chats.bob, &chats.olivia);
+    // Alice's fork answers to her, as the chat she started.
+    let fork = json!({"source":{"sessionId":"chat"},"sessionId":"alice-chat",
+        "requestId":"alice-chat:launch","acceptedAt":1,"environment":"same-directory"});
+    chats.admitted(alice, "session_fork", fork, |proof| {
+        let created = chats.launch(proof, "alice-chat", "alice-chat:launch", None);
+        assert_eq!(created["status"], "ok", "{created}");
+    });
+    let compact = json!({"sessionId":"alice-chat","requestId":"compact"});
+    let retry = json!({"sessionId":"alice-chat","requestId":"retry","failedRunId":"failed"});
+    let clear = json!({"sessionId":"alice-chat","requestId":"clear"});
+    for (operation, input) in [
+        ("session_compact", &compact),
+        ("session_compact", &retry),
+        ("session_clear_context", &clear),
+    ] {
+        let refused = chats.refused(bob, operation, input.clone());
+        assert!(
+            refused
+                .to_string()
+                .contains("started this chat or a Space Owner"),
+            "{refused}"
+        );
+        chats.admitted(alice, operation, input.clone(), |_| ());
+        chats.admitted(olivia, operation, input.clone(), |_| ());
+    }
+    assert_eq!(
+        [alice, olivia, bob].map(|member| chats.can_manage(member, "alice-chat")),
+        [true, true, false]
+    );
+
+    // Core decides again whenever the host uses the call: a revoked Device ends it.
+    let (completed, answered, ()) =
+        chats.delivered(alice, "session_clear_context", clear.clone(), |proof| {
+            let read = |proof| {
+                chats.core.local_request_proof(
+                    "/core/v1/modules/workspace/read",
+                    chats.host_binding(),
+                    json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        "read":{"kind":"session","session_id":"alice-chat"}}),
+                    Some(proof),
+                )
+                .1
+            };
+            assert_eq!(read(proof)["status"], "ok");
+            chats
+                .core
+                .local
+                .space_revoke(RevokeDeviceRequest {
+                    device_id: alice.enrollment.device_id.clone(),
+                })
+                .unwrap();
+            assert_eq!(read(proof)["status"], "error");
+        });
+    assert_eq!(completed, 503);
+    assert_ne!(answered, 200);
+}
+
+#[test]
+fn a_hosted_chat_stays_its_owners_when_another_member_replies() {
+    let chats = HostedChats::start();
+    let (alice, bob, olivia) = (&chats.alice, &chats.bob, &chats.olivia);
+    let carol = HostedChats::member(&chats.core, MemberRole::Member, "Carol");
+    // Alice starts a chat of her own by forking the Space's chat, then asks it for work.
+    let fork = json!({"source":{"sessionId":"chat"},"sessionId":"alice-chat",
+        "requestId":"alice-chat:launch","acceptedAt":1,"environment":"same-directory"});
+    chats.admitted(alice, "session_fork", fork, |proof| {
+        let created = chats.launch(proof, "alice-chat", "alice-chat:launch", None);
+        assert_eq!(created["status"], "ok", "{created}");
+    });
+    chats.send_in(alice, "alice-chat", "alice-message");
+    chats.run_in("alice-chat", "alice-run", "alice-message");
+    chats.working("alice-chat", "alice-run", 0);
+    // Bob replies, and the Run he asked for becomes the chat's current work.
+    chats.send_in(bob, "alice-chat", "bob-message");
+    chats.run_in("alice-chat", "bob-run", "bob-message");
+    chats.working("alice-chat", "bob-run", 1);
+
+    // Replying made Bob no owner: Alice and the Space Owner manage it, while Bob, with Alice and
+    // the Owner, stops the work he asked for. Carol, who took no part, does neither.
+    assert_eq!(
+        [alice, olivia, bob, &carol].map(|member| chats.capabilities(member, "alice-chat")),
+        [(true, true), (true, true), (false, true), (false, false)]
+    );
+    let compact = json!({"sessionId":"alice-chat","requestId":"compact"});
+    for member in [bob, &carol] {
+        let refused = chats.refused(member, "session_compact", compact.clone());
+        assert!(
+            refused
+                .to_string()
+                .contains("started this chat or a Space Owner"),
+            "{refused}"
+        );
+    }
+    chats.admitted(alice, "session_compact", compact, |_| ());
+
+    // Bob stops only his own Run, its tasks included; Alice and the Owner stop either.
+    let stop = |run: &str| json!({"sessionId":"alice-chat","threadId":"thread","requestId":"stop","runId":run});
+    let task = |run: Option<&str>| {
+        json!({"sessionId":"alice-chat","threadId":"thread","requestId":"task","taskId":"task",
+            "runId":run})
+    };
+    chats.admitted(bob, "session_stop", stop("bob-run"), |_| ());
+    chats.admitted(bob, "session_cancel_task", task(Some("bob-run")), |_| ());
+    let refused = chats.refused(bob, "session_stop", stop("alice-run"));
+    assert!(
+        refused
+            .to_string()
+            .contains("Only the person who started this, or a Space Owner, can stop it."),
+        "{refused}"
+    );
+    // A task whose Run is not known is only for those who manage the chat.
+    chats.refused(bob, "session_cancel_task", task(None));
+    chats.refused(&carol, "session_stop", stop("bob-run"));
+    chats.refused(&carol, "session_cancel_task", task(Some("bob-run")));
+    for member in [alice, olivia] {
+        chats.admitted(member, "session_stop", stop("alice-run"), |_| ());
+        chats.admitted(member, "session_stop", stop("bob-run"), |_| ());
+        chats.admitted(member, "session_cancel_task", task(None), |_| ());
+    }
+
+    // Alice asks again, so her new Run is current while a subagent of Bob's earlier Run still
+    // works. Each item answers for its own Run: Bob may no longer interrupt the chat, yet stops
+    // that subagent and its Run's background work, and none of Alice's.
+    chats.send_in(alice, "alice-chat", "alice-again");
+    chats.run_in("alice-chat", "alice-run-2", "alice-again");
+    chats.working("alice-chat", "alice-run-2", 2);
+    assert_eq!(chats.capabilities(bob, "alice-chat"), (false, false));
+    let stoppable = |member: &RemoteMember| {
+        let read = chats.member_read(
+            member,
+            json!({"kind":"session_member_actions","session_id":"alice-chat",
+                "run_ids":["alice-run","bob-run","alice-run-2"]}),
+        );
+        assert_eq!(read["status"], "ok", "{read}");
+        read["payload"]["value"]["actions"]["runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|run| run["can_stop"].as_bool().unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(stoppable(bob), [false, true, false]);
+    assert_eq!(stoppable(&carol), [false, false, false]);
+    assert_eq!(stoppable(alice), [true, true, true]);
+    assert_eq!(stoppable(olivia), [true, true, true]);
+    let subagent = |run: &str| {
+        json!({"sessionId":"alice-chat","threadId":"thread","requestId":"subagent",
+            "runId":run,"taskId":"subagent"})
+    };
+    let background = |run: &str| {
+        json!({"sessionId":"alice-chat","threadId":"thread","requestId":"background",
+            "runId":run,"taskIds":["build"]})
+    };
+    chats.admitted(bob, "session_stop_task", subagent("bob-run"), |_| ());
+    chats.admitted(
+        bob,
+        "session_stop_background",
+        background("bob-run"),
+        |_| (),
+    );
+    chats.refused(bob, "session_stop_task", subagent("alice-run-2"));
+    chats.refused(bob, "session_stop_background", background("alice-run"));
+    chats.refused(bob, "session_stop", stop("alice-run-2"));
+
+    // A rename from Bob's own connection meets the same rule as Alice's.
+    let rename = |member: &RemoteMember, title: &str| {
+        let (status, value) = chats.core.request(
+            "/core/v1/modules/workspace/apply",
+            &member.session.session_token,
+            Some((member.connection.0.as_str(), member.connection.1.as_str())),
+            json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                "store_epoch":chats.store_epoch,"operation_id":team_operation_id(),
+                "intent":{"kind":"mutate_session","session_id":"alice-chat",
+                    "intent":{"kind":"rename","title":title}}}),
+        );
+        assert_eq!(status, 200, "{value}");
+        value["status"].as_str().unwrap().to_owned()
+    };
+    assert_eq!(rename(bob, "Bob's title"), "error");
+    assert_eq!(rename(alice, "Alice's title"), "ok");
+}

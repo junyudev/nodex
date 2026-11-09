@@ -28,6 +28,7 @@ import { requireTrustedAppRendererSender } from "../platform/electron/TrustedRen
 import { safeBroadcastToWindows } from "../ipc-safe-send";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { personalStateKeyMatches } from "../../shared/space-personal-state";
+import { DEVICE_CAPABILITY_CHANNELS, rendererSpaceParameter } from "../../shared/space-ipc-policy";
 import { CoreRuntimeError, coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 
 const registry = Layer.unwrap(
@@ -135,6 +136,7 @@ export const live = Layer.effectDiscard(
           }
           return yield* personal(bound.args);
         }
+        if (DEVICE_CAPABILITY_CHANNELS.includes(channel)) return yield* personal(bound.args);
         if (bound.spaceId === spaces.personalSpaceId) return yield* personal(bound.args);
         const context = yield* Effect.scoped(desktops.contextEffect(bound.spaceId));
         return yield* Context.get(context, RemoteSpaceDesktop.RemoteSpaceDesktop).invoke(

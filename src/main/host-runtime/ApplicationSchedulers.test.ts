@@ -17,12 +17,15 @@ import {
   type Automations,
   type AutomationReminders,
   type AutomationRuns,
-} from "../automation-application/AutomationApplication";
+} from "../../host/automation-application/AutomationApplication";
 import {
   AutomationExecution,
   AutomationExecutionError,
-} from "../automation-application/AutomationExecution";
-import { InboxApplication, InboxApplicationError } from "../inbox-application/InboxApplication";
+} from "../../host/automation-application/AutomationExecution";
+import {
+  InboxApplication,
+  InboxApplicationError,
+} from "../../host/inbox-application/InboxApplication";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { CoreAuthority, type CoreAuthorityState } from "../core-runtime/CoreAuthority";

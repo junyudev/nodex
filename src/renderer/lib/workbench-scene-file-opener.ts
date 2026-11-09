@@ -1,3 +1,4 @@
+import { localProjectSourceRoots } from "../../shared/project-sources";
 import type { WorkbenchSceneOwner } from "../../shared/workbench-scene";
 import { canonicalWorkbenchFilePath } from "../../shared/workbench-resource-identity";
 import type { FileReferenceRouterPort } from "./file-reference-router";
@@ -24,9 +25,9 @@ export async function openWorkbenchSceneFile({
   const hostId = input.hostId ?? "local";
   const projectId = owner.kind === "project" ? owner.projectId : null;
   const project = projects.find((candidate) => candidate.id === projectId);
-  const matchingRoot = (hostId === "local" ? project?.sources : undefined)
-    ?.map((source) => source.root)
-    .find((root) => isWorkspacePathInsideRoot(root, input.path));
+  const matchingRoot = localProjectSourceRoots(
+    hostId === "local" ? (project?.sources ?? []) : [],
+  ).find((root) => isWorkspacePathInsideRoot(root, input.path));
   const workspaceRoot =
     normalizeOptionalPath(input.workspaceRoot) ??
     matchingRoot ??

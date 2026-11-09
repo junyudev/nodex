@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
 import { REMOTE_AGENT_REASON } from "../../../shared/space-connection";
 import type { InboxItem } from "../../../shared/inbox";
 import { PageTurnChip } from "@/components/workbench/page-turn-chip";
@@ -34,6 +35,7 @@ export function InboxTurnRow({
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hostAvailable = useSpaceHostAvailable();
   const data = item.turn;
   if (!data) return null;
   const reason = data.turn.reason;
@@ -150,8 +152,10 @@ export function InboxTurnRow({
             <NodexButton
               size="xs"
               variant="primary"
+              disabled={pending || !hostAvailable}
               onClick={() => act(onStart)}
             >
+              {hostAvailable ? "Start" : REMOTE_AGENT_REASON}
             </NodexButton>
           ) : (
             open

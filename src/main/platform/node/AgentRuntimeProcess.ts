@@ -33,6 +33,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { z } from "zod";
 import { createAgentRuntimeFrameDecoder } from "./agent-runtime-framing";
 import { appToolsHostCallTimeoutMs } from "@nodex/app-tools-mcp/manifest";
+import { agentProcessLaunch, type AgentRunner } from "../../../host/HostAgentPolicy";
 
 const MAXIMUM_FRAME_BYTES = 16 * 1024 * 1024;
 /**
@@ -264,6 +265,7 @@ export class AgentRuntimeProcessError extends Schema.TaggedError<AgentRuntimePro
 
 export interface AgentRuntimeProcessOptions {
   readonly executable: string;
+  readonly agentRunner?: AgentRunner;
   readonly entryPath: string;
   readonly configuration: AgentRuntimeConfiguration;
   readonly environment?: Readonly<Record<string, string | undefined>>;
@@ -422,32 +424,33 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     modelPolicy: options.configuration.modelPolicy,
     ...(options.configuration.host ? { hostTools: options.configuration.host.tools } : {}),
   } satisfies AgentRuntimeBootstrap);
+  const launch = agentProcessLaunch(
+    options.executable,
+    [
+      ...AGENT_RUNTIME_NODE_FLAGS,
+      options.entryPath,
+      "--home",
+      options.configuration.home,
+      "--cwd",
+      options.configuration.cwd,
+    ],
+    options.agentRunner,
+  );
   const processScope = yield* Scope.fork(scope);
   const process = yield* spawner
     .spawn(
-      ChildProcess.make(
-        options.executable,
-        [
-          ...AGENT_RUNTIME_NODE_FLAGS,
-          options.entryPath,
-          "--home",
-          options.configuration.home,
-          "--cwd",
-          options.configuration.cwd,
-        ],
-        {
-          cwd: options.configuration.cwd,
-          detached: true,
-          killSignal: "SIGTERM",
-          forceKillAfter: Duration.millis(AGENT_RUNTIME_FORCE_KILL_AFTER_MS),
-          // Exactly the composed environment; provider credentials arrive over stdin instead.
-          env: { ...options.environment },
-          extendEnv: false,
-          stdin: Stream.fromQueue(input),
-          stdout: "pipe",
-          stderr: "inherit",
-        },
-      ),
+      ChildProcess.make(launch.executable, launch.args, {
+        cwd: options.configuration.cwd,
+        detached: true,
+        killSignal: "SIGTERM",
+        forceKillAfter: Duration.millis(AGENT_RUNTIME_FORCE_KILL_AFTER_MS),
+        // Exactly the composed environment; provider credentials arrive over stdin instead.
+        env: { ...options.environment },
+        extendEnv: false,
+        stdin: Stream.fromQueue(input),
+        stdout: "pipe",
+        stderr: "inherit",
+      }),
     )
     .pipe(
       Effect.provideService(Scope.Scope, processScope),

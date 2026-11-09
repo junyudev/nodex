@@ -11,6 +11,8 @@ import { useAgentInstances } from "./use-agent-instances";
 const mocks = vi.hoisted(() => {
   const listeners = new Set<() => void>();
   return {
+    remote: false,
+    catalog: vi.fn(),
     readClaude: vi.fn<() => Promise<ClaudeAgentSettings>>(),
     readOpenCode: vi.fn<() => Promise<OpenCodeAgentSettings>>(),
     readAcp: vi.fn<() => Promise<AcpAgentSettings>>(),
@@ -26,6 +28,10 @@ const mocks = vi.hoisted(() => {
     listeners,
   };
 });
+vi.mock("../../lib/renderer-space", () => ({ isRemoteSpace: () => mocks.remote }));
+vi.mock("../../lib/agent-runtime-runtime", () => ({
+  agentRuntimeRuntime: { catalog: mocks.catalog },
+}));
 vi.mock("../../lib/workbench-settings-runtime", () => ({
   readClaudeAgentSettings: mocks.readClaude,
   readAcpAgentSettings: mocks.readAcp,
@@ -37,6 +43,8 @@ vi.mock("../../lib/renderer-transport", () => ({
   resolveRendererTransport: () => ({ subscribeAgentSettingsChanges: mocks.subscribe }),
 }));
 beforeEach(() => {
+  mocks.remote = false;
+  mocks.catalog.mockReset();
   mocks.readClaude.mockReset().mockResolvedValue({ instances: [] });
   mocks.readAcp.mockReset().mockResolvedValue({ instances: [] });
   mocks.readOpenCode.mockReset().mockResolvedValue({ instances: [] });
@@ -120,4 +128,41 @@ test("only local profiles running the default executable depend on host OpenCode
     { enabled: true, usesHostExecutable: false },
     { enabled: true, usesHostExecutable: false },
   ]);
+});
+
+test("team inventories preserve host provider identity and never read desktop profiles", async () => {
+  mocks.remote = true;
+  mocks.catalog.mockResolvedValue([
+    { instanceId: "codex", driver: "codex", enabled: true },
+    { instanceId: "claude_team", driver: "claudeAgent", displayName: "Team Claude", enabled: true },
+    { instanceId: "acp_team", driver: "acpRegistry", displayName: "Team Agent", enabled: false },
+  ]);
+  const { result } = renderHook(() => useAgentInstances());
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.instances).toEqual([
+    {
+      binding: {
+        kind: "claude",
+        instanceConfigId: "claude_team",
+        runtimeInstanceId: "claude_team",
+      },
+      label: "Team Claude",
+      enabled: true,
+      usesHostExecutable: false,
+    },
+    {
+      binding: {
+        kind: "acp",
+        instanceConfigId: "acp_team",
+        runtimeInstanceId: "acp_team",
+        agentDefinitionId: "acp_team",
+      },
+      label: "Team Agent",
+      enabled: false,
+      usesHostExecutable: false,
+    },
+  ]);
+  expect(mocks.readClaude).not.toHaveBeenCalled();
+  expect(mocks.readAcp).not.toHaveBeenCalled();
+  expect(mocks.readOpenCode).not.toHaveBeenCalled();
 });

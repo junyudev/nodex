@@ -92,6 +92,9 @@ describe("CI change classification", () => {
       ["packages/effect-codex-app-server/src/example.test.ts", "effect-codex"],
       ["src/shared/block-documents/yjs-yrs-conformance.test.ts", "core-client"],
       ["src/main/example.test.ts", "main"],
+      ["src/host/example.test.ts", "main"],
+      ["src/host/example.node.test.ts", "core-client"],
+      ["src/host/example.integration.ts", "integration"],
       ["src/main/example.integration.ts", "integration"],
     ] as const) {
       expect(classifyChangedPaths([path]), path).toMatchObject({
@@ -100,6 +103,13 @@ describe("CI change classification", () => {
         testMode: "related",
       });
     }
+  });
+
+  test("routes host implementation changes through the application suites", () => {
+    expect(classifyChangedPaths(["src/host/HostKernel.ts"])).toMatchObject({
+      appTestSuites: ["core-client", "main", "integration"],
+      testMode: "related",
+    });
   });
 
   test("promotes config and deleted-path changes to deterministic full suites", () => {

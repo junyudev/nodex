@@ -43,7 +43,7 @@ const project = (input: {
   name: input.id,
   description: "",
   appearance: DEFAULT_PROJECT_APPEARANCE,
-  sources: input.roots.map((root, order) => ({ root, order })),
+  sources: input.roots.map((root, order) => ({ kind: "directory" as const, path: root, order })),
   primary_workspace_root: input.roots[0] ?? null,
   pinned: false,
   pinned_order: null,

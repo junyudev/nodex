@@ -5,6 +5,7 @@ import { LIBRARY_INBOX, type InboxSendInput } from "../../shared/inbox";
 import { createBoundedOperationId } from "../../shared/operation-identity";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { MAX_INBOX_TITLE_LENGTH } from "../../shared/schemas/inbox";
+import { CoreModuleResponseError } from "../../main/core-client/core-client";
 import { inboxOverRealCore } from "./InboxApplication.test-support";
 
 it.effect(

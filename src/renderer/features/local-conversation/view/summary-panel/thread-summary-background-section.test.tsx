@@ -20,6 +20,7 @@ const task = (id: string, overrides: Partial<ConversationBackgroundTask> = {}) =
   owner: null,
   startedAtMs: null,
   stoppable: true,
+  canStop: true,
   stopping: false,
   ...overrides,
 });
@@ -50,6 +51,13 @@ describe("ThreadSummaryBackgroundSection", () => {
       await Promise.resolve();
     });
     expect(stop).toHaveBeenLastCalledWith(undefined);
+  });
+
+  test("lists work it cannot stop without offering Stop", () => {
+    const view = renderSection({ tasks: [task("Host build"), task("Host watch")] });
+    expect(view.getByText("Host build")).toBeTruthy();
+    expect(view.queryByRole("button", { name: "Stop Host build" })).toBeNull();
+    expect(view.queryByRole("button", { name: "Stop all" })).toBeNull();
   });
 
   test("a stopping task offers no second Stop and says it is stopping", () => {

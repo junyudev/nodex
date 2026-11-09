@@ -10,20 +10,15 @@ import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { make as makeAppToolOperation } from "./AppToolOperation";
 import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-authorization";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
-import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
-import { makeSetSessionUnread } from "../project-application/SessionUnread";
+import type { makeSetSessionUnreadWithNative } from "../project-application/SessionUnread";
 import { projectAgentBackendBindingFromCore } from "../core-client/project-workspace-adapter";
-import { make as makeNativeControls } from "../codex-application/CodexSessionControls";
+import type { make as makeNativeControls } from "../codex-application/CodexSessionControls";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { resolveAppToolCallingSession } from "./AppToolCallingSession";
-import {
-  captureAppToolAuthority,
-  readHostedAppToolSessionContext,
-  type AppToolAuthorityCapture,
-} from "./AppToolCaller";
+import { readHostedAppToolSessionContext, type AppToolAuthorityCapture } from "./AppToolCaller";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { sessionMessageCeilingError } from "./session-message-policy";
-import { make as makeAuthority, denied } from "./SessionControlAuthority";
+import { denied, type makeWithNative as makeAuthority } from "./SessionControlAuthority";
 import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 
 const receiptCodec = Schema.fromJsonString(Schema.Unknown);
@@ -44,15 +39,17 @@ const failure = (error: unknown): ReturnType<typeof toolFailure> => {
   );
 };
 
-export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
+export const makeWithPorts = (
+  capture: AppToolAuthorityCapture,
+  native: Effect.Success<typeof makeNativeControls> | null,
+  access: Effect.Success<ReturnType<typeof makeAuthority>>,
+  setSessionUnread: Effect.Success<ReturnType<typeof makeSetSessionUnreadWithNative>>,
+) =>
   Effect.gen(function* () {
     const core = yield* CoreAuthority;
     const admitOperation = yield* makeAppToolOperation;
     const workspace = yield* ProjectWorkspace;
-    const setSessionUnread = yield* makeSetSessionUnread;
     const application = yield* AgentRuntimeApplication;
-    const native = yield* makeNativeControls;
-    const access = yield* makeAuthority;
     return Effect.fn("SessionControlAppTools.execute")(function* (input: AppToolInvocation) {
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
       const authority = yield* capture(input.caller);
@@ -162,13 +159,14 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
                 })
               : {
                   threadId: session.thread?.thread_id ?? null,
-                  stopped: session.thread
-                    ? yield* native.stop(
-                        session.thread.execution_host_id,
-                        session.thread.thread_id,
-                        beforeNativeControl,
-                      )
-                    : false,
+                  stopped:
+                    session.thread && native
+                      ? yield* native.stop(
+                          session.thread.execution_host_id,
+                          session.thread.thread_id,
+                          beforeNativeControl,
+                        )
+                      : false,
                 };
             return toolSuccess({
               operationId,
@@ -185,7 +183,7 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
                 requestId: operationId,
                 modeLimit,
               })
-            : session.thread
+            : session.thread && native
               ? yield* native.queue(
                   session.thread.execution_host_id,
                   session.thread.thread_id,
@@ -237,7 +235,3 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
       );
     });
   });
-export const make = Effect.gen(function* () {
-  const turns = yield* CodexTurnAuthority;
-  return yield* makeWithCapture((caller) => captureAppToolAuthority(caller, turns));
-});

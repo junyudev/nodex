@@ -9,7 +9,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import {
   AutomationApplication,
   type AutomationReminderClaim,
-} from "../automation-application/AutomationApplication";
+} from "../../host/automation-application/AutomationApplication";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { getLogger } from "../logging/logger";
 import type { ReminderNotificationPayload } from "../reminder-notification";

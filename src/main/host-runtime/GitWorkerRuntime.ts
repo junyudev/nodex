@@ -1,6 +1,6 @@
-import {
+import type {
   WebContentsDestructionSubscriptions,
-  type WebContentsDestructionSource,
+  WebContentsDestructionSource,
 } from "../platform/electron/WebContentsDestructionSubscriptions";
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
@@ -121,6 +121,7 @@ export class GitWorkerRuntime extends Context.Service<
 
 export interface GitWorkerRuntimeOptions {
   readonly workerPath: string;
+  readonly rendererLifecycle?: Pick<WebContentsDestructionSubscriptions["Service"], "subscribe">;
   readonly createProcess?: GitWorkerProcessFactory;
   readonly onInfrastructureError?: (
     error: Error,
@@ -170,7 +171,7 @@ export const live = (options: GitWorkerRuntimeOptions): Layer.Layer<GitWorkerRun
   Layer.effect(
     GitWorkerRuntime,
     Effect.gen(function* () {
-      const rendererDestruction = yield* WebContentsDestructionSubscriptions;
+      const rendererDestruction = options.rendererLifecycle;
       const createProcess = options.createProcess ?? createNodeProcess;
       const onInfrastructureError = options.onInfrastructureError ?? (() => undefined);
       const onPerformanceOperation = options.onPerformanceOperation ?? (() => undefined);
@@ -573,6 +574,10 @@ export const live = (options: GitWorkerRuntimeOptions): Layer.Layer<GitWorkerRun
         target: GitWorkerRendererTarget,
         message: GitWorkerMessageFromView,
       ): Effect.Effect<void, GitWorkerRuntimeError> => {
+        if (!rendererDestruction)
+          return Effect.fail(
+            failure("protocol-error", "Renderer access is unavailable on this host"),
+          );
         let admittedSession: WorkerSession | null = null;
         return stateLock
           .withPermits(1)(
@@ -759,4 +764,4 @@ export const live = (options: GitWorkerRuntimeOptions): Layer.Layer<GitWorkerRun
 
       return GitWorkerRuntime.of({ handleRendererMessage, request });
     }),
-  ).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));
+  );

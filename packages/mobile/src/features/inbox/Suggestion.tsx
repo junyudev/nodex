@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Markdown } from "../../markdown/Markdown";
 import { useRootNavigation, type ScreenProps } from "../../navigation/types";
-import { fetchInboxMessage, useAgentCatalog } from "../../runtime";
+import { fetchInboxEntry, onInboxChanged, useAgentCatalog, useProjects } from "../../runtime";
 import { Icon } from "../../ui/icons";
 import { Button, EmptyState, Tap, Txt } from "../../ui/primitives";
 import { agentLabel } from "../pickers/agent-choice";
@@ -19,20 +19,28 @@ import {
 } from "./inbox-presentation";
 import { useDecide } from "./use-decide";
 
-/** The message as the desktop has it now, showing the copy already in hand until that arrives. */
-export const useInboxMessage = (pageId: string, initial: InboxMessage | undefined) => {
-  const [message, setMessage] = useState<InboxMessage | null>(initial ?? null);
+/**
+ * The message as its Space has it now, showing the copy already in hand until that arrives, and
+ * following it as it changes, so a decision's progress shows where it was made.
+ */
   useEffect(() => {
-    let current = true;
-    fetchInboxMessage(pageId)
-      .then((fresh) => {
-        if (current) setMessage(fresh);
-      })
-      .catch(() => {
-        // The stream's copy stays on screen; a stale read is better than an empty page.
-      });
+    let latest = 0;
+    let open = true;
+    const read = () => {
+      const attempt = ++latest;
+      fetchInboxEntry(pageId)
+        .then((fresh) => {
+          if (open && attempt === latest) setMessage(fresh);
+        })
+        .catch(() => {
+          // The copy in hand stays on screen; a stale read is better than an empty page.
+        });
+    };
+    read();
+    const stop = onInboxChanged(read);
     return () => {
-      current = false;
+      open = false;
+      stop();
     };
   }, [pageId]);
   return [message, setMessage] as const;
@@ -101,19 +109,21 @@ const SuggestionStatus = ({ message }: { readonly message: InboxMessage }) => {
         <View className="flex-row items-center gap-2">
           <Icon name="warning" size={14} color="danger" />
           <Txt selectable className="flex-1 text-sm text-ink-2">
-            {view.message}
+            {view.headline} — {view.message}
           </Txt>
-          <Button
-            compact
-            label="Retry"
-            onPress={() =>
-              void decide(
-                message.pageId,
-                { type: "retry", proposalId: view.proposal.proposalId },
-                "Trying again",
-              )
-            }
-          />
+          {view.retry ? (
+            <Button
+              compact
+              label="Retry"
+              onPress={() =>
+                void decide(
+                  message.id,
+                  { type: "retry", proposalId: view.proposal.proposalId },
+                  "Trying again",
+                )
+              }
+            />
+          ) : null}
         </View>
       );
     case "none":

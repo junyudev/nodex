@@ -145,6 +145,7 @@ beforeEach(() => {
             description: "Serve docs preview",
             command: "pnpm docs:dev",
             startedAt: "2026-10-15T00:00:00.000Z",
+            runId: null,
           },
         ],
         providerInstanceId: "codex",
@@ -1596,6 +1597,7 @@ describe("Agent Runtime background work", () => {
           owner: null,
           startedAtMs: Date.parse("2026-10-15T00:00:00.000Z"),
           stoppable: true,
+          canStop: true,
           stopping: false,
         },
       ]),
@@ -1606,7 +1608,7 @@ describe("Agent Runtime background work", () => {
       truncated: true,
     });
     await act(async () => {
-      await result.current.provider.backgroundTasks!.stop("shell");
+      await result.current.provider.backgroundTasks!.stop!("shell");
     });
     expect(stopBackground).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1721,6 +1723,8 @@ describe("Agent Runtime conversation adapter", () => {
         archived: false,
         archivedAt: null,
         remindAt: null,
+        canManage: true,
+        canStop: true,
         unread: false,
         thread: null,
         executionRef: { runtimeId: "engine", threadId: "engine-thread" },

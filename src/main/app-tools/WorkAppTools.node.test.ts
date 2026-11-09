@@ -1,3 +1,4 @@
+import { WorkApplication } from "../../host/work-application/WorkApplication";
 import { startWorkSchema } from "../../shared/nodex-app-tools/work-schema";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";

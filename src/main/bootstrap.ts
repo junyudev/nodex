@@ -1,6 +1,4 @@
-import { readFileSync } from "node:fs";
 import markdownWasmPath from "../shared/generated/nodex-markdown-wasm/nodex_markdown_bg.wasm?asset";
-import { initMarkdownSync } from "../shared/nodex-markdown";
 import { app, BrowserWindow, dialog } from "electron";
 import type * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -34,8 +32,6 @@ import {
   type IsolatedRunBootstrapAccess,
 } from "./core-client/isolated-run-ownership";
 import { desktopToolHostBindingNames } from "./codex/desktop-tool-environment";
-
-initMarkdownSync(readFileSync(markdownWasmPath));
 
 process.env.NODEX_INTERNAL_APP_PACKAGED = app.isPackaged ? "true" : "false";
 const inheritedIsolatedRunId = process.env[ISOLATED_RUN_ID_ENV];
@@ -227,6 +223,7 @@ function launchMainApplication(): void {
     isolatedRunId: primaryIsolatedRunId,
     isDefaultApp: process.defaultApp === true,
     isPackaged: app.isPackaged,
+    markdownModulePath: markdownWasmPath,
     nodexHome,
     platform: process.platform,
     profileSettingsPath: bootstrapConfig.profileSettingsPath,

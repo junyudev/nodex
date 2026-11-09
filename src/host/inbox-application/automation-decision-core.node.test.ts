@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import type { AutomationIntent } from "../../main/core-client/types";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import {
   toCoreAutomationInput,

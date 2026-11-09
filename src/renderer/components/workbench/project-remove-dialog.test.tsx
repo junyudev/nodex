@@ -14,7 +14,7 @@ const PROJECT: Project = {
   name: "Alpha",
   description: "",
   appearance: { color: "black", marker: { kind: "icon", icon: "folder" } },
-  sources: [{ root: "/repo/alpha", order: 0 }],
+  sources: [{ kind: "directory" as const, path: "/repo/alpha", order: 0 }],
   primaryWorkspaceRoot: "/repo/alpha",
   pinned: false,
   pinnedOrder: null,

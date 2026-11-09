@@ -859,6 +859,16 @@ it.effect(
         }),
         { stopping: [] },
       );
+      // A stop admitted for one Run never reaches work that Run did not start.
+      const foreign = yield* threads
+        .stopBackgroundWork({
+          threadId,
+          commandId: CommandId.make("command:background-foreign-run"),
+          taskIds: ["monitor"],
+          runId: before.runs[0]!.id,
+        })
+        .pipe(Effect.result);
+      assert.strictEqual(foreign._tag, "Failure");
       const allCommandId = CommandId.make("command:background-all");
       const shown = (yield* readRootActivity({ rootThreadIds: [threadId] })).items[0]!
         .backgroundTasks;

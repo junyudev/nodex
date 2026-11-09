@@ -41,7 +41,7 @@ import { CodexThreadLaunchCompletion } from "./CodexThreadLaunchCompletion";
 import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
 import { CodexTurnCommands } from "./CodexTurnCommands";
-import { CodexTurnPresentation } from "./CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
 

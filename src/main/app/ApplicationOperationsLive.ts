@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { live as appToolInterpreterLive } from "../app-tools/AppToolInterpreter";
 import { live as sessionWaiterLive } from "../app-tools/SessionWaiter";
-import { live as sessionObservationLive } from "../app-tools/SessionObservation";
+import { live as sessionObservationLive } from "../app-tools/NativeSessionObservation";
 import { live as workbenchObservationLive } from "../app-tools/WorkbenchObservation";
 import {
   WorkbenchContentRouting,
@@ -34,29 +34,7 @@ import { live as unreadBadgeLive } from "../host-runtime/UnreadBadgeRuntime";
 import { MainConfig } from "./MainConfig";
 import { live as agentBackendApplicationLive } from "../agent-backend/AgentBackendApplication";
 import { live as agentBackendRegistryLive } from "../agent-backend/AgentBackendRegistry";
-import { live as workspaceDependencyLive } from "../host-runtime/WorkspaceDependencyRuntime";
-
-const workspaceDependencies = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* MainConfig;
-    const codex = yield* CodexPlatform;
-    const node = codex.runtime.nodeRuntime;
-    return workspaceDependencyLive({
-      root: config.isPackaged
-        ? `${config.resourcesPath}/workspace-runtime`
-        : `${config.projectRootPath}/.generated/workspace-runtime/${config.arch}`,
-      platform: config.platform,
-      arch: config.arch,
-      node:
-        node.status === "available"
-          ? {
-              executable: node.executable,
-              version: node.version,
-            }
-          : null,
-    });
-  }),
-);
+import { live as workspaceDependencies } from "../../host/WorkspaceDependenciesLive";
 
 const backgroundProcesses = Layer.effect(CodexBackgroundProcesses, makeCodexBackgroundProcesses);
 const projectArchiveBlockers = projectArchiveBlockersLive.pipe(

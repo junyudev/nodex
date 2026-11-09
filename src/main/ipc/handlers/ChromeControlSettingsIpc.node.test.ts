@@ -78,6 +78,7 @@ it.effect("scope-owns Chrome settings IPC and rejects an untrusted sender before
                 isolatedRunId: null,
                 isDefaultApp: false,
                 isPackaged: false,
+                markdownModulePath: "/tmp/nodex_markdown_bg.wasm",
                 nodexHome: "/tmp/nodex-test",
                 profileSettingsPath: "/tmp/nodex-test/config.toml",
                 platform: "darwin",

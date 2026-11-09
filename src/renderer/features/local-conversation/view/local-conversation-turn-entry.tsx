@@ -46,6 +46,7 @@ interface LocalConversationTurnEntryProps {
   persistedCollapsed?: boolean;
   onSetCollapsed?: (collapsed: boolean) => void;
   canEditTurnUserPrefix: boolean;
+  userTurnEditRefusal?: string;
   canForkTurn: boolean;
   projectWorkspacePath?: string | null;
   projectlessOutputDirectory?: string | null;
@@ -82,6 +83,7 @@ function LocalConversationTurnEntryComponent({
   persistedCollapsed,
   onSetCollapsed,
   canEditTurnUserPrefix,
+  userTurnEditRefusal,
   canForkTurn,
   projectWorkspacePath,
   projectlessOutputDirectory,
@@ -165,6 +167,7 @@ function LocalConversationTurnEntryComponent({
             goalTimeUsedSeconds,
             hostId,
             canEditTurnUserPrefix: allowUserActions && canEditTurnUserPrefix,
+            ...(allowUserActions && userTurnEditRefusal ? { userTurnEditRefusal } : {}),
             canForkTurn: allowUserActions && canForkTurn,
             canOpenSubagents: Boolean(onOpenThread),
             showSubagentActivity,
@@ -189,6 +192,7 @@ function LocalConversationTurnEntryComponent({
       hostId,
       allowUserActions,
       canEditTurnUserPrefix,
+      userTurnEditRefusal,
       canForkTurn,
       onOpenThread,
       showSubagentActivity,
@@ -383,6 +387,7 @@ export const LocalConversationTurnEntry = memo(
     left.persistedCollapsed === right.persistedCollapsed &&
     left.onSetCollapsed === right.onSetCollapsed &&
     left.canEditTurnUserPrefix === right.canEditTurnUserPrefix &&
+    left.userTurnEditRefusal === right.userTurnEditRefusal &&
     left.canForkTurn === right.canForkTurn &&
     left.projectWorkspacePath === right.projectWorkspacePath &&
     left.projectlessOutputDirectory === right.projectlessOutputDirectory &&

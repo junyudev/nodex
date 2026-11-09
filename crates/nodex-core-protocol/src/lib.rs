@@ -577,6 +577,9 @@ pub struct AgentAttributionRequest {
     pub session_id: String,
     #[serde(default)]
     pub run_id: Option<String>,
+    /// Runtime-verified input message; Core derives its Member from acceptance evidence.
+    #[serde(default)]
+    pub message_id: Option<String>,
     pub backend: nodex_core_contracts::agent::AgentBackendKind,
 }
 
@@ -1281,9 +1284,21 @@ mod team_api {
     pub(super) fn info() {}
     #[utoipa::path(post,path="/core/v1/admin/space/listen",request_body=ListenRequest,responses((status=200,description="Local Owner enables HTTPS",body=ListenerInfo)))]
     pub(super) fn listen() {}
+    #[utoipa::path(post,path="/core/v1/admin/space/prepare",request_body=ListenRequest,responses((status=200,description="Local Owner prepares a team Space without listening",body=SpaceIdentity)))]
+    pub(super) fn prepare() {}
     pub(super) fn rename() {}
     #[utoipa::path(post,path="/core/v1/admin/space/member-name",request_body=RenameMemberRequest,responses((status=200,description="A Member chooses the name others see",body=Member)))]
     pub(super) fn rename_member() {}
+    #[utoipa::path(post,path="/core/v1/admin/host/register",request_body=HostRegistration,responses((status=200,description="Register the local execution owner",body=HostLease)))]
+    pub(super) fn host_register() {}
+    #[utoipa::path(post,path="/core/v1/admin/host/poll",request_body=HostLease,responses((status=200,description="Bounded execution-owner work",body=Option<HostInvocation>)))]
+    pub(super) fn host_poll() {}
+    #[utoipa::path(post,path="/core/v1/admin/host/complete",request_body=HostCompletion,responses((status=200,description="Complete an admitted Host call",body=bool)))]
+    pub(super) fn host_complete() {}
+    #[utoipa::path(get,path="/core/v1/host/availability",responses((status=200,description="Execution owner availability",body=HostAvailability)))]
+    pub(super) fn host_availability() {}
+    #[utoipa::path(post,path="/core/v1/host/call",request_body=HostCall,responses((status=200,description="Authenticated bounded execution-owner response",body=HostCallResult)))]
+    pub(super) fn host_call() {}
     pub(super) fn invite() {}
     pub(super) fn devices() {}
     #[utoipa::path(get,path="/core/v1/admin/space/transport-stats",responses((status=200,description="Local Owner remote budget diagnostics",body=RemoteTransportStats)))]
@@ -1300,8 +1315,14 @@ mod team_api {
         team_api::session,
         team_api::info,
         team_api::listen,
+        team_api::prepare,
         team_api::rename,
         team_api::rename_member,
+        team_api::host_register,
+        team_api::host_poll,
+        team_api::host_complete,
+        team_api::host_availability,
+        team_api::host_call,
         team_api::invite,
         team_api::devices,
         team_api::transport_stats,
@@ -1342,9 +1363,17 @@ mod team_api {
         nodex_core_contracts::team::SessionResponse,
         nodex_core_contracts::team::ListenRequest,
         nodex_core_contracts::team::ListenerInfo,
+        nodex_core_contracts::team::SpaceIdentity,
         nodex_core_contracts::team::SpaceName,
         nodex_core_contracts::team::RenameSpaceRequest,
         nodex_core_contracts::team::RenameMemberRequest,
+        nodex_core_contracts::team::HostCall,
+        nodex_core_contracts::team::HostCallResult,
+        nodex_core_contracts::team::HostLease,
+        nodex_core_contracts::team::HostRegistration,
+        nodex_core_contracts::team::HostInvocation,
+        nodex_core_contracts::team::HostCompletion,
+        nodex_core_contracts::team::HostAvailability,
         nodex_core_contracts::team::InviteRequest,
         nodex_core_contracts::team::InviteResponse,
         nodex_core_contracts::team::MemberDevice,
@@ -1496,8 +1525,14 @@ mod tests {
             "/session",
             "/core/v1/remote-info",
             "/core/v1/admin/space/listen",
+            "/core/v1/admin/space/prepare",
             "/core/v1/admin/space/name",
             "/core/v1/admin/space/member-name",
+            "/core/v1/admin/host/register",
+            "/core/v1/admin/host/poll",
+            "/core/v1/admin/host/complete",
+            "/core/v1/host/availability",
+            "/core/v1/host/call",
             "/core/v1/admin/space/invite",
             "/core/v1/admin/space/devices",
             "/core/v1/admin/space/transport-stats",

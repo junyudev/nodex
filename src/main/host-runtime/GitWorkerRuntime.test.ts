@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import { EventEmitter } from "node:events";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -139,11 +140,49 @@ const acquire = (options: Omit<GitWorkerRuntimeOptions, "workerPath">) =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(
-      live({ workerPath: "/test/git-worker.js", ...options }),
+      Layer.unwrap(
+        Effect.gen(function* () {
+          const rendererLifecycle = yield* WebContentsDestructionSubscriptions;
+          return live({ workerPath: "/test/git-worker.js", rendererLifecycle, ...options });
+        }),
+      ).pipe(Layer.provide(WebContentsDestructionSubscriptions.live)),
       scope,
     );
     return { runtime: Context.get(context, GitWorkerRuntime), scope };
   });
+
+it.effect("serves host requests without a renderer lifecycle and refuses renderer access", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const process = new FakeProcess();
+      const context = yield* Layer.build(
+        live({
+          workerPath: "/test/git-worker.js",
+          createProcess: () => process,
+        }),
+      );
+      const runtime = Context.get(context, GitWorkerRuntime);
+      const refused = yield* Effect.flip(
+        runtime.handleRendererMessage(new FakeRenderer(1), request("renderer")),
+      );
+      assert.equal(refused.code, "protocol-error");
+      assert.lengthOf(process.sent, 0);
+      const pending = yield* Effect.forkChild(
+        runtime.request({ method: "probe", params: { nonce: "host" } }),
+      );
+      yield* Effect.yieldNow;
+      const sent = process.sent[0];
+      if (sent?.type !== "worker-request") return yield* Effect.die("Missing host request");
+      process.events.emit("message", response(sent.request.id, "host"));
+      assert.deepEqual(yield* Fiber.join(pending), {
+        nonce: "host",
+        protocolVersion: GIT_WORKER_PROTOCOL_VERSION,
+      });
+      process.events.emit("exit", 0);
+      yield* Effect.yieldNow;
+    }),
+  ),
+);
 
 it.effect("resolves Main requests in their worker generation", () =>
   Effect.gen(function* () {

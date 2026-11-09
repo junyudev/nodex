@@ -112,6 +112,8 @@ server path as a local file. HTML File previews use the same Space's authenticat
 content resolver and isolated preview grants.
 
 Agent execution, Nodex, Source producers, Automations and schedulers belong to the team
+host. Start requires an available execution host; remote conversation surfaces
+cannot acquire the personal peer socket. Filesystem surfaces, Terminal,
 Git review, Workspaces and Project source editing are hidden or explain that
 they need a filesystem on the Space host. Automations and Plugins destinations are
 hidden for a team connection. Transport admission alone does not enable a
@@ -128,21 +130,160 @@ retained edits to that Member's Core recovery queue when connected. Desktop
 settings and operating-system integrations remain device-wide: keyboard shortcuts,
 dictation, window state and product analytics work the same in a team window.
 A team window never reads the desktop's own Agents, accounts or native chats, such
+as composer skills, MCP servers, usage or the Computer Use picture-in-picture. So it
+leaves out what only they offer: the rail's Codex account, Plugins and Insights, Run
+setup again, the `/mcp` command, and Agent sign-in or setup in a chat's notices, which
+instead say Agents for this Space run on its host. Settings for Agents, Models, Hooks,
+Sources and the other host-owned features say why they are unavailable, as a restored
+Plugins or Insights route does. What a team window shows of a setting or default is the
+host's: the Inbox reads what its suggestions and new chats run on from the host, with only
+the Member's own consent to start their requests from Core, and leaves a choice out until
+the host has answered. General settings leave out chat titles and predictions, which only
+this desktop's own Agents use. Reloading a hosted chat's skills reloads its host's
+catalog. An interactive response in a hosted chat shows as unavailable rather than
+starting this computer's sandbox, and its sends never check this computer's Windows
+sandbox. Nothing a team window offers fails after a click or loads forever.
+
+The shared host kernel owns the Coordinator, Work and Inbox dispatch, Sources,
+Automations, execution holds and notification intents. Main embeds it for the personal
+Space; `nodex serve` embeds it for a headless team Space. A team desktop never
+acquires those producers. See [Hosting a team Space](../team-space-hosting.md).
+
+When the execution host is available, Start sends the Page to that host. Accept
+and Pause/Resume remain person commands to the team Core; the host reacts to
+committed work and hold state. Missing host availability keeps Start disabled.
+Inbox decisions also travel to the host from a desktop or phone: Start chat,
+accepting a suggestion, choosing an existing chat to send to, asking for or
+stopping a suggestion, and retrying a delivery. The host resolves the Agent from
+its own catalog and confirms with the requesting Member's authority, so the chat
+answers to them.
+Open Nodex opens the host's Coordinator conversation. The provider picker reads
+the host's catalog and configured instances, using the host's own credentials;
+desktop provider settings cannot select a host executable.
+
+Hosted conversation reads and text replies travel through the selected Space's
+authenticated Core connection to its execution owner. They never use the
+desktop's local Codex peer. Core checks the Member again before returning the
+response and supplies a short-lived invocation proof for person-authored
+mutations. Device revocation retires the call's authority. The execution owner
+continues to prove the Session's Runtime binding.
+
+A team desktop and a phone send to a hosted chat through the same host owner,
+which delivers the Member's message as a local chat would: it starts a Run,
+waits behind the active one (Queue) or redirects it (Steer). Queued replies can
+be edited, sent now, reordered or removed. A hosted Run presents nothing in the
+desktop window, so a reply carries no presentation. A desktop reply carries what a
+local chat's does: text, the Agent, model and mode choices, referenced Pages and
+other context, and attached images and files. Images are fitted as for a local
+chat, then every image and file, including a file dragged in or mentioned from this
+computer, is saved to the Library as the Member and sent as that Library File; the
+host reads it with the Member's authority. A folder, or more than 12 files in one
+message, is refused before anything uploads, as is a file beyond the chat's size
+limits. A hosted chat's permissions
+are the host's execution authority, so its Composer shows no permissions control.
+Plan mode is a choice for the next message: the Composer shows it selected until
+the chat runs in it, and the message carries it to the host. Archived chats ask
+to be restored first.
+Inbox and unread reads retain the requesting Member through the host. Chat
+questions may be answered by their captured requesting Member, and execution
+approvals by the Page Owner; an enrolled device alone does not grant that right.
 
 Hosted transcripts refresh bounded snapshots from targeted Session invalidations,
 with a fifteen-second repair while visible and at most eight observed chats per renderer. Live event
+streaming and native filesystem panels are not available through this route. Text viewing, replying and answering pending
+questions use the existing conversation interface. What the host does not take
 from a Member's Device stays out of the desktop: a hosted chat offers no retry of a
+failed worktree preparation, which says why instead. Whoever may stop a hosted
+chat's work (see below) stops its Run, its background work and its subagents one at a
+time or all at once; every Member reads a background task's output. For anyone else
+the lists offer no Stop, and the Composer's Stop stays in place, unavailable, saying
+"Only the person who started this, or a Space Owner, can stop it." in its tooltip and
+to assistive technology. Typing `@` completes Pages, subagents and chats. A team
+window's chat pickers and command palette search through the host, as a local window
+searches its own chats: the host reads the chats the Member may read, with their
+authority and their own pins and unread state, ranks them by title and details and
+then by message history, and returns a bounded result drawn from their 1,000 most
+recent chats. The host's workspace is not on this computer, so `@` completes no file
+there. Typing `$` completes the skills the host's Agents report, read
+through the host, never this computer's.
+Images in a hosted transcript show as they do in a local chat: a photo a phone sent,
+a picture an Agent viewed, generated or attached, a tool's image and an image a Markdown
+reply names. The desktop reads each from the host as the Member, in bounded ranges, and
+draws only bytes that are a PNG, JPEG, GIF or WebP picture. A reply's picture is read
+from the host's file only while that reply names it, and a path a hosted transcript
+names is never read from this computer. A subagent's
+conversation opens beside its parent from the same Session reads as the chat itself.
+A message another conversation sent reads “Sent by” that conversation's current title,
+as do “Answered by” and “Forked from”: the host names it with the Member's authority,
+and the credit opens it.
+
+A Member does in a hosted chat what they can do in a local chat, through the host
+and with their own authority. Core decides from its own records, by one rule, who may
+change what the chat shares, when the call is admitted, delivered and used:
+
+- **Starting.** A Member starts a new chat, with or without a Project, as on their own
+  desktop: New chat opens a draft of their own, which no other Member lists or starts,
+  and its first message starts it on the host with their authority. A phone starts one
+  the same way. A chat without a Project runs in the host's tasks directory; one in a
+  Project runs where the host runs that Project, in its checkout or in a new worktree
+  the host prepares from the branch its checkout is on. Its location names the Space.
+- **Chat owner.** A hosted chat belongs to the Member who started it, a fork or side
+  chat to the Member who opened it. A chat Core has no such record for belongs to
+  whoever asked for its first Run, otherwise to the Owner of the Page whose work it
+  is. Replying never makes anyone else its owner: when Bob replies in Alice's chat, it
+  stays Alice's.
+- **Managing.** The chat owner and every Space Owner rename it, archive and restore it,
+  move it to another Project, compact it with `/compact`, clear its context with
+  `/clear`, continue a reply that outgrew its context with Compact and retry, and
+  bring a fork or side chat back with `/merge`, from a desktop or a phone.
+- **Stopping.** The Member who asked for a Run stops it, its subagents and its
+  delegated and background tasks, as do the chat owner and every Space Owner. Each
+  subagent and task answers for the Run that started it, whichever Run is current: a
+  subagent of Bob's earlier Run stays Bob's to stop after Alice asks the chat for more,
+  and Bob can no longer interrupt Alice's Run. Work whose Run is unknown stops only for
+  the chat owner and Space Owners. Each row offers Stop by its own answer.
+
+Session reads tell each reader whether they may manage the chat and stop its current
+work, so a desktop and a phone offer only what Core allows. The rest is each Member's:
+
+- **Fork.** Any Member who can read a hosted chat forks it, from its menu, a turn or
+  `/fork`. The host creates the fork as a new hosted chat the forking Member owns, in
+  the same directory or in a new worktree the host prepares; a worktree environment
+  chosen on the desktop does not apply.
+- **Side chat.** Any Member who may reply to a hosted chat opens a side chat of it,
+  which they own. Only they save it as a chat of its own or close it, as for a local
+  side chat. An archived chat takes no new side chat.
+- **Edit message.** A Member edits a message they sent, while no other Member has
+  posted after it; a message waiting in the queue counts. Otherwise their message
+  shows Edit unavailable with "Someone else has replied since", and another
+  Member's message offers no Edit. Which messages offer Edit follows the chat as it
+  changes, so a chat the Member just started offers it once its first Run ends, without
+  reopening. The edit rewinds the chat to that message as a local edit does, so a reply
+  arriving before the host carries it out ends the edit.
+
+A hosted chat's title, archive state and Project are shared by every Member. The host
+carries each change with that Member's authority; for anyone who may not manage the
+chat, its header, sidebar rows, sidebar menu, command palette, shortcuts, `/compact`,
+`/clear`, `/merge` and Compact and retry leave these controls out, and Data controls
+lists only the archived chats the reader may restore, with no permanent deletion.
+Every Member pins, orders and sets reminders for any hosted chat, as their own
 attention: other Members' sidebars and reminders stay as they are. Archiving a chat ends
 every Member's attention to it, as it does for a chat on a personal desktop: its pins,
 reminders and unread state go, and restoring it brings none of them back. Managed by Nodex
+and Section placement are not available for hosted chats on a team desktop. Mark as
+read or unread remains.
+
 Canceled requests retain their remote session. Concurrent losses of the same
 connection share a replacement. A pinned Device renewal that proves withdrawal
 fences that Space immediately; later failures cannot downgrade Access revoked.
 
+The Automations manager remains hidden in team Spaces. Its desktop manager
 combines configuration, execution, run navigation and local Workspace choices;
 it does not expose a separate read-only list. Core still admits Member Automation
 reads and applies its exact Owner authorization for mode changes. Automation facts
 remain visible in Activity, with host-only Automation navigation unavailable. Automation-only
+and Run-only commits refresh that Space's Inbox and Activity. Starting a held Automation decision requires an available execution host; person
+actions such as skipping remain available. Personal Automation event broadcasts
 never enter a team renderer.
 
 Event Automation filters and their Source picker are host-only, including when an

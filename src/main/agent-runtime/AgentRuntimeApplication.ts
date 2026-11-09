@@ -1,4 +1,7 @@
+import { HostInvocation } from "../../host/HostInvocation";
 import { make as makeChatMessageDelivery } from "./ChatMessageDelivery";
+import { HostWorkspace } from "../../host/HostWorkspace";
+import { effectiveHolds } from "../../host/work-application/execution-holds";
 import type { InsightsOrigin, InsightsUsageSource } from "../../shared/insights";
 import {
   automaticModelCatalog,
@@ -60,7 +63,7 @@ import { isRetryableCoreTransportError } from "../core-client/document-session-e
 import { CoreRateLimitError, CoreTransportError } from "../core-client/local-http";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
-import type { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
+import type { CodexTurnPresentation } from "../../host/TurnPresentation";
 import type {
   AgentChatWorktreeConsumer,
   AgentChatWorktreeSource,
@@ -249,6 +252,18 @@ export class AgentRuntimeApplicationError extends Schema.TaggedError<AgentRuntim
   },
 ) {}
 
+/**
+ * Where a host runs a Project's work. A hosted repository resolves only through that host's clone
+ * mapping, so Core's local source path is never an execution location by itself.
+ */
+export type ExecutionWorkspace =
+  | {
+      readonly available: true;
+      readonly workspaceRoot: string;
+      readonly sourceRoots: readonly string[];
+    }
+  | { readonly available: false; readonly reason: string };
+
 const failure = (operation: string, message: string, cause?: unknown) =>
   new AgentRuntimeApplicationError({
     operation,
@@ -394,6 +409,16 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   options: AgentRuntimeApplicationOptions,
 ) {
   const core = yield* CoreModules;
+  // Session metadata includes Member attention, even when execution lookup stays host-only.
+  const readSession = (sessionId: string, projectId: string | null) =>
+    Effect.flatMap(HostInvocation, (invocation) =>
+      core.workspace.read(
+        { kind: "session", session_id: sessionId },
+        { hostInvocation: invocation ?? undefined },
+        projectId,
+      ),
+    );
+  const hostWorkspace = yield* HostWorkspace;
   const sessionOrdering = yield* makeSessionOrdering();
   const settings = yield* Effect.serviceOption(ApplicationSettings);
   const defaultRuntimeMode =
@@ -421,6 +446,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     return yield* failure("configuration", "A projectless execution workspace is required");
   const host = <A, E, R>(operation: Effect.Effect<A, E, R>) =>
     operation.pipe(Effect.provideService(CoreApplicationAgent, null));
+  /** Upkeep the execution owner does after a Member's action, with its own authority. */
+  const asExecutionOwner = <A, E, R>(operation: Effect.Effect<A, E, R>) =>
+    host(operation).pipe(Effect.provideService(HostInvocation, null));
   const requireAutomationExecution = Effect.fn(
     "AgentRuntimeApplication.requireAutomationExecution",
   )(function* (
@@ -641,14 +669,55 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     )
       return yield* failure("project", "Choose an active Project to run this task");
     const project = result.value.project;
-    if (requireWorkspace && !project.primary_workspace_root)
+    const roots = yield* hostWorkspace.resolve(project.sources).pipe(
+      Effect.mapError(
+        (cause) =>
+          new AgentRuntimeApplicationError({
+            operation: "project",
+            message: cause.message,
+            cause,
+          }),
+      ),
+    );
+    if (requireWorkspace && roots.length === 0)
       return yield* failure("project", "This Project has no execution workspace");
     return {
       id: project.id,
       title: project.name,
-      workspaceRoot: project.primary_workspace_root ?? "",
-      sourceRoots: project.sources.map((source) => source.root),
+      workspaceRoot: roots[0] ?? "",
+      sourceRoots: roots,
     };
+  });
+
+  /**
+   * Where work in a Project runs on this host, or the product reason it cannot run here. It is the
+   * same admission every launch applies, so callers can refuse visibly before submitting. A new
+   * chat needs a workspace; an existing chat keeps its own directory and needs only its Project.
+   */
+  const executionWorkspace = Effect.fn("AgentRuntimeApplication.executionWorkspace")(function* (
+    projectId: string | null,
+    chat: "new" | "existing" = "new",
+  ) {
+    return yield* projectScope(projectId, true, chat === "new").pipe(
+      Effect.map((scope): ExecutionWorkspace => ({
+        available: true,
+        workspaceRoot: scope.workspaceRoot,
+        sourceRoots: scope.sourceRoots,
+      })),
+      Effect.catch((cause) => {
+        if (Schema.is(AgentRuntimeApplicationError)(cause) && cause.operation === "project")
+          return Effect.succeed<ExecutionWorkspace>({ available: false, reason: cause.message });
+        if (
+          cause.cause instanceof CoreModuleResponseError &&
+          cause.cause.coreError.code === "not_found"
+        )
+          return Effect.succeed<ExecutionWorkspace>({
+            available: false,
+            reason: "Choose an active Project to run this task",
+          });
+        return Effect.fail(cause);
+      }),
+    );
   });
 
   const upsertProject = Effect.fn("AgentRuntimeApplication.upsertProject")(function* (
@@ -712,9 +781,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       Effect.gen(function* () {
         // Existing Threads own their execution directory independently of Project placement.
         yield* projectScope(projectId, true, false);
-        const session = yield* host(
-          core.workspace.read({ kind: "session", session_id: sessionId }, undefined, projectId),
-        );
+        const session = yield* host(readSession(sessionId, projectId));
         if (session.value.kind !== "session" || session.value.session.archived)
           return yield* failure("session", "Archived tasks cannot start execution");
       }),
@@ -744,13 +811,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       )
         return yield* failure("placement", "Session execution is unavailable");
       const projectId = binding.project_id ?? null;
-      const session = yield* host(
-        core.workspace.read(
-          { kind: "session", session_id: binding.session_id },
-          undefined,
-          projectId,
-        ),
-      );
+      const session = yield* host(readSession(binding.session_id, projectId));
       if (session.value.kind !== "session")
         return yield* failure("placement", "Session metadata is unavailable");
       const archived = session.value.session.archived;
@@ -841,17 +902,27 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       threadId: binding.runtime_thread_id,
     });
     if (existing) return existing;
+    // Page launches own workspace preparation. A transcript read must not win their
+    // Thread creation race with a default checkout while Git allocation is in flight.
+    if (options.ensurePageWorkspace) {
+      const work = yield* host(
+        core.workspace.read(
+          { kind: "session_work_page", session_id: binding.session_id },
+          undefined,
+          null,
+        ),
+      );
+      if (work.value.kind === "session_work_page" && work.value.page_id)
+        return yield* failure(
+          "thread",
+          "The Page chat is preparing its Workspace. Try again shortly.",
+        );
+    }
     if (binding.launch_request_id.startsWith(NATIVE_IMPORT_LAUNCH_PREFIX))
       return yield* failure("import", "This import was interrupted. Retry it from Conversations.");
     const projectId = binding.project_id ?? null;
     const scope = yield* projectScope(projectId, false);
-    const session = yield* host(
-      core.workspace.read(
-        { kind: "session", session_id: binding.session_id },
-        undefined,
-        projectId,
-      ),
-    );
+    const session = yield* host(readSession(binding.session_id, projectId));
     const title =
       session.value.kind === "session" ? session.value.session.display_title.trim() : "";
     const providers = automaticModelCatalog(
@@ -2410,13 +2481,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       return yield* failure("fork", "interaction_mode_escalation_denied");
 
     const projectId = source.binding.project_id ?? null;
-    const sourceTitle = yield* host(
-      core.workspace.read(
-        { kind: "session", session_id: input.source.sessionId },
-        undefined,
-        projectId,
-      ),
-    ).pipe(
+    const sourceTitle = yield* host(readSession(input.source.sessionId, projectId)).pipe(
       Effect.map((read) =>
         read.value.kind === "session" ? read.value.session.display_title : null,
       ),
@@ -2664,7 +2729,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       if (accepted.createdBy !== "user") return;
       const title = sideChatRequestTitle(accepted.text);
       if (!title) return;
-      yield* host(
+      yield* asExecutionOwner(
         core.workspace.apply(
           {
             operationId: createOperationId("agent-runtime.side-chat-title"),
@@ -3247,8 +3312,15 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     return response.value.cleanups;
   });
   const queue = Effect.fn("AgentRuntimeApplication.queue")(function* (
-    input: import("../../shared/agent-runtime-api").AgentRuntimeQueueInput,
-  ): Effect.fn.Return<AgentRuntimeIpcApi["agent-runtime:session:queue"]["result"], unknown> {
+    input: import("../../shared/agent-runtime-api").AgentRuntimeQueueInput & {
+      /** Host-authorized files an edited queued message carries instead of its earlier ones. */
+      readonly resources?: AgentRuntimeOperations["attachments.import"]["input"]["attachments"];
+    },
+  ): Effect.fn.Return<
+    AgentRuntimeIpcApi["agent-runtime:session:queue"]["result"],
+    unknown,
+    Scope.Scope
+  > {
     if (!validId(input.requestId)) return yield* failure("queue", "Request identity is invalid");
     if (
       input.action === "reorder" &&
@@ -3299,21 +3371,33 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           targetRunId: input.targetRunId,
         });
       case "edit": {
-        yield* assertMessage(input.message);
+        const imported = input.resources?.length
+          ? yield* connection.request("attachments.import", {
+              threadId: loaded.threadId,
+              messageId: input.requestId,
+              attachments: yield* messageResources.materialize(input.resources),
+            })
+          : null;
+        const edited = imported
+          ? {
+              ...input.message,
+              attachments: [...(input.message.attachments ?? []), ...imported.attachments],
+            }
+          : input.message;
+        yield* assertMessage(edited);
         // An omitted attachment replacement retains the queued message's images.
         // Only a model/config change needs this bounded preview for admission.
         const retained =
-          input.message.attachments === undefined &&
-          !input.message.images?.length &&
-          (input.message.modelSelection !== undefined ||
-            messageAgentConfigs(input.message).length > 0)
+          edited.attachments === undefined &&
+          !edited.images?.length &&
+          (edited.modelSelection !== undefined || messageAgentConfigs(edited).length > 0)
             ? yield* connection.request("thread.queued-preview", {
                 threadId: loaded.threadId,
                 runId: input.runId,
               })
             : null;
         const retainsImages = (retained?.images.length ?? 0) > 0;
-        const imageEdit = retainsImages || hasImageInputs(input.message);
+        const imageEdit = retainsImages || hasImageInputs(edited);
         const queued = imageEdit
           ? (yield* connection.request("thread.control", {
               threadId: loaded.threadId,
@@ -3324,7 +3408,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           return yield* failure("queue", "The queued Run is no longer available for editing");
         const prepared = yield* prepareMessageInput(
           connection,
-          input.message,
+          edited,
           queued?.modelSelection ?? loaded.thread.modelSelection,
           queued?.interactionMode ?? loaded.thread.interactionMode,
           retainsImages,
@@ -3414,7 +3498,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     return { rolledBack: true as const };
   });
   const rewriteMessage = Effect.fn("AgentRuntimeApplication.rewriteMessage")(function* (
-    input: import("../../shared/agent-runtime-api").AgentRuntimeRewriteMessageInput,
+    input: import("../../shared/agent-runtime-api").AgentRuntimeRewriteMessageInput & {
+      readonly resources?: AgentRuntimeOperations["attachments.import"]["input"]["attachments"];
+    },
   ) {
     // Admission, model support, byte loading and persistence all precede the destructive rewind.
     const prepared = yield* prepareMessageDispatch(input);
@@ -3632,7 +3718,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   ) {
     const result = yield* deleteSessionContent(command);
     if (!options.runtimeExists || (yield* options.runtimeExists))
-      yield* afterCommit(command.operationId, "delete-session", host(cleanupDeletedSessions()));
+      yield* afterCommit(
+        command.operationId,
+        "delete-session",
+        asExecutionOwner(cleanupDeletedSessions()),
+      );
     return result;
   });
 
@@ -3811,6 +3901,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       ),
     nativeThread: (threadId: string) => owned("native-thread", boundThread(threadId, false)),
+    executionWorkspace: (projectId: string | null, chat?: "new" | "existing") =>
+      owned("execution-workspace", executionWorkspace(projectId, chat)),
     worktreeChats,
     refreshPageWorkspace: (pageId: string) =>
       owned("page-workspace-refresh", options.refreshPageWorkspace?.(pageId) ?? Effect.void),
@@ -4220,7 +4312,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             const binding = yield* lookupDestinationBinding(input.sessionId);
             if (!binding) {
               if (!options.runtimeExists || (yield* options.runtimeExists))
-                yield* host(cleanupDeletedSessions());
+                yield* asExecutionOwner(cleanupDeletedSessions());
               return { discarded: false };
             }
             if (!binding.side_chat_source_session_id)
@@ -4412,13 +4504,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           const bound = yield* readBoundThread(threadId);
           if (!bound) return null;
           const { thread } = bound;
-          const read = yield* host(
-            core.workspace.read(
-              { kind: "session", session_id: bound.sessionId },
-              undefined,
-              bound.projectId,
-            ),
-          );
+          const read = yield* host(readSession(bound.sessionId, bound.projectId));
           if (read.value.kind !== "session") return null;
           const session = read.value.session;
           const chat = thread.id === thread.lineage.rootThreadId;
@@ -4631,7 +4717,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
     queueMessage: (input: Parameters<typeof message>[0]) =>
       ownedWrite("queue-message", message(input, true).pipe(Effect.scoped)),
-    queue: (input: Parameters<typeof queue>[0]) => ownedWrite("queue", queue(input)),
+    queue: (input: Parameters<typeof queue>[0]) =>
+      ownedWrite("queue", queue(input).pipe(Effect.scoped)),
     rewriteMessage: (input: Parameters<typeof rewriteMessage>[0]) =>
       ownedWrite("rewrite-message", rewriteMessage(input).pipe(Effect.scoped)),
     stopTask: (input: import("../../shared/agent-runtime-api").AgentRuntimeTaskStopInput) =>
@@ -4670,6 +4757,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             return yield* failure("stop-background", "Task identity is invalid");
           if (input.threadId !== undefined && !validId(input.threadId))
             return yield* failure("thread", "Thread identity is invalid");
+          if (input.runId != null && !validId(input.runId))
+            return yield* failure("stop-background", "Run identity is invalid");
           const connection = yield* options.connect;
           const loaded = yield* targetInfo(connection, input, true);
           return yield* connection
@@ -4680,6 +4769,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
                 threadId: loaded.threadId,
               }),
               taskIds: input.taskIds,
+              // The Runtime stops only that Run's work, as Core admitted the stop for it.
+              ...(input.runId == null ? {} : { runId: input.runId }),
             })
             .pipe(
               Effect.mapError((cause) =>
@@ -4725,12 +4816,16 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             return yield* failure("cancel-task", "Task identity is invalid");
           if (input.threadId !== undefined && !validId(input.threadId))
             return yield* failure("thread", "Thread identity is invalid");
+          if (input.runId != null && !validId(input.runId))
+            return yield* failure("cancel-task", "Run identity is invalid");
           const connection = yield* options.connect;
           const loaded = yield* targetInfo(connection, input, true);
           return yield* connection
             .request("tasks.cancel", {
               threadId: loaded.threadId,
               taskId: input.taskId,
+              // The Runtime cancels only a task that Run started, as Core admitted the stop for it.
+              ...(input.runId == null ? {} : { runId: input.runId }),
               commandId: commandId("cancel-task", {
                 requestId: input.requestId,
                 threadId: loaded.threadId,

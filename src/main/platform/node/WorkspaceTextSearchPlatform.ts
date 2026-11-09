@@ -13,7 +13,7 @@ import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { CodexSshExecutionHostConfig } from "../../../shared/types";
 import type { WorkspaceTextSearchErrorCode } from "../../../shared/workspace-text-search";
-import { CodexPlatform } from "../../app/CodexApplicationLive";
+import { CodexPlatform } from "../../../host/ProviderPlatform";
 import { MainConfig } from "../../app/MainConfig";
 import { buildCodexSshArguments } from "../../codex/codex-ssh-execution-host";
 

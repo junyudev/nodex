@@ -333,6 +333,22 @@ describe("conversation image reads", () => {
     view.unmount();
   });
 
+  test("resolves a chat's attachment once while the chat holds it, and again on retry", async () => {
+    const reference = { sourceThreadId: "source", itemId: "item", attachmentId: "photo" };
+    const picture = "data:image/png;base64,iVBORw0KGgo=";
+    const resolveRuntimeAttachment = vi.fn(async () => picture);
+    const client = createClient();
+    const scope = { ...context, resolveRuntimeAttachment };
+    const source = buildAgentRuntimeAttachmentSource(reference);
+    expect(await readContentImage(client, source, scope)).toBe(picture);
+    expect(await readContentImage(client, source, scope)).toBe(picture);
+    expect(resolveRuntimeAttachment).toHaveBeenCalledExactlyOnceWith(reference);
+    await readContentImage(client, source, { ...scope, conversationId: "conversation-two" });
+    await readContentImage(client, source, scope, true);
+    expect(resolveRuntimeAttachment).toHaveBeenCalledTimes(3);
+    expect(readBinary).not.toHaveBeenCalled();
+  });
+
   test("resolves an attachment when its owning resolver becomes available", async () => {
     const source = buildAgentRuntimeAttachmentSource({
       sourceThreadId: "source",

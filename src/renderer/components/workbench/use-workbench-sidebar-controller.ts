@@ -1,3 +1,4 @@
+import { isHostedChat } from "@/lib/hosted-chat";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useEffect, type MouseEvent as ReactMouseEvent } from "react";
 import type { QueryClient } from "@tanstack/react-query";
@@ -538,6 +539,8 @@ export function useWorkbenchSidebarController({
 
   const openRenameSessionDialog = useCallback(
     (session: ProjectSessionDomain) => {
+      // Core leaves a shared chat's title to its owner or a Space Owner.
+      if (!session.canManage) return;
       openModal(appHandle, RenameChatDialog, {
         initialValue: session.displayTitle,
         onSave: (title) => {
@@ -615,6 +618,7 @@ export function useWorkbenchSidebarController({
   };
 
   const archiveSession = (session: ProjectSessionDomain): Promise<boolean> => {
+    if (!session.canManage) return Promise.resolve(false);
     const wasActive = activeSessionId === session.id;
     return archiveChatWithFeedback({
       chatId: session.id,
@@ -840,6 +844,8 @@ export function useWorkbenchSidebarController({
     async (session: ProjectSessionDomain): Promise<SessionExecutionLocation | null> => {
       const execution = resolveSessionExecution(session);
       if (execution.kind !== "runtime") return resolveSessionExecutionLocation(execution, null);
+      // A hosted chat runs where its Space host keeps it, which this computer cannot read.
+      if (isHostedChat()) return null;
       try {
         return runtimeExecutionLocation(
           await queryClient.fetchQuery(threadExecutionLocationQueryOptions(execution.rootThreadId)),
@@ -861,7 +867,8 @@ export function useWorkbenchSidebarController({
       if (!availability.available) throw new Error(availability.reason);
       const sourceThreadId = input.sourceThreadId ?? availability.source.threadId;
       let localEnvironmentConfigPath: string | null = null;
-      if (input.target === "newWorktree") {
+      // A hosted chat's worktree is set up on its Space host, never from this computer's settings.
+      if (input.target === "newWorktree" && !isHostedChat()) {
         const sourceCwd =
           execution.kind === "runtime" && sourceThreadId !== execution.rootThreadId
             ? (
@@ -957,7 +964,7 @@ export function useWorkbenchSidebarController({
     }
     const moveTargetProjectId = readSessionMoveToProjectActionId(actionId);
     if (moveTargetProjectId || actionId === SESSION_CONTEXT_MENU_ACTION_IDS.removeFromProject) {
-      const move = resolveSessionProjectMove(resolveSessionExecution(session));
+      const move = resolveSessionProjectMove(session);
       if (move?.kind === "runtime") {
         try {
           await agentRuntimeRuntime.moveSession({

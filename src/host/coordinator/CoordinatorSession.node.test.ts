@@ -1,8 +1,17 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
 import { DEFAULT_INBOX_SETTINGS } from "../../shared/inbox";
+import { CoreAuthority } from "../../main/core-runtime/CoreAuthority";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import type {
+  ProjectWorkspaceApplyInput,
+  ProjectWorkspaceRead,
+} from "../../main/core-client/types";
+import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifierRuntime";
+import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { make } from "./CoordinatorSession";
 
 it.effect("creates one projectless Nodex Session lazily and resets to a new launch identity", () =>

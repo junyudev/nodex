@@ -58,6 +58,7 @@ it.effect("registers and releases Computer Use settings channels with the Main S
                 isolatedRunId: null,
                 isDefaultApp: false,
                 isPackaged: false,
+                markdownModulePath: "/tmp/nodex_markdown_bg.wasm",
                 nodexHome: "/tmp/nodex-test",
                 profileSettingsPath: "/tmp/nodex-test/config.toml",
                 platform: "darwin",

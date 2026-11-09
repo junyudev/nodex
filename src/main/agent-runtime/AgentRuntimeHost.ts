@@ -1,10 +1,13 @@
 import { inboundTextHash } from "./ChatMessageDelivery";
+import { HostWorkspace } from "../../host/HostWorkspace";
 import { createOperationId } from "../core-runtime/operation-identity";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
+import { effectiveHolds } from "../../host/work-application/execution-holds";
 import {
   COORDINATOR_INSTRUCTIONS,
   MANAGED_SESSION_INSTRUCTIONS,
+} from "../../host/coordinator/coordinator-instructions";
 import { isDeepStrictEqual } from "node:util";
 import type {
   AgentHostRequest,
@@ -16,7 +19,10 @@ import type {
 } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import type { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
+import * as Option from "effect/Option";
+import { ScopedAgentCore } from "../../host/ScopedAgentCore";
+import { HostAgentPolicy } from "../../host/HostAgentPolicy";
+import type { CodexTurnPresentation } from "../../host/TurnPresentation";
 import { MainConfig } from "../app/MainConfig";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
@@ -26,7 +32,7 @@ import { buildAgentRuntimeCliContext } from "../platform/node/NodexCliBootstrap"
 import type { AgentRuntimeProcessConnection } from "../platform/node/AgentRuntimeProcess";
 import { make as makeRuntimeAuthority } from "./AgentRuntimeAuthority";
 import type { AgentRuntimeDesktopTools } from "./AgentRuntimeDesktopTools";
-import type { AgentRuntimeHostToolExecutor } from "./AgentRuntimeHostTools";
+import type { AgentRuntimeHostToolExecutor } from "../../host/HostToolExecutor";
 import { make as makePresentationRelease } from "./AgentRuntimePresentationRelease";
 
 export class AgentRuntimeHostError extends Schema.TaggedError<AgentRuntimeHostError>()(
@@ -82,7 +88,11 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
 ) {
   const coreAuthority = yield* CoreAuthority;
   const core = yield* CoreModules;
+  const hostWorkspace = yield* HostWorkspace;
   const config = yield* MainConfig;
+  const scopedCore = Option.getOrUndefined(yield* Effect.serviceOption(ScopedAgentCore));
+  const hostPolicy = yield* Effect.serviceOption(HostAgentPolicy);
+  if (Option.isSome(hostPolicy) && !scopedCore) return yield* unavailable("scoped-agent-core");
   const authorizeExecution = yield* makeRuntimeAuthority;
   const { runtimeId, runtimeGeneration: leaseId } = connection.identity;
   let open = true;
@@ -227,18 +237,45 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       return yield* unavailable("turn.prepare");
     const sourceRoots =
       project?.value.kind === "project"
-        ? project.value.project.sources.map((source) => source.root)
+        ? yield* hostWorkspace
+            .resolve(project.value.project.sources)
+            .pipe(Effect.catch(() => unavailable("workspace")))
         : [];
     if (presentation) yield* presentation.observe(proof);
     const base = `You are working in Nodex Session ${sessionId}. Use the Nodex application tools for content operations.`;
     // Core vouches for this verified execution, so the CLI's changes name this chat.
     const backend = agentBackendKindOfRuntimeDriver(driverOf(proof.providerInstanceId));
     if (!backend) return yield* unavailable("turn.actor");
+    const inputMessage = yield* connection.request("thread.run-message", {
+      threadId: proof.threadId,
+      runId: proof.runId,
+    });
     const agentAttribution = yield* core.workspace.issueAgentAttribution({
       session_id: sessionId,
       run_id: proof.runId,
+      ...(inputMessage?.id === proof.userMessageId && inputMessage.createdBy === "user"
+        ? { message_id: proof.userMessageId }
+        : {}),
       backend,
     });
+    const scopedConnection =
+      scopedCore && agentAttribution
+        ? yield* scopedCore.issue({
+            owner: proof.threadId,
+            projectId: context.actorProjectId,
+            attribution: agentAttribution,
+            authorize: authorize(identity).pipe(
+              Effect.map(
+                ({ proof }) =>
+                  proof.status === "starting" ||
+                  proof.status === "running" ||
+                  proof.status === "waiting",
+              ),
+              Effect.orElseSucceed(() => false),
+            ),
+          })
+        : undefined;
+    if (scopedCore && !scopedConnection) return yield* unavailable("scoped-agent-core");
     const cli = yield* buildAgentRuntimeCliContext(
       config,
       coreAuthority.identity,
@@ -247,6 +284,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         ? (identity.nativeThreadRef.nativeId ?? null)
         : null,
       agentAttribution,
+      scopedConnection,
     );
     const coordinator = yield* core.workspace.read({ kind: "read_coordinator" }, undefined, null);
     const managed = yield* core.workspace.read(

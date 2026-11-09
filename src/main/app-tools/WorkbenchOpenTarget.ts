@@ -1,3 +1,4 @@
+import { localProjectSourceRoots } from "../../shared/project-sources";
 import { createHash } from "node:crypto";
 import { basename } from "node:path";
 import * as Effect from "effect/Effect";
@@ -166,10 +167,7 @@ export const make = Effect.gen(function* () {
           resolveWorkbenchFileTarget({
             path: requestedPath,
             cwd: root,
-            roots: [
-              ...(root ? [root] : []),
-              ...(project?.sources.map((source) => source.root) ?? []),
-            ],
+            roots: [...(root ? [root] : []), ...localProjectSourceRoots(project?.sources ?? [])],
             fullAccess: true,
           }),
         ).pipe(Effect.catch(() => Effect.succeed(null)))

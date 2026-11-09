@@ -1,5 +1,6 @@
 import { spaceQueryKey } from "./renderer-space";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
+import type { AgentRuntimeAttachmentReference } from "../../shared/agent-runtime-attachments";
 import type {
   ProjectSessionSummaryWindowInput,
   ProtocolMcpResourceReadParams,
@@ -25,6 +26,11 @@ export const queryKeys = {
   agentRuntime: {
     providers: () => spaceQueryKey(["agentRuntime", "providers"] as const),
     claudeUsage: () => spaceQueryKey(["agentRuntime", "claudeUsage"] as const),
+    memberActionsAll: () => spaceQueryKey(["agentRuntime", "memberActions"] as const),
+    memberActionsOf: (sessionId: string) =>
+      spaceQueryKey(["agentRuntime", "memberActions", sessionId] as const),
+    memberActions: (sessionId: string, runIds: readonly string[]) =>
+      spaceQueryKey(["agentRuntime", "memberActions", sessionId, runIds] as const),
   },
   projects: {
     all: () => spaceQueryKey(["projects"] as const),
@@ -176,6 +182,7 @@ export const queryKeys = {
         order,
       ] as const),
     detail: (sessionId: string) => spaceQueryKey(["projectSessions", "detail", sessionId] as const),
+    start: (sessionId: string) => spaceQueryKey(["projectSessions", "start", sessionId] as const),
   },
   projectActivity: {
     all: () => spaceQueryKey(["projectActivity"] as const),
@@ -366,5 +373,19 @@ export const queryKeys = {
       ] as const),
     managed: (hostId: string, conversationId: string | null, source: string) =>
       spaceQueryKey(["conversationImages", "managed", hostId, conversationId, source] as const),
+    attachment: (
+      hostId: string,
+      conversationId: string | null,
+      sourceIdentity: string,
+      reference: AgentRuntimeAttachmentReference,
+    ) =>
+      spaceQueryKey([
+        "conversationImages",
+        "attachment",
+        hostId,
+        conversationId,
+        sourceIdentity,
+        reference,
+      ] as const),
   },
 };

@@ -462,6 +462,17 @@ function questionRepliesFromUserInput(input: readonly { readonly type: string }[
   return decodeCodexAsyncQuestionReplies(text) ?? undefined;
 }
 
+/** A settled reply cannot keep sending pending input. Uncertain delivery stays unconfirmed. */
+const runtimeInputDelivery = (
+  delivery: Extract<CodexCanonicalItem, { type: "userMessage" }>["runtimeDelivery"],
+  turnStatus?: TurnStatus,
+) => {
+  if (delivery !== "pending" && delivery !== "unknown") return undefined;
+  if (delivery === "pending" && (turnStatus === "failed" || turnStatus === "interrupted"))
+    return "not-sent";
+  return delivery;
+};
+
 function projectTurnParamsUserView(input: {
   readonly threadId: string;
   readonly turnId: string | null;
@@ -471,10 +482,14 @@ function projectTurnParamsUserView(input: {
   /** The server message this row stands in for; its sender and delivery markers carry over. */
   readonly opening?: Extract<CodexCanonicalItem, { type: "userMessage" }>;
   readonly blocked: boolean;
+  readonly turnStatus?: TurnStatus;
   readonly observedAtMs: number;
   readonly goalProjection: ReturnType<typeof readCodexCanonicalThreadGoalTranscriptProjection>;
 }): CodexCanonicalTurnView | null {
   const itemId = `${input.turnKey}:input`;
+  const deliveryStatus = input.blocked
+    ? "not-sent"
+    : runtimeInputDelivery(input.opening?.runtimeDelivery, input.turnStatus);
   const textSelections = readThreadTextSelectionAdditionalContext(input.params.additionalContext);
   const pageReferences = readPageReferencesAdditionalContext(input.params.additionalContext);
   const rawCommentAttachments = input.params.commentAttachments ?? [];
@@ -522,7 +537,7 @@ function projectTurnParamsUserView(input: {
     normalizedKind: "userMessage",
     semanticKind: "userMessage",
     role: "user",
-    status: "completed",
+    status: !input.blocked && deliveryStatus === "not-sent" ? "failed" : "completed",
     markdownText,
     questionReplies,
     ...(input.params.questionResponse
@@ -531,11 +546,7 @@ function projectTurnParamsUserView(input: {
     ...(input.goalProjection ? { goal: true } : {}),
     ...(input.opening?.origin ? { userMessageOrigin: input.opening.origin } : {}),
     ...(input.opening?.inputIntent ? { userInputIntent: input.opening.inputIntent } : {}),
-    ...(input.blocked
-      ? { deliveryStatus: "not-sent" as const }
-      : input.opening?.runtimeDelivery === "pending" || input.opening?.runtimeDelivery === "unknown"
-        ? { deliveryStatus: input.opening.runtimeDelivery }
-        : {}),
+    ...(deliveryStatus ? { deliveryStatus } : {}),
     ...(commentAttachments.length === 0 ? {} : { commentAttachments: [...commentAttachments] }),
     ...(hasThreadTextSelections(textSelections) ? { textSelections } : {}),
     ...(pageReferences.length ? { pageReferences } : {}),
@@ -1317,6 +1328,7 @@ function projectCanonicalItemViews(
         ? formatCodexAsyncQuestionReplies(questionReplies)
         : rawText;
       const userAttachments = buildCodexUserAttachmentsFromContent(item.content, item.id);
+      const deliveryStatus = runtimeInputDelivery(item.runtimeDelivery, context.turnStatus);
       const unavailableImages = item.unavailableImages ?? [];
       if (
         markdownText.trim().length === 0 &&
@@ -1332,12 +1344,10 @@ function projectCanonicalItemViews(
           normalizedKind: "userMessage",
           semanticKind: "userMessage",
           role: "user",
-          status: "completed",
+          status: deliveryStatus === "not-sent" ? "failed" : "completed",
           markdownText,
           questionReplies,
-          ...(item.runtimeDelivery === "pending" || item.runtimeDelivery === "unknown"
-            ? { deliveryStatus: item.runtimeDelivery }
-            : {}),
+          ...(deliveryStatus ? { deliveryStatus } : {}),
           ...(hasThreadTextSelections(textSelections) ? { textSelections } : {}),
           ...(pageReferences.length ? { pageReferences } : {}),
           ...(userAttachments.length === 0 ? {} : { userAttachments }),
@@ -1533,6 +1543,7 @@ export function projectCodexCanonicalTurnViews(
       input.preserveServerUserMessages === true ? undefined : (openingUserMessageId ?? undefined),
     ...(opening && input.preserveServerUserMessages !== true ? { opening } : {}),
     blocked,
+    turnStatus: input.turn.status,
     observedAtMs: input.observedAtMs,
     goalProjection: readCodexCanonicalThreadGoalTranscriptProjection(input.turn),
   });

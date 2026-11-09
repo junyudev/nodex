@@ -24,7 +24,8 @@ function listProjectRoots(project: Project): string[] {
 
   const orderedSources = [...project.sources].sort((left, right) => left.order - right.order);
   for (const source of orderedSources) {
-    const root = normalizeRoot(source.root);
+    if (source.kind !== "directory") continue;
+    const root = normalizeRoot(source.path);
     if (root) roots.add(root);
   }
 

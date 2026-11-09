@@ -1,4 +1,5 @@
 import type { AgentDispatchModeLimit } from "@nodex/agent-runtime/contracts";
+import { HostWorkspace } from "../../host/HostWorkspace";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
 import { NATIVE_THREAD_IMPORT_OPERATION_PREFIX } from "@nodex/agent-runtime/contracts";
@@ -23,6 +24,7 @@ export class AgentRuntimeThreadExecutionError extends Schema.TaggedError<AgentRu
 /** Coordinates physical handoff with the Runtime's durable execution hold and Session lane. */
 export const make = Effect.gen(function* () {
   const application = yield* AgentRuntimeApplication;
+  const hostWorkspace = yield* HostWorkspace;
   const supervisor = yield* AgentRuntimeSupervisor;
   const workspace = yield* ProjectWorkspace;
   const git = yield* CodexGitProbe;
@@ -98,7 +100,14 @@ export const make = Effect.gen(function* () {
       hostId: "local",
       cwd,
       workspaceRoots: [
-        ...new Set([root ?? cwd, ...(project?.sources.map((source) => source.root) ?? [])]),
+        ...new Set([
+          root ?? cwd,
+          ...(project
+            ? yield* hostWorkspace
+                .resolve(project.sources)
+                .pipe(Effect.mapError((cause) => error("workspace", captured.thread.id, cause)))
+            : []),
+        ]),
       ],
       managedWorktreePath: managed,
       projectId: session.projectId,

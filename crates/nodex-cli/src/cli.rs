@@ -95,6 +95,8 @@ pub enum Command {
     /// Inspect external Sources and their recorded observations.
     Sources(crate::sources::SourcesArgs),
     Space(crate::space::SpaceArgs),
+    /// Run and administer a headless team Space on this machine.
+    Serve(crate::serve::ServeArgs),
     /// Filter, join and summarize Pages, bodies, Properties and View results with read-only SQL.
     Sql(crate::sql::SqlArgs),
     /// Read one known Page body; --json includes reusable edit validators.

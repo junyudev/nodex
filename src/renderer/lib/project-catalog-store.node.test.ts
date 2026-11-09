@@ -387,7 +387,7 @@ describe("ProjectCatalogStore", () => {
     const canonicalProject = {
       ...project("Original", 3),
       appearance: red,
-      sources: [{ root: "/tmp/nodex", order: 0 }],
+      sources: [{ kind: "directory" as const, path: "/tmp/nodex", order: 0 }],
     };
     store.publishCanonical({
       storeEpoch: "epoch-1",
@@ -402,7 +402,7 @@ describe("ProjectCatalogStore", () => {
     expect(store.project(canonicalProject)).toMatchObject({
       name: "Uncertain name",
       appearance: red,
-      sources: [{ root: "/tmp/nodex", order: 0 }],
+      sources: [{ kind: "directory" as const, path: "/tmp/nodex", order: 0 }],
     });
   });
 

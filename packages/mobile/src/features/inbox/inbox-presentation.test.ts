@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   decisionReversal,
+  messageChat,
   proposalAcceptance,
   proposalAttribution,
   proposalDestination,
@@ -29,6 +30,8 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
     agent: null,
   },
   failureMessage: null,
+  failureKind: null,
+  retryable: false,
   ...overrides,
 });
 
@@ -81,11 +84,42 @@ describe("suggestionView", () => {
     expect(suggestionView(message({ proposal: proposal({ state: "dispatching" }) }))).toEqual({
       kind: "dispatching",
     });
-    const failed = proposal({ state: "failed", failureMessage: "The chat was archived" });
+    const failed = proposal({
+      state: "failed",
+      failureMessage: "The chat was archived",
+      failureKind: "rejected",
+    });
     expect(suggestionView(message({ proposal: failed }))).toEqual({
       kind: "dispatch-failed",
       proposal: failed,
+      headline: "Couldn't deliver",
       message: "The chat was archived",
+      retry: false,
+    });
+  });
+
+  it("offers Retry only where its Space accepts it, and never resends an unconfirmed delivery", () => {
+    const unavailable = proposal({
+      state: "failed",
+      failureMessage: "Map this repository on the Host before starting work",
+      failureKind: "unavailable",
+      retryable: true,
+    });
+    expect(suggestionView(message({ proposal: unavailable }))).toMatchObject({
+      kind: "dispatch-failed",
+      headline: "Couldn't deliver",
+      message: "Map this repository on the Host before starting work",
+      retry: true,
+    });
+    const uncertain = proposal({
+      state: "dispatching",
+      failureMessage: "Submitted to remote chat; open it to verify",
+      failureKind: "unknown",
+    });
+    expect(suggestionView(message({ proposal: uncertain }))).toMatchObject({
+      kind: "dispatch-failed",
+      headline: "Delivery not confirmed",
+      retry: false,
     });
   });
 
@@ -93,6 +127,38 @@ describe("suggestionView", () => {
     for (const state of ["superseded", "dismissed", "completed"] as const) {
       expect(suggestionView(message({ proposal: proposal({ state }) }))).toEqual({ kind: "none" });
     }
+  });
+});
+
+describe("messageChat", () => {
+  const started = (
+    state: InboxProposal["state"],
+    failureKind: InboxProposal["failureKind"] = null,
+  ) => messageChat(message({ proposal: proposal({ state, failureKind }), chatSessionId: "s1" }));
+
+  it("keeps a new chat closed until its host starts it, and while it cannot start", () => {
+    expect(started("dispatching")).toEqual({ state: "starting" });
+    expect(started("failed", "unavailable")).toEqual({ state: "failed" });
+    expect(started("completed")).toEqual({ state: "open", sessionId: "s1" });
+  });
+
+  it("opens a chat that already exists, or that an unconfirmed delivery may have reached", () => {
+    expect(started("dispatching", "unknown")).toEqual({ state: "open", sessionId: "s1" });
+    const sent = proposal({
+      state: "dispatching",
+      action: {
+        type: "send_to_chat",
+        sessionId: "s1",
+        chatTitle: null,
+        prompt: "x",
+        additions: [],
+      },
+    });
+    expect(messageChat(message({ proposal: sent, chatSessionId: "s1" }))).toEqual({
+      state: "open",
+      sessionId: "s1",
+    });
+    expect(messageChat(message())).toBeNull();
   });
 });
 

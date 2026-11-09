@@ -11,7 +11,8 @@ import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory"
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
-import { make, type SessionHistoryInput } from "./SessionObservation";
+import { make } from "./NativeSessionObservation";
+import type { SessionHistoryInput } from "./SessionObservation";
 
 const input: SessionHistoryInput = { sessionId: "session:a", limit: 1, maxCharsPerItem: 2000 };
 const provenance = {

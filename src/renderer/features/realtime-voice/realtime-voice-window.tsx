@@ -96,10 +96,7 @@ export function useComposerRealtimeVoice(
     owner?.read ?? readIdle,
     readIdle,
   );
-  const query = useQuery({
-    ...realtimeVoiceAvailabilityQueryOptions(owner ? target : null),
-    enabled: owner !== null && target !== null,
-  });
+  const query = useQuery(realtimeVoiceAvailabilityQueryOptions(owner ? target : null));
   const visible =
     owner !== null &&
     (snapshot.phase !== "inactive" || (target !== null && query.data?.available === true));

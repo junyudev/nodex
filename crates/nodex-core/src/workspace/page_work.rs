@@ -297,6 +297,9 @@ pub(super) fn prepare_start(
         ));
     }
     // Capture the person at launch; execution observations must not fall back to
+    // a different Page Owner or a later message in the same Session. The person who started the
+    // work owns the chat.
+    super::chat_stewardship::record_owner(connection, session_id, requesting_member, now)?;
     super::session_mutation::accept_person_message(
         connection,
         session_id,

@@ -1,10 +1,10 @@
 use std::path::Path;
 
+use crate::identity::stable_entity_id as stable_uuid;
 use nodex_core_contracts::workspace::{PROJECT_WORKSPACE_CONTRACT_VERSION, ProjectWorkspaceIntent};
 use nodex_core_contracts::{ModuleApplyRequest, StoreEpoch};
 use nodex_core_protocol::ResponseEnvelope;
 use nodex_core_protocol::client::CoreClient;
-use sha2::{Digest, Sha256};
 
 use crate::cli::InboxSendArgs;
 use crate::error::{CliError, CliErrorCode};
@@ -90,22 +90,6 @@ pub(crate) fn send(
     serde_json::to_value(result)
         .map(CommandOutput::Json)
         .map_err(|error| CliError::new(CliErrorCode::Internal, error.to_string()))
-}
-
-/// A retry with the same idempotency key must name the same Page, so identities derive from it.
-fn stable_uuid(operation_id: &str, role: &str) -> String {
-    let hex = Sha256::digest(format!("{role}\0{operation_id}").as_bytes())
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    format!(
-        "{}-{}-7{}-8{}-{}",
-        &hex[..8],
-        &hex[8..12],
-        &hex[12..15],
-        &hex[15..18],
-        &hex[18..30],
-    )
 }
 
 #[cfg(test)]

@@ -1,3 +1,4 @@
+import { localProjectSourceRoots } from "../../shared/project-sources";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 import { matchPluginDetailSkill, projectPluginMcpServers } from "./PluginDetailModel";
 import { authorizedPluginAsset } from "./PluginInventoryPolicy";
@@ -250,9 +251,10 @@ export const live = (options: {
           bindingRevision: project?.bindingRevision ?? null,
           cwds: [
             ...new Set(
-              (project?.sources ?? [])
-                .toSorted((a, b) => a.order - b.order)
-                .map((source) => source.root.trim())
+              localProjectSourceRoots(
+                (project?.sources ?? []).toSorted((a, b) => a.order - b.order),
+              )
+                .map((root) => root.trim())
                 .filter(Boolean),
             ),
           ],

@@ -1,3 +1,4 @@
+import { localProjectSourceRoots } from "../../shared/project-sources";
 import { searchPathsEqual } from "../../shared/file-search-paths";
 import type { Project, ProjectCreateInput, ProjectWindow, ProjectWindowInput } from "./types";
 import { invokeRendererQuery } from "./renderer-command";
@@ -22,7 +23,8 @@ export async function openCommandPaletteProjectFolder(
     const window = await ports.readProjects({ first: 100, after });
     const existing = window.items.find(
       (project) =>
-        project.sources.length === 1 && searchPathsEqual(project.sources[0]!.root, folder),
+        project.sources.length === 1 &&
+        searchPathsEqual(localProjectSourceRoots(project.sources)[0] ?? "", folder),
     );
     if (existing) {
       await ports.startChat(existing.id);

@@ -71,3 +71,7 @@ const startWorkCommand = defineLocalCommitRendererCommand({
   protocol: { kind: "receipt_fenced_projection", presentation: "pending" },
 });
 export const startWork = (input: StartWorkInput) =>
+  invokeLocalCommitCommand(startWorkCommand, {
+    ...input,
+    operationId: input.operationId ?? createBoundedOperationId("work.start"),
+  });

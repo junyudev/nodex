@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vite-plus/test";
 import type { PageTurn } from "../../../../shared/page-turn";
 import { REMOTE_AGENT_REASON } from "../../../../shared/space-connection";
+import { renderWithQuery as render } from "@/test/query";
 import { PageStatusTurn } from "./status-turn";
 const state = vi.hoisted(() => ({
   reason: "ready_to_start" as PageTurn["reason"],

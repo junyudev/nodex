@@ -539,10 +539,7 @@ export interface MovePagesInput {
   groupId?: string;
 }
 
-export interface ProjectSource {
-  root: string;
-  order: number;
-}
+export type ProjectSource = import("./project-sources").ProjectSource;
 
 export interface Project {
   id: string;
@@ -559,6 +556,11 @@ export interface Project {
   description: string;
   appearance: ProjectAppearance;
   sources: ProjectSource[];
+  /**
+   * The first local directory source, for presenting and browsing a personal Project. It is null
+   * for repository sources, so it never decides where a host runs work: launches ask the Agent
+   * Runtime's `executionWorkspace`, which resolves a hosted repository through its clone mapping.
+   */
   primaryWorkspaceRoot: string | null;
   pinned: boolean;
   pinnedOrder: number | null;
@@ -1160,10 +1162,28 @@ export interface ProjectSession {
   archivedAt: string | null;
   unread: boolean;
   remindAt: string | null;
+  /** This Member may manage the chat (rename, archive or restore, move, compact or clear it, merge
+   * it back): they started it, or they own the Space. Always true in a personal Space. */
+  canManage: boolean;
+  /** This Member may stop the chat's current work, its subagents and tasks included: they may
+   * manage the chat, or they asked for its current Run. */
+  canStop: boolean;
   thread: ProjectSessionThreadLink | null;
   executionRef?: { readonly runtimeId: string; readonly threadId: string } | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** How a chat its Inbox decision started is getting on until it runs, read for each chat. */
+export interface ProjectSessionStart {
+  /** The decision that starts the chat; retrying sends it again. */
+  readonly proposalId: string;
+  /** The Inbox message it was started from. */
+  readonly pageId: string;
+  readonly state: "starting" | "uncertain" | "failed";
+  readonly failureMessage: string | null;
+  /** Core would start it again now; any Member who reads the chat may retry. */
+  readonly retryable: boolean;
 }
 
 export interface ProjectSessionSummary {
@@ -1179,6 +1199,8 @@ export interface ProjectSessionSummary {
   archivedAt: string | null;
   unread: boolean;
   remindAt: string | null;
+  canManage: boolean;
+  canStop: boolean;
   thread: ProjectSessionThreadSummary | null;
   executionRef?: { readonly runtimeId: string; readonly threadId: string } | null;
   createdAt: string;
@@ -4525,6 +4547,8 @@ export interface CodexConversationChildMembership {
 export interface CodexConversationCapabilityFlags {
   /** Runtime exact rewind eligibility. Native Codex Turns use their native turn boundary. */
   editableUserTurnIds?: readonly string[];
+  /** Why a person's own message cannot be edited, by its Turn, where an edit is refused. */
+  userTurnEditRefusals?: Readonly<Record<string, string>>;
   canEditUserTurns: boolean;
   canForkFromTurn: boolean;
   canSearch: boolean;

@@ -5916,6 +5916,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           attachments: [],
         }),
       );
+      const viewedPng = Buffer.concat([
+        Buffer.from("89504e470d0a1a0a", "hex"),
+        Buffer.alloc(64, 1),
+      ]).toString("base64");
       const tools = [
         { id: "image", name: "Read", input: { file_path: " /workspace/reference.png " } },
         { id: "text", name: "Read", input: { file_path: "/workspace/README.md" } },
@@ -5963,7 +5967,15 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             content: tools.map((tool) => ({
               type: "tool_result",
               tool_use_id: tool.id,
-              content: "ok",
+              content:
+                tool.id === "image"
+                  ? [
+                      {
+                        type: "image",
+                        source: { type: "base64", media_type: "image/png", data: viewedPng },
+                      },
+                    ]
+                  : "ok",
             })),
           },
         }),
@@ -5980,8 +5992,15 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       );
       const image = items.find((item) => item.nativeItemRef?.nativeId === "image");
       assert.equal(image?.type, "dynamic_tool");
-      if (image?.type === "dynamic_tool")
+      if (image?.type === "dynamic_tool") {
         assert.equal(image.viewedImagePath, "/workspace/reference.png");
+        // What the Agent saw stays with the chat, so no Device reads it from this machine's path.
+        assert.deepInclude(image.attachments?.[0], {
+          type: "image",
+          name: "reference.png",
+          mimeType: "image/png",
+        });
+      }
       assert.equal(image?.title, "Read /workspace/reference.png");
       assert.equal(
         items.find((item) => item.nativeItemRef?.nativeId === "text")?.title,

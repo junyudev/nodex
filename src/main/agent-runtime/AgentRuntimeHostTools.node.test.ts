@@ -3,6 +3,8 @@ import * as Effect from "effect/Effect";
 import { z } from "zod";
 import { createHostedAppToolCaller } from "../app-tools/AppToolCaller";
 import { hostToolTestServices } from "../app-tools/host-tools.test-support";
+import { make } from "./AgentRuntimeHostTools";
+import { runtimeHostToolCatalog } from "../../host/HostToolExecutor";
 import inputs from "./host-tool-inputs.test-fixture.json";
 
 const authority = {

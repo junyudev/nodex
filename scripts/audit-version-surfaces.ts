@@ -471,13 +471,13 @@ const VERSION_SURFACES: readonly Surface[] = [
     "pin the reference input",
   ],
   [
-    "src/main/inbox-application/inbox-suggestions.ts:INBOX_PROMPT_VERSION",
+    "src/host/inbox-application/inbox-suggestions.ts:INBOX_PROMPT_VERSION",
     "algorithmIdentity",
     "Inbox suggestion prompt",
     "record the prompt identity with the resolved generation request",
   ],
   [
-    "src/main/inbox-application/inbox-suggestions.ts:INBOX_SCHEMA_VERSION",
+    "src/host/inbox-application/inbox-suggestions.ts:INBOX_SCHEMA_VERSION",
     "algorithmIdentity",
     "Inbox suggestion output validation",
     "record the schema identity used to validate the generation result",

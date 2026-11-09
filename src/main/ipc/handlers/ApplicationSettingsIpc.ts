@@ -50,6 +50,7 @@ import { CoreModules } from "../../core-runtime/CoreModules";
 import {
   readRoutingConsent,
   writeRoutingConsent,
+} from "../../../host/inbox-application/InboxRoutingConsent";
 import { MainConfig } from "../../app/MainConfig";
 import {
   AgentRuntimeProviderConfiguration,

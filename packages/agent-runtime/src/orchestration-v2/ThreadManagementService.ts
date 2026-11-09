@@ -320,6 +320,8 @@ export interface ThreadManagementServiceShape {
     readonly threadId: ThreadId;
     readonly commandId: CommandId;
     readonly taskIds: ReadonlyArray<string>;
+    /** When set, every task must be work of this Run. */
+    readonly runId?: RunId | undefined;
   }) => Effect.Effect<{ readonly stopping: ReadonlyArray<string> }, ThreadManagementFailure>;
   readonly backgroundOutput: (input: {
     readonly threadId: ThreadId;
@@ -333,6 +335,8 @@ export interface ThreadManagementServiceShape {
     readonly taskId: NodeId;
     readonly commandId: CommandId;
     readonly reason?: string | undefined;
+    /** When set, the task must have been started by this Run. */
+    readonly runId?: RunId | undefined;
   }) => Effect.Effect<
     {
       readonly taskId: NodeId;
@@ -1252,8 +1256,12 @@ const make = Effect.gen(function* () {
       const parent = yield* orchestrator.getThreadRecords(input.threadId, ["subagents"], {
         subagentIds: [input.taskId],
       });
+      // A stop admitted for one Run never reaches another Run's task.
       const task = parent.subagents.find(
-        (task) => task.id === input.taskId && task.origin === "app_owned",
+        (task) =>
+          task.id === input.taskId &&
+          task.origin === "app_owned" &&
+          (input.runId === undefined || task.runId === input.runId),
       );
       if (task?.childThreadId == null)
         return yield* new ThreadManagementTaskCancelError({
@@ -1380,6 +1388,7 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         threadId: input.threadId,
         taskIds: input.taskIds,
+        ...(input.runId === undefined ? {} : { runId: input.runId }),
       });
       return {
         stopping: result.storedEvents.flatMap(({ event }) =>

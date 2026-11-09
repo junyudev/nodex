@@ -12,9 +12,15 @@ import {
   type InboxSuggestionMode,
 } from "../../shared/inbox";
 import { createUuidV7 } from "../../shared/uuid-v7";
+import { NativePromptImages } from "../../main/agent-backend/NativePromptImages";
+import { LibraryModule } from "../../main/library-application/LibraryModule";
 import {
   AgentRuntimeApplication,
   AgentRuntimeApplicationError,
+} from "../../main/agent-runtime/AgentRuntimeApplication";
+import { testLayer as configLayer } from "../../main/app/MainConfig";
+import { subscribeToBackendLogs, type BackendLogEntry } from "../../main/logging/logger";
+import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { CoreModuleResponseError } from "../../main/core-client/core-client";
 import {
   captureInbox,
@@ -23,6 +29,7 @@ import {
   suggestionHostLayer,
 } from "./InboxApplication.test-support";
 import { CoordinatorSession } from "../coordinator/CoordinatorSession";
+import { inboxDispatchActionToCore } from "../../main/core-client/inbox-adapter";
 import { validateInboxSuggestions } from "./inbox-suggestions";
 import { make } from "./InboxDispatcher";
 import { inboxRoutingIdentity } from "./inbox-suggestions";

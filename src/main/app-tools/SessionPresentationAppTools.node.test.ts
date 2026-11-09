@@ -12,7 +12,7 @@ import type {
   WorkbenchAgentRequestBody,
   WorkbenchWindowReference,
 } from "../../shared/nodex-app-tools/workbench";
-import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 import { GitWorkerRuntime } from "../host-runtime/GitWorkerRuntime";

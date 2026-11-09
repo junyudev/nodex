@@ -1,3 +1,4 @@
+import { effectiveHolds } from "../../../host/work-application/execution-holds";
 import { setExecutionHoldInputSchema } from "../../../shared/work-application";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -15,6 +16,10 @@ import { rendererLocalCommitApply } from "../../core-client/types";
 import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
+import {
+  WorkApplication,
+  WorkApplicationError,
+} from "../../../host/work-application/WorkApplication";
 
 const coreRejection = (cause: unknown): CoreModuleResponseError | null => {
   if (cause instanceof CoreModuleResponseError) return cause;
@@ -46,6 +51,7 @@ export const live = Layer.effectDiscard(
               }),
           }).pipe(Effect.andThen(handler(event, ...args))),
     );
+    yield* handlers.handleQuery("work:host-status", () => Effect.succeed({ available: true }));
     yield* handlers.handleQuery("work:holds", () =>
       Effect.gen(function* () {
         const holds: import("../../../shared/work-application").ExecutionHold[] = [];

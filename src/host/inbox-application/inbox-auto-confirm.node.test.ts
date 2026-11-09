@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import { DEFAULT_INBOX_SETTINGS, LIBRARY_INBOX, type InboxSettings } from "../../shared/inbox";
 import { writeRoutingConsent } from "./InboxRoutingConsent";
 import { createUuidV7 } from "../../shared/uuid-v7";
+import type { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
 import { captureInbox, inboxOverRealCore } from "./InboxApplication.test-support";
 
 type Provider = Effect.Success<ReturnType<AgentRuntimeApplication["Service"]["catalog"]>>[number];

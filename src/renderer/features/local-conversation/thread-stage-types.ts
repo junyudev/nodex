@@ -266,6 +266,11 @@ export interface ConversationBackgroundTask {
   readonly startedAtMs: number | null;
   /** The Agent can end this task alone; otherwise only Stop all reaches it. */
   readonly stoppable: boolean;
+  /**
+   * This reader may stop the task: always for a chat on this computer; in a shared chat, as Core
+   * admits stopping the Run that started it.
+   */
+  readonly canStop: boolean;
   /** A Stop request is in flight; the task leaves the list once it has ended. */
   readonly stopping: boolean;
 }
@@ -280,8 +285,11 @@ export interface ConversationBackgroundTaskOutput {
 /** One conversation's live background work and how its Agent stops it. */
 export interface ConversationBackgroundTasks {
   readonly tasks: readonly ConversationBackgroundTask[];
-  /** Stops one task, or every listed task when `taskId` is omitted. */
-  readonly stop: (taskId?: string) => Promise<void>;
+  /**
+   * Stops one task, or every listed task this reader may stop when `taskId` is omitted. Absent
+   * where this Device cannot stop the work at all.
+   */
+  readonly stop?: (taskId?: string) => Promise<void>;
   /** Null when the Agent cannot show this task's output. */
   readonly readOutput?: (taskId: string) => Promise<ConversationBackgroundTaskOutput | null>;
   /** Opens the task's full output in its own surface, where it is not shown in place. */
@@ -289,6 +297,9 @@ export interface ConversationBackgroundTasks {
   /** Opens every process the conversation runs, beyond its background tasks. */
   readonly openAll?: () => void;
 }
+/** Background work this Device can stop. */
+export type StoppableBackgroundTasks = ConversationBackgroundTasks &
+  Required<Pick<ConversationBackgroundTasks, "stop">>;
 
 /** Capabilities vary by provider; the stage, timeline, editor and request UI are shared. */
 export interface ConversationProviderPresentation {
@@ -333,8 +344,15 @@ export interface ConversationProviderPresentation {
     /** False where the conversation cannot run in Goal mode. */
     readonly goals?: boolean;
     readonly images?: boolean;
+    /** Whether a message can carry files, images and referenced context besides its words. */
+    readonly context?: boolean;
     readonly stopTask?: boolean;
   };
+  /**
+   * Why this reader may not stop the conversation's work, as in a hosted chat whose current Run
+   * another Member asked for. The Composer still shows Stop, unavailable, with this reason.
+   */
+  readonly interruptUnavailableReason?: string | null;
   /** Explains unsupported or not-yet-known image capability for the selected model. */
   readonly imageInputUnavailableReason?: string | null;
   /** Queue editing uses the Agent and model already captured by that message. */
@@ -675,6 +693,8 @@ export interface ThreadMcpAppSidePanelInput {
 export interface ThreadUserMessageActionsModel {
   hookStats?: HookStats | null;
   canEdit: boolean;
+  /** The person's own message cannot be edited, and why; Edit shows unavailable. */
+  editUnavailableReason?: string;
   sentAtMs: number | null;
   /** The settled latest turn's closing message keeps its actions visible without hover. */
   alwaysVisible?: boolean;

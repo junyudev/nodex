@@ -12,46 +12,15 @@ import type {
   CodexSidebarSyncResult,
   ProjectSession,
 } from "../../shared/types";
-import { CODEX_AGENT_BACKEND_BINDING } from "../../shared/agent-backend";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
 import { readCodexLinkedRootSession } from "./CodexLinkedRootSession";
-import { projectCoreWorkspaceTask } from "./CodexThreadCatalogProjection";
+import { archivedRuntimeChatItem, projectCoreWorkspaceTask } from "./CodexThreadCatalogProjection";
 
 const CODEX_SIDEBAR_SYNC_PAGE_SIZE = 200;
-
-const archivedRuntimeChatItem = (
-  task: ReturnType<typeof projectCoreWorkspaceTask>,
-): CodexSidebarSnapshot["items"][number] => ({
-  key: `local:session:${task.id}`,
-  kind: "local",
-  backendBinding: CODEX_AGENT_BACKEND_BINDING,
-  runtimeBound: true,
-  runLocation: { kind: "local-checkout" },
-  hostId: "local",
-  threadId: task.executionRef?.threadId ?? task.id,
-  parentThreadId: null,
-  sessionId: task.id,
-  projectId: task.projectId,
-  title: task.displayTitle,
-  preview: "",
-  cwd: null,
-  updatedAt: Date.parse(task.updatedAt),
-  recencyAt: task.activityAt,
-  createdAt: Date.parse(task.createdAt),
-  pinned: task.pinned,
-  pinnedOrder: task.pinnedOrder,
-  unread: task.unread,
-  remindAt: task.remindAt,
-  archived: task.archived,
-  statusType: "idle",
-  statusActiveFlags: [],
-  projectless: task.projectId === null,
-  disabled: false,
-});
 
 export interface CodexSidebarSyncInput {
   readonly includeArchived?: boolean;

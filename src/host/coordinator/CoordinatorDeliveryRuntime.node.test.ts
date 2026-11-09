@@ -4,6 +4,12 @@ import type { components } from "@nodex/core-protocol";
 import {
   AgentRuntimeApplication,
   AgentRuntimeApplicationError,
+} from "../../main/agent-runtime/AgentRuntimeApplication";
+import type {
+  ProjectWorkspaceApplyInput,
+  ProjectWorkspaceRead,
+} from "../../main/core-client/types";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
 import { CoordinatorSession } from "./CoordinatorSession";
 import {
   inboxOverRealCore,

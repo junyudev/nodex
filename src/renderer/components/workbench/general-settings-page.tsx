@@ -1,3 +1,4 @@
+import { isRemoteSpace } from "@/lib/renderer-space";
 import { ChatTitleModelSettingRow } from "./chat-title-model-setting-row";
 import { TerminalShellSettingRow } from "./terminal-shell-setting-row";
 import { UsageMeterSettingRows } from "./usage-meter-setting-rows";
@@ -58,11 +59,14 @@ export function GeneralSettingsPage({
         <TerminalShellSettingRow />
         <AppUpdateSettingRows open={open} />
         <WindowsStartupSettingsRow open={open} />
-        <SettingRow label="Run setup again" description="Connect Agents and add projects.">
-          <NodexButton variant="secondary" size="xs" onClick={() => void runSetupAgain()}>
-            Run setup
-          </NodexButton>
-        </SettingRow>
+        {/* Setup connects this desktop's own Agents and Projects, which a team window never reads. */}
+        {isRemoteSpace() ? null : (
+          <SettingRow label="Run setup again" description="Connect Agents and add projects.">
+            <NodexButton variant="secondary" size="xs" onClick={() => void runSetupAgain()}>
+              Run setup
+            </NodexButton>
+          </SettingRow>
+        )}
         <SettingRow
           label="Open source licenses"
           description="Third-party notices for bundled dependencies."
@@ -83,6 +87,7 @@ export function GeneralSettingsPage({
 
       <UsageMeterSettingRows />
 
+      {/* Titles and predictions come from this desktop's own Agents, never a team Space's host. */}
       <SectionBlock id="chats" title="Chats">
         <SettingRow
           label="Thread detail"
@@ -90,12 +95,14 @@ export function GeneralSettingsPage({
         >
           <ThreadDetailLevelSettingControl />
         </SettingRow>
-        <SettingRow
-          label="Show predictions"
-          description="Suggest your next message after an agent replies."
-        >
-          <ComposerPredictionSettingControl />
-        </SettingRow>
+        {isRemoteSpace() ? null : (
+          <SettingRow
+            label="Show predictions"
+            description="Suggest your next message after an agent replies."
+          >
+            <ComposerPredictionSettingControl />
+          </SettingRow>
+        )}
         <SettingRow
           label={`${isMacPlatform ? "Cmd" : "Ctrl"}+Enter to send long prompts`}
           description="Single-line prompts still send on Enter. Multiline prompts send with the modifier instead."
@@ -114,7 +121,7 @@ export function GeneralSettingsPage({
             onChange={onThreadQueueFollowUpsEnabledChange}
           />
         </SettingRow>
-        <ChatTitleModelSettingRow />
+        {isRemoteSpace() ? null : <ChatTitleModelSettingRow />}
       </SectionBlock>
 
       <SectionBlock id="writing" title="Writing">

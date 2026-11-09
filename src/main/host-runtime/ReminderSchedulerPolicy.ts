@@ -1,4 +1,4 @@
-import type { AutomationReminderClaim } from "../automation-application/AutomationApplication";
+import type { AutomationReminderClaim } from "../../host/automation-application/AutomationApplication";
 import { formatReminderBody, type ReminderNotificationPayload } from "../reminder-notification";
 
 export const REMINDER_SCHEDULER_INTERVAL_MS = 30_000;

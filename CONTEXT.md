@@ -157,12 +157,53 @@ The Agent Runtime coordinates execution conversations and their work. It owns Ru
 native provider sessions, queued messages, delegated tasks and result delivery. It
 does not own Library content.
 
+### Host
+
+A Host embeds one Space's execution and producer kernel. It supervises the Agent
+Runtime and delivers Work, Inbox, Sources and Automations through Core's durable
+admission and outboxes. Desktop capabilities are ports: windows, native tools and
+operating-system notification presentation belong to the Desktop shell. A
+Desktop connected to a team Space is a client of that Space's Host and acquires
+none of its producers.
+
+The personal Host is embedded in the Desktop shell. A team Host can run headless
+with `nodex serve`, using the host machine's provider authentication. Core relays
+authenticated Member conversation reads and person commands to that execution
+owner; a Desktop's local conversation process never owns a team transcript.
+The Host retains the authenticated Member for person actions and attention reads.
+Agent Runs act on behalf of their captured requesting Member; producers act as
+Services. Core decides which Member may answer a question or approve execution, and
+which Member may take each other action in a hosted chat, from its own records.
+
+Team Project sources identify repositories by canonical Git remote. A Host-local
+clone mapping resolves those identities into working directories; executable
+paths never travel as shared Project sources.
+
 ### Session
 
 A Session is the product identity of a chat in a Project or the projectless workspace.
 Page Linked chats, sidebar placement and Workbench presentation refer to this identity.
 A Session's execution reference identifies its conversation without making those
 relationships owners of the conversation or its delegated tasks.
+
+### Chat owner
+
+A chat's owner is the Member who started it, a fork or side chat included: Core
+records them when it creates the chat, and a chat without that record belongs to
+whoever asked for its first Run, otherwise to the Owner of the Page whose work it is.
+Replying never makes another Member its owner. In a team Space the chat owner and the
+Space Owners manage the chat: rename, archive or restore it, move it to another
+Project, compact or clear its context and merge it back. Only the owner saves or closes
+a side chat. A personal Space's only Member owns every chat.
+_Avoid_: chat requester, steward.
+
+### Run requester
+
+A Run's requester is the Member whose accepted message asked for that Run; Core
+captures them when the Run starts, and later messages never change it. The Run
+requester, the chat owner and the Space Owners stop that Run's work, its subagents,
+delegated and background tasks included, even after another Run becomes current. A
+Run's questions go to its requester.
 
 ### Chat reminder
 

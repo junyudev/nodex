@@ -12,7 +12,8 @@ import type { DatabaseChangeEvent } from "../../shared/database-events";
 import { parseDatabaseViewId } from "../../shared/database-identities";
 import { allProjectSessionInvalidation } from "../core-client/core-project-workspace-invalidation";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
-import { DatabaseNotifierRuntime, live } from "./DatabaseNotifierRuntime";
+import { DatabaseNotifierRuntime } from "./DatabaseNotifierRuntime";
+import { live } from "../platform/electron/DatabaseNotifications";
 
 const emptyWindows = {
   all: () => [],

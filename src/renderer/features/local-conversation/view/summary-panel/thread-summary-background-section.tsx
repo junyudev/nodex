@@ -197,7 +197,7 @@ function BackgroundTaskRow({
         }
         trailingVisible
         actions={
-          stopping || !task.stoppable ? undefined : (
+          stopping || !task.stoppable || !task.canStop || !background.stop ? undefined : (
             <NodexTooltip tooltipContent="Stop" side="top">
               <button
                 type="button"
@@ -237,8 +237,9 @@ export function ThreadSummaryBackgroundSection({
   const [requested, setRequested] = useState<ReadonlySet<string>>(() => new Set());
   const { tasks } = background;
   const isStopping = (task: ConversationBackgroundTask) => task.stopping || requested.has(task.id);
-  const live = tasks.filter((task) => !isStopping(task));
+  const live = tasks.filter((task) => !isStopping(task) && task.canStop);
   const stop = (taskId?: string) => {
+    if (!background.stop) return;
     const ids = taskId === undefined ? live.map((task) => task.id) : [taskId];
     setRequested((current) => new Set([...current, ...ids]));
     void background
@@ -261,9 +262,9 @@ export function ThreadSummaryBackgroundSection({
       titleSuffix={<ThreadSummaryPanelCountBadge count={tasks.length} />}
       autoCollapse={autoCollapse}
       after={
-        live.length > 1 || openAll ? (
+        (background.stop && live.length > 1) || openAll ? (
           <span className="ms-auto flex shrink-0 items-center gap-0.5">
-            {live.length > 1 ? (
+            {background.stop && live.length > 1 ? (
               <button
                 type="button"
                 className="inline-flex h-6 shrink-0 cursor-interaction items-center gap-1 rounded-sm px-1.5 text-sm text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2"

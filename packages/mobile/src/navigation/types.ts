@@ -10,8 +10,12 @@ export type RootStack = {
   Home: undefined;
   Pair: { readonly uri?: string } | undefined;
   Chat: { readonly sessionId: string; readonly title?: string };
-  Message: { readonly pageId: string; readonly initial?: InboxMessage };
-  Suggestion: { readonly pageId: string; readonly initial?: InboxMessage };
+  Message: {
+    readonly pageId: string;
+    readonly initial?: InboxEntry;
+    /** A chat this message is starting; the screen opens it once its host has started it. */
+    readonly openChat?: string;
+  };
   ChatItem: { readonly sessionId: string; readonly itemId: string };
   ScopePicker: undefined;
   /** `projectOnly` when what is being started has no choice of where to run. */

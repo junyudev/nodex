@@ -1,3 +1,4 @@
+import { localProjectSourceRoots } from "../../../shared/project-sources";
 import { isHostedChat } from "@/lib/hosted-chat";
 import { useExecutionHold } from "@/lib/execution-holds-runtime";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
@@ -286,7 +287,7 @@ function normalizePrimaryWorkspaceRoot(project: Project) {
 }
 
 function normalizeProjectSources(project: Project): string[] {
-  return project.sources.map((source) => source.root).filter((root) => root.trim().length > 0);
+  return localProjectSourceRoots(project.sources).filter((root) => root.trim().length > 0);
 }
 
 export function CodexSidebarSection({

@@ -10,6 +10,9 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { AgentRuntimeSupervisor } from "../../main/agent-runtime/AgentRuntimeSupervisor";
+import { subscribe as subscribeExecutionChanges } from "../../main/agent-runtime/AgentRuntimeExecutionChanges";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import { offeredCodexServiceTier } from "../../shared/codex-service-tier";
 import { CODEX_AGENT_BACKEND_BINDING } from "../../shared/agent-backend";
@@ -21,16 +24,22 @@ import type {
   AutomationRun,
 } from "../../shared/types";
 import {
+  buildAutomationHeartbeatPrompt,
   buildAutomationRunPrompt,
+} from "../../main/automation-prompt";
 import {
   AutomationRetryError,
   type AutomationRunContext,
   type AutomationHeartbeatRunContext,
+} from "../../main/host-runtime/ClockAutomationPolicy";
 import { computeAutomationIntervalMs } from "./automation-cadence";
+import { ProjectWorkspace } from "../../main/project-application/ProjectWorkspace";
+import { AgentBackendRegistry } from "../../main/agent-backend/AgentBackendRegistry";
 import { AutomationApplication } from "./AutomationApplication";
 import type { AutomationAdmission } from "./AutomationApplication";
 import type { InboxAgentChoice } from "../../shared/inbox";
 import { resolveInboxModel } from "../inbox-application/InboxRuntimeSelection";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
 import type { AutomationArchiveMessages } from "./AutomationArchiveExcerpt";
 
 type RunOutcome = NonNullable<AgentRuntimeOperations["run.outcome"]["output"]>;

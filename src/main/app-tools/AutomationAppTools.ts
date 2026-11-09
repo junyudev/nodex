@@ -14,7 +14,7 @@ import {
 import {
   AutomationApplication,
   AutomationApplicationError,
-} from "../automation-application/AutomationApplication";
+} from "../../host/automation-application/AutomationApplication";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-authorization";
 import { CoreModuleResponseError } from "../core-client/core-client";

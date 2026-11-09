@@ -40,7 +40,11 @@ export const discardCapture = (captureId: string) => getRuntime().outbox.discard
 export const decideInbox = (pageId: string, decision: InboxDecision) =>
   getRuntime().decideInbox(pageId, decision);
 export const undoInbox = (undoToken: string) => getRuntime().undoInbox(undoToken);
-export const fetchInboxMessage = (pageId: string) => getRuntime().fetchInboxMessage(pageId);
+/** Calls back whenever the connected Space says its Inbox may have changed. */
+export const onInboxChanged = (handler: () => void) =>
+  getRuntime().connection.rpc.on("changed", ({ topics }) => {
+    if (topics.includes("inbox")) handler();
+  });
 
 export const startChat = (input: Parameters<MobileRuntime["startChat"]>[0]) =>
   getRuntime().startChat(input);

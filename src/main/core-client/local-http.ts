@@ -335,9 +335,14 @@ export class LocalHttpTransport {
     const encodedBody =
       body === undefined ? undefined : encodeBoundedJson(body, maximumRequestBytes, "Core request");
     const execution = requestExecution(requestPath, options);
-    const transportTimeoutMs = execution
-      ? execution.deadlineMs + this.#transportLivenessTimeoutMs
-      : this.#transportLivenessTimeoutMs;
+    // Host reads and polls intentionally wait at Core without Module execution headers.
+    const hostWaitMs =
+        ? 10_000
+        : requestPath === "/core/v1/host/call"
+          ? 25_000
+          : 0;
+    const transportTimeoutMs =
+      (execution?.deadlineMs ?? hostWaitMs) + this.#transportLivenessTimeoutMs;
 
     return new Promise<Response>((resolve, reject) => {
       let settled = false;

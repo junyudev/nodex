@@ -110,11 +110,16 @@ pub(super) fn ensure_default_draft_session(
         require_project(connection, library_id, project_id, true)?;
     }
     let title = normalize_session_title(title)?;
+    // Each Member opens a draft of their own: another Member's unstarted chat is never theirs.
+    let member = super::chat_stewardship::acting_member(connection, library_id, context)?;
     let existing_session_id = connection
         .query_row(
-            "SELECT id FROM project_sessions \
-             WHERE project_id IS ?1 AND is_default_draft = 1",
-            [project_id],
+            &format!(
+                "SELECT session.id FROM project_sessions session \
+                 WHERE session.project_id IS ?1 AND session.is_default_draft = 1 AND {} IS ?2",
+                super::chat_stewardship::opener_sql("session.id")
+            ),
+            params![project_id, member],
             |row| row.get::<_, String>(0),
         )
         .optional()?;
@@ -134,6 +139,7 @@ pub(super) fn ensure_default_draft_session(
         );
     }
     let now = insert_session_records(connection, session_id, project_id, &title, true)?;
+    super::chat_stewardship::record_owner(connection, session_id, &member, &now)?;
     finish_lifecycle_mutation(
         connection,
         library_id,
@@ -214,6 +220,24 @@ pub(super) fn delete_session(
     session_id: &str,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("session_id", session_id)?;
+    // A Member deletes no shared chat; they close only a side chat of their own.
+    if context.adapter == nodex_core_contracts::AdapterKind::RemoteMember {
+        let principal = context.principal.as_ref().ok_or_else(|| {
+            StoreError::new(
+                StoreErrorCode::Unauthorized,
+                "A verified Member is required",
+                false,
+            )
+        })?;
+        super::host_chat::authorize(
+            connection,
+            library_id,
+            principal,
+            super::HostChatAction::OwnSideChat {
+                session: session_id,
+            },
+        )?;
+    }
     let authority = require_session(connection, library_id, session_id)?;
     if let Some(thread_id) = &authority.thread_id {
         super::sidebar_pins::clear_thread_projection(connection, thread_id)?;
@@ -266,6 +290,13 @@ pub(super) fn move_session(
         require_project(connection, library_id, project_id, true)?;
     }
     let authority = require_session(connection, library_id, session_id)?;
+    super::chat_stewardship::require(
+        connection,
+        library_id,
+        context,
+        session_id,
+        super::chat_stewardship::ChatControl::Manage,
+    )?;
     let workspace_project: Option<String> = connection.query_row("SELECT w.project_id FROM session_workspaces binding JOIN page_workspaces w ON w.workspace_id=binding.workspace_id WHERE binding.session_id=?1",[session_id],|r|r.get(0)).optional()?;
     if workspace_project
         .as_deref()
@@ -296,9 +327,15 @@ pub(super) fn move_session(
         );
     }
     if authority.is_default_draft {
+        let opener = super::chat_stewardship::opener_sql;
         let target_has_default = connection.query_row(
-            "SELECT EXISTS(SELECT 1 FROM project_sessions \
-             WHERE project_id IS ?1 AND is_default_draft = 1 AND id <> ?2)",
+            &format!(
+                "SELECT EXISTS(SELECT 1 FROM project_sessions draft \
+                 WHERE draft.project_id IS ?1 AND draft.is_default_draft = 1 AND draft.id <> ?2 \
+                   AND {} IS {})",
+                opener("draft.id"),
+                opener("?2")
+            ),
             params![project_id, session_id],
             |row| row.get::<_, i64>(0),
         )? == 1;
@@ -310,13 +347,6 @@ pub(super) fn move_session(
             ));
         }
     }
-    let next_pinned_order = if authority.pinned {
-        authority
-            .pinned_order
-            .or(Some(super::sidebar_pins::next_order(connection)?))
-    } else {
-        None
-    };
     let changed = connection.execute(
         "UPDATE project_sessions SET project_id = ?1, manual_rank = NULL, updated_at = ?2 \
          WHERE id = ?3",

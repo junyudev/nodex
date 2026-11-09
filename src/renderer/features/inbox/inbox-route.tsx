@@ -1,4 +1,5 @@
 import { isRemoteSpace } from "@/lib/renderer-space";
+import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
 import { InboxActivity, InboxActivityFilters } from "./inbox-activity";
 import { InboxProblemRow } from "./inbox-problem-row";
 import { SpaceExecutionHoldControl } from "@/components/workbench/execution-hold-controls";
@@ -139,6 +140,7 @@ function InboxHeader({
   /** Opens Nodex's own conversation, where the reader can talk to it directly. */
   readonly onOpenNodex: () => void;
 }) {
+  const hostAvailable = useSpaceHostAvailable();
   return (
     // An Inbox is its Scene's Home tab, so it tops the tab like a Board's views do.
     <header className={cn(SURFACE_TOOLBAR_ROW_CLASS, "shrink-0")}>
@@ -166,6 +168,10 @@ function InboxHeader({
         })}
       </div>
       <div className="ml-auto flex items-center gap-0.5">
+        <SpaceExecutionHoldControl />
+        <ToolbarIconButton label="Open Nodex" onClick={onOpenNodex} disabled={!hostAvailable}>
+          <NodexLogoMarkIcon monochrome className="icon-sm" />
+        </ToolbarIconButton>
         {databaseId ? (
           <ToolbarIconButton label={databaseLabel} onClick={() => onOpenDatabase(databaseId)}>
             <BoardIcon className="icon-sm" />

@@ -29,8 +29,8 @@ const PROJECT: Project = {
   description: "",
   appearance: { color: "blue", marker: { kind: "icon", icon: "terminal" } },
   sources: [
-    { root: "/repo/beta", order: 0 },
-    { root: "/repo/beta-docs", order: 1 },
+    { kind: "directory" as const, path: "/repo/beta", order: 0 },
+    { kind: "directory" as const, path: "/repo/beta-docs", order: 1 },
   ],
   primaryWorkspaceRoot: "/repo/beta",
   pinned: false,

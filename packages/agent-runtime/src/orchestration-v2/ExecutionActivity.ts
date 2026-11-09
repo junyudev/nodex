@@ -32,6 +32,8 @@ const BackgroundTask = Schema.Struct({
   description: Schema.NullOr(Schema.String),
   command: Schema.NullOr(Schema.String),
   startedAt: Schema.NullOr(Schema.String),
+  /** The Run whose work started the task, when its turn item says. */
+  runId: Schema.NullOr(Schema.String),
 });
 export type RootActivityBackgroundTask = typeof BackgroundTask.Type;
 const decodeBackgroundTasks = Schema.decodeUnknownEffect(
@@ -231,6 +233,8 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
             json_extract(background_task, '$.description') AS description,
             json_extract(background_task, '$.command') AS command,
             json_extract(background_task, '$.startedAt') AS started_at,
+            (SELECT item.run_id FROM orchestration_v2_projection_turn_items AS item
+              WHERE item.turn_item_id = json_extract(background_task, '$.turnItemId')) AS run_id,
             ROW_NUMBER() OVER (PARTITION BY rooted.thread_id, json_extract(background_task, '$.taskId')
               ORDER BY json_extract(background_task, '$.startedAt'), rooted.at DESC, background_task) AS duplicate_position
           FROM rooted
@@ -244,7 +248,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           SELECT root_thread_id,
             json_group_array(json_object('threadId', thread_id, 'threadTitle', thread_title,
               'taskId', task_id, 'kind', task_kind, 'description', description,
-              'command', command, 'startedAt', started_at)) AS background_tasks_json
+              'command', command, 'startedAt', started_at, 'runId', run_id)) AS background_tasks_json
           FROM (SELECT * FROM ranked_tasks WHERE position <= ${EXECUTION_ACTIVITY_BACKGROUND_TASK_LIMIT}
             ORDER BY root_thread_id, position)
           GROUP BY root_thread_id

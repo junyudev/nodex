@@ -84,6 +84,7 @@ function SettingsPageContent({
 
   if (
     isRemoteSpace() &&
+    /\/(sources|agent|agent-import|models|inbox-settings|plugins-settings|backups|git|worktrees|local-environments|hooks-settings)(?:\/|$)/u.test(
       path,
     )
   )

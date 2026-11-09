@@ -1,4 +1,4 @@
-import { CodexTurnPresentation } from "./CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import {
   makeTestTurnPresentation,
   testSubmitPresentation,

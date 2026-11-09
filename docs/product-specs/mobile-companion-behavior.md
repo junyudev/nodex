@@ -96,6 +96,13 @@ line whose placeholder names where a message goes. In use it opens to show its p
   the Agent it chose. Opening the message lays out the same content in place.
 - Opening a message shows it whole, with `Start chat`, `Mark done`, `Keep`, `Important`,
   `Ask for a suggestion` and `Delete`. Decisions that can be undone offer `Undo` for a few seconds.
+  On a team Space, its host starts the chat with your authority, even while your laptop is closed.
+- A chat started from a message opens once its host has started it. Until then the message shows
+  it starting. If it cannot start, the message keeps its reason in the Inbox, on every Device:
+  `Retry` appears only when its Space would accept it, such as a host that could not run it; a
+  refused decision needs a new one, and a delivery that may have arrived is opened to check, never
+  sent again from the phone. A chat opened before its host starts it says so and follows the Run
+  once it starts.
 - The history control switches between waiting and handled messages.
 
 Turns say whose move it is in the desktop's words, such as `Needs your answer` or
@@ -106,10 +113,14 @@ Turns say whose move it is in the desktop's words, such as `Needs your answer` o
   question itself, then `Working`, then `Recent`. An empty section has no heading, and a list with
   only recent chats has none at all.
 - Live status updates in place without reordering; order changes on the next read.
+- A row previews its chat by the opening message of the chat's current history: after an edit
+  rewinds past that message, the row shows the message written in its place.
 - Starting a chat chooses a Project, a location (the checkout or a new worktree, offered as soon as
   a Project that can use one is chosen) and an Agent, and remembers them per desktop. An Agent that cannot run says why rather than disappearing. A chat
   needs a live connection to start; it is not queued offline. Permission mode comes from the
-  Profile's setting for new chats.
+  host Profile's setting for new chats. On a team Space its host starts the chat with your
+  authority, as a team desktop's New chat does, and it is yours: in the host's tasks directory
+  without a Project, or where the host runs the Project.
 
 ### A chat
 
@@ -127,9 +138,15 @@ Turns say whose move it is in the desktop's words, such as `Needs your answer` o
   and can be opened further. Answering from a
   phone is the same as answering from the desktop, and whichever answers first wins.
 - While a Run is active, sending queues the message behind it, and pressing and holding send redirects
-  the Run now instead. An empty Composer's button stops the Run.
+  Space, Core lets the Member who asked for the Run, the chat's owner and the Space Owners. Anyone
+  else sees Stop unavailable, and tapping it says why.
 - A connected conversation only its desktop owner can continue is readable, and says so in place of
   the Composer. A question that asks for a secret is answered on the desktop, and the chat says so.
+  a reply, the picture an Agent viewed or generated and the pictures a tool returned. A step shows
+  the copy of a picture the Agent viewed or generated, or else the pictures its tool returned: up to
+  four beneath the step in an opened stretch of work, and all of them in the opened step. A step
+  whose picture's file was already gone, and an imported reply's picture whose file was gone at
+  import, name that picture with the reason. An imported conversation's replies show their pictures
 
 ## Notifications
 

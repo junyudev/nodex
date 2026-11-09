@@ -3127,7 +3127,11 @@ export function renderWorkbench({
           ...makeProject(projectId, input.name ?? ""),
           description: input.description ?? "",
           appearance: input.appearance ?? makeProject().appearance,
-          sources: (input.sources ?? []).map((root, order) => ({ root, order })),
+          sources: (input.sources ?? []).map((root, order) => ({
+            kind: "directory" as const,
+            path: root,
+            order,
+          })),
           primaryWorkspaceRoot: input.sources?.[0] ?? null,
         };
         projectState = [...projectState, created];
@@ -3162,7 +3166,11 @@ export function renderWorkbench({
         if (!project) throw new Error(`Project not found: ${updateCommand.projectId}`);
         const updates = updateCommand.updates;
         const nextSources = Array.isArray(updates.sources)
-          ? updates.sources.map((root, order) => ({ root: String(root), order }))
+          ? updates.sources.map((root, order) => ({
+              kind: "directory" as const,
+              path: String(root),
+              order,
+            }))
           : project.sources;
         const updated: Project = {
           ...project,
@@ -3173,7 +3181,9 @@ export function renderWorkbench({
             : {}),
           sources: nextSources,
           primaryWorkspaceRoot: Array.isArray(updates.sources)
-            ? (nextSources[0]?.root ?? null)
+            ? nextSources[0]?.kind === "directory"
+              ? nextSources[0].path
+              : null
             : project.primaryWorkspaceRoot,
         };
         const changed = JSON.stringify(updated) !== JSON.stringify(project);

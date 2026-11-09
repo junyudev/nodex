@@ -49,7 +49,7 @@ is off, which opens Settings → Models, and its gear opens the same page. Searc
 off models, dimmed and marked `Off`: choosing one turns it on and selects it, except that a
 Nodex model opens its Settings card instead, because spending credits is a deliberate choice.
 A whole provider that is off returns only from Settings. Other pickers, such as Inbox,
-scheduled tasks, the chat title model and a Page's agent configuration, list on models and keep a
+Automations, the chat title model and a Page's agent configuration, list on models and keep a
 saved choice visible.
 
 A chat whose model is off keeps showing it, marked `Off`, and raises a composer notice naming

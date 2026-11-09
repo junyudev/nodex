@@ -5,10 +5,14 @@ import { inboxRoutingDeadline, inboxRoutingIdentity } from "./inbox-suggestions"
 import { decideInboxReply, inboxReplyDestination, type ReplyDispatch } from "./inbox-replies";
 import type { components } from "@nodex/core-protocol";
 import * as Context from "effect/Context";
+import { HostInvocation } from "../HostInvocation";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import { deriveSessionDispatchIdentity } from "../../main/app-tools/session-dispatch-identity";
+import { createStableOperationId } from "../../main/core-runtime/operation-identity";
+import { inboxPageBasisFromCore } from "../../main/core-client/inbox-adapter";
 import type {
   InboxChatTargets,
   InboxChatTargetsInput,
@@ -73,12 +77,22 @@ import {
   type CoreInboxPageBasis,
   type CoreInboxSuggestionInput,
   type CoreInboxSuggestionRequest,
+} from "../../main/core-client/inbox-adapter";
 import type {
   ProjectWorkspaceApplyInput,
   ProjectWorkspaceRead,
   ProjectWorkspaceReadSnapshot,
+} from "../../main/core-client/types";
+import { CoreModuleResponseError } from "../../main/core-client/core-client";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { CoreRuntimeError } from "../../main/core-runtime/CoreRuntimeError";
+import { StoreAdministration } from "../../main/core-runtime/StoreAdministration";
+import type { ProjectWorkspaceCommandResult } from "../../main/project-application/ProjectWorkspace";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { readRoutingConsent } from "./InboxRoutingConsent";
 import { resolveInboxModel } from "./InboxRuntimeSelection";
+import { createOperationId } from "../../main/core-runtime/operation-identity";
 import { automationDecisionCapture, automationDecisionTitle } from "./automation-decision";
 import type { AutomationClaim } from "../automation-application/AutomationApplication";
 import type { AutomationHeldDecision } from "../../shared/types";
@@ -288,13 +302,24 @@ export const make = Effect.gen(function* () {
   const parse = <A>(operation: string, run: () => A): InboxEffect<A> =>
     Effect.try({ try: run, catch: fail(operation) });
 
+  // Inbox is Space-wide. A relayed person action retains Core's verified Member audience.
   const read = (operation: string, request: ProjectWorkspaceRead) =>
+    Effect.flatMap(HostInvocation, (invocation) =>
+      core.workspace.read(request, { hostInvocation: invocation ?? undefined }, null),
+    ).pipe(Effect.mapError(fail(operation)));
 
   const apply = (
     operation: string,
     intent: ApplyIntent,
     operationId = createOperationId(`inbox.${operation}`),
   ) =>
+    Effect.flatMap(HostInvocation, (invocation) =>
+      core.workspace.apply(
+        { operationId, intent },
+        { hostInvocation: invocation ?? undefined },
+        null,
+      ),
+    ).pipe(Effect.mapError(fail(operation)));
   const mutate = (operation: string, intent: ApplyIntent, operationId?: string): InboxMutation =>
     apply(operation, intent, operationId).pipe(
       Effect.map((apply) => ({ value: undefined, apply })),

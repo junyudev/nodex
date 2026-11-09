@@ -1,3 +1,4 @@
+import { HostInvocation } from "../../host/HostInvocation";
 import { createHash } from "node:crypto";
 import * as Effect from "effect/Effect";
 import type { AgentRuntimeMessage } from "../../shared/agent-runtime-api";
@@ -22,6 +23,11 @@ export const make = Effect.gen(function* () {
     },
   ) {
     const session = yield* core.workspace
+      .read(
+        { kind: "session", session_id: sessionId },
+        { hostInvocation: (yield* HostInvocation) ?? undefined },
+        null,
+      )
       .pipe(Effect.provideService(CoreApplicationAgent, null));
     if (session.value.kind !== "session") return;
     if (!session.value.session.managed && !options?.questionRunId) return;

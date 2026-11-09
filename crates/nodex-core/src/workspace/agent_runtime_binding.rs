@@ -44,10 +44,13 @@ pub(super) fn create_session(
     if coordinator {
         require_host(context)?;
     }
-    if let Some(source_id) = side_chat_source_session_id {
+    // Core-issued Host launch proof, a side chat's included. Coordinator binding stays Host-only.
         require_host(context)?;
     }
     if let Some(source_id) = side_chat_source_session_id {
+        if context.adapter == AdapterKind::Agent {
+            require_host(context)?;
+        }
         let source = require_session(connection, library_id, source_id)?;
         if source_id == session_id
             || source.project_id.as_deref() != project_id

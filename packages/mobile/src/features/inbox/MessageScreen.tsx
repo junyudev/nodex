@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Alert, ScrollView, View } from "react-native";
 
 import { Markdown } from "../../markdown/Markdown";
@@ -8,20 +9,26 @@ import { Row, RowGroup, SectionLabel, Txt, lightTap } from "../../ui/primitives"
 import { showFailure } from "../../ui/snackbar";
 import { useNow } from "../../ui/use-now";
 import { agentChipLabel, effectiveAgentChoice } from "../pickers/agent-choice";
-import { outcomeLabel, sourceLabel } from "./inbox-presentation";
-import { SuggestionPanel, useInboxMessage } from "./Suggestion";
+import { entryChatSession, messageChat, outcomeLabel, sourceLabel } from "./inbox-presentation";
 import { useDecide } from "./use-decide";
 
 /** A whole message, and everything that can be decided about it. */
 export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => {
   const now = useNow();
-  const { pageId, initial } = route.params;
-  const [message, setMessage] = useInboxMessage(pageId, initial);
+  const { pageId, initial, openChat } = route.params;
   const decide = useDecide();
   const { projects } = useProjects();
   const { catalog } = useAgentCatalog();
   const preferences = useNewChatPreferences();
   const project = projects.find((candidate) => candidate.id === preferences.projectId);
+  const chat = message ? messageChat(message) : null;
+  const startedChat = chat?.state === "open" && chat.sessionId === openChat ? openChat : null;
+
+  // A chat started from here opens once its host has started it; until then this message shows
+  // that it is starting, or why it could not start and whether Retry can.
+  useEffect(() => {
+    if (startedChat) navigation.replace("Chat", { sessionId: startedChat });
+  }, [navigation, startedChat]);
 
   if (!message) return <View className="flex-1 bg-surface" />;
 
@@ -39,7 +46,7 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
       agent: effectiveAgentChoice(catalog, preferences.agent),
     })
       .then(({ sessionId }) => {
-        if (sessionId) navigation.replace("Chat", { sessionId });
+        if (sessionId) navigation.setParams({ openChat: sessionId });
         else navigation.goBack();
       })
       .catch((cause: unknown) => showFailure("Could not start the chat", cause));
@@ -79,15 +86,21 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
             label={agentChipLabel(catalog, preferences.agent)}
             onPress={() => navigation.navigate("AgentPicker")}
           />
-          <Row icon="chat" iconColor="accent" label="Start chat" onPress={startChatFromMessage} />
+          <Row
+            icon="chat"
+            iconColor="accent"
+            label={chat?.state === "starting" ? "Starting the chat…" : "Start chat"}
+            disabled={chat?.state === "starting"}
+            onPress={startChatFromMessage}
+          />
         </RowGroup>
       </View>
       <RowGroup>
-        {message.chatSessionId ? (
+        {chat?.state === "open" ? (
           <Row
             icon="chat"
             label="Open its chat"
-            onPress={() => navigation.navigate("Chat", { sessionId: message.chatSessionId ?? "" })}
+            onPress={() => navigation.navigate("Chat", { sessionId: chat.sessionId })}
           />
         ) : null}
         {message.suggestion.state === "none" && message.proposal === null ? (

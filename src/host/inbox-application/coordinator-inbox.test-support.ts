@@ -1,6 +1,8 @@
+import { StoreAdministration } from "../../main/core-runtime/StoreAdministration";
 import { createHash } from "node:crypto";
 import type { LibraryModuleReadRequest } from "../../shared/library-module";
 import type { ReadFileBytesInput } from "../../shared/library-files";
+import type { PromptImageBytes } from "../../main/agent-backend/AgentImageFitting";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -8,10 +10,25 @@ import * as Layer from "effect/Layer";
 import { vi } from "vitest";
 import { DEFAULT_INBOX_SETTINGS, type InboxSettings } from "../../shared/inbox";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
+import { NativePromptImages } from "../../main/agent-backend/NativePromptImages";
 import {
   AgentRuntimeApplication,
   type AgentRuntimeApplicationError,
+} from "../../main/agent-runtime/AgentRuntimeApplication";
+import { makeWithCapture } from "../../main/app-tools/CoordinatorAppTools";
+import type { AppToolInvocation } from "../../main/app-tools/AppToolInvocationInbox";
+import { createAppToolAdmissionFixture } from "../../main/app-tools/app-tool-operation.test-fixtures";
 import { CoordinatorSession } from "../coordinator/CoordinatorSession";
+import type { CoreInboxSuggestionRequest } from "../../main/core-client/inbox-adapter";
+import type {
+  ProjectWorkspaceApplyInput,
+  ProjectWorkspaceRead,
+} from "../../main/core-client/types";
+import { CoreAuthority } from "../../main/core-runtime/CoreAuthority";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { NodexEntryNotifications } from "../NotificationIntents";
+import { LibraryModule } from "../../main/library-application/LibraryModule";
+import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import {
   InboxApplication,
   make as makeInboxApplication,

@@ -1,8 +1,36 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import type { ProjectSessionsChangeEvent } from "../../shared/ipc-api";
 import { CoreApplicationProjectionRuntime } from "../core-runtime/CoreApplicationProjectionRuntime";
+import {
+  planCoreWorkspaceNotifications,
+  allProjectSessionInvalidation,
+} from "../core-client/core-project-workspace-invalidation";
 import { projectCoreApplicationEvent } from "../core-runtime/CoreApplicationEventProjection";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
+
+const mergeSessionChanges = (
+  previous: ProjectSessionsChangeEvent | null,
+  next: ProjectSessionsChangeEvent,
+): ProjectSessionsChangeEvent => {
+  const scopes = [...(previous?.summaryScopes ?? []), ...next.summaryScopes];
+  const summaryScopes =
+    scopes.some((scope) => scope.kind === "all") || scopes.length > 128
+      ? [{ kind: "all" as const }]
+      : [...new Map(scopes.map((scope) => [JSON.stringify(scope), scope])).values()];
+  const details = [...(previous ? [previous.detailInvalidation] : []), next.detailInvalidation];
+  const sessionIds = [
+    ...new Set(details.flatMap((detail) => (detail.kind === "sessions" ? detail.sessionIds : []))),
+  ];
+  return {
+    changeType: "update",
+    summaryScopes,
+    detailInvalidation:
+      details.some((detail) => detail.kind === "all") || sessionIds.length > 128
+        ? { kind: "all" }
+        : { kind: "sessions", sessionIds },
+  };
+};
 
 /** Read-model fanout only: no Coordinator, Agent Runtime, scheduler or Source producer.
  * A Space rename on the host rereads the name for this desktop's switcher and Home title. */
@@ -18,6 +46,7 @@ export const live = (spaceRenamed: Effect.Effect<void>) =>
       // keeps the remote Desktop within Core's request budget without delaying commit delivery.
       yield* Effect.forever(
         Effect.sleep("1 second").pipe(
+          Effect.andThen(
             Effect.gen(function* () {
               const pendingSessions = sessions;
               const pendingInbox = inbox;
@@ -26,6 +55,9 @@ export const live = (spaceRenamed: Effect.Effect<void>) =>
               if (pendingSessions)
                 yield* notifier.notifyProjectSessionInvalidation(pendingSessions);
               if (pendingInbox) yield* notifier.notifyInboxChanged({ reason: "content" });
+            }),
+          ),
+        ),
       ).pipe(Effect.forkScoped);
       return CoreApplicationProjectionRuntime.of({
         publish: (envelope, atom, libraryId) =>

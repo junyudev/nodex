@@ -185,7 +185,8 @@ export function DelegatedTaskGroup({
           }
         : undefined;
     const onStop =
-      port && canStopDelegatedTask(task) && status !== "stopping"
+      // Each task stops only for whoever may stop the Run that started it.
+      port && canStopDelegatedTask(task) && port.canStop(task.ownerRunId) && status !== "stopping"
         ? () => {
             void port.stop(parentThreadId, task).catch((cause: unknown) => {
               toast.danger(cause instanceof Error ? cause.message : "Could not stop this subagent");

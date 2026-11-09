@@ -1,5 +1,5 @@
 import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
-import { CodexTurnPresentation } from "./CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import {
   makeTestTurnPresentation,
   testSubmitPresentation,

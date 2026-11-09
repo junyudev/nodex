@@ -17,8 +17,21 @@ import { AGENT_CLI_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/agen
 import type { AgentRuntimeLaunch, AgentRuntimeMessage } from "../../shared/agent-runtime-api";
 import type { Automation, AutomationRun } from "../../shared/types";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { AgentRuntimeSupervisor } from "../../main/agent-runtime/AgentRuntimeSupervisor";
+import {
+  ProjectWorkspace,
+  live as workspaceLive,
+} from "../../main/project-application/ProjectWorkspace";
 import { AutomationApplication, live as automationLive } from "./AutomationApplication";
 import { AutomationExecution, live } from "./AutomationExecution";
+import { live as backendRegistryLive } from "../../main/agent-backend/AgentBackendRegistry";
+import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
+import { toElectronIpcRendererError } from "../../main/platform/electron/electron-ipc-error";
+import { CoreSessionAccess } from "../../main/core-runtime/CoreAuthority";
+import { CoreModules, live as coreModulesLive } from "../../main/core-runtime/CoreModules";
+import { live as routingLive } from "../../main/core-runtime/AutomationRoutingIndex";
+import { classifyCoreOperationFailure } from "../../main/core-runtime/CoreRuntimeError";
 import { InboxApplication } from "../inbox-application/InboxApplication";
 import { createUuidV7 } from "../../shared/uuid-v7";
 
@@ -65,6 +78,8 @@ const setup = (
   owners?: {
     readonly automation: AutomationApplication["Service"];
     readonly workspace: ProjectWorkspace["Service"];
+    /** What the Runtime does for a new chat before launch returns: prepare its first Turn. */
+    readonly prepareTurn?: (launch: AgentRuntimeLaunch) => Effect.Effect<void, unknown>;
   },
 ) => {
   const state = {
@@ -318,6 +333,7 @@ const setup = (
               launches.push(input);
               if (state.failLaunch)
                 return yield* Effect.fail(new Error("Admission refused before native execution"));
+              if (owners?.prepareTurn) yield* owners.prepareTurn(input);
               physical.add(input.message.messageId);
               return {
                 sessionId: input.sessionId,
@@ -985,11 +1001,43 @@ const acquireScenario = Effect.acquireRelease(
     }),
 );
 
+/** Main's Core, Workspace and Automation owners over one real Core scenario. */
+const acquireRealOwners = Effect.gen(function* () {
+  const scenario = yield* acquireScenario;
+  const { client } = scenario;
+  const coreLayer = coreModulesLive.pipe(
+    Layer.provide(
+      Layer.succeed(CoreSessionAccess, {
+        handshake: Effect.die("Unused handshake"),
+        use: (operation, run, options) =>
+          Effect.tryPromise({
+            try: (signal) =>
+              run(options?.projectId ? client.forProject(options.projectId) : client, signal),
+            catch: (cause) => classifyCoreOperationFailure(operation, cause),
+          }),
+      }),
+    ),
+  );
+  const ownersLayer = Layer.mergeAll(
+    coreLayer,
+    workspaceLive.pipe(Layer.provide(coreLayer)),
+    automationLive.pipe(Layer.provide(routingLive), Layer.provide(coreLayer)),
+  );
+  const owners = yield* Layer.buildWithScope(ownersLayer, yield* Scope.Scope);
+  return {
+    ...scenario,
+    core: Context.get(owners, CoreModules),
+    workspace: Context.get(owners, ProjectWorkspace),
+    automation: Context.get(owners, AutomationApplication),
+  };
+});
+
 it.effect.each(["project", "projectless"] as const)(
   "%s Heartbeat creation and updates inherit the target Session through Main and real Core",
   (placement) =>
     Effect.scoped(
       Effect.gen(function* () {
+        const { manifest, core, workspace, automation } = yield* acquireRealOwners;
         const fixture = setup(acpBinding, { workspace, automation });
         const sessionId = createUuidV7();
         const projectId = placement === "project" ? manifest.projectId : null;
@@ -1101,6 +1149,82 @@ it.effect.each(["project", "projectless"] as const)(
         }).pipe(Effect.provide(fixture.layer));
       }),
     ),
+);
+
+it.effect("a clock Run's first Turn gets Agent attribution before the Run binds its new chat", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { core, workspace, automation } = yield* acquireRealOwners;
+      const attributions: string[] = [];
+      const fixture = setup(acpBinding, {
+        workspace,
+        automation,
+        // The Runtime prepares the new chat's first Turn through the Host, which asks Core to
+        // attribute it to the message's requester, while launch is still dispatching.
+        prepareTurn: (launch) =>
+          Effect.gen(function* () {
+            yield* core.workspace.apply({
+              operationId: createUuidV7(),
+              intent: {
+                kind: "create_agent_runtime_session",
+                session_id: launch.sessionId,
+                project_id: launch.projectId,
+                runtime_id: "runtime",
+                runtime_thread_id: `thread:${launch.sessionId}`,
+                launch_request_id: launch.launchId,
+                title: launch.title,
+                initial_page_ids: [...(launch.initialPageIds ?? [])],
+              },
+            });
+            attributions.push(
+              yield* core.workspace.issueAgentAttribution({
+                session_id: launch.sessionId,
+                run_id: "engine-run",
+                message_id: launch.message.messageId,
+                backend: "acp",
+              }),
+            );
+          }),
+      });
+      yield* Effect.gen(function* () {
+        const execution = yield* AutomationExecution;
+        const created = yield* execution
+          .prepareDefinition({
+            kind: "cron",
+            name: "Space report",
+            prompt: "Report the Space",
+            rrule: "FREQ=DAILY",
+            projectId: null,
+            cwds: [],
+            backendBinding: acpBinding,
+            model: "model",
+            executionEnvironment: "local",
+          })
+          .pipe(Effect.flatMap(automation.automations.create));
+        yield* automation.automations.dispatchNow(created.id);
+        const due = yield* automation.automations.planDue;
+        const claim = (yield* automation.automations.claimDue(due.workToken!, 3, 60_000)).find(
+          (item) => item.definition.id === created.id,
+        );
+        if (!claim) return assert.fail("Run now did not admit the Automation");
+        yield* execution.executeClaimed(claim.definition, {
+          now: yield* Clock.currentTimeMillis,
+          reason: "scheduled",
+          leaseId: claim.leaseId,
+          dispatchId: claim.dispatchId,
+          admission: claim.admission,
+          automationRevision: claim.automationRevision,
+          deadlineMs: claim.expiresAt,
+        });
+        assert.lengthOf(attributions, 1);
+        assert.equal(
+          (yield* automation.inbox.read()).items.find((item) => item.automationId === created.id)
+            ?.status,
+          "PENDING_REVIEW",
+        );
+      }).pipe(Effect.provide(fixture.layer));
+    }),
+  ),
 );
 
 it.effect.each(["cron", "heartbeat"] as const)(

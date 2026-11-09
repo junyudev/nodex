@@ -1,6 +1,7 @@
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import type { InboxSettings } from "../../shared/inbox";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
 import { inboxAgentCandidates, inboxDefaultChatCandidate } from "./inbox-agent-candidates";
 import { resolveInboxModel } from "./InboxRuntimeSelection";
 

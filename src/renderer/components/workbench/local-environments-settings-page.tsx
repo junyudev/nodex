@@ -1,3 +1,4 @@
+import { localProjectSourceRoots } from "../../../shared/project-sources";
 import { startTransition, useMemo, useState, type ReactNode } from "react";
 import {
   ActivitySpinnerIcon,
@@ -44,7 +45,11 @@ export interface LocalEnvironmentsSettingsShellProps {
 }
 
 function getPrimaryWorkspaceRoot(project: Project): string {
-  return project.primaryWorkspaceRoot?.trim() || project.sources[0]?.root.trim() || "";
+  return (
+    project.primaryWorkspaceRoot?.trim() ||
+    localProjectSourceRoots(project.sources)[0]?.trim() ||
+    ""
+  );
 }
 
 function createEmptyEnvironment(project: Project): WorktreeEnvironmentDefinition {

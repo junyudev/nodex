@@ -61,6 +61,7 @@ it.effect("registers and releases app update ingress with the Main Scope", () =>
                 isolatedRunId: null,
                 isDefaultApp: false,
                 isPackaged: false,
+                markdownModulePath: "/tmp/nodex_markdown_bg.wasm",
                 nodexHome: "/tmp/nodex-test",
                 profileSettingsPath: "/tmp/nodex-test/config.toml",
                 platform: "darwin",

@@ -1,3 +1,5 @@
+import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
+import { live as workspaceRuntimeLive } from "../../host/WorkspaceRuntimeLive";
 import { live as standaloneSkillsLive } from "../platform/node/StandaloneSkillsNode";
 import { PluginService, live as pluginServiceLive } from "../codex-application/PluginService";
 import { PluginManager, live as pluginManagerLive } from "../codex-application/PluginManager";
@@ -38,17 +40,12 @@ import {
 import {
   ExecutionHostConfiguration,
   ManagedWorktreeConfiguration,
-  live as executionHostConfigurationLive,
 } from "../codex-application/ExecutionHostConfiguration";
 import {
   ExecutionHostRuntime,
   ExecutionHostRuntimeError,
-  live as executionHostRuntimeLive,
 } from "../codex-application/ExecutionHostRuntime";
-import {
-  ManagedWorktreeRuntime,
-  live as managedWorktreeRuntimeLive,
-} from "../codex-application/ManagedWorktreeRuntime";
+import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { GitActions, live as gitActionsLive } from "../git-application/GitActions";
 import {
@@ -85,12 +82,8 @@ import {
   GitActionOperationRuntime,
   live as gitActionOperationRuntimeLive,
 } from "../host-runtime/GitActionOperationRuntime";
-import { GitWorkerRuntime, live as gitWorkerRuntimeLive } from "../host-runtime/GitWorkerRuntime";
-import {
-  localLive as localWorktreeWorkerRuntimeLive,
-  WorktreeWorkerRuntime,
-} from "../host-runtime/WorktreeWorkerRuntime";
-import { getLogger } from "../logging/logger";
+import { GitWorkerRuntime } from "../host-runtime/GitWorkerRuntime";
+import { WorktreeWorkerRuntime } from "../host-runtime/WorktreeWorkerRuntime";
 import { ElectronApp } from "../platform/electron/ElectronApp";
 import { live as electronClipboardLive } from "../platform/electron/ElectronClipboard";
 import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
@@ -103,9 +96,7 @@ import {
 } from "../platform/electron/RemoteHostedPipNativePlatform";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { MainConfig } from "./MainConfig";
-import { CodexPlatform } from "./CodexApplicationLive";
-
-const logger = getLogger({ subsystem: "app" });
+import { CodexPlatform } from "../../host/ProviderPlatform";
 
 const workspaceRouting = Layer.unwrap(
   Effect.gen(function* () {
@@ -242,43 +233,19 @@ const desktopTools = Layer.unwrap(
   }),
 ).pipe(Layer.provideMerge(Layer.mergeAll(browserPresentation, computerUse)));
 
-const localWorktreeWorker = localWorktreeWorkerRuntimeLive({
-  hostId: "local",
-  workerPath: `${__dirname}/worktree-worker.js`,
-  onInfrastructureError: (error) => {
-    logger.error("Worktree worker infrastructure failed", { error: error.message });
-  },
-});
-const executionHosts = Layer.unwrap(
+const workspaceRuntime = Layer.unwrap(
   Effect.gen(function* () {
-    const config = yield* MainConfig;
-    const codex = yield* CodexPlatform;
-    return executionHostRuntimeLive({
-      runtimeStateHome: codex.runtimeStateHome,
-      codexHome: codex.codexHome,
-      nodexHome: config.nodexHome,
-      remoteWorktreeWorkerBundlePath: `${__dirname}/remote-worktree-worker.cjs`,
-    });
+    const rendererLifecycle = yield* WebContentsDestructionSubscriptions;
+    const nativeEndpoints = yield* CodexGateway;
+    return workspaceRuntimeLive({ workerDirectory: __dirname, rendererLifecycle, nativeEndpoints });
   }),
-).pipe(Layer.provideMerge(Layer.mergeAll(localWorktreeWorker, executionHostConfigurationLive)));
-const attachments = codexAttachmentsLive.pipe(Layer.provideMerge(executionHosts));
-const managedWorktrees = managedWorktreeRuntimeLive.pipe(Layer.provideMerge(executionHosts));
+).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));
+const attachments = codexAttachmentsLive.pipe(Layer.provideMerge(workspaceRuntime));
 
-const gitWorker = gitWorkerRuntimeLive({
-  workerPath: `${__dirname}/git-worker.js`,
-  onInfrastructureError: (error, context) => {
-    logger.error("Git worker infrastructure failed", {
-      epoch: context.epoch,
-      error: error.message,
-      phase: context.phase,
-    });
-  },
-  onPerformanceOperation: (metric) => logger.debug("Git worker operation", metric),
-});
 const gitMessageGeneration = codexGitMessageGenerationLive;
 const gitActions = gitActionsLive.pipe(
   Layer.provideMerge(
-    Layer.mergeAll(gitWorker, gitActionOperationRuntimeLive, gitMessageGeneration),
+    Layer.mergeAll(workspaceRuntime, gitActionOperationRuntimeLive, gitMessageGeneration),
   ),
 );
 
@@ -335,7 +302,6 @@ export const live: Layer.Layer<
   remoteHostedPipNative,
   desktopTools,
   attachments,
-  managedWorktrees,
   gitActions,
   externalSuggestions,
   plugins,

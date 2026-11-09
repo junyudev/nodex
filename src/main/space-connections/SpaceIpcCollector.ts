@@ -14,6 +14,17 @@ type Handler = (
   args: readonly unknown[],
 ) => Effect.Effect<unknown, unknown>;
 
+/**
+ * Acquires the existing content ingress into one Space's scope rather than registering another
+ * process-wide Electron channel. A window's call reaches a Space only through a channel the
+ * process routes, so serving any other channel is a wiring defect: it fails here, when the Space
+ * is opened, instead of as a missing handler when a window first calls it.
+ */
+export function makeSpaceIpcCollector({
+  routes,
+}: {
+  readonly routes: (channel: keyof IpcApi) => boolean;
+}) {
   const handlers = new Map<keyof IpcApi, Handler>();
   const register = <
     Channel extends keyof IpcApi,
@@ -25,6 +36,8 @@ type Handler = (
   ): Effect.Effect<void, never, Scope.Scope> =>
     Effect.acquireRelease(
       Effect.sync(() => {
+        if (!routes(channel))
+          throw new Error(`No window can reach ${channel}; every Space must route it`);
         const bound: Handler = (event, args) => {
           const task = Reflect.apply(handler, undefined, [event, ...args]) as Effect.Effect<
             Result,

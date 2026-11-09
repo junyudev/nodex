@@ -95,6 +95,8 @@ export interface CommandPaletteShellCommandContext {
   hasActiveSession: boolean;
   activeSessionPinned: boolean;
   activeSessionUnread: boolean;
+  /** False when Core leaves renaming and archiving the active chat to its owner or a Space Owner. */
+  activeSessionCanManage: boolean;
   /** Whether the active chat has a pending reminder. */
   activeSessionReminded: boolean;
   hasAttachedThread: boolean;
@@ -291,30 +293,34 @@ export function buildCommandPaletteCommands(
         disabled: sessionCommandDisabled || !context.canOpenSessionInNewWindow,
       },
     ),
-    command(
-      RENAME_THREAD_COMMAND_ID,
-      "Chat",
-      "Rename chat",
-      "Rename the active chat",
-      ["rename", "chat", "thread", "session", "title"],
-      1090,
-      {
-        shortcut: shortcutLabel("renameThread", "CmdOrCtrl+Alt+R"),
-        disabled: sessionCommandDisabled,
-      },
-    ),
-    command(
-      "archiveThread",
-      "Chat",
-      "Archive chat",
-      "Archive the active chat",
-      ["archive", "chat", "thread", "session"],
-      1080,
-      {
-        shortcut: shortcutLabel("archiveThread", "CmdOrCtrl+Shift+A"),
-        disabled: sessionCommandDisabled,
-      },
-    ),
+    ...(context.activeSessionCanManage
+      ? [
+          command(
+            RENAME_THREAD_COMMAND_ID,
+            "Chat",
+            "Rename chat",
+            "Rename the active chat",
+            ["rename", "chat", "thread", "session", "title"],
+            1090,
+            {
+              shortcut: shortcutLabel("renameThread", "CmdOrCtrl+Alt+R"),
+              disabled: sessionCommandDisabled,
+            },
+          ),
+          command(
+            "archiveThread",
+            "Chat",
+            "Archive chat",
+            "Archive the active chat",
+            ["archive", "chat", "thread", "session"],
+            1080,
+            {
+              shortcut: shortcutLabel("archiveThread", "CmdOrCtrl+Shift+A"),
+              disabled: sessionCommandDisabled,
+            },
+          ),
+        ]
+      : []),
     ...(context.canExportConversationMarkdown
       ? [
           command(
@@ -586,14 +592,19 @@ export function buildCommandPaletteCommands(
         shortcut: shortcutLabel("showKeyboardShortcuts", "CmdOrCtrl+Shift+/"),
       },
     ),
-    command(
-      "runSetupAgain",
-      "Configure",
-      "Run setup again",
-      "Connect Agents and add projects",
-      ["setup", "welcome", "onboarding", "agents", "connect"],
-      705,
-    ),
+    // Setup connects this desktop's own Agents and Projects, which a team window never reads.
+    ...(!isRemoteSpace()
+      ? [
+          command(
+            "runSetupAgain",
+            "Configure",
+            "Run setup again",
+            "Connect Agents and add projects",
+            ["setup", "welcome", "onboarding", "agents", "connect"],
+            705,
+          ),
+        ]
+      : []),
     ...(context.canReloadSkills === true
       ? [
           command(

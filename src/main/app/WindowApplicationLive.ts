@@ -2,10 +2,8 @@ import { SpacePageFileHosts } from "../page-files/SpacePageFileHosts";
 import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import {
-  CodexTurnPresentation,
-  make as makeTurnPresentation,
-} from "../codex-application/CodexTurnPresentation";
+import { make as makeTurnPresentation } from "../codex-application/CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import {
   WorkbenchAgentBridge,
   live as workbenchAgentBridgeLive,
@@ -67,6 +65,7 @@ import {
   live as composerAppshotRuntimeLive,
 } from "../host-runtime/ComposerAppshotRuntime";
 import * as DatabaseNotifierRuntime from "../host-runtime/DatabaseNotifierRuntime";
+import { live as databaseNotificationsLive } from "../platform/electron/DatabaseNotifications";
 import {
   DesktopNotificationRuntime,
   live as desktopNotificationRuntimeLive,
@@ -120,7 +119,7 @@ import { NativeNotificationAuthorization } from "../platform/electron/NativeNoti
 import { MainCleanup } from "./MainCleanup";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import { CodexPlatform } from "./CodexApplicationLive";
+import { CodexPlatform } from "../../host/ProviderPlatform";
 
 const appUpdates = appUpdateRuntimeLive;
 const desktopNotifications = desktopNotificationRuntimeLive;
@@ -129,7 +128,7 @@ const turnPresentation = Layer.effect(CodexTurnPresentation, makeTurnPresentatio
   Layer.provideMerge(workbenchAgentBridgeLive),
 );
 const privacy = electronPrivacyLive;
-const databaseNotifier = DatabaseNotifierRuntime.live;
+const databaseNotifier = databaseNotificationsLive;
 const structuralClipboard = structuralClipboardRuntimeLive.pipe(
   Layer.provideMerge(Layer.merge(electronClipboardLive, rendererClients)),
 );

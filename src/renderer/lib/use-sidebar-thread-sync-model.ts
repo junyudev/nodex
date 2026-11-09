@@ -294,10 +294,17 @@ export function useSidebarThreadSyncModel(input: { projects: readonly Project[] 
     [queryClient],
   );
 
+  // A window whose chats run on its Space host has no native sidebar to sync after an action;
+  // Core's Session invalidations already bring its lists up to date.
   const refresh = useCallback(async () => {
+    if (!nativeChats)
+      return (
+        queryClient.getQueryData<CodexSidebarSnapshot>(queryKeys.codexSidebar.snapshot()) ??
+        EMPTY_SIDEBAR_SNAPSHOT
+      );
     const result = await syncSidebarThreads("force", "manual");
     return result.snapshot;
-  }, [syncSidebarThreads]);
+  }, [nativeChats, queryClient, syncSidebarThreads]);
 
   const setPinned = useCallback(
     async (threadId: string, pinned: boolean) => {

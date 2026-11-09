@@ -100,6 +100,7 @@ const commandContext: Omit<CommandPaletteShellCommandContext, "isMac"> = {
   canCreatePage: true,
   hasActiveSession: true,
   activeSessionPinned: false,
+  activeSessionCanManage: true,
   activeSessionUnread: false,
   activeSessionReminded: false,
   hasAttachedThread: true,

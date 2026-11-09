@@ -19,8 +19,13 @@ authenticated explicit shutdown remain separate from caller lifetime. A native c
 Core is a detached per-Profile process. An active authenticated Host connection,
 event stream, CLI client, Document subscription, Store operation, or due
 Automation is demand. Core may idle-drain only after every demand source is
-gone. A lifecycle breadcrumb under the Profile run directory is bounded,
-contains no content or secret, and remains diagnostic rather than authority.
+gone. Draining is a state every part of Core observes, including a listener that
+started with Core and each live stream, whichever began waiting first. In-flight
+requests finish within their own deadlines, and Core stops no later than 60
+seconds after drain begins, even when the client that started a request has
+disappeared; that bounded stop is recorded as unclean. A lifecycle breadcrumb
+under the Profile run directory is bounded, contains no content or secret, and
+remains diagnostic rather than authority.
 
 The Electron Profile Scope owns the exact generation it selected. On normal
 Scope release it first closes application admission and live leases, then sends

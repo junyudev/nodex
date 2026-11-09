@@ -36,13 +36,25 @@ pub(super) const TASK_SUMMARY_COLUMNS: &str = "session.id AS session_id, session
              (SELECT execution.runtime_thread_id FROM project_session_execution_bindings execution WHERE execution.session_id = session.id), {remind_at}, \
              EXISTS(SELECT 1 FROM coordinator_managed_sessions managed WHERE managed.session_id = session.id) AS managed";
 
+/// Task columns as one reader sees them: their own attention and whether they may manage the chat
+/// or stop its work.
 pub(super) fn summary_columns(member_parameter: usize) -> String {
     use super::member_attention::{pinned_order_sql, pinned_sql, remind_at_sql, unread_sql};
+    let member = format!("?{member_parameter}");
+    format!(
+        "{}, {} AS can_manage, {} AS can_stop",
         TASK_SUMMARY_COLUMNS
             .replace("{pinned_order}", &pinned_order_sql("session.id", &member))
             .replace("{pinned}", &pinned_sql("session.id", &member))
             .replace("{unread}", &unread_sql("session.id", &member))
             .replace("{remind_at}", &remind_at_sql("session.id", &member)),
+        super::chat_stewardship::may_manage_sql("session.id", &member),
+        super::chat_stewardship::may_stop_sql(
+            "session.id",
+            &super::chat_stewardship::current_run_sql("session.id"),
+            &member,
+        ),
+    )
 }
 
 const MAX_PREVIEW_UTF16: usize = 240;
@@ -200,6 +212,11 @@ fn read_task_window_in_scope(
     parameters.push(SqlValue::Text(member.to_owned()));
     let member_parameter = format!("?{}", parameters.len());
     let pinned = super::member_attention::pinned_sql("session.id", &member_parameter);
+    // A default draft is its Member's own, so another Member's unstarted chat never lists.
+    let own_draft = format!(
+        "(session.is_default_draft = 0 OR {} IS {member_parameter})",
+        super::chat_stewardship::opener_sql("session.id")
+    );
     let pinned_order = super::member_attention::pinned_order_sql("session.id", &member_parameter);
     let bucket = if manual {
         format!("CASE WHEN {pinned} THEN 0 WHEN session.manual_rank IS NULL THEN 1 ELSE 2 END")
@@ -231,6 +248,7 @@ fn read_task_window_in_scope(
              )) \
              AND (?3 = 1 OR session.archived = 0) \
              AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL) \
+             AND {own_draft} \
              {placement_predicate}\
          ) \
          SELECT * FROM task_rows {cursor_predicate} \
@@ -350,6 +368,8 @@ pub(super) fn task_summary_from_row(
             archived_at: row.get(offset + 7)?,
             unread: row.get::<_, i64>(offset + 8)? == 1,
             remind_at: row.get(offset + 42)?,
+            can_manage: row.get(offset + 44)?,
+            can_stop: row.get(offset + 45)?,
             thread_id: row.get(offset + 11)?,
             execution_ref: row
                 .get::<_, Option<String>>(offset + 40)?

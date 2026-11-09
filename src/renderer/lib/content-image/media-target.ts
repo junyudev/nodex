@@ -3,6 +3,7 @@ import mimeDatabase from "mime-db/db.json";
 import { isAbsoluteAppFilesystemPath, buildAppFilesystemUrl } from "../../../shared/app-protocol";
 import { interpretConversationFilePath } from "../markdown/conversation-markdown-targets";
 import { classifyImageSource, resolveRelativeImagePath } from "../../../shared/image-source";
+import { isHostedChat } from "../hosted-chat";
 
 export type ConversationMediaKind = "image" | "audio" | "video";
 // Mirror mime-types 3's mime-score without pulling node:path into the renderer.
@@ -106,6 +107,9 @@ export function resolveConversationMediaTarget(
   }
   if (!scope?.authority || !scope.hostId || !scope.conversationId || !scope.isResourceCurrent())
     return { kind: "blocked" };
+  // A chat on its Space's host names files there; its pictures are read from the host as the
+  // Member's own, and this computer never reads such a path as one of its own.
+  if (isHostedChat()) return { kind: "blocked" };
   try {
     if (/^file:/iu.test(source)) {
       const url = new URL(source);

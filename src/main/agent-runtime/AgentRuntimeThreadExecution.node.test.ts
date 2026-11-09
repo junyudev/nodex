@@ -161,7 +161,10 @@ const harness = (
       } as unknown as AgentRuntimeSupervisor["Service"]),
       Effect.provideService(ProjectWorkspace, {
         getProjectSession: () => Effect.succeed({ projectId: "project" }),
-        getProject: () => Effect.succeed({ sources: [{ root: "/repo/shared" }] }),
+        getProject: () =>
+          Effect.succeed({
+            sources: [{ kind: "directory" as const, path: "/repo/shared", order: 0 }],
+          }),
       } as unknown as ProjectWorkspace["Service"]),
       Effect.provideService(
         CodexGitProbe,

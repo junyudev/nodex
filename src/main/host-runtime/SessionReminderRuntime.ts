@@ -10,6 +10,7 @@ import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { createOperationId } from "../core-runtime/operation-identity";
 import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { makeSetSessionUnread } from "../app-tools/NativeSessionTools";
 
 export class SessionReminderRuntime extends Context.Service<
   SessionReminderRuntime,

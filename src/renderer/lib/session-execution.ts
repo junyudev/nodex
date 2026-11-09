@@ -182,9 +182,14 @@ export type SessionProjectMove =
 
 /**
  * Runtime Sessions move their product placement and keep their root; native Codex Threads move
- * through the sidebar Thread owner. Other native history and unstarted drafts stay in place.
+ * through the sidebar Thread owner. Other native history and unstarted drafts stay in place. Only
+ * the chat's owner or a Space Owner moves a chat every Member shares; Core decides which.
  */
-export function resolveSessionProjectMove(execution: SessionExecution): SessionProjectMove | null {
+export function resolveSessionProjectMove(
+  session: SessionExecutionSource & { readonly canManage: boolean },
+): SessionProjectMove | null {
+  if (!session.canManage) return null;
+  const execution = resolveSessionExecution(session);
   if (execution.kind === "runtime") return { kind: "runtime", sessionId: execution.sessionId };
   if (execution.kind === "native" && isCodexAgentBackendBinding(execution.backendBinding))
     return { kind: "codex-thread", threadId: execution.rootThreadId };

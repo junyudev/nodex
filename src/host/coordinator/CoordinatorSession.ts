@@ -7,7 +7,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Semaphore from "effect/Semaphore";
 import { createUuidV7 } from "../../shared/uuid-v7";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { CoreAuthority } from "../../main/core-runtime/CoreAuthority";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifierRuntime";
 import * as Stream from "effect/Stream";
+import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { resolveInboxModel } from "../inbox-application/InboxRuntimeSelection";
 
 export const make = Effect.gen(function* () {

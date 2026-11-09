@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import type { components } from "@nodex/core-protocol";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { createOperationId } from "../../main/core-runtime/operation-identity";
 
 type Request = components["schemas"]["AutomationAssessmentRequest"];
 type Read = components["schemas"]["AutomationAssessmentRead"];

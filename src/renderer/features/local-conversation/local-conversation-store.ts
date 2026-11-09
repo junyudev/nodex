@@ -1,3 +1,4 @@
+import { isRemoteSpace } from "@/lib/renderer-space";
 import { isHostedChat } from "@/lib/hosted-chat";
 import {
   isCodexUserInputResponseRetry,
@@ -9138,6 +9139,7 @@ export function LocalConversationProvider({
   const manager = useMemo(() => codexAppServerRegistry.getForHostId(hostId), [hostId]);
 
   useEffect(() => {
+    if (isRemoteSpace()) return;
     const stopCoordination = retainConversationCoordination();
     const stopReadState = startThreadReadStateConnection(codexAppServerRegistry);
     const stopHostBridge = startLocalConversationHostBridge();

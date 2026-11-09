@@ -941,3 +941,80 @@ it("an image-only rewrite preserves the explicit empty text", async () => {
   expect(f.prepare).toHaveBeenCalledWith("", { text: "", images: [{ source: "/new.png" }] });
   expect(f.rewriteMessage.mock.calls[0]![0].message.images).toEqual([{ source: "/new.png" }]);
 });
+
+describe("hosted chat modes", () => {
+  it("sends the chosen mode with the next message and queued message", async () => {
+    const f = fixture();
+    let mode: "plan" | null = "plan";
+    const actions = createAgentRuntimeStageActions({
+      target: () => f.target,
+      owner: () => f.owner,
+      transport: {
+        message: f.message,
+        queueMessage: f.queueMessage,
+      } as unknown as AgentRuntimeRendererTransport,
+      prepare: f.prepare,
+      nextInteractionMode: () => mode,
+    });
+    await actions.onSendPrompt!("Plan the migration");
+    await actions.onEnqueueQueuedFollowUp!("child", "Then the rollout");
+    mode = null;
+    await actions.onSendPrompt!("Now build it");
+
+    expect(f.message.mock.calls[0]![0].message).toMatchObject({ interactionMode: "plan" });
+    expect(f.queueMessage.mock.calls[0]![0].message).toMatchObject({ interactionMode: "plan" });
+    expect(f.message.mock.calls[1]![0].message).not.toHaveProperty("interactionMode");
+  });
+
+  it("forks a hosted chat and edits its messages on its Space host", () => {
+    const f = fixture();
+    const hosted = createAgentRuntimeStageActions({
+      target: () => f.target,
+      owner: () => f.owner,
+      prepare: f.prepare,
+      openFork: f.openFork,
+      hosted: true,
+    });
+    expect(f.actions.onEditUserTurn).toBeDefined();
+    expect(f.actions.onForkFromTurn).toBeDefined();
+    expect(hosted.onEditUserTurn).toBeDefined();
+    expect(hosted.onForkFromTurn).toBeDefined();
+    expect(hosted.onSendPrompt).toBeDefined();
+  });
+
+  it("offers a hosted chat only what its Space host admits", () => {
+    const f = fixture();
+    const offered = (hosted: boolean, manage?: boolean) =>
+      createAgentRuntimeStageActions({
+        target: () => f.target,
+        owner: () => f.owner,
+        prepare: f.prepare,
+        manageProvider: vi.fn(),
+        hosted,
+        ...(manage === undefined ? {} : { manage }),
+      });
+    const local = offered(false);
+    const hosted = offered(true);
+    const managed = offered(true, true);
+    expect(local.onManageFailedProvider).toBeDefined();
+    expect(hosted.onManageFailedProvider).toBeUndefined();
+    expect(managed.onManageFailedProvider).toBeUndefined();
+    // Compacting and clearing belong to whoever may manage the chat: its owner or a Space Owner.
+    for (const action of ["onCompactThread", "onClearContext", "onCompactAndRetry"] as const) {
+      expect(local[action]).toBeDefined();
+      expect(hosted[action]).toBeUndefined();
+      expect(managed[action]).toBeDefined();
+    }
+    for (const action of [
+      "onSendPrompt",
+      "onSteerPrompt",
+      "onEnqueueQueuedFollowUp",
+      "onRemoveQueuedFollowUp",
+      "onEditQueuedFollowUp",
+      "onInterruptTurn",
+      "onRespondUserInput",
+      "onContinueAfterFailure",
+    ] as const)
+      expect(hosted[action]).toBeDefined();
+  });
+});

@@ -4,6 +4,7 @@ import { createUuidV7 } from "../../shared/uuid-v7";
 import { createBoundedOperationId } from "../../shared/operation-identity";
 import { DEFAULT_INBOX_SETTINGS, LIBRARY_INBOX } from "../../shared/inbox";
 import { inboxOverRealCore } from "./InboxApplication.test-support";
+import type { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
 type Runtime = AgentRuntimeApplication["Service"];
 it.effect("answers the active chat's exact pending question without creating intake", () =>
   Effect.scoped(

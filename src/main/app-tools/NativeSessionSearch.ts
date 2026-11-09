@@ -14,10 +14,8 @@ import {
 } from "../codex-runtime/CodexGatewayProtocolProjection";
 
 const Position = z.strictObject({ after: z.string().nullable(), through: z.string() });
-export class NativeSessionSearchStale extends Schema.TaggedError<NativeSessionSearchStale>()(
-  "NativeSessionSearchStale",
-  { cause: Schema.Defect() },
-) {}
+import { NativeSessionSearchStale } from "./SessionSearchErrors";
+export { NativeSessionSearchStale } from "./SessionSearchErrors";
 export interface NativeSearchTarget {
   readonly hostId: string;
   readonly threadId: string;

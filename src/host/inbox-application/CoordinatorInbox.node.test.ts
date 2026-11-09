@@ -5,6 +5,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import { TestClock } from "effect/testing";
+import { AgentRuntimeApplicationError } from "../../main/agent-runtime/AgentRuntimeApplication";
 import { inboxRoutingIdentity } from "./inbox-suggestions";
 import { INBOX_ROUTING_DEADLINE_MS, INBOX_ROUTING_HANDOVER_CAP_MS } from "./inbox-suggestions";
 import {

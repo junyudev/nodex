@@ -10,6 +10,7 @@ import {
   SourceReadError,
   type Source,
   type ExternalThread,
+} from "../../host/sources/GitHubSourceAdapter";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import type { ProjectWorkspaceApplyInput, ProjectWorkspaceRead } from "../core-client/types";
 const authority: NodexAgentTurnContext = {

@@ -38,8 +38,24 @@ async function fixture(gitRepository = true) {
   const home = await realpath(await mkdtemp(join(tmpdir(), "nodex-page-workspace-")));
   const repository = join(home, "repo");
   await mkdir(repository);
+  const writeGit = async (args: string[]) => {
+    expect(await realpath(repository)).toBe(join(home, "repo"));
+    if (args[0] !== "init")
+      expect(
+        (await exec("git", ["rev-parse", "--show-toplevel"], { cwd: repository })).stdout.trim(),
+      ).toBe(repository);
+    return exec("git", args, { cwd: repository });
+  };
   if (gitRepository) {
+    await writeGit(["init", "-b", "main"]);
+    await writeGit(["config", "user.name", "Test"]);
+    await writeGit(["config", "user.email", "test@example.test"]);
     await writeFile(join(repository, "readme"), "base");
+    await writeGit(["add", "."]);
+    await writeGit(["commit", "-m", "base"]);
+    await writeGit(["remote", "add", "origin", "https://github.com/acme/repo.git"]);
+    await writeGit(["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
+    await writeGit(["update-ref", "refs/remotes/origin/main", "HEAD"]);
   }
   let workspace: components["schemas"]["PageWorkspace"] | null = null;
   let pullRequest: unknown = null;
@@ -199,6 +215,7 @@ async function fixture(gitRepository = true) {
         if (method === "thread.read")
           return {
             id: input.threadId,
+            worktreePath: workspace?.worktree_path ?? repository,
             latestRunId: `run:${input.threadId}`,
             activeRunId: busy.has(input.threadId!) ? "run" : null,
             pendingBackgroundTasks: [],
@@ -266,12 +283,18 @@ const acquireFixture = (gitRepository = true) =>
   );
 
 // Include the Runtime's 45s startup bound as well as real Git setup and cleanup.
+it.live.each(["checkout", "nested", "base"] as const)(
+  "removes a Done checkout once with its idle Runtime consumer at %s",
+  (location) =>
     Effect.scoped(
       Effect.gen(function* () {
         const f = yield* acquireFixture();
         const owner = yield* f.owner;
         const lease = yield* f.ensure(owner);
         const cwd = lease!.location.cwd;
+        const executionCwd =
+          location === "base" ? f.repository : location === "nested" ? join(cwd, "packages") : cwd;
+        if (location === "nested") yield* Effect.promise(() => mkdir(executionCwd));
         const runtime = yield* acquireAgentRuntimeProcess({
           executable: process.execPath,
           entryPath: fileURLToPath(
@@ -292,6 +315,7 @@ const acquireFixture = (gitRepository = true) =>
             runtimeMode: "full-access",
             interactionMode: "default",
             branch: f.workspace!.branch_name,
+            worktreePath: executionCwd,
             createdBy: "user",
             creationSource: "web",
           },

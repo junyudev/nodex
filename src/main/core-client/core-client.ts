@@ -290,6 +290,18 @@ export class CoreClient implements CoreClientPort {
     return this.#transport.requestJson("GET", "/core/v1/health");
   }
 
+  /** Local Owner control; remote connections never acquire this administration capability. */
+  listenSpace(
+    input: components["schemas"]["ListenRequest"],
+  ): Promise<components["schemas"]["ListenerInfo"]> {
+    return this.#transport.requestJson(
+      "POST",
+      "/core/v1/admin/space/listen",
+      input,
+      this.#moduleHeaders(),
+    );
+  }
+
   renameSpace(name: string): Promise<components["schemas"]["SpaceName"]> {
   }
 
@@ -312,6 +324,56 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/remote-info",
       undefined,
       {},
+      options,
+    );
+  }
+
+  hostCall(input: components["schemas"]["HostCall"], options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<components["schemas"]["HostCallResult"]>(
+      "POST",
+      "/core/v1/host/call",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+
+  hostAvailability(options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<components["schemas"]["HostAvailability"]>(
+      "GET",
+      "/core/v1/host/availability",
+      undefined,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+
+  registerHost(input: components["schemas"]["HostRegistration"], options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<components["schemas"]["HostLease"]>(
+      "POST",
+      "/core/v1/admin/host/register",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+
+  pollHost(input: components["schemas"]["HostLease"], options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<components["schemas"]["HostInvocation"] | null>(
+      "POST",
+      "/core/v1/admin/host/poll",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+
+  completeHost(input: components["schemas"]["HostCompletion"], options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<boolean>(
+      "POST",
+      "/core/v1/admin/host/complete",
+      input,
+      this.#moduleHeaders(),
       options,
     );
   }
@@ -547,7 +609,10 @@ export class CoreClient implements CoreClientPort {
       "POST",
       "/core/v1/modules/workspace/read",
       { contract_version: MODULE_CONTRACT_VERSIONS.projectWorkspace, read },
-      this.#moduleHeaders(),
+      {
+        ...this.#moduleHeaders(),
+        ...(options.hostInvocation ? { "x-nodex-host-invocation": options.hostInvocation } : {}),
+      },
       options,
     );
     if (response.status === "ok") return response.payload;
@@ -567,7 +632,10 @@ export class CoreClient implements CoreClientPort {
         store_epoch: this.handshake.store_epoch,
         intent: input.intent,
       },
-      this.#moduleHeaders(),
+      {
+        ...this.#moduleHeaders(),
+        ...(options.hostInvocation ? { "x-nodex-host-invocation": options.hostInvocation } : {}),
+      },
       options,
     );
     if (response.status === "ok") return response.payload;

@@ -59,7 +59,7 @@ import { CodexConversationContext } from "./CodexConversationContext";
 import { CodexPreferences } from "./CodexPreferences";
 import { parseCodexPersonality } from "./CodexPersonality";
 import { CodexThreadSettingsRuntime } from "./CodexThreadSettingsRuntime";
-import type { CodexTurnPresentationClaim } from "./CodexTurnPresentation";
+import type { CodexTurnPresentationClaim } from "../../host/TurnPresentation";
 import {
   resolveCodexPreparedWorkspaceKind,
   resolveExistingCodexProjectlessWorkspace,

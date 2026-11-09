@@ -37,6 +37,8 @@ const sessionItem = {
     archived: false,
     archivedAt: null,
     remindAt: null,
+    canManage: true,
+    canStop: true,
     unread: false,
     thread: null,
     createdAt: "2026-08-31T00:00:00.000Z",

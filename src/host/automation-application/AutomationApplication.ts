@@ -21,12 +21,22 @@ import type {
   PageOccurrenceUpdateInput,
 } from "../../shared/types";
 import type { InboxAgentChoice } from "../../shared/inbox";
+import { inboxChatAgentFromCore } from "../../main/core-client/inbox-adapter";
+import { getLogger } from "../../main/logging/logger";
 import type {
   AutomationApplyInput,
   AutomationApplyResult,
   AutomationIntent,
   AutomationReadSnapshot,
   CoreRequestOptions,
+} from "../../main/core-client/types";
+import { AutomationRoutingIndex } from "../../main/core-runtime/AutomationRoutingIndex";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { CoreApplicationAgent } from "../../main/core-runtime/CoreApplicationAgent";
+import {
+  createDueWorkOperationId,
+  createOperationId,
+} from "../../main/core-runtime/operation-identity";
 import {
   finiteDateMilliseconds,
   projectAutomation,

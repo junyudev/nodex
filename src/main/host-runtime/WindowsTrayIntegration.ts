@@ -7,7 +7,7 @@ import { buildSessionDeepLink } from "../../shared/nodex-deeplink";
 import { getWorkbenchSceneReturnLocation } from "../../shared/workbench-layout";
 import { AgentRuntimeSessionActivity } from "../agent-runtime/AgentRuntimeSessionActivity";
 import { MainConfig } from "../app/MainConfig";
-import { AutomationApplication } from "../automation-application/AutomationApplication";
+import { AutomationApplication } from "../../host/automation-application/AutomationApplication";
 import { ChatSearch } from "../chat-search/ChatSearch";
 import { getLogger } from "../logging/logger";
 import { ElectronApp } from "../platform/electron/ElectronApp";

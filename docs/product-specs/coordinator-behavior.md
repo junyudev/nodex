@@ -136,6 +136,10 @@ Main applies preferences, focus and OS permission.
 facts and handles it in the same transaction. Each question has one quiet answer.
 A reply to that answer is ordinary intake. A work-Page reply instead goes to its
 active chat as the person's unchanged message or exact pending-question answer;
+it creates no intake entry and never silently falls back to routing. The reply's
+accepted message and requesting Member commit together before delivery. A later
+Run uses that retained Member for application authority, including asynchronous
+answers after the original native Turn completes or its provider Session goes idle. Actions
 revalidate the Turn episode, and missing or ambiguous destinations offer Open chat.
 
 ## Work on the Board

@@ -1226,3 +1226,34 @@ test("Page references stay visible on user rows while the typed companion stays 
   expect(views).toHaveLength(1);
   expect(views[0]).toMatchObject({ role: "user", markdownText: "", pageReferences });
 });
+
+test.each([
+  ["pending", "inProgress", "pending"],
+  ["pending", "failed", "not-sent"],
+  ["pending", "interrupted", "not-sent"],
+  ["unknown", "failed", "unknown"],
+  ["accepted", "failed", undefined],
+] as const)("settles %s input when its reply is %s", (delivery, status, expected) => {
+  const opening: CodexCanonicalItem = {
+    type: "userMessage",
+    id: "answer",
+    clientId: "answer",
+    runtimeDelivery: delivery,
+    content: [{ type: "text", text: "Project", text_elements: [] }],
+  };
+  const raw = project([opening], { turnStatus: status });
+  expect(raw[0]?.deliveryStatus).toBe(expected);
+  const views = projectCodexCanonicalTurnViews({
+    threadId: THREAD_ID,
+    turn: {
+      ...buildCanonicalTurn({
+        items: [opening],
+        params: buildTurnParams({ input: opening.content }),
+      }),
+      status,
+    },
+    observedAtMs: 1000,
+  });
+  expect(views[0]?.deliveryStatus).toBe(expected);
+  if (expected === "not-sent") expect(views[0]?.status).toBe("failed");
+});

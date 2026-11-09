@@ -19,7 +19,7 @@ import {
   MainConversationManagerError,
 } from "./CodexMainConversationManagers";
 import { CodexInputAssets } from "./CodexInputAssets";
-import { CodexTurnPresentation } from "./CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { ConversationEntityMap, live as entitiesLayer } from "./internal/ConversationEntityMap";
 import { conversationFixture, turnFixture } from "./conversation-test-fixture";

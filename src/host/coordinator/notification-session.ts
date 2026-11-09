@@ -1,5 +1,7 @@
 import * as Effect from "effect/Effect";
 import type { CodexThreadNotificationEvent } from "../../shared/codex-thread-notification";
+import { readCodexLinkedRootSession } from "../../main/codex-application/CodexLinkedRootSession";
+import type { CoreModules } from "../../main/core-runtime/CoreModules";
 
 /** Runtime occurrences name their Session; native occurrences require the exact host/root binding. */
 export const notificationSession = Effect.fn("Coordinator.notificationSession")(function* (

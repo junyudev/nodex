@@ -187,14 +187,28 @@ fn facts(connection: &Connection, ids: &[&str]) -> Result<BTreeMap<String, Facts
                 .get(&id)
                 .and_then(|summary| summary.blockers.first())
                 .cloned();
+            let observation: Option<SessionExecutionObservation> =
+                observation.map(decode).transpose()?;
             Ok((
                 id.clone(),
                 Facts {
+                    question_member: active
+                        .as_ref()
+                        .map(|session| {
+                            crate::infrastructure::actors::session_requester(
+                                connection,
+                                session,
+                                observation.as_ref().and_then(|o| o.run_id.as_deref()),
+                            )
+                        })
+                        .transpose()?
+                        .flatten(),
                     holds: holds.remove(&id).unwrap_or_default(),
                     work,
                     stage,
                     active: active.is_some(),
                     active_agent,
+                    observation,
                     report,
                     blocker,
                 },

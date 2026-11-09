@@ -1,13 +1,15 @@
+import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
 import { useInboxClock } from "./use-inbox-clock";
 import { loadPageDocumentMaterialization } from "@/lib/page-prompt-context";
 import { toast } from "@/components/ui/toast";
 import { useState, type ReactNode } from "react";
 import { motion } from "motion/react";
-import type {
-  InboxAgentChoice,
-  InboxItem,
-  InboxProposal,
-  InboxPageBasis,
+import {
+  inboxDispatchRetryable,
+  type InboxAgentChoice,
+  type InboxItem,
+  type InboxProposal,
+  type InboxPageBasis,
 } from "../../../shared/inbox";
 import {
   inboxSuggestionsOffered,
@@ -487,6 +489,7 @@ export function InboxTriage({
   readonly children: (parts: InboxTriageParts) => ReactNode;
 }) {
   // What the row changed on this suggestion before deciding; another suggestion starts afresh.
+  const hostAvailable = useSpaceHostAvailable();
   const now = new Date(useInboxClock());
   const [rowEdit, setRowEdit] = useState<InboxRowEdit | null>(null);
   const task = useInboxAutomationDecisionTask(item);
@@ -776,6 +779,7 @@ export function InboxTriage({
               <Decision
                 label={presentation.verb}
                 disabledReason={
+                  !hostAvailable && executesDecision ? "Space host unavailable" : undefined
                 }
                 target={presentation.target}
                 variant={variant}
@@ -850,10 +854,7 @@ export function InboxTriage({
       case "dispatch-failed": {
         const failure = model.proposal.failureKind;
         const uncertainChat = failure === "unknown" && onOpenSession ? model.proposal.chat : null;
-        // A rejected chat needs a new decision; anything else that failed can be tried again.
-        const retries =
-          failure !== "unknown" &&
-          !(failure === "rejected" && model.proposal.action.type !== "run_task");
+        const retries = inboxDispatchRetryable(model.proposal);
         return {
           opensChat: uncertainChat != null,
           strip: (

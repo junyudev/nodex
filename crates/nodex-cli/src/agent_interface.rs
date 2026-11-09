@@ -259,6 +259,66 @@ const COMMANDS: &[CommandMetadata] = &[
         example_argv: &["work", "holds"],
     },
     CommandMetadata {
+        path: &["serve", "init"],
+        capability: "space.host",
+        effect: CommandEffect::Local,
+        validators: &[],
+        result: "host_initialization",
+        errors: READ_ERRORS,
+        example: "nodex serve init --home /var/lib/nodex/team",
+        example_argv: &["serve", "init", "--home", "/var/lib/nodex/team"],
+    },
+    CommandMetadata {
+        path: &["serve", "start"],
+        capability: "space.host",
+        effect: CommandEffect::Local,
+        validators: &[],
+        result: "host_status",
+        errors: READ_ERRORS,
+        example: "nodex serve start --home /var/lib/nodex/team",
+        example_argv: &["serve", "start", "--home", "/var/lib/nodex/team"],
+    },
+    CommandMetadata {
+        path: &["serve", "status"],
+        capability: "space.host",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "host_status",
+        errors: READ_ERRORS,
+        example: "nodex serve status --home /var/lib/nodex/team",
+        example_argv: &["serve", "status", "--home", "/var/lib/nodex/team"],
+    },
+    CommandMetadata {
+        path: &["serve", "invite"],
+        capability: "space.host",
+        effect: CommandEffect::Write,
+        validators: &[],
+        result: "space_invite",
+        errors: READ_ERRORS,
+        example: "nodex serve invite --home /var/lib/nodex/team",
+        example_argv: &["serve", "invite", "--home", "/var/lib/nodex/team"],
+    },
+    CommandMetadata {
+        path: &["serve", "members"],
+        capability: "space.host",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "members",
+        errors: READ_ERRORS,
+        example: "nodex serve members --home /var/lib/nodex/team",
+        example_argv: &["serve", "members", "--home", "/var/lib/nodex/team"],
+    },
+    CommandMetadata {
+        path: &["serve", "devices"],
+        capability: "space.host",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "member_devices",
+        errors: READ_ERRORS,
+        example: "nodex serve devices --home /var/lib/nodex/team",
+        example_argv: &["serve", "devices", "--home", "/var/lib/nodex/team"],
+    },
+    CommandMetadata {
         path: &["serve", "rename"],
         capability: "space.host",
         effect: CommandEffect::Write,
@@ -288,6 +348,22 @@ const COMMANDS: &[CommandMetadata] = &[
             "--home",
             "/var/lib/nodex/team",
             "Platform Ops",
+        ],
+    },
+    CommandMetadata {
+        path: &["serve", "revoke"],
+        capability: "space.host",
+        effect: CommandEffect::Write,
+        validators: &[],
+        result: "device_revocation",
+        errors: READ_ERRORS,
+        example: "nodex serve revoke --home /var/lib/nodex/team device-id",
+        example_argv: &[
+            "serve",
+            "revoke",
+            "--home",
+            "/var/lib/nodex/team",
+            "device-id",
         ],
     },
     CommandMetadata {
@@ -2431,7 +2507,10 @@ mod tests {
         prefix: &mut Vec<String>,
         output: &mut Vec<String>,
     ) {
-        for subcommand in command.get_subcommands() {
+        for subcommand in command
+            .get_subcommands()
+            .filter(|command| !command.is_hide_set())
+        {
             prefix.push(subcommand.get_name().to_owned());
             if subcommand.has_subcommands() {
                 collect_clap_leaf_paths(subcommand, prefix, output);

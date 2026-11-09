@@ -3,6 +3,7 @@ import * as Layer from "effect/Layer";
 import { updateSourceSettingsSchema } from "../../../shared/sources";
 import { MainConfig } from "../../app/MainConfig";
 import { rendererLocalCommitApply } from "../../core-client/types";
+import { SourceSupervisor, SourceSupervisorError } from "../../../host/sources/SourceSupervisor";
 import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";

@@ -3,6 +3,7 @@ import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
 import {
   AgentRuntimeApplicationError,
   type AgentRuntimeApplication,
+} from "../../main/agent-runtime/AgentRuntimeApplication";
 
 /** Shared local-chat outbox delivery: reconcile admission before repeating a frozen launch. */
 export const deliverChatLaunch = Effect.fn("ChatLaunchDelivery.deliver")(function* (

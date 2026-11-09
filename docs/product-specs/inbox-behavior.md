@@ -253,6 +253,11 @@ Where a message's Page lives never decides this. Moving the Page by other means,
 such as dragging it on a Board, leaves the message in its Inbox until it is
 handled. Failed or uncertain delivery and an undone move bring a message back to the
 Inbox. Core applies the same membership to the stream windows and to every
+Inbox count. Opening the chat a decision has not started yet, from the Chats list on
+a desktop or a phone, shows that it is starting, or why it could not start with the
+Retry Core would admit, without looking up its message; a decision Core would not send
+again says to review its message in the Inbox. Core reads this for the chat itself, and
+the open chat refreshes as its start changes.
 
 Returning to an Inbox, after switching tabs or relaunching, lands in the view and
 Activity filter the reader left and at their place in it. Each view keeps its own place: its
@@ -983,7 +988,10 @@ creates a second message, and does not count against the Agent budget again.
   discovery on open. Cached choices remain visible during background refresh;
   a first load shows Loading, and a failed read offers Retry without declaring
   the saved choice unavailable. Only a loaded catalog can establish that a choice
-  is missing or unavailable. Agent setting changes refresh the choices.
+  is missing or unavailable, and an Agent whose status check has not answered yet,
+  such as one still timing out while its models load, shows Checking models while
+  Nodex checks again; work that needs it, Open Nodex included, waits for that
+  check within its bounded catalog wait. Agent setting changes refresh the choices.
   An unavailable instance retains its real name rather than appearing as another Agent.
   Suggestions run often, so an omitted suggestion model resolves to
   GPT-6.1 Sol on Codex, and otherwise, or when the catalog lacks it, to that

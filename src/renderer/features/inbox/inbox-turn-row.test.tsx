@@ -4,6 +4,7 @@ import { render, openNodexMenu } from "@/test/dom";
 import type { InboxItem } from "../../../shared/inbox";
 import type { TurnReason } from "../../../shared/page-turn";
 import { InboxTurnRow } from "./inbox-turn-row";
+vi.mock("@/lib/space-host-runtime", () => ({ useSpaceHostAvailable: () => true }));
 afterEach(cleanup);
 const row = (reason: TurnReason, options: string[] = []): InboxItem => ({
   rowKind: "turn",

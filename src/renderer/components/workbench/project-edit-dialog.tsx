@@ -1,4 +1,5 @@
 import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { projectSourceIdentity } from "../../../shared/project-sources";
 import {
   useId,
   useState,
@@ -626,7 +627,7 @@ function ProjectEditDialogContent({
 }: ProjectEditDialogProps) {
   const [removeOpen, setRemoveOpen] = useState(false);
   const initialSources = project.sources
-    .map((source) => source.root)
+    .map(projectSourceIdentity)
     .filter((root) => root.trim().length > 0);
 
   return (
@@ -666,7 +667,7 @@ function ProjectEditDialogContent({
 
 export function ProjectEditDialog(props: ProjectEditDialogProps) {
   const sourceIdentity = props.project.sources
-    .map((source) => source.root)
+    .map(projectSourceIdentity)
     .filter((root) => root.trim().length > 0)
     .join("\0");
 

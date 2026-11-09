@@ -67,6 +67,8 @@ export function createProjectAgentDockDraftSession(
     archived: false,
     archivedAt: null,
     remindAt: null,
+    canManage: true,
+    canStop: true,
     unread: false,
     thread: null,
     createdAt: timestamp,

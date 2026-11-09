@@ -13,9 +13,14 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import {
   AutomationApplication,
   type AutomationClaim,
+} from "../../host/automation-application/AutomationApplication";
+import { AutomationExecution } from "../../host/automation-application/AutomationExecution";
 import {
   InboxApplication,
   type InboxApplicationError,
+} from "../../host/inbox-application/InboxApplication";
+import type { AutomationApplicationError } from "../../host/automation-application/AutomationApplication";
+import type { AutomationExecutionError } from "../../host/automation-application/AutomationExecution";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { getLogger } from "../logging/logger";

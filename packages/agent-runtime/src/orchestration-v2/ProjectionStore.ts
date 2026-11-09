@@ -3056,6 +3056,26 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           AND json_extract(run.payload_json, '$.rolledBackAtRevision') > ${revision}))
     `;
 
+    // Discovery previews a conversation by the person's opening message in its current history,
+    // so a message an edit rewound past gives way to the one written in its place.
+    const refreshConversationPreview = (threadId: ThreadId) => sql`
+      WITH opening AS (
+        SELECT message.message_id, message.created_at,
+          substr(json_extract(message.payload_json, '$.text'), 1, 512) AS preview
+        FROM orchestration_v2_projection_messages message
+        LEFT JOIN orchestration_v2_projection_runs run ON run.run_id = message.run_id
+        WHERE message.thread_id = ${threadId} AND message.role = 'user'
+          AND json_extract(message.payload_json, '$.notification') IS NULL
+          AND (run.status IS NULL OR run.status <> 'rolled_back')
+        ORDER BY message.created_at, message.message_id
+        LIMIT 1
+      )
+      UPDATE orchestration_v2_projection_threads
+      SET conversation_preview = COALESCE((SELECT preview FROM opening), ''),
+        conversation_preview_at = (SELECT created_at FROM opening),
+        conversation_preview_id = (SELECT message_id FROM opening)
+      WHERE thread_id = ${threadId}`;
+
     // For run upserts: a snapshot without `path` keeps the value another event recorded there.
     const keepRecordedRunField = (payload: Statement.Fragment, path: string) => sql`
       CASE
@@ -3265,6 +3285,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   "$.restartCancelledBackgroundWork",
                 )}
             `;
+            if (event.payload.status === "rolled_back")
+              yield* refreshConversationPreview(event.payload.threadId);
             break;
           }
           case "run.background-work-cancelled": {
@@ -3916,16 +3938,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 SET conversation_recency_at = MAX(COALESCE(conversation_recency_at, ''), ${stringField(payload, "updatedAt")})
                 WHERE thread_id = ${event.payload.threadId}`;
             }
-            if (event.payload.role === "user" && event.payload.notification === undefined) {
-              yield* sql`UPDATE orchestration_v2_projection_threads
-                SET conversation_preview = ${Array.from(event.payload.text.slice(0, 1024)).slice(0, 512).join("")},
-                  conversation_preview_at = ${stringField(payload, "createdAt")},
-                  conversation_preview_id = ${event.payload.id}
-                WHERE thread_id = ${event.payload.threadId} AND (
-                  conversation_preview_id IS NULL OR conversation_preview_id = ${event.payload.id}
-                  OR conversation_preview_at > ${stringField(payload, "createdAt")}
-                  OR (conversation_preview_at = ${stringField(payload, "createdAt")} AND conversation_preview_id > ${event.payload.id}))`;
-            }
+            if (event.payload.role === "user" && event.payload.notification === undefined)
+              yield* refreshConversationPreview(event.payload.threadId);
             // Shared attachment files are deleted only after their last live reference.
             if (event.payload.role === "user" || event.payload.attachments.length > 0) {
               yield* sql`

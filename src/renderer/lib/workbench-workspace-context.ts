@@ -1,3 +1,4 @@
+import { localProjectSourceRoots } from "../../shared/project-sources";
 import type { Project, WorkbenchTabProjection } from "@/lib/types";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 
@@ -12,7 +13,7 @@ export function normalizeProjectPrimaryWorkspaceRoot(
 ): string | undefined {
   return (
     normalizeOptionalPath(project?.primaryWorkspaceRoot) ??
-    normalizeOptionalPath(project?.sources[0]?.root)
+    normalizeOptionalPath(localProjectSourceRoots(project?.sources ?? [])[0])
   );
 }
 

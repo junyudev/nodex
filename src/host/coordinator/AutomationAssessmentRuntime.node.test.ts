@@ -2,6 +2,8 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
 import type { components } from "@nodex/core-protocol";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
 import { assessmentIdentity, makeAssessmentDelivery } from "./automation-assessment-delivery";
 
 type Request = components["schemas"]["AutomationAssessmentRequest"];
@@ -104,6 +106,7 @@ it.effect("reconciles a lost Host-input reply after reopening without sending it
     const { make } = yield* Effect.promise(() => import("./AutomationAssessmentRuntime"));
     const { CoordinatorSession } = yield* Effect.promise(() => import("./CoordinatorSession"));
     const { ApplicationSettings } = yield* Effect.promise(
+      () => import("../../main/settings/ApplicationSettings"),
     );
     const { DEFAULT_INBOX_SETTINGS } = yield* Effect.promise(() => import("../../shared/inbox"));
     const admissions = new Set<string>();

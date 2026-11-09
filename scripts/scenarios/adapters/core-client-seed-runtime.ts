@@ -13,7 +13,7 @@ import { CoreModules, live as coreModulesLive } from "../../../src/main/core-run
 import {
   InboxApplication,
   live as inboxApplicationLive,
-} from "../../../src/main/inbox-application/InboxApplication";
+} from "../../../src/host/inbox-application/InboxApplication";
 import { AgentRuntimeApplication } from "../../../src/main/agent-runtime/AgentRuntimeApplication";
 import { ApplicationSettings } from "../../../src/main/settings/ApplicationSettings";
 import { DEFAULT_INBOX_SETTINGS, type InboxSettings } from "../../../src/shared/inbox";

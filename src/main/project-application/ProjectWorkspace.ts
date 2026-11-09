@@ -1,3 +1,4 @@
+import { HostWorkspace } from "../../host/HostWorkspace";
 import {
   CreatePageForCommandSchema,
   type CreatePageForCommand,
@@ -303,6 +304,10 @@ export interface ProjectWorkspaceService {
     input?: ProjectSessionSummaryWindowInput,
   ) => ProjectWorkspaceEffect<ProjectSessionSummaryWindow>;
   readonly readSessionManaged: (sessionId: string) => ProjectWorkspaceEffect<SessionManagedState>;
+  /** Why a chat its Inbox decision started has not run yet, or null once it has. */
+  readonly readSessionStart: (
+    sessionId: string,
+  ) => ProjectWorkspaceEffect<import("../../shared/types").ProjectSessionStart | null>;
   readonly setSessionManaged: (
     command: ProjectSessionManagedCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<SessionManagedState>>;
@@ -540,6 +545,7 @@ type CorePageChatIntent = Extract<
 export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | Scope.Scope> =
   Effect.gen(function* () {
     const core = yield* CoreModules;
+    const hostWorkspace = yield* HostWorkspace;
     const ownerScope = yield* Scope.Scope;
     const projectUpdateLanes = yield* RcMap.make({
       lookup: (_projectId: string) => Semaphore.make(1),
@@ -1273,33 +1279,50 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         kind: "managed_worktree_lifecycle_snapshot",
       }).pipe(
         Effect.flatMap((snapshot) =>
-          evaluate("managed-worktree.lifecycle.read", () => {
-            const value = expectVariant(snapshot, "managed_worktree_lifecycle_snapshot").snapshot;
-            return {
-              projectionRevision: value.projection_revision,
-              consumers: value.consumers.map((consumer) => ({
-                threadId: consumer.thread_id,
-                projectId: consumer.project_id ?? null,
-                sessionId: consumer.session_id ?? null,
-                executionHostId: consumer.execution_host_id,
-                cwd: consumer.cwd ?? null,
-                managedWorktreePath: consumer.managed_worktree_path,
-                runtimeWorkspaceRoots: [...consumer.runtime_workspace_roots],
-                archived: consumer.archived,
-                pinnedOrder: consumer.pinned_order ?? null,
-                statusType: consumer.status.status_type,
-                statusActiveFlags: [...consumer.status.active_flags],
-                createdAt: consumer.created_at,
-                updatedAt: consumer.updated_at,
-                linkedAt: consumer.linked_at,
-              })),
-              projects: value.projects.map((project) => ({
-                projectId: project.project_id,
-                lifecycle: project.lifecycle,
-                sourceRoots: project.sources.map((source) => source.root),
-                primaryWorkspaceRoot: project.primary_workspace_root ?? null,
-              })),
-            } satisfies DesktopManagedWorktreeLifecycleSnapshot;
+          Effect.gen(function* () {
+            const value = yield* evaluate(
+              "managed-worktree.lifecycle.read",
+              () => expectVariant(snapshot, "managed_worktree_lifecycle_snapshot").snapshot,
+            );
+            const projects = yield* Effect.forEach(value.projects, (project) =>
+              hostWorkspace.resolve(project.sources).pipe(
+                Effect.map((sourceRoots) => ({
+                  projectId: project.project_id,
+                  lifecycle: project.lifecycle,
+                  sourceRoots,
+                  primaryWorkspaceRoot: sourceRoots[0] ?? null,
+                })),
+                Effect.mapError(
+                  (cause) =>
+                    new ProjectWorkspaceError({
+                      operation: "managed-worktree.lifecycle.read",
+                      cause,
+                    }),
+                ),
+              ),
+            );
+            return yield* evaluate("managed-worktree.lifecycle.read", () => {
+              return {
+                projectionRevision: value.projection_revision,
+                consumers: value.consumers.map((consumer) => ({
+                  threadId: consumer.thread_id,
+                  projectId: consumer.project_id ?? null,
+                  sessionId: consumer.session_id ?? null,
+                  executionHostId: consumer.execution_host_id,
+                  cwd: consumer.cwd ?? null,
+                  managedWorktreePath: consumer.managed_worktree_path,
+                  runtimeWorkspaceRoots: [...consumer.runtime_workspace_roots],
+                  archived: consumer.archived,
+                  pinnedOrder: consumer.pinned_order ?? null,
+                  statusType: consumer.status.status_type,
+                  statusActiveFlags: [...consumer.status.active_flags],
+                  createdAt: consumer.created_at,
+                  updatedAt: consumer.updated_at,
+                  linkedAt: consumer.linked_at,
+                })),
+                projects,
+              } satisfies DesktopManagedWorktreeLifecycleSnapshot;
+            });
           }),
         ),
       );
@@ -1582,6 +1605,23 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       const { managed } = expectVariant(snapshot, "read_managed_session");
       return { managed: managed !== null && managed !== undefined, since: managed?.since ?? null };
     });
+    const readSessionStart = Effect.fn("ProjectWorkspace.readSessionStart")(function* (
+      sessionId: string,
+    ) {
+      const snapshot = yield* read("session.start.read", {
+        kind: "session_start",
+        session_id: sessionId,
+      });
+      const { start } = expectVariant(snapshot, "session_start");
+      if (!start) return null;
+      return {
+        proposalId: start.proposal_id,
+        pageId: start.page_id,
+        state: start.state,
+        failureMessage: start.failure_message ?? null,
+        retryable: start.retryable,
+      };
+    });
     const setSessionManaged = Effect.fn("ProjectWorkspace.setSessionManaged")(function* (
       command: ProjectSessionManagedCommandInput,
     ) {
@@ -1598,6 +1638,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
     });
     const service = ProjectWorkspace.of({
       readSessionManaged,
+      readSessionStart,
       setSessionManaged,
       setProjectSessionReminder,
       unreadChatCount: read("session.unread.count", { kind: "unread_chat_count" }).pipe(

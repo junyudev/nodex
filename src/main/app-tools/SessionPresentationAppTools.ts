@@ -7,7 +7,7 @@ import type { WorkbenchWindowReference } from "../../shared/nodex-app-tools/work
 import { makeWorkbenchSceneKey } from "../../shared/workbench-scene";
 import { make as makeAppToolOperation } from "./AppToolOperation";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
-import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
 import type { WorkbenchAppToolContext } from "./WorkbenchControl";
 import { make as makeTarget, type SessionPresentationOpening } from "./SessionPresentationTarget";

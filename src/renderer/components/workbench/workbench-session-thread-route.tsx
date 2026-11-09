@@ -1,3 +1,6 @@
+import { isHostedChat } from "@/lib/hosted-chat";
+import { SessionStartNotice, useSessionStart } from "./session-start-notice";
+import { localProjectSourceRoots } from "../../../shared/project-sources";
 import {
   ConversationPageNavigationProvider,
   type ConversationPageNavigation,
@@ -241,6 +244,11 @@ function SharedConnectedSessionThread({
         project ??
         null);
   const summary = attachedSummary;
+  // A chat an Inbox decision started shows its start, or why it could not, until it runs.
+  const sessionStart = useSessionStart(
+    session.id,
+    !summary && !session.executionRef && !session.thread,
+  );
   const threadStartProgress = null;
   const startInSelectorProject = summary ? project : selectedNewThreadProject;
   const newThreadEnvironmentWorkspaceRoot = projectWorkspaceRootOrNull(startInSelectorProject);
@@ -255,7 +263,9 @@ function SharedConnectedSessionThread({
     runInTarget: selectedNewThreadRunInTarget,
     worktreeStartingState: selectedNewThreadStartingState,
   } = executionDraft.target;
-  const environmentAvailable = provider?.kind !== "acp";
+  // A worktree environment on this computer means nothing to a chat its Space host starts.
+  const hosted = isHostedChat();
+  const environmentAvailable = provider?.kind !== "acp" && !hosted;
   const environmentConfigsQuery = useLocalEnvironmentConfigs(effectiveProjectId ?? "", {
     enabled: environmentAvailable && selectedNewThreadRunInTarget === "newWorktree",
   });
@@ -394,7 +404,9 @@ function SharedConnectedSessionThread({
   ]);
   const effectiveNewThreadStartBlockedReason =
     newThreadStartBlockedReason ??
+    // A hosted chat starts where its Space host runs the Project, never in a folder here.
     (effectiveProjectId !== null &&
+    !hosted &&
     !projectWorkspaceRootOrNull(selectedNewThreadProject) &&
     !summary
       ? "Choose a local Project to start this Agent."
@@ -430,9 +442,11 @@ function SharedConnectedSessionThread({
       onOpenSummaryGitReview,
       onOpenProcessManager,
       onOpenBackgroundTerminalOutput,
+      // Pins and reminders are each Member's own; only the chat's owner or a Space Owner
       // renames or archives a chat every Member shares.
       onToggleThreadPin,
       onSetThreadReminder,
+      ...(session.canManage ? { onRequestRenameThread, onArchiveThread } : {}),
       onOpenThread,
       onOpenTurnDiffReview,
       onOpenTurnDiffFileInSidePanel,
@@ -453,7 +467,8 @@ function SharedConnectedSessionThread({
       onClosePlanSidePanel,
       onOpenSummarySideChatRow,
       onToggleSummaryComputerUsePip,
-      onOpenHooksSettings,
+      // A hosted chat's hooks are its host's; this desktop's Hooks settings don't govern it.
+      ...(hosted ? {} : { onOpenHooksSettings }),
       onOpenSubagentsPanel,
       ...(provider?.diagnostics ? { onOpenStatusPanel: openNativeDiagnostics } : {}),
     },
@@ -461,8 +476,9 @@ function SharedConnectedSessionThread({
 
   const connectedStageProps = {
     provider,
-    projectWorkspaceRoots:
-      (summary ? project : selectedNewThreadProject)?.sources.map((source) => source.root) ?? [],
+    projectWorkspaceRoots: localProjectSourceRoots(
+      (summary ? project : selectedNewThreadProject)?.sources ?? [],
+    ),
     projectId: effectiveProjectId,
     sessionId: session.id,
     composerChatKey:
@@ -551,6 +567,13 @@ function SharedConnectedSessionThread({
     );
   }
 
+  if (sessionStart)
+    return (
+      <>
+        {projectReset}
+        <SessionStartNotice sessionId={session.id} start={sessionStart} />
+      </>
+    );
   return (
     <>
       {projectReset}

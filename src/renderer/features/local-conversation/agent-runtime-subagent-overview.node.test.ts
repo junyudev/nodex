@@ -98,6 +98,27 @@ describe("Runtime subagent overview", () => {
       canInteract: false,
     });
   });
+  it("offers Stop on a subagent only to whoever may stop the Run that started it", () => {
+    const live = { ...task, status: "running" as const, runId: "bob-run" };
+    const bobMayStop = (runId: string | null) => runId === "bob-run";
+    const view = projectAgentRuntimeSubagentOverview(
+      "root",
+      {
+        active: page([
+          live,
+          { ...live, id: "alice-task", childThreadId: "alice-child", runId: "alice-run" },
+        ]),
+        terminal: page([]),
+      },
+      new Set(),
+      bobMayStop,
+    );
+    expect(view.active.rows.map(({ threadId, canStop }) => [threadId, canStop])).toEqual([
+      ["child", true],
+      ["alice-child", false],
+    ]);
+  });
+
   it("counts every task in a partly loaded section without retaining task bodies", () => {
     const view = projectAgentRuntimeSubagentOverview("root", {
       active: page([task], "after-task", 7),

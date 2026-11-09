@@ -1058,6 +1058,60 @@ it.effect(
     }),
 );
 
+it.effect("cancels a delegated task only for the Run that started it", () =>
+  Effect.gen(function* () {
+    const threadId = ThreadId.make("parent:run-bound-cancel");
+    const taskId = NodeId.make("task:run-bound-cancel");
+    const task = {
+      id: taskId,
+      threadId,
+      runId: RunId.make("run:earlier"),
+      origin: "app_owned",
+      childThreadId: ThreadId.make("child:run-bound-cancel"),
+      status: "running",
+      result: null,
+      completionDelivery: { state: "pending", observedByRunId: null },
+    } as unknown as OrchestrationV2Subagent;
+    const commands: string[] = [];
+    const layerTest = ThreadManagementService.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(Orchestrator.OrchestratorV2)({
+            getThreadRecords: (id) =>
+              Effect.succeed({
+                thread: { id },
+                runs: [],
+                subagents: id === threadId ? [task] : [],
+                contextTransfers: [],
+              } as unknown as OrchestrationV2ThreadProjection),
+            dispatch: (command) => {
+              commands.push(command.type);
+              return Effect.succeed({ sequence: 1, storedEvents: [] });
+            },
+          }),
+          Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({}),
+        ),
+      ),
+      Layer.provide(ServerSettings.layerTest()),
+      Layer.provide(layerReceiptsTest),
+    );
+    yield* Effect.gen(function* () {
+      const service = yield* ThreadManagementService.ThreadManagementService;
+      // A stop admitted for the chat's later Run never reaches the earlier Run's task.
+      const other = yield* service
+        .cancelDelegatedTask({
+          threadId,
+          taskId,
+          commandId: CommandId.make("command:run-bound-cancel"),
+          runId: RunId.make("run:later"),
+        })
+        .pipe(Effect.result);
+      expect(other).toMatchObject({ _tag: "Failure", failure: { reason: "not-found" } });
+      expect(commands).toEqual([]);
+    }).pipe(Effect.provide(layerTest));
+  }),
+);
+
 it.effect.each(["interrupted", "completed", "terminal"] as const)(
   "preserves waiting versus terminal cancellation semantics after disposal fails: %s",
   (status) =>

@@ -59,8 +59,8 @@ export interface EncodableImage {
   isEmpty(): boolean;
   getSize(): { readonly width: number; readonly height: number };
   resize(options: { width: number; height: number; quality: "best" }): EncodableImage;
-  toPNG(): Uint8Array;
-  toJPEG(quality: number): Uint8Array;
+  toPNG(): Uint8Array | Promise<Uint8Array>;
+  toJPEG(quality: number): Uint8Array | Promise<Uint8Array>;
 }
 
 /** Longest edges tried in turn: what Agents read at full detail, then progressively less. */
@@ -72,9 +72,9 @@ const JPEG_QUALITIES = [85, 70] as const;
  * stay sharp, and otherwise writing JPEG.
  */
 export const fitWithImageCodec =
-  (decode: (bytes: Uint8Array) => EncodableImage): FitPromptImage =>
+  (decode: (bytes: Uint8Array) => EncodableImage | Promise<EncodableImage>): FitPromptImage =>
   async (image, budgetBytes) => {
-    const source = decode(image.bytes);
+    const source = await decode(image.bytes);
     if (source.isEmpty()) throw new Error("An image could not be read to send to the Agent");
     const { width, height } = source.getSize();
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0)
@@ -91,10 +91,10 @@ export const fitWithImageCodec =
               quality: "best",
             })
           : source;
-      const png = sized.toPNG();
+      const png = await sized.toPNG();
       if (png.byteLength <= budgetBytes) return { mediaType: "image/png", bytes: png };
       for (const quality of JPEG_QUALITIES) {
-        const jpeg = sized.toJPEG(quality);
+        const jpeg = await sized.toJPEG(quality);
         if (jpeg.byteLength <= budgetBytes) return { mediaType: "image/jpeg", bytes: jpeg };
       }
     }

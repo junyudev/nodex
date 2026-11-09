@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { ThreadSource } from "@nodex/codex-app-server-protocol/v2/ThreadSource";
 import type {
+  CodexSidebarSnapshot,
   CodexThreadActiveFlag,
   CodexThreadRuntimeStatus,
   CodexThreadSummary,
@@ -8,6 +9,7 @@ import type {
   Project,
   ProjectSessionSummary,
 } from "../../shared/types";
+import { CODEX_AGENT_BACKEND_BINDING } from "../../shared/agent-backend";
 import { resolveCodexElectronDisplayThreadTitle } from "../../shared/codex-thread-title";
 import {
   projectCodexMarkdownLabel,
@@ -59,7 +61,8 @@ export const resolveSidebarProjectIdForCwd = (
   let best: { projectId: string; sourcePath: string } | null = null;
   for (const project of projects) {
     for (const source of project.sources) {
-      const sourcePath = normalizeSidebarPath(source.root, foldPathCase);
+      if (source.kind !== "directory") continue;
+      const sourcePath = normalizeSidebarPath(source.path, foldPathCase);
       if (!sourcePath || !isSameOrDescendantPath(normalizedCwd, sourcePath)) continue;
       if (!best || sourcePath.length > best.sourcePath.length) {
         best = { projectId: project.id, sourcePath };
@@ -185,7 +188,7 @@ export const projectCoreWorkspaceProject = (project: CoreWorkspaceProject): Proj
   name: project.name,
   description: project.description,
   appearance: project.appearance,
-  sources: project.sources.map((source) => ({ root: source.root, order: source.order })),
+  sources: [...project.sources],
   primaryWorkspaceRoot: project.primary_workspace_root ?? null,
   pinned: project.pinned,
   pinnedOrder: project.pinned_order ?? null,
@@ -209,6 +212,8 @@ export const projectCoreWorkspaceTask = (task: CoreWorkspaceTask): ProjectSessio
   archivedAt: task.session.archived_at ?? null,
   unread: task.session.unread,
   remindAt: task.session.remind_at ?? null,
+  canManage: task.session.can_manage,
+  canStop: task.session.can_stop,
   executionRef: task.session.execution_ref
     ? {
         runtimeId: task.session.execution_ref.runtime_id,
@@ -356,3 +361,34 @@ export const hasSidebarThreadSummaryChanged = (
     previous.recencyAt !== next.recencyAt
   );
 };
+
+/** The archived chats list's row for a Runtime-bound chat, which has no native Thread row. */
+export const archivedRuntimeChatItem = (
+  task: ReturnType<typeof projectCoreWorkspaceTask>,
+): CodexSidebarSnapshot["items"][number] => ({
+  key: `local:session:${task.id}`,
+  kind: "local",
+  backendBinding: CODEX_AGENT_BACKEND_BINDING,
+  runtimeBound: true,
+  runLocation: { kind: "local-checkout" },
+  hostId: "local",
+  threadId: task.executionRef?.threadId ?? task.id,
+  parentThreadId: null,
+  sessionId: task.id,
+  projectId: task.projectId,
+  title: task.displayTitle,
+  preview: "",
+  cwd: null,
+  updatedAt: Date.parse(task.updatedAt),
+  recencyAt: task.activityAt,
+  createdAt: Date.parse(task.createdAt),
+  pinned: task.pinned,
+  pinnedOrder: task.pinnedOrder,
+  unread: task.unread,
+  remindAt: task.remindAt,
+  archived: task.archived,
+  statusType: "idle",
+  statusActiveFlags: [],
+  projectless: task.projectId === null,
+  disabled: false,
+});

@@ -173,6 +173,9 @@ pub fn authorize(
             "inbox_routing_consent"
                 | "inbox_turn_notifications"
                 | "activity_window"
+                | "execution_holds"
+                | "effective_execution_hold"
+                | "page_workspace"
                 | "page_turn"
                 | "page_turns"
                 | "page_work_launch"
@@ -195,6 +198,7 @@ pub fn authorize(
                 | "builtin_sidebar_order"
                 | "sidebar_section_placement"
                 | "session"
+                | "session_start"
                 | "inbox_entry"
                 | "inbox_summary"
                 | "inbox_counts"
@@ -203,6 +207,7 @@ pub fn authorize(
                 | "inbox_window"
                 | "inbox_chat_targets"
                 | "inbox_message_edit"
+                | "session_member_actions"
         ),
         // Agent-authored context and Host interruption delivery never become Member commands.
         "workspace_apply"
@@ -223,8 +228,19 @@ pub fn authorize(
                 .and_then(|k| k.as_str())
                 == Some("retry_problem")
         }
+        // Core ingress additionally requires the exact live Host launch proof: a phone's new chat,
+        // or a Member's fork, side chat or saved side chat through the Space host.
+        // Only the Member's own side chat, through the exact live Host call that closes it.
+        "workspace_apply" if kind == "delete_session" => true,
+        // Accepted messages additionally require their exact live execution-owner delivery proof;
+        // renaming and archiving require the chat's owner or a Space Owner. Unread state,
         // pins and reminders are the requesting Member's own.
         "workspace_apply" if kind == "mutate_session" => {
+            matches!(
+                encoded
+                    .get("intent")
+                    .and_then(|intent| intent.get("kind"))
+                    .and_then(|kind| kind.as_str()),
                 Some(
                     "set_unread"
                         | "set_pinned"
@@ -233,12 +249,19 @@ pub fn authorize(
                         | "set_archived"
                         | "rename"
                 )
+            )
         }
+        // A Member opens a default draft of their own; Core keeps each Member's draft theirs.
         "workspace_apply" => matches!(
             kind,
+            "move_session"
+                | "ensure_default_draft_session"
                 | "reorder_pinned_sessions"
+                | "set_inbox_routing_consent"
                 | "claim_turn_notification"
                 | "reply_to_page_turn"
+                | "pause_work"
+                | "resume_work"
                 | "start_page_work"
                 | "accept_page_work"
                 | "send_inbox_message"
@@ -345,6 +368,15 @@ mod inbox_tests {
     }
     #[test]
     fn chat_changes_reach_core_while_host_bookkeeping_stays_local() {
+        let context = remote(MemberRole::Member);
+        let session = |intent: &str| {
+            authorize(
+                &context,
+                "workspace_apply",
+                &json!({"kind":"mutate_session","session_id":"chat","intent":{"kind":intent}}),
+            )
+        };
+        // Core's writer decides whether this Member may change the chat itself.
         for intent in [
             "rename",
             "set_archived",
@@ -352,8 +384,31 @@ mod inbox_tests {
             "set_pinned",
             "set_reminder",
         ] {
+            assert!(session(intent).is_ok(), "{intent}");
+        }
+        for kind in [
+            "move_session",
+            "reorder_pinned_sessions",
+            "ensure_default_draft_session",
+        ] {
             assert!(authorize(&context, "workspace_apply", &json!({"kind":kind})).is_ok());
         }
+        for intent in [
+            "set_fallback_title",
+            "link_thread",
+            "unlink_thread",
+            "consume_reminder",
+            "complete_reminder_delivery",
+        ] {
+            assert_eq!(
+                session(intent).unwrap_err().code,
+                CoreErrorCode::Unauthorized,
+                "{intent}"
+            );
+        }
+    }
+    #[test]
+                json!({"kind":"create_agent_runtime_session","side_chat_source_session_id":"other-chat"}),
     fn remote_inbox_admission_keeps_person_actions_separate_from_host_and_agent_commands() {
         for role in [MemberRole::Member, MemberRole::Owner] {
             let context = remote(role);

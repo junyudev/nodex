@@ -12,6 +12,7 @@ import type { AutomationIntent, AutomationReadSnapshot } from "../../../src/main
 import {
   projectAutomation,
   toCoreAutomationInput,
+} from "../../../src/host/automation-application/AutomationProjection";
 import { compilePageLifecycleRequestV2 } from "../../../src/shared/page-lifecycle-v2-runtime";
 import { createBoundedOperationId } from "../../../src/shared/operation-identity";
 import type {

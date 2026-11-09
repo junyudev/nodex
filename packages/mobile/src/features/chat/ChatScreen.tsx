@@ -9,6 +9,7 @@ import type { ScreenProps } from "../../navigation/types";
 import { useRootNavigation } from "../../navigation/types";
 import {
   clearChatNotifications,
+  decideInbox,
   dismissNotificationOffer,
   enableNotifications,
   useChat,
@@ -273,56 +274,25 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
 
   const activeRunId = chat.state.activeRunId;
   const blocked = chat.state.sendBlockedReason;
+  // A chat whose Inbox decision could not start it offers that decision again, when Core would.
+  const retry = chat.state.start?.retry ?? null;
+  const retryStart = () => {
+    if (!retry) return;
+    decideInbox(retry.entryId, { type: "retry", proposalId: retry.proposalId }).catch(
+      (cause: unknown) => showFailure("The chat couldn’t start", cause),
+    );
+  };
 
   return (
     <ComposerLayout
       foot={
-        <>
-          <ConnectionNotice />
-          {chat.state.requests.map((request) => (
-            <RequestCard key={request.requestId} request={request} respond={respond} />
-          ))}
-          {chat.state.status === "waiting" && chat.state.requests.length === 0 ? (
-            <FloatingNote
-              icon="laptop"
-              iconColor="warning"
-              text="Waiting for an answer on your desktop."
-            />
-          ) : null}
-          {chat.state.status === "running" ? <NotificationOffer /> : null}
-          {chat.state.queuedCount > 0 ? (
-            <FloatingNote
-              icon="clock"
-              text={
-                chat.state.queuedCount === 1
-                  ? "1 message waiting behind this Run"
-                  : `${chat.state.queuedCount} messages waiting behind this Run`
-              }
-            />
-          ) : null}
-          {blocked ? (
-            <View style={{ paddingBottom: Math.max(safeArea.bottom, 8) }}>
-              <FloatingNote icon="laptop" text={blocked} />
-            </View>
-          ) : (
-            <Composer
-              draftKey={`chat:${sessionId}`}
-              placeholder={activeRunId ? "Add to the queue" : "Reply"}
-              onSend={(text, images) => deliver(text, images, "queue")}
-              {...(activeRunId
-                ? {
-                    onSendLongPress: (text: string, images: readonly LocalImage[]) =>
-                      deliver(text, images, "steer"),
-                    onStop: () => {
-                      stop().catch((cause: unknown) =>
-                        showFailure("Could not stop the Run", cause),
-                      );
-                    },
-                  }
-                : {})}
-            />
-          )}
-        </>
+                <FloatingNote
+                  icon={chat.state.start?.state === "failed" ? "warning" : "laptop"}
+                  text={blocked}
+                />
+                  : activeRunId
+                    ? { stopUnavailableReason: chat.state.stopBlockedReason }
+                    : {})}
       }
     >
       {(insets) => (

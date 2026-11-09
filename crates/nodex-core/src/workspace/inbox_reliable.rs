@@ -563,7 +563,12 @@ pub(in crate::workspace) fn apply_reliable(
                         &message_id,
                     )?;
                     connection.execute("UPDATE inbox_proposals SET failure_kind='unknown',failure_message='Delivery is awaiting confirmation',revision=revision+1,updated_at=?2 WHERE proposal_id=?1",params![proposal_id,now])?;
-                    Ok(simple_effects("inbox_begin_dispatch", &now))
+                    super::chat_start_effects(
+                        connection,
+                        "inbox_begin_dispatch",
+                        &proposal_id,
+                        &now,
+                    )
                 }
                 ProjectWorkspaceIntent::CompleteInboxDispatch {
                     proposal_id,
@@ -591,9 +596,14 @@ pub(in crate::workspace) fn apply_reliable(
                     // Accepted transcript belongs to Agent Runtime; Core retains only its receipt identity.
                     connection.execute(
                         "UPDATE inbox_handoffs SET final_text='' WHERE proposal_id=?1",
-                        [proposal_id],
+                        [&proposal_id],
                     )?;
-                    Ok(simple_effects("inbox_complete_dispatch", &now))
+                    super::chat_start_effects(
+                        connection,
+                        "inbox_complete_dispatch",
+                        &proposal_id,
+                        &now,
+                    )
                 }
                 ProjectWorkspaceIntent::FailInboxDispatch {
                     proposal_id,
@@ -622,7 +632,7 @@ pub(in crate::workspace) fn apply_reliable(
                         "failed"
                     };
                     connection.execute("UPDATE inbox_proposals SET state=?2,failure_kind=?3,failure_message=?4,revision=revision+1,updated_at=?5 WHERE proposal_id=?1",params![proposal_id,state,kind,failure_text(&message),now])?;
-                    Ok(simple_effects("inbox_fail_dispatch", &now))
+                    super::chat_start_effects(connection, "inbox_fail_dispatch", &proposal_id, &now)
                 }
                 ProjectWorkspaceIntent::UndoInboxDecision { undo_token } => undo_decision(
                     connection,
@@ -661,6 +671,7 @@ fn decide(
     let inbox_scope = require_one_scope(connection, pages)?;
     let action = normalize_action(connection, library_id, inbox_scope.as_deref(), action)?;
     if let ProjectWorkspaceInboxDispatchAction::Plan { summary, steps } = &action {
+        require_decision_authority(context)?;
         if context.agent_attribution.is_some() {
             return Err(invalid("Only the user may confirm a plan"));
         }
@@ -816,7 +827,7 @@ fn decide(
         | ProjectWorkspaceInboxDispatchAction::SendToChat {
             prompt, additions, ..
         } => {
-            require_host(context)?;
+            require_decision_authority(context)?;
             let mut text = prompt.trim().to_owned();
             for addition in additions {
                 text.push_str("\n\n");

@@ -1,5 +1,6 @@
 import type { components } from "@nodex/core-protocol";
 import type { InboxReplyDestination } from "../../shared/inbox";
+import type { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
 
 type Control = import("effect/Effect").Success<
   ReturnType<AgentRuntimeApplication["Service"]["control"]>

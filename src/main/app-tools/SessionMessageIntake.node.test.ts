@@ -16,7 +16,8 @@ import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import { FileExportRuntime } from "../library-application/FileExportRuntime";
 import { sessionMessageSchema } from "../../shared/nodex-app-tools/session-message-schema";
 import { createStableOperationId } from "../core-runtime/operation-identity";
-import { make, type SessionMessageIntakeInput } from "./SessionMessageIntake";
+import { makeMessageIntake as make } from "./NativeSessionTools";
+import type { SessionMessageIntakeInput } from "./SessionMessageIntake";
 
 const fixture = (
   options: {

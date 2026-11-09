@@ -305,9 +305,11 @@ it.effect(
   "lists only native background roster tasks across the root tree during foreground work",
   () =>
     Effect.gen(function* () {
-      const { thread, run, roster } = yield* fixture;
+      const { thread, run, roster, secret } = yield* fixture;
       const root = yield* thread("root:tasks");
-      yield* run(root, "running");
+      const rootRun = yield* run(root, "running");
+      // The turn item that started a task ties it to that item's Run.
+      yield* secret(root, rootRun, false);
       const child = yield* thread("child:tasks", root);
       const earlier = DateTime.makeUnsafe("2026-10-01T00:00:00.000Z");
       const later = DateTime.makeUnsafe("2026-10-02T00:00:00.000Z");
@@ -318,6 +320,7 @@ it.effect(
           description: "Dev server",
           command: "vp run dev",
           startedAt: later,
+          turnItemId: TurnItemId.make(`secret:${root}`),
         },
         { taskId: "native-agent", kind: "subagent" },
       ]);
@@ -337,6 +340,7 @@ it.effect(
           description: null,
           command: null,
           startedAt: null,
+          runId: null,
         },
         {
           threadId: child,
@@ -346,6 +350,7 @@ it.effect(
           description: null,
           command: "watch deploy",
           startedAt: DateTime.formatIso(earlier),
+          runId: null,
         },
         {
           threadId: root,
@@ -355,6 +360,7 @@ it.effect(
           description: "Dev server",
           command: "vp run dev",
           startedAt: DateTime.formatIso(later),
+          runId: rootRun.id,
         },
       ]);
     }).pipe(Effect.provide(layer)),
@@ -778,6 +784,8 @@ it.effect("lists a settled Codex terminal as Session background activity using i
         description: null,
         command: "npm run dev",
         startedAt: DateTime.formatIso(startedAt),
+        // Its turn item is not projected, so the task names no Run.
+        runId: null,
       },
     ]);
   }).pipe(Effect.provide(layer)),

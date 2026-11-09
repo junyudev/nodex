@@ -1,3 +1,4 @@
+import { WorkApplication } from "../../host/work-application/WorkApplication";
 import * as Effect from "effect/Effect";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { reportWorkSchema, startWorkSchema } from "../../shared/nodex-app-tools/work-schema";

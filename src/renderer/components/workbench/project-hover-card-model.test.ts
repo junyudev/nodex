@@ -40,9 +40,9 @@ describe("project hover card model", () => {
           ownerRepo: { owner: "acme", repo: "nodex" },
         },
         sources: [
-          { root: "/Users/asc/repo/nodex", order: 0 },
-          { root: "/Users/asc/repo/docs", order: 1 },
-          { root: "/Users/asc/repo/nodex", order: 2 },
+          { kind: "directory" as const, path: "/Users/asc/repo/nodex", order: 0 },
+          { kind: "directory" as const, path: "/Users/asc/repo/docs", order: 1 },
+          { kind: "directory" as const, path: "/Users/asc/repo/nodex", order: 2 },
         ],
         pathContext: { homeDirectory: "/Users/asc", separator: "/" },
       }),
@@ -61,7 +61,7 @@ describe("project hover card model", () => {
           repositoryRoot: "C:\\work\\nested",
           ownerRepo: null,
         },
-        sources: [{ root: "C:\\work\\nested", order: 0 }],
+        sources: [{ kind: "directory" as const, path: "C:\\work\\nested", order: 0 }],
         pathContext: null,
       }),
     ).toEqual([{ kind: "source", label: "C:\\work\\nested", path: "C:\\work\\nested" }]);

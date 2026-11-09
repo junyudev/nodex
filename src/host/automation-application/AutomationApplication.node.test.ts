@@ -4,6 +4,11 @@ import type {
   AutomationApplyInput,
   AutomationApplyResult,
   AutomationReadSnapshot,
+} from "../../main/core-client/types";
+import { AutomationRoutingIndex } from "../../main/core-runtime/AutomationRoutingIndex";
+import { CoreApplicationAgent } from "../../main/core-runtime/CoreApplicationAgent";
+import { CoreModules, type CoreModuleClients } from "../../main/core-runtime/CoreModules";
+import { coreRuntimeError } from "../../main/core-runtime/CoreRuntimeError";
 import { make } from "./AutomationApplication";
 import type {
   CoreAutomation,

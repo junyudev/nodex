@@ -1,4 +1,5 @@
 import type { AgentSelection } from "../../shared/work-graph";
+import { HostInvocation } from "../HostInvocation";
 import { createHash } from "node:crypto";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -8,6 +9,9 @@ import type { components } from "@nodex/core-protocol";
 import type { AcceptWorkInput, StartWorkInput } from "../../shared/work-application";
 import { agentSelectionOf } from "../../shared/work-graph";
 import { createUuidV7FromTimestamp } from "../../shared/uuid-v7";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { createOperationId } from "../../main/core-runtime/operation-identity";
 import { resolveInboxModel } from "../inbox-application/InboxRuntimeSelection";
 
 type WorkContext = components["schemas"]["PageWorkContext"];
@@ -143,6 +147,7 @@ export const make = Effect.gen(function* () {
         [];
       let after: string | null = null;
       while (true) {
+        const snapshot: import("../../main/core-client/types").ProjectWorkspaceReadSnapshot =
           yield* core.workspace.read(
             {
               kind: "sources",
@@ -191,6 +196,7 @@ export const make = Effect.gen(function* () {
           ...(input.turnEpisode ? { expected_turn_episode: input.turnEpisode } : {}),
         },
       },
+      { hostInvocation: (yield* HostInvocation) ?? undefined },
       null,
     );
     return { value: { pageId: frozen.page_id, sessionId: frozen.session_id, launchId }, apply };

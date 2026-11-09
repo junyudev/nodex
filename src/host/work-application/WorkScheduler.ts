@@ -5,6 +5,10 @@ import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { createOperationId } from "../../main/core-runtime/operation-identity";
+import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifierRuntime";
+import { getLogger } from "../../main/logging/logger";
 import { WorkApplication } from "./WorkApplication";
 
 export const make = Effect.gen(function* () {

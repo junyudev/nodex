@@ -103,7 +103,7 @@ import {
   CodexTurnPresentation,
   type CodexTurnPresentationClaim,
   type CodexTurnPresentationLaunch,
-} from "./CodexTurnPresentation";
+} from "../../host/TurnPresentation";
 import { CodexTurnPreparation, type CodexTurnStartPlan } from "./CodexTurnPreparation";
 import { CodexMainConversationSettings } from "./CodexMainConversationSettings";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";

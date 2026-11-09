@@ -244,7 +244,7 @@ import {
 import { ProfilePersistedAtoms } from "../local-store/ProfilePersistedAtoms";
 import { resolveCodexThreadHandoffJournalPath } from "../codex/codex-thread-handoff-journal";
 import { makeCodexThreadHandoffJournalStorage } from "../platform/CodexThreadHandoffJournalStorage";
-import { CodexPlatform } from "./CodexApplicationLive";
+import { CodexPlatform } from "../../host/ProviderPlatform";
 import { live as appToolAuthorityLive } from "../app-tools/NodexAppToolAuthority";
 import { MainConfig } from "./MainConfig";
 import { live as historyTimelineAdapterLive } from "../codex-application/CodexHistoryTimelineAdapter";

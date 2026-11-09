@@ -4,10 +4,14 @@ import type { components } from "@nodex/core-protocol";
 import {
   AgentRuntimeApplication,
   AgentRuntimeApplicationError,
+} from "../../main/agent-runtime/AgentRuntimeApplication";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
 import type {
   ProjectWorkspaceApplyInput,
   ProjectWorkspaceRead,
   DatabaseRead,
+} from "../../main/core-client/types";
+import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import {
   WorkApplication,
   briefOwnerName,

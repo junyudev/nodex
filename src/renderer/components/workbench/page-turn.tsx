@@ -3,6 +3,7 @@ import { useMembers, useLocalMember } from "@/lib/members-runtime";
 import { useAgentRuntimeProviders } from "@/lib/use-agent-runtime-providers";
 import type { PageTurnHolder } from "@/lib/page-turn-phrase";
 import { PageTurnChip } from "./page-turn-chip";
+import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
 import { REMOTE_AGENT_REASON } from "../../../shared/space-connection";
 import { NodexTooltip } from "@/components/ui/tooltip";
 
@@ -46,6 +47,7 @@ export function PageTurnView({
   readonly onOpenPage?: (pageId: string) => void;
 }) {
   const holder = usePageTurnHolder(turn);
+  const hostAvailable = useSpaceHostAvailable();
   const unavailable = !hostAvailable && Boolean(onStart);
   return (
     <NodexTooltip tooltipContent={unavailable ? REMOTE_AGENT_REASON : undefined}>

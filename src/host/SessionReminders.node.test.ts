@@ -24,6 +24,8 @@ const chat = (id: string, due: number): ProjectSession => ({
   archivedAt: null,
   unread: false,
   remindAt: DateTime.formatIso(DateTime.makeUnsafe(due)),
+  canManage: true,
+  canStop: true,
   thread: null,
   createdAt: "1970-01-01T00:00:00.000Z",
   updatedAt: "1970-01-01T00:00:00.000Z",

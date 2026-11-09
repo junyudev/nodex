@@ -185,6 +185,33 @@ pub(crate) fn initialize_automation_owner(
 }
 
 fn requester_page(connection: &Connection, session: &str) -> Result<Option<String>, StoreError> {
+    Ok(connection
+        .query_row(
+            &format!("SELECT {}", requester_page_sql("?1")),
+            [session],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten())
+}
+
+/// The Page whose work a Session does: the Page it was launched for, else its only active Page.
+fn requester_page_sql(session: &str) -> String {
+    format!(
+        "(SELECT page_id FROM (SELECT page_id,0 AS priority,created_at AS linked_at FROM page_work_launches WHERE session_id={session} \
+         UNION ALL SELECT page_id,1 AS priority,set_at FROM page_active_chats WHERE session_id={session} \
+           AND (SELECT count(*) FROM page_active_chats single WHERE single.session_id={session})=1) \
+         ORDER BY priority,linked_at,page_id LIMIT 1)"
+    )
+}
+
+/// [`requester_owner_for_session`] as an SQL expression over a Session and Library expression.
+pub(crate) fn session_page_owner_sql(session: &str, library: &str) -> String {
+    format!(
+        "(SELECT json_extract(work.value_json,'$.owner') FROM block_properties work \
+         WHERE work.block_id={} AND work.library_id={library} AND work.property_key='work')",
+        requester_page_sql(session)
+    )
 }
 /// Managed work carries its requesting Member through new standing records.
 pub(crate) fn requester_owner(
@@ -212,4 +239,9 @@ pub(crate) fn requester_owner_for_session(
     library: &str,
     session: &str,
 ) -> Result<Option<String>, StoreError> {
+    Ok(connection.query_row(
+        &format!("SELECT {}", session_page_owner_sql("?1", "?2")),
+        params![session, library],
+        |r| r.get(0),
+    )?)
 }

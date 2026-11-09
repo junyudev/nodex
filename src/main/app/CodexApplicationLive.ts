@@ -1,3 +1,4 @@
+import { platform, localLaunch } from "../../host/ProviderConfigurationLive";
 import {
   PluginNativeOperations,
   live as pluginNativeOperationsLive,
@@ -10,24 +11,18 @@ import {
 import { CodexConversationPeerRuntime } from "../platform/node/CodexConversationPeerRuntime";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import { createCodexHomeDirectory, writeCodexHomeReceipt } from "../platform/node/CodexHomeReceipt";
 import {
   assertCodexAccountHomeIdentity,
   codexAccountHomeEnvironment,
-  codexAccountHomeLaunchArgs,
-  inspectCodexAccountHome,
   prepareCodexAccountHome,
-  type CodexAccountHome,
 } from "../platform/node/CodexAccountHome";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
-import * as Context from "effect/Context";
+import { CodexPlatform, CodexLocalLaunch } from "../../host/ProviderPlatform";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import { CODEX_INTEGRATION_CAPABILITIES } from "../../shared/codex-integration-capabilities";
 import { codexCliAppServerArgs } from "../../shared/codex-app-server-launch";
-import { resolveCodexRuntimeEffect, type ResolvedCodexRuntime } from "../codex/codex-runtime";
-import { codexFeatureDefaultLaunchArgs } from "../codex/codex-feature-defaults";
 import { CodexAccount, live as codexAccountLive } from "../codex-application/CodexAccount";
 import {
   CodexAttestation,
@@ -47,7 +42,8 @@ import {
   CodexPreferences,
   live as codexPreferencesLive,
 } from "../codex-application/CodexPreferences";
-import * as UserPresence from "../host-runtime/UserPresence";
+import { UserPresence } from "../../host/UserPresence";
+import { live as userPresenceLive } from "../host-runtime/UserPresence";
 import {
   CodexRendererPresentationRegistry,
   make as makeCodexRendererPresentationRegistry,
@@ -90,7 +86,6 @@ import { CodexRequestScheduler } from "../codex-runtime/CodexRequestScheduler";
 import * as CodexSessionTransport from "../platform/node/CodexSessionTransport";
 import { live as electronCodexAttestationLive } from "../platform/electron/ElectronCodexAttestation";
 import { resolveCodexProcessEnvironment } from "../platform/node/CodexProcessEnvironment";
-import { nodexCliShellLaunchArgs, prepareNodexCliShell } from "../platform/node/NodexCliShell";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
 import { MainConfig } from "./MainConfig";
@@ -103,137 +98,6 @@ import { make as makeAppToolSession } from "../app-tools/CodexAppToolSession";
 import { appToolsEntrypoint } from "../codex/app-tools-launch-config";
 import type { CodexAppServerSessionOptions } from "../codex-runtime/CodexAppServerSession";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
-import { scenarioAgentRuntimeProjectRoot } from "../platform/node/AgentRuntimeEntrypoint";
-
-export class CodexPlatform extends Context.Service<
-  CodexPlatform,
-  {
-    readonly runtime: ResolvedCodexRuntime;
-    readonly codexHome: string;
-    readonly accountHome: CodexAccountHome;
-    readonly runtimeStateHome: string;
-  }
->()("nodex/main/app/CodexPlatform") {}
-
-const platform: Layer.Layer<CodexPlatform, MainApplicationError, MainConfig | ApplicationSettings> =
-  Layer.effect(
-    CodexPlatform,
-    Effect.gen(function* () {
-      const config = yield* MainConfig;
-      const settings = yield* ApplicationSettings;
-      const snapshot = yield* settings.snapshot().pipe(
-        Effect.mapError(
-          (cause) =>
-            new MainApplicationError({
-              phase: "startup",
-              operation: "resolve-codex-home",
-              cause,
-            }),
-        ),
-      );
-      const scenarioRuntimeProjectRoot = scenarioAgentRuntimeProjectRoot(config);
-      const runtime = yield* resolveCodexRuntimeEffect({
-        platform: config.platform,
-        architecture: config.arch,
-        isPackaged: config.isPackaged,
-        projectRootPath: scenarioRuntimeProjectRoot || config.projectRootPath,
-        resourcesPath: config.resourcesPath,
-      }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new MainApplicationError({
-              phase: "startup",
-              operation: "resolve-codex-runtime",
-              cause,
-            }),
-        ),
-      );
-      const accountHome = yield* Effect.try({
-        try: () =>
-          inspectCodexAccountHome({
-            sharedHome: snapshot.codexHome.activeHomePath,
-            accountHome: snapshot.codexHome.activeAccountHomePath,
-            platform: config.platform,
-          }),
-        catch: (cause) =>
-          new MainApplicationError({ phase: "startup", operation: "resolve-codex-account", cause }),
-      });
-      yield* Effect.try({
-        try: () => {
-          createCodexHomeDirectory(accountHome.sharedHome);
-          writeCodexHomeReceipt({
-            profileHome: config.nodexHome,
-            codexHome: accountHome.sharedHome,
-          });
-        },
-        catch: (cause) =>
-          new MainApplicationError({ phase: "startup", operation: "prepare-codex-home", cause }),
-      });
-      return CodexPlatform.of({
-        runtime,
-        codexHome: accountHome.sharedHome,
-        accountHome,
-        runtimeStateHome: `${config.nodexHome}/runtime/agent`,
-      });
-    }),
-  );
-
-/** Codex arguments that put this Profile's task-bound `nodex` first in every Codex shell Main launches. */
-/**
- * Config overrides every local Codex process of this Profile starts with, whether Main or Agent
- * execution runs it: Desktop feature defaults, the `nodex` CLI shell, and the selected account's
- * credential store and shared history.
- */
-export class CodexLocalLaunch extends Context.Service<
-  CodexLocalLaunch,
-  { readonly configOverrides: ReadonlyArray<string> }
->()("nodex/main/app/CodexLocalLaunch") {}
-
-/** Prepared once per Main process: preparing again would drop every live task binding. */
-const localLaunch = Layer.effect(
-  CodexLocalLaunch,
-  Effect.gen(function* () {
-    const config = yield* MainConfig;
-    const codex = yield* CodexPlatform;
-    const featureArgs = yield* Effect.tryPromise(() =>
-      codexFeatureDefaultLaunchArgs(codex.codexHome),
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new MainApplicationError({ phase: "startup", operation: "read-codex-defaults", cause }),
-      ),
-    );
-    const accountArgs = codexAccountHomeLaunchArgs(codex.accountHome);
-    const cliArgs = yield* Effect.tryPromise(() =>
-      prepareNodexCliShell(config.nodexHome, config.platform),
-    ).pipe(
-      Effect.andThen(
-        Effect.tryPromise(() =>
-          nodexCliShellLaunchArgs({
-            platform: config.platform,
-            nodexHome: config.nodexHome,
-            codexHome: codex.codexHome,
-            searchPaths: codex.runtime.additionalSearchPaths,
-            homeDirectory: config.homeDirectory,
-            inheritedEnvironment: {
-              ...config.environment,
-              PATH: config.environmentPath ?? config.environment.PATH,
-            },
-          }),
-        ),
-      ),
-      Effect.mapError(
-        (cause) =>
-          new MainApplicationError({
-            phase: "startup",
-            operation: "prepare-cli-shell",
-            cause,
-          }),
-      ),
-    );
-    return CodexLocalLaunch.of({ configOverrides: [...featureArgs, ...cliArgs, ...accountArgs] });
-  }),
-);
 
 const requestInbox = Layer.effect(CodexApplicationRequestInbox, makeCodexApplicationRequestInbox);
 
@@ -417,7 +281,7 @@ const readState = Layer.effect(CodexThreadReadState, makeCodexThreadReadState).p
 const mainManagers = Layer.effect(CodexMainConversationManagers, makeMainConversationManagers).pipe(
   Layer.provideMerge(readState),
 );
-const userPresence = UserPresence.live.pipe(
+const userPresence = userPresenceLive.pipe(
   Layer.provideMerge(Layer.mergeAll(events, rendererPresentation)),
 );
 const userInputAutoResolution = Layer.effect(
@@ -468,7 +332,7 @@ export const live: Layer.Layer<
   | CodexPreferences
   | CodexApplicationEventHub
   | CodexRendererPresentationRegistry
-  | UserPresence.UserPresence
+  | UserPresence
   | CodexThreadReadState
   | CodexMainConversationManagers
   | CodexUserInputAutoResolution

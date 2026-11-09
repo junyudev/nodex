@@ -50,7 +50,7 @@ import {
 import {
   AutomationApplication,
   make as makeAutomationApplication,
-} from "./automation-application/AutomationApplication";
+} from "../host/automation-application/AutomationApplication";
 import {
   make as makeProjectWorkspace,
   ProjectWorkspace,

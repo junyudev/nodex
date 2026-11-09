@@ -155,6 +155,38 @@ export function projectSessionDetailQueryOptions(sessionId: string) {
   });
 }
 
+/**
+ * What this Member may do in a chat on its Space's host beyond replying, decided by the Space's
+ * Core with the rules it applies when the host carries each action out. A chat on this computer
+ * belongs to its only Member, who may do all of it.
+ */
+export function hostedChatMemberActionsQueryOptions(
+  sessionId: string | null,
+  /** The Runs whose opening message the reader might edit; Core checks at most 200. */
+  runIds: readonly string[] = [],
+) {
+  const latest = runIds.slice(-200);
+  return queryOptions({
+    queryKey: queryKeys.agentRuntime.memberActions(sessionId ?? "", latest),
+    queryFn: () =>
+      invoke("agent-runtime:session:member-actions", {
+        sessionId: sessionId ?? "",
+        runIds: latest,
+      }),
+    enabled: sessionId !== null && isHostedChat(),
+    staleTime: 30_000,
+  });
+}
+
+/** Why a chat its Inbox decision started has not run yet; Core reads it for any reader. */
+export function projectSessionStartQueryOptions(sessionId: string) {
+  return queryOptions({
+    queryKey: queryKeys.projectSessions.start(sessionId),
+    queryFn: () => invoke("project-sessions:start", sessionId),
+    staleTime: 30_000,
+  });
+}
+
 export function commandKeymapStateQueryOptions() {
   return queryOptions({
     queryKey: queryKeys.settings.commandKeymap(),
@@ -175,6 +207,7 @@ export function automationsListQueryOptions() {
 }
 
 export function automationDecisionsQueryOptions(automationId: string) {
+  return queryOptions({
     queryKey: queryKeys.automations.decisions(automationId),
     queryFn: async () => {
       const response = await invoke("automations:decisions:list", { automationId, limit: 20 });
@@ -296,7 +329,8 @@ export function gitRepositoryIdentityQueryOptions(cwd: string) {
   return queryOptions({
     queryKey: queryKeys.git.repositoryIdentity(cwd),
     queryFn: () => invoke("git:repository:identity", cwd) as Promise<GitRepositoryIdentity | null>,
-    enabled: cwd.trim().length > 0,
+    // A hosted chat's folder is on its Space host; this computer has no repository there.
+    enabled: cwd.trim().length > 0 && !isHostedChat(),
     staleTime: 5 * 60_000,
   });
 }

@@ -83,21 +83,37 @@ export type SuggestionView =
   | { readonly kind: "thinking" }
   | { readonly kind: "failed"; readonly message: string }
   | { readonly kind: "dispatching" }
-  | { readonly kind: "dispatch-failed"; readonly proposal: InboxProposal; readonly message: string }
+  | {
+      readonly kind: "dispatch-failed";
+      readonly proposal: InboxProposal;
+      /** Whether it failed, or may have arrived without confirmation. */
+      readonly headline: string;
+      readonly message: string;
+      /** Retry is offered only where the Space accepts it; anything else needs a new decision. */
+      readonly retry: boolean;
+    }
   | { readonly kind: "offer"; readonly proposal: InboxProposal };
 
 /**
  * What a stream row says about a message's advice. A suggestion that can still be confirmed stays
- * on offer while fresh advice runs, since the person may want the earlier one.
+ * on offer while fresh advice runs, since the person may want the earlier one. A delivery whose
+ * arrival is unconfirmed is no longer in progress: it waits for the person to check its chat.
  */
 export const suggestionView = (message: InboxMessage): SuggestionView => {
   const { proposal, suggestion } = message;
-  if (proposal?.state === "dispatching") return { kind: "dispatching" };
-  if (proposal?.state === "failed") {
+  const uncertain = proposal?.failureKind === "unknown";
+  if (proposal?.state === "dispatching" && !uncertain) return { kind: "dispatching" };
+  if (proposal?.state === "failed" || (proposal?.state === "dispatching" && uncertain)) {
     return {
       kind: "dispatch-failed",
       proposal,
+      headline: uncertain
+        ? "Delivery not confirmed"
+        : proposal.action.type === "execute_decision"
+          ? "Couldn't run"
+          : "Couldn't deliver",
       message: proposal.failureMessage ?? "It could not be delivered.",
+      retry: proposal.retryable,
     };
   }
   if (proposal?.state === "open") return { kind: "offer", proposal };
@@ -142,3 +158,24 @@ const TURN_SIGNATURES: Readonly<Record<TurnReason, EntrySignature>> = {
  * Whose move it is and why, in the desktop's turn words. Turn membership and reason come from
  * Core; presentation never invents a completion state.
   return TURN_SIGNATURES[entry.turn.reason ?? "ready_to_start"];
+export type MessageChat =
+  | { readonly state: "starting" }
+  | { readonly state: "failed" }
+  | { readonly state: "open"; readonly sessionId: string };
+
+/**
+ * The chat a message started, as its delivery stands. A new chat opens only once its host has
+ * started it, so the phone never shows a chat with nothing in it: until then the message itself
+ * shows that it is starting, or why it could not start. A chat sent to already exists, and an
+ * unconfirmed delivery may have reached it, so both can be opened to check.
+ */
+export const messageChat = (message: InboxEntry): MessageChat | null => {
+  if (message.rowKind !== "intake") return null;
+  const { proposal, chatSessionId } = message;
+  if (proposal?.action.type === "new_chat" && proposal.failureKind !== "unknown") {
+    if (proposal.state === "dispatching") return { state: "starting" };
+    if (proposal.state === "failed") return { state: "failed" };
+  }
+  return chatSessionId ? { state: "open", sessionId: chatSessionId } : null;
+};
+

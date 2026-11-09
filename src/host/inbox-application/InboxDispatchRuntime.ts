@@ -7,10 +7,17 @@ import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { createUuidV7FromTimestamp } from "../../shared/uuid-v7";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { NativeConversationDelivery } from "../NativeConversationDelivery";
+import { CODEX_APP_LOCAL_HOST_ID } from "../../main/codex/codex-app-meta-thread-tools";
 import {
   inboxDispatchActionFromCore,
   inboxExecutionSelectionFromCore,
   type CoreInboxDispatchWork,
+} from "../../main/core-client/inbox-adapter";
+import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifierRuntime";
+import { getLogger } from "../../main/logging/logger";
+import { ProjectWorkspace } from "../../main/project-application/ProjectWorkspace";
 import { InboxApplication } from "./InboxApplication";
 import { inboxPromptImages, makeInboxImageLoader } from "./inbox-images";
 
@@ -56,6 +63,7 @@ export const make = Effect.gen(function* () {
   const runtime = yield* AgentRuntimeApplication;
   const workspace = yield* ProjectWorkspace;
   const loadImages = yield* makeInboxImageLoader;
+  const remoteTurns = yield* Effect.serviceOption(NativeConversationDelivery);
   const logger = getLogger({ component: "inbox-dispatch-runtime" });
   const lane = yield* Semaphore.make(1);
 
@@ -177,6 +185,15 @@ export const make = Effect.gen(function* () {
     const session = yield* workspace.getProjectSession(work.session_id);
     if (!session || session.archived)
       return yield* inbox.failDispatch(work, "The target chat is unavailable", "unavailable");
+    // The execution owner says where this host runs the chat, as for every launch; a refusal shows
+    // on the Inbox message before anything is submitted.
+    if (action.type === "new_chat" || session.executionRef) {
+      const location = yield* runtime.executionWorkspace(
+        session.projectId,
+        action.type === "new_chat" ? "new" : "existing",
+      );
+      if (!location.available)
+        return yield* inbox.failDispatch(work, location.reason, "unavailable");
     }
     const message = yield* prepareMessage(work, work.final_text);
     if (action.type === "new_chat") {

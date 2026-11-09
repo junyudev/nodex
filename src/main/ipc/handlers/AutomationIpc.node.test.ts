@@ -6,8 +6,8 @@ import type { Automation, AutomationUpdateInput } from "../../../shared/types";
 import {
   AutomationApplication,
   AutomationApplicationError,
-} from "../../automation-application/AutomationApplication";
-import { AutomationExecution } from "../../automation-application/AutomationExecution";
+} from "../../../host/automation-application/AutomationApplication";
+import { AutomationExecution } from "../../../host/automation-application/AutomationExecution";
 import { updateAutomationFromRenderer } from "./AutomationIpc";
 
 const proposal: AutomationUpdateInput = {

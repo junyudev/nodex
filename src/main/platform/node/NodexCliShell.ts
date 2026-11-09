@@ -4,6 +4,8 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { mergeProcessEnvironments } from "./child-process-environment";
+import { scrubHostAgentEnvironment, isAgentProviderVariable } from "../../../host/HostAgentPolicy";
+import type { ScopedAgentCoreConnection } from "../../../host/ScopedAgentCore";
 
 export const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 
@@ -53,6 +55,8 @@ export async function prepareNodexCliShell(
         "if (!$binding.executable) { throw 'Nodex CLI unavailable for this task. Refresh the task context in Nodex.' }",
         "$env:NODEX_HOME = $binding.nodexHome",
         "$env:NODEX_AGENT_ATTRIBUTION = $binding.agentAttribution",
+        "$env:NODEX_AGENT_ENDPOINT = $binding.agentEndpoint",
+        "$env:NODEX_AGENT_CREDENTIAL = $binding.agentCredential",
         "$routing = @('--expect-profile', $binding.profileId)",
         "if ($binding.projectId) { $routing += @('--project', $binding.projectId) }",
         "& $binding.executable @routing @args",
@@ -105,6 +109,8 @@ interface NodexCliShellEnvironmentInput {
   homeDirectory: string;
   inheritedEnvironment: ShellEnvironment;
   configuredEnvironment?: ShellEnvironment;
+  /** Headless shells do not inherit administration variables or user startup files. */
+  privateCoreHome?: string;
 }
 
 /** A configured user file wins; an inherited Nodex wrapper delegates only to its recorded user file. */
@@ -125,8 +131,16 @@ const userStartupPath = (
 export async function composeNodexCliShellEnvironment(
   input: NodexCliShellEnvironmentInput,
 ): Promise<Record<string, string>> {
-  const inherited = input.inheritedEnvironment;
-  const configured = input.configuredEnvironment ?? {};
+  const inherited = input.privateCoreHome
+    ? scrubHostAgentEnvironment(input.inheritedEnvironment, input.privateCoreHome)
+    : input.inheritedEnvironment;
+  const configured = Object.fromEntries(
+    Object.entries(input.configuredEnvironment ?? {}).filter(
+      ([name, value]) =>
+        value !== undefined &&
+        (!input.privateCoreHome || isAgentProviderVariable(name, value, input.privateCoreHome)),
+    ),
+  );
   const paths = nodexCliShellPaths(input.nodexHome);
   const windows = (input.platform ?? process.platform) === "win32";
   const merged = mergeProcessEnvironments(windows ? "win32" : "posix", inherited, configured);
@@ -136,15 +150,13 @@ export async function composeNodexCliShellEnvironment(
   if (windows) return { NODEX_HOME: input.nodexHome, PATH: path };
   const zshHome = join(paths.root, "zsh");
   const bashEnv = join(paths.root, "bash-env");
-  const userZdotdir = userStartupPath(
-    inherited,
-    configured,
-    "ZDOTDIR",
-    "NODEX_USER_ZDOTDIR",
-    input.homeDirectory,
-  );
+  const userZdotdir = input.privateCoreHome
+    ? ""
+    : userStartupPath(inherited, configured, "ZDOTDIR", "NODEX_USER_ZDOTDIR", input.homeDirectory);
   // An empty recorded value means the outer shell had no user BASH_ENV.
-  const userBashEnv = userStartupPath(inherited, configured, "BASH_ENV", "NODEX_USER_BASH_ENV", "");
+  const userBashEnv = input.privateCoreHome
+    ? ""
+    : userStartupPath(inherited, configured, "BASH_ENV", "NODEX_USER_BASH_ENV", "");
   const routing = {
     NODEX_HOME: input.nodexHome,
     ZDOTDIR: zshHome,
@@ -167,7 +179,9 @@ export async function composeNodexCliShellEnvironment(
       join(zshHome, name),
       [
         `ZDOTDIR=\${NODEX_USER_ZDOTDIR:-${shellQuote(userZdotdir)}}`,
-        `if [[ -r "$ZDOTDIR/${name}" ]]; then source "$ZDOTDIR/${name}"; fi`,
+        ...(input.privateCoreHome
+          ? []
+          : [`if [[ -r "$ZDOTDIR/${name}" ]]; then source "$ZDOTDIR/${name}"; fi`]),
         'export NODEX_USER_ZDOTDIR="${ZDOTDIR:-$HOME}"',
         ...bindCommand,
         "",
@@ -218,6 +232,18 @@ export async function nodexCliShellLaunchArgs(
       ? Object.fromEntries(Object.entries(set).filter((entry) => typeof entry[1] === "string"))
       : {};
   const environment = await composeNodexCliShellEnvironment({ ...input, configuredEnvironment });
+  if (input.privateCoreHome) {
+    const configured = Object.fromEntries(
+      Object.entries(configuredEnvironment).filter(([name, value]) =>
+        isAgentProviderVariable(name, value, input.privateCoreHome!),
+      ),
+    );
+    // Replace the native table so rejected configured keys cannot survive a dotted override.
+    const table = Object.entries({ ...configured, ...environment })
+      .map(([name, value]) => `${JSON.stringify(name)}=${JSON.stringify(value)}`)
+      .join(",");
+    return ["-c", `shell_environment_policy.set={${table}}`];
+  }
   return Object.entries(environment).flatMap(([key, entry]) => [
     "-c",
     // Codex splits override paths literally on dots; quotes would become part of the key.
@@ -238,6 +264,7 @@ export async function bindNodexCliShell(input: {
   projectId: string | null;
   /** Names this task's chat on the content it changes; absent attributes nothing. */
   agentAttribution: string | null;
+  scopedConnection?: ScopedAgentCoreConnection;
 }): Promise<void> {
   const file = bindingPath(input.nodexHome, input.threadId);
   await mkdir(nodexCliShellPaths(input.nodexHome).bindings, { recursive: true, mode: 0o700 });
@@ -245,11 +272,13 @@ export async function bindNodexCliShell(input: {
     await writeExecutable(
       file,
       JSON.stringify({
-        nodexHome: input.nodexHome,
+        nodexHome: input.scopedConnection ? null : input.nodexHome,
         executable: input.executable,
         profileId: input.profileId,
         projectId: input.projectId,
-        agentAttribution: input.agentAttribution,
+        agentAttribution: input.scopedConnection ? null : input.agentAttribution,
+        agentEndpoint: input.scopedConnection?.endpoint,
+        agentCredential: input.scopedConnection?.credential,
       }),
     );
     return;
@@ -258,8 +287,17 @@ export async function bindNodexCliShell(input: {
     file,
     [
       "#!/bin/sh",
-      `export NODEX_HOME=${shellQuote(input.nodexHome)}`,
-      input.agentAttribution
+      ...(input.scopedConnection
+        ? [
+            "unset NODEX_HOME NODEX_AGENT_ATTRIBUTION",
+            `export NODEX_AGENT_ENDPOINT=${shellQuote(input.scopedConnection.endpoint)}`,
+            `export NODEX_AGENT_CREDENTIAL=${shellQuote(input.scopedConnection.credential)}`,
+          ]
+        : [
+            `export NODEX_HOME=${shellQuote(input.nodexHome)}`,
+            "unset NODEX_AGENT_ENDPOINT NODEX_AGENT_CREDENTIAL",
+          ]),
+      !input.scopedConnection && input.agentAttribution
         ? `export ${NODEX_AGENT_ATTRIBUTION_ENV}=${shellQuote(input.agentAttribution)}`
         : `unset ${NODEX_AGENT_ATTRIBUTION_ENV}`,
       `exec ${shellQuote(input.executable)} --expect-profile ${shellQuote(input.profileId)} ${input.projectId ? `--project ${shellQuote(input.projectId)} ` : ""}"$@"`,

@@ -3771,7 +3771,10 @@ function HydratedThreadComposer({
     supportsRunningFollowUps: supportsConversationProviderControl(model.provider, "steer"),
     latestTurnStatus,
     canResumeInterruptedTurn,
+    interruptUnavailableReason: model.provider?.interruptUnavailableReason ?? null,
   });
+  // Stop stays in place, unavailable and saying why, for work this reader may not stop.
+  const stopUnavailableReason = composerActionState.unavailableReason ?? null;
   const submitAnnotation = useEffectEvent(() => {
     selectionDraft.consumeSubmission();
     void submitPrompt({
@@ -4068,10 +4071,11 @@ function HydratedThreadComposer({
   });
   const contextSuggestionOpen = suggestionState.active && suggestionState.kind === "at-mention";
   const composerPluginCwds = model.workspaceSearchContext?.skillRoots ?? [];
+  const contextSupported = supportsConversationProviderControl(model.provider, "context");
   const addContextControl = (
     <ComposerAddContextTrigger
       open={contextSuggestionOpen}
-      disabled={isPromptEditorDisabled}
+      disabled={isPromptEditorDisabled || !contextSupported}
       onToggle={() => {
         promptEditorRef.current?.toggleContextSuggestions();
       }}
@@ -4177,21 +4181,28 @@ function HydratedThreadComposer({
           isPrimaryActionPending && "cursor-wait",
         )}
         onClick={
-          composerActionState.action === "stop"
-            ? () => void handleInterrupt()
-            : composerActionState.action === "resume"
-              ? () => void handleResumeInterruptedTurn()
-              : () =>
-                  void submitPrompt({
-                    prompt,
-                    submitAction: composerActionState.primarySubmitAction,
-                  })
+          stopUnavailableReason !== null
+            ? undefined
+            : composerActionState.action === "stop"
+              ? () => void handleInterrupt()
+              : composerActionState.action === "resume"
+                ? () => void handleResumeInterruptedTurn()
+                : () =>
+                    void submitPrompt({
+                      prompt,
+                      submitAction: composerActionState.primarySubmitAction,
+                    })
         }
+        // An unavailable Stop stays focusable, so its reason reaches every reader.
         disabled={
-          composerActionState.action === "send"
-            ? composerActionState.disabled || !canRunPrimaryAction
-            : composerActionState.disabled
+          stopUnavailableReason !== null
+            ? undefined
+            : composerActionState.action === "send"
+              ? composerActionState.disabled || !canRunPrimaryAction
+              : composerActionState.disabled
         }
+        aria-disabled={stopUnavailableReason !== null ? "true" : undefined}
+        aria-description={stopUnavailableReason ?? undefined}
         aria-label={composerActionState.label}
       >
         {isPrimaryActionPending ? (
@@ -4228,7 +4239,7 @@ function HydratedThreadComposer({
       primaryActionButton
     ) : (
       <NodexTooltip
-        tooltipContent={composerActionTooltip}
+        tooltipContent={stopUnavailableReason ?? composerActionTooltip}
         side="top"
         tooltipBodyClassName={cn(
           composerActionState.action === "stop" || !model.isThreadRunning
@@ -4255,6 +4266,7 @@ function HydratedThreadComposer({
         placeholder={promptPlaceholder}
         disabled={isPromptEditorDisabled}
         singleLine={singleLine}
+        allowMentions={contextSupported}
         {...(model.provider?.kind === "claude" ? { promptKeywords: CLAUDE_PROMPT_KEYWORDS } : {})}
         prediction={
           !isPromptEditorDisabled &&

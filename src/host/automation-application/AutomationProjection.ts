@@ -18,9 +18,11 @@ import type {
   AutomationApplyResult,
   AutomationIntent,
   AutomationReadSnapshot,
+} from "../../main/core-client/types";
 import {
   projectAgentBackendBindingFromCore,
   projectAgentBackendBindingToCore,
+} from "../../main/core-client/project-workspace-adapter";
 
 export type CoreAutomation = Extract<
   AutomationReadSnapshot["value"],

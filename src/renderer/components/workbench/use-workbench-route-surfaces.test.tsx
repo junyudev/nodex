@@ -98,6 +98,7 @@ function Routes(props: Parameters<typeof useWorkbenchRouteSurfaces>[0]) {
     settingsRouteShell,
     automationsRouteShell,
     pluginsRouteShell,
+    insightsRouteShell,
     pendingWorktreeRouteShell,
   } = useWorkbenchRouteSurfaces(props);
   return (
@@ -105,6 +106,7 @@ function Routes(props: Parameters<typeof useWorkbenchRouteSurfaces>[0]) {
       {settingsRouteShell}
       {automationsRouteShell}
       {pluginsRouteShell}
+      {insightsRouteShell}
       {pendingWorktreeRouteShell}
     </>
   );
@@ -176,6 +178,26 @@ test("a restored team Automations route shows the host boundary without mounting
     });
     expect(view.getByRole("status").textContent).toBe("Automations for this Space run on its host");
     expect(view.queryByLabelText("Automations route")).toBeNull();
+  } finally {
+    remote.mockRestore();
+  }
+});
+
+test("restored team Plugins and Insights routes say whose Agents they are, without mounting", async () => {
+  const remote = vi.spyOn(rendererSpace, "isRemoteSpace").mockReturnValue(true);
+  try {
+    for (const route of [
+      { plugins: { ...input.plugins, path: "/plugins" } },
+      { insights: { ...input.insights, path: "/insights" } },
+    ]) {
+      let view!: ReturnType<typeof render>;
+      await act(async () => {
+        view = render(<Routes {...input} {...route} />);
+        await Promise.resolve();
+      });
+      expect(view.getByRole("status").textContent).toBe("Agents for this Space run on its host");
+      view.unmount();
+    }
   } finally {
     remote.mockRestore();
   }

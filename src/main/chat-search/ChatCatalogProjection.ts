@@ -12,6 +12,8 @@ export type ChatListingItem =
 export type ChatRuntimeMetadata = AgentRuntimeOperations["sessions.metadata"]["output"][number];
 
 export const CHAT_CATALOG_MAX_ENTRIES = 10_000;
+/** A Member's search through a Space host reads their chats on every request, so fewer. */
+export const MEMBER_CHAT_CATALOG_MAX_ENTRIES = 1_000;
 const CHAT_PREVIEW_MAX_CHARS = 240;
 export interface ChatCatalogItem extends ChatCatalogEntry {
   readonly preview: string;

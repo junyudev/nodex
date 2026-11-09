@@ -2,7 +2,7 @@ import type { AgentThreadAuthority } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type { AgentRuntimeProcessConnection } from "../platform/node/AgentRuntimeProcess";
-import type { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
+import type { CodexTurnPresentation } from "../../host/TurnPresentation";
 
 // Observer teardown must not hold up process retirement or application quit.
 const UNOBSERVE_TIMEOUT = "2 seconds";

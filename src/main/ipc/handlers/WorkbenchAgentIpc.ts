@@ -3,7 +3,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
 import { CodexTurnPresentationCaptureInputSchema } from "../../../shared/nodex-app-tools/turn-presentation";
-import { CodexTurnPresentation } from "../../codex-application/CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../../host/TurnPresentation";
 import {
   WorkbenchAgentRegisterSchema,
   WorkbenchWindowReferenceSchema,

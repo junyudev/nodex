@@ -4,6 +4,8 @@ import type { components } from "@nodex/core-protocol";
 import { MainConfig } from "../app/MainConfig";
 import { makeWithCapture as makeHandback } from "../app-tools/MessageHandbackAppTools";
 import { makeWithCapture as makeFollow } from "../app-tools/FollowThreadAppTools";
+import { GitHubSourceAdapter } from "../../host/sources/GitHubSourceAdapter";
+import { make as makeGitHubDelivery } from "../../host/sources/ThreadDeliveryRuntime";
 import { captureHostedAppToolAuthority } from "../app-tools/AppToolCaller";
 import { CoreAuthority, CoreSessionAccess } from "../core-runtime/CoreAuthority";
 import { make as makeHost } from "./AgentRuntimeHost";
@@ -29,6 +31,8 @@ import { make as makeApplication, AgentRuntimeApplication } from "./AgentRuntime
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
 import { CodexNativeThreadLookup } from "../codex-application/CodexNativeThreadLookup";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { make as makeFacts } from "../../host/coordinator/ManagedChatFacts";
+import { diffManagedChatObservation } from "../../host/coordinator/managed-chat-observation";
 
 // Fresh Runtime startup has a 45s bound before the independently bounded workflows begin.
 const RUNTIME_SCENARIO_TIMEOUT_MS = 120_000;

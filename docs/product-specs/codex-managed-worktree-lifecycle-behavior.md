@@ -257,9 +257,16 @@ clean attached branch at the default branch's recorded commit, validates the
 name with Git and retries unrelated name collisions with a numeric suffix. An
 atomic Git reservation pairs the new branch with Workspace ownership evidence.
 A retry rejoins that allocation and does not adopt an unrelated branch merely
+because its name matches. Interrupted preparation is reconciled after restart. Session and
+transcript reads during allocation do not materialize a Thread in the source
+checkout. The launch releases execution only after its Page Workspace is ready;
+its Runtime Thread, provider and first shell use that checkout and attached branch.
 
 Done or Canceled records a cleanup request in the same transaction as the Status change.
 Cleanup waits for every consuming Session's root, delegated and background work
+and preparation. The execution host seals every consumer at its current Runtime location,
+including a nested directory or a different checkout, rechecks current activity
+and Workspace revision, retires native connections, then uses required
 snapshot, Environment cleanup and validated worktree deletion. Unavailable
 consumer facts defer deletion. Active Page Workspaces are protected from generic
 retention even while idle and throughout preparation. Worktree Settings leaves

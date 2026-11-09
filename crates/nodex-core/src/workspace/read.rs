@@ -43,6 +43,8 @@ struct SessionRow {
     archived_at: Option<String>,
     unread: i64,
     remind_at: Option<String>,
+    can_manage: bool,
+    can_stop: bool,
     thread_id: Option<String>,
     thread_name: Option<String>,
     thread_preview: Option<String>,
@@ -318,6 +320,18 @@ pub(super) fn read(
                 )?),
             })
         }
+        ProjectWorkspaceRead::SessionMemberActions {
+            session_id,
+            run_ids,
+        } => Ok(ProjectWorkspaceReadValue::SessionMemberActions {
+            actions: super::host_chat::member_actions(
+                connection,
+                context,
+                library_id,
+                &session_id,
+                &run_ids,
+            )?,
+        }),
         ProjectWorkspaceRead::InboxMessageEdit {
             page_id,
             original_body,
@@ -588,6 +602,14 @@ pub(super) fn read(
                 .ok_or_else(|| not_found("Project Session is unavailable"))?;
             Ok(ProjectWorkspaceReadValue::Session {
                 session: session_summary(row),
+            })
+        }
+        ProjectWorkspaceRead::SessionStart { session_id } => {
+            validate_id("session_id", &session_id)?;
+            read_session(connection, library_id, &session_id, &member)?
+                .ok_or_else(|| not_found("Project Session is unavailable"))?;
+            Ok(ProjectWorkspaceReadValue::SessionStart {
+                start: super::inbox::session_start(connection, library_id, &session_id)?,
             })
         }
         ProjectWorkspaceRead::AgentRuntimeSessionBinding { session_id } => {
@@ -931,10 +953,7 @@ pub(super) fn project(
              WHERE project_id = ?1 ORDER BY \"order\", created, root_key",
         )?
         .query_map([&row.id], |source| {
-            Ok(ProjectSource {
-                root: source.get(0)?,
-                order: source.get(1)?,
-            })
+            Ok(ProjectSource::from_identity(source.get(0)?, source.get(1)?))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(ProjectWorkspaceProject {
@@ -947,7 +966,10 @@ pub(super) fn project(
         name: row.name,
         description: row.description,
         appearance,
-        primary_workspace_root: sources.first().map(|source| source.root.clone()),
+        primary_workspace_root: sources
+            .first()
+            .and_then(ProjectSource::local_path)
+            .map(str::to_owned),
         sources,
         pinned: row.pinned_order.is_some(),
         pinned_order: row.pinned_order,
@@ -964,11 +986,14 @@ fn read_session(
 ) -> Result<Option<SessionRow>, StoreError> {
     connection
         .query_row(
+            &format!("SELECT session.id, session.project_id, session.no_thread_fallback_title, \
                session.activity_at, {}, {}, session.archived, \
                session.archived_at, {}, \
                thread.thread_id, thread.thread_name, \
                thread.thread_preview, session.created_at, session.updated_at, \
                execution.runtime_id, execution.runtime_thread_id, {}, \
+               EXISTS(SELECT 1 FROM coordinator_managed_sessions managed WHERE managed.session_id = session.id), \
+               {}, {} \
              FROM project_sessions session \
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
@@ -982,6 +1007,12 @@ fn read_session(
                 super::member_attention::pinned_order_sql("session.id", "?3"),
                 super::member_attention::unread_sql("session.id", "?3"),
                 super::member_attention::remind_at_sql("session.id", "?3"),
+                super::chat_stewardship::may_manage_sql("session.id", "?3"),
+                super::chat_stewardship::may_stop_sql(
+                    "session.id",
+                    &super::chat_stewardship::current_run_sql("session.id"),
+                    "?3",
+                ),
             ),
             params![session_id, library_id,member],
             session_row,
@@ -1003,6 +1034,8 @@ fn session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionRow> {
         archived_at: row.get(7)?,
         unread: row.get(8)?,
         remind_at: row.get(16)?,
+        can_manage: row.get(18)?,
+        can_stop: row.get(19)?,
         thread_id: row.get(9)?,
         thread_name: row.get(10)?,
         thread_preview: row.get(11)?,
@@ -1039,6 +1072,8 @@ fn session_summary(row: SessionRow) -> ProjectWorkspaceSessionSummary {
         archived_at: row.archived_at,
         unread: row.unread == 1,
         remind_at: row.remind_at,
+        can_manage: row.can_manage,
+        can_stop: row.can_stop,
         thread_id: row.thread_id,
         execution_ref: row.execution_ref,
         created_at: row.created_at,

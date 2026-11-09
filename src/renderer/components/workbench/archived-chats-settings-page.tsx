@@ -15,6 +15,7 @@ import {
 import { NodexSettingsPageSurface, NodexSettingsSection } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
 import { subscribeCodexEvents, subscribeProjectSessionChanges } from "@/lib/api";
+import { isHostedChat } from "@/lib/hosted-chat";
 import { workspaceSessionCommands } from "@/lib/workspace-catalog-commands";
 import {
   deleteArchivedChat,
@@ -167,6 +168,8 @@ export function ArchivedChatsSettingsPage({
   const [busyThreadId, setBusyThreadId] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<DeleteConfirmation | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // A team Space's archived chats stay on its host; a Member restores the ones Core lets them.
+  const deletable = !isHostedChat();
 
   const projectNames = new Map(projects.map((project) => [project.id, project.name]));
   const groups = projectArchivedChatGroups({
@@ -306,10 +309,14 @@ export function ArchivedChatsSettingsPage({
   return (
     <NodexSettingsPageSurface
       title="Data controls"
-      subtitle="Manage archived chats and permanent local deletion."
+      subtitle={
+        deletable
+          ? "Manage archived chats and permanent local deletion."
+          : "Restore archived chats this Space lets you change."
+      }
       fullWidth
       action={
-        chats.length > 0 ? (
+        deletable && chats.length > 0 ? (
           <NodexButton
             variant="destructive"
             size="sm"
@@ -393,21 +400,23 @@ export function ArchivedChatsSettingsPage({
                           <span>
                             {group.chats.length} {group.chats.length === 1 ? "chat" : "chats"}
                           </span>
-                          <NodexButton
-                            aria-label={`Delete archived chats in ${group.label}`}
-                            size="xs"
-                            variant="ghost"
-                            disabled={deleting}
-                            onClick={() =>
-                              setConfirmation({
-                                kind: "project",
-                                label: group.label,
-                                chats: group.chats,
-                              })
-                            }
-                          >
-                            Delete all
-                          </NodexButton>
+                          {deletable ? (
+                            <NodexButton
+                              aria-label={`Delete archived chats in ${group.label}`}
+                              size="xs"
+                              variant="ghost"
+                              disabled={deleting}
+                              onClick={() =>
+                                setConfirmation({
+                                  kind: "project",
+                                  label: group.label,
+                                  chats: group.chats,
+                                })
+                              }
+                            >
+                              Delete all
+                            </NodexButton>
+                          ) : null}
                         </div>
                       </div>
                     ) : null}
@@ -434,16 +443,18 @@ export function ArchivedChatsSettingsPage({
                             </div>
                           </div>
                           <div className="flex shrink-0 items-center gap-1 opacity-70 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-                            <NodexButton
-                              aria-label={`Delete archived chat ${chatTitle(chat)}`}
-                              size="icon-xs"
-                              variant="ghost"
-                              disabled={deleting || busyThreadId !== null}
-                              onClick={() => setConfirmation({ kind: "single", chats: [chat] })}
-                              className="text-token-error-foreground hover:bg-token-error-background/10"
-                            >
-                              <DeleteIcon />
-                            </NodexButton>
+                            {deletable ? (
+                              <NodexButton
+                                aria-label={`Delete archived chat ${chatTitle(chat)}`}
+                                size="icon-xs"
+                                variant="ghost"
+                                disabled={deleting || busyThreadId !== null}
+                                onClick={() => setConfirmation({ kind: "single", chats: [chat] })}
+                                className="text-token-error-foreground hover:bg-token-error-background/10"
+                              >
+                                <DeleteIcon />
+                              </NodexButton>
+                            ) : null}
                             <NodexButton
                               size="xs"
                               variant="secondary"

@@ -1,5 +1,5 @@
 import * as Context from "effect/Context";
-import type { CodexTurnPresentationClaim } from "./CodexTurnPresentation";
+import type { CodexTurnPresentationClaim } from "../../host/TurnPresentation";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";

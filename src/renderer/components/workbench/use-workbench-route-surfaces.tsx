@@ -1,3 +1,4 @@
+import { REMOTE_AGENT_REASON } from "../../../shared/space-connection";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { lazy, type ComponentProps } from "react";
 import { ApplicationSurface } from "@/bootstrap/application-surface";
@@ -61,9 +62,20 @@ export function useWorkbenchRouteSurfaces({
     </ApplicationSurface>
   ) : null;
 
+  // A team window reaches these only through a restored route; they belong to this desktop's
+  // own Agents, or to the Space host, so the route says why instead of failing.
+  const hostOnly = (reason: string) => (
+    <div
+      role="status"
+      className="flex h-full items-center justify-center text-sm text-token-description-foreground"
+    >
+      {reason}
+    </div>
+  );
   const automationsRouteShell = automations.path ? (
     <ApplicationSurface>
       {isRemoteSpace() ? (
+        hostOnly("Automations for this Space run on its host")
       ) : (
         <AutomationsRoute path={automations.path} {...automations.props} />
       )}
@@ -72,13 +84,17 @@ export function useWorkbenchRouteSurfaces({
 
   const pluginsRouteShell = plugins.path ? (
     <ApplicationSurface>
-      <PluginsRoute path={plugins.path} {...plugins.props} />
+      {isRemoteSpace() ? (
+        hostOnly(REMOTE_AGENT_REASON)
+      ) : (
+        <PluginsRoute path={plugins.path} {...plugins.props} />
+      )}
     </ApplicationSurface>
   ) : null;
 
   const insightsRouteShell = insights.path ? (
     <ApplicationSurface>
-      <InsightsRoute />
+      {isRemoteSpace() ? hostOnly(REMOTE_AGENT_REASON) : <InsightsRoute />}
     </ApplicationSurface>
   ) : null;
 

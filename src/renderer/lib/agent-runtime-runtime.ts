@@ -42,6 +42,8 @@ import type {
   ClaudeUsageSnapshot,
   AgentRuntimeIpcApi,
 } from "../../shared/agent-runtime-api";
+import { isRemoteSpace } from "./renderer-space";
+import { observeHostSession } from "./host-session-observation";
 import type {
   AgentHistoryPage,
   AgentRuntimeOperations,
@@ -381,6 +383,13 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   activity: () => invokeRendererQuery("agent-runtime:activity:read"),
   connection: () => invokeRendererQuery("agent-runtime:connection:read"),
   subscribe: async (input, listener) => {
+    if (isRemoteSpace()) {
+      const target = input.threadId ? input : await agentRuntimeRuntime.inspect(input);
+      return observeHostSession(
+        { sessionId: input.sessionId, threadId: target.threadId! },
+        listener,
+      );
+    }
     const observe = resolveRendererTransport().subscribeAgentRuntimeSessionEvents;
     if (!observe) throw new Error("Agent Runtime event delivery is unavailable");
     const subscriptionId = createUuidV7();

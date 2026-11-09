@@ -2375,8 +2375,8 @@ describe("workbench session shell / layout-panel-actions", () => {
     const secondaryRoot = "/Volumes/code/alpha-secondary";
     const project = makeProject("alpha", "Alpha", primaryRoot);
     project.sources = [
-      { root: primaryRoot, order: 0 },
-      { root: secondaryRoot, order: 1 },
+      { kind: "directory" as const, path: primaryRoot, order: 0 },
+      { kind: "directory" as const, path: secondaryRoot, order: 1 },
     ];
     const screen = renderWorkbench({
       projects: [project],

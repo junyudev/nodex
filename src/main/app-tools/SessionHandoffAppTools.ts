@@ -11,7 +11,8 @@ import { sessionHandoffSchema } from "../../shared/nodex-app-tools/session-hando
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { resolveAppToolCallingSession } from "./AppToolCallingSession";
 import { sessionMessageCeilingError } from "./session-message-policy";
-import { make as makeControlAuthority, denied } from "./SessionControlAuthority";
+import { makeControlAuthority } from "./NativeSessionTools";
+import { denied } from "./SessionControlAuthority";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { CodexThreadHandoffRuntime } from "../codex-application/CodexThreadHandoffRuntime";

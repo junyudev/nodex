@@ -1,5 +1,5 @@
 import type { CodexBackgroundTerminalRow } from "../../../shared/types";
-import type { ConversationBackgroundTasks, ThreadStageActions } from "./thread-stage-types";
+import type { StoppableBackgroundTasks, ThreadStageActions } from "./thread-stage-types";
 
 /**
  * A Codex conversation's background terminals in the shared background-work model: each one
@@ -13,7 +13,7 @@ export function createCodexBackgroundTerminalTasks(
     ThreadStageActions,
     "onStopBackgroundTerminals" | "onOpenBackgroundTerminalOutput" | "onOpenProcessManager"
   >,
-): ConversationBackgroundTasks | null {
+): StoppableBackgroundTasks | null {
   if (threadId === null || rows.length === 0) return null;
   const processIdOf = (row: CodexBackgroundTerminalRow) =>
     row.processId === null || row.processId === undefined ? null : String(row.processId);
@@ -29,6 +29,7 @@ export function createCodexBackgroundTerminalTasks(
         owner: null,
         startedAtMs: null,
         stoppable: processIdOf(row) !== null,
+        canStop: true,
         stopping: false,
       };
     }),

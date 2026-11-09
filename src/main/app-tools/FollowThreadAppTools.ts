@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import type { components } from "@nodex/core-protocol";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { followThreadSchema } from "../../shared/nodex-app-tools/work-schema";
+import { GitHubSourceAdapter } from "../../host/sources/GitHubSourceAdapter";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";

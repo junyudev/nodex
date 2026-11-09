@@ -3483,6 +3483,8 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     taskIds: OrchestrationV2BackgroundTaskIds,
+    /** When set, every task must be work of this Run, as the person stopping it was admitted for. */
+    runId: Schema.optional(RunId),
   }),
   /** Stops one provider-native child while its owning run keeps working. */
   Schema.Struct({

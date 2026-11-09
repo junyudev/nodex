@@ -23,6 +23,8 @@ interface ResolveComposerActionInput {
   supportsRunningFollowUps?: boolean;
   latestTurnStatus: "inProgress" | "completed" | "interrupted" | "failed" | null;
   canResumeInterruptedTurn: boolean;
+  /** Why this reader may not stop the Run, as in a hosted chat another Member asked it for. */
+  interruptUnavailableReason?: string | null;
 }
 
 interface ResolvedComposerActionState {
@@ -31,6 +33,8 @@ interface ResolvedComposerActionState {
   alternateSubmitAction: StageThreadsComposerFollowUpAction | null;
   label: "Send prompt" | "Stop" | "Resume" | "Queue follow-up" | "Steer follow-up";
   disabled: boolean;
+  /** Why the action is unavailable to this reader, shown where it would be. */
+  unavailableReason?: string;
 }
 
 interface ResolveComposerSubmitIntentInput {
@@ -84,7 +88,10 @@ export function resolveStageThreadsComposerActionState(
       primarySubmitAction: null,
       alternateSubmitAction: null,
       label: "Stop",
-      disabled: !input.canSendPrompt,
+      disabled: !input.canSendPrompt || Boolean(input.interruptUnavailableReason),
+      ...(input.interruptUnavailableReason
+        ? { unavailableReason: input.interruptUnavailableReason }
+        : {}),
     };
   }
 

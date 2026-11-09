@@ -1,3 +1,4 @@
+import { HostWorkspace, HostWorkspaceError } from "../../host/HostWorkspace";
 import {
   ApplicationSettings,
   make as makeApplicationSettings,
@@ -275,6 +276,8 @@ const setup = (
     refusedThreadReceipt: false,
     failCore: false,
     projectWorkspaceRoot: "/workspace" as string | null,
+    /** A team Project's canonical remote; Core then reports no local root. */
+    projectRepository: null as string | null,
     failCoreAcknowledgment: false,
     failBindingProof: false,
     missingSessionLookupError: null as CoreRuntimeError | null,
@@ -376,9 +379,27 @@ const setup = (
                     project: {
                       id: input.project_id,
                       name: "Project",
-                      primary_workspace_root: state.projectWorkspaceRoot,
+                      primary_workspace_root: state.projectRepository
+                        ? null
+                        : state.projectWorkspaceRoot,
                       lifecycle: state.lifecycle,
-                      sources: [{ root: "/workspace", order: 0 }],
+                      sources: state.projectRepository
+                        ? [
+                            {
+                              kind: "repository" as const,
+                              remote: state.projectRepository,
+                              order: 0,
+                            },
+                          ]
+                        : state.projectWorkspaceRoot
+                          ? [
+                              {
+                                kind: "directory" as const,
+                                path: state.projectWorkspaceRoot,
+                                order: 0,
+                              },
+                            ]
+                          : [],
                     },
                   },
                 };
@@ -2071,6 +2092,66 @@ it.effect("Core refusal or missing Codex models admits no Runtime import", () =>
   }),
 );
 
+it.effect("resolves where a Project's work runs through the host's own workspace mapping", () =>
+  Effect.gen(function* () {
+    const remote = "https://github.com/acme/platform";
+    const hosted = <E, R>(owner: Effect.Effect<AgentRuntimeApplication["Service"], E, R>) =>
+      owner.pipe(
+        Effect.provideService(HostWorkspace, {
+          projectlessRoot: "/execution/tasks",
+          resolve: (sources) =>
+            Effect.forEach(sources, (source) =>
+              source.kind === "repository" && source.remote === remote
+                ? Effect.succeed("/execution/clones/platform")
+                : Effect.fail(
+                    new HostWorkspaceError({
+                      message: "Map this repository on the Host before starting work",
+                    }),
+                  ),
+            ),
+        }),
+      );
+    const fixture = setup();
+    fixture.state.projectRepository = remote;
+    const owner = yield* hosted(fixture.owner);
+    // Core has no local root for a repository source; the host's clone is where work runs.
+    assert.deepEqual(yield* owner.executionWorkspace("project"), {
+      available: true,
+      workspaceRoot: "/execution/clones/platform",
+      sourceRoots: ["/execution/clones/platform"],
+    });
+    assert.deepEqual(yield* owner.executionWorkspace(null), {
+      available: true,
+      workspaceRoot: "/tasks",
+      sourceRoots: ["/tasks"],
+    });
+
+    fixture.state.projectRepository = "https://github.com/acme/unmapped";
+    assert.deepEqual(yield* owner.executionWorkspace("project"), {
+      available: false,
+      reason: "Map this repository on the Host before starting work",
+    });
+
+    fixture.state.projectRepository = remote;
+    fixture.state.lifecycle = "archived";
+    for (const chat of ["new", "existing"] as const)
+      assert.deepEqual(yield* owner.executionWorkspace("project", chat), {
+        available: false,
+        reason: "Choose an active Project to run this task",
+      });
+
+    // An existing chat keeps its own directory, so only a new one needs the Project's workspace.
+    fixture.state.lifecycle = "active";
+    fixture.state.projectRepository = null;
+    fixture.state.projectWorkspaceRoot = null;
+    assert.deepEqual(yield* owner.executionWorkspace("project", "new"), {
+      available: false,
+      reason: "This Project has no execution workspace",
+    });
+    assert.isTrue((yield* owner.executionWorkspace("project", "existing")).available);
+  }),
+);
+
 it.effect("imports and continues in an explicit directory when its Project has no workspace", () =>
   Effect.gen(function* () {
     const fixture = setup();
@@ -2412,7 +2493,7 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const replacements: unknown[] = [];
-      const replaceQueuedRuntimeMessage: import("../codex-application/CodexTurnPresentation").CodexTurnPresentation["Service"]["replaceQueuedRuntimeMessage"] =
+      const replaceQueuedRuntimeMessage: import("../../host/TurnPresentation").CodexTurnPresentation["Service"]["replaceQueuedRuntimeMessage"] =
         (...input) =>
           Effect.sync(() => {
             replacements.push(input);
@@ -2487,7 +2568,7 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const admitted: Array<unknown> = [];
-      const admitRuntimeMessage: import("../codex-application/CodexTurnPresentation").CodexTurnPresentation["Service"]["admitRuntimeMessage"] =
+      const admitRuntimeMessage: import("../../host/TurnPresentation").CodexTurnPresentation["Service"]["admitRuntimeMessage"] =
         (ticket, target, threadId, messageId) =>
           Effect.sync(() => {
             fixture.order.push("presentation.admit");
@@ -5123,6 +5204,31 @@ it.effect(
       assert.equal(edited.interactionMode, "default");
       assert.equal(edited.modelSelection?.model, "model-b");
       assert.equal(edited.text, "Edited task");
+      // A Member's edit from another Device replaces the queued files with the ones it carries.
+      yield* owner.queue({
+        sessionId: created.sessionId,
+        requestId: "edit:files",
+        action: "edit",
+        runId: "queued",
+        message: { messageId: "message:queued", text: "Edited with notes" },
+        resources: [
+          {
+            source: "/host/exports/notes.md",
+            name: "notes.md",
+            mimeType: "text/markdown",
+            sizeBytes: 9,
+          },
+        ],
+      });
+      const withFiles = [...fixture.commands.values()].findLast(
+        (value) => value.type === "queued-run.edit",
+      )!;
+      if (withFiles.type !== "queued-run.edit") throw new Error("Expected queued edit");
+      assert.equal(withFiles.text, "Edited with notes");
+      assert.deepEqual(
+        withFiles.attachments?.map(({ name }) => name),
+        ["notes.md"],
+      );
     }),
 );
 
@@ -7843,8 +7949,19 @@ it.effect.each(["work", "inbox", "page", "active-chat"] as const)(
       Effect.gen(function* () {
         const fixture = setup({
           ensurePageWorkspace: (input) =>
+            Effect.gen(function* () {
               assert.isTrue(fixture.bindings.has(input.launch.sessionId));
               assert.equal(input.launch.workPage?.pageId, "page:work");
+              if (source === "active-chat") {
+                const reading = yield* Effect.exit(
+                  owner.inspect({ sessionId: input.launch.sessionId }),
+                );
+                assert.equal(
+                  reading._tag,
+                  "Failure",
+                  "reads must wait for the Page launch to create its Thread",
+                );
+              }
               fixture.order.push("workspace.page");
               return {
                 branchName: "nodex-12-work",

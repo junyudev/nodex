@@ -129,6 +129,19 @@ describe("what an Inbox chat runs on", () => {
     expect(shown).toMatchObject({ status: "checking", agent: "Codex", detail: "Loading…" });
   });
 
+  test("keeps checking an Agent whose first status check has not answered yet", () => {
+    const settling = {
+      ...codexProvider(),
+      status: "error" as const,
+      auth: { status: "unknown" as const },
+      message: "Timed out while checking Codex app-server provider status.",
+      models: [],
+    };
+    expect(
+      describeInboxAgent(inboxAgentsFixture({ providers: [settling] }), codex()),
+    ).toMatchObject({ status: "checking", agent: "Codex", detail: "Checking models…" });
+  });
+
   test("suggestions default to their own economical model and steady effort until chosen", () => {
     const catalog = inboxAgentsFixture();
     const sol = {

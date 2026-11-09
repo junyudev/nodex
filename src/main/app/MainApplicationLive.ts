@@ -1,7 +1,15 @@
+import { MemberMessages } from "../../host/MemberMessages";
+import { ChatAttachments } from "../../host/ChatAttachments";
 import * as MobilePushRelay from "../platform/node/MobilePushRelay";
+import { NativeConversationDelivery } from "../../host/NativeConversationDelivery";
+import { live as nativeManagedChatFacts } from "../codex-application/NativeManagedChatFacts";
+import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
+import { HostToolExecutor } from "../../host/HostToolExecutor";
+import { make as makeHostTools } from "../agent-runtime/AgentRuntimeHostTools";
+import * as HostKernel from "../../host/HostKernel";
 import { SpacePageFileHosts } from "../page-files/SpacePageFileHosts";
 import { SessionReminderRuntime } from "../host-runtime/SessionReminderRuntime";
-import { live as chatSearchLive } from "../chat-search/ChatSearch";
+import { ChatSearch, live as chatSearchLive } from "../chat-search/ChatSearch";
 import { live as insightsLive } from "../insights/Insights";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -37,17 +45,7 @@ import { ApplicationHostRuntimeError } from "../host-runtime/ApplicationHostRunt
 import { BrowserProfileRuntimeError } from "../host-runtime/BrowserProfileRuntime";
 import { BrowserUseRuntimeError } from "../host-runtime/BrowserUseRuntime";
 import { ReminderSchedulerRuntime } from "../host-runtime/ReminderSchedulerRuntime";
-import {
-  ScheduledAutomationRuntime,
-  live as scheduledAutomationLive,
-} from "../host-runtime/ScheduledAutomationRuntime";
-import { live as automationExecutionLive } from "../automation-application/AutomationExecution";
-import { StoreAdministrationSchedulerRuntime } from "../host-runtime/StoreAdministrationSchedulerRuntime";
-import { live as storeAdministrationSchedulerLive } from "../host-runtime/StoreAdministrationSchedulerRuntime";
-import { layer as storeAdministrationLayer } from "../core-runtime/StoreAdministration";
-import { live as inboxApplicationLive } from "../inbox-application/InboxApplication";
-import { live as inboxDispatcherLive } from "../inbox-application/InboxDispatcher";
-import { live as inboxDispatchRuntimeLive } from "../inbox-application/InboxDispatchRuntime";
+import { presentation as notificationPresentation } from "../host-runtime/NodexEntryNotifications";
 import { DeepLinkRuntime } from "../host-runtime/DeepLinkRuntime";
 import { ApplicationInitializationRuntime } from "../host-runtime/ApplicationInitializationRuntime";
 import * as AppProtocolRuntime from "../host-runtime/AppProtocolRuntime";
@@ -80,9 +78,9 @@ import * as HostApplicationLive from "./HostApplicationLive";
 import * as ApplicationStateLive from "./ApplicationStateLive";
 import * as ApplicationOperationsLive from "./ApplicationOperationsLive";
 import * as NodexAccountLive from "./NodexAccountLive";
-import * as AgentRuntimeApplicationLive from "./AgentRuntimeApplicationLive";
-import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
-import { AgentRuntimeSupervisor } from "../agent-runtime/AgentRuntimeSupervisor";
+import * as HostDesktopToolsLive from "./HostDesktopToolsLive";
+import { live as imageFittingLayer } from "../platform/electron/ElectronImageFitting";
+import * as AgentRuntimeApplicationLive from "../../host/AgentRuntimeLive";
 import * as RendererIngressLive from "./RendererIngressLive";
 import * as SpacesApplicationLive from "./SpacesApplicationLive";
 import * as WindowApplicationLive from "./WindowApplicationLive";
@@ -135,6 +133,8 @@ const conversationGraph = ConversationApplicationLive.live.pipe(
   ),
 );
 const executionGraph = AgentRuntimeApplicationLive.runtime.pipe(
+  Layer.provide(HostDesktopToolsLive.live),
+  Layer.provide(imageFittingLayer),
   Layer.provideMerge(NodexAccountLive.live.pipe(Layer.provideMerge(conversationGraph))),
 );
 const interactionsGraph = ConversationApplicationLive.interactions.pipe(
@@ -144,16 +144,30 @@ const interactionsGraph = ConversationApplicationLive.interactions.pipe(
 const protocolGraph = ConversationApplicationLive.protocol.pipe(
   Layer.provideMerge(interactionsGraph),
 );
+const workGraph = HostKernel.workApplication.pipe(Layer.provideMerge(protocolGraph));
 const operationsGraph = ApplicationOperationsLive.live.pipe(Layer.provideMerge(workGraph));
+const hostApplications = HostKernel.applications.pipe(
+  Layer.provideMerge(
+    Layer.mergeAll(
+      Layer.effect(NativeConversationDelivery, CodexTurnCommands),
+      notificationPresentation,
+      nativeManagedChatFacts,
+    ).pipe(Layer.provideMerge(operationsGraph)),
+  ),
 );
-const mobileAccess = MobileAccessIpc.live.pipe(
-  Layer.provide(MobileGateway.live),
-  Layer.provide(MobileApplication.live),
-  Layer.provide(
-    Layer.mergeAll(MobileProfileFiles.live, SecretEncryption.live, MobilePushRelay.live),
+const hostTools = Layer.mergeAll(
+  AgentRuntimeApplicationLive.hostTools.pipe(
+    Layer.provide(
+      Layer.effect(HostToolExecutor, makeHostTools.pipe(Effect.map((execute) => ({ execute })))),
+    ),
   ),
   ApplicationOperationsLive.tools,
+).pipe(Layer.provideMerge(hostApplications));
+const sourcesGraph = HostKernel.live.pipe(Layer.provideMerge(hostTools));
 );
+/** A Space serves only channels the process routes, so routing starts once every route exists. */
+const spaces = SpacesApplicationLive.live.pipe(Layer.provideMerge(RendererIngressLive.live));
+const applicationGraph = Layer.mergeAll(windowsTrayIntegrationLive, spaces, phone).pipe(
   Layer.provideMerge(sourcesGraph),
   Layer.provide(CodexConversationPeerRuntime.live),
   Layer.provideMerge(shellEnvironment),
@@ -208,8 +222,11 @@ export const live: Layer.Layer<
       Effect.gen(function* () {
         const initialization = yield* ApplicationInitializationRuntime;
         const authority = yield* CoreAuthority;
-        const automationRouting = yield* AutomationRoutingIndex;
-        const scheduledAutomations = yield* ScheduledAutomationRuntime;
+        const hostKernel = yield* HostKernel.HostKernel;
+          messages: yield* MemberMessages,
+          attachments: yield* ChatAttachments,
+          settings: yield* ApplicationSettings,
+          chats: yield* ChatSearch,
         const projectionDelivery = yield* ProjectionDeliveryRuntime;
         const coreEventHub = yield* CoreEventHub;
         const reminderScheduler = yield* ReminderSchedulerRuntime;
@@ -329,6 +346,7 @@ export const live: Layer.Layer<
             Effect.asVoid,
           );
           yield* deepLinks.markReady.pipe(Effect.catch(reportSpaceLinkFailure));
+          yield* hostKernel.synchronize.pipe(
             Effect.mapError((cause) => runtimeError("synchronize-automations", cause)),
           );
           yield* managedWorktreeRetention.request;
@@ -342,8 +360,7 @@ export const live: Layer.Layer<
                   }),
               }),
               sessionReminders.activate,
-              scheduledAutomations.activate,
-              storeSchedulers.activate,
+              hostKernel.activate,
             ],
             { concurrency: "unbounded", discard: true },
           );

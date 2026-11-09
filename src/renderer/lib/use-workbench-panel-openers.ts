@@ -1,3 +1,4 @@
+import { localProjectSourceRoots } from "../../shared/project-sources";
 import { runWithCleanup } from "./run-with-cleanup";
 import type { prepareWorkbenchSceneSurfaceClose } from "./workbench-scene-command-lifecycle";
 import { openSessionPageFileTab, type OpenPageFileTabHandler } from "./workbench-page-file-opener";
@@ -1133,8 +1134,10 @@ export function useWorkbenchPanelOpeners({
       const explicitWorkspaceRoot = normalizeOptionalPath(input.workspaceRoot);
       const matchingThreadRoot =
         cwd && isWorkspacePathInsideRoot(cwd, input.path) ? cwd : undefined;
-      const matchingProjectRoot = (hostId === "local" ? project?.sources : undefined)
-        ?.map((source) => normalizeOptionalPath(source.root))
+      const matchingProjectRoot = localProjectSourceRoots(
+        hostId === "local" ? (project?.sources ?? []) : [],
+      )
+        .map(normalizeOptionalPath)
         .find((root): root is string =>
           Boolean(root && isWorkspacePathInsideRoot(root, input.path)),
         );

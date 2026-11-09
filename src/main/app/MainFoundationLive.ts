@@ -1,6 +1,7 @@
 import * as SpacePageFileHosts from "../page-files/SpacePageFileHosts";
 import * as NodeServices from "../platform/node/NodeServices";
 import * as Layer from "effect/Layer";
+import * as HostMarkdown from "../../host/HostMarkdown";
 import { BrowserProfileHelperPlatform } from "../browser/browser-profile-helper-client";
 import * as ElectronApp from "../platform/electron/ElectronApp";
 import * as ElectronDesktop from "../platform/electron/ElectronDesktop";
@@ -57,10 +58,10 @@ export const make = (config: unknown): Layer.Layer<MainFoundation, MainConfig.Ma
     ScopedCallbackRuntime.layer,
     nodePlatform,
   );
-  const base = MainObservability.layer.pipe(
-    Layer.provide(MainFatalIncidentStore.live),
-    Layer.provideMerge(environment),
-  );
+  const base = Layer.merge(
+    MainObservability.layer.pipe(Layer.provide(MainFatalIncidentStore.live)),
+    HostMarkdown.live,
+  ).pipe(Layer.provideMerge(environment));
   const profileServices = Layer.mergeAll(
     ApplicationSettings.live.pipe(Layer.provide(SecretEncryption.live)),
     TemporaryAssets.live,

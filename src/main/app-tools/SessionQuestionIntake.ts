@@ -4,8 +4,7 @@ import * as Effect from "effect/Effect";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { make as makeRuntime } from "./RuntimeSessionQuestions";
-import { makeNativeSessionQuestions as makeNative } from "./NativeSessionQuestions";
-import { make as makeMessageIntake } from "./SessionMessageIntake";
+import type { SessionMessageIntake } from "./SessionMessageIntake";
 import { sessionMessageCeilingError, type SessionMessageFacts } from "./session-message-policy";
 import {
   SessionQuestionError,
@@ -37,96 +36,98 @@ export const authorizeSessionQuestions = Effect.fn("SessionQuestions.authorize")
   return { owner, callerFacts };
 });
 
-export const make = Effect.gen(function* () {
-  const core = yield* CoreModules;
-  const application = yield* AgentRuntimeApplication;
-  const runtime = yield* makeRuntime;
-  const native: SessionQuestionBackend = yield* makeNative;
-  const messages = yield* makeMessageIntake;
-  const readOwner = Effect.fn("SessionQuestions.readOwner")(function* (sessionId: string) {
-    const provenance = yield* CoreApplicationAgent;
-    if (!provenance)
-      return yield* new SessionQuestionError({
-        code: "forbidden",
-        message: "Question execution authority is unavailable",
-      });
-    const response = yield* core.workspace
-      .read(
-        { kind: "agent_session", session_id: sessionId, provenance },
-        { deadlineMs: 10_000 },
-        provenance.authority.actor_project_id,
-      )
-      .pipe(
-        Effect.mapError(
-          () =>
-            new SessionQuestionError({
-              code: "not_found",
-              message: "Question Session is unavailable",
-            }),
-        ),
-      );
-    if (response.value.kind !== "agent_session" || response.value.session.archived)
-      return yield* new SessionQuestionError({
-        code: "not_found",
-        message: "Question Session is unavailable",
-      });
-    return response.value.session.execution_ref ? ("runtime" as const) : ("native" as const);
-  });
-  return Effect.fn("SessionQuestions.admit")(function* (
-    caller: SessionQuestionTarget,
-    target: SessionQuestionTarget,
-  ) {
-    const { owner, callerFacts } = yield* authorizeSessionQuestions(
-      caller,
-      target,
-      readOwner,
-      (target) =>
-        messages.inspect(target).pipe(
+export const makeWithNative = (native: SessionQuestionBackend, messages: SessionMessageIntake) =>
+  Effect.gen(function* () {
+    const core = yield* CoreModules;
+    const application = yield* AgentRuntimeApplication;
+    const runtime = yield* makeRuntime;
+    const readOwner = Effect.fn("SessionQuestions.readOwner")(function* (sessionId: string) {
+      const provenance = yield* CoreApplicationAgent;
+      if (!provenance)
+        return yield* new SessionQuestionError({
+          code: "forbidden",
+          message: "Question execution authority is unavailable",
+        });
+      const response = yield* core.workspace
+        .read(
+          { kind: "agent_session", session_id: sessionId, provenance },
+          { deadlineMs: 10_000 },
+          provenance.authority.actor_project_id,
+        )
+        .pipe(
           Effect.mapError(
-            (cause) =>
+            () =>
               new SessionQuestionError({
-                code: "unavailable",
-                message:
-                  cause instanceof Error ? cause.message : "Question execution is unavailable",
+                code: "not_found",
+                message: "Question Session is unavailable",
               }),
           ),
-        ),
-    );
-    return owner === "runtime"
-      ? runtime({
-          runtimeMode: callerFacts.runtimeMode,
-          interactionMode: callerFacts.interactionMode,
-        })
-      : {
-          ...native,
-          respond: (target, requestId, answers, responder, operationId) =>
-            Effect.gen(function* () {
-              const facts = yield* messages
-                .inspect(target)
-                .pipe(
-                  Effect.mapError(
-                    (cause) =>
-                      new SessionQuestionError({ code: "unavailable", message: String(cause) }),
-                  ),
-                );
-              yield* application
-                .assertModelPolicy(facts.modelSelection, "agent", {
-                  threadId: responder.senderThreadId,
-                  runId: responder.senderRunId,
-                })
-                .pipe(
-                  Effect.mapError(
-                    (cause) =>
-                      new SessionQuestionError(
-                        readModelPolicyFailure(cause) ?? {
-                          code: "unavailable",
-                          message: String(cause),
-                        },
-                      ),
-                  ),
-                );
-              return yield* native.respond(target, requestId, answers, responder, operationId);
-            }),
-        };
+        );
+      if (response.value.kind !== "agent_session" || response.value.session.archived)
+        return yield* new SessionQuestionError({
+          code: "not_found",
+          message: "Question Session is unavailable",
+        });
+      return response.value.session.execution_ref ? ("runtime" as const) : ("native" as const);
+    });
+    return Effect.fn("SessionQuestions.admit")(function* (
+      caller: SessionQuestionTarget,
+      target: SessionQuestionTarget,
+    ) {
+      const { owner, callerFacts } = yield* authorizeSessionQuestions(
+        caller,
+        target,
+        readOwner,
+        (target) =>
+          messages.inspect(target).pipe(
+            Effect.mapError(
+              (cause) =>
+                new SessionQuestionError({
+                  code: "unavailable",
+                  message:
+                    cause instanceof Error ? cause.message : "Question execution is unavailable",
+                }),
+            ),
+          ),
+      );
+      return owner === "runtime"
+        ? runtime({
+            runtimeMode: callerFacts.runtimeMode,
+            interactionMode: callerFacts.interactionMode,
+          })
+        : {
+            ...native,
+            // An Agent answering a native chat speaks with that chat's model, so its policy applies.
+            respond: (target, requestId, answers, responder, operationId) =>
+              Effect.gen(function* () {
+                const facts = yield* messages
+                  .inspect(target)
+                  .pipe(
+                    Effect.mapError(
+                      (cause) =>
+                        new SessionQuestionError({ code: "unavailable", message: String(cause) }),
+                    ),
+                  );
+                yield* application
+                  .assertModelPolicy(facts.modelSelection, "agent", {
+                    threadId: responder.senderThreadId,
+                    runId: responder.senderRunId,
+                  })
+                  .pipe(
+                    Effect.mapError(
+                      (cause) =>
+                        new SessionQuestionError(
+                          readModelPolicyFailure(cause) ?? {
+                            code: "unavailable",
+                            message: String(cause),
+                          },
+                        ),
+                    ),
+                  );
+                return yield* native.respond(target, requestId, answers, responder, operationId);
+              }),
+          };
+    });
   });
-});
+
+export type SessionQuestionIntake = Effect.Success<ReturnType<typeof makeWithNative>>;

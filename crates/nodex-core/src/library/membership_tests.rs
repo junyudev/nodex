@@ -184,6 +184,184 @@ fn space_name_is_owner_controlled_and_enrollment_reads_its_current_value() {
 }
 
 #[test]
+fn agent_credentials_freeze_the_run_requester_before_observation() {
+    use nodex_core_contracts::{
+        Actor, AdapterKind, BoundAgentAttribution, agent::AgentBackendKind,
+    };
+    let space = Space::new();
+    let bob = space
+        .membership
+        .enroll(enrollment(space.invite().code))
+        .unwrap();
+    let alice = space
+        .membership
+        .enroll(EnrollmentRequest {
+            display_name: "Alice".into(),
+            ..enrollment(space.invite().code)
+        })
+        .unwrap();
+    let bob_id = bob.member_id.clone();
+    space.store.writer().call(move |c| {
+        c.execute("INSERT INTO project_sessions(id,no_thread_fallback_title,created_at,updated_at,activity_at) VALUES('chat','Work','2026-11-01T00:00:00Z','2026-11-01T00:00:00Z',1793491200000)", [])?;
+        c.execute("INSERT INTO session_requesting_members VALUES('chat','message',?1,'2026-11-01T00:00:00Z')",[bob_id])?;
+        Ok(())
+    }).unwrap();
+    space
+        .membership
+        .bind_agent_attribution(
+            "chat",
+            Some("run"),
+            Some("message"),
+            AgentBackendKind::Codex,
+        )
+        .unwrap();
+    let alice_id = alice.member_id;
+    space.store.writer().call(move |c| {
+        c.execute("INSERT INTO session_requesting_members VALUES('chat','later',?1,'2026-11-02T00:00:00Z')",[alice_id])?;
+        Ok(())
+    }).unwrap();
+    space
+        .membership
+        .bind_agent_attribution(
+            "chat",
+            Some("run"),
+            Some("message"),
+            AgentBackendKind::Codex,
+        )
+        .unwrap();
+    assert_eq!(
+        space
+            .membership
+            .actor(
+                &AdapterKind::Agent,
+                None,
+                Some(&BoundAgentAttribution {
+                    session_id: "chat".into(),
+                    run_id: Some("run".into()),
+                    backend: AgentBackendKind::Codex,
+                })
+            )
+            .unwrap(),
+        Actor::Agent {
+            session_id: "chat".into(),
+            run_id: Some("run".into()),
+            on_behalf_of: bob.member_id.clone()
+        }
+    );
+    // A queued Run starts after Alice's later message; its verified original
+    // message still belongs to Bob, including after a provisional observation.
+    space
+        .membership
+        .bind_agent_attribution("chat", Some("queued-run"), None, AgentBackendKind::Codex)
+        .unwrap();
+    space
+        .membership
+        .bind_agent_attribution(
+            "chat",
+            Some("queued-run"),
+            Some("message"),
+            AgentBackendKind::Codex,
+        )
+        .unwrap();
+    assert!(
+        matches!(space.membership.actor(&AdapterKind::Agent, None, Some(&BoundAgentAttribution {
+        session_id: "chat".into(), run_id: Some("queued-run".into()), backend: AgentBackendKind::Codex,
+    })).unwrap(), Actor::Agent {on_behalf_of,..} if on_behalf_of==bob.member_id)
+    );
+    assert!(
+        matches!(space.membership.bind_agent_attribution("chat", Some("unknown-run"), Some("unknown-message"), AgentBackendKind::Codex), Err(e) if e.code==StoreErrorCode::MissingDependencies)
+    );
+    assert!(
+        space
+            .membership
+            .bind_agent_attribution("missing", Some("run"), None, AgentBackendKind::Codex)
+            .is_err()
+    );
+}
+
+#[test]
+fn automation_messages_act_for_their_grant_owner_before_the_run_binds_its_chat() {
+    use nodex_core_contracts::{
+        Actor, AdapterKind, BoundAgentAttribution, agent::AgentBackendKind,
+    };
+    let space = Space::new();
+    let alice = space
+        .membership
+        .enroll(EnrollmentRequest {
+            form_factor: Default::default(),
+            display_name: "Alice".into(),
+            ..enrollment(space.invite().code)
+        })
+        .unwrap();
+    let bob = space
+        .membership
+        .enroll(enrollment(space.invite().code))
+        .unwrap();
+    let (alice_id, bob_id) = (alice.member_id.clone(), bob.member_id.clone());
+    space.store.writer().call(move |c| {
+        c.execute("INSERT INTO project_sessions(id,no_thread_fallback_title,created_at,updated_at,activity_at) VALUES('chat','Report','2026-11-01T00:00:00Z','2026-11-01T00:00:00Z',1793491200000)", [])?;
+        // Bob spoke last in the chat; the Automation's standing grant belongs to Alice.
+        c.execute("INSERT INTO session_requesting_members VALUES('chat','person',?1,'2026-11-01T00:00:00Z')",[&bob_id])?;
+        c.execute("INSERT INTO automations(automation_id,owner_member_id,condition_text,timezone,jitter_salt,kind,status,name,created_at,updated_at) VALUES('report',?1,'Daily','UTC','salt','cron','ACTIVE','Report',1,1)",[&alice_id])?;
+        for (dispatch, message, session) in [("dispatch:new", "automation:message:new", None), ("dispatch:bound", "automation:message:bound", Some("chat"))] {
+            c.execute("INSERT INTO automation_decisions(dispatch_id,automation_id,status,mode,frozen_authority_json,first_scheduled_for_ms,last_scheduled_for_ms,hold_basis_json,created_at_ms,updated_at_ms) VALUES(?1,'report','admitted','run',json_object('owner_member_id',?2),1,1,'{}',1,1)",params![dispatch,&alice_id])?;
+            c.execute("INSERT INTO automation_execution_runs(run_id,automation_id,session_id,status,created_at,updated_at,admission_hash,dispatch_id,message_id) VALUES(?1,'report',?2,'IN_PROGRESS',1,1,?3,?1,?4)",params![dispatch,session,"0".repeat(64),message])?;
+        }
+        // A Host may also record its own acceptance of the bound message; the grant still decides.
+        c.execute("INSERT INTO session_requesting_members VALUES('chat','automation:message:bound',?1,'2026-11-02T00:00:00Z')",[&bob_id])?;
+        Ok(())
+    }).unwrap();
+    let on_behalf_of = |run: &str| match space
+        .membership
+        .actor(
+            &AdapterKind::Agent,
+            None,
+            Some(&BoundAgentAttribution {
+                session_id: "chat".into(),
+                run_id: Some(run.into()),
+                backend: AgentBackendKind::Acp,
+            }),
+        )
+        .unwrap()
+    {
+        Actor::Agent { on_behalf_of, .. } => on_behalf_of,
+        actor => panic!("Expected an Agent actor, got {actor:?}"),
+    };
+    // A clock Run's new chat has no accepted message: its Turn is prepared before the Run binds.
+    for (run, message) in [
+        ("engine:new", "automation:message:new"),
+        ("engine:bound", "automation:message:bound"),
+    ] {
+        space
+            .membership
+            .bind_agent_attribution("chat", Some(run), Some(message), AgentBackendKind::Acp)
+            .unwrap();
+        assert_eq!(on_behalf_of(run), alice.member_id);
+    }
+    let removed = alice.member_id.clone();
+    space
+        .store
+        .writer()
+        .call(move |c| {
+            c.execute(
+                "UPDATE members SET lifecycle='removed' WHERE id=?1",
+                [removed],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(matches!(
+        space.membership.bind_agent_attribution(
+            "chat",
+            Some("engine:later"),
+            Some("automation:message:bound"),
+            AgentBackendKind::Acp,
+        ),
+        Err(error) if error.code == StoreErrorCode::Unauthorized
+    ));
+}
+
+#[test]
 fn members_name_themselves_and_no_stored_name_is_you() {
     let space = Space::new();
     let refused = |name: &str| EnrollmentRequest {

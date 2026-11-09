@@ -1,4 +1,5 @@
 import type { CodexHeartbeatAutomationCollaborationMode, Automation } from "../../shared/types";
+import type { AutomationAdmission } from "../../host/automation-application/AutomationApplication";
 
 export const CLOCK_AUTOMATION_INTERVAL_MS = 30_000;
 export const CLOCK_AUTOMATION_MAX_PER_TICK = 3;

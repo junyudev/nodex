@@ -147,6 +147,8 @@ different backend. Readability does not depend on Agent availability. Automation
 scope and execution Project remain explicit even when Projects share a folder.
 Project execution revalidates active lifecycle and selected sources. Space
 execution uses a fresh independent projectless workspace for each run.
+A run's Agent acts on behalf of the Owner whose standing grant admitted it from its
+first Turn, even when another Member wrote last in a heartbeat's chat.
 
 The target stores Project and folders, local or worktree execution, Environment,
 Agent selection, optional runbook Page and optional continued Session. Codex,

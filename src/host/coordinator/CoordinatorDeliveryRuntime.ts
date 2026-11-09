@@ -8,6 +8,10 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import type { components } from "@nodex/core-protocol";
 import { createUuidV7 } from "../../shared/uuid-v7";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifierRuntime";
+import { getLogger } from "../../main/logging/logger";
 import { CoordinatorSession } from "./CoordinatorSession";
 import { renderWorkEventBatch } from "./work-event-message";
 

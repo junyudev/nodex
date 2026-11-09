@@ -105,6 +105,7 @@ function makeCommandContext(
     canCreatePage: true,
     hasActiveSession: true,
     activeSessionPinned: false,
+    activeSessionCanManage: true,
     activeSessionUnread: false,
     activeSessionReminded: false,
     hasAttachedThread: true,

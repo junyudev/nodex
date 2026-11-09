@@ -624,6 +624,9 @@ export const live: Layer.Layer<
     yield* invokeEffectQuery("project-sessions:managed", (_event, sessionId) =>
       projects.readSessionManaged(sessionId),
     );
+    yield* invokeEffectQuery("project-sessions:start", (_event, sessionId) =>
+      projects.readSessionStart(sessionId),
+    );
     yield* handleLocalCommitCommand("project-sessions:set-managed", (event, command) =>
       authorize(event).pipe(
         Effect.andThen(

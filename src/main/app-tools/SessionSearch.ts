@@ -17,7 +17,7 @@ import type { CoreModules } from "../core-runtime/CoreModules";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { makeTemporarySqlite } from "../platform/node/TemporarySqlite";
 import { AgentRuntimeApplicationError } from "../agent-runtime/AgentRuntimeApplication";
-import { NativeSessionSearchStale } from "./NativeSessionSearch";
+import { NativeSessionSearchStale } from "./SessionSearchErrors";
 import {
   summaryOf,
   withSessionMetadata,

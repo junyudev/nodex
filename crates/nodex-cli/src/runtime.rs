@@ -29,6 +29,8 @@ use nodex_core_protocol::client::{ClientError, CoreClient, connect_or_launch};
 
 /// Set by Nodex for the Agents it runs; see `CoreClient::attribute_to_agent`.
 pub const AGENT_ATTRIBUTION_ENV: &str = "NODEX_AGENT_ATTRIBUTION";
+pub const AGENT_ENDPOINT_ENV: &str = "NODEX_AGENT_ENDPOINT";
+pub const AGENT_CREDENTIAL_ENV: &str = "NODEX_AGENT_CREDENTIAL";
 use nodex_core_protocol::{
     DatabaseReadResponse, LibraryReadResponse, ProjectWorkspaceReadResponse, ResponseEnvelope,
     StoreAdministrationApplyResponse, StoreAdministrationReadResponse,
@@ -135,6 +137,31 @@ pub(crate) fn execute_with_presentation(
     mut cli: Cli,
     presentation: crate::presentation::Presentation,
 ) -> Result<CommandOutput, CliError> {
+    let agent_endpoint = env::var(AGENT_ENDPOINT_ENV).ok();
+    let agent_credential = env::var(AGENT_CREDENTIAL_ENV).ok();
+    let scoped_agent = agent_endpoint.is_some() || agent_credential.is_some();
+    if scoped_agent
+            || agent_endpoint.is_none()
+            || agent_credential.is_none())
+    {
+        return Err(CliError::new(
+            CliErrorCode::InvalidInput,
+            "Agent Turn credentials admit content commands only; Host administration is unavailable",
+        ));
+    }
+    if let Command::Serve(arguments) = &cli.command {
+        if cli.expect_profile.is_some()
+            || cli.project.is_some()
+            || cli.database.is_some()
+            || cli.page.is_some()
+        {
+            return Err(CliError::new(
+                CliErrorCode::InvalidInput,
+                "serve selects its Space with --home; Profile and content selectors are unavailable",
+            ));
+        }
+        return crate::serve::execute(arguments.clone());
+    }
     if matches!(
         &cli.command,
         Command::Sql(crate::sql::SqlArgs {
@@ -197,17 +224,17 @@ pub(crate) fn execute_with_presentation(
         }) => return crate::draft::discard(directory),
         _ => {}
     }
-    let home = resolve_home(&cwd)?;
+    let home = if scoped_agent {
+        cwd.join(".nodex-agent-content")
+    } else {
+        resolve_home(&cwd)?
+    };
     if let Command::Service(ServiceArgs { command }) = &cli.command {
         return serde_json::to_value(crate::service::execute(*command, &home))
             .map(CommandOutput::Json)
             .map_err(internal);
     }
-    let mut client = connect_or_launch(
-        &home,
-        option_env!("NODEX_RELEASE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
-        None,
-    )
+    }
     .map_err(map_client_error)?;
     validate_expected_profile(cli.expect_profile.as_deref(), &client, &home)?;
     // Nodex gives each Agent it runs a credential for its own chat. Core verifies it, so a
@@ -222,6 +249,7 @@ pub(crate) fn execute_with_presentation(
     }
 
     match cli.command {
+        Command::Serve(_) => unreachable!("serve is handled before connecting to Core"),
         Command::Automations(args) => crate::automations::execute(&client, args),
         Command::Work(args) => crate::work::execute(&client, args, cli.project.as_deref(), &cwd),
         Command::Members(args) => crate::members::execute(&client, args),
@@ -413,6 +441,34 @@ pub(crate) fn execute_with_presentation(
             "this native CLI command is parsed but not implemented yet",
         )),
     }
+}
+
+/// Local lifecycle and administration commands never run with a scoped Agent audience.
+fn agent_content_command(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Automations(_)
+            | Command::Members(_)
+            | Command::Sources(_)
+            | Command::Sql(_)
+            | Command::Read(_)
+            | Command::Search(_)
+            | Command::Capabilities
+            | Command::Docs(_)
+            | Command::Context
+            | Command::Ls(_)
+            | Command::DataSource(_)
+            | Command::Tree { .. }
+            | Command::Sed(_)
+            | Command::Rg(_)
+            | Command::Patch(_)
+            | Command::Inbox(_)
+            | Command::Page(_)
+            | Command::File(_)
+            | Command::Block(_)
+            | Command::History(_)
+            | Command::Draft(_)
+    )
 }
 
 fn clone_profile(arguments: &ProfileCloneArgs) -> Result<Value, CliError> {
@@ -1618,7 +1674,11 @@ fn context(
 ) -> Result<CommandOutput, CliError> {
     let projects = read_all_projects(client, false)?;
     let resolved = resolve_project(client, projects, explicit_project, cwd)?;
-    let health = client.health().map_err(map_client_error)?;
+    let readiness = if client.is_scoped_agent() {
+        "ready".to_owned()
+    } else {
+        format!("{:?}", client.health().map_err(map_client_error)?.status).to_ascii_lowercase()
+    };
     if explicit_database.is_some() && explicit_page.is_some() {
         return Err(CliError::new(
             CliErrorCode::ScopeAmbiguous,
@@ -1642,7 +1702,11 @@ fn context(
             id: primary_database_id.clone(),
         }
     };
-    let background_registration = crate::service::status(home);
+    let background_registration = if client.is_scoped_agent() {
+        "not_applicable".to_owned()
+    } else {
+        crate::service::status(home).status
+    };
     let value = serde_json::to_value(ContextOutput {
         profile: ContextProfile {
             id: client.handshake.generation.profile_id.clone(),
@@ -1659,9 +1723,9 @@ fn context(
             transport_version: client.handshake.selected_transport_version,
             schema_version: client.handshake.schema_version,
             store_epoch: client.handshake.store_epoch.clone(),
-            readiness: format!("{:?}", health.status).to_ascii_lowercase(),
+            readiness,
         },
-        background_registration: background_registration.status,
+        background_registration,
     })
     .map_err(internal)?;
     Ok(CommandOutput::Json(value))
@@ -1789,13 +1853,10 @@ fn resolve_project(
             continue;
         }
         for source in &project.sources {
-            add_path_candidate(
-                &mut source_candidates,
-                &project,
-                &cwd,
-                &source.root,
-                "source",
-            );
+            let Some(path) = source.local_path() else {
+                continue;
+            };
+            add_path_candidate(&mut source_candidates, &project, &cwd, path, "source");
         }
         let mut after = None;
         loop {
@@ -2118,8 +2179,8 @@ mod tests {
             name: name.to_owned(),
             description: String::new(),
             appearance: ProjectAppearance::default(),
-            sources: vec![ProjectSource {
-                root: root.to_string_lossy().into_owned(),
+            sources: vec![ProjectSource::Directory {
+                path: root.to_string_lossy().into_owned(),
                 order: 0,
             }],
             primary_workspace_root: Some(root.to_string_lossy().into_owned()),

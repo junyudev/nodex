@@ -4,6 +4,9 @@ import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Schema from "effect/Schema";
 import type { components } from "@nodex/core-protocol";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { CoreApplicationAgent } from "../../main/core-runtime/CoreApplicationAgent";
+import { createOperationId } from "../../main/core-runtime/operation-identity";
 import { GitHubChannelAdapter, ChannelSendError } from "./GitHubChannelAdapter";
 type Model = components["schemas"];
 export const make = Effect.gen(function* () {
@@ -52,6 +55,7 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         let after: string | null = null;
         while (true) {
+          const snapshot: import("../../main/core-client/types").ProjectWorkspaceReadSnapshot =
             yield* core.workspace.read(
               { kind: "sources", read: { kind: "channel_outbox", after_id: after, limit: 100 } },
               undefined,

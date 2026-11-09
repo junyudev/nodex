@@ -8,6 +8,7 @@ import {
   AutomationApplication,
   AutomationApplicationError,
   type Automations,
+} from "../../host/automation-application/AutomationApplication";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";

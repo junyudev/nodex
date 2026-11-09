@@ -35,6 +35,8 @@ const newerFirst = (left: AgentSubagentOverviewItem, right: AgentSubagentOvervie
 export const projectAgentRuntimeSubagent = (
   task: AgentSubagentOverviewItem,
   waitingOnApproval = false,
+  /** Whether this reader may stop work of the Run that started the subagent. */
+  canStopRun: (runId: string | null) => boolean = () => true,
 ): CodexSubagentOverviewRow => {
   const { displayName } = projectAgentRuntimeSubagentDisplay(task);
   return {
@@ -79,7 +81,11 @@ export const projectAgentRuntimeSubagent = (
     diffStats: null,
     canOpen: task.childThreadId !== null,
     // An application-owned child stops through its own conversation; a native one through its Run.
-    canStop: isLive(task.status) && (task.childThreadId !== null || task.runId !== null),
+    // Either answers for the Run that started it.
+    canStop:
+      isLive(task.status) &&
+      (task.childThreadId !== null || task.runId !== null) &&
+      canStopRun(task.runId),
     canInteract: task.origin === "app_owned" && task.childThreadId !== null,
     showInlineActivity: task.childThreadId !== null,
   };
@@ -89,9 +95,14 @@ export function projectAgentRuntimeSubagentOverview(
   rootThreadId: string,
   source: AgentSubagentOverview,
   approvalThreads: ReadonlySet<string> = new Set(),
+  canStopRun: (runId: string | null) => boolean = () => true,
 ): CodexSubagentOverviewWindow {
   const project = (task: AgentSubagentOverviewItem) =>
-    projectAgentRuntimeSubagent(task, approvalThreads.has(task.childThreadId ?? task.id));
+    projectAgentRuntimeSubagent(
+      task,
+      approvalThreads.has(task.childThreadId ?? task.id),
+      canStopRun,
+    );
   const rows = [...source.active.items, ...source.terminal.items].map(project);
   const section = (page: AgentSubagentOverview["active"]) => ({
     rows: page.items.map(project),

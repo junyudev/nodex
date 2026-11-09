@@ -13,6 +13,7 @@ import type { ProjectWorkspaceRead } from "../core-client/types";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
+import { HostInvocation } from "../../host/HostInvocation";
 import { make } from "./ChatSearch";
 import type { ChatListingItem, ChatRuntimeMetadata } from "./ChatCatalogProjection";
 
@@ -132,10 +133,14 @@ interface Options {
   readonly resolve?: AgentRuntimeApplication["Service"]["sessionSearchResolve"];
   readonly codex?: CodexGateway["Service"]["requestLocal"];
   readonly ready?: boolean;
+  /** A Space host runs no native Codex of its own. */
+  readonly nativeCodex?: boolean;
 }
 export const fixture = (options: Options = {}) => {
   const reads: ProjectWorkspaceRead[] = [];
   const agents: unknown[] = [];
+  /** The Member invocation each Core read carried, or null for the desktop's own. */
+  const invocations: (string | null)[] = [];
   const runtime = {
     sessionMetadata: ({ threadIds }: { threadIds: readonly string[] }) =>
       Effect.succeed(threadIds.map((id) => (options.metadata ?? metadata)(id))),
@@ -159,6 +164,7 @@ export const fixture = (options: Options = {}) => {
         ((request: ProjectWorkspaceRead) =>
           Effect.gen(function* () {
             agents.push(yield* CoreApplicationAgent);
+            invocations.push(yield* HostInvocation);
             reads.push(request);
             if (request.kind !== "session_window")
               throw new Error(`Unexpected Core read ${request.kind}`);
@@ -182,23 +188,28 @@ export const fixture = (options: Options = {}) => {
           })),
     },
   } as CoreModules["Service"];
-  const service = make.pipe(
+  const native = (effect: typeof make) =>
+    options.nativeCodex === false
+      ? effect
+      : effect.pipe(
+          Effect.provideService(CodexGateway, {
+            localHostId: "local",
+            connection: () =>
+              Effect.succeed(
+                options.ready === false
+                  ? { kind: "idle" }
+                  : { kind: "ready", hostId: "local", generation: 1 },
+              ),
+            requestLocal: options.codex ?? (() => Effect.succeed({ data: [], nextCursor: null })),
+          } as unknown as CodexGateway["Service"]),
+          Effect.provideService(CodexInternalThreadRegistry, {
+            shouldSuppress: () => false,
+            classification: () => null,
+          } as unknown as CodexInternalThreadRegistry["Service"]),
+        );
+  const service = native(make).pipe(
     Effect.provideService(CoreModules, core),
     Effect.provideService(AgentRuntimeApplication, runtime),
-    Effect.provideService(CodexGateway, {
-      localHostId: "local",
-      connection: () =>
-        Effect.succeed(
-          options.ready === false
-            ? { kind: "idle" }
-            : { kind: "ready", hostId: "local", generation: 1 },
-        ),
-      requestLocal: options.codex ?? (() => Effect.succeed({ data: [], nextCursor: null })),
-    } as unknown as CodexGateway["Service"]),
-    Effect.provideService(CodexInternalThreadRegistry, {
-      shouldSuppress: () => false,
-      classification: () => null,
-    } as unknown as CodexInternalThreadRegistry["Service"]),
     Effect.provideService(DatabaseNotifierRuntime, {
       projectSessionInvalidations: options.invalidations ?? Stream.never,
     } as DatabaseNotifierRuntime["Service"]),
@@ -208,5 +219,5 @@ export const fixture = (options: Options = {}) => {
     }),
     Effect.provideService(AgentRuntimeSessionActivity, inactive),
   );
-  return { service, reads, agents };
+  return { service, reads, agents, invocations };
 };

@@ -716,11 +716,12 @@ export function WorkbenchHooksSettingsPage({
     const labels: Record<string, string> = {};
     const roots = normalizeCodexHooksCwds(
       projects.flatMap((project) =>
-        project.sources.map((source) => {
-          if (labels[source.root] === undefined || labels[source.root] === null) {
-            labels[source.root] = project.name;
+        project.sources.flatMap((source) => {
+          if (source.kind !== "directory") return [];
+          if (labels[source.path] === undefined || labels[source.path] === null) {
+            labels[source.path] = project.name;
           }
-          return source.root;
+          return [source.path];
         }),
       ),
     );

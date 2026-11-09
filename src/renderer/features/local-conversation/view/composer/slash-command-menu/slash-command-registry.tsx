@@ -1,3 +1,4 @@
+import { isHostedChat } from "@/lib/hosted-chat";
 import { useState } from "react";
 import type { FeedbackUploadParams, McpServerStatus } from "@nodex/codex-app-server-protocol/v2";
 import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
@@ -247,7 +248,8 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
       group: "Commands",
       icon: <SlashMcpIcon className={iconClassName} />,
       requiresEmptyComposer: true,
-      isVisible: isCodex || Boolean(inspectNativeRuntime),
+      // This desktop's MCP servers are not a hosted chat's; its host runs its own tools.
+      isVisible: (isCodex && !isHostedChat()) || Boolean(inspectNativeRuntime),
       ...(inspectNativeRuntime
         ? { onSelect: inspectNativeRuntime }
         : {

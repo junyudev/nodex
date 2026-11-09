@@ -34,13 +34,9 @@ import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { ClaudeProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import * as Harness from "../orchestration-v2/testkit/ProviderReplayHarness.ts";
-import {
-  NativeImportInput,
-  localMarkdownImagePaths,
-  make,
-  makeFind,
-  resolveMarkdownImagePath,
-} from "./NativeImport.ts";
+import { NativeImportInput, make, makeFind } from "./NativeImport.ts";
+import { resolveMarkdownImagePath } from "./MarkdownImagePaths.ts";
+import { localMarkdownImagePaths } from "./MarkdownImages.ts";
 import * as ExecutionLocation from "./ExecutionLocation.ts";
 import * as Attachment from "./Attachment.ts";
 import { turnItemText } from "../mcp/OrchestratorMcpService.ts";

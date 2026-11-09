@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { isRemoteSpace } from "../../lib/renderer-space";
+import { agentRuntimeRuntime } from "../../lib/agent-runtime-runtime";
+import { agentBackendKindOfRuntimeDriver } from "../../../shared/agent-backend";
 import {
   readAcpAgentSettings,
   readClaudeAgentSettings,
@@ -8,7 +11,65 @@ import { resolveRendererTransport } from "../../lib/renderer-transport";
 import type { AgentCatalogInstance } from "./use-agent-model-catalog";
 import { usesHostOpenCodeExecutable } from "../opencode-setup/opencode-setup-model";
 
-/** Settings supply runtime identity; each runtime remains responsible for its model catalog. */
+/** Team inventory comes from its execution owner; personal inventory uses this Desktop's settings. */
+const readInstances = async (): Promise<readonly AgentCatalogInstance[]> => {
+  if (isRemoteSpace()) {
+    const providers = await agentRuntimeRuntime.catalog();
+    return providers.flatMap((provider): AgentCatalogInstance[] => {
+      const kind = agentBackendKindOfRuntimeDriver(provider.driver);
+      if (!kind || kind === "codex") return [];
+      return [
+        {
+          binding:
+            kind === "acp"
+              ? {
+                  kind,
+                  instanceConfigId: provider.instanceId,
+                  runtimeInstanceId: provider.instanceId,
+                  agentDefinitionId: provider.instanceId,
+                }
+              : {
+                  kind,
+                  instanceConfigId: provider.instanceId,
+                  runtimeInstanceId: provider.instanceId,
+                },
+          label: provider.displayName ?? "Agent",
+          enabled: provider.enabled,
+          usesHostExecutable: false,
+        },
+      ];
+    });
+  }
+  const [claude, opencode, acp] = await Promise.all([
+    readClaudeAgentSettings(),
+    readOpenCodeAgentSettings(),
+    readAcpAgentSettings(),
+  ]);
+  return [
+    ...claude.instances.map((instance) => ({
+      binding: { kind: "claude" as const, instanceConfigId: instance.id },
+      label: instance.displayName,
+      enabled: instance.enabled,
+    })),
+    ...opencode.instances.map((instance) => ({
+      binding: { kind: "opencode" as const, instanceConfigId: instance.id },
+      label: instance.displayName,
+      enabled: instance.enabled,
+      usesHostExecutable: usesHostOpenCodeExecutable(instance),
+    })),
+    ...acp.instances.map((instance) => ({
+      binding: {
+        kind: "acp" as const,
+        instanceConfigId: instance.id,
+        agentDefinitionId: instance.agentDefinitionId,
+      },
+      label: instance.displayName,
+      enabled: instance.enabled,
+    })),
+  ];
+};
+
+/** Each runtime remains responsible for its model catalog. */
 export function useAgentInstances() {
   const [state, setState] = useState<{
     readonly instances: readonly AgentCatalogInstance[];
@@ -20,39 +81,10 @@ export function useAgentInstances() {
   useEffect(() => resolveRendererTransport().subscribeAgentSettingsChanges(refresh), [refresh]);
   useEffect(() => {
     let disposed = false;
-    void Promise.all([
-      readClaudeAgentSettings(),
-      readOpenCodeAgentSettings(),
-      readAcpAgentSettings(),
-    ])
-      .then(([claude, opencode, acp]) => {
+    void readInstances()
+      .then((instances) => {
         if (disposed) return;
-        setState({
-          revision,
-          error: null,
-          instances: [
-            ...claude.instances.map((instance) => ({
-              binding: { kind: "claude" as const, instanceConfigId: instance.id },
-              label: instance.displayName,
-              enabled: instance.enabled,
-            })),
-            ...opencode.instances.map((instance) => ({
-              binding: { kind: "opencode" as const, instanceConfigId: instance.id },
-              label: instance.displayName,
-              enabled: instance.enabled,
-              usesHostExecutable: usesHostOpenCodeExecutable(instance),
-            })),
-            ...acp.instances.map((instance) => ({
-              binding: {
-                kind: "acp" as const,
-                instanceConfigId: instance.id,
-                agentDefinitionId: instance.agentDefinitionId,
-              },
-              label: instance.displayName,
-              enabled: instance.enabled,
-            })),
-          ],
-        });
+        setState({ revision, error: null, instances });
       })
       .catch((error: unknown) => {
         if (disposed) return;

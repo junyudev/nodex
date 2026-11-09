@@ -21,6 +21,8 @@ const session: ProjectSession = {
   archived: false,
   archivedAt: null,
   remindAt: null,
+  canManage: true,
+  canStop: true,
   unread: false,
   createdAt: "now",
   updatedAt: "now",

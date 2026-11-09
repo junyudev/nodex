@@ -2827,6 +2827,104 @@ fn a_dispatched_chat_receives_the_messages_images_with_their_text() {
 }
 
 #[test]
+fn a_chat_reads_why_its_start_failed_and_whether_it_can_retry_until_it_starts() {
+    use nodex_core_contracts::workspace::ProjectWorkspaceSessionStartState as State;
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    let start = || {
+        let ProjectWorkspaceReadValue::SessionStart { start } = read_host(
+            module,
+            ProjectWorkspaceRead::SessionStart {
+                session_id: "session:started".into(),
+            },
+        ) else {
+            panic!("chat start")
+        };
+        start
+    };
+    send(module, "start", "Draft the release notes");
+    apply_host(
+        module,
+        "dispatch:start",
+        ProjectWorkspaceIntent::DispatchInboxEntries {
+            expected_store_epoch: "epoch-1".into(),
+            basis: pages_basis(module, vec!["page:start".into()]),
+            execution_selection: Some(selection()),
+            proposal_id: "proposal:start".into(),
+            page_ids: vec!["page:start".into()],
+            action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                additions: vec![],
+                project_id: None,
+                prompt: "Draft the release notes".into(),
+                agent: None,
+            },
+            session_id: Some("session:started".into()),
+        },
+    );
+    let starting = start().unwrap();
+    assert_eq!(
+        (
+            starting.state,
+            starting.page_id.as_str(),
+            starting.retryable
+        ),
+        (State::Starting, "page:start", false)
+    );
+    let fail = |operation: &str, kind| {
+        let work = outbox(module).remove(0);
+        let applied = module
+            .apply(
+                &host(),
+                request(
+                    operation,
+                    ProjectWorkspaceIntent::FailInboxDispatch {
+                        proposal_id: work.proposal_id,
+                        expected_revision: work.revision,
+                        message_id: work.message_id,
+                        failure_kind: kind,
+                        message: "The host has no Agent for this chat".into(),
+                    },
+                ),
+            )
+            .unwrap();
+        // The open chat refreshes as its start changes.
+        let nodex_core_contracts::CoreModuleEventPayload::ProjectWorkspace(event) =
+            applied.event.expect("Workspace invalidation").payload
+        else {
+            panic!("Workspace event")
+        };
+        assert_eq!(event.session_detail_ids, vec!["session:started"]);
+    };
+    fail(
+        "fail:unavailable",
+        nodex_core_contracts::inbox::ProjectWorkspaceInboxFailureKind::Unavailable,
+    );
+    let failed = start().unwrap();
+    assert_eq!((failed.state, failed.retryable), (State::Failed, true));
+    assert_eq!(
+        failed.failure_message.as_deref(),
+        Some("The host has no Agent for this chat")
+    );
+    apply_host(
+        module,
+        "retry:start",
+        ProjectWorkspaceIntent::RetryInboxDispatch {
+            proposal_id: "proposal:start".into(),
+        },
+    );
+    assert_eq!(start().unwrap().state, State::Starting);
+    fail(
+        "fail:rejected",
+        nodex_core_contracts::inbox::ProjectWorkspaceInboxFailureKind::Rejected,
+    );
+    // A rejected decision is reviewed in the Inbox rather than sent again.
+    assert_eq!(
+        start().map(|start| (start.state, start.retryable)),
+        Some((State::Failed, false))
+    );
+}
+
+#[test]
 fn complete_handoff_and_selection_survive_retries_with_fenced_receipts() {
     let workspace = seeded_workspace();
     let module = &workspace.module;

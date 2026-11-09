@@ -386,12 +386,21 @@ export const make = Effect.gen(function* () {
       const operationId = `page-workspace-cleanup:${value.workspace_id}:${value.revision}`;
       yield* Effect.scoped(
         Effect.gen(function* () {
+          for (const threadId of ids) {
+            const thread = yield* connection.request("thread.read", { threadId });
+            if (!thread?.worktreePath) return;
+            // Seal each consumer where Runtime actually owns it, including a moved
+            // or nested cwd. Deletion still names only the Page's physical checkout.
             yield* Effect.acquireRelease(
               connection.request("execution.handoff.hold", {
                 threadId,
                 operationId,
                 action: "acquire",
+                sourceLocation: thread.executionLocation ?? {
                   hostId: "local",
+                  cwd: thread.worktreePath,
+                  workspaceRoots: [thread.worktreePath],
+                  managedWorktreePath: null,
                   projectId: value.project_id,
                   projectlessOutputDirectory: null,
                   projectlessWorkspaceBrowserRoot: null,
@@ -402,6 +411,7 @@ export const make = Effect.gen(function* () {
                   .request("execution.handoff.hold", { threadId, operationId, action: "release" })
                   .pipe(Effect.ignore),
             );
+          }
           if (yield* busy) return;
           const current = (yield* readPage(value.page_id)).workspace;
           if (current?.lifecycle !== "cleanup_requested" || current.revision !== value.revision)

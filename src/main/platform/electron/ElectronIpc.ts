@@ -176,6 +176,11 @@ export class ElectronSpaceIpc extends Context.Service<
   ElectronSpaceIpc,
   {
     readonly configure: (dispatch: SpaceIpcDispatch) => Effect.Effect<void, never, Scope.Scope>;
+    /**
+     * Whether a window can reach the channel at all. Electron delivers a renderer's call only to
+     * a channel this process registered, so a Space serves only channels with a process route.
+     */
+    readonly routes: (channel: keyof IpcApi) => boolean;
   }
 >()("nodex/main/platform/electron/ElectronSpaceIpc") {}
 
@@ -188,6 +193,7 @@ const asyncLive: Layer.Layer<
   Effect.gen(function* () {
     const callbacks = yield* ScopedCallbackRuntime;
     const destruction = yield* WebContentsDestructionSubscriptions;
+    const routed = new Set<keyof IpcApi>();
     const handle = <
       Channel extends keyof IpcApi,
       Result extends ElectronIpcWireResult<IpcApi[Channel]["result"]>,
@@ -202,6 +208,7 @@ const asyncLive: Layer.Layer<
         let closing = false;
         yield* Effect.acquireRelease(
           Effect.sync(() => {
+            routed.add(channel);
             ipcMain.handle(channel, (event, ...args) => {
               const personal = (arguments_: readonly unknown[]) => {
                 const task = Reflect.apply(handler, undefined, [
@@ -256,6 +263,7 @@ const asyncLive: Layer.Layer<
           () =>
             Effect.sync(() => {
               closing = true;
+              routed.delete(channel);
               ipcMain.removeHandler(channel);
             }).pipe(Effect.andThen(queryScope ? Scope.close(queryScope, Exit.void) : Effect.void)),
         );
@@ -279,6 +287,7 @@ const asyncLive: Layer.Layer<
     });
                 Effect.sync(() => {
                 }),
+          routes: (channel) => routed.has(channel),
   }),
 );
 

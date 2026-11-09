@@ -1,3 +1,5 @@
+import { isHostedChat } from "@/lib/hosted-chat";
+import { HOSTED_CHAT_ACTION_REASON } from "../../../../shared/space-connection";
 import { useContext, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { codexVisualizationQueryOptions } from "../../../lib/codex-visualizations";
@@ -43,6 +45,20 @@ export function LocalConversationInlineVisualization({
   const instanceId = useId();
   const [attempt, setAttempt] = useState(0);
   if (!context) return null;
+  // An interactive response runs in this computer's sandbox from files its chat wrote; a hosted
+  // chat's files and sandbox stay on its Space host.
+  if (isHostedChat())
+    return (
+      <div
+        role="note"
+        data-content-search-skip="true"
+        className="flex h-16 items-center justify-center gap-1.5 text-sm text-token-text-secondary"
+      >
+        <span className="text-token-text-primary">Interactive response</span>
+        <span aria-hidden="true">·</span>
+        <span>{HOSTED_CHAT_ACTION_REASON}</span>
+      </div>
+    );
   if (!owner || !surfaceId)
     throw new Error("Interactive responses require a window presentation owner");
   const source = resolveInlineVisualizationSourceThreadId({

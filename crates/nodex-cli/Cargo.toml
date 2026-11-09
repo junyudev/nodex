@@ -15,6 +15,7 @@ nodex-profile.workspace = true
 nodex-core-contracts.workspace = true
 nodex-core-protocol.workspace = true
 clap.workspace = true
+fs2.workspace = true
 chrono.workspace = true
 chrono-tz.workspace = true
 getrandom.workspace = true

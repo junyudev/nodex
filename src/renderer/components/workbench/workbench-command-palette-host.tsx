@@ -195,6 +195,7 @@ export function WorkbenchCommandPaletteHost({
     canCreatePage: newPage !== null,
     hasActiveSession: Boolean(activeSession),
     activeSessionPinned: activeSession?.pinned ?? false,
+    activeSessionCanManage: activeSession?.canManage ?? true,
     activeSessionUnread: activeSession?.unread ?? false,
     activeSessionReminded: Boolean(activeSession?.remindAt),
     hasAttachedThread: hasSessionConversation(activeSession),

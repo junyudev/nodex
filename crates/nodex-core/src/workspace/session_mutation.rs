@@ -40,6 +40,19 @@ pub(super) fn mutate_session(
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("session_id", session_id)?;
     let authority = require_session(connection, library_id, session_id)?;
+    // A chat's title and lifecycle are shared by every Member; Core decides who may change them.
+    if matches!(
+        intent,
+        ProjectSessionIntent::Rename { .. } | ProjectSessionIntent::SetArchived { .. }
+    ) {
+        super::chat_stewardship::require(
+            connection,
+            library_id,
+            context,
+            session_id,
+            super::chat_stewardship::ChatControl::Manage,
+        )?;
+    }
     match intent {
         ProjectSessionIntent::RecordOpened => super::session_usage::record_opened(
             connection,

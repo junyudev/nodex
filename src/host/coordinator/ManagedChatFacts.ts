@@ -2,19 +2,32 @@ import { createHash } from "node:crypto";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import type { ProjectWorkspaceReadSnapshot } from "../../main/core-client/types";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
 import {
   unavailableManagedChatFacts,
   type ManagedChatFacts as ChatFacts,
 } from "./managed-chat-observation";
 
+export const managedChatFingerprint = (value: unknown) =>
+  createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const millis = (value: string | null | undefined) => {
   if (!value) return null;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+export const managedChatTerminal = (
+  status: string | null | undefined,
+): ChatFacts["terminalStatus"] => {
   if (status === "cancelled" || status === "interrupted") return "interrupted";
   return status === "completed" || status === "failed" ? status : null;
 };
+export const managedChatState = (
+  status: string | null | undefined,
+  pending: number,
+): ChatFacts["state"] => {
   if (pending > 0) return "waiting";
   if (status === "queued") return "queued";
   if (
@@ -27,10 +40,22 @@ const millis = (value: string | null | undefined) => {
   return "idle";
 };
 
+type ManagedSession = Extract<
+  ProjectWorkspaceReadSnapshot["value"],
+  { kind: "session" }
+>["session"];
+export class NativeManagedChatFacts extends Context.Service<
+  NativeManagedChatFacts,
+  {
+    readonly read: (session: ManagedSession) => Effect.Effect<ChatFacts, unknown>;
+  }
+>()("nodex/host/NativeManagedChatFacts") {}
+
 /** Reads owner metadata only; an absent or replaced owner never supplies a terminal fact. */
 export const make = Effect.gen(function* () {
   const core = yield* CoreModules;
   const runtime = yield* AgentRuntimeApplication;
+  const native = Option.getOrUndefined(yield* Effect.serviceOption(NativeManagedChatFacts));
   const read = Effect.fn("ManagedChatFacts.read")(
     function* (sessionId: string) {
       const before = yield* core.workspace.read(
@@ -65,6 +90,7 @@ export const make = Effect.gen(function* () {
             effort: metadata.effort,
           },
           waitingAdmissions: details.waitingAdmissions,
+          state: managedChatState(
             execution.status === "queued"
               ? "queued"
               : execution.continuationPending
@@ -75,8 +101,12 @@ export const make = Effect.gen(function* () {
           interruptRequested: run?.interruptRequested ?? false,
           runId: execution.runId,
           runStartedAt: millis(run?.startedAt ?? run?.requestedAt),
+          terminalStatus: execution.continuationPending
+            ? null
+            : managedChatTerminal(execution.status),
           pendingRequests,
           ...(run?.failureMessage ? { failureReason: run.failureMessage } : {}),
+          progressFingerprint: managedChatFingerprint([
             binding,
             execution.runId,
             execution.revision,
@@ -84,6 +114,8 @@ export const make = Effect.gen(function* () {
           ]),
         };
       } else {
+        if (!native) return unavailableManagedChatFacts;
+        facts = yield* native.read(session);
       }
       const after = yield* core.workspace.read(
         { kind: "session", session_id: sessionId },
@@ -93,6 +125,8 @@ export const make = Effect.gen(function* () {
       if (
         after.value.kind !== "session" ||
         after.value.session.archived ||
+        managedChatFingerprint([session.execution_ref, session.thread_id]) !==
+          managedChatFingerprint([after.value.session.execution_ref, after.value.session.thread_id])
       )
         return unavailableManagedChatFacts;
       return facts;

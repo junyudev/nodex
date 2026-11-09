@@ -16,6 +16,7 @@ import {
   unbindNodexCliShell,
 } from "./NodexCliShell";
 import type { NodexAgentTurnContext } from "../../../shared/nodex-agent-authority";
+import type { ScopedAgentCoreConnection } from "../../../host/ScopedAgentCore";
 
 export interface NodexCliTaskContext {
   readonly threadId: string;
@@ -23,6 +24,7 @@ export interface NodexCliTaskContext {
   readonly projectId: string | null;
   /** Core's credential for this task's chat, so the content it changes names that chat. */
   readonly agentAttribution: string | null;
+  readonly scopedConnection?: ScopedAgentCoreConnection;
 }
 
 class BootstrapUnavailable extends Data.TaggedError("NodexCliBootstrapUnavailable")<{
@@ -57,6 +59,7 @@ export const buildAgentRuntimeCliContext = (
   authority: NodexAgentTurnContext,
   codexShellTaskId: string | null,
   agentAttribution: string | null,
+  scopedConnection?: ScopedAgentCoreConnection,
 ): Effect.Effect<string | null> => {
   const projectId = authority.actorProjectId;
   if (codexShellTaskId)
@@ -65,6 +68,7 @@ export const buildAgentRuntimeCliContext = (
       hostId: "local",
       projectId,
       agentAttribution,
+      scopedConnection,
     }).pipe(
       Effect.map((entry) => entry.value),
       Effect.orElseSucceed(() => null),
@@ -80,13 +84,20 @@ export const buildAgentRuntimeCliContext = (
         return null;
       if (config.platform === "win32") {
         const psQuote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
-        const command = `$env:NODEX_HOME=${psQuote(config.nodexHome)}; $env:NODEX_AGENT_ATTRIBUTION=${psQuote(agentAttribution ?? "")}; & ${psQuote(paths.executable)} --expect-profile ${psQuote(identity.profileId)}${projectId ? ` --project ${psQuote(projectId)}` : ""}`;
+        const connection = scopedConnection
+          ? `$env:NODEX_HOME=$null; $env:NODEX_AGENT_ATTRIBUTION=$null; $env:NODEX_AGENT_ENDPOINT=${psQuote(scopedConnection.endpoint)}; $env:NODEX_AGENT_CREDENTIAL=${psQuote(scopedConnection.credential)}`
+          : `$env:NODEX_HOME=${psQuote(config.nodexHome)}; $env:NODEX_AGENT_ATTRIBUTION=${psQuote(agentAttribution ?? "")}`;
+        const command = `${connection}; & ${psQuote(paths.executable)} --expect-profile ${psQuote(identity.profileId)}${projectId ? ` --project ${psQuote(projectId)}` : ""}`;
         return `For shell content work, use this PowerShell prefix followed by the command, including after changing directories: ${command}. Read the bundled Skill at ${psQuote(paths.skill)}. From cmd or Git Bash, invoke PowerShell with -NoProfile -Command and this prefix.`;
       }
-      const attribution = agentAttribution
-        ? `${NODEX_AGENT_ATTRIBUTION_ENV}=${quote(agentAttribution)} `
-        : "";
-      const command = `NODEX_HOME=${quote(config.nodexHome)} ${attribution}${quote(paths.executable)} --expect-profile ${quote(identity.profileId)}${projectId ? ` --project ${quote(projectId)}` : ""}`;
+      const attribution =
+        !scopedConnection && agentAttribution
+          ? `${NODEX_AGENT_ATTRIBUTION_ENV}=${quote(agentAttribution)} `
+          : "";
+      const connection = scopedConnection
+        ? `env -u NODEX_HOME -u NODEX_AGENT_ATTRIBUTION NODEX_AGENT_ENDPOINT=${quote(scopedConnection.endpoint)} NODEX_AGENT_CREDENTIAL=${quote(scopedConnection.credential)}`
+        : `NODEX_HOME=${quote(config.nodexHome)} ${attribution}`;
+      const command = `${connection} ${quote(paths.executable)} --expect-profile ${quote(identity.profileId)}${projectId ? ` --project ${quote(projectId)}` : ""}`;
       return `For shell content work, use ${command} followed by the command, including after changing directories. Read the bundled Skill at ${quote(paths.skill)}. This CLI selects the current build, Profile.`;
     },
     catch: (cause) => new BootstrapUnavailable({ cause }),
@@ -129,6 +140,7 @@ export const buildNodexCliBootstrap = (
         profileId: identity.profileId,
         projectId,
         agentAttribution: task.agentAttribution,
+        scopedConnection: task.scopedConnection,
       });
       return {
         kind: "application" as const,

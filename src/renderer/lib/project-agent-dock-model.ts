@@ -219,6 +219,8 @@ export function buildProjectAgentDockModel({
               archived: false,
               archivedAt: null,
               remindAt: null,
+              canManage: false,
+              canStop: false,
               unread: false,
               thread: null,
               createdAt: "",

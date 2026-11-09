@@ -18,7 +18,7 @@ const coreProject = (id: string, root: string) => ({
   name: id,
   description: "",
   appearance: null,
-  sources: [{ root, order: 0 }],
+  sources: [{ kind: "directory" as const, path: root, order: 0 }],
   primary_workspace_root: root,
   pinned: false,
   pinned_order: null,

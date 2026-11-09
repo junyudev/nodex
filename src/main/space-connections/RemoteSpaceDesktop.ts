@@ -1,5 +1,6 @@
 import { live as memberAttention } from "./RemoteMemberAttentionIpc";
 import { live as turnNotifications } from "../host-runtime/NodexEntryNotifications";
+import { projectAutomation } from "../../host/automation-application/AutomationProjection";
 import { live as applicationProjection } from "./RemoteSpaceProjection";
 import { spacePathKey } from "./space-path-key";
 import * as Context from "effect/Context";
@@ -24,7 +25,9 @@ import { live as exportsLive } from "../library-application/FileExportRuntime";
 import { live as historyLive } from "../host-runtime/EditorHistoryRuntime";
 import { live as rendererClientsLive } from "../host-runtime/RendererClientRuntime";
 import { liveForSpace as pageHtmlLive } from "../host-runtime/PageFileHtmlRuntime";
+import { liveForSpace as notifierLive } from "../platform/electron/DatabaseNotifications";
 import { ProjectWorkspace, live as workspaceLive } from "../project-application/ProjectWorkspace";
+import { ElectronIpc, ElectronSpaceIpc } from "../platform/electron/ElectronIpc";
 import * as CoreMutationIpc from "../ipc/handlers/CoreMutationIpc";
 import * as CoreDocumentIpc from "../ipc/handlers/CoreDocumentIpc";
 import * as DatabaseProjectionIpc from "../ipc/handlers/DatabaseProjectionIpc";
@@ -37,8 +40,15 @@ import { live as structuralClipboardLive } from "../host-runtime/StructuralClipb
 import { createOperationId } from "../core-runtime/operation-identity";
 import type { ProjectWorkspaceApplyInput } from "../core-client/types";
 import * as PageFileHtmlIpc from "../ipc/handlers/PageFileHtmlIpc";
+import {
+  archivedRuntimeChatItem,
+  projectCoreWorkspaceTask,
+} from "../codex-application/CodexThreadCatalogProjection";
+import type { CodexSidebarSnapshot } from "../../shared/types";
 import { SpaceConnectionRegistry } from "./SpaceConnectionRegistry";
 import { makeSpaceIpcCollector } from "./SpaceIpcCollector";
+import * as RemoteHostIpc from "./RemoteHostIpc";
+import * as ChatMemberActionsIpc from "../ipc/handlers/ChatMemberActionsIpc";
 import {
   inboxCountsFromCore,
   activityWindowFromCore,
@@ -73,6 +83,22 @@ const readModels = Layer.effectDiscard(
     const ipc = yield* ElectronIpc;
     const projects = yield* ProjectWorkspace;
     const core = yield* CoreModules;
+    yield* ipc.handleQuery("automations:list", () =>
+      core.automation
+        .read({
+          kind: "automations",
+          include_deleted: false,
+          search_query: null,
+          window: { after: null, first: 200 },
+        })
+        .pipe(
+          Effect.map((read) => {
+            if (read.value.kind !== "automations" || read.value.window.next_cursor)
+              throw new Error("Active Automations exceeded the bounded collection");
+            return { items: read.value.window.items.map(projectAutomation) };
+          }),
+        ),
+    );
     yield* ipc.handleQuery("work:turn", (_, pageId) =>
       core.workspace.read({ kind: "page_turn", page_id: pageId }, undefined, null).pipe(
         Effect.map((read) => {
@@ -177,6 +203,7 @@ const readModels = Layer.effectDiscard(
     });
     const contentProject = (project: import("../../shared/types").Project) => ({
       ...project,
+      sources: project.sources.filter((source) => source.kind === "repository"),
       primaryWorkspaceRoot: null,
     });
     yield* ipc.handleQuery("projects:list", (_, input) =>
@@ -215,6 +242,42 @@ const readModels = Layer.effectDiscard(
       projects.readSidebarSectionPlacement(item),
     );
     yield* ipc.handleQuery("project-sessions:get", (_, id) => projects.getProjectSession(id));
+    // Core reads why a hosted chat has not started for every Member; its retry goes to the host.
+    yield* ipc.handleQuery("project-sessions:start", (_, id) => projects.readSessionStart(id));
+    // Archived chats lists what this Member may restore: hosted chats they asked for, or every
+    // one for a Space Owner. Core decides both, and the host restores them.
+    yield* ipc.handleQuery("codex:sidebar:snapshot", (_, input) =>
+      Effect.gen(function* () {
+        const items: CodexSidebarSnapshot["items"] = [];
+        let revision = 0;
+        let after: string | null = null;
+        const pages = input?.includeArchived ? 10 : 0;
+        for (let page = 0; page < pages; page += 1) {
+          const read: import("../core-client/types").ProjectWorkspaceReadSnapshot =
+            yield* core.workspace.read(
+              { kind: "session_window", archived: true, window: { after, first: 200 } },
+              undefined,
+              null,
+            );
+          if (read.value.kind !== "session_window") throw new Error("Invalid archived chats");
+          revision = Math.max(revision, read.value.sessions.authority.projection_revision);
+          for (const { task } of read.value.sessions.items) {
+            const chat = projectCoreWorkspaceTask(task);
+            if (chat.executionRef && chat.canManage) items.push(archivedRuntimeChatItem(chat));
+          }
+          after = read.value.sessions.next_cursor ?? null;
+          if (!after) break;
+        }
+        return {
+          items,
+          pinnedThreadIds: [],
+          projectAssignments: {},
+          projectlessThreadIds: [],
+          revision,
+          generatedAt: Date.now(),
+        } satisfies CodexSidebarSnapshot;
+      }),
+    );
     yield* ipc.handleQuery("workspace:tasks:list", (_, projectId, input) =>
       projects.listProjectSessionSummaryWindow(projectId, input),
     );
@@ -318,6 +381,7 @@ export const live = (spaceId: string) =>
       const registry = yield* SpaceConnectionRegistry;
       const config = yield* MainConfig;
       const connection = yield* registry.connection(spaceId);
+      const collector = makeSpaceIpcCollector(yield* ElectronSpaceIpc);
       const core = coreModulesLive.pipe(Layer.provideMerge(Layer.succeedContext(connection)));
       const content = Layer.mergeAll(
         libraryLive,
@@ -354,7 +418,9 @@ export const live = (spaceId: string) =>
         readModels,
         memberAttention,
         turnNotifications,
+        RemoteHostIpc.live,
         unreadBadge(spaceId),
+        ChatMemberActionsIpc.live,
       ).pipe(
         Layer.provide(events),
         Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),

@@ -51,7 +51,129 @@ pub struct ListenerInfo {
     pub fingerprint: String,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+pub struct SpaceIdentity {
+    pub space_id: String,
     pub space_name: String,
+    pub owner_member_id: String,
+    pub fingerprint: String,
+}
+
+/// Only these semantic operations may cross from a Member to the execution owner.
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum HostOperation {
+    Activity,
+    Connection,
+    Providers,
+    SessionRead,
+    SessionControl,
+    SessionInspect,
+    /// The chat or subagent a transcript names, such as the sender of a message.
+    ThreadIdentity,
+    SessionHistory,
+    SessionMessage,
+    SessionRespond,
+    /// Stopping a chat's work; Core admits only the Run's requester, the chat's owner or a
+    /// Space Owner.
+    SessionStop,
+    SessionStopTask,
+    SessionCancelTask,
+    SessionStopBackground,
+    SessionBackgroundOutput,
+    SessionPromptTurns,
+    SessionPromptIndex,
+    SessionQueue,
+    SessionQueueRead,
+    SessionItem,
+    /// A range of one attachment a chat's transcript names, read under the Member's invocation.
+    SessionAttachment,
+    SessionOverview,
+    SessionQueuedPreview,
+    SessionRunMessage,
+    /// A new hosted chat a Member starts, with or without a Project; Core makes them its owner.
+    SessionStart,
+    /// A new hosted chat from one the Member can read; Core makes that Member its owner.
+    SessionFork,
+    /// A temporary side chat of a hosted chat the Member may reply to, requested by that Member.
+    SessionSideChatCreate,
+    /// Keep the Member's own side chat as a hosted chat of its own.
+    SessionSideChatSave,
+    /// Close the Member's own side chat.
+    SessionSideChatDiscard,
+    /// Bring a fork or side chat the Member requested back into the chat it came from.
+    SessionMergeBack,
+    /// Rewrite the Member's own message, while no other Member has posted after it.
+    SessionRewriteMessage,
+    /// Compact the chat's context, or compact it and continue a failed reply: its steward's.
+    SessionCompact,
+    /// End the chat's context after its latest Run: its steward's.
+    SessionClearContext,
+    /// Shared chat changes; Core admits only the chat's owner or a Space Owner.
+    SessionRename,
+    SessionArchive,
+    SessionUnarchive,
+    SessionMove,
+    WorkStart,
+    WorkspaceRefresh,
+    CoordinatorOpen,
+    /// The host's Inbox settings: the Agents its suggestions and new chats run on. Every Member
+    /// reads them; each Member's own consent to start their requests stays in Core.
+    InboxSettings,
+    InboxReplyDestination,
+    InboxSend,
+    InboxPrepareConfirmation,
+    InboxConfirm,
+    InboxDispatch,
+    InboxChatTargets,
+    InboxRequestSuggestion,
+    InboxStopSuggestion,
+    InboxRetryDispatch,
+    /// Chats the Member may read that match a query, ranked by the host and bounded.
+    ChatSearch,
+    /// Those chats matched by their message history, bounded and best effort.
+    ChatSearchMessages,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HostCall {
+    pub operation: HostOperation,
+    pub input: serde_json::Value,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HostRegistration {
+    pub instance: String,
+}
+#[derive(Clone, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HostLease {
+    pub token: String,
+}
+#[derive(Clone, Deserialize, Serialize, ToSchema)]
+pub struct HostInvocation {
+    pub id: String,
+    /// Private, short-lived proof of the Member who admitted this exact call.
+    pub credential: String,
+    pub call: HostCall,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HostCallResult {
+    Ok { value: serde_json::Value },
+    Error { message: String },
+}
+#[derive(Clone, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HostCompletion {
+    pub token: String,
+    pub id: String,
+    pub result: HostCallResult,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+pub struct HostAvailability {
+    pub available: bool,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct InviteRequest {
     pub role: MemberRole,

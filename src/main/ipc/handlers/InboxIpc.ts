@@ -7,13 +7,13 @@ import type {
   CoreLocalCommitCommandChannel,
   IpcQueryChannel,
 } from "../../../shared/ipc-endpoint-policy";
-import type { CoreLocalCommitResult } from "../../../shared/core-result";
+import { CoordinatorSession } from "../../../host/coordinator/CoordinatorSession";
 import { MainConfig } from "../../app/MainConfig";
-import { CoreModuleResponseError } from "../../core-client/core-client";
-import { rendererLocalCommitApply } from "../../core-client/types";
-import { CoreRuntimeError } from "../../core-runtime/CoreRuntimeError";
-import { InboxApplication, InboxApplicationError } from "../../inbox-application/InboxApplication";
-import type { ProjectWorkspaceCommandResult } from "../../project-application/ProjectWorkspace";
+import {
+  InboxApplication,
+  InboxApplicationError,
+} from "../../../host/inbox-application/InboxApplication";
+import { hostLocalCommit as committed } from "../../../host/host-local-commit";
 import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";

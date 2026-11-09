@@ -36,8 +36,10 @@ import { isNonSidebarThreadWithoutParent } from "../codex-application/CodexThrea
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreModules } from "../core-runtime/CoreModules";
+import { HostInvocation } from "../../host/HostInvocation";
 import {
   CHAT_CATALOG_MAX_ENTRIES,
+  MEMBER_CHAT_CATALOG_MAX_ENTRIES,
   projectChat,
   type ChatCatalogItem,
   type ChatListingItem,
@@ -120,11 +122,20 @@ const batches = <A>(items: readonly A[], size: number): A[][] =>
     items.slice(index * size, (index + 1) * size),
   );
 
+/**
+ * One search owner for a desktop's own chats and for a Space host's Members. A desktop's own
+ * search ranks one warm catalog. A Member's search through the host (a `HostInvocation`) reads
+ * the chats that Member may read with their authority on each request, bounded, and never shares
+ * a catalog or result with anyone else. Native Codex history is searched only where this process
+ * runs native Codex.
+ */
 export const make = Effect.gen(function* () {
   const core = yield* CoreModules;
   const runtime = yield* AgentRuntimeApplication;
-  const gateway = yield* CodexGateway;
-  const internalThreads = yield* CodexInternalThreadRegistry;
+  const gateway = Option.getOrNull(yield* Effect.serviceOption(CodexGateway));
+  const internalThreads = Option.getOrNull(
+    yield* Effect.serviceOption(CodexInternalThreadRegistry),
+  );
   const ownerScope = yield* Scope.Scope;
   const notifications = yield* DatabaseNotifierRuntime;
   const events = yield* CodexApplicationEventHub;
@@ -202,7 +213,7 @@ export const make = Effect.gen(function* () {
     });
 
   const readCatalog = Effect.fn("ChatSearch.catalog")(
-    function* (archived: boolean) {
+    function* (archived: boolean, maxEntries: number = CHAT_CATALOG_MAX_ENTRIES) {
       const entries = new Map<string, ChatCatalogItem>();
       let after: string | null = null;
       const cursors = new Set<string>();
@@ -215,11 +226,11 @@ export const make = Effect.gen(function* () {
         for (const chat of project(page.items, metadata, archived))
           entries.set(chat.sessionId, chat);
         after = page.next_cursor ?? null;
-        if (entries.size > CHAT_CATALOG_MAX_ENTRIES)
+        if (entries.size > maxEntries)
           return {
             entries: [...entries.values()]
               .sort((a, b) => b.recencyAt - a.recencyAt)
-              .slice(0, CHAT_CATALOG_MAX_ENTRIES),
+              .slice(0, maxEntries),
             complete: false,
           };
         if (after && cursors.has(after))
@@ -244,7 +255,7 @@ export const make = Effect.gen(function* () {
     readonly builtAt: number;
   } | null>(null);
   const catalogGeneration = yield* Ref.make(0);
-  const catalog = Effect.gen(function* () {
+  const sharedCatalog = Effect.gen(function* () {
     const previous = yield* Ref.get(warm);
     const currentRevision = yield* Ref.get(revision);
     const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
@@ -274,6 +285,12 @@ export const make = Effect.gen(function* () {
       }),
     );
   });
+
+  /** The Member a host call carries, whose own reads are never shared; null for this desktop. */
+  const member = Effect.map(HostInvocation, (invocation) => invocation !== null);
+  const catalog = Effect.flatMap(member, (forMember) =>
+    forMember ? readCatalog(false, MEMBER_CHAT_CATALOG_MAX_ENTRIES) : sharedCatalog,
+  );
 
   const runtimeMatches = Effect.fn("ChatSearch.runtimeMatches")(function* (
     input: ChatMessageSearchInput,
@@ -348,6 +365,8 @@ export const make = Effect.gen(function* () {
     input: ChatMessageSearchInput,
     admitted: ChatCatalog,
   ) {
+    if (!gateway || !internalThreads)
+      return yield* Effect.fail(new Error("Native Codex does not run here"));
     const connection = yield* gateway.connection(gateway.localHostId);
     if (connection.kind !== "ready") return yield* Effect.fail(new Error("Codex is unavailable"));
     const chats = new Map(
@@ -490,59 +509,57 @@ export const make = Effect.gen(function* () {
     );
   });
 
+  const messageMatches = (input: ChatMessageSearchInput) =>
+    Effect.gen(function* () {
+      const admitted = yield* catalog;
+      const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+      const excluded = new Set(
+        rankCatalog(admitted.entries, input.query, now).map(({ entry }) => entry.sessionId),
+      );
+      const eligible = {
+        ...admitted,
+        entries: admitted.entries.filter((entry) => !excluded.has(entry.sessionId)),
+      };
+      const sources = yield* Effect.all(
+        [
+          sourceResult("runtime", runtimeMatches(input, eligible), "3 seconds"),
+          latestCodex(input, eligible),
+        ],
+        { concurrency: "unbounded" },
+      );
+      const ranked = rankMessageMatches(
+        sources
+          .flatMap((source) => source.matches)
+          .filter((match) => !excluded.has(match.chat.sessionId)),
+        (match) => chatSearchSubject(match.chat),
+        foldSearchQuery(input.query),
+        now,
+        { picks: false },
+      );
+      const seen = new Set<string>();
+      const matches = ranked
+        .filter((match) => {
+          if (seen.has(match.chat.sessionId)) return false;
+          seen.add(match.chat.sessionId);
+          return true;
+        })
+        .slice(0, input.limit)
+        .map(({ chat, snippet, role }) => ({
+          chat: chatWireEntry(chat),
+          titleRanges: [],
+          hint: null,
+          excerpt: { text: snippet, ranges: findSearchTokenRanges(snippet, input.query), role },
+        }));
+      return {
+        matches,
+        sources: sources.map((source) => source.state),
+      } satisfies ChatMessageSearchResult;
+    }).pipe(Effect.provideService(CoreApplicationAgent, null));
   const cache = yield* Cache.make({
     capacity: 100,
     timeToLive: "30 seconds",
     lookup: (key: string) =>
-      Effect.gen(function* () {
-        const { input, revision: _revision } = JSON.parse(key) as {
-          input: ChatMessageSearchInput;
-          revision: number;
-        };
-        const admitted = yield* catalog;
-        const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-        const excluded = new Set(
-          rankCatalog(admitted.entries, input.query, now).map(({ entry }) => entry.sessionId),
-        );
-        const eligible = {
-          ...admitted,
-          entries: admitted.entries.filter((entry) => !excluded.has(entry.sessionId)),
-        };
-        const sources = yield* Effect.all(
-          [
-            sourceResult("runtime", runtimeMatches(input, eligible), "3 seconds"),
-            latestCodex(input, eligible),
-          ],
-          { concurrency: "unbounded" },
-        );
-        const ranked = rankMessageMatches(
-          sources
-            .flatMap((source) => source.matches)
-            .filter((match) => !excluded.has(match.chat.sessionId)),
-          (match) => chatSearchSubject(match.chat),
-          foldSearchQuery(input.query),
-          now,
-          { picks: false },
-        );
-        const seen = new Set<string>();
-        const matches = ranked
-          .filter((match) => {
-            if (seen.has(match.chat.sessionId)) return false;
-            seen.add(match.chat.sessionId);
-            return true;
-          })
-          .slice(0, input.limit)
-          .map(({ chat, snippet, role }) => ({
-            chat: chatWireEntry(chat),
-            titleRanges: [],
-            hint: null,
-            excerpt: { text: snippet, ranges: findSearchTokenRanges(snippet, input.query), role },
-          }));
-        return {
-          matches,
-          sources: sources.map((source) => source.state),
-        } satisfies ChatMessageSearchResult;
-      }).pipe(Effect.provideService(CoreApplicationAgent, null)),
+      messageMatches((JSON.parse(key) as { input: ChatMessageSearchInput }).input),
   });
   const search = Effect.fn("ChatSearch.search")(function* (input: ChatSearchInput) {
     const parsed = yield* Effect.try({
@@ -578,13 +595,14 @@ export const make = Effect.gen(function* () {
           cause,
         }),
     });
-    const currentRevision = yield* Ref.get(revision);
-    yield* catalog;
-    const generation = yield* Ref.get(catalogGeneration);
     const normalized = {
       ...parsed,
       query: parsed.query.normalize("NFC").toLowerCase().replace(/\s+/gu, " "),
     };
+    if (yield* member) return yield* messageMatches(normalized);
+    const currentRevision = yield* Ref.get(revision);
+    yield* sharedCatalog;
+    const generation = yield* Ref.get(catalogGeneration);
     return yield* Cache.get(
       cache,
       JSON.stringify({ input: normalized, revision: currentRevision, generation }),
@@ -592,7 +610,9 @@ export const make = Effect.gen(function* () {
   });
   const rankSessionIds: ChatSearch["Service"]["rankSessionIds"] = (input) =>
     Effect.gen(function* () {
-      const admitted = yield* input.archived ? readCatalog(true) : catalog;
+      const admitted = yield* input.archived
+        ? readCatalog(true, (yield* member) ? MEMBER_CHAT_CATALOG_MAX_ENTRIES : undefined)
+        : catalog;
       const candidates =
         input.projectId === undefined
           ? admitted.entries

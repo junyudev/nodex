@@ -26,6 +26,18 @@ export interface AgentRuntimeMessage {
   readonly interactionMode?: CreateThread["interactionMode"];
   /** Structured editor input is authoritative; absent input permits standalone Nodex Markdown lines. */
   readonly agentConfigs?: readonly import("./types").CodexPromptAgentConfigInput[];
+  /**
+   * Files on this computer that a chat running on its Space's host receives as uploads. A chat
+   * on this computer names its files in the text instead and takes none here.
+   */
+  readonly uploads?: readonly AgentRuntimeMessageUpload[];
+}
+
+export interface AgentRuntimeMessageUpload {
+  readonly name: string;
+  readonly path: string;
+}
+
 /** The Host rechecks this exact Automation attempt after preparation, immediately before dispatch. */
 export interface AgentRuntimeAutomationExecution {
   readonly runId: string;
@@ -205,6 +217,11 @@ export type AgentRuntimeTaskStopInput = AgentRuntimeSessionTarget & {
 export type AgentRuntimeBackgroundStopInput = AgentRuntimeSessionTarget & {
   readonly requestId: string;
   readonly taskIds: readonly string[];
+  /**
+   * The Run whose work every task is, as each task reports it; a shared chat's host stops it
+   * only for those that Run's stop belongs to. Null when the tasks do not say.
+   */
+  readonly runId?: string | null;
 };
 export type AgentRuntimeBackgroundOutputInput = AgentRuntimeSessionTarget & {
   readonly taskId: string;
@@ -217,6 +234,8 @@ export interface AgentRuntimeBackgroundOutput {
 export type AgentRuntimeTaskCancelInput = AgentRuntimeSessionTarget & {
   readonly requestId: string;
   readonly taskId: string;
+  /** The Run that started the task, as its subagent record says; null when it does not. */
+  readonly runId?: string | null;
 };
 /** Changes product placement; the Session keeps its execution root and working directory. */
 export interface AgentRuntimeSessionMoveInput {
@@ -511,6 +530,11 @@ export interface AgentRuntimeIpcApi {
   "agent-runtime:session:item": {
     args: [input: AgentRuntimeItemInput];
     result: AgentTurnItem | null;
+  };
+  /** What this Member may do in a chat on its Space's host, decided by the Space's Core. */
+  "agent-runtime:session:member-actions": {
+    args: [input: { readonly sessionId: string; readonly runIds?: readonly string[] }];
+    result: import("@nodex/core-protocol").components["schemas"]["SessionMemberActions"];
   };
   "agent-runtime:session:attachment": {
     args: [input: AgentRuntimeAttachmentInput];

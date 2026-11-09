@@ -13,6 +13,7 @@ import type {
 import {
   AgentRuntimeConversationOwner,
   agentRuntimeQueueHoldPause,
+  REPLIED_SINCE_REASON,
   type AgentRuntimeReadTransport,
 } from "./agent-runtime-conversation-owner";
 import { hasDurableCanonicalFirstSubmission } from "../conversation-launch/session-first-submission-owner";
@@ -2322,7 +2323,7 @@ describe("Agent Runtime keyed transcript reads", () => {
       creationSource: "web",
     };
     const { owner, wire, release } = await open(conversation([sent, assistant()]));
-    owner.setCapabilities({ supportsUserTurnEdits: true });
+    owner.setCapabilities({ supportsUserTurnEdits: true, supportsForks: true });
     expect(owner.getSnapshot().view?.capabilityFlags.canEditUserTurns).toBe(false);
 
     const run = owner.getSnapshot().conversation!.snapshot.projection.runs[0]!;
@@ -2338,6 +2339,13 @@ describe("Agent Runtime keyed transcript reads", () => {
       },
     });
     expect(owner.getSnapshot().view?.capabilityFlags.canEditUserTurns).toBe(true);
+    // A chat this Device reaches on its Space host can be neither rewound nor forked here.
+    owner.setCapabilities({ supportsUserTurnEdits: false, supportsForks: false });
+    expect(owner.getSnapshot().view?.capabilityFlags).toMatchObject({
+      canEditUserTurns: false,
+      canForkFromTurn: false,
+    });
+    owner.setCapabilities({ supportsUserTurnEdits: true, supportsForks: true });
 
     vi.mocked(wire.port.attachment).mockResolvedValueOnce({ path: "/attachments/chart.png" });
     const read = await owner.readSentMessage("run", [
@@ -3496,7 +3504,7 @@ test("keeps exact edit eligibility across failed Runs and bounded history", asyn
   };
   const { owner, wire, release } = await open(initial);
   try {
-    owner.setCapabilities({ supportsUserTurnEdits: true });
+    owner.setCapabilities({ supportsUserTurnEdits: true, supportsForks: true });
     expect(owner.getSnapshot().view?.capabilityFlags.editableUserTurnIds).toEqual([
       "run-1",
       "run-2",
@@ -3519,6 +3527,65 @@ test("keeps exact edit eligibility across failed Runs and bounded history", asyn
       "run-1",
       "run-3",
     ]);
+  } finally {
+    release();
+  }
+});
+
+test("a chat with several Members edits only the reader's own messages, and says why not", async () => {
+  const fixture = conversation([]);
+  const run = fixture.snapshot.projection.runs[0]!;
+  const runs: AgentSnapshot["projection"]["runs"] = [1, 2, 3].map((ordinal) => ({
+    ...run,
+    id: `run-${ordinal}`,
+    ordinal,
+    status: "completed",
+    startedAt: at,
+  }));
+  const rewindContext: NonNullable<AgentSnapshot["projection"]["rewindContext"]> = {
+    runs: runs.map((entry) => ({
+      id: entry.id,
+      ordinal: entry.ordinal,
+      status: entry.status,
+      started: true,
+      activeAttemptId: entry.activeAttemptId,
+      hasProviderTurn: true,
+    })),
+    checkpointScopes: [{ id: "root", kind: "root_run" }],
+    checkpoints: [0, 1, 2, 3].map((ordinal) => ({
+      id: `checkpoint-${ordinal}`,
+      scopeId: "root",
+      runId: ordinal ? `run-${ordinal}` : null,
+      ordinalWithinScope: ordinal,
+      appRunOrdinal: ordinal || null,
+      status: "missing",
+    })),
+  };
+  const { owner, release } = await open({
+    ...fixture,
+    snapshot: {
+      ...fixture.snapshot,
+      projection: { ...fixture.snapshot.projection, runs, rewindContext },
+    },
+  });
+  try {
+    owner.setCapabilities({ supportsUserTurnEdits: true, supportsForks: true });
+    expect(owner.rewindTargetIds()).toEqual(["run-1", "run-2", "run-3"]);
+    owner.setCapabilities({
+      supportsUserTurnEdits: true,
+      supportsForks: true,
+      memberEdits: new Map([
+        ["run-1", "replied_since"],
+        ["run-2", "unavailable"],
+        ["run-3", "available"],
+      ]),
+    });
+    expect(owner.getSnapshot().view?.capabilityFlags).toMatchObject({
+      editableUserTurnIds: ["run-3"],
+      userTurnEditRefusals: { "run-1": REPLIED_SINCE_REASON },
+    });
+    // Whatever Core says, the Provider's own rewind targets stay what the next read asks about.
+    expect(owner.rewindTargetIds()).toEqual(["run-1", "run-2", "run-3"]);
   } finally {
     release();
   }
@@ -3578,7 +3645,7 @@ test("preserves paged Provider Turn evidence across historical metadata updates 
   };
   const { owner, wire, release } = await open(fixture, [page]);
   try {
-    owner.setCapabilities({ supportsUserTurnEdits: true });
+    owner.setCapabilities({ supportsUserTurnEdits: true, supportsForks: true });
     await owner.loadHistoryBoundary(historyBoundary(owner));
     const editable = () => owner.getSnapshot().view!.capabilityFlags.editableUserTurnIds;
     expect(
@@ -3714,6 +3781,9 @@ test("a hosted refresh keeps the Composer ready through a transient refusal and 
     await owner.resume();
     expect(owner.getSnapshot().connection).toBe("ready");
     expect(owner.contentSource()).not.toBe(previous);
+    // The refreshed snapshot is the same chat's content, so its pictures are not read again.
+    expect(owner.contentSource()?.identity).toBe(previous?.identity);
+    expect(previous?.isCurrent()).toBe(false);
   } finally {
     release();
     owner.dispose();

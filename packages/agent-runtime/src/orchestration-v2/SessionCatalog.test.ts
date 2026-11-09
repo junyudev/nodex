@@ -4,9 +4,11 @@ import {
   MessageId,
   ProjectId,
   ProviderInstanceId,
+  RunId,
   ThreadId,
   type OrchestrationV2AppThread,
   type OrchestrationV2ConversationMessage,
+  type OrchestrationV2Run,
 } from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -64,12 +66,13 @@ const fixture = Effect.gen(function* () {
     timestamp: string,
     role: "user" | "assistant" = "user",
     createdBy: "user" | "agent" = "user",
+    runId: RunId | null = null,
   ) => {
     const date = DateTime.fromDateUnsafe(new Date(timestamp));
     const payload: OrchestrationV2ConversationMessage = {
       id: MessageId.make(id),
       threadId,
-      runId: null,
+      runId,
       nodeId: null,
       role,
       text,
@@ -82,7 +85,33 @@ const fixture = Effect.gen(function* () {
     };
     return apply("message.updated", threadId, payload);
   };
-  return { at, thread, message, apply };
+  const run = (
+    threadId: ThreadId,
+    id: string,
+    ordinal: number,
+    status: OrchestrationV2Run["status"],
+  ) => {
+    const payload: OrchestrationV2Run = {
+      id: RunId.make(id),
+      threadId,
+      ordinal,
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "model" },
+      providerThreadId: null,
+      userMessageId: MessageId.make(`message:${id}`),
+      rootNodeId: null,
+      activeAttemptId: null,
+      status,
+      requestedAt: at,
+      startedAt: null,
+      completedAt: null,
+      checkpointId: null,
+      contextHandoffId: null,
+      ...(status === "rolled_back" ? { rolledBackAtRevision: 1 } : {}),
+    };
+    return apply("run.updated", threadId, payload);
+  };
+  return { at, thread, message, run, apply };
 });
 
 it.effect(
@@ -194,5 +223,76 @@ it.effect("uses canonical execution presentation when a running Run has a newer 
     assert.equal(unheld.items[0]?.runStatus, "queued");
     assert.equal(unheld.items[0]?.activityRunStatus, "running");
     assert.equal(unheld.items[0]?.status, "active");
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("previews a conversation by the opening message of its current history", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const edited = yield* f.thread("thread:edited");
+    const preview = () =>
+      readSessionCatalog({}).pipe(
+        Effect.map(({ items }) => items.find((item) => item.threadId === edited.id)?.preview),
+      );
+    yield* f.run(edited.id, "run:first", 1, "completed");
+    yield* f.message(
+      edited.id,
+      "message:run:first",
+      "Draw a star",
+      "2026-10-02T00:00:00.000Z",
+      "user",
+      "user",
+      RunId.make("run:first"),
+    );
+    yield* f.message(
+      edited.id,
+      "message:reply",
+      "Here it is",
+      "2026-10-02T00:01:00.000Z",
+      "assistant",
+      "agent",
+      RunId.make("run:first"),
+    );
+    yield* f.run(edited.id, "run:second", 2, "completed");
+    yield* f.message(
+      edited.id,
+      "message:run:second",
+      "Make it blue",
+      "2026-10-03T00:00:00.000Z",
+      "user",
+      "user",
+      RunId.make("run:second"),
+    );
+    assert.equal(yield* preview(), "Draw a star");
+
+    // Editing a later message leaves the opening one.
+    yield* f.run(edited.id, "run:second", 2, "rolled_back");
+    assert.equal(yield* preview(), "Draw a star");
+
+    // Editing the opening message rewinds past it; the message written in its place opens the chat.
+    yield* f.run(edited.id, "run:first", 1, "rolled_back");
+    assert.equal(yield* preview(), "");
+    yield* f.run(edited.id, "run:third", 3, "completed");
+    yield* f.message(
+      edited.id,
+      "message:run:third",
+      "Draw a moon",
+      "2026-10-04T00:00:00.000Z",
+      "user",
+      "user",
+      RunId.make("run:third"),
+    );
+    assert.equal(yield* preview(), "Draw a moon");
+    // A late update to the rewound message does not bring it back.
+    yield* f.message(
+      edited.id,
+      "message:run:first",
+      "Draw a star",
+      "2026-10-02T00:00:00.000Z",
+      "user",
+      "user",
+      RunId.make("run:first"),
+    );
+    assert.equal(yield* preview(), "Draw a moon");
   }).pipe(Effect.provide(layer)),
 );

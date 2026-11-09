@@ -320,6 +320,7 @@ export class AgentRuntimeConversationOwner {
   #children: readonly CodexConversationChildMembership[] = emptyChildren;
   #leases = 0;
   #generation = 0;
+  #sourceEpoch = 0;
   #historyGeneration = 0;
   #sequence = 0;
   readonly #observers = new Set<{ readonly sequence: number; readonly resolve: () => void }>();
@@ -344,6 +345,8 @@ export class AgentRuntimeConversationOwner {
   #historyRequest: Promise<"applied" | "stale"> | null = null;
   #disposed = false;
   #supportsUserTurnEdits = false;
+  #memberEdits: ReadonlyMap<string, MemberMessageEdit> | undefined;
+  #supportsForks = true;
   #contentSource: ConversationContentSource | null = null;
   #queuePage: AgentRuntimeQueuePage | null = null;
   #queueEntries: readonly CodexQueuedFollowUp[] = [];
@@ -407,12 +410,32 @@ export class AgentRuntimeConversationOwner {
   readonly getSnapshot = (): AgentRuntimeConversationOwnerSnapshot => this.#state;
   readonly contentSource = (): ConversationContentSource | null =>
     this.#contentSource?.isCurrent() ? this.#contentSource : null;
-  /** Whether the bound Provider can rewind its conversation to an earlier user message. */
-  readonly setCapabilities = (input: { readonly supportsUserTurnEdits: boolean }): void => {
-    if (this.#supportsUserTurnEdits === input.supportsUserTurnEdits) return;
+  /**
+   * Whether the bound Provider can rewind its conversation to an earlier user message, and
+   * whether this Device can fork it into a new chat.
+   */
+  readonly setCapabilities = (input: {
+    readonly supportsUserTurnEdits: boolean;
+    readonly supportsForks: boolean;
+    /**
+     * Which person messages the reader may edit, by their Run, when the chat belongs to more
+     * than one Member; absent, every message the Provider can rewind to is the reader's own.
+     */
+    readonly memberEdits?: ReadonlyMap<string, MemberMessageEdit>;
+  }): void => {
+    if (
+      this.#supportsUserTurnEdits === input.supportsUserTurnEdits &&
+      this.#supportsForks === input.supportsForks &&
+      this.#memberEdits === input.memberEdits
+    )
+      return;
     this.#supportsUserTurnEdits = input.supportsUserTurnEdits;
+    this.#supportsForks = input.supportsForks;
+    this.#memberEdits = input.memberEdits;
     this.#publishView();
   };
+  /** The person messages the Provider can rewind to, before any Member's authorship applies. */
+  readonly rewindTargetIds = (): readonly string[] => this.#editEligibility();
   readonly children = (): readonly CodexConversationChildMembership[] => this.#children;
   readonly queueBoundary = (): string | null => this.#queuePage?.nextRunId ?? null;
   /**
@@ -775,6 +798,9 @@ export class AgentRuntimeConversationOwner {
   #restart(background = false): void {
     if (this.#disposed || this.#leases === 0 || this.#opening) return;
     let generation = background ? this.#generation : ++this.#generation;
+    // A background read of the same chat keeps its content's identity, so the pictures and other
+    // media it shows are not read again each time its host's snapshot is refreshed.
+    const sourceEpoch = background ? this.#sourceEpoch : ++this.#sourceEpoch;
     const transcript = this.#transcriptActive;
     this.#readMode = transcript ? "transcript" : "control";
     this.#historyRequest = null;
@@ -799,7 +825,7 @@ export class AgentRuntimeConversationOwner {
           this.#releaseEvents = null;
         }
         this.#contentSource = {
-          identity: JSON.stringify([this.#target.sessionId, this.#target.threadId, generation]),
+          identity: JSON.stringify([this.#target.sessionId, this.#target.threadId, sourceEpoch]),
           isCurrent: () =>
             generation === this.#generation &&
             !this.#disposed &&
@@ -2550,20 +2576,41 @@ export class AgentRuntimeConversationOwner {
         itemsView: "full",
       },
       capabilityFlags: {
-        editableUserTurnIds: this.#editEligibility(),
+        ...memberEditCapabilities(this.#editEligibility(), this.#memberEdits),
         // A rewind races any pending or executing Run, queued messages included.
         canEditUserTurns:
           this.#supportsUserTurnEdits &&
           !(this.#state.conversation?.snapshot.projection.runs ?? []).some(
             (run) => run.status === "queued" || runIsActive(run.status),
           ),
-        canForkFromTurn: true,
+        canForkFromTurn: this.#supportsForks,
         canSearch: false,
         canCollapseTurns: true,
       },
     };
     this.#patch({ view });
   }
+}
+export type MemberMessageEdit = "available" | "replied_since" | "unavailable";
+/** Shown beside a Member's own message once another Member has posted after it. */
+export const REPLIED_SINCE_REASON = "Someone else has replied since";
+/** Rewind targets narrowed to the reader's own messages, with why their own may not be edited. */
+export function memberEditCapabilities(
+  rewindTargets: readonly string[],
+  memberEdits: ReadonlyMap<string, MemberMessageEdit> | undefined,
+): Pick<
+  import("../../../shared/types").CodexConversationCapabilityFlags,
+  "editableUserTurnIds" | "userTurnEditRefusals"
+> {
+  if (!memberEdits) return { editableUserTurnIds: rewindTargets };
+  return {
+    editableUserTurnIds: rewindTargets.filter((runId) => memberEdits.get(runId) === "available"),
+    userTurnEditRefusals: Object.fromEntries(
+      rewindTargets
+        .filter((runId) => memberEdits.get(runId) === "replied_since")
+        .map((runId) => [runId, REPLIED_SINCE_REASON]),
+    ),
+  };
 }
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 /** Pending questions share one draft scope, so drafts survive while the Agent moves between Runs. */

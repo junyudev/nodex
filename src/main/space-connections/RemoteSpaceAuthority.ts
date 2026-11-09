@@ -182,7 +182,13 @@ export const live = (input: {
         return yield* invoke(selected).pipe(
           Effect.catch((error) => {
             // Cancellation, timeouts and capacity refusals do not replace a session.
+            // A restarted Core has no record of the old handshake, even when the device
+            // remains active. Reauthenticate once; a revoked device fails that boundary.
+            if (
+              !isDefinitiveCoreGenerationLoss(error.cause) &&
               !requiresCoreSessionRenewal(error.cause)
+            )
+              return Effect.fail(error);
             return reconnect(selected).pipe(
               Effect.flatMap((replacement) =>
                 options.replayAfterRecovery === false ? Effect.fail(error) : invoke(replacement),

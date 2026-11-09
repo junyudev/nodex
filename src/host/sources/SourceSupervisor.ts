@@ -8,6 +8,11 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import type { components } from "@nodex/core-protocol";
 import type { SourcesSettingsSnapshot, UpdateSourceSettingsInput } from "../../shared/sources";
+import type { ProjectWorkspaceApplyResult } from "../../main/core-client/types";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { createOperationId } from "../../main/core-runtime/operation-identity";
+import { CodexGitProbe } from "../../main/codex-application/CodexGitProbe";
+import { canonicalRepositoryUrl } from "../../main/agent-backend/PageWorkspaceApplication";
 import {
   GitHubSourceAdapter,
   SourceReadError,
@@ -119,6 +124,7 @@ export const make = Effect.gen(function* () {
     const names = new Set<string>();
     let cursor: string | null = null;
     while (true) {
+      const value: import("../../main/core-client/types").ProjectWorkspaceReadSnapshot =
         yield* core.workspace
           .read(
             {
@@ -133,6 +139,17 @@ export const make = Effect.gen(function* () {
       if (value.value.kind !== "project_window") return yield* unavailable();
       for (const project of value.value.projects.items) {
         for (const source of project.sources) {
+          const remotes =
+            source.kind === "repository"
+              ? []
+              : ((yield* git.readPath(source.path, ["remote"]))?.split("\n").filter(Boolean) ?? []);
+          const urls =
+            source.kind === "repository"
+              ? [source.remote]
+              : yield* Effect.forEach(remotes, (name) =>
+                  git.readPath(source.path, ["remote", "get-url", name]),
+                );
+          for (const remote of urls) {
             const canonical = canonicalRepositoryUrl(remote);
             if (!canonical) continue;
             const url = new URL(canonical);
@@ -201,6 +218,7 @@ export const make = Effect.gen(function* () {
     const branches: string[] = [];
     let after: string | null = null;
     while (true) {
+      const result: import("../../main/core-client/types").ProjectWorkspaceReadSnapshot =
         yield* core.workspace
           .read(
             { kind: "page_workspace_window", after_workspace_id: after, limit: 100 },

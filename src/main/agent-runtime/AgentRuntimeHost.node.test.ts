@@ -18,7 +18,11 @@ import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { MainConfig } from "../app/MainConfig";
-import type { ProjectWorkspaceApplyInput, ProjectWorkspaceRead } from "../core-client/types";
+import type {
+  AgentAttributionRequest,
+  ProjectWorkspaceApplyInput,
+  ProjectWorkspaceRead,
+} from "../core-client/types";
 import type {
   AgentRuntimeProcessConnection,
   AgentRuntimeProcessDelivery,
@@ -34,6 +38,7 @@ import { make } from "./AgentRuntimeHost";
 import {
   COORDINATOR_INSTRUCTIONS,
   MANAGED_SESSION_INSTRUCTIONS,
+} from "../../host/coordinator/coordinator-instructions";
 
 const frame = {
   runtimeId: "runtime",
@@ -95,7 +100,7 @@ const fixture = Effect.gen(function* () {
   const calls: AgentRuntimeMethod[] = [];
   const coreReads: ProjectWorkspaceRead[] = [];
   const coreWrites: ProjectWorkspaceApplyInput[] = [];
-  const attributions: { session_id: string; backend: string }[] = [];
+  const attributions: AgentAttributionRequest[] = [];
   const live = new Map<string, ReturnType<typeof proofOf>>();
   const bind = (identity: AgentHostTurnIdentity | AgentHostNativeSessionIdentity) =>
     live.set(identity.runId ?? identity.incarnationId, proofOf(identity));
@@ -164,7 +169,11 @@ const fixture = Effect.gen(function* () {
           value: {
             kind: "project",
             project: {
-              sources: (projectSources.get(input.project_id) ?? []).map((root) => ({ root })),
+              sources: (projectSources.get(input.project_id) ?? []).map((path, order) => ({
+                kind: "directory" as const,
+                path,
+                order,
+              })),
             },
           },
         };
@@ -226,6 +235,7 @@ const fixture = Effect.gen(function* () {
             coreWrites.push(input);
             return {};
           }),
+        issueAgentAttribution: (input: AgentAttributionRequest) =>
           Effect.suspend(() => {
             if (attributionUnavailable)
               return coreRuntimeError({
@@ -334,6 +344,7 @@ it.effect("a Turn's CLI is vouched for as its own Session's Agent", () =>
     const f = yield* fixture;
     yield* f.execute(prepareTurn());
     assert.deepEqual(f.attributions, [
+      { session_id: "session", run_id: "run:one", message_id: "message", backend: "acp" },
     ]);
   }).pipe(Effect.scoped),
 );

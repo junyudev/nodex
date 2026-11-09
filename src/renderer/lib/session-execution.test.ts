@@ -139,16 +139,16 @@ describe("Session execution projection", () => {
     expect(resolveSessionMarkdownExport(resolveSessionExecution(nativeClaude))).toBeNull();
     expect(resolveSessionMarkdownExport(resolveSessionExecution(base))).toBeNull();
 
-    expect(resolveSessionProjectMove(resolveSessionExecution(runtime))).toEqual({
+    expect(resolveSessionProjectMove({ ...runtime, canManage: true })).toEqual({
       kind: "runtime",
       sessionId: "session-1",
     });
-    expect(resolveSessionProjectMove(resolveSessionExecution(nativeCodex))).toEqual({
+    expect(resolveSessionProjectMove({ ...nativeCodex, canManage: true })).toEqual({
       kind: "codex-thread",
       threadId: "codex-1",
     });
-    expect(resolveSessionProjectMove(resolveSessionExecution(nativeClaude))).toBeNull();
-    expect(resolveSessionProjectMove(resolveSessionExecution(base))).toBeNull();
+    expect(resolveSessionProjectMove({ ...nativeClaude, canManage: true })).toBeNull();
+    expect(resolveSessionProjectMove({ ...base, canManage: true })).toBeNull();
   });
 
   test("never offers a bound Runtime Session as a new launch target", () => {

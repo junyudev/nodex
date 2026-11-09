@@ -2,6 +2,24 @@ use super::*;
 use nodex_core_contracts::LIBRARY_CONTRACT_VERSION;
 use nodex_core_contracts::library::*;
 
+// Person and Source intake relocate onto the same team repository Board.
+fn board(w: &TestWorkspace) {
+    crate::library::LibraryMembership::new(&w.kernel, "library-1".into())
+        .unwrap();
+    apply(
+        &w.module,
+        "project-work",
+        ProjectWorkspaceIntent::CreateProject {
+            project_id: "project:work".into(),
+            name: "Work".into(),
+            description: String::new(),
+            appearance: None,
+            source_roots: vec!["https://github.com/alice/repo".into()],
+            page_key_prefix: None,
+        },
+    );
+}
+
 fn requesting_member(w: &TestWorkspace) -> nodex_core_contracts::BoundModuleContext {
     use nodex_core_contracts::{AdapterKind, team::*};
     let membership = crate::library::LibraryMembership::new(&w.kernel, "library-1".into());

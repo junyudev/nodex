@@ -360,6 +360,23 @@ describe("Runtime application tool presentation", () => {
         id: read.id,
         path: read.viewedImagePath,
       });
+      // A kept copy of what the Agent saw is read from the chat, wherever the chat runs.
+      const copy = {
+        type: "image" as const,
+        id: "thread-copy",
+        name: "rail-states-light.png",
+        mimeType: "image/png",
+        sizeBytes: 13675,
+      };
+      expect(projectAgentRuntimeItem({ ...read, ...result, attachments: [copy] })).toEqual({
+        type: "imageView",
+        id: read.id,
+        path: buildAgentRuntimeAttachmentSource({
+          sourceThreadId: read.threadId,
+          itemId: read.id,
+          attachmentId: copy.id,
+        }),
+      });
     }
   });
 
@@ -657,9 +674,14 @@ describe("Runtime imported images", () => {
     },
   );
 
-  test.each(["copied", "missing"] as const)(
-    "keeps an imported %s image inspection through completed-turn rendering when output is omitted",
-    (availability) => {
+  test.each([
+    ["imageView", "copied"],
+    ["imageView", "missing"],
+    ["imageGeneration", "copied"],
+    ["imageGeneration", "missing"],
+  ] as const)(
+    "keeps an %s step's %s picture through completed-turn rendering when output is omitted",
+    (toolName, availability) => {
       const unavailable = { name: "viewed.png", sourcePath: "/removed/viewed.png" };
       const itemId = `view:${availability}`;
       const ownedSource = buildAgentRuntimeAttachmentSource({
@@ -672,7 +694,7 @@ describe("Runtime imported images", () => {
         {
           ...base,
           type: "dynamic_tool",
-          toolName: "imageView",
+          toolName,
           id: itemId,
           runId: null,
           ordinal: 2,

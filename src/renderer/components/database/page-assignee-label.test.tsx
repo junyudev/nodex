@@ -1,5 +1,6 @@
 import { expect, test, vi } from "vite-plus/test";
 import { screen } from "@testing-library/react";
+import { renderWithQuery as render } from "@/test/query";
 import { PageAssigneeLabel } from "./page-assignee-label";
 import { PageTurnView } from "../workbench/page-turn";
 vi.mock("@/lib/members-runtime", () => ({

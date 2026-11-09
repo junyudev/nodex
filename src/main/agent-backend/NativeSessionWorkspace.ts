@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { HostWorkspace } from "../../host/HostWorkspace";
 import { realpath, rm } from "node:fs/promises";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -84,6 +85,7 @@ export class NativeSessionWorkspace extends Context.Service<
 /** Filesystem/Git ownership is shared with all native backends; no Agent process is launched. */
 export const make = Effect.gen(function* () {
   const config = yield* MainConfig;
+  const workspace = yield* HostWorkspace;
   const hosts = yield* ExecutionHostRuntime;
   const worktrees = yield* ManagedWorktreeRuntime;
   const git = yield* CodexGitProbe;

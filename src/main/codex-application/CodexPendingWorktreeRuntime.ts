@@ -48,7 +48,7 @@ import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexConversationCreation } from "./CodexConversationCreation";
-import { CodexTurnPresentation } from "./CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import { CodexGitProbe } from "./CodexGitProbe";
 import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";

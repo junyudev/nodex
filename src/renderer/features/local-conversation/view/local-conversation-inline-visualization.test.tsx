@@ -7,6 +7,7 @@ import type {
   InlineVisualizationSnapshot,
 } from "../../../lib/inline-visualization/inline-visualization-runtime";
 import { createInlineVisualizationAnnotations } from "../../../lib/inline-visualization/inline-visualization-annotations";
+import * as rendererSpace from "../../../lib/renderer-space";
 import { ConversationVisualizationContext } from "./inline-visualization-context";
 import { LocalConversationInlineVisualization } from "./local-conversation-inline-visualization";
 import type { InlineVisualizationMode } from "../../../lib/inline-visualization/inline-visualization-presentation";
@@ -294,5 +295,22 @@ describe("inline visualization preview presentation", () => {
     expect(view.container.querySelector("p > mark")?.textContent).toBe("Retry");
     expect(retry.querySelector("mark")).toBeNull();
     expect(retry.parentElement?.querySelector("mark")).toBeNull();
+  });
+
+  test("a hosted chat's interactive response says it stays on its host and starts no sandbox", async () => {
+    const remote = vi.spyOn(rendererSpace, "isRemoteSpace").mockReturnValue(true);
+    try {
+      let view!: ReturnType<typeof render>;
+      await act(async () => {
+        view = render(<Harness mode="narrow" live={false} />);
+        await Promise.resolve();
+      });
+      expect(view.getByRole("note").textContent).toBe(
+        "Interactive response·Not available for chats on this Space's host",
+      );
+      expect(boundary.create).not.toHaveBeenCalled();
+    } finally {
+      remote.mockRestore();
+    }
   });
 });

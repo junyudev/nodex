@@ -1,7 +1,7 @@
 import type { HostDesktopTools } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
 import { CODEX_DESKTOP_THREAD_FEATURE_CONFIG } from "../codex/codex-thread-config";
-import type { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
+import type { CodexTurnPresentation } from "../../host/TurnPresentation";
 import type { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import type { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import type { WindowRuntime } from "../window-runtime/WindowRuntime";

@@ -6,7 +6,12 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import type { components } from "@nodex/core-protocol";
 import { createUuidV7 } from "../../shared/uuid-v7";
+import { CodexApplicationEventHub } from "../../main/codex-application/CodexApplicationEventHub";
 import { notificationSession } from "./notification-session";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifierRuntime";
+import { getLogger } from "../../main/logging/logger";
+import { AgentRuntimeSessionActivity } from "../../main/agent-runtime/AgentRuntimeSessionActivity";
 import { ManagedChatFacts, live as factsLive } from "./ManagedChatFacts";
 import {
   diffManagedChatObservation,

@@ -386,6 +386,16 @@ it.effect("revocation on a recovered request fences the replacement immediately"
     );
   }),
 );
+
+it.effect(
+  "a host restart repairs the expired connection handshake without revoking an active device",
+  () =>
+    Effect.gen(function* () {
+      const { registry, connects } = yield* fixture();
+      const access = Context.get(yield* registry.connection(teamId), CoreSessionAccess);
+      const original = yield* access.use("original", async (client) => client);
+      const read = access.use("after-restart", async (client) => {
+        if (client === original)
           throw new CoreHttpError(
             401,
             "connection has not completed a compatible Core handshake",
@@ -397,6 +407,19 @@ it.effect("revocation on a recovered request fences the replacement immediately"
               recovery: { kind: "renew_remote_session" },
             },
           );
+        return client.handshake.library_id;
+      });
+      assert.deepEqual(yield* Effect.all([read, read], { concurrency: "unbounded" }), [
+        teamId,
+        teamId,
+      ]);
+      assert.strictEqual(connects(), 2);
+      assert.strictEqual(
+        (yield* SubscriptionRef.get(registry.summaries))[1]?.availability,
+        "ready",
+      );
+    }),
+);
 
 it.effect(
   "reconnection replaces the cached Space name from its host and persists it with the same credential",

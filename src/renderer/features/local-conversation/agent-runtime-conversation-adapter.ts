@@ -14,10 +14,18 @@ import {
   projectModelPolicyCatalog,
 } from "../../../shared/model-policy";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { isHostedChat, separateHostedChatUploads } from "@/lib/hosted-chat";
+import { useChatCapabilities } from "@/lib/use-chat-capabilities";
+import {
+  CHAT_STOP_RESERVED_REASON,
+  HOSTED_CHAT_ACTION_REASON,
+  REMOTE_AGENT_REASON,
+} from "../../../shared/space-connection";
 import { useQuery } from "@tanstack/react-query";
 import { DEFAULT_AGENT_RUNTIME_SETTINGS } from "../../../shared/agent-runtime-settings";
 import { resolveAgentRuntimeMode } from "@/lib/agent-runtime-mode";
 import { agentRuntimeSettingsQueryOptions } from "@/lib/agent-runtime-settings";
+import { hostedChatMemberActionsQueryOptions } from "@/lib/query-options";
 import { planAgentApprovalDeclineOnSend } from "./agent-approval";
 import { approvalsRefusedBySend } from "./agent-approval-runtime";
 import { composerDraftIntents, type ComposerChatKey } from "@/lib/composer-draft-intents";
@@ -219,21 +227,28 @@ export function projectAgentRuntimeConnection(
   return view;
 }
 const emptyChildren = [] as const;
-const runtimePorts = new WeakMap<
-  AgentRuntimeConversationOwner,
-  Map<AgentBackendBinding["kind"], ConversationRuntime>
->();
+const runtimePorts = new WeakMap<AgentRuntimeConversationOwner, Map<string, ConversationRuntime>>();
+
+/**
+ * Which of a shared chat's Runs this reader may stop the work of, as Core answered for the Runs
+ * it was asked about; any other Run, or a task naming none, stops only for those who manage it.
+ */
+export interface AgentRuntimeRunStops {
+  readonly canManage: boolean;
+  readonly runIds: readonly string[];
+}
 
 /** A product view over the engine read owner. Session identity remains the command boundary. */
 export function createAgentRuntimeConversationRuntime(
   kind: AgentBackendBinding["kind"],
   target: AgentRuntimeSessionTarget | null,
   owner: AgentRuntimeConversationOwner | null,
+  /** Absent for a chat on this computer, whose only Member stops all of its work. */
+  stops?: AgentRuntimeRunStops,
 ): ConversationRuntime {
-  const ports = owner
-    ? (runtimePorts.get(owner) ?? new Map<AgentBackendBinding["kind"], ConversationRuntime>())
-    : null;
-  const previous = ports?.get(kind);
+  const ports = owner ? (runtimePorts.get(owner) ?? new Map<string, ConversationRuntime>()) : null;
+  const portKey = JSON.stringify([kind, stops ? [stops.canManage, stops.runIds] : null]);
+  const previous = ports?.get(portKey);
   if (previous) return previous;
   const matches = (id: string | null) => owner !== null && id === owner.threadId;
   const runtime: ConversationRuntime = {
@@ -279,11 +294,17 @@ export function createAgentRuntimeConversationRuntime(
     },
     connection: () => projectAgentRuntimeConnection(agentRuntimeActivityStore.readConnection()),
     role: (id) => (matches(id) ? "follower" : null),
+    // Each delegated task offers Stop only to whoever may stop the Run that started it.
     ...(target
       ? {
           delegatedTasks: createAgentRuntimeDelegatedTaskPort(
             target.sessionId,
             agentRuntimeRuntime,
+            agentRuntimeDelegatedTasks,
+            stops
+              ? (ownerRunId) =>
+                  stops.canManage || (ownerRunId !== null && stops.runIds.includes(ownerRunId))
+              : undefined,
           ),
         }
       : {}),
@@ -339,14 +360,22 @@ export function createAgentRuntimeConversationRuntime(
     },
     // Main's unread and notification policy reads the same presentation registry as native chats.
     setPresented: async (id, surfaceId, presented) => {
+      if (isHostedChat()) return;
       if (matches(id)) await setLocalConversationThreadPresented(id, surfaceId, presented, "local");
     },
   };
   if (owner && ports) {
-    ports.set(kind, runtime);
+    ports.set(portKey, runtime);
     runtimePorts.set(owner, ports);
   }
   return runtime;
+}
+
+function imageInput(model: Parameters<typeof agentRuntimeImageInputSupport>[0]) {
+  return {
+    supported: agentRuntimeImageInputSupport(model) === "supported",
+    unavailableReason: agentRuntimeImageInputUnavailableReason(model),
+  };
 }
 
 // Actions are reconstructed on render; one observed source admits one continuation at a time.
@@ -359,6 +388,37 @@ function latestRuntimeRun(runs: readonly AgentRuntimeRun[]): AgentRuntimeRun | u
     undefined,
   );
 }
+
+/**
+ * What a team Space's host does not do for a chat a Member reaches through it (see
+ * RemoteHostIpc). A hosted chat offers none of these, so nothing fails after a click.
+ */
+/** A hosted chat with no Agent ready on its host: only the host's own setup can fix it. */
+const hostedAgentUnavailableNotice: ComposerNotice = {
+  key: "agent:host",
+  tone: "warning",
+  title: "No Agent on this Space's host can run this chat",
+  detail: REMOTE_AGENT_REASON,
+  actions: [],
+};
+
+const HOST_UNAVAILABLE_ACTIONS = [
+  // A hosted chat runs on its host's Agents, whose settings are not this Device's.
+  "onManageFailedProvider",
+] as const satisfies readonly (keyof ThreadStageActions)[];
+/** A chat's context belongs to whoever may manage it: its owner or a Space Owner. */
+const MANAGE_ACTIONS = [
+  "onCompactThread",
+  "onClearContext",
+  "onCompactAndRetry",
+] as const satisfies readonly (keyof ThreadStageActions)[];
+const without = (
+  actions: Partial<ThreadStageActions>,
+  names: readonly (keyof ThreadStageActions)[],
+): Partial<ThreadStageActions> =>
+  Object.fromEntries(
+    Object.entries(actions).filter(([name]) => !(names as readonly string[]).includes(name)),
+  );
 
 /** Shared editor controls address the exact Session/Thread/Run observed by the read owner. */
 export function createAgentRuntimeStageActions(input: {
@@ -385,7 +445,7 @@ export function createAgentRuntimeStageActions(input: {
     promptInput?: CodexPromptInput,
     appMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage,
     modelSelection?: NonNullable<AgentRuntimeMessage["modelSelection"]>,
-  ) => Promise<Pick<AgentRuntimeMessage, "text" | "context">>;
+  ) => Promise<Pick<AgentRuntimeMessage, "text" | "context" | "uploads">>;
   readonly capturePresentation?: (
     target: CodexTurnPresentationTarget,
     submitted?: WorkbenchSubmitPresentation,
@@ -396,6 +456,15 @@ export function createAgentRuntimeStageActions(input: {
   ) => Promise<void>;
   /** The Agent and model the person chose for the chat's next message, when it changes them. */
   readonly nextSelection?: () => AgentRuntimeMessage["modelSelection"] | null;
+  /** A chat on a team Space's host: only operations its host admits are offered. */
+  readonly hosted?: boolean;
+  /**
+   * Whether the reader may manage this chat, compacting and clearing its context: its owner or a
+   * Space Owner, as Core decides. A chat on this computer belongs to its only Member, who may.
+   */
+  readonly manage?: boolean;
+  /** The mode a hosted chat's next message asks for; a local chat applies its mode at once. */
+  readonly nextInteractionMode?: () => AgentRuntimeMessage["interactionMode"] | null;
   readonly manageProvider?: (instanceId: string) => void;
   readonly onSideChatTitle?: (title: string) => void;
 }): Partial<ThreadStageActions> {
@@ -403,7 +472,11 @@ export function createAgentRuntimeStageActions(input: {
   // A choice travels with the message that uses it; the Runtime applies it to that message's Run.
   const chosenSelection = () => {
     const modelSelection = input.nextSelection?.();
-    return modelSelection ? { modelSelection } : {};
+    const interactionMode = input.nextInteractionMode?.();
+    return {
+      ...(modelSelection ? { modelSelection } : {}),
+      ...(interactionMode ? { interactionMode } : {}),
+    };
   };
   const requireTarget = () => {
     const target = input.target();
@@ -626,11 +699,10 @@ export function createAgentRuntimeStageActions(input: {
       runId,
       message: {
         messageId: queued.clientUserMessageId,
-        ...retainAgentAppContext(
-          await input.prepare(prompt, promptInput, undefined, selection),
-          original,
-          false,
-        ),
+        ...(await input.prepare(prompt, promptInput, undefined, selection).then((compiled) => ({
+          ...compiled,
+          ...retainAgentAppContext(compiled, original, false),
+        }))),
         images: agentRuntimePromptImages(promptInput),
         ...(promptInput?.agentConfigs !== undefined
           ? { agentConfigs: promptInput.agentConfigs }
@@ -645,7 +717,7 @@ export function createAgentRuntimeStageActions(input: {
       throw new Error("This queued message is no longer pending");
     return run.modelSelection;
   };
-  return {
+  const actions: Partial<ThreadStageActions> = {
     onCopyConversationMarkdown: async () => {
       const view = input.owner()?.getSnapshot().view;
       await copyAgentRuntimeConversationMarkdown(
@@ -706,10 +778,8 @@ export function createAgentRuntimeStageActions(input: {
         threadId: request.threadId,
       });
       // Compile before rewinding: a message the Agent cannot accept must not discard any history.
-      const prepared = retainAgentAppContext(
-        await input.prepare(promptInput.text, promptInput),
-        original.message,
-      );
+      const compiled = await input.prepare(promptInput.text, promptInput);
+      const prepared = { ...compiled, ...retainAgentAppContext(compiled, original.message) };
       const accepted = await transport.rewriteMessage({
         requestId: createUuidV7(),
         runId: request.turnId,
@@ -870,6 +940,11 @@ export function createAgentRuntimeStageActions(input: {
         ),
       }),
   };
+  if (!input.hosted) return actions;
+  return without(actions, [
+    ...HOST_UNAVAILABLE_ACTIONS,
+    ...(input.manage === true ? [] : MANAGE_ACTIONS),
+  ]);
 }
 
 export function useAgentRuntimeConversationAdapter(input: {
@@ -1059,6 +1134,22 @@ export function useAgentRuntimeConversationAdapter(input: {
     owner?.subscribe ?? emptySubscribe,
     owner?.getSnapshot ?? emptyRead,
   );
+  // In a chat with several Members, Core says what the reader may manage or stop, and which
+  // person messages are theirs to edit.
+  const capabilities = useChatCapabilities(input.sessionId);
+  const memberActions = useQuery(
+    hostedChatMemberActionsQueryOptions(
+      targetSessionId,
+      isHostedChat() && state.conversation ? (owner?.rewindTargetIds() ?? []) : [],
+    ),
+  ).data;
+  const memberEdits = useMemo(
+    () =>
+      memberActions
+        ? new Map(memberActions.runs.map(({ run_id, edit }) => [run_id, edit] as const))
+        : undefined,
+    [memberActions],
+  );
   useEffect(() => acquired?.retain(), [acquired]);
   // A replacement execution process re-reads what failed while it was unavailable.
   const runtimeConnection = useAgentRuntimeConnectionState();
@@ -1168,16 +1259,24 @@ export function useAgentRuntimeConversationAdapter(input: {
         (choice && modelOf(choice)) ?? undefined,
       )
     : null;
+  // A hosted chat's host takes its mode only with a message, so the mode waits beside the draft
+  // until the chat runs in it.
+  const choiceMode = choiceKey ? choices[choiceKey]?.interactionMode : undefined;
+  const nextMode = observed && choiceMode !== observed.interactionMode ? choiceMode : undefined;
   // A choice the chat has since applied is spent, so a later change elsewhere is not undone. Once
   // the chat is open, the unstarted draft it launched from has nothing left to choose.
   const spentChoice = Boolean(choiceKey && choice && observed && !nextSelection);
+  const spentMode = Boolean(choiceKey && choiceMode && observed && !nextMode);
   const spentDraft = Boolean(observed && choices[draftKey]);
   useEffect(() => {
-    if (!spentChoice && !spentDraft) return;
+    if (!spentChoice && !spentMode && !spentDraft) return;
     void setChoices((current) => {
       const unspent =
-        spentChoice && choiceKey
-          ? withAgentRuntimeComposerChoice(current, choiceKey, { selection: undefined })
+        (spentChoice || spentMode) && choiceKey
+          ? withAgentRuntimeComposerChoice(current, choiceKey, {
+              ...(spentChoice ? { selection: undefined } : {}),
+              ...(spentMode ? { interactionMode: undefined } : {}),
+            })
           : current;
       return spentDraft
         ? withAgentRuntimeComposerChoice(unspent, draftKey, {
@@ -1187,7 +1286,7 @@ export function useAgentRuntimeConversationAdapter(input: {
           })
         : unspent;
     });
-  }, [spentChoice, spentDraft, choiceKey, draftKey, setChoices]);
+  }, [spentChoice, spentMode, spentDraft, choiceKey, draftKey, setChoices]);
   // Only a loaded catalog can say the remembered choice is gone, so until then it shows as chosen.
   const provisionalChoice =
     !target && !draft.selection && (catalogState.loading || catalogState.error !== null)
@@ -1210,7 +1309,8 @@ export function useAgentRuntimeConversationAdapter(input: {
     openSettings: (instanceId) => openAgentSettings?.("acp", instanceId),
   });
   const windowsSandboxNotice = useWindowsSandboxSetup(
-    selection.binding.kind === "codex" &&
+    !isHostedChat() &&
+      selection.binding.kind === "codex" &&
       provider?.enabled &&
       provider.installed &&
       provider.auth.status !== "unauthenticated" &&
@@ -1304,9 +1404,16 @@ export function useAgentRuntimeConversationAdapter(input: {
   const canRollback =
     (observedSelection ? providerOf(observedSelection) : provider)?.supportsConversationRollback ===
     true;
+  // A hosted chat's history belongs to its Space host, which forks it for any Member who reads it
+  // and rewinds it only to a message its reader sent, until Core has said which those are.
+  const hosted = isHostedChat();
   useEffect(() => {
-    owner?.setCapabilities({ supportsUserTurnEdits: canRollback });
-  }, [owner, canRollback]);
+    owner?.setCapabilities({
+      supportsUserTurnEdits: canRollback && (!hosted || memberEdits !== undefined),
+      supportsForks: true,
+      ...(hosted ? { memberEdits } : {}),
+    });
+  }, [owner, canRollback, hosted, memberEdits]);
   const intentKey =
     targetThreadId ??
     JSON.stringify(["draft", draftKey, agentRuntimeProviderId(selection.binding)]);
@@ -1395,7 +1502,9 @@ export function useAgentRuntimeConversationAdapter(input: {
         provider = providers.find((entry) => entry.instanceId === instanceId);
       }
       const model = provider?.models.find((entry) => entry.slug === candidate.model);
+      // A hosted chat's sandbox belongs to its Space host, not this computer.
       if (
+        !hosted &&
         candidate.binding.kind === "codex" &&
         resolveCodexRendererOs() === "win32" &&
         (observed?.runtimeMode ?? draftRuntimeMode) !== "full-access" &&
@@ -1406,18 +1515,23 @@ export function useAgentRuntimeConversationAdapter(input: {
         });
         if (sandbox.status !== "ready") throw new Error("Set up Codex for Windows before sending.");
       }
-      return prepareAgentRuntimeMessage(
+      // The Space host reads this computer's files as uploads, never at their paths here.
+      const { promptInput: portable, uploads } = hosted
+        ? separateHostedChatUploads(promptInput)
+        : { promptInput, uploads: [] };
+      const prepared = await prepareAgentRuntimeMessage(
         {
           model,
           provider,
           modelSelection: modelOf(candidate) ?? undefined,
           kind: candidate.binding.kind,
           text,
-          promptInput,
+          promptInput: portable,
           untrustedAppMessage,
         },
         (file) => readPastedTextAttachment({ file }),
       );
+      return uploads.length ? { ...prepared, uploads } : prepared;
     };
   const prepare: Parameters<typeof createAgentRuntimeStageActions>[0]["prepare"] = (
     text,
@@ -1459,11 +1573,16 @@ export function useAgentRuntimeConversationAdapter(input: {
       readPresentation: () => readCodexSubmissionPresentation(workbenchOwner),
       capturePresentation: (target, submitted) =>
         captureCodexTurnPresentation(workbenchOwner, target, submitted),
-      openFork: async (result) => {
+      openFork: async (
+        result: import("../../../shared/agent-runtime-api").AgentRuntimeLaunchResult,
+      ) => {
         await input.onRefresh(result.projectId);
         await input.onOpenThread(result.threadId, { runtimeSessionId: result.sessionId });
       },
+      hosted,
+      manage: capabilities.canManage,
       nextSelection: () => nextSelection,
+      nextInteractionMode: () => nextMode ?? null,
       manageProvider,
       onSideChatTitle: input.onSideChatTitle,
     }),
@@ -1629,7 +1748,8 @@ export function useAgentRuntimeConversationAdapter(input: {
         ),
       });
     },
-    ...(target && observed && agentRuntimeForkSource(observed)
+    // A hosted fork or side chat merges back for whoever may manage it, as Core admits.
+    ...(target && observed && agentRuntimeForkSource(observed) && capabilities.canManage
       ? {
           onMergeForkBack: async () => {
             const merged = await agentRuntimeRuntime.mergeBack({
@@ -1642,16 +1762,32 @@ export function useAgentRuntimeConversationAdapter(input: {
           },
         }
       : {}),
-    onRuntimeModeChange: async (runtimeMode) => {
-      if (!target) {
-        await writeChoice(draftKey, { runtimeMode });
-        return;
-      }
-      await agentRuntimeRuntime.setModes({ ...target, requestId: createUuidV7(), runtimeMode });
-    },
+    // A hosted chat's permissions are the Space host's execution authority, not this Device's.
+    ...(hosted
+      ? {}
+      : {
+          onRuntimeModeChange: async (
+            runtimeMode: import("@nodex/agent-runtime/contracts").RuntimeMode,
+          ) => {
+            if (!target) {
+              await writeChoice(draftKey, { runtimeMode });
+              return;
+            }
+            await agentRuntimeRuntime.setModes({
+              ...target,
+              requestId: createUuidV7(),
+              runtimeMode,
+            });
+          },
+        }),
     onCollaborationModeChange: async (interactionMode) => {
       if (!target) {
         await writeChoice(draftKey, { interactionMode });
+        return;
+      }
+      // The Space host takes a hosted chat's mode with its next message; nothing changes until then.
+      if (hosted) {
+        if (choiceKey) await writeChoice(choiceKey, { interactionMode });
         return;
       }
       await agentRuntimeRuntime.setModes({ ...target, requestId: createUuidV7(), interactionMode });
@@ -1668,6 +1804,12 @@ export function useAgentRuntimeConversationAdapter(input: {
       ? { sessionId: targetSessionId, ...(targetThreadId ? { threadId: targetThreadId } : {}) }
       : null,
     owner,
+    hosted
+      ? {
+          canManage: capabilities.canManage,
+          runIds: (memberActions?.runs ?? []).flatMap((run) => (run.can_stop ? [run.run_id] : [])),
+        }
+      : undefined,
   );
   // Core owns the root chat's title and unread state independently of execution history.
   const view = state.view;
@@ -1801,28 +1943,33 @@ export function useAgentRuntimeConversationAdapter(input: {
   const pendingImport = acpPendingImportedHistory(projection);
   // A turned-on Codex or Claude that cannot run yet explains its missing models in the picker;
   // OpenCode and ACP Agents bring their own setup rows.
-  const builtInSetups = catalogState.providers.flatMap((entry): AgentModelSetupPresentation[] => {
-    const binding = isNodexProviderId(entry.instanceId) ? undefined : bindingFor(entry.instanceId);
-    const hint = agentReadinessSetupHint(entry);
-    if (!hint || (binding?.kind !== "codex" && binding?.kind !== "claude")) return [];
-    const signIn = entry.instanceId === "codex" && hint.hint === "Sign in";
-    return [
-      {
-        kind: binding.kind,
-        label: agentRuntimeProviderLabel(entry, input.instances),
-        ...hint,
-        action: {
-          kind: "open",
-          open: signIn
-            ? () =>
-                void signInToCodex().catch((cause: unknown) =>
-                  toastFailure("Couldn’t start signing in to Codex", cause),
-                )
-            : () => openSettingsFor(binding),
+  // A hosted chat's Agents are its host's: this Device can neither sign in to nor set them up.
+  const builtInSetups = (hosted ? [] : catalogState.providers).flatMap(
+    (entry): AgentModelSetupPresentation[] => {
+      const binding = isNodexProviderId(entry.instanceId)
+        ? undefined
+        : bindingFor(entry.instanceId);
+      const hint = agentReadinessSetupHint(entry);
+      if (!hint || (binding?.kind !== "codex" && binding?.kind !== "claude")) return [];
+      const signIn = entry.instanceId === "codex" && hint.hint === "Sign in";
+      return [
+        {
+          kind: binding.kind,
+          label: agentRuntimeProviderLabel(entry, input.instances),
+          ...hint,
+          action: {
+            kind: "open",
+            open: signIn
+              ? () =>
+                  void signInToCodex().catch((cause: unknown) =>
+                    toastFailure("Couldn’t start signing in to Codex", cause),
+                  )
+              : () => openSettingsFor(binding),
+          },
         },
-      },
-    ];
-  });
+      ];
+    },
+  );
   // Only the Agent this chat runs on, or one the person chose, raises a readiness notice. A new chat
   // with nothing it could run asks for an Agent instead. Credits are never chosen automatically, so
   // an account that could spend them leaves a model to choose rather than an Agent to connect.
@@ -1844,14 +1991,16 @@ export function useAgentRuntimeConversationAdapter(input: {
   const agentNotice =
     acpSetup.notice ??
     (noUsableAgent
-      ? connectAgentNotice(() => void connectAgent())
+      ? hosted
+        ? hostedAgentUnavailableNotice
+        : connectAgentNotice(() => void connectAgent())
       : (observed || selection.model) && !currentModelOff
         ? agentReadinessNotice(
             provider ? agentRuntimeProviderLabel(provider, input.instances) : "The Agent",
             provider,
             {
-              ...(provider?.instanceId === "codex" ? { signIn: signInToCodex } : {}),
-              ...(openAgentSettings
+              ...(provider?.instanceId === "codex" && !hosted ? { signIn: signInToCodex } : {}),
+              ...(openAgentSettings && !hosted
                 ? { openSettings: () => openSettingsFor(selection.binding) }
                 : {}),
               checkAgain: checkCatalogAgain,
@@ -1868,18 +2017,22 @@ export function useAgentRuntimeConversationAdapter(input: {
         key: `worktree-preparation:${preparationFailure}`,
         tone: "danger",
         title: "Couldn’t prepare the worktree",
-        actions: [
-          {
-            label: "Retry",
-            pendingLabel: "Retrying…",
-            run: () => retryPreparation(preparationFailure, false),
-          },
-          {
-            label: "Work locally",
-            pendingLabel: "Starting…",
-            run: () => retryPreparation(preparationFailure, true),
-          },
-        ],
+        ...(hosted
+          ? { detail: HOSTED_CHAT_ACTION_REASON, actions: [] }
+          : {
+              actions: [
+                {
+                  label: "Retry",
+                  pendingLabel: "Retrying…",
+                  run: () => retryPreparation(preparationFailure, false),
+                },
+                {
+                  label: "Work locally",
+                  pendingLabel: "Starting…",
+                  run: () => retryPreparation(preparationFailure, true),
+                },
+              ],
+            }),
       }
     : state.error
       ? {
@@ -2035,21 +2188,20 @@ export function useAgentRuntimeConversationAdapter(input: {
     controls: {
       steer: true,
 
-      images: agentRuntimeImageInputSupport(currentModel) === "supported",
+      images: imageInput(currentModel).supported,
+      context: true,
       skills: true,
       subagents: true,
       goals: false,
     },
-    imageInputUnavailableReason: agentRuntimeImageInputUnavailableReason(currentModel),
-    imageInputForSelection: (modelSelection) => {
-      const model = catalogState.providers
-        .find((entry) => entry.instanceId === modelSelection.instanceId)
-        ?.models.find((entry) => entry.slug === modelSelection.model);
-      return {
-        supported: agentRuntimeImageInputSupport(model) === "supported",
-        unavailableReason: agentRuntimeImageInputUnavailableReason(model),
-      };
-    },
+    ...(capabilities.canStop ? {} : { interruptUnavailableReason: CHAT_STOP_RESERVED_REASON }),
+    imageInputUnavailableReason: imageInput(currentModel).unavailableReason,
+    imageInputForSelection: (modelSelection) =>
+      imageInput(
+        catalogState.providers
+          .find((entry) => entry.instanceId === modelSelection.instanceId)
+          ?.models.find((entry) => entry.slug === modelSelection.model),
+      ),
     skills:
       provider?.skills
         .filter((skill) => skill.enabled)
@@ -2089,7 +2241,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     runtimeMode: presentation.runtimeMode,
     supportedRuntimeModes: provider?.supportedRuntimeModes,
     defaultRuntimeMode,
-    selectedMode: observed?.interactionMode ?? draftMode,
+    selectedMode: nextMode ?? observed?.interactionMode ?? draftMode,
     modes: [
       { name: "Code", mode: "default", model: null },
       { name: "Plan", mode: "plan", model: null },

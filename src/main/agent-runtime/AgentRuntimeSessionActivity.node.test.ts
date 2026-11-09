@@ -224,6 +224,7 @@ it.live(
         description: "Dev server",
         command: "vp run dev",
         startedAt: "2026-10-15T09:00:00.000Z",
+        runId: null,
       };
       const base = root("thread:a", "background", { backgroundTasks: [task] });
       yield* runtime.commit("thread:a", base);

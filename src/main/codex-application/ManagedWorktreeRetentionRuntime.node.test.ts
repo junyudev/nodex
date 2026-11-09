@@ -10,7 +10,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import type { CodexPendingWorktreeEntry } from "../../shared/codex-pending-worktree";
 import type { ManagedWorktreeSettings } from "../../shared/types";
-import { AutomationApplication } from "../automation-application/AutomationApplication";
+import { AutomationApplication } from "../../host/automation-application/AutomationApplication";
 import {
   ProjectWorkspace,
   type ProjectWorkspaceService,

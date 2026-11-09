@@ -235,6 +235,29 @@ describe("Inbox destination and Agent selection", () => {
     );
   });
 
+  test("a hand-written new chat leaves out what it runs on until the Inbox's settings arrive", async () => {
+    const onSubmit = vi.fn(async () => true);
+    renderQuery(
+      <InboxDispatchEditor
+        initial={draftFromAction(
+          { type: "new_chat", additions: [], projectId: null, prompt: "Compare both", agent: null },
+          "Compare both",
+        )}
+        projects={[]}
+        agents={inboxAgentsFixture({ settingsReady: false })}
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+      />,
+    );
+    // A default no one has read is never shown as the one the chat will start on.
+    expect(screen.queryByRole("button", { name: /^Runs on/u })).toBeNull();
+    await click("Start chat");
+    expect(onSubmit).toHaveBeenCalledWith(
+      { type: "new_chat", projectId: null, prompt: "Compare both", agent: null, additions: [] },
+      null,
+    );
+  });
+
   test("saves how many suggestions run at once only when the number is left", async () => {
     vi.mocked(readInboxSettings).mockResolvedValue(DEFAULT_INBOX_SETTINGS);
     renderQuery(<InboxSettingsPage />);

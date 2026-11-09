@@ -16,7 +16,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { createCommandKeymapState } from "../../shared/command-keybindings";
 import { testLayer as mainConfigTestLayer } from "../app/MainConfig";
-import { CodexPlatform } from "../app/CodexApplicationLive";
+import { CodexPlatform } from "../../host/ProviderPlatform";
 import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
 import { ElectronPrivacy } from "../platform/electron/ElectronPrivacy";

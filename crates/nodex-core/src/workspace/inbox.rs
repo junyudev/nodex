@@ -84,6 +84,18 @@ pub(super) struct InboxHome {
     pub(super) view_id: String,
 }
 
+/// A person's Inbox decision may start Agent work on the Space's execution owner: the
+/// local Owner through its Desktop Host, or a verified Member whose decision that host
+/// carries. Core's server admits a remote Member's decision only with the host's live
+/// invocation proof, so the host resolves the Agent from its own catalog. Advice,
+/// routing and delivery remain `require_host` work.
+pub(super) fn require_decision_authority(context: &BoundModuleContext) -> Result<(), StoreError> {
+    if context.adapter == AdapterKind::RemoteMember && context.principal.is_some() {
+        return Ok(());
+    }
+    require_host(context)
+}
+
 /// Dispatch suggestions and delivery are Desktop Host responsibilities.
 pub(super) fn require_host(context: &BoundModuleContext) -> Result<(), StoreError> {
     if matches!(
@@ -1385,18 +1397,25 @@ fn user_summary(action: &ProjectWorkspaceInboxDispatchAction) -> String {
     }
 }
 
+/// The Dispatch proposal a person confirmed: its identity, the messages it covers, its action and the chat it targets.
+struct ConfirmedProposal<'a> {
+    proposal_id: &'a str,
+    page_ids: &'a [String],
+    action: &'a ProjectWorkspaceInboxDispatchAction,
+    session_id: Option<&'a str>,
 fn apply_confirmation(
     connection: &Connection,
     context: &BoundModuleContext,
     commit: &crate::infrastructure::local_commit::CommitContext,
     library_id: &str,
-    proposal_id: &str,
-    page_ids: &[String],
-    action: &ProjectWorkspaceInboxDispatchAction,
-    session_id: Option<&str>,
+    confirmed_proposal: ConfirmedProposal<'_>,
     now: &str,
 ) -> Result<WorkspaceMutationEffects, StoreError> {
+    let ConfirmedProposal {
         proposal_id,
+        page_ids,
+        session_id,
+    } = confirmed_proposal;
     if !matches!(
         action,
         ProjectWorkspaceInboxDispatchAction::ExecuteDecision { .. }
@@ -1425,6 +1444,7 @@ fn apply_confirmation(
                     context,
                     commit,
                     proposal_id,
+                    event_automation::DecisionConfirmation {
                         pages: page_ids,
                         dispatch: decision_id,
                         agent: agent.as_ref(),
@@ -1503,6 +1523,8 @@ fn apply_confirmation(
                 .transpose()?
                 .flatten()
             {
+                // The person whose message asked for the work owns the chat it starts.
+                super::chat_stewardship::record_owner(connection, session_id, &member, now)?;
                 connection.execute("INSERT OR IGNORE INTO session_requesting_members(session_id,message_id,member_id,accepted_at) VALUES(?1,?2,?3,?4)",params![session_id,proposal_id,member,now])?;
             }
             super::page_chat::set_active_chats(connection, session_id, page_ids, now)?;
@@ -2068,7 +2090,6 @@ pub(super) fn retry_dispatch(
         proposal.action,
         ProjectWorkspaceInboxDispatchAction::ExecuteDecision { .. }
     ) {
-        require_host(context)?;
         let now = sqlite_now(connection)?;
         return run_mutation(
             connection,
@@ -2092,18 +2113,8 @@ pub(super) fn retry_dispatch(
             },
         );
     }
-    if proposal.state != "failed" || proposal.dispatch_session_id.is_none() {
-        return Err(conflict("Only a failed chat dispatch can be retried"));
-    }
-    let kind: Option<String> = connection.query_row(
-        "SELECT failure_kind FROM inbox_proposals WHERE proposal_id=?1",
-        [proposal_id],
-        |r| r.get(0),
-    )?;
-    if kind.as_deref() != Some("unavailable") {
-        return Err(conflict(
-            "Review this rejected decision before sending again",
-        ));
+    if let Some(refusal) = chat_retry_refusal(connection, proposal_id, &proposal)? {
+        return Err(conflict(refusal));
     }
     let now = sqlite_now(connection)?;
     run_mutation(
@@ -2115,18 +2126,8 @@ pub(super) fn retry_dispatch(
         &now,
         |_| {
             require_live_entries(connection, library_id, &proposal.page_ids)?;
-            for page_id in &proposal.page_ids {
-                let still_owned = connection.query_row(
-                    "SELECT state='open' AND current_proposal_id IS ?2 \
-                     FROM inbox_entries WHERE page_id=?1",
-                    params![page_id, proposal_id],
-                    |row| row.get::<_, bool>(0),
-                )?;
-                if !still_owned {
-                    return Err(conflict(
-                        "The Inbox group changed; review its messages before sending again",
-                    ));
-                }
+            if !entries_await(connection, proposal_id, &proposal.page_ids)? {
+                return Err(conflict(GROUP_CHANGED));
             }
             connection.execute(
                 "UPDATE inbox_proposals SET state = 'dispatching', failure_message = NULL, failure_kind = NULL, \
@@ -2134,9 +2135,119 @@ pub(super) fn retry_dispatch(
                  WHERE proposal_id = ?1",
                 params![proposal_id, now],
             )?;
-            Ok(simple_effects("inbox_retry_dispatch", &now))
+            chat_start_effects(connection, "inbox_retry_dispatch", proposal_id, &now)
         },
     )
+}
+
+const GROUP_CHANGED: &str = "The Inbox group changed; review its messages before sending again";
+
+/// Why Core would refuse to send a failed chat decision again, or None when its messages still
+/// wait for it. A retry and the chat's own start read share this one rule.
+fn chat_retry_refusal(
+    connection: &Connection,
+    proposal_id: &str,
+    proposal: &StoredProposal,
+) -> Result<Option<&'static str>, StoreError> {
+    if proposal.state != "failed" || proposal.dispatch_session_id.is_none() {
+        return Ok(Some("Only a failed chat dispatch can be retried"));
+    }
+    let kind: Option<String> = connection.query_row(
+        "SELECT failure_kind FROM inbox_proposals WHERE proposal_id=?1",
+        [proposal_id],
+        |r| r.get(0),
+    )?;
+    if kind.as_deref() != Some("unavailable") {
+        return Ok(Some("Review this rejected decision before sending again"));
+    }
+    Ok(None)
+}
+
+/// Whether every message of the decision is still open and waiting for it.
+fn entries_await(
+    connection: &Connection,
+    proposal_id: &str,
+    page_ids: &[String],
+) -> Result<bool, StoreError> {
+    for page_id in page_ids {
+        let waiting = connection
+            .query_row(
+                "SELECT state='open' AND current_proposal_id IS ?2 FROM inbox_entries WHERE page_id=?1",
+                params![page_id, proposal_id],
+                |row| row.get::<_, bool>(0),
+            )
+            .optional()?;
+        if waiting != Some(true) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// A chat's start changing refreshes the chat itself, wherever it is open.
+pub(super) fn chat_start_effects(
+    connection: &Connection,
+    operation_kind: &'static str,
+    proposal_id: &str,
+    now: &str,
+) -> Result<WorkspaceMutationEffects, StoreError> {
+    let mut effects = simple_effects(operation_kind, now);
+    let session: Option<String> = connection
+        .query_row(
+            "SELECT dispatch_session_id FROM inbox_proposals WHERE proposal_id=?1 \
+             AND json_extract(action_json,'$.type')='new_chat'",
+            [proposal_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .flatten();
+    effects.session_detail_ids.extend(session);
+    Ok(effects)
+}
+
+/// How the chat an Inbox decision started is getting on, until it starts.
+pub(super) fn session_start(
+    connection: &Connection,
+    library_id: &str,
+    session_id: &str,
+) -> Result<Option<nodex_core_contracts::workspace::ProjectWorkspaceSessionStart>, StoreError> {
+    use nodex_core_contracts::workspace::{
+        ProjectWorkspaceSessionStart, ProjectWorkspaceSessionStartState as State,
+    };
+    let latest: Option<(String, String, Option<String>, Option<String>)> = connection
+        .query_row(
+            "SELECT proposal_id, state, failure_kind, failure_message FROM inbox_proposals \
+             WHERE dispatch_session_id=?1 AND library_id=?2 \
+               AND json_extract(action_json,'$.type')='new_chat' \
+             ORDER BY updated_at DESC, proposal_id DESC LIMIT 1",
+            params![session_id, library_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .optional()?;
+    let Some((proposal_id, state, kind, failure_message)) = latest else {
+        return Ok(None);
+    };
+    let state = match (state.as_str(), kind.as_deref()) {
+        ("dispatching", Some("unknown")) => State::Uncertain,
+        ("dispatching", _) => State::Starting,
+        ("failed", _) => State::Failed,
+        _ => return Ok(None),
+    };
+    let proposal = require_proposal(connection, library_id, &proposal_id)?;
+    let Some(page_id) = proposal.page_ids.first().cloned() else {
+        return Ok(None);
+    };
+    let retryable = chat_retry_refusal(connection, &proposal_id, &proposal)?.is_none()
+        && entries_await(connection, &proposal_id, &proposal.page_ids)?;
+    Ok(Some(ProjectWorkspaceSessionStart {
+        proposal_id,
+        page_id,
+        state,
+        failure_message: (state != State::Starting)
+            .then_some(failure_message)
+            .flatten(),
+        retryable,
+    }))
 }
 
 // ---------------------------------------------------------------------------

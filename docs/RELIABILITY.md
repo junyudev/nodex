@@ -328,7 +328,11 @@ finishes before time-budgeted incremental page reclamation; current Profiles
 opt into incremental auto-vacuum at creation, while existing database header
 modes are preserved without an implicit full rewrite.
 
-The Main application scope owns the automatic backup and maintenance lanes.
+The embedding application Scope owns the automatic backup and maintenance lanes
+through the Space's host kernel. The personal Desktop acquires one kernel; team
+Desktop connections acquire none. Kernel acquisition, producer fibers and
+Runtime supervision share scoped rollback and shutdown with their embedding
+process. Closing that Scope stops producers before their dependencies release.
 Changing backup interval or retention replaces only the backup lane; it must not
 stop maintenance. Maintenance lanes share a fair FIFO permit with at most one
 queued pass per lane; only Core's due-work result may select an idle interval,
@@ -338,6 +342,26 @@ their timers and power-resume listener together.
 
 Read [Backup, Restore, and Maintenance](reliability/backup-restore-and-maintenance.md).
 
+## Space host lifecycle
+
+`nodex serve init` prepares the team identity and certificate without listening.
+`serve start` admits private administration files and listener policy before it
+acquires a native exclusive lifetime lease. It composes one headless kernel,
+waits for Core event delivery, and only then opens the remote listener. Status
+requires both the held lease and the exact live Core generation; stale status
+files cannot make a stopped host appear ready. A replaced generation cannot
+remove a newer host's status file.
+
+The foreground host owns one scoped producer graph. Shutdown releases its
+producers, Agent Runtime and Core before releasing the lifetime lease. Durable
+Work and delivery identities remain the source of restart deduplication.
+A replacement Host can reattach to Core's existing matching listener after a
+process crash. Changing the listener address or certificate requires a Core
+restart. Waiting Host calls use their own bounded queue (eight per Member,
+32 per Space) and do not occupy content request slots. Their client timeout
+covers Core's long-poll and execution-owner reply deadlines. Team Desktop Session
+and Inbox invalidations coalesce into bounded repairs once per second; bursts of
+host metadata commits cannot trigger one remote query burst per commit. A lost
 handshake after a host restart triggers one shared device reauthentication. Only pinned device-credential renewal can prove withdrawn access: an unknown or
 revoked Device or a removed Member. Its typed `remote_access_withdrawn` evidence
 fences that Space. An operation refusal, conflict, stale fence or rate limit never
@@ -354,6 +378,15 @@ and retries the same mutation identity within a bounded 90-second lifetime.
 Waiting requests are capped at 64. Hosted transcripts use targeted Session
 invalidations with a 15-second repair for provider-only deltas. Background repairs
 retain the loaded transcript, Composer and draft through transient failures.
+Hosted answers require Core's current execution observation and the entitled
+Member. A stale or unavailable observation refuses an answer until refreshed;
+the Host never substitutes its local Owner. The Runtime-verified input message fixes the Run requester at credential
+issuance, refining provisional observations. Credential issuance waits briefly
+for Member acceptance evidence and refuses a missing proof instead of using a
+different Member. Later messages cannot redirect that Run.
+Service managers run `serve start --foreground`; installation, credentials and
+deployment restrictions are described in [Hosting a team Space](team-space-hosting.md).
+
 ## Desktop process lifecycle
 
 Electron performs only platform-required synchronous bootstrap before readiness: Profile paths,

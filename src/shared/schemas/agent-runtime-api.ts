@@ -45,6 +45,20 @@ export const AgentRuntimeModeSchema = z.enum([
   "full-access",
 ]) satisfies z.ZodType<RuntimeMode>;
 export const AgentRuntimeInteractionModeSchema = z.enum(["default", "plan"]);
+const AgentConfigsSchema = z
+  .array(
+    z
+      .object({
+        mode: z.string().max(512).optional(),
+        provider: z.string().max(512).optional(),
+        model: z.string().max(512).optional(),
+        reasoning: z.string().max(512).optional(),
+        speed: z.string().max(512).optional(),
+        unknownAttributes: z.array(z.string().max(512)).max(32).optional(),
+      })
+      .strict(),
+  )
+  .max(100);
 // Native attachment/context codecs stay authoritative in the execution process.
 export const AgentRuntimeMessageSchema = z
   .object({
@@ -65,21 +79,7 @@ export const AgentRuntimeMessageSchema = z
     context: z.record(z.string(), z.unknown()).optional(),
     modelSelection: AgentRuntimeModelSelectionSchema.optional(),
     interactionMode: AgentRuntimeInteractionModeSchema.optional(),
-    agentConfigs: z
-      .array(
-        z
-          .object({
-            mode: z.string().max(512).optional(),
-            provider: z.string().max(512).optional(),
-            model: z.string().max(512).optional(),
-            reasoning: z.string().max(512).optional(),
-            speed: z.string().max(512).optional(),
-            unknownAttributes: z.array(z.string().max(512)).max(32).optional(),
-          })
-          .strict(),
-      )
-      .max(100)
-      .optional(),
+    agentConfigs: AgentConfigsSchema.optional(),
   })
   .strict() as z.ZodType<AgentRuntimeMessage>;
 export const AgentRuntimeLaunchSchema = z
@@ -137,7 +137,11 @@ export const AgentRuntimeModesSchema = AgentRuntimeTargetSchema.extend({
   runtimeMode: AgentRuntimeModeSchema.optional(),
   interactionMode: AgentRuntimeInteractionModeSchema.optional(),
 });
-export const AgentRuntimeCompactSchema = AgentRuntimeTargetSchema.extend({ requestId: id });
+export const AgentRuntimeCompactSchema = AgentRuntimeTargetSchema.extend({
+  requestId: id,
+  /** Compacting continues this failed reply once the context fits again. */
+  failedRunId: id.optional(),
+});
 export const AgentRuntimeClearContextSchema = AgentRuntimeTargetSchema.extend({ requestId: id });
 export const AgentRuntimeRewriteMessageSchema = AgentRuntimeMessageInputSchema.extend({
   requestId: id,
@@ -158,6 +162,7 @@ export const AgentRuntimeTaskStopSchema = AgentRuntimeTargetSchema.extend({
 });
 export const AgentRuntimeBackgroundStopSchema = AgentRuntimeTargetSchema.extend({
   requestId: id,
+  runId: id.nullable().optional(),
   taskIds: z
     .array(id)
     .min(1)
@@ -170,13 +175,14 @@ export const AgentRuntimeBackgroundOutputSchema = AgentRuntimeTargetSchema.exten
 export const AgentRuntimeTaskCancelSchema = AgentRuntimeTargetSchema.extend({
   requestId: id,
   taskId: id,
+  runId: id.nullable().optional(),
 });
 export const AgentRuntimePreparationRetrySchema = AgentRuntimeTargetSchema.extend({
   requestId: id,
   runId: id,
   workLocally: z.boolean(),
 }).strict();
-export const AgentRuntimeQueueSchema = z.discriminatedUnion("action", [
+const queueControls = [
   AgentRuntimeTargetSchema.extend({
     requestId: id,
     action: z.literal("resume"),
@@ -199,16 +205,90 @@ export const AgentRuntimeQueueSchema = z.discriminatedUnion("action", [
   }).strict(),
   AgentRuntimeTargetSchema.extend({
     requestId: id,
+    action: z.literal("steer"),
+    runId: id,
+    targetRunId: id,
+  }).strict(),
+] as const;
+export const AgentRuntimeQueueSchema = z.discriminatedUnion("action", [
+  ...queueControls,
+  AgentRuntimeTargetSchema.extend({
+    requestId: id,
     action: z.literal("edit"),
     runId: id,
     message: AgentRuntimeMessageSchema,
     presentationTicket: CodexTurnPresentationTicketSchema.optional(),
   }).strict(),
+]);
+
+/** The context records a message carries beside its words; the Runtime checks each record. */
+const HostedChatContextSchema = z
+  .object({
+    version: z.literal(1),
+    records: z.array(
+      z
+        .object({ kind: z.string().max(64), label: z.string().max(200), payload: z.unknown() })
+        .strict(),
+    ),
+  })
+  .strict() satisfies z.ZodType<AgentRuntimeMessage["context"]>;
+/** The most files one message to a chat on a Space's host carries, from any Device. */
+export const HOSTED_CHAT_MAX_FILES = 12;
+/**
+ * What a Member's Device sends to a chat that runs on its Space host: words, the context they
+ * reference and the choices that shape the Run, as a local Composer sends them. Images and files
+ * travel as Library Files the Member uploaded, which the host reads with the Member's authority;
+ * no Device path, byte or window that presents the turn crosses to the host.
+ */
+export const HostedChatMessageSchema = z
+  .object({
+    messageId: id,
+    text: z.string().max(120_000),
+    fileRefs: z.array(z.string().min(1).max(512)).max(HOSTED_CHAT_MAX_FILES).optional(),
+    context: HostedChatContextSchema.optional(),
+    agentConfigs: AgentConfigsSchema.optional(),
+    modelSelection: AgentRuntimeModelSelectionSchema.optional(),
+    interactionMode: AgentRuntimeInteractionModeSchema.optional(),
+  })
+  .strict();
+/**
+ * A new chat a Member starts on the Space host, with or without a Project, from a desktop or a
+ * phone. It runs in the host's tasks directory, or where the host runs the Project, in its
+ * checkout or a new worktree the host prepares; the starter owns it.
+ */
+export const HostedChatStartSchema = z
+  .object({
+    sessionId: id,
+    launchId: id,
+    acceptedAt: z.number().int().nonnegative(),
+    projectId: id.nullable(),
+    title: z.string().trim().min(1).max(2_000),
+    initialPageIds: z.array(id).max(16).optional(),
+    modelSelection: AgentRuntimeModelSelectionSchema,
+    interactionMode: AgentRuntimeInteractionModeSchema,
+    runInTarget: z.enum(["localProject", "newWorktree"]).optional(),
+    message: HostedChatMessageSchema,
+  })
+  .strict();
+/** While a Run is active a message waits behind it or redirects it; otherwise it starts one. */
+export const HostedChatDeliverySchema = z.enum(["send", "queue", "steer"]);
+export const HostedChatMessageInputSchema = AgentRuntimeTargetSchema.extend({
+  message: HostedChatMessageSchema,
+  delivery: HostedChatDeliverySchema,
+}).strict();
+/** A Member's rewrite of their own message, which Core admits only while no one has replied. */
+export const HostedChatRewriteSchema = AgentRuntimeTargetSchema.extend({
+  requestId: id,
+  runId: id,
+  message: HostedChatMessageSchema,
+}).strict();
+export const HostedChatQueueSchema = z.discriminatedUnion("action", [
+  ...queueControls,
   AgentRuntimeTargetSchema.extend({
     requestId: id,
-    action: z.literal("steer"),
+    action: z.literal("edit"),
     runId: id,
-    targetRunId: id,
+    message: HostedChatMessageSchema,
   }).strict(),
 ]);
 export const AgentRuntimeSideChatCreateSchema = z
@@ -234,6 +314,8 @@ export const AgentRuntimeForkSchema = z
     runInEnvironmentPath: id.nullable().optional(),
   })
   .strict();
+/** A fork a Member asks a chat's Space host for; the host's own workspace setup applies. */
+export const HostedChatForkSchema = AgentRuntimeForkSchema.omit({ runInEnvironmentPath: true });
 export const AgentRuntimeHistorySchema = AgentRuntimeTargetSchema.extend({
   cursor: z.union([
     id,
@@ -263,6 +345,25 @@ export const AgentRuntimeAttachmentSchema = AgentRuntimeTargetSchema.extend({
   attachmentId: id,
   sourceThreadId: id.optional(),
 }).strict();
+/** The most bytes of a hosted chat's attachment that one read returns, before base64. */
+export const HOSTED_CHAT_ATTACHMENT_CHUNK_BYTES = 1024 * 1024;
+/**
+ * One range of a hosted chat's attachment, named by the identities its transcript carries. Every
+ * range after the first names the first one's version, so a read never splices two versions.
+ */
+export const HostedChatAttachmentReadSchema = AgentRuntimeAttachmentSchema.extend({
+  offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  length: z.number().int().min(1).max(HOSTED_CHAT_ATTACHMENT_CHUNK_BYTES),
+  version: z.string().min(1).max(128).optional(),
+}).strict();
+export type HostedChatAttachmentChunk = {
+  readonly base64: string;
+  readonly totalBytes: number;
+  /** A picture's type comes from its own bytes; nothing else is ever an `image/` type here. */
+  readonly mimeType: string | null;
+  readonly name: string | null;
+  readonly version: string;
+};
 export const AgentRuntimeObserveSchema = AgentRuntimeTargetSchema.extend({
   subscriptionId: id,
   afterSequence: z.number().int().nonnegative().optional(),

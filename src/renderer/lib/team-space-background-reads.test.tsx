@@ -8,12 +8,14 @@ import { TestQueryProvider } from "@/test/query";
 import { bindRendererSpace } from "./renderer-space";
 import {
   codexComposerSkillsListQueryOptions,
+  gitRepositoryIdentityQueryOptions,
   localPathPresentationContextQueryOptions,
   projectSessionDetailQueryOptions,
 } from "./query-options";
 import { useClaudeUsage } from "./use-claude-usage";
 import { useMcpServerStatuses } from "./use-mcp-queries";
 import { useSidebarThreadSyncModel } from "./use-sidebar-thread-sync-model";
+import { searchChatMessages, searchChats } from "./chat-search";
 
 // The desktop's own Agents, accounts and native chats, which a team window never reads.
 const DESKTOP_EXECUTION = [
@@ -25,6 +27,7 @@ const DESKTOP_EXECUTION = [
   "shell:path-context:get",
   "agent-runtime:claude-usage:read",
   "remote-hosted-pip:snapshot",
+  "git:repository:identity",
 ];
 
 let calls: string[] = [];
@@ -70,6 +73,7 @@ describe("a team Space window", () => {
         useMcpServerStatuses();
         useQuery(codexComposerSkillsListQueryOptions(["/srv/repo"]));
         useQuery(localPathPresentationContextQueryOptions());
+        useQuery(gitRepositoryIdentityQueryOptions("/srv/repo"));
         useRemoteHostedPipSummaryControl("thread");
         // Content the Space serves is still read, through the same transport.
         useQuery(projectSessionDetailQueryOptions("session"));
@@ -83,6 +87,30 @@ describe("a team Space window", () => {
       await Promise.resolve();
     });
     expect(calls.filter((channel) => DESKTOP_EXECUTION.includes(channel))).toEqual([]);
+  });
+
+  test("refreshes its sidebar after archiving or restoring a chat without a native sync", async () => {
+    const { result } = renderHook(() => useSidebarThreadSyncModel({ projects: [] }), { wrapper });
+    // Archive, its undo and the sidebar's other actions all refresh through this one owner.
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(calls.filter((channel) => DESKTOP_EXECUTION.includes(channel))).toEqual([]);
+  });
+
+  test("searches its chats through its Space, whose host reads them for the Member", async () => {
+    installWindowApi({
+      invoke: vi.fn(async (channel: string) => {
+        calls.push(channel);
+        return channel === "chats:search"
+          ? { matches: [], complete: true }
+          : { matches: [], sources: [{ source: "runtime", state: "complete" }] };
+      }),
+      on: () => () => undefined,
+    });
+    await searchChats({ query: "launch", limit: 5 });
+    await searchChatMessages({ query: "launch", limit: 5 });
+    expect(calls).toEqual(["chats:search", "chats:search-messages"]);
   });
 
   test("has no Claude usage, even while this desktop publishes its own", async () => {

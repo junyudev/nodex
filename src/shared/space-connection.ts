@@ -73,6 +73,7 @@ export const spaceAvailabilityLabel = (availability: SpaceAvailability): string 
 
 export const REMOTE_AGENT_REASON = "Agents for this Space run on its host";
 export const REMOTE_FILESYSTEM_REASON = "This feature needs a filesystem on the Space host";
+export const HOSTED_CHAT_ACTION_REASON = "Not available for chats on this Space's host";
 
 export interface SpaceConnectionIpcApi {
   "spaces:list": { args: []; result: readonly SpaceConnectionSummary[] };

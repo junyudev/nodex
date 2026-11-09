@@ -29,7 +29,7 @@ const PROJECT: Project = {
   name: "Alpha",
   description: "",
   appearance: { color: "blue", marker: { kind: "icon", icon: "terminal" } },
-  sources: [{ root: "/tmp/alpha", order: 0 }],
+  sources: [{ kind: "directory" as const, path: "/tmp/alpha", order: 0 }],
   primaryWorkspaceRoot: "/tmp/alpha",
   pinned: false,
   pinnedOrder: null,

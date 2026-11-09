@@ -164,6 +164,8 @@ export function makeTestWorkbenchSession(
     archived: false,
     archivedAt: null,
     remindAt: null,
+    canManage: true,
+    canStop: true,
     unread: false,
     thread: input.thread ?? null,
     createdAt: TIMESTAMP,

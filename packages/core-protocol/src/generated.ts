@@ -4,6 +4,7 @@
  */
 
 export interface paths {
+    readonly "/core/v1/admin/host/complete": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -12,12 +13,14 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
+        readonly post: operations["host_complete"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/core/v1/admin/host/poll": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -26,12 +29,14 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
+        readonly post: operations["host_poll"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/core/v1/admin/host/register": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -40,6 +45,7 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
+        readonly post: operations["host_register"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -172,7 +178,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/handshake": {
+    readonly "/core/v1/admin/space/prepare": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -181,7 +187,7 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["handshake"];
+        readonly post: operations["prepare"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -380,6 +386,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/core/v1/host/availability": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["host_availability"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/core/v1/host/call": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -388,7 +411,7 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["document_apply"];
+        readonly post: operations["host_call"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -925,6 +948,8 @@ export interface components {
         /** @description The desktop Host asks Core to vouch for one Agent execution of a product Session. */
         readonly AgentAttributionRequest: {
             readonly backend: components["schemas"]["AgentBackendKind"];
+            /** @description Runtime-verified input message; Core derives its Member from acceptance evidence. */
+            readonly message_id?: string | null;
             readonly run_id?: string | null;
             readonly session_id: string;
         };
@@ -1423,6 +1448,7 @@ export interface components {
             readonly proposed_actions: readonly components["schemas"]["AutomationProposedAction"][];
             readonly request_id: string;
         };
+        readonly AutomationAssessmentRead: {
             readonly decision_id: string;
             /** @enum {string} */
             readonly kind: "launch_authority";
@@ -1462,6 +1488,7 @@ export interface components {
             readonly next_cursor?: string | null;
             readonly value: unknown;
         };
+        readonly AutomationAssessmentRequest: {
             readonly automations: readonly components["schemas"]["Automation"][];
             readonly coordinator_session_id?: string | null;
             /** Format: int64 */
@@ -1476,10 +1503,12 @@ export interface components {
             readonly trigger_ids: readonly string[];
         };
         /** @enum {string} */
+        readonly AutomationAssessmentResource: "triggers" | "thread" | "automations" | "pages" | "follows" | "decisions";
         /**
          * @description A typed condition narrows an Automation's natural-language condition. Clock schedules
          *     retain their own zone and jitter seed, independent of the execution Host.
          */
+        readonly AutomationCondition: {
             readonly jitter_salt: string;
             /** @enum {string} */
             readonly kind: "clock";
@@ -1542,6 +1571,7 @@ export interface components {
             readonly page_id: string;
         };
         /** @description The decision behind an Automation's message, as it stands now. */
+        readonly AutomationInboxDecision: {
             readonly automation_id: string;
             readonly dispatch_id: string;
             /** @description Why its execution failed before reaching a chat. */
@@ -1816,6 +1846,7 @@ export interface components {
          *     Only its person Owner can change the mode or edit an Automation set to Run.
          * @enum {string}
          */
+        readonly AutomationMode: "run" | "ask_first" | "dry_run";
         /** @enum {string} */
         readonly AutomationNotificationPolicy: "failed_runs_only";
         readonly AutomationNotificationPreference: {
@@ -5106,6 +5137,44 @@ export interface components {
             readonly pid: number;
             readonly start_nonce: string;
             readonly status: components["schemas"]["CoreReadiness"];
+        };
+        readonly HostAvailability: {
+            readonly available: boolean;
+        };
+        readonly HostCall: {
+            readonly input: unknown;
+            readonly operation: components["schemas"]["HostOperation"];
+        };
+        readonly HostCallResult: {
+            /** @enum {string} */
+            readonly status: "ok";
+            readonly value: unknown;
+        } | {
+            readonly message: string;
+            /** @enum {string} */
+            readonly status: "error";
+        };
+        readonly HostCompletion: {
+            readonly id: string;
+            readonly result: components["schemas"]["HostCallResult"];
+            readonly token: string;
+        };
+        readonly HostInvocation: {
+            readonly call: components["schemas"]["HostCall"];
+            /** @description Private, short-lived proof of the Member who admitted this exact call. */
+            readonly credential: string;
+            readonly id: string;
+        };
+        readonly HostLease: {
+            readonly token: string;
+        };
+        /**
+         * @description Only these semantic operations may cross from a Member to the execution owner.
+         * @enum {string}
+         */
+        readonly HostOperation: "activity" | "connection" | "providers" | "session_read" | "session_control" | "session_inspect" | "thread_identity" | "session_history" | "session_message" | "session_respond" | "session_stop" | "session_stop_task" | "session_cancel_task" | "session_stop_background" | "session_background_output" | "session_prompt_turns" | "session_prompt_index" | "session_queue" | "session_queue_read" | "session_item" | "session_attachment" | "session_overview" | "session_queued_preview" | "session_run_message" | "session_start" | "session_fork" | "session_side_chat_create" | "session_side_chat_save" | "session_side_chat_discard" | "session_merge_back" | "session_rewrite_message" | "session_compact" | "session_clear_context" | "session_rename" | "session_archive" | "session_unarchive" | "session_move" | "work_start" | "workspace_refresh" | "coordinator_open" | "inbox_settings" | "inbox_reply_destination" | "inbox_send" | "inbox_prepare_confirmation" | "inbox_confirm" | "inbox_dispatch" | "inbox_chat_targets" | "inbox_request_suggestion" | "inbox_stop_suggestion" | "inbox_retry_dispatch" | "chat_search" | "chat_search_messages";
+        readonly HostRegistration: {
+            readonly instance: string;
         };
         /** @description HTTP failures carry the same error payload and wire shape as Module failures. */
         readonly HttpErrorResponse: {
@@ -10089,6 +10158,10 @@ export interface components {
                 readonly session_id: string;
             } | {
                 /** @enum {string} */
+                readonly kind: "session_start";
+                readonly session_id: string;
+            } | {
+                /** @enum {string} */
                 readonly kind: "agent_runtime_session_binding";
                 readonly session_id: string;
             } | {
@@ -10253,6 +10326,12 @@ export interface components {
                 readonly kind: "inbox_message_edit";
                 readonly original_body: string;
                 readonly page_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "session_member_actions";
+                /** @description Runs the reader might edit or stop, such as a subagent's or a task's own Run; at most 200. */
+                readonly run_ids?: readonly string[];
+                readonly session_id: string;
             };
         };
         readonly ModuleReadRequest_QueryRead: {
@@ -10864,11 +10943,17 @@ export interface components {
             readonly kind: "all";
         };
         readonly ProjectSource: {
+            /** @enum {string} */
+            readonly kind: "directory";
             /** Format: int64 */
             readonly order: number;
+            readonly path: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "repository";
             /** Format: int64 */
             readonly order: number;
-            readonly root: string;
+            readonly remote: string;
         };
         readonly ProjectWorkspaceAgentConfigOption: {
             readonly id: string;
@@ -12447,11 +12532,34 @@ export interface components {
             readonly session_id: string;
             readonly unread: boolean;
         };
+        /** @description A chat its Inbox decision has not started yet, with the reason it could not. */
+        readonly ProjectWorkspaceSessionStart: {
+            readonly failure_message?: string | null;
+            /** @description The Inbox message the chat was started from. */
+            readonly page_id: string;
+            /** @description The decision that starts this chat; retrying sends it again. */
+            readonly proposal_id: string;
+            /** @description Core would start it again now; any Member who reads the chat may retry it. */
+            readonly retryable: boolean;
+            readonly state: components["schemas"]["ProjectWorkspaceSessionStartState"];
+        };
+        /** @enum {string} */
+        readonly ProjectWorkspaceSessionStartState: "starting" | "uncertain" | "failed";
         readonly ProjectWorkspaceSessionSummary: {
             /** Format: int64 */
             readonly activity_at: number;
             readonly archived: boolean;
             readonly archived_at?: string | null;
+            /**
+             * @description The reader may manage this chat: rename, archive or restore it, move it, compact or clear
+             *     its context and merge it back. They started it, or they own the Space.
+             */
+            readonly can_manage: boolean;
+            /**
+             * @description The reader may stop the chat's current work, its subagents and tasks included: they may
+             *     manage it, or they asked for its current Run.
+             */
+            readonly can_stop: boolean;
             readonly created_at: string;
             readonly display_title: string;
             readonly execution_ref?: components["schemas"]["ProjectWorkspaceSessionExecutionRef"] | null;
@@ -14340,6 +14448,10 @@ export interface components {
                     readonly kind: "session";
                     readonly session: components["schemas"]["ProjectWorkspaceSessionSummary"];
                 } | {
+                    /** @enum {string} */
+                    readonly kind: "session_start";
+                    readonly start?: components["schemas"]["ProjectWorkspaceSessionStart"] | null;
+                } | {
                     readonly binding?: components["schemas"]["ProjectWorkspaceAgentRuntimeSessionBinding"] | null;
                     /** @enum {string} */
                     readonly kind: "agent_runtime_session_binding";
@@ -14471,6 +14583,10 @@ export interface components {
                     readonly edit: components["schemas"]["ProjectWorkspaceInboxMessageEdit"];
                     /** @enum {string} */
                     readonly kind: "inbox_message_edit";
+                } | {
+                    readonly actions: components["schemas"]["SessionMemberActions"];
+                    /** @enum {string} */
+                    readonly kind: "session_member_actions";
                 };
             };
             /** @enum {string} */
@@ -14634,6 +14750,18 @@ export interface components {
         readonly SessionExecutionState: "working" | "queued" | "waiting" | "idle" | "failed" | "unavailable";
         /** @enum {string} */
         readonly SessionExecutionTerminalStatus: "completed" | "failed" | "interrupted";
+        /**
+         * @description A chat's Runs as the reading Member may act on them, from Core's own records. Whether they may
+         *     manage the chat or interrupt its current Run comes with every session read.
+         */
+        readonly SessionMemberActions: {
+            readonly runs: readonly components["schemas"]["SessionRunActions"][];
+        };
+        /**
+         * @description A Member edits only their own message, and only while no other Member has posted after it.
+         * @enum {string}
+         */
+        readonly SessionMessageEdit: "available" | "replied_since" | "unavailable";
         readonly SessionRequest: {
             readonly device_credential: string;
         };
@@ -14642,6 +14770,16 @@ export interface components {
             readonly expires_at: number;
             readonly principal: components["schemas"]["RemotePrincipal"];
             readonly session_token: string;
+        };
+        readonly SessionRunActions: {
+            /**
+             * @description Whether the reader may stop this Run's work, its subagents and tasks: they asked for the
+             *     Run, they own the chat, or they own the Space.
+             */
+            readonly can_stop: boolean;
+            /** @description Whether the reader may edit the message that opened this Run. */
+            readonly edit: components["schemas"]["SessionMessageEdit"];
+            readonly run_id: string;
         };
         readonly ShutdownRequest: {
             /** @enum {string} */
@@ -14995,12 +15133,17 @@ export interface components {
             readonly thread_id: string;
             readonly url: string;
         };
+        readonly SpaceIdentity: {
+            readonly fingerprint: string;
+            readonly owner_member_id: string;
+            readonly space_id: string;
             readonly space_name: string;
         };
         /** @description Display identity belongs to Core; endpoints remain transport coordinates. */
         readonly SpaceName: {
             readonly name: string;
             readonly space_id: string;
+        };
         readonly SqlBinding: {
             readonly data_source_id: string;
             readonly table: string;
@@ -15173,6 +15316,105 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    readonly host_complete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["HostCompletion"];
+            };
+        };
+        readonly responses: {
+            /** @description Complete an admitted Host call */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "text/plain": boolean;
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly host_poll: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["HostLease"];
+            };
+        };
+        readonly responses: {
+            /** @description Bounded execution-owner work */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HostInvocation"] | null;
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly host_register: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["HostRegistration"];
+            };
+        };
+        readonly responses: {
+            /** @description Register the local execution owner */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HostLease"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
     readonly shutdown: {
         readonly parameters: {
             readonly query?: never;
@@ -15293,6 +15535,12 @@ export interface operations {
                 headers: {
                     readonly [name: string]: unknown;
                 };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
     readonly rename_member: {
         readonly parameters: {
             readonly query?: never;
@@ -15358,6 +15606,33 @@ export interface operations {
             };
         };
     };
+    readonly prepare: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ListenRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Local Owner prepares a team Space without listening */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SpaceIdentity"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
                 content: {
                     readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
@@ -15700,29 +15975,32 @@ export interface operations {
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
             };
         };
-        /** @enum {string} */
-        readonly StoreReadiness: "starting" | "ready" | "maintenance" | "failed";
-        /**
-         * @description Proof that Core's durable scanner inspected the ledger through a sequence.
-         *     Commit sequences are monotonic and unique but need not be contiguous.
-         */
-        readonly StreamCheckpoint: {
-            readonly generation: string;
-            /** Format: int64 */
-            readonly oldest_available_seq: number;
-            readonly resync_token?: string | null;
-            /** Format: int64 */
-            readonly scanned_through_seq: number;
-            readonly store_epoch: components["schemas"]["StoreEpoch"];
+    };
+    readonly host_availability: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
         };
+        readonly requestBody?: never;
         readonly responses: {
+            /** @description Execution owner availability */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
+                    readonly "application/json": components["schemas"]["HostAvailability"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -15736,15 +16014,7 @@ export interface operations {
             };
         };
     };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
-}
-export type $defs = Record<string, never>;
-export interface operations {
-    readonly shutdown: {
+    readonly host_call: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -15753,17 +16023,17 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["ShutdownRequest"];
+                readonly "application/json": components["schemas"]["HostCall"];
             };
         };
         readonly responses: {
-            /** @description Core shutdown acknowledged */
+            /** @description Authenticated bounded execution-owner response */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ShutdownResponse"];
+                    readonly "application/json": components["schemas"]["HostCallResult"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */

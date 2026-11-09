@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   CoreInboxDispatchContext,
   CoreInboxSuggestionInput,
+} from "../../main/core-client/inbox-adapter";
 import {
   renderInboxRoutingRequest,
   describeInboxRuntimeFailure,

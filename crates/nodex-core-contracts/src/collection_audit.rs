@@ -44,6 +44,8 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::SessionExecutionObservers { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::PageWorkspace { .. }
         | ProjectWorkspaceRead::SessionWorkspace { .. }
+        | ProjectWorkspaceRead::SessionWorkPage { .. }
+        | ProjectWorkspaceRead::SessionStart { .. } => ReadBudgetPolicy::Identity,
         ProjectWorkspaceRead::PageWorkspaceWindow { .. }
         | ProjectWorkspaceRead::PageWorkspaceConsumers { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::PageWorkLaunch { .. } => ReadBudgetPolicy::Identity,
@@ -116,6 +118,8 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::InboxSuggestionRequest { .. }
         | ProjectWorkspaceRead::InboxSummary { .. }
         | ProjectWorkspaceRead::InboxRoutingConsent
+        | ProjectWorkspaceRead::InboxMessageEdit { .. }
+        | ProjectWorkspaceRead::SessionMemberActions { .. } => ReadBudgetPolicy::Identity,
     }
 }
 

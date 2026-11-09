@@ -1,3 +1,4 @@
+import { localProjectSourceRoots } from "../../../shared/project-sources";
 import {
   Fragment,
   useCallback,
@@ -1163,14 +1164,14 @@ function SidebarThreadOrganizerSections({
     [allProjectGroups],
   );
   const stableWorktreeWorkspaceRootOptions = useMemo(
-    () => allProjectGroups.flatMap(({ project }) => project.sources.map((source) => source.root)),
+    () => allProjectGroups.flatMap(({ project }) => localProjectSourceRoots(project.sources)),
     [allProjectGroups],
   );
   const stableWorktreeWorkspaceRootLabels = useMemo(
     () =>
       Object.fromEntries(
         allProjectGroups.flatMap(({ project }) =>
-          project.sources.map((source) => [source.root, project.name] as const),
+          localProjectSourceRoots(project.sources).map((root) => [root, project.name] as const),
         ),
       ),
     [allProjectGroups],
@@ -1386,6 +1387,7 @@ function SidebarThreadOrganizerSections({
       if (!item) return null;
       const session = resolveSessionForItem(item);
       const sessionId = item.sessionId ?? session?.id ?? null;
+      // Only the chat's owner or a Space Owner renames or archives a chat every Member shares.
       const manageable = session?.canManage ?? true;
       const hoverCardProjectLabel =
         options.hoverCardProjectLabel ??
@@ -1420,15 +1422,17 @@ function SidebarThreadOrganizerSections({
               : undefined
           }
           onRenameFromTitleDoubleClick={
-            session && onSessionTitleDoubleClick
-              ? (_item, event) => onSessionTitleDoubleClick(session, event)
-              : item.kind === "pending-worktree" && onPendingWorktreeTitleDoubleClick
-                ? (_item, event) => onPendingWorktreeTitleDoubleClick(item, event)
-                : undefined
+            !manageable
+              ? undefined
+              : session && onSessionTitleDoubleClick
+                ? (_item, event) => onSessionTitleDoubleClick(session, event)
+                : item.kind === "pending-worktree" && onPendingWorktreeTitleDoubleClick
+                  ? (_item, event) => onPendingWorktreeTitleDoubleClick(item, event)
+                  : undefined
           }
           archivePending={sidebarArchivePendingKeys.has(item.key)}
           onArchive={
-            onArchiveSidebarThread
+            manageable && onArchiveSidebarThread
               ? (rowItem) => onArchiveSidebarThread(rowItem, session ?? undefined)
               : undefined
           }

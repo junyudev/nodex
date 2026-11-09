@@ -19,6 +19,8 @@ export const isNativeExecutable = (artifact: NativeArtifactId): artifact is Nati
   artifact !== "agent-runtime";
 export const NATIVE_PIP_PROBE_TEST = "scripts/desktop-tools/probe-remote-hosted-pip-native.test.ts";
 export const NODEX_CLI_BOOTSTRAP_TEST = "src/main/platform/node/NodexCliBootstrap.node.test.ts";
+export const SCOPED_AGENT_CORE_TEST = "src/main/platform/node/ScopedAgentCoreServer.node.test.ts";
+export const HOST_SERVE_PLATFORM_TEST = "src/main/platform/node/HostServePlatform.node.test.ts";
 export const AGENT_EVAL_DESKTOP_ENVIRONMENT_TEST =
   "src/main/core-client/agent-eval-desktop-environment.node.test.ts";
 export const AUTOMATIONS_CLI_TEST = "src/main/core-client/automations-cli.node.test.ts";
@@ -126,17 +128,22 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
   "core-client": {
     config: "vitest.core-client.config.ts",
     runtime: "host-node",
-    include: ["src/main/**/*.node.test.ts", YJS_YRS_TEST],
+    include: ["src/main/**/*.node.test.ts", "src/host/**/*.node.test.ts", YJS_YRS_TEST],
     exclude: [],
-    stress: ["src/main/**/*.stress.node.test.ts"],
+    stress: ["src/main/**/*.stress.node.test.ts", "src/host/**/*.stress.node.test.ts"],
     native: ["core-server", "yjs-yrs-bridge", "cli"],
   },
   main: {
     config: "vitest.main.config.ts",
     runtime: "electron-node",
-    include: ["src/main/**/*.test.ts"],
-    exclude: ["src/main/**/*.integration.ts", "src/main/**/*.node.test.ts"],
-    stress: ["src/main/**/*.stress*.test.ts"],
+    include: ["src/main/**/*.test.ts", "src/host/**/*.test.ts"],
+    exclude: [
+      "src/main/**/*.integration.ts",
+      "src/host/**/*.integration.ts",
+      "src/main/**/*.node.test.ts",
+      "src/host/**/*.node.test.ts",
+    ],
+    stress: ["src/main/**/*.stress*.test.ts", "src/host/**/*.stress*.test.ts"],
     native: ["core-server"],
   },
   renderer: {
@@ -159,9 +166,17 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
   integration: {
     config: "vitest.integration.config.ts",
     runtime: "electron-node",
-    include: ["src/main/**/*.integration.ts", "src/renderer/**/*.integration.ts"],
+    include: [
+      "src/main/**/*.integration.ts",
+      "src/host/**/*.integration.ts",
+      "src/renderer/**/*.integration.ts",
+    ],
     exclude: [],
-    stress: ["src/main/**/*.stress.integration.ts", "src/renderer/**/*.stress.integration.ts"],
+    stress: [
+      "src/main/**/*.stress.integration.ts",
+      "src/host/**/*.stress.integration.ts",
+      "src/renderer/**/*.stress.integration.ts",
+    ],
     native: ["core-server"],
   },
   browser: {
@@ -254,6 +269,8 @@ export function nativeRequirements(
     ...(files.some(
       (file) =>
         file === NODEX_CLI_BOOTSTRAP_TEST ||
+        file === SCOPED_AGENT_CORE_TEST ||
+        file === HOST_SERVE_PLATFORM_TEST ||
         file === AGENT_EVAL_DESKTOP_ENVIRONMENT_TEST ||
         file === PROFILE_CLONE_TEST ||
         file === AUTOMATIONS_CLI_TEST,

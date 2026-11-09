@@ -25,7 +25,7 @@ const task: CodexDelegatedTaskView = {
   summary: null,
 };
 
-function setup() {
+function setup(canStop?: (ownerRunId: string | null) => boolean) {
   const store = createAgentRuntimeDelegatedTaskStore();
   agentRuntimeDelegatedTasks.publishLabels(
     new Map([
@@ -50,7 +50,7 @@ function setup() {
     stopTask: vi.fn(async () => ({ sequence: 1 })),
   };
   const runtime = {
-    delegatedTasks: createAgentRuntimeDelegatedTaskPort("session", transport, store),
+    delegatedTasks: createAgentRuntimeDelegatedTaskPort("session", transport, store, canStop),
   } as unknown as ConversationRuntime;
   const wrap = (ui: ReactNode) => (
     <NodexTooltipProvider>
@@ -107,6 +107,29 @@ describe("Delegated task row", () => {
     expect(within(details).getByRole("button", { name: "Stop Audit auth" })).toBeTruthy();
     view.rerender(row({ ...task, status: "completed" }));
     expect(await screen.findByRole("status", { name: "Subagents finished" })).toBeTruthy();
+  });
+
+  test("offers Stop on a task only to whoever may stop the Run that started it", async () => {
+    // Bob may stop his own Run's work; this task belongs to Alice's.
+    const { wrap } = setup((ownerRunId) => ownerRunId === "bob-run");
+    const row = (current: CodexDelegatedTaskView) =>
+      wrap(<DelegatedTaskGroup tasks={[current]} parentThreadId="root" onOpenThread={vi.fn()} />);
+    const view = render(row({ ...task, ownerRunId: "alice-run" }));
+    await act(async () => {
+      screen.getByRole("button", { name: "Audit auth" }).focus();
+      await Promise.resolve();
+    });
+    const details = await screen.findByRole("dialog", { name: "Audit auth details" });
+    expect(within(details).queryByRole("button", { name: "Stop Audit auth" })).toBeNull();
+    view.rerender(row({ ...task, ownerRunId: "bob-run" }));
+    expect(
+      within(await screen.findByRole("dialog", { name: "Audit auth details" })).getByRole(
+        "button",
+        {
+          name: "Stop Audit auth",
+        },
+      ),
+    ).toBeTruthy();
   });
 
   test("reveals metadata on focus and keeps Stopping until the task settles", async () => {

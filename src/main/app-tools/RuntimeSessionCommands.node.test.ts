@@ -24,7 +24,7 @@ import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { createHostedAppToolCaller } from "./AppToolCaller";
-import { make } from "./RuntimeSessionCommands";
+import { makeCommands as make } from "./NativeSessionTools";
 import { nativeQuestionTestLayers } from "./native-question-test-layers";
 import { nativeQuestionFixture } from "./native-question-test-fixture";
 const intakeServices = Layer.mergeAll(

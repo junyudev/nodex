@@ -67,7 +67,15 @@ export function buildProjectHoverCardMetadataRows(input: {
   }
 
   for (const source of [...input.sources].sort((left, right) => left.order - right.order)) {
-    const root = source.root.trim();
+    if (source.kind === "repository") {
+      addRow({
+        kind: "repository",
+        label: source.remote.replace(/^https:\/\/[^/]+\//u, ""),
+        path: null,
+      });
+      continue;
+    }
+    const root = source.path.trim();
     if (!root) continue;
     addRow({
       kind: "source",

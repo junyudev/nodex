@@ -247,6 +247,10 @@ pub enum ProjectWorkspaceRead {
     Session {
         session_id: String,
     },
+    /// How a chat started from an Inbox decision is getting on: starting, or why it could not.
+    SessionStart {
+        session_id: String,
+    },
     /// The external runtime identity reserved for one Session; execution remains runtime-owned.
     AgentRuntimeSessionBinding {
         session_id: String,
@@ -388,6 +392,14 @@ pub enum ProjectWorkspaceRead {
         page_id: String,
         original_body: String,
         body: String,
+    },
+    /// What the reading Member may do with each named Run of a chat: edit its opening message and
+    /// stop its work, decided by the rules Core applies when the Space host carries either out.
+    SessionMemberActions {
+        session_id: String,
+        /// Runs the reader might edit or stop, such as a subagent's or a task's own Run; at most 200.
+        #[serde(default)]
+        run_ids: Vec<String>,
     },
 }
 
@@ -551,6 +563,10 @@ pub enum ProjectWorkspaceReadValue {
     Session {
         session: ProjectWorkspaceSessionSummary,
     },
+    /// Absent once the chat has started, or when no Inbox decision started it.
+    SessionStart {
+        start: Option<ProjectWorkspaceSessionStart>,
+    },
     AgentRuntimeSessionBinding {
         binding: Option<ProjectWorkspaceAgentRuntimeSessionBinding>,
     },
@@ -650,6 +666,37 @@ pub enum ProjectWorkspaceReadValue {
     InboxMessageEdit {
         edit: ProjectWorkspaceInboxMessageEdit,
     },
+    SessionMemberActions {
+        actions: SessionMemberActions,
+    },
+}
+
+/// A chat's Runs as the reading Member may act on them, from Core's own records. Whether they may
+/// manage the chat or interrupt its current Run comes with every session read.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct SessionMemberActions {
+    pub runs: Vec<SessionRunActions>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct SessionRunActions {
+    pub run_id: String,
+    /// Whether the reader may edit the message that opened this Run.
+    pub edit: SessionMessageEdit,
+    /// Whether the reader may stop this Run's work, its subagents and tasks: they asked for the
+    /// Run, they own the chat, or they own the Space.
+    pub can_stop: bool,
+}
+
+/// A Member edits only their own message, and only while no other Member has posted after it.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionMessageEdit {
+    Available,
+    /// The reader sent it, and someone else has replied since.
+    RepliedSince,
+    /// Another Member or an Agent sent it, or Core has no record of who did.
+    Unavailable,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1687,9 +1734,70 @@ pub struct ProjectWorkspacePageChatItem {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectSource {
-    pub root: String,
-    pub order: i64,
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectSource {
+    Directory { path: String, order: i64 },
+    Repository { remote: String, order: i64 },
+}
+impl ProjectSource {
+    pub fn from_identity(identity: String, order: i64) -> Self {
+        if identity.starts_with("https://") {
+            return Self::Repository {
+                remote: identity,
+                order,
+            };
+        }
+        Self::Directory {
+            path: identity,
+            order,
+        }
+    }
+    pub fn local_path(&self) -> Option<&str> {
+        match self {
+            Self::Directory { path, .. } => Some(path),
+            Self::Repository { .. } => None,
+        }
+    }
+}
+
+/// Canonical identities contain no credentials, filesystem spelling or transport aliases.
+pub fn is_canonical_repository_remote(value: &str) -> bool {
+    let Some(tail) = value.strip_prefix("https://") else {
+        return false;
+    };
+    let Some((host, path)) = tail.split_once('/') else {
+        return false;
+    };
+    if value.len() > 2048
+        || host.is_empty()
+        || path.is_empty()
+        || value
+            .chars()
+            .any(|c| c.is_control() || c.is_whitespace() || matches!(c, '\\' | '?' | '#'))
+        || host.contains('@')
+        || host != host.to_ascii_lowercase()
+        || host.ends_with(":443")
+        || host.ends_with('.')
+        || path.ends_with('/')
+        || path.ends_with(".git")
+        || path
+            .split('/')
+            .any(|segment| segment.is_empty() || matches!(segment, "." | ".."))
+    {
+        return false;
+    }
+    let (name, port) = host
+        .rsplit_once(':')
+        .map_or((host, None), |(name, port)| (name, Some(port)));
+    if port.is_some_and(|port| port.parse::<u16>().ok().is_none_or(|port| port == 0)) {
+        return false;
+    }
+    !name
+        .split('.')
+        .any(|label| label.is_empty() || label.starts_with('-') || label.ends_with('-'))
+        && name
+            .bytes()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, b'.' | b'-'))
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1714,11 +1822,39 @@ pub struct ProjectWorkspaceSessionSummary {
     pub archived_at: Option<String>,
     pub unread: bool,
     pub remind_at: Option<String>,
+    /// The reader may manage this chat: rename, archive or restore it, move it, compact or clear
+    /// its context and merge it back. They started it, or they own the Space.
+    pub can_manage: bool,
+    /// The reader may stop the chat's current work, its subagents and tasks included: they may
+    /// manage it, or they asked for its current Run.
+    pub can_stop: bool,
     pub thread_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_ref: Option<ProjectWorkspaceSessionExecutionRef>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// A chat its Inbox decision has not started yet, with the reason it could not.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSessionStart {
+    /// The decision that starts this chat; retrying sends it again.
+    pub proposal_id: String,
+    /// The Inbox message the chat was started from.
+    pub page_id: String,
+    pub state: ProjectWorkspaceSessionStartState,
+    pub failure_message: Option<String>,
+    /// Core would start it again now; any Member who reads the chat may retry it.
+    pub retryable: bool,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceSessionStartState {
+    Starting,
+    /// The host may have started it; only its transcript can tell.
+    Uncertain,
+    Failed,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -2770,6 +2906,31 @@ mod tests {
         ProjectAppearance, ProjectMarker, ProjectMarkerColor, ProjectMarkerIcon,
         ProjectWorkspaceIntent, ProjectWorkspaceThreadLane, ProjectWorkspaceThreadPlacement,
     };
+
+    #[test]
+    fn repository_identity_rejects_credentials_and_executable_paths() {
+        for value in [
+            "https://github.com/acme/repo",
+            "https://git.example:8443/team/Repo",
+        ] {
+            assert!(super::is_canonical_repository_remote(value), "{value}");
+        }
+        for value in [
+            "/srv/repo",
+            "file:///srv/repo",
+            "git@github.com:acme/repo.git",
+            "https://user:secret@github.com/acme/repo",
+            "https://GitHub.com/acme/repo",
+            "https://github.com/acme/repo.git",
+            "https://github.com/acme/repo/",
+            "https://github.com/acme/../repo",
+            "https://github.com/acme/repo?token=secret",
+            "https://github.com:0/repo",
+            "https://github.com:443/repo",
+        ] {
+            assert!(!super::is_canonical_repository_remote(value), "{value}");
+        }
+    }
 
     #[test]
     fn project_appearance_has_a_closed_tagged_wire_contract() {

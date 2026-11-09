@@ -137,7 +137,14 @@ const makeFixture = (
                     : Effect.succeed({
                         value:
                           input.kind === "project"
-                            ? { kind: "project", project: { sources: [{ root: "/repo" }] } }
+                            ? {
+                                kind: "project",
+                                project: {
+                                  sources: [
+                                    { kind: "directory" as const, path: "/repo", order: 0 },
+                                  ],
+                                },
+                              }
                             : {
                                 kind: "thread",
                                 thread: { thread_name: "Task", thread_preview: "" },

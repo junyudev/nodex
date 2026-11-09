@@ -1,10 +1,16 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import { DEFAULT_INBOX_SETTINGS, type InboxSettings } from "../../shared/inbox";
 import { isBoundedOperationId } from "../../shared/operation-identity";
 import { UpdateInboxSettingsInputSchema } from "../../shared/schemas/inbox";
 import { rendererLocalCommitApply } from "../core-client/types";
 import { CoreModules } from "../core-runtime/CoreModules";
+import {
+  readRoutingConsent,
+  writeRoutingConsent,
+} from "../../host/inbox-application/InboxRoutingConsent";
 import { ElectronIpc } from "../platform/electron/ElectronIpc";
+import { makeRemoteHostCall } from "./remote-host-call";
 import {
   ProjectWorkspace,
   type ProjectWorkspaceCommandResult,
@@ -17,8 +23,19 @@ export const live = Layer.effectDiscard(
     const ipc = yield* ElectronIpc;
     const core = yield* CoreModules;
     const projects = yield* ProjectWorkspace;
+    const host = yield* makeRemoteHostCall;
+    // The host chooses what its Inbox runs on; whether a Member's own requests start on their own
+    // is that Member's consent, kept in Core. A window never shows its desktop's values for either.
     const read = Effect.gen(function* () {
+      const [settings, start] = yield* Effect.all(
+        [
+          host<InboxSettings>("inbox_settings", {}),
+          readRoutingConsent(core, DEFAULT_INBOX_SETTINGS),
+        ],
+        { concurrency: 2 },
+      );
       return {
+        ...settings,
         dispatchMode: start ? ("act_on_requests" as const) : ("suggest" as const),
       };
     });
@@ -55,6 +72,11 @@ export const live = Layer.effectDiscard(
     );
     yield* ipc.handleLocalCommitCommand("project-sessions:set-reminder", (_, command) =>
       own(command, projects.setProjectSessionReminder(command)),
+    );
+    // A New chat opens the Member's own default draft, which no one else lists or starts; its
+    // first message starts it on the Space host.
+    yield* ipc.handleLocalCommitCommand("project-sessions:ensure-default-draft", (_, command) =>
+      own(command, projects.ensureDefaultDraftProjectSession(command)),
     );
   }),
 );

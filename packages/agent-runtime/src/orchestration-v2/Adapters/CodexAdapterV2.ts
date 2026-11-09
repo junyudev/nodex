@@ -110,7 +110,10 @@ import type { ThreadBackgroundTerminal } from "@nodex/codex-app-server-protocol/
 import type { ThreadBackgroundTerminalsListResponse } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminalsListResponse";
 import type { ThreadBackgroundTerminalsTerminateResponse } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminalsTerminateResponse";
 
+import { fileURLToPath } from "node:url";
 import { resolveAttachmentPath, resolveAttachmentPathById } from "../../attachmentStore.ts";
+import { parseBase64DataUrl } from "../../imageMime.ts";
+import { keepViewedImage, type ViewedPictureSource } from "../viewedImageCopy.ts";
 import { getCodexServiceTierOptionValue } from "../../codexModelOptions.ts";
 import { ServerConfig } from "../../config.ts";
 import { expandHomePath } from "@nodex/provider-core/server/pathExpansion";
@@ -633,6 +636,97 @@ export const projectCodexDynamicToolItem = Effect.fn("CodexAdapterV2.projectDyna
     return output === undefined ? projection : { ...projection, output };
   },
 );
+
+export type CodexPictureItem = Extract<
+  | CodexSchema.V2ItemStartedNotification__ThreadItem
+  | CodexSchema.V2ItemCompletedNotification__ThreadItem,
+  { readonly type: "imageView" | "imageGeneration" }
+>;
+
+/** A file the app-server named, in either of its path spellings; never a picture's inline bytes. */
+function codexPicturePath(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed.startsWith("data:")) return undefined;
+  let path = trimmed;
+  if (trimmed.startsWith("file:")) {
+    try {
+      path = fileURLToPath(trimmed);
+    } catch {
+      return undefined;
+    }
+  }
+  return path.length <= 4096 && !/[\r\n]/u.test(path) ? path : undefined;
+}
+
+/**
+ * A picture Codex viewed or generated is a tool step whose own attachment keeps the picture, as a
+ * file read does on other Agents: its preview names the file, and its source says where the
+ * picture's bytes are, inline in the item or in that file.
+ */
+export function projectCodexPictureItem(item: CodexPictureItem): {
+  readonly projection: Pick<
+    Extract<OrchestrationV2TurnItem, { readonly type: "dynamic_tool" }>,
+    "toolName" | "title" | "input" | "output" | "viewedImagePath"
+  > & { readonly status: "running" | "completed" | "failed" };
+  readonly source: ViewedPictureSource | undefined;
+} {
+  if (item.type === "imageView") {
+    const path = codexPicturePath(item.path);
+    const inline = path === undefined ? parseBase64DataUrl(item.path) : null;
+    return {
+      projection: {
+        toolName: "imageView",
+        title: "View image",
+        input: path === undefined ? {} : { path },
+        status: "completed",
+        ...(path === undefined ? {} : { viewedImagePath: path }),
+      },
+      source:
+        inline !== null
+          ? { type: "data", name: "Image", mimeType: inline.mimeType, base64: inline.base64 }
+          : path === undefined
+            ? undefined
+            : { type: "file", path },
+    };
+  }
+  const status =
+    item.status === "completed" && item.failure == null
+      ? "completed"
+      : item.status === "failed" || item.failure != null
+        ? "failed"
+        : "running";
+  const savedPath = status === "completed" ? codexPicturePath(item.savedPath) : undefined;
+  const result =
+    "result" in item && typeof item.result === "string" && item.result.length > 0
+      ? item.result
+      : undefined;
+  const prompt = trimText(item.revisedPrompt);
+  return {
+    projection: {
+      toolName: "imageGeneration",
+      title: "Generate image",
+      input: prompt === undefined ? {} : { prompt },
+      ...(item.failure?.type === "usageLimitExceeded"
+        ? { output: "Image generation reached its usage limit." }
+        : {}),
+      status,
+      ...(savedPath === undefined ? {} : { viewedImagePath: savedPath }),
+    },
+    source:
+      status !== "completed"
+        ? undefined
+        : result !== undefined
+          ? {
+              type: "data",
+              name: savedPath?.split(/[\\/]/u).at(-1) || "Generated image.png",
+              mimeType: "image/png",
+              base64: result,
+            }
+          : savedPath === undefined
+            ? undefined
+            : { type: "file", path: savedPath },
+  };
+}
 
 function codexNativeItemRef(nativeItemId: string) {
   return {
@@ -1938,6 +2032,11 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
       ),
     );
   const { clientFactory, crypto, fileSystem, idAllocator, serverConfig } = adapterOptions;
+  const keepPictureCopy = keepViewedImage({
+    attachmentsDir: serverConfig.attachmentsDir,
+    fileSystem,
+    path: yield* Path.Path,
+  });
   const continuationRequests = adapterOptions.continuationRequests;
 
   return ProviderAdapter.ProviderAdapterV2.of({
@@ -3007,6 +3106,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
          * items mid-flight (no item/completed). Emit terminal turn items before
          * turn.terminal so the projection never keeps a forever-running command card.
          * Does not retain settled context: late completions must not wake the run.
+         * A settled command also leaves the thread's background roster here: a Run
+         * stops reading provider events once its turn ends unfinished, so a roster
+         * that only a later refresh corrects would report the stopped command as
+         * background work forever.
          */
         const terminalizeRunningCommandItems = (
           context: ActiveCodexTurnContext,
@@ -3020,9 +3123,12 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             if (items === undefined || items.size === 0) {
               return;
             }
+            const nativeThreadId = context.providerThread.nativeThreadRef?.nativeId ?? "";
+            const settled = new Set<string>();
             for (const tracked of items.values()) {
               if (nativeItemId !== undefined && tracked.id !== nativeItemId) continue;
-              dropCommandOutput(context.providerThread.nativeThreadRef?.nativeId ?? "", tracked.id);
+              settled.add(tracked.id);
+              dropCommandOutput(nativeThreadId, tracked.id);
               const nodeId = idAllocator.derive.nodeFromProviderItem({
                 driver: CODEX_PROVIDER,
                 nativeItemId: tracked.id,
@@ -3081,6 +3187,17 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 turnItem,
               });
             }
+            const terminals = backgroundTerminals.get(nativeThreadId) ?? [];
+            if (!terminals.some((terminal) => settled.has(terminal.itemId))) return;
+            // A roster listed before the command ended must not restore it.
+            backgroundRevisions.set(
+              nativeThreadId,
+              (backgroundRevisions.get(nativeThreadId) ?? 0) + 1,
+            );
+            yield* publishBackgroundTerminals(
+              nativeThreadId,
+              terminals.filter((terminal) => !settled.has(terminal.itemId)),
+            );
           });
 
         const terminateBackgroundTerminal = Effect.fn("CodexAdapterV2.terminateBackgroundTerminal")(
@@ -4610,6 +4727,58 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             return { node, turnItem };
           });
 
+        const buildPictureArtifacts = (context: ActiveCodexTurnContext, item: CodexPictureItem) =>
+          Effect.gen(function* () {
+            const updatedAt = yield* DateTime.now;
+            const { projection, source } = projectCodexPictureItem(item);
+            const completedAt = projection.status === "running" ? null : updatedAt;
+            const nodeId = idAllocator.derive.nodeFromProviderItem({
+              driver: CODEX_PROVIDER,
+              nativeItemId: item.id,
+            });
+            const { ordinal, startedAt } = yield* resolveItemPosition(context, item.id);
+            const node: OrchestrationV2ExecutionNode = {
+              id: nodeId,
+              threadId: context.projectionThreadId,
+              runId: context.projectionRunId,
+              parentNodeId: context.itemParentNodeId,
+              rootNodeId: context.rootNodeId,
+              kind: "tool_call",
+              status: projection.status,
+              countsForRun: false,
+              providerThreadId: context.providerThread.id,
+              providerTurnId: context.providerTurnId,
+              nativeItemRef: codexNativeItemRef(item.id),
+              runtimeRequestId: null,
+              checkpointScopeId: null,
+              startedAt,
+              completedAt,
+            };
+            const turnItem = yield* keepPictureCopy(
+              {
+                id: idAllocator.derive.turnItemFromProviderItem({
+                  driver: CODEX_PROVIDER,
+                  nativeItemId: item.id,
+                }),
+                threadId: context.projectionThreadId,
+                runId: context.projectionRunId,
+                nodeId,
+                providerThreadId: context.providerThread.id,
+                providerTurnId: context.providerTurnId,
+                nativeItemRef: codexNativeItemRef(item.id),
+                parentItemId: null,
+                ordinal,
+                startedAt,
+                completedAt,
+                updatedAt,
+                type: "dynamic_tool",
+                ...projection,
+              },
+              source,
+            );
+            return { node, turnItem };
+          });
+
         /**
          * Completes an MCP tool call whose tool names a UI resource: reads the
          * resource through Codex's MCP client, stores it, and records the app
@@ -5935,6 +6104,23 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               return;
             }
 
+            if (payload.item.type === "imageView" || payload.item.type === "imageGeneration") {
+              // A viewed picture is complete when Codex reports it; a generation runs first.
+              const artifacts = yield* buildPictureArtifacts(context, payload.item);
+              if (artifacts.turnItem.status !== "running") return;
+              yield* emitProviderEvent({
+                type: "node.updated",
+                driver: CODEX_PROVIDER,
+                node: artifacts.node,
+              });
+              yield* emitProviderEvent({
+                type: "turn_item.updated",
+                driver: CODEX_PROVIDER,
+                turnItem: artifacts.turnItem,
+              });
+              return;
+            }
+
             if (payload.item.type !== "webSearch") {
               return;
             }
@@ -6138,6 +6324,21 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               if (artifacts === null) {
                 return;
               }
+              yield* emitProviderEvent({
+                type: "node.updated",
+                driver: CODEX_PROVIDER,
+                node: artifacts.node,
+              });
+              yield* emitProviderEvent({
+                type: "turn_item.updated",
+                driver: CODEX_PROVIDER,
+                turnItem: artifacts.turnItem,
+              });
+              return;
+            }
+
+            if (payload.item.type === "imageView" || payload.item.type === "imageGeneration") {
+              const artifacts = yield* buildPictureArtifacts(context, payload.item);
               yield* emitProviderEvent({
                 type: "node.updated",
                 driver: CODEX_PROVIDER,

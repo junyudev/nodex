@@ -46,6 +46,7 @@ export interface BuildTurnRenderModelInput {
   isStreamingTurn: boolean;
   surface?: TurnRenderSurface;
   canEditTurnUserPrefix?: boolean;
+  userTurnEditRefusal?: string;
   canForkTurn?: boolean;
   goalTimeUsedSeconds?: number;
   timestampHoverOnly?: boolean;
@@ -73,6 +74,7 @@ export interface SelectTurnRenderModelInput {
   entry: VisibleConversationTurnEntry;
   surface?: TurnRenderSurface;
   canEditTurnUserPrefix?: boolean;
+  userTurnEditRefusal?: string;
   canForkTurn?: boolean;
   goalTimeUsedSeconds?: number;
   timestampHoverOnly?: boolean;
@@ -441,6 +443,9 @@ export function buildTurnRenderModel(input: BuildTurnRenderModelInput): ThreadTu
     isBlocked,
     subagentActivityState: rendererProjection.subagentActivityState,
     canEditTurnUserPrefix: input.turn.turnId !== null && input.canEditTurnUserPrefix,
+    ...(input.turn.turnId !== null && input.userTurnEditRefusal
+      ? { userTurnEditRefusal: input.userTurnEditRefusal }
+      : {}),
     canForkTurn: input.turn.turnId !== null && input.canForkTurn,
     allowCopyWhileStreaming: input.surface === "preview",
     showTimestampWithoutActions: input.surface === "preview",
@@ -500,6 +505,7 @@ export function createTurnRenderModelSelector(
       input.goalTimeUsedSeconds,
       input.timestampHoverOnly,
       canEditTurnUserPrefix,
+      input.userTurnEditRefusal,
       canForkTurn,
       input.showFullTranscript,
       input.canOpenSubagents,
@@ -540,6 +546,7 @@ export function createTurnRenderModelSelector(
       goalTimeUsedSeconds: input.goalTimeUsedSeconds,
       timestampHoverOnly: input.timestampHoverOnly,
       canEditTurnUserPrefix,
+      ...(input.userTurnEditRefusal ? { userTurnEditRefusal: input.userTurnEditRefusal } : {}),
       canForkTurn,
       backgroundAgents,
       showFullTranscript: input.showFullTranscript,

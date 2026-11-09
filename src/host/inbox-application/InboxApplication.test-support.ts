@@ -5,7 +5,12 @@ import {
   type CoreScenarioContext,
 } from "../../../scripts/scenarios/harness/core-scenario-harness";
 import { BOARD_DENSE_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/board-dense";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { coreRuntimeError } from "../../main/core-runtime/CoreRuntimeError";
+import { StoreAdministration } from "../../main/core-runtime/StoreAdministration";
 import { make as makeInboxApplication } from "./InboxApplication";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import {
   DEFAULT_INBOX_SETTINGS,
   LIBRARY_INBOX,

@@ -10,6 +10,7 @@ import {
   bindNodexCliShell,
   composeNodexCliShellEnvironment,
   nodexCliShellLaunchArgs,
+  nodexCliShellPaths,
   prepareNodexCliShell,
   shellQuote,
 } from "./NodexCliShell";
@@ -102,6 +103,41 @@ const shellContext = async (shell: string, env: Record<string, string>, mode = "
   expect(result.stderr).toBe("");
   return JSON.parse(result.stdout);
 };
+
+test("a scoped task binding removes inherited Profile authority before invoking the CLI", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nodex-scoped-shell-"));
+  try {
+    const executable = join(root, "cli");
+    await writeFile(
+      executable,
+      `#!/bin/sh\nexec ${shellQuote(process.execPath)} -e 'console.log(JSON.stringify({home:process.env.NODEX_HOME,attribution:process.env.NODEX_AGENT_ATTRIBUTION,endpoint:process.env.NODEX_AGENT_ENDPOINT,credential:process.env.NODEX_AGENT_CREDENTIAL,args:process.argv.slice(1)}))' -- "$@"\n`,
+      { mode: 0o700 },
+    );
+    await prepareNodexCliShell(root);
+    await bindNodexCliShell({
+      nodexHome: root,
+      threadId: "scoped-task",
+      executable,
+      profileId: "space",
+      projectId: "project",
+      agentAttribution: "must-not-pass",
+      scopedConnection: { endpoint: "http://127.0.0.1:8443", credential: "turn-only" },
+    });
+    const result = await shellContext("/bin/sh", {
+      PATH: `${nodexCliShellPaths(root).bin}:/usr/bin:/bin`,
+      CODEX_THREAD_ID: "scoped-task",
+      NODEX_HOME: "/private/core",
+      NODEX_AGENT_ATTRIBUTION: "inherited-host-authority",
+    });
+    expect(result).toEqual({
+      endpoint: "http://127.0.0.1:8443",
+      credential: "turn-only",
+      args: ["--expect-profile", "space", "--project", "project", "context"],
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("Bash without inherited BASH_ENV routes to its own Profile without sourcing user startup", async () => {
   await withShellFixture(async ({ root, compose, inherited, startupLog }) => {

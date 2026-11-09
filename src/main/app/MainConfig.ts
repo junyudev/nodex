@@ -18,6 +18,8 @@ export const MainConfigValue = Schema.Struct({
   isolatedRunId: Schema.NullOr(Schema.String),
   isDefaultApp: Schema.Boolean,
   isPackaged: Schema.Boolean,
+  /** The compiled Nodex Markdown module this process's bundle ships. */
+  markdownModulePath: Schema.String,
   nodexHome: Schema.String,
   platform: Schema.String,
   profileSettingsPath: Schema.String,
@@ -70,6 +72,7 @@ export const testLayer = (overrides: Partial<MainConfigValue> = {}): Layer.Layer
       isolatedRunId: null,
       isDefaultApp: false,
       isPackaged: false,
+      markdownModulePath: "/tmp/nodex-project/nodex_markdown_bg.wasm",
       nodexHome: "/tmp/nodex-test",
       platform: "darwin",
       profileSettingsPath: "/tmp/nodex-test/config.toml",

@@ -1,5 +1,7 @@
 import * as Effect from "effect/Effect";
+import type { CoreModuleClients } from "../../main/core-runtime/CoreModules";
 import type { InboxSettings } from "../../shared/inbox";
+import { createOperationId } from "../../main/core-runtime/operation-identity";
 
 /** Import the Desktop's previous preference once; Core owns subsequent Member choices. */
 export const readRoutingConsent = (core: CoreModuleClients, settings: InboxSettings) =>

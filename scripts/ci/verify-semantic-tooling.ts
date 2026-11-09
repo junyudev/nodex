@@ -596,6 +596,7 @@ function verifyEffectConfiguration(): void {
     !scope.include.includes("packages/effect-codex-app-server/**/*.ts") ||
     !scope.include.includes("src/main/**/*.ts") ||
     !scope.include.includes("src/main/**/*.tsx") ||
+    !scope.include.includes("src/host/**/*.ts") ||
     !scope.include.includes("scripts/codex-probe-session.ts") ||
     !scope.exclude?.includes("packages/effect-codex-app-server/src/_generated/**/*.ts") ||
     scope.options.diagnosticSeverity.cryptoRandomUUID !== "warning" ||

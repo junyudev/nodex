@@ -79,6 +79,20 @@ pub(crate) fn requesting_member(
     local_member(c, &context.library_id.0)
 }
 
+/// The first observation or credential captures a Run's requester. Later messages
+/// cannot redirect that Run's questions to a different Member.
+pub(crate) fn session_requester(
+    c: &Connection,
+    session: &str,
+    run: Option<&str>,
+) -> Result<Option<String>, StoreError> {
+    c.query_row(
+        "SELECT COALESCE((SELECT member_id FROM session_run_members WHERE session_id=?1 AND run_id=?2),(SELECT member_id FROM session_requesting_members WHERE session_id=?1 ORDER BY accepted_at DESC,message_id DESC LIMIT 1))",
+        params![session, run],
+        |r| r.get(0),
+    ).map_err(Into::into)
+}
+
 pub(crate) fn for_session(
     c: &Connection,
     library: &str,
@@ -240,6 +254,26 @@ pub(crate) fn workspace(
         return verified_turn(c, context, provenance);
     }
     let context = bind(c, context)?;
+    if let W::CreateAgentRuntimeSession {
+        coordinator: true,
+        session_id,
+        ..
+    } = intent
+        && matches!(
+            context.adapter,
+            AdapterKind::ElectronHost | AdapterKind::Test
+        )
+        && !c.query_row(
+            "SELECT EXISTS(SELECT 1 FROM project_sessions WHERE id=?1)",
+            [session_id],
+            |r| r.get::<_, bool>(0),
+        )?
+    {
+        // Bootstrap is a producer action authorized by Core's local operator;
+        // retain that grant separately from the Service's authorship.
+        let member = context.actor.member_id().map(str::to_owned);
+        return Ok(service(&context, ServiceKind::AgentRuntime, member));
+    }
     if let W::ConfirmInboxDispatch {
         confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::Nodex,
         proposal_id,
@@ -297,6 +331,18 @@ pub(crate) fn workspace(
         W::AutomationAssessment { .. }
         | W::HoldAutomationDecision { .. }
         | W::RefreshAutomationDecision { .. } => Some(ServiceKind::Automations),
+        W::CreateAgentRuntimeSession { session_id, .. }
+            if c.query_row(
+                "SELECT EXISTS(SELECT 1 FROM project_sessions WHERE id=?1)",
+                [session_id],
+                |r| r.get::<_, bool>(0),
+            )? =>
+        {
+            Some(ServiceKind::AgentRuntime)
+        }
+        W::BindCoordinator { .. }
+        | W::UnbindCoordinator { .. }
+        | W::RecordSessionExecution { .. }
         | W::RecordWorkEvents { .. }
         | W::RecordSessionActivity { .. }
         | W::SettlePageWorkLaunch { .. }
@@ -532,6 +578,7 @@ mod tests {
             matches!(derive(&c,"space",&AdapterKind::Agent,None,Some(&verified)).unwrap(),Actor::Agent {on_behalf_of,..} if on_behalf_of=="alice")
         );
         c.execute(
+            "INSERT INTO session_run_members(session_id,run_id,member_id) VALUES('chat','run','alice')",
             [],
         )
         .unwrap();

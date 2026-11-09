@@ -46,7 +46,10 @@ const makeHarness = (
               kind: "project",
               project: {
                 lifecycle: "active",
-                sources: [{ root: "/workspace" }, { root: "/shared" }],
+                sources: [
+                  { kind: "directory" as const, path: "/workspace", order: 0 },
+                  { kind: "directory" as const, path: "/shared", order: 0 },
+                ],
               },
             },
           } as unknown as ProjectWorkspaceReadSnapshot);

@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import {
   AutomationApplication,
   live as automationApplicationLive,
-} from "../automation-application/AutomationApplication";
+} from "../../host/automation-application/AutomationApplication";
 import {
   AutomationRoutingIndex,
   live as automationRoutingIndexLive,

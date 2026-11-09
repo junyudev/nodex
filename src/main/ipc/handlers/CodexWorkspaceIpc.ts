@@ -80,7 +80,7 @@ import { CodexThreadReadState } from "../../codex-application/CodexThreadReadSta
 import { CodexThreadSettingsRuntime } from "../../codex-application/CodexThreadSettingsRuntime";
 import { CodexThreadTitlePersistence } from "../../codex-application/CodexThreadTitlePersistence";
 import { CodexTurnCommands } from "../../codex-application/CodexTurnCommands";
-import { CodexTurnPresentation } from "../../codex-application/CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../../host/TurnPresentation";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { requireMcpAppNavigationUrl } from "../../../shared/mcp-app/mcp-app-navigation";
 import { ConversationCommands } from "../../codex-application/ConversationCommands";

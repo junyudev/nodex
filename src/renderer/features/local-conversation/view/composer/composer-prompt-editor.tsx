@@ -807,6 +807,8 @@ interface ComposerPromptEditorProps {
   singleLine?: boolean;
   compact?: boolean;
   allowSlashCommands?: boolean;
+  /** False where a message carries only its words, so `@` and `$` complete nothing. */
+  allowMentions?: boolean;
   /** Words the chat's Agent reacts to in a message; highlighted and explained on hover. */
   promptKeywords?: readonly ComposerPromptKeyword[];
   onChange: (value: string) => void;
@@ -1124,6 +1126,7 @@ function createPromptEditorState(
   allowSlashCommands = true,
   predictionOptions: Parameters<typeof createComposerPredictionPlugin>[0],
   promptKeywordsRef: { readonly current: readonly ComposerPromptKeyword[] | undefined },
+  allowMentionsRef: { readonly current: boolean },
 ): EditorState {
   const doc = buildPromptDoc(value);
   return EditorState.create({
@@ -1136,7 +1139,10 @@ function createPromptEditorState(
       composerDictationPlugin,
       history(),
       keymap({ "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }),
-      createComposerSuggestionPlugin({ allowSlashCommands }),
+      createComposerSuggestionPlugin({
+        allowSlashCommands,
+        allowMentions: () => allowMentionsRef.current,
+      }),
       createComposerPredictionPlugin(predictionOptions),
       promptEditingKeymapPlugin,
       promptClipboardPlugin,
@@ -1157,6 +1163,7 @@ export const ComposerPromptEditor = forwardRef<
     singleLine = false,
     compact = false,
     allowSlashCommands = true,
+    allowMentions = true,
     promptKeywords,
     onChange,
     onKeyDown,
@@ -1187,6 +1194,7 @@ export const ComposerPromptEditor = forwardRef<
   const singleLineRef = useRef(singleLine);
   const compactRef = useRef(compact);
   const allowSlashCommandsRef = useRef(allowSlashCommands);
+  const allowMentionsRef = useRef(allowMentions);
   const promptKeywordsRef = useRef(promptKeywords);
   const disabledRef = useRef(disabled);
   const predictionRef = useRef(prediction);
@@ -1205,6 +1213,7 @@ export const ComposerPromptEditor = forwardRef<
     singleLineRef.current = singleLine;
     compactRef.current = compact;
     allowSlashCommandsRef.current = allowSlashCommands;
+    allowMentionsRef.current = allowMentions;
     promptKeywordsRef.current = promptKeywords;
     disabledRef.current = disabled;
     predictionRef.current = prediction;
@@ -1630,6 +1639,7 @@ export const ComposerPromptEditor = forwardRef<
         allowSlashCommandsRef.current,
         predictionOptions,
         promptKeywordsRef,
+        allowMentionsRef,
       ),
       editable: () => !disabledRef.current,
       attributes: buildPromptEditorAttributes({
@@ -1723,6 +1733,7 @@ export const ComposerPromptEditor = forwardRef<
           allowSlashCommandsRef.current,
           predictionOptions,
           promptKeywordsRef,
+          allowMentionsRef,
         ),
       );
       emitSuggestionState(view);

@@ -1,6 +1,10 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { countWords } from "../../shared/word-count";
+import {
+  invocation,
+  routingFixture,
+} from "../../host/inbox-application/coordinator-inbox.test-support";
 
 it.effect.each(["word", "工作", "仕事"])(
   "enforces the 100-word Turn-note limit for %s at the tool boundary",

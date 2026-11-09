@@ -10456,12 +10456,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     });
     const requested = new Set(command.taskIds);
     const tasks = liveBackgroundWork(projection).filter((task) => requested.has(task.taskId));
+    const itemOf = (task: (typeof tasks)[number]) =>
+      projection.turnItems.find(
+        (item) => item.id === task.turnItemId || item.nativeItemRef?.nativeId === task.taskId,
+      );
+    // A stop admitted for one Run never reaches another Run's work.
+    if (command.runId !== undefined && tasks.some((task) => itemOf(task)?.runId !== command.runId))
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "Background work can be stopped only with the Run that started it.",
+      });
     const stopping: Array<string> = [];
     const now = yield* DateTime.now;
     for (const task of tasks) {
-      const item = projection.turnItems.find(
-        (item) => item.id === task.turnItemId || item.nativeItemRef?.nativeId === task.taskId,
-      );
+      const item = itemOf(task);
       if (item?.type === "subagent" && item.origin === "app_owned") continue;
       const owner = projection.providerThreads.find(
         (thread) =>

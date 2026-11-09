@@ -5,6 +5,7 @@ mod agent_attribution;
 mod connections;
 mod document_live;
 mod document_wire;
+mod host_bridge;
 mod http_error;
 mod lifecycle;
 mod lifecycle_summary;
@@ -136,6 +137,9 @@ static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 const INTERNAL_STARTUP_EVENTS_ENV: &str = "NODEX_INTERNAL_STARTUP_EVENTS_VERSION";
 const INTERNAL_STARTUP_EVENTS_VERSION: u32 = 1;
 const MIGRATION_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
+/// In-flight requests end within their own deadlines; a drain never outlives this bound,
+/// even when a client that started one disappears.
+const DRAIN_DEADLINE: Duration = Duration::from_secs(60);
 const PREPARED_FILE_BLOB_LIFETIME: Duration = Duration::from_secs(15 * 60);
 const PAGE_FILE_BLOB_CHUNK_BYTES: usize = 64 * 1024;
 
@@ -214,6 +218,7 @@ struct ServerState {
     home: PathBuf,
     membership: LibraryMembership,
     remote: remote::RemoteState,
+    host_bridge: host_bridge::HostBridge,
     auth_header: String,
     agent_attribution: agent_attribution::AgentAttributionKey,
     owner_user: UserIdentity,
@@ -1615,6 +1620,58 @@ async fn workspace_apply(
             return Json(ProjectWorkspaceApplyResponse(response_envelope(Err(error))));
         }
     };
+            session_id,
+            intent:
+                nodex_core_contracts::workspace::ProjectSessionIntent::RecordUserMessage { message_id },
+    {
+        let proof = optional_header(&headers, host_bridge::INVOCATION_HEADER, "Host invocation");
+        if !proof.ok().flatten().is_some_and(|token| {
+            state
+                .host_bridge
+                .authorizes_message(&token, session_id, message_id)
+        }) {
+            return Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
+                unauthorized("Accepted messages require their live Host delivery"),
+            ))));
+        }
+    }
+    // A Member's Inbox decision reaches Core through the Space host, which resolves its
+    // Agent from the host's catalog and carries the Member's live invocation proof.
+    if bound.principal.is_some()
+        && matches!(
+            request.intent,
+            nodex_core_contracts::workspace::ProjectWorkspaceIntent::ConfirmInboxDispatch { .. }
+                | nodex_core_contracts::workspace::ProjectWorkspaceIntent::DispatchInboxEntries { .. }
+        )
+    {
+        return Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
+            unauthorized("Inbox decisions are confirmed through the Space host"),
+        ))));
+    }
+            side_chat_source_session_id,
+        let side_chat = side_chat_source_session_id.as_deref();
+                .host_bridge
+                .authorizes_launch(&token, session_id, launch_request_id, side_chat)
+                || (side_chat.is_none()
+                    && state
+                        .phone_bridge
+                        .authorizes_launch(&token, session_id, launch_request_id))
+    // A Member closes their own side chat only through the Space host, which retires its execution.
+    if context.principal.is_some()
+        && let nodex_core_contracts::workspace::ProjectWorkspaceIntent::DeleteSession { session_id } =
+            &request.intent
+    {
+        let proof = optional_header(&headers, host_bridge::INVOCATION_HEADER, "Host invocation");
+        if !proof
+            .ok()
+            .flatten()
+            .is_some_and(|token| state.host_bridge.authorizes_discard(&token, session_id))
+        {
+            return Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
+                unauthorized("Side chats close through the Space host"),
+            ))));
+        }
+    }
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
@@ -3183,6 +3240,12 @@ fn router(state: Arc<ServerState>) -> Router {
         .route("/enroll", post(remote::enroll))
         .route("/session", post(remote::session))
         .route("/core/v1/admin/space/listen", post(remote::start_listener))
+        .route("/core/v1/admin/space/prepare", post(remote::prepare_space))
+        .route("/core/v1/admin/host/register", post(host_bridge::register))
+        .route("/core/v1/admin/host/poll", post(host_bridge::poll))
+        .route("/core/v1/admin/host/complete", post(host_bridge::complete))
+        .route("/core/v1/host/availability", get(host_bridge::availability))
+        .route("/core/v1/host/call", post(host_bridge::call))
         .route("/core/v1/admin/space/invite", post(remote::invite))
         .route("/core/v1/admin/space/name", post(remote::rename_space))
         .route(
@@ -3286,14 +3349,35 @@ fn module_context(
     headers: &HeaderMap,
     bound: &BoundConnection,
 ) -> Result<BoundModuleContext, CoreError> {
+    let delegated = optional_header(headers, host_bridge::INVOCATION_HEADER, "Host invocation")?;
+    if delegated.is_some()
+        && (bound.principal.is_some() || bound.adapter != AdapterKind::ElectronHost)
+    {
+        return Err(unauthorized(
+            "Host invocation requires its local execution owner",
+        ));
+    }
+    let principal = delegated
+        .as_ref()
+        .transpose()?
+        .or_else(|| bound.principal.clone());
+    if principal
         .as_ref()
         .is_some_and(|p| p.space_id != state.library_id || !state.membership.active(p))
     {
         return Err(unauthorized("Remote membership has been revoked"));
     }
     let attribution = agent_attribution(state, headers)?;
+    let adapter = if delegated.is_some() {
+        AdapterKind::RemoteMember
+    } else {
+        bound.adapter.clone()
+    };
+    // The local connection only transports this call. Core derives authorship from
+    // the invocation's verified Member, including its prohibition on Agent claims.
     let actor = state
         .membership
+        .actor(&adapter, principal.as_ref(), attribution.as_ref())
         .map_err(|error| unauthorized(&error.message))?;
     Ok(BoundModuleContext {
         actor,
@@ -3302,7 +3386,8 @@ fn module_context(
         library_id: LibraryId(state.library_id.clone()),
         project_id: optional_header(headers, PROJECT_HEADER, "Project")?.map(ProjectId),
         connection_id: bound.id.clone(),
-        adapter: bound.adapter.clone(),
+        adapter,
+        principal,
         editor_history_owner: editor_history_owner(headers, bound)?,
         agent_attribution: attribution,
     })
@@ -3374,9 +3459,27 @@ async fn issue_agent_attribution(
             "An archived Session cannot be attributed",
         ));
     }
+    // Runtime commits a user message before requesting turn preparation. Allow
+    // the Host's acceptance write to arrive without falling back to another Member.
+    let until = tokio::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        match state.membership.bind_agent_attribution(
             &request.session_id,
             request.run_id.as_deref(),
+            request.message_id.as_deref(),
             request.backend,
+        ) {
+            Ok(()) => break,
+            Err(error)
+                if error.code == StoreErrorCode::MissingDependencies
+                    && error.retryable
+                    && tokio::time::Instant::now() < until =>
+            {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            Err(error) => return Err(api_core_error(unauthorized(&error.message))),
+        }
+    }
     Ok(Json(nodex_core_protocol::AgentAttributionResponse {
         credential: state.agent_attribution.issue(
             &request.session_id,
@@ -4233,6 +4336,7 @@ pub async fn run_with_options(
         home: home.clone(),
         membership: LibraryMembership::new(&store, identity.library_id.clone()),
         remote: remote::RemoteState::default(),
+        host_bridge: host_bridge::HostBridge::default(),
         auth_header: format!("Bearer {auth}"),
         agent_attribution: agent_attribution::AgentAttributionKey::generate()
             .map_err(|_| "Agent attribution key is unavailable")?,
@@ -4340,12 +4444,21 @@ pub async fn run_with_options(
                 .await;
         }
     });
-    let result = axum::serve(
+    let server = axum::serve(
         listener,
         router(Arc::clone(&state)).into_make_service_with_connect_info::<PeerIdentity>(),
     )
-    .with_graceful_shutdown(shutdown_signal(lifecycle))
-    .await;
+    .with_graceful_shutdown(shutdown_signal(lifecycle.clone()));
+    let result = tokio::select! {
+        result = std::future::IntoFuture::into_future(server) => result,
+        () = async {
+            lifecycle.wait_for_drain().await;
+            tokio::time::sleep(DRAIN_DEADLINE).await;
+        } => {
+            tracing::error!(subsystem = "lifecycle", "Core drain deadline elapsed with requests in flight");
+            Err(io::Error::new(io::ErrorKind::TimedOut, "Core drain deadline elapsed"))
+        }
+    };
     if let Some(idle_task) = idle_task {
         idle_task.abort();
         let _ = idle_task.await;

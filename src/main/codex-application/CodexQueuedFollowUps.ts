@@ -53,7 +53,7 @@ import {
   type MainConversationManager,
 } from "./CodexMainConversationManagers";
 import { CodexInputAssets } from "./CodexInputAssets";
-import { CodexTurnPresentation } from "./CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 type QueueOperation =

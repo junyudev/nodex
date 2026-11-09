@@ -15,7 +15,7 @@ import type {
   UpdateCodexExecutionHostSettingsInput,
 } from "../../shared/types";
 import { CodexEphemeralThreadRouting } from "../codex-runtime/CodexEphemeralThreadRouting";
-import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
+import { CodexThreadHostResolver, type CodexGateway } from "../codex-runtime/CodexGateway";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { CoreModules } from "../core-runtime/CoreModules";
 import {
@@ -91,6 +91,7 @@ export interface ExecutionHostRuntimeOptions {
   readonly nodexHome: string;
   readonly remoteWorktreeWorkerBundlePath: string;
   readonly factories?: ExecutionHostRuntimeFactories;
+  readonly nativeEndpoints?: Pick<CodexGateway["Service"], "reconcileHost" | "removeHost">;
 }
 
 export interface ExecutionHostDescriptor {
@@ -199,12 +200,12 @@ export const live = (
 ): Layer.Layer<
   ExecutionHostRuntime,
   ExecutionHostRuntimeError,
-  CodexGateway | WorktreeWorkerRuntime | ExecutionHostConfiguration | ManagedWorktreeConfiguration
+  WorktreeWorkerRuntime | ExecutionHostConfiguration | ManagedWorktreeConfiguration
 > =>
   Layer.effect(
     ExecutionHostRuntime,
     Effect.gen(function* () {
-      const gateway = yield* CodexGateway;
+      const gateway = options.nativeEndpoints;
       const localWorktreeWorker = yield* WorktreeWorkerRuntime;
       const configuration = yield* ExecutionHostConfiguration;
       const managedWorktreeConfiguration = yield* ManagedWorktreeConfiguration;
@@ -359,6 +360,7 @@ export const live = (
       const releaseRemoteHost = (host: ActiveRemoteHost["Service"]): Effect.Effect<void> =>
         Effect.gen(function* () {
           yield* unregister(host.config.id, host.worker);
+          if (!gateway) return;
           const release = yield* gateway.removeHost(host.config.id).pipe(Effect.result);
           yield* SubscriptionRef.update(activeSshHosts, (current) => {
             const next = new Map(current);
@@ -390,6 +392,12 @@ export const live = (
                 ActiveRemoteHost,
                 Effect.acquireRelease(
                   Effect.gen(function* () {
+                    if (!gateway)
+                      return yield* error(
+                        "configure-endpoint",
+                        new Error("Native remote connections are unavailable"),
+                        hostId,
+                      );
                     const transport = yield* Effect.try({
                       try: () =>
                         factories.makeTransport({

@@ -67,6 +67,8 @@ export interface ConversationAsyncQuestionPort {
 
 /** Delegated task rows request Stop through their conversation's owner. */
 export interface ConversationDelegatedTaskPort {
+  /** Whether this reader may stop a task started by `ownerRunId`, as Core admits its stop. */
+  readonly canStop: (ownerRunId: string | null) => boolean;
   /** Notifies when unsettled Stop requests change. */
   readonly subscribe: (listener: () => void) => () => void;
   /** A Stop request stays visible until the task settles or the request fails. */

@@ -246,6 +246,8 @@ fn admitted_route(path: &str) -> bool {
         path,
             | "/core/v1/admin/space/member-name"
             | "/core/v1/remote-info"
+            | "/core/v1/host/availability"
+            | "/core/v1/host/call"
             | "/core/v1/events"
             | "/core/v1/requests/cancel"
             | "/core/v1/projections/live"
@@ -298,6 +300,7 @@ pub(crate) async fn authenticate(
         return remote_unavailable().into_response();
     };
     let path = request.uri().path();
+    let host_call = path == "/core/v1/host/call";
     if matches!(path, "/enroll" | "/session") {
         if !state.remote.preauth(peer.ip()) {
             return state
@@ -401,6 +404,9 @@ pub(crate) async fn authenticate(
     if request.headers().contains_key(EDITOR_HISTORY_OWNER_HEADER)
         || request
             .headers()
+            .contains_key(host_bridge::INVOCATION_HEADER)
+        || request
+            .headers()
             .contains_key(nodex_core_protocol::AGENT_ATTRIBUTION_HEADER)
     {
         return ApiError::new(
@@ -447,6 +453,10 @@ pub(crate) async fn authenticate(
     }
     request = Request::from_parts(parts, Body::from(bytes));
     request.extensions_mut().insert(principal.clone());
+    // Waiting for an execution owner is bounded by HostBridge, not Module execution.
+    // Keep content reads available while a Member's provider starts or answers.
+    let permits = (!host_call).then_some((permit, global_permit));
+    drop(permits);
     let sse = response
         .headers()
         .get(CONTENT_TYPE)
@@ -555,6 +565,19 @@ pub(crate) async fn listen(
     state.membership.require_owner().map_err(store_api)?;
     // Reserve once, even across concurrent local administration calls.
     let mut info = state.remote.info.lock().map_err(|_| remote_unavailable())?;
+    if let Some(existing) = info.as_ref() {
+        let requested = request.address.parse::<SocketAddr>().ok();
+        let listening = existing
+            .url
+            .strip_prefix("https://")
+            .and_then(|value| value.parse::<SocketAddr>().ok());
+            && request.key.is_none()
+            && requested.zip(listening).is_some_and(|(wanted, bound)| {
+                wanted.ip() == bound.ip() && (wanted.port() == 0 || wanted.port() == bound.port())
+            })
+        {
+            return Ok(existing.clone());
+        }
         return Err(ApiError::new(
             StatusCode::CONFLICT,
             "Remote listener is already enabled",
@@ -697,7 +720,27 @@ pub(crate) async fn start_listener(
     local_admin(&state, remote)?;
     listen(state, request).await.map(Json)
 }
+
+pub(crate) async fn prepare_space(
+    State(state): State<Arc<ServerState>>,
+    remote: Option<Extension<RemotePeer>>,
+    Json(request): Json<ListenRequest>,
+) -> Result<Json<SpaceIdentity>, ApiError> {
+    local_admin(&state, remote)?;
+    let owner_member_id = state.membership.require_owner().map_err(store_api)?;
+    let (_, fingerprint) = certificate(&state.home, &request).map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Certificate configuration is invalid",
+        )
+    })?;
+    Ok(Json(SpaceIdentity {
+        space_id: state.library_id.clone(),
+        owner_member_id,
         space_name: state.membership.name().map_err(store_api)?,
+        fingerprint,
+    }))
+}
 /// A committed name change wakes every live event stream, so connected desktops show the
 /// new name now rather than after their next reconnection.
 fn announce_name_change(state: &ServerState) {

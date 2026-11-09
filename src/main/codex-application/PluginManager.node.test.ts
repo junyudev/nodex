@@ -77,9 +77,9 @@ const make = (
     lifecycle: "active",
     bindingRevision: 3,
     sources: [
-      { root: "/b", order: 2 },
-      { root: "/a", order: 1 },
-      { root: "/a", order: 3 },
+      { kind: "directory" as const, path: "/b", order: 2 },
+      { kind: "directory" as const, path: "/a", order: 1 },
+      { kind: "directory" as const, path: "/a", order: 3 },
     ],
   };
   let onRead: (() => void) | undefined;
@@ -732,7 +732,7 @@ it.effect("rejects responses whose Project binding revision changed during the n
           id: "p",
           lifecycle: "active",
           bindingRevision: 4,
-          sources: [{ root: "/new", order: 0 }],
+          sources: [{ kind: "directory" as const, path: "/new", order: 0 }],
         }),
       );
       const result = yield* manager
@@ -813,21 +813,21 @@ it.effect(
           id: "one",
           lifecycle: "active",
           bindingRevision: 1,
-          sources: [{ root: "/one", order: 0 }],
+          sources: [{ kind: "directory" as const, path: "/one", order: 0 }],
         });
         yield* manager.query("skills", { hostId: "local", projectId: "one" });
         h.setProject({
           id: "two",
           lifecycle: "active",
           bindingRevision: 1,
-          sources: [{ root: "/two", order: 0 }],
+          sources: [{ kind: "directory" as const, path: "/two", order: 0 }],
         });
         yield* manager.query("skills", { hostId: "local", projectId: "two" });
         h.setProject({
           id: "one",
           lifecycle: "active",
           bindingRevision: 1,
-          sources: [{ root: "/one", order: 0 }],
+          sources: [{ kind: "directory" as const, path: "/one", order: 0 }],
         });
         yield* manager.command("install", {
           hostId: "local",
@@ -1756,7 +1756,7 @@ it.effect("fences detail skill preview grants by project bindings", () => {
         id: "p",
         lifecycle: "active",
         bindingRevision: 4,
-        sources: [{ root: "/new", order: 1 }],
+        sources: [{ kind: "directory" as const, path: "/new", order: 1 }],
       });
       assert.strictEqual(
         (yield* manager.query("skill-contents", { hostId: "local", projectId: "p", path })).status,

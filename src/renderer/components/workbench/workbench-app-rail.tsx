@@ -97,6 +97,13 @@ export function WorkbenchAppRail({
     >
       {spaceSwitcher}
       {destinations
+        // A team window offers what its Space shares; Automations run on its host, and Plugins and
+        // Insights are this desktop's own Agents.
+        .filter(
+          (entry) =>
+            !contentOnly ||
+            (entry.id !== "automations" && entry.id !== "plugins" && entry.id !== "insights"),
+        )
         .map(({ id, label, peekArea, icon, onSelect }) => {
           const active = destination === id;
           return (

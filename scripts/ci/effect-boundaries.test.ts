@@ -139,7 +139,7 @@ describe("Effect architecture boundaries", () => {
 
     const applicationRoots = [
       "packages/mobile/src/runtime/connection.ts",
-      "src/main/automation-application/AutomationApplication.ts",
+      "src/host/automation-application/AutomationApplication.ts",
       "src/main/browser-application/BrowserApplication.ts",
       "src/main/codex-runtime/CodexEndpoint.ts",
       "src/main/database-application/DatabaseModule.ts",
@@ -160,6 +160,7 @@ describe("Effect architecture boundaries", () => {
     );
     expect(codes("src/main/app/MainEntry.ts", "run-promise.ts")).toEqual([]);
     expect(codes("src/main/git-worker/entry.ts", "node-runtime.ts")).toEqual([]);
+    expect(codes("src/host/serve-entry.ts", "node-runtime.ts")).toEqual([]);
     expect(codes("src/main/worktree-worker/entry.ts", "node-runtime.ts")).toEqual([]);
     expect(codes("src/main/worktree-worker/stdio-entry.ts", "node-runtime.ts")).toEqual([]);
     expect(codes("scripts/codex-probe-session.ts", "node-runtime.ts")).toEqual([]);

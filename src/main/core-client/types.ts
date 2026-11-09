@@ -246,11 +246,21 @@ export interface CoreRequestOptions {
   readonly editorHistoryOwnerId?: string;
   /** A Core-issued credential naming the Agent this change is made for. */
   readonly agentAttribution?: string;
+  /** A short-lived Core relay proof; only the local execution owner may present it. */
+  readonly hostInvocation?: string;
 }
 
 export interface CoreClientPort {
   /** The Space's one name, as Core shows it to every Member and Device. */
   spaceInfo?(options?: CoreRequestOptions): Promise<components["schemas"]["RemoteCoreInfo"]>;
+  /** Execution-owner access is optional for content-only test/transport implementations. */
+  hostCall?(
+    input: components["schemas"]["HostCall"],
+    options?: CoreRequestOptions,
+  ): Promise<components["schemas"]["HostCallResult"]>;
+  hostAvailability?(
+    options?: CoreRequestOptions,
+  ): Promise<components["schemas"]["HostAvailability"]>;
   readFileBlob(input: ReadFileBytesInput, options?: CoreRequestOptions): Promise<ManagedBlobBytes>;
   prepareBlob(
     input: {

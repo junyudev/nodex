@@ -112,6 +112,36 @@ pub(crate) fn require_admitted(connection: &Connection, dispatch: &str) -> Resul
     Ok(())
 }
 
+/// The Member an Automation's own message to `session` acts for: the Owner whose standing
+/// grant admitted its Run. No person accepts that message in the chat, and a clock Run binds
+/// its new Session only after the message is dispatched. `None` when no Automation Run sent it.
+pub(crate) fn message_requester(
+    connection: &Connection,
+    session: &str,
+    message: &str,
+) -> Result<Option<String>, StoreError> {
+    let grant: Option<(String, bool)> = connection
+        .query_row(
+            "SELECT owner.id,owner.lifecycle='active' FROM automation_execution_runs run \
+             JOIN automation_decisions decision ON decision.dispatch_id=run.dispatch_id AND decision.automation_id=run.automation_id \
+             JOIN automations automation ON automation.automation_id=run.automation_id \
+             JOIN members owner ON owner.id=COALESCE(json_extract(decision.frozen_authority_json,'$.owner_member_id'),automation.owner_member_id) \
+             WHERE run.message_id=?2 AND (run.session_id IS NULL OR run.session_id=?1)",
+            params![session, message],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    match grant {
+        None => Ok(None),
+        Some((owner, true)) => Ok(Some(owner)),
+        Some(_) => Err(StoreError::new(
+            StoreErrorCode::Unauthorized,
+            "This Automation's Owner is no longer a Member",
+            false,
+        )),
+    }
+}
+
 pub(crate) fn admission(
     connection: &Connection,
     dispatch: &str,

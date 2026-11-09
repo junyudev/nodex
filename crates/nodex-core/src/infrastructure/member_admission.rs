@@ -15,6 +15,15 @@ pub(crate) fn require_current(
     let Some(p) = &context.principal else {
         return Err(denied());
     };
+    require_principal(connection, &context.library_id.0, p)
+}
+
+pub(crate) fn require_principal(
+    connection: &Connection,
+    library: &str,
+    p: &nodex_core_contracts::RemotePrincipal,
+) -> Result<(), StoreError> {
+    if p.space_id != library {
         return Err(denied());
     }
     let role = if p.role == MemberRole::Owner {

@@ -145,6 +145,7 @@
               "packages/effect-codex-app-server/**/*.tsx",
               "src/main/**/*.ts",
               "src/main/**/*.tsx",
+              "src/host/**/*.ts",
               "scripts/codex-probe-session.ts"
             ],
             "exclude": ["packages/effect-codex-app-server/src/_generated/**/*.ts"],

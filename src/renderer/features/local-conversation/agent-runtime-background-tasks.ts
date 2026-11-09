@@ -4,6 +4,7 @@ import {
   type AgentRuntimeRendererTransport,
 } from "../../lib/agent-runtime-runtime";
 import { useAgentRuntimeSessionActivity } from "../../lib/agent-runtime-session-activity";
+import { useRunStopCapabilities } from "../../lib/use-chat-capabilities";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import type { AgentRuntimeSessionActivity } from "../../../shared/agent-runtime-api";
 import {
@@ -11,7 +12,11 @@ import {
   isAgentRuntimeTaskStopping,
   type AgentRuntimeDelegatedTaskStore,
 } from "./agent-runtime-delegated-tasks";
-import type { ConversationBackgroundTask, ConversationBackgroundTasks } from "./thread-stage-types";
+import type {
+  ConversationBackgroundTask,
+  ConversationBackgroundTasks,
+  StoppableBackgroundTasks,
+} from "./thread-stage-types";
 
 type ActivityTask = AgentRuntimeSessionActivity["backgroundTasks"][number];
 
@@ -34,6 +39,8 @@ export const BACKGROUND_STOP_SETTLE_MS = 15_000;
 export function projectAgentRuntimeBackgroundTasks(
   tasks: readonly ActivityTask[],
   isStopping: (taskId: string) => boolean,
+  /** Whether this reader may stop work of the Run that started a task. */
+  canStopRun: (runId: string | null) => boolean = () => true,
 ): readonly ConversationBackgroundTask[] {
   return tasks.map((task) => {
     const kind = task.kind === "background_task" ? "task" : task.kind;
@@ -46,6 +53,7 @@ export function projectAgentRuntimeBackgroundTasks(
       owner: task.threadTitle,
       startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : null,
       stoppable: true,
+      canStop: canStopRun(task.runId),
       stopping: isStopping(task.taskId),
     };
   });
@@ -63,17 +71,24 @@ export type AgentRuntimeBackgroundTransport = Pick<
  */
 export async function requestAgentRuntimeBackgroundStop(
   sessionId: string,
-  tasks: readonly Pick<ActivityTask, "threadId" | "taskId">[],
+  tasks: readonly Pick<ActivityTask, "threadId" | "taskId" | "runId">[],
   transport: AgentRuntimeBackgroundTransport,
   store: AgentRuntimeDelegatedTaskStore = agentRuntimeDelegatedTasks,
 ): Promise<void> {
-  const byThread = new Map<string, string[]>();
+  // One request per conversation and Run, so each stop is admitted for the Run whose work it is.
+  const groups = new Map<
+    string,
+    { readonly threadId: string; readonly runId: string | null; readonly taskIds: string[] }
+  >();
   for (const task of tasks) {
     if (!store.markStopping(sessionId, task.taskId)) continue;
-    byThread.set(task.threadId, [...(byThread.get(task.threadId) ?? []), task.taskId]);
+    const key = JSON.stringify([task.threadId, task.runId]);
+    const group = groups.get(key) ?? { threadId: task.threadId, runId: task.runId, taskIds: [] };
+    group.taskIds.push(task.taskId);
+    groups.set(key, group);
   }
   const results = await Promise.allSettled(
-    [...byThread].map(async ([threadId, taskIds]) => {
+    [...groups.values()].map(async ({ threadId, runId, taskIds }) => {
       const release = () => {
         for (const taskId of taskIds) store.settle(sessionId, taskId);
       };
@@ -83,6 +98,7 @@ export async function requestAgentRuntimeBackgroundStop(
           threadId,
           requestId: createUuidV7(),
           taskIds,
+          runId,
         });
       } catch (cause) {
         release();
@@ -103,15 +119,18 @@ export function createAgentRuntimeBackgroundTasks(
   tasks: readonly ConversationBackgroundTask[],
   transport: AgentRuntimeBackgroundTransport,
   store: AgentRuntimeDelegatedTaskStore = agentRuntimeDelegatedTasks,
-): ConversationBackgroundTasks {
+): StoppableBackgroundTasks {
   const stopping = new Set(tasks.filter((task) => task.stopping).map((task) => task.id));
-  const live = activityTasks.filter((task) => !stopping.has(task.taskId));
+  const permitted = new Set(tasks.filter((task) => task.canStop).map((task) => task.id));
+  const live = activityTasks.filter(
+    (task) => !stopping.has(task.taskId) && permitted.has(task.taskId),
+  );
   return {
     tasks,
     stop: (taskId) =>
       requestAgentRuntimeBackgroundStop(
         sessionId,
-        taskId === undefined ? live : activityTasks.filter((task) => task.taskId === taskId),
+        taskId === undefined ? live : live.filter((task) => task.taskId === taskId),
         transport,
         store,
       ),
@@ -133,14 +152,29 @@ export function useAgentRuntimeBackgroundTasks(
   sessionId: string | null,
 ): ConversationBackgroundTasks | null {
   const activity = useAgentRuntimeSessionActivity(sessionId);
+  const activityTasks = activity?.backgroundTasks ?? [];
+  const canStopRun = useRunStopCapabilities(
+    sessionId,
+    activityTasks.map((task) => task.runId),
+  );
   const stopping = useSyncExternalStore(
     agentRuntimeDelegatedTasks.subscribe,
     agentRuntimeDelegatedTasks.readStopping,
   );
-  const activityTasks = activity?.backgroundTasks ?? [];
   if (!sessionId || activityTasks.length === 0) return null;
-  const tasks = projectAgentRuntimeBackgroundTasks(activityTasks, (taskId) =>
-    isAgentRuntimeTaskStopping(stopping, sessionId, taskId),
+  const tasks = projectAgentRuntimeBackgroundTasks(
+    activityTasks,
+    (taskId) => isAgentRuntimeTaskStopping(stopping, sessionId, taskId),
+    canStopRun,
   );
-  return createAgentRuntimeBackgroundTasks(sessionId, activityTasks, tasks, agentRuntimeRuntime);
+  const work = createAgentRuntimeBackgroundTasks(
+    sessionId,
+    activityTasks,
+    tasks,
+    agentRuntimeRuntime,
+  );
+  // Every reader sees the output; each task stops only for whoever may stop its own Run.
+  if (!tasks.some((task) => task.canStop))
+    return { tasks: work.tasks, readOutput: work.readOutput };
+  return work;
 }

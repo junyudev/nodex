@@ -8,7 +8,7 @@ import { workbenchObservationSchemas } from "../../shared/nodex-app-tools/workbe
 import { workbenchControlSchemas } from "../../shared/nodex-app-tools/workbench-control-schemas";
 import { makeWorkbenchSceneKey } from "../../shared/workbench-scene";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
-import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";

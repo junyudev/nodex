@@ -600,8 +600,11 @@ transcript, including steering, queue promotion and image-only input. Collapsing
 activity keeps those complete messages visible, and reopening history preserves their
 image previews. Forked history resolves through its captured source Run prefix; later source
 items are excluded. Resolution returns only the owned path, and conversation metadata never
-hydrates image bytes. Workspace creation and environment
-setup use the same scoped filesystem owner as other native capabilities. The workspace
+hydrates image bytes. When an Agent reads a picture file, views a picture or generates one,
+that picture becomes the step's own attachment as the step completes, so every Device shows
+what the Agent saw or made from the transcript rather than from the file's path. A step whose
+file is already gone names the picture as unavailable instead. Workspace creation and
+environment setup use the same scoped filesystem owner as other native capabilities. The workspace
 is retained when remote creation may have committed without acknowledgement, and its
 managed-worktree ownership is attached only after the durable execution is verified.
 
@@ -908,7 +911,7 @@ the Agent asks while it keeps working are the exception: they read as the messag
 them, open the question panel above the ordinary Composer without replacing it, and stay
 answerable until explicitly settled, even after completion, Stop, provider loss or restart. Answering only part of a question batch retains its unanswered siblings. Non-secret authored drafts survive view release, reconnect and restart; private text remains memory-only. Answers and their attachments reach Codex in its question-reply envelope, steered into the running Turn or kept as the next message, and read as question/answer content even when they open a later Run.
 
-Answer admission records cumulative per-question answers and a separate message identity for each submission batch. Delivery distinguishes pending, unknown and accepted. An uncertain transport result never blindly queues another copy. Exact native client-message receipts, including bounded resumed history evidence after process recovery, settle the original message without appending another row. Accepted delivery cannot be downgraded by a late unknown receipt. Missing evidence remains unconfirmed rather than guessed.
+Answer admission records cumulative per-question answers and a separate message identity for each submission batch. Delivery distinguishes pending, unknown and accepted. An uncertain transport result never blindly queues another copy. Exact native client-message receipts, including bounded resumed history evidence after process recovery, settle the original message without appending another row. Accepted delivery cannot be downgraded by a late unknown receipt. Missing evidence remains unconfirmed rather than guessed. Pending input in a failed or interrupted reply shows Not sent; it never remains Sending after settlement. An unknown native delivery remains unconfirmed.
 
 Synchronous question projection preserves custom-answer eligibility, private intent, initial answers, required questions and native blocking policy. A nonblocking synchronous question in a focused presented chat waits for 60 seconds of inactivity before a 90-second countdown; a background question starts that countdown immediately. Card interaction snoozes it, and timeout returns an empty response without choosing a default option. One host-owned deadline follows the exact request and process generation across windows; equal Thread and request IDs on different hosts remain independent.
 
@@ -1203,8 +1206,11 @@ and workflows as it starts and ends them. Codex background terminals appear as c
 with their exact command text (up to 2,000 characters); the Runtime reconciles the native
 terminal list when commands start or a Turn finishes. Command completion and stop responses
 update the list immediately. Safety refreshes run only for live terminal rosters, backing off
-from 2 to 30 seconds while unchanged and resetting when command activity changes. Stopping one
-task ends only that task; a conversation's Stop ends all of its background work. Output reads
+from 2 to 30 seconds while unchanged and resetting when command activity changes. A Turn that
+is stopped or fails ends its unfinished commands as stopped, and they leave the list before the
+Run ends, so the Session never reads as working in the background for a command its stopped
+reply ran. Stopping one task ends only that task; a conversation's Stop ends all of its
+background work. Output reads
 return at most the last 8 KiB of a task's output: Claude Code supplies it, and Codex keeps a
 bounded in-memory command output tail while the command runs, including after its Turn
 finishes, with the matching item's projected aggregate as a fallback. Streamed deltas never

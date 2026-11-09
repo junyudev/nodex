@@ -1,3 +1,4 @@
+import { isHostedChat } from "@/lib/hosted-chat";
 import { buildPageDeepLink } from "@/lib/page-deeplink";
 import { useComposerPageSuggestions } from "./use-composer-page-suggestions";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../../shared/codex-host";
@@ -816,7 +817,8 @@ const ComposerAddContextRootMenuContent = forwardRef<
   const query = suggestion.query;
   const normalizedQuery = query.trim();
   const pages = useComposerPageSuggestions(query);
-  const appshot = useComposerAppshotTarget(open);
+  // A picture of this computer's apps is this desktop's capture; a hosted chat's Composer has none.
+  const appshot = useComposerAppshotTarget(open && !isHostedChat());
   const appshotTarget = appshot.target;
   const fileSearchQuery = useDebouncedValue(query, 100);
   const fileSearch = useFileSearch({
@@ -1451,7 +1453,6 @@ export function ComposerAddContextTrigger({
   readonly onToggle: () => void;
 }) {
   const label = "Add files and more";
-
   return (
     <NodexTooltip tooltipContent={label}>
       <button

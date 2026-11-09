@@ -66,6 +66,8 @@ import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import * as EffectWorker from "../EffectWorker.ts";
 import * as Orchestrator from "../Orchestrator.ts";
 import * as ProjectionStore from "../ProjectionStore.ts";
+import { readRootActivity } from "../ExecutionActivity.ts";
+import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import * as ProviderReplayHarness from "../testkit/ProviderReplayHarness.ts";
 import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import * as ProviderContinuationRequests from "@nodex/provider-core/server/ProviderContinuationRequests";
@@ -4989,6 +4991,142 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
+  it.effect("keeps the pictures Codex viewed and generated with the chat", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const workspace = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-codex-pictures-" });
+        const star = Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), Buffer.alloc(64, 1)]);
+        const drawn = Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), Buffer.alloc(64, 2)]);
+        const starPath = `${workspace}/luna-star.png`;
+        const drawnPath = `${workspace}/generated_images/drawn.png`;
+        const gonePath = `${workspace}/gone.png`;
+        yield* fs.writeFile(starPath, star);
+        const nativeThreadId = "pictures-thread";
+        const nativeTurnId = "pictures-turn";
+        const item = (method: "item/started" | "item/completed", value: object) => ({
+          type: "emit_inbound" as const,
+          label: `${method}/${(value as { id: string }).id}`,
+          frame: {
+            method,
+            params: { threadId: nativeThreadId, turnId: nativeTurnId, item: value },
+          },
+        });
+        const view = { type: "imageView", id: "view-star", path: `file://${starPath}` };
+        const gone = { type: "imageView", id: "view-gone", path: gonePath };
+        const generation = {
+          type: "imageGeneration",
+          id: "generate-drawing",
+          revisedPrompt: "A small drawing",
+          failure: null,
+          generationId: null,
+        };
+        const transcript = makeCodexReplayTranscript({
+          scenario: "codex-pictures",
+          entries: [
+            ...codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt: "Look and draw." }),
+            item("item/started", view),
+            item("item/completed", view),
+            item("item/started", { ...generation, status: "in_progress", result: "" }),
+            item("item/completed", {
+              ...generation,
+              status: "completed",
+              result: drawn.toString("base64"),
+              savedPath: drawnPath,
+            }),
+            item("item/completed", gone),
+            {
+              type: "emit_inbound",
+              label: "turn/completed",
+              frame: {
+                method: "turn/completed",
+                params: {
+                  threadId: nativeThreadId,
+                  turn: makeCodexReplayTurn({ id: nativeTurnId, status: "completed" }),
+                },
+              },
+            },
+          ],
+        });
+        const serverConfig = yield* makeReplayServerConfig(transcript.scenario);
+        const harness = yield* makeCodexReplayHarness(
+          transcript,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          serverConfig,
+        );
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("pictures-attempt"),
+            text: "Look and draw.",
+          }),
+        );
+        yield* harness.firstTerminal;
+        const updates = harness.events.flatMap((event) =>
+          event.type === "turn_item.updated" && event.turnItem.type === "dynamic_tool"
+            ? [event.turnItem]
+            : [],
+        );
+        const latest = (nativeId: string) =>
+          updates.findLast((turnItem) => turnItem.nativeItemRef?.nativeId === nativeId);
+        const keptBytes = (turnItem: OrchestrationV2TurnItem | undefined) =>
+          Effect.gen(function* () {
+            if (turnItem?.type !== "dynamic_tool") throw new Error("Expected a picture step");
+            const [copy] = turnItem.attachments ?? [];
+            assert.equal(copy?.type, "image");
+            return Buffer.from(
+              yield* fs.readFile(
+                resolveAttachmentPathById({
+                  attachmentsDir: serverConfig.attachmentsDir,
+                  attachmentId: copy!.id,
+                })!,
+              ),
+            );
+          });
+
+        // A viewed picture is the step's own copy of the file Codex read.
+        assert.deepInclude(latest("view-star"), {
+          status: "completed",
+          title: "View image",
+          toolName: "imageView",
+          viewedImagePath: starPath,
+        });
+        assert.deepEqual(yield* keptBytes(latest("view-star")), star);
+        // A generated picture keeps the bytes Codex produced; it shows while it is generating.
+        assert.isTrue(
+          updates.some(
+            (turnItem) =>
+              turnItem.nativeItemRef?.nativeId === "generate-drawing" &&
+              turnItem.status === "running",
+          ),
+        );
+        assert.deepInclude(latest("generate-drawing"), {
+          status: "completed",
+          title: "Generate image",
+          toolName: "imageGeneration",
+          viewedImagePath: drawnPath,
+          input: { prompt: "A small drawing" },
+        });
+        assert.deepEqual(yield* keptBytes(latest("generate-drawing")), drawn);
+        // A picture whose file is gone is named as unavailable, never previewed from its path.
+        const missing = latest("view-gone");
+        assert.isUndefined(missing?.type === "dynamic_tool" ? missing.viewedImagePath : null);
+        assert.deepEqual(missing?.unavailableImages, [
+          { name: "gone.png", sourcePath: gonePath, reason: "source_missing" },
+        ]);
+      }),
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   it.effect("keeps an asynchronous Codex question actionable after the turn completes", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -8029,6 +8167,37 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       );
     },
   );
+  /** A committed repository the replayed thread runs in, with the transcript pointed at it. */
+  const backgroundStopWorkspace = (transcript: CodexReplay.CodexAppServerReplayTranscript) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-bg-stop-workspace-" });
+      const localTranscript = yield* decodeReplayTranscriptJson(
+        (yield* encodeReplayTranscriptJson(transcript)).replaceAll(
+          yield* encodeStringJson("/workspace"),
+          yield* encodeStringJson(cwd),
+        ),
+      );
+      const replayDriver = yield* CodexReplay.makeReplayDriver(localTranscript);
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      for (const args of [
+        ["init", "--quiet"],
+        [
+          "-c",
+          "user.name=Test",
+          "-c",
+          "user.email=test@example.com",
+          "commit",
+          "--allow-empty",
+          "--quiet",
+          "-m",
+          "Initial commit",
+        ],
+      ])
+        assert.equal(Number(yield* spawner.exitCode(ChildProcess.make("git", args, { cwd }))), 0);
+      return { cwd, localTranscript, replayDriver };
+    });
+
   it.effect.each(["run.interrupt", "thread.stop", "background.stop"] as const)(
     "%s ends a completed Codex run's background command through orchestration",
     (stopType) => {
@@ -8080,42 +8249,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             });
       return Effect.scoped(
         Effect.gen(function* () {
-          const fs = yield* FileSystem.FileSystem;
-          const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-bg-stop-workspace-" });
-          const localTranscript = yield* decodeReplayTranscriptJson(
-            (yield* encodeReplayTranscriptJson(transcript)).replaceAll(
-              yield* encodeStringJson("/workspace"),
-              yield* encodeStringJson(cwd),
-            ),
-          );
-          const replayDriver = yield* CodexReplay.makeReplayDriver(localTranscript);
-          const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-          assert.equal(
-            Number(yield* spawner.exitCode(ChildProcess.make("git", ["init", "--quiet"], { cwd }))),
-            0,
-          );
-          assert.equal(
-            Number(
-              yield* spawner.exitCode(
-                ChildProcess.make(
-                  "git",
-                  [
-                    "-c",
-                    "user.name=Test",
-                    "-c",
-                    "user.email=test@example.com",
-                    "commit",
-                    "--allow-empty",
-                    "--quiet",
-                    "-m",
-                    "Initial commit",
-                  ],
-                  { cwd },
-                ),
-              ),
-            ),
-            0,
-          );
+          const { cwd, localTranscript, replayDriver } = yield* backgroundStopWorkspace(transcript);
           yield* Effect.gen(function* () {
             const orchestrator = yield* Orchestrator.OrchestratorV2;
             const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
@@ -8216,6 +8350,169 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       );
     },
   );
+
+  // Stop kills the reply's command with its turn, and Codex reports the turn
+  // interrupted without completing the command. The Run stops reading the
+  // provider once its turn ends unfinished, so the command must leave the
+  // background roster no later than the turn does.
+  it.effect("a stopped reply's command no longer runs in the background", () => {
+    const transcript = makeCodexReplayTranscript({
+      scenario: "codex-stopped-reply-command",
+      entries: [
+        ...backgroundExecTranscript.entries.slice(
+          0,
+          1 +
+            backgroundExecTranscript.entries.findIndex(
+              (entry) => entry.type === "emit_inbound" && entry.label === "item/started/command",
+            ),
+        ),
+        {
+          type: "expect_outbound",
+          label: "list-running-command",
+          frame: {
+            id: 4,
+            method: "thread/backgroundTerminals/list",
+            params: { threadId: BG_NATIVE_THREAD, limit: 100 },
+          },
+        },
+        {
+          type: "emit_inbound",
+          label: "list-running-command",
+          frame: {
+            id: 4,
+            result: {
+              data: [{ itemId: BG_COMMAND_ITEM, processId: "4242", command: BG_COMMAND }],
+              nextCursor: null,
+            },
+          },
+        },
+        {
+          type: "expect_outbound",
+          label: "turn/interrupt",
+          frame: {
+            id: 5,
+            method: "turn/interrupt",
+            params: { threadId: BG_NATIVE_THREAD, turnId: BG_NATIVE_TURN },
+          },
+        },
+        { type: "emit_inbound", label: "turn/interrupt", frame: { id: 5, result: {} } },
+        {
+          type: "emit_inbound",
+          label: "turn/completed",
+          frame: {
+            method: "turn/completed",
+            params: {
+              threadId: BG_NATIVE_THREAD,
+              turn: makeCodexReplayTurn({ id: BG_NATIVE_TURN, status: "interrupted" }),
+            },
+          },
+        },
+        {
+          type: "expect_outbound",
+          label: "terminate-stopped-command",
+          frame: {
+            id: 6,
+            method: "thread/backgroundTerminals/terminate",
+            params: { threadId: BG_NATIVE_THREAD, processId: "4242" },
+          },
+        },
+        {
+          type: "emit_inbound",
+          label: "terminate-stopped-command",
+          frame: { id: 6, result: { terminated: true } },
+        },
+      ],
+    });
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const { cwd, localTranscript, replayDriver } = yield* backgroundStopWorkspace(transcript);
+        const database = yield* Layer.build(SqlitePersistence.layerMemory);
+        yield* Effect.gen(function* () {
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+          const threadId = ThreadId.make("thread:stopped-reply-command");
+          yield* orchestrator.dispatch({
+            type: "thread.create",
+            commandId: CommandId.make("create-stopped-reply-command"),
+            threadId,
+            projectId: ProjectId.make("project:stopped-reply-command"),
+            title: "Stopped reply command",
+            modelSelection: CODEX_TEST_MODEL_SELECTION,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: cwd,
+            createdBy: "user",
+            creationSource: "web",
+          });
+          const listed = yield* orchestrator.streamDomainEvents.pipe(
+            Stream.filter(
+              (event) =>
+                event.type === "provider-thread.updated" &&
+                event.payload.pendingBackgroundTasks?.length === 1,
+            ),
+            Stream.runHead,
+            Effect.forkChild({ startImmediately: true }),
+          );
+          yield* orchestrator.dispatch({
+            type: "message.dispatch",
+            commandId: CommandId.make("start-stopped-reply-command"),
+            threadId,
+            messageId: MessageId.make("message:stopped-reply-command"),
+            text: BG_PROMPT,
+            attachments: [],
+            createdBy: "user",
+            creationSource: "web",
+            dispatchMode: { type: "start_immediately" },
+          });
+          yield* worker.drain();
+          yield* Fiber.join(listed);
+          const run = (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)!;
+          assert.equal(run.status, "running");
+          assert.equal(
+            (yield* readRootActivity({ rootThreadIds: [threadId] })).items[0]?.status,
+            "running",
+          );
+          const interrupted = yield* orchestrator.streamDomainEvents.pipe(
+            Stream.filter(
+              (event) => event.type === "run.updated" && event.payload.status === "interrupted",
+            ),
+            Stream.runHead,
+            Effect.forkChild({ startImmediately: true }),
+          );
+          yield* orchestrator.dispatch({
+            type: "run.interrupt",
+            commandId: CommandId.make("stop-stopped-reply-command"),
+            threadId,
+            runId: run.id,
+          });
+          yield* worker.drain();
+          yield* Fiber.join(interrupted);
+          yield* worker.drain();
+          assert.isNull((yield* Ref.get(replayDriver.state)).failure);
+
+          const projection = yield* orchestrator.getThreadProjection(threadId);
+          const command = projection.turnItems.find((item) => item.type === "command_execution");
+          assert.equal(command?.status, "interrupted");
+          assert.deepEqual(
+            (yield* orchestrator.getThreadShell(threadId))?.pendingBackgroundTasks,
+            [],
+          );
+          // Session activity, which the desktop, the team desktop and the phone all read, is idle.
+          assert.deepEqual((yield* readRootActivity({ rootThreadIds: [threadId] })).items, []);
+        }).pipe(
+          Effect.provide(
+            ProviderReplayHarness.layerWithRegistry(
+              { name: "codex-stopped-reply-command", runtimePolicyOverride: { cwd } },
+              CodexAdapterV2Testkit.layer({ transcript: localTranscript, driver: replayDriver }),
+              { runEffectWorker: false, databaseLayer: Layer.succeedContext(database) },
+            ),
+          ),
+          Effect.provideContext(database),
+        );
+      }).pipe(Effect.provide(NodeServices.layer)),
+    );
+  });
 
   // The app-server exits after the root turn, before the command's own
   // item/completed (Codex always sends one, so only a lost notification or a

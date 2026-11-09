@@ -3,6 +3,9 @@ import { assert, it } from "@effect/vitest";
 import { Clock, Effect } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import type { components } from "@nodex/core-protocol";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { inboundTextHash } from "../../main/agent-runtime/ChatMessageDelivery";
 import { make, formatGitHubUpdates } from "./ThreadDeliveryRuntime";
 type Mutable<T> = T extends readonly (infer V)[]
   ? Mutable<V>[]
@@ -64,6 +67,7 @@ const fixture = Effect.gen(function* () {
   const service = make.pipe(
     Effect.provideService(CoreModules, {
       workspace: {
+        read: (read: import("../../main/core-client/types").ProjectWorkspaceRead) =>
           Effect.sync(() => {
             if (read.kind === "effective_execution_hold") {
               assert.deepEqual(read.target, { kind: "session", session_id: "chat" });

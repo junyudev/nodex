@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::{Notify, watch};
+use tokio::sync::watch;
 
 const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
@@ -26,8 +26,9 @@ struct LifecycleInner {
     draining: AtomicBool,
     activity_generation: Mutex<u64>,
     drain_observer: Arc<dyn Fn(DrainReason) + Send + Sync>,
-    shutdown: Notify,
-    stream_shutdown: watch::Sender<bool>,
+    /// Drain is a state, not an event: the server, listeners and every stream observe
+    /// it, whenever they begin waiting and however many of them wait.
+    drain: watch::Sender<bool>,
 }
 
 #[derive(Clone)]
@@ -44,14 +45,13 @@ impl LifecycleCoordinator {
     pub(crate) fn with_drain_observer(
         observer: impl Fn(DrainReason) + Send + Sync + 'static,
     ) -> Self {
-        let (stream_shutdown, _) = watch::channel(false);
+        let (drain, _) = watch::channel(false);
         Self {
             inner: Arc::new(LifecycleInner {
                 draining: AtomicBool::new(false),
                 activity_generation: Mutex::new(0),
                 drain_observer: Arc::new(observer),
-                shutdown: Notify::new(),
-                stream_shutdown,
+                drain,
             }),
         }
     }
@@ -131,8 +131,7 @@ impl LifecycleCoordinator {
         {
             return false;
         }
-        self.inner.stream_shutdown.send_replace(true);
-        self.inner.shutdown.notify_one();
+        self.inner.drain.send_replace(true);
         true
     }
 
@@ -144,21 +143,16 @@ impl LifecycleCoordinator {
     }
 
     pub(crate) fn subscribe_stream_shutdown(&self) -> watch::Receiver<bool> {
-        self.inner.stream_shutdown.subscribe()
+        self.inner.drain.subscribe()
     }
 
     pub(crate) async fn wait_for_stream_shutdown(receiver: &mut watch::Receiver<bool>) {
-        if *receiver.borrow() {
-            return;
-        }
-        let _ = receiver.changed().await;
+        let _ = receiver.wait_for(|draining| *draining).await;
     }
 
     pub(crate) async fn wait_for_drain(&self) {
-        if self.is_draining() {
-            return;
-        }
-        self.inner.shutdown.notified().await;
+        let mut receiver = self.subscribe_stream_shutdown();
+        Self::wait_for_stream_shutdown(&mut receiver).await;
     }
 }
 
@@ -254,6 +248,28 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(80)).await;
         assert!(coordinator.is_draining());
         task.await.expect("idle monitor");
+    }
+
+    #[tokio::test]
+    async fn every_drain_waiter_observes_one_drain() {
+        let coordinator = LifecycleCoordinator::new();
+        let waiters: Vec<_> = (0..3)
+            .map(|_| {
+                let coordinator = coordinator.clone();
+                tokio::spawn(async move { coordinator.wait_for_drain().await })
+            })
+            .collect();
+        tokio::task::yield_now().await;
+        assert!(coordinator.begin_drain(DrainReason::ExplicitShutdown));
+        for waiter in waiters {
+            tokio::time::timeout(Duration::from_millis(200), waiter)
+                .await
+                .expect("each waiter observes the drain")
+                .expect("waiter task");
+        }
+        tokio::time::timeout(Duration::from_millis(20), coordinator.wait_for_drain())
+            .await
+            .expect("a waiter that arrives after the drain observes it");
     }
 
     #[tokio::test]

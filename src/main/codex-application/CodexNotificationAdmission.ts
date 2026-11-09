@@ -10,7 +10,7 @@ import type { CodexServerNotification } from "../codex-runtime/CodexApplicationP
 import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexTurnAuthority } from "./CodexTurnAuthority";
-import { CodexTurnPresentation } from "./CodexTurnPresentation";
+import { CodexTurnPresentation } from "../../host/TurnPresentation";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { readCodexLinkedRootSession } from "./CodexLinkedRootSession";
 

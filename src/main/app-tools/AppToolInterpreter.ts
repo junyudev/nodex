@@ -1,7 +1,10 @@
 import { make as makeFollowThread } from "./FollowThreadAppTools";
 import { make as makeMessageHandback } from "./MessageHandbackAppTools";
 import { sessionControlSchemas } from "../../shared/nodex-app-tools/session-control-schemas";
-import { make as makeSessionControls } from "./SessionControlAppTools";
+import {
+  makeControls as makeSessionControls,
+  makeCommands as makeSessionCommands,
+} from "./NativeSessionTools";
 import { make as makeHandoffStatusTools } from "./HandoffStatusAppTools";
 import { make as makeSessionHandoffTools } from "./SessionHandoffAppTools";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -35,7 +38,7 @@ import { make as makeSessionTools } from "./SessionAppTools";
 import { make as makeCoordinatorTools } from "./CoordinatorAppTools";
 import { make as makeWorkTools } from "./WorkAppTools";
 import { make as makeInboxTools } from "./InboxAppTools";
-import { make as makeSessionCommands } from "./RuntimeSessionCommands";
+
 import { make as makeAutomationTools } from "./AutomationAppTools";
 import { make as makeWorkbenchTools } from "./WorkbenchAppTools";
 import { workbenchObservationSchemas } from "../../shared/nodex-app-tools/workbench-observation-schemas";

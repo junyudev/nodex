@@ -17,7 +17,7 @@ import { CodexQueuedFollowUps } from "../codex-application/CodexQueuedFollowUps"
 import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { createHostedAppToolCaller } from "./AppToolCaller";
-import { makeWithCapture } from "./SessionControlAppTools";
+import { makeControlsWithCapture as makeWithCapture } from "./NativeSessionTools";
 import { denied } from "./SessionControlAuthority";
 
 const errorCode = (result: CallToolResult) =>
