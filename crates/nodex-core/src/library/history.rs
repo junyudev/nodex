@@ -32,7 +32,8 @@ struct PageScope {
 struct VersionRow {
     version_id: String,
     document_id: String,
-    project_id: String,
+    /// Absent for checkpoints written without a Project actor, such as an idle edit burst.
+    actor_project_id: Option<String>,
     generation: i64,
     base_head_seq: i64,
     schema_key: String,
@@ -353,7 +354,7 @@ fn read_versions(
             Ok(VersionRow {
                 version_id: row.get(0)?,
                 document_id: row.get(1)?,
-                project_id: row.get(2)?,
+                actor_project_id: row.get(2)?,
                 generation: row.get(3)?,
                 base_head_seq: row.get(4)?,
                 schema_key: row.get(5)?,
@@ -496,7 +497,10 @@ fn decode_version(
     scope: &PageScope,
 ) -> Result<LibraryPageHistoryEntry, StoreError> {
     if row.document_id != scope.document_id
-        || !bounded(&row.project_id)
+        || row
+            .actor_project_id
+            .as_ref()
+            .is_some_and(|project_id| !bounded(project_id))
         || !safe_integer(row.generation, 1)
         || !safe_integer(row.base_head_seq, 0)
         || !safe_integer(row.schema_version, 1)
@@ -1545,6 +1549,39 @@ mod tests {
             })
             .unwrap();
         assert_eq!(after_collection, before_collection);
+
+        // Background maintenance checkpoints an idle edit burst without a Project actor.
+        kernel
+            .writer()
+            .call(|connection| {
+                with_immediate_transaction(connection, |transaction| {
+                    transaction.execute(
+                        "INSERT INTO document_versions( \
+                           version_id, document_id, project_id, generation, base_head_seq, \
+                           schema_key, schema_version, cause, label, actor_json, revision_kind, \
+                           pinned, checkpoint_format, full_update_blob, state_vector, \
+                           checkpoint_hash, byte_length, created_at \
+                         ) VALUES ('version:idle', ?1, NULL, 1, 0, 'nodex.page', 4, 'idle_edit', \
+                           NULL, '{\"adapter\":\"electron_host\"}', 'automatic', 0, \
+                           'block_tree_snapshot_v2', X'7B7D', X'', \
+                           ?2, 2, ?3)",
+                        params![DOCUMENT, HASH, LATEST],
+                    )?;
+                    Ok(())
+                })
+            })
+            .expect("idle checkpoint fixture");
+        let with_idle_checkpoint = kernel
+            .readers()
+            .read_default(|connection| {
+                page_history(connection, LIBRARY, Some(PROJECT), PAGE, None, None)
+            })
+            .expect("an idle checkpoint keeps history readable");
+        assert!(with_idle_checkpoint.entries.iter().any(|entry| matches!(
+            entry,
+            LibraryPageHistoryEntry::DocumentVersion { version_metadata, .. }
+                if version_metadata.version_id == "version:idle"
+        )));
 
         let unauthorized = kernel
             .readers()

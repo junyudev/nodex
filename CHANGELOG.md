@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Page history opens again after you edit a Page and pause. The automatic revision Nodex saves when you stop editing made the Page's history show a database error instead of its revisions.
 - Usage analytics that is off when Nodex starts no longer sends events an earlier launch left waiting. Setting `DO_NOT_TRACK`, or otherwise turning analytics off while Nodex was closed, now discards them as turning it off in Settings does.
 
 ## [0.5.3] - 2026-11-08
