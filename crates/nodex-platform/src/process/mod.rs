@@ -10,6 +10,37 @@ pub use unix::*;
 #[cfg(windows)]
 pub use windows::*;
 
+/// One run of a process. Operating systems recycle PIDs, Windows within seconds,
+/// so a PID alone never proves that the process which once held it still runs.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ProcessInstance {
+    pub pid: u32,
+    /// The OS start time: opaque, nonzero, and fixed for the life of the process.
+    pub started: u64,
+}
+
+impl ProcessInstance {
+    /// The run that currently holds `pid`.
+    pub fn of(pid: u32) -> io::Result<Self> {
+        process_start(pid)?
+            .map(|started| Self { pid, started })
+            .ok_or_else(|| {
+                io::Error::new(io::ErrorKind::NotFound, "no process runs under this PID")
+            })
+    }
+
+    /// False only with proof that this run ended: nothing runs under its PID, or a
+    /// process started at another time does. A process the OS will not describe
+    /// counts as alive.
+    pub fn is_alive(&self) -> bool {
+        match process_start(self.pid) {
+            Ok(Some(started)) => started == self.started,
+            Ok(None) => false,
+            Err(_) => true,
+        }
+    }
+}
+
 pub fn home_dir() -> Option<PathBuf> {
     std::env::var_os(HOME_VARIABLE)
         .filter(|home| !home.is_empty())

@@ -67,10 +67,14 @@ pub struct BoundAgentAttribution {
     pub backend: crate::agent::AgentBackendKind,
 }
 
+/// An editor lifetime and the authenticated Host process run it belongs to.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BoundEditorHistoryOwner {
     pub id: String,
     pub peer_pid: u32,
+    /// The Host's OS start time; with the PID it names one process run, so a
+    /// recycled PID never inherits or prolongs this lifetime.
+    pub peer_started: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

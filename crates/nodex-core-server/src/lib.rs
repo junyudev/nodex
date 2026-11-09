@@ -95,7 +95,7 @@ use nodex_core_protocol::{
 };
 use nodex_platform::{
     local_endpoint::{self, LocalListener},
-    process::UserIdentity,
+    process::{ProcessInstance, UserIdentity},
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -3304,12 +3304,13 @@ fn editor_history_owner(
             "Editor history lifetimes require the authenticated desktop Host",
         ));
     }
-    let peer_pid = bound
-        .peer_pid
+    let peer = bound
+        .peer_process
         .ok_or_else(|| unauthorized("Editor history requires authenticated process identity"))?;
     Ok(Some(nodex_core_contracts::BoundEditorHistoryOwner {
         id,
-        peer_pid,
+        peer_pid: peer.pid,
+        peer_started: peer.started,
     }))
 }
 
@@ -3531,7 +3532,7 @@ fn connection_binding(
     };
     let mut digest = Sha256::new();
     digest.update(state.auth_header.as_bytes());
-    digest.update(b"\0connection-binding-v2\0");
+    digest.update(b"\0connection-binding-v3\0");
     digest.update(descriptor_snapshot(state).start_nonce.as_bytes());
     digest.update(b"\0");
     digest.update(connection_id.as_bytes());
@@ -3546,7 +3547,11 @@ fn connection_binding(
             .as_bytes(),
     );
     digest.update(b"\0");
-    digest.update(peer.pid.unwrap_or_default().to_be_bytes());
+    let process = peer
+        .process
+        .unwrap_or(ProcessInstance { pid: 0, started: 0 });
+    digest.update(process.pid.to_be_bytes());
+    digest.update(process.started.to_be_bytes());
     digest.update(b"\0");
     digest.update(build_id.as_bytes());
     hex::encode(digest.finalize())
@@ -4151,9 +4156,9 @@ pub async fn run_with_selection(
                     &headers,
                     RequestClass::Maintenance,
                     move || {
-                        state.library.maintain_editor_history_owners(|pid| {
-                            connections::peer_process_is_alive(Some(pid))
-                        })
+                        state
+                            .library
+                            .maintain_editor_history_owners(|host| host.is_alive())
                     },
                 )
                 .await;

@@ -81,7 +81,7 @@ pub(crate) fn materialization_derivation_for_store_revision(
         130..=188 => Ok(2),
         189..=191 => Ok(3),
         192..=199 => Ok(4),
-        200..=202 => Ok(5),
+        200..=203 => Ok(5),
         _ => Err(StoreError::new(
             StoreErrorCode::UnsupportedSchema,
             format!("Store v{store_revision} has no registered Document derivation"),

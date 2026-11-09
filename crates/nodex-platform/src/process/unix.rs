@@ -20,6 +20,78 @@ pub fn process_is_alive(pid: u32) -> bool {
         Err(rustix::io::Errno::SRCH)
     )
 }
+/// The start time of the process running under `pid`; a zombie has ended.
+/// macOS reports microseconds since the epoch.
+#[cfg(target_os = "macos")]
+pub(super) fn process_start(pid: u32) -> io::Result<Option<u64>> {
+    let Some(pid) = libc::c_int::try_from(pid).ok().filter(|pid| *pid > 0) else {
+        return Ok(None);
+    };
+    let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
+    let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
+    // SAFETY: the kernel writes at most `size` bytes into the zeroed buffer.
+    let written = unsafe {
+        libc::proc_pidinfo(
+            pid,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            info.as_mut_ptr().cast(),
+            size,
+        )
+    };
+    if written <= 0 {
+        let error = io::Error::last_os_error();
+        return match error.raw_os_error() {
+            Some(libc::ESRCH) => Ok(None),
+            _ => Err(error),
+        };
+    }
+    if written != size {
+        return Err(io::Error::other("process information is incomplete"));
+    }
+    // SAFETY: the kernel filled the complete, plain-data structure.
+    let info = unsafe { info.assume_init() };
+    if info.pbi_status == libc::SZOMB {
+        return Ok(None);
+    }
+    Ok(Some(
+        info.pbi_start_tvsec
+            .saturating_mul(1_000_000)
+            .saturating_add(info.pbi_start_tvusec),
+    ))
+}
+
+/// The start time of the process running under `pid`; a zombie has ended.
+/// Linux reports clock ticks since boot.
+#[cfg(target_os = "linux")]
+pub(super) fn process_start(pid: u32) -> io::Result<Option<u64>> {
+    if pid == 0 {
+        return Ok(None);
+    }
+    match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+        Ok(stat) => proc_stat_start(&stat).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "process status is malformed")
+        }),
+        Err(error)
+            if error.kind() == io::ErrorKind::NotFound
+                || error.raw_os_error() == Some(rustix::io::Errno::SRCH.raw_os_error()) =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// `/proc/<pid>/stat` fields follow the parenthesized command name, which may
+/// itself contain spaces and parentheses: state is field 3, start time field 22.
+#[cfg(any(target_os = "linux", test))]
+fn proc_stat_start(stat: &str) -> Option<Option<u64>> {
+    let (_, fields) = stat.rsplit_once(')')?;
+    let mut fields = fields.split_ascii_whitespace();
+    let state = fields.next()?;
+    let started = fields.nth(18)?.parse().ok()?;
+    Some((!matches!(state, "Z" | "X")).then_some(started))
+}
 pub fn free_space(path: &Path) -> io::Result<u64> {
     let stat = rustix::fs::statvfs(path)?;
     Ok(stat.f_bavail.saturating_mul(stat.f_frsize))
@@ -114,6 +186,33 @@ fn captured_launcher(command: &mut std::process::Command) -> io::Result<()> {
         "Desktop URI launcher exited with {}{detail}",
         output.status
     )))
+}
+
+#[cfg(test)]
+mod process_start_tests {
+    #[test]
+    fn an_unreaped_zombie_has_ended() {
+        let child = std::process::Command::new("true").spawn().unwrap();
+        let pid = rustix::process::Pid::from_child(&child);
+        rustix::process::waitid(
+            rustix::process::WaitId::Pid(pid),
+            rustix::process::WaitIdOptions::EXITED | rustix::process::WaitIdOptions::NOWAIT,
+        )
+        .unwrap();
+        assert_eq!(super::process_start(child.id()).unwrap(), None);
+        let mut child = child;
+        child.wait().unwrap();
+    }
+
+    #[test]
+    fn linux_status_fields_are_counted_after_the_command_name() {
+        let running =
+            "4242 (node (x) 1) S 1 4242 4242 0 -1 4194560 7 0 0 0 1 2 0 0 20 0 11 0 98765 1 2 3";
+        assert_eq!(super::proc_stat_start(running), Some(Some(98765)));
+        let zombie = "4242 (node) Z 1 4242 4242 0 -1 4194560 7 0 0 0 1 2 0 0 20 0 1 0 98765 0 0";
+        assert_eq!(super::proc_stat_start(zombie), Some(None));
+        assert_eq!(super::proc_stat_start("4242 (truncated) S 1 2"), None);
+    }
 }
 
 #[cfg(test)]

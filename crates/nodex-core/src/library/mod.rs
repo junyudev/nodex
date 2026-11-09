@@ -661,11 +661,12 @@ impl LibraryModule {
             .map_err(core_error)
     }
 
-    /// The server supplies OS liveness evidence; inactivity and subscription
-    /// loss are deliberately not evidence that an editor lifetime has ended.
+    /// The server supplies OS liveness evidence for each Host process run;
+    /// inactivity and subscription loss are deliberately not evidence that an
+    /// editor lifetime has ended.
     pub fn maintain_editor_history_owners(
         &self,
-        is_process_alive: impl Fn(u32) -> bool + Send + 'static,
+        is_process_alive: impl Fn(nodex_platform::process::ProcessInstance) -> bool + Send + 'static,
     ) -> Result<bool, CoreError> {
         let Some(writer) = &self.writer else {
             return Ok(false);

@@ -2417,7 +2417,7 @@ CREATE TABLE editor_history_owners (
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
   store_epoch TEXT NOT NULL,
   peer_pid INTEGER NOT NULL CHECK (peer_pid > 0),
-  state TEXT NOT NULL CHECK (state IN ('active', 'closed')),
+  state TEXT NOT NULL CHECK (state IN ('active', 'closed')), peer_started INTEGER NOT NULL DEFAULT 0 CHECK (peer_started >= 0),
   CHECK (length(owner_id) BETWEEN 1 AND 512),
   CHECK (length(store_epoch) BETWEEN 1 AND 512)
 ) WITHOUT ROWID, STRICT;
@@ -2427,7 +2427,7 @@ CREATE TABLE editor_history_recipes (
   owner_id TEXT NOT NULL REFERENCES editor_history_owners(owner_id) ON DELETE CASCADE
 ) WITHOUT ROWID, STRICT;
 CREATE INDEX idx_editor_history_recipes_owner ON editor_history_recipes(owner_id);
-CREATE INDEX idx_editor_history_owners_peer ON editor_history_owners(peer_pid);
+CREATE INDEX idx_editor_history_owners_peer ON editor_history_owners(peer_pid, peer_started);
 CREATE INDEX idx_editor_history_owners_active ON editor_history_owners(state) WHERE state = 'active';
 CREATE TABLE editor_history_cleanup (
   owner_id TEXT PRIMARY KEY REFERENCES editor_history_owners(owner_id) ON DELETE CASCADE
@@ -4510,7 +4510,7 @@ CREATE TABLE project_session_user_message_receipts (
   message_id TEXT NOT NULL,
   PRIMARY KEY (session_id, message_id)
 ) WITHOUT ROWID, STRICT;
-PRAGMA user_version = 202;
+PRAGMA user_version = 203;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

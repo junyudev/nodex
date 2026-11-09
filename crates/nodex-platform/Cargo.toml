@@ -19,6 +19,9 @@ tokio = { workspace = true, features = ["io-util"] }
 signal-hook.workspace = true
 rustix = { workspace = true, features = ["stdio"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+libc.workspace = true
+
 [target.'cfg(windows)'.dependencies]
 serde.workspace = true
 serde_json.workspace = true
