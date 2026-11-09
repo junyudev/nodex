@@ -10,7 +10,7 @@ import type { PageChatActivitySummary } from "@/lib/types";
 import { installRendererThemeFixture } from "@/test/renderer-theme";
 import { inboxNewChatAction, type InboxItem, type InboxProposal } from "../../../shared/inbox";
 import { InboxMessage } from "./inbox-message";
-import type { InboxOutcome } from "./inbox-presentation";
+import { formatInboxTime, type InboxOutcome } from "./inbox-presentation";
 import { InboxStreamItem } from "./inbox-stream-item";
 import { inboxAgentsFixture } from "./inbox-agents.test-support";
 import { InboxTriage } from "./inbox-triage";
@@ -246,7 +246,7 @@ test("a selected card's ring is never clipped, and only a message folding away c
   expect(getComputedStyle(item).overflowY).toBe("hidden");
 });
 
-test("Copy and Edit wait on the text's bottom-right corner until the message is hovered", async () => {
+test("Open page, Copy and Edit wait on the text's bottom-right corner until the message is hovered", async () => {
   render(
     <Stream>
       <StreamMessage key="page:1" item={waiting} />
@@ -254,6 +254,7 @@ test("Copy and Edit wait on the text's bottom-right corner until the message is 
   );
   const tools = screen.getByTestId("inbox-message-actions");
   expect(Array.from(tools.querySelectorAll("button"), (button) => button.ariaLabel)).toEqual([
+    "Open page",
     "Copy",
     "Edit",
   ]);
@@ -339,7 +340,7 @@ test("the time keeps its place on the bubble's side whether or not the message i
     );
     const bubble = screen.getByTestId("inbox-message-unit").getBoundingClientRect();
     // Hidden until a lingering hover, it still holds its place.
-    const time = screen.getByLabelText("Open page").getBoundingClientRect();
+    const time = screen.getByText(formatInboxTime(item.submittedAt)).getBoundingClientRect();
     view.unmount();
     return bubble.left - time.right;
   };
@@ -453,23 +454,24 @@ test("a message still waiting in Triage with no chats shows no marks", () => {
   expect(screen.queryByTestId("inbox-page-marks")).toBeNull();
 });
 
-test("the time becomes the message's link to its Page once it shows", async () => {
+test("the time becomes another link to the message's Page once it shows", async () => {
   const onOpenPage = vi.fn();
   render(
     <Stream>
       <StreamMessage key="page:1" item={waiting} onOpenPage={onOpenPage} />
     </Stream>,
   );
+  const shown = formatInboxTime(waiting.submittedAt);
   // Hidden, it cannot be chosen by accident and is not announced.
-  expect(screen.queryByRole("button", { name: "Open page" })).toBeNull();
-  const time = screen.getByLabelText("Open page");
+  expect(screen.queryByRole("button", { name: shown })).toBeNull();
+  const time = screen.getByText(shown).closest("button")!;
   expect(getComputedStyle(time).visibility).toBe("hidden");
   await act(async () => {
     await userEvent.hover(screen.getByText("Homepage feels like a dev tool"));
   });
   await expect.poll(() => getComputedStyle(time).visibility, { timeout: 3_000 }).toBe("visible");
   await act(async () => {
-    await userEvent.click(screen.getByRole("button", { name: "Open page" }));
+    await userEvent.click(screen.getByRole("button", { name: shown }));
   });
   expect(onOpenPage).toHaveBeenCalledOnce();
 });

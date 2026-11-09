@@ -9,7 +9,7 @@ import type { InboxItem, InboxProposal } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import { InboxDeleteDialog } from "./inbox-delete-dialog";
 import { actionFromDraft, draftForInboxItem, draftFromAction } from "./inbox-dispatch-editor";
-import { describeInboxDecision } from "./inbox-presentation";
+import { describeInboxDecision, formatInboxTime } from "./inbox-presentation";
 import { InboxMessage, InboxMessageMenu, type InboxMessageMenuHandlers } from "./inbox-message";
 import { NO_ROW_OFFERS } from "./inbox-presentation";
 import { InboxTriage } from "./inbox-triage";
@@ -824,15 +824,7 @@ describe("InboxTriage", () => {
       <InboxMessageMenu
         item={item({ kind: null })}
         rowOffers={NO_ROW_OFFERS}
-        handlers={{
-          onOpenPage: vi.fn(),
-          onDispatch: vi.fn(),
-          onSuggestAgain: vi.fn(),
-          onSetDone: vi.fn(),
-          onSetKind,
-          onSetImportant: vi.fn(),
-          onDelete: vi.fn(),
-        }}
+        handlers={menuHandlers({ onSetKind })}
       />,
     );
     await openNodexMenu(screen.getByRole("button", { name: "Message actions" }));
@@ -853,7 +845,6 @@ describe("InboxTriage", () => {
 });
 
 const menuHandlers = (overrides: Partial<InboxMessageMenuHandlers> = {}) => ({
-  onOpenPage: vi.fn(),
   onDispatch: vi.fn(),
   onSuggestAgain: vi.fn(),
   onSetDone: vi.fn(),
@@ -881,11 +872,29 @@ describe("The message menu", () => {
     expect(screen.getByRole("button", { name: "Handle manually" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Suggest" })).toBeTruthy();
     await openNodexMenu(screen.getByRole("button", { name: "Message actions" }));
-    await screen.findByRole("menuitem", { name: "Open page" });
+    await screen.findByRole("menuitem", { name: "Mark important" });
     const entries = menuItems();
     expect(entries).not.toContain("Mark done");
     expect(entries).not.toContain("Handle manually");
     expect(entries).not.toContain("Suggest again");
+    // Opening the Page sits on the message text, so the menu does not repeat it.
+    expect(entries).not.toContain("Open page");
+  });
+
+  test("a Nodex post has nothing to correct, so it has no menu", () => {
+    render(
+      <InboxMessageMenu
+        item={item({
+          rowKind: "answer",
+          source: { kind: "nodex", purpose: "answer", subjectSessionId: null, subjectPageId: null },
+          suggestionState: "none",
+          proposal: null,
+        })}
+        rowOffers={NO_ROW_OFFERS}
+        handlers={menuHandlers()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Message actions" })).toBeNull();
   });
 
   test("keeps Handle manually beside a suggestion, where it changes the suggestion", async () => {
@@ -1026,11 +1035,14 @@ describe("Importance", () => {
     expect(screen.queryByRole("button", { name: "Mark important" })).toBeNull();
   });
 
-  test("a message's time opens its Page", async () => {
+  test("a message opens its Page from the action on its text and from its time", async () => {
     const onOpenPage = vi.fn();
     render(message(false, { onOpenPage }));
     await click("Open page");
     expect(onOpenPage).toHaveBeenCalledOnce();
+    // The time is named by what it reads, so it is not a second `Open page`.
+    await click(formatInboxTime(item().submittedAt));
+    expect(onOpenPage).toHaveBeenCalledTimes(2);
   });
 });
 

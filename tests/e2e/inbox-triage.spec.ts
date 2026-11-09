@@ -3,6 +3,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { invokeIpc } from "./support/editor-scenario";
+import { openInboxMessagePage } from "./support/inbox-message";
 
 test("preserves capture and filing decisions while Project counts share the action area", async ({}, testInfo) => {
   test.setTimeout(180_000);
@@ -150,9 +151,7 @@ test("preserves capture and filing decisions while Project counts share the acti
           await count.innerText(),
         );
         // A message's Page opens beside the Library Inbox, which stays in view.
-        await firstRow.getByTestId("inbox-message-unit").hover();
-        await firstRow.getByRole("button", { name: "Message actions", exact: true }).click();
-        await page.getByRole("menuitem", { name: "Open page", exact: true }).click();
+        await openInboxMessagePage(firstRow);
         // Each tab group has its own tab row in the window's title row.
         const groups = page.locator('[data-panel-tab-row^="right:"]').filter({ visible: true });
         await expect(groups).toHaveCount(2);

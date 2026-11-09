@@ -153,8 +153,8 @@ hydrate only after the bounded fact window is selected.
   [Message Content Behavior](./message-content-behavior.md). An edit made in the
   Page, by the user or an Agent, shows in the stream as it lands, as does a
   rename, move or deletion made anywhere else. The Page title is only a label
-  for Board, List, search, tabs, and new chats. The stream does not show it; `Open page` in the
-  message menu opens the Page.
+  for Board, List, search, tabs, and new chats. The stream does not show it; `Open page` on the
+  message text opens the Page.
 - A sender may give the title. Otherwise Core labels the Page with a provisional
   title: the message's opening words, cut to about 48 columns, where wide
   characters count twice. Later, Nodex replaces that title with
@@ -309,9 +309,9 @@ unconfirmed delivery, keeps that way to the chat for itself.
 
 A message's own time appears beneath its checkbox and star, on the bubble's
 side, after the pointer rests on the message for about a second, without moving
-anything; a star never moves it. Once it shows, the time is the message's link to
-its Page: choosing it opens the Page, as
-`Open page` in the menu does. Hidden, it cannot be chosen. A message never
+anything; a star never moves it. Once it shows, the time is also a link to the
+message's Page: choosing it opens the Page, as `Open page` on the message text
+does. It is named by the time it reads. Hidden, it cannot be chosen. A message never
 simply vanishes: once decided, its card first says where it went, in its own
 place: `Starting a chat in <Project>` or `Sending to “<chat>”` with
 `Open chat`, `Moved to <Project>`, `Kept as <kind>`, or `Done`. It folds out of
@@ -601,20 +601,23 @@ What Nodex made of a message is not a reply. It is a strip joined to the
 message itself: the message fills the top of one rounded object, and the strip
 sits beneath it inside the same outline. The ways to act sit in one row just
 under that card and exactly as wide, all at its trailing end. The first of its icons
-opens the message menu, which holds only what the row does not already offer, so
-no action appears twice: `Open page`; `Handle manually`, `Suggest again` and
+opens the message menu, which holds only what the message does not already offer,
+so no action appears twice: `Handle manually`, `Suggest again` and
 `Mark done` unless the row shows them (beside a suggestion, `Handle manually`
 stays in the menu, where it changes the suggestion); `Reopen` for a message
-marked done; `Mark important` or `Unmark important`; `Kind`; and `Delete`. `Handle manually` opens the dispatch editor
+marked done; `Mark important` or `Unmark important`; `Kind`; and `Delete`. A
+Nodex post takes no advice, so it has no menu. `Handle manually` opens the dispatch editor
 in place of the strip, starting from the current suggestion when there is one.
-`Copy` and `Edit` act on the text itself, so they sit on it: in the bottom-right
-corner of the message text, shown while the message is hovered or one of them
-has keyboard focus. Hidden, they leave the text beneath them selectable; shown,
-they float on the text's own color without moving it. `Copy` copies the whole
-message, reading it from the Page when the stream shows only part of it, and
-confirms with a check for a moment. `Edit` appears on every message still
-waiting in the Inbox except one whose delivery failed, and neither appears
-while the message or its dispatch is being edited. With nothing to say yet, the card is
+`Open page`, `Copy` and `Edit` act on the message itself, so they sit on its
+text, in that order: in the bottom-right corner of the message text, shown while
+the message is hovered or one of them has keyboard focus. Hidden, they leave the
+text beneath them selectable; shown, they float on the text's own color without
+moving it. The message is its Page's body, so `Open page` opens that Page, on
+every message. `Copy` copies the whole message, reading it from the Page when the
+stream shows only part of it, and confirms with a check for a moment. `Edit`
+appears on every message still waiting in the Inbox except one whose delivery
+failed, and not while its dispatch is being edited; while the message itself is
+rewritten, none of the three shows. With nothing to say yet, the card is
 the message alone. A kind only steers suggestions, so the card never shows it.
 The menu's `Kind` names it, the user's own or else the one the suggestion
 proposes, and is the one place to change it; each kind keeps its own glyph there.

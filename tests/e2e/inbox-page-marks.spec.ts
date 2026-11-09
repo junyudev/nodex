@@ -109,7 +109,7 @@ test("an Inbox message shows where its Page already stands and opens its chats",
         );
         await unit.hover();
         await page.waitForTimeout(1_600);
-        await expect(moved.getByRole("button", { name: "Open page" })).toBeVisible();
+        await expect(moved.locator("time")).toBeVisible();
         claim("Hovering shows the time without moving the marks", atRest, await marksInBubble());
         await streamShot(page, stream, path.join(artifacts, "3-hover-time.png"));
 

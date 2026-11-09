@@ -32,7 +32,7 @@ import { PageChatActivityControl } from "@/components/workbench/page-chat-activi
 import { StatusIcon } from "@/lib/status-presentation";
 import type { PageChatActivitySummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { INBOX_KIND_ICONS } from "./inbox-icon-action";
+import { INBOX_KIND_ICONS, InboxIconAction } from "./inbox-icon-action";
 import { InboxArrivalRing, InboxImportantStar } from "./inbox-important";
 import { InboxMessageDocument } from "./inbox-message-document";
 import { NodexAuthor } from "./inbox-nodex";
@@ -45,7 +45,6 @@ import {
 } from "./inbox-presentation";
 
 export interface InboxMessageMenuHandlers {
-  readonly onOpenPage: () => void;
   readonly onDispatch: () => void;
   /** Absent while suggestions are off. */
   readonly onSuggestAgain?: () => void;
@@ -57,7 +56,8 @@ export interface InboxMessageMenuHandlers {
 
 /**
  * The message's less frequent actions: the first icon in its row, ahead of the others. It holds
- * only what the row does not already offer, so no action appears twice.
+ * only what the message does not already offer, so no action appears twice. A Nodex post takes no
+ * advice: nothing about it is suggested, dispatched or classified, so it has no menu.
  */
 export function InboxMessageMenu({
   item,
@@ -68,10 +68,9 @@ export function InboxMessageMenu({
   readonly handlers: InboxMessageMenuHandlers;
   readonly rowOffers: InboxRowOffers;
 }) {
+  if (item.source.kind === "nodex") return null;
   const done = item.state === "done";
   const kind = inboxEntryKind(item);
-  // A Nodex post takes no advice: nothing about it is suggested, dispatched or classified.
-  const advisable = item.source.kind !== "nodex";
   return (
     <NodexDropdownMenu
       align="end"
@@ -87,10 +86,7 @@ export function InboxMessageMenu({
         </NodexButton>
       }
     >
-      <NodexDropdownItem leftSlot={<PageIcon className="icon-xs" />} onSelect={handlers.onOpenPage}>
-        Open page
-      </NodexDropdownItem>
-      {rowOffers.handleManually || !advisable ? null : (
+      {rowOffers.handleManually ? null : (
         <NodexDropdownItem
           leftSlot={<DispatchIcon className="icon-xs" />}
           onSelect={handlers.onDispatch}
@@ -99,8 +95,7 @@ export function InboxMessageMenu({
         </NodexDropdownItem>
       )}
       {/* A held Automation decision carries its frozen action, never routing advice. */}
-      {advisable &&
-      item.state === "open" &&
+      {item.state === "open" &&
       !rowOffers.suggest &&
       !item.automationDecision &&
       handlers.onSuggestAgain ? (
@@ -111,7 +106,7 @@ export function InboxMessageMenu({
           Suggest again
         </NodexDropdownItem>
       ) : null}
-      {advisable && (done || !rowOffers.done) ? (
+      {done || !rowOffers.done ? (
         <NodexDropdownItem
           leftSlot={<CheckmarkIcon className="icon-xs" />}
           onSelect={() => handlers.onSetDone(!done)}
@@ -119,7 +114,7 @@ export function InboxMessageMenu({
           {done ? "Reopen" : "Mark done"}
         </NodexDropdownItem>
       ) : null}
-      {advisable && item.state === "open" ? (
+      {item.state === "open" ? (
         <NodexDropdownItem
           leftSlot={
             item.important ? (
@@ -134,39 +129,33 @@ export function InboxMessageMenu({
         </NodexDropdownItem>
       ) : null}
       {/* What kind of thought it is only steers suggestions, so it is corrected here, not shown. */}
-      {advisable ? (
-        <NodexDropdownSummarySubmenuItem
-          label="Kind"
-          leftSlot={<TagsIcon className="icon-xs" />}
-          value={kind ? INBOX_KIND_LABELS[kind] : "None"}
-        >
-          {INBOX_ENTRY_KINDS.map((option) => {
-            const KindIcon = INBOX_KIND_ICONS[option];
-            return (
-              <NodexDropdownItem
-                key={option}
-                leftSlot={<KindIcon className="icon-xs" />}
-                rightSlot={option === kind ? <NodexDropdownSelectedIcon /> : null}
-                onSelect={() => handlers.onSetKind(option)}
-              >
-                {INBOX_KIND_LABELS[option]}
-              </NodexDropdownItem>
-            );
-          })}
-        </NodexDropdownSummarySubmenuItem>
-      ) : null}
-      {advisable ? (
-        <>
-          <NodexDropdownSeparator />
-          <NodexDropdownItem
-            className="text-token-error-foreground"
-            leftSlot={<DeleteIcon className="icon-xs" />}
-            onSelect={handlers.onDelete}
-          >
-            Delete
-          </NodexDropdownItem>
-        </>
-      ) : null}
+      <NodexDropdownSummarySubmenuItem
+        label="Kind"
+        leftSlot={<TagsIcon className="icon-xs" />}
+        value={kind ? INBOX_KIND_LABELS[kind] : "None"}
+      >
+        {INBOX_ENTRY_KINDS.map((option) => {
+          const KindIcon = INBOX_KIND_ICONS[option];
+          return (
+            <NodexDropdownItem
+              key={option}
+              leftSlot={<KindIcon className="icon-xs" />}
+              rightSlot={option === kind ? <NodexDropdownSelectedIcon /> : null}
+              onSelect={() => handlers.onSetKind(option)}
+            >
+              {INBOX_KIND_LABELS[option]}
+            </NodexDropdownItem>
+          );
+        })}
+      </NodexDropdownSummarySubmenuItem>
+      <NodexDropdownSeparator />
+      <NodexDropdownItem
+        className="text-token-error-foreground"
+        leftSlot={<DeleteIcon className="icon-xs" />}
+        onSelect={handlers.onDelete}
+      >
+        Delete
+      </NodexDropdownItem>
     </NodexDropdownMenu>
   );
 }
@@ -222,14 +211,17 @@ export function InboxMessage({
   readonly onOpenChat: (sessionId: string) => void;
   /** Opens the automation a waiting run came from. */
   readonly onOpenAutomation?: (automationId: string) => void;
-  /** Opens the message's Page; its time is the link. */
+  /** Opens the message's Page, from the action on its text or from its time. */
   readonly onOpenPage: () => void;
   readonly onUnmarkImportant: () => void;
   /** Set while the reader has just been brought to this message; changes on every arrival. */
   readonly arrivalToken?: number | null;
   /** Takes the message text's place while the user rewrites it. */
   readonly editor: React.ReactNode;
-  /** Copy and Edit, shown on the text's bottom-right corner while the message is hovered or focused. */
+  /**
+   * Copy and Edit. They follow `Open page` on the text's bottom-right corner, shown while the
+   * message is hovered or one of them is focused.
+   */
   readonly messageActions: React.ReactNode;
   /** What Nodex made of the message, inside the card; null leaves the message alone. */
   readonly strip: React.ReactNode;
@@ -283,12 +275,12 @@ export function InboxMessage({
           <InboxImportantStar important={item.important} onUnmark={onUnmarkImportant} />
         </>
       ) : null}
-      {/* The exact time surfaces only after a lingering hover and takes no room. It is the
-          message's link to its Page, so it can be chosen only once it shows. */}
+      {/* The exact time surfaces only after a lingering hover and takes no room. It is also a
+          link to the message's Page, so it can be chosen only once it shows; it is named by the
+          time it reads. */}
       <NodexTooltip tooltipContent="Open page" side="bottom">
         <button
           type="button"
-          aria-label="Open page"
           onClick={onOpenPage}
           className={cn(
             "cursor-interaction invisible absolute top-full mt-1 text-[11px] whitespace-nowrap text-token-description-foreground opacity-0 transition-[opacity,visibility] duration-200 select-none hover:text-token-foreground hover:underline",
@@ -404,10 +396,11 @@ export function InboxMessage({
               )}
             >
               {editor ?? <InboxMessageDocument item={item} lead={marks} />}
-              {editor == null && messageActions != null ? (
+              {editor == null ? (
                 // Floats over the end of the last line on the text's own color, so showing it
                 // never moves the text. It stays above all of the text, even beside a live mark
                 // animating in the first line, which can lift that line into its own layer.
+                // The message is its Page's body, so the way to that Page sits on it too.
                 <div
                   data-testid="inbox-message-actions"
                   className={cn(
@@ -416,6 +409,7 @@ export function InboxMessage({
                     fromUser ? "bg-background-user-message" : "bg-token-main-surface-primary",
                   )}
                 >
+                  <InboxIconAction label="Open page" icon={PageIcon} onClick={onOpenPage} />
                   {messageActions}
                 </div>
               ) : null}

@@ -4,6 +4,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { INBOX_SUGGESTION_SPEND_SCENARIO_ID } from "../../scripts/scenarios/scenarios/inbox-suggestion-spend";
 import { invokeIpc } from "./support/editor-scenario";
+import { openInboxMessagePage } from "./support/inbox-message";
 
 const NOW_S = Math.floor(Date.now() / 1000);
 /** Codex reports a weekly window two days in with 4% left: spending faster than its time. */
@@ -138,9 +139,7 @@ test("Inbox advice answers a send, survives edits, and steps back while usage ru
 
         // Opening a message's Page reads it; the suggestion beside it stays current.
         const current = row("current");
-        await current.getByTestId("inbox-message-unit").hover();
-        await current.getByRole("button", { name: "Message actions", exact: true }).click();
-        await page.getByRole("menuitem", { name: "Open page", exact: true }).click();
+        await openInboxMessagePage(current);
         const editor = page
           .locator('.nfm-editor .ProseMirror[contenteditable="true"]:visible')
           .first();

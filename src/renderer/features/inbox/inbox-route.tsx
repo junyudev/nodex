@@ -555,7 +555,6 @@ export function InboxRoute({
         item={item}
         rowOffers={rowOffers}
         handlers={{
-          onOpenPage: () => onOpenPage(item.pageId),
           onDispatch: handleManually,
           onSuggestAgain: suggestionsOffered
             ? () =>

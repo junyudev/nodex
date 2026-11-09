@@ -3,6 +3,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { invokeIpc } from "./support/editor-scenario";
+import { openInboxMessagePage } from "./support/inbox-message";
 
 test("opens a message's Page beside its Inbox and lists the Inbox Database in Space", async ({}, testInfo) => {
   test.setTimeout(180_000);
@@ -32,12 +33,8 @@ test("opens a message's Page beside its Inbox and lists the Inbox Database in Sp
 
       // Each tab group of the selected Scene's right stack has its own tab row in the title row.
       const groups = () => page.locator('[data-panel-tab-row^="right:"]').filter({ visible: true });
-      const openPage = async (pageId: string) => {
-        const row = page.locator(`[data-inbox-page-id="${pageId}"]`);
-        await row.getByTestId("inbox-message-unit").hover();
-        await row.getByRole("button", { name: "Message actions", exact: true }).click();
-        await page.getByRole("menuitem", { name: "Open page", exact: true }).click();
-      };
+      const openPage = (pageId: string) =>
+        openInboxMessagePage(page.locator(`[data-inbox-page-id="${pageId}"]`));
       const peekTab = () => groups().nth(1).getByRole("tab");
 
       let status: "passed" | "failed" = "failed";
@@ -57,6 +54,35 @@ test("opens a message's Page beside its Inbox and lists the Inbox Database in Sp
         const inboxPanel = page.getByTestId("inbox-right-panel");
         await expect(groups()).toHaveCount(1);
         await page.screenshot({ path: path.join(artifacts, "1-library-inbox.png") });
+
+        // The way to a message's Page sits on its text, ahead of Copy and Edit.
+        const firstRow = page.locator(`[data-inbox-page-id="${first.pageId}"]`);
+        const textActions = firstRow.getByTestId("inbox-message-actions");
+        await expect(async () => {
+          await firstRow.getByTestId("inbox-message-unit").hover();
+          await textActions
+            .getByRole("button", { name: "Open page", exact: true })
+            .hover({ timeout: 2_000 });
+          await expect(page.getByRole("tooltip")).toContainText("Open page", { timeout: 2_000 });
+        }).toPass({ timeout: 15_000 });
+        claim(
+          "Open page leads the actions on the message text",
+          ["Open page", "Copy", "Edit"],
+          await textActions
+            .getByRole("button")
+            .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))),
+        );
+        const unit = await firstRow.getByTestId("inbox-message-unit").boundingBox();
+        if (!unit) throw new Error("The first message is not on screen");
+        await page.screenshot({
+          path: path.join(artifacts, "2-open-page-on-message.png"),
+          clip: {
+            x: unit.x - 96,
+            y: unit.y - 48,
+            width: unit.width + 120,
+            height: unit.height + 96,
+          },
+        });
 
         // The Page opens as a preview in a new group to the Inbox's right; the stream stays.
         await openPage(first.pageId);
@@ -83,7 +109,7 @@ test("opens a message's Page beside its Inbox and lists the Inbox Database in Sp
             .locator("[data-app-shell-tab-title]")
             .evaluate((title) => getComputedStyle(title).fontStyle),
         );
-        await page.screenshot({ path: path.join(artifacts, "2-page-beside-library-inbox.png") });
+        await page.screenshot({ path: path.join(artifacts, "3-page-beside-library-inbox.png") });
 
         // The next message's Page replaces the preview instead of adding a tab.
         await openPage(second.pageId);
@@ -98,7 +124,7 @@ test("opens a message's Page beside its Inbox and lists the Inbox Database in Sp
             tabsBeside: await peekTab().count(),
           },
         );
-        await page.screenshot({ path: path.join(artifacts, "3-preview-replaced.png") });
+        await page.screenshot({ path: path.join(artifacts, "4-preview-replaced.png") });
 
         // Closing the last tab beside the Inbox returns it to full width.
         await peekTab().hover();
@@ -129,7 +155,7 @@ test("opens a message's Page beside its Inbox and lists the Inbox Database in Sp
             inboxVisible: await projectPanel.locator('[data-inbox-scope="project"]').isVisible(),
           },
         );
-        await page.screenshot({ path: path.join(artifacts, "4-page-beside-project-inbox.png") });
+        await page.screenshot({ path: path.join(artifacts, "5-page-beside-project-inbox.png") });
 
         // Space lists the Library Inbox Database with the rest of the Library's content.
         await page.getByRole("button", { name: "Space", exact: true }).click();
@@ -168,7 +194,7 @@ test("opens a message's Page beside its Inbox and lists the Inbox Database in Sp
         );
         // Let the menu finish opening before capturing it.
         await page.waitForTimeout(300);
-        await page.screenshot({ path: path.join(artifacts, "5-inbox-database-in-space.png") });
+        await page.screenshot({ path: path.join(artifacts, "6-inbox-database-in-space.png") });
         await page.keyboard.press("Escape");
         await expect(menu).toHaveCount(0);
         await page.waitForTimeout(700);
@@ -185,7 +211,7 @@ test("opens a message's Page beside its Inbox and lists the Inbox Database in Sp
         );
         await writeFile(
           path.join(artifacts, "README.md"),
-          `# Inbox Page peek and the Inbox Database in Space\n\nStatus: **${status}**\n\nA fresh disposable Electron Profile opens a Library Inbox message's Page, which appears as a preview in a new group to the Inbox's right while the stream stays in view. Opening the next message's Page replaces that preview, and closing it returns the Inbox to full width. A Project's Inbox opens its message's Page the same way. Space then lists the Library Inbox Database with the Library's other content, opens it with the Library Inbox's messages, and its actions omit Archive because the Inbox depends on it. The recording uses synthetic content and real renderer/Main/Core operations. Exact expected and actual values are in result.json.\n\nArtifacts: review.webm, 1-library-inbox.png, 2-page-beside-library-inbox.png, 3-preview-replaced.png, 4-page-beside-project-inbox.png and 5-inbox-database-in-space.png.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
+          `# Inbox Page peek and the Inbox Database in Space\n\nStatus: **${status}**\n\nA fresh disposable Electron Profile shows \`Open page\` ahead of \`Copy\` and \`Edit\` on a hovered Library Inbox message's text and opens that message's Page, which appears as a preview in a new group to the Inbox's right while the stream stays in view. Opening the next message's Page replaces that preview, and closing it returns the Inbox to full width. A Project's Inbox opens its message's Page the same way. Space then lists the Library Inbox Database with the Library's other content, opens it with the Library Inbox's messages, and its actions omit Archive because the Inbox depends on it. The recording uses synthetic content and real renderer/Main/Core operations. Exact expected and actual values are in result.json.\n\nArtifacts: review.webm, 1-library-inbox.png, 2-open-page-on-message.png, 3-page-beside-library-inbox.png, 4-preview-replaced.png, 5-page-beside-project-inbox.png and 6-inbox-database-in-space.png.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
         );
       }
     },
