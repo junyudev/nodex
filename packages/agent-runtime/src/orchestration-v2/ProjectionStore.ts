@@ -627,7 +627,7 @@ export type ProjectionSubagentOverviewItem = Pick<
 > & {
   readonly childRunId: RunId | null;
   readonly resultAvailable: boolean;
-  readonly attention: "approval" | "question_person" | "question_agent" | null;
+  readonly attention: typeof SubagentOverviewAttention.Type;
 };
 export interface ProjectionSubagentOverviewPage {
   readonly items: readonly ProjectionSubagentOverviewItem[];
@@ -2294,6 +2294,11 @@ const decodeHostAuthorityChild = Schema.decodeUnknownEffect(
   ),
 );
 
+/** Who a delegated task currently waits on, as the task overview reports it. */
+export const SubagentOverviewAttention = Schema.NullOr(
+  Schema.Literals(["approval", "question_person", "question_agent"]),
+);
+
 const decodeSubagentOverview = Schema.decodeUnknownEffect(
   Schema.fromJsonString(
     OrchestrationV2SubagentJsonSchema.mapFields((fields) => ({
@@ -2316,7 +2321,7 @@ const decodeSubagentOverview = Schema.decodeUnknownEffect(
       updatedAt: fields.updatedAt,
       childRunId: Schema.NullOr(RunId),
       resultAvailable: Schema.Boolean,
-      attention: Schema.NullOr(Schema.Literals(["approval", "question_person", "question_agent"])),
+      attention: SubagentOverviewAttention,
     })),
   ),
 );

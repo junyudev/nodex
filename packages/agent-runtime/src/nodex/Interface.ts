@@ -22,7 +22,6 @@ import type {
   OrchestrationV2DomainEvent,
   PersistChatAttachmentsInput,
   PersistChatAttachmentsResult,
-  OrchestrationV2Subagent,
   OrchestrationV2ConversationMessage,
   ChatImageAttachment,
 } from "@nodex/runtime-contracts";
@@ -104,31 +103,8 @@ export type AgentProjectExecutionActivity = AgentWire<
   import("../orchestration-v2/ProjectionStore.ts").ProjectionProjectExecutionActivity
 >;
 export type AgentSubagentOverviewItem = AgentWire<
-  Pick<
-    OrchestrationV2Subagent,
-    | "id"
-    | "threadId"
-    | "runId"
-    | "parentNodeId"
-    | "origin"
-    | "driver"
-    | "providerInstanceId"
-    | "providerThreadId"
-    | "childThreadId"
-    | "title"
-    | "model"
-    | "modelSelection"
-    | "recovery"
-    | "status"
-    | "startedAt"
-    | "completedAt"
-    | "updatedAt"
-  >
-> & {
-  readonly childRunId: string | null;
-  readonly resultAvailable: boolean;
-  readonly attention: "approval" | "question_person" | "question_agent" | null;
-};
+  import("../orchestration-v2/ProjectionStore.ts").ProjectionSubagentOverviewItem
+>;
 export interface AgentSubagentOverviewPage {
   readonly items: ReadonlyArray<AgentSubagentOverviewItem>;
   readonly nextCursor: string | null;

@@ -81,6 +81,8 @@ import {
 import {
   ORCHESTRATION_V2_PROJECTION_SCHEMA_VERSION,
   ProjectionStoreV2,
+  SubagentOverviewAttention,
+  type ProjectionSubagentOverviewItem,
 } from "../orchestration-v2/ProjectionStore.ts";
 import * as Projects from "../project/ProjectService.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
@@ -774,7 +776,17 @@ const OverviewItem = Schema.Struct({
   updatedAt: overviewFields.updatedAt,
   childRunId: Schema.NullOr(RunId),
   resultAvailable: Schema.Boolean,
+  attention: SubagentOverviewAttention,
 });
+// Encoding drops fields the served schema omits; every projected overview field must be served.
+type UnservedOverviewFields = Exclude<
+  keyof ProjectionSubagentOverviewItem,
+  keyof typeof OverviewItem.fields
+>;
+const overviewServesEveryField: [UnservedOverviewFields] extends [never]
+  ? true
+  : UnservedOverviewFields = true;
+void overviewServesEveryField;
 const OverviewPage = Schema.Struct({
   items: Schema.Array(OverviewItem),
   nextCursor: Schema.NullOr(Schema.String),
