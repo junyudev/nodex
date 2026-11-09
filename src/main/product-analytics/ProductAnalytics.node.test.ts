@@ -1,14 +1,17 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as PlatformError from "effect/PlatformError";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import type { TelemetrySettings } from "../../shared/types";
-import { inertProductAnalytics, make, type ProductAnalyticsPorts } from "./ProductAnalytics";
+import { inertProductAnalytics, make, type ProductAnalyticsShape } from "./ProductAnalytics";
 import { decodeState, type StatsigRequest } from "./product-analytics-state";
 
 const ON: TelemetrySettings = { enabled: true, active: true, blockedBy: null, managed: false };
@@ -35,29 +38,55 @@ const harness = (input: {
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
+    const owner = yield* Effect.scope;
     const directory = yield* fs.makeTempDirectoryScoped();
     const statePath = path.join(directory, "product-analytics", "state.json");
     const requests = yield* Ref.make<readonly StatsigRequest[]>([]);
     const changes = yield* PubSub.unbounded<TelemetrySettings>();
-    const ports: ProductAnalyticsPorts = {
-      statePath,
-      context: {
-        appVersion: "1.0.0",
-        channel: "stable",
-        tier: "production",
-        os: "darwin",
-        arch: "arm64",
-        locale: "en-US",
+    let refusedReplacements = 0;
+    // Windows refuses to replace a file that another handle still has open.
+    const files: FileSystem.FileSystem = {
+      ...fs,
+      rename: (from, to) => {
+        if (refusedReplacements === 0) return fs.rename(from, to);
+        refusedReplacements -= 1;
+        return Effect.fail(
+          PlatformError.systemError({
+            _tag: "PermissionDenied",
+            module: "FileSystem",
+            method: "rename",
+            pathOrDescriptor: to,
+          }),
+        );
       },
-      telemetry: input.telemetry ?? ON,
-      telemetryChanges: Stream.fromPubSub(changes),
-      noticeApplies: Effect.succeed(input.noticeApplies ?? true),
-      profileKind: Effect.succeed("new"),
-      windowFocused: Effect.succeed(input.focused ?? false),
-      send: (request) =>
-        Ref.update(requests, (all) => [...all, request]).pipe(Effect.as(input.status?.() ?? 202)),
     };
-    const analytics = yield* make(ports);
+    /** One app session over the shared Profile; `quit` runs the shutdown delivery. */
+    const launch = (telemetry: TelemetrySettings = input.telemetry ?? ON) =>
+      Effect.gen(function* () {
+        const session = yield* Scope.fork(owner);
+        const analytics = yield* make({
+          statePath,
+          context: {
+            appVersion: "1.0.0",
+            channel: "stable",
+            tier: "production",
+            os: "darwin",
+            arch: "arm64",
+            locale: "en-US",
+          },
+          telemetry,
+          telemetryChanges: Stream.fromPubSub(changes),
+          noticeApplies: Effect.succeed(input.noticeApplies ?? true),
+          profileKind: Effect.succeed("new"),
+          windowFocused: Effect.succeed(input.focused ?? false),
+          send: (request) =>
+            Ref.update(requests, (all) => [...all, request]).pipe(
+              Effect.as(input.status?.() ?? 202),
+            ),
+        }).pipe(Scope.provide(session), Effect.provideService(FileSystem.FileSystem, files));
+        yield* settle;
+        return { analytics, quit: Scope.close(session, Exit.void) };
+      });
     const sentNames = Ref.get(requests).pipe(
       Effect.map((all) =>
         all.flatMap((request) =>
@@ -67,15 +96,26 @@ const harness = (input: {
         ),
       ),
     );
+    // Only while no save can be in flight: on Windows, an open reader makes the save's rename
+    // fail. Durable outcomes are observed through `quit` and `launch` instead.
     const stored = fs.readFileString(statePath).pipe(Effect.map(decodeState));
-    const waitForEmptyOutbox = settle.pipe(
-      Effect.andThen(stored),
-      Effect.repeat({ until: (state) => state.outbox.length === 0, times: 100 }),
-      Effect.map((state) => assert.deepStrictEqual(state.outbox, [])),
-    );
-    yield* settle;
-    return { analytics, changes, requests, sentNames, stored, waitForEmptyOutbox };
+    const refuseNextSave = Effect.sync(() => {
+      refusedReplacements += 1;
+    });
+    return {
+      ...(yield* launch()),
+      launch,
+      changes,
+      requests,
+      sentNames,
+      stored,
+      statePath,
+      refuseNextSave,
+    };
   });
+
+const pendingNames = (analytics: ProductAnalyticsShape) =>
+  analytics.activity.pipe(Effect.map(({ pending }) => pending.map(({ event }) => event.name)));
 
 const inertActivity = inertProductAnalytics.activity;
 
@@ -137,7 +177,7 @@ it.effect("keeps events through a failed delivery and backs off", () =>
   provided(
     Effect.gen(function* () {
       let status = 503;
-      const { analytics, requests, sentNames, stored, waitForEmptyOutbox } = yield* harness({
+      const { analytics, requests, sentNames, stored } = yield* harness({
         status: () => status,
       });
       yield* analytics.noticeAcknowledged;
@@ -151,12 +191,12 @@ it.effect("keeps events through a failed delivery and backs off", () =>
       status = 202;
       yield* advance(MINUTE);
       assert.strictEqual((yield* Ref.get(requests)).length, 2);
-      yield* waitForEmptyOutbox;
       assert.deepStrictEqual((yield* sentNames).slice(-2), [
         "installation_created",
         "app_launched",
       ]);
       const activity = yield* analytics.activity;
+      assert.deepStrictEqual(activity.pending, []);
       assert.deepStrictEqual(
         activity.sent.map((entry) => entry.event.name),
         ["installation_created", "app_launched"],
@@ -168,14 +208,34 @@ it.effect("keeps events through a failed delivery and backs off", () =>
 it.effect("a batch the service rejects is dropped rather than retried forever", () =>
   provided(
     Effect.gen(function* () {
-      const { analytics, requests, waitForEmptyOutbox } = yield* harness({ status: () => 400 });
+      const { analytics, quit, launch, requests } = yield* harness({ status: () => 400 });
       yield* analytics.noticeAcknowledged;
       yield* advance(2 * MINUTE);
-      yield* waitForEmptyOutbox;
       assert.strictEqual((yield* Ref.get(requests)).length, 1);
       yield* advance(5 * MINUTE);
       assert.strictEqual((yield* Ref.get(requests)).length, 1);
+      assert.deepStrictEqual((yield* analytics.activity).pending, []);
       assert.deepStrictEqual((yield* analytics.activity).sent, []);
+
+      yield* quit;
+      const relaunched = yield* launch();
+      assert.deepStrictEqual(yield* pendingNames(relaunched.analytics), ["app_launched"]);
+    }),
+  ),
+);
+
+it.effect("a save the system refuses is repeated, so a restart resends nothing delivered", () =>
+  provided(
+    Effect.gen(function* () {
+      const { analytics, quit, launch, refuseNextSave, sentNames } = yield* harness({});
+      yield* analytics.noticeAcknowledged;
+      yield* refuseNextSave;
+      yield* advance(2 * MINUTE);
+      assert.deepStrictEqual(yield* sentNames, ["installation_created", "app_launched"]);
+
+      yield* quit;
+      const relaunched = yield* launch();
+      assert.deepStrictEqual(yield* pendingNames(relaunched.analytics), ["app_launched"]);
     }),
   ),
 );
@@ -232,40 +292,18 @@ it.effect("the identity survives a restart and a corrupt document is replaced", 
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const directory = yield* fs.makeTempDirectoryScoped();
-      const statePath = path.join(directory, "state.json");
-      const ports: ProductAnalyticsPorts = {
-        statePath,
-        context: {
-          appVersion: "1.0.0",
-          channel: "stable",
-          tier: "production",
-          os: "darwin",
-          arch: "arm64",
-          locale: "en-US",
-        },
-        telemetry: ON,
-        telemetryChanges: Stream.empty,
-        noticeApplies: Effect.succeed(true),
-        profileKind: Effect.succeed("new"),
-        windowFocused: Effect.succeed(false),
-        send: () => Effect.succeed(202),
-      };
-      const first = yield* Effect.scoped(
-        make(ports).pipe(Effect.flatMap((analytics) => analytics.activity)),
-      );
-      const second = yield* Effect.scoped(
-        make(ports).pipe(Effect.flatMap((analytics) => analytics.activity)),
-      );
-      assert.isString(first.installationId);
-      assert.strictEqual(second.installationId, first.installationId);
+      const { analytics, quit, launch, statePath } = yield* harness({});
+      const first = (yield* analytics.activity).installationId;
+      yield* quit;
+      const second = yield* launch();
+      assert.isString(first);
+      assert.strictEqual((yield* second.analytics.activity).installationId, first);
+      yield* second.quit;
 
       yield* fs.writeFileString(statePath, "{corrupt");
-      const third = yield* Effect.scoped(
-        make(ports).pipe(Effect.flatMap((analytics) => analytics.activity)),
-      );
-      assert.notStrictEqual(third.installationId, first.installationId);
-      const names = yield* fs.readDirectory(directory);
+      const third = yield* launch();
+      assert.notStrictEqual((yield* third.analytics.activity).installationId, first);
+      const names = yield* fs.readDirectory(path.dirname(statePath));
       assert.isTrue(names.some((name) => name.startsWith("state.json.corrupt-")));
     }),
   ),

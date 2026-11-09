@@ -122,12 +122,7 @@ export const make = Effect.fn("ProductAnalytics.make")(function* (ports: Product
         Effect.andThen(syncEffectDirectory(fs, directory)),
         Effect.ensuring(fs.remove(temporaryPath, { force: true }).pipe(Effect.ignore)),
       );
-    }).pipe(
-      // Local persistence failing must never reach the feature that recorded an event.
-      Effect.catchCause((cause) =>
-        Effect.sync(() => logger.warn("Product analytics state was not saved", { cause })),
-      ),
-    );
+    });
 
   const load = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
@@ -147,7 +142,30 @@ export const make = Effect.fn("ProductAnalytics.make")(function* (ports: Product
   const sent = yield* Ref.make<readonly OutboxEntry[]>([]);
   const failures = yield* Ref.make(0);
   const retryAt = yield* Ref.make<number | null>(null);
+  const unsaved = yield* Ref.make(false);
   const lock = yield* Semaphore.make(1);
+
+  /**
+   * Memory is authoritative. A save the system refuses, such as Windows declining to replace a
+   * document another handle has open, is repeated by the next change, delivery tick, or quit.
+   */
+  const save = (next: ProductAnalyticsState) =>
+    persist(next).pipe(
+      Effect.matchCauseEffect({
+        onSuccess: () => Ref.set(unsaved, false),
+        // Local persistence failing must never reach the feature that recorded an event.
+        onFailure: (cause) =>
+          Ref.getAndSet(unsaved, true).pipe(
+            Effect.flatMap((repeated) =>
+              repeated
+                ? Effect.void
+                : Effect.sync(() =>
+                    logger.warn("Product analytics state was not saved", { cause }),
+                  ),
+            ),
+          ),
+      }),
+    );
 
   const mutate = (change: (current: ProductAnalyticsState, now: number) => ProductAnalyticsState) =>
     lock.withPermits(1)(
@@ -155,9 +173,9 @@ export const make = Effect.fn("ProductAnalytics.make")(function* (ports: Product
         const now = yield* Clock.currentTimeMillis;
         const current = yield* Ref.get(state);
         const next = change(current, now);
-        if (next === current) return;
+        if (next === current && !(yield* Ref.get(unsaved))) return;
         yield* Ref.set(state, next);
-        yield* persist(next);
+        yield* save(next);
       }),
     );
 
