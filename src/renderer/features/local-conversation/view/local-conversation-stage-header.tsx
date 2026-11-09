@@ -18,6 +18,7 @@ import {
   MoveToLeftPaneIcon,
   MoveToRightPaneIcon,
 } from "@/components/shared/icons";
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import {
   NodexDropdownFlyoutSubmenuItem,
   NodexDropdownItem,
@@ -234,6 +235,9 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
           ).map((destination) => (
             <NodexDropdownItem
               key={destination.target}
+              leftSlot={
+                <NativeMenuIcon iconKey={destination.iconKey} className={menuIconClassName} />
+              }
               disabled={forking}
               onSelect={() => {
                 if (forkInFlight.current) return;

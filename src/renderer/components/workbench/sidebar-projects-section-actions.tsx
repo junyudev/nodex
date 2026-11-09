@@ -8,7 +8,7 @@ import {
   ProjectRemovedIcon,
   ProjectReopenPreviousIcon,
   SidebarManualOrderIcon,
-  SidebarSortClockIcon,
+  ClockIcon,
   SidebarUpdatedIcon,
 } from "@/components/shared/icons";
 import {
@@ -146,7 +146,7 @@ function SidebarProjectOptionsMenu({
         </NodexDropdownItem>
         <NodexDropdownItem
           disabled
-          leftSlot={<SidebarSortClockIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
+          leftSlot={<ClockIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
         >
           Chronological list
         </NodexDropdownItem>
@@ -154,7 +154,7 @@ function SidebarProjectOptionsMenu({
       <NodexDropdownFlyoutSubmenuItem
         label="Sort chats by"
         contentClassName={PROJECT_SIDEBAR_OPTIONS_SUBMENU_CLASS}
-        leftSlot={<SidebarSortClockIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
+        leftSlot={<ClockIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
       >
         <NodexDropdownRadioGroup
           value={chatOrder}

@@ -128,14 +128,19 @@ describe("session context menu model", () => {
         executionRef: { runtimeId: "runtime-1", threadId: "root-1" },
       }),
       forkDestinations: [
-        { target: "local", label: "Fork chat in same worktree" },
-        { target: "newWorktree", label: "Fork chat in new worktree" },
+        { target: "local", label: "Fork chat in same worktree", iconKey: "fork" },
+        { target: "newWorktree", label: "Fork chat in new worktree", iconKey: "worktree" },
       ],
     });
     const fork = items.find((item) => item.type === "submenu" && item.label === "Fork");
     expect(fork?.type === "submenu" ? fork.submenu : []).toMatchObject([
-      { id: "session.fork", label: "Fork chat in same worktree", enabled: true },
-      { id: "session.forkInNewWorktree", label: "Fork chat in new worktree", enabled: true },
+      { id: "session.fork", label: "Fork chat in same worktree", enabled: true, iconKey: "fork" },
+      {
+        id: "session.forkInNewWorktree",
+        label: "Fork chat in new worktree",
+        enabled: true,
+        iconKey: "worktree",
+      },
     ]);
   });
 
