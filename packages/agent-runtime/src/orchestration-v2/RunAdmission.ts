@@ -88,6 +88,20 @@ export const enqueue = Effect.fn("RunAdmission.enqueue")(function* (
   yield* activate(row.thread_id, row.class);
 });
 
+/**
+ * Runs that can still keep a tree active: non-terminal Runs, plus Runs whose native turn is
+ * still running after the foreground Run settled (`native = 1`). Both branches read only
+ * live-state partial indexes, so the cost follows live work rather than history.
+ */
+const liveRunsSql = (sql: SqlClient.SqlClient) => sql`SELECT run_id, 0 AS native
+    FROM orchestration_v2_projection_runs INDEXED BY orchestration_v2_projection_runs_recovery_idx
+    WHERE status IN ('queued','preparing','starting','running','waiting')
+  UNION ALL
+  SELECT attempt.run_id, 1 AS native
+    FROM orchestration_v2_projection_provider_turns turn INDEXED BY orchestration_v2_admission_live_turns_idx
+    CROSS JOIN orchestration_v2_projection_run_attempts attempt ON attempt.attempt_id = turn.run_attempt_id
+    WHERE turn.status = 'running'`;
+
 /** Native background turns keep the whole tree active after its foreground Run settles.
  * A fully retired execution hold releases capacity while retaining queued recovery intent.
  */
@@ -98,15 +112,15 @@ export const reconcile = Effect.fn("RunAdmission.reconcile")(function* () {
       AND run.status IN ('queued','preparing','starting','running','waiting'))`;
   yield* sql`UPDATE orchestration_v2_work_episodes AS episode SET active = 0 WHERE active = 1
     AND NOT EXISTS (
-      SELECT 1 FROM orchestration_v2_projection_runs run
-      JOIN orchestration_v2_run_activations activation USING(run_id)
-      WHERE activation.root_thread_id = episode.root_thread_id AND activation.state = 'accepted'
-        AND run.status IN ('queued','preparing','starting','running','waiting')
+      SELECT 1 FROM orchestration_v2_projection_runs run INDEXED BY orchestration_v2_projection_runs_recovery_idx
+      CROSS JOIN orchestration_v2_run_activations activation ON activation.run_id = run.run_id
+      WHERE run.status IN ('queued','preparing','starting','running','waiting')
+        AND activation.root_thread_id = episode.root_thread_id AND activation.state = 'accepted'
         AND NOT ${ExecutionPause.heldSql(sql, sql`run.thread_id`)})
     AND NOT EXISTS (
-      SELECT 1 FROM orchestration_v2_projection_provider_turns turn
-      JOIN orchestration_v2_projection_threads thread USING(thread_id)
-      WHERE ${rootSql(sql)} = episode.root_thread_id AND turn.status = 'running')
+      SELECT 1 FROM orchestration_v2_projection_provider_turns turn INDEXED BY orchestration_v2_admission_live_turns_idx
+      CROSS JOIN orchestration_v2_projection_threads thread ON thread.thread_id = turn.thread_id
+      WHERE turn.status = 'running' AND ${rootSql(sql)} = episode.root_thread_id)
     AND NOT EXISTS (
       SELECT 1 FROM orchestration_v2_effect_outbox effect
       JOIN orchestration_v2_projection_threads thread USING(thread_id)
@@ -131,28 +145,18 @@ export const effectReadySql = (sql: SqlClient.SqlClient, effectAlias = "pending"
 /** Rebuild missing activation facts from durable projections before workers start. */
 export const restore = Effect.fn("RunAdmission.restore")(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const missing = yield* sql<{ run_id: string; continuing: number }>`SELECT run.run_id,
-    run.status IN ('running','waiting') OR EXISTS (
-      SELECT 1 FROM orchestration_v2_projection_run_attempts attempt
-      JOIN orchestration_v2_projection_provider_turns turn ON turn.run_attempt_id = attempt.attempt_id
-      WHERE attempt.run_id = run.run_id AND turn.status = 'running') AS continuing
-    FROM orchestration_v2_projection_runs run
+  const missing = yield* sql<{ run_id: string; continuing: number }>`WITH live AS (${liveRunsSql(sql)})
+    SELECT run.run_id, MAX(live.native) = 1 OR run.status IN ('running','waiting') AS continuing
+    FROM live CROSS JOIN orchestration_v2_projection_runs run ON run.run_id = live.run_id
     WHERE NOT EXISTS (SELECT 1 FROM orchestration_v2_run_activations activation WHERE activation.run_id = run.run_id)
-      AND (run.status IN ('queued','preparing','starting','running','waiting') OR EXISTS (
-        SELECT 1 FROM orchestration_v2_projection_run_attempts attempt
-        JOIN orchestration_v2_projection_provider_turns turn ON turn.run_attempt_id = attempt.attempt_id
-        WHERE attempt.run_id = run.run_id AND turn.status = 'running'))
-    ORDER BY run.requested_at, run.rowid`;
+    GROUP BY run.run_id ORDER BY run.requested_at, run.rowid`;
   for (const row of missing)
     yield* enqueue(row.run_id, row.continuing ? "continuation" : undefined);
-  const active = yield* sql<{ thread_id: string }>`SELECT DISTINCT activation.thread_id
-    FROM orchestration_v2_run_activations activation
-    JOIN orchestration_v2_projection_runs run USING(run_id)
-    WHERE activation.state = 'accepted' AND (
-      (run.status IN ('queued','preparing','starting','running','waiting')
-        AND NOT ${ExecutionPause.heldSql(sql, sql`activation.thread_id`)})
-      OR EXISTS (SELECT 1 FROM orchestration_v2_projection_provider_turns turn
-        WHERE turn.thread_id = activation.thread_id AND turn.status = 'running'))`;
+  const active = yield* sql<{ thread_id: string }>`WITH live AS (${liveRunsSql(sql)})
+    SELECT DISTINCT activation.thread_id
+    FROM live CROSS JOIN orchestration_v2_run_activations activation ON activation.run_id = live.run_id
+    WHERE activation.state = 'accepted'
+      AND (live.native = 1 OR NOT ${ExecutionPause.heldSql(sql, sql`activation.thread_id`)})`;
   for (const row of active) yield* activate(row.thread_id, "continuation");
   // Pending attempts can outlive a foreground Run and must inherit its episode.
   const pending = yield* sql<{
