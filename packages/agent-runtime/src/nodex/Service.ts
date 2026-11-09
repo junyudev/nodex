@@ -348,7 +348,7 @@ const AgentRequest = Schema.Union([
     "providers.configure",
     Schema.Struct({
       providers: ProviderInstanceConfigMap,
-      agentsRunningAtOnce: Schema.optional(
+      automaticWorkAtOnce: Schema.optional(
         Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 16 })),
       ),
       modelPolicy: Schema.optional(Schema.Unknown),
@@ -373,10 +373,6 @@ const AgentRequest = Schema.Union([
       senderRunId: Schema.optional(Schema.NullOr(RunId)),
       modeLimit: Schema.optional(DispatchModeLimitSchema),
     }),
-  ),
-  request(
-    "thread.admission-context",
-    Schema.Struct({ threadId: ThreadId, pageId: Schema.NonEmptyString }),
   ),
   request("thread.stop-host-input", Schema.Struct({ threadId: ThreadId, messageId: MessageId })),
   request("thread.read", Schema.Struct({ threadId: ThreadId })),
@@ -1151,8 +1147,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return result;
       }
       case "providers.configure": {
-        if (input.input.agentsRunningAtOnce !== undefined) {
-          yield* RunAdmission.configure(input.input.agentsRunningAtOnce).pipe(
+        if (input.input.automaticWorkAtOnce !== undefined) {
+          yield* RunAdmission.configure(input.input.automaticWorkAtOnce).pipe(
             Effect.provideService(SqlClient.SqlClient, sql),
           );
         }
@@ -1236,7 +1232,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           }
         }
         const configured = yield* providerConfiguration.configure(wanted);
-        if (input.input.agentsRunningAtOnce !== undefined) yield* effectOutbox.notifyAvailable(16);
+        if (input.input.automaticWorkAtOnce !== undefined) yield* effectOutbox.notifyAvailable(16);
         return configured;
       }
       case "thread.stop-host-input": {
@@ -1274,12 +1270,6 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           runId: run.runId,
         });
         return null;
-      }
-      case "thread.admission-context": {
-        yield* sql`INSERT INTO orchestration_v2_admission_context(thread_id, page_id)
-          VALUES(${input.input.threadId}, ${input.input.pageId})
-          ON CONFLICT(thread_id) DO UPDATE SET page_id = excluded.page_id`;
-        return { bound: true };
       }
       case "thread.send": {
         const shell = yield* orchestrator.getThreadShell(input.input.threadId);

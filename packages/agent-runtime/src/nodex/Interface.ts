@@ -140,7 +140,7 @@ export interface AgentSubagentOverview {
 export interface AgentRuntimeConfiguration {
   /** Absolute, dedicated writable directory owned by this Profile's execution runtime. */
   readonly home: string;
-  readonly agentsRunningAtOnce?: number;
+  readonly automaticWorkAtOnce?: number;
   readonly pausedThreadIds?: ReadonlyArray<string>;
   readonly cwd: string;
   readonly modelPolicy?: ModelPolicy;
@@ -459,10 +459,6 @@ export interface AgentRuntimeOperations
     >;
     readonly output: AgentWire<PersistChatAttachmentsResult>;
   };
-  readonly "thread.admission-context": {
-    readonly input: { readonly threadId: string; readonly pageId: string };
-    readonly output: { readonly bound: boolean };
-  };
   readonly "thread.send": {
     readonly input: {
       readonly threadId: string;
@@ -568,7 +564,7 @@ export interface AgentRuntimeOperations
   readonly "providers.configure": {
     readonly input: {
       readonly providers: AgentRuntimeConfiguration["providers"];
-      readonly agentsRunningAtOnce?: number;
+      readonly automaticWorkAtOnce?: number;
       readonly modelPolicy?: ModelPolicy;
     };
     readonly output: {

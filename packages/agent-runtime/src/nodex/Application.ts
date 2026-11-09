@@ -38,8 +38,9 @@ export const layer = (
     Layer.provide(turnAnalytics),
   );
   const startup = Layer.effectDiscard(
-    RunAdmission.configure(configuration.agentsRunningAtOnce ?? 4).pipe(
+    RunAdmission.configure(configuration.automaticWorkAtOnce ?? 4).pipe(
       Effect.andThen(ExecutionPause.initialize(configuration.pausedThreadIds ?? [])),
+      Effect.andThen(RunAdmission.restore()),
       Effect.andThen(Runtime.acquireExecution),
     ),
   ).pipe(Layer.provideMerge(host));

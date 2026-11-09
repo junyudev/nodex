@@ -7569,6 +7569,8 @@ it.effect("automatic launches do not confirm a person-authored message", () =>
     const f = setup();
     const owner = yield* f.owner;
     yield* owner.launch({ ...launch, messageOrigin: "automation" });
+    const initial = [...f.commands.values()].find((command) => command.type === "message.dispatch");
+    assert.deepInclude(initial, { createdBy: "system", creationSource: "server" });
     assert.deepEqual(f.acceptedUserMessages, []);
   }),
 );
@@ -7891,15 +7893,6 @@ it.effect.each(["work", "inbox", "page", "active-chat"] as const)(
         const thread = fixture.snapshots.get(result.threadId)!.projection.thread;
         assert.equal(thread.worktreePath, "/page-workspace");
         assert.equal(thread.branch, "nodex-12-work");
-        assert.deepEqual(
-          fixture.calls.filter((call) => call.method === "thread.admission-context"),
-          [
-            {
-              method: "thread.admission-context",
-              input: { threadId: result.threadId, pageId: "page:work" },
-            },
-          ],
-        );
       }),
     ),
 );

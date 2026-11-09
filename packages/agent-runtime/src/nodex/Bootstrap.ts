@@ -8,7 +8,7 @@ import type { AgentRuntimeConfiguration } from "./Interface.ts";
  */
 export interface AgentRuntimeBootstrap {
   readonly type: "bootstrap";
-  readonly agentsRunningAtOnce?: number;
+  readonly automaticWorkAtOnce?: number;
   readonly pausedThreadIds?: ReadonlyArray<string>;
   readonly modelPolicy?: ModelPolicy;
   readonly providers: AgentRuntimeConfiguration["providers"];
@@ -21,7 +21,7 @@ export async function readAgentRuntimeBootstrap(
 ): Promise<
   Pick<
     AgentRuntimeConfiguration,
-    "providers" | "host" | "agentsRunningAtOnce" | "pausedThreadIds" | "modelPolicy"
+    "providers" | "host" | "automaticWorkAtOnce" | "pausedThreadIds" | "modelPolicy"
   >
 > {
   const first = await lines.next();
@@ -39,9 +39,9 @@ export async function readAgentRuntimeBootstrap(
   return {
     providers: bootstrap.providers,
     ...(bootstrap.pausedThreadIds ? { pausedThreadIds: bootstrap.pausedThreadIds } : {}),
-    ...(bootstrap.agentsRunningAtOnce === undefined
+    ...(bootstrap.automaticWorkAtOnce === undefined
       ? {}
-      : { agentsRunningAtOnce: bootstrap.agentsRunningAtOnce }),
+      : { automaticWorkAtOnce: bootstrap.automaticWorkAtOnce }),
     ...(bootstrap.modelPolicy === undefined
       ? {}
       : { modelPolicy: ModelPolicySchema.parse(bootstrap.modelPolicy) }),

@@ -575,7 +575,7 @@ it.effect("user work wins immediately over a future recovery deadline", () =>
         );
         assert.equal(replacement.request.type, "provider-turn.start");
         if (replacement.request.type === "provider-turn.start")
-          assert.equal(replacement.request.admissionClass, "person");
+          assert.equal(replacement.request.activationClass, "person");
         yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain();
         assert.equal(started.length, 2);
         assert.equal(started[1]!.message.text, "Do this instead");
@@ -1150,7 +1150,7 @@ it.effect.each(["active Run", "Stop-held queue", "Runtime restart", "provider re
             assert.isFalse(retained.runs.some((r) => r.queueHeld === true));
             assert.isTrue(yield* store.isExecutionPaused(threadId));
             assert.deepEqual(
-              yield* sql`SELECT request_id FROM orchestration_v2_run_admissions WHERE run_id = ${first.runId} AND state <> 'released'`,
+              yield* sql`SELECT root_thread_id FROM orchestration_v2_work_episodes WHERE root_thread_id = ${threadId} AND active = 1`,
               [],
             );
             yield* worker.drain();
@@ -1183,8 +1183,8 @@ it.effect.each(["active Run", "Stop-held queue", "Runtime restart", "provider re
               attemptsStarted.length,
             );
             assert.lengthOf(
-              yield* sql`SELECT request_id FROM orchestration_v2_run_admissions WHERE run_id = ${first.runId}`,
-              attemptsStarted.length,
+              yield* sql`SELECT run_id FROM orchestration_v2_run_activations WHERE run_id = ${first.runId}`,
+              1,
             );
           }
           yield* complete(emit, started.at(-1)!);
@@ -1206,7 +1206,7 @@ it.effect.each(["active Run", "Stop-held queue", "Runtime restart", "provider re
             yield* complete(emit, started.at(-1)!);
           }
           assert.deepEqual(
-            yield* sql`SELECT request_id FROM orchestration_v2_run_admissions WHERE state <> 'released'`,
+            yield* sql`SELECT root_thread_id FROM orchestration_v2_work_episodes WHERE active = 1`,
             [],
           );
         }),

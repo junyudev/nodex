@@ -167,7 +167,7 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
     await invokeIpc(page, "settings:inbox:update", { suggestions: "on_request" });
     // Full access grants the fixture's permission automatically; this scenario needs a human ask.
     await invokeIpc(page, "settings:agent-runtime:update", {
-      agentsRunningAtOnce: 4,
+      automaticWorkAtOnce: 4,
       defaultRuntimeMode: "approval-required",
     });
 

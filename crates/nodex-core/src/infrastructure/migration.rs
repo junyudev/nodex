@@ -436,6 +436,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 204,
         apply: migrate_v203_to_v204,
     },
+    MigrationStep {
+        from_revision: 204,
+        to_revision: 205,
+        apply: migrate_v204_to_v205,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2645,6 +2650,25 @@ fn migrate_v199_to_v200(
     Ok(())
 }
 
+fn migrate_v204_to_v205(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute(
+        "UPDATE session_execution_observations SET observed_json=json_remove(observed_json,'$.queue.class') WHERE json_type(observed_json,'$.queue.class') IS NOT NULL",
+        [],
+    )?;
+    super::local_commit::reset_delivery_window(connection)?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"automatic_work_queue":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 /// A Space gains its people in one step: its existing person becomes its Owner Member, Scheduled
 /// tasks become clock Automations, a chat's unread state, pin and reminder become that Member's own,
 /// every Page gains Work and a Turn, and attribution names a Member, an Agent or a Service. The
@@ -4030,6 +4054,46 @@ mod workflow_status_tests;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn automatic_work_queue_migration_keeps_rank_and_removes_priority_class() {
+        let mut connection = rusqlite::Connection::open_in_memory().unwrap();
+        super::install_current_schema(&mut connection).unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", false)
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO session_execution_observations VALUES('session',1,?1,'now')",
+                [r#"{"queue":{"runId":"run","class":"start","position":2,"waitingSince":"now"}}"#],
+            )
+            .unwrap();
+        connection.execute("INSERT INTO operational_journal_state(id,operation_identity_cutover_at,updated_at) VALUES(1,'now','now')", []).unwrap();
+        let context = super::MigrationContext {
+            source_revision: 204,
+            target_revision: 205,
+            backup_name: "backup".into(),
+            source_schema_fingerprint: super::published_format(204).unwrap().schema_fingerprint,
+            target_schema_fingerprint: super::published_format(205).unwrap().schema_fingerprint,
+            completed_at_unix_ms: 0,
+        };
+        super::migrate_v204_to_v205(&connection, &context).unwrap();
+        let observed: String = connection
+            .query_row(
+                "SELECT observed_json FROM session_execution_observations",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let queue: nodex_core_contracts::workspace::SessionExecutionQueue = serde_json::from_value(
+            serde_json::from_str::<serde_json::Value>(&observed).unwrap()["queue"].clone(),
+        )
+        .unwrap();
+        assert_eq!(queue.position, 2);
+        assert_eq!(queue.run_id, "run");
+        assert_eq!(queue.waiting_since, "now");
+        super::validate_schema_identity(&connection, 205).unwrap();
+    }
+
     #[cfg(unix)]
     use nodex_platform::private_fs::symlink;
     use std::fs;
@@ -10331,12 +10395,12 @@ mod tests {
             )
         );
         assert_eq!(connection.query_row("SELECT count(*) FROM data_source_property_values WHERE property_id='blocked_by'", [], |row| row.get::<_, i64>(0)).unwrap(), 0);
-        validate_schema_identity(&connection, 204).unwrap();
+        validate_schema_identity(&connection, CURRENT_STORE_REVISION).unwrap();
         assert_eq!(
             connection
                 .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
                 .unwrap(),
-            204
+            CURRENT_STORE_REVISION
         );
         assert_eq!(connection.query_row("SELECT commit_head_seq,replay_floor_seq FROM operational_journal_state WHERE id=1", [], |row| Ok((row.get::<_,i64>(0)?,row.get::<_,i64>(1)?))).unwrap(), (3,4));
         drop(connection);

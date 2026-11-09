@@ -600,7 +600,7 @@ it.live("configures providers over stdin so credentials never enter the process 
       configuration: {
         home: fixtureHome,
         cwd: fixtureHome,
-        agentsRunningAtOnce: 7,
+        automaticWorkAtOnce: 7,
         pausedThreadIds: ["thread:held"],
         providers: {
           claude: {
@@ -617,14 +617,14 @@ it.live("configures providers over stdin so credentials never enter the process 
     const received = (yield* connection.request("project.read", {
       projectId: "bootstrap",
     })) as unknown as {
-      readonly agentsRunningAtOnce: number;
+      readonly automaticWorkAtOnce: number;
       readonly pausedThreadIds: readonly string[];
       readonly providers: Readonly<Record<string, unknown>>;
       readonly hostTools: ReadonlyArray<{ readonly name: string }>;
       readonly environment: Readonly<Record<string, string>>;
       readonly execArgv: readonly string[];
     };
-    assert.equal(received.agentsRunningAtOnce, 7);
+    assert.equal(received.automaticWorkAtOnce, 7);
     assert.deepEqual(received.pausedThreadIds, ["thread:held"]);
     assert.deepEqual(Object.keys(received.providers), ["claude"]);
     assert.deepEqual(
@@ -1018,7 +1018,7 @@ it.live("delivers the saved machine capacity to the Runtime over its bootstrap p
     const settings = yield* makeApplicationSettings(source);
     yield* settings.update({
       type: "update-agent-runtime",
-      input: { defaultRuntimeMode: "full-access", agentsRunningAtOnce: 7 },
+      input: { defaultRuntimeMode: "full-access", automaticWorkAtOnce: 7 },
     });
     const reopened = yield* makeApplicationSettings(source);
     const saved = (yield* reopened.snapshot()).agentRuntime;
@@ -1029,13 +1029,13 @@ it.live("delivers the saved machine capacity to the Runtime over its bootstrap p
         home,
         cwd: home,
         providers: {},
-        agentsRunningAtOnce: saved.agentsRunningAtOnce,
+        automaticWorkAtOnce: saved.automaticWorkAtOnce,
       },
       host: () => Effect.succeed(null),
     });
     const received = (yield* connection.request("project.read", {
       projectId: "bootstrap",
-    })) as unknown as { agentsRunningAtOnce: number };
-    assert.equal(received.agentsRunningAtOnce, 7);
+    })) as unknown as { automaticWorkAtOnce: number };
+    assert.equal(received.automaticWorkAtOnce, 7);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );

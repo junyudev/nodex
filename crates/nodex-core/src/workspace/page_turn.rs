@@ -530,7 +530,6 @@ mod tests {
         f.observation = Some(observation(E::Queued));
         f.observation.as_mut().unwrap().queue = Some(SessionExecutionQueue {
             run_id: "run".into(),
-            class: SessionExecutionQueueClass::Start,
             position: 2,
             waiting_since: "now".into(),
         });

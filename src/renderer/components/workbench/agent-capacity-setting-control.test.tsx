@@ -11,14 +11,14 @@ const saved = vi.hoisted(() =>
 vi.mock("@/lib/agent-runtime-settings", () => ({
   agentRuntimeSettingsQueryOptions: () => ({
     queryKey: ["settings", "agent-runtime"],
-    queryFn: async () => ({ defaultRuntimeMode: "approval-required", agentsRunningAtOnce: 4 }),
+    queryFn: async () => ({ defaultRuntimeMode: "approval-required", automaticWorkAtOnce: 4 }),
   }),
   updateAgentRuntimeSettings: saved,
 }));
 
 it("saves machine capacity while retaining the permission choice", async () => {
   render(<AgentCapacitySettingControl />, { wrapper: TestQueryProvider });
-  const input = await screen.findByRole("spinbutton", { name: "Agents running at once" });
+  const input = await screen.findByRole("spinbutton", { name: "Automatic work at once" });
   await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false));
   await act(async () => {
     fireEvent.change(input, { target: { value: "12" } });
@@ -28,7 +28,7 @@ it("saves machine capacity while retaining the permission choice", async () => {
   await waitFor(() =>
     expect(saved).toHaveBeenCalledWith(expect.anything(), {
       defaultRuntimeMode: "approval-required",
-      agentsRunningAtOnce: 12,
+      automaticWorkAtOnce: 12,
     }),
   );
 });

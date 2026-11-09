@@ -134,7 +134,7 @@ history without a cumulative resident-content cutoff. A failed page offers a ret
 its gap and leaves the loaded transcript readable. Closing the last reader clears
 resident bodies and invalidates outstanding reads, including if another reader opens
 the same Session before the old read settles. Starting another conversation uses an explicit new Session
-and ordinary Runtime admission.
+and person activation without an automatic-work capacity wait.
 
 ## Native intake
 
@@ -213,7 +213,7 @@ content-block order in both streamed snapshots and complete assistant messages.
 
 ## Scheduled work
 
-Scheduled work uses ordinary Agent Runtime Session admission, due leases, durable
+Scheduled work starts automatic work-tree episodes through Agent Runtime admission, due leases, durable
 inboxes and controls. Workspaces are bound before launch. Failed preparation cleans up
 unowned allocations; committed execution locations remain attached through uncertain
 readback. No automation or imported-history path can create a second local execution

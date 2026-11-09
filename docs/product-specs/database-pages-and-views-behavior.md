@@ -985,7 +985,7 @@ prerequisite's key, title, Status, and latest report summary. Starting a Page
 with an active chat requires an explicit `again` attempt. Operation and launch
 replays reuse the original Session and frozen brief.
 
-Main delivers frozen launches through the same local-chat admission and launch
+Main delivers frozen launches as automatic work-tree starts through local-chat admission and launch
 path as Inbox dispatches. A lost reply is reconciled against Runtime admission
 before another launch is sent. In a Git Project, work starts allocate or reuse the
 Page's Workspace; non-Git Projects retain their local environment.

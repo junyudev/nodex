@@ -1074,6 +1074,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                   ? {}
                   : { providerInstanceId: messageCommand.modelSelection.instanceId }),
                 runIds: [
+                  messageCommand.continuationOfRunId,
                   messageCommand.manualContinuationOfRunId,
                   messageCommand.usageLimitContinuationOfRunId,
                   messageCommand.restartContinuationOfRunId,
@@ -1815,6 +1816,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...wakeWorkStartedAt(projection.runs, {
           notification: queuedMessage.notification,
           delegatedCompletion: queuedMessage.delegatedCompletion,
+          ...(queuedRun.continuationOfRunId === undefined
+            ? {}
+            : { continuationOfRunId: queuedRun.continuationOfRunId }),
           restartContinuationOfRunId: queuedRun.restartContinuationOfRunId,
         }),
       };
@@ -4972,7 +4976,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             request: {
               type: "provider-turn.steer",
               runId: targetRun.id,
-              admissionClass: input.createdBy === "user" ? "person" : "continuation",
+              activationClass: input.createdBy === "user" ? "person" : "continuation",
               modelPolicyOrigin: input.modelPolicyOrigin ?? "automatic",
               providerSessionId,
               providerThreadId: providerThread.id,
@@ -5421,7 +5425,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             request: {
               type: "provider-turn.start" as const,
               runId: targetRun.id,
-              admissionClass:
+              activationClass:
                 input.createdBy === "user" ? ("person" as const) : ("continuation" as const),
             },
           },
@@ -5450,7 +5454,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             providerTurnId: providerTurn.id,
             interruptedAttemptId,
             runId: targetRun.id,
-            admissionClass: input.createdBy === "user" ? "person" : "continuation",
+            activationClass: input.createdBy === "user" ? "person" : "continuation",
             ...(restartSessionTransition === null
               ? {}
               : { sessionTransition: restartSessionTransition }),
@@ -5466,6 +5470,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   ) =>
     Effect.gen(function* () {
       let projection = yield* getProjectionWithPendingEvents(command.threadId, events, command);
+      const continuationOfRunId =
+        command.continuationOfRunId ??
+        command.manualContinuationOfRunId ??
+        command.usageLimitContinuationOfRunId;
+      if (
+        continuationOfRunId !== undefined &&
+        !projection.runs.some((run) => run.id === continuationOfRunId)
+      )
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "Continuation source Run does not belong to this Thread.",
+        });
       const callerSelection = command.senderThreadId
         ? yield* projectionStore
             .getThreadRecords(command.senderThreadId, ["runs"], {
@@ -6012,6 +6029,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           contextHandoffId: null,
           ...(command.sourcePlanRef === undefined ? {} : { sourcePlanRef: command.sourcePlanRef }),
           ...(command.nativeInput === undefined ? {} : { nativeInput: command.nativeInput }),
+          ...(continuationOfRunId === undefined ? {} : { continuationOfRunId }),
           ...(command.restartContinuationOfRunId === undefined
             ? {}
             : { restartContinuationOfRunId: command.restartContinuationOfRunId }),
@@ -6390,6 +6408,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           contextHandoffId: legacyImportHandoff?.id ?? null,
           ...(command.sourcePlanRef === undefined ? {} : { sourcePlanRef: command.sourcePlanRef }),
           ...(command.nativeInput === undefined ? {} : { nativeInput: command.nativeInput }),
+          ...(continuationOfRunId === undefined ? {} : { continuationOfRunId }),
           ...(command.restartContinuationOfRunId === undefined
             ? {}
             : { restartContinuationOfRunId: command.restartContinuationOfRunId }),
@@ -7098,6 +7117,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           null,
         ...(command.sourcePlanRef === undefined ? {} : { sourcePlanRef: command.sourcePlanRef }),
         ...(command.nativeInput === undefined ? {} : { nativeInput: command.nativeInput }),
+        ...(continuationOfRunId === undefined ? {} : { continuationOfRunId }),
         ...(command.restartContinuationOfRunId === undefined
           ? {}
           : { restartContinuationOfRunId: command.restartContinuationOfRunId }),
@@ -8770,7 +8790,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ...(context.node?.runId
               ? {
                   runId: context.node.runId,
-                  admissionClass: command.respondedBy
+                  activationClass: command.respondedBy
                     ? ("continuation" as const)
                     : ("person" as const),
                 }

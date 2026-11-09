@@ -3245,16 +3245,8 @@ pub enum SessionExecutionRequestKind {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionExecutionQueue {
     pub run_id: String,
-    pub class: SessionExecutionQueueClass,
     pub position: u32,
     pub waiting_since: String,
-}
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum SessionExecutionQueueClass {
-    Person,
-    Continuation,
-    Start,
 }
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]

@@ -24,7 +24,6 @@ const observationSchema = z.strictObject({
   queue: z
     .strictObject({
       runId: z.string(),
-      class: z.enum(["person", "continuation", "start"]),
       position: z.number().int().positive(),
       waitingSince: z.string(),
     })
@@ -51,7 +50,6 @@ export interface ManagedChatFacts {
   readonly agent?: ManagedChatObservation["agent"];
   readonly waitingAdmissions?: readonly {
     readonly runId: string;
-    readonly class: "person" | "continuation" | "start";
     readonly position: number;
     readonly waitingSince: string;
   }[];

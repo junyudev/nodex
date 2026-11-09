@@ -259,8 +259,8 @@ Done or Canceled requests checkout cleanup after every consuming chat is idle; t
 and PR link survive. Starting reopened work restores the same branch.
 
 **GitHub updates.** Sources deliver followed-thread Triggers straight to the Page's
-active chat as untrusted Host input, using Runtime continuation admission and the
-same execution holds. They are never reassessed as new work. Human updates remain
+active chat as untrusted Host input through Runtime’s automatic-root admission and the
+same execution holds. The Coordinator does not reassess these updates. Human updates remain
 eligible after completion; bot and CI updates wake only open work. A verified own
 PR supplies guarded lifecycle milestones; context follows never move Status.
 Unfollowed assignments, review requests and mentions enter the Inbox with GitHub

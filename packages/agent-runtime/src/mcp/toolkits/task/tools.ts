@@ -89,10 +89,6 @@ export type TaskView = typeof TaskView.Type;
 
 const TaskWaitInput = Schema.Struct({
   taskId: TaskIdentity,
-  parentRunId: Schema.optional(RunId).annotate({
-    description:
-      "Required for an unfinished blocking wait when the Agent provides Session identity without a source Run.",
-  }),
   timeoutMs: Schema.optional(
     Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 60 * 60 * 1_000 })),
   ).annotate({ description: "Wait budget; default 10 minutes. It never cancels the task." }),

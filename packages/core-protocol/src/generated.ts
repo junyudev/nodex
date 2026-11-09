@@ -14946,14 +14946,11 @@ export interface components {
             readonly since: string;
         };
         readonly SessionExecutionQueue: {
-            readonly class: components["schemas"]["SessionExecutionQueueClass"];
             /** Format: int32 */
             readonly position: number;
             readonly runId: string;
             readonly waitingSince: string;
         };
-        /** @enum {string} */
-        readonly SessionExecutionQueueClass: "person" | "continuation" | "start";
         readonly SessionExecutionRequest: {
             readonly id: string;
             readonly kind: components["schemas"]["SessionExecutionRequestKind"];

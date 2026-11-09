@@ -78,50 +78,51 @@ contract live in [Native Conversation Connection Behavior](native-conversation-c
 
 ## Machine admission and queue
 
-Agent Runs share one durable admission queue on this machine, across Projects, chats,
-and delegated tasks. Settings → Agents → **Agents running at once** sets its capacity
-from 1 to 16, initially 4. Saving a limit applies to the running Runtime and future
-launches; lowering it lets current work finish before admitting more.
+Settings → Agents → **Automatic work at once** limits unattended new work across this
+machine, from 1 to 16, initially 4. Saving applies to the running Runtime and future
+launches. Lowering the limit lets existing work finish; nothing preempts an episode.
+Your chats and the tasks they delegate never wait for capacity.
 
-Admission classes come from the accepted message's trusted origin, never its words:
+The unit is a work tree: a root Thread and all its delegated descendants, identified by
+`lineage.rootThreadId`. Each activation has a trusted origin, never inferred from its words:
 
-- `person`: the person's messages and answers, including directly driven chats;
-- `continuation`: Host or milestone wakes, delegated results, recovery and resumed parents;
-- `start`: new managed work launched by the Host, including delegated child starts.
+- Person: person-authored messages, person answers and explicit person queue actions.
+- Continuation: all activations on delegated Threads; completion and question wakes;
+  notifications; restart, recovery and retry attempts; Agent answers, steering, and
+  follow-ups to delegated children.
+- Automatic start: other root-Thread activations, including Host-launched Page work,
+  Start automatically and `start_work`, scheduled and event-triggered Automations,
+  Agent-created Sessions and messages or forks into another root, and Host input to
+  the Profile Coordinator.
 
-The queue orders these classes person first, then continuation, then start, FIFO within
-each class. With capacity N ≥ 2, automatic work can hold at most N−1 permits; person
-work can use every permit. At capacity 1 there is one shared slot: automatic work can
-progress, and a queued person goes before queued automatic work. Nothing preempts a
-running Run. Steering or answering an admitted Run keeps its permit. Steering or
-answering a parked Run must first re-admit it with the accepted answer's origin.
+Only an automatic start into an idle tree waits for capacity. Person activations and
+continuations proceed immediately, while execution holds and Pause still gate all work.
+When a person activates a tree with a waiting automatic start, it becomes a person
+episode. Its waiting start proceeds in the Thread's normal queue order without capacity.
 
-Every first start, queued follow-up, delegated wake, retry, recovery restart and
-answer-triggered continuation passes admission before occupying an effect worker or
-native start resource. A permit follows native computation, not a window, request or
-UI lifetime. A native replacement retains the slot across stopping the old turn and
-starting its replacement. Recovery reconciles persisted permits with native liveness
-before admitting new work.
+An episode begins when an idle tree becomes active and retains its initiating class.
+A continuation reactivating an idle tree inherits that tree's previous episode class.
+Only automatic episodes count toward capacity. Delegated tasks share their root's
+episode, so answers, child starts, recovery and completion delivery cannot deadlock
+behind a capacity wait. Blocking task tools wait directly for their result; they do not
+release or reacquire capacity and a Session-only `task_wait` does not need `parentRunId`.
 
-A parent parked in a blocking delegation or task wait releases its permit. It re-enters
-as a continuation before returning the tool result to its Agent. Concurrent waits share
-one re-admission after all those waits finish. A parent whose turn ends while its
-children run also releases its permit; a completion wake queues a new
-continuation. Each application-owned child Run takes its own permit, so a parent cannot
-hold the last slot while waiting for its child. Provider-native children and background
-tools inside one native turn share that turn's permit; a terminal shell left behind by
-a finished turn does not itself occupy an Agent slot. A provider that supplies only Session
-identity names `parentRunId` for an unfinished blocking `task_wait`, as it does for
-delegation; Runtime never guesses which Run to park. Without that identity the wait is
-refused, and asynchronous delegation remains available.
+A tree becomes quiescent only when it has no non-terminal Run, live native provider turn,
+or pending start effect. Native background work keeps its episode active after the
+foreground Run ends. A terminal shell left behind by a finished turn does not itself
+keep an episode active. A fully retired Pause releases capacity while preserving its
+queued recovery intent. Restart reconciles durable episodes, waiting starts, Run
+projections, native-turn evidence and pending effects before execution resumes.
 
-Session read details publish every waiting admission as
-`{runId, class, position, waitingSince}`. Position is 1-based among all waiting admissions
-on this Runner, ordered by class and enqueue sequence; it changes as other work is
-admitted or cancelled. Main's metadata-only managed-chat observation retains the same
-queue facts for Page Turn presentation. The chat header shows `Queued · 2nd` while its
-current Run waits, and refreshes its rank even when this chat has no new events.
-Internal wakes stay outside the person's editable Composer outbox.
+Waiting automatic starts are FIFO. A ready start enters when the number of active
+automatic episodes is below the limit. No capacity wait occupies an effect worker,
+managed-worktree preparation or native-start resource.
+
+Session read details publish waiting automatic starts as `{runId, position, waitingSince}`.
+Position is 1-based FIFO among waiting automatic starts on this machine and changes as
+work starts or is cancelled. Main's managed-chat observation carries the same queue facts
+for Page Turns. The Page Turn and chat header show `Queued · 2nd` and refresh rank even
+without new events in that chat. Internal wakes stay outside the editable Composer outbox.
 
 ## Pause and Stop
 
@@ -137,8 +138,8 @@ admission reconciliation only after native execution is stopped. An unfinished r
 retains its Run with a queued continuation attempt; pending input and delegated completion
 cohorts remain intact. A scheduled recovery keeps its intent and cannot run while held.
 Resume removes the Runtime fence only after retirement and returns queued work to normal
-priority admission. A reply can be paused and resumed repeatedly: each new attempt gets
-its own admission and start, while retries of the same attempt remain idempotent.
+Thread ordering as a continuation. A reply can be paused and resumed repeatedly;
+retries of the same attempt remain idempotent.
 Independent Stop queue holds remain in effect.
 
 Stop interrupts the conversation and delegated work, holds its queue for an explicit

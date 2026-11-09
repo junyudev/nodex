@@ -239,7 +239,6 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
           recipe.live === "queued"
             ? {
                 runId: `scenario:${key}`,
-                class: "person",
                 position: 2,
                 waitingSince: new Date().toISOString(),
               }

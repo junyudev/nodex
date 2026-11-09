@@ -857,9 +857,7 @@ it.effect.each(["user_input", "permission"] as const)(
     Effect.gen(function* () {
       const f = yield* setup("always", "approval-required");
       const { tasks, subscribed } = yield* watchingTasks();
-      const waiting = yield* tasks
-        .waitTask(scope(), { taskId: f.task.id, parentRunId: f.parentRun.id })
-        .pipe(Effect.forkChild);
+      const waiting = yield* tasks.waitTask(scope(), { taskId: f.task.id }).pipe(Effect.forkChild);
       yield* Deferred.await(subscribed);
       const event = yield* f.addRequest("request:wait", "live", kind);
       const expected = {

@@ -55,7 +55,7 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("provider-turn.start"),
     runId: RunId,
-    admissionClass: Schema.optional(Schema.Literals(["person", "continuation"])),
+    activationClass: Schema.optional(Schema.Literals(["person", "continuation"])),
   }),
   Schema.Struct({
     type: Schema.Literal("provider-turn.interrupt"),
@@ -75,7 +75,7 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("provider-turn.steer"),
     runId: Schema.optional(RunId),
-    admissionClass: Schema.optional(Schema.Literals(["person", "continuation"])),
+    activationClass: Schema.optional(Schema.Literals(["person", "continuation"])),
     modelPolicyOrigin: Schema.optional(
       Schema.Literals(["person", "nodex-agent", "agent", "automatic"]),
     ),
@@ -91,7 +91,7 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     providerTurnId: ProviderTurnId,
     interruptedAttemptId: RunAttemptId,
     runId: RunId,
-    admissionClass: Schema.optional(Schema.Literals(["person", "continuation"])),
+    activationClass: Schema.optional(Schema.Literals(["person", "continuation"])),
     sessionTransition: Schema.optional(
       Schema.Union([
         Schema.Struct({
@@ -105,7 +105,7 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("runtime-request.respond"),
     runId: Schema.optional(RunId),
-    admissionClass: Schema.optional(Schema.Literals(["person", "continuation"])),
+    activationClass: Schema.optional(Schema.Literals(["person", "continuation"])),
     modelPolicyOrigin: Schema.optional(
       Schema.Literals(["person", "nodex-agent", "agent", "automatic"]),
     ),
@@ -378,12 +378,12 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
         }
         AND candidate.status = 'pending'
         AND (candidate.effect_type IN ('provider-turn.interrupt','provider-task.stop','provider-session.detach','delegated-tasks.stop','checkpoint.capture','side-chat.discard-native') OR NOT ${ExecutionPause.heldSql(sql, sql`candidate.thread_id`)})
-        AND (${deadlineNow === undefined ? sql`0` : sql`candidate.available_at > ${deadlineNow}`} OR candidate.effect_type NOT IN ${sql.in(RunAdmission.ADMISSION_EFFECT_TYPES)}
+        AND (${deadlineNow === undefined ? sql`0` : sql`candidate.available_at > ${deadlineNow}`} OR candidate.effect_type <> 'provider-turn.start'
           OR NOT EXISTS (SELECT 1 FROM orchestration_v2_projection_runs run
             WHERE run.run_id = json_extract(candidate.payload_json, '$.runId')
               AND run.status IN ('queued', 'preparing', 'starting', 'running', 'waiting'))
-          OR EXISTS (SELECT 1 FROM orchestration_v2_run_admissions admission
-            WHERE admission.run_id = json_extract(candidate.payload_json, '$.runId') AND admission.state = 'admitted'))
+          OR NOT EXISTS (SELECT 1 FROM orchestration_v2_run_activations activation
+            WHERE activation.run_id = json_extract(candidate.payload_json, '$.runId') AND activation.state = 'waiting'))
         AND NOT EXISTS (
           SELECT 1
           FROM orchestration_v2_effect_outbox AS active
@@ -456,24 +456,19 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
           );
           for (const effect of effects) {
             if (
-              !RunAdmission.ADMISSION_EFFECT_TYPES.includes(effect.request.type) ||
+              !RunAdmission.EXECUTION_EFFECT_TYPES.includes(effect.request.type) ||
               !("runId" in effect.request) ||
               effect.request.runId === undefined
             )
               continue;
             yield* RunAdmission.enqueue(
               effect.request.runId,
-              effect.id,
-              "admissionClass" in effect.request
-                ? effect.request.admissionClass
-                : effect.request.type === "run.recover"
+              "activationClass" in effect.request
+                ? effect.request.activationClass
+                : effect.request.type !== "provider-turn.start"
                   ? "continuation"
                   : undefined,
             ).pipe(Effect.provideService(SqlClient.SqlClient, sql));
-            if (effect.request.type === "provider-turn.restart")
-              yield* RunAdmission.transfer(effect.threadId, effect.request.runId).pipe(
-                Effect.provideService(SqlClient.SqlClient, sql),
-              );
           }
           // Do not signal here: callers enqueue inside a larger transaction,
           // and workers must only observe availability after that transaction
@@ -642,14 +637,7 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
               FROM orchestration_v2_effect_outbox AS candidate
               WHERE ${claimableCandidatePredicate(nowIso, excludeRestartContinuations)}
                 AND ${excludeRestartContinuations ? sql`candidate.effect_type != 'provider-runtime.continue'` : sql`1 = 1`}
-              ORDER BY COALESCE((SELECT ${RunAdmission.prioritySql(sql, sql`admission.class`)}
-                FROM orchestration_v2_run_admissions admission
-                WHERE admission.run_id = json_extract(candidate.payload_json, '$.runId')
-                  AND admission.state = 'admitted'), -1),
-                COALESCE((SELECT sequence FROM orchestration_v2_run_admissions admission
-                  WHERE admission.run_id = json_extract(candidate.payload_json, '$.runId')
-                    AND admission.state = 'admitted'), 0),
-                candidate.available_at ASC, candidate.created_at ASC, candidate.effect_id ASC
+              ORDER BY candidate.available_at ASC, candidate.created_at ASC, candidate.rowid ASC
               LIMIT 1
             )
             RETURNING *
@@ -737,17 +725,6 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
             RETURNING effect_id
           `;
           if (rows.length === 1) {
-            const effect = yield* service.get(effectId);
-            if (
-              Option.isSome(effect) &&
-              RunAdmission.START_EFFECT_TYPES.includes(effect.value.request.type) &&
-              "runId" in effect.value.request &&
-              effect.value.request.runId !== undefined
-            )
-              yield* RunAdmission.retry(
-                effect.value.request.runId,
-                `${effectId}:retry:${effect.value.attemptCount}`,
-              ).pipe(Effect.provideService(SqlClient.SqlClient, sql));
             cancellationSignals.delete(effectId);
             yield* notifyAvailable();
           }

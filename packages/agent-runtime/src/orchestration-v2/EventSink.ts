@@ -465,9 +465,30 @@ const layerBase: Layer.Layer<
         yield* Effect.forEach(storedEvents, (stored) => projectionStore.apply(stored.event), {
           concurrency: 1,
         });
+        // Activation classifies against current tree quiescence; most batches activate nothing.
+        if (
+          storedEvents.some(
+            ({ event }) =>
+              event.type === "run.created" ||
+              (event.type === "message.updated" && event.payload.createdBy === "user"),
+          )
+        )
+          yield* RunAdmission.reconcile().pipe(Effect.provideService(SqlClient.SqlClient, sql));
         for (const { event } of storedEvents) {
+          if (
+            event.type === "message.updated" &&
+            event.payload.createdBy === "user" &&
+            !storedEvents.some(
+              ({ event: created }) =>
+                created.type === "run.created" &&
+                created.payload.userMessageId === event.payload.id,
+            )
+          )
+            yield* RunAdmission.activate(event.threadId, "person").pipe(
+              Effect.provideService(SqlClient.SqlClient, sql),
+            );
           if (event.type === "run.created")
-            yield* RunAdmission.enqueue(event.payload.id, event.payload.userMessageId).pipe(
+            yield* RunAdmission.enqueue(event.payload.id).pipe(
               Effect.provideService(SqlClient.SqlClient, sql),
             );
         }
@@ -743,6 +764,13 @@ const layerBase: Layer.Layer<
             storedEvents.at(-1)?.sequence ??
             (yield* eventStore.latestSequence({ threadId: input.threadId }));
           yield* applyStoredEvents(storedEvents);
+          if (
+            input.commandType === "queue.resume" ||
+            input.commandType === "queued-message.promote-to-steer"
+          )
+            yield* RunAdmission.activate(input.threadId, "person").pipe(
+              Effect.provideService(SqlClient.SqlClient, sql),
+            );
           yield* effectOutbox.enqueue(input.effects);
           const receipt: CommandReceiptStore.CommandReceiptV2 = {
             commandId: input.commandId,

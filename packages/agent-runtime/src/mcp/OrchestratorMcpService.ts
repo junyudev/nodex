@@ -43,8 +43,6 @@ import {
 import { runRanAfter } from "@nodex/runtime-shared/orchestrationV2ThreadError";
 import * as Clock from "effect/Clock";
 import * as SqlClient from "effect/sql/SqlClient";
-import { EffectOutboxV2 } from "../orchestration-v2/EffectOutbox.ts";
-import * as RunAdmission from "../orchestration-v2/RunAdmission.ts";
 import { make as makeToolOperation } from "./ToolOperation.ts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -132,7 +130,6 @@ export interface OrchestratorMcpServiceShape {
     input: {
       readonly taskId: NodeId;
       readonly timeoutMs?: number | undefined;
-      readonly parentRunId?: RunId | undefined;
     },
   ) => Effect.Effect<OrchestratorMcpDelegateTaskResult, OrchestratorMcpFailure>;
   readonly cancelTask: (
@@ -550,8 +547,6 @@ function threadDetail(
 }
 
 export const make = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const outbox = yield* Effect.serviceOption(EffectOutboxV2);
   const admitToolOperation = yield* makeToolOperation;
   const coverRead = makeHistoryReadCoverage();
   const crypto = yield* Crypto.Crypto;
@@ -1149,12 +1144,7 @@ export const make = Effect.gen(function* () {
 
   // Re-read the task only when an event on the parent or child thread can
   // change its status, instead of polling the projections every 50 ms.
-  const waitForTask = (
-    scope: McpInvocationScope,
-    taskId: NodeId,
-    timeoutMs: number,
-    parentRunId?: RunId,
-  ) =>
+  const waitForTask = (scope: McpInvocationScope, taskId: NodeId, timeoutMs: number) =>
     Effect.gen(function* () {
       const streamError = (error: unknown) =>
         failure(
@@ -1169,37 +1159,24 @@ export const make = Effect.gen(function* () {
         .pipe(Effect.mapError(streamError));
       const initial = yield* readTask(scope, taskId, false, true);
       if (endsTaskWait(initial)) return Option.some(initial);
-      // One stream per event type, so transcript events never fill a buffer.
-      const parentRun = scope.thread
-        ? yield* sourceRun(scope as McpThreadInvocationScope, parentRunId)
-        : undefined;
-      if (!parentRun)
-        return yield* failure(
-          "parent_not_active",
-          "Blocking task waits need a source Run. Supply parentRunId when the Agent provides only Session identity, or use asynchronous delegation and end the turn.",
-        );
-      return yield* RunAdmission.whileParked(
-        parentRun?.id,
-        Stream.mergeAll(
-          TASK_WAKE_EVENTS.map(({ thread, eventType }) =>
-            threadManagement.streamStoredEventsFrom({
-              threadId: thread === "parent" ? parentId : initial.childThreadId,
-              afterSequence,
-              capturedCursor: true,
-              eventType,
-            }),
-          ),
-          { concurrency: "unbounded" },
-        ).pipe(
-          Stream.mapError(streamError),
-          Stream.mapEffect(() => readTask(scope, taskId, false, true)),
-          Stream.filter(endsTaskWait),
-          Stream.runHead,
-          Effect.timeoutOption(Duration.millis(timeoutMs)),
-          Effect.map(Option.flatten),
+      return yield* Stream.mergeAll(
+        TASK_WAKE_EVENTS.map(({ thread, eventType }) =>
+          threadManagement.streamStoredEventsFrom({
+            threadId: thread === "parent" ? parentId : initial.childThreadId,
+            afterSequence,
+            capturedCursor: true,
+            eventType,
+          }),
         ),
-        Option.isSome(outbox) ? outbox.value.notifyAvailable(16) : Effect.void,
-      ).pipe(Effect.provideService(SqlClient.SqlClient, sql), Effect.mapError(streamError));
+        { concurrency: "unbounded" },
+      ).pipe(
+        Stream.mapError(streamError),
+        Stream.mapEffect(() => readTask(scope, taskId, false, true)),
+        Stream.filter(endsTaskWait),
+        Stream.runHead,
+        Effect.timeoutOption(Duration.millis(timeoutMs)),
+        Effect.map(Option.flatten),
+      );
     });
 
   const acknowledgeRead: OrchestratorMcpServiceShape["acknowledgeRead"] = Effect.fn(
@@ -1486,7 +1463,7 @@ export const make = Effect.gen(function* () {
           MAX_WAIT_TIMEOUT_MS,
           Math.max(1, input.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS),
         );
-        const waited = yield* waitForTask(scope, taskId, timeoutMs, parentRun.id);
+        const waited = yield* waitForTask(scope, taskId, timeoutMs);
         if (Option.isSome(waited) && isTerminalTaskStatus(waited.value.status)) {
           return waited.value;
         }
@@ -1541,7 +1518,7 @@ export const make = Effect.gen(function* () {
           MAX_WAIT_TIMEOUT_MS,
           Math.max(1, input.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS),
         );
-        const waited = yield* waitForTask(scope, input.taskId, timeoutMs, input.parentRunId);
+        const waited = yield* waitForTask(scope, input.taskId, timeoutMs);
         return Option.isSome(waited) ? waited.value : yield* readTask(scope, input.taskId, true);
       }),
     taskThread,

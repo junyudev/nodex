@@ -201,7 +201,7 @@ handoff journal. Core also owns each Page Workspace's stable repository/branch i
 
 Core owns person-only execution holds over Page, Project and Space scopes. Main resolves
 that union at start and delivery boundaries and supplies held roots before Runtime recovery.
-Runtime owns native retirement, the durable execution fence and permit release; monitoring
+Runtime owns native retirement, the durable execution fence and episode reconciliation; monitoring
 continues to record facts. See [Coordinator Pause](product-specs/coordinator-behavior.md#pause).
 
 Stock-Node programs and their dependencies live as detached Resources, outside
@@ -1013,8 +1013,8 @@ resources, which follow request interruption and process shutdown. [Page selecti
 use this boundary and leave Document mutation with the editor.
 
 The Agent Runtime owns each bound Session's execution root, Runs, provider sessions,
-history, delegated descendants, machine-wide Run admission and durable result delivery. Main
-supplies capacity configuration; the Runtime owns durable priority and native-lifetime permits
+history, delegated descendants, machine-wide automatic-work admission and durable result delivery. Main
+supplies capacity configuration; the Runtime owns durable tree episodes and FIFO automatic starts
 ([admission contract](product-specs/agent-runtime-behavior.md#machine-admission-and-queue)).
 Its projections are that durable history; the event log is a bounded delivery tail that cannot
 rebuild them, as [ADR 0077](adr/0077-bounded-execution-history.md) records. It also owns admission receipts

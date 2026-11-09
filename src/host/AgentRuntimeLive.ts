@@ -656,7 +656,7 @@ const supervisor = Layer.effectContext(
         home: join(config.nodexHome, "agent-runtime"),
         cwd: projectlessWorkspaceRoot,
         providers: admittedProviders,
-        agentsRunningAtOnce: snapshot.agentRuntime.agentsRunningAtOnce,
+        automaticWorkAtOnce: snapshot.agentRuntime.automaticWorkAtOnce,
         pausedThreadIds: yield* heldThreadIds(modules),
         modelPolicy: snapshot.modelPolicy,
         host: { tools: appToolCatalog },
@@ -773,7 +773,7 @@ const supervisor = Layer.effectContext(
           const { configuration } = yield* readConfiguration;
           const result = yield* connection.request("providers.configure", {
             providers: configuration.providers,
-            agentsRunningAtOnce: configuration.agentsRunningAtOnce,
+            automaticWorkAtOnce: configuration.automaticWorkAtOnce,
             modelPolicy: configuration.modelPolicy,
           });
           prepared.set(connection.identity, configuration);

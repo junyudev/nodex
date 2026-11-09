@@ -259,13 +259,13 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       );
     }
     assert.deepEqual(yield* handlers.get("settings:agent-runtime:get")!(event), {
-      agentsRunningAtOnce: 4,
+      automaticWorkAtOnce: 4,
       defaultRuntimeMode: "full-access",
       titleModel: null,
     });
     assert.deepEqual(
       yield* handlers.get("settings:agent-runtime:update")!(event, { defaultRuntimeMode: "auto" }),
-      { agentsRunningAtOnce: 4, defaultRuntimeMode: "auto", titleModel: null },
+      { automaticWorkAtOnce: 4, defaultRuntimeMode: "auto", titleModel: null },
     );
     assert.strictEqual(providerRefreshes, 1);
     assert.equal(
@@ -280,7 +280,7 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       (yield* Effect.result(
         handlers.get("settings:agent-runtime:update")!(untrustedEvent, {
           defaultRuntimeMode: "full-access",
-          agentsRunningAtOnce: 4,
+          automaticWorkAtOnce: 4,
         }),
       ))._tag,
       "Failure",

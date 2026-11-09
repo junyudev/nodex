@@ -5980,4 +5980,4 @@ END;
 INSERT INTO structural_history_payload_backfill VALUES (1, '', 1);
 INSERT INTO block_mutation_body_backfill VALUES (1, '', 1);
 INSERT INTO session_search_revision(id, revision) VALUES (1, 0);
-PRAGMA user_version=204;
+PRAGMA user_version=205;

@@ -1529,8 +1529,18 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           interactionMode: prepared.message.interactionMode ?? input.interactionMode,
           branch: pageLease?.branchName ?? input.branch ?? null,
           worktreePath: cwd,
-          createdBy: input.messageOrigin === "host" ? "system" : provenance ? "agent" : "user",
-          creationSource: input.messageOrigin === "host" ? "server" : provenance ? "mcp" : "web",
+          createdBy:
+            input.messageOrigin === "host" || input.messageOrigin === "automation"
+              ? "system"
+              : provenance
+                ? "agent"
+                : "user",
+          creationSource:
+            input.messageOrigin === "host" || input.messageOrigin === "automation"
+              ? "server"
+              : provenance
+                ? "mcp"
+                : "web",
         },
         input.modeLimit,
       );
@@ -1576,16 +1586,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     });
     const command = {
       ...messageCommand(threadId, message, undefined, provenance !== null, false, sender),
-      ...(input.messageOrigin === "host"
+      ...(input.messageOrigin === "host" || input.messageOrigin === "automation"
         ? { createdBy: "system" as const, creationSource: "server" as const }
         : {}),
     };
-    const admissionPageId = workPage?.pageId ?? input.initialPageIds?.[0];
-    if (admissionPageId)
-      yield* connection.request("thread.admission-context", {
-        threadId,
-        pageId: admissionPageId,
-      });
     const firstLaunch = !existing && !previousBinding;
     yield* requireAutomationExecution(input.automationExecution);
     const eventDecision =

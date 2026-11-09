@@ -95,7 +95,7 @@ export const readExecution = Effect.fn("Runtime.readExecution")(function* (input
         FROM chain ORDER BY ordinal DESC LIMIT 1`;
       const run = rows[0]!;
       const waiting = yield* sql<{ waiting: number }>`SELECT EXISTS (
-        SELECT 1 FROM orchestration_v2_run_admissions
+        SELECT 1 FROM orchestration_v2_run_activations
         WHERE run_id = ${run.run_id} AND state = 'waiting'
       ) AS waiting`;
       const status = !terminal(run.status) && waiting[0]?.waiting === 1 ? "queued" : run.status;

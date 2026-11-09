@@ -54,7 +54,6 @@ it.effect("reads Runtime Run, question choices and progress using metadata-only 
             waitingAdmissions: [
               {
                 runId: "queued",
-                class: "person",
                 position: 2,
                 waitingSince: "2026-11-03T00:00:00Z",
               },
@@ -81,7 +80,7 @@ it.effect("reads Runtime Run, question choices and progress using metadata-only 
     assert.deepEqual(result.agent, { instanceId: "codex", model: "gpt", effort: "high" });
     assert.equal(result.state, "waiting");
     assert.deepEqual(result.waitingAdmissions, [
-      { runId: "queued", class: "person", position: 2, waitingSince: "2026-11-03T00:00:00Z" },
+      { runId: "queued", position: 2, waitingSince: "2026-11-03T00:00:00Z" },
     ]);
     assert.equal(result.runStartedAt, Date.parse("2026-11-03T00:00:00Z"));
     assert.equal(result.pendingRequests[0]?.id, "q");
@@ -374,7 +373,6 @@ it.effect(
                 waitingAdmissions: [
                   {
                     runId: "queued",
-                    class: "start",
                     position: 3,
                     waitingSince: "2026-11-03T00:00:00Z",
                   },

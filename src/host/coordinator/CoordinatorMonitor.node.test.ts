@@ -135,14 +135,11 @@ it.effect("records unmanaged active chats, queue metadata, unavailable and faile
     f.setFacts({
       ...working,
       state: "queued",
-      waitingAdmissions: [
-        { runId: "run:1", class: "start", position: 2, waitingSince: "2026-11-03T00:00:00Z" },
-      ],
+      waitingAdmissions: [{ runId: "run:1", position: 2, waitingSince: "2026-11-03T00:00:00Z" }],
     });
     yield* monitor.wake("unmanaged");
     assert.equal(f.captures[0]?.observation.state, "queued");
     assert.equal(f.captures[0]?.observation.queue?.position, 2);
-    assert.equal(f.captures[0]?.observation.queue?.class, "start");
     f.setFacts({ ...working, state: "waiting", pendingRequests: [{ id: "q", kind: "question" }] });
     yield* monitor.sweep;
     assert.deepEqual(f.captures.at(-1)?.observation.pendingRequests, [

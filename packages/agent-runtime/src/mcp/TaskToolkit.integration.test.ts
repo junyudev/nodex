@@ -1013,24 +1013,11 @@ describe("task tools", () => {
               ),
               Effect.provideService(McpSchema.McpServerClient, client),
             );
-          expect(unboundWait.isError).toBe(true);
-          const explicitResponse = yield* server
-            .callTool({
-              name: "task_wait",
-              arguments: { taskId: blocking.taskId, parentRunId: parentRun.id, timeoutMs: 20 },
-            })
-            .pipe(
-              Effect.provideService(ExecutionHost.McpTurnAdmission, undefined),
-              Effect.provideService(
-                McpInvocationContext.McpInvocationContext,
-                scopeFor(parentThreadId, codexInstanceId),
-              ),
-              Effect.provideService(McpSchema.McpServerClient, client),
-            );
-          const explicitWait = yield* decodeTaskView(explicitResponse.structuredContent).pipe(
-            Effect.orDie,
-          );
-          expect(explicitWait).toMatchObject({ waitTimedOut: true, status: "running" });
+          expect(unboundWait.isError).not.toBe(true);
+          expect(yield* decodeTaskView(unboundWait.structuredContent)).toMatchObject({
+            waitTimedOut: true,
+            status: "running",
+          });
           const cancelled = yield* decodeTaskCancel(
             yield* call("task_cancel", {
               taskId: blocking.taskId,
@@ -1544,7 +1531,7 @@ describe("task tools", () => {
             })
             .pipe(Effect.orDie);
           const queuedDone = yield* decodeTaskView(
-            (yield* invoke("task_wait", { taskId: queued.taskId, parentRunId })).structuredContent,
+            (yield* invoke("task_wait", { taskId: queued.taskId })).structuredContent,
           ).pipe(Effect.orDie);
           expect(queuedDone).toMatchObject({ status: "completed", summary: queuedFollowupResult });
           yield* awaitEvent(

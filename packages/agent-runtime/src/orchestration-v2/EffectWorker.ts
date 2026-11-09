@@ -380,6 +380,7 @@ export const layerExecutor: Layer.Layer<
                       .dispatch({
                         type: "message.dispatch",
                         commandId: CommandId.make(`command:steer-follow-up:${effect.id}`),
+                        continuationOfRunId: run.id,
                         threadId: effect.threadId,
                         messageId: message.id,
                         text: message.text,

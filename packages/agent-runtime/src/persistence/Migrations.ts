@@ -110,6 +110,7 @@ import Migration0092 from "./Migrations/092_RetireThreadTitleEffects.ts";
 import Migration0093 from "./Migrations/093_UsageLedger.ts";
 import Migration0094 from "./Migrations/094_CompressCommandOutput.ts";
 import Migration0095 from "./Migrations/095_DropQuietHookRuns.ts";
+import Migration0098 from "./Migrations/098_WorkEpisodes.ts";
 import Migration0096 from "./Migrations/096_RunAdmission.ts";
 import Migration0097 from "./Migrations/097_ExecutionPauses.ts";
 
@@ -224,6 +225,7 @@ export const migrationEntries = [
   [95, "DropQuietHookRuns", Migration0095],
   [96, "RunAdmission", Migration0096],
   [97, "ExecutionPauses", Migration0097],
+  [98, "WorkEpisodes", Migration0098],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

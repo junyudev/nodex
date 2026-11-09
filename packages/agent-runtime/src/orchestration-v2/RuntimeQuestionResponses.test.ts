@@ -227,7 +227,7 @@ it.effect("keeps unanswered siblings pending and records each answer batch exact
       answers: { first: "Use the screenshot" },
     };
     const accepted = yield* fixture.orchestrator.dispatch(first);
-    assert.equal((yield* readWaiting(fixture.threadId))[0]?.class, "person");
+    assert.deepEqual(yield* readWaiting(fixture.threadId), []);
     assert.deepEqual(yield* fixture.orchestrator.dispatch(first), accepted);
     const partial = yield* fixture.projections.getRuntimeResponseContext(
       fixture.threadId,

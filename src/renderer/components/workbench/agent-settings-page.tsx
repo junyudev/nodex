@@ -29,7 +29,10 @@ export function AgentSettingsPage({ open, settingsAnchor }: SettingsSectionPageP
           >
             <DefaultPermissionsSettingControl />
           </SettingRow>
-          <SettingRow label="Agents running at once">
+          <SettingRow
+            label="Automatic work at once"
+            description="Automations and Pages set to start automatically wait beyond this. Your chats and the tasks they delegate always run."
+          >
             <AgentCapacitySettingControl />
           </SettingRow>
         </SectionBlock>

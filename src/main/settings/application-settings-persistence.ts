@@ -166,7 +166,7 @@ interface ServerTomlConfig {
   inbox_suggestion_effort?: string;
   inbox_suggestion_speed?: string;
   inbox_suggestion_concurrency?: number;
-  agents_running_at_once?: number;
+  automatic_work_at_once?: number;
   inbox_instructions?: string;
   inbox_chat_agent?: string;
   inbox_chat_model?: string;
@@ -1408,9 +1408,9 @@ export function getAgentRuntimeSettings(
   const config = loadProfileServerTomlConfig(source);
   // Each choice stands alone, so a damaged title model never resets the permission mode.
   return {
-    agentsRunningAtOnce:
-      AgentRuntimeSettingsSchema.shape.agentsRunningAtOnce.safeParse(config.agents_running_at_once)
-        .data ?? DEFAULT_AGENT_RUNTIME_SETTINGS.agentsRunningAtOnce,
+    automaticWorkAtOnce:
+      AgentRuntimeSettingsSchema.shape.automaticWorkAtOnce.safeParse(config.automatic_work_at_once)
+        .data ?? DEFAULT_AGENT_RUNTIME_SETTINGS.automaticWorkAtOnce,
     defaultRuntimeMode:
       AgentRuntimeModeSchema.safeParse(config.default_runtime_mode).data ??
       DEFAULT_AGENT_RUNTIME_SETTINGS.defaultRuntimeMode,
@@ -1429,7 +1429,7 @@ export function updateAgentRuntimeSettings(
   const server: ServerTomlConfig = {
     ...loadProfileServerTomlConfig(source),
     default_runtime_mode: settings.defaultRuntimeMode,
-    agents_running_at_once: settings.agentsRunningAtOnce,
+    automatic_work_at_once: settings.automaticWorkAtOnce,
   };
   if (settings.titleModel) server.title_model = settings.titleModel;
   else delete server.title_model;

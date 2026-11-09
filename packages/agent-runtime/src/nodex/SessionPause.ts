@@ -77,7 +77,7 @@ export const make = Effect.gen(function* () {
     // effect and any newly attached source must both disappear before quiescence.
     const active = (yield* sql<{
       active: number;
-    }>`SELECT EXISTS(SELECT 1 FROM orchestration_v2_projection_threads thread JOIN orchestration_v2_projection_provider_session_bindings binding USING(thread_id) WHERE json_extract(thread.payload_json,'$.lineage.rootThreadId')=${root}) OR EXISTS(SELECT 1 FROM orchestration_v2_projection_threads thread JOIN orchestration_v2_effect_outbox effect USING(thread_id) WHERE json_extract(thread.payload_json,'$.lineage.rootThreadId')=${root} AND effect.status='running' AND effect.effect_type IN ${sql.in(Admission.ADMISSION_EFFECT_TYPES)}) AS active`)[0];
+    }>`SELECT EXISTS(SELECT 1 FROM orchestration_v2_projection_threads thread JOIN orchestration_v2_projection_provider_session_bindings binding USING(thread_id) WHERE json_extract(thread.payload_json,'$.lineage.rootThreadId')=${root}) OR EXISTS(SELECT 1 FROM orchestration_v2_projection_threads thread JOIN orchestration_v2_effect_outbox effect USING(thread_id) WHERE json_extract(thread.payload_json,'$.lineage.rootThreadId')=${root} AND effect.status='running' AND effect.effect_type IN ${sql.in(Admission.EXECUTION_EFFECT_TYPES)}) AS active`)[0];
     if (active?.active) stopped = false;
     if (stopped) {
       cursor = undefined;

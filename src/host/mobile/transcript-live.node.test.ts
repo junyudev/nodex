@@ -109,7 +109,7 @@ it.live(
           configuration: {
             home,
             cwd: home,
-            agentsRunningAtOnce: 2,
+            automaticWorkAtOnce: 2,
             host: { tools: [] },
             providers: {
               codex: {

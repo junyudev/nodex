@@ -77,7 +77,6 @@ fn episodes_survive_repeated_observation_and_change_on_actor_reason_and_return()
     let mut queued = observation(SessionExecutionState::Queued);
     queued.queue = Some(SessionExecutionQueue {
         run_id: "run".into(),
-        class: SessionExecutionQueueClass::Person,
         position: 2,
         waiting_since: "now".into(),
     });
@@ -275,7 +274,6 @@ fn working_and_queued_chats_name_the_executing_agent_without_reassigning_the_pag
         let mut queued = observation(SessionExecutionState::Queued);
         queued.queue = Some(SessionExecutionQueue {
             run_id: "run".into(),
-            class: SessionExecutionQueueClass::Start,
             position: 2,
             waiting_since: "now".into(),
         });
