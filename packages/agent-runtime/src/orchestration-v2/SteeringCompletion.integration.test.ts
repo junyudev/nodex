@@ -10,6 +10,7 @@ import {
   ProviderThreadId,
   ProviderTurnId,
   ThreadId,
+  RuntimeRequestId,
   type ModelSelection,
   type OrchestrationV2DomainEvent,
 } from "@nodex/runtime-contracts";
@@ -34,8 +35,8 @@ const instanceId = ProviderInstanceId.make("codex");
 const modelSelection = { instanceId, model: "test-model" };
 
 it.effect.each(
-  [false, true]
-    .flatMap((mailbox) =>
+  (["steering", "mailbox", "question"] as const)
+    .flatMap((kind) =>
       (
         [
           "before delivery",
@@ -47,9 +48,15 @@ it.effect.each(
           "settled only",
         ] as const
       ).map((timing) => ({
-        mailbox,
+        mailbox: kind !== "steering",
+        questionNotice: kind === "question",
         timing,
-        label: mailbox ? "mailbox notification" : "steering",
+        label:
+          kind === "question"
+            ? "Claude-like question notice"
+            : kind === "mailbox"
+              ? "mailbox notification"
+              : "steering",
       })),
     )
     .filter(
@@ -59,7 +66,7 @@ it.effect.each(
           timing !== "without boundary steering" &&
           timing !== "settled only"),
     ),
-)("delivers $label when completion wins $timing", ({ mailbox, timing }) =>
+)("delivers $label when completion wins $timing", ({ mailbox, questionNotice, timing }) =>
   Effect.scoped(
     Effect.gen(function* () {
       const cwd = yield* checkpointWorkspace(`steering-completion-${timing.replaceAll(" ", "-")}`);
@@ -68,6 +75,7 @@ it.effect.each(
       const steerEntered = yield* Deferred.make<void>();
       const rejectSteer = yield* Deferred.make<void>();
       let steerCalls = 0;
+      let interruptCalls = 0;
       const baseCapabilities = mailbox ? ClaudeProviderCapabilitiesV2 : CodexProviderCapabilitiesV2;
       const capabilities = {
         ...baseCapabilities,
@@ -159,7 +167,10 @@ it.effect.each(
                     cause: "turn already completed",
                   });
                 }),
-              interruptTurn: () => Effect.void,
+              interruptTurn: () =>
+                Effect.sync(() => {
+                  interruptCalls += 1;
+                }),
               respondToRuntimeRequest: () => Effect.void,
               readThreadSnapshot: () => Effect.die("unused"),
               rollbackThread: () => Effect.die("unused"),
@@ -213,6 +224,43 @@ it.effect.each(
         const taskId = NodeId.make("task:mailbox");
         if (mailbox) {
           const sink = yield* EventSink.EventSinkV2;
+          const childThreadId = ThreadId.make("thread:question-child");
+          yield* orchestrator.dispatch({
+            type: "thread.create",
+            commandId: CommandId.make("question-child:create"),
+            threadId: childThreadId,
+            projectId: ProjectId.make("project:steering-completion"),
+            title: "Question child",
+            modelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: cwd,
+            createdBy: "agent",
+            creationSource: "server",
+          });
+          const questionNow = yield* DateTime.now;
+          yield* sink.write({
+            events: [
+              {
+                id: EventId.make("question:pending"),
+                type: "runtime-request.updated",
+                threadId: childThreadId,
+                occurredAt: questionNow,
+                payload: {
+                  id: RuntimeRequestId.make("question:format"),
+                  nodeId: first.rootNodeId,
+                  providerTurnId: null,
+                  nativeRequestRef: null,
+                  kind: "user_input",
+                  status: "pending",
+                  responseCapability: { type: "message" },
+                  createdAt: questionNow,
+                  resolvedAt: null,
+                },
+              },
+            ],
+          });
           const current = yield* orchestrator.getThreadProjection(threadId);
           const parentRun = current.runs.find((run) => run.id === first.runId)!;
           const now = yield* DateTime.now;
@@ -250,7 +298,7 @@ it.effect.each(
                   driver,
                   providerInstanceId: instanceId,
                   providerThreadId: null,
-                  childThreadId: null,
+                  childThreadId: questionNotice ? childThreadId : null,
                   nativeTaskRef: null,
                   prompt: "Do background work",
                   title: "Background test",
@@ -267,14 +315,15 @@ it.effect.each(
             ],
           });
         }
-        const resultAccepted = mailbox
-          ? yield* watch(
-              (event) =>
-                event.type === "subagent.updated" &&
-                event.payload.id === taskId &&
-                event.payload.completionDelivery?.state === "acknowledged",
-            )
-          : null;
+        const resultAccepted =
+          mailbox && !questionNotice
+            ? yield* watch(
+                (event) =>
+                  event.type === "subagent.updated" &&
+                  event.payload.id === taskId &&
+                  event.payload.completionDelivery?.state === "acknowledged",
+              )
+            : null;
         const wakeRunning =
           mailbox && timing !== "after delivery"
             ? yield* watch(
@@ -304,15 +353,29 @@ it.effect.each(
             : { type: "steer_active", targetRunId: first.runId },
           createdBy: mailbox ? "agent" : "user",
           creationSource: mailbox ? "server" : "web",
-          ...(mailbox
+          ...(questionNotice
             ? {
-                delegatedCompletion: {
-                  parentRunId: first.runId,
-                  generation: 1,
-                  taskIds: [taskId],
+                delegatedQuestion: { taskId, requestId: RuntimeRequestId.make("question:format") },
+                notification: {
+                  source: {
+                    kind: "delegated_task" as const,
+                    taskIds: [taskId],
+                    childThreadId: ThreadId.make("thread:question-child"),
+                  },
+                  outcome: "updated" as const,
+                  summary: "Delegated task has a question",
                 },
+                text: "Which format? task_question respond or dismiss question:format",
               }
-            : {}),
+            : mailbox
+              ? {
+                  delegatedCompletion: {
+                    parentRunId: first.runId,
+                    generation: 1,
+                    taskIds: [taskId],
+                  },
+                }
+              : {}),
         });
         if (timing !== "before dispatch") yield* dispatchSteer;
         if (timing === "after delivery") yield* worker.drain();
@@ -351,11 +414,23 @@ it.effect.each(
         yield* worker.drain();
         yield* orchestrator.resumeQueuedRuns;
         yield* worker.drain();
+        assert.equal(interruptCalls, 0);
         if (timing === "after delivery") {
           if (resultAccepted !== null) yield* Fiber.join(resultAccepted);
           assert.equal(steerCalls, 1);
           assert.equal(started.length, 1);
-          if (mailbox) {
+          if (questionNotice) {
+            const delivered = yield* orchestrator.getThreadProjection(threadId);
+            assert.include(
+              delivered.messages.find((message) => message.id === messageId)?.text ?? "",
+              "Which format?",
+            );
+            assert.equal(
+              delivered.turnItems.filter((item) => item.type === "notification").length,
+              1,
+            );
+          }
+          if (mailbox && !questionNotice) {
             const delivered = yield* orchestrator.getThreadProjection(threadId);
             assert.equal(delivered.subagents[0]?.completionDelivery?.state, "acknowledged");
             assert.equal(delivered.subagents[0]?.completionDelivery?.observedByRunId, first.runId);
@@ -386,11 +461,20 @@ it.effect.each(
         }
         assert.equal(started.length, 2);
         assert.equal(started[1]?.message.messageId, messageId);
-        if (mailbox) {
+        if (questionNotice) {
+          assert.include(started[1]?.message.text ?? "", "Which format?");
+          const delivered = yield* orchestrator.getThreadProjection(threadId);
+          assert.equal(
+            delivered.turnItems.filter((item) => item.type === "notification").length,
+            1,
+          );
+        }
+        if (mailbox && !questionNotice) {
           assert.include(
             started[1]?.message.text ?? "",
             `Delegated task ${taskId} (Background test) [completed]:\ndone`,
           );
+
           if (wakeRunning !== null) yield* Fiber.join(wakeRunning);
           const admitted = yield* orchestrator.getThreadProjection(threadId);
           assert.equal(
@@ -432,7 +516,7 @@ it.effect.each(
             state: "acknowledged",
             observedByRunId: wake.runId,
           });
-        } else assert.equal(started[1]?.message.text, "fix the popover");
+        } else if (!questionNotice) assert.equal(started[1]?.message.text, "fix the popover");
         assert.deepEqual(started[1]?.message.attachments, [
           {
             type: "image",

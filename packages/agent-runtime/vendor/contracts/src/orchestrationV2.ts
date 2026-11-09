@@ -706,6 +706,8 @@ export const OrchestrationV2Run = Schema.Struct({
       planId: PlanId,
     }),
   ),
+  /** Active blocking task tools receive child questions through their results. */
+  taskQuestionWaits: Schema.optional(Schema.Array(Schema.String)),
   delegatedCompletion: Schema.optional(OrchestrationV2DelegatedCompletionCohort),
   /** How a launch prepares this run's workspace; prepared-run.retry repeats it. */
   workspacePreparation: Schema.optional(OrchestrationV2ThreadLaunchWorkspaceStrategy),
@@ -907,6 +909,11 @@ export const OrchestrationV2Subagent = Schema.Struct({
   // blocking tool call). Absent on legacy records; treated as settled_only.
   completionWake: Schema.optional(Schema.Literals(["always", "settled_only"])),
   completionDelivery: Schema.optional(OrchestrationV2DelegatedCompletionTaskDelivery),
+  /** Questions consumed by a blocking tool result instead of a notice. */
+  receivedQuestionIds: Schema.optional(Schema.Array(RuntimeRequestId)),
+  /** Wait claims awaiting a completed native tool-result receipt. */
+  unconfirmedQuestionIds: Schema.optional(Schema.Array(RuntimeRequestId)),
+  questionClaimRunIds: Schema.optional(Schema.Array(RunId)),
   status: Schema.Literals([
     "idle",
     "pending",
@@ -1386,6 +1393,7 @@ export const OrchestrationV2MessageDeliveryReceipt = Schema.Struct({
 });
 
 export const OrchestrationV2ConversationMessage = Schema.Struct({
+  delegatedQuestion: Schema.optional(Schema.Struct({ taskId: NodeId, requestId: RuntimeRequestId })),
   notification: Schema.optional(OrchestrationV2Notification),
   ...OrchestrationV2CreationFields,
   scheduledTaskId: Schema.optional(ScheduledTaskId),
@@ -3413,6 +3421,7 @@ export const OrchestrationV2Command = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("message.dispatch"),
+    delegatedQuestion: Schema.optional(Schema.Struct({ taskId: NodeId, requestId: RuntimeRequestId })),
     nativeInput: Schema.optional(OrchestrationV2NativeInput),
     notification: Schema.optional(OrchestrationV2Notification),
     ...OrchestrationV2CreationFields,
@@ -3607,6 +3616,7 @@ export const OrchestrationV2Command = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("thread.user-input.dismiss"),
+    respondedBy: Schema.optional(UserInputResponder),
     commandId: CommandId,
     threadId: ThreadId,
     requestId: RuntimeRequestId,
@@ -3671,6 +3681,31 @@ export const OrchestrationV2Command = Schema.Union([
     // run); producers that want fire-and-forget wakes must set "always".
     completionWake: Schema.optional(Schema.Literals(["always", "settled_only"])),
     createdAt: Schema.optional(Schema.DateTimeUtc),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("delegated_task.question-wait"),
+    commandId: CommandId,
+    parentThreadId: ThreadId,
+    parentRunId: RunId,
+    waitId: Schema.String,
+    active: Schema.Boolean,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("delegated_task.question-delivery"),
+    commandId: CommandId,
+    parentThreadId: ThreadId,
+    taskId: NodeId,
+    requestId: RuntimeRequestId,
+    outcome: Schema.Literals(["received", "retry"]),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("delegated_task.question.receive"),
+    awaitNativeReceipt: Schema.Boolean,
+    commandId: CommandId,
+    parentThreadId: ThreadId,
+    parentRunId: RunId,
+    taskId: NodeId,
+    requestId: RuntimeRequestId,
   }),
   Schema.Struct({
     type: Schema.Literal("delegated_task.wake-policy"),

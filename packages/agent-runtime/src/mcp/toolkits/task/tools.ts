@@ -11,6 +11,8 @@ import {
   OrchestratorMcpIdempotencyKey,
   OrchestratorMcpFailure,
   OrchestratorMcpPendingTaskApproval,
+  OrchestratorMcpPendingTaskQuestion,
+  OrchestratorMcpDeliveredTaskQuestion,
   OrchestratorMcpTerminalDelegatedTaskStatus,
   PositiveInt,
   ProviderInstanceId,
@@ -75,10 +77,8 @@ export const TaskView = Schema.Struct({
   hasPendingFollowUps: Schema.Boolean.annotate({
     description: "Follow-up turns are queued or running in the task's conversation.",
   }),
-  hasPendingQuestion: Schema.Boolean.annotate({
-    description:
-      "A question blocks the child and ends a wait. Read and answer it with task_question.",
-  }),
+  pendingQuestions: Schema.Array(OrchestratorMcpPendingTaskQuestion),
+  questions: Schema.Array(OrchestratorMcpDeliveredTaskQuestion),
   pendingApproval: OrchestratorMcpPendingTaskApproval,
   waitTimedOut: Schema.Boolean.annotate({
     description:
@@ -95,10 +95,10 @@ const TaskWaitInput = Schema.Struct({
 });
 
 export const TaskQuestionInput = Schema.Struct({
-  action: Schema.Literals(["list", "read", "respond"]),
+  action: Schema.Literals(["list", "read", "respond", "dismiss"]),
   taskId: TaskIdentity,
   requestId: Schema.optional(RuntimeRequestId).annotate({
-    description: "Required for read and respond.",
+    description: "Required for read, respond and dismiss.",
   }),
   answers: Schema.optional(ProviderUserInputAnswers).annotate({
     description: "Required for respond; maps question ids to answers.",
@@ -111,7 +111,10 @@ export const TaskQuestionResult = Schema.Union([
     requestId: RuntimeRequestId,
     questions: Schema.Array(OrchestrationV2UserInputQuestion),
   }),
-  OrchestrationV2DispatchCommandResult,
+  Schema.Struct({
+    ...OrchestrationV2DispatchCommandResult.fields,
+    followUp: Schema.NullOr(Schema.Struct({ taskId: NodeId, message: Schema.String })),
+  }),
 ]);
 export type TaskQuestionResult = typeof TaskQuestionResult.Type;
 
@@ -257,7 +260,7 @@ const ListAgentModelsTool = Tool.make("list_agent_models", {
 
 const DelegateTaskTool = Tool.make("delegate_task", {
   description:
-    "Start a child task with only the supplied prompt. Use for cross-provider work or models your native subagents cannot run; choose from list_agent_models. Provider, model, options and execution mode inherit unless overridden. Execution cannot exceed yours; a narrower child asks a person for approval. Prefer mode='async' and end your turn: completion or a question wakes you. The wake includes results when they fit; use task_status only when it says to. mode='wait' returns on a result, question, approval or timeoutMs without cancelling.",
+    "Start a child task with only the supplied prompt. Use for cross-provider work or models your native subagents cannot run; choose from list_agent_models. Provider, model, options and execution mode inherit unless overridden. Execution cannot exceed yours; a narrower child asks a person for approval. Prefer mode='async' and keep working or end your turn: questions and results arrive mid-turn when supported, otherwise they wake you in a new turn. The wake includes results when they fit; use task_status only when it says to. mode='wait' returns on a result, any task owned by your Run asking a live or message question, this task's approval, or timeoutMs without cancelling. Answer or dismiss delivered questions.",
   parameters: OrchestratorMcpDelegateTaskInput,
   success: TaskView,
   failure: OrchestratorMcpFailure,
@@ -285,7 +288,7 @@ const TaskStatusTool = Tool.make("task_status", {
 
 const TaskWaitTool = Tool.make("task_wait", {
   description:
-    "Wait until a delegated task settles, blocks on a question, needs approval or timeoutMs elapses, then return its status. Use only when this turn needs the result; otherwise end your turn and let completion or a question wake you.",
+    "Wait for a task's result, its approval, any task owned by your Run asking a live or message question, or timeoutMs. Questions include taskId, requestId and inline detail; answer or dismiss each one. The awaited task keeps running and completion delivery stays armed. Use only when this turn needs the result; otherwise end your turn and let completion or a question wake you.",
   parameters: TaskWaitInput,
   success: TaskView,
   failure: OrchestratorMcpFailure,
@@ -313,7 +316,7 @@ const TaskSendTool = Tool.make("task_send", {
 
 const TaskQuestionTool = Tool.make("task_question", {
   description:
-    "Pending questions from a task you delegated. list: their ids; approvals are excluded. read: one by requestId. respond: answer one with answers; this cannot approve a permission request.",
+    "Questions from a task you delegated, including finished tasks. list: pending requestIds; read: full questions; respond: answer with answers keyed by question id; dismiss: drop an unneeded message question (live questions need an answer or Stop). Answer or dismiss each delivered question. A late answer starts a follow-up task whose result wakes you; retain the returned taskId. Approvals are excluded.",
   parameters: TaskQuestionInput,
   success: TaskQuestionResult,
   failure: OrchestratorMcpFailure,

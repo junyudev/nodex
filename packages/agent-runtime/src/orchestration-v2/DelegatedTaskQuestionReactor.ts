@@ -1,23 +1,27 @@
+import { observedTaskResults } from "./DelegatedResultReceipt.ts";
 import {
   CommandId,
-  MessageId,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2RuntimeRequest,
+  type OrchestrationV2TurnItem,
   type OrchestrationV2Subagent,
+  type ThreadId,
 } from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-
 import { forkParked } from "../serverActivation.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
+import * as EventSink from "./EventSink.ts";
+import { questionNoticeId, questionNoticeText } from "./DelegatedTaskQuestions.ts";
 
 export class DelegatedTaskQuestionReactor extends Context.Service<
   DelegatedTaskQuestionReactor,
   {
+    readonly recover: () => Effect.Effect<void>;
     readonly start: () => Effect.Effect<void, never, Scope.Scope>;
     readonly handle: (event: OrchestrationV2DomainEvent) => Effect.Effect<void>;
   }
@@ -26,23 +30,57 @@ export class DelegatedTaskQuestionReactor extends Context.Service<
 export const make = Effect.gen(function* () {
   const engine = yield* Orchestrator.OrchestratorV2;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
+  const sink = yield* EventSink.EventSinkV2;
 
   const wakeParent = Effect.fnUntraced(function* (
     task: OrchestrationV2Subagent,
     request: OrchestrationV2RuntimeRequest,
   ) {
-    if (task.childThreadId === null) return;
+    if (
+      task.childThreadId === null ||
+      task.receivedQuestionIds?.includes(request.id) ||
+      task.completionDelivery?.state === "disposed"
+    )
+      return;
+    const parent = yield* projections.getThreadRecords(task.threadId, ["runs", "messages"], {
+      messageIds: [questionNoticeId(task.threadId, request.id)],
+      runStatuses: ["preparing", "starting", "running", "waiting"],
+    });
+    if (
+      parent.thread.archivedAt !== null ||
+      parent.thread.deletedAt !== null ||
+      parent.messages.length > 0
+    )
+      return;
+    if (
+      parent.runs.some(
+        (run) =>
+          ["preparing", "starting", "running"].includes(run.status) &&
+          run.id === task.runId &&
+          (run.taskQuestionWaits?.length ?? 0) > 0,
+      )
+    )
+      return;
+    const context = yield* projections.getRuntimeResponseContext(task.childThreadId, request.id);
+    const child = { turnItems: context.item === undefined ? [] : [context.item] };
+    // Requests and their question items may arrive in separate provider transactions.
+    if (
+      !child.turnItems.some(
+        (item) => item.type === "user_input_request" && item.requestId === request.id,
+      )
+    )
+      return;
     const key = `${task.threadId}:${request.id}`;
-    const situation =
-      request.responseCapability.type === "message"
-        ? `Delegated task ${task.id} asked a question and is still working.`
-        : `Delegated task ${task.id} is blocked on a question and cannot continue until it is answered.`;
+    const sequence = yield* engine.getThreadEventSequence(task.threadId);
     yield* engine.dispatch({
       type: "message.dispatch",
-      commandId: CommandId.make(`server:delegated-task-question:${key}`),
+      // A wait can win the lock after the read above. A later parent state may retry
+      // that no-op receipt, while the stable message identity prevents duplicate delivery.
+      commandId: CommandId.make(`server:delegated-task-question:${key}:${sequence}`),
       threadId: task.threadId,
-      messageId: MessageId.make(`message:delegated-task-question:${key}`),
-      text: `${situation} Read it with task_question action read, taskId ${task.id}, and requestId ${request.id}. Use action respond with answers when the answer follows from the task or the user's instructions; otherwise ask the user, then answer it. If it is no longer pending, it was answered or dismissed.`,
+      messageId: questionNoticeId(task.threadId, request.id),
+      delegatedQuestion: { taskId: task.id, requestId: request.id },
+      text: questionNoticeText(task, request, child.turnItems),
       notification: {
         source: { kind: "delegated_task", taskIds: [task.id], childThreadId: task.childThreadId },
         outcome: "updated",
@@ -55,122 +93,142 @@ export const make = Effect.gen(function* () {
     });
   });
 
-  const catchUpParent = Effect.fnUntraced(function* (
-    event: Extract<OrchestrationV2DomainEvent, { readonly type: "run.updated" }>,
-  ) {
-    if (!["completed", "failed", "waiting"].includes(event.payload.status)) return;
-    const parent = yield* projections.getThreadRecords(event.threadId, ["subagents"], {
-      subagentRunIds: [event.payload.id],
+  const catchUpChild = Effect.fnUntraced(function* (childId: ThreadId) {
+    const child = yield* projections.getThreadRecords(childId, ["runtimeRequests"], {
+      pendingUserQuestions: true,
     });
-    if (parent.thread.archivedAt !== null || parent.thread.deletedAt !== null) return;
-    for (const task of parent.subagents) {
-      if (
-        task.origin !== "app_owned" ||
-        task.runId !== event.payload.id ||
-        task.completionWake !== "settled_only" ||
-        task.completionDelivery?.state === "disposed" ||
-        task.childThreadId === null ||
-        ["completed", "failed", "cancelled", "interrupted"].includes(task.status)
-      ) {
-        continue;
-      }
-      const child = yield* projections.getThreadRecords(task.childThreadId, ["runtimeRequests"]);
-      for (const request of child.runtimeRequests) {
-        if (
-          request.kind !== "user_input" ||
-          request.status !== "pending" ||
-          request.responseCapability.type !== "live"
-        ) {
-          continue;
-        }
-        yield* wakeParent(task, request).pipe(
-          Effect.catchCause((cause) =>
-            Effect.logWarning("catching up a delegated task question failed", {
-              taskId: task.id,
-              requestId: request.id,
-              cause,
-            }),
-          ),
-        );
-      }
+    const nodes = yield* projections.getThreadRecords(childId, ["nodes"], {
+      nodeIds: child.runtimeRequests.map((request) => request.nodeId),
+    });
+    const runIds = [
+      ...new Set(nodes.nodes.flatMap((node) => (node.runId === null ? [] : [node.runId]))),
+    ];
+    const runs = yield* projections.getThreadRecords(childId, ["runs"], { runIds });
+    const parentId = child.thread.lineage.parentThreadId;
+    if (parentId === null) return;
+    const taskIds = [
+      ...new Set(
+        runs.runs.flatMap((run) =>
+          run.delegatedTaskId === undefined ? [] : [run.delegatedTaskId],
+        ),
+      ),
+    ];
+    if (child.thread.forkedFrom?.type === "node") taskIds.push(child.thread.forkedFrom.nodeId);
+    const parent = yield* projections.getThreadRecords(parentId, ["subagents"], {
+      subagentIds: taskIds,
+    });
+    for (const request of child.runtimeRequests) {
+      const runId = nodes.nodes.find((node) => node.id === request.nodeId)?.runId;
+      const run = runs.runs.find((run) => run.id === runId);
+      const taskId =
+        run?.delegatedTaskId ??
+        (child.thread.forkedFrom?.type === "node" ? child.thread.forkedFrom.nodeId : undefined);
+      const task = parent.subagents.find(
+        (task) =>
+          task.origin === "app_owned" && task.id === taskId && task.childThreadId === childId,
+      );
+      if (task === undefined || request.kind !== "user_input") continue;
+      yield* wakeParent(task, request);
     }
   });
 
-  // Runs for every domain event; most events return before any work is needed.
+  const acceptNativeQuestions = Effect.fnUntraced(function* (item: OrchestrationV2TurnItem) {
+    const observation = observedTaskResults(item);
+    if (
+      observation?.questions === undefined ||
+      observation.questions.length === 0 ||
+      observation.threadId !== item.threadId ||
+      observation.runId !== item.runId ||
+      item.providerTurnId === null
+    )
+      return;
+    const records = yield* projections.getThreadRecords(
+      item.threadId,
+      ["runs", "attempts", "providerThreads", "providerTurns"],
+      {
+        runIds: [observation.runId],
+        attemptIds: [observation.attemptId],
+        providerThreadIds: [observation.providerThreadId],
+        providerTurnAttemptIds: [observation.attemptId],
+      },
+    );
+    if (
+      records.runs[0]?.activeAttemptId !== observation.attemptId ||
+      records.runs[0]?.providerThreadId !== observation.providerThreadId ||
+      records.attempts[0]?.nativeThreadId !== observation.nativeThreadId ||
+      records.providerThreads[0]?.nativeThreadRef?.nativeId !== observation.nativeThreadId ||
+      !records.providerTurns.some((turn) => turn.id === item.providerTurnId)
+    )
+      return;
+    for (const question of observation.questions) {
+      yield* engine.dispatch({
+        type: "delegated_task.question-delivery",
+        commandId: CommandId.make(
+          `server:question-native-receipt:${item.id}:${question.taskId}:${question.requestId}`,
+        ),
+        parentThreadId: item.threadId,
+        taskId: question.taskId,
+        requestId: question.requestId,
+        outcome: "received",
+      });
+    }
+  });
+
   const handle: DelegatedTaskQuestionReactor["Service"]["handle"] = Effect.fnUntraced(
     function* (event) {
-      if (event.type === "run.updated") return yield* catchUpParent(event);
-      if (event.type !== "runtime-request.updated" || event.payload.kind !== "user_input") {
+      if (
+        event.type === "turn-item.updated" &&
+        event.payload.type === "dynamic_tool" &&
+        event.payload.status === "completed"
+      ) {
+        // Bounded event streams omit tool output. Read only this canonical receipt item.
+        const item = yield* projections.getTurnItem({
+          threadId: event.threadId,
+          itemId: event.payload.id,
+        });
+        if (item !== null) yield* acceptNativeQuestions(item);
         return;
       }
-      const child = yield* projections.getThread(event.threadId);
-      const parentThreadId = child.lineage.parentThreadId;
-      if (parentThreadId === null) return;
-      const request = yield* projections.getRuntimeRequest(event.threadId, event.payload.id);
-      const key = `${parentThreadId}:${event.payload.id}`;
-      const messageId = MessageId.make(`message:delegated-task-question:${key}`);
-      if (event.payload.status !== "pending" || request?.status !== "pending") {
-        const parent = yield* projections.getThreadRecords(parentThreadId, ["runs"], {
+      if (event.type === "run.updated") {
+        const parent = yield* projections.getThreadRecords(event.threadId, ["subagents"], {
+          subagentRunIds: [event.payload.id],
+        });
+        for (const childId of new Set(
+          parent.subagents
+            .filter((task) => task.origin === "app_owned")
+            .flatMap((task) => (task.childThreadId === null ? [] : [task.childThreadId])),
+        ))
+          yield* catchUpChild(childId);
+        return;
+      }
+      if (event.type === "runtime-request.updated" && event.payload.kind === "user_input") {
+        const request = yield* projections.getRuntimeRequest(event.threadId, event.payload.id);
+        if (request?.status === "pending") return yield* catchUpChild(event.threadId);
+        const child = yield* projections.getThread(event.threadId);
+        const parentId = child.lineage.parentThreadId;
+        if (parentId === null) return;
+        const parent = yield* projections.getThreadRecords(parentId, ["runs"], {
           runStatuses: ["queued"],
         });
         const queued = parent.runs.find(
-          (run) => run.status === "queued" && run.userMessageId === messageId,
+          (run) => run.userMessageId === questionNoticeId(parentId, event.payload.id),
         );
-        if (queued !== undefined) {
+        if (queued !== undefined)
           yield* engine.dispatch({
             type: "queued-run.cancel-internal",
-            commandId: CommandId.make(`server:delegated-task-question-cancel:${key}`),
-            threadId: parentThreadId,
+            commandId: CommandId.make(
+              `server:delegated-task-question-cancel:${parentId}:${event.payload.id}`,
+            ),
+            threadId: parentId,
             runId: queued.id,
           });
-        }
-        return;
-      }
-      const { runs } = yield* projections.getThreadRecords(
-        child.id,
-        ["runs"],
-        event.runId === undefined ? { runOrder: "desc", runLimit: 1 } : { runIds: [event.runId] },
-      );
-      const run =
-        runs[0] ??
-        (yield* projections.getThreadRecords(child.id, ["runs"], { runOrder: "desc", runLimit: 1 }))
-          .runs[0];
-      const taskId =
-        run?.delegatedTaskId ??
-        (child.forkedFrom?.type === "node" ? child.forkedFrom.nodeId : undefined);
-      if (taskId === undefined) return;
-      const parent = yield* projections.getThreadRecords(parentThreadId, ["subagents"], {
-        subagentIds: [taskId],
-      });
-      const task = parent.subagents.find(
-        (candidate) => candidate.origin === "app_owned" && candidate.id === taskId,
-      );
-      if (
-        task === undefined ||
-        task.completionDelivery?.state === "disposed" ||
-        parent.thread.archivedAt !== null ||
-        parent.thread.deletedAt !== null
-      ) {
         return;
       }
       if (
-        task.completionWake !== "settled_only" ||
-        event.payload.responseCapability.type !== "live" ||
-        task.runId === null
+        (event.type === "runtime-request.updated" && event.payload.kind === "user_input") ||
+        (event.type === "turn-item.updated" && event.payload.type === "user_input_request")
       )
-        return yield* wakeParent(task, request);
-      // A blocking delegate_task wait delivers the question itself.
-      const parentRuns = yield* projections.getThreadRecords(parentThreadId, ["runs"], {
-        runIds: [task.runId],
-      });
-      if (
-        parentRuns.runs.some(
-          (run) =>
-            run.status === "preparing" || run.status === "starting" || run.status === "running",
-        )
-      )
-        return;
-      yield* wakeParent(task, request);
+        yield* catchUpChild(event.threadId);
     },
     (effect, event) =>
       effect.pipe(
@@ -183,16 +241,123 @@ export const make = Effect.gen(function* () {
       ),
   );
 
+  // No MCP call from the previous Runtime process can still own a wait.
+  const releaseAbandonedWaits = Effect.fnUntraced(function* (parentId: ThreadId) {
+    const parent = yield* projections.getThreadRecords(parentId, ["runs"], {
+      runStatuses: ["preparing", "starting", "running", "waiting"],
+    });
+    for (const run of parent.runs) {
+      for (const waitId of run.taskQuestionWaits ?? []) {
+        yield* engine.dispatch({
+          type: "delegated_task.question-wait",
+          commandId: CommandId.make(`server:question-wait-recover:${run.id}:${waitId}`),
+          parentThreadId: parentId,
+          parentRunId: run.id,
+          waitId,
+          active: false,
+        });
+      }
+    }
+  });
+
+  const recoverWaitReceipts = Effect.fnUntraced(function* (
+    parentId: ThreadId,
+    taskIds: ReadonlyArray<OrchestrationV2Subagent["id"]>,
+  ) {
+    const parent = yield* projections.getThreadRecords(parentId, ["subagents"], {
+      subagentIds: taskIds,
+    });
+    const uncertain = parent.subagents.filter(
+      (task) => (task.unconfirmedQuestionIds?.length ?? 0) > 0,
+    );
+    const runIds = [...new Set(uncertain.flatMap((task) => task.questionClaimRunIds ?? []))];
+    if (runIds.length > 0) {
+      const history = yield* projections.getThreadRecords(parentId, ["turnItems"], {
+        turnItemRunIds: runIds,
+        turnItemTypes: ["dynamic_tool"],
+        turnItemStatuses: ["completed"],
+      });
+      for (const item of history.turnItems) yield* acceptNativeQuestions(item);
+    }
+    const current = yield* projections.getThreadRecords(parentId, ["subagents"], {
+      subagentIds: uncertain.map((task) => task.id),
+    });
+    for (const task of current.subagents) {
+      for (const requestId of task.unconfirmedQuestionIds ?? []) {
+        const sequence = yield* engine.getThreadEventSequence(parentId);
+        yield* engine.dispatch({
+          type: "delegated_task.question-delivery",
+          commandId: CommandId.make(`server:question-retry:${task.id}:${requestId}:${sequence}`),
+          parentThreadId: parentId,
+          taskId: task.id,
+          requestId,
+          outcome: "retry",
+        });
+      }
+    }
+  });
+
+  const recover = () =>
+    Effect.gen(function* () {
+      const children = yield* projections.getRecoveryThreadIds("delegated-questions");
+      const parents = new Set<ThreadId>();
+      const pendingTasks = new Map<ThreadId, Set<OrchestrationV2Subagent["id"]>>();
+      for (const childId of children) {
+        const child = yield* projections.getThread(childId);
+        parents.add(childId);
+        if (child.lineage.parentThreadId === null) continue;
+        parents.add(child.lineage.parentThreadId);
+        const requests = yield* projections.getThreadRecords(childId, ["runtimeRequests"], {
+          pendingUserQuestions: true,
+        });
+        const nodes = yield* projections.getThreadRecords(childId, ["nodes"], {
+          nodeIds: requests.runtimeRequests.map((request) => request.nodeId),
+        });
+        const runs = yield* projections.getThreadRecords(childId, ["runs"], {
+          runIds: nodes.nodes.flatMap((node) => (node.runId === null ? [] : [node.runId])),
+        });
+        const taskIds =
+          pendingTasks.get(child.lineage.parentThreadId) ??
+          new Set<OrchestrationV2Subagent["id"]>();
+        for (const run of runs.runs)
+          if (run.delegatedTaskId !== undefined) taskIds.add(run.delegatedTaskId);
+        if (child.forkedFrom?.type === "node") taskIds.add(child.forkedFrom.nodeId);
+        pendingTasks.set(child.lineage.parentThreadId, taskIds);
+      }
+      for (const parentId of parents) {
+        yield* releaseAbandonedWaits(parentId);
+        yield* recoverWaitReceipts(parentId, [...(pendingTasks.get(parentId) ?? [])]);
+      }
+      for (const childId of children)
+        yield* catchUpChild(childId).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("recovering a delegated task question failed", { childId, cause }),
+          ),
+        );
+      yield* engine.resumeQueuedRuns;
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("delegated task question recovery failed", { cause }),
+      ),
+    );
+
   const start: DelegatedTaskQuestionReactor["Service"]["start"] = () =>
     forkParked(
-      Stream.runForEach(engine.streamDomainEvents, handle).pipe(
+      Effect.gen(function* () {
+        // Capture before sweeping, then replay only events committed during/after the sweep.
+        const afterSequence = yield* sink.latestSequence();
+        yield* recover();
+        yield* Stream.runForEach(
+          engine.streamStoredEventsFrom({ afterSequence, capturedCursor: true }),
+          ({ event }) => handle(event),
+        );
+      }).pipe(
         Effect.catchCause((cause) =>
-          Effect.logWarning("delegated task question event stream failed", { cause }),
+          Effect.logWarning("delegated task question recovery failed", { cause }),
         ),
       ),
     );
 
-  return { start, handle } satisfies DelegatedTaskQuestionReactor["Service"];
+  return { start, handle, recover } satisfies DelegatedTaskQuestionReactor["Service"];
 });
-
 export const layer = Layer.effect(DelegatedTaskQuestionReactor, make);

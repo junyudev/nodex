@@ -185,6 +185,9 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
     case "provider.switch":
       return [command.threadId];
     case "delegated_task.request":
+    case "delegated_task.question-delivery":
+    case "delegated_task.question.receive":
+    case "delegated_task.question-wait":
     case "delegated_task.wake-policy":
     case "delegated_task.completion-delivery.acknowledge":
     case "delegated_task.completion-delivery.dispose":

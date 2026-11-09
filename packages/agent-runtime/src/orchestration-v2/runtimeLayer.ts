@@ -334,7 +334,9 @@ const layerDelegatedTaskQuestions = Layer.effectDiscard(
   DelegatedTaskQuestionReactor.DelegatedTaskQuestionReactor.use((reactor) => reactor.start()),
 ).pipe(
   Layer.provide(DelegatedTaskQuestionReactor.layer),
-  Layer.provide(Layer.merge(layerOrchestratorProvided, ProjectionStore.layer)),
+  Layer.provide(
+    Layer.mergeAll(layerOrchestratorProvided, ProjectionStore.layer, layerEventSinkProvided),
+  ),
 );
 
 /**

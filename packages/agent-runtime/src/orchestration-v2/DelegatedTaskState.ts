@@ -64,13 +64,10 @@ export function isTerminalTaskStatus(status: string): status is TerminalTaskStat
 }
 
 export function endsTaskWait(
-  result: Pick<
-    OrchestratorMcpDelegateTaskResult,
-    "status" | "hasPendingQuestion" | "pendingApproval"
-  >,
+  result: Pick<OrchestratorMcpDelegateTaskResult, "status" | "questions" | "pendingApproval">,
 ): boolean {
   return (
-    result.hasPendingQuestion ||
+    result.questions.length > 0 ||
     result.pendingApproval !== null ||
     isTerminalTaskStatus(result.status)
   );

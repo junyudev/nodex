@@ -215,6 +215,18 @@ export const OrchestratorMcpTaskRecovery = Schema.Struct({
   failureMessage: Schema.String,
 });
 
+export const OrchestratorMcpPendingTaskQuestion = Schema.Struct({
+  requestId: RuntimeRequestId,
+  blocking: Schema.Boolean,
+  askedAt: IsoDateTime,
+  preview: Schema.String,
+});
+export const OrchestratorMcpDeliveredTaskQuestion = Schema.Struct({
+  ...OrchestratorMcpPendingTaskQuestion.fields,
+  taskId: NodeId,
+  detail: Schema.String,
+});
+
 export const OrchestratorMcpDelegateTaskResult = Schema.Struct({
   taskId: NodeId,
   childThreadId: ThreadId,
@@ -232,9 +244,8 @@ export const OrchestratorMcpDelegateTaskResult = Schema.Struct({
   model: Schema.NullOr(Schema.String),
   summary: Schema.NullOr(Schema.String),
   resultContextTransferId: Schema.NullOr(ContextTransferId),
-  hasPendingQuestion: Schema.Boolean.annotate({
-    description: "A question blocks the child and ends a wait. Read and answer it with task_question.",
-  }),
+  pendingQuestions: Schema.Array(OrchestratorMcpPendingTaskQuestion),
+  questions: Schema.Array(OrchestratorMcpDeliveredTaskQuestion).annotate({ description: "New questions delivered by this wait, from any task owned by your Run. Answer or dismiss each one." }),
   pendingApproval: OrchestratorMcpPendingTaskApproval,
   waitTimedOut: Schema.Boolean.annotate({
     description:

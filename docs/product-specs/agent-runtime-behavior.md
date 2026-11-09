@@ -1040,11 +1040,11 @@ receipt cleanup. Omitted keys retain native-call derivation.
 The delegating Agent answers its delegated children's information questions through
 `task_question`: `list` returns pending user-question requestIds, `read` returns the
 question set for a requestId, and `respond` submits answers through the Runtime's
-question-response command. Every action requires a taskId owned by the caller;
+question-response command. `dismiss` drops a pending asynchronous question through the same Runtime dismissal used by a person; live questions require an answer or Stop. Every action requires a taskId owned by the caller;
 permissions and approvals cannot be answered through this tool. Live questions resume
 the waiting provider, while asynchronous questions send answers into the child's conversation.
 Answered or dismissed requests cannot be answered again through the tool. The answer is
-attributed to the coordinating Thread, including its asynchronous answer message.
+attributed to the coordinating Thread, including its asynchronous answer message or dismissal. Answering after the child Run finishes creates a follow-up task with the same ownership and completion delivery as `task_send`. The response identifies that task and explains that its result will wake the coordinator; the original result remains unchanged.
 
 `session_question` provides the same question selection and response semantics for an
 explicit product Session, including a selected Runtime child. Its Profile-wide access is
@@ -1056,17 +1056,35 @@ remain excluded. Partial asynchronous responses retain unanswered siblings.
 
 Task status and wait results report `workState: "recovering"` and the recovery's kind,
 attempt, limit, next attempt time and failure message while a task's reply is recovering;
-a wait does not return for recovery alone. They report `hasPendingQuestion` for a live question that blocks
-an unfinished task, and `pendingApproval` for its oldest live approval on an active task
-Run (requestId, kind and runId), or null. A blocking delegation or `task_wait` returns
-on a result, live question, approval or timeout; only a timeout sets `waitTimedOut`.
-Returning an unfinished blocking delegation keeps later completion delivery armed.
-An async child's live or asynchronous question wakes its coordinator with the taskId
-and requestId. A live question already delivered by a blocking delegation does not
-also queue a wake while that parent Run is active; if the Run settles first, the
-pending question wakes it. Repeated question events do not create duplicate wakes,
-and answering or dismissing a question cancels its queued wake. Approvals remain
-user decisions and do not queue coordinator question wakes.
+a wait does not return for recovery alone. Results expose `pendingQuestions` with each pending
+user question's requestId, blocking flag (live callback versus message capability), askedAt and
+short preview, including questions left open after a task finishes. `pendingApproval` reports
+the oldest live approval on an active task Run (requestId, kind and runId), or null.
+
+A blocking delegation or `task_wait` returns on a result, a live or message question from
+**any task owned by the waiting Agent's Run**, the awaited task's approval, or timeout.
+Only a timeout sets `waitTimedOut`. Newly received questions are returned inline in `questions`,
+with taskId, requestId and bounded question detail. The awaited task keeps running and later
+completion delivery remains armed. Approvals remain the person's decision.
+
+Questions and completion wakes use one notice policy: enter a running native turn when its
+live provider session can steer without interrupting tools, otherwise queue after the active
+Run or start a Run if idle. Notices never interrupt or restart work and respect Stop, Pause,
+queue holds, archive/delete and native maintenance commands. Question notices include the task
+title/id, requestId, whether the child is blocked or still working, and the question headers,
+text and options within a 12,000-byte detail budget. Oversized sets direct the Agent to
+`task_question read`. Agents must answer or dismiss each delivered question.
+
+A question is delivered once in the normal path, through a notice or a wait result. Wait
+consumption is claimed durably per task/request under the parent Thread lock. Native waits
+confirm receipt through the completed tool result, fenced to its Run, attempt and native
+conversation; until then a queued notice is withheld. Confirmation cancels the notice.
+Startup recovers confirmed tool results and retries claims that never reached native history. Deterministic message identities prevent repeated events and
+startup recovery from creating duplicates. Startup sweeps pending user questions on app-owned
+tasks, including terminal tasks, and retries undelivered notices. Resolved requests never
+create new notices; answering or dismissing cancels a queued notice. Provider delivery and
+local persistence cannot commit atomically, so crash recovery retains the Runtime's existing
+at-least-once native delivery boundary. Approvals do not create coordinator question notices.
 
 `task_read` shares Session history semantics: text messages or complete activity JSON,
 newest-first or oldest-first order, independent page and content cursors, a reusable forward
@@ -1085,7 +1103,9 @@ that is absent or does not fit is replaced by an instruction to read `task_statu
 results are never truncated. Queued wakes can batch newly settled siblings before
 starting. Once dispatched, retries preserve the message's text and result coverage;
 later siblings use a successor delivery. Agents can continue from inlined results
-and need `task_status` only when the wake requests it.
+and need `task_status` only when the wake requests it. Completion wakes also list still-open
+questions by requestId and short text, explaining that answering starts a follow-up task whose
+result will wake the coordinator.
 
 Completion wakes can reach an active Codex, Claude Code or OpenCode Run at its next
 native tool or sampling boundary without interrupting running tools. Agents without

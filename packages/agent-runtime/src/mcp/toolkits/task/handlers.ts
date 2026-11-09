@@ -21,7 +21,8 @@ export const taskView = (task: OrchestratorMcpDelegateTaskResult): TaskView => (
       ? null
       : { status: task.latestTerminalStatus, summary: task.latestTerminalSummary },
   hasPendingFollowUps: task.hasPendingChildRuns,
-  hasPendingQuestion: task.hasPendingQuestion,
+  pendingQuestions: task.pendingQuestions,
+  questions: task.questions,
   pendingApproval: task.pendingApproval,
   waitTimedOut: task.waitTimedOut,
 });

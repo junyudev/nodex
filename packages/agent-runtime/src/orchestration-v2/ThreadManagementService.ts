@@ -107,6 +107,9 @@ export function existingThreadIdsForCommand(
         ? [command.sourceThreadId]
         : [command.sourceThreadId, command.targetThreadId];
     case "delegated_task.request":
+    case "delegated_task.question-delivery":
+    case "delegated_task.question.receive":
+    case "delegated_task.question-wait":
     case "delegated_task.wake-policy":
     case "delegated_task.completion-delivery.acknowledge":
     case "delegated_task.completion-delivery.dispose":
@@ -381,6 +384,7 @@ export interface ThreadManagementServiceShape {
     readonly threadId: ThreadId;
     readonly itemId: TurnItemId;
   }) => Effect.Effect<OrchestrationV2GetTurnItemResult, Orchestrator.OrchestratorV2Error>;
+  readonly getRuntimeResponseContext: Orchestrator.OrchestratorV2["Service"]["getRuntimeResponseContext"];
   readonly getThreadRecords: Orchestrator.OrchestratorV2["Service"]["getThreadRecords"];
   readonly getThreadProjection: (
     threadId: ThreadId,
@@ -1463,6 +1467,7 @@ const make = Effect.gen(function* () {
         Effect.andThen(orchestrator.getTurnItem(input)),
         Effect.map((item) => ({ item: item === null ? null : projectTurnItemForDetail(item) })),
       ),
+    getRuntimeResponseContext: orchestrator.getRuntimeResponseContext,
     getThreadRecords: (threadId, fields, filter) =>
       ensureProjectionTranscript(threadId).pipe(
         Effect.andThen(orchestrator.getThreadRecords(threadId, fields, filter)),

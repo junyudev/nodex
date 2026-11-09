@@ -84,6 +84,12 @@ export const recoveryCandidateThreadIds = (
         `;
     case "context-recoveries":
       return sql`SELECT thread_id FROM orchestration_v2_projection_runs WHERE ${sql.literal(CONTEXT_RECOVERY_RUN_PREDICATE)}`;
+    case "delegated-questions":
+      return sql`SELECT thread_id FROM orchestration_v2_projection_runtime_requests
+        WHERE kind = 'user_input' AND status = 'pending'
+        UNION SELECT thread_id FROM orchestration_v2_projection_runs
+        WHERE status IN ('queued','preparing','starting','running','waiting')
+          AND json_array_length(payload_json, '$.taskQuestionWaits') > 0`;
     case "delegated-completions":
       return sql`
           SELECT thread_id FROM orchestration_v2_projection_runs

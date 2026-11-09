@@ -395,7 +395,9 @@ export const layerExecutor: Layer.Layer<
                           : { modelSelection: run.modelSelection }),
                         dispatchMode: {
                           type:
-                            message.delegatedCompletion === undefined && turnCompleted
+                            message.delegatedCompletion === undefined &&
+                            message.notification === undefined &&
+                            turnCompleted
                               ? "start_immediately"
                               : "queue_after_active",
                         },
@@ -404,6 +406,9 @@ export const layerExecutor: Layer.Layer<
                         ...(message.delegatedCompletion === undefined
                           ? {}
                           : { delegatedCompletion: message.delegatedCompletion }),
+                        ...(message.delegatedQuestion === undefined
+                          ? {}
+                          : { delegatedQuestion: message.delegatedQuestion }),
                         ...(message.notification === undefined
                           ? {}
                           : { notification: message.notification }),

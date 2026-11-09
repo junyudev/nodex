@@ -2439,6 +2439,10 @@ it.layer(layerPressure)("delegated completion delivery at history scale", (it) =
         }),
       );
       assert.deepEqual(historyWideReads(wake.plans), []);
+      const questions = yield* explainExecutedSql(
+        store.getRecoveryThreadIds("delegated-questions"),
+      );
+      assert.deepEqual(historyWideReads(questions.plans), []);
       const claimed = yield* store.getThreadRecords(threadId, ["runs", "subagents"], {
         runIds: [runId],
         subagentIds: [taskId],
@@ -2828,7 +2832,8 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
             latestTerminalStatus: "completed",
             latestTerminalSummary: `Result ${index}`,
             latestTerminalResultContextTransferId: handoffs[index]!.transferId!,
-            hasPendingQuestion: false,
+            pendingQuestions: [],
+            questions: [],
             pendingApproval: null,
             waitTimedOut: false,
           } satisfies import("@nodex/runtime-contracts").OrchestratorMcpDelegateTaskResult;

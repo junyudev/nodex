@@ -220,6 +220,7 @@ export type ProjectionRecoveryKind =
   | "queued-runs"
   | "runtime"
   | "subagent-results"
+  | "delegated-questions"
   | "delegated-completions"
   | "context-recoveries";
 
@@ -449,6 +450,8 @@ export interface ProjectionRuntimeResponseContext {
 }
 
 export interface ProjectionRecordFilter {
+  readonly pendingUserQuestions?: boolean;
+  readonly pendingRequests?: boolean;
   readonly nodeIds?: ReadonlyArray<NodeId>;
   readonly subagentIds?: ReadonlyArray<NodeId>;
   /** Tasks spawned by these Runs, through the thread/run task index. */
@@ -1454,6 +1457,11 @@ function needsRecovery(
         projection.runs.some(
           (run) => run.status === "completed" && run.contextRecovery?.phase === "compact",
         )
+      );
+    case "delegated-questions":
+      return (
+        projection.runtimeRequests.some((r) => r.kind === "user_input" && r.status === "pending") ||
+        projection.runs.some((run) => (run.taskQuestionWaits?.length ?? 0) > 0)
       );
     case "delegated-completions":
       return projection.runs.some((run) => run.delegatedCompletion?.delivery != null);
@@ -4870,6 +4878,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             SELECT payload_json
             FROM orchestration_v2_projection_runtime_requests
             WHERE thread_id = ${threadId}
+              ${filter?.pendingRequests === true ? sql`AND status = 'pending'` : sql``}
+              ${filter?.pendingUserQuestions === true ? sql`AND status = 'pending' AND kind = 'user_input'` : sql``}
             ORDER BY created_at ASC, runtime_request_id ASC
           `
               : sql<PayloadRow>`
@@ -10570,6 +10580,12 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             return yield* new ProjectionStoreThreadNotFoundError({ threadId });
           const selected = {
             ...projection,
+            runtimeRequests: projection.runtimeRequests.filter(
+              (request) =>
+                (filter?.pendingRequests !== true || request.status === "pending") &&
+                (filter?.pendingUserQuestions !== true ||
+                  (request.kind === "user_input" && request.status === "pending")),
+            ),
             messages: projection.messages.filter(
               (row) =>
                 (filter?.messageRunIds === undefined ||
