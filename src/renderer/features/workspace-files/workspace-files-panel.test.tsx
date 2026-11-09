@@ -916,8 +916,8 @@ describe("WorkspaceFilesPanel", () => {
     await settleAsyncRender();
 
     fireEvent.click(view.getByText("src"));
-    await settleAsyncRender();
-    expect(view.getByText("index.ts")).not.toBeNull();
+    // The folder's listing arrives as its own query result, after the expansion renders.
+    expect(await view.findByText("index.ts")).not.toBeNull();
     fireEvent.click(view.getByRole("button", { name: "Scroll tree" }));
     fireEvent.input(view.getByRole("textbox", { name: "Filter files" }), {
       target: { value: "index" },
@@ -937,13 +937,13 @@ describe("WorkspaceFilesPanel", () => {
     expect(
       view.getByRole("tree", { name: "Workspace files" }).getAttribute("data-initial-scroll-top"),
     ).toBe("420");
-    expect(
-      invokeCalls.filter(
-        (call) =>
-          call[0] === "workspace-directory-entries" &&
-          (call[1] as { directoryPath?: string }).directoryPath === "src",
-      ).length,
-    ).toBeGreaterThan(0);
+
+    // Unfiltered, the file is listed only because its folder is still expanded.
+    fireEvent.input(view.getByRole("textbox", { name: "Filter files" }), {
+      target: { value: "" },
+    });
+    expect(await view.findByText("README.md")).not.toBeNull();
+    expect(view.getByText("index.ts")).not.toBeNull();
   });
 });
 
