@@ -80,8 +80,6 @@ function createRepository(): { readonly root: string; readonly managedRoot: stri
   const root = path.join(fixtureRoot, "repository");
   const managedRoot = path.join(fixtureRoot, "managed");
   git(fixtureRoot, "init", "-b", "main", root);
-  git(root, "config", "user.email", "handoff@example.com");
-  git(root, "config", "user.name", "Handoff Test");
   writeFileSync(path.join(root, "tracked.txt"), "base\n");
   git(root, "add", "tracked.txt");
   git(root, "commit", "-m", "base");
@@ -119,7 +117,13 @@ afterEach(async () => {
   handoffCase = undefined;
 });
 
-describe("local thread handoff Git transaction", () => {
+/**
+ * Every case runs a real transaction of up to about 100 sequential Git processes. Hosted Windows
+ * runners spend about 0.1 s on each, and more than twice that while parallel suites contend.
+ */
+const GIT_TRANSACTION_BUDGET_MS = 60_000;
+
+describe("local thread handoff Git transaction", { timeout: GIT_TRANSACTION_BUDGET_MS }, () => {
   test("moves tracked, binary, and untracked state to a worktree and rolls it back", async () => {
     const fixture = createRepository();
     dirtyRepository(fixture.root);

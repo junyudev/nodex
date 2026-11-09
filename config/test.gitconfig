@@ -9,3 +9,5 @@
 	gpgSign = false
 [tag]
 	gpgSign = false
+[maintenance]
+	auto = false
