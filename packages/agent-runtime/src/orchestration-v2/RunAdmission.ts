@@ -145,7 +145,10 @@ export const effectReadySql = (sql: SqlClient.SqlClient, effectAlias = "pending"
 /** Rebuild missing activation facts from durable projections before workers start. */
 export const restore = Effect.fn("RunAdmission.restore")(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const missing = yield* sql<{ run_id: string; continuing: number }>`WITH live AS (${liveRunsSql(sql)})
+  const missing = yield* sql<{
+    run_id: string;
+    continuing: number;
+  }>`WITH live AS (${liveRunsSql(sql)})
     SELECT run.run_id, MAX(live.native) = 1 OR run.status IN ('running','waiting') AS continuing
     FROM live CROSS JOIN orchestration_v2_projection_runs run ON run.run_id = live.run_id
     WHERE NOT EXISTS (SELECT 1 FROM orchestration_v2_run_activations activation WHERE activation.run_id = run.run_id)
