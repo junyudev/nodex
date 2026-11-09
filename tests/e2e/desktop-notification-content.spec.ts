@@ -366,7 +366,7 @@ test("side chat notifications reopen its tab in the source Session and reply to 
     if (!tabId) throw new Error("The side chat has no surface identity");
     // The tab opens at once; its Session is created behind it.
     await expect
-      .poll(async () => (await invokeIpc(page, "project-sessions:side-chats", sourceId)).items, {
+      .poll(async () => (await invokeIpc(page!, "project-sessions:side-chats", sourceId)).items, {
         timeout: 30_000,
       })
       .toHaveLength(1);
