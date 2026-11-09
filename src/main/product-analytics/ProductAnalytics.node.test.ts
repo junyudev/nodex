@@ -240,6 +240,23 @@ it.effect("a save the system refuses is repeated, so a restart resends nothing d
   ),
 );
 
+it.effect("analytics that is off at launch withdraws what an earlier launch left unsent", () =>
+  provided(
+    Effect.gen(function* () {
+      const { analytics, quit, launch, requests } = yield* harness({ status: () => 503 });
+      yield* analytics.noticeAcknowledged;
+      yield* quit;
+      const attempted = (yield* Ref.get(requests)).length;
+
+      const relaunched = yield* launch(OFF);
+      assert.deepStrictEqual(yield* pendingNames(relaunched.analytics), []);
+      yield* advance(5 * MINUTE);
+      yield* relaunched.quit;
+      assert.strictEqual((yield* Ref.get(requests)).length, attempted);
+    }),
+  ),
+);
+
 it.effect("counts one active day per UTC day, and only with a focused window", () =>
   provided(
     Effect.gen(function* () {

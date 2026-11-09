@@ -205,10 +205,19 @@ export const make = Effect.fn("ProductAnalytics.make")(function* (ports: Product
     });
   });
 
+  /** Turning analytics off withdraws everything that has not left the machine. */
+  const withdraw = Effect.gen(function* () {
+    yield* Ref.set(sent, []);
+    yield* mutate((current) =>
+      current.outbox.length === 0 ? current : { ...current, outbox: [] },
+    );
+  });
+
   const deliver = (options: { readonly force: boolean }) =>
     Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
       yield* mutate((current) => dropExpired(current, now));
+      if (!(yield* Ref.get(active))) return;
       const batch = dueBatch(yield* Ref.get(state), {
         now,
         retryAt: yield* Ref.get(retryAt),
@@ -234,21 +243,15 @@ export const make = Effect.fn("ProductAnalytics.make")(function* (ports: Product
       yield* mutate((current) => removeDelivered(current, batch));
     });
 
-  if (ports.telemetry.active) yield* admitActivation;
+  // Analytics turned off while the app was closed also withdraws what an earlier launch left.
+  yield* ports.telemetry.active ? admitActivation : withdraw;
 
   yield* ports.telemetryChanges.pipe(
     Stream.runForEach((settings) =>
       Effect.gen(function* () {
         const wasActive = yield* Ref.getAndSet(active, settings.active);
-        if (settings.active) {
-          if (!wasActive) yield* admitActivation;
-          return;
-        }
-        // Turning analytics off withdraws everything that has not left the machine.
-        yield* Ref.set(sent, []);
-        yield* mutate((current) =>
-          current.outbox.length === 0 ? current : { ...current, outbox: [] },
-        );
+        if (!settings.active) return yield* withdraw;
+        if (!wasActive) yield* admitActivation;
       }),
     ),
     Effect.forkScoped,
