@@ -4453,6 +4453,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       });
       yield* harness.runtime.startTurn(turnInput);
       yield* harness.runtime.steerTurn({
+        delivery: "prompt",
         threadId: harness.threadId,
         runId: turnInput.runId,
         providerThread: harness.providerThread,
@@ -4546,6 +4547,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         });
         yield* harness.runtime.startTurn(turnInput);
         yield* harness.runtime.steerTurn({
+          delivery: "prompt",
           threadId: harness.threadId,
           runId: turnInput.runId,
           providerThread: harness.providerThread,
@@ -4668,6 +4670,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         });
         yield* harness.runtime.startTurn(input);
         const steerInput = {
+          delivery: "prompt" as const,
           threadId: harness.threadId,
           runId: input.runId,
           providerThread: harness.providerThread,

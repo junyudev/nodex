@@ -300,6 +300,7 @@ export const layerExecutor: Layer.Layer<
                 );
             return providerTurnControl
               .steer({
+                delivery: effect.request.delivery,
                 modelPolicyOrigin: effect.request.modelPolicyOrigin ?? "automatic",
                 threadId: effect.threadId,
                 providerSessionId: effect.request.providerSessionId,

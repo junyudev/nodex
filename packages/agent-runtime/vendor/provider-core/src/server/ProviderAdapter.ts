@@ -483,6 +483,7 @@ export function attachesToAgentWake(
 }
 
 export interface ProviderAdapterV2SteerInput {
+  readonly delivery: "prompt" | "boundary";
   readonly modelPolicyOrigin?: "person" | "nodex-agent" | "agent" | "automatic";
   readonly threadId: ThreadId;
   readonly runId: RunId;

@@ -74,6 +74,7 @@ export interface ProviderTurnControlServiceV2Shape {
     readonly providerTurnId: ProviderTurnId;
   }) => Effect.Effect<void, ProviderTurnControlError>;
   readonly steer: (input: {
+    readonly delivery: "prompt" | "boundary";
     readonly threadId: ThreadId;
     readonly providerSessionId: ProviderSessionId;
     readonly providerThreadId: ProviderThreadId;
@@ -391,6 +392,7 @@ export const layer: Layer.Layer<
           }
           yield* loaded.session.value
             .steerTurn({
+              delivery: input.delivery,
               modelPolicyOrigin: input.modelPolicyOrigin ?? "automatic",
               threadId: input.threadId,
               runId: run.id,

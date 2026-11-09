@@ -1087,6 +1087,18 @@ starting. Once dispatched, retries preserve the message's text and result covera
 later siblings use a successor delivery. Agents can continue from inlined results
 and need `task_status` only when the wake requests it.
 
+Completion wakes can reach an active Codex, Claude Code or OpenCode Run at its next
+native tool or sampling boundary without interrupting running tools. Agents without
+boundary steering keep the wake queued until the current Run settles. Person steering
+and question answers retain their prompt-steering behavior.
+
+Claude Code accepts a boundary notice only when its native queue acknowledges the
+message UUID, rather than when the host writes it. Native pickup and merged-result
+UUIDs confirm processing without replacing the original prompt's ownership. If the
+notice arrives too late to join that native turn, the Runtime captures the CLI's
+follow-up as a separate wake Run without sending the notice again. Unconfirmed
+delivery remains uncertain across a timeout or process exit.
+
 A delegated result's handoff has one durable native delivery receipt, scoped to its
 destination provider Thread and native conversation incarnation. A wake's complete
 inlined results count as received and acknowledge the tasks once the Run it started

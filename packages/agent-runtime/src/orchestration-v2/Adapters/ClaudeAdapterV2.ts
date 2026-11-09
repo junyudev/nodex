@@ -295,7 +295,7 @@ export const ClaudeProviderCapabilitiesV2 = {
     emitsTurnCompleted: true,
     supportsInterrupt: true,
     supportsActiveSteering: true,
-    activeSteeringInterruptsTools: true,
+    supportsBoundarySteering: true,
     supportsSteeringByInterruptRestart: false,
     supportsQueuedMessages: true,
     terminalStatusQuality: "strong",
@@ -3289,6 +3289,14 @@ interface ClaudeLiveQueryContext {
   // Ultracode was asked for and Claude Code has not yet confirmed it runs.
   verifyUltracode: boolean;
   readonly closed: Deferred.Deferred<void>;
+  readonly boundarySteers: Map<
+    string,
+    {
+      readonly input: ProviderAdapter.ProviderAdapterV2SteerInput;
+      readonly accepted: Deferred.Deferred<void>;
+      pickedUp: boolean;
+    }
+  >;
   // Retained for process-exit cleanup even when its last turn failed.
   lastTurn: ActiveClaudeTurnContext | null;
   // Whether this CLI process echoes a prompt's uuid on the first frame of
@@ -8654,6 +8662,45 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
         });
 
+        const recordBoundarySteerReceipts = Effect.fnUntraced(function* (
+          liveQuery: ClaudeLiveQueryContext,
+          message: SDKMessage,
+        ) {
+          const lifecycle = claudePromptLifecycle(message);
+          const echoed = claudeEchoedPromptUuids(message);
+          for (const [uuid, steer] of liveQuery.boundarySteers) {
+            const queued = lifecycle?.uuid === uuid && lifecycle.state === "queued";
+            const pickedUp =
+              (lifecycle?.uuid === uuid && lifecycle.state === "started") ||
+              echoed.includes(uuid) ||
+              (message.type === "user" &&
+                "isReplay" in message &&
+                message.isReplay === true &&
+                message.uuid === uuid);
+            if (!queued && !pickedUp) continue;
+            if (!(yield* Deferred.isDone(steer.accepted))) {
+              yield* emitProviderEvent({
+                type: "message.delivery.updated",
+                driver: CLAUDE_PROVIDER,
+                threadId: steer.input.threadId,
+                messageId: steer.input.message.messageId,
+                delivery: "accepted",
+                nativeItemRef: { driver: CLAUDE_PROVIDER, nativeId: uuid, strength: "strong" },
+              });
+              yield* Deferred.succeed(steer.accepted, undefined);
+            }
+            if (pickedUp && !steer.pickedUp) {
+              steer.pickedUp = true;
+              yield* Effect.logDebug("orchestration-v2.claude-boundary-steer-picked-up", {
+                messageId: steer.input.message.messageId,
+                promptUuid: uuid,
+              });
+            }
+            if (message.type === "result" && echoed.includes(uuid))
+              liveQuery.boundarySteers.delete(uuid);
+          }
+        });
+
         // A prompt offered while Claude has a turn of its own queued (a
         // background task or subagent finished, a peer message arrived, a
         // resume reports work the previous process left) is answered only
@@ -8674,6 +8721,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           const message = input.message;
           const context = yield* Ref.get(activeTurn);
           const liveQuery = yield* Ref.get(queryContext);
+          if (liveQuery?.query === input.query) {
+            yield* recordBoundarySteerReceipts(liveQuery, message);
+          }
+          // A merged notice never replaces the prompt owner. If its UUID appears
+          // only after that prompt's result, the normal idle/prompt-echo gate routes
+          // the CLI's already-started turn to a wake continuation, without resending.
           if (
             context === null ||
             context.promptUuid === null ||
@@ -9804,6 +9857,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             closed,
             lastTurn: null,
             promptEchoMode: "unknown",
+            boundarySteers: new Map(),
             runtimeMode: turnInput.runtimePolicy.runtimeMode,
             queryPolicy,
             permissionMode: queryOptions.permissionMode,
@@ -10233,24 +10287,66 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 detail: `Claude provider turn ${turnInput.providerTurnId} is not the active turn.`,
               });
             }
+            if (
+              Array.from(existing.boundarySteers.values()).some(
+                (steer) => steer.input.message.messageId === turnInput.message.messageId,
+              )
+            ) {
+              delivery = "unknown";
+              return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+                driver: CLAUDE_PROVIDER,
+                detail: "This message is still awaiting native delivery confirmation.",
+              });
+            }
+            const boundaryUuid =
+              turnInput.delivery === "boundary"
+                ? yield* crypto.randomUUIDv4().pipe(Effect.filterOrFail(isClaudePromptUuid))
+                : undefined;
             const userMessage = yield* makeClaudeUserMessageWithAttachments({
               text: providerPromptForInteraction(
                 turnInput.message.text,
                 currentTurn.input.runtimePolicy.interactionMode,
               ),
               attachments: turnInput.message.attachments,
-              priority: "now",
+              priority: turnInput.delivery === "boundary" ? "next" : "now",
+              ...(boundaryUuid === undefined ? {} : { uuid: boundaryUuid }),
               attachmentsDir,
               fileSystem,
               skillNames: yield* userInvocableSkillNames(currentTurn.input.runtimePolicy.cwd),
             });
-            yield* Ref.update(steeredTurns, (current) => {
-              const next = new Set(current);
-              next.add(turnInput.providerTurnId);
-              return next;
+            if (boundaryUuid === undefined) {
+              yield* Ref.update(steeredTurns, (current) =>
+                new Set(current).add(turnInput.providerTurnId),
+              );
+              delivery = "unknown";
+              yield* existing.query.offer(userMessage);
+              return;
+            }
+            const accepted = yield* Deferred.make<void>();
+            existing.boundarySteers.set(boundaryUuid, {
+              input: turnInput,
+              accepted,
+              pickedUp: false,
             });
             delivery = "unknown";
             yield* existing.query.offer(userMessage);
+            // Local offer only writes stdin. Native queued acceptance (or stronger
+            // pickup evidence) resolves this receipt; timeout/exit stays unknown.
+            yield* Deferred.await(accepted).pipe(
+              Effect.raceFirst(
+                Deferred.await(existing.closed).pipe(
+                  Effect.andThen(
+                    Effect.fail(
+                      new ProviderAdapter.ProviderAdapterProtocolError({
+                        driver: CLAUDE_PROVIDER,
+                        detail: "Claude exited before acknowledging the boundary message.",
+                      }),
+                    ),
+                  ),
+                ),
+              ),
+              Effect.timeout("10 seconds"),
+            );
           }).pipe(
             Effect.mapError(
               (cause) =>
@@ -10386,6 +10482,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             resolveClaudeCatalogContextWindowTokens(BUNDLED_CLAUDE_MODEL_CATALOG, selection),
           events: Stream.fromEffectRepeat(BoundedQueue.take(events)),
           hasPendingBackgroundWork: Effect.gen(function* () {
+            // Native queued input must keep the process alive through a late wake.
+            if ((yield* Ref.get(queryContext))?.boundarySteers.size) return true;
             // Session capability: any native thread with pending work pins idle.
             for (const roster of (yield* Ref.get(pendingBackgroundTasksByNativeThread)).values()) {
               if (roster.size > 0) {

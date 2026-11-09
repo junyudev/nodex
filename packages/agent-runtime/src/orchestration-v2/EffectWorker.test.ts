@@ -207,6 +207,7 @@ it.effect("parks an unknown steering delivery without scheduling another message
           threadId,
           request: {
             type: "provider-turn.steer",
+            delivery: "prompt",
             providerSessionId: oldSessionId,
             providerThreadId,
             providerTurnId,
@@ -245,6 +246,7 @@ it.effect("does not replay a dispatched steer when recording its unknown outcome
       threadId,
       request: {
         type: "provider-turn.steer",
+        delivery: "prompt",
         providerSessionId: oldSessionId,
         providerThreadId,
         providerTurnId,
@@ -1186,6 +1188,7 @@ it.effect(
             threadId,
             request: {
               type: "provider-turn.steer",
+              delivery: "prompt",
               modelPolicyOrigin: "agent",
               providerSessionId: oldSessionId,
               providerThreadId,
@@ -1248,6 +1251,7 @@ it.effect("a policy refusal never becomes an unknown steering delivery or a fall
           threadId,
           request: {
             type: "provider-turn.steer",
+            delivery: "prompt",
             modelPolicyOrigin: "agent",
             providerSessionId: oldSessionId,
             providerThreadId,

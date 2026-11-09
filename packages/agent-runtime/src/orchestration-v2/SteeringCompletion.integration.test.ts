@@ -19,6 +19,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
+import { ClaudeProviderCapabilitiesV2 } from "./Adapters/ClaudeAdapterV2.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as EffectWorker from "./EffectWorker.ts";
 import * as EventSink from "./EventSink.ts";
@@ -42,7 +43,7 @@ it.effect.each(
           "before dispatch",
           "after delivery",
           "without native steering",
-          "with interrupting native steering",
+          "without boundary steering",
           "settled only",
         ] as const
       ).map((timing) => ({
@@ -55,7 +56,7 @@ it.effect.each(
       ({ mailbox, timing }) =>
         mailbox ||
         (timing !== "without native steering" &&
-          timing !== "with interrupting native steering" &&
+          timing !== "without boundary steering" &&
           timing !== "settled only"),
     ),
 )("delivers $label when completion wins $timing", ({ mailbox, timing }) =>
@@ -67,12 +68,13 @@ it.effect.each(
       const steerEntered = yield* Deferred.make<void>();
       const rejectSteer = yield* Deferred.make<void>();
       let steerCalls = 0;
+      const baseCapabilities = mailbox ? ClaudeProviderCapabilitiesV2 : CodexProviderCapabilitiesV2;
       const capabilities = {
-        ...CodexProviderCapabilitiesV2,
+        ...baseCapabilities,
         turns: {
-          ...CodexProviderCapabilitiesV2.turns,
+          ...baseCapabilities.turns,
           supportsActiveSteering: timing !== "without native steering",
-          activeSteeringInterruptsTools: timing === "with interrupting native steering",
+          supportsBoundarySteering: timing !== "without boundary steering",
         },
       };
       const adapter: ProviderAdapter.ProviderAdapterV2["Service"] = {
@@ -145,6 +147,7 @@ it.effect.each(
               steerTurn: (turn) =>
                 Effect.gen(function* () {
                   steerCalls += 1;
+                  assert.equal(turn.delivery, mailbox ? "boundary" : "prompt");
                   if (timing === "after delivery") return;
                   yield* Deferred.succeed(steerEntered, undefined);
                   yield* Deferred.await(rejectSteer);

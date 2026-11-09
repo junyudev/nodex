@@ -437,6 +437,7 @@ describe("orchestration V2 contracts", () => {
         emitsTurnCompleted: true,
         supportsInterrupt: true,
         supportsActiveSteering: false,
+        supportsBoundarySteering: false,
         supportsSteeringByInterruptRestart: true,
         supportsQueuedMessages: true,
         terminalStatusQuality: "strong",

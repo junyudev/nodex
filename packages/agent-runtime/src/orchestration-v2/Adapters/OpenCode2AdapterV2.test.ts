@@ -4087,6 +4087,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
       ] as const) {
         yield* runtime.startTurn(turnInput(providerThread));
         yield* runtime.steerTurn({
+          delivery: "prompt",
           threadId,
           runId: RunId.make("run:opencode2-adapter"),
           providerThread,
@@ -4242,6 +4243,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
       );
       yield* runtime.startTurn(turnInput(thread));
       yield* runtime.steerTurn({
+        delivery: "prompt",
         threadId,
         runId: RunId.make("run:opencode2-adapter"),
         providerThread: thread,
@@ -5391,6 +5393,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         nativeTurnId: `${SESSION}:attempt:attempt:opencode2-adapter:wake`,
       });
       yield* runtime.steerTurn({
+        delivery: "prompt",
         threadId,
         runId: followUp.runId,
         providerThread: thread,

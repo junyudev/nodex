@@ -602,6 +602,7 @@ export const AcpProviderCapabilitiesV2 = {
     emitsTurnCompleted: true,
     supportsInterrupt: true,
     supportsActiveSteering: false,
+    supportsBoundarySteering: false,
     supportsSteeringByInterruptRestart: true,
     supportsQueuedMessages: true,
     terminalStatusQuality: "strong",

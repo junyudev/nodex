@@ -853,6 +853,7 @@ it.effect.each(storageCases)(
         const reply = yield* RuntimeRequestService.RuntimeRequestServiceV2;
         yield* control.interrupt({ threadId, providerThreadId, providerTurnId, providerSessionId });
         yield* control.steer({
+          delivery: "prompt",
           threadId,
           providerThreadId,
           providerTurnId,

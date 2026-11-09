@@ -1638,6 +1638,7 @@ describe("ClaudeAdapterV2 attachments", () => {
           nativeTurnId: `turn:${attemptId}`,
         });
         yield* runtime.steerTurn({
+          delivery: "prompt",
           threadId,
           runId: RunId.make("run-claude-attachments"),
           providerThread,
@@ -4150,6 +4151,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           );
         const failed = yield* harness.runtime
           .steerTurn({
+            delivery: "prompt",
             threadId: harness.threadId,
             runId: RunId.make("steer-preflight"),
             providerThread: harness.providerThread,
@@ -5070,6 +5072,284 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
+  it.effect.each(["timeout", "query exit"] as const)(
+    "leaves boundary delivery unknown after %s without native acceptance",
+    (failure) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const harness = yield* makeWakeHarness;
+          const input = makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("boundary-unknown"),
+            text: "Work",
+            attachments: [],
+          });
+          yield* harness.runtime.startTurn(input);
+          const steerInput = {
+            delivery: "boundary" as const,
+            threadId: harness.threadId,
+            runId: input.runId,
+            providerThread: harness.providerThread,
+            providerTurnId: (yield* IdAllocator.IdAllocatorV2).derive.providerTurn({
+              driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
+              nativeTurnId: `turn:${input.attemptId}`,
+            }),
+            message: { ...input.message, messageId: MessageId.make("boundary-unknown") },
+          };
+          const steer = yield* harness.runtime
+            .steerTurn(steerInput)
+            .pipe(Effect.flip, Effect.forkScoped);
+          yield* awaitUntil(() => harness.offeredMessages.length === 2, "boundary offer");
+          if (failure === "query exit") yield* Queue.shutdown(harness.sdkMessages);
+          else yield* TestClock.adjust("10 seconds");
+          const error = yield* Fiber.join(steer);
+          assert.equal(
+            error._tag === "ProviderAdapterSteerRunError" ? error.delivery : null,
+            "unknown",
+          );
+          assert.isFalse(harness.events.some((event) => event.type === "message.delivery.updated"));
+          if (failure === "query exit") return;
+          const retry = yield* harness.runtime.steerTurn(steerInput).pipe(Effect.flip);
+          assert.equal(
+            retry._tag === "ProviderAdapterSteerRunError" ? retry.delivery : null,
+            "unknown",
+          );
+          assert.lengthOf(harness.offeredMessages, 2);
+          yield* harness.offerAndWait(
+            claudeSdkFrame({
+              type: "command_lifecycle",
+              command_uuid: harness.promptUuid(1),
+              state: "queued",
+            }),
+          );
+          yield* awaitUntil(
+            () =>
+              harness.events.some(
+                (event) =>
+                  event.type === "message.delivery.updated" && event.delivery === "accepted",
+              ),
+            "late acceptance receipt",
+          );
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+          ),
+        ),
+      ),
+  );
+
+  it.effect.each(["merged", "late", "before queued prompt", "aborted_tools"] as const)(
+    "delivers a boundary notice with %s native output",
+    (timing) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const harness = yield* makeWakeHarness;
+          const idAllocator = yield* IdAllocator.IdAllocatorV2;
+          const input = makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("boundary-parent"),
+            text: "Run the shell command.",
+            attachments: [],
+          });
+          yield* harness.runtime.startTurn(input);
+          const promptUuid = harness.promptUuid(0);
+          yield* harness.offerAndWait(
+            claudeSdkFrame({ ...wakeTurnInit, user_message_uuids: [promptUuid] }),
+          );
+          yield* harness.offerAndWait(
+            claudeSdkFrame({
+              ...makeAssistantTextFrame({ uuid: "boundary-tool", text: "" }),
+              message: {
+                role: "assistant",
+                content: [
+                  {
+                    type: "tool_use",
+                    id: "boundary-bash",
+                    name: "Bash",
+                    input: { command: "sleep 6; echo done" },
+                  },
+                ],
+              },
+            }),
+          );
+          const messageId = MessageId.make("boundary-notice");
+          const steer = yield* harness.runtime
+            .steerTurn({
+              delivery: "boundary",
+              threadId: harness.threadId,
+              runId: input.runId,
+              providerThread: harness.providerThread,
+              providerTurnId: idAllocator.derive.providerTurn({
+                driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
+                nativeTurnId: `turn:${input.attemptId}`,
+              }),
+              message: {
+                messageId,
+                createdBy: "agent",
+                creationSource: "server",
+                text: "Agent task completed.",
+                attachments: [],
+              },
+            })
+            .pipe(Effect.forkScoped);
+          yield* awaitUntil(() => harness.offeredMessages.length === 2, "boundary offer");
+          const noticeUuid = harness.promptUuid(1);
+          assert.equal(harness.offeredMessages[1]?.priority, "next");
+          assert.isUndefined(harness.offeredMessages[1]?.origin);
+          assert.isUndefined(steer.pollUnsafe());
+          const receipts = () =>
+            harness.events.filter(
+              (event) => event.type === "message.delivery.updated" && event.messageId === messageId,
+            );
+          assert.lengthOf(receipts(), 0);
+          const lifecycle = (state: string) =>
+            claudeSdkFrame({ type: "command_lifecycle", command_uuid: noticeUuid, state });
+          yield* harness.offerAndWait(lifecycle("queued"));
+          yield* Fiber.join(steer);
+          yield* awaitUntil(() => receipts().length === 1, "native acceptance receipt");
+          const receipt = receipts()[0];
+          assert.equal(
+            receipt?.type === "message.delivery.updated" ? receipt.delivery : null,
+            "accepted",
+          );
+          assert.lengthOf(harness.terminalEvents(), 0);
+          if (timing === "aborted_tools") {
+            yield* harness.offerAndWait(
+              makeResultFrame({
+                uuid: "boundary-abort",
+                result: "",
+                terminalReason: "aborted_tools",
+              }),
+            );
+            assert.equal((yield* Queue.take(harness.terminalReceipts)).status, "interrupted");
+            return;
+          }
+          yield* harness.offerAndWait(
+            claudeSdkFrame({
+              type: "user",
+              uuid: "boundary-tool-result",
+              session_id: WAKE_NATIVE_SESSION,
+              parent_tool_use_id: null,
+              message: {
+                role: "user",
+                content: [
+                  {
+                    type: "tool_result",
+                    tool_use_id: "boundary-bash",
+                    content: "done",
+                    is_error: false,
+                  },
+                ],
+              },
+            }),
+          );
+          if (timing !== "merged") {
+            yield* harness.offerAndWait(
+              claudeSdkFrame({
+                ...makeResultFrame({ uuid: "boundary-original-result", result: "Original done." }),
+                user_message_uuid: promptUuid,
+                user_message_uuids: [promptUuid],
+              }),
+            );
+            yield* Queue.take(harness.terminalReceipts);
+            assert.isTrue(yield* harness.hasPendingBackgroundWork);
+          }
+          if (timing === "before queued prompt") {
+            yield* harness.runtime.startTurn({
+              ...input,
+              runId: RunId.make("queued-person"),
+              attemptId: RunAttemptId.make("queued-person"),
+              providerTurnOrdinal: 2,
+            });
+          }
+          yield* harness.offerAndWait(lifecycle("started"));
+          yield* harness.offerAndWait(
+            claudeSdkFrame({
+              ...wakeTurnInit,
+              user_message_uuids: timing === "merged" ? [promptUuid, noticeUuid] : [noticeUuid],
+            }),
+          );
+          if (timing === "late") {
+            yield* Queue.take(harness.continuationReceipts);
+            yield* harness.runtime.startTurn({
+              ...input,
+              runId: RunId.make("notice-wake"),
+              attemptId: RunAttemptId.make("notice-wake"),
+              providerTurnOrdinal: 2,
+              message: { ...input.message, createdBy: "agent", creationSource: "provider" },
+            });
+          }
+          yield* harness.offerAndWait(
+            makeAssistantTextFrame({ uuid: "boundary-notice-answer", text: "Notice received." }),
+          );
+          yield* harness.offerAndWait(
+            claudeSdkFrame({
+              ...makeResultFrame({ uuid: "boundary-notice-result", result: "Notice received." }),
+              user_message_uuid: timing === "merged" ? promptUuid : noticeUuid,
+              user_message_uuids: timing === "merged" ? [promptUuid, noticeUuid] : [noticeUuid],
+              queued_turn_count: 0,
+            }),
+          );
+          if (timing === "before queued prompt") {
+            assert.lengthOf(harness.terminalEvents(), 1);
+            yield* harness.offerAndWait(
+              claudeSdkFrame({ ...wakeTurnInit, user_message_uuids: [harness.promptUuid(2)] }),
+            );
+            yield* harness.offerAndWait(
+              claudeSdkFrame({
+                ...makeResultFrame({ uuid: "person-result", result: "Person answered." }),
+                user_message_uuids: [harness.promptUuid(2)],
+              }),
+            );
+            yield* Queue.take(harness.terminalReceipts);
+            yield* harness.runtime.startTurn({
+              ...input,
+              runId: RunId.make("notice-wake"),
+              attemptId: RunAttemptId.make("notice-wake"),
+              providerTurnOrdinal: 3,
+              message: { ...input.message, createdBy: "agent", creationSource: "provider" },
+            });
+          }
+          yield* Queue.take(harness.terminalReceipts);
+          yield* harness.offerAndWait(lifecycle("completed"));
+          assert.lengthOf(
+            harness.terminalEvents(),
+            timing === "merged" ? 1 : timing === "late" ? 2 : 3,
+          );
+          assert.lengthOf(harness.continuationRequests, timing === "merged" ? 0 : 1);
+          assert.lengthOf(harness.offeredMessages, timing === "before queued prompt" ? 3 : 2);
+          assert.isFalse(yield* harness.hasPendingBackgroundWork);
+          const answer = harness.events.filter(
+            (event) =>
+              event.type === "message.updated" && event.message.text === "Notice received.",
+          );
+          assert.lengthOf(answer, 1);
+          assert.equal(
+            answer[0]?.type === "message.updated" ? answer[0].message.runId : null,
+            timing === "merged" ? input.runId : RunId.make("notice-wake"),
+          );
+          const bash = harness.events.findLast(
+            (event) =>
+              event.type === "turn_item.updated" &&
+              event.turnItem.nativeItemRef?.nativeId === "boundary-bash",
+          );
+          assert.equal(
+            bash?.type === "turn_item.updated" ? bash.turnItem.status : null,
+            "completed",
+          );
+          assert.lengthOf(receipts(), 1);
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+          ),
+        ),
+      ),
+  );
+
   it.effect.each(
     (["aborted_tools", "aborted_streaming"] as const).flatMap((terminalReason) =>
       [true, false].map((steered) => ({ terminalReason, steered })),
@@ -5091,6 +5371,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* harness.runtime.startTurn(input);
         if (steered) {
           yield* harness.runtime.steerTurn({
+            delivery: "prompt",
             threadId: harness.threadId,
             runId: input.runId,
             providerThread: harness.providerThread,

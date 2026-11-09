@@ -369,6 +369,7 @@ export const CodexProviderCapabilitiesV2 = {
     emitsTurnCompleted: true,
     supportsInterrupt: true,
     supportsActiveSteering: true,
+    supportsBoundarySteering: true,
     supportsSteeringByInterruptRestart: true,
     supportsQueuedMessages: true,
     supportsEmptyContinuation: true,

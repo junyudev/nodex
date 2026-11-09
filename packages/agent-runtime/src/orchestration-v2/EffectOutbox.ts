@@ -74,6 +74,7 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("provider-turn.steer"),
+    delivery: Schema.Literals(["prompt", "boundary"]),
     runId: Schema.optional(RunId),
     activationClass: Schema.optional(Schema.Literals(["person", "continuation"])),
     modelPolicyOrigin: Schema.optional(

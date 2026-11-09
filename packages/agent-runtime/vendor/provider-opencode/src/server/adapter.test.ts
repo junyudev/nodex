@@ -2070,6 +2070,7 @@ describe("OpenCodeAdapterV2", () => {
       const activeTurn = snapshot.providerTurns.at(-1)!;
       const steer = yield* runtime
         .steerTurn({
+          delivery: "prompt",
           threadId,
           runId,
           providerThread,
@@ -2130,6 +2131,7 @@ describe("OpenCodeAdapterV2", () => {
       yield* Effect.promise(() => steerStatusCalled.promise);
       const pendingSteer = yield* runtime
         .steerTurn({
+          delivery: "prompt",
           threadId,
           runId,
           providerThread,
@@ -2152,6 +2154,7 @@ describe("OpenCodeAdapterV2", () => {
       assert.isTrue(Exit.isFailure(yield* Fiber.join(pendingSteer)));
       const promptWhileStopping = yield* Effect.exit(
         runtime.steerTurn({
+          delivery: "prompt",
           threadId,
           runId,
           providerThread,
@@ -2781,6 +2784,7 @@ describe("OpenCodeAdapterV2", () => {
       });
       const activeTurn = running.providerTurns.at(-1)!;
       yield* harness.runtime.steerTurn({
+        delivery: "prompt",
         threadId: harness.threadId,
         runId: harness.runId,
         providerThread: harness.providerThread,

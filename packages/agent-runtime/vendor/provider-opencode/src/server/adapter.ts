@@ -146,6 +146,7 @@ const OpenCodeProviderCapabilitiesV2 = {
     emitsTurnCompleted: true,
     supportsInterrupt: true,
     supportsActiveSteering: true,
+    supportsBoundarySteering: true,
     supportsSteeringByInterruptRestart: true,
     supportsQueuedMessages: true,
     terminalStatusQuality: "strong",

@@ -4975,6 +4975,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             threadId: input.command.threadId,
             request: {
               type: "provider-turn.steer",
+              delivery: input.delegatedCompletion === undefined ? "prompt" : "boundary",
               runId: targetRun.id,
               activationClass: input.createdBy === "user" ? "person" : "continuation",
               modelPolicyOrigin: input.modelPolicyOrigin ?? "automatic",
@@ -5785,7 +5786,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           if (
             Option.isSome(session) &&
             session.value.providerSession.capabilities.turns.supportsActiveSteering &&
-            session.value.providerSession.capabilities.turns.activeSteeringInterruptsTools !== true
+            session.value.providerSession.capabilities.turns.supportsBoundarySteering
           ) {
             dispatchMode = { type: "steer_active", targetRunId: active.id };
           }

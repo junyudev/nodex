@@ -126,6 +126,7 @@ const OpenCode2ProviderCapabilities = {
     emitsTurnCompleted: true,
     supportsInterrupt: true,
     supportsActiveSteering: true,
+    supportsBoundarySteering: true,
     supportsSteeringByInterruptRestart: true,
     // Nodex holds queued messages and starts each as its own turn once the one
     // before it ends, so OpenCode's own `queue` delivery is never used.
