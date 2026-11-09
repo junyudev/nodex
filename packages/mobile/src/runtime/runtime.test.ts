@@ -1,25 +1,26 @@
 import {
-  CHANNEL_CLOSE,
-  encodePairingUri,
+  encodeDeviceLink,
   LIBRARY_INBOX,
   MOBILE_FILE_CHUNK_BYTES,
-  MOBILE_PROTOCOL_REVISION,
+  MOBILE_MAX_MESSAGE_BYTES,
+  MOBILE_UPLOAD_MAX_BYTES,
   MobileEnvelopeSchema,
   type ChatItem,
   type ChatPatchOp,
   type ChatSnapshot,
-  type InboxMessage,
+  type InboxEntry,
   type MobileMethod,
   type MobileParams,
 } from "@nodex/mobile-protocol";
 import * as Scheduler from "effect/Scheduler";
+import * as Effect from "effect/Effect";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { FakeHost, fakePlatform } from "./fake-host.test-support";
 import type { LocalImage } from "./platform";
 import { createMobileRuntime, type MobileRuntime } from "./runtime";
 
 type Platform = ReturnType<typeof fakePlatform>;
-const route = "ws://host-a:3000/mobile";
+const route = "https://host-a:3000/";
 const tick = (ms = 0) => vi.advanceTimersByTimeAsync(ms);
 let runtimes: MobileRuntime[] = [];
 
@@ -47,7 +48,7 @@ function start(platform: Platform) {
 }
 
 function pairingUri(platform: Platform, host: FakeHost, routes?: string[]) {
-  return encodePairingUri(host.pairingOffer(platform.now() + 60_000, routes));
+  return encodeDeviceLink(host.pairingOffer(platform.now() + 60_000, routes));
 }
 
 async function setup() {
@@ -67,409 +68,343 @@ function params<M extends MobileMethod>(host: FakeHost, method: M) {
     .map((request) => request.p as MobileParams<M>);
 }
 
-describe("pairing and connection", () => {
-  it("saves the phone key before pairing and publishes the Host after hello", async () => {
-    const platform = fakePlatform();
-    const host = new FakeHost();
-    host.allowHello = false;
-    platform.routes.set(route, host);
-    const runtime = start(platform);
-    const secretCountsAtSend: number[] = [];
-    const socket = platform.socket;
-    platform.socket = (address) => {
-      const link = socket(address);
-      return {
-        ...link,
-        send(bytes) {
-          secretCountsAtSend.push(platform.savedSecrets.size);
-          link.send(bytes);
-        },
-      };
-    };
-    const pending = runtime.connection.pairWithUri(pairingUri(platform, host));
-    await tick();
-    expect(host.trace).toEqual(["handshake.reply", "ping"]);
-    expect(host.firstEnvelopes).toEqual([{ t: "ping" }]);
-    expect(host.metadata).toEqual([
-      {
-        protocol: MOBILE_PROTOCOL_REVISION,
-        deviceName: "Test phone",
-        platform: "ios",
-        appVersion: "1.0.0",
-      },
-    ]);
-    expect(secretCountsAtSend).toEqual([0, 1]);
-    expect(platform.savedSecrets.size).toBe(1);
-    expect(runtime.connection.hosts.getState().hosts).toEqual([]);
-    expect(runtime.connection.state.getState().status).toBe("idle");
-    host.emit({
-      t: "hello",
-      d: {
-        protocol: MOBILE_PROTOCOL_REVISION,
-        host: { id: host.id, name: host.id, platform: "macOS", appVersion: "1" },
-        deviceId: "device-1",
-        routes: [],
-      },
+describe("Device enrollment and connection", () => {
+  it("stores a Device credential privately before opening the Member stream", async () => {
+    const { platform, host, runtime, saved } = await setup();
+    expect(saved).toMatchObject({
+      spaceId: host.id,
+      spaceKind: "personal",
+      memberId: "owner",
+      hostId: JSON.stringify([host.id, "owner"]),
+      deviceId: "device-1",
     });
-    host.emit({ t: "pong" });
-    await tick();
-    await expect(pending).resolves.toMatchObject({
-      hostId: host.id,
-      routes: [route],
-      lastConnectedRoute: route,
+    expect(runtime.connection.state.getState().status).toBe("connected");
+    expect(host.httpRequests.map(({ path }) => path)).toEqual(["/enroll", "/session"]);
+    expect(host.httpRequests[0]?.body).toMatchObject({
+      form_factor: "phone",
+      device_label: "Test phone",
     });
-    expect(platform.savedSecrets.size).toBe(1);
+    const privateCatalog = JSON.parse(platform.savedSecrets.get("nodex.mobile.spaces.v1")!);
+    expect(privateCatalog.hosts[0].spaceKind).toBe("personal");
+    expect(privateCatalog.credentials[saved.hostId]).toMatch(/^[a-f0-9]{64}$/u);
     expect(platform.data.size).toBe(0);
-    expect(runtime.connection.state.getState().status).toBe("connected");
-    host.allowHello = true;
+    const upgrade = platform.starts.find(({ socket }) => socket)!;
+    expect(upgrade.options.url).toBe("wss://host-a:3000/core/v1/phone");
+    expect(upgrade.options.headers.Authorization).toMatch(/^Bearer [a-f0-9]{64}$/u);
+  });
+
+  it("learns Space kind from the first hello and refreshes it on reconnect", async () => {
+    const platform = fakePlatform();
+    const host = new FakeHost();
+    host.spaceKind = "team";
+    platform.routes.set(route, host);
+    const runtime = start(platform);
+    const pair = runtime.connection.pairWithUri(pairingUri(platform, host));
+    await tick();
+    const saved = await pair;
+    expect(saved.spaceKind).toBe("team");
+    expect(runtime.connection.hosts.getState().hosts[0]?.spaceKind).toBe("team");
+
+    await runtime.dispose();
+    const restored = start(platform);
+    expect(restored.connection.hosts.getState().hosts[0]?.spaceKind).toBe("team");
+    await tick();
+    expect(restored.connection.state.getState().status).toBe("connected");
+  });
+
+  it("persists a personal Space becoming a team on the next hello", async () => {
+    const { platform, host, runtime } = await setup();
+    expect(runtime.connection.hosts.getState().hosts[0]?.spaceKind).toBe("personal");
+    host.spaceKind = "team";
     runtime.connection.reconnectNow();
     await tick();
-    expect(host.firstEnvelopes).toEqual([{ t: "ping" }, { t: "ping" }]);
-    expect(host.metadata[1]).toEqual(host.metadata[0]);
-    expect(host.trace.slice(-4)).toEqual(["handshake.reply", "ping", "hello", "pong"]);
-    expect(runtime.connection.state.getState().status).toBe("connected");
+    expect(runtime.connection.state.getState().hello?.spaceKind).toBe("team");
+    expect(runtime.connection.hosts.getState().hosts[0]?.spaceKind).toBe("team");
+    const catalog = JSON.parse(platform.savedSecrets.get("nodex.mobile.spaces.v1")!);
+    expect(catalog.hosts[0].spaceKind).toBe("team");
   });
 
-  it("distinguishes invalid, expired, rejected, unreachable and incompatible offers", async () => {
-    const platform = fakePlatform();
-    const host = new FakeHost();
-    const runtime = start(platform);
-    const pair = runtime.connection.pairWithUri;
-    await expect(pair("nodex-mobile://pair#bad")).rejects.toMatchObject({ code: "invalid" });
-    await expect(pair(encodePairingUri(host.pairingOffer(platform.now())))).rejects.toMatchObject({
-      code: "expired",
-    });
-    expect(platform.dials).toHaveLength(0);
-    platform.routes.set(route, host);
-    host.pairingAvailable = false;
-    await expect(pair(pairingUri(platform, host))).rejects.toMatchObject({ code: "rejected" });
-    platform.routes.set(route, "stall");
-    const unreachable = expect(pair(pairingUri(platform, host))).rejects.toMatchObject({
-      code: "unreachable",
-    });
-    await tick(7_999);
-    expect(platform.dials.at(-1)?.closed).toBe(false);
-    await tick(1);
-    await unreachable;
-    host.pairingAvailable = true;
-    host.protocol++;
-    platform.routes.set(route, host);
-    await expect(pair(pairingUri(platform, host))).rejects.toMatchObject({ code: "incompatible" });
-    expect([...platform.savedSecrets.values()].join("")).not.toContain("secretKey");
-  });
-
-  it("recovers a consumed pairing on the same device key when the first hello is lost", async () => {
-    const platform = fakePlatform();
-    const host = new FakeHost();
-    host.onPaired = () => host.closeAll();
-    platform.routes.set(route, host);
-    const runtime = start(platform);
-    const pair = runtime.connection.pairWithUri(pairingUri(platform, host));
-    await tick();
-    await expect(pair).resolves.toMatchObject({ deviceId: "device-1", hostId: host.id });
-    expect(host.pairingAvailable).toBe(false);
-    expect(host.pairingKeys).toHaveLength(1);
-    expect(host.firstEnvelopes).toEqual([{ t: "ping" }, { t: "ping" }]);
-    expect(runtime.connection.state.getState().status).toBe("connected");
-  });
-
-  it("shares one phone identity across racing pairing routes", async () => {
-    const platform = fakePlatform();
-    const alternate = "ws://host-a:4000/mobile";
-    const host = new FakeHost("host-a", [route, alternate]);
-    host.handshakeReplyDelay = 500;
-    platform.routes.set(route, host);
-    platform.routes.set(alternate, host);
-    const runtime = start(platform);
-    const pair = runtime.connection.pairWithUri(pairingUri(platform, host));
-    await tick(500);
-    await expect(pair).resolves.toMatchObject({ deviceId: "device-1" });
-    expect(host.pairingKeys).toHaveLength(2);
-    expect(new Set(host.pairingKeys).size).toBe(1);
-  });
-
-  it.each([false, true])(
-    "recovers a pending identity before reusing the code (expired: %s)",
-    async (expired) => {
-      const platform = fakePlatform();
-      const host = new FakeHost();
-      host.onPaired = () => {
-        platform.routes.set(route, "unreachable");
-        host.closeAll();
-      };
-      platform.routes.set(route, host);
-      const runtime = start(platform);
-      const uri = pairingUri(platform, host);
-      await expect(runtime.connection.pairWithUri(uri)).rejects.toMatchObject({
-        code: "unreachable",
-      });
-      expect(platform.dials).toHaveLength(2);
-      expect(runtime.connection.hosts.getState().hosts).toEqual([]);
-      expect([...platform.savedSecrets.values()].join("")).toContain("secretKey");
-      if (expired) await tick(60_000);
-      host.onPaired = undefined;
-      platform.routes.set(route, host);
-      await expect(runtime.connection.pairWithUri(uri)).resolves.toMatchObject({
-        deviceId: "device-1",
-      });
-      expect(host.pairingKeys).toHaveLength(1);
-    },
-  );
-
-  it.each([true, false])(
-    "retries a pending pairing across launches and foreground returns (reachable: %s)",
-    async (reachable) => {
-      const platform = fakePlatform();
-      const host = new FakeHost();
-      host.allowHello = false;
-      platform.routes.set(route, host);
-      const runtime = start(platform);
-      const interrupted = expect(
-        runtime.connection.pairWithUri(pairingUri(platform, host)),
-      ).rejects.toMatchObject({ code: "unreachable" });
-      await tick();
-      expect(host.pairingAvailable).toBe(false);
-      expect(runtime.connection.hosts.getState().hosts).toEqual([]);
-      await runtime.dispose();
-      await interrupted;
-      host.allowHello = true;
-      if (!reachable) platform.routes.set(route, "unreachable");
-
-      const restarted = start(platform);
-      expect(restarted.connection.hosts.getState().hosts).toEqual([]);
-      await tick();
-      expect(platform.dials).toHaveLength(2);
-      if (reachable) {
-        expect(restarted.connection.hosts.getState().hosts).toMatchObject([
-          { deviceId: "device-1" },
-        ]);
-        expect(restarted.connection.state.getState().status).toBe("connected");
-        return;
-      }
-      expect(restarted.connection.hosts.getState().hosts).toEqual([]);
-      expect([...platform.savedSecrets.values()].join("")).toContain("secretKey");
-      await restarted.dispose();
-      const retried = start(platform);
-      await tick();
-      expect(platform.dials).toHaveLength(3);
-      platform.setForeground(false);
-      await tick();
-      platform.routes.set(route, host);
-      platform.setForeground(true);
-      await tick();
-      expect(retried.connection.state.getState().status).toBe("connected");
-      expect(host.pairingKeys).toHaveLength(1);
-    },
-  );
-
-  it("replaces an unfinished identity when pairing with another desktop", async () => {
-    const platform = fakePlatform();
-    const first = new FakeHost();
-    first.onPaired = () => {
-      platform.routes.set(route, "unreachable");
-      first.closeAll();
+  it("keeps locked credentials closed without sending or overwriting enrollment", async () => {
+    const { platform, host, runtime } = await setup();
+    await runtime.dispose();
+    const saved = [...platform.savedSecrets];
+    const read = platform.secrets.get;
+    platform.secrets.get = () => {
+      throw new Error("Keychain locked");
     };
-    platform.routes.set(route, first);
-    const runtime = start(platform);
-    await expect(runtime.connection.pairWithUri(pairingUri(platform, first))).rejects.toMatchObject(
-      { code: "unreachable" },
-    );
-    const secondRoute = "ws://host-b:3000/mobile";
-    const second = new FakeHost("host-b", [secondRoute]);
-    platform.routes.set(secondRoute, second);
-    await expect(
-      runtime.connection.pairWithUri(pairingUri(platform, second)),
-    ).resolves.toMatchObject({ hostId: second.id });
-    expect(first.pairingKeys).toHaveLength(1);
-    expect(second.pairingKeys).toHaveLength(1);
-    expect(second.pairingKeys[0]).not.toBe(first.pairingKeys[0]);
-    expect(JSON.parse([...platform.savedSecrets.values()][0]!).pendingPairing).toBeUndefined();
-    expect(runtime.connection.hosts.getState().hosts.map((host) => host.hostId)).toEqual([
-      second.id,
-    ]);
+    const locked = start(platform);
+    expect(locked.connection.state.getState().status).toBe("unavailable");
+    host.pairingAvailable = true;
+    await expect(locked.connection.pairWithUri(pairingUri(platform, host))).rejects.toMatchObject({
+      code: "locked",
+    });
+    expect([...platform.savedSecrets]).toEqual(saved);
+    expect(host.httpRequests.filter(({ path }) => path === "/enroll")).toHaveLength(1);
+    platform.secrets.get = read;
+    locked.connection.reconnectNow();
+    await tick();
+    expect(locked.connection.state.getState().status).toBe("connected");
   });
 
-  it.each([CHANNEL_CLOSE.unknownDevice, CHANNEL_CLOSE.pairingRejected])(
-    "clears a pending identity when recovery is refused (%s)",
-    async (code) => {
-      const platform = fakePlatform();
-      const host = new FakeHost();
-      host.allowHello = false;
-      platform.routes.set(route, host);
-      const runtime = start(platform);
-      const interrupted = expect(
-        runtime.connection.pairWithUri(pairingUri(platform, host)),
-      ).rejects.toMatchObject({ code: "unreachable" });
-      await tick();
-      await runtime.dispose();
-      await interrupted;
-      platform.routes.set(route, code);
-      start(platform);
-      await tick();
-      expect([...platform.savedSecrets.values()].join("")).not.toContain("secretKey");
-    },
-  );
+  it("rejects invalid, expired and already consumed links without replacing an enrollment", async () => {
+    const { platform, host, runtime, saved } = await setup();
+    await expect(runtime.connection.pairWithUri("nodex-mobile://pair#bad")).rejects.toMatchObject({
+      code: "invalid",
+    });
+    await expect(
+      runtime.connection.pairWithUri(encodeDeviceLink(host.pairingOffer(platform.now()))),
+    ).rejects.toMatchObject({ code: "expired" });
+    await expect(runtime.connection.pairWithUri(pairingUri(platform, host))).rejects.toMatchObject({
+      code: "rejected",
+    });
+    expect(runtime.connection.hosts.getState().hosts).toEqual([saved]);
+    expect(host.credentials.size).toBe(1);
+  });
 
-  it("races routes 250 ms apart, rejects a different Host, and closes the losers", async () => {
-    const { platform, host, runtime } = await setup();
-    const stale = "ws://stale:3000/mobile";
-    const winner = "ws://host-a:4000/mobile";
-    host.routes = [stale, winner, route];
-    runtime.connection.reconnectNow();
-    await tick();
-    expect(runtime.connection.hosts.getState().hosts[0]?.routes).toEqual([stale, winner, route]);
-    platform.routes.set(route, "stall");
-    platform.routes.set(stale, new FakeHost("different"));
-    platform.routes.set(winner, host);
-    host.routes = ["ws://next:3000/mobile"];
-    const since = platform.now();
-    const offset = platform.dials.length;
-    runtime.connection.reconnectNow();
-    await tick(249);
-    expect(platform.dials.slice(offset).map((attempt) => attempt.route)).toEqual([route]);
-    await tick(1);
-    expect(platform.dials.at(-1)?.route).toBe(stale);
-    await tick(250);
-    expect(
-      platform.dials
-        .slice(offset)
-        .map(({ route: address, at, closed }) => [address, at - since, closed]),
-    ).toEqual([
-      [route, 0, true],
-      [stale, 250, true],
-      [winner, 500, false],
-    ]);
-    expect(runtime.connection.hosts.getState().hosts[0]).toMatchObject({
-      routes: ["ws://next:3000/mobile", winner],
-      lastConnectedRoute: winner,
+  it("rejects the wrong certificate before enrollment application bytes", async () => {
+    const platform = fakePlatform();
+    const expected = new FakeHost();
+    const other = new FakeHost("other");
+    platform.routes.set(route, other);
+    const runtime = start(platform);
+    await expect(
+      runtime.connection.pairWithUri(pairingUri(platform, expected)),
+    ).rejects.toMatchObject({ code: "pin" });
+    expect(other.httpRequests).toEqual([]);
+    expect(runtime.connection.hosts.getState().hosts).toEqual([]);
+    expect(platform.savedSecrets.size).toBe(0);
+  });
+
+  describe("a tailnet address", () => {
+    const tailnet = "https://100.100.228.24:8471/";
+    const lan = "https://192.168.31.103:8471/";
+
+    it("links and connects with the host's own pinned certificate alone", async () => {
+      const platform = fakePlatform();
+      const host = new FakeHost("host-a", [tailnet]);
+      platform.routes.set(tailnet, host);
+      const runtime = start(platform);
+      const pair = runtime.connection.pairWithUri(pairingUri(platform, host));
+      await tick();
+      await expect(pair).resolves.toMatchObject({ lastConnectedRoute: tailnet });
+      expect(runtime.connection.state.getState().status).toBe("connected");
+      expect(platform.dials.at(-1)?.route).toBe(tailnet);
+    });
+
+    it("is tried after the local address, whatever order the host lists them in", async () => {
+      const platform = fakePlatform();
+      const host = new FakeHost("host-a", [tailnet, lan]);
+      platform.routes.set(tailnet, host);
+      platform.routes.set(lan, host);
+      const runtime = start(platform);
+      const pair = runtime.connection.pairWithUri(pairingUri(platform, host));
+      await tick();
+      await expect(pair).resolves.toMatchObject({ lastConnectedRoute: lan });
+      expect(new URL(platform.starts[0]!.options.url).origin).toBe(new URL(lan).origin);
+    });
+
+    it("reaches the host when the local address does not", async () => {
+      const platform = fakePlatform();
+      const host = new FakeHost("host-a", [lan, tailnet]);
+      platform.routes.set(lan, "unreachable");
+      platform.routes.set(tailnet, host);
+      const runtime = start(platform);
+      const pair = runtime.connection.pairWithUri(pairingUri(platform, host));
+      await tick(1_000);
+      await expect(pair).resolves.toMatchObject({ lastConnectedRoute: tailnet });
+      expect(runtime.connection.state.getState().status).toBe("connected");
     });
   });
 
-  it("backs off on repeated failure and resets on foreground before refreshing", async () => {
-    const { platform, host, runtime } = await setup();
-    const projects = runtime.lists.projectReads.attach();
+  it("renews the Device session before expiry and after Core requests renewal", async () => {
+    const { host, runtime } = await setup();
+    runtime.connection.reconnectNow();
     await tick();
-    expect(params(host, "projects.list")).toHaveLength(1);
-    platform.routes.set(route, "unreachable");
-    host.closeAll();
-    await tick();
-    const dials = platform.dials.length;
-    await tick(999);
-    expect(platform.dials).toHaveLength(dials);
-    await tick(1);
-    expect(platform.dials).toHaveLength(dials + 1);
-    await tick(1_999);
-    expect(platform.dials).toHaveLength(dials + 1);
-    await tick(1);
-    expect(platform.dials).toHaveLength(dials + 2);
-    platform.setForeground(false);
-    await tick(30_000);
-    expect(platform.dials).toHaveLength(dials + 2);
-    platform.setForeground(true);
-    await tick();
-    expect(platform.dials).toHaveLength(dials + 3);
-    platform.routes.set(route, host);
-    await tick(1_000);
+    expect(host.httpRequests.filter(({ path }) => path === "/session")).toHaveLength(1);
+    await tick(3_540_000);
+    expect(host.httpRequests.filter(({ path }) => path === "/session")).toHaveLength(2);
     expect(runtime.connection.state.getState().status).toBe("connected");
-    expect(params(host, "projects.list")).toHaveLength(2);
-    projects();
+    host.closeAll(4401);
+    await tick(1_000);
+    expect(host.httpRequests.filter(({ path }) => path === "/session")).toHaveLength(3);
+    expect(runtime.connection.state.getState().status).toBe("connected");
   });
 
   it.each([
-    [CHANNEL_CLOSE.unknownDevice, "revoked"],
-    [CHANNEL_CLOSE.revoked, "revoked"],
-    [CHANNEL_CLOSE.protocolMismatch, "incompatible"],
-  ])("automatically recovers from unauthenticated close hint %i", async (code, status) => {
-    const { platform, host, runtime, saved } = await setup();
-    const secrets = [...platform.savedSecrets];
-    platform.routes.set(route, code);
-    host.closeAll();
-    await tick(1_000);
-    expect(platform.dials).toHaveLength(2);
-    expect(runtime.connection.state.getState()).toMatchObject({ status, hello: null });
-    expect(runtime.connection.hosts.getState().hosts).toEqual([saved]);
-    expect([...platform.savedSecrets]).toEqual(secrets);
-    platform.routes.set(route, "unreachable");
-    await tick(2_000);
-    expect(runtime.connection.state.getState().status).toBe(status);
-    platform.routes.set(route, host);
-    await tick(3_999);
-    expect(platform.dials).toHaveLength(3);
-    await tick(1);
-    expect(runtime.connection.state.getState().status).toBe("connected");
-  });
-
-  it("lets a chosen code take over from a recovery still trying another desktop", async () => {
+    [2, "stall"],
+    [3, "stall"],
+    [2, "unreachable"],
+  ] as const)("renews once while %i saved routes are %s", async (stalls, failure) => {
     const platform = fakePlatform();
-    const earlier = new FakeHost();
-    earlier.allowHello = false;
-    platform.routes.set(route, earlier);
-    const first = start(platform);
-    const interrupted = expect(
-      first.connection.pairWithUri(pairingUri(platform, earlier)),
-    ).rejects.toMatchObject({ code: "unreachable" });
+    const routes = [
+      route,
+      "https://host-b:3000/",
+      "https://host-c:3000/",
+      "https://host-d:3000/",
+    ].slice(0, stalls + 1);
+    const host = new FakeHost("host-a", routes);
+    for (const savedRoute of routes) platform.routes.set(savedRoute, host);
+    const original = start(platform);
+    const enrollment = original.connection.pairWithUri(pairingUri(platform, host));
     await tick();
-    await first.dispose();
-    await interrupted;
-    platform.routes.set(route, "stall");
-
-    const relaunched = start(platform);
-    await tick();
-    const chosenRoute = "ws://host-b:3000/mobile";
-    const chosen = new FakeHost("host-b", [chosenRoute]);
-    platform.routes.set(chosenRoute, chosen);
-    const paired = relaunched.connection.pairWithUri(pairingUri(platform, chosen));
-    await tick();
-    await expect(paired).resolves.toMatchObject({ lastConnectedRoute: chosenRoute });
-    expect(relaunched.connection.state.getState().status).toBe("connected");
-    expect(relaunched.connection.hosts.getState().hosts).toHaveLength(1);
+    await enrollment;
+    await original.dispose();
+    for (const savedRoute of routes.slice(0, stalls)) platform.routes.set(savedRoute, failure);
+    const request = platform.pinnedTls.request;
+    platform.pinnedTls.request = (options) =>
+      failure === "stall" &&
+      options.url.startsWith(routes.at(-1)!) &&
+      options.url.endsWith("/session")
+        ? Effect.sleep(1_000).pipe(Effect.flatMap(() => request(options)))
+        : request(options);
+    const restored = start(platform);
+    await tick(3_000);
+    expect(restored.connection.state.getState().status).toBe("connected");
+    expect(host.httpRequests.filter(({ path }) => path === "/session")).toHaveLength(2);
+    expect(platform.dials.at(-1)?.route).toBe(routes.at(-1));
+    await tick(60_000);
+    expect(restored.connection.state.getState().status).toBe("connected");
   });
 
-  it("does not report a forged close while another route is still authenticating", async () => {
-    const { platform, host, runtime } = await setup();
-    const alternate = "ws://host-a:4000/mobile";
-    host.routes = [route, alternate];
-    runtime.connection.reconnectNow();
-    await tick();
-    host.closeAll();
-    platform.routes.set(route, CHANNEL_CLOSE.revoked);
-    platform.routes.set(alternate, host);
-    host.handshakeReplyDelay = 500;
-    await tick(1_749);
-    expect(runtime.connection.state.getState().status).toBe("offline");
-    await tick(1);
-    expect(runtime.connection.state.getState().status).toBe("connected");
+  it("uses credential renewal to prove access withdrawal and retains readable caches", async () => {
+    const { platform, host, runtime, saved } = await setup();
+    host.revoked = true;
+    host.closeAll(4401);
+    await tick(1_000);
+    expect(runtime.connection.state.getState()).toMatchObject({ status: "revoked", hello: null });
+    expect(runtime.connection.hosts.getState().hosts).toEqual([saved]);
+    const requests = host.httpRequests.length;
+    await tick(60_000);
+    expect(host.httpRequests).toHaveLength(requests);
+    expect(platform.savedSecrets.has("nodex.mobile.spaces.v1")).toBe(true);
   });
 
-  it("says offline steadily across retries until the desktop is back", async () => {
+  it("shows access revoked as soon as the host refuses renewal on any address", async () => {
+    const platform = fakePlatform();
+    const routes = [route, "https://host-b:3000/"];
+    const host = new FakeHost("host-a", routes);
+    for (const savedRoute of routes) platform.routes.set(savedRoute, host);
+    const runtime = start(platform);
+    const enrollment = runtime.connection.pairWithUri(pairingUri(platform, host));
+    await tick();
+    await enrollment;
+    // The other address never answers, as an unreachable tailnet route does.
+    platform.routes.set(routes[1]!, "stall");
+    const seen: string[] = [];
+    const stop = runtime.connection.state.subscribe(({ status }) => seen.push(status));
+    host.revoked = true;
+    host.closeAll(4401);
+    await tick(300);
+    stop();
+    expect(runtime.connection.state.getState()).toMatchObject({ status: "revoked" });
+    expect(seen).not.toContain("offline");
+  });
+
+  it("keeps offline state steady across backoff and reconnects on foreground", async () => {
     const { platform, host, runtime } = await setup();
     const seen: string[] = [];
     const stop = runtime.connection.state.subscribe(({ status }) => seen.push(status));
     platform.routes.set(route, "unreachable");
     host.closeAll();
     await tick(10_000);
-    expect(platform.dials.length).toBeGreaterThan(3);
+    expect(runtime.connection.state.getState().status).toBe("offline");
+    platform.setForeground(false);
     platform.routes.set(route, host);
-    await tick(35_000);
+    await tick(30_000);
+    platform.setForeground(true);
+    await tick();
     stop();
+    expect(runtime.connection.state.getState().status).toBe("connected");
     expect(new Set(seen)).toEqual(new Set(["offline", "connected"]));
-    expect(seen.at(-1)).toBe("connected");
   });
 
-  it("retries an authenticated protocol mismatch only at the capped delay", async () => {
-    const { platform, host, runtime } = await setup();
-    host.closeAll();
-    host.protocol++;
-    await tick(1_000);
-    expect(runtime.connection.state.getState().status).toBe("incompatible");
-    expect(platform.dials).toHaveLength(2);
-    await tick(29_999);
-    expect(platform.dials).toHaveLength(2);
-    await tick(1);
-    expect(platform.dials).toHaveLength(3);
-    expect(runtime.connection.state.getState().status).toBe("incompatible");
-    host.protocol = MOBILE_PROTOCOL_REVISION;
-    await tick(30_000);
+  it("isolates capture delivery and cached Inbox by Space and Member", async () => {
+    const { platform, host, runtime, saved } = await setup();
+    const defaultRead = host.onRequest;
+    host.onRequest = (_request, reply) =>
+      reply({ items: [inboxMessage("owner-entry")], nextCursor: null });
+    const ownerList = runtime.lists.inbox(saved.hostId, LIBRARY_INBOX, "inbox");
+    const detach = ownerList.attach();
+    await tick();
+    expect(ownerList.store.getState().items.map(({ id }) => id)).toEqual(["owner-entry"]);
+    detach();
+    host.onRequest = defaultRead;
+    platform.setForeground(false);
+    await tick();
+    const captureId = runtime.outbox.captureToInbox({
+      scope: LIBRARY_INBOX,
+      text: "Owner only",
+      images: [],
+    });
+    const ownerCredential = [...host.credentials.entries()][0]!;
+    host.credentials.delete(ownerCredential[0]);
+    host.tokens.clear();
+    host.memberId = "bob";
+    host.pairingAvailable = true;
+    platform.setForeground(true);
+    await tick();
+    const enrolled = runtime.connection.pairWithUri(pairingUri(platform, host));
+    await tick();
+    const bob = await enrolled;
+    expect(bob.hostId).not.toBe(saved.hostId);
+    expect(bob.memberId).toBe("bob");
+    expect(host.admissions.filter(({ request }) => request.m === "inbox.capture")).toEqual([]);
+    expect(
+      runtime.outbox.store.getState().find((entry) => entry.capture.captureId === captureId)
+        ?.hostId,
+    ).toBe(saved.hostId);
+    const bobList = runtime.lists.inbox(bob.hostId, LIBRARY_INBOX, "inbox");
+    expect(bobList.store.getState().items).toEqual([]);
+    expect(runtime.connection.hosts.getState().hosts).toHaveLength(2);
+    host.credentials.set(...ownerCredential);
+    runtime.connection.activateHost(saved.hostId);
+    host.onRequest = (request, reply, fail) =>
+      request.m === "inbox.message"
+        ? fail("Not here", false, "not_found")
+        : reply({ pageId: (request.p as { pageId: string }).pageId });
+    await tick();
+    expect(params(host, "inbox.capture")).toHaveLength(1);
+    expect(
+      host.admissions
+        .filter(({ request }) => request.m === "inbox.capture")
+        .map(({ memberId }) => memberId),
+    ).toEqual([saved.memberId]);
+  });
+
+  it("retains unassigned captures across transport replacement without delivering them", async () => {
+    const { platform, host, runtime, saved } = await setup();
+    platform.setForeground(false);
+    await tick();
+    const captureId = runtime.outbox.captureToInbox({
+      scope: LIBRARY_INBOX,
+      text: "Retained before enrollment",
+      images: [],
+    });
+    const stored = runtime.outbox.store
+      .getState()
+      .map((entry) => ({ ...entry, hostId: "old-static-host" }));
+    platform.data.set("nodex.mobile.outbox.v1", JSON.stringify(stored));
+    await runtime.dispose();
+    const relaunched = start(platform);
+    platform.setForeground(true);
+    await tick();
+    expect(relaunched.connection.activeHostId()).toBe(saved.hostId);
+    expect(relaunched.outbox.store.getState()).toMatchObject([
+      { hostId: "old-static-host", capture: { captureId, text: "Retained before enrollment" } },
+    ]);
+    expect(params(host, "inbox.capture")).toHaveLength(0);
+  });
+
+  it("removes just one local Space enrollment without revoking another", async () => {
+    const { platform, host, runtime, saved } = await setup();
+    const other = new FakeHost("team", ["https://team:3000/"]);
+    platform.routes.set(other.routes[0]!, other);
+    const enrolled = runtime.connection.pairWithUri(pairingUri(platform, other));
+    await tick();
+    const team = await enrolled;
+    await runtime.forgetHost(saved.hostId);
+    expect(runtime.connection.hosts.getState().hosts).toEqual([team]);
+    expect(host.revoked).toBe(false);
     expect(runtime.connection.state.getState().status).toBe("connected");
   });
 
@@ -536,8 +471,10 @@ describe("RPC", () => {
   });
 });
 
-function inboxMessage(pageId: string): InboxMessage {
+function inboxMessage(pageId: string): InboxEntry {
   return {
+    id: pageId,
+    rowKind: "intake",
     pageId,
     pageKey: null,
     title: "Capture",
@@ -557,6 +494,50 @@ function inboxMessage(pageId: string): InboxMessage {
 }
 
 describe("Inbox outbox", () => {
+  it("keeps an oversized capture as a failed local item instead of retrying its transport", async () => {
+    const { host, runtime } = await setup();
+    const captureId = runtime.outbox.captureToInbox({
+      scope: LIBRARY_INBOX,
+      text: "é".repeat(MOBILE_MAX_MESSAGE_BYTES),
+      images: [],
+    });
+    await tick();
+    expect(
+      runtime.outbox.store.getState().find((entry) => entry.capture.captureId === captureId)
+        ?.capture,
+    ).toMatchObject({
+      state: "failed",
+      error: "This request is too large or has invalid details.",
+    });
+    expect(params(host, "inbox.capture")).toHaveLength(0);
+    expect(runtime.connection.state.getState().status).toBe("connected");
+    await tick(60_000);
+    expect(params(host, "inbox.capture")).toHaveLength(0);
+  });
+
+  it("shows every Project's pending capture in Library Home without changing its destination", async () => {
+    const { platform, runtime, saved } = await setup();
+    platform.setForeground(false);
+    await tick();
+    runtime.outbox.captureToInbox({
+      scope: { kind: "project", projectId: "project" },
+      text: "Project capture",
+      images: [],
+    });
+    runtime.outbox.captureToInbox({ scope: { kind: "all" }, text: "Unscoped capture", images: [] });
+    await tick();
+    expect(
+      runtime.outbox
+        .visiblePending(saved.hostId, { kind: "all" }, new Set())
+        .map((capture) => capture.text),
+    ).toEqual(["Project capture", "Unscoped capture"]);
+    expect(
+      runtime.outbox
+        .visiblePending(saved.hostId, { kind: "project", projectId: "project" }, new Set())
+        .map((capture) => capture.text),
+    ).toEqual(["Project capture"]);
+  });
+
   it("survives restart with owned originals, retries the same identities and uploads afresh in order", async () => {
     const { platform, host, runtime, saved } = await setup();
     platform.setForeground(false);
@@ -593,7 +574,7 @@ describe("Inbox outbox", () => {
         .visiblePending(saved.hostId, LIBRARY_INBOX, new Set())
         .map((item) => item.captureId),
     ).toEqual([firstId, secondId]);
-    const accepted = new Map<string, InboxMessage>();
+    const accepted = new Map<string, InboxEntry>();
     let lostReply = false;
     let uploadId = 0;
     host.onRequest = (request, reply, fail) => {
@@ -676,7 +657,7 @@ describe("Inbox outbox", () => {
         landed = (request.p as MobileParams<"inbox.capture">).pageId;
         host.closeAll();
       } else if (request.m === "inbox.message") {
-        const { pageId } = request.p as MobileParams<"inbox.message">;
+        const { entryId: pageId } = request.p as MobileParams<"inbox.message">;
         if (pageId === landed) reply(inboxMessage(pageId));
         else fail("Inbox message is unavailable", false, "not_found");
       } else reply({ items: [], nextCursor: null });
@@ -685,7 +666,7 @@ describe("Inbox outbox", () => {
     await tick();
     expect(params(host, "inbox.capture")).toHaveLength(1);
     await tick(1_000);
-    expect(params(host, "inbox.message")).toEqual([{ pageId: landed }]);
+    expect(params(host, "inbox.message")).toEqual([{ entryId: landed }]);
     expect(params(host, "inbox.capture")).toHaveLength(1);
     expect(params(host, "files.upload.begin")).toHaveLength(1);
     expect(runtime.outbox.store.getState()[0]?.delivered).toBe(true);
@@ -732,11 +713,11 @@ describe("Inbox outbox", () => {
       const expiry =
         "This operation is outside Core's retained idempotency window; do not replay it implicitly";
       const windowMs = 7 * 24 * 60 * 60 * 1_000;
-      const messages = new Map<string, InboxMessage>();
+      const messages = new Map<string, InboxEntry>();
       let first = true;
       host.onRequest = (request, reply, fail) => {
         if (request.m === "inbox.message") {
-          const { pageId } = request.p as MobileParams<"inbox.message">;
+          const { entryId: pageId } = request.p as MobileParams<"inbox.message">;
           const existing = messages.get(pageId);
           if (existing) reply(existing);
           else fail("Inbox message is unavailable", false, "not_found");
@@ -830,7 +811,7 @@ describe("Inbox outbox", () => {
 
   it("keeps acknowledged captures visible until the matching page is in the window", async () => {
     const { host, runtime, saved } = await setup();
-    let message: InboxMessage | null = null;
+    let message: InboxEntry | null = null;
     let visible = false;
     host.onRequest = (request, reply) => {
       if (request.m === "inbox.capture") {
@@ -845,7 +826,7 @@ describe("Inbox outbox", () => {
     runtime.outbox.captureToInbox({ scope: LIBRARY_INBOX, text: "Still here", images: [] });
     await tick(60);
     const countRows = () => {
-      const ids = new Set(list.store.getState().items.map((item) => item.pageId));
+      const ids = new Set(list.store.getState().items.map((item) => item.id));
       return ids.size + runtime.outbox.visiblePending(saved.hostId, LIBRARY_INBOX, ids).length;
     };
     expect(countRows()).toBe(1);
@@ -874,6 +855,7 @@ const assistant = (id: string, text: string): ChatItem => ({
   at: new Date().toISOString(),
   streaming: true,
   truncated: false,
+  unavailableImages: [],
 });
 
 function snapshot(
@@ -895,6 +877,9 @@ function snapshot(
       requests: [],
       agentLabel: null,
       sendBlockedReason: null,
+      stopBlockedReason: null,
+      archived: false,
+      canManage: true,
     },
   };
 }
@@ -1333,6 +1318,105 @@ it("updates chat activity in place and accepts list order on refresh", async () 
   detach();
 });
 
+it("lists archived chats apart and brings a restored one back to the rest", async () => {
+  const { host, runtime, saved } = await setup();
+  const summary = (sessionId: string, archived: boolean, canManage: boolean) => ({
+    sessionId,
+    title: sessionId,
+    preview: "",
+    projectId: null,
+    projectName: null,
+    agentLabel: null,
+    status: "idle",
+    pendingRequestCount: 0,
+    attention: null,
+    unread: false,
+    pinned: false,
+    archived,
+    activityAt: null,
+    canSend: !archived,
+    canManage,
+  });
+  // Alice archived her chat and Bob's; only her own is hers to restore.
+  const archived = new Set(["alice-old", "bob-old"]);
+  const chats = () => [
+    summary("alice-old", archived.has("alice-old"), true),
+    summary("bob-old", archived.has("bob-old"), false),
+    summary("current", false, true),
+  ];
+  host.onRequest = (request, reply) => {
+    if (request.m === "chat.setArchived") {
+      const { sessionId, archived: next } = request.p as { sessionId: string; archived: boolean };
+      if (next) archived.add(sessionId);
+      else archived.delete(sessionId);
+      reply({});
+      return;
+    }
+    const wanted = (request.p as { archived?: boolean }).archived === true;
+    reply({ items: chats().filter((chat) => chat.archived === wanted), nextCursor: null });
+  };
+  const recent = runtime.lists.chats(saved.hostId, {});
+  const archive = runtime.lists.chats(saved.hostId, { archived: true });
+  const detachRecent = recent.attach();
+  const detachArchive = archive.attach();
+  await tick();
+  expect(params(host, "chats.list").map(({ archived }) => archived ?? false)).toEqual([
+    false,
+    true,
+  ]);
+  const shown = (list: typeof recent) =>
+    list.store.getState().items.map(({ sessionId, canManage }) => [sessionId, canManage]);
+  expect(shown(recent)).toEqual([["current", true]]);
+  expect(shown(archive)).toEqual([
+    ["alice-old", true],
+    ["bob-old", false],
+  ]);
+
+  await runtime.setChatArchived("alice-old", false);
+  await tick(60);
+  expect(params(host, "chat.setArchived")).toEqual([{ sessionId: "alice-old", archived: false }]);
+  expect(shown(recent)).toEqual([
+    ["alice-old", true],
+    ["current", true],
+  ]);
+  expect(shown(archive)).toEqual([["bob-old", false]]);
+  detachRecent();
+  detachArchive();
+});
+
+it("refuses an oversized prepared-image batch before opening any upload", async () => {
+  const { platform, host, runtime } = await setup();
+  const images = ["one", "two"].map((name) => ({
+    uri: `file://picker/${name}.jpg`,
+    name: `${name}.jpg`,
+    mimeType: "image/jpeg",
+    width: 4000,
+    height: 2500,
+  }));
+  for (const image of images) platform.contents.set(image.uri, Uint8Array.of(1));
+  const readSize = platform.files.size;
+  platform.files.size = (uri) =>
+    uri.startsWith("file://cache/compressed-") ? MOBILE_UPLOAD_MAX_BYTES / 2 + 1 : readSize(uri);
+  const refused = expect(
+    runtime.startChat({
+      text: "Large batch",
+      images,
+      projectId: null,
+      agent: null,
+      location: "local",
+    }),
+  ).rejects.toMatchObject({
+    code: "invalid_params",
+    retryable: false,
+    message: "These images are too large to send together.",
+  });
+  await tick();
+  await refused;
+  expect(params(host, "files.upload.begin")).toHaveLength(0);
+  expect(params(host, "chats.start")).toHaveLength(0);
+  expect(runtime.connection.state.getState().status).toBe("connected");
+});
+
 it("retries start, send and answers with stable identities and remembers successful launch preferences", async () => {
   const { platform, host, runtime, saved } = await setup();
   const image: LocalImage = {
@@ -1403,26 +1487,18 @@ it("keeps synchronous commands usable with the native scheduler", async () => {
   expect(stored[0].capture.captureId).toBe(id);
 });
 
-it("interrupts every pending pairing route and leaves no runtime timers after disposal", async () => {
+it("interrupts a pending enrollment and leaves no runtime timers after disposal", async () => {
   const platform = fakePlatform();
   const host = new FakeHost();
-  const alternate = "ws://host-a:4000/mobile";
   platform.routes.set(route, "stall");
-  platform.routes.set(alternate, "stall");
   const runtime = start(platform);
-  const paired = expect(
-    runtime.connection.pairWithUri(pairingUri(platform, host, [route, alternate])),
+  const pending = expect(
+    runtime.connection.pairWithUri(pairingUri(platform, host)),
   ).rejects.toMatchObject({ code: "unreachable" });
-  await tick(250);
-  expect(platform.dials).toHaveLength(2);
+  await tick();
   await runtime.dispose();
-  await paired;
-  expect(platform.dials.every((dial) => dial.closed)).toBe(true);
+  await pending;
   expect(vi.getTimerCount()).toBe(0);
-  platform.setForeground(false);
-  platform.setForeground(true);
-  await tick(60_000);
-  expect(platform.dials).toHaveLength(2);
 });
 
 it("disposes a subscribed chat and an unanswered RPC without waiting for the Host", async () => {
@@ -1576,7 +1652,7 @@ it("cleans up an image whose native compression completes during disposal", asyn
   expect(vi.getTimerCount()).toBe(0);
 });
 
-it("recovers from bounded socket ingress overflow without losing pairing keys", async () => {
+it("recovers from bounded socket ingress overflow without losing Device credentials", async () => {
   const { host, platform, runtime } = await setup();
   const keys = [...platform.savedSecrets];
   for (let index = 0; index < 140; index++)
@@ -1637,56 +1713,4 @@ it("evicts idle files within the cache size limit and preserves mounted files", 
   const uri = await restarted.resolveFileUri("nodex://files/new");
   expect(Array.from(platform.contents.get(uri) ?? [])).toEqual([1, 2, 3]);
   expect(platform.contents.has(mountedUri)).toBe(false);
-});
-
-it("recovers a pending pairing after returning to the foreground on the same phone key", async () => {
-  const platform = fakePlatform();
-  const host = new FakeHost();
-  host.allowHello = false;
-  platform.routes.set(route, host);
-  const runtime = start(platform);
-  const pending = expect(
-    runtime.connection.pairWithUri(pairingUri(platform, host)),
-  ).rejects.toMatchObject({ code: "unreachable" });
-  await tick();
-  expect(host.pairingKeys).toHaveLength(1);
-  platform.setForeground(false);
-  await tick();
-  await pending;
-  host.allowHello = true;
-  platform.setForeground(true);
-  await tick();
-  expect(runtime.connection.state.getState().status).toBe("connected");
-  expect(host.pairingKeys).toHaveLength(1);
-  expect(runtime.connection.hosts.getState().hosts).toMatchObject([
-    { hostId: host.id, deviceId: "device-1" },
-  ]);
-});
-
-it("closes a transport immediately when its native send fails", async () => {
-  const platform = fakePlatform();
-  const host = new FakeHost();
-  platform.routes.set(route, host);
-  const socket = platform.socket;
-  let failSend = false;
-  platform.socket = (route) => {
-    const native = socket(route);
-    return {
-      ...native,
-      send(bytes) {
-        if (failSend) throw new Error("Socket cannot send");
-        native.send(bytes);
-      },
-    };
-  };
-  const runtime = start(platform);
-  await runtime.connection.pairWithUri(pairingUri(platform, host));
-  failSend = true;
-  await expect(runtime.connection.rpc.request("projects.list", {})).rejects.toMatchObject({
-    code: "disconnected",
-    retryable: true,
-  });
-  await tick();
-  expect(runtime.connection.state.getState().status).toBe("offline");
-  expect(platform.dials[0]?.closed).toBe(true);
 });

@@ -1,6 +1,8 @@
 import {
   MAX_MANAGED_IMAGE_BYTES,
   MAX_MANAGED_RESOURCE_BYTES,
+  type ManagedAssetPreview,
+  type ManagedAssetPreviewInput,
   type ManagedResourceSaveResult,
 } from "../../shared/managed-assets";
 import { parseAssetSource } from "../../shared/assets";
@@ -110,6 +112,12 @@ export async function uploadResourceAsset(file: File): Promise<UploadedResourceA
       fileToUploadInput(file, new Uint8Array(await file.arrayBuffer())),
     ),
   );
+}
+
+export async function readManagedAssetPreview(
+  input: ManagedAssetPreviewInput,
+): Promise<ManagedAssetPreview> {
+  return await invokeRendererQuery("asset:preview:read", input);
 }
 
 export async function resolveManagedAssetPath(source: string): Promise<string | null> {

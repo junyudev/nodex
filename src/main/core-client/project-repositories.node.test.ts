@@ -3,6 +3,7 @@ import { expect, test } from "vite-plus/test";
 import { withCoreScenario } from "../../../scripts/scenarios/harness/core-scenario-harness";
 import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/document-sync-recovery";
 import { CoreClient } from "./core-client";
+import { enrollRemoteCore } from "./remote-http";
 import { createBoundedOperationId } from "../../shared/operation-identity";
 
 test("team Projects publish repository identities and refuse host-local source paths", async () => {
@@ -13,6 +14,13 @@ test("team Projects publish repository identities and refuse host-local source p
         nodexHome: profile.nodexHome,
         clientKind: "electron_host",
         buildId: "repository-test",
+      });
+      const listener = await host.listenSpace({ address: "127.0.0.1:0", cert: null, key: null });
+      const invite = await host.spaceInvite({ role: "member" });
+      await enrollRemoteCore(listener, {
+        code: invite.code,
+        device_label: "Teammate desktop",
+        display_name: "Teammate",
       });
       const before = await client.workspaceRead({
         kind: "project",

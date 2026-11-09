@@ -256,7 +256,10 @@ it.effect("admits background and delegated task operations through strict truste
         { ...input, threadId: " child" },
         { ...input, taskId: "" },
         { ...input, taskId: "a".repeat(513) },
-        { ...input, runId: "unrelated" },
+        // Stops and cancels name their Run; output reads take no Run at all.
+        channel === "agent-runtime:session:background-output"
+          ? { ...input, runId: "unrelated" }
+          : { ...input, runId: " run" },
       ])
         yield* handler(event, malformed).pipe(Effect.flip);
       if (channel === "agent-runtime:session:background-output") {

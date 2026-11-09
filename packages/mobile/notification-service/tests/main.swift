@@ -39,6 +39,7 @@ for invalid in [
     #"{"kind":"other","sessionId":"session-1","title":"Title","body":"Body"}"#,
     #"{"kind":"finished","sessionId":"session-1","title":"Title"}"#,
     #"{"kind":"failed","sessionId":1,"title":"Title","body":"Body"}"#,
+    #"{"kind":"needs_you","title":"Title","body":"Body"}"#,
 ] {
     let sealed = try seal(invalid)
     check(PushDecryption.open(sealed, keyText: keyText) == nil, "Accepted an invalid payload")
@@ -47,4 +48,10 @@ for kind in ["finished", "failed"] {
     let sealed = try seal("{\"kind\":\"\(kind)\",\"sessionId\":\"session-1\",\"title\":\"Title\",\"body\":\"Body\",\"future\":true}")
     check(PushDecryption.open(sealed, keyText: keyText)?.kind.rawValue == kind, "Rejected a valid kind or an extra field")
 }
+let turn = PushDecryption.open(
+    try seal(#"{"kind":"needs_you","pageId":"page-1","title":"Ship","body":"Review"}"#),
+    keyText: keyText
+)
+check(turn?.pageId == "page-1" && turn?.sessionId == nil, "Rejected a Page Turn")
+check(turn?.thread == "page:page-1", "A Page Turn did not group by its Page")
 print("Push decryption passed")

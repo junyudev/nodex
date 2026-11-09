@@ -31,7 +31,9 @@ const request = {
   caller: { requestId: "one", timeoutMs: 0, expiresAtMs: null },
   request: { method: "model/list", id: "one", params: {} },
 } as const;
-const event = { sender: { id: 8 } } as IpcMainInvokeEvent;
+const event = {
+  sender: Object.assign(new EventEmitter(), { id: 8, isDestroyed: () => false }),
+} as unknown as IpcMainInvokeEvent;
 const invoke = () => {
   const handler = handlers.get(channel);
   if (!handler) throw new Error("Missing registered native request handler");
@@ -244,7 +246,10 @@ for (const end of ["sender", "registration", "failure"] as const) {
         .pipe(Effect.provideService(Scope.Scope, scope));
       const physical = handlers.get("agent-runtime:providers:read")!;
       let settled = false;
-      const result = physical({ sender } as unknown as IpcMainInvokeEvent).then(
+      const result = physical({ sender } as unknown as IpcMainInvokeEvent, {
+        spaceId: "personal",
+        args: [{ refresh: true }],
+      }).then(
         (value) => {
           settled = true;
           return { value };

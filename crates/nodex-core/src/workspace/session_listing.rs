@@ -14,19 +14,23 @@ use nodex_core_contracts::workspace::{
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, params_from_iter};
 
-/// The chat list's members in one archive lane: a Session that is no side chat, whose Thread, if
-/// any, is a root, in no Project or one of this Library's Projects that the lane shows. Binds `?1`
-/// to the Library and `?2` to the lane, over `session`, its `thread` and its `project`.
+/// The chat list's members in one archive lane: a Session that is neither a side chat nor the
+/// Coordinator, whose Thread, if any, is a root, in no Project or one of this Library's Projects
+/// that the lane shows. Binds `?1` to the Library and `?2` to the lane, over `session`, its
+/// `thread` and its `project`.
 const CHAT_LIST_LANE: &str = "NOT EXISTS (SELECT 1 FROM project_session_side_chats side \
-     WHERE side.session_id = session.id) AND session.archived = ?2 \
+     WHERE side.session_id = session.id) \
+   AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) \
+   AND session.archived = ?2 \
    AND (session.project_id IS NULL OR (project.library_id = ?1 \
      AND (?2 = 1 OR project.lifecycle <> 'archived'))) \
    AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL)";
 
-/// Unread chats among those the chat list shows, across every Project.
+/// The chats the chat list shows as unread to `member`, across every Project.
 pub(super) fn read_unread_chat_count(
     connection: &Connection,
     library_id: &str,
+    member: &str,
 ) -> Result<u32, StoreError> {
     let count: i64 = connection.query_row(
         &format!(
@@ -34,9 +38,10 @@ pub(super) fn read_unread_chat_count(
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
              LEFT JOIN projects project ON project.id = session.project_id \
-             WHERE {CHAT_LIST_LANE} AND session.unread = 1"
+             WHERE {CHAT_LIST_LANE} AND {}",
+            super::member_attention::unread_sql("session.id", "?3")
         ),
-        rusqlite::params![library_id, 0_i64],
+        rusqlite::params![library_id, 0_i64, member],
         |row| row.get(0),
     )?;
     u32::try_from(count).map_err(|_| invalid("Unread chat count exceeds its bound"))
@@ -46,6 +51,7 @@ pub(super) struct SessionListingFilter<'a> {
     pub archived: bool,
     pub order: ProjectWorkspaceSessionOrder,
     pub projectless_only: bool,
+    pub exclude_drafts: bool,
     pub project_id: Option<&'a str>,
     pub query: Option<&'a str>,
     pub native_only: bool,
@@ -65,6 +71,7 @@ pub(super) fn read_session_window(
         archived,
         order,
         projectless_only,
+        exclude_drafts,
         project_id,
         query,
         native_only,
@@ -105,10 +112,12 @@ pub(super) fn read_session_window(
         .map_err(|_| invalid("Session execution references are invalid"))?;
     let normalized = normalize_request(request)?;
     let fingerprint = cursor::query_fingerprint(&(
+        "workspace_session_listing_v8",
         member,
         order,
         archived,
         projectless_only,
+        exclude_drafts,
         project_id,
         query,
         native_only,
@@ -170,6 +179,12 @@ pub(super) fn read_session_window(
     } else {
         ""
     };
+    // A default draft stops being one when its first message starts it.
+    let draft_predicate = if exclude_drafts {
+        "AND session.is_default_draft = 0"
+    } else {
+        ""
+    };
     let order_expression = match order {
         ProjectWorkspaceSessionOrder::Identity => "0",
         ProjectWorkspaceSessionOrder::Conversation => "-session.activity_at",
@@ -205,7 +220,7 @@ pub(super) fn read_session_window(
            AND (?5 = 0 OR NOT EXISTS (SELECT 1 FROM project_session_execution_bindings execution
              WHERE execution.session_id = session.id))
            AND (?7 IS NULL OR session.id IN (SELECT value FROM json_each(?7)))
-           {execution_predicate} {projectless_predicate})
+           {execution_predicate} {projectless_predicate} {draft_predicate})
          SELECT * FROM task_rows {cursor_predicate}
          ORDER BY lane_order, session_id LIMIT ?{limit_parameter}"
     );
@@ -307,6 +322,8 @@ mod tests {
             ("side-chat", None),
             ("child", None),
             ("archived-project", Some("project:archived")),
+            ("coordinator", None),
+            ("another-member", None),
         ]
         .into_iter()
         .enumerate()
@@ -334,8 +351,31 @@ mod tests {
             .writer()
             .call(|connection| {
                 connection.execute(
-                    "UPDATE project_sessions SET unread = 1 WHERE id <> 'session:read'",
+                    "INSERT INTO member_session_unread(member_id, session_id) \
+                     SELECT local.member_id, session.id FROM local_profile_members local, \
+                       project_sessions session \
+                     WHERE session.id NOT IN ('session:read', 'session:another-member')",
                     [],
+                )?;
+                // Unread belongs to each Member; someone else's leaves this reader's count alone.
+                connection.execute(
+                    "UPDATE libraries SET space_kind = 'team' WHERE id = 'library-1'",
+                    [],
+                )?;
+                connection.execute(
+                    "INSERT INTO members(id, library_id, display_name, lifecycle, role) \
+                     VALUES ('member:other', 'library-1', 'Other', 'active', 'member')",
+                    [],
+                )?;
+                connection.execute(
+                    "INSERT INTO member_session_unread(member_id, session_id) \
+                     VALUES ('member:other', 'session:another-member')",
+                    [],
+                )?;
+                connection.execute(
+                    "INSERT INTO coordinator(id, session_id, created_at) \
+                     VALUES (1, 'session:coordinator', ?1)",
+                    [crate::workspace::test_support::NOW],
                 )?;
                 connection.execute(
                     "UPDATE project_sessions SET archived = 1, archived_at = ?1 \
@@ -382,6 +422,7 @@ mod tests {
                 ProjectWorkspaceRead::SessionWindow {
                     order: None,
                     projectless_only: None,
+                    exclude_drafts: None,
                     archived: false,
                     project_id: None,
                     query: None,
@@ -496,6 +537,88 @@ mod tests {
     }
 
     #[test]
+    fn a_conversation_list_leaves_out_a_new_chat_until_its_first_message() {
+        let workspace = seeded_workspace();
+        apply(
+            &workspace.module,
+            "draft",
+            ProjectWorkspaceIntent::EnsureDefaultDraftSession {
+                session_id: "session:draft".into(),
+                project_id: None,
+                title: "New chat".into(),
+            },
+        );
+        create_session_thread(
+            &workspace.module,
+            "chat",
+            "session:chat",
+            "thread:chat",
+            None,
+            1,
+        );
+        let listed = |exclude_drafts| {
+            let ProjectWorkspaceReadValue::SessionWindow { sessions, .. } = read(
+                &workspace.module,
+                ProjectWorkspaceRead::SessionWindow {
+                    archived: false,
+                    order: None,
+                    projectless_only: None,
+                    exclude_drafts,
+                    project_id: None,
+                    query: None,
+                    native_only: None,
+                    execution_refs: None,
+                    session_ids: None,
+                    window: CollectionWindowRequest {
+                        after: None,
+                        first: Some(100),
+                    },
+                },
+            ) else {
+                panic!("Session window expected")
+            };
+            let mut ids = sessions
+                .items
+                .into_iter()
+                .map(|item| item.task.session.id)
+                .collect::<Vec<_>>();
+            ids.sort();
+            ids
+        };
+        assert_eq!(listed(Some(true)), ["session:chat"]);
+        // Session discovery, which can start a draft in place, still finds it.
+        assert_eq!(listed(None), ["session:chat", "session:draft"]);
+        // Its first message starts the draft, which then lists as any chat does.
+        apply(
+            &workspace.module,
+            "draft-thread",
+            ProjectWorkspaceIntent::UpsertThread {
+                thread_id: "thread:draft".into(),
+                patch: Box::new(ProjectWorkspaceThreadPatch {
+                    project_id: Some(None),
+                    thread_name: Some(Some("Started".into())),
+                    linked_at: Some(crate::workspace::test_support::NOW.to_owned()),
+                    ..ProjectWorkspaceThreadPatch::default()
+                }),
+            },
+        );
+        apply(
+            &workspace.module,
+            "draft-link",
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: "session:draft".into(),
+                intent: ProjectSessionIntent::LinkThread {
+                    thread_id: "thread:draft".into(),
+                    expected_project_id: None,
+                    thread_patch: None,
+                    execution_location: None,
+                },
+            },
+        );
+        assert_eq!(listed(Some(true)), ["session:chat", "session:draft"]);
+    }
+
+    #[test]
     fn discovery_pages_across_projects_and_projectless_with_exact_archive_scope_and_placement() {
         let workspace = seeded_workspace();
         create_project(&workspace.module, "project", "project:a");
@@ -545,6 +668,7 @@ mod tests {
                 ProjectWorkspaceRead::SessionWindow {
                     order: None,
                     projectless_only: None,
+                    exclude_drafts: None,
                     archived,
                     project_id: None,
                     query: None,
@@ -597,6 +721,7 @@ mod tests {
             ProjectWorkspaceRead::SessionWindow {
                 order: None,
                 projectless_only: Some(true),
+                exclude_drafts: None,
                 archived: false,
                 project_id: None,
                 query: None,
@@ -630,6 +755,7 @@ mod tests {
                     SessionListingFilter {
                         order: ProjectWorkspaceSessionOrder::Conversation,
                         projectless_only: false,
+                        exclude_drafts: false,
                         archived: true,
                         project_id: None,
                         query: None,
@@ -698,6 +824,7 @@ mod tests {
                 ProjectWorkspaceRead::SessionWindow {
                     order: None,
                     projectless_only: None,
+                    exclude_drafts: None,
                     archived: false,
                     project_id: Some("project:default".into()),
                     query,
@@ -745,6 +872,7 @@ mod tests {
             ProjectWorkspaceRead::SessionWindow {
                 order: None,
                 projectless_only: None,
+                exclude_drafts: None,
                 archived: false,
                 project_id: Some("project:default".into()),
                 query: None,
@@ -785,6 +913,7 @@ mod tests {
                     order: Some(ProjectWorkspaceSessionOrder::Identity),
                     archived: false,
                     projectless_only: None,
+                    exclude_drafts: None,
                     project_id: None,
                     query: None,
                     native_only: None,

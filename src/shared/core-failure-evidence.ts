@@ -50,6 +50,19 @@ const recoveryKinds = {
   database_view_order_preparation: true,
 } satisfies Record<CoreRecovery["kind"], true>;
 
+const remoteBudgets = {
+  pre_auth_ip: true,
+  device_requests: true,
+  device_bytes: true,
+  member_requests: true,
+  member_bytes: true,
+  member_device_links: true,
+  member_concurrency: true,
+  global_concurrency: true,
+  device_streams: true,
+  member_streams: true,
+} satisfies Record<components["schemas"]["RemoteBudget"], true>;
+
 const recoveryReasons = {
   request_too_large: true,
   response_too_large: true,
@@ -93,6 +106,7 @@ const parseRecovery = (value: unknown): CoreRecovery => {
       if (
         uint(value.milliseconds) &&
         typeof value.budget === "string" &&
+        Object.hasOwn(remoteBudgets, value.budget)
       )
         return {
           kind: value.kind,

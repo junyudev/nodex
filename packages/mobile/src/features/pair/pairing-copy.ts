@@ -2,19 +2,23 @@
 export const pairingFailureMessage = (reason: string | undefined): string => {
   switch (reason) {
     case "invalid":
-      return "That isn't a Nodex pairing code.";
+      return "That isn't a Nodex device link.";
     case "expired":
-      return "That code has expired. Show a new one on your desktop.";
+      return "That code has expired. Show a new one on the Space host.";
     case "rejected":
-      return "Your desktop turned that code down. Show a new one and try again.";
+      return "The Space host turned that code down. Show a new one and try again.";
     case "unreachable":
-      return "Couldn't reach your desktop. Check that this phone is on the same network or tailnet, and that Nodex is open.";
+      return "Couldn't reach the Space host. Check that this phone is on the same network or tailnet, and that Nodex is open.";
     case "busy":
-      return "Still connecting to a desktop. Try again in a moment.";
+      return "Still linking a Space. Try again in a moment.";
     case "incompatible":
-      return "This version of Nodex Mobile and your desktop can't talk to each other. Update whichever is older.";
+      return "This version of Nodex Mobile and the Space host can't talk to each other. Update whichever is older.";
+    case "locked":
+      return "Saved Space credentials are unavailable. Unlock this phone and try again.";
+    case "pin":
+      return "The host certificate changed. Show a new device link to trust its current certificate.";
     default:
-      return "Pairing didn't finish. Show a new code and try again.";
+      return "Linking didn't finish. Show a new code and try again.";
   }
 };
 

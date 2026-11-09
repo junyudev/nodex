@@ -600,6 +600,8 @@ it.live("configures providers over stdin so credentials never enter the process 
       configuration: {
         home: fixtureHome,
         cwd: fixtureHome,
+        agentsRunningAtOnce: 7,
+        pausedThreadIds: ["thread:held"],
         providers: {
           claude: {
             driver: "claudeAgent",
@@ -615,11 +617,15 @@ it.live("configures providers over stdin so credentials never enter the process 
     const received = (yield* connection.request("project.read", {
       projectId: "bootstrap",
     })) as unknown as {
+      readonly agentsRunningAtOnce: number;
+      readonly pausedThreadIds: readonly string[];
       readonly providers: Readonly<Record<string, unknown>>;
       readonly hostTools: ReadonlyArray<{ readonly name: string }>;
       readonly environment: Readonly<Record<string, string>>;
       readonly execArgv: readonly string[];
     };
+    assert.equal(received.agentsRunningAtOnce, 7);
+    assert.deepEqual(received.pausedThreadIds, ["thread:held"]);
     assert.deepEqual(Object.keys(received.providers), ["claude"]);
     assert.deepEqual(
       received.hostTools.map((tool) => tool.name),

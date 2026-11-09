@@ -191,6 +191,10 @@ pub fn authorize(
                 | "page_chat_activity_summaries"
                 | "page_chat_window"
                 | "session_window"
+                | "agent_runtime_session_binding"
+                | "agent_runtime_session_binding_by_execution"
+                | "agent_runtime_session_binding_window"
+                | "session_work_page"
                 | "task_window"
                 | "sidebar_overview"
                 | "sidebar_section_window"
@@ -200,6 +204,8 @@ pub fn authorize(
                 | "session"
                 | "session_start"
                 | "inbox_entry"
+                | "inbox_message"
+                | "inbox_dispatch_context"
                 | "inbox_summary"
                 | "inbox_counts"
                 // A Member's Dock counts their own unread chats in the Space.
@@ -209,6 +215,14 @@ pub fn authorize(
                 | "inbox_message_edit"
                 | "session_member_actions"
         ),
+        // Ingress additionally requires the exact live execution-owner message proof.
+        "workspace_apply" if kind == "record_chat_delivery" => {
+            encoded
+                .get("author")
+                .and_then(|author| author.get("kind"))
+                .and_then(|kind| kind.as_str())
+                == Some("user")
+        }
         // Agent-authored context and Host interruption delivery never become Member commands.
         "workspace_apply"
             if matches!(
@@ -228,8 +242,15 @@ pub fn authorize(
                 .and_then(|k| k.as_str())
                 == Some("retry_problem")
         }
+        "workspace_apply" if kind == "confirm_inbox_dispatch" => encoded
+            .get("confirmed_by")
+            .and_then(|v| v.as_str())
+            .is_none_or(|v| v == "user"),
         // Core ingress additionally requires the exact live Host launch proof: a phone's new chat,
         // or a Member's fork, side chat or saved side chat through the Space host.
+        "workspace_apply" if kind == "create_agent_runtime_session" => {
+            encoded.get("coordinator").and_then(|v| v.as_bool()) != Some(true)
+        }
         // Only the Member's own side chat, through the exact live Host call that closes it.
         "workspace_apply" if kind == "delete_session" => true,
         // Accepted messages additionally require their exact live execution-owner delivery proof;
@@ -265,6 +286,10 @@ pub fn authorize(
                 | "start_page_work"
                 | "accept_page_work"
                 | "send_inbox_message"
+                | "delete_inbox_messages"
+                | "dispatch_inbox_entries"
+                | "request_inbox_suggestion"
+                | "retry_inbox_dispatch"
                 | "keep_inbox_entries"
                 | "set_inbox_entry_state"
                 | "set_inbox_entry_kind"
@@ -367,6 +392,25 @@ mod inbox_tests {
         }
     }
     #[test]
+    fn members_can_resolve_logical_execution_bindings_without_agent_or_filesystem_authority() {
+        let context = remote(MemberRole::Member);
+        for kind in [
+            "agent_runtime_session_binding",
+            "agent_runtime_session_binding_by_execution",
+            "agent_runtime_session_binding_window",
+            "session_work_page",
+        ] {
+            assert!(authorize(&context, "workspace_read", &json!({"kind":kind})).is_ok());
+        }
+        for kind in [
+            "agent_authority",
+            "automation_execution_admission",
+            "session_execution_observer",
+        ] {
+            assert!(authorize(&context, "workspace_read", &json!({"kind":kind})).is_err());
+        }
+    }
+    #[test]
     fn chat_changes_reach_core_while_host_bookkeeping_stays_local() {
         let context = remote(MemberRole::Member);
         let session = |intent: &str| {
@@ -408,13 +452,60 @@ mod inbox_tests {
         }
     }
     #[test]
+    fn person_launch_and_review_cannot_claim_coordinator_authority() {
+        for role in [MemberRole::Member, MemberRole::Owner] {
+            let context = remote(role);
+            for command in [
+                json!({"kind":"create_agent_runtime_session","coordinator":false}),
                 json!({"kind":"create_agent_runtime_session","side_chat_source_session_id":"other-chat"}),
+                json!({"kind":"confirm_inbox_dispatch","confirmed_by":"user"}),
+            ] {
+                assert!(authorize(&context, "workspace_apply", &command).is_ok());
+            }
+            for command in [
+                json!({"kind":"create_agent_runtime_session","coordinator":true}),
+                json!({"kind":"confirm_inbox_dispatch","confirmed_by":"nodex"}),
+            ] {
+                assert_eq!(
+                    authorize(&context, "workspace_apply", &command)
+                        .unwrap_err()
+                        .code,
+                    CoreErrorCode::Unauthorized
+                );
+            }
+        }
+    }
+    #[test]
     fn remote_inbox_admission_keeps_person_actions_separate_from_host_and_agent_commands() {
         for role in [MemberRole::Member, MemberRole::Owner] {
             let context = remote(role);
+            assert!(
+                authorize(
+                    &context,
+                    "workspace_apply",
+                    &json!({
+                        "kind":"record_chat_delivery", "author":{"kind":"user"}
+                    })
+                )
+                .is_ok()
+            );
+            assert_eq!(
+                authorize(
+                    &context,
+                    "workspace_apply",
+                    &json!({
+                        "kind":"record_chat_delivery", "author":{"kind":"agent"}
+                    })
+                )
+                .unwrap_err()
+                .code,
+                CoreErrorCode::Unauthorized
+            );
             for kind in [
                 "inbox_window",
                 "inbox_entry",
+                "inbox_message",
+                "inbox_dispatch_context",
                 "inbox_summary",
                 "inbox_counts",
             ] {

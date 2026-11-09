@@ -1,11 +1,16 @@
-import { decodePushKey, encodePairingUri, PUSH_KEY_BYTES } from "@nodex/mobile-protocol";
+import {
+  decodePushKey,
+  encodeDeviceLink,
+  PUSH_KEY_BYTES,
+  spaceMemberKey,
+} from "@nodex/mobile-protocol";
 import * as Scheduler from "effect/Scheduler";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { FakeHost, fakePlatform } from "./fake-host.test-support";
-import type { DeliveredChat, MobilePush, PushPermission } from "./platform";
+import type { DeliveredNotification, MobilePush, PushPermission } from "./platform";
 import { createMobileRuntime, type MobileRuntime } from "./runtime";
 
-const route = "ws://host-a:3000/mobile";
+const route = "https://host-a:3000/";
 const tick = (ms = 0) => vi.advanceTimersByTimeAsync(ms);
 let runtimes: MobileRuntime[] = [];
 
@@ -15,8 +20,8 @@ class FakePush implements MobilePush {
   key: string | null = null;
   relayFails = false;
   readonly addressesRegistered: string[] = [];
-  readonly cleared: string[] = [];
-  shown: DeliveredChat[] = [];
+  readonly dismissed: string[] = [];
+  shown: DeliveredNotification[] = [];
   constructor(
     private current: PushPermission,
     private readonly answer: PushPermission = "granted",
@@ -39,9 +44,9 @@ class FakePush implements MobilePush {
     return Promise.resolve(`handle-for-${token.slice(0, 4)}`);
   };
   delivered = () => Promise.resolve([...this.shown]);
-  clearDelivered = (sessionId: string) => {
-    this.cleared.push(sessionId);
-    this.shown = this.shown.filter((chat) => chat.sessionId !== sessionId);
+  dismiss = (ids: readonly string[]) => {
+    this.dismissed.push(...ids);
+    this.shown = this.shown.filter(({ id }) => !ids.includes(id));
     return Promise.resolve();
   };
 }
@@ -57,7 +62,7 @@ const setup = async (push: FakePush | null, configure?: (host: FakeHost) => void
   });
   runtimes.push(runtime);
   const paired = runtime.connection.pairWithUri(
-    encodePairingUri(host.pairingOffer(platform.now() + 60_000)),
+    encodeDeviceLink(host.pairingOffer(platform.now() + 60_000)),
   );
   await tick(100);
   await paired;
@@ -67,6 +72,16 @@ const setup = async (push: FakePush | null, configure?: (host: FakeHost) => void
 
 const registrations = (host: FakeHost) => host.requests.filter(({ m }) => m === "push.register");
 const removals = (host: FakeHost) => host.requests.filter(({ m }) => m === "push.unregister");
+const shown = (
+  id: string,
+  hostId: string | null,
+  about: { readonly sessionId?: string; readonly pageId?: string },
+): DeliveredNotification => ({
+  id,
+  hostId,
+  sessionId: about.sessionId ?? null,
+  pageId: about.pageId ?? null,
+});
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -201,7 +216,7 @@ describe("notifications", () => {
     expect(registrations(host)).toEqual([]);
   });
 
-  it("say so when the desktop refuses the registration", async () => {
+  it("say so when the Space refuses the registration", async () => {
     const { runtime, host } = await setup(new FakePush("granted"));
     const reply = host.onRequest;
     host.onRequest = (request, respond, fail) => {
@@ -211,63 +226,156 @@ describe("notifications", () => {
     const on = runtime.notifications.enable();
     await tick(100);
     await on;
-    expect(runtime.notifications.state.getState().problem).toBe("desktop");
+    expect(runtime.notifications.state.getState().problem).toBe("space");
   });
 
-  it("clear notifications for chats the desktop read or put away, once connected", async () => {
+  it("register with each Space it connects to and withdraw from each once turned off", async () => {
     const push = new FakePush("granted");
+    const { platform, host, runtime } = await setup(push);
+    const on = runtime.notifications.enable();
+    await tick(100);
+    await on;
+    expect(registrations(host)).toHaveLength(1);
+
+    const second = new FakeHost("host-b", ["https://host-b:3000/"]);
+    platform.routes.set("https://host-b:3000/", second);
+    const linked = runtime.connection.pairWithUri(
+      encodeDeviceLink(second.pairingOffer(platform.now() + 60_000)),
+    );
+    await tick(100);
+    await linked;
+    await tick(100);
+    expect(registrations(second)).toHaveLength(1);
+    expect(registrations(second)[0]?.p).toMatchObject({ key: push.key });
+
+    const off = runtime.notifications.setPreferences({ needsYou: false, finished: false });
+    await tick(100);
+    await off;
+    expect(removals(second)).toHaveLength(1);
+    expect(removals(host)).toEqual([]);
+
+    // The first Space still holds the registration, so it hears on the next connection.
+    const first = runtime.connection.hosts
+      .getState()
+      .hosts.find(({ spaceId }) => spaceId === host.id)!;
+    runtime.connection.activateHost(first.hostId);
+    await tick(100);
+    expect(removals(host)).toHaveLength(1);
+    runtime.connection.activateHost(
+      runtime.connection.hosts.getState().hosts.find(({ spaceId }) => spaceId === second.id)!
+        .hostId,
+    );
+    await tick(100);
+    expect(removals(second)).toHaveLength(1);
+  });
+
+  it("withdraw from a Space being removed while connected to it", async () => {
+    const { host, runtime } = await setup(new FakePush("granted"));
+    const on = runtime.notifications.enable();
+    await tick(100);
+    await on;
+    const [saved] = runtime.connection.hosts.getState().hosts;
+    const removed = runtime.forgetHost(saved!.hostId);
+    await tick(100);
+    await removed;
+    expect(removals(host)).toHaveLength(1);
+  });
+
+  it("clear what this Space no longer stands behind, once connected", async () => {
+    const push = new FakePush("granted");
+    const here = spaceMemberKey("host-a", "owner");
     push.shown = [
-      { sessionId: "read", hostId: "host-a" },
-      { sessionId: "unread", hostId: "host-a" },
-      { sessionId: "read", hostId: "host-a" },
-      { sessionId: "elsewhere", hostId: "host-b" },
-      { sessionId: "unattributed", hostId: null },
+      shown("read", here, { sessionId: "read" }),
+      shown("unread", here, { sessionId: "unread" }),
+      shown("read-again", here, { sessionId: "read" }),
+      shown("turn-moved", here, { pageId: "moved" }),
+      // A Turn waiting on a read chat is still the Member's move.
+      shown("turn-current", here, { pageId: "current", sessionId: "read" }),
+      shown("elsewhere", spaceMemberKey("host-b", "owner"), { sessionId: "elsewhere" }),
+      shown("another-member", spaceMemberKey("host-a", "guest"), { pageId: "moved" }),
+      shown("unattributed", null, { sessionId: "unattributed" }),
     ];
     const { host } = await setup(push, (host) => {
       const reply = host.onRequest;
       host.onRequest = (request, respond, fail) => {
         if (request.m === "chats.unread") respond({ sessionIds: ["unread"] });
+        else if (request.m === "inbox.turns") respond({ pageIds: ["current"] });
         else reply(request, respond, fail);
       };
     });
     await tick(300);
-    // Only this desktop's notifications are its to judge.
+    // Only what this Space sent this Member is its to judge.
     expect(host.requests.filter(({ m }) => m === "chats.unread").map(({ p }) => p)).toEqual([
       { sessionIds: ["read", "unread"] },
     ]);
-    expect(push.cleared).toEqual(["read"]);
+    expect(host.requests.filter(({ m }) => m === "inbox.turns").map(({ p }) => p)).toEqual([
+      { pageIds: ["moved", "current"] },
+    ]);
+    expect(push.dismissed).toEqual(["read", "read-again", "turn-moved"]);
   });
 
-  it("tidy again when the desktop's chats change, and leave them to a desktop that can't tell", async () => {
+  it("tidy again when the Space's chats or Inbox change, and leave them to a Space that can't tell", async () => {
     const push = new FakePush("granted");
     const { host } = await setup(push);
     await tick(300);
-    push.shown = [{ sessionId: "read-later", hostId: "host-a" }];
+    const here = spaceMemberKey("host-a", "owner");
+    push.shown = [
+      shown("chat", here, { sessionId: "read-later" }),
+      shown("turn", here, { pageId: "moved-later" }),
+    ];
     const reply = host.onRequest;
     host.onRequest = (request, respond, fail) => {
-      if (request.m === "chats.unread") fail("Unknown method", false, "unknown_method");
+      if (request.m === "chats.unread" || request.m === "inbox.turns")
+        fail("Unknown method", false, "unknown_method");
       else reply(request, respond, fail);
     };
     host.emit({ t: "evt", k: "changed", d: { topics: ["chats"] } });
     await tick(300);
-    expect(push.cleared).toEqual([]);
+    expect(push.dismissed).toEqual([]);
     host.onRequest = (request, respond, fail) => {
       if (request.m === "chats.unread") respond({ sessionIds: [] });
+      else if (request.m === "inbox.turns") fail("Unavailable", true, "unavailable");
+      else reply(request, respond, fail);
+    };
+    host.emit({ t: "evt", k: "changed", d: { topics: ["agents"] } });
+    await tick(300);
+    expect(push.dismissed).toEqual([]);
+    host.emit({ t: "evt", k: "changed", d: { topics: ["chats"] } });
+    await tick(300);
+    // The Space answered for its chats, not its Turns.
+    expect(push.dismissed).toEqual(["chat"]);
+    host.onRequest = (request, respond, fail) => {
+      if (request.m === "inbox.turns") respond({ pageIds: [] });
       else reply(request, respond, fail);
     };
     host.emit({ t: "evt", k: "changed", d: { topics: ["inbox"] } });
     await tick(300);
-    expect(push.cleared).toEqual([]);
-    host.emit({ t: "evt", k: "changed", d: { topics: ["chats"] } });
-    await tick(300);
-    expect(push.cleared).toEqual(["read-later"]);
+    expect(push.dismissed).toEqual(["chat", "turn"]);
   });
 
-  it("clear one chat's delivered notifications", async () => {
+  it("clear one chat's delivered notifications, including a Turn waiting on it", async () => {
     const push = new FakePush("granted");
     const { runtime } = await setup(push);
-    runtime.notifications.clearDelivered("session-1");
+    push.shown = [
+      shown("chat", "any", { sessionId: "session-1" }),
+      shown("turn", "any", { pageId: "page-1", sessionId: "session-1" }),
+      shown("other", "any", { sessionId: "session-2" }),
+    ];
+    runtime.notifications.clearDelivered({ sessionId: "session-1" });
     await tick(10);
-    expect(push.cleared).toEqual(["session-1"]);
+    expect(push.dismissed).toEqual(["chat", "turn"]);
+  });
+
+  it("clear what was delivered about a Page's Turn when its Inbox message opens", async () => {
+    const push = new FakePush("granted");
+    const { runtime } = await setup(push);
+    push.shown = [
+      shown("turn", "any", { pageId: "page-1" }),
+      shown("chat", "any", { sessionId: "session-1" }),
+      shown("other", "any", { pageId: "page-2" }),
+    ];
+    runtime.notifications.clearDelivered({ pageId: "page-1", sessionId: "session-1" });
+    await tick(10);
+    expect(push.dismissed).toEqual(["turn", "chat"]);
   });
 });

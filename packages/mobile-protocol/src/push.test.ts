@@ -22,6 +22,18 @@ describe("push sealing", () => {
     expect(openPushPayload(key, sealPushPayload(key, nonce, payload))).toEqual(payload);
   });
 
+  it("opens a Page Turn by its Page when it waits on no chat, and never names neither", () => {
+    const turn: PushPayload = {
+      kind: "needs_you",
+      pageId: "page-1",
+      title: "Ship",
+      body: "Review",
+    };
+    expect(openPushPayload(key, sealPushPayload(key, nonce, turn))).toEqual(turn);
+    const nowhere = { kind: "needs_you", title: "Ship", body: "Review" } as PushPayload;
+    expect(openPushPayload(key, sealPushPayload(key, nonce, nowhere))).toBeNull();
+  });
+
   it("reads as nothing under any other key or after tampering", () => {
     const sealed = sealPushPayload(key, nonce, payload);
     expect(openPushPayload(new Uint8Array(32), sealed)).toBeNull();

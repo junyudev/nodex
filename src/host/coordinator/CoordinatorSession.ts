@@ -2,10 +2,12 @@ import { createHash } from "node:crypto";
 import * as Context from "effect/Context";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import type { components } from "@nodex/core-protocol";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Semaphore from "effect/Semaphore";
+import * as Queue from "effect/Queue";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
 import { CoreAuthority } from "../../main/core-runtime/CoreAuthority";
@@ -39,6 +41,7 @@ export const make = Effect.gen(function* () {
     cached = { sessionId: snapshot.value.session_id ?? null };
     return cached.sessionId;
   });
+  const produce = lane.withPermits(1)(
     Effect.gen(function* () {
       const bound = yield* read();
       let recovering: components["schemas"]["ProjectWorkspaceAgentRuntimeSessionBinding"] | null =
@@ -111,6 +114,33 @@ export const make = Effect.gen(function* () {
       return sessionId;
     }),
   );
+  // The lifecycle producer inherits its Host's authority at acquisition. Callers send
+  // only an ensure signal; neither their proof nor caller-selected work enters this fiber.
+  type Reply = Deferred.Deferred<string, Effect.Error<typeof produce>>;
+  const requests = yield* Queue.bounded<Reply>(16);
+  yield* Effect.addFinalizer(() =>
+    Effect.gen(function* () {
+      const queued = yield* Queue.clear(requests);
+      yield* Queue.shutdown(requests);
+      yield* Effect.forEach(queued, Deferred.interrupt, { discard: true });
+    }),
+  );
+  yield* Queue.take(requests).pipe(
+    Effect.flatMap((reply) =>
+      Deferred.complete(reply, produce).pipe(Effect.ensuring(Deferred.interrupt(reply))),
+    ),
+    Effect.forever,
+    Effect.forkScoped({ startImmediately: true }),
+  );
+  const ensure = Effect.fn("CoordinatorSession.ensure")(function* () {
+    yield* read();
+    const reply = yield* Deferred.make<string, Effect.Error<typeof produce>>();
+    if (!(yield* Queue.offer(requests, reply))) return yield* Effect.interrupt;
+    const sessionId = yield* Deferred.await(reply);
+    // Opening remains a Member read, including if access changed during bootstrap.
+    yield* read();
+    return sessionId;
+  });
   const reset = () =>
     lane.withPermits(1)(
       Effect.gen(function* () {
@@ -138,6 +168,7 @@ export const make = Effect.gen(function* () {
     const current = cached ? cached.sessionId : yield* read();
     return current === sessionId;
   });
+  return { ensure, reset, isCoordinator };
 });
 export class CoordinatorSession extends Context.Service<
   CoordinatorSession,

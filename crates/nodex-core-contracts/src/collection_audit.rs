@@ -50,6 +50,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::PageWorkspaceConsumers { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::PageWorkLaunch { .. } => ReadBudgetPolicy::Identity,
         ProjectWorkspaceRead::InboxTurnNotifications
+        | ProjectWorkspaceRead::CurrentTurnNotifications
         | ProjectWorkspaceRead::PageWorkOutbox { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::ChatMessageInbound { .. }
         | ProjectWorkspaceRead::ReadCoordinator

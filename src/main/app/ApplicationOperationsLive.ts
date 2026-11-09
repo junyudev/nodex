@@ -24,7 +24,7 @@ import {
 } from "../codex-application/ManagedWorktreeCatalog";
 import { live as projectArchiveBlockersLive } from "../project-application/ProjectArchiveBlockers";
 import { live as projectLifecycleCommandsLive } from "../project-application/ProjectLifecycleCommands";
-import { live as projectSessionCommandsLive } from "../project-application/ProjectSessionCommands";
+import { live as projectSessionCommandsLive } from "../project-application/ProjectSessionCommandsLive";
 import { live as coreApplicationProjectionLive } from "../core-runtime/CoreApplicationProjectionRuntime";
 import { live as projectionDeliveryLive } from "../core-runtime/ProjectionDeliveryRuntime";
 import { live as coreEventHubLive } from "../core-runtime/CoreEventHub";

@@ -508,6 +508,9 @@ pub(crate) fn seed_agent_session(c: &Connection, thread: &str) -> Result<(), Sto
     let session = format!("session:{thread}");
     c.execute("INSERT OR IGNORE INTO project_sessions(id,project_id,no_thread_fallback_title,created_at,updated_at,activity_at) SELECT ?1,project_id,'Agent test',linked_at,linked_at,CAST(round(unixepoch(linked_at,'subsec')*1000) AS INTEGER) FROM codex_threads WHERE thread_id=?2",params![session,thread])?;
     c.execute("INSERT OR IGNORE INTO project_session_threads(session_id,thread_id,linked_at) SELECT ?1,thread_id,linked_at FROM codex_threads WHERE thread_id=?2",params![session,thread])?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

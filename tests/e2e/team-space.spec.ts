@@ -1,3 +1,4 @@
+import { enrollRemoteCore, RemoteHttpTransport } from "../../src/main/core-client/remote-http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -9,6 +10,8 @@ import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../scripts/scenarios/scen
 import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { openBoardPageFromCard } from "./support/open-board-page";
 import { invokeIpc } from "./support/editor-scenario";
+import { openWorkbenchSettings } from "./support/workbench-settings";
+import { parseSpaceInvite } from "../../src/shared/space-connection";
 
 const exec = promisify(execFile);
 
@@ -41,6 +44,13 @@ test("joins a team Space, collaborates live and keeps personal work isolated thr
     };
     await cli("space", "listen", "--address", "127.0.0.1:0");
     await cli("space", "rename", "Team Research");
+    const offer = await cli<{
+      space_id: string;
+      routes: string[];
+      fingerprint: string;
+      code: string;
+    }>("space", "link-device");
+    const invite = { ...offer, url: offer.routes[0]! };
     const view = await host.client.databaseRead({
       kind: "view",
       view_id: host.manifest.databaseViewId!,
@@ -105,6 +115,58 @@ test("joins a team Space, collaborates live and keeps personal work isolated thr
               (await invokeIpc(page, "spaces:list")).find((space) => space.kind === "team")?.name,
           )
           .toBe("Team Research");
+        // The remote Owner administers the team from Settings → Spaces on their own desktop.
+        await openWorkbenchSettings(page);
+        await page.getByRole("link", { name: "Spaces", exact: true }).click();
+        const people = page.getByRole("region", { name: "People", exact: true });
+        await people.getByRole("button", { name: "Invite someone", exact: true }).click();
+        const shownLink = await people.locator("code").first().textContent();
+        const shownCode = await people.locator("code").nth(1).textContent();
+        const shown = parseSpaceInvite(shownLink ?? "");
+        await page.screenshot({ path: path.join(screenshots, "01b-invite.png") });
+        const teammateInvite = {
+          url: shown.url,
+          fingerprint: shown.fingerprint,
+          code: shownCode ?? "",
+        };
+        const teammate = await enrollRemoteCore(teammateInvite, {
+          code: teammateInvite.code,
+          device_label: "Second desktop",
+          display_name: "Teammate",
+        });
+        expect(teammate.space_id).toBe(offer.space_id);
+        await people.getByRole("button", { name: "Done", exact: true }).click();
+        const devices = page.getByRole("region", { name: "Devices", exact: true });
+        const teammateDevice = devices.getByText("Second desktop", { exact: true });
+        await expect(teammateDevice).toBeVisible();
+        await expect(people.getByText("Teammate", { exact: true })).toBeVisible();
+        await page.screenshot({ path: path.join(screenshots, "01c-spaces-settings.png") });
+        await devices.getByRole("button", { name: "Link a device", exact: true }).click();
+        await expect(devices.getByRole("img", { name: /code/i })).toBeVisible();
+        await page.screenshot({ path: path.join(screenshots, "01d-link-device.png") });
+        await devices.getByRole("button", { name: "Done", exact: true }).click();
+        await devices.getByRole("button", { name: "Revoke Second desktop", exact: true }).click();
+        await expect(teammateDevice).toHaveCount(0);
+        const revoked = new RemoteHttpTransport({
+          ...teammateInvite,
+          buildId: "team-space-e2e",
+          spaceId: teammate.space_id,
+          deviceCredential: teammate.device_credential,
+        });
+        await expect(revoked.requestJson("GET", "/core/v1/remote-info")).rejects.toMatchObject({
+          status: 401,
+        });
+        await people
+          .getByRole("button", { name: "Remove Teammate from this Space", exact: true })
+          .click();
+        await people.getByRole("button", { name: "Remove Teammate", exact: true }).click();
+        await expect(people.getByText("Teammate", { exact: true })).toHaveCount(0);
+        expect(
+          (await invokeIpc(page, "space-admin:members")).find(
+            (member) => member.id === teammate.member_id,
+          )?.lifecycle,
+        ).toBe("removed");
+        await page.keyboard.press("Escape");
         await expect(
           page
             .getByRole("navigation", { name: "Home", exact: true })
@@ -176,6 +238,11 @@ test("joins a team Space, collaborates live and keeps personal work isolated thr
         await page.screenshot({ path: path.join(screenshots, "04-personal-restored.png") });
         await select(team.spaceId);
         await expect(editor).toBeVisible();
+        const hostDevices = await cli<{ id: string; revoked_at: number | null }[]>(
+          "space",
+          "devices",
+        );
+        await cli("space", "revoke", hostDevices.find((device) => device.revoked_at === null)!.id);
         await expect(page.getByRole("status").filter({ hasText: "Access revoked" })).toBeVisible({
           timeout: 20_000,
         });

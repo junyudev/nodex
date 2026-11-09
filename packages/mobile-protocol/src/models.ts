@@ -10,14 +10,15 @@ const isoTime = z.string();
 
 export const InboxScopeSchema = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("library") }),
+  z.looseObject({ kind: z.literal("all") }),
   z.looseObject({ kind: z.literal("project"), projectId: z.string() }),
 ]);
 export type InboxScope = z.infer<typeof InboxScopeSchema>;
 
-export const LIBRARY_INBOX: InboxScope = { kind: "library" };
+export const LIBRARY_INBOX: InboxScope = { kind: "all" };
 
 export const inboxScopeKey = (scope: InboxScope): string =>
-  scope.kind === "library" ? "library" : `project:${scope.projectId}`;
+  scope.kind === "project" ? `project:${scope.projectId}` : scope.kind;
 
 export const HostInfoSchema = z.looseObject({
   /** Stable for the Profile; derived from the Host's static key. */
@@ -33,10 +34,20 @@ export const HelloSchema = z.looseObject({
   protocol: z.number().int(),
   host: HostInfoSchema,
   deviceId: z.string(),
+  spaceId: z.string(),
+  spaceKind: z.enum(["personal", "team"]),
+  memberId: z.string(),
   /** Where this Host can be reached right now, best first. Replaces the phone's learned routes. */
   routes: z.array(z.string()),
 });
 export type Hello = z.infer<typeof HelloSchema>;
+
+/**
+ * One enrollment, as Hello's `host.id` and a notification's `hostId` name it. The phone partitions
+ * every local resource by it, including two Members of the same Space.
+ */
+export const spaceMemberKey = (spaceId: string, memberId: string) =>
+  JSON.stringify([spaceId, memberId]);
 
 export const ProjectSchema = z.looseObject({
   id: z.string(),
@@ -111,7 +122,24 @@ export const InboxProposalActionSchema = z.discriminatedUnion("type", [
     projectId: z.string(),
     projectName: z.string().nullable(),
   }),
-  z.looseObject({ type: z.literal("run_task"), name: z.string().nullable() }),
+  z.looseObject({
+    type: z.literal("execute_decision"),
+    decisionId: z.string(),
+    name: z.string().nullable(),
+  }),
+  z.looseObject({
+    type: z.literal("plan"),
+    summary: z.string(),
+    steps: z.array(
+      z.looseObject({
+        key: z.string(),
+        title: z.string(),
+        body: z.string(),
+        projectId: z.string(),
+        blockedBy: z.array(z.string()),
+      }),
+    ),
+  }),
 ]);
 export type InboxProposalAction = z.infer<typeof InboxProposalActionSchema>;
 
@@ -124,7 +152,7 @@ export const InboxProposalSchema = z.looseObject({
   summary: z.string(),
   rationale: z.string().nullable(),
   // A phone and its desktop update separately, so what a suggestion adds has defaults to read as.
-  origin: z.enum(["agent", "user", "schedule"]).default("agent"),
+  origin: z.enum(["agent", "user", "automation"]).default("agent"),
   /** Who wrote it, when that is known. */
   producedBy: z.string().nullable().default(null),
   action: InboxProposalActionSchema,
@@ -139,18 +167,47 @@ export const InboxProposalSchema = z.looseObject({
 });
 export type InboxProposal = z.infer<typeof InboxProposalSchema>;
 
-export const InboxMessageSchema = z.looseObject({
-  pageId: z.string(),
+const inboxSource = z.discriminatedUnion("kind", [
+  z.looseObject({ kind: z.literal("user"), label: z.string().nullable() }),
+  z.looseObject({ kind: z.literal("agent"), label: z.string().nullable() }),
+  z.looseObject({ kind: z.literal("command_line"), label: z.string().nullable() }),
+  z.looseObject({
+    kind: z.literal("automation"),
+    label: z.string().nullable(),
+    automationId: z.string(),
+    dispatchId: z.string(),
+  }),
+  z.looseObject({
+    kind: z.literal("github"),
+    label: z.string().nullable(),
+    externalThreadId: z.string(),
+    repository: z.string(),
+    number: z.number().int(),
+    url: z.string(),
+  }),
+  z.looseObject({
+    kind: z.literal("nodex"),
+    label: z.string().nullable(),
+    purpose: z.literal("answer"),
+    subjectSessionId: z.string().nullable(),
+  }),
+]);
+const inboxEntry = {
+  /** Core row identity. A Problem id never stands in for a Page id. */
+  id: z.string(),
   pageKey: z.string().nullable(),
   title: z.string(),
-  /** Nodex Markdown. File references use `nodex://files/ID`, readable through `files.read`. */
   body: z.string(),
   bodyTruncated: z.boolean(),
   submittedAt: isoTime,
-  source: z.looseObject({
-    kind: z.enum(["user", "agent", "command_line", "scheduled_task"]),
-    label: z.string().nullable(),
-  }),
+  source: inboxSource,
+  scope: InboxScopeSchema,
+  revision: z.number().int(),
+};
+export const IntakeEntrySchema = z.looseObject({
+  ...inboxEntry,
+  rowKind: z.literal("intake"),
+  pageId: z.string(),
   important: z.boolean(),
   state: z.enum(["open", "kept", "done"]),
   outcome: z.enum(["kept", "done", "moved", "chat"]).nullable(),
@@ -159,20 +216,88 @@ export const InboxMessageSchema = z.looseObject({
     error: z.string().nullable(),
   }),
   proposal: InboxProposalSchema.nullable(),
-  /** The chat this message went to, once it has one. */
   chatSessionId: z.string().nullable(),
-  scope: InboxScopeSchema,
-  revision: z.number().int(),
 });
-export type InboxMessage = z.infer<typeof InboxMessageSchema>;
-
+export const TurnEntrySchema = z.looseObject({
+  ...inboxEntry,
+  rowKind: z.literal("turn"),
+  pageId: z.string(),
+  turn: z.looseObject({
+    episode: z.string(),
+    reason: z
+      .enum([
+        "paused",
+        "working",
+        "queued",
+        "question",
+        "approval",
+        "blocked",
+        "failed",
+        "stalled",
+        "review",
+        "ready_to_start",
+        "starting",
+        "waiting_on_prerequisite",
+      ])
+      .nullable(),
+    since: isoTime,
+    options: z.array(z.string()),
+    replyCapability: z.discriminatedUnion("kind", [
+      z.looseObject({ kind: z.literal("available") }),
+      z.looseObject({ kind: z.literal("unavailable"), reason: z.string() }),
+    ]),
+    chatSessionId: z.string().nullable(),
+    pullRequestUrl: z.string().nullable(),
+    deliveryError: z.string().nullable(),
+  }),
+});
+export const AnswerEntrySchema = z.looseObject({
+  ...inboxEntry,
+  rowKind: z.literal("answer"),
+  pageId: z.string(),
+  chatSessionId: z.string().nullable(),
+});
+export const ProblemEntrySchema = z.looseObject({
+  ...inboxEntry,
+  rowKind: z.literal("problem"),
+  pageId: z.string().nullable(),
+  problem: z.looseObject({
+    id: z.string(),
+    fix: z.enum(["reconnect", "retry", "open_card"]),
+    sourceId: z.string().nullable(),
+    capability: z.discriminatedUnion("kind", [
+      z.looseObject({ kind: z.literal("available") }),
+      z.looseObject({ kind: z.literal("unavailable"), reason: z.string() }),
+    ]),
+  }),
+});
+export const InboxEntrySchema = z.discriminatedUnion("rowKind", [
+  IntakeEntrySchema,
+  TurnEntrySchema,
+  AnswerEntrySchema,
+  ProblemEntrySchema,
+]);
+export type InboxEntry = z.infer<typeof InboxEntrySchema>;
+export type IntakeEntry = z.infer<typeof IntakeEntrySchema>;
 export const InboxWindowSchema = z.looseObject({
-  items: z.array(InboxMessageSchema),
+  items: z.array(InboxEntrySchema),
   nextCursor: z.string().nullable(),
 });
 export type InboxWindow = z.infer<typeof InboxWindowSchema>;
 
 export const InboxDecisionSchema = z.discriminatedUnion("type", [
+  z.looseObject({ type: z.literal("turn_accept"), episode: z.string() }),
+  z.looseObject({ type: z.literal("turn_start"), episode: z.string() }),
+  z.looseObject({
+    type: z.literal("turn_reply"),
+    episode: z.string(),
+    text: z.string().min(1).regex(/\S/),
+  }),
+  z.looseObject({
+    type: z.literal("problem_fix"),
+    problemId: z.string(),
+    fix: z.enum(["reconnect", "retry", "open_card"]),
+  }),
   /** Authorize the message's current suggestion exactly as the phone showed it. */
   z.looseObject({
     type: z.literal("accept"),
@@ -231,6 +356,11 @@ export const ChatSummarySchema = z.looseObject({
   activityAt: z.number().nullable(),
   /** False for a conversation only its desktop owner can continue. */
   canSend: z.boolean(),
+  /**
+   * The reader may manage this chat, archiving and restoring it among the rest: they started it or
+   * own the Space, as Core says. A host that does not say leaves it to the desktop.
+   */
+  canManage: z.boolean().default(false),
 });
 export type ChatSummary = z.infer<typeof ChatSummarySchema>;
 
@@ -240,7 +370,10 @@ export const ChatListSchema = z.looseObject({
 });
 export type ChatList = z.infer<typeof ChatListSchema>;
 
-/** A file a phone can read through `files.read`; `ref` is opaque apart from `nodex://files/ID`. */
+/**
+ * A file a phone reads through `files.read`; `ref` is opaque apart from `nodex://files/ID`. A
+ * picture on the web keeps its `https:` address, which the phone loads itself.
+ */
 export const FileRefSchema = z.looseObject({
   ref: z.string(),
   name: z.string(),
@@ -249,6 +382,13 @@ export const FileRefSchema = z.looseObject({
 });
 export type FileRef = z.infer<typeof FileRefSchema>;
 
+/** A picture the transcript shows that its host cannot read, and why, in place of the picture. */
+export const UnavailablePictureSchema = z.looseObject({
+  name: z.string(),
+  reason: z.string(),
+});
+export type UnavailablePicture = z.infer<typeof UnavailablePictureSchema>;
+
 export const ChatItemSchema = z.discriminatedUnion("kind", [
   z.looseObject({
     kind: z.literal("user"),
@@ -256,6 +396,7 @@ export const ChatItemSchema = z.discriminatedUnion("kind", [
     at: isoTime,
     text: z.string(),
     files: z.array(FileRefSchema),
+    unavailableImages: z.array(UnavailablePictureSchema).default([]),
     /** Accepted but waiting behind the current Run. */
     queued: z.boolean(),
   }),
@@ -267,6 +408,7 @@ export const ChatItemSchema = z.discriminatedUnion("kind", [
     streaming: z.boolean(),
     /** The head of the text is omitted; `chat.item` returns all of it. */
     truncated: z.boolean(),
+    unavailableImages: z.array(UnavailablePictureSchema).default([]),
   }),
   z.looseObject({
     kind: z.literal("thinking"),
@@ -287,6 +429,13 @@ export const ChatItemSchema = z.discriminatedUnion("kind", [
     /** A bounded excerpt; `chat.item` returns the rest. */
     output: z.string().nullable(),
     outputTruncated: z.boolean(),
+    /**
+     * Pictures the step showed, read through `files.read`: the copy of a picture an Agent viewed,
+     * or else the pictures a tool returned. A transcript window names up to four; `chat.item`
+     * names them all.
+     */
+    images: z.array(FileRefSchema).default([]),
+    unavailableImages: z.array(UnavailablePictureSchema).default([]),
   }),
   z.looseObject({
     kind: z.literal("notice"),
@@ -353,6 +502,14 @@ export const ChatStateSchema = z.looseObject({
   agentLabel: z.string().nullable(),
   /** Null when this phone can send; otherwise why it cannot. */
   sendBlockedReason: z.string().nullable(),
+  /**
+   * Null when this phone's Member may stop the chat's current work; otherwise why not. Core lets
+   * the Run's requester, the chat's owner and the Space Owners stop it.
+   */
+  stopBlockedReason: z.string().nullable().default(null),
+  archived: z.boolean().default(false),
+  /** The reader may archive or restore the chat; see `ChatSummary.canManage`. */
+  canManage: z.boolean().default(false),
   /** Present while an Inbox decision has not started this chat. */
   start: ChatStartSchema.nullable().optional(),
 });
@@ -412,6 +569,7 @@ export const RpcErrorSchema = z.looseObject({
     "conflict",
     "rejected",
     "unavailable",
+    "capability_unavailable",
     "internal",
   ]),
   message: z.string(),

@@ -160,6 +160,9 @@ export class InboxApplication extends Context.Service<
     /** Messages waiting in the Library Inbox and in each Project's Inbox. */
     readonly counts: InboxEffect<InboxCounts>;
     readonly window: (input: InboxWindowInput) => InboxEffect<InboxWindow>;
+    readonly message: (
+      pageId: string,
+    ) => InboxEffect<{ readonly item: InboxWindow["items"][number]; readonly storeEpoch: string }>;
     readonly activity: (input: ActivityWindowInput) => InboxEffect<ActivityWindow>;
     readonly retryProblem: (input: RetryProblemInput) => InboxMutation;
     readonly replyDestination: (
@@ -544,8 +547,10 @@ export const make = Effect.gen(function* () {
         mayHaveCommitted: true,
       });
     const visible = yield* core.library
+      .read({ kind: "page_detail", page_id: parsed.pageId }, undefined, null)
       .pipe(
         Effect.flatMap((snapshot) =>
+          snapshot.value.kind === "page_detail"
             ? Effect.succeed(snapshot)
             : Effect.fail(new Error("Core did not confirm the captured Page")),
         ),

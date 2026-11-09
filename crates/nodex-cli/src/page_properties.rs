@@ -412,15 +412,19 @@ mod tests {
 #[allow(dead_code)]
 pub(crate) enum PropertySetResult {
     Source(
+        Box<
             ApplyResponse<
                 nodex_core_contracts::database::DatabaseCommitValue,
                 nodex_core_contracts::database::DatabaseReceipt,
+            >,
         >,
     ),
     Page(
+        Box<
             ApplyResponse<
                 nodex_core_contracts::library::LibraryCommitValue,
                 nodex_core_contracts::library::LibraryReceipt,
+            >,
         >,
     ),
 }

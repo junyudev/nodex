@@ -5274,39 +5274,77 @@ mod scheduled {
         let ProjectWorkspaceReadValue::InboxEntry { item: Some(item) } = value else {
             panic!("Owner's decision")
         };
-        assert!(plan.due_now);
-        automation(
-            workspace,
-            op,
-            AutomationIntent::ClaimDue {
-                work_token: plan.work_token.unwrap(),
-                limit: 10,
-                lease_duration_ms: 60_000,
-            },
-        )
-        .committed
-        .value
-        .claimed_leases
-        .remove(0)
-    }
-    fn hold(workspace: &TestWorkspace, op: &str, lease: &AutomationLease) {
-        apply_host(
-            &workspace.module,
-            op,
-            ProjectWorkspaceIntent::HoldScheduledFiring {
-                lease_id: lease.lease_id.clone(),
+        // Exact phone reads share the Member-qualified Inbox audience, including Automation intake.
+        for read in [
+            ProjectWorkspaceRead::InboxMessage {
                 page_id: "page:firing".into(),
             },
-        );
-    }
-    fn setup(workspace: &TestWorkspace, input: AutomationDefinitionInput) -> AutomationLease {
-        automation(
-            workspace,
-            "create-task",
-            AutomationIntent::CreateDefinition {
-                automation_id: "task".into(),
-                definition: input,
+            ProjectWorkspaceRead::InboxDispatchContext {
+                page_ids: vec!["page:firing".into()],
             },
+        ] {
+            workspace
+                .module
+                .read(
+                    &owner,
+                    ModuleReadRequest {
+                        contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        read: read.clone(),
+                    },
+                )
+                .expect("The Automation owner can review its intake");
+            assert_eq!(
+                workspace
+                    .module
+                    .read(
+                        &host(),
+                        ModuleReadRequest {
+                            contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                            read,
+                        }
+                    )
+                    .expect_err("Another Member cannot review the Automation's intake")
+                    .code,
+                CoreErrorCode::NotFound
+            );
+        }
+        send(
+            &workspace.module,
+            "shared-review",
+            "A shared intake message",
+        );
+        let context_read = ProjectWorkspaceRead::InboxDispatchContext {
+            page_ids: vec!["page:shared-review".into()],
+        };
+        let ProjectWorkspaceReadValue::InboxDispatchContext { context: other } =
+            read_host(&workspace.module, context_read.clone())
+        else {
+            panic!("Shared intake context");
+        };
+        assert!(
+            other
+                .open_proposals
+                .iter()
+                .all(|proposal| !proposal.page_ids.contains(&"page:firing".to_owned()))
+        );
+        let ProjectWorkspaceReadValue::InboxDispatchContext { context: own } = workspace
+            .module
+            .read(
+                &owner,
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: context_read,
+                },
+            )
+            .unwrap()
+            .value
+        else {
+            panic!("Automation owner's shared intake context");
+        };
+        assert!(
+            own.open_proposals
+                .iter()
+                .any(|proposal| proposal.page_ids.contains(&"page:firing".to_owned()))
         );
         let proposal = item.proposal.unwrap();
         let error = workspace

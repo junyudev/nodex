@@ -143,8 +143,6 @@ const retainedLocalStoreFiles = new Set([
   "ProfilePersistedAtoms.ts",
   "assets.test.ts",
   "assets.ts",
-  "codex-scheduled-automation-schedule.test.ts",
-  "codex-scheduled-automation-schedule.ts",
   "managed-blob-path.node.test.ts",
   "managed-blob-path.ts",
   "notifier.test.ts",
@@ -163,8 +161,14 @@ for (const entry of readdirSync(path.join(repositoryRoot, "src/main/local-store"
 
 const expectedRoutes = new Set([
   "/core/v1/admin/shutdown",
+  // Listener and certificate control stay local. Membership administration is
+  // admitted per command and rechecks Member authority at the writer.
   "/core/v1/admin/space/listen",
   "/core/v1/admin/space/prepare",
+  "/core/v1/admin/space/remote-access",
+  "/core/v1/admin/space/stop-listener",
+  "/core/v1/admin/space/link-device",
+  "/core/v1/admin/space/members",
   "/core/v1/admin/space/name",
   // A Member renames only their own Member; the writer admits it per command.
   "/core/v1/admin/space/member-name",
@@ -172,9 +176,21 @@ const expectedRoutes = new Set([
   "/core/v1/admin/host/register",
   "/core/v1/admin/host/poll",
   "/core/v1/admin/host/complete",
+  // The host reads each Member's presence under its lease, to decide who is away.
+  "/core/v1/admin/host/member-presence",
   // Members reach only the bounded, explicitly admitted execution-owner surface.
   "/core/v1/host/availability",
   "/core/v1/host/call",
+  // A Member's desktop reports only its own presence, bounded and expiring.
+  "/core/v1/host/presence",
+  // Phone relay controls remain private; Members use the authenticated WebSocket.
+  "/core/v1/host/phone/poll",
+  "/core/v1/host/phone/publish",
+  "/core/v1/host/phone/response-entitlements",
+  // Notification registration and recipients follow the same private relay boundary.
+  "/core/v1/host/phone/push",
+  "/core/v1/host/phone/push-recipients",
+  "/core/v1/host/phone/push-forget",
   "/core/v1/admin/space/invite",
   "/core/v1/admin/space/devices",
   // Transport counters are local Owner diagnostics, never a remote Member route.

@@ -92,6 +92,8 @@ pub(super) struct DeliveryOutcome<'a> {
     pub(super) failure: Option<&'a str>,
     pub(super) permanent: bool,
     pub(super) credential: bool,
+}
+
 pub(super) fn settle(
     c: &Connection,
     library: &str,
@@ -100,6 +102,8 @@ pub(super) fn settle(
     delivery_outcome: DeliveryOutcome<'_>,
 ) -> Result<(), StoreError> {
     let DeliveryOutcome {
+        receipt,
+        failure,
         permanent,
         credential,
     } = delivery_outcome;

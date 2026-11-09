@@ -128,6 +128,46 @@ describe("orchestration V2 wire projection", () => {
     expect(persisted).toMatchObject({ mcpToolCall: call });
   });
 
+  it("names a tool's servable result pictures on every read, by id and type, never by bytes", () => {
+    const png = "iVBORw0KGgo".repeat(8);
+    const persisted = decodeTurnItem({
+      ...base,
+      mcpToolCall: {
+        type: "mcpToolCall" as const,
+        id: "native-screenshot",
+        server: "browser",
+        tool: "screenshot",
+        status: "completed" as const,
+        arguments: {},
+        result: {
+          content: [
+            { type: "text", text: "Two frames" },
+            { type: "image", mimeType: "image/png", data: png },
+            // Bytes an earlier pass left out cannot be served, so they are not named.
+            { type: "image", mimeType: "image/png", sizeBytes: 2048 },
+            { type: "image", mimeType: "image/svg+xml", data: png },
+            { type: "inputImage", imageUrl: `data:image/jpeg;base64,${png}` },
+          ],
+          structuredContent: null,
+        },
+      },
+    });
+    const named = [
+      { attachmentId: "tool-result:1", mimeType: "image/png" },
+      { attachmentId: "tool-result:4", mimeType: "image/jpeg" },
+    ];
+    const history = projectTurnItemForWire(persisted);
+    expect(history).toMatchObject({ outputOmitted: true, resultImages: named });
+    expect(JSON.stringify(history)).not.toContain(png);
+    expect(decodeTurnItemJson(encodeTurnItemJson(history))).toMatchObject({ resultImages: named });
+    expect(projectTurnItemForDetail(persisted)).toMatchObject({ resultImages: named });
+    // Stored items never carry the list; a step without pictures names none.
+    expect(persisted).not.toHaveProperty("resultImages");
+    expect(
+      projectTurnItemForWire({ ...base, output: [{ type: "text", text: "No pictures" }] }),
+    ).not.toHaveProperty("resultImages");
+  });
+
   it("keeps Claude's normalized image positions across persistence and detail projection", () => {
     const image = {
       type: "image",

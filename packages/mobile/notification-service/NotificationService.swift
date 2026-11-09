@@ -27,8 +27,9 @@ final class NotificationService: UNNotificationServiceExtension {
 
         content.title = payload.title
         content.body = payload.body
-        content.threadIdentifier = payload.sessionId
-        content.userInfo["sessionId"] = payload.sessionId
+        if let thread = payload.thread { content.threadIdentifier = thread }
+        if let sessionId = payload.sessionId { content.userInfo["sessionId"] = sessionId }
+        if let pageId = payload.pageId { content.userInfo["pageId"] = pageId }
         content.userInfo["kind"] = payload.kind.rawValue
         if let hostId = payload.hostId { content.userInfo["hostId"] = hostId }
         deliver(content)

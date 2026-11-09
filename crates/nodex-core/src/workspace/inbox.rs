@@ -1403,6 +1403,8 @@ struct ConfirmedProposal<'a> {
     page_ids: &'a [String],
     action: &'a ProjectWorkspaceInboxDispatchAction,
     session_id: Option<&'a str>,
+}
+
 fn apply_confirmation(
     connection: &Connection,
     context: &BoundModuleContext,
@@ -1414,6 +1416,7 @@ fn apply_confirmation(
     let ConfirmedProposal {
         proposal_id,
         page_ids,
+        action,
         session_id,
     } = confirmed_proposal;
     if !matches!(
@@ -1448,6 +1451,7 @@ fn apply_confirmation(
                         pages: page_ids,
                         dispatch: decision_id,
                         agent: agent.as_ref(),
+                    },
                     now,
                 )?;
                 finish_proposal(connection, proposal_id, &encoded_action, now)?;

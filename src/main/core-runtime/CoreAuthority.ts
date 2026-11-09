@@ -1,3 +1,4 @@
+import { HostInvocation } from "../../host/HostInvocation";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -230,12 +231,15 @@ export const live = (
       ) {
         yield* assertOpen();
         const selected = yield* Ref.get(session);
+        const invocation = yield* HostInvocation;
         const invoke = (target: AuthoritySession) =>
           Effect.tryPromise({
             try: (signal) => {
+              const scoped = invocation ? target.client.forInvocation?.(invocation) : target.client;
+              if (!scoped) throw new Error("Core does not support Member invocation");
               const client = operationOptions.projectId
-                ? target.client.forProject(operationOptions.projectId)
-                : target.client;
+                ? scoped.forProject(operationOptions.projectId)
+                : scoped;
               return run(client, signal);
             },
             catch: (cause) => classifyCoreOperationFailure(operation, cause, target.generation),

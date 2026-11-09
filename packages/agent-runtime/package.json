@@ -27,6 +27,7 @@
     "./history-read": "./src/nodex/HistoryRead.ts",
     "./history-contracts": "./src/nodex/history-contracts.ts",
     "./image-mime": "./src/imageMime.ts",
+    "./markdown-images": "./src/nodex/MarkdownImages.ts",
     "./markdown-image-paths": "./src/nodex/MarkdownImagePaths.ts",
     "./native-attachment-resource": "./src/nodex/NativeAttachmentResource.ts",
     "./rewind": "./vendor/shared/src/orchestrationV2Rewind.ts"

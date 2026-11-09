@@ -8,7 +8,8 @@ import {
 } from "../agent-runtime/AgentRuntimeApplication";
 import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { CodexSidebarSectionSync } from "../codex-application/CodexSidebarSectionSync";
-import { ProjectSessionCommands, live } from "./ProjectSessionCommands";
+import { ProjectSessionCommands } from "./ProjectSessionCommands";
+import { live } from "./ProjectSessionCommandsLive";
 
 const fixture = () => {
   const calls: Array<{ method: string; command: unknown }> = [];

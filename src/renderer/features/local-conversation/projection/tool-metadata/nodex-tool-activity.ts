@@ -1,6 +1,7 @@
 import type { MarkdownBlock } from "../../../../../shared/nodex-markdown";
 import type { CodexDynamicToolCallView } from "../../../../lib/types";
 import { formatToolResultText, unwrapToolResult } from "./tool-output-envelope";
+import { parseCanonicalPageKey } from "../../../../../shared/page-key";
 
 /** The kind of thing a Nodex tool acted on; rows and group headers show it as their icon. */
 export type NodexToolActivityIcon =
@@ -452,11 +453,27 @@ function resolveDuplicatePage(call: CodexDynamicToolCallView): NodexToolActivity
   ]);
 }
 
-/** What the Agent wrote to another chat or the Inbox; a person may want to read it verbatim. */
+/** The argument that carries what the Agent wrote to someone, for each tool that writes. */
+const AUTHORED_MESSAGE_ARGUMENTS: Readonly<Record<string, string>> = {
+  create_session: "prompt",
+  send_message_to_session: "prompt",
+  send_to_inbox: "body",
+  report_work: "summary",
+  hand_back_message: "reason",
+  write_turn_note: "body",
+  answer_inbox_question: "body",
+  reply_to_origin: "body",
+};
+
+/** What the Agent wrote to another chat, the Inbox or a Page; a person may want to read it verbatim. */
 function readAuthoredMessage(call: CodexDynamicToolCallView): string | null {
-  const args = asRecord(call.arguments);
-  return stringValue(args, call.tool === "send_to_inbox" ? "body" : "prompt");
+  if (!Object.hasOwn(AUTHORED_MESSAGE_ARGUMENTS, call.tool)) return null;
+  return stringValue(asRecord(call.arguments), AUTHORED_MESSAGE_ARGUMENTS[call.tool]!);
 }
+
+const authored = (call: CodexDynamicToolCallView) => ({
+  expandable: readAuthoredMessage(call) !== null,
+});
 
 /** The chat a call addressed, or the one its result created; omitted means the calling chat. */
 function chatPart(
@@ -516,49 +533,118 @@ function resolveAutomation(call: CodexDynamicToolCallView): NodexToolActivity {
   const args = asRecord(call.arguments);
   const name = stringValue(args, "name");
   const named = name ? [text(quoted(name))] : [];
-  switch (stringValue(args, "mode")) {
+  switch (stringValue(args, "operation")) {
     case "list":
       return activity(
         call,
         "schedule",
-        verb("Listing scheduled tasks", "Listed scheduled tasks", "list scheduled tasks"),
+        verb("Listing automations", "Listed automations", "list automations"),
       );
     case "view":
       return activity(
         call,
         "schedule",
-        verb("Reading scheduled task", "Read scheduled task", "read scheduled task"),
+        verb("Reading automation", "Read automation", "read automation"),
         named,
       );
     case "create":
       return activity(
         call,
         "schedule",
-        verb("Creating scheduled task", "Created scheduled task", "create scheduled task"),
+        verb("Creating automation", "Created automation", "create automation"),
         named,
       );
     case "update":
       return activity(
         call,
         "schedule",
-        verb("Updating scheduled task", "Updated scheduled task", "update scheduled task"),
+        verb("Updating automation", "Updated automation", "update automation"),
         named,
       );
     case "delete":
       return activity(
         call,
         "schedule",
-        verb("Deleting scheduled task", "Deleted scheduled task", "delete scheduled task"),
+        verb("Deleting automation", "Deleted automation", "delete automation"),
+        named,
+      );
+    case "suggested_update":
+      return activity(
+        call,
+        "schedule",
+        verb(
+          "Proposing automation change",
+          "Proposed automation change",
+          "propose automation change",
+        ),
         named,
       );
     default:
       return activity(
         call,
         "schedule",
-        verb("Proposing scheduled task", "Proposed scheduled task", "propose scheduled task"),
+        verb("Proposing automation", "Proposed automation", "propose automation"),
         named,
       );
   }
+}
+
+/** A Page a work tool names: a Page key reads as itself, an identity resolves to its name. */
+function workPagePart(value: string | null, fallback: string): NodexToolActivityPart {
+  if (!value) return text(fallback);
+  return parseCanonicalPageKey(value.toUpperCase()) ? text(value) : pagePart(value);
+}
+
+function resolveReportWork(call: CodexDynamicToolCallView): NodexToolActivity {
+  const args = asRecord(call.arguments);
+  const page = workPagePart(stringValue(args, "pageId"), "work");
+  switch (stringValue(args, "outcome")) {
+    case "ready":
+      return activity(
+        call,
+        "task",
+        verb("Marking", "Marked", "mark"),
+        [page, text("ready for review")],
+        authored(call),
+      );
+    case "dropped":
+      return activity(call, "task", verb("Dropping", "Dropped", "drop"), [page], authored(call));
+    case "blocked":
+    case "failed":
+      return activity(
+        call,
+        "task",
+        verb("Reporting", "Reported", "report"),
+        [page, text(stringValue(args, "outcome")!)],
+        authored(call),
+      );
+    default:
+      return activity(
+        call,
+        "task",
+        verb("Reporting on", "Reported on", "report on"),
+        [page],
+        authored(call),
+      );
+  }
+}
+
+/** A followed GitHub thread by the number its readers know it by. */
+function resolveFollowThread(call: CodexDynamicToolCallView): NodexToolActivity {
+  const url = stringValue(asRecord(call.arguments), "url");
+  const match = url?.match(/\/(pull|issues)\/(\d+)(?:[/?#]|$)/u);
+  const thread = match
+    ? `${match[1] === "pull" ? "pull request" : "issue"} #${match[2]}`
+    : "GitHub thread";
+  return activity(call, "task", verb("Following", "Followed", "follow"), [text(thread)]);
+}
+
+/** How many distinct Inbox messages a routing response covers. */
+function routedMessageCount(call: CodexDynamicToolCallView): number {
+  const pageIds = asArray(asRecord(call.arguments)?.suggestions).flatMap((suggestion) =>
+    asArray(asRecord(suggestion)?.page_ids).filter((id) => typeof id === "string"),
+  );
+  return new Set(pageIds).size;
 }
 
 /** The surface a tab or presentation call opens, by the name the reader knows it by. */
@@ -641,7 +727,7 @@ const NODEX_TOOL_ACTIVITY = {
       "chat",
       verb("Creating chat", "Created chat", "create chat"),
       chatPart(call, "result", title),
-      { expandable: readAuthoredMessage(call) !== null },
+      authored(call),
     );
   },
   fork_session: (call) =>
@@ -658,7 +744,7 @@ const NODEX_TOOL_ACTIVITY = {
       "chat",
       verb("Messaging chat", "Messaged chat", "message chat"),
       chatPart(call, "argument"),
-      { expandable: readAuthoredMessage(call) !== null },
+      authored(call),
     ),
   read_session: (call) =>
     activity(
@@ -899,7 +985,7 @@ const NODEX_TOOL_ACTIVITY = {
     "move chat in sidebar",
   ),
 
-  // Account, plugins, Inbox and scheduled tasks
+  // Account, plugins, Inbox and automations
   get_usage_limits: fixed(
     "account",
     "Checking usage limits",
@@ -928,10 +1014,10 @@ const NODEX_TOOL_ACTIVITY = {
       "inbox",
       verb("Sending to Inbox", "Sent to Inbox", "send to Inbox"),
       title ? [text(quoted(title))] : [],
-      { expandable: readAuthoredMessage(call) !== null },
+      authored(call),
     );
   },
-  automation_update: resolveAutomation,
+  automations_update: resolveAutomation,
   load_workspace_dependencies: fixed(
     "account",
     "Loading workspace dependencies",
@@ -944,6 +1030,68 @@ const NODEX_TOOL_ACTIVITY = {
     "Checked available tools",
     "check available tools",
   ),
+
+  // Page work and coordination
+  start_work: (call) =>
+    activity(call, "task", verb("Starting work on", "Started work on", "start work on"), [
+      workPagePart(stringValue(asRecord(call.arguments), "pageId"), "page"),
+    ]),
+  report_work: resolveReportWork,
+  follow_thread: resolveFollowThread,
+  hand_back_message: (call) =>
+    activity(
+      call,
+      "inbox",
+      verb(
+        "Handing message back to Inbox",
+        "Handed message back to Inbox",
+        "hand message back to Inbox",
+      ),
+      [],
+      authored(call),
+    ),
+  reply_to_origin: (call) =>
+    activity(
+      call,
+      "task",
+      verb("Replying on GitHub about", "Replied on GitHub about", "reply on GitHub about"),
+      [workPagePart(stringValue(asRecord(call.arguments), "pageId"), "work")],
+      authored(call),
+    ),
+  inbox_suggest: (call) => {
+    const count = routedMessageCount(call);
+    return activity(call, "inbox", verb("Routing", "Routed", "route"), [
+      text(count > 0 ? plural(count, "Inbox message") : "Inbox messages"),
+    ]);
+  },
+  write_turn_note: (call) =>
+    activity(
+      call,
+      "task",
+      verb("Writing note on", "Wrote note on", "write note on"),
+      [workPagePart(stringValue(asRecord(call.arguments), "pageId"), "page")],
+      authored(call),
+    ),
+  answer_inbox_question: (call) =>
+    activity(
+      call,
+      "inbox",
+      verb("Answering Inbox question", "Answered Inbox question", "answer Inbox question"),
+      [],
+      authored(call),
+    ),
+  automation_assessment_read: fixed(
+    "schedule",
+    "Reading automation evidence",
+    "Read automation evidence",
+    "read automation evidence",
+  ),
+  automation_assessment_submit: (call) => {
+    const count = asArray(asRecord(call.arguments)?.automation_assessments).length;
+    return activity(call, "schedule", verb("Judging", "Judged", "judge"), [
+      text(count > 0 ? plural(count, "automation") : "automations"),
+    ]);
+  },
 
   // Delegated tasks
   list_agent_models: fixed(
@@ -1041,12 +1189,6 @@ const IDENTITY_PATTERN = /\s*\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[
 /** A failure's words reach a person without the identities they cite; the inspector keeps them. */
 const withoutIdentities = (message: string): string => message.replace(IDENTITY_PATTERN, "");
 
-const AUTHORED_MESSAGE_TOOLS: ReadonlySet<string> = new Set([
-  "create_session",
-  "send_message_to_session",
-  "send_to_inbox",
-]);
-
 /**
  * The result of an opened row. It may parse a whole Page, so only an opened row asks for it, and
  * a settled row's digest is not mistaken for a result: withheld output reads as nothing yet.
@@ -1075,7 +1217,7 @@ export function readNodexToolDetail(call: CodexDynamicToolCallView): NodexToolDe
         : null;
   return {
     document,
-    message: AUTHORED_MESSAGE_TOOLS.has(call.tool) ? readAuthoredMessage(call) : null,
+    message: readAuthoredMessage(call),
     pages: readResultPages(call, data),
     failure: null,
   };

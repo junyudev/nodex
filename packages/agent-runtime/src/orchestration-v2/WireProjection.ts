@@ -14,6 +14,7 @@ import {
   toolOutputIndicatesFailure,
 } from "@nodex/runtime-shared/toolOutput";
 import { MAX_STORED_COMMAND_OUTPUT_BYTES } from "./commandOutputStorage.ts";
+import { withToolResultImages } from "./toolResultImages.ts";
 
 const MAX_DETAIL_STRING_BYTES = 32_768;
 const MAX_DYNAMIC_VALUE_BYTES = 16_384;
@@ -254,7 +255,7 @@ export function projectTurnItemForWire(item: OrchestrationV2TurnItem): Orchestra
       return { ...metadata, prompt: "", result: null };
     }
     case "dynamic_tool": {
-      const { output: rawOutput, mcpToolCall, ...projected } = item;
+      const { output: rawOutput, mcpToolCall, ...projected } = withToolResultImages(item);
       const output = compactDynamicToolOutput(rawOutput, item.toolName);
       return {
         ...projected,
@@ -337,7 +338,7 @@ export function projectTurnItemForDetail(item: OrchestrationV2TurnItem): Orchest
       };
     case "dynamic_tool":
       return {
-        ...item,
+        ...withToolResultImages(item),
         input: boundDynamicValue(item.input),
         output: boundToolOutput(item.output),
         ...(item.mcpToolCall === undefined

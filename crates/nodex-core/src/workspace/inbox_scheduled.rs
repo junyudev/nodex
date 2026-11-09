@@ -452,6 +452,8 @@ pub(crate) struct PreparedRunPages {
     pub(crate) pages: Vec<String>,
     pub(crate) documents: Vec<String>,
     pub(crate) databases: Vec<String>,
+}
+
 /// New-chat Automation runs allocate their work Page beside the admitted Run. Ask first
 /// decisions reuse the reviewed intake Page; runbooks remain ordinary links.
 pub(crate) fn prepare_automation_run_pages(
@@ -656,6 +658,7 @@ pub(crate) fn run_held_automation_now(
             page_ids: &proposal.page_ids,
             action: &proposal.action,
             session_id: None,
+        },
         scope.committed_at(),
     )?;
     statuses.follow(

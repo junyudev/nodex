@@ -44,7 +44,12 @@ pub(super) fn create_session(
     if coordinator {
         require_host(context)?;
     }
+    // Agent commands prove Turn provenance; remote Members reach this through an exact
     // Core-issued Host launch proof, a side chat's included. Coordinator binding stays Host-only.
+    if !matches!(
+        context.adapter,
+        AdapterKind::Agent | AdapterKind::RemoteMember
+    ) {
         require_host(context)?;
     }
     if let Some(source_id) = side_chat_source_session_id {
@@ -312,7 +317,7 @@ pub(super) fn read_binding(
     library_id: &str,
     session_id: &str,
 ) -> Result<Option<ProjectWorkspaceAgentRuntimeSessionBinding>, StoreError> {
-    require_host(context)?;
+    require_binding_reader(context)?;
     validate_id("session_id", session_id)?;
     let project_id = connection
         .query_row(
@@ -360,6 +365,20 @@ pub(super) fn require_host(context: &BoundModuleContext) -> Result<(), StoreErro
     ))
 }
 
+// These logical routes are shared Session metadata. Reading them grants neither
+// execution ownership nor permission to create, adopt or retire a binding.
+fn require_binding_reader(context: &BoundModuleContext) -> Result<(), StoreError> {
+    if context.adapter == AdapterKind::RemoteMember
+        && context
+            .principal
+            .as_ref()
+            .is_some_and(|principal| principal.space_id == context.library_id.0)
+    {
+        return Ok(());
+    }
+    require_host(context)
+}
+
 pub(super) fn read_binding_by_execution(
     connection: &Connection,
     context: &BoundModuleContext,
@@ -367,7 +386,7 @@ pub(super) fn read_binding_by_execution(
     runtime_id: &str,
     runtime_thread_id: &str,
 ) -> Result<Option<ProjectWorkspaceAgentRuntimeSessionBinding>, StoreError> {
-    require_host(context)?;
+    require_binding_reader(context)?;
     validate_id("runtime_id", runtime_id)?;
     validate_id("runtime_thread_id", runtime_thread_id)?;
     let session_id = connection.query_row(
@@ -434,7 +453,7 @@ pub(super) fn read_binding_window(
         scope,
         window,
     } = query;
-    require_host(context)?;
+    require_binding_reader(context)?;
     validate_id("runtime_id", runtime_id)?;
     use nodex_core_contracts::workspace::AgentRuntimeBindingScope;
     let (project_id, scope_kind) = match scope {
@@ -562,6 +581,7 @@ mod tests {
                 archived: false,
                 order: None,
                 projectless_only: None,
+                exclude_drafts: None,
                 project_id: None,
                 query: None,
                 native_only: None,
@@ -1392,6 +1412,7 @@ mod tests {
                 order: None,
                 archived: false,
                 projectless_only: None,
+                exclude_drafts: None,
                 project_id: None,
                 query: None,
                 native_only: None,

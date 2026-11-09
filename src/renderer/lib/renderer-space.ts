@@ -5,6 +5,7 @@ const testBinding: SpaceConnectionSummary = {
   spaceId: "test-space",
   kind: "personal",
   memberId: null,
+  deviceId: null,
   name: "Personal",
   availability: "ready",
 };

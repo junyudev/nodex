@@ -1,3 +1,6 @@
+#[path = "client_remote.rs"]
+mod remote;
+pub use remote::RemoteConnection;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
 
@@ -103,6 +106,7 @@ pub struct CoreClient {
 enum CoreEndpoint {
     Local(PathBuf),
     Agent(SocketAddr),
+    Remote(remote::RemoteEndpoint),
 }
 
 trait HttpStream: Read + Write {}
@@ -121,6 +125,7 @@ impl CoreEndpoint {
                 stream.set_write_timeout(Some(timeout))?;
                 Ok(Box::new(stream))
             }
+            Self::Remote(endpoint) => Ok(Box::new(endpoint.open(timeout)?)),
             Self::Agent(address) => {
                 let stream = TcpStream::connect_timeout(address, timeout)?;
                 stream.set_read_timeout(Some(timeout))?;
@@ -139,6 +144,65 @@ pub struct FileBlobResponse {
 }
 
 impl CoreClient {
+    pub fn connect_remote(input: &RemoteConnection, build_id: &str) -> Result<Self, ClientError> {
+        let socket = CoreEndpoint::Remote(remote::RemoteEndpoint::new(input)?);
+        let session: nodex_core_contracts::team::SessionResponse = request_json(
+            &socket,
+            "",
+            "/session",
+            &nodex_core_contracts::team::SessionRequest {
+                device_credential: input.device_credential.clone(),
+            },
+            &[],
+        )?;
+        let auth = session.session_token;
+        let info: crate::RemoteCoreInfo =
+            request_without_body(&socket, &auth, "/core/v1/remote-info", &[])?;
+        if info.library_id != input.space_id || session.principal.space_id != input.space_id {
+            return Err(ClientError::InvalidRuntime(
+                "Remote Space identity changed".into(),
+            ));
+        }
+        let connection_id = format!("remote-cli:{}", random_hex(16)?);
+        let handshake: HandshakeResponse = request_json(
+            &socket,
+            &auth,
+            "/core/v1/handshake",
+            &HandshakeRequest {
+                requirements: core_client_requirements(),
+                client: ClientIdentity {
+                    kind: ClientKind::RemoteMember,
+                    build_id: build_id.into(),
+                },
+                connection_id: connection_id.clone(),
+                expected_generation: info.generation.clone(),
+            },
+            &[],
+        )?;
+        let g = info.generation;
+        let descriptor = RuntimeDescriptor {
+            manifest: info.manifest,
+            manifest_digest: g.manifest_digest,
+            artifact: handshake.artifact.clone(),
+            actual_store_format: info.actual_store_format,
+            pid: g.pid,
+            start_nonce: g.start_nonce,
+            endpoint: input.url.clone(),
+            profile_id: g.profile_id,
+            store_epoch: g.store_epoch,
+            readiness_generation: g.readiness_generation,
+        };
+        validate_handshake(&descriptor, &handshake)?;
+        Ok(Self {
+            socket,
+            auth,
+            connection_id,
+            connection_binding: handshake.connection_binding.clone(),
+            agent_attribution: None,
+            descriptor,
+            handshake,
+        })
+    }
     pub fn connect(home: &Path, build_id: &str) -> Result<Self, ClientError> {
         let runtime = RuntimeFiles::read(home)?;
         let requirements = core_client_requirements();
@@ -235,6 +299,42 @@ impl CoreClient {
         Ok(())
     }
 
+    pub fn space_remote_access(
+        &self,
+    ) -> Result<nodex_core_contracts::team::RemoteAccessState, ClientError> {
+        request_without_body(
+            &self.socket,
+            &self.auth,
+            "/core/v1/admin/space/remote-access",
+            &[],
+        )
+    }
+    pub fn space_stop_listener(
+        &self,
+    ) -> Result<nodex_core_contracts::team::RemoteAccessState, ClientError> {
+        self.connected_request(
+            "/core/v1/admin/space/stop-listener",
+            &serde_json::json!({}),
+            ContextHeaders::default(),
+        )
+    }
+    pub fn space_link_device(
+        &self,
+    ) -> Result<nodex_core_contracts::team::DeviceLinkOffer, ClientError> {
+        self.connected_request(
+            "/core/v1/admin/space/link-device",
+            &serde_json::json!({}),
+            ContextHeaders::default(),
+        )
+    }
+    pub fn space_members(&self) -> Result<Vec<nodex_core_contracts::library::Member>, ClientError> {
+        request_without_body(
+            &self.socket,
+            &self.auth,
+            "/core/v1/admin/space/members",
+            &[],
+        )
+    }
     pub fn space_listen(
         &self,
         request: nodex_core_contracts::team::ListenRequest,

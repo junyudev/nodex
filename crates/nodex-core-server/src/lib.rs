@@ -10,11 +10,15 @@ mod http_error;
 mod lifecycle;
 mod lifecycle_summary;
 mod logging;
+mod member_presence;
 mod metrics;
+mod phone_bridge;
 pub mod private_filesystem;
 mod remote;
 /// Authenticated request windows, one source for the listener and its tests.
 pub use remote::{DEVICE_REQUESTS_PER_MINUTE, MEMBER_REQUESTS_PER_MINUTE};
+mod remote_access_config;
+mod remote_routes;
 mod request_execution;
 mod runtime_files;
 mod transport_bounds;
@@ -219,6 +223,8 @@ struct ServerState {
     membership: LibraryMembership,
     remote: remote::RemoteState,
     host_bridge: host_bridge::HostBridge,
+    phone_bridge: phone_bridge::PhoneBridge,
+    member_presence: member_presence::MemberPresenceRegistry,
     auth_header: String,
     agent_attribution: agent_attribution::AgentAttributionKey,
     owner_user: UserIdentity,
@@ -502,6 +508,24 @@ async fn authenticate(
         || !constant_time_equal(supplied.as_bytes(), state.auth_header.as_bytes())
     {
         return ApiError::new(StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    }
+    if let Some(token) = request
+        .headers()
+        .get(host_bridge::INVOCATION_HEADER)
+        .and_then(|v| v.to_str().ok())
+    {
+        let path = request.uri().path();
+        let observation = path.ends_with("/read")
+            || (matches!(request.method().as_str(), "GET" | "HEAD")
+                && (path.starts_with("/core/v1/files/blobs/")
+                    || path.starts_with("/core/v1/threads/")));
+        if state.phone_bridge.observation(token) && !observation {
+            return ApiError::new(
+                StatusCode::FORBIDDEN,
+                "Phone observations cannot mutate the Space",
+            )
+            .into_response();
+        }
     }
     next.run(request).await
 }
@@ -900,6 +924,7 @@ async fn handshake(
                 build_id: &request.client.build_id,
                 transport_version: TRANSPORT_PROTOCOL_MAX,
                 principal,
+            },
         )
         .map_err(connection_registry_error)?;
     let connection_id = log_identity(&request.connection_id);
@@ -1620,15 +1645,30 @@ async fn workspace_apply(
             return Json(ProjectWorkspaceApplyResponse(response_envelope(Err(error))));
         }
     };
+    let accepted_message = match &request.intent {
+        nodex_core_contracts::workspace::ProjectWorkspaceIntent::MutateSession {
             session_id,
             intent:
                 nodex_core_contracts::workspace::ProjectSessionIntent::RecordUserMessage { message_id },
+        } => Some((session_id, message_id)),
+        nodex_core_contracts::workspace::ProjectWorkspaceIntent::RecordChatDelivery {
+            session_id,
+            delivery_id,
+            ..
+        } => Some((session_id, delivery_id)),
+        _ => None,
+    };
+    if context.principal.is_some()
+        && let Some((session_id, message_id)) = accepted_message
     {
         let proof = optional_header(&headers, host_bridge::INVOCATION_HEADER, "Host invocation");
         if !proof.ok().flatten().is_some_and(|token| {
             state
                 .host_bridge
                 .authorizes_message(&token, session_id, message_id)
+                || state
+                    .phone_bridge
+                    .authorizes_message(&token, session_id, message_id)
         }) {
             return Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
                 unauthorized("Accepted messages require their live Host delivery"),
@@ -1648,14 +1688,30 @@ async fn workspace_apply(
             unauthorized("Inbox decisions are confirmed through the Space host"),
         ))));
     }
+    if context.principal.is_some()
+        && let nodex_core_contracts::workspace::ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            session_id,
+            launch_request_id,
             side_chat_source_session_id,
+            ..
+        } = &request.intent
+    {
+        let proof = optional_header(&headers, host_bridge::INVOCATION_HEADER, "Host invocation");
         let side_chat = side_chat_source_session_id.as_deref();
+        if !proof.ok().flatten().is_some_and(|token| {
+            state
                 .host_bridge
                 .authorizes_launch(&token, session_id, launch_request_id, side_chat)
                 || (side_chat.is_none()
                     && state
                         .phone_bridge
                         .authorizes_launch(&token, session_id, launch_request_id))
+        }) {
+            return Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
+                unauthorized("New chats require their live Host launch"),
+            ))));
+        }
+    }
     // A Member closes their own side chat only through the Space host, which retires its execution.
     if context.principal.is_some()
         && let nodex_core_contracts::workspace::ProjectWorkspaceIntent::DeleteSession { session_id } =
@@ -3240,12 +3296,46 @@ fn router(state: Arc<ServerState>) -> Router {
         .route("/enroll", post(remote::enroll))
         .route("/session", post(remote::session))
         .route("/core/v1/admin/space/listen", post(remote::start_listener))
+        .route(
+            "/core/v1/admin/space/remote-access",
+            get(remote::remote_access),
+        )
+        .route(
+            "/core/v1/admin/space/stop-listener",
+            post(remote::stop_listener),
+        )
+        .route(
+            "/core/v1/admin/space/link-device",
+            post(remote::link_device),
+        )
+        .route("/core/v1/admin/space/members", get(remote::members))
         .route("/core/v1/admin/space/prepare", post(remote::prepare_space))
         .route("/core/v1/admin/host/register", post(host_bridge::register))
         .route("/core/v1/admin/host/poll", post(host_bridge::poll))
         .route("/core/v1/admin/host/complete", post(host_bridge::complete))
+        .route("/core/v1/host/presence", post(member_presence::report))
+        .route(
+            "/core/v1/admin/host/member-presence",
+            post(member_presence::read),
+        )
         .route("/core/v1/host/availability", get(host_bridge::availability))
         .route("/core/v1/host/call", post(host_bridge::call))
+        .route("/core/v1/phone", get(phone_bridge::upgrade))
+        .route(
+            "/core/v1/host/phone/response-entitlements",
+            post(phone_bridge::response_entitlements),
+        )
+        .route("/core/v1/host/phone/push", post(phone_bridge::commit_push))
+        .route(
+            "/core/v1/host/phone/push-recipients",
+            post(phone_bridge::push_recipients),
+        )
+        .route(
+            "/core/v1/host/phone/push-forget",
+            post(phone_bridge::forget_push),
+        )
+        .route("/core/v1/host/phone/poll", post(phone_bridge::poll))
+        .route("/core/v1/host/phone/publish", post(phone_bridge::publish))
         .route("/core/v1/admin/space/invite", post(remote::invite))
         .route("/core/v1/admin/space/name", post(remote::rename_space))
         .route(
@@ -3359,6 +3449,12 @@ fn module_context(
     }
     let principal = delegated
         .as_ref()
+        .map(|token| {
+            state
+                .host_bridge
+                .principal(token, &state.workspace)
+                .or_else(|_| state.phone_bridge.principal(token, &state.workspace, true))
+        })
         .transpose()?
         .or_else(|| bound.principal.clone());
     if principal
@@ -4337,6 +4433,8 @@ pub async fn run_with_options(
         membership: LibraryMembership::new(&store, identity.library_id.clone()),
         remote: remote::RemoteState::default(),
         host_bridge: host_bridge::HostBridge::default(),
+        phone_bridge: phone_bridge::PhoneBridge::default(),
+        member_presence: member_presence::MemberPresenceRegistry::default(),
         auth_header: format!("Bearer {auth}"),
         agent_attribution: agent_attribution::AgentAttributionKey::generate()
             .map_err(|_| "Agent attribution key is unavailable")?,
@@ -4370,6 +4468,11 @@ pub async fn run_with_options(
         remote::listen(Arc::clone(&state), request)
             .await
             .map_err(|_| "Remote listener could not start")?;
+    } else if remote::restore_private(Arc::clone(&state)).await.is_err() {
+        tracing::warn!(
+            subsystem = "remote_access",
+            "Saved Remote access listener is unavailable"
+        );
     }
     let idle_task = idle_timeout.map(|timeout| {
         let idle_state = Arc::clone(&state);

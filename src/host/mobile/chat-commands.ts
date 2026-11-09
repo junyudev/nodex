@@ -1,6 +1,13 @@
+import { CodexThreadReadState } from "../../main/codex-application/CodexThreadReadState";
+import * as Option from "effect/Option";
 import * as Effect from "effect/Effect";
 import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { createOperationId } from "../../main/core-runtime/operation-identity";
 import { resolveInboxModel } from "../inbox-application/InboxRuntimeSelection";
+import { makeSetSessionUnreadWithNative } from "../../main/project-application/SessionUnread";
+import { ProjectSessionCommands } from "../../main/project-application/ProjectSessionCommands";
+import { MemberMessageRefusal, MemberMessages } from "../MemberMessages";
 import { hostLocalCommit } from "../host-local-commit";
 import type { ProjectWorkspaceCommandResult } from "../../main/project-application/ProjectWorkspace";
 import { isUuidV7 } from "../../shared/uuid-v7";
@@ -8,6 +15,8 @@ import { approvalOptions, snapshotTurnItems } from "./transcript-projection";
 import type { makeMobileCatalog } from "./catalog";
 import { invalid, missing, rpcError, unavailable, type MobileHandlers } from "./rpc";
 
+const refusal = (error: MemberMessageRefusal) =>
+  error.reason === "missing" ? missing(error.message) : rpcError("rejected", error.message);
 /** A phone sees a product sentence; the Runtime's own reason stays in the Host's log. */
 const runtimeError = (error: { readonly admissionRejected?: boolean; readonly message: string }) =>
   error.admissionRejected
@@ -20,6 +29,13 @@ export const makeMobileChatCommands = Effect.fn("MobileChatCommands.make")(funct
   catalog: Effect.Success<typeof makeMobileCatalog>,
 ) {
   const runtime = yield* AgentRuntimeApplication;
+  const messages = yield* MemberMessages;
+  const commands = yield* Effect.serviceOption(ProjectSessionCommands);
+  const nativeUnread = yield* Effect.serviceOption(CodexThreadReadState);
+  const setUnread = yield* makeSetSessionUnreadWithNative(Option.getOrNull(nativeUnread));
+  const session = (sessionId: string) => messages.session(sessionId).pipe(Effect.mapError(refusal));
+  const writable = (sessionId: string) =>
+    messages.writable(sessionId).pipe(Effect.mapError(refusal));
 
   // A phone starts a chat as a desktop does, through the host's one owner of Members' chats.
   const start: MobileHandlers["chats.start"] = (input) =>
@@ -65,13 +81,22 @@ export const makeMobileChatCommands = Effect.fn("MobileChatCommands.make")(funct
     });
   const send: MobileHandlers["chat.send"] = (input) =>
     Effect.gen(function* () {
+      const { sessionId, text, fileRefs, messageId, delivery } = input;
       if (!text.trim() && !fileRefs.length)
         return yield* Effect.fail(invalid("Write a message or attach a file."));
+      yield* messages
         .send({
           sessionId,
           message: { messageId, text, ...(fileRefs.length ? { fileRefs: [...fileRefs] } : {}) },
           delivery,
         })
+        .pipe(
+          Effect.catch((error) =>
+            error instanceof MemberMessageRefusal
+              ? Effect.fail(refusal(error))
+              : Effect.flatMap(runtimeError(error), Effect.fail),
+          ),
+        );
       return {};
     });
   const respond: MobileHandlers["chat.respond"] = (input) =>
@@ -168,6 +193,7 @@ export const makeMobileChatCommands = Effect.fn("MobileChatCommands.make")(funct
                 Effect.flatMap((result) =>
                   result.ok ? Effect.void : Effect.fail(rpcError("rejected", result.error.message)),
                 ),
+              );
             return Option.isSome(commands)
               ? settle(
                   archived ? commands.value.archive(command) : commands.value.unarchive(command),

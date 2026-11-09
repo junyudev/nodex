@@ -1,14 +1,29 @@
 import type { ChatItem } from "@nodex/mobile-protocol";
 import { useEffect, useState } from "react";
-import { ScrollView, View } from "react-native";
+import { ScrollView, View, useWindowDimensions } from "react-native";
 
 import { Markdown } from "../../markdown/Markdown";
-import type { ScreenProps } from "../../navigation/types";
-import { fetchChatItem } from "../../runtime";
+import type { GalleryImage, ScreenProps } from "../../navigation/types";
+import { fetchChatItem, useChat } from "../../runtime";
 import { Icon } from "../../ui/icons";
 import { EmptyState, Mono, Txt } from "../../ui/primitives";
+import { ChatGallery, ImageStrip, UnavailablePictures, useOpenPicture } from "./ChatImages";
+import { galleryImages, thumbnailSize, withItem } from "./chat-images";
+import { isRunningStep } from "./transcript-rows";
+
+/** The screen's padding, `p-4`, which the pictures fit inside. */
+const CONTENT_INSET = 16;
+
+/** The step's pictures, sized to the screen; they download as they are shown. */
+const StepImages = ({ images }: { readonly images: readonly GalleryImage[] }) => {
+  const { width } = useWindowDimensions();
+  return (
+    <ImageStrip images={images} size={thumbnailSize(width - CONTENT_INSET * 2, images.length)} />
+  );
+};
 
 const ItemBody = ({ item }: { readonly item: ChatItem }) => {
+  const openPicture = useOpenPicture();
   switch (item.kind) {
     case "activity":
       return (
@@ -27,10 +42,12 @@ const ItemBody = ({ item }: { readonly item: ChatItem }) => {
               {item.detail}
             </Mono>
           ) : null}
+          <StepImages images={galleryImages(item.images)} />
+          <UnavailablePictures pictures={item.unavailableImages} />
           {item.output ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <Mono selectable className="text-[13px] leading-[19px]">
-                {item.output}
+                {item.outputTruncated ? `…\n${item.output}` : item.output}
               </Mono>
             </ScrollView>
           ) : null}
@@ -38,30 +55,67 @@ const ItemBody = ({ item }: { readonly item: ChatItem }) => {
       );
     case "assistant":
     case "thinking":
-      return <Markdown text={item.text} />;
+      return (
+        <View className="gap-3">
+          <Markdown
+            text={item.text}
+            actions={{
+              onOpenImage: ({ url, alt }) => openPicture({ ref: url, name: alt || "Picture" }),
+            }}
+          />
+          {item.kind === "assistant" ? (
+            <UnavailablePictures pictures={item.unavailableImages} />
+          ) : null}
+        </View>
+      );
     case "user":
+      return <Markdown text={item.text} />;
     case "notice":
       return <Txt selectable>{item.text}</Txt>;
   }
 };
 
-/** One transcript item whole: a step's full output, or a reply too long to keep in the window. */
+/** How often a running step's output is read again while it is shown, as on the desktop. */
+const LIVE_OUTPUT_REFRESH_MS = 2_000;
+
+/**
+ * One transcript item whole: a step's full output, or a reply too long to keep in the window. A step
+ * still running follows its output until it ends.
+ */
 export const ChatItemScreen = ({ route }: ScreenProps<"ChatItem">) => {
   const { sessionId, itemId } = route.params;
   const [item, setItem] = useState<ChatItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Its pictures open among the chat's, with this item read whole in its place.
+  const { chat } = useChat(sessionId);
+  const transcript = chat?.items ?? [];
 
   useEffect(() => {
     let current = true;
-    fetchChatItem(sessionId, itemId)
-      .then((fetched) => {
-        if (current) setItem(fetched);
-      })
-      .catch((cause: unknown) => {
-        if (current) setError(cause instanceof Error ? cause.message : "It could not be read.");
-      });
+    let shown = false;
+    let next: ReturnType<typeof setTimeout> | undefined;
+    const follow = () => {
+      next = setTimeout(read, LIVE_OUTPUT_REFRESH_MS);
+    };
+    const read = () => {
+      fetchChatItem(sessionId, itemId)
+        .then((fetched) => {
+          if (!current) return;
+          shown = true;
+          setItem(fetched);
+          if (isRunningStep(fetched)) follow();
+        })
+        .catch((cause: unknown) => {
+          if (!current) return;
+          // Output already shown stays while a later read fails, and the next one tries again.
+          if (shown) follow();
+          else setError(cause instanceof Error ? cause.message : "It could not be read.");
+        });
+    };
+    read();
     return () => {
       current = false;
+      clearTimeout(next);
     };
   }, [itemId, sessionId]);
 
@@ -72,7 +126,11 @@ export const ChatItemScreen = ({ route }: ScreenProps<"ChatItem">) => {
       contentContainerClassName="p-4 pb-10"
       contentInsetAdjustmentBehavior="automatic"
     >
-      {item ? <ItemBody item={item} /> : null}
+      {item ? (
+        <ChatGallery items={withItem(transcript, item)}>
+          <ItemBody item={item} />
+        </ChatGallery>
+      ) : null}
     </ScrollView>
   );
 };

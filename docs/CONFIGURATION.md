@@ -2,11 +2,12 @@
 
 ## Resolution
 
-Nodex configuration uses TOML, but Profile selection and Profile runtime
+Desktop preferences use TOML, while Profile selection and runtime infrastructure
 settings have different authorities. Bootstrap reads only `server.home` from
 the user config and nearest project config to select a Profile. After that
-selection, Desktop settings come exclusively from the selected Profile's
-`config.toml`. The executable readers and behavioral tests under
+selection, Desktop preferences come exclusively from the selected Profile's
+`config.toml`. Core-owned Remote access uses the separate Profile configuration
+[below](#personal-remote-access). The executable readers and behavioral tests under
 `src/main/settings/` are the source of truth for accepted keys, bounds,
 defaults, and override reporting.
 
@@ -17,6 +18,28 @@ Profile home resolves in this order:
    directory;
 3. `server.home` in `~/.nodex/config.toml`;
 4. the default `~/.nodex` home.
+
+## Personal Remote access
+
+Core owns the selected Profile's private listener configuration in
+`team-transport/remote-access.json`: `enabled`, the required `peer_policy: "private"`,
+and an IP socket `address` including its port. It may also retain a private pair of
+absolute `cert` and `key` paths for a configured certificate. The public listener
+intent exposes only `enabled` and `address`. The default is disabled with
+`0.0.0.0:0`. Desktop settings and `nodex space remote-access on|off` share this
+owner, including when Desktop is closed. A successful private listener start saves its actual chosen port.
+
+Core restores enabled intent during startup, reusing the saved port and its
+certificate. If the port is occupied, Core chooses an available port and reports
+the changed routes, so a fresh Device link can be shared. Desktop settings reads
+the same live listener and saved intent; it owns no second restoration loop.
+Other errors preserve the saved intent and report no live listener. Turning
+Remote access off stays off across restart.
+
+This configuration is separate from `config.toml`, Device credentials and
+certificate material. There is no `mobile-access.json`. Operator-managed
+`nodex serve` listeners retain their own host configuration and do not change
+personal Remote access intent.
 
 ## Nodex account
 
@@ -301,7 +324,7 @@ A Dock-launched app has no repository cwd and therefore uses environment/user
 configuration. Malformed, oversized, or non-UTF-8 configuration fails closed
 instead of selecting another Profile silently.
 
-The selected Profile owns one absolute settings document at
+The selected Profile owns one absolute Desktop preferences document at
 `${NODEX_HOME}/config.toml`. The default Profile therefore keeps the familiar
 `~/.nodex/config.toml` path. A custom or isolated Profile gets a separate
 document; project configuration does not overlay its backup, notification,

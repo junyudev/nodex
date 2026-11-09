@@ -50,17 +50,17 @@
         }
       }
     },
-    "/core/v1/agent-attributions": {
+    "/core/v1/admin/host/member-presence": {
       "post": {
         "tags": [
-          "api"
+          "team_api"
         ],
-        "operationId": "issue_agent_attribution",
+        "operationId": "member_presence",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AgentAttributionRequest"
+                "$ref": "#/components/schemas/MemberPresenceRequest"
               }
             }
           },
@@ -68,11 +68,11 @@
         },
         "responses": {
           "200": {
-            "description": "Agent attribution credential for one product Session",
+            "description": "Whether one of a Member's computers vouches for them",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgentAttributionResponse"
+                  "$ref": "#/components/schemas/MemberPresence"
                 }
               }
             }
@@ -225,7 +225,7 @@
         "operationId": "devices",
         "responses": {
           "200": {
-            "description": "Blob content",
+            "description": "Member lists own Devices; Owner lists all",
             "content": {
               "application/json": {
                 "schema": {
@@ -268,7 +268,7 @@
         },
         "responses": {
           "200": {
-            "description": "Authenticated Core connection",
+            "description": "Owner issues one-time invite",
             "content": {
               "application/json": {
                 "schema": {
@@ -290,19 +290,19 @@
         }
       }
     },
-    "/core/v1/health": {
-      "get": {
+    "/core/v1/admin/space/link-device": {
+      "post": {
         "tags": [
-          "api"
+          "team_api"
         ],
-        "operationId": "health",
+        "operationId": "link_device",
         "responses": {
           "200": {
-            "description": "Core health",
+            "description": "Member links their own Device",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HealthResponse"
+                  "$ref": "#/components/schemas/DeviceLinkOffer"
                 }
               }
             }
@@ -400,52 +400,39 @@
         }
       }
     },
-    "/core/v1/modules/administration/read": {
-      "post": {
+    "/core/v1/admin/space/members": {
+      "get": {
         "tags": [
-          "api"
+          "team_api"
         ],
-        "operationId": "administration_read",
-        "parameters": [
-          {
-            "name": "x-nodex-request-id",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-class",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/CoreRequestClass"
-                },
-                {
-                  "type": "null"
+        "operationId": "members",
+        "responses": {
+          "200": {
+            "description": "Owner lists Members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Member"
+                  }
                 }
-              ]
+              }
             }
           },
-          {
-            "name": "x-nodex-request-deadline-ms",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64",
-              "minimum": 0
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
             }
           }
+        }
+      }
+    },
     "/core/v1/admin/space/name": {
       "post": {
         "tags": [
@@ -464,7 +451,7 @@
         },
         "responses": {
           "200": {
-            "description": "Module read snapshot",
+            "description": "Owner names the Space",
             "content": {
               "application/json": {
                 "schema": {
@@ -526,52 +513,36 @@
         }
       }
     },
-    "/core/v1/modules/automation/read": {
-      "post": {
+    "/core/v1/admin/space/remote-access": {
+      "get": {
         "tags": [
-          "api"
+          "team_api"
         ],
-        "operationId": "automation_read",
-        "parameters": [
-          {
-            "name": "x-nodex-request-id",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-class",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/CoreRequestClass"
-                },
-                {
-                  "type": "null"
+        "operationId": "remote_access",
+        "responses": {
+          "200": {
+            "description": "Listener state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteAccessState"
                 }
-              ]
+              }
             }
           },
-          {
-            "name": "x-nodex-request-deadline-ms",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64",
-              "minimum": 0
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
             }
           }
+        }
+      }
+    },
     "/core/v1/admin/space/remove-member": {
       "post": {
         "tags": [
@@ -590,7 +561,7 @@
         },
         "responses": {
           "200": {
-            "description": "Module read snapshot",
+            "description": "Owner removes a Member and revokes devices",
             "content": {
               "text/plain": {
                 "schema": {
@@ -630,7 +601,7 @@
         },
         "responses": {
           "200": {
-            "description": "Committed module mutation",
+            "description": "Member revokes own Device; Owner revokes any",
             "content": {
               "text/plain": {
                 "schema": {
@@ -652,36 +623,36 @@
         }
       }
     },
-    "/core/v1/modules/database/read": {
+    "/core/v1/admin/space/stop-listener": {
       "post": {
         "tags": [
-          "api"
+          "team_api"
         ],
-        "operationId": "database_read",
-        "parameters": [
-          {
-            "name": "x-nodex-request-id",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+        "operationId": "stop_listener",
+        "responses": {
+          "200": {
+            "description": "Local Owner stops remote access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteAccessState"
+                }
+              }
             }
           },
-          {
-            "name": "x-nodex-request-class",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/CoreRequestClass"
-                },
-                {
-                  "type": "null"
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
     "/core/v1/admin/space/transport-stats": {
       "get": {
         "tags": [
@@ -1258,21 +1229,17 @@
         }
       }
     },
+    "/core/v1/host/phone/poll": {
       "post": {
         "tags": [
+          "team_api"
         ],
-            }
-          },
-                }
-            }
-          },
-            }
-          }
-        ],
+        "operationId": "phone_poll",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
+                "$ref": "#/components/schemas/HostLease"
               }
             }
           },
@@ -1280,8 +1247,18 @@
         },
         "responses": {
           "200": {
+            "description": "Local Host polls admitted phone events",
             "content": {
+              "application/json": {
                 "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PhoneHostEvent"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               }
             }
@@ -1299,21 +1276,17 @@
         }
       }
     },
+    "/core/v1/host/phone/publish": {
       "post": {
         "tags": [
+          "team_api"
         ],
-            }
-          },
-                }
-            }
-          },
-            }
-          }
-        ],
+        "operationId": "phone_publish",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
+                "$ref": "#/components/schemas/PhoneHostPublish"
               }
             }
           },
@@ -1321,8 +1294,11 @@
         },
         "responses": {
           "200": {
+            "description": "Local Host publishes a bounded phone envelope",
             "content": {
+              "text/plain": {
                 "schema": {
+                  "type": "boolean"
                 }
               }
             }
@@ -1340,21 +1316,17 @@
         }
       }
     },
+    "/core/v1/host/phone/push": {
       "post": {
         "tags": [
+          "team_api"
         ],
-            }
-          },
-                }
-            }
-          },
-            }
-          }
-        ],
+        "operationId": "phone_push",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
+                "$ref": "#/components/schemas/PhonePushCommit"
               }
             }
           },
@@ -1362,9 +1334,177 @@
         },
         "responses": {
           "200": {
+            "description": "Commit a phone's own notification registration to its Device",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
             "content": {
               "application/json": {
                 "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/core/v1/host/phone/push-forget": {
+      "post": {
+        "tags": [
+          "team_api"
+        ],
+        "operationId": "phone_push_forget",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhonePushForget"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Forget a notification handle the relay no longer reaches",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/core/v1/host/phone/push-recipients": {
+      "post": {
+        "tags": [
+          "team_api"
+        ],
+        "operationId": "phone_push_recipients",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhonePushRecipientsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Registered Devices of the Member a chat event concerns",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PhonePushRecipient"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/core/v1/host/phone/response-entitlements": {
+      "post": {
+        "tags": [
+          "team_api"
+        ],
+        "operationId": "phone_response_entitlements",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhoneResponseEntitlementRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Requesting Member answer entitlement",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/core/v1/host/presence": {
+      "post": {
+        "tags": [
+          "team_api"
+        ],
+        "operationId": "member_presence_report",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberPresenceReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A Member's Device reports whether its person is at it",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "boolean"
                 }
               }
             }
@@ -7727,6 +7867,7 @@
           "body_hash": {
             "type": "string"
           },
+          "episode": {
             "type": "string"
           },
           "id": {
@@ -10512,6 +10653,7 @@
                 "item": {
                   "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemRef"
                 },
+                "title": {
                   "type": "string"
                 }
               }
@@ -10737,6 +10879,7 @@
                       "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidence"
                     },
                     {
+                      "type": "null"
                     }
                   ]
                 },
@@ -10757,88 +10900,45 @@
           }
         }
       },
-      "DatabaseDisplayedViewQueryResult": {
+      "CollectionWindow_ProjectWorkspaceTaskSummary": {
         "type": "object",
         "required": [
-          "result",
-          "rules_fingerprint",
-          "view_revision",
-          "schema_revision",
-          "coverage",
-          "total_effective_occurrences"
+          "items",
+          "authority"
         ],
         "properties": {
-          "coverage": {
-            "$ref": "#/components/schemas/DatabaseDisplayedViewQueryCoverage"
-          },
-          "preferences_revision": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "result": {
-            "$ref": "#/components/schemas/SqlResult"
-          },
-          "rules_fingerprint": {
-            "type": "string"
-          },
-          "schema_revision": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "total_effective_occurrences": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "view_revision": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
-      "DatabaseDisplayedViewSelection": {
-        "oneOf": [
-          {
-            "type": "object",
-            "description": "No limit means a complete result or a budget failure, never implicit truncation.",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "effective"
-                ]
-              },
-              "limit": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "format": "int32",
-                "minimum": 0
-              }
-            }
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
           },
           "items": {
             "type": "array",
             "items": {
               "type": "object",
+              "required": [
                 "session"
               ],
               "properties": {
+                "session": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceSessionSummary"
                 },
+                "thread": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ProjectWorkspaceTaskThreadSummary"
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 }
               }
             }
           },
-          "source_option_id": {
-            "type": "string"
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -11033,6 +11133,7 @@
                 "lease_id",
                 "project_id",
                 "receipt_project_id",
+                "page_id",
                 "occurrence_start_ms",
                 "reminder_offset_minutes",
                 "due_at_ms",
@@ -11067,6 +11168,7 @@
                   "type": "integer",
                   "format": "int64"
                 },
+                "page_id": {
                   "type": "string"
                 },
                 "project_id": {
@@ -11109,6 +11211,7 @@
                 "status": {
                   "$ref": "#/components/schemas/ReminderLeaseStatus"
                 },
+                "title": {
                   "type": "string"
                 }
               }
@@ -11139,6 +11242,7 @@
               "required": [
                 "snooze_id",
                 "project_id",
+                "page_id",
                 "occurrence_start_ms",
                 "due_at_ms",
                 "created_at_ms"
@@ -11163,6 +11267,7 @@
                   "type": "integer",
                   "format": "int64"
                 },
+                "page_id": {
                   "type": "string"
                 },
                 "project_id": {
@@ -11199,11 +11304,13 @@
               "type": "object",
               "required": [
                 "occurrence_id",
+                "page_id",
                 "status",
                 "status_name",
                 "archived",
                 "title",
                 "rich_title",
+                "description",
                 "tags",
                 "occurrence_start_ms",
                 "occurrence_end_ms",
@@ -11274,6 +11381,7 @@
                   "format": "int64"
                 },
                 "page_id": {
+                  "type": "string"
                 },
                 "page_key": {
                   "type": [
@@ -11283,6 +11391,7 @@
                 },
                 "priority": {
                   "type": [
+                    "string",
                     "null"
                   ]
                 },
@@ -11304,6 +11413,8 @@
                 },
                 "rich_title": {},
                 "run_in_base_branch": {
+                  "type": [
+                    "string",
                     "null"
                   ]
                 },
@@ -11320,15 +11431,20 @@
                   ]
                 },
                 "run_in_target": {
+                  "type": [
                     "string",
                     "null"
                   ]
                 },
                 "run_in_worktree_path": {
+                  "type": [
+                    "string",
                     "null"
                   ]
                 },
                 "schedule_timezone": {
+                  "type": [
+                    "string",
                     "null"
                   ]
                 },
@@ -11348,8 +11464,10 @@
                   "type": "boolean"
                 },
                 "title": {
+                  "type": "string"
                 },
                 "updated_at": {
+                  "type": "string"
                 }
               }
             }
@@ -11382,8 +11500,10 @@
               ],
               "properties": {
                 "execution_host_key": {
+                  "type": "string"
                 },
                 "thread_id": {
+                  "type": "string"
                 }
               }
             }
@@ -11555,6 +11675,7 @@
           "created_at": {
             "type": "string"
           },
+          "fingerprint": {
             "type": "string"
           },
           "invalidated_at": {
@@ -12357,6 +12478,7 @@
       "CoreRequestCancelRequest": {
         "type": "object",
         "required": [
+          "request_id"
         ],
         "properties": {
           "request_id": {
@@ -12714,24 +12836,31 @@
           }
         }
       },
+      "CurrentTurnNotification": {
         "type": "object",
+        "description": "A Page Turn that notifies its Member now, as a phone shows it: what the Inbox calls it and\nthe chat it waits on, if any.",
         "required": [
           "member_id",
           "page_id",
+          "episode",
           "title",
           "body"
         ],
         "properties": {
           "body": {
             "type": "string",
+            "description": "The opening of the Turn's message, at most 512 characters."
           },
+          "conversation_id": {
             "type": [
               "string",
               "null"
             ]
           },
+          "episode": {
             "type": "string"
           },
+          "member_id": {
             "type": "string"
           },
           "page_id": {
@@ -12752,7 +12881,9 @@
               "string",
               "null"
             ],
+            "description": "The chat the Turn waits on: its Session and its conversation."
           },
+          "title": {
             "type": "string"
           }
         }
@@ -17060,6 +17191,7 @@
             "properties": {
               "children": {
                 "type": "array",
+                "items": {
                   "$ref": "#/components/schemas/DatabaseViewFilter"
                 }
               },
@@ -17344,6 +17476,7 @@
               "type": "string"
             }
           },
+          "showDescription": {
             "type": "boolean"
           },
           "showEmptyGroups": {
@@ -17798,7 +17931,26 @@
           }
         }
       },
+      "DatabaseViewSort": {
+        "type": "object",
+        "required": [
+          "field",
+          "direction",
+          "nulls"
+        ],
+        "properties": {
+          "direction": {
+            "$ref": "#/components/schemas/DatabaseViewSortDirection"
+          },
+          "field": {
+            "$ref": "#/components/schemas/DatabaseViewSortField"
+          },
+          "nulls": {
+            "$ref": "#/components/schemas/DatabaseViewNullOrder"
+          }
+        },
         "additionalProperties": false
+      },
       "DatabaseViewSortDirection": {
         "type": "string",
         "enum": [
@@ -18387,9 +18539,11 @@
         "type": "string",
         "description": "Presentation metadata never changes a Device's authority.",
         "enum": [
+          "desktop",
           "phone"
         ]
       },
+      "DeviceLinkOffer": {
         "type": "object",
         "required": [
           "space_id",
@@ -19869,6 +20023,8 @@
           "display_name": {
             "type": "string"
           },
+          "form_factor": {
+            "$ref": "#/components/schemas/DeviceFormFactor"
           }
         },
         "additionalProperties": false
@@ -30828,6 +30984,9 @@
               "string",
               "null"
             ]
+          },
+          "peer_policy": {
+            "$ref": "#/components/schemas/ListenerPeerPolicy"
           }
         },
         "additionalProperties": false
@@ -30835,6 +30994,8 @@
       "ListenerInfo": {
         "type": "object",
         "required": [
+          "peer_policy",
+          "routes",
           "url",
           "fingerprint"
         ],
@@ -30842,10 +31003,26 @@
           "fingerprint": {
             "type": "string"
           },
+          "peer_policy": {
+            "$ref": "#/components/schemas/ListenerPeerPolicy"
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "url": {
             "type": "string"
           }
         }
+      },
+      "ListenerPeerPolicy": {
+        "type": "string",
+        "enum": [
+          "private",
+          "operator"
+        ]
       },
       "LocalMutationResolveRequest": {
         "type": "object",
@@ -31352,15 +31529,22 @@
       "MemberDevice": {
         "type": "object",
         "required": [
+          "space_id",
+          "form_factor",
           "id",
           "member_id",
           "label",
           "created_at",
+          "last_seen",
+          "notifications_enabled"
         ],
         "properties": {
           "created_at": {
             "type": "integer",
             "format": "int64"
+          },
+          "form_factor": {
+            "$ref": "#/components/schemas/DeviceFormFactor"
           },
           "id": {
             "type": "string"
@@ -31375,12 +31559,19 @@
           "member_id": {
             "type": "string"
           },
+          "notifications_enabled": {
+            "type": "boolean",
+            "description": "The Device receives phone notifications. Its relay handle and key are never listed."
+          },
           "revoked_at": {
             "type": [
               "integer",
               "null"
             ],
             "format": "int64"
+          },
+          "space_id": {
+            "type": "string"
           }
         }
       },
@@ -31390,6 +31581,53 @@
           "active",
           "removed"
         ]
+      },
+      "MemberPresence": {
+        "type": "object",
+        "properties": {
+          "idle_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The least time since the Member used one of their active Devices that reported within the\nlast 90 seconds with an unlocked screen; absent when none vouches for them.",
+            "minimum": 0
+          }
+        }
+      },
+      "MemberPresenceReport": {
+        "type": "object",
+        "description": "What a Member's desktop says about its person, about every 30 seconds while someone uses it.",
+        "properties": {
+          "idle_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Milliseconds since the person last used this Device; absent while its screen is locked or\nthe system cannot tell.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "MemberPresenceRequest": {
+        "type": "object",
+        "description": "The local Host asks whether a Member is at one of their computers.",
+        "required": [
+          "token",
+          "member_id"
+        ],
+        "properties": {
+          "member_id": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "MemberRole": {
         "type": "string",
@@ -41933,6 +42171,13 @@
                   "archived": {
                     "type": "boolean"
                   },
+                  "exclude_drafts": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "description": "Leave out each Member's new chat until its first message starts it: a list of\nconversations has nothing to show for one."
+                  },
                   "execution_refs": {
                     "type": [
                       "array",
@@ -42667,6 +42912,21 @@
                     "type": "string",
                     "enum": [
                       "inbox_turn_notifications"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Every Member's current notifying Page Turns, claimed by a desktop or not, for the local\nHost's phone notifications.",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "current_turn_notifications"
                     ]
                   }
                 }
@@ -44559,92 +44819,171 @@
           "failed"
         ]
       },
+      "PhoneHostEvent": {
         "oneOf": [
           {
             "type": "object",
             "required": [
+              "channel_id",
+              "credential",
+              "space_id",
+              "member_id",
+              "device_id",
+              "space_name",
+              "space_kind",
+              "routes",
               "kind"
             ],
             "properties": {
-              },
-              },
+              "channel_id": {
                 "type": "string"
+              },
+              "credential": {
+                "type": "string"
+              },
+              "device_id": {
+                "type": "string"
+              },
               "kind": {
                 "type": "string",
                 "enum": [
+                  "open"
                 ]
               },
+              "member_id": {
+                "type": "string"
+              },
+              "routes": {
                 "type": "array",
                 "items": {
                   "type": "string"
                 }
+              },
+              "space_id": {
+                "type": "string"
+              },
+              "space_kind": {
+                "$ref": "#/components/schemas/SpaceKind"
+              },
+              "space_name": {
+                "type": "string"
               }
             }
           },
           {
             "type": "object",
             "required": [
+              "channel_id",
+              "credential",
+              "id",
+              "method",
+              "params",
               "kind"
             ],
             "properties": {
+              "channel_id": {
                 "type": "string"
               },
+              "credential": {
                 "type": "string"
+              },
+              "id": {
+                "type": "integer",
+                "format": "int64"
               },
               "kind": {
                 "type": "string",
                 "enum": [
+                  "request"
                 ]
               },
+              "method": {
+                "type": "string"
               },
+              "params": {}
             }
           },
           {
             "type": "object",
             "required": [
+              "channel_id",
               "kind"
             ],
             "properties": {
+              "channel_id": {
+                "type": "string"
+              },
               "kind": {
                 "type": "string",
                 "enum": [
+                  "close"
                 ]
               }
             }
           }
         ],
+        "description": "Private local relay events. Core creates identity and proof; a phone cannot choose either."
       },
+      "PhoneHostPublish": {
         "type": "object",
         "required": [
+          "token",
+          "channel_id",
+          "envelope"
         ],
         "properties": {
+          "channel_id": {
+            "type": "string"
           },
+          "envelope": {},
+          "token": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PhonePushAudience": {
+        "oneOf": [
           {
             "type": "object",
+            "description": "A pending question or approval belongs to the Member entitled to answer it.",
             "required": [
+              "request",
               "kind"
             ],
             "properties": {
               "kind": {
                 "type": "string",
                 "enum": [
+                  "request"
                 ]
               },
+              "request": {
+                "$ref": "#/components/schemas/SessionExecutionRequestKind"
               },
+              "run_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             }
           },
           {
             "type": "object",
+            "description": "A Run's outcome belongs to the Member who requested it.",
             "required": [
+              "run_id",
               "kind"
             ],
             "properties": {
               "kind": {
                 "type": "string",
                 "enum": [
+                  "run_requester"
                 ]
               },
+              "run_id": {
                 "type": "string"
               }
             }
@@ -44667,65 +45006,150 @@
                 "type": "string"
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "A Page Turn belongs to the Member whose move it is, while that episode is current.",
+            "required": [
+              "page_id",
+              "episode",
+              "kind"
+            ],
+            "properties": {
+              "episode": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "turn_owner"
+                ]
+              },
+              "page_id": {
+                "type": "string"
+              }
+            }
           }
         ],
+        "description": "Who should hear about a chat event. Core resolves it with the same rule that admits answers."
       },
+      "PhonePushCommit": {
         "type": "object",
+        "description": "Commits the phone's in-flight `push.register` or `push.unregister` request to its own Device.",
         "required": [
+          "credential"
         ],
         "properties": {
+          "credential": {
             "type": "string"
+          }
         },
         "additionalProperties": false
       },
+      "PhonePushForget": {
         "type": "object",
+        "description": "The relay reported this handle gone; forget it unless the phone has since replaced it.",
         "required": [
+          "token",
+          "device_id",
+          "handle"
         ],
         "properties": {
+          "device_id": {
             "type": "string"
           },
+          "handle": {
             "type": "string"
           },
+          "token": {
+            "type": "string"
           }
         },
         "additionalProperties": false
       },
+      "PhonePushRecipient": {
         "type": "object",
         "required": [
+          "device_id",
+          "member_id",
+          "registration"
         ],
         "properties": {
+          "device_id": {
             "type": "string"
           },
+          "member_id": {
             "type": "string"
+          },
+          "registration": {
+            "$ref": "#/components/schemas/PushRegistration"
           }
         }
       },
+      "PhonePushRecipientsRequest": {
         "type": "object",
         "required": [
+          "token",
+          "audience"
         ],
         "properties": {
+          "audience": {
+            "$ref": "#/components/schemas/PhonePushAudience"
           },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The chat the event happened in; a Page Turn may wait on none."
+          },
+          "token": {
             "type": "string"
           }
+        },
+        "additionalProperties": false
       },
+      "PhoneResponseEntitlementRequest": {
         "type": "object",
         "required": [
+          "credential",
+          "session_id",
+          "requests"
         ],
         "properties": {
+          "credential": {
+            "type": "string"
           },
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhoneResponseRequest"
+            }
+          },
+          "session_id": {
             "type": "string"
           }
+        },
+        "additionalProperties": false
       },
+      "PhoneResponseRequest": {
         "type": "object",
         "required": [
+          "request_id"
         ],
         "properties": {
+          "request_id": {
             "type": "string"
           },
+          "run_id": {
             "type": [
               "string",
               "null"
             ]
+          }
+        },
+        "additionalProperties": false
+      },
       "PrepareFileBlobQuery": {
         "type": "object",
         "required": [
@@ -54257,6 +54681,42 @@
           }
         }
       },
+      "PushPreferences": {
+        "type": "object",
+        "description": "What a phone wants to hear from this Space, in the phone RPC's own field names.",
+        "required": [
+          "needsYou",
+          "finished"
+        ],
+        "properties": {
+          "finished": {
+            "type": "boolean"
+          },
+          "needsYou": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PushRegistration": {
+        "type": "object",
+        "description": "Where a Device receives notifications: an opaque relay handle and the base64url key that seals\nthem. Both stay between the phone, Core and the local Host.",
+        "required": [
+          "handle",
+          "key",
+          "preferences"
+        ],
+        "properties": {
+          "handle": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/PushPreferences"
+          }
+        }
+      },
       "QueryReadRequest": {
         "$ref": "#/components/schemas/ModuleReadRequest_QueryRead"
       },
@@ -55494,6 +55954,48 @@
           }
         }
       },
+      "RemoteAccessIntent": {
+        "type": "object",
+        "description": "Profile-owned remote listener preference, restored by Core at startup.",
+        "required": [
+          "enabled",
+          "address"
+        ],
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RemoteAccessState": {
+        "type": "object",
+        "required": [
+          "intent",
+          "routes_changed"
+        ],
+        "properties": {
+          "intent": {
+            "$ref": "#/components/schemas/RemoteAccessIntent"
+          },
+          "listener": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ListenerInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "routes_changed": {
+            "type": "boolean"
+          }
+        }
+      },
       "RemoteBudget": {
         "type": "string",
         "description": "The independently bounded resource which refused remote admission.",
@@ -55503,6 +56005,7 @@
           "device_bytes",
           "member_requests",
           "member_bytes",
+          "member_device_links",
           "member_concurrency",
           "global_concurrency",
           "device_streams",
@@ -61739,6 +62242,27 @@
                       {
                         "type": "object",
                         "required": [
+                          "turns",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "current_turn_notifications"
+                            ]
+                          },
+                          "turns": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/CurrentTurnNotification"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
                           "kind"
                         ],
                         "properties": {
@@ -64323,12 +64847,12 @@
           }
         }
       },
-      "ShutdownStatus": {
+      "SpaceKind": {
         "type": "string",
+        "description": "Core-owned Space kind, independent of listener activation or hosting mode.",
         "enum": [
-          "draining",
-          "busy",
-          "incompatible"
+          "personal",
+          "team"
         ]
       },
       "SpaceName": {

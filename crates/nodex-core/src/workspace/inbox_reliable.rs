@@ -780,6 +780,7 @@ fn decide(
             page_ids: pages,
             action: &action,
             session_id,
+        },
         now,
     )?;
     let receiving_agent = match &action {

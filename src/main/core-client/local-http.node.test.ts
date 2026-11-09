@@ -479,6 +479,29 @@ describe("Local Core event replay boundaries", () => {
     expect(isDefinitiveCoreGenerationLoss(error)).toBe(false);
   });
 
+  test("lets a quiet phone poll outlive the ordinary transport liveness window", async () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "nodex-core-phone-poll-"));
+    directories.push(directory);
+    const socketPath = testEndpoint(directory);
+    const server = createServer((_request, response) => {
+      setTimeout(() => {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end("null");
+      }, 30);
+    });
+    servers.push(server);
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(socketPath, resolve);
+    });
+    const transport = new LocalHttpTransport(socketPath, "test-capability", {
+      requestTimeoutMs: 5,
+    });
+    await expect(
+      transport.requestJson("POST", "/core/v1/host/phone/poll", { token: "lease" }),
+    ).resolves.toBeNull();
+  });
+
   test("sends execution metadata and propagates aborts to Core cancellation", async () => {
     const managed = await serveManagedRequest();
     const transport = new LocalHttpTransport(managed.socketPath, "test-capability");

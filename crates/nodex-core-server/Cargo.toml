@@ -15,7 +15,7 @@ nodex-core = { path = "../nodex-core" }
 nodex-core-contracts.workspace = true
 nodex-core-protocol.workspace = true
 async-stream.workspace = true
-axum.workspace = true
+axum = { workspace = true, features = ["ws"] }
 base64.workspace = true
 chrono.workspace = true
 fs2.workspace = true
@@ -37,8 +37,10 @@ rcgen = "0.14"
 hyper-util = { workspace = true, features = ["service", "tokio", "server", "http1"] }
 tokio-io-timeout = "1"
 socket2 = "0.6"
+if-addrs = "0.15"
 
 [dev-dependencies]
+tungstenite = "0.29"
 # Read-only storage inspection verifies that enrollment never persists bearer secrets.
 rusqlite.workspace = true
 nodex-platform = { workspace = true, features = ["test-support"] }

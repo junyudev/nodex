@@ -11,7 +11,7 @@ import {
   FileRefSchema,
   HelloSchema,
   InboxDecisionSchema,
-  InboxMessageSchema,
+  InboxEntrySchema,
   InboxScopeSchema,
   InboxWindowSchema,
   ProjectListSchema,
@@ -20,12 +20,14 @@ import {
 import { PushRegistrationSchema } from "./push";
 
 /** Increment on any change an older peer cannot ignore. A mismatch asks the person to update. */
-export const MOBILE_PROTOCOL_REVISION = 1;
+export const MOBILE_PROTOCOL_REVISION = 4;
+/** Core and native adapters reject a complete frame above this bound. */
+export const MOBILE_MAX_MESSAGE_BYTES = 1024 * 1024;
 
 /** Most bytes one upload chunk or file read carries before base64. */
 export const MOBILE_FILE_CHUNK_BYTES = 128 * 1024;
-/** Largest file a phone may upload. */
-export const MOBILE_UPLOAD_MAX_BYTES = 32 * 1024 * 1024;
+/** A complete phone photo batch fits inside a fresh Device wire-byte budget after base64 expansion. */
+export const MOBILE_UPLOAD_MAX_BYTES = 16 * 1024 * 1024;
 
 const cursor = z.string().nullable().optional();
 const empty = z.looseObject({});
@@ -41,11 +43,11 @@ const define = <Params extends z.ZodType, Result extends z.ZodType>(
  */
 export const mobileMethods = {
   /**
-   * Where this phone receives notifications from this desktop, replacing what it last said. Sent
+   * Where this Device receives notifications from this Space, replacing what it last said. Sent
    * again on each connection, since the system can change a phone's address at any time.
    */
   "push.register": define(PushRegistrationSchema, empty),
-  /** This phone no longer wants notifications from this desktop. */
+  /** This Device no longer wants notifications from this Space. */
   "push.unregister": define(empty, empty),
 
   "projects.list": define(empty, ProjectListSchema),
@@ -61,7 +63,12 @@ export const mobileMethods = {
     InboxWindowSchema,
   ),
   /** The whole message, for one the stream shows truncated. */
-  "inbox.message": define(z.looseObject({ pageId: z.string() }), InboxMessageSchema),
+  "inbox.message": define(z.looseObject({ entryId: z.string() }), InboxEntrySchema),
+  /** Of these Pages, the ones whose Turn is still yours. */
+  "inbox.turns": define(
+    z.looseObject({ pageIds: z.array(z.string()).max(100) }),
+    z.looseObject({ pageIds: z.array(z.string()) }),
+  ),
   "inbox.capture": define(
     z.looseObject({
       operationId: z.string(),
@@ -79,7 +86,7 @@ export const mobileMethods = {
   "inbox.decide": define(
     z.looseObject({
       operationId: z.string(),
-      pageId: z.string(),
+      entryId: z.string(),
       decision: InboxDecisionSchema,
     }),
     z.looseObject({
@@ -232,7 +239,7 @@ export const mobileEvents = {
 export type MobileEvent = keyof typeof mobileEvents;
 export type MobileEventData<Event extends MobileEvent> = z.output<(typeof mobileEvents)[Event]>;
 
-/** The plaintext inside the encrypted channel. */
+/** Bounded messages inside the authenticated pinned-TLS channel. */
 export const MobileEnvelopeSchema = z.discriminatedUnion("t", [
   z.looseObject({ t: z.literal("hello"), d: HelloSchema }),
   z.looseObject({

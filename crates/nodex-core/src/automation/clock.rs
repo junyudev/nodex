@@ -42,6 +42,7 @@ pub(super) fn record_occurrence(
             now,
             reason: "Clock condition matched",
             completed: automation.mode == AutomationMode::DryRun,
+        },
     )?;
     connection.execute(
         "INSERT OR IGNORE INTO automation_decision_triggers(dispatch_id,trigger_id) VALUES(?1,?2)",
@@ -57,6 +58,8 @@ struct DecisionRecord<'a> {
     now: i64,
     reason: &'a str,
     completed: bool,
+}
+
 fn record_decision(
     connection: &Connection,
     actor: &nodex_core_contracts::Actor,
@@ -65,7 +68,11 @@ fn record_decision(
 ) -> Result<(), StoreError> {
     let DecisionRecord {
         dispatch,
+        due,
+        now,
+        reason,
         completed,
+    } = decision;
     let frozen = serde_json::to_string(automation)
         .map_err(|_| invalid("Automation action cannot be frozen"))?;
     let authority = serde_json::json!({"owner_member_id":automation.owner_member_id,"mode":automation.mode,"automation_revision":automation.automation_revision});
@@ -98,6 +105,7 @@ pub(super) fn record_manual(
             now,
             reason: "Manual run",
             completed: automation.mode == AutomationMode::DryRun,
+        },
     )?;
     if automation.mode != AutomationMode::DryRun {
         connection.execute("UPDATE automation_decisions SET due_at_ms=?2,admitted_at_ms=?2,admission_prompt=?3 WHERE dispatch_id=?1 AND status='admitted'",params![dispatch,now,automation.prompt])?;
@@ -166,6 +174,7 @@ pub(crate) fn backfill_snapshots(connection: &Connection) -> Result<(), StoreErr
                 now: created,
                 reason: "Retained execution",
                 completed: status != "IN_PROGRESS",
+            },
         )?;
         connection.execute(
             "UPDATE automation_execution_runs SET dispatch_id=?2 WHERE run_id=?1 AND dispatch_id IS NULL",
@@ -309,6 +318,7 @@ pub(super) fn record_unavailable_owner(
             now,
             reason: "Automation Owner is unavailable",
             completed: true,
+        },
     )?;
     connection.execute(
         "UPDATE automation_decisions SET status='skipped' WHERE dispatch_id=?1",

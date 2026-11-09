@@ -214,6 +214,55 @@ pub(super) fn item(
     })
 }
 
+/// Every Member's current notifying Page Turns, newest first, claimed by a desktop or not: what the
+/// local Host's phone notifications read. A Turn whose episode has moved on is not listed.
+pub(super) fn current_turn_notifications(
+    connection: &Connection,
+    library: &str,
+) -> Result<Vec<nodex_core_contracts::inbox::CurrentTurnNotification>, StoreError> {
+    let intents = connection
+        .prepare(
+            "SELECT intent.member_id,intent.page_id,intent.episode \
+             FROM page_turn_notification_intents intent \
+             JOIN page_turn_episodes episode ON episode.page_id=intent.page_id \
+               AND episode.episode=intent.episode \
+             JOIN inbox_rows rows ON rows.page_id=intent.page_id AND rows.row_kind='turn' \
+             JOIN members member ON member.id=intent.member_id AND member.lifecycle='active' \
+             WHERE rows.library_id=?1 ORDER BY intent.created_at DESC,intent.page_id LIMIT 100",
+        )?
+        .query_map(params![library], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    intents
+        .into_iter()
+        .map(|(member_id, page_id, episode)| {
+            let entry = item(connection, library, &page_id, "turn")?;
+            let turn = entry.turn.as_ref();
+            let chat = turn.and_then(|turn| turn.active_chat.as_ref());
+            Ok(nodex_core_contracts::inbox::CurrentTurnNotification {
+                reason: turn.and_then(|turn| turn.turn.reason),
+                session_id: chat.map(|chat| chat.session_id.clone()),
+                conversation_id: chat.and_then(|chat| {
+                    chat.execution_ref
+                        .as_ref()
+                        .map(|execution| execution.thread_id.clone())
+                        .or_else(|| chat.thread_id.clone())
+                }),
+                title: entry.title,
+                body: entry.body.chars().take(512).collect(),
+                member_id,
+                page_id,
+                episode,
+            })
+        })
+        .collect()
+}
+
 pub(super) fn notification_intents(
     connection: &Connection,
     library: &str,

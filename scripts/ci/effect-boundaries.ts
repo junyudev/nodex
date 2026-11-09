@@ -80,7 +80,6 @@ const effectApplicationRoots = [
   "src/main/host-runtime/",
   "src/main/ipc/handlers/",
   "src/main/library-application/",
-  "src/main/mobile-gateway/",
   "src/main/nodex-agent-application/",
   "src/main/project-application/",
   "src/main/terminal-runtime/",
@@ -125,8 +124,11 @@ const testOnlyUnboundedChannelAdapters = new Set([
 // and completion never suspend; interruption and resource release remain Effect-owned.
 const synchronousIngressUnsafeCalls = new Map<string, ReadonlySet<string>>([
   // Native callbacks publish into scoped, bounded ingress. Overflow closes the socket.
-  ["packages/mobile/src/runtime/socket.ts", new Set(["Queue.offerUnsafe", "Deferred.doneUnsafe"])],
   ["packages/mobile/src/runtime/platform.ts", new Set(["Queue.offerUnsafe"])],
+  [
+    "packages/mobile/src/runtime/pinned-tls.ts",
+    new Set(["Queue.offerUnsafe", "Deferred.doneUnsafe"]),
+  ],
   // Presentation snapshots replace queued values; lifecycle policy stays in services.
   ["packages/mobile/src/runtime/projection.ts", new Set(["Queue.offerUnsafe"])],
   [
@@ -224,6 +226,8 @@ const nodeRuntimeEntries = new Set([
 const effectRunBoundaries = new Set([
   ...nodeRuntimeEntries,
   "packages/mobile/src/runtime/runtime.ts",
+  // Separate application entry, selected only by the isolated tls-proof variant.
+  "packages/mobile/diagnostics/tls-proof.tsx",
   "scripts/scenarios/adapters/core-client-seed-runtime.ts",
 ]);
 

@@ -115,26 +115,3 @@ export const pageFileHasSourceView = (kind: PageFileViewKind): boolean =>
 /** Kinds whose content is read as text in at least one view. */
 export const pageFileReadsText = (kind: PageFileViewKind): boolean =>
   kind === "text" || pageFileHasSourceView(kind);
-
-const FORMAT_FALLBACK_LABELS: Record<PageFileViewKind, string> = {
-  html: "HTML",
-  markdown: "Markdown",
-  svg: "SVG",
-  image: "Image",
-  pdf: "PDF",
-  audio: "Audio",
-  video: "Video",
-  text: "Text",
-  unsupported: "File",
-};
-
-/** A short name for a File's format in metadata lines, such as `Markdown`, `PDF` or `JSON`. */
-export function describeFileFormat(file: {
-  readonly name: string;
-  readonly mimeType: string;
-}): string {
-  const kind = resolvePageFileViewKind(file);
-  if (kind === "markdown") return FORMAT_FALLBACK_LABELS.markdown;
-  const ext = extension(file.name);
-  return /^[a-z0-9]{1,5}$/u.test(ext) ? ext.toUpperCase() : FORMAT_FALLBACK_LABELS[kind];
-}

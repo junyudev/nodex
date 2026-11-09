@@ -1169,28 +1169,55 @@ fn context_search_terms(entries: &[ProjectWorkspaceInboxSuggestionInput]) -> Vec
     terms
 }
 
+fn member_can_review_intake(
+    connection: &Connection,
+    library: &str,
+    member: &str,
+    page: &str,
+) -> Result<bool, StoreError> {
+    Ok(connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM inbox_member_rows member_row WHERE member_row.member_id=?1 AND member_row.library_id=?2 AND member_row.page_id=?3 AND member_row.row_kind='intake') AND NOT EXISTS(SELECT 1 FROM inbox_member_rows member_row WHERE member_row.member_id=?1 AND member_row.library_id=?2 AND member_row.page_id=?3 AND member_row.row_kind<>'intake')",
+        params![member, library, page],
+        |row| row.get(0),
+    )?)
+}
+
 pub(super) fn read_dispatch_context(
     connection: &Connection,
-    _context: &BoundModuleContext,
+    context: &BoundModuleContext,
     library_id: &str,
     page_ids: &[String],
 ) -> Result<ProjectWorkspaceInboxDispatchContext, StoreError> {
     if page_ids.is_empty() || page_ids.len() > MAX_PROPOSAL_PAGES {
         return Err(invalid("Inbox dispatch context needs 1 to 16 entries"));
     }
-    let mut entries = Vec::with_capacity(page_ids.len());
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
     for page_id in page_ids {
         super::session_mutation::validate_id("page_id", page_id)?;
+        if !member_can_review_intake(connection, library_id, &member, page_id)? {
+            return Err(super::inbox::not_found("Inbox intake is unavailable"));
         }
     }
+    let entries = frozen_suggestion_inputs(connection, library_id, page_ids)?
+        .into_iter()
+        .map(|frozen| frozen.input)
+        .collect();
+    let mut result = dispatch_context_for_inputs(connection, library_id, entries)?;
+    let mut proposals = Vec::with_capacity(result.open_proposals.len());
+    for proposal in result.open_proposals {
+        let visible = !proposal.page_ids.is_empty()
+            && proposal.page_ids.iter().try_fold(true, |visible, page| {
+                if !visible {
+                    return Ok::<_, StoreError>(false);
+                }
+                member_can_review_intake(connection, library_id, &member, page)
+            })?;
+        if visible {
+            proposals.push(proposal);
         }
     }
-    entries.extend(
-        frozen_suggestion_inputs(connection, library_id, page_ids)?
-            .into_iter()
-            .map(|frozen| frozen.input),
-    );
-    dispatch_context_for_inputs(connection, library_id, entries)
+    result.open_proposals = proposals;
+    Ok(result)
 }
 
 /// Message inputs are immutable request evidence; routing targets remain live.
@@ -1616,6 +1643,14 @@ pub(super) fn read_chat_targets(
     )
 }
 
+pub(super) fn read_message(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    page_id: &str,
+) -> Result<ProjectWorkspaceInboxItem, StoreError> {
+    let mut item = read_single_entry(connection, context, library_id, page_id)?
+        .ok_or_else(|| super::inbox::not_found("Inbox entry is unavailable"))?;
     if item.body_truncated {
         // Keep room for the view model and JSON string escaping on a remote channel.
         let markdown = connection.query_row(
@@ -1624,9 +1659,15 @@ pub(super) fn read_chat_targets(
              WHERE page.block_id = ?1",
             [page_id],
             |row| row.get::<_, Option<String>>(0),
+        )?;
         if let Some(markdown) = markdown {
             item.body = markdown;
             item.body_truncated = false;
+        }
+    }
+    Ok(item)
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::test_support::{apply, seeded_workspace};

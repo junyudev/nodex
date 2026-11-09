@@ -177,6 +177,8 @@ struct HandbackDelivery<'a> {
     body_hash: &'a str,
     attachment_count: u32,
     author: &'a ProjectWorkspaceInboxSource,
+}
+
 fn bind(
     connection: &Connection,
     library: &str,
@@ -184,8 +186,12 @@ fn bind(
     now: &str,
 ) -> Result<WorkspaceMutationEffects, StoreError> {
     let HandbackDelivery {
+        session,
+        run,
+        delivery,
         body_hash,
         attachment_count,
+        author,
     } = handback_delivery;
     if body_hash.len() != 64
         || !body_hash.bytes().all(|b| b.is_ascii_hexdigit())
@@ -481,6 +487,26 @@ pub(in crate::workspace) fn apply(
     provenance: Option<&AgentTurnProvenance>,
     intent: &ProjectWorkspaceIntent,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    let member_delivery = context.adapter == nodex_core_contracts::AdapterKind::RemoteMember
+        && matches!(
+            intent,
+            ProjectWorkspaceIntent::RecordChatDelivery {
+                author: ProjectWorkspaceInboxSource::User,
+                ..
+            }
+        );
+    if member_delivery {
+        crate::infrastructure::member_admission::require_principal(
+            connection,
+            library,
+            context
+                .principal
+                .as_ref()
+                .ok_or_else(|| invalid("The Member is required"))?,
+        )?;
+    } else {
+        require_host(context)?;
+    }
     if !matches!(intent, ProjectWorkspaceIntent::HandBackMessage { .. }) && provenance.is_some() {
         return Err(invalid("Delivery evidence belongs to the Host"));
     }
@@ -513,6 +539,7 @@ pub(in crate::workspace) fn apply(
                     body_hash,
                     attachment_count: *attachment_count,
                     author,
+                },
                 &now,
             ),
             ProjectWorkspaceIntent::HandBackMessage {

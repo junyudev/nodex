@@ -29,8 +29,11 @@ Accepted system-wide decisions live in `docs/adr/`.
 
 A Space is one Core authority with one Library. Its stable `spaceId` is the
 Core-authored Library identity, independent of its endpoint, process generation
+and Store epoch. A Desktop retains its local personal Space and can enroll Devices
+in remote personal or team Spaces at the same time. Resource identities are relative to their Space;
 matching Page or Project IDs never authorize crossing into another Space.
 
+A Space has one name owned by Core and set by an authenticated Owner, locally or remotely. Enrollment
 and successful reconnection refresh that name on each Desktop. A network address
 is a transport coordinate and never becomes the Space's display identity.
 
@@ -61,9 +64,24 @@ An Agent acts on behalf of a Member; a Service may act under a Member's standing
 ### Device and Session credential
 
 A Device is a revocable client installation enrolled for one Member in one Space.
+It carries a desktop or phone form factor, label, creation time, last credential-use
+time and independent revocation. Form factor grants no authority. One human has
+one Member per Space and enrolls each installation separately in each Space.
 Its credential obtains short-lived sessions bound to that Device. Core verifies
 Space, Member, Device, Session and current role; remote identity never grants
 local Host authority.
+
+### Remote access
+
+Remote access is a Core-owned pinned-TLS listener for a Space. Enabling it does
+not add a Member or change a personal Space into a team Space. A Space becomes
+team when another active Member joins; removing that Member does not silently
+restore personal Agent attribution rules. A Member can link their own Device
+with a five-minute, one-time offer; redemption preserves their Member identity.
+Owners administer membership remotely; every Member manages their own Devices.
+Listener and certificate management remain local Host capabilities. Core owns the
+Profile's saved personal listener intent for both Desktop settings and native CLI
+commands, and restores enabled intent when Core starts.
 
 ### Invite
 
@@ -218,11 +236,14 @@ in a personal Space, when its reminder came due. It orders chat lists for every 
 Agent replies, messages from other Agents, reading, organizing a chat and another
 Member's reminder never change it.
 
-### Mobile Gateway
+### Phone façade
 
-The Mobile Gateway is the Desktop Host's network ingress for Nodex Mobile. A Paired Device is a phone
-whose static key the gateway has authorized for this Profile; removing it forgets that key. A phone
-owns no Nodex data.
+A phone is a Device of a Member in a Space. The phone façade projects bounded
+Inbox, chat and file views through that Member's Core-issued invocation proof.
+The Space's one pinned-TLS listener owns admission and revocation; Main and
+`nodex serve` embed the same semantic host owners. The phone keeps a separate
+enrollment, cache, draft and outbox for each `(Space, Member)` and owns no
+canonical Nodex data. See [ADR 0084](docs/adr/0084-phones-as-member-devices.md).
 
 ### Thread
 
@@ -1442,4 +1463,8 @@ idempotency, projections, and post-commit events behind `read` and `apply`.
 - `docs/adr/0014-document-revision-history.md`: semantic revisions and forward
   restore.
 
+- [ADR 0081: Sources and followed threads](docs/adr/0081-sources-and-followed-threads.md) — external observations, direct delivery, own-PR milestones, origin replies, Problems and Activity.
 
+Phones enroll as Member Devices through a Device-link offer and reach each Space
+directly over its pinned-TLS listener. A team phone remains connected while a
+joined laptop is closed, provided `nodex serve` remains running and reachable.

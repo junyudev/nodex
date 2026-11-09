@@ -4,7 +4,7 @@
 - Date: 2026-11-04
 - Owners: Nodex maintainers
 - Refines: the Effect frontier in [ADR 0047](0047-effect-control-plane-and-runtime-boundaries.md)
-- Relates to: [ADR 0075](0075-phone-access-through-an-encrypted-gateway.md)
+- Relates to: [ADR 0084](0084-phones-as-member-devices.md)
 
 ## Context
 
@@ -12,7 +12,7 @@ ADR 0047 gives Effect the work involving time, retry schedules, structured cance
 connection barriers, ordered delivery and resource scopes, and keeps renderers Effect-free because
 renderers only present. It was written for a desktop where Main does that work for the renderer.
 
-A phone has no Main. Nodex Mobile's own process races routes, runs an encrypted handshake, reconnects
+A phone has no Main. Nodex Mobile's own process races pinned routes, renews Device sessions, reconnects
 with backoff, follows chats, delivers a durable outbox in order, and downloads files with resume.
 Written as promises, timers and abort signals, that coordination was correct only by convention:
 each new path had to remember to cancel, and nothing checked it.
@@ -28,8 +28,8 @@ Effect-free, as `@nodex/mobile-protocol` is. They use `runtime/index.ts`, which 
 atom projections and command functions returning promises. State that only a screen cares about,
 such as a draft, is a small local store rather than an atom.
 
-Promise and callback shapes exist only at the runtime's two frontiers: the bounded WebSocket adapter
-in `socket.ts` and Expo's modules in `expo-platform.ts`. See the
+Promise and callback shapes exist only at the runtime's two frontiers: the bounded WebSocket adapters
+in `pinned-tls.ts`, and Expo's modules in `expo-platform.ts`. See the
 [external frontier ledger](../effect-external-frontiers.md).
 
 ## Consequences

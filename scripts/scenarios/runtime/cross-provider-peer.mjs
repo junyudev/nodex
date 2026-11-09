@@ -691,6 +691,42 @@ async function finishHostedAnswer(prompt, server, native) {
   return "Host work is ready. The member answered the question.";
 }
 
+async function answerMobile(prompt, server, native) {
+  if (prompt.includes("JSON data:\n")) {
+    const { request, messages } = JSON.parse(prompt.split("JSON data:\n")[1]);
+    record({
+      event: "mobile.routing",
+      requestId: request.request_id,
+      bodies: messages.map((message) => message.body),
+    });
+    while (!fs.existsSync(path.join(home, `${request.request_id}.answer`))) await delay(25);
+    await callTool(
+      server,
+      "inbox_suggest",
+      {
+        request_id: request.request_id,
+        generation: request.generation,
+        titles: [],
+        suggestions: messages.map((message) => ({
+          explicit_request: false,
+          page_ids: [message.page_id],
+          kind: "note",
+          action: "keep",
+          project_id: null,
+          session_id: null,
+          prompt: null,
+          additions: [],
+          chat_instance_id: null,
+          chat_model: null,
+          chat_effort: null,
+          summary: "Keep this reference",
+          rationale: null,
+        })),
+      },
+      native,
+    );
+    return "The reference is ready to keep.";
+  }
   if (!prompt.includes("<send_user_message_question_reply>")) {
     if (!prompt.includes(`Page ID: ${plan().pageId}`)) return "Nodex is monitoring your work.";
     emitAsyncQuestion(native, "mobile", "Which scope should the phone use?", [
@@ -701,7 +737,21 @@ async function finishHostedAnswer(prompt, server, native) {
     return "The phone's work is waiting for your scope choice.";
   }
   record({ event: "mobile.answer", ...native, response: prompt });
+  await callTool(
+    server,
+    "report_work",
+    {
+      pageId: plan().pageId,
+      outcome: "ready",
+      summary: "Phone answered the question; work is ready.",
+    },
+    native,
+  );
+  return "The phone's work is ready.";
+}
+
 async function answer(prompt, server, native) {
+  if (plan().scenario === "mobile-gateway") return await answerMobile(prompt, server, native);
   if (plan().scenario === "team-host") return await answerHosted(prompt, server, native);
   if (passkeys()) return await answerPasskeys(prompt, server, native);
   const recipe = plan();

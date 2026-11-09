@@ -1,8 +1,7 @@
-import { act, fireEvent, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 import { renderWithMaitai as render } from "../../../test/thread-maitai";
 import type { FileReadAuthority } from "@/lib/library-file-resources";
-import { NodexModalHost } from "@/lib/modal-registry";
 import { ReadonlyMarkdownBlockNotePreview } from "./readonly-nfm-blocknote-preview";
 
 const reads = vi.hoisted(() => ({ metadata: vi.fn(), bytes: vi.fn(), save: vi.fn() }));
@@ -21,17 +20,17 @@ const authority = (revisionId: string): FileReadAuthority => ({
   readSource: { kind: "document_revision", document_id: "document", revision_id: revisionId },
 });
 const content =
-  ':attachment{kind="file" source="nodex://files/shared" name="stale.md" mime="text/markdown"}';
+  ':attachment{kind="file" source="nodex://files/shared" name="stale.txt" mime="text/plain"}';
 
-test("a historical attachment opens its captured version in a viewer, including after a scope change", async () => {
+test("historical attachment preview reads and saves only its captured source, including after a scope change", async () => {
   reads.metadata.mockImplementation(async (scope: FileReadAuthority) => ({
     file_id: "shared",
     default_name:
       scope.readSource.kind === "document_revision"
-        ? `${scope.readSource.revision_id}.md`
-        : "wrong.md",
-    mime_type: "text/markdown",
-    byte_length: 16,
+        ? `${scope.readSource.revision_id}.txt`
+        : "wrong.txt",
+    mime_type: "text/plain",
+    byte_length: 8,
     version: 1,
     blob_etag: "captured",
   }));
@@ -40,59 +39,42 @@ test("a historical attachment opens its captured version in a viewer, including 
       throw new Error("Unexpected current File read");
     if (scope.readSource.revision_id === "unresolved") throw new Error("Exact target unavailable");
     return {
-      bytes: new TextEncoder().encode("# Captured notes"),
-      mimeType: "text/markdown",
+      bytes: new TextEncoder().encode("captured bytes"),
+      mimeType: "text/plain",
       etag: "captured",
     };
   });
   reads.save.mockResolvedValue(undefined);
   const preview = (scope: FileReadAuthority) => (
-    <>
-      <ReadonlyMarkdownBlockNotePreview
-        fileAuthority={scope}
-        content={content}
-        projectId="project"
-        pageId="page"
-        historyId={
-          scope.readSource.kind === "document_revision" ? scope.readSource.revision_id : ""
-        }
-      />
-      <NodexModalHost />
-    </>
+    <ReadonlyMarkdownBlockNotePreview
+      fileAuthority={scope}
+      content={content}
+      projectId="project"
+      pageId="page"
+      historyId={scope.readSource.kind === "document_revision" ? scope.readSource.revision_id : ""}
+    />
   );
   const view = render(preview(authority("old")));
-  const chip = await view.findByRole("button", { name: "Open old.md" });
+  const chip = await view.findByRole("button", { name: "old.txt" });
   await act(async () => {
     fireEvent.click(chip);
     await Promise.resolve();
   });
-  const viewer = await view.findByRole("dialog");
-  expect(await within(viewer).findByRole("heading", { name: "Captured notes" })).toBeDefined();
-  expect(within(viewer).getByText("Markdown · 16 B")).toBeDefined();
+  expect(await view.findByText("captured bytes")).toBeDefined();
+  const save = await view.findByRole("button", { name: /Save/ });
   await act(async () => {
-    fireEvent.click(within(viewer).getByRole("button", { name: "Save…" }));
+    fireEvent.click(save);
     await Promise.resolve();
   });
-  expect(reads.save).toHaveBeenCalledWith(
-    expect.objectContaining({ readSource: authority("old").readSource }),
-    "nodex://files/shared",
-    "old.md",
-  );
-  await act(async () => {
-    fireEvent.keyDown(viewer, { key: "Escape" });
-    await Promise.resolve();
-  });
-  await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
-
+  expect(reads.save).toHaveBeenCalledWith(authority("old"), "nodex://files/shared", "old.txt");
   view.rerender(preview(authority("unresolved")));
-  const unavailable = await view.findByRole("button", { name: "Open unresolved.md" });
+  const unavailable = await view.findByRole("button", { name: "unresolved.txt" });
   await act(async () => {
     fireEvent.click(unavailable);
     await Promise.resolve();
   });
-  expect(
-    await within(await view.findByRole("dialog")).findByText("This File is no longer available."),
-  ).toBeDefined();
+  expect(await view.findByText("Preview unavailable.")).toBeDefined();
+  await waitFor(() => expect(view.queryByText("captured bytes")).toBeNull());
   expect(reads.bytes.mock.calls.map(([scope]) => scope.readSource)).toEqual([
     authority("old").readSource,
     authority("unresolved").readSource,

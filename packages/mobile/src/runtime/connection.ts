@@ -1,17 +1,14 @@
 import {
-  beginHandshake,
-  CHANNEL_CLOSE,
-  CHANNEL_MAX_MESSAGE_BYTES,
-  generateStaticKeyPair,
   MOBILE_PROTOCOL_REVISION,
+  MOBILE_MAX_MESSAGE_BYTES,
   MobileEnvelopeSchema,
-  NOISE_KEY_BYTES,
-  parsePairingUri,
+  parseDeviceLinkUri,
+  HelloSchema,
+  spaceMemberKey,
   type Hello,
   type MobileEnvelope,
-  type StaticKeyPair,
 } from "@nodex/mobile-protocol";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { z } from "zod";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -19,271 +16,377 @@ import * as Fiber from "effect/Fiber";
 import * as FiberMap from "effect/FiberMap";
 import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
-import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { createProjection } from "./projection";
-import { openSocket } from "./socket";
-import { Platform } from "./platform";
-import { decodeUtf8, encodeUtf8, fromBase64Url } from "./encoding";
-import type { MobilePlatform } from "./platform";
-import { readStored } from "./storage";
+import { Platform, type MobilePlatform } from "./platform";
+import { decodeUtf8, encodeUtf8 } from "./encoding";
 import { RpcClient, disconnected, RpcFailure } from "./rpc-client";
+import type { PinnedTlsFailure } from "./pinned-tls";
+import { orderRoutes } from "./routes";
 
-export type SavedHost = {
-  hostId: string;
-  hostName: string;
-  hostKey: string;
-  routes: string[];
-  pairedAt: number;
-  deviceId: string;
-  lastConnectedRoute: string | null;
-};
-
+const SavedHostSchema = z
+  .object({
+    hostId: z.string(),
+    hostName: z.string(),
+    spaceId: z.string().min(1),
+    spaceKind: HelloSchema.shape.spaceKind,
+    memberId: z.string().min(1),
+    fingerprint: z.string().regex(/^[a-f0-9]{64}$/iu),
+    routes: z.array(z.string()),
+    pairedAt: z.number(),
+    deviceId: z.string().min(1),
+    lastConnectedRoute: z.string().nullable(),
+  })
+  .refine((host) => host.hostId === spaceMemberKey(host.spaceId, host.memberId));
+/** Public enrollment metadata; the opaque hostId is the (Space, Member) partition key. */
+export type SavedHost = z.infer<typeof SavedHostSchema>;
+/** Enrollment identity is known before the first hello supplies Space presentation. */
+type EnrolledHost = Omit<SavedHost, "spaceKind">;
 export type ConnectionState = {
-  status: "idle" | "connecting" | "connected" | "offline" | "incompatible" | "revoked";
+  status:
+    | "idle"
+    | "connecting"
+    | "connected"
+    | "offline"
+    | "unavailable"
+    | "incompatible"
+    | "revoked";
   hello: Hello | null;
   message: string | null;
 };
-
-type PairFailureCode = "invalid" | "expired" | "rejected" | "unreachable" | "incompatible" | "busy";
-type RouteFailureCode = PairFailureCode | "revoked";
-
+type FailureCode =
+  | "invalid"
+  | "expired"
+  | "rejected"
+  | "unreachable"
+  | "incompatible"
+  | "busy"
+  | "revoked"
+  | "pin"
+  | "locked";
 class RouteFailure extends Error {
   constructor(
-    readonly code: RouteFailureCode,
+    readonly code: FailureCode,
     message: string,
-    readonly authenticated = false,
   ) {
     super(message);
     this.name = "RouteFailure";
   }
 }
-
-class PairingFailure extends Error {
-  constructor(
-    readonly code: PairFailureCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = "PairingFailure";
-  }
-}
-
-const expiredPairing = () =>
-  new PairingFailure("expired", "This pairing code expired. Show a new one on your desktop.");
-
-type SavedIdentity = { publicKey: string; secretKey: string };
-type PendingPairing = {
-  hostKey: string;
-  routes: string[];
-  pairedAt: number;
-  identity: SavedIdentity;
+const noRoutes = () =>
+  new RouteFailure("unreachable", "Can't reach this Space. If its address changed, link again.");
+const incompatible = () =>
+  new RouteFailure("incompatible", "Update Nodex Mobile or the Space host to connect.");
+const revoked = () =>
+  new RouteFailure("revoked", "Access revoked. Link this phone again to reconnect.");
+const tlsFailure = (error: PinnedTlsFailure) => {
+  if (error.code === "pin")
+    return new RouteFailure(
+      "pin",
+      "The host certificate changed. Link again to trust its new certificate.",
+    );
+  return noRoutes();
 };
-type Catalog = {
-  hosts: SavedHost[];
-  activeHostId: string | null;
-  identities: Record<string, SavedIdentity>;
-  pendingPairing?: PendingPairing;
-};
-
-type HandshakeOptions = {
-  hostKey: Uint8Array;
-  device: StaticKeyPair;
-  psk?: Uint8Array;
-  expected?: SavedHost;
-  beforePairingPing?: Effect.Effect<void, RouteFailure>;
-};
-
+const EnrollmentSchema = z.object({
+  space_id: z.string().min(1),
+  space_name: z.string(),
+  member_id: z.string().min(1),
+  device_id: z.string().min(1),
+  device_credential: z.string().regex(/^[a-f0-9]{64}$/u),
+});
+const SessionSchema = z.object({
+  session_token: z.string().regex(/^[a-f0-9]{64}$/u),
+  expires_at: z.number().int().safe(),
+  principal: z.object({ space_id: z.string(), member_id: z.string(), device_id: z.string() }),
+});
+const RecoverySchema = z.object({
+  payload: z.object({ recovery: z.object({ kind: z.string() }) }),
+});
+const CatalogSchema = z.object({
+  hosts: z.array(SavedHostSchema),
+  activeHostId: z.string().nullable(),
+  credentials: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/u)),
+});
+type Catalog = z.infer<typeof CatalogSchema>;
+const emptyCatalog = (): Catalog => ({ hosts: [], activeHostId: null, credentials: {} });
+const locked = () =>
+  new RouteFailure(
+    "locked",
+    "Saved Space credentials are unavailable. Unlock this phone and retry.",
+  );
 export type ConnectionLink = {
   route: string;
   hello: Hello;
   send(envelope: MobileEnvelope): Effect.Effect<void, RpcFailure>;
-  take: Effect.Effect<MobileEnvelope | "dropped", RouteFailure>;
+  /** `renew` ends this link so the next connection renews the session at once. */
+  take: Effect.Effect<MobileEnvelope | "dropped" | "renew", RouteFailure>;
+  expiresAt: number;
 };
-
-const CATALOG_KEY = "nodex.mobile.hosts.v1";
-const noRoutes = () => new RouteFailure("unreachable", "Could not reach your desktop.");
-const incompatible = (authenticated = false) =>
-  new RouteFailure(
-    "incompatible",
-    "Update Nodex here or on your desktop to connect.",
-    authenticated,
+const CATALOG_KEY = "nodex.mobile.spaces.v1";
+const endpoint = (route: string, path: string, socket = false) => {
+  const url = new URL(path, route);
+  url.protocol = socket ? "wss:" : "https:";
+  return url.href;
+};
+const uniqueRoutes = (routes: readonly string[]) => [
+  ...new Set(
+    routes.filter((route) => {
+      try {
+        const url = new URL(route);
+        return (
+          url.protocol === "https:" &&
+          !!url.hostname &&
+          !url.username &&
+          !url.password &&
+          !url.hash &&
+          !url.search &&
+          url.pathname === "/"
+        );
+      } catch {
+        return false;
+      }
+    }),
+  ),
+];
+/** The address that worked last leads its kind of address; see `orderRoutes`. */
+const savedRoutes = (host: EnrolledHost) =>
+  orderRoutes(
+    uniqueRoutes([...(host.lastConnectedRoute ? [host.lastConnectedRoute] : []), ...host.routes]),
   );
-const revoked = () =>
-  new RouteFailure("revoked", "Your desktop no longer knows this phone. Pair it again.");
-const rejected = () => new RouteFailure("rejected", "Your desktop turned this pairing code down.");
+const routeFailure = (failures: readonly RouteFailure[]) =>
+  failures.find((e) => e.code === "revoked") ??
+  failures.find((e) => e.code === "incompatible" || e.code === "pin") ??
+  failures[0] ??
+  noRoutes();
+/** The host's own answer holds for every address, so another route cannot change it. */
+const decisive = (error: RouteFailure) =>
+  error.code === "revoked" || error.code === "incompatible" || error.code === "pin";
+/**
+ * Tries a Space's addresses together, the first offset by a quarter second each. The first to
+ * connect wins; the first decisive refusal ends the race at once rather than after every other
+ * address times out; otherwise the most telling failure is reported.
+ */
+const raceRoutes = <A, R>(
+  routes: readonly string[],
+  attempt: (route: string) => Effect.Effect<A, RouteFailure, R>,
+) =>
+  Effect.gen(function* () {
+    if (!routes.length) return yield* Effect.fail(noRoutes());
+    const failures: RouteFailure[] = [];
+    const outcome = yield* Effect.raceAll(
+      routes.map((route, index) =>
+        Effect.gen(function* () {
+          if (index) yield* Effect.sleep(index * 250);
+          return { ok: true as const, value: yield* attempt(route) };
+        }).pipe(
+          Effect.catch((error) => {
+            failures.push(error);
+            return decisive(error)
+              ? Effect.succeed({ ok: false as const, error })
+              : Effect.fail(error);
+          }),
+        ),
+      ),
+    ).pipe(Effect.catch(() => Effect.fail(routeFailure(failures))));
+    if (!outcome.ok) return yield* Effect.fail(outcome.error);
+    return outcome.value;
+  });
 
-function decodeIdentity(identity: SavedIdentity): StaticKeyPair {
+const request = Effect.fn("MobileConnection.request")(function* <A>(
+  platform: MobilePlatform,
+  route: string,
+  fingerprint: string,
+  path: string,
+  body: unknown,
+  schema: z.ZodType<A>,
+) {
+  const response = yield* platform.pinnedTls
+    .request({
+      url: endpoint(route, path),
+      fingerprint,
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: encodeUtf8(JSON.stringify(body)),
+      timeoutMs: 8_000,
+    })
+    .pipe(Effect.mapError(tlsFailure));
+  const json = yield* Effect.try({
+    try: (): unknown => JSON.parse(decodeUtf8(response.body)),
+    catch: noRoutes,
+  });
+  if (response.status < 200 || response.status >= 300) {
+    const recovery = RecoverySchema.safeParse(json);
+    if (
+      path === "/session" &&
+      recovery.success &&
+      recovery.data.payload.recovery.kind === "remote_access_withdrawn"
+    )
+      return yield* Effect.fail(revoked());
+    if (response.status === 429)
+      return yield* Effect.fail(
+        new RouteFailure("busy", "The Space host is busy. Try again shortly."),
+      );
+    return yield* Effect.fail(
+      new RouteFailure(
+        "rejected",
+        "This device link is no longer available. Show a new link in the Space’s settings.",
+      ),
+    );
+  }
+  return yield* Effect.try({ try: () => schema.parse(json), catch: incompatible });
+});
+/** Renewable sessions are memory-only and share one renewal lane, like desktop sessions. */
+const makeSessionCredentials = Effect.fnUntraced(function* (platform: MobilePlatform) {
+  const gate = yield* Semaphore.make(1);
+  const cached = new Map<string, { credential: string; session: z.infer<typeof SessionSchema> }>();
   return {
-    publicKey: hexToBytes(identity.publicKey),
-    secretKey: hexToBytes(identity.secretKey),
-  };
-}
-
-function routeFailure(code: number) {
-  if (code === CHANNEL_CLOSE.protocolMismatch) return incompatible();
-  if (code === CHANNEL_CLOSE.revoked || code === CHANNEL_CLOSE.unknownDevice) return revoked();
-  if (code === CHANNEL_CLOSE.pairingRejected) return rejected();
-  return noRoutes();
-}
-
-function uniqueRoutes(routes: string[]) {
-  return [
-    ...new Set(
-      routes.filter((route) => {
-        try {
-          const url = new URL(route);
-          return (
-            (url.protocol === "ws:" || url.protocol === "wss:") &&
-            !url.username &&
-            !url.password &&
-            !url.hash &&
-            !!url.hostname
+    invalidate: (key: string) => cached.delete(key),
+    renew: (host: EnrolledHost, credential: string) =>
+      gate.withPermits(1)(
+        Effect.gen(function* () {
+          const previous = cached.get(host.hostId);
+          if (
+            previous?.credential === credential &&
+            platform.now() < previous.session.expires_at * 1000 - 60_000
+          )
+            return previous.session;
+          // Race addresses within the one renewal lane: a stalled route must not hold
+          // every WebSocket attempt behind its own HTTPS timeout.
+          const session = yield* raceRoutes(savedRoutes(host), (route) =>
+            Effect.gen(function* () {
+              const result = yield* request(
+                platform,
+                route,
+                host.fingerprint,
+                "/session",
+                { device_credential: credential },
+                SessionSchema,
+              );
+              if (
+                result.principal.space_id !== host.spaceId ||
+                result.principal.member_id !== host.memberId ||
+                result.principal.device_id !== host.deviceId
+              )
+                return yield* Effect.fail(incompatible());
+              return result;
+            }),
           );
-        } catch {
-          return false;
-        }
-      }),
-    ),
-  ];
-}
+          cached.set(host.hostId, { credential, session });
+          return session;
+        }),
+      ),
+  };
+});
+type SessionCredentials = Effect.Success<ReturnType<typeof makeSessionCredentials>>;
 
-/** Acquired in the attempt Scope, which is retained only for the winning route. */
 const dial = Effect.fn("MobileConnection.dial")(function* (
   platform: MobilePlatform,
   route: string,
-  options: HandshakeOptions,
+  host: EnrolledHost,
+  session: z.infer<typeof SessionSchema>,
+  sessions: SessionCredentials,
 ) {
-  const socket = yield* openSocket(platform, route).pipe(Effect.mapError(() => noRoutes()));
-  const take = socket.take.pipe(Effect.mapError(() => noRoutes()));
-  const first = yield* take;
-  if (first.type !== "open")
-    return yield* Effect.fail(first.type === "closed" ? routeFailure(first.code) : noRoutes());
-  const handshake = yield* Effect.try({
-    try: () =>
-      beginHandshake({
-        hostPublicKey: options.hostKey,
-        device: options.device,
-        psk: options.psk,
-        payload: encodeUtf8(
-          JSON.stringify({
-            protocol: MOBILE_PROTOCOL_REVISION,
-            deviceName: platform.deviceName,
-            platform: platform.platform,
-            appVersion: platform.appVersion,
-          }),
-        ),
-        randomBytes: platform.randomBytes,
-      }),
-    catch: () => noRoutes(),
-  });
-  yield* socket.send(handshake.message).pipe(Effect.mapError(() => noRoutes()));
-  const reply = yield* take;
-  if (reply.type !== "frame")
-    return yield* Effect.fail(reply.type === "closed" ? routeFailure(reply.code) : noRoutes());
-  const secure = yield* Effect.try({
-    try: () => handshake.finish(reply.bytes).channel,
-    catch: () => (options.psk ? rejected() : noRoutes()),
-  });
-  const writer = yield* Semaphore.make(1);
-  const sendEnvelope = Effect.fnUntraced(function* (envelope: MobileEnvelope) {
-    const message = yield* Effect.try({
-      try: () => encodeUtf8(JSON.stringify(envelope)),
-      catch: () => new RpcFailure("invalid_params", "This request has invalid details.", false),
-    });
-    if (message.length > CHANNEL_MAX_MESSAGE_BYTES)
-      return yield* Effect.fail(
-        new RpcFailure("invalid_params", "This request is too large to send.", false),
-      );
-    const frames = yield* Effect.try({ try: () => secure.seal(message), catch: disconnected });
-    for (const frame of frames) yield* socket.send(frame).pipe(Effect.mapError(disconnected));
-  });
-  // Sealing consumes frame sequence numbers. Publish that whole message before another writer.
-  const send = (envelope: MobileEnvelope) =>
-    writer.withPermits(1)(sendEnvelope(envelope).pipe(Effect.uninterruptible));
-  yield* options.beforePairingPing ?? Effect.void;
-  yield* send({ t: "ping" }).pipe(Effect.mapError(() => noRoutes()));
+  const socket = yield* platform.pinnedTls
+    .openSocket({
+      url: endpoint(route, "/core/v1/phone", true),
+      fingerprint: host.fingerprint,
+      headers: { Authorization: `Bearer ${session.session_token}` },
+      timeoutMs: 8_000,
+    })
+    .pipe(
+      Effect.tapError(() =>
+        Effect.sync(() => {
+          sessions.invalidate(host.hostId);
+        }),
+      ),
+      Effect.mapError(tlsFailure),
+    );
   const receive = Effect.fnUntraced(function* (
     ready: boolean,
-  ): Effect.fn.Return<MobileEnvelope | "dropped", RouteFailure> {
+  ): Effect.fn.Return<MobileEnvelope | "dropped" | "renew", RouteFailure> {
     while (true) {
-      const event = yield* take;
-      if (event.type === "closed") return yield* Effect.fail(routeFailure(event.code));
-      if (event.type !== "frame") continue;
-      const bytes = yield* Effect.try({
-        try: () => secure.open(event.bytes),
-        catch: () => noRoutes(),
-      });
-      if (bytes === null) continue;
-      const json = yield* Effect.try({
-        try: (): unknown => JSON.parse(decodeUtf8(bytes)),
-        catch: () => incompatible(),
-      }).pipe(Effect.result);
-      if (json._tag === "Failure") {
-        if (!ready) return yield* Effect.fail(json.failure);
-        continue;
+      const event = yield* socket.take.pipe(Effect.mapError(tlsFailure));
+      if (event.type === "close") {
+        // The host asks for a fresh session; only that renewal can say whether access remains.
+        if (event.code === 4401) {
+          sessions.invalidate(host.hostId);
+          if (ready) return "renew";
+        }
+        return yield* Effect.fail(
+          event.code === 4403 ? revoked() : event.code === 4406 ? incompatible() : noRoutes(),
+        );
       }
-      const parsed = MobileEnvelopeSchema.safeParse(json.success);
+      const parsed = yield* Effect.try({
+        try: () =>
+          MobileEnvelopeSchema.safeParse(
+            JSON.parse(typeof event.data === "string" ? event.data : decodeUtf8(event.data)),
+          ),
+        catch: incompatible,
+      });
       if (parsed.success) return parsed.data;
       if (!ready) return yield* Effect.fail(incompatible());
-      const data = json.success;
-      if (data !== null && typeof data === "object" && "t" in data && data.t === "evt")
-        return "dropped";
+      return "dropped";
     }
   });
-  const envelope = yield* receive(false);
-  if (envelope === "dropped" || envelope.t !== "hello") return yield* Effect.fail(incompatible());
-  const hello = envelope.d;
-  if (hello.protocol !== MOBILE_PROTOCOL_REVISION) return yield* Effect.fail(incompatible(true));
+  const first = yield* receive(false);
   if (
-    options.expected &&
-    (hello.host.id !== options.expected.hostId || hello.deviceId !== options.expected.deviceId)
+    first === "dropped" ||
+    first === "renew" ||
+    first.t !== "hello" ||
+    first.d.protocol !== MOBILE_PROTOCOL_REVISION ||
+    first.d.deviceId !== host.deviceId ||
+    first.d.spaceId !== host.spaceId ||
+    first.d.memberId !== host.memberId
   )
-    return yield* Effect.fail(noRoutes());
-  return { route, hello, send, take: receive(true) } satisfies ConnectionLink;
+    return yield* Effect.fail(incompatible());
+  // The partition comes from the verified enrollment/session, never from a caller's JSON.
+  const hello = { ...first.d, host: { ...first.d.host, id: host.hostId } };
+  return {
+    route,
+    hello,
+    expiresAt: session.expires_at * 1000,
+    send: (envelope: MobileEnvelope) =>
+      Effect.try({
+        try: () => {
+          const text = JSON.stringify(envelope);
+          if (encodeUtf8(text).length > MOBILE_MAX_MESSAGE_BYTES) throw new Error();
+          return text;
+        },
+        catch: () =>
+          new RpcFailure(
+            "invalid_params",
+            "This request is too large or has invalid details.",
+            false,
+          ),
+      }).pipe(Effect.flatMap((text) => socket.send(text).pipe(Effect.mapError(disconnected)))),
+    take: receive(true),
+  } satisfies ConnectionLink;
 });
-
-const raceRoutes = Effect.fn("MobileConnection.raceRoutes")(function* (
+const dialRoutes = Effect.fn("MobileConnection.dialRoutes")(function* (
   platform: MobilePlatform,
-  routes: string[],
-  options: HandshakeOptions,
+  host: EnrolledHost,
+  credential: string,
+  sessions: SessionCredentials,
 ) {
-  if (!routes.length) return yield* Effect.fail(noRoutes());
   const owner = yield* Scope.Scope;
-  const failures: RouteFailure[] = [];
-  return yield* Effect.raceAll(
-    routes.map((route, index) =>
-      Effect.gen(function* () {
-        if (index) yield* Effect.sleep(index * 250);
-        const attempt = yield* Scope.fork(owner);
-        return yield* dial(platform, route, options).pipe(
-          Scope.provide(attempt),
-          Effect.timeoutOrElse({ duration: 8_000, orElse: () => Effect.fail(noRoutes()) }),
-          Effect.onExit((exit) =>
-            Exit.isFailure(exit) ? Scope.close(attempt, Exit.void) : Effect.void,
-          ),
-          Effect.tapError((error) =>
-            Effect.sync(() => {
-              failures.push(error);
-            }),
-          ),
-        );
-      }),
-    ),
-  ).pipe(
-    Effect.catch(() =>
-      Effect.fail(
-        failures.find((failure) => failure.authenticated) ??
-          ["incompatible", "revoked", "rejected"]
-            .map((code) => failures.find((failure) => failure.code === code))
-            .find((error) => error !== undefined) ??
-          noRoutes(),
-      ),
-    ),
+  const routes = savedRoutes(host);
+  if (!routes.length) return yield* Effect.fail(noRoutes());
+  const session = yield* sessions.renew(host, credential);
+  return yield* raceRoutes(routes, (route) =>
+    Effect.gen(function* () {
+      const attempt = yield* Scope.fork(owner);
+      return yield* dial(platform, route, host, session, sessions).pipe(
+        Scope.provide(attempt),
+        Effect.timeoutOrElse({ duration: 16_000, orElse: () => Effect.fail(noRoutes()) }),
+        Effect.onExit((exit) =>
+          Exit.isFailure(exit) ? Scope.close(attempt, Exit.void) : Effect.void,
+        ),
+      );
+    }),
   );
 });
-
 const MAX_RECONNECT_DELAY = 30_000;
 export function reconnectDelay(platform: MobilePlatform, failures: number) {
   const jitter = 0.8 + (platform.randomBytes(1)[0] ?? 128) / 640;
@@ -296,19 +399,20 @@ export function reconnectDelay(platform: MobilePlatform, failures: number) {
 export const makeConnection = Effect.gen(function* () {
   const platform = yield* Platform;
   const rpc = yield* RpcClient;
-  const owner = yield* Scope.Scope;
+  const sessions = yield* makeSessionCredentials(platform);
   const tasks = yield* FiberMap.make<string>();
-  let catalog = readStored<Catalog>(platform.secrets, CATALOG_KEY, {
-    hosts: [],
-    activeHostId: null,
-    identities: {},
-  });
+  const readCatalog = () => {
+    const saved = platform.secrets.get(CATALOG_KEY);
+    return saved === null ? emptyCatalog() : CatalogSchema.parse(JSON.parse(saved));
+  };
+  const restored = yield* Effect.try({ try: readCatalog, catch: locked }).pipe(Effect.result);
+  let catalogBlocked = restored._tag === "Failure";
+  let catalog = restored._tag === "Success" ? restored.success : emptyCatalog();
   const hosts = createProjection({ hosts: catalog.hosts, activeHostId: catalog.activeHostId });
   const state = createProjection<ConnectionState>({ status: "idle", hello: null, message: null });
   let foreground = platform.isForeground();
   let active: ConnectionLink | null = null;
   let pairing = false;
-  let recovering = false;
   let hint: RouteFailure | null = null;
   let failures = 0;
   const setState = (
@@ -319,35 +423,26 @@ export const makeConnection = Effect.gen(function* () {
   const persist = (next: Catalog) =>
     Effect.try({
       try: () => {
+        if (catalogBlocked) throw locked();
         platform.secrets.set(CATALOG_KEY, JSON.stringify(next));
         catalog = next;
         hosts.setState({ hosts: next.hosts, activeHostId: next.activeHostId }, true);
       },
-      catch: () => noRoutes(),
+      catch: noRoutes,
     });
-  const replaceHost = (host: SavedHost) =>
-    catalog.hosts.some((item) => item.hostId === host.hostId)
-      ? catalog.hosts.map((item) => (item.hostId === host.hostId ? host : item))
-      : [...catalog.hosts, host];
-  const learnedHost = (link: ConnectionLink, hostKey: string, pairedAt: number): SavedHost => ({
-    hostId: link.hello.host.id,
-    hostName: link.hello.host.name,
-    hostKey,
-    routes: uniqueRoutes([...link.hello.routes, link.route]),
-    pairedAt,
-    deviceId: link.hello.deviceId,
-    lastConnectedRoute: link.route,
-  });
   const reportFailure = (error: RouteFailure) => {
-    if (
-      (error.code === "incompatible" || error.code === "revoked") &&
-      (!hint?.authenticated || error.authenticated)
-    )
-      hint = error;
+    if (["incompatible", "revoked", "pin"].includes(error.code)) hint = error;
+    const condition = hint ?? error;
     setState(
-      hint?.code === "incompatible" || hint?.code === "revoked" ? hint.code : "offline",
+      condition.code === "revoked"
+        ? "revoked"
+        : condition.code === "incompatible"
+          ? "incompatible"
+          : condition.code === "pin"
+            ? "unavailable"
+            : "offline",
       null,
-      (hint ?? error).message,
+      condition.message,
     );
   };
   const serve = Effect.fn("MobileConnection.serve")(function* (link: ConnectionLink) {
@@ -367,6 +462,7 @@ export const makeConnection = Effect.gen(function* () {
     const ingress = Effect.gen(function* () {
       while (true) {
         const envelope = yield* link.take;
+        if (envelope === "renew") return;
         if (envelope === "dropped") yield* rpc.dropEvent;
         else if (envelope.t === "ping") yield* link.send({ t: "pong" });
         else if (envelope.t === "pong") yield* Queue.offer(pongs, undefined);
@@ -387,236 +483,161 @@ export const makeConnection = Effect.gen(function* () {
         );
       }
     });
-    const paused = platform.foregroundChanges.pipe(
-      Stream.filter((value) => !value),
-      Stream.take(1),
-      Stream.runDrain,
-    );
-    const foregroundHeartbeat = Effect.raceFirst(heartbeat, paused).pipe(
-      Effect.andThen(Effect.never),
-    );
-    return yield* Effect.raceFirst(ingress, foregroundHeartbeat).pipe(
-      Effect.mapError((error) => (error instanceof RouteFailure ? error : noRoutes())),
+    // Renew with the Device credential, exactly as desktop sessions do, before the old session expires.
+    const renew = Effect.sleep(Math.max(1_000, link.expiresAt - platform.now() - 60_000));
+    return yield* Effect.raceFirst(Effect.raceFirst(ingress, heartbeat), renew).pipe(
+      Effect.mapError((e) => (e instanceof RouteFailure ? e : noRoutes())),
     );
   });
-  const retryPolicy = Schedule.spaced(1_000).pipe(
-    Schedule.modifyDelay(() =>
-      Effect.sync(() =>
-        hint?.authenticated ? MAX_RECONNECT_DELAY : reconnectDelay(platform, failures++),
+  const connectAttempt = (enrollment?: EnrolledHost) => {
+    let pending = enrollment;
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const host = pending ?? catalog.hosts.find((item) => item.hostId === catalog.activeHostId);
+        if (!host || !foreground) return yield* Effect.never;
+        const credential = catalog.credentials[host.hostId];
+        if (!credential) return yield* Effect.fail(revoked());
+        if (!hint && failures === 0 && state.getState().status === "idle") setState("connecting");
+        const link = yield* dialRoutes(platform, host, credential, sessions);
+        const learned = {
+          ...host,
+          hostName: link.hello.host.name,
+          spaceKind: link.hello.spaceKind,
+          lastConnectedRoute: link.route,
+          routes: uniqueRoutes([...link.hello.routes, link.route]),
+        };
+        yield* persist({
+          ...catalog,
+          hosts: catalog.hosts.some((item) => item.hostId === host.hostId)
+            ? catalog.hosts.map((item) => (item.hostId === host.hostId ? learned : item))
+            : [...catalog.hosts, learned],
+          activeHostId: host.hostId,
+        });
+        pending = undefined;
+        yield* serve(link);
+      }),
+    );
+  };
+  const connectOnce = (enrollment?: EnrolledHost) =>
+    connectAttempt(enrollment).pipe(
+      Effect.forever,
+      Effect.catch((error) => {
+        reportFailure(error);
+        return error.code === "revoked" || error.code === "pin" || !foreground
+          ? Effect.never
+          : Effect.fail(error);
+      }),
+      Effect.retry(
+        Schedule.spaced(1_000).pipe(
+          Schedule.modifyDelay(() => Effect.sync(() => reconnectDelay(platform, failures++))),
+        ),
       ),
-    ),
-  );
-  const connectOnce = Effect.scoped(
-    Effect.gen(function* () {
-      const host = catalog.hosts.find((item) => item.hostId === catalog.activeHostId);
-      if (!host || !foreground) return yield* Effect.never;
-      const identity = catalog.identities[host.hostId];
-      if (!identity) {
-        setState("revoked", null, revoked().message);
-        return yield* Effect.never;
-      }
-      // A retry is still offline: what the person is told holds steady until the Host answers.
-      if (!hint && failures === 0) setState("connecting");
-      const link = yield* raceRoutes(
-        platform,
-        uniqueRoutes([
-          ...(host.lastConnectedRoute ? [host.lastConnectedRoute] : []),
-          ...host.routes,
-        ]),
-        {
-          hostKey: fromBase64Url(host.hostKey),
-          device: decodeIdentity(identity),
-          expected: host,
-        },
-      );
-      const learned = learnedHost(link, host.hostKey, host.pairedAt);
-      if (JSON.stringify(learned) !== JSON.stringify(host))
-        yield* persist({ ...catalog, hosts: replaceHost(learned) });
-      yield* serve(link);
-    }),
-  ).pipe(
-    Effect.catch((error) => {
-      reportFailure(error);
-      return foreground ? Effect.fail(error) : Effect.never;
-    }),
-    Effect.retry(retryPolicy),
-  );
-  const reconnectNow = Effect.gen(function* () {
+    );
+  const reconnectNow = Effect.fnUntraced(function* (enrollment?: EnrolledHost) {
     yield* FiberMap.remove(tasks, "connection");
+    if (catalogBlocked) {
+      const restored = yield* Effect.try({ try: readCatalog, catch: locked }).pipe(Effect.result);
+      if (restored._tag === "Failure") {
+        setState("unavailable", null, restored.failure.message);
+        return;
+      }
+      catalog = restored.success;
+      catalogBlocked = false;
+      hosts.setState({ hosts: catalog.hosts, activeHostId: catalog.activeHostId }, true);
+    }
     failures = 0;
     if (!hint) setState(catalog.activeHostId ? "offline" : "idle");
-    if (catalog.activeHostId && foreground)
-      yield* FiberMap.run(tasks, "connection", connectOnce, { startImmediately: true });
+    if ((enrollment || catalog.activeHostId) && foreground)
+      yield* FiberMap.run(tasks, "connection", connectOnce(enrollment), { startImmediately: true });
   });
-  const completePairing = Effect.fnUntraced(function* (
-    link: ConnectionLink,
-    pending: PendingPairing,
-    session: Scope.Closeable,
-  ) {
-    yield* FiberMap.remove(tasks, "connection");
-    const host = learnedHost(link, pending.hostKey, pending.pairedAt);
-    hint = null;
-    failures = 0;
-    yield* persist({
-      hosts: replaceHost(host),
-      activeHostId: host.hostId,
-      identities: { ...catalog.identities, [host.hostId]: pending.identity },
-    });
-    // The winning socket outlives the pairing command and is owned by the connection lane.
-    const adopted = serve(link).pipe(
-      Scope.provide(session),
-      Effect.onExit(() => Scope.close(session, Exit.void)),
-      Effect.catch((error) =>
-        Effect.gen(function* () {
-          reportFailure(error);
-          if (!foreground) return yield* Effect.never;
-          yield* Effect.sleep(
-            hint?.authenticated ? MAX_RECONNECT_DELAY : reconnectDelay(platform, failures++),
+  const pairWithUri = Effect.fn("MobileConnection.linkDevice")(function* (uri: string) {
+    if (catalogBlocked) return yield* Effect.fail(locked());
+    const offer = parseDeviceLinkUri(uri);
+    if (!offer)
+      return yield* Effect.fail(new RouteFailure("invalid", "This is not a Nodex device link."));
+    if (offer.expires_at * 1000 <= platform.now())
+      return yield* Effect.fail(
+        new RouteFailure(
+          "expired",
+          "This link expired. Show a new device link in the Space’s settings.",
+        ),
+      );
+    if (pairing)
+      return yield* Effect.fail(new RouteFailure("busy", "A device link is already being opened."));
+    if (!foreground) return yield* Effect.fail(noRoutes());
+    pairing = true;
+    const enroll = Effect.gen(function* () {
+      let lastFailure = noRoutes();
+      for (const route of orderRoutes(uniqueRoutes(offer.routes))) {
+        const result = yield* request(
+          platform,
+          route,
+          offer.fingerprint,
+          "/enroll",
+          {
+            code: offer.code,
+            device_label: platform.deviceName,
+            display_name: platform.deviceName,
+            form_factor: "phone",
+          },
+          EnrollmentSchema,
+        ).pipe(Effect.result);
+        if (result._tag === "Failure") {
+          lastFailure = result.failure;
+          if (lastFailure.code !== "unreachable") return yield* Effect.fail(lastFailure);
+          continue;
+        }
+        const enrolled = result.success;
+        if (enrolled.space_id !== offer.space_id || enrolled.member_id !== offer.member_id)
+          return yield* Effect.fail(incompatible());
+        const host: EnrolledHost = {
+          hostId: spaceMemberKey(enrolled.space_id, enrolled.member_id),
+          hostName: enrolled.space_name,
+          spaceId: enrolled.space_id,
+          memberId: enrolled.member_id,
+          fingerprint: offer.fingerprint,
+          routes: uniqueRoutes(offer.routes),
+          pairedAt: platform.now(),
+          deviceId: enrolled.device_id,
+          lastConnectedRoute: route,
+        };
+        yield* FiberMap.remove(tasks, "connection");
+        // The one-time credential is durably private before any content connection is attempted.
+        yield* persist({
+          ...catalog,
+          credentials: { ...catalog.credentials, [host.hostId]: enrolled.device_credential },
+        });
+        hint = null;
+        yield* reconnectNow(host);
+        const connected = () =>
+          state.getState().status === "connected" && active?.hello.host.id === host.hostId;
+        if (!connected()) {
+          yield* state.changes.pipe(
+            Stream.filter(
+              (current) =>
+                current.status === "connected" ||
+                current.status === "incompatible" ||
+                current.status === "unavailable" ||
+                current.status === "revoked",
+            ),
+            Stream.take(1),
+            Stream.runDrain,
+            Effect.timeoutOrElse({ duration: 16_000, orElse: () => Effect.fail(noRoutes()) }),
           );
-          return yield* connectOnce;
+        }
+        const saved = catalog.hosts.find((item) => item.hostId === host.hostId);
+        if (!connected() || !saved) return yield* Effect.fail(hint ?? incompatible());
+        return saved;
+      }
+      return yield* Effect.fail(lastFailure);
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          pairing = false;
         }),
       ),
     );
-    yield* FiberMap.run(tasks, "connection", adopted, { startImmediately: true });
-    return host;
-  });
-  const recoverPairing = (pending: PendingPairing) =>
-    raceRoutes(platform, pending.routes, {
-      hostKey: fromBase64Url(pending.hostKey),
-      device: decodeIdentity(pending.identity),
-    });
-  const clearPending = (pending: PendingPairing) =>
-    Effect.suspend(() => {
-      if (catalog.pendingPairing !== pending) return Effect.void;
-      const { pendingPairing: _, ...next } = catalog;
-      return persist(next).pipe(Effect.ignore);
-    });
-  // Close hints can cost an unfinished pairing, but a network failure must never cost its key.
-  const clearRefusedPending = (pending: PendingPairing, error: RouteFailure) =>
-    error.code === "revoked" || error.code === "rejected" ? clearPending(pending) : Effect.void;
-  const recoverOnLaunch = Effect.gen(function* () {
-    const pending = catalog.pendingPairing;
-    if (!pending || pairing || !foreground) return;
-    pairing = true;
-    recovering = true;
-    yield* FiberMap.run(
-      tasks,
-      "pairing",
-      Effect.gen(function* () {
-        const session = yield* Scope.fork(owner);
-        let transferred = false;
-        yield* recoverPairing(pending).pipe(
-          Scope.provide(session),
-          Effect.flatMap((link) => completePairing(link, pending, session)),
-          Effect.tap(() =>
-            Effect.sync(() => {
-              transferred = true;
-            }),
-          ),
-          Effect.catch((error) => clearRefusedPending(pending, error)),
-          Effect.ensuring(
-            Effect.gen(function* () {
-              pairing = false;
-              recovering = false;
-              if (!transferred) yield* Scope.close(session, Exit.void);
-            }),
-          ),
-        );
-      }),
-      { startImmediately: true },
-    );
-  });
-  const pairWithUri = Effect.fn("MobileConnection.pairWithUri")(function* (uri: string) {
-    const offer = parsePairingUri(uri);
-    if (!offer)
-      return yield* Effect.fail(new PairingFailure("invalid", "This is not a Nodex pairing code."));
-    if (offer.expiresAt <= platform.now() && catalog.pendingPairing?.hostKey !== offer.hostKey)
-      return yield* Effect.fail(expiredPairing());
-    const routes = uniqueRoutes(offer.routes);
-    const keys = yield* Effect.try({
-      try: () => {
-        const hostKey = fromBase64Url(offer.hostKey);
-        const psk = fromBase64Url(offer.secret);
-        if (!routes.length || hostKey.length !== NOISE_KEY_BYTES || psk.length !== NOISE_KEY_BYTES)
-          throw new Error();
-        return { hostKey, psk };
-      },
-      catch: () => new PairingFailure("invalid", "This Nodex pairing code is invalid."),
-    });
-    // What a person just chose takes over from a recovery running on its own.
-    if (recovering) yield* FiberMap.remove(tasks, "pairing");
-    if (pairing)
-      return yield* Effect.fail(new PairingFailure("busy", "Pairing is already in progress."));
-    if (!foreground)
-      return yield* Effect.fail(new PairingFailure("unreachable", noRoutes().message));
-    pairing = true;
-    const operation = Effect.gen(function* () {
-      const session = yield* Scope.fork(owner);
-      let transferred = false;
-      return yield* Effect.gen(function* () {
-        const saved = catalog.pendingPairing;
-        if (saved?.hostKey === offer.hostKey) {
-          const pending = { ...saved, routes: uniqueRoutes([...routes, ...saved.routes]) };
-          yield* persist({ ...catalog, pendingPairing: pending });
-          const recovered = yield* recoverPairing(pending).pipe(Effect.result);
-          if (recovered._tag === "Success")
-            return yield* completePairing(recovered.success, pending, session);
-          yield* clearRefusedPending(pending, recovered.failure);
-          if (catalog.pendingPairing === pending) return yield* Effect.fail(recovered.failure);
-        } else if (saved) {
-          yield* clearPending(saved);
-        }
-        if (offer.expiresAt <= platform.now()) return yield* Effect.fail(expiredPairing());
-        const device = generateStaticKeyPair(platform.randomBytes);
-        const pending: PendingPairing = {
-          hostKey: offer.hostKey,
-          routes,
-          pairedAt: platform.now(),
-          identity: {
-            publicKey: bytesToHex(device.publicKey),
-            secretKey: bytesToHex(device.secretKey),
-          },
-        };
-        return yield* raceRoutes(platform, routes, {
-          ...keys,
-          device,
-          beforePairingPing: Effect.suspend(() =>
-            catalog.pendingPairing === pending
-              ? Effect.void
-              : persist({ ...catalog, pendingPairing: pending }),
-          ),
-        }).pipe(
-          Effect.catch((original) =>
-            catalog.pendingPairing === pending
-              ? recoverPairing(pending).pipe(
-                  Effect.tapError((error) => clearRefusedPending(pending, error)),
-                  Effect.catch(() => Effect.fail(original)),
-                )
-              : Effect.fail(original),
-          ),
-          Effect.flatMap((link) => completePairing(link, pending, session)),
-          Effect.tapError((error) => clearRefusedPending(pending, error)),
-        );
-      }).pipe(
-        Scope.provide(session),
-        Effect.tap(() =>
-          Effect.sync(() => {
-            transferred = true;
-          }),
-        ),
-        Effect.mapError(
-          (error) =>
-            new PairingFailure(error.code === "revoked" ? "rejected" : error.code, error.message),
-        ),
-        Effect.ensuring(
-          Effect.gen(function* () {
-            pairing = false;
-            if (!transferred) yield* Scope.close(session, Exit.void);
-          }),
-        ),
-      );
-    });
-    const fiber = yield* FiberMap.run(tasks, "pairing", operation, { startImmediately: true });
+    const fiber = yield* FiberMap.run(tasks, "pairing", enroll, { startImmediately: true });
     return yield* Fiber.join(fiber);
   });
   yield* platform.foregroundChanges.pipe(
@@ -625,54 +646,51 @@ export const makeConnection = Effect.gen(function* () {
         if (foreground === next) return;
         foreground = next;
         if (next) {
-          yield* reconnectNow;
-          yield* recoverOnLaunch;
+          yield* reconnectNow();
           return;
         }
-        if (!active) {
-          yield* FiberMap.remove(tasks, "connection");
-          if (state.getState().status === "connecting") setState("offline");
-        }
         yield* FiberMap.remove(tasks, "pairing");
+        yield* FiberMap.remove(tasks, "connection");
+        if (catalog.activeHostId) setState("offline", null, state.getState().message);
       }),
     ),
     Effect.forkScoped({ startImmediately: true }),
   );
-  yield* reconnectNow;
-  yield* recoverOnLaunch;
+  yield* reconnectNow();
   return {
     hosts,
     state,
     rpc,
     pairWithUri,
-    reconnectNow,
+    reconnectNow: reconnectNow(),
     activateHost: Effect.fnUntraced(function* (hostId: string) {
       if (catalog.activeHostId === hostId || !catalog.hosts.some((host) => host.hostId === hostId))
         return;
       yield* FiberMap.remove(tasks, "connection");
-      setState("offline");
       hint = null;
+      setState("offline");
       yield* persist({ ...catalog, activeHostId: hostId });
-      yield* reconnectNow;
+      yield* reconnectNow();
     }),
     forgetHost: Effect.fnUntraced(function* (hostId: string) {
       if (!catalog.hosts.some((host) => host.hostId === hostId)) return;
       const remaining = catalog.hosts.filter((host) => host.hostId !== hostId);
-      const identities = { ...catalog.identities };
-      delete identities[hostId];
+      const credentials = { ...catalog.credentials };
+      delete credentials[hostId];
+      sessions.invalidate(hostId);
       const wasActive = catalog.activeHostId === hostId;
       if (wasActive) {
         yield* FiberMap.remove(tasks, "connection");
-        setState(remaining.length ? "offline" : "idle");
         hint = null;
+        setState(remaining.length ? "offline" : "idle");
       }
       yield* persist({
         ...catalog,
         hosts: remaining,
-        identities,
+        credentials,
         activeHostId: wasActive ? (remaining[0]?.hostId ?? null) : catalog.activeHostId,
       });
-      if (wasActive) yield* reconnectNow;
+      if (wasActive) yield* reconnectNow();
     }),
     activeLink: () => (foreground ? active : null),
     activeHostId: () => catalog.activeHostId,

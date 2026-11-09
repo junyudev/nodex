@@ -18,6 +18,8 @@ pub struct EnrollmentRequest {
     pub code: String,
     pub device_label: String,
     pub display_name: String,
+    #[serde(default)]
+    pub form_factor: DeviceFormFactor,
 }
 #[derive(Clone, Deserialize, Serialize, ToSchema)]
 pub struct EnrollmentResponse {
@@ -44,9 +46,13 @@ pub struct ListenRequest {
     pub address: String,
     pub cert: Option<String>,
     pub key: Option<String>,
+    #[serde(default)]
+    pub peer_policy: ListenerPeerPolicy,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
 pub struct ListenerInfo {
+    pub peer_policy: ListenerPeerPolicy,
+    pub routes: Vec<String>,
     pub url: String,
     pub fingerprint: String,
 }
@@ -189,12 +195,16 @@ pub struct InviteResponse {
 }
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
 pub struct MemberDevice {
+    pub space_id: String,
+    pub form_factor: DeviceFormFactor,
     pub id: String,
     pub member_id: String,
     pub label: String,
     pub created_at: i64,
     pub last_seen: i64,
     pub revoked_at: Option<i64>,
+    /// The Device receives phone notifications. Its relay handle and key are never listed.
+    pub notifications_enabled: bool,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -234,6 +244,7 @@ pub enum RemoteBudget {
     DeviceBytes,
     MemberRequests,
     MemberBytes,
+    MemberDeviceLinks,
     MemberConcurrency,
     GlobalConcurrency,
     DeviceStreams,
@@ -255,4 +266,188 @@ pub struct RemoteTransportStats {
     pub devices: std::collections::BTreeMap<String, RemoteBudgetCounter>,
     pub routes: std::collections::BTreeMap<String, u64>,
     pub refusals: std::collections::BTreeMap<String, u64>,
+}
+
+/// Presentation metadata never changes a Device's authority.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceFormFactor {
+    #[default]
+    Desktop,
+    Phone,
+}
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, ToSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ListenerPeerPolicy {
+    #[default]
+    Private,
+    Operator,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+pub struct DeviceLinkOffer {
+    pub space_id: String,
+    pub space_name: String,
+    pub member_id: String,
+    pub fingerprint: String,
+    pub routes: Vec<String>,
+    pub code: String,
+    pub expires_at: i64,
+}
+/// Profile-owned remote listener preference, restored by Core at startup.
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RemoteAccessIntent {
+    pub enabled: bool,
+    pub address: String,
+}
+impl Default for RemoteAccessIntent {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            address: "0.0.0.0:0".into(),
+        }
+    }
+}
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+pub struct RemoteAccessState {
+    pub listener: Option<ListenerInfo>,
+    pub intent: RemoteAccessIntent,
+    pub routes_changed: bool,
+}
+
+/// Core-owned Space kind, independent of listener activation or hosting mode.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SpaceKind {
+    Personal,
+    Team,
+}
+
+/// Private local relay events. Core creates identity and proof; a phone cannot choose either.
+#[derive(Clone, Deserialize, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PhoneHostEvent {
+    Open {
+        channel_id: String,
+        credential: String,
+        space_id: String,
+        member_id: String,
+        device_id: String,
+        space_name: String,
+        space_kind: SpaceKind,
+        routes: Vec<String>,
+    },
+    Request {
+        channel_id: String,
+        credential: String,
+        id: i64,
+        method: String,
+        params: serde_json::Value,
+    },
+    Close {
+        channel_id: String,
+    },
+}
+#[derive(Clone, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PhoneHostPublish {
+    pub token: String,
+    pub channel_id: String,
+    pub envelope: serde_json::Value,
+}
+
+#[derive(Clone, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PhoneResponseRequest {
+    pub run_id: Option<String>,
+    pub request_id: String,
+}
+#[derive(Clone, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PhoneResponseEntitlementRequest {
+    pub credential: String,
+    pub session_id: String,
+    pub requests: Vec<PhoneResponseRequest>,
+}
+
+/// What a phone wants to hear from this Space, in the phone RPC's own field names.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PushPreferences {
+    pub needs_you: bool,
+    pub finished: bool,
+}
+/// Where a Device receives notifications: an opaque relay handle and the base64url key that seals
+/// them. Both stay between the phone, Core and the local Host.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct PushRegistration {
+    pub handle: String,
+    pub key: String,
+    pub preferences: PushPreferences,
+}
+/// Commits the phone's in-flight `push.register` or `push.unregister` request to its own Device.
+#[derive(Clone, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PhonePushCommit {
+    pub credential: String,
+}
+/// Who should hear about a chat event. Core resolves it with the same rule that admits answers.
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PhonePushAudience {
+    /// A pending question or approval belongs to the Member entitled to answer it.
+    Request {
+        run_id: Option<String>,
+        request: crate::workspace::SessionExecutionRequestKind,
+    },
+    /// A Run's outcome belongs to the Member who requested it.
+    RunRequester { run_id: String },
+    /// A chat reminder belongs to the Member who set it, as Core's reminder delivery names them.
+    ReminderOwner { member_id: String },
+    /// A Page Turn belongs to the Member whose move it is, while that episode is current.
+    TurnOwner { page_id: String, episode: String },
+}
+#[derive(Clone, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PhonePushRecipientsRequest {
+    pub token: String,
+    /// The chat the event happened in; a Page Turn may wait on none.
+    #[serde(default)]
+    pub session_id: Option<String>,
+    pub audience: PhonePushAudience,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+pub struct PhonePushRecipient {
+    pub device_id: String,
+    pub member_id: String,
+    pub registration: PushRegistration,
+}
+/// What a Member's desktop says about its person, about every 30 seconds while someone uses it.
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemberPresenceReport {
+    /// Milliseconds since the person last used this Device; absent while its screen is locked or
+    /// the system cannot tell.
+    pub idle_ms: Option<u32>,
+}
+/// The local Host asks whether a Member is at one of their computers.
+#[derive(Clone, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemberPresenceRequest {
+    pub token: String,
+    pub member_id: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+pub struct MemberPresence {
+    /// The least time since the Member used one of their active Devices that reported within the
+    /// last 90 seconds with an unlocked screen; absent when none vouches for them.
+    pub idle_ms: Option<u64>,
+}
+/// The relay reported this handle gone; forget it unless the phone has since replaced it.
+#[derive(Clone, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PhonePushForget {
+    pub token: String,
+    pub device_id: String,
+    pub handle: String,
 }

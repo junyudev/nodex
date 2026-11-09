@@ -23,10 +23,9 @@ interface EditorWithProsemirrorView {
   readonly prosemirrorView?: EditorView;
 }
 
-/** Inline references that open something: Page and chat mentions, and attached Files. */
-const MENTION_NODE_TYPES = new Set(["pageMention", "threadMention", "attachment"]);
+const MENTION_NODE_TYPES = new Set(["pageMention", "threadMention"]);
 const PAGE_MENTION_ANCHOR_SELECTOR = '[data-page-mention-inline-anchor="true"]';
-const MENTION_INLINE_CHIP_SELECTOR = '[data-inline-reference-chip="true"]';
+const MENTION_INLINE_CHIP_SELECTOR = '[data-mention-inline-chip="true"]';
 export const MENTION_TOKEN_SELECTED_CLASS = "nodex-mention-token-selected";
 
 function isMentionNode(node: ProsemirrorNode | null | undefined): node is ProsemirrorNode {
@@ -34,7 +33,7 @@ function isMentionNode(node: ProsemirrorNode | null | undefined): node is Prosem
 }
 
 /**
- * Treat page and chat mentions, and attachments, as one editor-owned atom. The browser keeps
+ * Treat page and chat mentions as one editor-owned atom. The browser keeps
  * focus in ProseMirror while the chip renders the selected state itself, so
  * Arrow navigation and Enter work without painting native text selection.
  */

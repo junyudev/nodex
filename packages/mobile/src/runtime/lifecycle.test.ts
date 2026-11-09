@@ -1,5 +1,5 @@
 import { it } from "@effect/vitest";
-import { encodePairingUri } from "@nodex/mobile-protocol";
+import { encodeDeviceLink } from "@nodex/mobile-protocol";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Scheduler from "effect/Scheduler";
@@ -21,7 +21,7 @@ it.effect("uses TestClock for heartbeat deadlines and reconnect backoff", () =>
       (runtime) => Effect.promise(() => runtime.dispose()),
     );
     yield* Effect.promise(() =>
-      runtime.connection.pairWithUri(encodePairingUri(host.pairingOffer(platform.now() + 60_000))),
+      runtime.connection.pairWithUri(encodeDeviceLink(host.pairingOffer(platform.now() + 60_000))),
     );
     yield* TestClock.adjust(29_999);
     expect(runtime.connection.state.getState().status).toBe("connected");
@@ -29,6 +29,8 @@ it.effect("uses TestClock for heartbeat deadlines and reconnect backoff", () =>
     expect(runtime.connection.state.getState().status).toBe("offline");
     expect(platform.dials).toHaveLength(1);
     yield* TestClock.adjust(1_000);
+    yield* Effect.promise(() => Promise.resolve());
+    yield* Effect.yieldNow;
     expect(platform.dials).toHaveLength(2);
     yield* Effect.promise(() => runtime.dispose());
     yield* TestClock.adjust(60_000);
@@ -36,7 +38,7 @@ it.effect("uses TestClock for heartbeat deadlines and reconnect backoff", () =>
   }),
 );
 
-it.effect("preserves encrypted frame order when concurrent sends yield frequently", () =>
+it.effect("preserves RPC order when concurrent sends yield frequently", () =>
   Effect.gen(function* () {
     const clock = yield* Clock.Clock;
     const scheduler = new Scheduler.MixedScheduler("sync");
@@ -48,7 +50,7 @@ it.effect("preserves encrypted frame order when concurrent sends yield frequentl
       (runtime) => Effect.promise(() => runtime.dispose()),
     );
     const saved = yield* Effect.promise(() =>
-      runtime.connection.pairWithUri(encodePairingUri(host.pairingOffer(platform.now() + 60_000))),
+      runtime.connection.pairWithUri(encodeDeviceLink(host.pairingOffer(platform.now() + 60_000))),
     );
     const session = runtime.chats.get(saved.hostId, "chat");
     scheduler.shouldYield = (fiber) => fiber.currentOpCount >= 16;

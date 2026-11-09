@@ -105,6 +105,13 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["serve" | "space", "display-name"] => document::<Member>(),
         ["space", "listen"] => document::<nodex_core_contracts::team::ListenerInfo>(),
         ["space", "invite"] => document::<nodex_core_contracts::team::InviteResponse>(),
+        ["space", "revoke" | "revoke-device" | "remove-member"] => document::<bool>(),
+        ["space", "remote-access", "on"] => document::<nodex_core_contracts::team::ListenerInfo>(),
+        ["space", "remote-access", "off" | "status"] => {
+            document::<nodex_core_contracts::team::RemoteAccessState>()
+        }
+        ["space", "link-device"] => document::<nodex_core_contracts::team::DeviceLinkOffer>(),
+        ["space", "members"] => document::<Vec<Member>>(),
         ["space", "devices"] => document::<Vec<nodex_core_contracts::team::MemberDevice>>(),
         ["work", "holds"] => document::<Vec<nodex_core_contracts::workspace::ExecutionHold>>(),
         ["work", "pause"] | ["work", "resume"] => document::<crate::work::WorkHoldChange>(),

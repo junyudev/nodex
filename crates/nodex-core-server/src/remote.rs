@@ -14,6 +14,38 @@ use std::{
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_rustls::{TlsAcceptor, rustls};
 
+const DEVICE_SEEN_INTERVAL: Duration =
+    Duration::from_secs(nodex_core::library::DEVICE_SEEN_INTERVAL_SECONDS.unsigned_abs());
+
+/// Keeps a Device's last-seen time current while one of its authenticated channels stays
+/// open, whether that is a TLS connection or a phone channel that outlives its upgrade.
+/// Each channel writes at most once per interval; the store also throttles across channels.
+#[derive(Default)]
+pub(crate) struct DeviceSeen(Option<Instant>);
+impl DeviceSeen {
+    fn due(&mut self, now: Instant) -> bool {
+        if self
+            .0
+            .is_some_and(|at| now.saturating_duration_since(at) < DEVICE_SEEN_INTERVAL)
+        {
+            return false;
+        }
+        self.0 = Some(now);
+        true
+    }
+    pub(crate) fn refresh(&mut self, state: &Arc<ServerState>, principal: &RemotePrincipal) {
+        if !self.due(Instant::now()) {
+            return;
+        }
+        let (state, principal) = (state.clone(), principal.clone());
+        tokio::task::spawn_blocking(move || {
+            if let Err(error) = state.membership.mark_seen(&principal) {
+                tracing::debug!(subsystem="remote_access", error=%error.message, "Device last-seen time was not refreshed");
+            }
+        });
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct RemotePeer(pub SocketAddr, Arc<Mutex<Option<RemotePrincipal>>>);
 #[derive(Clone)]
@@ -76,8 +108,15 @@ struct Budgets {
     streams: HashMap<String, Arc<Semaphore>>,
     member_streams: HashMap<String, Arc<Semaphore>>,
 }
+// Only the revocation handler may acknowledge its own successful withdrawal.
+// This marker permits a fixed `true` response, never a content response or another request.
+#[derive(Clone)]
+struct SelfRevocationAck;
+
 pub(crate) struct RemoteState {
     pub(crate) info: Mutex<Option<ListenerInfo>>,
+    routes_changed: AtomicBool,
+    stop: Mutex<Option<tokio::sync::watch::Sender<bool>>>,
     budgets: Mutex<Budgets>,
     admitted: Arc<Semaphore>,
     refusals: Mutex<std::collections::BTreeMap<String, u64>>,
@@ -86,6 +125,8 @@ impl Default for RemoteState {
     fn default() -> Self {
         Self {
             info: Mutex::new(None),
+            routes_changed: AtomicBool::new(false),
+            stop: Mutex::new(None),
             budgets: Mutex::new(Budgets::default()),
             admitted: Arc::new(Semaphore::new(8)),
             refusals: Mutex::new(Default::default()),
@@ -119,6 +160,12 @@ impl RemoteState {
         }
         b.ips.entry(ip).or_default().charge(1, 0, 240, 0)
     }
+    pub(crate) fn charge(
+        &self,
+        p: &RemotePrincipal,
+        requests: u64,
+        bytes: u64,
+    ) -> Result<(), ApiError> {
         self.charge_device(&p.member_id, &p.device_id, requests, bytes)
     }
     fn charge_device(
@@ -218,6 +265,7 @@ impl RemoteState {
             .map_err(|_| self.limited(RemoteBudget::MemberConcurrency, 1_000))?
             .map_err(|_| self.limited(RemoteBudget::MemberConcurrency, 1_000))
     }
+    pub(crate) fn stream(
         &self,
         p: &RemotePrincipal,
     ) -> Result<(OwnedSemaphorePermit, OwnedSemaphorePermit), ApiError> {
@@ -244,10 +292,21 @@ impl RemoteState {
 fn admitted_route(path: &str) -> bool {
     matches!(
         path,
+        "/core/v1/admin/space/invite"
+            | "/core/v1/admin/space/name"
             | "/core/v1/admin/space/member-name"
+            | "/core/v1/admin/space/devices"
+            | "/core/v1/admin/space/members"
+            | "/core/v1/admin/space/revoke"
+            | "/core/v1/admin/space/remove-member"
+            | "/core/v1/admin/space/link-device"
+            | "/core/v1/admin/space/remote-access"
+            | "/core/v1/handshake"
             | "/core/v1/remote-info"
             | "/core/v1/host/availability"
             | "/core/v1/host/call"
+            | "/core/v1/host/presence"
+            | "/core/v1/phone"
             | "/core/v1/events"
             | "/core/v1/requests/cancel"
             | "/core/v1/projections/live"
@@ -456,7 +515,26 @@ pub(crate) async fn authenticate(
     // Waiting for an execution owner is bounded by HostBridge, not Module execution.
     // Keep content reads available while a Member's provider starts or answers.
     let permits = (!host_call).then_some((permit, global_permit));
+    let mut response = next.run(request).await;
+    if response.status() == StatusCode::SWITCHING_PROTOCOLS {
+        return response;
+    }
     drop(permits);
+    if response
+        .extensions_mut()
+        .remove::<SelfRevocationAck>()
+        .is_some()
+    {
+        // The session is already withdrawn. Finish this bounded acknowledgement and
+        // close the socket; all other responses remain subject to active-session checks.
+        if let Ok(mut bound) = identity.lock() {
+            *bound = None;
+        }
+        response
+            .headers_mut()
+            .insert("connection", "close".parse().unwrap());
+        return response;
+    }
     let sse = response
         .headers()
         .get(CONTENT_TYPE)
@@ -558,6 +636,26 @@ fn certificate(
     Ok((config, fingerprint))
 }
 
+/// Core alone restores personal remote access; an explicit operator listener bypasses this path.
+pub(crate) async fn restore_private(state: Arc<ServerState>) -> Result<(), ApiError> {
+    let config =
+        super::remote_access_config::read(&state.home).map_err(|_| remote_unavailable())?;
+    if !config.enabled {
+        return Ok(());
+    }
+    listen(
+        state,
+        ListenRequest {
+            address: config.address,
+            cert: None,
+            key: None,
+            peer_policy: config.peer_policy,
+        },
+    )
+    .await?;
+    Ok(())
+}
+
 pub(crate) async fn listen(
     state: Arc<ServerState>,
     request: ListenRequest,
@@ -565,17 +663,30 @@ pub(crate) async fn listen(
     state.membership.require_owner().map_err(store_api)?;
     // Reserve once, even across concurrent local administration calls.
     let mut info = state.remote.info.lock().map_err(|_| remote_unavailable())?;
+    let mut personal = if request.peer_policy == ListenerPeerPolicy::Private {
+        Some(super::remote_access_config::read(&state.home).map_err(|_| remote_unavailable())?)
+    } else {
+        None
+    };
     if let Some(existing) = info.as_ref() {
         let requested = request.address.parse::<SocketAddr>().ok();
         let listening = existing
             .url
             .strip_prefix("https://")
             .and_then(|value| value.parse::<SocketAddr>().ok());
+        if existing.peer_policy == request.peer_policy
+            && request.cert.is_none()
             && request.key.is_none()
             && requested.zip(listening).is_some_and(|(wanted, bound)| {
                 wanted.ip() == bound.ip() && (wanted.port() == 0 || wanted.port() == bound.port())
             })
         {
+            if let Some(config) = personal.as_mut() {
+                config.enabled = true;
+                config.address = listening.unwrap().to_string();
+                super::remote_access_config::write(&state.home, config)
+                    .map_err(|_| remote_unavailable())?;
+            }
             return Ok(existing.clone());
         }
         return Err(ApiError::new(
@@ -583,27 +694,101 @@ pub(crate) async fn listen(
             "Remote listener is already enabled",
         ));
     }
+    let mut request = request;
+    if request.cert.is_none()
+        && request.key.is_none()
+        && let Some(config) = &personal
+    {
+        request.cert = config.cert.clone();
+        request.key = config.key.clone();
+    }
     let (config, fingerprint) = certificate(&state.home, &request).map_err(|_| {
         ApiError::new(
             StatusCode::BAD_REQUEST,
             "Certificate configuration is invalid",
         )
     })?;
+    let (socket, routes_changed) = match std::net::TcpListener::bind(&request.address) {
+        Ok(socket) => (socket, false),
+        Err(error)
+            if error.kind() == io::ErrorKind::AddrInUse
+                && request.peer_policy == ListenerPeerPolicy::Private =>
+        {
+            let host = request
+                .address
+                .rsplit_once(':')
+                .map(|(host, _)| host)
+                .ok_or_else(|| {
+                    ApiError::new(StatusCode::BAD_REQUEST, "Listen address is invalid")
+                })?;
+            let socket = std::net::TcpListener::bind(format!("{host}:0")).map_err(|_| {
+                ApiError::new(StatusCode::BAD_REQUEST, "Listen address is unavailable")
+            })?;
+            (socket, true)
+        }
+        Err(error) if error.kind() == io::ErrorKind::AddrInUse => {
+            return Err(ApiError::new(
+                StatusCode::CONFLICT,
+                "Listen address is already in use",
+            ));
+        }
+        Err(_) => {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Listen address is unavailable",
+            ));
+        }
+    };
     socket
         .set_nonblocking(true)
         .map_err(|_| remote_unavailable())?;
     let address = socket.local_addr().map_err(|_| remote_unavailable())?;
     let listener = tokio::net::TcpListener::from_std(socket).map_err(|_| remote_unavailable())?;
     let value = ListenerInfo {
+        peer_policy: request.peer_policy,
+        routes: super::remote_routes::routes(address, request.peer_policy),
         url: format!("https://{address}"),
         fingerprint,
     };
+    if let Some(config) = personal.as_mut() {
+        config.enabled = true;
+        config.address = address.to_string();
+        config.cert = request
+            .cert
+            .as_ref()
+            .map(std::path::absolute)
+            .transpose()
+            .map_err(|_| remote_unavailable())?
+            .map(|path| path.to_string_lossy().into_owned());
+        config.key = request
+            .key
+            .as_ref()
+            .map(std::path::absolute)
+            .transpose()
+            .map_err(|_| remote_unavailable())?
+            .map(|path| path.to_string_lossy().into_owned());
+        super::remote_access_config::write(&state.home, config)
+            .map_err(|_| remote_unavailable())?;
+    }
+    state
+        .remote
+        .routes_changed
+        .store(routes_changed, Ordering::Release);
     *info = Some(value.clone());
+    let (stop, mut stopped) = tokio::sync::watch::channel(false);
+    *state.remote.stop.lock().map_err(|_| remote_unavailable())? = Some(stop);
+    drop(info);
     let acceptor = TlsAcceptor::from(Arc::new(config));
     tokio::spawn(async move {
         let capacity = Arc::new(Semaphore::new(128));
         loop {
+            let accepted = tokio::select! {_=state.lifecycle.wait_for_drain()=>break,_=stopped.changed()=>break,result=listener.accept()=>result};
             let Ok((socket, peer)) = accepted else { break };
+            if request.peer_policy == ListenerPeerPolicy::Private
+                && !super::remote_routes::private_peer(peer.ip())
+            {
+                continue;
+            }
             if !state.remote.preauth(peer.ip()) {
                 state.remote.limited(RemoteBudget::PreAuthIp, 60_000);
                 continue;
@@ -613,6 +798,7 @@ pub(crate) async fn listen(
             };
             let acceptor = acceptor.clone();
             let state = state.clone();
+            let mut stopped = stopped.clone();
             tokio::spawn(async move {
                 let _permit = permit;
                 let _ = socket2::SockRef::from(&socket).set_tcp_keepalive(
@@ -636,13 +822,28 @@ pub(crate) async fn listen(
                     .timer(TokioTimer::new())
                     .header_read_timeout(Duration::from_secs(10))
                     .max_buf_size(64 * 1024);
+                let connection = builder
+                    .serve_connection(
+                        TokioIo::new(Box::pin(socket)),
+                        TowerToHyperService::new(service),
+                    )
+                    .with_upgrades();
                 // This monitor owns the socket independently of Body polling, so
                 // revocation also interrupts a reader stalled inside a TLS write.
+                // It also keeps the Device's last-seen time current while the connection
+                // stays open. An upgraded phone channel ends this connection future and
+                // keeps its own Device seen.
                 let withdrawn = async {
+                    let mut seen = DeviceSeen::default();
                     loop {
                         tokio::select! {
                             _=state.lifecycle.wait_for_drain()=>return,
+                            _=stopped.changed()=>return,
                             _=tokio::time::sleep(Duration::from_secs(1))=>{
+                                let Ok(principal)=identity.lock().map(|p|p.clone()) else {return};
+                                let Some(principal)=principal else {continue};
+                                if !state.membership.active(&principal) {return;}
+                                seen.refresh(&state, &principal);
                             }
                         }
                     }
@@ -653,8 +854,28 @@ pub(crate) async fn listen(
     });
     Ok(value)
 }
+pub(crate) fn store_api(error: StoreError) -> ApiError {
+    let status = match error.code {
+        StoreErrorCode::Unauthorized => StatusCode::UNAUTHORIZED,
+        StoreErrorCode::ResourceExhausted => StatusCode::TOO_MANY_REQUESTS,
+        _ => StatusCode::BAD_REQUEST,
     };
     ApiError::new(status, error.message)
+        .with_recovery(error.recovery.unwrap_or(CoreErrorRecovery::None))
+}
+
+/// A current Member's role/ownership refusal is local to this operation. Only
+/// writer admission's typed renewal evidence may send administration through renewal.
+fn administration_api(error: StoreError) -> ApiError {
+    if error.code == StoreErrorCode::Unauthorized
+        && !matches!(
+            error.recovery.as_ref(),
+            Some(CoreErrorRecovery::RenewRemoteSession | CoreErrorRecovery::RemoteAccessWithdrawn)
+        )
+    {
+        return ApiError::new(StatusCode::FORBIDDEN, error.message);
+    }
+    store_api(error)
 }
 
 fn withdrawal_api(error: StoreError) -> ApiError {
@@ -721,6 +942,7 @@ pub(crate) async fn start_listener(
     listen(state, request).await.map(Json)
 }
 
+/// Prepare the durable TLS identity and headless source semantics without opening TCP.
 pub(crate) async fn prepare_space(
     State(state): State<Arc<ServerState>>,
     remote: Option<Extension<RemotePeer>>,
@@ -734,6 +956,7 @@ pub(crate) async fn prepare_space(
             "Certificate configuration is invalid",
         )
     })?;
+    state.membership.prepare_hosting().map_err(store_api)?;
     Ok(Json(SpaceIdentity {
         space_id: state.library_id.clone(),
         owner_member_id,
@@ -748,8 +971,12 @@ fn announce_name_change(state: &ServerState) {
 }
 pub(crate) async fn rename_space(
     State(state): State<Arc<ServerState>>,
+    principal: Option<Extension<RemotePrincipal>>,
     Json(request): Json<RenameSpaceRequest>,
 ) -> Result<Json<SpaceName>, ApiError> {
+    let membership = state
+        .membership
+        .for_principal(principal.map(|Extension(p)| p));
     let renamed = tokio::task::spawn_blocking(move || membership.rename(request))
         .await
         .map_err(|_| remote_unavailable())?
@@ -774,8 +1001,12 @@ pub(crate) async fn rename_member(
 }
 pub(crate) async fn invite(
     State(state): State<Arc<ServerState>>,
+    principal: Option<Extension<RemotePrincipal>>,
     Json(request): Json<InviteRequest>,
 ) -> Result<Json<InviteResponse>, ApiError> {
+    let membership = state
+        .membership
+        .for_principal(principal.map(|Extension(p)| p));
     let info = state
         .remote
         .info
@@ -783,23 +1014,49 @@ pub(crate) async fn invite(
         .map_err(|_| remote_unavailable())?
         .clone()
         .ok_or_else(|| ApiError::new(StatusCode::CONFLICT, "Enable the remote listener first"))?;
+    tokio::task::spawn_blocking(move || membership.invite(request, info))
         .await
         .map_err(|_| remote_unavailable())?
         .map(Json)
+        .map_err(administration_api)
 }
 pub(crate) async fn devices(
     State(state): State<Arc<ServerState>>,
+    principal: Option<Extension<RemotePrincipal>>,
 ) -> Result<Json<Vec<MemberDevice>>, ApiError> {
+    let membership = state
+        .membership
+        .for_principal(principal.map(|Extension(p)| p));
+    tokio::task::spawn_blocking(move || membership.devices())
         .await
         .map_err(|_| remote_unavailable())?
         .map(Json)
+        .map_err(administration_api)
 }
 pub(crate) async fn revoke(
     State(state): State<Arc<ServerState>>,
+    principal: Option<Extension<RemotePrincipal>>,
     remote: Option<Extension<RemotePeer>>,
     Json(request): Json<RevokeDeviceRequest>,
+) -> Result<Response, ApiError> {
+    let self_revoke = principal
+        .as_ref()
+        .is_some_and(|Extension(p)| p.device_id == request.device_id);
+    if self_revoke {
+        // This finite handler emits only a withdrawal acknowledgement. Clear its
+        // socket monitor before the writer so the final revocation cannot race it.
+        // Writer admission and the response guard still check every failure path.
+        if let Some(Extension(RemotePeer(_, identity))) = remote {
+            *identity.lock().map_err(|_| remote_unavailable())? = None;
+        }
+    }
+    let membership = state
+        .membership
+        .for_principal(principal.map(|Extension(p)| p));
     tokio::task::spawn_blocking(move || {
+        membership
             .revoke(request.device_id.clone())
+            .map_err(administration_api)?;
         state
             .connections
             .withdraw(|p| p.device_id == request.device_id)
@@ -807,13 +1064,24 @@ pub(crate) async fn revoke(
     })
     .await
     .map_err(|_| remote_unavailable())??;
+    let mut response = Json(true).into_response();
+    if self_revoke {
+        response.extensions_mut().insert(SelfRevocationAck);
+    }
+    Ok(response)
 }
 pub(crate) async fn remove(
     State(state): State<Arc<ServerState>>,
+    principal: Option<Extension<RemotePrincipal>>,
     Json(request): Json<RemoveMemberRequest>,
 ) -> Result<Json<bool>, ApiError> {
+    let membership = state
+        .membership
+        .for_principal(principal.map(|Extension(p)| p));
     tokio::task::spawn_blocking(move || {
+        membership
             .remove(request.member_id.clone())
+            .map_err(administration_api)?;
         state
             .connections
             .withdraw(|p| p.member_id == request.member_id)
@@ -824,27 +1092,179 @@ pub(crate) async fn remove(
     Ok(Json(true))
 }
 
+pub(crate) async fn members(
+    State(state): State<Arc<ServerState>>,
+    principal: Option<Extension<RemotePrincipal>>,
+) -> Result<Json<Vec<nodex_core_contracts::library::Member>>, ApiError> {
+    let membership = state
+        .membership
+        .for_principal(principal.map(|Extension(p)| p));
+    tokio::task::spawn_blocking(move || membership.members())
+        .await
+        .map_err(|_| remote_unavailable())?
+        .map(Json)
+        .map_err(administration_api)
+}
+pub(crate) async fn link_device(
+    State(state): State<Arc<ServerState>>,
+    principal: Option<Extension<RemotePrincipal>>,
+) -> Result<Json<DeviceLinkOffer>, ApiError> {
+    let membership = state
+        .membership
+        .for_principal(principal.map(|Extension(p)| p));
+    let info = state
+        .remote
+        .info
+        .lock()
+        .map_err(|_| remote_unavailable())?
+        .clone()
+        .ok_or_else(|| ApiError::new(StatusCode::CONFLICT, "Enable Remote access first"))?;
+    tokio::task::spawn_blocking(move || membership.link_device(info))
+        .await
+        .map_err(|_| remote_unavailable())?
+        .map(Json)
+        .map_err(administration_api)
+}
+pub(crate) async fn remote_access(
+    State(state): State<Arc<ServerState>>,
+) -> Result<Json<RemoteAccessState>, ApiError> {
+    let info = state.remote.info.lock().map_err(|_| remote_unavailable())?;
+    let intent = super::remote_access_config::read(&state.home)
+        .map_err(|_| remote_unavailable())?
+        .intent();
+    Ok(Json(RemoteAccessState {
+        listener: info.clone(),
+        intent,
+        routes_changed: state.remote.routes_changed.load(Ordering::Acquire),
+    }))
+}
+pub(crate) async fn stop_listener(
+    State(state): State<Arc<ServerState>>,
+    remote: Option<Extension<RemotePeer>>,
+) -> Result<Json<RemoteAccessState>, ApiError> {
+    local_admin(&state, remote)?;
+    // Shared administration takes the listener lock before its stop handle, just like listen.
+    let mut info = state.remote.info.lock().map_err(|_| remote_unavailable())?;
+    let mut config =
+        super::remote_access_config::read(&state.home).map_err(|_| remote_unavailable())?;
+    if info
+        .as_ref()
+        .is_none_or(|listener| listener.peer_policy == ListenerPeerPolicy::Private)
+    {
+        config.enabled = false;
+        super::remote_access_config::write(&state.home, &config)
+            .map_err(|_| remote_unavailable())?;
+    }
+    if let Some(stop) = state
+        .remote
+        .stop
+        .lock()
+        .map_err(|_| remote_unavailable())?
+        .take()
+    {
+        let _ = stop.send(true);
+    }
+    *info = None;
+    state.remote.routes_changed.store(false, Ordering::Release);
+    state.phone_bridge.retire_all();
+    Ok(Json(RemoteAccessState {
+        listener: None,
+        intent: config.intent(),
+        routes_changed: false,
+    }))
+}
+
 /// Local Owner diagnostics; never admitted by the network listener.
 pub(crate) async fn transport_stats(
+    State(state): State<Arc<ServerState>>,
+    remote: Option<Extension<RemotePeer>>,
 ) -> Result<Json<RemoteTransportStats>, ApiError> {
+    local_admin(&state, remote)?;
     let budgets = state
+        .remote
+        .budgets
+        .lock()
+        .map_err(|_| remote_unavailable())?;
     Ok(Json(RemoteTransportStats {
         pre_auth_ips: budgets
+            .ips
+            .iter()
             .map(|(key, value)| (key.to_string(), value.snapshot()))
             .collect(),
         members: budgets
+            .members
+            .iter()
             .map(|(key, value)| (key.clone(), value.snapshot()))
             .collect(),
         devices: budgets
+            .devices
+            .iter()
             .map(|(key, value)| (key.clone(), value.snapshot()))
             .collect(),
         routes: budgets.routes.clone(),
         refusals: state
+            .remote
             .refusals
+            .lock()
+            .map_err(|_| remote_unavailable())?
             .clone(),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn administrative_refusals_keep_typed_operation_and_renewal_recovery() {
+        for (error, status, kind) in [
+            (
+                StoreError::new(StoreErrorCode::Unauthorized, "A role refusal", false),
+                StatusCode::FORBIDDEN,
+                "none",
+            ),
+            (
+                StoreError::new(StoreErrorCode::Unauthorized, "Stale writer admission", true)
+                    .with_recovery(CoreErrorRecovery::RenewRemoteSession),
+                StatusCode::UNAUTHORIZED,
+                "renew_remote_session",
+            ),
+        ] {
+            let response = administration_api(error).into_response();
+            assert_eq!(response.status(), status);
+            let body = to_bytes(response.into_body(), 16 * 1024).await.unwrap();
+            let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(value["payload"]["recovery"]["kind"], kind);
+        }
+        let response = administration_api(
+            StoreError::new(StoreErrorCode::ResourceExhausted, "Link rate", true).with_recovery(
+                CoreErrorRecovery::RetryAfter {
+                    budget: RemoteBudget::MemberDeviceLinks,
+                    milliseconds: 1_500,
+                },
+            ),
+        )
+        .into_response();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(response.headers()["retry-after"], "2");
+        let body = to_bytes(response.into_body(), 16 * 1024).await.unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            value["payload"]["recovery"]["budget"],
+            "member_device_links"
+        );
+    }
+    #[test]
+    fn an_open_channel_marks_its_device_seen_once_per_interval() {
+        let mut seen = DeviceSeen::default();
+        let opened = Instant::now();
+        assert!(seen.due(opened), "a new channel is seen at once");
+        assert!(!seen.due(opened + Duration::from_secs(1)));
+        assert!(!seen.due(opened + DEVICE_SEEN_INTERVAL - Duration::from_millis(1)));
+        assert!(seen.due(opened + DEVICE_SEEN_INTERVAL));
+        assert!(!seen.due(opened + DEVICE_SEEN_INTERVAL + Duration::from_secs(1)));
+        assert!(seen.due(opened + 38 * DEVICE_SEEN_INTERVAL));
+    }
     #[test]
     fn byte_and_request_windows_admit_the_exact_bound_then_refuse() {
         let mut window = Window::default();

@@ -89,6 +89,12 @@ fn transport_arguments() -> Result<
     if address.is_none() && (cert.is_some() || key.is_some()) {
         return Err("Certificate options require --listen".into());
     }
+    let listen = address.map(|address| nodex_core_contracts::team::ListenRequest {
+        peer_policy: nodex_core_contracts::team::ListenerPeerPolicy::Operator,
+        address,
+        cert,
+        key,
+    });
     Ok((local, listen))
 }
 

@@ -1,5 +1,4 @@
 import type { ChatItem } from "@nodex/mobile-protocol";
-import { Image } from "expo-image";
 import { memo, useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -13,7 +12,7 @@ import {
   dismissNotificationOffer,
   enableNotifications,
   useChat,
-  useFileUri,
+  useConnection,
   useNotifications,
   type LocalImage,
 } from "../../runtime";
@@ -22,12 +21,15 @@ import { BottomAnchoredList } from "../../ui/BottomAnchoredList";
 import { ComposerLayout } from "../../ui/ComposerLayout";
 import { FloatingNote } from "../../ui/FloatingNote";
 import { Glass } from "../../ui/glass";
-import { EmptyState, Spinner, Tap, Txt } from "../../ui/primitives";
+import { Button, EmptyState, IconButton, Spinner, Tap, Txt } from "../../ui/primitives";
 import { showFailure } from "../../ui/snackbar";
 import { Composer } from "../composer/Composer";
-import { ConnectionNotice } from "../home/ConnectionNotice";
+import { ConnectionNotice, spaceUnreachable } from "../home/ConnectionNotice";
+import { setArchived } from "./chat-archive";
+import { ChatGallery, ImageStrip, UnavailablePictures, useOpenPicture } from "./ChatImages";
+import { galleryImages } from "./chat-images";
 import { RequestCard } from "./RequestCard";
-import { transcriptRows, type TranscriptRow } from "./transcript-rows";
+import { stepTitle, transcriptRows, type TranscriptRow } from "./transcript-rows";
 
 const CATEGORY_ICONS: Readonly<
   Record<Extract<ChatItem, { kind: "activity" }>["category"], IconName>
@@ -42,19 +44,10 @@ const CATEGORY_ICONS: Readonly<
   other: "tool",
 };
 
-const SentImage = ({ fileRef, name }: { readonly fileRef: string; readonly name: string }) => {
-  const { uri } = useFileUri(fileRef);
-  if (!uri) return <View className="h-40 w-40 rounded-[20px] bg-surface-3" />;
-  return (
-    <Image
-      accessibilityLabel={name}
-      contentFit="cover"
-      source={{ uri }}
-      transition={0}
-      style={{ width: 160, height: 160, borderRadius: 20 }}
-    />
-  );
-};
+/** A sent photo, and a step's picture in an opened run of work. */
+const SENT_IMAGE = 160;
+const STEP_THUMBNAIL = 48;
+const STEP_ICON = 15;
 
 const UserRow = memo(function UserRow({
   item,
@@ -63,12 +56,12 @@ const UserRow = memo(function UserRow({
 }) {
   return (
     <View className="items-end gap-1.5 pl-14 pr-4 pt-4">
-      {item.files.map((file) => (
-        <SentImage key={file.ref} fileRef={file.ref} name={file.name} />
-      ))}
+      <ImageStrip className="justify-end" images={galleryImages(item.files)} size={SENT_IMAGE} />
+      <UnavailablePictures pictures={item.unavailableImages} />
       {item.text ? (
+        // A message reads as its desktop shows it: a Page or chat it mentions by its name.
         <View className="rounded-[22px] bg-surface-3 px-4 py-2.5">
-          <Txt selectable>{item.text}</Txt>
+          <Markdown text={item.text} />
         </View>
       ) : null}
       {item.queued ? <Txt className="text-xs text-ink-3">Queued</Txt> : null}
@@ -84,6 +77,7 @@ const AssistantRow = memo(function AssistantRow({
   readonly sessionId: string;
 }) {
   const navigation = useRootNavigation();
+  const openPicture = useOpenPicture();
   return (
     <View className="gap-1.5 px-4 pt-4">
       {item.truncated ? (
@@ -94,8 +88,12 @@ const AssistantRow = memo(function AssistantRow({
       <Markdown
         text={item.text}
         streaming={item.streaming}
-        actions={{ onOpenChat: (target) => navigation.push("Chat", { sessionId: target }) }}
+        actions={{
+          onOpenChat: (target) => navigation.push("Chat", { sessionId: target }),
+          onOpenImage: ({ url, alt }) => openPicture({ ref: url, name: alt || "Picture" }),
+        }}
       />
+      <UnavailablePictures pictures={item.unavailableImages} />
     </View>
   );
 });
@@ -120,19 +118,37 @@ const WorkStep = ({
   const thinking = item.kind === "thinking";
   const failed = item.kind === "activity" && item.status === "failed";
   return (
-    <Tap
-      className="flex-row items-start gap-2 py-1"
-      onPress={() => navigation.navigate("ChatItem", { sessionId, itemId: item.id })}
-    >
-      <Icon
-        name={failed ? "warning" : thinking ? "thought" : CATEGORY_ICONS[item.category]}
-        size={15}
-        color={failed ? "danger" : "ink-3"}
-      />
-      <Txt className="flex-1 text-sm text-ink-2" numberOfLines={thinking ? 3 : 2}>
-        {thinking ? item.text : item.title}
-      </Txt>
-    </Tap>
+    <View className="py-1">
+      <Tap
+        className="flex-row items-start gap-2"
+        onPress={() => navigation.navigate("ChatItem", { sessionId, itemId: item.id })}
+      >
+        <Icon
+          name={failed ? "warning" : thinking ? "thought" : CATEGORY_ICONS[item.category]}
+          size={STEP_ICON}
+          color={failed ? "danger" : "ink-3"}
+        />
+        <Txt className="flex-1 text-sm text-ink-2" numberOfLines={thinking ? 3 : 2}>
+          {stepTitle(item)}
+        </Txt>
+      </Tap>
+      {/* Beside the step rather than inside it, so each picture is its own control. */}
+      {thinking ? null : (
+        <>
+          <ImageStrip
+            className="mt-1.5"
+            images={galleryImages(item.images)}
+            size={STEP_THUMBNAIL}
+            style={{ marginLeft: STEP_ICON + 8 }}
+          />
+          <UnavailablePictures
+            className="mt-1.5"
+            pictures={item.unavailableImages}
+            style={{ marginLeft: STEP_ICON + 8 }}
+          />
+        </>
+      )}
+    </View>
   );
 };
 
@@ -219,10 +235,14 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
   const { sessionId } = route.params;
   const { chat, error, hasOlder, loadOlder, loadingOlder, respond, send, stop } =
     useChat(sessionId);
+  // Without access to its Space, the chat is its last view: nothing moves and nothing acts.
+  const live = !spaceUnreachable(useConnection().status);
   const safeArea = useSafeAreaInsets();
   const [sentCount, setSentCount] = useState(0);
   const title = chat?.title ?? route.params.title ?? "";
   const subtitle = [chat?.projectName, chat?.state.agentLabel].filter(Boolean).join(" · ");
+  // Whoever may manage the chat archives it from here; an archived chat offers its restore below.
+  const archivable = live && chat?.state.canManage === true && !chat.state.archived;
 
   useEffect(() => clearChatNotifications(sessionId), [sessionId]);
 
@@ -244,10 +264,23 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
           </View>
         </Glass>
       ),
+      headerRight: archivable
+        ? () => (
+            <IconButton
+              color="ink"
+              label="Archive chat"
+              name="archive"
+              onPress={() => setArchived(sessionId, true)}
+            />
+          )
+        : undefined,
     });
-  }, [navigation, subtitle, title]);
+  }, [archivable, navigation, sessionId, subtitle, title]);
 
-  const rows = useMemo(() => (chat ? transcriptRows(chat.items, chat.state) : []), [chat]);
+  const rows = useMemo(
+    () => (chat ? transcriptRows(chat.items, chat.state, live) : []),
+    [chat, live],
+  );
 
   if (!chat) {
     return (
@@ -282,36 +315,96 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
       (cause: unknown) => showFailure("The chat couldn’t start", cause),
     );
   };
+  const blockedAction = retry ? (
+    <Button compact label="Retry" onPress={retryStart} />
+  ) : chat.state.archived && chat.state.canManage ? (
+    <Button compact label="Restore" onPress={() => setArchived(sessionId, false)} />
+  ) : undefined;
+  // Only the Run's requester, the chat's owner and the Space Owners stop its work.
+  const stoppable = activeRunId !== null && chat.state.stopBlockedReason === null;
 
   return (
     <ComposerLayout
       foot={
+        !live ? (
+          <View style={{ paddingBottom: Math.max(safeArea.bottom, 8) }}>
+            <ConnectionNotice />
+          </View>
+        ) : (
+          <>
+            <ConnectionNotice />
+            {chat.state.requests.map((request) => (
+              <RequestCard key={request.requestId} request={request} respond={respond} />
+            ))}
+            {chat.state.status === "waiting" && chat.state.requests.length === 0 ? (
+              <FloatingNote icon="laptop" iconColor="warning" text="Waiting for an answer." />
+            ) : null}
+            {chat.state.status === "running" ? <NotificationOffer /> : null}
+            {chat.state.queuedCount > 0 ? (
+              <FloatingNote
+                icon="clock"
+                text={
+                  chat.state.queuedCount === 1
+                    ? "1 message waiting behind this Run"
+                    : `${chat.state.queuedCount} messages waiting behind this Run`
+                }
+              />
+            ) : null}
+            {blocked ? (
+              <View style={{ paddingBottom: Math.max(safeArea.bottom, 8) }}>
                 <FloatingNote
                   icon={chat.state.start?.state === "failed" ? "warning" : "laptop"}
                   text={blocked}
+                  action={blockedAction}
                 />
+              </View>
+            ) : (
+              <Composer
+                draftKey={`chat:${sessionId}`}
+                placeholder={activeRunId ? "Add to the queue" : "Reply"}
+                onSend={(text, images) => deliver(text, images, "queue")}
+                {...(activeRunId
+                  ? {
+                      onSendLongPress: (text: string, images: readonly LocalImage[]) =>
+                        deliver(text, images, "steer"),
+                    }
+                  : {})}
+                {...(stoppable
+                  ? {
+                      onStop: () => {
+                        stop().catch((cause: unknown) =>
+                          showFailure("Could not stop the Run", cause),
+                        );
+                      },
+                    }
                   : activeRunId
                     ? { stopUnavailableReason: chat.state.stopBlockedReason }
                     : {})}
+              />
+            )}
+          </>
+        )
       }
     >
       {(insets) => (
-        <BottomAnchoredList
-          insets={insets}
-          sentCount={sentCount}
-          data={rows}
-          getItemType={(row) => row.type}
-          keyExtractor={(row) => row.id}
-          ListHeaderComponent={
-            loadingOlder ? (
-              <View className="py-3">
-                <Spinner />
-              </View>
-            ) : undefined
-          }
-          onStartReached={hasOlder ? loadOlder : undefined}
-          renderItem={({ item }) => <Row row={item} sessionId={sessionId} />}
-        />
+        <ChatGallery items={chat.items}>
+          <BottomAnchoredList
+            insets={insets}
+            sentCount={sentCount}
+            data={rows}
+            getItemType={(row) => row.type}
+            keyExtractor={(row) => row.id}
+            ListHeaderComponent={
+              loadingOlder ? (
+                <View className="py-3">
+                  <Spinner />
+                </View>
+              ) : undefined
+            }
+            onStartReached={hasOlder ? loadOlder : undefined}
+            renderItem={({ item }) => <Row row={item} sessionId={sessionId} />}
+          />
+        </ChatGallery>
       )}
     </ComposerLayout>
   );

@@ -58,6 +58,9 @@ export type IpcCommand<
 /** Exact owner-audited groups. Never replace one group with an `Exclude<keyof IpcApi, ...>` remainder. */
 type QueryEndpointPolicy =
   | "sources:automation-options"
+  | "space-admin:members"
+  | "space-admin:devices"
+  | "space-admin:remote-access"
   | "spaces:list"
   | "spaces:context"
   | "sources:settings"
@@ -531,6 +534,14 @@ type MainRevisionCommandEndpointPolicy =
   | "codex:visualization:interaction:write";
 
 type PlainResultCommandEndpointPolicy =
+  | "space-admin:invite"
+  | "space-admin:link-device"
+  | "space-admin:revoke"
+  | "space-admin:remove-member"
+  | "space-admin:name"
+  | "space-admin:member-name"
+  | "space-admin:remote-access-on"
+  | "space-admin:remote-access-off"
   | "spaces:join"
   | "spaces:leave"
   | "spaces:switch"

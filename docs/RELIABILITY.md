@@ -920,3 +920,28 @@ here.
 
 Replace stale statements at the narrow owner. Do not append migration history,
 per-file behavior, release inventories, or feature acceptance rules to this map.
+
+## Phone connections and personal Remote access
+
+Core persists personal Remote access intent and the chosen bind address and
+port in the Profile's private listener configuration. Desktop settings and native
+CLI commands share this owner. Core restores the listener during startup only
+when intent is on, reusing the saved port and certificate. Desktop owns no
+restoration loop. An occupied port falls back to an available port and reports
+changed routes;
+other listener failures remain visible as enabled intent without a live listener.
+Disabling persists across restarts. Team `serve` listener lifetime remains
+operator configuration and leaves personal intent unchanged.
+
+Phone sessions renew through Device credentials, and each connection replaces
+its bounded projections. Core meters the authenticated stream and withdraws it
+when the Device is revoked or the Member removed. The host façade cannot retain
+or substitute local Host authority after withdrawal. Offline captures keep their
+original operation and content identities and the `(Space, Member)` delivery key;
+reconnect cannot deliver them under another Member. Revoked access stops retries
+for that enrollment without removing other Spaces.
+
+Personal authority must be running on the desktop. A team phone connects directly
+to the running team host, so a joined laptop's lifecycle is irrelevant. Neither
+transport recovery nor cached views create a replicated Core authority. See
+[Nodex Mobile](product-specs/mobile-companion-behavior.md).

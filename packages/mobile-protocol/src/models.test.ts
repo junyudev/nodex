@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { InboxProposalSchema } from "./models";
+import { ChatItemSchema, InboxProposalSchema } from "./models";
 
 describe("InboxProposalSchema", () => {
   it("reads a suggestion from a desktop that predates its newer fields", () => {
@@ -19,5 +19,23 @@ describe("InboxProposalSchema", () => {
       producedBy: null,
       action: { additions: [], agent: null },
     });
+  });
+});
+
+describe("ChatItemSchema", () => {
+  it("reads a step from a host that predates its pictures as having none", () => {
+    expect(
+      ChatItemSchema.parse({
+        kind: "activity",
+        id: "step",
+        at: "2026-11-08T00:00:00.000Z",
+        category: "tool",
+        title: "Take a screenshot",
+        detail: null,
+        status: "done",
+        output: null,
+        outputTruncated: false,
+      }),
+    ).toMatchObject({ kind: "activity", images: [], unavailableImages: [] });
   });
 });

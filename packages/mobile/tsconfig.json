@@ -10,6 +10,6 @@
     "tsBuildInfoFile": "../../.cache/typescript/mobile.tsbuildinfo",
     "types": ["node", "expo/types", "uniwind/types"]
   },
-  "include": ["index.ts", "app.config.ts", "src", "uniwind-types.d.ts"],
+  "include": ["index.ts", "app.config.ts", "src", "diagnostics", "uniwind-types.d.ts"],
   "exclude": ["node_modules", "ios", "android", ".expo"]
 }

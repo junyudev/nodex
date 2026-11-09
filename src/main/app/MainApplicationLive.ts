@@ -1,5 +1,15 @@
+import * as MobileApplication from "../../host/mobile/MobileApplication";
+import { MobileRpc } from "../../host/mobile/rpc";
+import { startHostRelay } from "../../host/HostRelay";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
+import { AgentRuntimeSessionActivity } from "../agent-runtime/AgentRuntimeSessionActivity";
+import { CoordinatorSession } from "../../host/coordinator/CoordinatorSession";
+import { WorkApplication } from "../../host/work-application/WorkApplication";
+import { InboxApplication } from "../../host/inbox-application/InboxApplication";
 import { MemberMessages } from "../../host/MemberMessages";
 import { ChatAttachments } from "../../host/ChatAttachments";
+import { randomUUID } from "node:crypto";
+import * as PhoneFiles from "../platform/node/PhoneFiles";
 import * as MobilePushRelay from "../platform/node/MobilePushRelay";
 import { NativeConversationDelivery } from "../../host/NativeConversationDelivery";
 import { live as nativeManagedChatFacts } from "../codex-application/NativeManagedChatFacts";
@@ -12,6 +22,7 @@ import { SessionReminderRuntime } from "../host-runtime/SessionReminderRuntime";
 import { ChatSearch, live as chatSearchLive } from "../chat-search/ChatSearch";
 import { live as insightsLive } from "../insights/Insights";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -23,7 +34,6 @@ import { performance } from "node:perf_hooks";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreEventHub } from "../core-runtime/CoreEventHub";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
-import { AutomationRoutingIndex } from "../core-runtime/AutomationRoutingIndex";
 import { ProjectionDeliveryRuntime } from "../core-runtime/ProjectionDeliveryRuntime";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { CodexComposerPredictionError } from "../codex-application/CodexComposerPrediction";
@@ -164,6 +174,8 @@ const hostTools = Layer.mergeAll(
   ApplicationOperationsLive.tools,
 ).pipe(Layer.provideMerge(hostApplications));
 const sourcesGraph = HostKernel.live.pipe(Layer.provideMerge(hostTools));
+const phone = MobileApplication.live.pipe(
+  Layer.provide(Layer.merge(PhoneFiles.live, MobilePushRelay.live)),
 );
 /** A Space serves only channels the process routes, so routing starts once every route exists. */
 const spaces = SpacesApplicationLive.live.pipe(Layer.provideMerge(RendererIngressLive.live));
@@ -223,22 +235,59 @@ export const live: Layer.Layer<
         const initialization = yield* ApplicationInitializationRuntime;
         const authority = yield* CoreAuthority;
         const hostKernel = yield* HostKernel.HostKernel;
+        const shutdown = yield* MainShutdown;
+        const relayHost = {
+          coordinator: yield* CoordinatorSession,
+          work: yield* WorkApplication,
+          sessions: yield* AgentRuntimeApplication,
           messages: yield* MemberMessages,
           attachments: yield* ChatAttachments,
+          inbox: yield* InboxApplication,
+          activity: yield* AgentRuntimeSessionActivity,
+          phone: yield* MobileRpc,
           settings: yield* ApplicationSettings,
           chats: yield* ChatSearch,
+        };
+        let relay: { generation: string; scope: Scope.Closeable } | null = null;
+        yield* SubscriptionRef.changes(authority.state).pipe(
+          Stream.runForEach((state) =>
+            Effect.gen(function* () {
+              if (state.kind === "ready" && relay?.generation === state.generation) return;
+              if (relay) yield* Scope.close(relay.scope, Exit.void);
+              relay = null;
+              if (state.kind !== "ready") return;
+              const scope = yield* Scope.fork(runtimeScope);
+              relay = { generation: state.generation, scope };
+              yield* startHostRelay({
+                coreHome: config.nodexHome,
+                instance: randomUUID(),
+                host: relayHost,
+                // Recovery outlives the retiring relay Scope, and publishes a new generation before registration.
+                onFailure: () =>
+                  authority.retry.pipe(Effect.ignore, Effect.forkIn(runtimeScope), Effect.asVoid),
+              }).pipe(
+                Scope.provide(scope),
+                Effect.mapError((cause) => runtimeError("phone-relay", cause)),
+              );
+            }),
+          ),
+          Effect.catchCause((cause) =>
+            shutdown
+              .request({ _tag: "RuntimeFatal", subsystem: "phone-relay", cause })
+              .pipe(Effect.asVoid),
+          ),
+          Effect.forkIn(runtimeScope, { startImmediately: true }),
+        );
         const projectionDelivery = yield* ProjectionDeliveryRuntime;
         const coreEventHub = yield* CoreEventHub;
         const reminderScheduler = yield* ReminderSchedulerRuntime;
         const sessionReminders = yield* SessionReminderRuntime;
-        const storeSchedulers = yield* StoreAdministrationSchedulerRuntime;
         const projectWorkspace = yield* ProjectWorkspace;
         const browser = yield* BrowserApplication;
         const executionHosts = yield* ExecutionHostRuntime;
         const appUpdates = yield* AppUpdateRuntime;
         const windowsTray = yield* WindowsTrayRuntime;
         const trayIntegration = yield* WindowsTrayIntegration;
-        const shutdown = yield* MainShutdown;
         const applicationWindows = yield* ApplicationWindowRuntime;
         const deepLinks = yield* DeepLinkRuntime;
         const sidebarSync = yield* CodexSidebarSyncRuntime;
@@ -409,7 +458,6 @@ export const live: Layer.Layer<
                       applicationWindows.focusLast();
                     }),
               ),
-              Effect.mapError((cause) => runtimeError("handle-second-instance", cause)),
               Effect.asVoid,
             );
           },

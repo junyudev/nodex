@@ -29,6 +29,7 @@ pub(crate) struct HostBridge {
     inner: Mutex<Inner>,
     wake: Notify,
 }
+pub(crate) fn credential() -> Result<String, ApiError> {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).map_err(|_| unavailable())?;
     Ok(hex::encode(bytes))
@@ -49,6 +50,15 @@ fn local(remote: Option<Extension<remote::RemotePeer>>) -> Result<(), ApiError> 
     Ok(())
 }
 impl HostBridge {
+    pub(crate) fn check_lease(&self, token: &str) -> Result<(), ApiError> {
+        let mut inner = self.inner.lock().map_err(|_| unavailable())?;
+        self.lease(&mut inner, token)?;
+        Ok(())
+    }
+    pub(crate) fn available(&self) -> bool {
+        self.inner.lock().is_ok_and(|inner| Self::active(&inner))
+    }
+
     /// A Member's call that closes exactly this side chat of theirs.
     pub(crate) fn authorizes_discard(&self, token: &str, session: &str) -> bool {
         let Ok(inner) = self.inner.lock() else {
@@ -262,6 +272,7 @@ pub(crate) async fn register(
         lease: Some((token.clone(), Instant::now())),
         ..Inner::default()
     };
+    state.phone_bridge.retire_all();
     state.host_bridge.wake.notify_waiters();
     Ok(Json(HostLease { token }))
 }

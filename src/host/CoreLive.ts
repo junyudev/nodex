@@ -69,6 +69,7 @@ const delivery = Layer.effect(
 );
 
 /** Core content and producer wakeups for one Space, with no renderer audience or document replica. */
+export const live = (coreHome: string, operatorAddress: string) => {
   const coreTransport = Layer.unwrap(
     Effect.gen(function* () {
       const config = yield* MainConfig;
@@ -77,6 +78,7 @@ const delivery = Layer.effect(
         buildId: `nodex-host/${config.appVersion}`,
         isPackaged: config.isPackaged,
         nodexHome: coreHome,
+        operatorListener: { address: operatorAddress, cert: null, key: null },
         repositoryRoot: config.projectRootPath,
       });
     }),

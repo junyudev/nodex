@@ -1,11 +1,4 @@
 import { describe, expect, test } from "vite-plus/test";
-import {
-  BRANCH_PATH,
-  CLOCK_HAND_PATH,
-  CLOCK_RING_PATH,
-  LAPTOP_PATH,
-  WORKTREE_PATH,
-} from "./icon-geometry";
 import { buildSessionContextMenuIconSvg } from "./session-context-menu-icons";
 
 describe("native session context-menu icons", () => {
@@ -18,21 +11,8 @@ describe("native session context-menu icons", () => {
     expect(buildSessionContextMenuIconSvg("markRead")).toContain("M12.8961 3.64101");
     expect(buildSessionContextMenuIconSvg("folderOpen")).toContain("M6.584 2.874");
     expect(buildSessionContextMenuIconSvg("remove")).toContain("M14.6549 5.57307");
+    expect(buildSessionContextMenuIconSvg("worktree")).toContain("M15.8 11.535");
     expect(buildSessionContextMenuIconSvg("openIn")).toContain("M11.949 3.47949");
-  });
-
-  test("draws reminder and fork glyphs from the geometry the app uses, on the 20-unit grid", () => {
-    const expected = {
-      reminder: [CLOCK_HAND_PATH, CLOCK_RING_PATH],
-      fork: [BRANCH_PATH],
-      local: [LAPTOP_PATH],
-      worktree: [WORKTREE_PATH],
-    } as const;
-    for (const [key, paths] of Object.entries(expected)) {
-      const svg = buildSessionContextMenuIconSvg(key as keyof typeof expected);
-      expect(svg).toContain('viewBox="0 0 20 20"');
-      for (const d of paths) expect(svg).toContain(`d="${d}"`);
-    }
   });
 
   test("materializes template-image SVGs with an explicit native color", () => {

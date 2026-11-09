@@ -12,7 +12,7 @@ import { CodexApplicationEventHub } from "../codex-application/CodexApplicationE
 import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { SystemActivity, type SystemActivitySample } from "../platform/electron/SystemActivity";
 import { make } from "./UserPresence";
-import { DESKTOP_AWAY_AFTER_MILLIS, desktopAttendanceSince } from "./UserPresencePolicy";
+import { DESKTOP_AWAY_AFTER_MILLIS, desktopAttendanceSince } from "../../host/UserPresencePolicy";
 
 const active = (idleMillis: number): SystemActivitySample => ({ idleMillis, locked: false });
 
@@ -77,21 +77,29 @@ it.effect(
       const { presence, published, presentedInWindow } = yield* fixture;
       presentedInWindow.add("thread:window");
       assert.isTrue(presence.isSeen({ conversationId: "thread:window" }));
-      assert.isFalse(presence.isOnPhone({ conversationId: "thread:window" }));
+      assert.isFalse(presence.isOnPhone("owner", { conversationId: "thread:window" }));
 
       const first = yield* Scope.make();
       const second = yield* Scope.make();
-      const view = { sessionId: "session:phone", conversationId: "thread:phone" };
+      const view = {
+        memberId: "owner",
+        sessionId: "session:phone",
+        conversationId: "thread:phone",
+      };
       yield* presence.showOnPhone(view).pipe(Scope.provide(first));
       yield* presence.showOnPhone(view).pipe(Scope.provide(second));
       assert.deepEqual(published, [
-        { kind: "conversationSeen", value: "thread:phone" },
-        { kind: "conversationSeen", value: "thread:phone" },
+        { kind: "conversationSeen", value: "thread:phone", memberId: "owner" },
+        { kind: "conversationSeen", value: "thread:phone", memberId: "owner" },
       ]);
       assert.isTrue(presence.isSeen({ conversationId: "thread:phone" }));
-      assert.isTrue(presence.isOnPhone({ conversationId: "other", sessionId: "session:phone" }));
+      assert.isTrue(
+        presence.isOnPhone("owner", { conversationId: "other", sessionId: "session:phone" }),
+      );
+      // A phone shows its chat to its own Member only.
+      assert.isFalse(presence.isOnPhone("someone-else", { conversationId: "thread:phone" }));
       yield* Scope.close(first, Exit.void);
-      assert.isTrue(presence.isOnPhone({ conversationId: "thread:phone" }));
+      assert.isTrue(presence.isOnPhone("owner", { conversationId: "thread:phone" }));
       yield* Scope.close(second, Exit.void);
       assert.isFalse(
         presence.isSeen({ conversationId: "thread:phone", sessionId: "session:phone" }),

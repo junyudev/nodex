@@ -1,3 +1,4 @@
+import { HostInvocation } from "../../host/HostInvocation";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -267,4 +268,46 @@ it.effect("fences every later Core operation after canonical application failure
     if (Result.isFailure(later)) assert.strictEqual(later.failure, failure);
     yield* Scope.close(scope, Exit.void);
   }),
+);
+
+it.effect(
+  "keeps concurrent Host invocations separate and never falls back to the local Member",
+  () =>
+    Effect.gen(function* () {
+      const observed: (string | null)[] = [];
+      const client = generationClient({
+        generation: 1,
+        read: () => {
+          observed.push(null);
+          return Promise.resolve(snapshot(1));
+        },
+      });
+      client.forInvocation = (proof) =>
+        Object.assign(Object.create(client) as CoreGenerationClient, {
+          libraryRead: () => {
+            observed.push(proof);
+            return Promise.resolve(snapshot(1));
+          },
+        });
+      const context = yield* Layer.build(buildAuthority(() => Promise.resolve(session(client))));
+      const access = Context.get(context, CoreSessionAccess);
+      const read = access.use("library.read", (selected) =>
+        selected.libraryRead({ kind: "metadata" }),
+      );
+      yield* Effect.all(
+        [
+          read.pipe(Effect.provideService(HostInvocation, "proof:Alice")),
+          read.pipe(Effect.provideService(HostInvocation, "proof:Bob")),
+          read,
+        ],
+        { concurrency: 3 },
+      );
+      assert.sameMembers(observed, [null, "proof:Alice", "proof:Bob"]);
+      delete client.forInvocation;
+      const refused = yield* Effect.result(
+        read.pipe(Effect.provideService(HostInvocation, "proof:Bob")),
+      );
+      assert.equal(refused._tag, "Failure");
+      assert.equal(observed.length, 3);
+    }),
 );

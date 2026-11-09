@@ -394,3 +394,21 @@ test("bundles the SDK native executable and rebuilds when its content changes", 
   expect(instance.build()).toBe("built");
   expect(readFileSync(bundled, "utf8")).toBe("updated executable");
 });
+
+test("native phone build output cannot invalidate or race the Agent Runtime bundle", () => {
+  const instance = fixture();
+  write(join(instance.root, "packages/mobile/package.json"), '{"name":"@nodex/mobile"}');
+  const ios = join(instance.root, "packages/mobile/ios/build/Swift.pcm.tmp");
+  const android = join(instance.root, "packages/mobile/android/build/state.json");
+  write(ios, "native compiler output");
+  write(android, "{}");
+  expect(instance.build()).toBe("built");
+  rmSync(ios);
+  write(android, '{"generation":2}');
+  expect(instance.build()).toBe("reused");
+  write(
+    join(instance.root, "packages/mobile/modules/pinned-tls/ios/Module.swift"),
+    "authored module",
+  );
+  expect(instance.build()).toBe("built");
+});

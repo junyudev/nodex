@@ -381,6 +381,8 @@ pub(super) struct SourceReceiptIdentity<'a> {
     pub(super) epoch: &'a str,
     pub(super) operation: &'a str,
     pub(super) hash: &'a str,
+}
+
 pub(super) fn apply(
     connection: &Connection,
     context: &BoundModuleContext,
@@ -390,7 +392,9 @@ pub(super) fn apply(
     provenance: Option<&nodex_core_contracts::agent::AgentTurnProvenance>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let SourceReceiptIdentity {
+        epoch,
         operation,
+        hash,
     } = source_receipt_identity;
     if matches!(
         command,
@@ -443,6 +447,7 @@ pub(super) fn apply(
                     failure: failure.as_deref(),
                     permanent: *permanent,
                     credential: *credential_invalid,
+                },
             )?,
             SourceCommand::RecordThreadDeliveryFailure { message_id, reason } => {
                 super::problems::delivery_failure(connection, library, message_id, reason)?

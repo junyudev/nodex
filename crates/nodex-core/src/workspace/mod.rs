@@ -166,6 +166,22 @@ impl ProjectWorkspaceModule {
             .map_err(core_error)
     }
 
+    /// The Member a chat event concerns, for the local Host's phone notifications only.
+    pub fn push_audience(
+        &self,
+        session: Option<&str>,
+        audience: &nodex_core_contracts::team::PhonePushAudience,
+    ) -> Result<Option<String>, CoreError> {
+        let Some(readers) = &self.readers else {
+            return Err(unavailable("Project Workspace Module has no durable store"));
+        };
+        readers
+            .read_default(|connection| {
+                host_response::push_audience(connection, &self.library_id, session, audience)
+            })
+            .map_err(core_error)
+    }
+
     pub fn new(
         profile_id: impl Into<String>,
         library_id: impl Into<String>,

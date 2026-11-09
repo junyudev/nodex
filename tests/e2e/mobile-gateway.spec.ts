@@ -1,12 +1,10 @@
+import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
+import { parsePageWork } from "../../src/shared/work-graph";
 import { expect, test, type Page } from "@playwright/test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
-import {
-  CHANNEL_CLOSE,
-  createUuidV7 as phoneUuidV7,
-  type ChatRequest,
-} from "@nodex/mobile-protocol";
+import { createUuidV7 as phoneUuidV7, type ChatRequest } from "@nodex/mobile-protocol";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
@@ -16,7 +14,7 @@ import type { ScriptedAcpScenario } from "../../scripts/scenarios/runtime/script
 import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { invokeIpc } from "./support/editor-scenario";
-import { MobilePhone, PhoneConnectionClosed, type PhoneChannel } from "./support/mobile-phone";
+import { MobilePhone, type PhoneChannel } from "./support/mobile-phone";
 import { openWorkbenchSettings } from "./support/workbench-settings";
 
 const REPLY = "The phone reached the desktop Agent.";
@@ -24,12 +22,6 @@ const instanceId = "mobile-gateway-test";
 const agentDefinitionId = "scripted-agent";
 const createUuidV7 = (now = Date.now()) =>
   phoneUuidV7((length) => new Uint8Array(randomBytes(length)), now);
-
-async function openMobileSettings(page: Page) {
-  await openWorkbenchSettings(page);
-  await page.getByRole("link", { name: "Mobile", exact: true }).click();
-  await expect(page.getByRole("switch", { name: "Allow phones to connect" })).toBeVisible();
-}
 
 async function answerApproval(phone: PhoneChannel, sessionId: string) {
   await expect
@@ -84,9 +76,6 @@ async function waitForIdle(phone: PhoneChannel, sessionId: string, replies: numb
     });
 }
 
-/** The row's full wording belongs to its presentation; this spec cares that the phone is connected. */
-const CONNECTED_PHONE = /^iOS · Nodex Mobile e2e · .*Connected$/u;
-
 test("a paired phone captures once, follows Agent Runs, answers approvals and loses access when removed", async ({}, testInfo) => {
   test.setTimeout(150_000);
   const harness = await ElectronScenarioHarness.create({
@@ -110,7 +99,11 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
   try {
     prepareScenarioCodexAppServerRuntimeSync(
       harness.profile.runRoot,
-      path.resolve("tests/e2e/fixtures/codex-exec-app-server.mjs"),
+      path.resolve("scripts/scenarios/runtime/cross-provider-peer.mjs"),
+    );
+    writeFileSync(
+      path.join(harness.profile.runRoot, "plan.json"),
+      JSON.stringify({ scenario: "mobile-gateway" }),
     );
     const page = await harness.launch();
     desktop = page;
@@ -174,36 +167,60 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
     await invokeIpc(page, "settings:inbox:update", { suggestions: "on_request" });
     // Full access grants the fixture's permission automatically; this scenario needs a human ask.
     await invokeIpc(page, "settings:agent-runtime:update", {
+      agentsRunningAtOnce: 4,
       defaultRuntimeMode: "approval-required",
     });
 
-    const identity = await test.step("pair using Settings and its copied link", async () => {
-      await openMobileSettings(page);
-      const enabled = page.getByRole("switch", { name: "Allow phones to connect" });
-      await expect(enabled).not.toBeChecked();
-      await enabled.click();
-      await expect(enabled).toBeChecked();
-      await page.getByRole("button", { name: "Pair a phone", exact: true }).click();
-      await expect(page.getByRole("img", { name: "Pairing code" })).toBeVisible();
-      await page.getByRole("button", { name: "Copy link", exact: true }).click();
-      await expect(page.getByText("Pairing link copied", { exact: true })).toBeVisible();
+    const identity = await test.step("link a Member Device from Spaces Settings", async () => {
+      await openWorkbenchSettings(page);
+      await page.getByRole("link", { name: "Spaces", exact: true }).click();
+      const toggle = page.getByRole("switch", { name: "Remote access", exact: true });
+      await expect(toggle).not.toBeChecked();
+      await toggle.click();
+      await expect(toggle).toBeChecked();
+      const first = await invokeIpc(page, "space-admin:remote-access");
+      expect(first.intent?.enabled).toBe(true);
+      await toggle.click();
+      await expect(toggle).not.toBeChecked();
+      await toggle.click();
+      await expect(toggle).toBeChecked();
+      expect((await invokeIpc(page, "space-admin:remote-access")).listener?.url).toBe(
+        first.listener?.url,
+      );
+      await page.getByRole("button", { name: "Link a device", exact: true }).click();
+      await expect(page.getByText("Scan with Nodex Mobile.")).toBeVisible();
+      await expect(page.getByRole("link", { name: "Get the app.", exact: true })).toHaveAttribute(
+        "href",
+        "https://nodex.jyu.app/download/#mobile",
+      );
+      await expect(page.getByRole("img", { name: "Device link code", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Copy phone link", exact: true }).click();
+      await expect(page.getByText("Phone link copied", { exact: true })).toBeVisible();
       const link = await harness.application.evaluate(({ clipboard }) => clipboard.readText());
       const identity = MobilePhone.fromCopiedLink(link);
       phone = await identity.connect(true);
-      expect((await phone.hello).deviceId).toBeTruthy();
-      await expect(page.getByText("Gateway test phone", { exact: true })).toBeVisible();
-      await expect(page.getByText(CONNECTED_PHONE)).toBeVisible();
-      await expect(page.getByRole("img", { name: "Pairing code" })).toHaveCount(0);
-      // Prove the saved static key reconnects without the one-time pairing secret.
+      expect((await phone.hello).memberId).toBe(identity.offer.member_id);
+      expect((await phone.hello).spaceKind).toBe("personal");
+      const devices = await invokeIpc(page, "space-admin:devices");
+      expect(devices).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: (await phone.hello).deviceId,
+            form_factor: "phone",
+            member_id: identity.offer.member_id,
+          }),
+        ]),
+      );
+      await page.getByRole("button", { name: "Done", exact: true }).click();
+      await expect(page.getByText("Test phone", { exact: true })).toBeVisible();
       await phone.close();
       phone = await identity.connect();
-      await expect(page.getByText(CONNECTED_PHONE)).toBeVisible();
+      await page.getByRole("button", { name: "Back to app", exact: true }).click();
       return identity;
     });
     const connected = phone!;
 
     await test.step("deliver a capture once and accept its real suggestion", async () => {
-      await page.getByRole("button", { name: "Back to app", exact: true }).click();
       await page.getByTestId("sidebar-inbox-row-wrapper").getByRole("button").click();
       const inbox = page.locator('[data-inbox-scope="library"]');
       await expect(inbox).toBeVisible();
@@ -231,11 +248,11 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
       await expect(inbox.getByTestId("inbox-message")).toHaveCount(1);
       await connected.request("inbox.decide", {
         operationId: createUuidV7(),
-        pageId: capture.pageId,
+        entryId: capture.pageId,
         decision: { type: "request_suggestion" },
       });
-      const directory = path.join(harness.profile.runRoot, ".fake-codex/exec");
-      const logPath = path.join(directory, "generations.jsonl");
+      const directory = harness.profile.runRoot;
+      const logPath = path.join(directory, "native.jsonl");
       const generations = (): { requestId: string; bodies: string[] }[] =>
         existsSync(logPath)
           ? readFileSync(logPath, "utf8")
@@ -243,6 +260,7 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
               .split("\n")
               .filter(Boolean)
               .map((line) => JSON.parse(line))
+              .filter((entry) => entry.event === "mobile.routing")
           : [];
       await expect.poll(() => generations().length, { timeout: 30_000 }).toBe(1);
       const generation = generations()[0]!;
@@ -251,24 +269,94 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
       await expect
         .poll(
           async () =>
-            (await connected.request("inbox.message", { pageId: capture.pageId })).proposal?.state,
+            (
+              (await connected.request("inbox.message", {
+                entryId: capture.pageId,
+              })) as import("@nodex/mobile-protocol").IntakeEntry
+            ).proposal?.state,
         )
         .toBe("open");
-      const { proposal } = await connected.request("inbox.message", { pageId: capture.pageId });
-      if (!proposal) throw new Error("The utility Agent produced no suggestion");
+      const entry = await connected.request("inbox.message", { entryId: capture.pageId });
+      if (entry.rowKind !== "intake") throw new Error("Expected intake");
+      const { proposal } = entry;
+      if (!proposal) throw new Error("The Coordinator produced no suggestion");
       expect(proposal.action.type).toBe("keep");
       await connected.request("inbox.decide", {
         operationId: createUuidV7(),
-        pageId: capture.pageId,
+        entryId: capture.pageId,
         decision: { type: "accept", proposalId: proposal.proposalId, revision: proposal.revision },
       });
-      expect(await connected.request("inbox.message", { pageId: capture.pageId })).toMatchObject({
+      expect(await connected.request("inbox.message", { entryId: capture.pageId })).toMatchObject({
         state: "kept",
         outcome: "kept",
       });
       await expect(row).toHaveCount(0);
     });
 
+    await test.step("answer a Page Turn and Accept its review from the phone", async () => {
+      const seed = new RendererIpcSeedAdapter(page);
+      const project = await seed.createProject({
+        name: "Phone work",
+        sources: [harness.profile.runRoot],
+      });
+      const pageId = createUuidV7();
+      await seed.createPage({
+        key: "phone-work",
+        pageId,
+        operationId: createUuidV7(),
+        projectId: project.id,
+        status: "plan",
+        title: "Choose phone scope",
+        markdown: "Ask which scope to use, then report the result.",
+      });
+      const detail = await invokeIpc(page, "pages:detail:get", project.id, pageId);
+      if (!detail.ok) throw new Error(detail.error.message);
+      const property = detail.value.intrinsicProperties.find((field) => field.key === "work")!;
+      const result = await invokeIpc(page, "block-properties:mutate", project.id, {
+        mutationId: createUuidV7(),
+        projectId: project.id,
+        storeEpoch: detail.value.storeEpoch,
+        actor: { kind: "person" },
+        fields: [
+          {
+            scope: "intrinsic",
+            blockId: pageId,
+            propertyKey: "work",
+            operation: "set",
+            expectedRevision: property.revision,
+            value: {
+              ...parsePageWork(property.value)!,
+              assignee: { kind: "agent", instance_id: "codex", model: "gpt-5.5", effort: "medium" },
+              auto_start: false,
+            },
+          },
+        ],
+      });
+      if (!result.ok) throw new Error(result.error.message);
+      writeFileSync(
+        path.join(harness.profile.runRoot, "plan.json"),
+        JSON.stringify({ scenario: "mobile-gateway", pageId }),
+      );
+      const started = await invokeIpc(page, "work:start", { operationId: createUuidV7(), pageId });
+      if (!started.ok) throw new Error(started.error.message);
+      const findTurn = async () => {
+        const window = await connected.request("inbox.window", {
+          scope: { kind: "all" },
+          filter: "inbox",
+        });
+        const entry = window.items.find((item) => item.id === pageId);
+        return entry?.rowKind === "turn" ? entry : null;
+      };
+      const readTurn = async () => {
+        const entry = await connected.request("inbox.message", { entryId: pageId });
+        if (entry.rowKind !== "turn") throw new Error("Expected a Page Turn");
+        return entry;
+      };
+      await expect
+        .poll(async () => (await findTurn())?.turn.reason, { timeout: 30_000 })
+        .toBe("question");
+      const question = await readTurn();
+      expect(question.turn.options).toEqual(["Project", "Library"]);
       const turn = await invokeIpc(page, "work:turn", pageId);
       if (!turn.activeChat) throw new Error("The phone's Page has no active chat");
       const sessionId = turn.activeChat.session_id;
@@ -278,6 +366,17 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
           return snapshot.projection.runs.map((run) => run.status);
         })
         .toEqual(["completed"]);
+      const reply = {
+        operationId: createUuidV7(),
+        entryId: pageId,
+        decision: { type: "turn_reply" as const, episode: question.turn.episode, text: "Project" },
+      };
+      await connected.request("inbox.decide", reply);
+      await connected.request("inbox.decide", reply);
+      await expect
+        .poll(async () => (await findTurn())?.turn.reason, { timeout: 30_000 })
+        .toBe("review");
+      const review = await readTurn();
       await expect
         .poll(async () => {
           const { snapshot } = await invokeIpc(page, "agent-runtime:session:read", { sessionId });
@@ -291,6 +390,29 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
       const asked = native.find((item) => item.event === "mobile.question");
       expect(asked?.threadId).toBeTruthy();
       expect(native.find((item) => item.event === "mobile.answer")?.threadId).toBe(asked!.threadId);
+      await expect(
+        connected.request("inbox.decide", {
+          operationId: createUuidV7(),
+          entryId: pageId,
+          decision: { type: "turn_accept", episode: question.turn.episode },
+        }),
+      ).rejects.toMatchObject({ code: "rejected" });
+      const accept = {
+        operationId: createUuidV7(),
+        entryId: pageId,
+        decision: { type: "turn_accept" as const, episode: review.turn.episode },
+      };
+      await connected.request("inbox.decide", accept);
+      await connected.request("inbox.decide", accept);
+      await expect
+        .poll(async () =>
+          (
+            await connected.request("inbox.window", { scope: { kind: "all" }, filter: "inbox" })
+          ).items.filter((row) => row.id === pageId),
+        )
+        .toEqual([]);
+    });
+
     await test.step("start a chat and follow patches through approval and a follow-up", async () => {
       const providerInstanceId = agentRuntimeProviderId({
         kind: "acp",
@@ -370,15 +492,12 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
       });
     });
 
-    await test.step("remove the phone through Settings and refuse its saved key", async () => {
-      await openMobileSettings(page);
-      await expect(page.getByText("Gateway test phone", { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Remove", exact: true }).click();
-      expect(await connected.waitForClose()).toBe(CHANNEL_CLOSE.revoked);
-      await expect(page.getByText("Gateway test phone", { exact: true })).toHaveCount(0);
-      await expect(identity.connect()).rejects.toEqual(
-        new PhoneConnectionClosed(CHANNEL_CLOSE.unknownDevice),
-      );
+    await test.step("revoke the phone from Spaces Settings", async () => {
+      await openWorkbenchSettings(page);
+      await page.getByRole("link", { name: "Spaces", exact: true }).click();
+      await page.getByRole("button", { name: "Revoke Test phone", exact: true }).click();
+      expect(await connected.waitForClose()).toBe(4401);
+      await expect(identity.connect()).rejects.toThrow("Device renewal refused (401)");
     });
     completed = true;
   } finally {

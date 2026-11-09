@@ -11,7 +11,6 @@ import type { DatabaseId } from "../../../../shared/database-identities";
 import type {
   ContentRoutingContext,
   ContentCanvasNavigationTarget,
-  ContentPageFileNavigationTarget,
   ContentPageNavigationTarget,
 } from "../../../../shared/content-routing-context";
 import type { PageStagePropertyEdit } from "@/lib/page-stage-properties";
@@ -110,7 +109,14 @@ export interface PageStageProps {
   onLoadMoreRelatedChats?: () => Promise<void> | void;
   /** Opens an attached Thread referenced inside the Page editor. */
   onOpenCodexThread?: (threadId: string) => Promise<void>;
-  onOpenPageFile?: (input: ContentPageFileNavigationTarget) => void | Promise<void>;
+  onOpenPageFile?: (input: {
+    routingContext: ContentRoutingContext;
+    pageId: string;
+    fileId: string;
+    logicalPath: string | null;
+    title: string;
+    openMode: "preview" | "durable";
+  }) => void | Promise<void>;
   onOpenPage?: (input: ContentPageNavigationTarget) => void | Promise<void>;
   onOpenDatabase?: (databaseId: DatabaseId) => void | Promise<void>;
   onOpenCanvas?: (input: ContentCanvasNavigationTarget) => void | Promise<void>;

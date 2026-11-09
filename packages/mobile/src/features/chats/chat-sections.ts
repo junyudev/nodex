@@ -14,16 +14,22 @@ const SECTION_LABELS: Readonly<Record<ChatSectionId, string>> = {
 
 /** A chat needs the person only while it is asking something; a failed Run stays in Recent, marked. */
 const sectionOf = (chat: ChatSummary): ChatSectionId => {
-  if (chat.status === "waiting" || chat.pendingRequestCount > 0) return "attention";
-  if (chat.status === "running" || chat.status === "background") return "working";
+  if (chat.pendingRequestCount > 0) return "attention";
+  if (chat.status === "running" || chat.status === "background" || chat.status === "waiting")
+    return "working";
   return "recent";
 };
 
 /**
  * Orders the list by what the person should look at first. Within a section the Host's recency order
  * stands, and an empty section has no header; a list with only recent chats needs no header at all.
+ * Archived chats wait for no one, so their list is one run in the Host's order.
  */
-export const chatListRows = (chats: readonly ChatSummary[]): readonly ChatListRow[] => {
+export const chatListRows = (
+  chats: readonly ChatSummary[],
+  { archived = false }: { readonly archived?: boolean } = {},
+): readonly ChatListRow[] => {
+  if (archived) return chats.map((chat) => ({ type: "chat", chat }));
   const sections: Record<ChatSectionId, ChatSummary[]> = { attention: [], working: [], recent: [] };
   for (const chat of chats) sections[sectionOf(chat)].push(chat);
   const onlyRecent = sections.attention.length === 0 && sections.working.length === 0;

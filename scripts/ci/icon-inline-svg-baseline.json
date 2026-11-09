@@ -5,9 +5,17 @@
       "reason": "Startup failure presents the canonical Nodex brand logo without loading the Workbench icon graph."
     },
     "src/renderer/bootstrap/nodex-logo-source.ts": 1,
+    "src/renderer/components/board/editor/image-layout.browser.test.tsx": {
+      "count": 2,
+      "reason": "Browser test fixture uses SVG image bytes with exact dimensions to verify image layout stability."
+    },
     "src/renderer/components/board/editor/nfm-code-block.browser.test.tsx": {
       "count": 3,
       "reason": "Browser test fixture intentionally embeds inert SVG markup to verify Mermaid preview readiness and expanded rendering; it is not reusable product artwork."
+    },
+    "src/renderer/components/board/editor/selected-block-decorations.browser.test.tsx": {
+      "count": 1,
+      "reason": "Browser test fixture uses inert SVG image bytes to verify selected Block decoration behavior."
     },
     "src/renderer/components/board/nfm-renderer.tsx": 2,
     "src/renderer/components/message/message-document.browser.test.tsx": {
@@ -30,6 +38,10 @@
       "count": 1,
       "reason": "The usage meter renders a data-driven progress ring around the shared provider mark; its arcs encode remaining capacity, not a reusable control icon."
     },
+    "src/renderer/features/avatar-overlay/avatar-overlay-page.tsx": {
+      "count": 1,
+      "reason": "The mascot is a product illustration owned by the Avatar overlay, not a reusable control icon."
+    },
     "src/renderer/features/insights/insights-cards.ts": {
       "count": 2,
       "reason": "Share cards are self-contained SVG documents rendered to an image, so the whole picture stays in one file that a canvas can draw; they are not reusable control icons."
@@ -41,12 +53,7 @@
     "src/renderer/features/browser-sidebar/browser-tab-favicon.tsx": 2,
     "src/renderer/features/local-conversation/view/composer/composer-add-context-menu.tsx": 1,
     "src/renderer/features/local-conversation/view/composer/image-attachments/composer-image-data-transfer.jsdom.test.ts": 1,
-    "src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx": 2,
     "src/renderer/features/local-conversation/view/shared/context-window.tsx": 1,
-    "src/renderer/features/mobile-access/mobile-access-settings-page.tsx": {
-      "count": 1,
-      "reason": "The pairing QR code is a data mark drawn module by module from its secret; it is not reusable icon artwork."
-    },
     "src/renderer/features/local-conversation/view/shared/image-view-surface.browser.test.tsx": {
       "count": 1,
       "reason": "Browser test fixture supplies SVG image bytes with fixed dimensions to verify decoding and shared preview identity after the source file disappears."
@@ -62,6 +69,11 @@
       "reason": "Browser test fixture supplies inert SVG image bytes to verify MCP image preview rendering; it is not product artwork."
     },
     "src/renderer/features/local-conversation/view/shared/turn-diff-surface.tsx": 1,
+    "src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx": 2,
+    "src/renderer/features/spaces/device-link-code.tsx": {
+      "count": 1,
+      "reason": "The Device-link QR code is a data mark drawn from its one-time offer, not reusable icon artwork."
+    },
     "src/renderer/lib/content-image/image-bytes.node.test.ts": 1,
     "src/renderer/lib/mermaid-runtime.browser.test.ts": {
       "count": 1,
@@ -71,18 +83,6 @@
     "src/renderer/lib/use-mermaid-preview.test.tsx": {
       "count": 1,
       "reason": "Test fixture resolves the Mermaid renderer with an inert empty SVG string to verify preview state transitions; it is not reusable product artwork."
-    },
-    "src/renderer/components/board/editor/image-layout.browser.test.tsx": {
-      "count": 2,
-      "reason": "Browser test fixture uses SVG image bytes with exact dimensions to verify image layout stability."
-    },
-    "src/renderer/components/board/editor/selected-block-decorations.browser.test.tsx": {
-      "count": 1,
-      "reason": "Browser test fixture uses inert SVG image bytes to verify selected Block decoration behavior."
-    },
-    "src/renderer/features/avatar-overlay/avatar-overlay-page.tsx": {
-      "count": 1,
-      "reason": "The mascot is a product illustration owned by the Avatar overlay, not a reusable control icon."
     }
   },
   "geometry": []

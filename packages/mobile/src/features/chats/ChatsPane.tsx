@@ -1,14 +1,17 @@
 import type { ChatSummary } from "@nodex/mobile-protocol";
 import { useMemo } from "react";
 import { LegendList } from "@legendapp/list/react-native";
-import { RefreshControl, View } from "react-native";
+import { Alert, RefreshControl, View } from "react-native";
 
 import { useRootNavigation } from "../../navigation/types";
 import { useChats } from "../../runtime";
+import { setArchived } from "../chat/chat-archive";
+import { useHomeState } from "../home/home-state";
 import { cn } from "../../ui/cn";
 import { insetPadding, type ContentInsets } from "../../ui/ComposerLayout";
 import { formatAge } from "../../ui/format";
-import { EmptyState, SectionLabel, StatusDot, Tap, Txt } from "../../ui/primitives";
+import { Icon } from "../../ui/icons";
+import { Button, EmptyState, SectionLabel, StatusDot, Tap, Txt } from "../../ui/primitives";
 import { useColor } from "../../ui/tokens";
 import { useNow } from "../../ui/use-now";
 import { chatListRows, chatStatusTone, type ChatListRow } from "./chat-sections";
@@ -21,16 +24,30 @@ const STATUS_WORDS: Partial<Record<ChatSummary["status"], string>> = {
 
 const ChatRow = ({ chat, now }: { readonly chat: ChatSummary; readonly now: number }) => {
   const navigation = useRootNavigation();
-  const asking = chat.status === "waiting" || chat.pendingRequestCount > 0;
+  const asking = chat.pendingRequestCount > 0;
   const tone = asking ? "warning" : chatStatusTone(chat.status);
   const line = asking
     ? (chat.attention ?? "Waiting for you")
     : (STATUS_WORDS[chat.status] ?? chat.preview);
+  // Whoever may manage a chat archives it from the list as well as from the chat.
+  const offerArchive = () =>
+    Alert.alert(chat.title, undefined, [
+      { text: "Archive", onPress: () => setArchived(chat.sessionId, true) },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  const restorable = chat.archived && chat.canManage;
   return (
     <Tap
       className="flex-row gap-2.5 px-4 py-3"
       pressedClassName="active:bg-surface-2"
       onPress={() => navigation.navigate("Chat", { sessionId: chat.sessionId, title: chat.title })}
+      {...(chat.canManage && !chat.archived
+        ? {
+            onLongPress: offerArchive,
+            accessibilityActions: [{ name: "archive", label: "Archive" }],
+            onAccessibilityAction: offerArchive,
+          }
+        : {})}
     >
       <View className="h-[23px] w-2 items-center justify-center">
         {tone ? <StatusDot tone={tone} /> : chat.unread ? <StatusDot tone="accent" /> : null}
@@ -48,14 +65,45 @@ const ChatRow = ({ chat, now }: { readonly chat: ChatSummary; readonly now: numb
           {chat.projectName && !asking ? `${chat.projectName} · ${line}` : line}
         </Txt>
       </View>
+      {restorable ? (
+        <Button
+          compact
+          className="self-center"
+          label="Restore"
+          accessibilityLabel={`Restore ${chat.title}`}
+          onPress={() => setArchived(chat.sessionId, false)}
+        />
+      ) : null}
     </Tap>
+  );
+};
+
+/** Opens the archived chats, or returns from them to the rest. */
+const ArchivedToggle = ({ archived }: { readonly archived: boolean }) => {
+  const setChatsArchived = useHomeState((state) => state.setChatsArchived);
+  return (
+    <View>
+      <Tap
+        className="flex-row items-center gap-2.5 px-4 py-3"
+        pressedClassName="active:bg-surface-2"
+        accessibilityLabel={archived ? "Back to chats" : "Archived chats"}
+        onPress={() => setChatsArchived(!archived)}
+      >
+        <View className="w-2 items-center">
+          <Icon name={archived ? "chevronLeft" : "archive"} size={16} color="ink-3" />
+        </View>
+        <Txt className="flex-1 text-sm text-ink-2">{archived ? "Chats" : "Archived"}</Txt>
+        {archived ? null : <Icon name="chevronRight" size={16} color="ink-3" />}
+      </Tap>
+      {archived ? <SectionLabel className="px-4 pb-0.5 pt-1">Archived</SectionLabel> : null}
+    </View>
   );
 };
 
 const rowKey = (row: ChatListRow): string =>
   row.type === "header" ? `header:${row.id}` : row.chat.sessionId;
 
-/** Every chat on the desktop, with what needs the person first. */
+/** Every chat in the Space, with what needs the person first. */
 export const ChatsPane = ({
   query,
   insets,
@@ -63,22 +111,22 @@ export const ChatsPane = ({
   readonly query: string;
   readonly insets: ContentInsets;
 }) => {
-  const chats = useChats(query ? { query } : {});
-  const rows = useMemo(() => chatListRows(chats.items), [chats.items]);
+  const archived = useHomeState((state) => state.chatsArchived);
+  const chats = useChats({ ...(query ? { query } : {}), ...(archived ? { archived } : {}) });
+  const rows = useMemo(() => chatListRows(chats.items, { archived }), [archived, chats.items]);
   const refreshColor = useColor("ink-3");
   const now = useNow();
   if (rows.length === 0) {
     if (chats.loading) return <View className="flex-1" />;
     return (
       <View className="flex-1" style={insetPadding(insets)}>
+        <ArchivedToggle archived={archived} />
         {query ? (
           <EmptyState icon="search" title="No chats match" />
+        ) : archived ? (
+          <EmptyState icon="archive" title="No archived chats" />
         ) : (
-          <EmptyState
-            icon="chat"
-            title="No chats yet"
-            detail="Start one below. It runs on your desktop while you follow along here."
-          />
+          <EmptyState icon="chat" title="No chats yet" detail="Chats in this Space appear here." />
         )}
       </View>
     );
@@ -91,6 +139,7 @@ export const ChatsPane = ({
       estimatedItemSize={64}
       getItemType={(row) => row.type}
       keyExtractor={rowKey}
+      ListHeaderComponent={<ArchivedToggle archived={archived} />}
       keyboardDismissMode="on-drag"
       keyboardShouldPersistTaps="handled"
       onEndReached={chats.hasMore ? chats.loadMore : undefined}

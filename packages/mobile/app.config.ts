@@ -3,13 +3,18 @@ import type { ExpoConfig } from "expo/config";
 import { version as desktopVersion } from "../../package.json";
 
 const pairingScheme = "nodex-mobile";
-const cameraPermission = "Allow Nodex to scan a pairing code from your desktop.";
+const cameraPermission = "Allow Nodex to scan a Space device link.";
 
 const variants = {
   development: {
     name: "Nodex Dev",
     identifier: "app.jyu.nodex.mobile.dev",
     schemes: ["nodex-mobile-dev", pairingScheme],
+  },
+  "tls-proof": {
+    name: "Nodex TLS Proof",
+    identifier: "app.jyu.nodex.mobile.tlsproof",
+    schemes: ["nodex-mobile-tls-proof"],
   },
   production: {
     name: "Nodex",
@@ -19,8 +24,8 @@ const variants = {
 } as const;
 
 const variant = process.env.APP_VARIANT ?? "development";
-if (variant !== "development" && variant !== "production") {
-  throw new Error("APP_VARIANT must be development or production.");
+if (variant !== "development" && variant !== "production" && variant !== "tls-proof") {
+  throw new Error("APP_VARIANT must be development, production or tls-proof.");
 }
 const { name, identifier, schemes } = variants[variant];
 
@@ -49,8 +54,10 @@ export default {
       "com.apple.developer.usernotifications.time-sensitive": true,
     },
     infoPlist: {
-      NSLocalNetworkUsageDescription:
-        "Allow Nodex to connect to your desktop on the local network.",
+      NSLocalNetworkUsageDescription: "Allow Nodex to connect to Space hosts on the local network.",
+      // ATS governs the URL Loading System. Space hosts are reached only through the pinned
+      // Network.framework transport (modules/pinned-tls), which ATS does not evaluate, so a
+      // self-signed host works at any address without loosening ATS for anything else.
       NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
       // What App Store Connect records for standard encryption on a store without France's rules.
       ITSAppUsesNonExemptEncryption: false,
@@ -60,7 +67,7 @@ export default {
     package: identifier,
     // An installed APK only takes an update with a higher version code.
     versionCode: androidVersionCode,
-    // Unsent captures and what a phone last saw stay on the phone, and its keys cannot be restored.
+    // Unsent captures and what a phone last saw stay on the phone, and its Device credentials cannot be restored.
     allowBackup: false,
     adaptiveIcon: {
       foregroundImage: "./assets/adaptive-foreground.png",
@@ -71,7 +78,6 @@ export default {
   plugins: [
     // Xcode mods run in reverse order; copy the app's final build settings after the other plugins.
     "./plugins/withNotificationDecryption.cjs",
-    "./plugins/withAndroidCleartext.cjs",
     "./plugins/withAndroidReleaseSigning.cjs",
     [
       "expo-build-properties",

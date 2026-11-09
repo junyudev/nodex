@@ -26,6 +26,7 @@ export type PendingCapture = {
 type DeliveryIdentity = { operationId: string; issuedAt: number };
 
 type Entry = {
+  /** JSON tuple of the enrolled Space and Member. Unassigned old captures remain local. */
   hostId: string;
   pageId: string;
   documentId: string;
@@ -137,7 +138,7 @@ export const makeOutbox = Effect.gen(function* () {
     );
   });
   const alreadyDelivered = (pageId: string) =>
-    connection.rpc.request("inbox.message", { pageId }).pipe(
+    connection.rpc.request("inbox.message", { entryId: pageId }).pipe(
       Effect.as(true),
       Effect.catch((error) =>
         error.code === "not_found" ? Effect.succeed(false) : Effect.fail(error),
@@ -145,6 +146,7 @@ export const makeOutbox = Effect.gen(function* () {
     );
   const deliver = Effect.fn("MobileOutbox.deliver")(function* (entry: Entry) {
     const link = yield* connection.requireLink;
+    if (link.hello.host.id !== entry.hostId) return yield* Effect.fail(disconnected());
     const id = entry.capture.captureId;
     const assertCurrent = () =>
       connection
@@ -318,7 +320,7 @@ export const makeOutbox = Effect.gen(function* () {
         .filter(
           (entry) =>
             entry.hostId === hostId &&
-            inboxScopeKey(entry.capture.scope) === inboxScopeKey(scope) &&
+            (scope.kind === "all" || inboxScopeKey(entry.capture.scope) === inboxScopeKey(scope)) &&
             !pageIds.has(entry.pageId),
         )
         .map((entry) => entry.capture),

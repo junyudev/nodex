@@ -9,6 +9,7 @@ import {
   formatWorkbenchWindowTitle,
   resolveWorkbenchWindowTitleParts,
 } from "@/lib/workbench-window-title";
+import { useCurrentSpace } from "@/features/spaces/spaces-runtime";
 import { useLibrarySceneTitles } from "./library-scene-breadcrumb";
 
 interface WorkbenchWindowTitleProps {
@@ -31,6 +32,7 @@ export function WorkbenchWindowTitle({
   libraryScene,
 }: WorkbenchWindowTitleProps) {
   const space = useLibrarySceneTitles(location.kind === "library" ? libraryScene : null);
+  const currentSpace = useCurrentSpace();
   const title = formatWorkbenchWindowTitle(
     resolveWorkbenchWindowTitleParts({
       location,
@@ -47,6 +49,7 @@ export function WorkbenchWindowTitle({
           ? [space.childTitle, space.rootTitle]
           : [space.rootTitle]
         : [],
+      teamSpaceName: currentSpace.kind === "team" ? currentSpace.name : null,
     }),
     resolveCodexRendererOs(),
   );

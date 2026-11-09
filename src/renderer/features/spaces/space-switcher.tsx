@@ -12,8 +12,10 @@ import {
 } from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { spaceAvailabilityLabel, type SpaceAvailability } from "../../../shared/space-connection";
 import { currentSpace, switchSpace, useSpaceConnections } from "./spaces-runtime";
 import { useOpenJoinSpace } from "./join-space-dialog";
+import { SpaceAvatar } from "./space-avatar";
 
 const AVAILABILITY_DOT: Record<Exclude<SpaceAvailability, "ready">, string> = {
   reconnecting: "bg-token-charts-orange",

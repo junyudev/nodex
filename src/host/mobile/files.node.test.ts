@@ -10,6 +10,11 @@ import * as Result from "effect/Result";
 import * as TestClock from "effect/testing/TestClock";
 import { expect } from "vitest";
 import { fileSource, parseFileSource } from "../../shared/file-resources";
+import { testLayer as configLayer } from "../../main/app/MainConfig";
+import { CoreAuthority } from "../../main/core-runtime/CoreAuthority";
+import { FileExportRuntime } from "../../main/library-application/FileExportRuntime";
+import { LibraryModule } from "../../main/library-application/LibraryModule";
+import { live as profileFiles } from "../../main/platform/node/PhoneFiles";
 import {
   ChatAttachmentRefusal,
   ChatAttachments,
@@ -257,6 +262,21 @@ it.effect("reads a chat's attachments through the one owner every Device of the 
         version: "current",
       },
     ]);
+    // A connected conversation's picture is also named by its Run.
+    yield* read({
+      ref: attachmentRef(["session", "codex-thread", "item", "input:1", "run"]),
+      offset: 0,
+      length: 2,
+    });
+    expect(test.attachmentReads.at(-1)).toEqual({
+      sessionId: "session",
+      sourceThreadId: "codex-thread",
+      itemId: "item",
+      attachmentId: "input:1",
+      runId: "run",
+      offset: 0,
+      length: 2,
+    });
     expect(
       yield* read({ ref, offset: 2, length: 2, version: "stale" }).pipe(Effect.flip),
     ).toMatchObject({ code: "conflict" });

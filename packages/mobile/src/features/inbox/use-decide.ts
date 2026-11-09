@@ -12,10 +12,10 @@ import { decisionReversal } from "./inbox-presentation";
  */
 export const useDecide = () => {
   const navigation = useRootNavigation();
-  return async (pageId: string, decision: InboxDecision, done: string): Promise<void> => {
+  return async (entryId: string, decision: InboxDecision, done: string): Promise<boolean> => {
     lightTap();
     try {
-      const { undoToken, sessionId } = await decideInbox(pageId, decision);
+      const { undoToken, sessionId } = await decideInbox(entryId, decision);
       if (sessionId) {
         showSnack({
           text: done,
@@ -27,13 +27,13 @@ export const useDecide = () => {
                 : navigation.navigate("Chat", { sessionId }),
           },
         });
-        return;
+        return true;
       }
       const reversal = decisionReversal(decision);
       const undo = undoToken
         ? () => undoInbox(undoToken)
         : reversal
-          ? () => decideInbox(pageId, reversal)
+          ? () => decideInbox(entryId, reversal)
           : null;
       showSnack({
         text: done,
@@ -48,8 +48,10 @@ export const useDecide = () => {
             }
           : {}),
       });
+      return true;
     } catch (cause) {
       showFailure("That didn't go through", cause);
+      return false;
     }
   };
 };

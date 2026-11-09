@@ -1,8 +1,10 @@
-import type { InboxMessage, InboxProposal } from "@nodex/mobile-protocol";
+import type { InboxEntry, InboxProposal } from "@nodex/mobile-protocol";
 import { describe, expect, it } from "vitest";
 
 import {
   decisionReversal,
+  entryChatSession,
+  entrySignature,
   messageChat,
   proposalAcceptance,
   proposalAttribution,
@@ -10,6 +12,7 @@ import {
   proposalHeadline,
   sourceLabel,
   suggestionView,
+  turnActionView,
 } from "./inbox-presentation";
 
 const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
@@ -35,7 +38,11 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
   ...overrides,
 });
 
-const message = (overrides: Partial<InboxMessage> = {}): InboxMessage => ({
+const message = (
+  overrides: Partial<import("@nodex/mobile-protocol").IntakeEntry> = {},
+): InboxEntry => ({
+  id: "m1",
+  rowKind: "intake",
   pageId: "m1",
   pageKey: null,
   title: "t",
@@ -206,7 +213,37 @@ describe("decisionReversal", () => {
   });
 });
 
+describe("entrySignature", () => {
+  const turn = (
+    reason: Extract<InboxEntry, { rowKind: "turn" }>["turn"]["reason"],
+    chatSessionId: string | null = "chat",
+  ): Extract<InboxEntry, { rowKind: "turn" }> =>
+    ({
+      ...message(),
+      rowKind: "turn",
+      turn: {
+        episode: "e1",
+        reason,
+        since: "2026-11-04T00:00:00.000Z",
+        options: [],
+        chatSessionId,
+        pullRequestUrl: null,
+        deliveryError: null,
+        replyCapability: { kind: "available" },
+      },
+    }) as Extract<InboxEntry, { rowKind: "turn" }>;
+
+  it("reads asks warm, reviews as the accent and trouble as danger", () => {
+    expect(entrySignature(turn("question"))).toEqual({
       label: "Needs your answer",
+      icon: "chat",
+      tone: "warning",
+    });
+    expect(entrySignature(turn("review"))?.tone).toBe("accent");
+    expect(entrySignature(turn("failed"))?.tone).toBe("danger");
+    expect(entrySignature(message())).toBeNull();
+  });
+
   it("says whose move it is in the desktop's words", () => {
     expect(
       (
@@ -233,6 +270,53 @@ describe("decisionReversal", () => {
     expect(entrySignature(turn(null))?.label).toBe("Ready to start");
   });
 
+  it("opens a work row's chat and leaves intake to its message", () => {
+    expect(entryChatSession(turn("question"))).toBe("chat");
+    expect(entryChatSession(turn("ready_to_start", null))).toBeNull();
+    expect(entryChatSession(message({ chatSessionId: "routed" }))).toBeNull();
+  });
+
+  it("shows question options and reply only when their semantic owner is available", () => {
+    const question = turn("question");
+    question.turn.options = ["Continue", "Stop"];
+    expect(turnActionView(question)).toMatchObject({
+      reply: true,
+      options: ["Continue", "Stop"],
+      unavailableReason: null,
+    });
+    question.turn.replyCapability = {
+      kind: "unavailable",
+      reason: "Continue this chat on its desktop.",
+    };
+    expect(turnActionView(question)).toMatchObject({
+      reply: false,
+      options: [],
+      unavailableReason: "Continue this chat on its desktop.",
+    });
+    const approval = turn("approval");
+    expect(turnActionView(approval).reviewRequest).toBe(true);
+    approval.turn.replyCapability = question.turn.replyCapability;
+    expect(turnActionView(approval).reviewRequest).toBe(false);
+  });
+
+  it("keeps durable Accept and Start actions when native chat replies are unavailable", () => {
+    for (const reason of ["review", "ready_to_start"] as const) {
+      const entry = turn(reason);
+      entry.turn.replyCapability = {
+        kind: "unavailable",
+        reason: "Continue this chat on its desktop.",
+      };
+      expect(turnActionView(entry)).toMatchObject({
+        accept: reason === "review",
+        start: reason === "ready_to_start",
+        reply: false,
+        reviewRequest: false,
+        options: [],
+      });
+    }
+  });
+});
+
 describe("proposalHeadline", () => {
   it("says what accepting will do, and where when that is known", () => {
     const newChat = {
@@ -256,14 +340,16 @@ describe("proposalHeadline", () => {
         additions: [],
       }),
     ).toBe("Send to Refactor");
-    expect(proposalHeadline({ type: "run_task", name: null })).toBe("Run this task");
+    expect(proposalHeadline({ type: "execute_decision", decisionId: "decision", name: null })).toBe(
+      "Run this Automation",
+    );
   });
 });
 
 describe("proposalAttribution", () => {
-  it("names a scheduled task over whoever wrote the text", () => {
-    expect(proposalAttribution({ origin: "schedule", producedBy: "GPT" })).toBe(
-      "From your scheduled task",
+  it("names an Automation over whoever wrote the text", () => {
+    expect(proposalAttribution({ origin: "automation", producedBy: "GPT" })).toBe(
+      "From your Automation",
     );
     expect(proposalAttribution({ origin: "agent", producedBy: "GPT" })).toBe("Suggested by GPT");
     expect(proposalAttribution({ origin: "agent", producedBy: null })).toBe("Suggestion");

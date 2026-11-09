@@ -686,6 +686,22 @@ pub struct InboxTurnNotification {
     pub episode: String,
 }
 
+/// A Page Turn that notifies its Member now, as a phone shows it: what the Inbox calls it and
+/// the chat it waits on, if any.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct CurrentTurnNotification {
+    pub member_id: String,
+    pub page_id: String,
+    pub episode: String,
+    pub reason: Option<crate::workspace::TurnReason>,
+    pub title: String,
+    /// The opening of the Turn's message, at most 512 characters.
+    pub body: String,
+    /// The chat the Turn waits on: its Session and its conversation.
+    pub session_id: Option<String>,
+    pub conversation_id: Option<String>,
+}
+
 /// Returned-message context never changes the original author or message body.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct InboxHandback {

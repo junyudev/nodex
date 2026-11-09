@@ -257,6 +257,12 @@ pub(super) fn read(
                 )?,
             })
         }
+        ProjectWorkspaceRead::CurrentTurnNotifications => {
+            super::inbox::require_host(context)?;
+            Ok(ProjectWorkspaceReadValue::CurrentTurnNotifications {
+                turns: super::inbox_projection::current_turn_notifications(connection, library_id)?,
+            })
+        }
         ProjectWorkspaceRead::InboxEntry { page_id } => Ok(ProjectWorkspaceReadValue::InboxEntry {
             item: super::inbox_read::read_single_entry(connection, context, library_id, &page_id)?
                 .map(Box::new),
@@ -488,6 +494,7 @@ pub(super) fn read(
             archived,
             order,
             projectless_only,
+            exclude_drafts,
             project_id,
             query,
             native_only,
@@ -509,6 +516,7 @@ pub(super) fn read(
                     archived,
                     order: order.unwrap_or_default(),
                     projectless_only: projectless_only.unwrap_or(false),
+                    exclude_drafts: exclude_drafts.unwrap_or(false),
                     project_id: project_id.as_deref(),
                     query: query.as_deref(),
                     native_only: native_only.unwrap_or(false),

@@ -337,6 +337,7 @@ export class LocalHttpTransport {
     const execution = requestExecution(requestPath, options);
     // Host reads and polls intentionally wait at Core without Module execution headers.
     const hostWaitMs =
+      requestPath === "/core/v1/admin/host/poll" || requestPath === "/core/v1/host/phone/poll"
         ? 10_000
         : requestPath === "/core/v1/host/call"
           ? 25_000

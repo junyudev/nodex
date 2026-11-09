@@ -5,7 +5,7 @@ import {
   type AgentCatalog,
   type ChatActivity,
   type ChatSummary,
-  type InboxMessage,
+  type InboxEntry,
   type InboxScope,
   type MobileEventData,
   type Project,
@@ -27,7 +27,7 @@ import { readStored } from "./storage";
 import { disconnected, type RpcFailure } from "./rpc-client";
 
 export type InboxRow =
-  | { type: "message"; message: InboxMessage }
+  | { type: "message"; message: InboxEntry }
   | { type: "pending"; capture: PendingCapture };
 
 type InboxFilter = "inbox" | "processed";
@@ -192,7 +192,7 @@ export const makeLists = Effect.gen(function* () {
   const connection = yield* Connection;
   const outbox = yield* Outbox;
   type Paged<Item> = Effect.Success<ReturnType<typeof makePagedList<Item>>>;
-  const inboxLists = new Map<string, Paged<InboxMessage>>();
+  const inboxLists = new Map<string, Paged<InboxEntry>>();
   const chatLists = new Map<string, Paged<ChatSummary>>();
   const activity = new Map<string, ChatActivity>();
   const cacheKeys = new Map<string, Set<string>>();
@@ -373,11 +373,14 @@ export const makeLists = Effect.gen(function* () {
         hostId,
         ...cache(hostId, key, InboxWindowSchema),
         read: (after) => connection.rpc.request("inbox.window", { scope, filter, after }),
-        id: (message) => message.pageId,
+        id: (message) => message.id,
         project: (items) => [...items].reverse(),
         observe: (items) =>
           hostId
-            ? outbox.observeWindow(hostId, new Set(items.map((item) => item.pageId)))
+            ? outbox.observeWindow(
+                hostId,
+                new Set(items.filter((item) => item.rowKind === "intake").map((item) => item.id)),
+              )
             : Effect.void,
       });
       inboxLists.set(key, list);

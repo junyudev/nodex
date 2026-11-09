@@ -5,18 +5,23 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import { expect } from "vitest";
-import type { AgentRuntimeProcessConnection } from "../platform/node/AgentRuntimeProcess";
+import * as Queue from "effect/Queue";
+import type {
+  AgentRuntimeProcessConnection,
+  AgentRuntimeProcessDelivery,
+} from "../platform/node/AgentRuntimeProcess";
 import { AgentRuntimeApplication } from "./AgentRuntimeApplication";
 import { makeSessionObservation } from "./AgentRuntimeSessionObservation";
 import { AgentRuntimeSupervisor } from "./AgentRuntimeSupervisor";
 
 const observerFixture = Effect.gen(function* () {
+  const notifications = yield* Queue.unbounded<AgentRuntimeProcessDelivery>();
   const observing = yield* Deferred.make<void>();
   const reply = yield* Deferred.make<AgentRuntimeOperations["events.observe"]["output"]>();
   const released: string[] = [];
   const connection = {
     identity: { runtimeId: "runtime" },
-    subscribeNotifications: Effect.succeed(Stream.never),
+    subscribeNotifications: Effect.succeed(Stream.fromQueue(notifications)),
     terminated: Effect.never,
     request: (method: AgentRuntimeMethod, input: unknown) => {
       if (method === "events.observe")
@@ -45,7 +50,7 @@ const observerFixture = Effect.gen(function* () {
         }),
     } as unknown as AgentRuntimeApplication["Service"]),
   );
-  return { observe, observing, reply, released };
+  return { observe, observing, reply, released, notifications };
 });
 
 it.effect("a watcher can leave while execution has not answered its observe", () =>
@@ -72,5 +77,33 @@ it.effect("releases the subscription a watcher was given when it leaves", () =>
     yield* Effect.yieldNow;
     yield* Fiber.interrupt(reader);
     expect(released).toEqual(["observer"]);
+  }),
+);
+
+it.effect("ends with a reset when execution stops delivering to its observer", () =>
+  Effect.gen(function* () {
+    const { observe, observing, reply, notifications } = yield* observerFixture;
+    const reader = yield* Effect.forkChild(Stream.runCollect(observe("session", 42)));
+    yield* Deferred.await(observing);
+    yield* Deferred.succeed(reply, {
+      subscribed: true,
+      subscriptionId: "observer",
+      afterSequence: 42,
+    } as const);
+    const event = { type: "run.updated" } as never;
+    yield* Queue.offerAll(notifications, [
+      { delivery: 1, notification: { type: "event", subscriptionId: "other", event } },
+      { delivery: 2, notification: { type: "event", subscriptionId: "observer", event } },
+      {
+        delivery: 3,
+        notification: { type: "event.error", subscriptionId: "observer", message: "stopped" },
+      },
+      { delivery: 4, notification: { type: "event", subscriptionId: "observer", event } },
+    ] as unknown as AgentRuntimeProcessDelivery[]);
+    // The watch does not wait on a stream that will never speak again.
+    expect(Array.from(yield* Fiber.join(reader))).toEqual([
+      { kind: "event", event },
+      { kind: "reset" },
+    ]);
   }),
 );

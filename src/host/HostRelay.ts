@@ -3,9 +3,11 @@ import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import type { components } from "@nodex/core-protocol";
 import { CoreClient } from "../main/core-client/core-client";
+import { MainConfig } from "../main/app/MainConfig";
 import { MainShutdown } from "../main/app/MainShutdown";
 import { executeHostCommand } from "./HostCommands";
 import { MemberMessageRefusal } from "./MemberMessages";
+import { startPhoneRelay } from "./mobile/PhoneRelay";
 import type { HeadlessHost } from "./HeadlessApplicationLive";
 
 /** Core admits Members and carries bounded work over private local IPC to its execution owner. */
@@ -13,14 +15,34 @@ export const startHostRelay = Effect.fn("HostRelay.start")(function* (input: {
   readonly coreHome: string;
   readonly instance: string;
   readonly host: HeadlessHost["Service"];
+  readonly onFailure?: (cause: Cause.Cause<unknown>) => Effect.Effect<void>;
 }) {
   const shutdown = yield* MainShutdown;
+  const config = yield* MainConfig;
+  const client = yield* Effect.tryPromise((signal) =>
     CoreClient.connect({
       nodexHome: input.coreHome,
       clientKind: "electron_host",
       buildId: "nodex-host-relay",
+      signal,
     }),
   );
+  const lease = yield* Effect.tryPromise((signal) =>
+    client.registerHost({ instance: input.instance }, { signal }),
+  );
+  const onFailure =
+    input.onFailure ??
+    ((cause: Cause.Cause<unknown>) =>
+      shutdown
+        .request({ _tag: "RuntimeFatal", subsystem: "host-relay", cause })
+        .pipe(Effect.asVoid));
+  yield* startPhoneRelay({
+    client,
+    lease,
+    rpc: input.host.phone,
+    onFailure,
+    hostMetadata: { platform: config.platform, appVersion: config.appVersion },
+  });
   const loop = Effect.gen(function* () {
     const invocation = yield* Effect.tryPromise((signal) => client.pollHost(lease, { signal }));
     if (!invocation) return;
@@ -51,6 +73,7 @@ export const startHostRelay = Effect.fn("HostRelay.start")(function* (input: {
     ).pipe(Effect.catch(() => Effect.void));
   }).pipe(Effect.forever);
   yield* Effect.forEach([0, 1, 2, 3], () => loop, { concurrency: 4, discard: true }).pipe(
+    Effect.catchCause(onFailure),
     Effect.forkScoped,
   );
 });

@@ -517,6 +517,7 @@ fn coordinator_is_absent_from_discovery_routing_and_page_chats() {
             archived: false,
             order: None,
             projectless_only: None,
+            exclude_drafts: None,
             project_id: None,
             query: None,
             native_only: None,

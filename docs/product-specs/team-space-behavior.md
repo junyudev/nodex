@@ -1,8 +1,12 @@
 # Team Spaces
 
 A Space is one Core authority and one Library. A personal Space has exactly one
+active Member, an Owner bound to the local Profile. Enabling Remote access leaves
+it personal. It becomes team when a second active Member joins, and remains team
+after removal so implicit personal Agent attribution cannot resume. Members initially share the whole Library; Projects do
 not create separate access boundaries.
 
+A Space has one host-owned name in Core. An Owner sets it with
 `nodex serve init --name` and renames it with `nodex serve rename NAME`
 (or `nodex space rename NAME`). Until an Owner names it, a Space reads as what it
 is: “Personal” while its one Owner keeps it on their own desktop, and “Team
@@ -27,8 +31,33 @@ routable listen address; replace a wildcard bind address in the invite URL with
 the host's reachable address before sharing it. Certificate changes require
 explicitly trusting the new fingerprint through an authenticated Owner channel.
 
+`nodex space remote-access on [--address 0.0.0.0:PORT]` starts the private-peer
+listener and saves enabled intent with the actual chosen port in the Profile's
+private listener configuration; `off` closes its listener and live connections
+and saves disabled intent. `status` reads live state and saved intent. Core
+restores enabled access at startup with the same port and certificate. If the
+port is occupied, it chooses another and reports new routes for a fresh Device link. Its explicit peer policy admits private,
+loopback, CGNAT/tailnet and link-local addresses. Operator-managed `nodex-core --listen` and `serve` retain their operator peer policy. Neither listening nor preparing a
+headless host changes membership or Space kind.
+
+`nodex space link-device` returns the Space name and ID, the requesting Member,
+full leaf-certificate fingerprint, reachable HTTPS routes, one-time code and
+five-minute expiry. It reserves a slot under the 16 active Devices per Member
+cap and permits six offers per Member per hour, including consumed offers.
+Routes reflect the actual bind, omit production loopback and virtual bridge
+interfaces, and include LAN, CGNAT/tailnet and usable link-local addresses.
+IPv6 link-local addresses require a client interface scope and are not portable
+QR routes. An offer may have no reachable route; enable a reachable listener
+before linking. Device form factor is metadata, supplied at redemption.
+
 ## Enrollment
 
+An authenticated Owner can invite, list Members and all Devices, rename the
+Space, revoke any Device and remove another Member, locally or over HTTPS.
+Every Member can list and revoke their own Devices and link another Device of
+their own. These use the same Core administration commands. Role and revocation
+are checked again in the writer transaction; administrative writes retain Member
+Actor evidence.
 
 - `nodex space invite --role member` returns a URL, certificate fingerprint and
   random one-time code. An invite expires after 24 hours. The code is returned
@@ -37,6 +66,9 @@ explicitly trusting the new fingerprint through an authenticated Owner channel.
 - The recipient checks the fingerprint supplied by the Owner before sending
   `POST /enroll { code, device_label, display_name }` over HTTPS.
 - Redeeming a code atomically creates the Member and Device and consumes the
+  code, unless the code targets an existing Member. A Device-link offer always
+  targets its requesting Member and never creates another Member. The response
+  returns the device credential once. Replaying an invite
   fails. A lost enrollment response needs a new invite.
 - `POST /session { device_credential }` exchanges the device credential for an
   hour-long session. A device can renew before expiry. Its credential remains
@@ -48,9 +80,17 @@ claim local Host authority or administer the local Profile through HTTPS.
 
 ## Devices and access withdrawal
 
+`nodex space devices` lists Space, device identity, Member, form factor, label, creation time,
 last credential use and revocation time. `nodex space revoke <device>` refuses
 new sessions and authenticated requests and closes that device's live responses
 within seconds. `nodex space remove-member <member>` removes the Member and
+revokes all their devices while retaining content references. An Owner cannot
+remove themselves through this command.
+
+Device withdrawal also retires that Member's outstanding Device-link offers,
+preventing re-entry through a previously minted self-link code. Owner-issued
+invitations retain their existing grant policy. Codes issued by other
+Members and other enrolled Devices remain valid.
 
 Remote Members can read and edit Library content, Database values and Views,
 synchronize Documents, read Sources, recorded observations, Problems and Activity,
@@ -66,13 +106,71 @@ exact Automation Owner may change its mode or edit one set to Run, independent o
 Space role. Agents submit suggested edits for the Owner to apply. Automation producers,
 scheduler and lease operations remain Host-only. New semantic commands are denied remotely until explicitly admitted.
 
+## Administration surfaces
+
+`nodex space invite`, `members`, `devices`, `link-device`, `revoke-device`,
+`remove-member` and `rename` share administration with `serve`. To select a
+remote Space, pass `--remote-connection /absolute/private.json`. This owned,
+mode-0600 file contains `url`, `fingerprint`, `space_id`, and
+`device_credential`; no secret belongs in shell arguments. The CLI verifies the
+pin before sending the credential, obtains a session and validates Space and
+Core compatibility. An invalid connection fails without local fallback.
+Certificate and listener control, backups and shutdown remain local-only.
+
+Desktop Settings has typed `space-admin:*` queries and commands through the
+bound `SpaceRequest` envelope. The renderer's Space administration Module works
+under either the local or a remote authority; it cannot select a different
+Space in command JSON.
+
+## Phone connections
+
+Phones enroll as independent Devices of their existing Member using the
+Space's Device-link offer. Each Space has its own credential, session and
+certificate trust; personal phone enrollment grants no team membership. One
+Core-authenticated WebSocket serves the bounded mobile RPC and streams through
+the host façade. The façade preserves the Member's Actors, mixed Inbox, unread
+and answer entitlement. Unsupported capabilities are typed and visible.
+
+A phone reaches `nodex serve` directly and remains usable when a joined laptop
+is closed. A personal Space requires its desktop host to remain running. Device
+withdrawal closes that Device's stream and queued writes recheck authority.
+Phone caches, drafts and outbox are keyed by `(spaceId, memberId)`; captures never
+move between Members. See [Nodex Mobile](mobile-companion-behavior.md).
+
+A team desktop tells the Space whether its Member is at it, so the host holds that
+Member's phone notifications while they work at a computer and sends them once they
+step away. See [Presence](desktop-notification-behavior.md#presence).
+
 ## Desktop connections
 
+One Desktop stays connected to its local personal Space and one or more remote
+Spaces. A remote connection may reach another personal Space or a team Space.
 The personal Space owns its supervised local Core. A team connection owns an
 authenticated HTTPS client, live content streams and Documents; it never starts,
 stops or polls a process on the team host. The Core-authored Library ID is the
 stable `spaceId`, independent of endpoint, process generation and Store epoch.
 
+Settings → Spaces is one page for reaching the Space that is open:
+
+- **This Space** shows its avatar, name and kind, and the person's role. Owners
+  rename it there. In the personal Space, the Owner turns Remote access on or off
+  and sees the addresses linked devices reach it at.
+- **Devices** lists the reader's own Devices first and, for an Owner, everyone's,
+  each with whose it is, what it is and when it was last seen. A Device with a
+  live connection, such as a phone's open stream, is seen within the last
+  minute. This computer is
+  marked and leaves through Your Spaces instead of revoking itself. Link a device
+  shows a one-time link that pins the certificate and its code, with the time
+  left; in the personal Space it needs Remote access on.
+- **People** lists the reader first. The reader renames themselves from their own
+  row, beside the Owner's Space rename; a name Core would refuse, such as “You”,
+  is explained before saving. An Owner invites someone, which shows the
+  invite link and one-time code to send, and removes a Member after confirming.
+  The personal Space shows People once its Owner turns Remote access on.
+- **Your Spaces** lists every connected Space with its availability, opens one,
+  leaves a team Space and joins another.
+
+Join a Space accepts the HTTPS invite URL, its certificate fingerprint, the one-time code,
 your display name and a device label. An invite's `fingerprint` query or fragment
 pins the certificate and displays its fingerprint. The dialog asks for a fingerprint
 only when the invite carries none. Check it against the Owner's value before joining.
@@ -309,6 +407,9 @@ person moved by hand reads “A person moved it” to every reader.
 “You” is only ever how a reader sees their own Member; no stored Member name
 may be “You”. A Space's local Owner starts with the name its OS account gives
 its person, or the one chosen with `nodex serve init --owner-name`. Each
+Member renames themselves in Settings → Spaces → People or with `nodex space
+display-name NAME`; a host's local Owner uses `nodex serve display-name NAME`.
+Join a Space explains a refused name beside the field instead of failing to join.
 A handoff records its dispatching Member, Agent or Service separately from the
 receiving Agent's assignment and the Agent shown in Turn while the work runs.
 

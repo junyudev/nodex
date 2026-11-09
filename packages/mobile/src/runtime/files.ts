@@ -25,14 +25,40 @@ export const uploadImages = Effect.fn("MobileFiles.uploadImages")(function* (
   images: readonly LocalImage[],
   assertCurrent: () => Effect.Effect<void, RpcFailure>,
 ) {
+  // A complete retry batch must fit the Device's wire budget after base64 expansion.
+  const uploads = yield* Effect.try({
+    try: () => {
+      const uploads = images.map((image) => {
+        const size = platform.files.size(image.uri);
+        if (
+          size === null ||
+          !Number.isSafeInteger(size) ||
+          size <= 0 ||
+          size > MOBILE_UPLOAD_MAX_BYTES
+        )
+          throw new RpcFailure(
+            "invalid_params",
+            "An image is missing or too large to send.",
+            false,
+          );
+        return { image, size };
+      });
+      if (uploads.reduce((total, upload) => total + upload.size, 0) > MOBILE_UPLOAD_MAX_BYTES)
+        throw new RpcFailure(
+          "invalid_params",
+          "These images are too large to send together.",
+          false,
+        );
+      return uploads;
+    },
+    catch: (error) =>
+      error instanceof RpcFailure
+        ? error
+        : new RpcFailure("invalid_params", "An image could not be read.", false),
+  });
   const refs: string[] = [];
-  for (const image of images) {
+  for (const { image, size } of uploads) {
     yield* assertCurrent();
-    const size = platform.files.size(image.uri);
-    if (!size || size > MOBILE_UPLOAD_MAX_BYTES)
-      return yield* Effect.fail(
-        new RpcFailure("invalid_params", "An image is missing or too large to send.", false),
-      );
     const { uploadId } = yield* rpc.request("files.upload.begin", {
       name: image.name,
       mimeType: image.mimeType,

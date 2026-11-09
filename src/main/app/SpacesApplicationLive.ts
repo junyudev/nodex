@@ -157,6 +157,7 @@ export const live = Layer.effectDiscard(
               spaceId,
               kind: "team" as const,
               memberId: null,
+              deviceId: null,
               name: "Space",
               availability: "unavailable" as const,
             }

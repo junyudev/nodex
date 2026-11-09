@@ -23,9 +23,11 @@ import { showFailure } from "../../ui/snackbar";
 import { attentionCount } from "../chats/chat-sections";
 import { ChatsPane } from "../chats/ChatsPane";
 import { Composer } from "../composer/Composer";
+import { SpaceAvatar } from "../../ui/SpaceAvatar";
+import { useDecide } from "../inbox/use-decide";
 import { InboxPane } from "../inbox/InboxPane";
 import { agentChipLabel } from "../pickers/agent-choice";
-import { ConnectionNotice } from "./ConnectionNotice";
+import { spaceUnreachable, ConnectionNotice } from "./ConnectionNotice";
 import { useHomeState, type HomeMode } from "./home-state";
 
 const useInboxScopeSummary = () => {
@@ -36,8 +38,8 @@ const useInboxScopeSummary = () => {
       ? projects.projects.find((candidate) => candidate.id === scope.projectId)
       : undefined;
   return {
-    count: scope.kind === "library" ? projects.libraryInboxCount : (project?.inboxCount ?? 0),
-    label: scope.kind === "library" ? "Library" : (project?.name ?? "Project"),
+    count: scope.kind !== "project" ? projects.libraryInboxCount : (project?.inboxCount ?? 0),
+    label: scope.kind !== "project" ? "Library" : (project?.name ?? "Project"),
   };
 };
 
@@ -82,14 +84,22 @@ const HomeLeading = () => {
   const navigation = useRootNavigation();
   const connection = useConnection();
   const { hosts, activeHostId } = useHosts();
-  const hostName = hosts.find((host) => host.hostId === activeHostId)?.hostName ?? "your desktop";
+  const host = hosts.find((host) => host.hostId === activeHostId);
+  const hostName = host?.hostName ?? "this Space";
   return (
     <Tap
       accessibilityLabel={`${hostName}, ${connection.status}. Settings`}
       className="h-9 w-9 items-center justify-center"
       onPress={() => navigation.navigate("Settings")}
     >
-      <NodexMark size={22} />
+      {host ? (
+        <SpaceAvatar
+          space={{ spaceId: host.spaceId, name: host.hostName, kind: host.spaceKind }}
+          size={28}
+        />
+      ) : (
+        <NodexMark size={22} />
+      )}
       {connection.status === "connected" ? null : (
         <View className="absolute bottom-0.5 right-0.5">
           <StatusDot
@@ -191,6 +201,14 @@ export const HomeScreen = () => {
   const search = useHomeState((state) => state.search);
   const noteCaptureSent = useHomeState((state) => state.noteCaptureSent);
   const connection = useConnection();
+  const { hosts, activeHostId } = useHosts();
+  const host = hosts.find((candidate) => candidate.hostId === activeHostId);
+  const hostName = host?.hostName ?? "this Space";
+  const storedReply = useHomeState((state) => state.replyTo);
+  const replyTo = storedReply?.spaceKey === activeHostId ? storedReply : null;
+  const setReplyTo = useHomeState((state) => state.setReplyTo);
+  const decide = useDecide();
+  const unreachable = spaceUnreachable(connection.status);
   const projects = useProjects();
   const catalog = useAgentCatalog();
   const preferences = useNewChatPreferences();
@@ -235,11 +253,40 @@ export const HomeScreen = () => {
       foot={
         <>
           <ConnectionNotice />
-          {mode === "inbox" ? (
+          {mode === "inbox" && replyTo ? (
+            <Composer
+              key={replyTo.entryId}
+              draftKey={`reply:${replyTo.entryId}`}
+              placeholder="Reply"
+              sendLabel="Reply"
+              autoFocus
+              canSend={!unreachable}
+              canAttach={false}
+              chips={
+                <Chip
+                  icon="close"
+                  label={replyTo.title}
+                  accessibilityLabel={`Stop replying to ${replyTo.title}`}
+                  onPress={() => setReplyTo(null)}
+                />
+              }
+              onSend={async (text) => {
+                const sent = await decide(
+                  replyTo.entryId,
+                  { type: "turn_reply", episode: replyTo.episode, text },
+                  "Replied",
+                );
+                if (sent) setReplyTo(null);
+                return sent;
+              }}
+            />
+          ) : mode === "inbox" ? (
             <Composer
               draftKey="inbox"
-              placeholder={`Drop a thought in ${scopeLabel}`}
+              placeholder={unreachable ? `No access to ${hostName}` : "Drop a thought"}
               sendLabel="Save to Inbox"
+              // Captures wait out an outage, but never a Space this phone can no longer reach.
+              canSend={!unreachable}
               chips={
                 <Chip
                   icon="inbox"

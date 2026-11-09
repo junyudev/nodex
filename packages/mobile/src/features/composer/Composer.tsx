@@ -6,7 +6,7 @@ import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller
 import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import type { LocalImage } from "../../runtime";
+import { useHosts, type LocalImage } from "../../runtime";
 import { cn } from "../../ui/cn";
 import { Glass } from "../../ui/glass";
 import { Icon } from "../../ui/icons";
@@ -52,7 +52,7 @@ const takePhoto = async (): Promise<readonly LocalImage[]> => {
  * gives way to the keyboard so the two never leave a gap.
  */
 export const Composer = ({
-  draftKey,
+  draftKey: composerKey,
   placeholder,
   chips,
   canSend = true,
@@ -63,6 +63,7 @@ export const Composer = ({
   stopUnavailableReason = null,
   sendLabel = "Send",
   autoFocus,
+  canAttach = true,
 }: {
   readonly draftKey: string;
   readonly placeholder: string;
@@ -87,7 +88,11 @@ export const Composer = ({
   readonly stopUnavailableReason?: string | null;
   readonly sendLabel?: string;
   readonly autoFocus?: boolean;
+  /** Whether what this sends can carry photos. */
+  readonly canAttach?: boolean;
 }) => {
+  const { activeHostId } = useHosts();
+  const draftKey = JSON.stringify([activeHostId, composerKey]);
   const draft = useDraft(draftKey);
   const setDraft = useHomeState((state) => state.setDraft);
   const clearDraft = useHomeState((state) => state.clearDraft);
@@ -140,7 +145,7 @@ export const Composer = ({
       });
   };
 
-  const attachControl = (
+  const attachControl = canAttach ? (
     <IconButton
       className="h-10 w-10"
       color="ink"
@@ -149,7 +154,7 @@ export const Composer = ({
       size={22}
       onPress={() => setAttaching(!attaching)}
     />
-  );
+  ) : null;
 
   const sendControl = (
     <Tap

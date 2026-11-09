@@ -74,7 +74,7 @@ describe("workbench window title", () => {
       [{ kind: "empty" }, "New chat"],
       [{ kind: "pending-worktree", clientThreadId: "client-1", returnTo }, "New chat"],
       [{ kind: "inbox" }, "Inbox"],
-      [{ kind: "automations", path: "/", returnTo }, "Scheduled"],
+      [{ kind: "automations", path: "/", returnTo }, "Automations"],
       [{ kind: "plugins", path: "/", returnTo }, "Plugins"],
       [{ kind: "insights", path: "/", returnTo }, "Insights"],
       [{ kind: "settings", path: "/general", returnTo }, "Settings"],
@@ -89,6 +89,23 @@ describe("workbench window title", () => {
     );
     expect(titleFor({ location: { kind: "inbox" } }, "linux")).toBe("Inbox — Nodex");
     expect(titleFor({ location: sessionLocation }, "win32")).toBe("Nodex");
+  });
+
+  it("ends a team window's location with its Space, which also names Space itself", () => {
+    const team = { teamSpaceName: "Acme" };
+    const chat = { sessionId: "session-1", title: "Fix flaky E2E", projectName: "nodex" };
+    expect(titleFor({ ...team, location: sessionLocation, chat })).toBe(
+      "Fix flaky E2E — nodex — Acme",
+    );
+    expect(titleFor({ ...team, location: { kind: "inbox" } }, "win32")).toBe(
+      "Inbox — Acme — Nodex",
+    );
+    expect(
+      titleFor({ ...team, location: { kind: "library" }, spaceTrail: ["Ship v1", "Tasks"] }),
+    ).toBe("Ship v1 — Tasks — Acme");
+    expect(titleFor({ ...team, location: { kind: "library" } })).toBe("Acme");
+    // A location the window has not loaded names neither it nor the Space.
+    expect(titleFor({ ...team, location: sessionLocation })).toBe("Nodex");
   });
 
   it("presents each part on one line and drops empty parts", () => {

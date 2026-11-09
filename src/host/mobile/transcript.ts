@@ -8,15 +8,29 @@ import {
   type ChatSnapshot,
   type ChatStart,
 } from "@nodex/mobile-protocol";
+import * as Option from "effect/Option";
+import { CodexGateway } from "../../main/codex-runtime/CodexGateway";
+import { CodexNativeThreadLookup } from "../../main/codex-application/CodexNativeThreadLookup";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import { PhoneRequests } from "./PhoneRequests";
+import { HostInvocation } from "../HostInvocation";
 import type { ProjectSession } from "../../shared/types";
+import { CHAT_STOP_RESERVED_REASON } from "../../shared/space-connection";
+import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { AgentRuntimeSessionActivity } from "../../main/agent-runtime/AgentRuntimeSessionActivity";
+import { makeSessionObservation } from "../../main/agent-runtime/AgentRuntimeSessionObservation";
+import { makeNativeSessionHistory } from "../../main/app-tools/NativeSessionHistory";
+import type { SessionSourceContent } from "../../main/app-tools/SessionHistoryRead";
+import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifierRuntime";
+import { ProjectWorkspace } from "../../main/project-application/ProjectWorkspace";
 import { UserPresence } from "../UserPresence";
 import type { makeMobileChatCommands } from "./chat-commands";
 import {
+  capabilityUnavailable,
   invalid,
   missing,
   PhoneMember,
@@ -29,12 +43,14 @@ import {
   WINDOW_ITEMS,
   chatItemId,
   chatPatch,
+  liveOutputTask,
   nativeActivity,
   parseChatItemId,
   projectNativeItem,
   projectRequests,
   runtimeItemProjector,
   transcriptWindow,
+  withLiveOutput,
 } from "./transcript-projection";
 
 const MAX_OPEN_CHATS = 8;
@@ -47,6 +63,13 @@ const nativeOnly = "Continue this chat on your desktop.";
 // Its host has not started it yet: an Inbox message or Page shows its start, and this chat
 // follows it live once it runs.
 const notStarted = "This chat hasn't started yet.";
+
+/** What Core lets the phone's Member do with the chat itself, from its session read. */
+const stewardship = (row: ProjectSession) => ({
+  stopBlockedReason: row.canStop ? null : CHAT_STOP_RESERVED_REASON,
+  archived: row.archived,
+  canManage: row.canManage,
+});
 
 type Read = {
   readonly value: ChatSnapshot;
@@ -61,8 +84,15 @@ const projectQueued = (projection: AgentSnapshot["projection"]) =>
       .map((run) => run.userMessageId),
   );
 
+const nativeItem = (sessionId: string, content: SessionSourceContent): ChatItem => {
   const { itemId, sourceThreadId, runId, updatedAt } = content.reference;
   if (content.nextTextOffset === null) {
+    return projectNativeItem(
+      sessionId,
+      sourceThreadId,
+      runId,
+      JSON.parse(content.text) as ThreadItem,
+    );
   }
   return {
     kind: "notice",
@@ -80,6 +110,15 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
   const activity = yield* AgentRuntimeSessionActivity;
   const observe = yield* makeSessionObservation;
   const projectRuntimeItem = runtimeItemProjector(hostPathFlavor((yield* MainConfig).platform));
+  const nativeGateway = yield* Effect.serviceOption(CodexGateway);
+  const nativeLookup = yield* Effect.serviceOption(CodexNativeThreadLookup);
+  const resolveNative =
+    Option.isSome(nativeGateway) && Option.isSome(nativeLookup)
+      ? yield* makeNativeSessionHistory.pipe(
+          Effect.provideService(CodexGateway, nativeGateway.value),
+          Effect.provideService(CodexNativeThreadLookup, nativeLookup.value),
+        )
+      : null;
   const database = yield* DatabaseNotifierRuntime;
   const projects = yield* ProjectWorkspace;
   const presence = yield* UserPresence;
@@ -88,6 +127,10 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
     Effect.gen(function* () {
       if (!row.thread || row.thread.backendBinding.kind !== "codex")
         return { items: [], historyCursor: null };
+      if (!resolveNative)
+        return yield* Effect.fail(
+          capabilityUnavailable("This connected conversation is unavailable on this Host."),
+        );
       const { source } = yield* resolveNative(row.thread.threadId, row.thread.executionHostId).pipe(
         Effect.mapError(transcriptUnavailable),
       );
@@ -107,6 +150,9 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
           ),
         );
       const rows = page.items.flatMap(({ after, initialContent }) =>
+        after && initialContent
+          ? [{ cursor: after, item: nativeItem(row.id, initialContent) }]
+          : [],
       );
       return transcriptWindow(rows, page.nextCursor !== null);
     });
@@ -155,6 +201,7 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
             requests: [],
             agentLabel: thread ? "Codex" : null,
             sendBlockedReason: thread ? nativeOnly : (start?.reason ?? notStarted),
+            ...stewardship(row),
             start,
           },
           ...(yield* nativeWindow(row)),
@@ -168,6 +215,8 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
       .pipe(Effect.mapError(transcriptUnavailable));
     const projection = snapshot.projection;
     const current = (yield* activity.read).items.find((entry) => entry.sessionId === sessionId);
+    const entitlement = yield* PhoneRequests;
+    const requests = yield* entitlement.filter(sessionId, projectRequests(projection));
     const queued = projectQueued(projection);
     const activeRunId =
       current?.activeRunId ??
@@ -207,6 +256,7 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
           requests,
           agentLabel: projection.thread.modelSelection?.model ?? null,
           sendBlockedReason: row.archived ? "Restore this chat to continue it." : null,
+          ...stewardship(row),
         },
         ...transcriptWindow(newest, snapshot.hasMoreHistory === true),
       },
@@ -281,6 +331,12 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
           if (!found) return yield* Effect.fail(itemMissing());
           const projected = projectRuntimeItem(sessionId, found, sourceThreadId, sourceItemId);
           if (!projected) return yield* Effect.fail(itemMissing());
+          const taskId = liveOutputTask(found);
+          if (taskId === null) return projected;
+          const live = yield* runtime
+            .backgroundOutput({ sessionId, threadId: found.threadId, taskId })
+            .pipe(Effect.orElseSucceed(() => null));
+          return withLiveOutput(projected, live);
         }
         if (
           !runId ||
@@ -289,6 +345,10 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
           row.thread.backendBinding.kind !== "codex"
         )
           return yield* Effect.fail(itemMissing());
+        if (!resolveNative)
+          return yield* Effect.fail(
+            capabilityUnavailable("This connected conversation is unavailable on this Host."),
+          );
         const native = yield* resolveNative(sourceThreadId, row.thread.executionHostId).pipe(
           Effect.mapError(itemMissing),
         );
@@ -299,13 +359,16 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
             runId,
           })
           .pipe(Effect.mapError(itemMissing));
+        return projectNativeItem(sessionId, sourceThreadId, runId, entry.item);
       });
+      if (Buffer.byteLength(JSON.stringify(selected)) > MOBILE_MAX_MESSAGE_BYTES - 256)
         return yield* Effect.fail(itemTooLarge());
       return selected;
     });
 
   return (push: PushMobileEvent) =>
     Effect.gen(function* () {
+      const observation = yield* HostInvocation;
       const member = yield* PhoneMember;
       const owner = yield* Scope.Scope;
       const lane = yield* Semaphore.make(1);
@@ -322,6 +385,7 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
           yield* Scope.close(existing.scope, Exit.void);
         });
 
+      // Reads what the chat needs, and resolves to the step that starts watching it. The phone relay
       // runs that step and the answer with nothing sent in between; the read itself holds nothing.
       const open: MobileHandlers["chat.open"] = ({ sessionId }) =>
         Effect.gen(function* () {
@@ -431,6 +495,7 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
                     },
                   ),
                 { discard: true },
+              );
             });
             const coreChanges = database.projectSessionInvalidations.pipe(
               Stream.filter(

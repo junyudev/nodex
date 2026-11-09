@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  describeFileFormat,
-  pageFileHasSourceView,
-  resolvePageFileViewKind,
-} from "./page-file-view-kind";
+import { pageFileHasSourceView, resolvePageFileViewKind } from "./page-file-view-kind";
 
 const kind = (name: string, mimeType = "application/octet-stream") =>
   resolvePageFileViewKind({ name, mimeType });
@@ -36,18 +32,5 @@ describe("resolvePageFileViewKind", () => {
     expect(pageFileHasSourceView("svg")).toBe(true);
     expect(pageFileHasSourceView("text")).toBe(false);
     expect(pageFileHasSourceView("image")).toBe(false);
-  });
-});
-
-describe("describeFileFormat", () => {
-  it("names a File's format briefly, by kind when the name has no usable extension", () => {
-    expect(describeFileFormat({ name: "guide.md", mimeType: "text/markdown" })).toBe("Markdown");
-    expect(describeFileFormat({ name: "notes", mimeType: "text/markdown" })).toBe("Markdown");
-    expect(describeFileFormat({ name: "trace.json", mimeType: "application/json" })).toBe("JSON");
-    expect(describeFileFormat({ name: "Incident note", mimeType: "text/plain" })).toBe("Text");
-    expect(describeFileFormat({ name: "scan", mimeType: "application/pdf" })).toBe("PDF");
-    expect(describeFileFormat({ name: "blob", mimeType: "application/octet-stream" })).toBe("File");
-    expect(describeFileFormat({ name: "v1.2.3-final", mimeType: "text/plain" })).toBe("Text");
-    expect(describeFileFormat({ name: "Hello world. Next", mimeType: "text/plain" })).toBe("Text");
   });
 });

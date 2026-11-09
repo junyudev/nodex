@@ -1657,6 +1657,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           localEnvironmentConfigPath: input.runInEnvironmentPath ?? null,
         });
         yield* prepareDeferredWorkspace(connection, threadId, outcome.runId, "1").pipe(
+          Effect.provideService(HostInvocation, null),
           Effect.forkIn(ownerScope),
         );
       }
@@ -1717,6 +1718,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           Effect.annotateLogs({ sessionId: input.sessionId, cause: Cause.pretty(cause) }),
         ),
       ),
+      // This producer continues an already-admitted Session, beyond the person request lifetime.
+      Effect.provideService(HostInvocation, null),
       Effect.forkIn(ownerScope),
       Effect.asVoid,
     );
@@ -1760,6 +1763,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       return { retried: true as const };
     }
     yield* prepareDeferredWorkspace(connection, loaded.threadId, input.runId, input.requestId).pipe(
+      Effect.provideService(HostInvocation, null),
       Effect.forkIn(ownerScope),
     );
     return { retried: true as const };

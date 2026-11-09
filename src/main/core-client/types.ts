@@ -251,8 +251,45 @@ export interface CoreRequestOptions {
 }
 
 export interface CoreClientPort {
+  spaceMembers?(options?: CoreRequestOptions): Promise<readonly components["schemas"]["Member"][]>;
+  spaceDevices?(
+    options?: CoreRequestOptions,
+  ): Promise<readonly components["schemas"]["MemberDevice"][]>;
+  spaceInvite?(
+    input: components["schemas"]["InviteRequest"],
+    options?: CoreRequestOptions,
+  ): Promise<components["schemas"]["InviteResponse"]>;
+  spaceLinkDevice?(options?: CoreRequestOptions): Promise<components["schemas"]["DeviceLinkOffer"]>;
+  spaceRevokeDevice?(
+    input: components["schemas"]["RevokeDeviceRequest"],
+    options?: CoreRequestOptions,
+  ): Promise<boolean>;
+  spaceRemoveMember?(
+    input: components["schemas"]["RemoveMemberRequest"],
+    options?: CoreRequestOptions,
+  ): Promise<boolean>;
+  spaceRename?(
+    input: components["schemas"]["RenameSpaceRequest"],
+    options?: CoreRequestOptions,
+  ): Promise<components["schemas"]["SpaceName"]>;
+  /** The requesting Member chooses the name other Members see. */
+  spaceRenameMember?(
+    input: components["schemas"]["RenameMemberRequest"],
+    options?: CoreRequestOptions,
+  ): Promise<components["schemas"]["Member"]>;
   /** The Space's one name, as Core shows it to every Member and Device. */
   spaceInfo?(options?: CoreRequestOptions): Promise<components["schemas"]["RemoteCoreInfo"]>;
+  spaceRemoteAccess?(
+    options?: CoreRequestOptions,
+  ): Promise<components["schemas"]["RemoteAccessState"]>;
+  spaceRemoteAccessOn?(
+    input: { readonly address: string },
+    options?: CoreRequestOptions,
+  ): Promise<components["schemas"]["ListenerInfo"]>;
+  spaceRemoteAccessOff?(
+    options?: CoreRequestOptions,
+  ): Promise<components["schemas"]["RemoteAccessState"]>;
+
   /** Execution-owner access is optional for content-only test/transport implementations. */
   hostCall?(
     input: components["schemas"]["HostCall"],
@@ -261,6 +298,11 @@ export interface CoreClientPort {
   hostAvailability?(
     options?: CoreRequestOptions,
   ): Promise<components["schemas"]["HostAvailability"]>;
+  /** A Member's Device tells the Space whether its person is at it. */
+  reportPresence?(
+    input: components["schemas"]["MemberPresenceReport"],
+    options?: CoreRequestOptions,
+  ): Promise<boolean>;
   readFileBlob(input: ReadFileBytesInput, options?: CoreRequestOptions): Promise<ManagedBlobBytes>;
   prepareBlob(
     input: {

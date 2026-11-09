@@ -14,6 +14,9 @@ use crate::skills::SkillAgent;
     arg_required_else_help = true
 )]
 pub struct Cli {
+    /// Private JSON file selecting a pinned remote Space Device; never falls back locally.
+    #[arg(long, global = true, help_heading = "Global options")]
+    pub remote_connection: Option<std::path::PathBuf>,
     /// Require the connected Core Profile identity; does not select a home.
     #[arg(
         long,
@@ -94,6 +97,7 @@ pub enum Command {
     Members(crate::members::MembersArgs),
     /// Inspect external Sources and their recorded observations.
     Sources(crate::sources::SourcesArgs),
+    /// Manage Space remote access, membership and Devices.
     Space(crate::space::SpaceArgs),
     /// Run and administer a headless team Space on this machine.
     Serve(crate::serve::ServeArgs),

@@ -39,7 +39,9 @@ import { resolveAgentConfigChip, type AgentConfigProps } from "./agent-config-ch
 import type { FileReadAuthority, FilePreviewAuthority } from "@/lib/library-file-resources";
 import { parseFileSource } from "../../../../shared/file-resources";
 import { FileReadBoundary, useFilePlacementRuntime } from "./file-runtime";
-import { AttachmentInlineContent, type AttachmentProps } from "./attachment-chip";
+import { AttachmentInlineContent } from "./attachment-chip";
+import { formatAttachmentBytes } from "./attachment-chip-format";
+import { AttachmentResourceIcon } from "../attachment-resource-icon";
 import { createReadonlyDateMentionInlineContentSpec } from "./date-mention-inline-content-spec";
 import { createReadonlyPageMentionInlineContentSpec } from "./page-mention-inline-content";
 import { resolveThreadMentionDisplay } from "@/lib/editor-model/thread-mention-display";
@@ -59,6 +61,7 @@ import { openFileReferenceContextMenu } from "@/components/shared/file-link-anch
 import { useTheme } from "@/lib/use-theme";
 import { readNfmLinkHrefAtElement } from "./nfm-link-element";
 import { ThreadMentionInlineVisual } from "../thread-mention-inline-visual";
+import { InlineReferenceVisual } from "../inline-reference-visual";
 import { useBlockReferenceHostRuntime } from "../../block-documents/block-reference-runtime-context";
 import {
   agentConfigInlineContentConfig,
@@ -92,6 +95,16 @@ interface ReadonlyMarkdownBlockNotePreviewProps {
 
 interface ReadonlyPreviewDocument {
   initialContent: PartialBlock[] | undefined;
+}
+
+interface PreviewAttachmentProps {
+  kind: "text" | "file" | "folder";
+  mode: "materialized" | "link";
+  source: string;
+  name: string;
+  mimeType?: string;
+  bytes?: number;
+  origin?: string;
 }
 
 interface PreviewThreadMentionProps {
@@ -175,11 +188,41 @@ const createReadonlyTemplateRefBlockSpec = createReactBlockSpec(reusableTemplate
   ),
 });
 
+function formatPreviewAttachmentLabel(props: PreviewAttachmentProps): string {
+  const name = props.name.trim() || (props.kind === "text" ? "Pasted text" : "Attachment");
+  const size =
+    typeof props.bytes === "number" && props.kind !== "folder"
+      ? formatAttachmentBytes(props.bytes)
+      : "";
+  const mode = props.mode === "link" ? "linked" : "saved";
+  return [name, size, mode].filter(Boolean).join(" - ");
+}
+
 const createReadonlyAttachmentInlineContentSpec = () =>
   createReactInlineContentSpec(attachmentInlineContentConfig, {
-    render: ({ inlineContent }) => (
-      <AttachmentInlineContent inlineContent={inlineContent as { props: AttachmentProps }} />
-    ),
+    render: ({ inlineContent }) => {
+      const props = inlineContent.props as PreviewAttachmentProps;
+      if (parseFileSource(props.source))
+        return <AttachmentInlineContent inlineContent={{ props }} />;
+      return (
+        <NodexTooltip tooltipContent={props.source}>
+          <InlineReferenceVisual
+            contentEditable={false}
+            label={formatPreviewAttachmentLabel(props)}
+            icon={
+              <AttachmentResourceIcon
+                kind={props.kind}
+                name={props.name}
+                mimeType={props.mimeType}
+                className="size-full"
+              />
+            }
+            trailing={props.mode === "link" ? <Link2 className="size-full" /> : undefined}
+            data-attachment-inline-chip="true"
+          />
+        </NodexTooltip>
+      );
+    },
   });
 
 const createReadonlyAgentConfigInlineContentSpec = () =>

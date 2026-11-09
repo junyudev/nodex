@@ -69,6 +69,9 @@ export const layer = (sink: ProjectionNotificationSink): Layer.Layer<DatabaseNot
       const inboxInvalidations = yield* PubSub.sliding<InboxChangedEvent>(
         MAIN_OBSERVATION_EVENT_CAPACITY,
       );
+      const projectInvalidations = yield* PubSub.sliding<ProjectsChangeEvent>(
+        MAIN_OBSERVATION_EVENT_CAPACITY,
+      );
       const workInvalidations = yield* PubSub.sliding<void>(MAIN_OBSERVATION_EVENT_CAPACITY);
       let accepting = true;
       yield* Effect.addFinalizer(() =>

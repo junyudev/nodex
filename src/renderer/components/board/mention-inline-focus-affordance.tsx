@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from "rea
 import { NodexPopover, NodexPopoverAnchor, NodexPopoverContent } from "@/components/ui/popover";
 
 const SELECTED_MENTION_SELECTOR =
-  '[data-inline-reference-chip="true"][data-mention-token-selected="true"]';
+  '[data-mention-inline-chip="true"][data-mention-token-selected="true"]';
 
 function useMentionTokenSelected(containerRef: RefObject<HTMLElement | null>): boolean {
   const [selected, setSelected] = useState(false);

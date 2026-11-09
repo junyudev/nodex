@@ -331,6 +331,8 @@ pub(super) struct DecisionConfirmation<'a> {
     pub(super) pages: &'a [String],
     pub(super) dispatch: &'a str,
     pub(super) agent: Option<&'a ProjectWorkspaceInboxChatAgent>,
+}
+
 pub(super) fn confirm(
     c: &Connection,
     library: &str,
@@ -341,7 +343,9 @@ pub(super) fn confirm(
     now: &str,
 ) -> Result<WorkspaceMutationEffects, StoreError> {
     let DecisionConfirmation {
+        pages,
         dispatch,
+        agent,
     } = decision_confirmation;
     if pages.len() != 1 {
         return Err(invalid("Start one Automation decision at a time"));

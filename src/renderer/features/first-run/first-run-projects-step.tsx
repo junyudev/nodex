@@ -6,6 +6,7 @@ import { NodexCheckbox } from "@/components/ui/settings";
 import { toastFailure } from "@/lib/failure-toast";
 import type { Project, ProjectCreateInput } from "@/lib/types";
 import type { ProjectCandidateChat } from "../../../shared/project-discovery";
+import { localProjectSourceRoots } from "../../../shared/project-sources";
 import {
   candidateActivity,
   candidateChoice,
@@ -28,7 +29,7 @@ import {
 } from "./first-run-projects";
 
 const projectRoots = (projects: readonly Project[]): ReadonlySet<string> =>
-  new Set(projects.flatMap((project) => project.sources.map((source) => source.root)));
+  new Set(projects.flatMap((project) => localProjectSourceRoots(project.sources)));
 
 /** Adds what it can, one folder at a time, and says which it couldn't. */
 async function createChosenProjects(

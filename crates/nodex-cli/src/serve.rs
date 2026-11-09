@@ -295,7 +295,10 @@ pub(crate) fn execute(args: ServeArgs) -> Result<CommandOutput, CliError> {
                         command: SpaceCommand::Revoke { device },
                     },
                 ),
+                ServeCommand::Members => crate::space::execute(
                     &client,
+                    SpaceArgs {
+                        command: SpaceCommand::Members,
                     },
                 ),
                 _ => unreachable!(),
@@ -377,6 +380,7 @@ fn initialize(
     let result = (|| {
         let identity = client
             .space_prepare(ListenRequest {
+                peer_policy: nodex_core_contracts::team::ListenerPeerPolicy::Operator,
                 address: address.to_string(),
                 cert: None,
                 key: None,

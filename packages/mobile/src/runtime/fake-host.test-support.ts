@@ -1,31 +1,20 @@
 import { createHash } from "node:crypto";
 import {
-  CHANNEL_CLOSE,
-  CHANNEL_HANDSHAKE_PAIR,
-  generateStaticKeyPair,
   MOBILE_PROTOCOL_REVISION,
   MobileEnvelopeSchema,
-  respondToHandshake,
   type MobileEnvelope,
+  type Hello,
   type RpcError,
-  type SecureChannel,
+  spaceMemberKey,
 } from "@nodex/mobile-protocol";
-import { z } from "zod";
-import type {
-  LocalImage,
-  MobilePlatform,
-  MobilePush,
-  MobileSocket,
-  MobileSocketEvents,
-} from "./platform";
+import type { LocalImage, MobilePlatform, MobilePush } from "./platform";
+import { makePinnedTls, type NativeTlsOptions, type TlsEvent } from "./pinned-tls";
+import { decodeUtf8, encodeUtf8, fromBase64, toBase64 } from "./encoding";
 
 const deliver = (callback: () => void) => {
   void Promise.resolve().then(callback);
 };
-
 type Request = Extract<MobileEnvelope, { t: "req" }>;
-type ServerSocket = Pick<MobileSocketEvents, "frame" | "closed">;
-
 function seedRandom(prefix = "phone") {
   let seed = 0;
   return (length: number) =>
@@ -34,34 +23,24 @@ function seedRandom(prefix = "phone") {
       : createHash("sha256").update(`${prefix}:${++seed}`).digest().subarray(0, length);
 }
 
-const PhonePayload = z.looseObject({
-  protocol: z.number().int(),
-  deviceName: z.string().min(1).max(256),
-  platform: z.enum(["ios", "android"]),
-  appVersion: z.string().min(1).max(128),
-});
-
+/** A pinned Core enrollment/session frontier with an admitted host phone stream. */
 export class FakeHost {
-  private readonly randomBytes: (length: number) => Uint8Array;
-  readonly key: ReturnType<typeof generateStaticKeyPair>;
-  readonly pairingKeys: string[] = [];
-  readonly metadata: z.output<typeof PhonePayload>[] = [];
-  readonly psk = new Uint8Array(32).fill(42);
+  readonly fingerprint: string;
   readonly requests: Request[] = [];
-  readonly firstEnvelopes: MobileEnvelope[] = [];
-  readonly trace: string[] = [];
-  private readonly devices = new Map<string, string>();
-  readonly peers = new Set<{
-    emit: (envelope: MobileEnvelope) => void;
-    close: (code: number) => void;
-  }>();
+  readonly admissions: { memberId: string; request: Request }[] = [];
+  readonly httpRequests: { path: string; body: unknown }[] = [];
+  readonly peers = new Set<{ emit(envelope: MobileEnvelope): void; close(code: number): void }>();
+  readonly credentials = new Map<string, { deviceId: string; memberId: string }>();
+  readonly tokens = new Map<string, { deviceId: string; memberId: string }>();
+  memberId = "owner";
+  spaceKind: Hello["spaceKind"] = "personal";
   protocol = MOBILE_PROTOCOL_REVISION;
   pairingAvailable = true;
-  handshakeReplyDelay = 0;
-  onPaired?: () => void;
+  revoked = false;
   allowHello = true;
   pong = true;
   routes: string[];
+  sessionSeconds = 3600;
   onRequest: (
     request: Request,
     reply: (result: unknown) => void,
@@ -73,161 +52,135 @@ export class FakeHost {
       reply({ items: [], nextCursor: null });
     else if (request.m === "chats.unread")
       reply({ sessionIds: (request.p as { sessionIds: string[] }).sessionIds });
+    else if (request.m === "inbox.turns")
+      reply({ pageIds: (request.p as { pageIds: string[] }).pageIds });
     else reply({});
   };
-
   constructor(
     readonly id = "host-a",
-    routes = ["ws://host-a:3000/mobile"],
+    routes = ["https://host-a:3000/"],
   ) {
     this.routes = routes;
-    this.randomBytes = seedRandom(id);
-    this.key = generateStaticKeyPair(this.randomBytes);
+    this.fingerprint = createHash("sha256").update(id).digest("hex");
   }
-
-  attach(socket: ServerSocket) {
-    let payload: Uint8Array | undefined;
-    let channel: SecureChannel | null = null;
-    let authorized = false;
-    let identity = "";
-    let pairing = false;
-    let disconnected = false;
-    let deviceId = "";
-
-    function toPhone(frame: Uint8Array) {
-      deliver(() => {
-        if (!disconnected) socket.frame(frame);
-      });
-    }
-
-    const peer = {
-      emit(envelope: MobileEnvelope) {
-        if (!channel || disconnected) return;
-        const plaintext = new TextEncoder().encode(JSON.stringify(envelope));
-        for (const frame of channel.seal(plaintext)) toPhone(frame);
-      },
-      close: (code: number) => {
-        if (disconnected) return;
-        disconnected = true;
-        this.peers.delete(peer);
-        deliver(() => socket.closed(code));
-      },
-    };
-    this.peers.add(peer);
-
-    const hello = (withPong: boolean) => {
-      peer.emit({
-        t: "hello",
-        d: {
-          host: { id: this.id, name: this.id, platform: "macOS", appVersion: "1" },
-          protocol: this.protocol,
-          deviceId,
-          routes: this.routes,
+  http(path: string, body: unknown) {
+    this.httpRequests.push({ path, body });
+    if (path === "/enroll") {
+      if (!this.pairingAvailable || (body as { code: string }).code !== "device-link-code")
+        return { status: 403, body: { payload: { recovery: { kind: "none" } } } };
+      this.pairingAvailable = false;
+      const deviceId = `device-${this.credentials.size + 1}`;
+      const credential = createHash("sha256").update(`${this.id}:${deviceId}`).digest("hex");
+      this.credentials.set(credential, { deviceId, memberId: this.memberId });
+      return {
+        status: 200,
+        body: {
+          space_id: this.id,
+          space_name: this.id,
+          member_id: this.memberId,
+          device_id: deviceId,
+          device_credential: credential,
         },
-      });
-      if (withPong) peer.emit({ t: "pong" });
+      };
+    }
+    const identity = this.credentials.get(
+      (body as { device_credential: string }).device_credential,
+    );
+    if (!identity || this.revoked)
+      return { status: 403, body: { payload: { recovery: { kind: "remote_access_withdrawn" } } } };
+    const token = createHash("sha256").update(`${this.id}:${this.tokens.size}`).digest("hex");
+    this.tokens.set(token, identity);
+    return {
+      status: 200,
+      body: {
+        session_token: token,
+        expires_at: Math.floor(Date.now() / 1000) + this.sessionSeconds,
+        principal: {
+          space_id: this.id,
+          member_id: identity.memberId,
+          device_id: identity.deviceId,
+          role: "owner",
+        },
+      },
     };
-
+  }
+  attach(options: NativeTlsOptions, send: (event: TlsEvent) => void) {
+    const identity = this.tokens.get(
+      (options.headers.Authorization ?? "").replace(/^Bearer /u, ""),
+    );
+    let closed = false;
+    const peer = {
+      emit: (envelope: MobileEnvelope) =>
+        deliver(() => {
+          if (!closed) send({ type: "message", text: JSON.stringify(envelope) });
+        }),
+      close: (code: number) => {
+        if (closed) return;
+        closed = true;
+        this.peers.delete(peer);
+        deliver(() => send({ type: "close", code }));
+      },
+    };
+    if (!identity || this.revoked) {
+      deliver(() => send({ type: "error", code: "transport" }));
+      return { close: () => {}, send: () => {} };
+    }
+    this.peers.add(peer);
+    deliver(() => {
+      send({ type: "open" });
+      if (this.allowHello)
+        peer.emit({
+          t: "hello",
+          d: {
+            protocol: this.protocol,
+            spaceId: this.id,
+            spaceKind: this.spaceKind,
+            memberId: identity.memberId,
+            host: {
+              id: spaceMemberKey(this.id, identity.memberId),
+              name: this.id,
+              platform: "host",
+              appVersion: "1",
+            },
+            deviceId: identity.deviceId,
+            routes: this.routes,
+          },
+        });
+    });
     return {
       close: () => peer.close(1000),
-      send: (frame: Uint8Array) =>
+      send: (bytes: Uint8Array) =>
         deliver(() => {
-          if (disconnected) return;
-          if (!channel) {
-            try {
-              const handshake = respondToHandshake({
-                message: frame,
-                host: this.key,
-                pairingPsk: this.pairingAvailable ? this.psk : null,
-                randomBytes: this.randomBytes,
-              });
-              identity = Buffer.from(handshake.remoteStaticKey).toString("hex");
-              pairing = handshake.pairing;
-              payload = handshake.payload;
-              if (pairing) this.pairingKeys.push(identity);
-              if (!pairing && !this.devices.has(identity))
-                return peer.close(CHANNEL_CLOSE.unknownDevice);
-              const accepted = handshake.accept(new Uint8Array());
-              channel = accepted.channel;
-              this.trace.push("handshake.reply");
-              if (this.handshakeReplyDelay > 0) {
-                setTimeout(() => toPhone(accepted.reply), this.handshakeReplyDelay);
-              } else toPhone(accepted.reply);
-            } catch {
-              peer.close(
-                frame[0] === CHANNEL_HANDSHAKE_PAIR ? CHANNEL_CLOSE.pairingRejected : 1006,
-              );
-            }
-            return;
-          }
-          const message = channel.open(frame);
-          if (!message) return;
-          const envelope = MobileEnvelopeSchema.parse(
-            JSON.parse(new TextDecoder().decode(message)),
-          );
-          if (!authorized) {
-            this.firstEnvelopes.push(envelope);
-            this.trace.push(envelope.t);
-            if (envelope.t !== "ping") return peer.close(CHANNEL_CLOSE.protocolMismatch);
-            let metadata: z.output<typeof PhonePayload>;
-            try {
-              metadata = PhonePayload.parse(JSON.parse(new TextDecoder().decode(payload)));
-            } catch {
-              return peer.close(1008);
-            }
-            this.metadata.push(metadata);
-            if (metadata.protocol !== this.protocol) {
-              deviceId = this.devices.get(identity) ?? `device-${this.devices.size + 1}`;
-              hello(false);
-              return;
-            }
-            if (pairing) {
-              if (!this.pairingAvailable) return peer.close(CHANNEL_CLOSE.pairingRejected);
-              this.pairingAvailable = false;
-              this.devices.set(identity, `device-${this.devices.size + 1}`);
-              this.onPaired?.();
-            }
-            deviceId = this.devices.get(identity) ?? "";
-            authorized = true;
-            if (this.allowHello) {
-              this.trace.push("hello", "pong");
-              hello(true);
-            }
-            return;
-          }
+          if (closed) return;
+          const envelope = MobileEnvelopeSchema.parse(JSON.parse(decodeUtf8(bytes)));
           if (envelope.t === "ping" && this.pong) peer.emit({ t: "pong" });
           if (envelope.t !== "req") return;
           this.requests.push(envelope);
+          this.admissions.push({ memberId: identity.memberId, request: envelope });
           this.onRequest(
             envelope,
             (r) => peer.emit({ t: "res", id: envelope.id, ok: true, r }),
             (message, retryable, code = retryable ? "unavailable" : "rejected") =>
-              peer.emit({
-                t: "res",
-                id: envelope.id,
-                ok: false,
-                e: { code, message, retryable },
-              }),
+              peer.emit({ t: "res", id: envelope.id, ok: false, e: { code, message, retryable } }),
           );
         }),
     };
   }
-
   closeAll(code = 1006) {
     for (const peer of this.peers) peer.close(code);
   }
-
   emit(envelope: MobileEnvelope) {
     for (const peer of this.peers) peer.emit(envelope);
   }
-
   pairingOffer(expiresAt: number, routes = this.routes) {
     return {
-      hostKey: Buffer.from(this.key.publicKey).toString("base64url"),
-      hostName: this.id,
-      secret: Buffer.from(this.psk).toString("base64url"),
-      expiresAt,
+      space_id: this.id,
+      space_name: this.id,
+      member_id: this.memberId,
+      fingerprint: this.fingerprint,
       routes,
+      code: "device-link-code",
+      expires_at: Math.floor(expiresAt / 1000),
     };
   }
 }
@@ -240,6 +193,9 @@ export function fakePlatform() {
   const dials: { route: string; at: number; closed: boolean }[] = [];
   const listeners = new Set<(foreground: boolean) => void>();
   const compression: { image: LocalImage; longestSide: number; quality: number }[] = [];
+  const tlsListeners = new Map<string, (event: TlsEvent) => void>();
+  const operations = new Map<string, { close(): void; send?(bytes: Uint8Array): void }>();
+  const starts: { id: string; options: NativeTlsOptions; socket: boolean }[] = [];
   let foreground = true;
   const keyValue = (map: Map<string, string>) => ({
     get: (key: string) => map.get(key) ?? null,
@@ -250,6 +206,70 @@ export function fakePlatform() {
       map.delete(key);
     },
   });
+  const start = (id: string, options: NativeTlsOptions, socket: boolean) => {
+    starts.push({ id, options, socket });
+    const url = new URL(options.url);
+    url.protocol = "https:";
+    const route = `${url.origin}/`;
+    const target = routes.get(route);
+    const dial = { route, at: Date.now(), closed: false };
+    if (socket) dials.push(dial);
+    const emit = (event: TlsEvent) => tlsListeners.get(id)?.(event);
+    const timer = setTimeout(() => emit({ type: "error", code: "timeout" }), options.timeoutMs);
+    operations.set(id, {
+      close() {
+        clearTimeout(timer);
+        dial.closed = true;
+      },
+    });
+    deliver(() => {
+      if (!operations.has(id) || target === "stall") return;
+      clearTimeout(timer);
+      if (typeof target === "number") return emit({ type: "close", code: target });
+      if (!target || target === "unreachable") return emit({ type: "error", code: "transport" });
+      if (options.fingerprint !== target.fingerprint) return emit({ type: "error", code: "pin" });
+      if (socket) {
+        const peer = target.attach(options, emit);
+        operations.set(id, {
+          close() {
+            dial.closed = true;
+            peer.close();
+          },
+          send: peer.send,
+        });
+        return;
+      }
+      const response = target.http(
+        new URL(options.url).pathname,
+        JSON.parse(decodeUtf8(fromBase64(options.body))),
+      );
+      emit({
+        type: "response",
+        status: response.status,
+        headers: {},
+        body: toBase64(encodeUtf8(JSON.stringify(response.body))),
+      });
+    });
+  };
+  const native = {
+    listen: (id: string, listener: (event: TlsEvent) => void) => {
+      tlsListeners.set(id, listener);
+      return () => {
+        tlsListeners.delete(id);
+      };
+    },
+    startRequest: (id: string, options: NativeTlsOptions) => start(id, options, false),
+    openSocket: (id: string, options: NativeTlsOptions) => start(id, options, true),
+    send: (id: string, body: string, binary: boolean) => {
+      const operation = operations.get(id);
+      if (!operation?.send) throw new Error("Socket closed");
+      operation.send(binary ? fromBase64(body) : encodeUtf8(body));
+    },
+    cancel: (id: string) => {
+      operations.get(id)?.close();
+      operations.delete(id);
+    },
+  };
   const platform = {
     push: null as MobilePush | null,
     deviceName: "Test phone",
@@ -261,8 +281,10 @@ export function fakePlatform() {
     routes,
     dials,
     compression,
+    starts,
     storage: keyValue(data),
     secrets: keyValue(secrets),
+    pinnedTls: makePinnedTls(native),
     files: {
       uri: (area, name) => `file://${area}/${name}`,
       copy(source, destination) {
@@ -299,40 +321,6 @@ export function fakePlatform() {
       const timer = setTimeout(callback, ms);
       return () => clearTimeout(timer);
     },
-    socket(route) {
-      const target = routes.get(route);
-      const dial = { route, at: Date.now(), closed: false };
-      dials.push(dial);
-      let peer: ReturnType<FakeHost["attach"]> | undefined;
-      let listeners: MobileSocketEvents | null = null;
-      const socket: MobileSocket = {
-        listen(events) {
-          listeners = events;
-          return () => {
-            listeners = null;
-          };
-        },
-        send(bytes) {
-          if (dial.closed || !peer) throw new Error("Socket closed");
-          peer.send(bytes);
-        },
-        close() {
-          dial.closed = true;
-          peer?.close();
-        },
-      };
-      deliver(() => {
-        if (dial.closed || target === "stall") return;
-        if (typeof target === "number") return listeners?.closed(target);
-        if (!target || target === "unreachable") return listeners?.failed();
-        peer = target.attach({
-          frame: (bytes) => listeners?.frame(bytes),
-          closed: (code) => listeners?.closed(code),
-        });
-        listeners?.open();
-      });
-      return socket;
-    },
     isForeground: () => foreground,
     onForegroundChange(callback) {
       listeners.add(callback);
@@ -345,12 +333,13 @@ export function fakePlatform() {
       for (const listener of listeners) listener(value);
     },
   } satisfies MobilePlatform & {
-    data: Map<string, string>;
-    savedSecrets: Map<string, string>;
-    contents: Map<string, Uint8Array>;
+    data: typeof data;
+    savedSecrets: typeof secrets;
+    contents: typeof files;
     routes: typeof routes;
     dials: typeof dials;
     compression: typeof compression;
+    starts: typeof starts;
     setForeground(value: boolean): void;
   };
   return platform;

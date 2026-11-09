@@ -16,6 +16,7 @@ import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e
 import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../scripts/scenarios/scenarios/document-sync-recovery";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { CoreClient } from "../../src/main/core-client/core-client";
+import { connectOrStartCore } from "../../src/main/core-client/core-launcher";
 import { enrollRemoteCore } from "../../src/main/core-client/remote-http";
 import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { openBoardPageFromCard } from "./support/open-board-page";
@@ -64,6 +65,7 @@ test("a joined desktop starts host work, answers its question and accepts it acr
     running: boolean;
     state: string;
     pid: number | null;
+    listener: { url: string; peer_policy: "private" | "operator" };
     warning: string | null;
   };
   let running: Status | null = null;
@@ -146,6 +148,53 @@ test("a joined desktop starts host work, answers its question and accepts it acr
       clone,
     );
     expect(initialized.name).toBe("Host Crew");
+    const personalIntent = path.join(home, "team-transport/remote-access.json");
+    await expect(readFile(personalIntent)).rejects.toMatchObject({ code: "ENOENT" });
+    // A saved personal listener must neither replace nor be rewritten by this deployment.
+    const personal = await connectOrStartCore({
+      nodexHome: home,
+      repositoryRoot: path.resolve("."),
+      environment,
+      isPackaged: false,
+      buildId: "team-host-personal-intent",
+    });
+    const privateListener = await personal.client.listenSpace({
+      address: "127.0.0.1:0",
+      cert: null,
+      key: null,
+      peer_policy: "private",
+    });
+    expect(privateListener.url).not.toBe(`https://127.0.0.1:${address.port}`);
+    const savedPersonalIntent = await readFile(personalIntent, "utf8");
+    expect(JSON.parse(savedPersonalIntent)).toMatchObject({
+      enabled: true,
+      peer_policy: "private",
+      address: privateListener.url.slice("https://".length),
+    });
+    await expect(
+      connectOrStartCore({
+        nodexHome: home,
+        repositoryRoot: path.resolve("."),
+        environment,
+        isPackaged: false,
+        buildId: "team-host-conflicting-operator",
+        operatorListener: { address: `127.0.0.1:${address.port}`, cert: null, key: null },
+      }),
+    ).rejects.toThrow();
+    expect(await readFile(personalIntent, "utf8")).toBe(savedPersonalIntent);
+    await expect(personal.client.health()).resolves.toMatchObject({ status: "ready" });
+    await personal.client.shutdown();
+    await expect
+      .poll(async () =>
+        stat(path.join(home, "run/core/core.json")).then(
+          () => true,
+          (cause: NodeJS.ErrnoException) => {
+            if (cause.code === "ENOENT") return false;
+            throw cause;
+          },
+        ),
+      )
+      .toBe(false);
     if (process.platform !== "win32") {
       const key = path.join(home, "team-transport/server-identity.pem");
       for (const secret of [key, path.join(home, "nodex.db")])
@@ -162,6 +211,11 @@ test("a joined desktop starts host work, answers its question and accepts it acr
     if (process.platform !== "win32")
       expect((await stat(path.join(home, "run/core/core.auth"))).mode & 0o777).toBe(0o600);
     expect(running.running).toBe(true);
+    expect(running.listener).toMatchObject({
+      url: `https://127.0.0.1:${address.port}`,
+      peer_policy: "operator",
+    });
+    expect(await readFile(personalIntent, "utf8")).toBe(savedPersonalIntent);
     expect(running.warning).toMatch(/host user/iu);
     const alias = home.replace(/^\/private\/tmp\//u, "/tmp/");
     expect(await command<Status>("serve", "status", "--home", alias)).toMatchObject({
@@ -1207,6 +1261,8 @@ test("a joined desktop starts host work, answers its question and accepts it acr
           .toBe("waiting");
         await stop();
         running = await serve<Status>("start");
+        expect(running.listener.peer_policy).toBe("operator");
+        expect(await readFile(personalIntent, "utf8")).toBe(savedPersonalIntent);
         await expect
           .poll(() => invokeIpc(page, "work:host-status").catch(() => ({ available: false })), {
             timeout: 30_000,

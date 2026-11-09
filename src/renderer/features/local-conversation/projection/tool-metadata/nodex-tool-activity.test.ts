@@ -344,7 +344,41 @@ describe("resolveNodexToolActivity", () => {
     expect(parts).toEqual([{ kind: "text", text: "Couldn't fork chat" }]);
   });
 
+  test("reads Page work by its key or its Page and the outcome reported", () => {
+    expect(label(call("report_work", { pageId: "NODEX-12", outcome: "ready" }))).toBe(
+      "Marked NODEX-12 ready for review",
+    );
+    expect(label(call("report_work", { outcome: "blocked", summary: "Waiting on CI" }))).toBe(
+      "Reported work blocked",
+    );
+    expect(resolveNodexToolActivity(call("start_work", { pageId: PAGE_ID }))?.parts).toEqual([
+      { kind: "text", text: "Started work on" },
+      { kind: "page", pageId: PAGE_ID, title: null },
+    ]);
     expect(
+      label(call("follow_thread", { url: "https://github.com/nodex/app/pull/482#discussion" })),
+    ).toBe("Followed pull request #482");
+    expect(
+      label(
+        call("inbox_suggest", {
+          suggestions: [{ page_ids: [PAGE_ID, PARENT_ID] }, { page_ids: [PAGE_ID] }],
+        }),
+      ),
+    ).toBe("Routed 2 Inbox messages");
+  });
+
+  test("names an Automation command by its operation, never by its mode", () => {
+    expect(label(call("automations_update", { operation: "list", mode: "run" }))).toBe(
+      "Listed automations",
+    );
+    expect(
+      label(call("automations_update", { operation: "suggested_update", name: "Triage" })),
+    ).toBe("Proposed automation change “Triage”");
+    expect(label({ ...call("automations_update", { operation: "delete" }), ...failed })).toBe(
+      "Couldn't delete automation",
+    );
+  });
+
   test("states a toggle by the direction it went", () => {
     expect(label(call("set_session_pinned", { pinned: true }))).toBe("Pinned chat");
     expect(label(call("set_session_pinned", { pinned: false }))).toBe("Unpinned chat");
@@ -519,6 +553,10 @@ describe("what opening a row offers", () => {
     expect(readNodexToolDetail(call("send_to_inbox", { body: "Check owners" })).message).toBe(
       "Check owners",
     );
+    expect(
+      readNodexToolDetail(call("report_work", { outcome: "ready", summary: "Tests pass" })).message,
+    ).toBe("Tests pass");
+    expect(readNodexToolDetail(call("start_work", { pageId: PAGE_ID })).message).toBeNull();
   });
 
   test("lifts child Pages out of a read document and drops identity-only embeds", () => {

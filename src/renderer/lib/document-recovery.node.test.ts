@@ -26,6 +26,7 @@ bindRendererSpace({
   spaceId: "library:one",
   kind: "team",
   memberId: "bob",
+  deviceId: null,
   name: "Team",
   availability: "ready",
 });

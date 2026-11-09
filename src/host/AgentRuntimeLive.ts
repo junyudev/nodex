@@ -792,6 +792,19 @@ const supervisor = Layer.effectContext(
       Effect.forkScoped({ startImmediately: true }),
     );
     yield* Deferred.succeed(ready, runtime);
+    if (nodexAccount)
+      yield* nodexAccount.onModelsChanged(
+        confirmModelRetirement({
+          refresh,
+          stop: runtime
+            .withStopped(
+              Effect.logWarning(
+                "Agent execution stopped because Nodex model retirement could not be confirmed",
+              ),
+            )
+            .pipe(Effect.orDie),
+        }),
+      );
     const claudeUsage = yield* makeClaudeUsage({
       meterEnabled: (yield* settings.snapshot()).usageMeters.claude,
       meterEnabledChanges: settings.usageMeterSettingsChanges.pipe(

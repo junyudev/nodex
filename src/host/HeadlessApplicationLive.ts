@@ -1,4 +1,7 @@
+import * as PhoneApplication from "./mobile/MobileApplication";
 import { MobileRpc } from "./mobile/rpc";
+import * as PhoneFiles from "../main/platform/node/PhoneFiles";
+import * as MobilePushRelay from "../main/platform/node/MobilePushRelay";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -64,6 +67,7 @@ export class HeadlessHost extends Context.Service<
     readonly attachments: ChatAttachments["Service"];
     readonly inbox: InboxApplication["Service"];
     readonly activity: AgentRuntimeSessionActivity["Service"];
+    readonly phone: MobileRpc["Service"];
     readonly settings: ApplicationSettings["Service"];
     readonly chats: ChatSearch["Service"];
   }
@@ -79,6 +83,7 @@ export class HeadlessHostError extends Schema.TaggedError<HeadlessHostError>()(
 /** One headless Space shares its producers and execution writer with the embedded desktop Host. */
 export const live = (input: {
   readonly coreHome: string;
+  readonly listenerAddress: string;
   readonly workerDirectory: string;
   readonly agentRunner?: AgentRunner;
   readonly repositories: Readonly<Record<string, string>>;
@@ -160,6 +165,7 @@ export const live = (input: {
     Layer.succeed(HostAppToolCatalog, hostAppToolCatalog),
     scopedAgentCore(input.coreHome),
   );
+  const core = Layer.merge(Core.live(input.coreHome, input.listenerAddress), Providers.live).pipe(
     Layer.provideMerge(platform),
     Layer.tap((context) =>
       Effect.gen(function* () {
@@ -206,6 +212,10 @@ export const live = (input: {
   const kernel = SessionReminders.hostedLive.pipe(
     Layer.provideMerge(Kernel.live.pipe(Layer.provideMerge(tools))),
   );
+  const phone = PhoneApplication.live.pipe(
+    Layer.provide(Layer.merge(PhoneFiles.live, MobilePushRelay.live)),
+    Layer.provideMerge(kernel),
+  );
   return Layer.effect(
     HeadlessHost,
     Effect.gen(function* () {
@@ -227,11 +237,13 @@ export const live = (input: {
         attachments: yield* ChatAttachments,
         inbox: yield* InboxApplication,
         activity: yield* AgentRuntimeSessionActivity,
+        phone: yield* MobileRpc,
         settings: yield* ApplicationSettings,
         chats: yield* ChatSearch,
       };
     }),
   ).pipe(
+    Layer.provide(phone),
     Layer.catch((cause) => Layer.effect(HeadlessHost, new HeadlessHostError({ cause }))),
   );
 };

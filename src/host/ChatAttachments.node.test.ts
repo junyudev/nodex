@@ -1,9 +1,14 @@
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "@effect/vitest";
 import { expect } from "vitest";
 import * as Effect from "effect/Effect";
 import { AgentRuntimeApplication } from "../main/agent-runtime/AgentRuntimeApplication";
+import { CodexNativeThreadLookup } from "../main/codex-application/CodexNativeThreadLookup";
+import { ExecutionHostRuntime } from "../main/codex-application/ExecutionHostRuntime";
+import { CodexGateway } from "../main/codex-runtime/CodexGateway";
 import {
   ProjectWorkspace,
   ProjectWorkspaceError,
@@ -189,6 +194,11 @@ it.effect("decodes an image a tool returned once per version of its item", () =>
     expect(test.runtimeReads).toEqual(["tool-result:0", "tool-result:0"]);
   }).pipe(Effect.scoped),
 );
+
+/**
+ * A desktop's connected Codex conversation: its items come from the Codex app-server and a picture
+ * saved as a file is read through the execution host that ran it.
+ */
 /** A hosted chat's reply that shows pictures from files where its chat works on the host. */
 const replyFixture = Effect.gen(function* () {
   const home = yield* Effect.acquireRelease(
@@ -270,4 +280,202 @@ it.effect("reads the pictures a reply shows from this host's files, and nothing 
   }),
 );
 
+const nativeFixture = Effect.gen(function* () {
+  const home = yield* Effect.acquireRelease(
+    Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-native-pictures-"))),
+    (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+  );
+  const screenshot = join(home, "screenshot.png");
+  const notes = join(home, "notes.png");
+  yield* Effect.promise(() =>
+    Promise.all([writeFile(screenshot, PNG), writeFile(notes, "-----BEGIN PRIVATE KEY-----")]),
+  );
+  const members = { readable: new Set(["proof:bob"]) };
+  const hostReads: string[] = [];
+  const item = {
+    type: "userMessage",
+    id: "message",
+    content: [
+      { type: "text", text: "Look at these", text_elements: [] },
+      { type: "localImage", path: screenshot },
+      { type: "image", url: `data:image/jpeg;base64,${JPEG.toString("base64")}` },
+      { type: "localImage", path: notes },
+    ],
+  };
+  const fileOf = async (path: string) => {
+    const bytes = await readFile(path);
+    return { path, size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
+  };
+  const attachments = yield* make.pipe(
     Effect.provide(testLayer()),
+    Effect.provideService(ProjectWorkspace, {
+      getProjectSession: (sessionId: string) =>
+        Effect.flatMap(HostInvocation, (proof) => {
+          if (!proof || !members.readable.has(proof))
+            return Effect.fail(
+              new ProjectWorkspaceError({ operation: "session.read", cause: "Unauthorized" }),
+            );
+          if (sessionId === "runtime-chat")
+            return Effect.succeed({
+              id: sessionId,
+              executionRef: { runtimeId: "runtime", threadId: "thread" },
+            } as unknown as ProjectSession);
+          return Effect.succeed(
+            sessionId === "chat"
+              ? ({
+                  id: "chat",
+                  executionRef: null,
+                  thread: {
+                    threadId: "codex-thread",
+                    executionHostId: "local",
+                    backendBinding: { kind: "codex" },
+                  },
+                } as unknown as ProjectSession)
+              : null,
+          );
+        }),
+    } as unknown as ProjectWorkspace["Service"]),
+    Effect.provideService(AgentRuntimeApplication, {} as AgentRuntimeApplication["Service"]),
+    Effect.provideService(CodexNativeThreadLookup, {
+      resolve: (threadId: string, hostId: string) =>
+        Effect.succeed({
+          threadId,
+          hostId,
+          thread: {},
+          manager: { generation: 1, assertCurrent: () => undefined },
+        }),
+    } as unknown as CodexNativeThreadLookup["Service"]),
+    Effect.provideService(CodexGateway, {
+      localHostId: "local",
+      requestOnHost: (
+        _host: string,
+        _method: string,
+        params: { turnId: string; itemIds: string[] },
+      ) =>
+        Effect.succeed({
+          data:
+            params.turnId === "run" && params.itemIds.includes(item.id)
+              ? [{ turnId: "run", item }]
+              : [],
+        }),
+    } as unknown as CodexGateway["Service"]),
+    Effect.provideService(ExecutionHostRuntime, {
+      resolve: () =>
+        Effect.succeed({
+          transfer: {
+            describe: (path: string) =>
+              Effect.promise(() => {
+                hostReads.push(path);
+                return fileOf(path);
+              }),
+            download: ({
+              source,
+              destinationPath,
+            }: {
+              source: { path: string };
+              destinationPath: string;
+            }) =>
+              Effect.promise(async () => {
+                await writeFile(destinationPath, await readFile(source.path));
+                return fileOf(destinationPath);
+              }),
+          },
+        }),
+    } as unknown as ExecutionHostRuntime["Service"]),
+  );
+  const read = (
+    input: Partial<ChatAttachmentRead> & { attachmentId: string },
+    proof = "proof:bob",
+  ) =>
+    attachments
+      .read({
+        sessionId: "chat",
+        sourceThreadId: "codex-thread",
+        itemId: "message",
+        runId: "run",
+        offset: 0,
+        length: 4,
+        ...input,
+      })
+      .pipe(Effect.provideService(HostInvocation, proof));
+  return { screenshot, members, hostReads, read };
+});
+
+it.effect(
+  "reads a connected conversation's pictures for the Member, wherever its desktop keeps them",
+  () =>
+    Effect.gen(function* () {
+      const test = yield* nativeFixture;
+      // A file on the machine that ran the conversation, read through its execution host.
+      const first = yield* test.read({ attachmentId: "input:1" });
+      expect(first).toMatchObject({
+        totalBytes: PNG.length,
+        mimeType: "image/png",
+        name: "screenshot.png",
+      });
+      const rest = yield* test.read({
+        attachmentId: "input:1",
+        offset: 4,
+        length: 64,
+        version: first.version,
+      });
+      expect(
+        Buffer.concat([first, rest].map(({ base64 }) => Buffer.from(base64, "base64"))),
+      ).toEqual(PNG);
+      // Later ranges of that version come from what the first one read.
+      expect(test.hostReads).toEqual([test.screenshot]);
+      // A picture held in the conversation itself.
+      expect(yield* test.read({ attachmentId: "input:2", length: 64 })).toMatchObject({
+        base64: JPEG.toString("base64"),
+        mimeType: "image/jpeg",
+      });
+
+      // A replaced file is a new version, read whole again from the start.
+      yield* Effect.promise(() => writeFile(test.screenshot, JPEG));
+      const replaced = yield* test.read({ attachmentId: "input:1", length: 64 });
+      expect(replaced).toMatchObject({ mimeType: "image/jpeg", base64: JPEG.toString("base64") });
+      expect(replaced.version).not.toBe(first.version);
+    }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "reads no connected conversation's file that is not a picture, nor one the Member cannot",
+  () =>
+    Effect.gen(function* () {
+      const test = yield* nativeFixture;
+      const refused = (
+        input: Partial<ChatAttachmentRead> & { attachmentId: string },
+        proof?: string,
+      ) =>
+        test.read(input, proof).pipe(
+          Effect.flip,
+          Effect.map(({ reason }) => reason),
+        );
+      // A conversation can name any file; only a picture's bytes ever leave the desktop.
+      expect(yield* refused({ attachmentId: "input:3" })).toBe("missing");
+      // The Member's Core read decides, for every range.
+      test.members.readable.delete("proof:bob");
+      expect(yield* refused({ attachmentId: "input:1" })).toBe("missing");
+      test.members.readable.add("proof:bob");
+      expect(yield* refused({ attachmentId: "input:1" }, "")).toBe("missing");
+      // The picture is named only by the chat's own conversation, Run and item.
+      expect(yield* refused({ attachmentId: "input:1", sourceThreadId: "another" })).toBe(
+        "missing",
+      );
+      expect(yield* refused({ attachmentId: "input:1", runId: "another-run" })).toBe("missing");
+      expect(yield* refused({ attachmentId: "input:0" })).toBe("missing");
+      expect(yield* refused({ sessionId: "runtime-chat", attachmentId: "input:1" })).toBe(
+        "missing",
+      );
+    }).pipe(Effect.scoped),
+);
+
+it.effect("has no connected conversation to read where no desktop holds one", () =>
+  Effect.gen(function* () {
+    const test = yield* fixture;
+    expect(
+      yield* test.read({ attachmentId: "photo", runId: "run" }).pipe(Effect.flip),
+    ).toMatchObject({ reason: "missing" });
+    expect(test.runtimeReads).toEqual([]);
+  }).pipe(Effect.scoped),
+);

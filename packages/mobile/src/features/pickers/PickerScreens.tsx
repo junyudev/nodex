@@ -34,10 +34,9 @@ export const ScopePickerScreen = () => {
         <Row
           icon="inbox"
           label="Library"
-          detail="For thoughts that don't belong anywhere yet"
-          trailing={scope.kind === "library" ? <Selected /> : <Count value={libraryInboxCount} />}
+          trailing={scope.kind !== "project" ? <Selected /> : <Count value={libraryInboxCount} />}
           onPress={() => {
-            setScope({ kind: "library" });
+            setScope({ kind: "all" });
             navigation.goBack();
           }}
         />
@@ -148,7 +147,7 @@ export const AgentPickerScreen = () => {
     return (
       <PickerSurface>
         <Txt className="px-1 text-sm text-ink-3">
-          {loading ? "Reading your Agents" : "Agents are shown once your desktop is connected."}
+          {loading ? "Reading your Agents" : "Agents are shown once this Space is connected."}
         </Txt>
       </PickerSurface>
     );

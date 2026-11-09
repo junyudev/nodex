@@ -1,5 +1,6 @@
 //! Remote membership crosses the same Inbox transaction and receipt boundaries as local UI.
 use super::*;
+use crate::workspace::test_support::read;
 use nodex_core_contracts::{RemotePrincipal, library::MemberRole};
 
 fn member(w: &TestWorkspace, id: &str) -> BoundModuleContext {
@@ -38,6 +39,287 @@ fn create_remote_page(w: &TestWorkspace, remote: &BoundModuleContext, page: &str
     let mut work: serde_json::Value = serde_json::from_str(&raw).unwrap();
     work["owner"] = serde_json::json!(remote.principal.as_ref().unwrap().member_id);
     crate::library::LibraryModule::new("profile-1","library-1",&w.kernel).apply(remote,nodex_core_contracts::ModuleApplyRequest {contract_version:nodex_core_contracts::LIBRARY_CONTRACT_VERSION,operation_id:"remote-owner".into(),store_epoch:nodex_core_contracts::StoreEpoch("epoch-1".into()),intent:nodex_core_contracts::library::LibraryIntent::ApplyBlockPropertyMutation {mutation:Box::new(nodex_core_contracts::library::LibraryBlockPropertyMutation {actor:serde_json::Value::Null,client_session_id:None,fields:vec![nodex_core_contracts::library::LibraryBlockPropertyFieldMutation::IntrinsicSet {block_id:page.into(),property_key:"work".into(),expected_revision:revision,value:work}]})}}).unwrap();
+}
+
+#[test]
+fn standalone_runtime_chats_are_observed_and_only_the_requesting_member_can_answer() {
+    let w = seeded_workspace();
+    let bob = member(&w, "bob");
+    let alice = member(&w, "alice");
+    apply_member(
+        &w,
+        &bob,
+        "bob:standalone",
+        ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            session_id: "session:standalone".into(),
+            project_id: None,
+            title: "Bob's chat".into(),
+            initial_page_ids: vec![],
+            agent_selection: None,
+            runtime_id: "runtime".into(),
+            runtime_thread_id: "thread".into(),
+            launch_request_id: "launch".into(),
+            side_chat_source_session_id: None,
+            coordinator: false,
+        },
+    )
+    .unwrap();
+    let ProjectWorkspaceReadValue::SessionExecutionObservers { observers } = read(
+        &w.module,
+        ProjectWorkspaceRead::SessionExecutionObservers {
+            after_session_id: None,
+            limit: 50,
+        },
+    ) else {
+        panic!("Expected execution observers")
+    };
+    assert_eq!(observers.len(), 1);
+    assert_eq!(observers[0].session_id, "session:standalone");
+    assert!(observers[0].managed.is_none());
+    assert!(observers[0].observation.is_none());
+    let principal = bob.principal.as_ref().unwrap();
+    assert!(
+        w.module
+            .authorize_host_response(principal, "session:standalone", Some("run"), "approval")
+            .is_err()
+    );
+    let observation = serde_json::from_value(serde_json::json!({
+        "state": "waiting", "runId": "run", "runStartedAt": 0,
+        "pendingRequestIds": ["approval"],
+        "pendingRequests": [{"id": "approval", "kind": "approval", "question": "Run command?", "options": []}],
+        "queue": null, "terminalStatus": null, "personStopped": false, "stalled": false,
+        "progressFingerprint": "approval", "progressSince": 0
+    }))
+    .unwrap();
+    apply_host(
+        &w.module,
+        "host:observe-approval",
+        ProjectWorkspaceIntent::RecordSessionExecution {
+            session_id: "session:standalone".into(),
+            expected_revision: observers[0].revision,
+            observation,
+            events: vec![],
+            resolved_request_ids: vec![],
+        },
+    );
+    let ProjectWorkspaceReadValue::SessionExecutionObserver {
+        observer: Some(observer),
+    } = read(
+        &w.module,
+        ProjectWorkspaceRead::SessionExecutionObserver {
+            session_id: "session:standalone".into(),
+        },
+    )
+    else {
+        panic!("Expected standalone execution observation")
+    };
+    assert!(observer.managed.is_none());
+    assert_eq!(
+        observer.observation.unwrap().pending_requests[0].id,
+        "approval"
+    );
+    w.module
+        .authorize_host_response(principal, "session:standalone", Some("run"), "approval")
+        .unwrap();
+    assert_eq!(
+        w.module
+            .authorize_host_response(
+                alice.principal.as_ref().unwrap(),
+                "session:standalone",
+                Some("run"),
+                "approval"
+            )
+            .unwrap_err()
+            .code,
+        CoreErrorCode::Unauthorized
+    );
+}
+
+#[test]
+fn chat_events_concern_the_member_core_entitles_never_another() {
+    use nodex_core_contracts::{team::PhonePushAudience, workspace::SessionExecutionRequestKind};
+    let w = seeded_workspace();
+    let bob = member(&w, "bob");
+    let _alice = member(&w, "alice");
+    apply_member(
+        &w,
+        &bob,
+        "bob:push",
+        ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            session_id: "session:push".into(),
+            project_id: None,
+            title: "Bob's chat".into(),
+            initial_page_ids: vec![],
+            agent_selection: None,
+            runtime_id: "runtime".into(),
+            runtime_thread_id: "thread".into(),
+            launch_request_id: "launch".into(),
+            side_chat_source_session_id: None,
+            coordinator: false,
+        },
+    )
+    .unwrap();
+    let audience = |audience: PhonePushAudience| {
+        w.module
+            .push_audience(Some("session:push"), &audience)
+            .unwrap()
+    };
+    let request = |request| PhonePushAudience::Request {
+        run_id: Some("run".into()),
+        request,
+    };
+    // Without a Page Owner, both kinds of request and the Run's outcome go to its requester.
+    assert_eq!(
+        audience(request(SessionExecutionRequestKind::Question)).as_deref(),
+        Some("bob")
+    );
+    assert_eq!(
+        audience(request(SessionExecutionRequestKind::Approval)).as_deref(),
+        Some("bob")
+    );
+    assert_eq!(
+        audience(PhonePushAudience::RunRequester {
+            run_id: "run".into()
+        })
+        .as_deref(),
+        Some("bob")
+    );
+    // Alice's Run in the same chat: its question and outcome are hers, and Bob's stay his.
+    w.kernel
+        .writer()
+        .call(|c| {
+            c.execute("INSERT INTO session_run_members(session_id,run_id,member_id) VALUES('session:push','alice-run','alice')",[])?;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        audience(PhonePushAudience::Request {
+            run_id: Some("alice-run".into()),
+            request: SessionExecutionRequestKind::Question,
+        })
+        .as_deref(),
+        Some("alice")
+    );
+    assert_eq!(
+        audience(PhonePushAudience::RunRequester {
+            run_id: "alice-run".into()
+        })
+        .as_deref(),
+        Some("alice")
+    );
+    assert_eq!(
+        audience(request(SessionExecutionRequestKind::Question)).as_deref(),
+        Some("bob")
+    );
+    assert_eq!(
+        w.module
+            .push_audience(
+                Some("session:missing"),
+                &request(SessionExecutionRequestKind::Question)
+            )
+            .unwrap(),
+        None
+    );
+    // A reminder concerns whoever set it, while they remain an active Member.
+    let reminder = |member_id: &str| {
+        audience(PhonePushAudience::ReminderOwner {
+            member_id: member_id.into(),
+        })
+    };
+    assert_eq!(reminder("alice").as_deref(), Some("alice"));
+    assert_eq!(reminder("member:missing"), None);
+}
+
+#[test]
+fn remote_members_read_session_execution_routes_without_host_or_agent_authority() {
+    let w = seeded_workspace();
+    let bob = member(&w, "bob");
+    apply_host(
+        &w.module,
+        "host:bind",
+        ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            session_id: "session:bob".into(),
+            project_id: Some("project:default".into()),
+            title: "Shared chat".into(),
+            initial_page_ids: vec![],
+            agent_selection: None,
+            runtime_id: "runtime".into(),
+            runtime_thread_id: "thread".into(),
+            launch_request_id: "launch".into(),
+            side_chat_source_session_id: None,
+            coordinator: false,
+        },
+    );
+    let reads = [
+        ProjectWorkspaceRead::AgentRuntimeSessionBinding {
+            session_id: "session:bob".into(),
+        },
+        ProjectWorkspaceRead::AgentRuntimeSessionBindingByExecution {
+            runtime_id: "runtime".into(),
+            runtime_thread_id: "thread".into(),
+        },
+        ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow {
+            runtime_id: "runtime".into(),
+            scope: nodex_core_contracts::workspace::AgentRuntimeBindingScope::All,
+            window: CollectionWindowRequest {
+                first: Some(10),
+                after: None,
+            },
+        },
+    ];
+    let agent = BoundModuleContext {
+        adapter: AdapterKind::Agent,
+        ..host()
+    };
+    for read in reads {
+        let request = ModuleReadRequest {
+            contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+            read,
+        };
+        let value = w.module.read(&bob, request.clone()).unwrap().value;
+        match value {
+            ProjectWorkspaceReadValue::AgentRuntimeSessionBinding {
+                binding: Some(binding),
+            } => {
+                assert_eq!(binding.session_id, "session:bob");
+                assert_eq!(binding.runtime_thread_id, "thread");
+            }
+            ProjectWorkspaceReadValue::AgentRuntimeSessionBindingWindow { bindings } => {
+                assert_eq!(bindings.items.len(), 1);
+                assert_eq!(bindings.items[0].session_id, "session:bob");
+            }
+            _ => panic!("execution route"),
+        }
+        assert_eq!(
+            w.module.read(&agent, request).unwrap_err().code,
+            CoreErrorCode::Unauthorized
+        );
+    }
+    let host_only = ModuleReadRequest {
+        contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+        read: ProjectWorkspaceRead::AgentRuntimeSessionBindingByThread {
+            runtime_thread_id: "thread".into(),
+        },
+    };
+    assert_eq!(
+        w.module.read(&bob, host_only).unwrap_err().code,
+        CoreErrorCode::Unauthorized
+    );
+    assert_eq!(
+        apply_member(
+            &w,
+            &bob,
+            "member:retire",
+            ProjectWorkspaceIntent::AcknowledgeAgentRuntimeExecutionCleanup {
+                cleanup_id: "cleanup".into(),
+                runtime_id: "runtime".into(),
+                runtime_thread_id: "thread".into(),
+            }
+        )
+        .unwrap_err()
+        .code,
+        CoreErrorCode::Unauthorized
+    );
 }
 
 #[test]
@@ -105,6 +387,38 @@ fn remote_members_read_and_reply_to_turns_with_member_bound_receipts() {
         };
         assert_eq!(items.items.len(), 1);
         let episode = items.items[0].turn.as_ref().unwrap().turn.episode.clone();
+        let exact = w
+            .module
+            .read(
+                &remote,
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: ProjectWorkspaceRead::InboxMessage {
+                        page_id: page.into(),
+                    },
+                },
+            )
+            .expect("The invoking Member can read its exact Turn");
+        let ProjectWorkspaceReadValue::InboxMessage { item } = exact.value else {
+            panic!("Exact Turn");
+        };
+        assert_eq!(item.turn.unwrap().turn.episode, episode);
+        assert_eq!(
+            w.module
+                .read(
+                    &remote,
+                    ModuleReadRequest {
+                        contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        read: ProjectWorkspaceRead::InboxDispatchContext {
+                            page_ids: vec![page.into()]
+                        },
+                    }
+                )
+                .expect_err("A Turn cannot become intake review context")
+                .code,
+            CoreErrorCode::NotFound
+        );
+
         let dispatch = if answer {
             nodex_core_contracts::inbox::InboxReplyDispatch::Answer {
                 response: nodex_core_contracts::inbox::InboxQuestionResponse {

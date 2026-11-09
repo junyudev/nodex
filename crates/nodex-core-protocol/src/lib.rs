@@ -1275,6 +1275,7 @@ pub struct RemoteCoreInfo {
 #[allow(dead_code)]
 mod team_api {
     use super::RemoteCoreInfo;
+    use nodex_core_contracts::library::Member;
     use nodex_core_contracts::team::*;
     #[utoipa::path(post,path="/enroll",request_body=EnrollmentRequest,responses((status=200,description="One-time device credential",body=EnrollmentResponse)))]
     pub(super) fn enroll() {}
@@ -1284,8 +1285,18 @@ mod team_api {
     pub(super) fn info() {}
     #[utoipa::path(post,path="/core/v1/admin/space/listen",request_body=ListenRequest,responses((status=200,description="Local Owner enables HTTPS",body=ListenerInfo)))]
     pub(super) fn listen() {}
+    #[utoipa::path(get,path="/core/v1/admin/space/remote-access",responses((status=200,description="Listener state",body=RemoteAccessState)))]
+    pub(super) fn remote_access() {}
+    #[utoipa::path(post,path="/core/v1/admin/space/stop-listener",responses((status=200,description="Local Owner stops remote access",body=RemoteAccessState)))]
+    pub(super) fn stop_listener() {}
+    #[utoipa::path(post,path="/core/v1/admin/space/link-device",responses((status=200,description="Member links their own Device",body=DeviceLinkOffer)))]
+    pub(super) fn link_device() {}
+    #[utoipa::path(get,path="/core/v1/admin/space/members",responses((status=200,description="Owner lists Members",body=Vec<Member>)))]
+    pub(super) fn members() {}
+
     #[utoipa::path(post,path="/core/v1/admin/space/prepare",request_body=ListenRequest,responses((status=200,description="Local Owner prepares a team Space without listening",body=SpaceIdentity)))]
     pub(super) fn prepare() {}
+    #[utoipa::path(post,path="/core/v1/admin/space/name",request_body=RenameSpaceRequest,responses((status=200,description="Owner names the Space",body=SpaceName)))]
     pub(super) fn rename() {}
     #[utoipa::path(post,path="/core/v1/admin/space/member-name",request_body=RenameMemberRequest,responses((status=200,description="A Member chooses the name others see",body=Member)))]
     pub(super) fn rename_member() {}
@@ -1293,17 +1304,37 @@ mod team_api {
     pub(super) fn host_register() {}
     #[utoipa::path(post,path="/core/v1/admin/host/poll",request_body=HostLease,responses((status=200,description="Bounded execution-owner work",body=Option<HostInvocation>)))]
     pub(super) fn host_poll() {}
+    #[utoipa::path(post,path="/core/v1/host/phone/poll",request_body=HostLease,responses((status=200,description="Local Host polls admitted phone events",body=Option<PhoneHostEvent>)))]
+    pub(super) fn phone_poll() {}
+    #[utoipa::path(post,path="/core/v1/host/phone/publish",request_body=PhoneHostPublish,responses((status=200,description="Local Host publishes a bounded phone envelope",body=bool)))]
+    pub(super) fn phone_publish() {}
+    #[utoipa::path(post,path="/core/v1/host/phone/response-entitlements",request_body=PhoneResponseEntitlementRequest,responses((status=200,description="Requesting Member answer entitlement",body=Vec<String>)))]
+    pub(super) fn phone_response_entitlements() {}
+    #[utoipa::path(post,path="/core/v1/host/phone/push",request_body=PhonePushCommit,responses((status=200,description="Commit a phone's own notification registration to its Device",body=bool)))]
+    pub(super) fn phone_push() {}
+    #[utoipa::path(post,path="/core/v1/host/phone/push-recipients",request_body=PhonePushRecipientsRequest,responses((status=200,description="Registered Devices of the Member a chat event concerns",body=Vec<PhonePushRecipient>)))]
+    pub(super) fn phone_push_recipients() {}
+    #[utoipa::path(post,path="/core/v1/host/phone/push-forget",request_body=PhonePushForget,responses((status=200,description="Forget a notification handle the relay no longer reaches",body=bool)))]
+    pub(super) fn phone_push_forget() {}
     #[utoipa::path(post,path="/core/v1/admin/host/complete",request_body=HostCompletion,responses((status=200,description="Complete an admitted Host call",body=bool)))]
     pub(super) fn host_complete() {}
+    #[utoipa::path(post,path="/core/v1/host/presence",request_body=MemberPresenceReport,responses((status=200,description="A Member's Device reports whether its person is at it",body=bool)))]
+    pub(super) fn member_presence_report() {}
+    #[utoipa::path(post,path="/core/v1/admin/host/member-presence",request_body=MemberPresenceRequest,responses((status=200,description="Whether one of a Member's computers vouches for them",body=MemberPresence)))]
+    pub(super) fn member_presence() {}
     #[utoipa::path(get,path="/core/v1/host/availability",responses((status=200,description="Execution owner availability",body=HostAvailability)))]
     pub(super) fn host_availability() {}
     #[utoipa::path(post,path="/core/v1/host/call",request_body=HostCall,responses((status=200,description="Authenticated bounded execution-owner response",body=HostCallResult)))]
     pub(super) fn host_call() {}
+    #[utoipa::path(post,path="/core/v1/admin/space/invite",request_body=InviteRequest,responses((status=200,description="Owner issues one-time invite",body=InviteResponse)))]
     pub(super) fn invite() {}
+    #[utoipa::path(get,path="/core/v1/admin/space/devices",responses((status=200,description="Member lists own Devices; Owner lists all",body=Vec<MemberDevice>)))]
     pub(super) fn devices() {}
     #[utoipa::path(get,path="/core/v1/admin/space/transport-stats",responses((status=200,description="Local Owner remote budget diagnostics",body=RemoteTransportStats)))]
     pub(super) fn transport_stats() {}
+    #[utoipa::path(post,path="/core/v1/admin/space/revoke",request_body=RevokeDeviceRequest,responses((status=200,description="Member revokes own Device; Owner revokes any",body=bool)))]
     pub(super) fn revoke() {}
+    #[utoipa::path(post,path="/core/v1/admin/space/remove-member",request_body=RemoveMemberRequest,responses((status=200,description="Owner removes a Member and revokes devices",body=bool)))]
     pub(super) fn remove() {}
 }
 
@@ -1315,12 +1346,24 @@ mod team_api {
         team_api::session,
         team_api::info,
         team_api::listen,
+        team_api::remote_access,
+        team_api::stop_listener,
+        team_api::link_device,
+        team_api::members,
         team_api::prepare,
         team_api::rename,
         team_api::rename_member,
         team_api::host_register,
         team_api::host_poll,
+        team_api::phone_poll,
+        team_api::phone_publish,
+        team_api::phone_response_entitlements,
+        team_api::phone_push,
+        team_api::phone_push_recipients,
+        team_api::phone_push_forget,
         team_api::host_complete,
+        team_api::member_presence_report,
+        team_api::member_presence,
         team_api::host_availability,
         team_api::host_call,
         team_api::invite,
@@ -1363,6 +1406,11 @@ mod team_api {
         nodex_core_contracts::team::SessionResponse,
         nodex_core_contracts::team::ListenRequest,
         nodex_core_contracts::team::ListenerInfo,
+        nodex_core_contracts::team::ListenerPeerPolicy,
+        nodex_core_contracts::team::DeviceFormFactor,
+        nodex_core_contracts::team::DeviceLinkOffer,
+        nodex_core_contracts::team::RemoteAccessState,
+        nodex_core_contracts::team::RemoteAccessIntent,
         nodex_core_contracts::team::SpaceIdentity,
         nodex_core_contracts::team::SpaceName,
         nodex_core_contracts::team::RenameSpaceRequest,
@@ -1372,6 +1420,20 @@ mod team_api {
         nodex_core_contracts::team::HostLease,
         nodex_core_contracts::team::HostRegistration,
         nodex_core_contracts::team::HostInvocation,
+        nodex_core_contracts::team::PhoneHostEvent,
+        nodex_core_contracts::team::PhoneHostPublish,
+        nodex_core_contracts::team::PhoneResponseEntitlementRequest,
+        nodex_core_contracts::team::PhoneResponseRequest,
+        nodex_core_contracts::team::PhonePushCommit,
+        nodex_core_contracts::team::PhonePushAudience,
+        nodex_core_contracts::team::PhonePushRecipientsRequest,
+        nodex_core_contracts::team::PhonePushRecipient,
+        nodex_core_contracts::team::PhonePushForget,
+        nodex_core_contracts::team::MemberPresenceReport,
+        nodex_core_contracts::team::MemberPresenceRequest,
+        nodex_core_contracts::team::MemberPresence,
+        nodex_core_contracts::team::PushRegistration,
+        nodex_core_contracts::team::PushPreferences,
         nodex_core_contracts::team::HostCompletion,
         nodex_core_contracts::team::HostAvailability,
         nodex_core_contracts::team::InviteRequest,
@@ -1526,13 +1588,25 @@ mod tests {
             "/core/v1/remote-info",
             "/core/v1/admin/space/listen",
             "/core/v1/admin/space/prepare",
+            "/core/v1/admin/space/remote-access",
+            "/core/v1/admin/space/stop-listener",
+            "/core/v1/admin/space/link-device",
+            "/core/v1/admin/space/members",
             "/core/v1/admin/space/name",
             "/core/v1/admin/space/member-name",
             "/core/v1/admin/host/register",
+            "/core/v1/admin/host/member-presence",
             "/core/v1/admin/host/poll",
             "/core/v1/admin/host/complete",
             "/core/v1/host/availability",
             "/core/v1/host/call",
+            "/core/v1/host/phone/poll",
+            "/core/v1/host/phone/publish",
+            "/core/v1/host/phone/push",
+            "/core/v1/host/phone/push-forget",
+            "/core/v1/host/phone/push-recipients",
+            "/core/v1/host/presence",
+            "/core/v1/host/phone/response-entitlements",
             "/core/v1/admin/space/invite",
             "/core/v1/admin/space/devices",
             "/core/v1/admin/space/transport-stats",

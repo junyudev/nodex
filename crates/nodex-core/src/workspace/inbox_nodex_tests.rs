@@ -1086,6 +1086,79 @@ fn notification_intents_are_claimed_once_only_while_their_turn_is_current() {
 }
 
 #[test]
+fn phones_hear_of_each_current_turn_whether_or_not_a_desktop_claimed_it() {
+    use nodex_core_contracts::team::PhonePushAudience;
+    let w = seeded_workspace();
+    let page = "019d0000-0000-7000-8000-000000000092";
+    create_work_page(&w, page);
+    start_work_page(&w, page);
+    let capture = |revision: i64, kind: &str| {
+        let observation:SessionExecutionObservation=serde_json::from_value(serde_json::json!({"state":"waiting","runId":"run","runStartedAt":0,"pendingRequestIds":["request"],"pendingRequests":[{"id":"request","kind":kind,"question":"Choose one","options":["One","Two"]}],"queue":null,"terminalStatus":null,"personStopped":false,"stalled":false,"progressFingerprint":"p","progressSince":0})).unwrap();
+        apply_host(
+            &w.module,
+            &format!("phone:observe:{revision}"),
+            ProjectWorkspaceIntent::RecordSessionExecution {
+                session_id: format!("chat:{page}"),
+                expected_revision: revision,
+                observation,
+                events: vec![],
+                resolved_request_ids: vec![],
+            },
+        );
+    };
+    let current = || {
+        let ProjectWorkspaceReadValue::CurrentTurnNotifications { turns } =
+            read_host(&w.module, ProjectWorkspaceRead::CurrentTurnNotifications)
+        else {
+            panic!()
+        };
+        turns
+    };
+    let owner = |episode: &str| {
+        w.module
+            .push_audience(
+                None,
+                &PhonePushAudience::TurnOwner {
+                    page_id: page.into(),
+                    episode: episode.into(),
+                },
+            )
+            .unwrap()
+    };
+    assert!(current().is_empty());
+    capture(0, "question");
+    let first = current();
+    assert_eq!(first.len(), 1);
+    let turn = &first[0];
+    assert_eq!(turn.member_id, local_member(&w));
+    assert_eq!(
+        turn.reason,
+        Some(nodex_core_contracts::workspace::TurnReason::Question)
+    );
+    assert_eq!(
+        turn.session_id.as_deref(),
+        Some(format!("chat:{page}").as_str())
+    );
+    assert_eq!(owner(&turn.episode), Some(local_member(&w)));
+    // A desktop showing it does not take it from the phone.
+    apply_host(
+        &w.module,
+        "phone:claim",
+        ProjectWorkspaceIntent::ClaimTurnNotification {
+            page_id: page.into(),
+            episode: turn.episode.clone(),
+        },
+    );
+    assert_eq!(current(), first);
+    // Once the Turn moves on, it concerns no one and is no longer listed.
+    capture(1, "approval");
+    let second = current();
+    assert_eq!(second.len(), 1);
+    assert_ne!(second[0].episode, turn.episode);
+    assert_eq!(owner(&turn.episode), None);
+}
+
+#[test]
 fn answers_refuse_questions_already_dispatched_to_a_chat() {
     let w = seeded_workspace();
     runtime_session(&w.module, "nodex", None, true);

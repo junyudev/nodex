@@ -109,3 +109,13 @@ export function useFileUri(ref: string | null) {
   useEffect(() => file.attach(), [file]);
   return useAtomValue(file.store.atom);
 }
+
+/**
+ * Where a picture's bytes come from: its host reads a `nodex://` picture for this Member; one on
+ * the web or written into a reply loads as the reply loads it.
+ */
+export function usePictureUri(ref: string) {
+  const hosted = ref.startsWith("nodex://");
+  const file = useFileUri(hosted ? ref : null);
+  return hosted ? file : { uri: ref, loading: false, error: null };
+}

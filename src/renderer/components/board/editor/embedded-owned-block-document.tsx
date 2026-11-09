@@ -131,7 +131,6 @@ export function EmbeddedOwnedBlockDocument({
                     surfaceMutationBarrier={surface.runtime}
                     onOpenPage={hostRuntime?.openPage}
                     onOpenCanvas={hostRuntime?.openCanvas}
-                    onOpenPageFile={hostRuntime?.openPageFile}
                     isActivePanelTab={isActive}
                     placeholder="Add content…"
                     className="min-w-0"

@@ -19,6 +19,7 @@ pub struct LibraryMembership {
     readers: StoreReaders,
     writer: StoreWriter,
     space: String,
+    principal: Option<RemotePrincipal>,
 }
 fn unauthorized() -> StoreError {
     StoreError::new(
@@ -37,6 +38,8 @@ fn now() -> i64 {
 /// their own desktop, Team Space once it is shared or hosted. Every surface reads this name.
 const SPACE_NAME_SQL: &str = "SELECT COALESCE(name, CASE WHEN space_kind='personal' AND hosted=0 \
      THEN 'Personal' ELSE 'Team Space' END) FROM libraries WHERE id=?1";
+/// How often a live connection refreshes its Device's last-seen time.
+pub const DEVICE_SEEN_INTERVAL_SECONDS: i64 = 60;
 fn secret() -> Result<String, StoreError> {
     let mut bytes = [0_u8; 32];
     getrandom::fill(&mut bytes).map_err(|_| {
@@ -97,6 +100,30 @@ pub fn default_owner_name() -> String {
         })
         .and_then(|name| member_name(&name).ok())
         .unwrap_or_else(|| "Owner".to_owned())
+}
+/// Relay handles are base64url; keys are exactly 32 canonical base64url bytes.
+fn validate_push(registration: &PushRegistration) -> Result<(), StoreError> {
+    use base64::prelude::{BASE64_URL_SAFE_NO_PAD, Engine as _};
+    let url_safe = |value: &str| {
+        value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    };
+    if registration.handle.is_empty()
+        || registration.handle.len() > 1024
+        || !url_safe(&registration.handle)
+    {
+        return Err(invalid("Notification handle is invalid"));
+    }
+    if registration.key.len() != 43
+        || !url_safe(&registration.key)
+        || BASE64_URL_SAFE_NO_PAD
+            .decode(&registration.key)
+            .map_or(true, |key| key.len() != 32)
+    {
+        return Err(invalid("Notification key is invalid"));
+    }
+    Ok(())
 }
 fn verified_device(
     c: &rusqlite::Connection,
@@ -165,6 +192,7 @@ impl LibraryMembership {
             nodex_core_contracts::agent::AgentBackendKind::OpenCode => "OpenCode",
             nodex_core_contracts::agent::AgentBackendKind::Acp => "Agent",
         };
+        self.writer.clone().call(move |c| with_immediate_transaction(c, |c| {
             bind_run_requester(c, &session, run.as_deref(), message.as_deref())?;
             crate::infrastructure::actors::for_session(c, &space, &session, run.clone())?;
             c.execute("INSERT INTO agent_actor_labels(session_id,run_key,label) VALUES(?1,?2,?3) ON CONFLICT(session_id,run_key) DO UPDATE SET label=excluded.label", params![session,run.as_deref().unwrap_or_default(),label])?;
@@ -186,9 +214,147 @@ impl LibraryMembership {
             readers: store.readers(),
             writer: store.writer(),
             space,
+            principal: None,
         }
     }
+    /// Only the authenticated adapter may supply this principal.
+    pub fn for_principal(&self, principal: Option<RemotePrincipal>) -> Self {
+        Self {
+            readers: self.readers.clone(),
+            writer: self.writer.clone(),
+            space: self.space.clone(),
+            principal,
+        }
+    }
+    fn caller(
+        &self,
+        c: &rusqlite::Connection,
+        owner_only: bool,
+    ) -> Result<(String, MemberRole), StoreError> {
+        if let Some(p) = &self.principal {
+            crate::infrastructure::member_admission::require_principal(c, &self.space, p)?;
+        }
+        let member = match &self.principal {
+            Some(p) => p.member_id.clone(),
+            None => crate::infrastructure::actors::local_member(c, &self.space)?,
+        };
+        let current: String = c.query_row(
+            "SELECT role FROM members WHERE id=?1 AND library_id=?2 AND lifecycle='active'",
+            params![member, self.space],
+            |r| r.get(0),
+        )?;
+        let current = role(&current);
+        if owner_only && current != MemberRole::Owner {
+            return Err(StoreError::new(
+                StoreErrorCode::Unauthorized,
+                "Space Owner authority is required",
+                false,
+            ));
+        }
+        Ok((member, current))
+    }
+    /// Seal administrative changes with the same typed Actor evidence as content writes.
+    fn audit(
+        &self,
+        c: &rusqlite::Connection,
+        member: &str,
+        operation: &str,
+    ) -> Result<(), StoreError> {
+        use crate::infrastructure::{
+            durable_mutation::{self, OperationIdentity, ReceiptMetadata},
+            local_commit,
+        };
+        use nodex_core_contracts::{
+            Actor, AdapterKind, BoundModuleContext, LibraryId, ProfileId,
+            administration::{StoreAdministrationEvent, StoreAdministrationEventKind},
+        };
+        let profile: String = c.query_row(
+            "SELECT profile_id FROM libraries WHERE id=?1",
+            [&self.space],
+            |r| r.get(0),
+        )?;
+        let epoch: String = c.query_row(
+            "SELECT store_epoch FROM block_store_metadata WHERE id=1",
+            [],
+            |r| r.get(0),
+        )?;
+        let context = BoundModuleContext {
+            actor: Actor::Member {
+                member_id: member.to_owned(),
+            },
+            authorizing_member_id: None,
+            profile_id: ProfileId(profile),
+            library_id: LibraryId(self.space.clone()),
+            project_id: None,
+            connection_id: "space-administration".into(),
+            adapter: if self.principal.is_some() {
+                AdapterKind::RemoteMember
+            } else {
+                AdapterKind::NativeCli
+            },
+            principal: self.principal.clone(),
+            editor_history_owner: None,
+            agent_attribution: None,
+        };
+        let id = secret()?;
+        let at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let digest = hash(operation);
+        let _result = durable_mutation::run(
+            c,
+            OperationIdentity {
+                module: ModuleName::StoreAdministration,
+                module_name: "store_administration",
+                operation_id: &id,
+                intent_hash: &digest,
+                store_epoch: &epoch,
+                committed_at: &at,
+                context: &context,
+            },
+            |scope| {
+                local_commit::record_administration_effect(
+                    c,
+                    scope.evidence(),
+                    &self.space,
+                    &StoreAdministrationEvent {
+                        kind: StoreAdministrationEventKind::StoreAdministrationChanged,
+                        operation: operation.into(),
+                        backup_ids: vec![],
+                        readiness_changed: false,
+                    },
+                )?;
+                Ok(scope.seal(
+                    serde_json::json!({"changed":true}),
+                    ReceiptMetadata {
+                        operation_kind: operation,
+                        event_sequence: None,
+                        committed_at: &at,
+                    },
+                ))
+            },
+        )?;
+        Ok(())
+    }
     pub fn require_owner(&self) -> Result<String, StoreError> {
+        self.readers
+            .read_default(|c| self.caller(c, true).map(|(id, _)| id))
+    }
+    pub fn kind(&self) -> Result<SpaceKind, StoreError> {
+        self.readers.read_default(|c| {
+            let kind: String = c.query_row(
+                "SELECT space_kind FROM libraries WHERE id=?1",
+                [&self.space],
+                |r| r.get(0),
+            )?;
+            match kind.as_str() {
+                "personal" => Ok(SpaceKind::Personal),
+                "team" => Ok(SpaceKind::Team),
+                _ => Err(StoreError::new(
+                    StoreErrorCode::Internal,
+                    "Invalid Space kind",
+                    false,
+                )),
+            }
+        })
     }
     pub fn name(&self) -> Result<String, StoreError> {
         self.readers
@@ -202,6 +368,23 @@ impl LibraryMembership {
             return Err(invalid("A Space name cannot contain control characters"));
         }
         let space = self.space.clone();
+        let this = self.for_principal(self.principal.clone());
+        self.writer.clone().call(move |c| {
+            with_immediate_transaction(c, |c| {
+                let (member, _) = this.caller(c, true)?;
+                c.execute(
+                    "UPDATE libraries SET name=?2,updated_at=?3 WHERE id=?1",
+                    params![
+                        space,
+                        name,
+                        chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+                    ],
+                )?;
+                this.audit(c, &member, "rename_space")?;
+                Ok(SpaceName {
+                    space_id: space,
+                    name,
+                })
             })
         })
     }
@@ -228,7 +411,15 @@ impl LibraryMembership {
             })
         })
     }
+    /// Headless hosting controls repository execution semantics independently of team membership.
+    pub fn prepare_hosting(&self) -> Result<(), StoreError> {
+        let this = self.for_principal(None);
         self.writer.call(move |c| {
+            with_immediate_transaction(c, |c| {
+                let (owner, _) = this.caller(c, true)?;
+                c.execute("UPDATE libraries SET hosted=1 WHERE id=?1", [&this.space])?;
+                this.audit(c, &owner, "prepare_hosting")
+            })
         })
     }
     pub fn invite(
@@ -241,12 +432,16 @@ impl LibraryMembership {
         let code_hash = hash(&code);
         let id = secret()?;
         let expires_at = now() + 86400;
+        let this = self.for_principal(self.principal.clone());
+        self.writer.clone().call(move |c| with_immediate_transaction(c, |c| { let (owner,_) = this.caller(c, true)?; c.execute("DELETE FROM space_invites WHERE (device_link=0 AND (expires_at<=?1 OR redeemed_at IS NOT NULL)) OR (device_link=1 AND expires_at<=?1 AND created_at<=?2)",params![now(),now()-3600])?;
    let count:i64=c.query_row("SELECT count(*) FROM space_invites",[],|r|r.get(0))?;if count>=1024 {return Err(invalid("Invite capacity reached"));}
    if let Some(member)=&request.member_id {
     let valid:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM members WHERE id=?1 AND library_id=?2 AND lifecycle='active' AND role=?3)",params![member,space,role_name(request.role)],|r|r.get(0))?;
     if !valid {return Err(invalid("Invite requires an active Member with the same role"));}
    }
+   c.execute("INSERT INTO space_invites(id,library_id,code_hash,role,expires_at,created_by,member_id) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![id,space,code_hash,role_name(request.role),expires_at,owner,request.member_id])?;this.audit(c, &owner, "invite_member")?;Ok(()) }))?;
         Ok(InviteResponse {
+            url: info.routes.first().cloned().unwrap_or(info.url),
             fingerprint: info.fingerprint,
             code,
             expires_at,
@@ -267,6 +462,8 @@ impl LibraryMembership {
         let device_id = secret()?;
         let credential = secret()?;
         let credential_hash = hash(&credential);
+        let this = self.for_principal(None);
+        self.writer.clone().call(move |c| with_immediate_transaction(c,|c| {
    let invite:Option<(String,String,Option<String>,String)>=c.query_row("SELECT id,role,member_id,code_hash FROM space_invites WHERE library_id=?1 AND code_hash=?2 AND redeemed_at IS NULL AND expires_at>?3",params![space,code_hash,now()],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
    let Some((invite_id,role,existing_member,stored_hash))=invite else{return Err(unauthorized())};
    if !bool::from(stored_hash.as_bytes().ct_eq(code_hash.as_bytes())) {return Err(unauthorized());}
@@ -278,6 +475,8 @@ impl LibraryMembership {
    };
    let device_count:i64=c.query_row("SELECT count(*) FROM member_devices WHERE member_id=?1 AND revoked_at IS NULL",[&member_id],|r|r.get(0))?;if device_count>=16{return Err(invalid("Member device capacity reached"));}
    let total_devices:i64=c.query_row("SELECT count(*) FROM member_devices",[],|r|r.get(0))?;if total_devices>=16384{return Err(invalid("Space device capacity reached"));}
+   c.execute("INSERT INTO member_devices(id,library_id,member_id,label,credential_hash,created_at,last_seen,form_factor) VALUES(?1,?2,?3,?4,?5,?6,?6,?7)",params![device_id,space,member_id,request.device_label.trim(),credential_hash,now(), match request.form_factor { DeviceFormFactor::Desktop => "desktop", DeviceFormFactor::Phone => "phone" }])?;
+   this.audit(c, &member_id, "enroll_device")?;
    let space_name=c.query_row(SPACE_NAME_SQL,[&space],|r|r.get(0))?;
    Ok(EnrollmentResponse{space_id:space.clone(),space_name,member_id:member_id.clone(),device_id:device_id.clone(),device_credential:credential.clone()})
   }))
@@ -300,6 +499,7 @@ impl LibraryMembership {
         let token_hash = hash(&token);
         let id = secret()?;
         let expires_at = now() + 3600;
+        self.writer.clone().call(move |c| with_immediate_transaction(c,|c| {
    let AuthenticatedDevice{device_id,space_id,member_id,role}=verified_device(c,&space,&credential_hash)?;
    c.execute("DELETE FROM member_sessions WHERE expires_at<=?1",[now()])?;
    let count:i64=c.query_row("SELECT count(*) FROM member_sessions WHERE device_id=?1",[&device_id],|r|r.get(0))?;
@@ -328,6 +528,22 @@ impl LibraryMembership {
         }
         self.readers.read_default(|c| Ok(c.query_row("SELECT EXISTS(SELECT 1 FROM member_sessions s JOIN member_devices d ON d.id=s.device_id JOIN members m ON m.id=d.member_id WHERE s.id=?1 AND s.expires_at>?2 AND d.revoked_at IS NULL AND m.lifecycle='active' AND m.role=?3 AND d.member_id=?4 AND d.id=?5 AND d.library_id=?6)",params![principal.session_id,now(),role_name(principal.role),principal.member_id,principal.device_id,principal.space_id],|r|r.get::<_,bool>(0))?)).unwrap_or(false)
     }
+    /// A Device with a live authenticated connection is seen now. Its time advances at most
+    /// once a minute, however many connections or streams the Device keeps open.
+    pub fn mark_seen(&self, principal: &RemotePrincipal) -> Result<(), StoreError> {
+        if principal.space_id != self.space {
+            return Ok(());
+        }
+        let (device, space) = (principal.device_id.clone(), self.space.clone());
+        self.writer.call(move |c| {
+            c.execute(
+                "UPDATE member_devices SET last_seen=?3 WHERE id=?1 AND library_id=?2 \
+                 AND revoked_at IS NULL AND last_seen<=?3-?4",
+                params![device, space, now(), DEVICE_SEEN_INTERVAL_SECONDS],
+            )?;
+            Ok(())
+        })
+    }
     /// A receipt remains private to its initiating Member across session renewal.
     pub fn owns_operation(
         &self,
@@ -352,11 +568,123 @@ impl LibraryMembership {
         })
     }
 
+    pub fn members(&self) -> Result<Vec<nodex_core_contracts::library::Member>, StoreError> {
+        self.readers.read_default(|c| {
+            self.caller(c, true)?;
+            super::members::list(c, &self.space)
+        })
+    }
     pub fn devices(&self) -> Result<Vec<MemberDevice>, StoreError> {
+        self.readers.read_default(|c| {
+            let (member, role) = self.caller(c, false)?;
+            Ok(c.prepare("SELECT d.id,d.member_id,d.label,d.created_at,d.last_seen,d.revoked_at,d.form_factor,d.library_id,EXISTS(SELECT 1 FROM member_device_push_registrations r WHERE r.device_id=d.id) FROM member_devices d WHERE d.library_id=?1 AND (?2='owner' OR d.member_id=?3) ORDER BY d.created_at,d.id LIMIT 16384")?.query_map(params![self.space,role_name(role),member],|r|Ok(MemberDevice{id:r.get(0)?,member_id:r.get(1)?,label:r.get(2)?,created_at:r.get(3)?,last_seen:r.get(4)?,revoked_at:r.get(5)?,form_factor:if r.get::<_,String>(6)?=="phone" {DeviceFormFactor::Phone} else {DeviceFormFactor::Desktop},space_id:r.get(7)?,notifications_enabled:r.get(8)?}))?.collect::<rusqlite::Result<Vec<_>>>()?)
+        })
     }
     pub fn revoke(&self, id: String) -> Result<(), StoreError> {
+        let this = self.for_principal(self.principal.clone());
+        self.writer.call(move |c| with_immediate_transaction(c, |c| {
+            let (member, role) = this.caller(c, false)?;
+            let allowed: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM member_devices WHERE id=?1 AND library_id=?2 AND (?3='owner' OR member_id=?4))",params![id,this.space,role_name(role),member],|r|r.get(0))?;
+            if !allowed { return Err(StoreError::new(StoreErrorCode::Unauthorized,"Device belongs to another Member",false)); }
+            this.audit(c, &member, "revoke_device")?;
+            // Retire the Member's pending Device-link codes so a withdrawn Device cannot
+            // regain access by redeeming an offer it minted before revocation.
+            c.execute("UPDATE space_invites SET redeemed_at=COALESCE(redeemed_at,?2) WHERE device_link=1 AND redeemed_at IS NULL AND member_id=(SELECT member_id FROM member_devices WHERE id=?1 AND library_id=?3)",params![id,now(),this.space])?;
+            c.execute("UPDATE member_devices SET revoked_at=COALESCE(revoked_at,?2) WHERE id=?1", params![id,now()])?;
+            c.execute("DELETE FROM member_device_push_registrations WHERE device_id=?1", [&id])?;
             Ok(())
+        }))
     }
     pub fn remove(&self, id: String) -> Result<(), StoreError> {
+        let this = self.for_principal(self.principal.clone());
+        self.writer.call(move |c| with_immediate_transaction(c, |c| {
+            let (owner,_) = this.caller(c, true)?;
+            if owner == id { return Err(invalid("An Owner cannot remove themselves")); }
+            let active: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM members WHERE id=?1 AND library_id=?2 AND lifecycle='active')",params![id,this.space],|r|r.get(0))?;
+            if !active { return Err(invalid("Member is not active in this Space")); }
+            c.execute("UPDATE members SET lifecycle='removed',revision=revision+1 WHERE id=?1 AND library_id=?2",params![id,this.space])?;
+            c.execute("UPDATE member_devices SET revoked_at=COALESCE(revoked_at,?2) WHERE member_id=?1 AND library_id=?3",params![id,now(),this.space])?;
+            c.execute("DELETE FROM member_device_push_registrations WHERE device_id IN (SELECT id FROM member_devices WHERE member_id=?1 AND library_id=?2)",params![id,this.space])?;
+            this.audit(c, &owner, "remove_member")?;
+            Ok(())
+        }))
+    }
+    /// The verified phone's own Device registers or withdraws where it hears about chats. One phone
+    /// holds one registration per Member, so its newest Device replaces any older one's.
+    pub fn set_push_registration(
+        &self,
+        registration: Option<PushRegistration>,
+    ) -> Result<(), StoreError> {
+        let Some(principal) = self.principal.clone() else {
+            return Err(unauthorized());
+        };
+        let registration =
+            registration.filter(|r| r.preferences.needs_you || r.preferences.finished);
+        if let Some(registration) = &registration {
+            validate_push(registration)?;
+        }
+        let this = self.for_principal(Some(principal.clone()));
+        self.writer.call(move |c| {
+            with_immediate_transaction(c, |c| {
+                this.caller(c, false)?;
+                let device = &principal.device_id;
+                let Some(registration) = registration else {
+                    c.execute("DELETE FROM member_device_push_registrations WHERE device_id=?1", [device])?;
+                    return Ok(());
+                };
+                c.execute("DELETE FROM member_device_push_registrations WHERE handle=?1 AND device_id<>?2 AND device_id IN (SELECT id FROM member_devices WHERE member_id=?3 AND library_id=?4)",params![registration.handle,device,principal.member_id,this.space])?;
+                c.execute("INSERT INTO member_device_push_registrations(device_id,handle,push_key,needs_you,finished,updated_at) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(device_id) DO UPDATE SET handle=excluded.handle,push_key=excluded.push_key,needs_you=excluded.needs_you,finished=excluded.finished,updated_at=excluded.updated_at",params![device,registration.handle,registration.key,registration.preferences.needs_you,registration.preferences.finished,now()])?;
+                Ok(())
+            })
+        })
+    }
+    /// Registrations of a current Member's current Devices, for the local Host's delivery only.
+    pub fn push_recipients(&self, member: &str) -> Result<Vec<PhonePushRecipient>, StoreError> {
+        self.readers.read_default(|c| {
+            Ok(c.prepare("SELECT r.device_id,d.member_id,r.handle,r.push_key,r.needs_you,r.finished FROM member_device_push_registrations r JOIN member_devices d ON d.id=r.device_id JOIN members m ON m.id=d.member_id AND m.library_id=d.library_id WHERE d.library_id=?1 AND d.member_id=?2 AND d.revoked_at IS NULL AND m.lifecycle='active' ORDER BY r.device_id LIMIT 16")?.query_map(params![self.space,member],|r|Ok(PhonePushRecipient{device_id:r.get(0)?,member_id:r.get(1)?,registration:PushRegistration{handle:r.get(2)?,key:r.get(3)?,preferences:PushPreferences{needs_you:r.get(4)?,finished:r.get(5)?}}}))?.collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+    /// The relay no longer reaches this handle. A phone that has since registered again keeps it.
+    pub fn forget_push_registration(
+        &self,
+        device: String,
+        handle: String,
+    ) -> Result<bool, StoreError> {
+        let space = self.space.clone();
+        self.writer.call(move |c| {
+            Ok(c.execute("DELETE FROM member_device_push_registrations WHERE device_id=?1 AND handle=?2 AND device_id IN (SELECT id FROM member_devices WHERE library_id=?3)",params![device,handle,space])? > 0)
+        })
+    }
+    pub fn link_device(&self, info: ListenerInfo) -> Result<DeviceLinkOffer, StoreError> {
+        let this = self.for_principal(self.principal.clone());
+        let code = secret()?;
+        let code_hash = hash(&code);
+        let expires_at = now() + 300;
+        let member_id = self.writer.call(move |c| with_immediate_transaction(c, |c| {
+            let (member,role) = this.caller(c, false)?;
+            let (recent, oldest): (i64, Option<i64>) = c.query_row("SELECT count(*),min(created_at) FROM space_invites WHERE library_id=?1 AND created_by=?2 AND device_link=1 AND created_at>?3",params![this.space,member,now()-3600],|r|Ok((r.get(0)?,r.get(1)?)))?;
+            if recent >= 6 {
+                let milliseconds = oldest.unwrap_or_else(now).saturating_add(3600).saturating_sub(now()).max(1) as u64 * 1000;
+                return Err(StoreError::new(StoreErrorCode::ResourceExhausted,"Device linking is limited to six offers per hour",true)
+                    .with_recovery(nodex_core_contracts::CoreErrorRecovery::RetryAfter { budget: RemoteBudget::MemberDeviceLinks, milliseconds }));
+            }
+            let reserved: i64 = c.query_row("SELECT (SELECT count(*) FROM member_devices WHERE library_id=?1 AND member_id=?2 AND revoked_at IS NULL)+(SELECT count(*) FROM space_invites WHERE library_id=?1 AND member_id=?2 AND redeemed_at IS NULL AND expires_at>?3)",params![this.space,member,now()],|r|r.get(0))?;
+            if reserved >= 16 { return Err(invalid("Member device capacity reached")); }
+            c.execute("DELETE FROM space_invites WHERE expires_at<=?1 AND created_at<=?2",params![now(),now()-3600])?;
+            let count:i64=c.query_row("SELECT count(*) FROM space_invites",[],|r|r.get(0))?;
+            if count>=1024 {return Err(invalid("Invite capacity reached"));}
+            c.execute("INSERT INTO space_invites(id,library_id,code_hash,role,member_id,expires_at,created_by,device_link,created_at) VALUES(?1,?2,?3,?4,?5,?6,?5,1,?7)",params![secret()?,this.space,code_hash,role_name(role),member,expires_at,now()])?;
+            this.audit(c, &member, "link_device")?;
+            Ok(member)
+        }))?;
+        Ok(DeviceLinkOffer {
+            space_id: self.space.clone(),
+            space_name: self.name()?,
+            member_id,
+            fingerprint: info.fingerprint,
+            routes: info.routes,
+            code,
+            expires_at,
+        })
     }
 }

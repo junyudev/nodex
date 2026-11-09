@@ -55,3 +55,29 @@ test("asks for the fingerprint when the invite carries none and never keeps a st
   expect(view.queryByText("Certificate pinned")).toBeNull();
   expect((view.getByLabelText("Certificate fingerprint") as HTMLInputElement).value).toBe("");
 });
+
+test("refuses a name Core would refuse, with the reason beside the field", async () => {
+  const view = render(<JoinSpaceDialog onClose={vi.fn()} />);
+  await act(async () => {
+    fireEvent.change(view.getByLabelText("Invite URL"), {
+      target: { value: `https://team.example?fingerprint=${"c".repeat(64)}` },
+    });
+    fireEvent.change(view.getByLabelText("One-time code"), { target: { value: "one-use-code" } });
+    fireEvent.change(view.getByLabelText("Your name"), { target: { value: " you " } });
+    await Promise.resolve();
+  });
+  expect(view.getByRole("alert").textContent).toBe(
+    "Choose a name others will recognize; Nodex shows each person their own actions as You",
+  );
+  expect(view.getByLabelText("Your name").getAttribute("aria-invalid")).toBe("true");
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: /^Join$/ }));
+    await Promise.resolve();
+  });
+  expect(runtime.join).not.toHaveBeenCalled();
+  await act(async () => {
+    fireEvent.change(view.getByLabelText("Your name"), { target: { value: "Alice" } });
+    await Promise.resolve();
+  });
+  expect(view.queryByRole("alert")).toBeNull();
+});

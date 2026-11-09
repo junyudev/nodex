@@ -1,15 +1,23 @@
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { Linking, Platform, StyleSheet, useColorScheme } from "react-native";
-import { EnrichedMarkdownText, type MarkdownStyle } from "react-native-enriched-markdown";
+import {
+  EnrichedMarkdownText,
+  type MarkdownRenderers,
+  type MarkdownStyle,
+} from "react-native-enriched-markdown";
 
 import { resolveFileUri } from "../runtime";
 import { MONOSPACE } from "../ui/primitives";
 import { useColor } from "../ui/tokens";
 import { flattenNodexMarkdown } from "./parse";
+import { REPLY_PICTURE_MAX_HEIGHT } from "./reply-picture";
+import { ReplyPicture } from "./ReplyPicture";
 
 export interface MarkdownActions {
   /** A `nodex://sessions/ID` link was tapped. */
   readonly onOpenChat?: (sessionId: string) => void;
+  /** A picture was tapped. Without this, pictures are inert and text selection keeps the tap. */
+  readonly onOpenImage?: (image: { readonly url: string; readonly alt: string }) => void;
 }
 
 const NODEX_SESSION_LINK = /^nodex:\/\/sessions\/(.+)$/u;
@@ -141,7 +149,15 @@ const useMarkdownStyle = (): MarkdownStyle => {
       },
       list: { ...body, marginBottom: 4, markerColor: ink3, bulletColor: ink3 },
       thematicBreak: { color: line, height: 0.5, marginTop: 6, marginBottom: 12 },
-      image: { borderRadius: 16, marginTop: 2, marginBottom: 12 },
+      // A picture on a line of its own is a `ReplyPicture`; one in a list or table keeps this
+      // native box, whole at its own shape and fitted to the same height.
+      image: {
+        maxHeight: REPLY_PICTURE_MAX_HEIGHT,
+        resizeMode: "contain",
+        borderRadius: 16,
+        marginTop: 2,
+        marginBottom: 12,
+      },
       table: {
         ...block,
         fontSize: 15,
@@ -178,6 +194,24 @@ export const Markdown = memo(function Markdown({
   const style = useMarkdownStyle();
   const accent = useColor("accent");
   const markdown = useMemo(() => flattenNodexMarkdown(text), [text]);
+  // The renderers stay the same while the text streams, so a shown picture is not drawn again.
+  const openImage = useRef(actions?.onOpenImage);
+  useEffect(() => {
+    openImage.current = actions?.onOpenImage;
+  });
+  const opens = actions?.onOpenImage !== undefined;
+  const renderers = useMemo<MarkdownRenderers>(
+    () => ({
+      image: ({ url, altText }) => (
+        <ReplyPicture
+          alt={altText}
+          onOpen={opens ? () => openImage.current?.({ url, alt: altText }) : undefined}
+          url={url}
+        />
+      ),
+    }),
+    [opens],
+  );
   return (
     <EnrichedMarkdownText
       allowTrailingMargin={false}
@@ -189,6 +223,13 @@ export const Markdown = memo(function Markdown({
       markdownStyle={style}
       md4cFlags={{ admonitions: true, hardSoftBreaks: true, latexMath: true }}
       onLinkPress={({ url }) => openLink(url, actions ?? {})}
+      renderers={renderers}
+      {...(actions?.onOpenImage
+        ? {
+            onImagePress: ({ url, altText }: { url: string; altText: string }) =>
+              actions.onOpenImage?.({ url, alt: altText }),
+          }
+        : {})}
       resolveImageSource={resolveImageSource}
       selectable={selectable}
       selectionColor={accent}

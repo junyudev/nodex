@@ -14,7 +14,6 @@ export type NativeContextMenuIconKey =
   | "share"
   | "copy"
   | "fork"
-  | "local"
   | "openIn"
   | "window"
   | "worktree"

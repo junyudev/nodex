@@ -5,6 +5,7 @@ use nodex_core_contracts::library::*;
 // Person and Source intake relocate onto the same team repository Board.
 fn board(w: &TestWorkspace) {
     crate::library::LibraryMembership::new(&w.kernel, "library-1".into())
+        .prepare_hosting()
         .unwrap();
     apply(
         &w.module,
@@ -23,6 +24,7 @@ fn board(w: &TestWorkspace) {
 fn requesting_member(w: &TestWorkspace) -> nodex_core_contracts::BoundModuleContext {
     use nodex_core_contracts::{AdapterKind, team::*};
     let membership = crate::library::LibraryMembership::new(&w.kernel, "library-1".into());
+    membership.prepare_hosting().unwrap();
     let invite = membership
         .invite(
             InviteRequest {
@@ -30,6 +32,8 @@ fn requesting_member(w: &TestWorkspace) -> nodex_core_contracts::BoundModuleCont
                 member_id: None,
             },
             ListenerInfo {
+                peer_policy: Default::default(),
+                routes: vec![],
                 url: "https://localhost".into(),
                 fingerprint: "test".into(),
             },
@@ -37,6 +41,7 @@ fn requesting_member(w: &TestWorkspace) -> nodex_core_contracts::BoundModuleCont
         .unwrap();
     let enrolled = membership
         .enroll(EnrollmentRequest {
+            form_factor: Default::default(),
             code: invite.code,
             device_label: "Laptop".into(),
             display_name: "Bob".into(),

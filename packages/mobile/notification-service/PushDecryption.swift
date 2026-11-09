@@ -9,10 +9,17 @@ struct PushPayload: Decodable {
     }
 
     let kind: Kind
-    let sessionId: String
+    /// The chat a tap opens; a Page Turn that waits on no chat names its Page instead.
+    let sessionId: String?
+    let pageId: String?
     let hostId: String?
     let title: String
     let body: String
+
+    /// One chat's notifications, or one Page's, group together.
+    var thread: String? {
+        sessionId ?? pageId.map { "page:\($0)" }
+    }
 }
 
 enum PushDecryption {
@@ -24,7 +31,9 @@ enum PushDecryption {
               let plaintext = try? ChaChaPoly.open(box, using: SymmetricKey(data: key)) else {
             return nil
         }
-        return try? JSONDecoder().decode(PushPayload.self, from: plaintext)
+        guard let payload = try? JSONDecoder().decode(PushPayload.self, from: plaintext),
+              payload.thread != nil else { return nil }
+        return payload
     }
 
     private static func decodeBase64URL(_ text: String) -> Data? {

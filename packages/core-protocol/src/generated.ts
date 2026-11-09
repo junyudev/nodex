@@ -20,6 +20,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/core/v1/admin/host/member-presence": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["member_presence"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/core/v1/admin/host/poll": {
         readonly parameters: {
             readonly query?: never;
@@ -100,7 +116,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/blobs/prepare": {
+    readonly "/core/v1/admin/space/link-device": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -109,7 +125,7 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["prepare_blob"];
+        readonly post: operations["link_device"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -148,12 +164,14 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/core/v1/admin/space/members": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
+        readonly get: operations["members"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -194,14 +212,14 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/health": {
+    readonly "/core/v1/admin/space/remote-access": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly get: operations["health"];
+        readonly get: operations["remote_access"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -242,7 +260,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/modules/administration/read": {
+    readonly "/core/v1/admin/space/stop-listener": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -251,7 +269,7 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["administration_read"];
+        readonly post: operations["stop_listener"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -418,7 +436,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/modules/document/read": {
+    readonly "/core/v1/host/phone/poll": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -427,14 +445,14 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["document_read"];
+        readonly post: operations["phone_poll"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/modules/document/recovery/capture": {
+    readonly "/core/v1/host/phone/publish": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -443,14 +461,14 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["recovery_capture"];
+        readonly post: operations["phone_publish"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/modules/document/recovery/export": {
+    readonly "/core/v1/host/phone/push": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -459,14 +477,14 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["recovery_export"];
+        readonly post: operations["phone_push"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/modules/library/apply": {
+    readonly "/core/v1/host/phone/push-forget": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -475,14 +493,14 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["library_apply"];
+        readonly post: operations["phone_push_forget"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/modules/library/read": {
+    readonly "/core/v1/host/phone/push-recipients": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -491,14 +509,14 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["library_read"];
+        readonly post: operations["phone_push_recipients"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/modules/query/read": {
+    readonly "/core/v1/host/phone/response-entitlements": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -507,14 +525,14 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["query_read"];
+        readonly post: operations["phone_response_entitlements"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/modules/workspace/apply": {
+    readonly "/core/v1/host/presence": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -523,7 +541,7 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["workspace_apply"];
+        readonly post: operations["member_presence_report"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1459,6 +1477,7 @@ export interface components {
             readonly limit: number;
         } | {
             /** @enum {string} */
+            readonly kind: "request";
             readonly request_id: string;
         } | {
             readonly cursor?: string | null;
@@ -1481,6 +1500,7 @@ export interface components {
             readonly requests: readonly components["schemas"]["AutomationAssessmentRequest"][];
         } | {
             /** @enum {string} */
+            readonly kind: "request";
             readonly request?: components["schemas"]["AutomationAssessmentRequest"] | null;
         } | {
             /** @enum {string} */
@@ -3236,6 +3256,22 @@ export interface components {
             /** Format: int64 */
             readonly request_deadline_min_ms: number;
         };
+        /**
+         * @description A Page Turn that notifies its Member now, as a phone shows it: what the Inbox calls it and
+         *     the chat it waits on, if any.
+         */
+        readonly CurrentTurnNotification: {
+            /** @description The opening of the Turn's message, at most 512 characters. */
+            readonly body: string;
+            readonly conversation_id?: string | null;
+            readonly episode: string;
+            readonly member_id: string;
+            readonly page_id: string;
+            readonly reason?: components["schemas"]["TurnReason"] | null;
+            /** @description The chat the Turn waits on: its Session and its conversation. */
+            readonly session_id?: string | null;
+            readonly title: string;
+        };
         readonly DatabaseAgentDataSourceQuery: {
             readonly authorization: components["schemas"]["AgentExecutionAuthorization"];
             readonly cursor?: string | null;
@@ -4640,6 +4676,21 @@ export interface components {
             readonly inline_document_effect_orders: readonly number[];
             readonly projection_scope_keys: readonly string[];
         };
+        /**
+         * @description Presentation metadata never changes a Device's authority.
+         * @enum {string}
+         */
+        readonly DeviceFormFactor: "desktop" | "phone";
+        readonly DeviceLinkOffer: {
+            readonly code: string;
+            /** Format: int64 */
+            readonly expires_at: number;
+            readonly fingerprint: string;
+            readonly member_id: string;
+            readonly routes: readonly string[];
+            readonly space_id: string;
+            readonly space_name: string;
+        };
         readonly DocumentBlockOperation: {
             /** @enum {string} */
             readonly kind: "set_title";
@@ -4995,6 +5046,7 @@ export interface components {
             readonly code: string;
             readonly device_label: string;
             readonly display_name: string;
+            readonly form_factor?: components["schemas"]["DeviceFormFactor"];
         };
         readonly EnrollmentResponse: {
             readonly device_credential: string;
@@ -7573,12 +7625,17 @@ export interface components {
         };
         readonly ListenerInfo: {
             readonly fingerprint: string;
+            readonly peer_policy: components["schemas"]["ListenerPeerPolicy"];
+            readonly routes: readonly string[];
             readonly url: string;
         };
+        /** @enum {string} */
+        readonly ListenerPeerPolicy: "private" | "operator";
         readonly ListenRequest: {
             readonly address: string;
             readonly cert?: string | null;
             readonly key?: string | null;
+            readonly peer_policy?: components["schemas"]["ListenerPeerPolicy"];
         };
         readonly LocalMutationResolveRequest: {
             readonly intent_hash: string;
@@ -7705,16 +7762,42 @@ export interface components {
         readonly MemberDevice: {
             /** Format: int64 */
             readonly created_at: number;
+            readonly form_factor: components["schemas"]["DeviceFormFactor"];
             readonly id: string;
             readonly label: string;
             /** Format: int64 */
             readonly last_seen: number;
             readonly member_id: string;
+            /** @description The Device receives phone notifications. Its relay handle and key are never listed. */
+            readonly notifications_enabled: boolean;
             /** Format: int64 */
             readonly revoked_at?: number | null;
+            readonly space_id: string;
         };
         /** @enum {string} */
         readonly MemberLifecycle: "active" | "removed";
+        readonly MemberPresence: {
+            /**
+             * Format: int64
+             * @description The least time since the Member used one of their active Devices that reported within the
+             *     last 90 seconds with an unlocked screen; absent when none vouches for them.
+             */
+            readonly idle_ms?: number | null;
+        };
+        /** @description What a Member's desktop says about its person, about every 30 seconds while someone uses it. */
+        readonly MemberPresenceReport: {
+            /**
+             * Format: int32
+             * @description Milliseconds since the person last used this Device; absent while its screen is locked or
+             *     the system cannot tell.
+             */
+            readonly idle_ms?: number | null;
+        };
+        /** @description The local Host asks whether a Member is at one of their computers. */
+        readonly MemberPresenceRequest: {
+            readonly member_id: string;
+            readonly token: string;
+        };
         /** @enum {string} */
         readonly MemberRole: "owner" | "member";
         readonly ModuleApplyRequest_AutomationIntent: {
@@ -10104,6 +10187,11 @@ export interface components {
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 readonly archived: boolean;
+                /**
+                 * @description Leave out each Member's new chat until its first message starts it: a list of
+                 *     conversations has nothing to show for one.
+                 */
+                readonly exclude_drafts?: boolean | null;
                 readonly execution_refs?: readonly components["schemas"]["ProjectWorkspaceSessionExecutionRef"][] | null;
                 /** @enum {string} */
                 readonly kind: "session_window";
@@ -10261,6 +10349,9 @@ export interface components {
             } | {
                 /** @enum {string} */
                 readonly kind: "inbox_turn_notifications";
+            } | {
+                /** @enum {string} */
+                readonly kind: "current_turn_notifications";
             } | {
                 /** @enum {string} */
                 readonly kind: "inbox_entry";
@@ -10712,11 +10803,87 @@ export interface components {
         };
         /** @enum {string} */
         readonly PageWorkspaceLifecycle: "preparing" | "ready" | "cleanup_requested" | "removed" | "failed";
+        /** @description Private local relay events. Core creates identity and proof; a phone cannot choose either. */
+        readonly PhoneHostEvent: {
+            readonly channel_id: string;
+            readonly credential: string;
+            readonly device_id: string;
             /** @enum {string} */
+            readonly kind: "open";
+            readonly member_id: string;
+            readonly routes: readonly string[];
+            readonly space_id: string;
+            readonly space_kind: components["schemas"]["SpaceKind"];
+            readonly space_name: string;
+        } | {
+            readonly channel_id: string;
+            readonly credential: string;
+            /** Format: int64 */
+            readonly id: number;
+            /** @enum {string} */
+            readonly kind: "request";
+            readonly method: string;
+            readonly params: unknown;
+        } | {
+            readonly channel_id: string;
+            /** @enum {string} */
+            readonly kind: "close";
+        };
+        readonly PhoneHostPublish: {
+            readonly channel_id: string;
+            readonly envelope: unknown;
+            readonly token: string;
+        };
+        /** @description Who should hear about a chat event. Core resolves it with the same rule that admits answers. */
+        readonly PhonePushAudience: {
+            /** @enum {string} */
+            readonly kind: "request";
+            readonly request: components["schemas"]["SessionExecutionRequestKind"];
+            readonly run_id?: string | null;
+        } | {
+            /** @enum {string} */
+            readonly kind: "run_requester";
+            readonly run_id: string;
         } | {
             /** @enum {string} */
             readonly kind: "reminder_owner";
             readonly member_id: string;
+        } | {
+            readonly episode: string;
+            /** @enum {string} */
+            readonly kind: "turn_owner";
+            readonly page_id: string;
+        };
+        /** @description Commits the phone's in-flight `push.register` or `push.unregister` request to its own Device. */
+        readonly PhonePushCommit: {
+            readonly credential: string;
+        };
+        /** @description The relay reported this handle gone; forget it unless the phone has since replaced it. */
+        readonly PhonePushForget: {
+            readonly device_id: string;
+            readonly handle: string;
+            readonly token: string;
+        };
+        readonly PhonePushRecipient: {
+            readonly device_id: string;
+            readonly member_id: string;
+            readonly registration: components["schemas"]["PushRegistration"];
+        };
+        readonly PhonePushRecipientsRequest: {
+            readonly audience: components["schemas"]["PhonePushAudience"];
+            /** @description The chat the event happened in; a Page Turn may wait on none. */
+            readonly session_id?: string | null;
+            readonly token: string;
+        };
+        readonly PhoneResponseEntitlementRequest: {
+            readonly credential: string;
+            readonly requests: readonly components["schemas"]["PhoneResponseRequest"][];
+            readonly session_id: string;
+        };
+        readonly PhoneResponseRequest: {
+            readonly request_id: string;
+            readonly run_id?: string | null;
+        };
         readonly PreparedBlobReceipt: {
             readonly blob_etag: string;
             /** Format: int64 */
@@ -12932,6 +13099,20 @@ export interface components {
              */
             readonly persisted: boolean;
         };
+        /** @description What a phone wants to hear from this Space, in the phone RPC's own field names. */
+        readonly PushPreferences: {
+            readonly finished: boolean;
+            readonly needsYou: boolean;
+        };
+        /**
+         * @description Where a Device receives notifications: an opaque relay handle and the base64url key that seals
+         *     them. Both stay between the phone, Core and the local Host.
+         */
+        readonly PushRegistration: {
+            readonly handle: string;
+            readonly key: string;
+            readonly preferences: components["schemas"]["PushPreferences"];
+        };
         readonly QueryReadRequest: components["schemas"]["ModuleReadRequest_QueryRead"];
         readonly QueryReadResponse: components["schemas"]["ResponseEnvelope_ModuleReadSnapshot_QueryReadValue"];
         readonly ReadFileBlobQuery: components["schemas"]["LibraryFileReadSource"] & {
@@ -13244,10 +13425,21 @@ export interface components {
             /** Format: int64 */
             readonly snooze_id: number;
         };
+        /** @description Profile-owned remote listener preference, restored by Core at startup. */
+        readonly RemoteAccessIntent: {
+            readonly address: string;
+            readonly enabled: boolean;
+        };
+        readonly RemoteAccessState: {
+            readonly intent: components["schemas"]["RemoteAccessIntent"];
+            readonly listener?: components["schemas"]["ListenerInfo"] | null;
+            readonly routes_changed: boolean;
+        };
         /**
          * @description The independently bounded resource which refused remote admission.
          * @enum {string}
          */
+        readonly RemoteBudget: "pre_auth_ip" | "device_requests" | "device_bytes" | "member_requests" | "member_bytes" | "member_device_links" | "member_concurrency" | "global_concurrency" | "device_streams" | "member_streams";
         readonly RemoteBudgetCounter: {
             /** Format: int64 */
             readonly bytes: number;
@@ -14527,6 +14719,10 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "inbox_turn_notifications";
                 } | {
+                    /** @enum {string} */
+                    readonly kind: "current_turn_notifications";
+                    readonly turns: readonly components["schemas"]["CurrentTurnNotification"][];
+                } | {
                     readonly item?: components["schemas"]["ProjectWorkspaceInboxItem"] | null;
                     /** @enum {string} */
                     readonly kind: "inbox_entry";
@@ -15139,6 +15335,11 @@ export interface components {
             readonly space_id: string;
             readonly space_name: string;
         };
+        /**
+         * @description Core-owned Space kind, independent of listener activation or hosting mode.
+         * @enum {string}
+         */
+        readonly SpaceKind: "personal" | "team";
         /** @description Display identity belongs to Core; endpoints remain transport coordinates. */
         readonly SpaceName: {
             readonly name: string;
@@ -15349,6 +15550,39 @@ export interface operations {
             };
         };
     };
+    readonly member_presence: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["MemberPresenceRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Whether one of a Member's computers vouches for them */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MemberPresence"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
     readonly host_poll: {
         readonly parameters: {
             readonly query?: never;
@@ -15457,6 +15691,7 @@ export interface operations {
         };
         readonly requestBody?: never;
         readonly responses: {
+            /** @description Member lists own Devices; Owner lists all */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -15489,12 +15724,42 @@ export interface operations {
             };
         };
         readonly responses: {
+            /** @description Owner issues one-time invite */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
                     readonly "application/json": components["schemas"]["InviteResponse"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly link_device: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Member links their own Device */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeviceLinkOffer"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -15574,6 +15839,35 @@ export interface operations {
             };
         };
     };
+    readonly members: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Owner lists Members */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["Member"][];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
     readonly rename: {
         readonly parameters: {
             readonly query?: never;
@@ -15587,6 +15881,7 @@ export interface operations {
             };
         };
         readonly responses: {
+            /** @description Owner names the Space */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -15639,9 +15934,35 @@ export interface operations {
             };
         };
     };
+    readonly remote_access: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Listener state */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RemoteAccessState"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
         };
+    };
     readonly remove: {
         readonly parameters: {
             readonly query?: never;
@@ -15655,6 +15976,7 @@ export interface operations {
             };
         };
         readonly responses: {
+            /** @description Owner removes a Member and revokes devices */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -15687,12 +16009,42 @@ export interface operations {
             };
         };
         readonly responses: {
+            /** @description Member revokes own Device; Owner revokes any */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
                     readonly "text/plain": boolean;
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly stop_listener: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Local Owner stops remote access */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RemoteAccessState"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -16047,7 +16399,7 @@ export interface operations {
             };
         };
     };
-    readonly issue_agent_attribution: {
+    readonly phone_poll: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -16056,17 +16408,17 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["AgentAttributionRequest"];
+                readonly "application/json": components["schemas"]["HostLease"];
             };
         };
         readonly responses: {
-            /** @description Agent attribution credential for one product Session */
+            /** @description Local Host polls admitted phone events */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["AgentAttributionResponse"];
+                    readonly "application/json": components["schemas"]["PhoneHostEvent"] | null;
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -16080,107 +16432,7 @@ export interface operations {
             };
         };
     };
-    readonly prepare_blob: {
-        readonly parameters: {
-            readonly query: {
-                readonly idempotency_slot?: string;
-                readonly operation_id: string;
-                readonly store_epoch: string;
-            };
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/octet-stream": readonly number[];
-            };
-        };
-        readonly responses: {
-            /** @description Prepared File blob */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["PreparedBlobReceipt"];
-                };
-            };
-            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
-            readonly default: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
-                };
-            };
-        };
-    };
-    readonly events: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Last committed event sequence observed */
-                readonly after?: number;
-            };
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Server-sent committed Module events */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "text/event-stream": components["schemas"]["EventEnvelope"];
-                };
-            };
-            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
-            readonly default: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
-                };
-            };
-        };
-    };
-    readonly read_file_blob: {
-        readonly parameters: {
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-            };
-        };
-        readonly responses: {
-            /** @description Blob content */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/octet-stream": readonly number[];
-                };
-            };
-            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
-            readonly default: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
-                };
-            };
-        };
-    };
-    readonly prepare_file_blob: {
+    readonly phone_publish: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -16189,17 +16441,17 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/octet-stream": readonly number[];
+                readonly "application/json": components["schemas"]["PhoneHostPublish"];
             };
         };
         readonly responses: {
-            /** @description Prepared File blob */
+            /** @description Local Host publishes a bounded phone envelope */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PreparedBlobReceipt"];
+                    readonly "text/plain": boolean;
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -16213,7 +16465,7 @@ export interface operations {
             };
         };
     };
-    readonly handshake: {
+    readonly phone_push: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -16222,17 +16474,17 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["HandshakeRequest"];
+                readonly "application/json": components["schemas"]["PhonePushCommit"];
             };
         };
         readonly responses: {
-            /** @description Authenticated Core connection */
+            /** @description Commit a phone's own notification registration to its Device */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HandshakeResponse"];
+                    readonly "text/plain": boolean;
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */
@@ -16246,22 +16498,125 @@ export interface operations {
             };
         };
     };
-    readonly health: {
+    readonly phone_push_forget: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly requestBody?: never;
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PhonePushForget"];
+            };
+        };
         readonly responses: {
-            /** @description Core health */
+            /** @description Forget a notification handle the relay no longer reaches */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HealthResponse"];
+                    readonly "text/plain": boolean;
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly phone_push_recipients: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PhonePushRecipientsRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Registered Devices of the Member a chat event concerns */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["PhonePushRecipient"][];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly phone_response_entitlements: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PhoneResponseEntitlementRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Requesting Member answer entitlement */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly string[];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly member_presence_report: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["MemberPresenceReport"];
+            };
+        };
+        readonly responses: {
+            /** @description A Member's Device reports whether its person is at it */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "text/plain": boolean;
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */

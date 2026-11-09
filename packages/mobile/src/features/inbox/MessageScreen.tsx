@@ -3,19 +3,28 @@ import { Alert, ScrollView, View } from "react-native";
 
 import { Markdown } from "../../markdown/Markdown";
 import type { ScreenProps } from "../../navigation/types";
-import { decideInbox, useAgentCatalog, useNewChatPreferences, useProjects } from "../../runtime";
+import {
+  clearInboxNotifications,
+  decideInbox,
+  useAgentCatalog,
+  useNewChatPreferences,
+  useProjects,
+} from "../../runtime";
 import { formatStreamTime } from "../../ui/format";
 import { Row, RowGroup, SectionLabel, Txt, lightTap } from "../../ui/primitives";
 import { showFailure } from "../../ui/snackbar";
 import { useNow } from "../../ui/use-now";
 import { agentChipLabel, effectiveAgentChoice } from "../pickers/agent-choice";
+import { EntryActions, SignatureLine } from "./InboxPane";
 import { entryChatSession, messageChat, outcomeLabel, sourceLabel } from "./inbox-presentation";
+import { SuggestionPanel, useInboxEntry } from "./Suggestion";
 import { useDecide } from "./use-decide";
 
 /** A whole message, and everything that can be decided about it. */
 export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => {
   const now = useNow();
   const { pageId, initial, openChat } = route.params;
+  const [message, setMessage] = useInboxEntry(pageId, initial);
   const decide = useDecide();
   const { projects } = useProjects();
   const { catalog } = useAgentCatalog();
@@ -30,7 +39,47 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
     if (startedChat) navigation.replace("Chat", { sessionId: startedChat });
   }, [navigation, startedChat]);
 
+  // Opening a message sees what the phone was told about it, whether by its Page or its chat.
+  const seenSession = message ? entryChatSession(message) : null;
+  useEffect(() => {
+    clearInboxNotifications(pageId, seenSession);
+  }, [pageId, seenSession]);
+
   if (!message) return <View className="flex-1 bg-surface" />;
+
+  const chatSessionId = entryChatSession(message);
+  if (message.rowKind !== "intake")
+    return (
+      <ScrollView
+        className="flex-1 bg-surface"
+        contentContainerClassName="gap-4 p-4"
+        contentInsetAdjustmentBehavior="automatic"
+      >
+        <SignatureLine
+          entry={message}
+          time={formatStreamTime(Date.parse(message.submittedAt), now)}
+        />
+        {message.rowKind !== "answer" ? (
+          <Txt className="font-medium text-ink">{message.title}</Txt>
+        ) : null}
+        {message.body ? (
+          <Markdown
+            text={message.body}
+            actions={{ onOpenChat: (sessionId) => navigation.navigate("Chat", { sessionId }) }}
+          />
+        ) : null}
+        <EntryActions entry={message} />
+        {chatSessionId ? (
+          <RowGroup>
+            <Row
+              icon="chat"
+              label="Open its chat"
+              onPress={() => navigation.navigate("Chat", { sessionId: chatSessionId })}
+            />
+          </RowGroup>
+        ) : null}
+      </ScrollView>
+    );
 
   const decideAndClose = (decision: Parameters<typeof decide>[1], done: string) => {
     void decide(pageId, decision, done);

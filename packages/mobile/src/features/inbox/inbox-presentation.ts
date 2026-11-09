@@ -1,6 +1,6 @@
 import type {
   InboxDecision,
-  InboxMessage,
+  InboxEntry,
   InboxProposal,
   InboxProposalAction,
 } from "@nodex/mobile-protocol";
@@ -22,8 +22,10 @@ export const proposalAction = (
       return { label: "Send to chat", icon: "chat" };
     case "move_to_project":
       return { label: "Move", icon: "folder" };
-    case "run_task":
-      return { label: "Run task", icon: "tool" };
+    case "execute_decision":
+      return { label: "Run", icon: "tool" };
+    case "plan":
+      return { label: "Start plan", icon: "tool" };
     case "keep":
       return { label: "Keep", icon: "check" };
   }
@@ -38,8 +40,10 @@ export const proposalDestination = (action: InboxProposalAction): string | null 
       return action.chatTitle;
     case "move_to_project":
       return action.projectName;
-    case "run_task":
+    case "execute_decision":
       return action.name;
+    case "plan":
+      return null;
     case "keep":
       return null;
   }
@@ -54,8 +58,10 @@ export const proposalHeadline = (action: InboxProposalAction): string => {
       return action.chatTitle ? `Send to ${action.chatTitle}` : "Send to a chat";
     case "move_to_project":
       return action.projectName ? `Move to ${action.projectName}` : "Move to a Project";
-    case "run_task":
-      return action.name ? `Run ${action.name}` : "Run this task";
+    case "execute_decision":
+      return action.name ? `Run ${action.name}` : "Run this Automation";
+    case "plan":
+      return "Start a plan";
     case "keep":
       return "Keep as a Page";
   }
@@ -66,7 +72,7 @@ export const proposalAttribution = ({
   origin,
   producedBy,
 }: Pick<InboxProposal, "origin" | "producedBy">): string => {
-  if (origin === "schedule") return "From your scheduled task";
+  if (origin === "automation") return "From your Automation";
   return producedBy ? `Suggested by ${producedBy}` : "Suggestion";
 };
 
@@ -99,7 +105,8 @@ export type SuggestionView =
  * on offer while fresh advice runs, since the person may want the earlier one. A delivery whose
  * arrival is unconfirmed is no longer in progress: it waits for the person to check its chat.
  */
-export const suggestionView = (message: InboxMessage): SuggestionView => {
+export const suggestionView = (message: InboxEntry): SuggestionView => {
+  if (message.rowKind !== "intake") return { kind: "none" };
   const { proposal, suggestion } = message;
   const uncertain = proposal?.failureKind === "unknown";
   if (proposal?.state === "dispatching" && !uncertain) return { kind: "dispatching" };
@@ -124,7 +131,9 @@ export const suggestionView = (message: InboxMessage): SuggestionView => {
   return { kind: "none" };
 };
 
-const OUTCOME_LABELS: Readonly<Record<NonNullable<InboxMessage["outcome"]>, string>> = {
+const OUTCOME_LABELS: Readonly<
+  Record<NonNullable<import("@nodex/mobile-protocol").IntakeEntry["outcome"]>, string>
+> = {
   kept: "Kept",
   done: "Done",
   moved: "Moved",
@@ -132,12 +141,22 @@ const OUTCOME_LABELS: Readonly<Record<NonNullable<InboxMessage["outcome"]>, stri
 };
 
 /** The handled state a processed message shows. */
-export const outcomeLabel = (message: InboxMessage): string | null =>
-  message.outcome ? OUTCOME_LABELS[message.outcome] : null;
+export const outcomeLabel = (message: InboxEntry): string | null =>
+  message.rowKind === "intake" && message.outcome ? OUTCOME_LABELS[message.outcome] : null;
 
 /** Who a message came from, when it was not the person themself. */
-export const sourceLabel = (message: InboxMessage): string | null =>
+export const sourceLabel = (message: InboxEntry): string | null =>
   message.source.kind === "user" ? null : message.source.label;
+
+export interface EntrySignature {
+  readonly label: string;
+  readonly icon: IconName;
+  /** Asks for the person read warm, reviews read as the accent, trouble reads as danger. */
+  readonly tone: "warning" | "accent" | "danger" | "ink-3";
+}
+
+type TurnReason = NonNullable<Extract<InboxEntry, { rowKind: "turn" }>["turn"]["reason"]>;
+
 /**
  * An Inbox turn is always the reader's own, so it reads as the desktop words it for its reader:
  * "Needs your answer", "Ready for your review". Keep these words the desktop's.
@@ -155,9 +174,19 @@ const TURN_SIGNATURES: Readonly<Record<TurnReason, EntrySignature>> = {
   working: { label: "The Agent is working", icon: "agent", tone: "ink-3" },
   queued: { label: "Queued", icon: "clock", tone: "ink-3" },
   starting: { label: "The Agent is starting", icon: "agent", tone: "ink-3" },
+};
+
+/**
  * Whose move it is and why, in the desktop's turn words. Turn membership and reason come from
  * Core; presentation never invents a completion state.
+ */
+export const entrySignature = (entry: InboxEntry): EntrySignature | null => {
+  if (entry.rowKind === "answer") return { label: "Nodex · Answer", icon: "agent", tone: "ink-3" };
+  if (entry.rowKind === "problem") return { label: "Problem", icon: "warning", tone: "danger" };
+  if (entry.rowKind !== "turn") return null;
   return TURN_SIGNATURES[entry.turn.reason ?? "ready_to_start"];
+};
+
 export type MessageChat =
   | { readonly state: "starting" }
   | { readonly state: "failed" }
@@ -179,3 +208,25 @@ export const messageChat = (message: InboxEntry): MessageChat | null => {
   return chatSessionId ? { state: "open", sessionId: chatSessionId } : null;
 };
 
+/** Where tapping a row goes: work rows open their chat, where the conversation continues. */
+export const entryChatSession = (entry: InboxEntry): string | null =>
+  entry.rowKind === "turn"
+    ? entry.turn.chatSessionId
+    : entry.rowKind === "answer"
+      ? entry.chatSessionId
+      : null;
+
+/** Reply entitlement is separate from durable Turn decisions such as Accept and Start. */
+export const turnActionView = (entry: Extract<InboxEntry, { rowKind: "turn" }>) => {
+  const { reason, options, chatSessionId, replyCapability } = entry.turn;
+  const available = replyCapability.kind === "available";
+  return {
+    accept: reason === "review",
+    start: reason === "ready_to_start",
+    reviewRequest: available && reason === "approval" && chatSessionId !== null,
+    reply:
+      available && chatSessionId !== null && reason !== "approval" && reason !== "ready_to_start",
+    options: available && reason === "question" ? options : [],
+    unavailableReason: replyCapability.kind === "unavailable" ? replyCapability.reason : null,
+  };
+};

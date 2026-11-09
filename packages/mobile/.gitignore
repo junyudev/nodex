@@ -1,5 +1,7 @@
 .expo/
-ios/
-android/
+/ios/
+/android/
+/modules/*/android/build/
+/modules/*/android/.gradle/
 *.tsbuildinfo
 uniwind-types.d.ts

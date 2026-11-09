@@ -133,6 +133,7 @@ import {
   assertPublicWirePayloadBudget,
   projectTurnItemForDetail,
 } from "../orchestration-v2/WireProjection.ts";
+import { withToolResultImages } from "../orchestration-v2/toolResultImages.ts";
 import {
   THREAD_HISTORY_PAGE_POLICY,
   THREAD_HISTORY_SNAPSHOT_ROW_LIMIT,
@@ -1732,7 +1733,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
               ? {}
               : { sourceThreadId: input.input.sourceThreadId }),
           })
-          .pipe(Effect.flatMap(encodeItem));
+          .pipe(
+            Effect.map((item) => (item === null ? null : withToolResultImages(item))),
+            Effect.flatMap(encodeItem),
+          );
         if (new TextEncoder().encode(JSON.stringify(item)).byteLength > 15 * 1024 * 1024)
           return yield* Effect.fail(
             new Error("The full item exceeds the single-response transport budget."),

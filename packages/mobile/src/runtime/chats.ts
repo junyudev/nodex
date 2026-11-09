@@ -310,6 +310,8 @@ export const makeChats = Effect.gen(function* () {
       () =>
         Effect.gen(function* () {
           live = false;
+          // A retained view can outlive the Session's Scope during application shutdown.
+          if (disposed) return;
           yield* close;
           yield* flush;
         }),

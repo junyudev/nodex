@@ -23,7 +23,7 @@ import { Connection, makeConnection } from "./connection";
 import { Files, makeFileCache } from "./files";
 import { Lists, makeLists, type ChatListInput } from "./lists";
 import { mintId, retryOperation } from "./operations";
-import { makeNotifications } from "./notifications";
+import { makeNotifications, type DeliveredNotificationTarget } from "./notifications";
 import { Outbox, makeOutbox } from "./outbox";
 import {
   adaptPlatform,
@@ -99,7 +99,7 @@ const makeApplication = Effect.gen(function* () {
         ? storePreferences(hostId, patch)
         : Effect.void,
     forgetHost: Effect.fnUntraced(function* (hostId: string) {
-      if (connection.activeHostId() === hostId) yield* notifications.stopTellingDesktop;
+      yield* notifications.forgetSpace(hostId);
       yield* connection.forgetHost(hostId);
       yield* outbox.forgetHost(hostId);
       yield* lists.forgetHost(hostId);
@@ -110,7 +110,7 @@ const makeApplication = Effect.gen(function* () {
     decideInbox: Effect.fnUntraced(function* (pageId: string, decision: InboxDecision) {
       const operationId = mintId(platform);
       const result = yield* retryOperation(connection, () =>
-        rpc.request("inbox.decide", { operationId, pageId, decision }),
+        rpc.request("inbox.decide", { operationId, entryId: pageId, decision }),
       );
       yield* lists.invalidate(["inbox", "projects", "chats"]);
       return { undoToken: result.undoToken, sessionId: result.sessionId };
@@ -122,8 +122,8 @@ const makeApplication = Effect.gen(function* () {
       );
       yield* lists.invalidate(["inbox", "projects", "chats"]);
     }),
-    fetchInboxMessage: (pageId: string) =>
-      retryOperation(connection, () => rpc.request("inbox.message", { pageId })),
+    fetchInboxEntry: (pageId: string) =>
+      retryOperation(connection, () => rpc.request("inbox.message", { entryId: pageId })),
     startChat: Effect.fnUntraced(function* (
       input: Preferences & { text: string; images: LocalImage[] },
     ) {
@@ -349,8 +349,8 @@ export function createMobileRuntime(
       dismissOffer: () => {
         sync(app.notifications.dismissOffer);
       },
-      clearDelivered: (sessionId: string) => {
-        managed.runFork(app.notifications.clearDelivered(sessionId));
+      clearDelivered: (target: DeliveredNotificationTarget) => {
+        managed.runFork(app.notifications.clearDelivered(target));
       },
     },
     getPreferences: app.getPreferences,
@@ -361,7 +361,7 @@ export function createMobileRuntime(
     decideInbox: (pageId: string, decision: InboxDecision) =>
       promise(app.decideInbox(pageId, decision)),
     undoInbox: (undoToken: string) => promise(app.undoInbox(undoToken)),
-    fetchInboxMessage: (pageId: string) => promise(app.fetchInboxMessage(pageId)),
+    fetchInboxEntry: (pageId: string) => promise(app.fetchInboxEntry(pageId)),
     startChat: (input: Parameters<typeof app.startChat>[0]) => promise(app.startChat(input)),
     fetchChatItem: (sessionId: string, itemId: string) =>
       promise(app.fetchChatItem(sessionId, itemId)),

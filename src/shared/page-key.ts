@@ -14,7 +14,7 @@ const parsePositivePageKeyNumber = (raw: string): bigint | null => {
   return number > 0n && number <= MAX_PAGE_KEY_NUMBER ? number : null;
 };
 
-const parseCanonicalPageKey = (raw: string): string | null => {
+export const parseCanonicalPageKey = (raw: string): string | null => {
   const separator = raw.indexOf("-");
   if (separator < 0 || raw.indexOf("-", separator + 1) >= 0) return null;
   const prefix = raw.slice(0, separator);

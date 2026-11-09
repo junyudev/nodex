@@ -36,18 +36,22 @@ export const makeSessionObservation = Effect.gen(function* () {
         );
         let previous: number | undefined;
         const events = notifications.pipe(
-          Stream.map((delivery): SessionObservationSignal | null => {
+          Stream.map((delivery): SessionObservationSignal | "ended" | null => {
             const gap = previous !== undefined && previous + 1 !== delivery.delivery;
             previous = delivery.delivery;
             if (gap) return { kind: "reset" };
             const event = delivery.notification;
             if (event.type !== "event" && event.type !== "event.error") return null;
             if (event.subscriptionId !== admitted.subscriptionId) return null;
-            return event.type === "event"
-              ? { kind: "event", event: event.event }
-              : { kind: "reset" };
+            return event.type === "event" ? { kind: "event", event: event.event } : "ended";
           }),
           Stream.filter((signal) => signal !== null),
+          // A failed observer delivers nothing more, so the watch ends with a reset and the
+          // watcher attaches again from its snapshot instead of waiting on a silent stream.
+          Stream.takeUntil((signal) => signal === "ended"),
+          Stream.map((signal): SessionObservationSignal =>
+            signal === "ended" ? { kind: "reset" } : signal,
+          ),
         );
         return Stream.merge(
           events,

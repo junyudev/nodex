@@ -248,7 +248,6 @@ interface NfmEditorCommonProps {
   onOpenPage?: (input: ContentPageNavigationTarget) => void | Promise<void>;
   onOpenDatabase?: BlockReferenceHostRuntime["openDatabase"];
   onOpenCanvas?: (input: ContentCanvasNavigationTarget) => void | Promise<void>;
-  onOpenPageFile?: BlockReferenceHostRuntime["openPageFile"];
   onStartNewSessionThreadFromEditor?: (input: {
     projectId: string;
     targetSessionId?: string;
@@ -412,7 +411,6 @@ function NfmEditorInstance({
   onOpenPage,
   onOpenDatabase,
   onOpenCanvas,
-  onOpenPageFile,
   onStartNewSessionThreadFromEditor,
   onSendPagePrompt,
   onAddPromptToChatComposer,
@@ -2154,7 +2152,6 @@ function NfmEditorInstance({
       ...(onOpenPage ? { openPage: onOpenPage } : {}),
       ...(onOpenDatabase ? { openDatabase: onOpenDatabase } : {}),
       ...(onOpenCanvas ? { openCanvas: onOpenCanvas } : {}),
-      ...(onOpenPageFile ? { openPageFile: onOpenPageFile } : {}),
       ...(sourcePageContext && isCanvasHostDocumentRuntime(surfaceMutationBarrier)
         ? {
             createCanvasAtEmptyParagraph,

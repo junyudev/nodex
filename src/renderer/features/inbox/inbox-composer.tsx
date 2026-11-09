@@ -222,7 +222,13 @@ export function InboxComposer({
               rows={1}
               readOnly={readOnly}
               value={draft.text}
-              placeholder={placeholder}
+              placeholder={
+                draft.replyTo?.turnEpisode
+                  ? "Reply to chat…"
+                  : draft.replyTo
+                    ? "Reply to Nodex…"
+                    : placeholder
+              }
               onChange={(event) => {
                 const text = event.currentTarget.value;
                 onDraftChange((current) => ({ ...current, text }));
@@ -245,7 +251,11 @@ export function InboxComposer({
         }
         trailingControls={
           <div className="flex justify-end">
-            <NodexTooltip tooltipContent="Send to Inbox" shortcutLabel="↵" side="top">
+            <NodexTooltip
+              tooltipContent={draft.replyTo?.turnEpisode ? "Send reply" : "Send to Inbox"}
+              shortcutLabel="↵"
+              side="top"
+            >
               <button
                 type="submit"
                 aria-label={draft.replyTo?.turnEpisode ? "Send reply" : "Send to Inbox"}

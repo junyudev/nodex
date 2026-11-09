@@ -17,6 +17,7 @@ export {
   useChats,
   useChat,
   useFileUri,
+  usePictureUri,
   useNotifications,
 } from "./hooks";
 
@@ -26,7 +27,10 @@ export const setNotificationPreferences = (patch: Partial<PushPreferences>) =>
   getRuntime().notifications.setPreferences(patch);
 export const dismissNotificationOffer = () => getRuntime().notifications.dismissOffer();
 export const clearChatNotifications = (sessionId: string) =>
-  getRuntime().notifications.clearDelivered(sessionId);
+  getRuntime().notifications.clearDelivered({ sessionId });
+/** An opened Inbox message is seen: clear what was delivered about its Page and its chat. */
+export const clearInboxNotifications = (pageId: string, sessionId: string | null) =>
+  getRuntime().notifications.clearDelivered(sessionId ? { pageId, sessionId } : { pageId });
 
 export const pairWithUri = (uri: string) => getRuntime().connection.pairWithUri(uri);
 export const activateHost = (hostId: string) => getRuntime().connection.activateHost(hostId);
@@ -40,6 +44,7 @@ export const discardCapture = (captureId: string) => getRuntime().outbox.discard
 export const decideInbox = (pageId: string, decision: InboxDecision) =>
   getRuntime().decideInbox(pageId, decision);
 export const undoInbox = (undoToken: string) => getRuntime().undoInbox(undoToken);
+export const fetchInboxEntry = (pageId: string) => getRuntime().fetchInboxEntry(pageId);
 /** Calls back whenever the connected Space says its Inbox may have changed. */
 export const onInboxChanged = (handler: () => void) =>
   getRuntime().connection.rpc.on("changed", ({ topics }) => {

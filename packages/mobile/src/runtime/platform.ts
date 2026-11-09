@@ -1,4 +1,6 @@
 import type { RelayDeviceRequest } from "@nodex/mobile-protocol";
+import type { NotificationSubject } from "./notification-payload";
+import type { PinnedTls } from "./pinned-tls";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
@@ -15,22 +17,9 @@ export type LocalImage = {
   height: number;
 };
 
-export interface MobileSocketEvents {
-  open(): void;
-  frame(bytes: Uint8Array): void;
-  closed(code: number): void;
-  failed(): void;
-}
-
-export interface MobileSocket {
-  listen(events: MobileSocketEvents): () => void;
-  send(bytes: Uint8Array): void;
-  close(): void;
-}
-
 export type PushPermission = "granted" | "denied" | "undetermined";
 
-/** The system's notifications, on a phone that can receive them from a desktop. */
+/** The system's notifications, on a phone that can receive them from its Spaces. */
 export interface MobilePush {
   bundleId: string;
   permission(): Promise<PushPermission>;
@@ -42,15 +31,15 @@ export interface MobilePush {
   writeKey(key: string): Promise<void>;
   /** Exchanges an address for the relay's opaque handle. */
   registerAddress(request: RelayDeviceRequest): Promise<string>;
-  /** The chats behind notifications still in Notification Center, with the desktop that sent each. */
-  delivered(): Promise<readonly DeliveredChat[]>;
-  /** Takes one chat's notifications out of Notification Center. */
-  clearDelivered(sessionId: string): Promise<void>;
+  /** The notifications still in Notification Center. */
+  delivered(): Promise<readonly DeliveredNotification[]>;
+  /** Takes these notifications out of Notification Center. */
+  dismiss(ids: readonly string[]): Promise<void>;
 }
 
-export interface DeliveredChat {
-  readonly sessionId: string;
-  readonly hostId: string | null;
+/** One notification still in Notification Center, with what it is about and who sent it. */
+export interface DeliveredNotification extends NotificationSubject {
+  readonly id: string;
 }
 
 export interface MobilePlatform {
@@ -80,7 +69,7 @@ export interface MobilePlatform {
   push: MobilePush | null;
   now(): number;
   schedule(callback: () => void, milliseconds: number): () => void;
-  socket(route: string): MobileSocket;
+  pinnedTls: PinnedTls;
   isForeground(): boolean;
   onForegroundChange(callback: (foreground: boolean) => void): () => void;
 }
@@ -98,7 +87,6 @@ export function adaptPlatform(platform: MobilePlatform) {
     });
   return {
     ...platform,
-    socket: (route: string) => platform.socket(route),
     // Native handles close when the operation settles, so interruption must await that release.
     readFile: (uri: string, offset: number, length: number) =>
       promise(() => platform.files.read(uri, offset, length)).pipe(Effect.uninterruptible),

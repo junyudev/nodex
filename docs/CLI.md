@@ -463,5 +463,19 @@ The product-level execution identity contract is in
 ## Agent task evaluation
 
 See [CLI Agent evaluation](CLI_AGENT_EVALUATION.md) for the optional paid, isolated task suite and evidence-driven improvement workflow.
+
+## Space remote access
+
+`nodex space remote-access on|off|status` controls the local private-peer
+listener. `space link-device` enrolls another Device of your own Member through
+a five-minute one-time offer. `space devices` and `space revoke-device ID`
 manage your Devices, and `space display-name NAME` sets the name other Members
 see for you; an Owner may administer all Devices, invite and remove
+Members, list Members and rename the Space. These share `serve` administration.
+
+To administer a remote Space, use
+`nodex --remote-connection /absolute/private.json space ...`. The owned mode-0600
+file selects an HTTPS origin, full leaf-certificate fingerprint, Space ID and
+Device credential. Verification fails without local fallback. See
+[Team Spaces](product-specs/team-space-behavior.md#administration-surfaces) for
+the file contract. Listener, certificates, backups and shutdown stay local.

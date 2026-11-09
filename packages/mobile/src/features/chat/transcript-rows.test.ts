@@ -1,7 +1,7 @@
 import type { ChatItem } from "@nodex/mobile-protocol";
 import { describe, expect, it } from "vitest";
 
-import { transcriptRows, workTitle } from "./transcript-rows";
+import { stepTitle, transcriptRows, workTitle } from "./transcript-rows";
 
 const at = "2026-11-04T00:00:00.000Z";
 
@@ -11,6 +11,7 @@ const user = (id: string): ChatItem => ({
   at,
   text: "hi",
   files: [],
+  unavailableImages: [],
   queued: false,
 });
 
@@ -21,6 +22,7 @@ const assistant = (id: string, streaming = false): ChatItem => ({
   text: "hello",
   streaming,
   truncated: false,
+  unavailableImages: [],
 });
 
 const activity = (
@@ -37,13 +39,19 @@ const activity = (
   status,
   output: null,
   outputTruncated: false,
+  images: [],
+  unavailableImages: [],
 });
 
-const thinking = (id: string, streaming = false): Extract<ChatItem, { kind: "thinking" }> => ({
+const thinking = (
+  id: string,
+  streaming = false,
+  text = "...",
+): Extract<ChatItem, { kind: "thinking" }> => ({
   kind: "thinking",
   id,
   at,
-  text: "...",
+  text,
   streaming,
   truncated: false,
 });
@@ -88,17 +96,67 @@ describe("transcriptRows", () => {
       "user",
     ]);
   });
+
+  it("shows a chat it can no longer follow as last seen, with nothing in motion", () => {
+    const rows = transcriptRows(
+      [user("u"), activity("a", "running", "Run command")],
+      running,
+      false,
+    );
+    expect(rows).toMatchObject([
+      { type: "user" },
+      { type: "work", running: false, title: "1 step" },
+    ]);
+  });
 });
 
 describe("workTitle", () => {
   it("names the latest step still running", () => {
     expect(workTitle([activity("a", "running", "npm test"), activity("b")])).toBe("npm test");
     expect(workTitle([activity("a"), thinking("t", true)])).toBe("Thinking");
+    // A thought names what it is doing by its heading, without the heading's marks.
+    expect(
+      workTitle([thinking("t", true, "**Constructing fallback PNG**\n\nI'll write the bytes")]),
+    ).toBe("Constructing fallback PNG");
   });
 
   it("counts finished steps", () => {
     expect(workTitle([activity("a")])).toBe("1 step");
     expect(workTitle([activity("a"), activity("b")])).toBe("2 steps");
     expect(workTitle([thinking("t")])).toBe("Thought");
+  });
+});
+
+describe("stepTitle", () => {
+  it("reads a summarized thought by its latest heading, without Markdown", () => {
+    expect(
+      stepTitle(
+        thinking(
+          "t",
+          false,
+          "**Inspecting the image**\n\nIt has a star.\n\n**Constructing fallback `PNG`**\n\nI'm writing it with zlib.",
+        ),
+      ),
+    ).toBe("Constructing fallback PNG");
+    expect(stepTitle(thinking("t", false, "## Checking _the_ build"))).toBe("Checking the build");
+    // A heading still arriving reads before its closing marks do.
+    expect(stepTitle(thinking("t", true, "**Reading the confi"))).toBe("Reading the confi");
+  });
+
+  it("reads prose thinking as its plain words", () => {
+    expect(
+      stepTitle(
+        thinking(
+          "t",
+          false,
+          "I should *check* the [config](https://x.test) first,\nthen run `pnpm test`.",
+        ),
+      ),
+    ).toBe("I should check the config first, then run pnpm test.");
+    expect(stepTitle(thinking("t", false, "  "))).toBe("Thought");
+  });
+
+  it("keeps a tool step's title as written", () => {
+    expect(stepTitle(activity("a", "done", "echo *.log"))).toBe("echo *.log");
   });
 });

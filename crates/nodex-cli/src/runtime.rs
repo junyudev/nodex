@@ -137,10 +137,18 @@ pub(crate) fn execute_with_presentation(
     mut cli: Cli,
     presentation: crate::presentation::Presentation,
 ) -> Result<CommandOutput, CliError> {
+    if cli.remote_connection.is_some() && !matches!(cli.command, Command::Space(_)) {
+        return Err(CliError::new(
+            CliErrorCode::InvalidInput,
+            "A remote connection admits Space commands only",
+        ));
+    }
     let agent_endpoint = env::var(AGENT_ENDPOINT_ENV).ok();
     let agent_credential = env::var(AGENT_CREDENTIAL_ENV).ok();
     let scoped_agent = agent_endpoint.is_some() || agent_credential.is_some();
     if scoped_agent
+        && (cli.remote_connection.is_some()
+            || !agent_content_command(&cli.command)
             || agent_endpoint.is_none()
             || agent_credential.is_none())
     {
@@ -234,6 +242,32 @@ pub(crate) fn execute_with_presentation(
             .map(CommandOutput::Json)
             .map_err(internal);
     }
+    let mut client = if let Some(path) = &cli.remote_connection {
+        let metadata = nodex_platform::private_fs::checked_metadata(
+            path,
+            nodex_platform::private_fs::EntryKind::File,
+            Some(0o600),
+        )
+        .map_err(internal)?;
+        if metadata.len() > 16 * 1024 {
+            return Err(CliError::new(
+                CliErrorCode::InvalidInput,
+                "Remote connection file exceeds its bound",
+            ));
+        }
+        let bytes = std::fs::read(path).map_err(internal)?;
+        let connection: nodex_core_protocol::client::RemoteConnection =
+            serde_json::from_slice(&bytes).map_err(internal)?;
+        CoreClient::connect_remote(&connection, env!("CARGO_PKG_VERSION"))
+    } else {
+        match (agent_endpoint, agent_credential) {
+            (Some(endpoint), Some(credential)) => CoreClient::connect_agent(&endpoint, &credential),
+            _ => connect_or_launch(
+                &home,
+                option_env!("NODEX_RELEASE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
+                None,
+            ),
+        }
     }
     .map_err(map_client_error)?;
     validate_expected_profile(cli.expect_profile.as_deref(), &client, &home)?;

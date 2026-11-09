@@ -9,6 +9,7 @@ export interface CoreGenerationClient extends CoreClientPort {
   readonly handshake: CoreHandshakeResponse;
   readonly spaceName?: string;
   forProject(projectId: string): CoreGenerationClient;
+  forInvocation?(credential: string): CoreGenerationClient;
   health(): Promise<HealthResponse>;
   shutdown(): Promise<ShutdownResponse>;
 }

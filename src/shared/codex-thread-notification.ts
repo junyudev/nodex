@@ -88,6 +88,8 @@ export interface SessionReminderNotificationEvent {
   hostId: string;
   conversation: CodexNotificationConversationFacts;
   remindAt: string;
+  /** The Member who asked to come back to the chat; only they hear about it. */
+  memberId: string;
 }
 
 export type CodexThreadNotificationEvent =
@@ -115,7 +117,7 @@ export type CodexNotificationDecision =
   | { type: "show" }
   | { type: "suppress"; reason: CodexNotificationSuppressionReason };
 
-export interface CodexTurnNotificationPolicyFacts {
+export interface CodexTurnNotificationPolicyFacts extends CodexTurnOccurrenceFacts {
   turnMode: "off" | "unfocused" | "always";
   isAppForegrounded: boolean;
   /** The conversation is in front of the person, in a focused window or on a phone. */
@@ -134,13 +136,21 @@ export function isCodexNotificationChildConversation(
   return (extractCodexThreadSpawnMetadata(conversation.source).parentThreadId ?? "").length > 0;
 }
 
+/** What the occurrence's chat is, as Core knows it, before any channel decides how to tell it. */
+export interface CodexTurnOccurrenceFacts {
+  /** Nodex speaks for this chat through its posts, so its turns stay quiet everywhere. */
+  managed: boolean;
+}
+
 /**
  * Whether a finished turn is worth telling the person at all, before any channel applies its own
  * settings or presence. Desktop notifications and phone pushes share this decision.
  */
 export function decideCodexTurnOccurrence(
   event: CodexTurnCompletedNotificationEvent,
+  facts: CodexTurnOccurrenceFacts,
 ): CodexNotificationDecision {
+  if (facts.managed) return { type: "suppress", reason: "managed" };
   if (event.hostId !== DEFAULT_CODEX_HOST_ID) {
     return { type: "suppress", reason: "remote-host-turn" };
   }
@@ -169,7 +179,7 @@ export function decideCodexTurnNotification(
   event: CodexTurnCompletedNotificationEvent,
   policy: CodexTurnNotificationPolicyFacts,
 ): CodexNotificationDecision {
-  const occurrence = decideCodexTurnOccurrence(event);
+  const occurrence = decideCodexTurnOccurrence(event, policy);
   if (occurrence.type === "suppress") return occurrence;
   if (policy.turnMode === "off") {
     return { type: "suppress", reason: "setting-disabled" };

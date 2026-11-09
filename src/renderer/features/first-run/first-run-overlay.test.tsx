@@ -92,7 +92,7 @@ let rerender: () => void = () => undefined;
 let finished: () => void = () => undefined;
 
 const project = (id: string, path: string): Project =>
-  ({ id, name: id, sources: [{ root: path, order: 0 }] }) as unknown as Project;
+  ({ id, name: id, sources: [{ kind: "directory", path, order: 0 }] }) as unknown as Project;
 
 const candidate = (path: string, overrides: Partial<ProjectCandidate> = {}): ProjectCandidate => ({
   path,

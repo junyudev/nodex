@@ -12,6 +12,15 @@ pub struct SpaceArgs {
 }
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum SpaceCommand {
+    /// Manage this host's private-network remote listener.
+    RemoteAccess {
+        #[command(subcommand)]
+        command: RemoteAccessCommand,
+    },
+    /// Link another Device of your own Member for five minutes.
+    LinkDevice,
+    /// List this Space's Members (Owner only).
+    Members,
     /// Enable HTTPS until this Core process stops.
     Listen {
         /// Bind address for HTTPS, such as 127.0.0.1:8443.
@@ -46,6 +55,7 @@ pub enum SpaceCommand {
     /// List enrolled devices, including revoked devices.
     Devices,
     /// Revoke a device and close its live streams.
+    #[command(alias = "revoke-device")]
     Revoke {
         /// Enrolled device ID from space devices.
         device: String,
@@ -56,6 +66,19 @@ pub enum SpaceCommand {
         member: String,
     },
 }
+#[derive(Clone, Debug, PartialEq, Subcommand)]
+pub enum RemoteAccessCommand {
+    /// Enable remote access and remember its listener address.
+    On {
+        /// Override the saved bind address; port zero chooses a new available port.
+        #[arg(long)]
+        address: Option<String>,
+    },
+    /// Disable remote access and close the listener and its live connections.
+    Off,
+    /// Read the current listener state without changing it.
+    Status,
+}
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
 pub enum InviteRole {
     Owner,
@@ -63,7 +86,43 @@ pub enum InviteRole {
 }
 pub(crate) fn execute(client: &CoreClient, args: SpaceArgs) -> Result<CommandOutput, CliError> {
     let result = match args.command {
+        SpaceCommand::RemoteAccess { command } => match command {
+            RemoteAccessCommand::On { address } => address
+                .map(Ok)
+                .unwrap_or_else(|| {
+                    client
+                        .space_remote_access()
+                        .map(|state| state.intent.address)
+                })
+                .and_then(|address| {
+                    client.space_listen(ListenRequest {
+                        address,
+                        cert: None,
+                        key: None,
+                        peer_policy: ListenerPeerPolicy::Private,
+                    })
+                })
+                .and_then(|v| serde_json::to_value(v).map_err(Into::into)),
+            RemoteAccessCommand::Off => client
+                .space_stop_listener()
+                .and_then(|v| serde_json::to_value(v).map_err(Into::into)),
+            RemoteAccessCommand::Status => client
+                .space_remote_access()
+                .and_then(|v| serde_json::to_value(v).map_err(Into::into)),
+        },
+        SpaceCommand::LinkDevice => client
+            .space_link_device()
+            .and_then(|v| serde_json::to_value(v).map_err(Into::into)),
+        SpaceCommand::Members => client
+            .space_members()
+            .and_then(|v| serde_json::to_value(v).map_err(Into::into)),
         SpaceCommand::Listen { address, cert, key } => client
+            .space_listen(ListenRequest {
+                peer_policy: Default::default(),
+                address,
+                cert,
+                key,
+            })
             .and_then(|v| serde_json::to_value(v).map_err(Into::into)),
         SpaceCommand::Invite { role, member } => client
             .space_invite(InviteRequest {

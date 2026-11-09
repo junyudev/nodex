@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-05
 - Owners: Nodex maintainers
+- Supersedes: ADR 0078's “Agent work never moves Status” and report-based prerequisite satisfaction
 
 ## Context
 

@@ -2,7 +2,7 @@
   "name": "@nodex/mobile-protocol",
   "version": "0.0.0",
   "private": true,
-  "description": "Wire contract and encrypted channel between Nodex Mobile and a Desktop Host",
+  "description": "Bounded phone RPC, stream, Device-link and sealed notification contracts for a Space",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -12,8 +12,6 @@
   },
   "dependencies": {
     "@noble/ciphers": "2.4.0",
-    "@noble/curves": "2.4.0",
-    "@noble/hashes": "2.4.0",
     "zod": "4.6.7"
   }
 }

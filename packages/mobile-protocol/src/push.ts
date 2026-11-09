@@ -4,10 +4,10 @@ import { z } from "zod";
 import { decodeBase64Url, encodeBase64Url, utf8Bytes, utf8Text } from "./encoding";
 
 /**
- * Notifications reach a phone through a relay that can read neither where they go nor what they say.
- * The relay seals the phone's system push address into an opaque `handle` that only it can open. The
- * desktop encrypts each notification with a key only the phone and its desktops hold. A desktop
- * learns the handle and key from the phone over their encrypted channel.
+ * Notifications reach a phone through a relay that cannot read what they say. The relay seals the
+ * phone's system push address into an opaque `handle` that only it can open. A Space host encrypts
+ * each notification with a key only the phone and its Device registrations hold. Each Space learns
+ * the handle and key from the phone's own request over its pinned channel.
  */
 export const PUSH_RELAY_ORIGIN = "https://push.nodex.jyu.app";
 
@@ -28,22 +28,29 @@ export type PushPreferences = z.infer<typeof PushPreferencesSchema>;
 
 export const PushRegistrationSchema = z.looseObject({
   /** From the relay's `POST /v1/devices`. */
-  handle: z.string().min(1),
+  handle: z.string().regex(/^[A-Za-z0-9_-]{1,1024}$/u),
   /** Base64url, `PUSH_KEY_BYTES` long. */
-  key: z.string().min(1),
+  key: z.string().regex(/^[A-Za-z0-9_-]{43}$/u),
   preferences: PushPreferencesSchema,
 });
 export type PushRegistration = z.infer<typeof PushRegistrationSchema>;
 
-/** What the phone shows, and the chat a tap opens. Only the phone and its desktops can read this. */
-export const PushPayloadSchema = z.looseObject({
-  kind: z.enum(["needs_you", "finished", "failed"]),
-  sessionId: z.string(),
-  /** The desktop it came from, so a tap on a phone paired with several opens the right one. */
-  hostId: z.string().optional(),
-  title: z.string(),
-  body: z.string(),
-});
+/** What the phone shows, and the chat a tap opens. Only the phone and its Spaces can read this. */
+export const PushPayloadSchema = z
+  .looseObject({
+    kind: z.enum(["needs_you", "finished", "failed"]),
+    /** The chat a tap opens. A Page Turn that waits on no chat names its Page instead. */
+    sessionId: z.string().optional(),
+    /** The Page whose Turn it is, which a tap opens when there is no chat to open. */
+    pageId: z.string().optional(),
+    /** The Space and Member enrollment it came from (Hello's `host.id`), so a tap opens that Space. */
+    hostId: z.string().optional(),
+    title: z.string(),
+    body: z.string(),
+  })
+  .refine((payload) => payload.sessionId !== undefined || payload.pageId !== undefined, {
+    message: "A notification opens a chat or a Page",
+  });
 export type PushPayload = z.infer<typeof PushPayloadSchema>;
 
 /** `POST /v1/devices`, from the phone. The answer is `{ handle }`. */
@@ -56,7 +63,7 @@ export const RelayDeviceRequestSchema = z.looseObject({
 export type RelayDeviceRequest = z.infer<typeof RelayDeviceRequestSchema>;
 
 /**
- * `POST /v1/push`, from a desktop. `410` means this phone is gone and the handle should be forgotten;
+ * `POST /v1/push`, from a Space host. `410` means this phone is gone and the handle should be forgotten;
  * `429` and `5xx` are worth a later retry; anything else is a defect.
  */
 export const RelayPushRequestSchema = z.looseObject({

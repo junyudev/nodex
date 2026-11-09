@@ -1,3 +1,4 @@
+import * as SpaceAdministrationIpc from "../space-connections/SpaceAdministrationIpc";
 import * as SourcesIpc from "../ipc/handlers/SourcesIpc";
 import * as WorkIpc from "../ipc/handlers/WorkIpc";
 import * as ChatSearchIpc from "../ipc/handlers/ChatSearchIpc";
@@ -129,6 +130,7 @@ export const live = Layer.mergeAll(
   ExecutionHostIpc.live,
   ApplicationLocalStateIpc.live,
   ApplicationSettingsIpc.live,
+  SpaceAdministrationIpc.live,
   AgentBackendIpc.live,
   AgentRuntimeIpc.live,
   ChatMemberActionsIpc.live,

@@ -185,14 +185,14 @@ export class ElectronSpaceIpc extends Context.Service<
 >()("nodex/main/platform/electron/ElectronSpaceIpc") {}
 
 const asyncLive: Layer.Layer<
-  ElectronIpc,
+  ElectronIpc | ElectronSpaceIpc,
   never,
   ScopedCallbackRuntime | WebContentsDestructionSubscriptions
-> = Layer.effect(
-  ElectronIpc,
+> = Layer.effectContext(
   Effect.gen(function* () {
     const callbacks = yield* ScopedCallbackRuntime;
     const destruction = yield* WebContentsDestructionSubscriptions;
+    let spaceDispatch: SpaceIpcDispatch | null = null;
     const routed = new Set<keyof IpcApi>();
     const handle = <
       Channel extends keyof IpcApi,
@@ -268,7 +268,7 @@ const asyncLive: Layer.Layer<
             }).pipe(Effect.andThen(queryScope ? Scope.close(queryScope, Exit.void) : Effect.void)),
         );
       });
-    return ElectronIpc.of({
+    const ipc = ElectronIpc.of({
       handleQuery: (channel, handler) => handle(channel, handler, undefined, true),
       handleControl: handle,
       handleLocalCommitCommand: handle,
@@ -285,9 +285,24 @@ const asyncLive: Layer.Layer<
         );
       },
     });
+    return Context.make(ElectronIpc, ipc).pipe(
+      Context.add(
+        ElectronSpaceIpc,
+        ElectronSpaceIpc.of({
+          configure: (dispatch) =>
+            Effect.acquireRelease(
+              Effect.sync(() => {
+                spaceDispatch = dispatch;
+              }),
+              () =>
                 Effect.sync(() => {
+                  if (spaceDispatch === dispatch) spaceDispatch = null;
                 }),
+            ),
           routes: (channel) => routed.has(channel),
+        }),
+      ),
+    );
   }),
 );
 
@@ -310,3 +325,4 @@ export const live: Layer.Layer<
   ElectronIpc | ElectronSpaceIpc | ElectronSyncIpc,
   never,
   ScopedCallbackRuntime
+> = Layer.merge(asyncLive, syncLive).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

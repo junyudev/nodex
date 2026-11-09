@@ -1,14 +1,9 @@
 import { BlockNoteEditor } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/shadcn";
-import { act, fireEvent, within } from "@testing-library/react";
+import { act, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
-import {
-  BlockReferenceRuntimeProvider,
-  type BlockReferenceHostRuntime,
-} from "@/components/block-documents/block-reference-runtime-context";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import { renderWithAppMaitai } from "@/test/app-maitai";
 import { FileReadCache } from "@/lib/file-read-cache";
 import "../../../globals.css";
 import type { AttachmentProps } from "./attachment-chip";
@@ -65,19 +60,6 @@ const createFileRuntime = (overrides: Partial<FilePlacementRuntime> = {}): FileP
   };
 };
 
-const openPageFile = vi.fn();
-
-const hostRuntime: BlockReferenceHostRuntime = {
-  contentRoutingContext: { kind: "project", projectId: "project-1" },
-  projectName: null,
-  projectWorkspacePath: null,
-  hostPageId: "page-1",
-  ancestorPageIds: ["page-1"],
-  ancestorDocumentOwnerBlockIds: ["page-1"],
-  isActiveSurface: true,
-  openPageFile,
-};
-
 const renderAttachment = (
   fileRuntime: FilePlacementRuntime,
   props: AttachmentProps,
@@ -93,27 +75,25 @@ const renderAttachment = (
       },
     ],
   });
-  const view = renderWithAppMaitai(
+  const view = render(
     <NodexTooltipProvider>
-      <BlockReferenceRuntimeProvider value={hostRuntime}>
-        <FileRuntimeProvider value={fileRuntime}>
-          <BlockNoteView
-            editor={editor}
-            formattingToolbar={false}
-            linkToolbar={false}
-            slashMenu={false}
-            sideMenu={false}
-            tableHandles={false}
-          />
-        </FileRuntimeProvider>
-      </BlockReferenceRuntimeProvider>
+      <FileRuntimeProvider value={fileRuntime}>
+        <BlockNoteView
+          editor={editor}
+          formattingToolbar={false}
+          linkToolbar={false}
+          slashMenu={false}
+          sideMenu={false}
+          tableHandles={false}
+        />
+      </FileRuntimeProvider>
     </NodexTooltipProvider>,
   );
   return { editor, view };
 };
 
 describe("attachment chip Library Files", () => {
-  test("reads as an inline File reference and opens beside its Page", async () => {
+  test("uses the same format icon in the chip and its popover", async () => {
     const { editor, view } = renderAttachment(
       createFileRuntime(),
       {
@@ -156,81 +136,114 @@ describe("attachment chip Library Files", () => {
       expect(opticalHeight).toBeLessThan(13);
 
       await act(async () => {
-        fireEvent.click(chip);
+        if (chip) fireEvent.click(chip);
         await settleEditor();
       });
-      expect(openPageFile).toHaveBeenLastCalledWith({
-        routingContext: { kind: "project", projectId: "project-1" },
-        pageId: "page-1",
-        fileId: "file-1",
-        logicalPath: null,
-        title: "review.webm",
-        openMode: "preview",
+
+      await waitFor(() => {
+        const popover = document.body.querySelector('[data-slot="popover-content"]');
+        expect(popover?.querySelector('[data-file-tab-icon="file"]')).not.toBeNull();
       });
-      await act(async () => {
-        fireEvent.click(chip, { metaKey: true });
-        await settleEditor();
-      });
-      expect(openPageFile).toHaveBeenLastCalledWith(
-        expect.objectContaining({ fileId: "file-1", openMode: "durable" }),
-      );
-      expect(document.body.querySelector('[data-slot="popover-content"]')).toBeNull();
     } finally {
       view.unmount();
       editor._tiptapEditor.destroy();
     }
   });
 
-  test("offers the File's actions in its context menu", async () => {
-    const save = vi.fn(async () => undefined);
+  test("reuses preview bytes while open and releases them when the popover closes", async () => {
+    let resolveMetadata!: (value: Awaited<ReturnType<FilePlacementRuntime["metadata"]>>) => void;
+    const metadata = vi.fn(
+      () =>
+        new Promise<Awaited<ReturnType<FilePlacementRuntime["metadata"]>>>((resolve) => {
+          resolveMetadata = resolve;
+        }),
+    );
+    let resolveRead!: (value: Awaited<ReturnType<FilePlacementRuntime["read"]>>) => void;
+    const read = vi.fn(
+      () =>
+        new Promise<Awaited<ReturnType<FilePlacementRuntime["read"]>>>((resolve) => {
+          resolveRead = resolve;
+        }),
+    );
     const { editor, view } = renderAttachment(
-      createFileRuntime({
-        save,
-        metadata: async () =>
-          createFileMetadata({ default_name: "notes.md", mime_type: "text/markdown" }),
-      }),
+      createFileRuntime({ read, metadata }),
       {
         kind: "file",
         mode: "materialized",
         source: "nodex://files/file-1",
-        name: "notes.md",
-        mimeType: "text/markdown",
+        name: "result.json",
+        mimeType: "application/json",
       },
-      "attachment-menu-block",
+      "attachment-preview-block",
     );
 
     try {
       await act(settleEditor);
-      const chip = await view.findByRole("button", { name: "Open notes.md" });
-      await act(async () => {
-        fireEvent.contextMenu(chip, { clientX: 20, clientY: 20 });
-        await settleEditor();
-      });
-      const menu = await view.findByRole("menu");
-      expect(
-        within(menu)
-          .getAllByRole("menuitem")
-          .map((item) => item.textContent),
-      ).toEqual(["Open", "Open in new tab", "Save…", "Copy reference"]);
-      await act(async () => {
-        fireEvent.click(within(menu).getByRole("menuitem", { name: "Open in new tab" }));
-        await settleEditor();
-      });
-      expect(openPageFile).toHaveBeenLastCalledWith(
-        expect.objectContaining({ fileId: "file-1", title: "notes.md", openMode: "durable" }),
-      );
+      const label = await view.findByText("result.json");
+      const chip = label.closest("button");
+      expect(chip).not.toBeNull();
+      if (!chip) throw new Error("Attachment chip was not rendered");
 
       await act(async () => {
-        fireEvent.contextMenu(chip, { clientX: 20, clientY: 20 });
-        await settleEditor();
+        fireEvent.click(chip);
+        await Promise.resolve();
       });
+
+      const firstPopover = await view.findByRole("dialog");
+      expect(within(firstPopover).getByText("Loading preview...")).toBeVisible();
+      expect(read).toHaveBeenCalledTimes(1);
+
       await act(async () => {
-        fireEvent.click(
-          within(await view.findByRole("menu")).getByRole("menuitem", { name: "Save…" }),
+        resolveMetadata(
+          createFileMetadata({
+            default_name: "renamed-result.json",
+            mime_type: "application/json",
+            byte_length: 18,
+          }),
         );
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(chip).toHaveTextContent("renamed-result.json"));
+      expect(within(firstPopover).getByText(/18 B/)).toBeVisible();
+      expect(read).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        resolveRead({
+          bytes: new TextEncoder().encode('{"status":"passed"}'),
+          mimeType: "application/json",
+          etag: "etag-1",
+        });
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(within(firstPopover).getByText(/"status":"passed"/)).toBeVisible();
+      });
+      expect(view.getByRole("dialog")).toBe(firstPopover);
+
+      await act(async () => {
+        fireEvent.click(chip);
         await settleEditor();
       });
-      expect(save).toHaveBeenCalledWith("nodex://files/file-1", "notes.md");
+      await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+
+      await act(async () => {
+        fireEvent.click(chip);
+        await settleEditor();
+      });
+      const reopenedPopover = await view.findByRole("dialog");
+      expect(within(reopenedPopover).getByText("Loading preview...")).toBeVisible();
+      expect(read).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        resolveRead({
+          bytes: new TextEncoder().encode('{"status":"passed"}'),
+          mimeType: "application/json",
+          etag: "etag-1",
+        });
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(within(reopenedPopover).getByText(/"status":"passed"/)).toBeVisible();
+      });
     } finally {
       view.unmount();
       editor._tiptapEditor.destroy();
@@ -280,6 +293,84 @@ describe("attachment chip Library Files", () => {
       });
       await view.findByText("renamed.json");
       expect(view.queryByText("current.json")).toBeNull();
+    } finally {
+      view.unmount();
+      editor._tiptapEditor.destroy();
+    }
+  });
+
+  test("shows a truthful state when a preview read fails", async () => {
+    let contentConsumers = 0;
+    const readOwnership: boolean[] = [];
+    const read = vi.fn(async () => {
+      readOwnership.push(contentConsumers > 0);
+      throw new Error("preview unavailable");
+    });
+    const fileRuntime = createFileRuntime({
+      read,
+      metadata: async () =>
+        createFileMetadata({
+          default_name: "result.json",
+          mime_type: "application/json",
+          byte_length: 18,
+        }),
+    });
+    const runtime: FilePlacementRuntime = {
+      ...fileRuntime,
+      subscribe(source, demand, listener) {
+        const release = fileRuntime.subscribe(source, demand, listener);
+        if (!demand.content) return release;
+        contentConsumers += 1;
+        return () => {
+          contentConsumers -= 1;
+          release();
+        };
+      },
+    };
+    const { editor, view } = renderAttachment(
+      runtime,
+      {
+        kind: "file",
+        mode: "materialized",
+        source: "nodex://files/file-1",
+        name: "result.json",
+        mimeType: "application/json",
+      },
+      "attachment-failed-preview-block",
+    );
+
+    try {
+      await act(settleEditor);
+      const chip = (await view.findByText("result.json")).closest("button");
+      expect(chip).not.toBeNull();
+      if (!chip) throw new Error("Attachment chip was not rendered");
+
+      await act(async () => {
+        fireEvent.click(chip);
+        await settleEditor();
+      });
+
+      const popover = await view.findByRole("dialog");
+      await waitFor(() => {
+        expect(within(popover).getByText("Preview unavailable.")).toBeVisible();
+      });
+      expect(within(popover).queryByText("Loading preview...")).toBeNull();
+      expect(readOwnership).toEqual([true]);
+      expect(read).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        fireEvent.click(chip);
+        await settleEditor();
+      });
+      await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+      expect(contentConsumers).toBe(0);
+      await act(async () => {
+        fireEvent.click(chip);
+        await settleEditor();
+      });
+      await view.findByRole("dialog");
+      await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+      expect(readOwnership).toEqual([true, true]);
     } finally {
       view.unmount();
       editor._tiptapEditor.destroy();

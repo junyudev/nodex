@@ -1,24 +1,24 @@
-import { parsePairingUri } from "@nodex/mobile-protocol";
+import { parseDeviceLinkUri } from "@nodex/mobile-protocol";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Clipboard from "expo-clipboard";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { Alert, Linking, Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import type { ScreenProps } from "../../navigation/types";
+import { navigationRef, type ScreenProps } from "../../navigation/types";
 import { pairWithUri, useHosts } from "../../runtime";
 import { Icon, NodexMark } from "../../ui/icons";
 import { Button, Spinner, Tap, Txt, lightTap } from "../../ui/primitives";
 import { pairingFailureMessage, pairingFailureReason } from "./pairing-copy";
 
 const STEPS = [
-  "Open Nodex on your computer.",
-  "Go to Settings, then Mobile, and turn it on.",
-  "Choose Pair a phone and scan the code.",
+  "Open the Space’s settings on your computer.",
+  "Turn on Remote access, then choose Link a device.",
+  "Scan its code or paste the device link.",
 ];
 
 /**
- * Reaching a desktop is the only thing this app needs before it is useful, so this is the whole
+ * Linking a Space is the only thing this app needs before it is useful, so this is the whole
  * first run: the camera, the three steps that produce a code, and a way in without a camera.
  */
 export const PairScreen = ({ route, navigation }: ScreenProps<"Pair" | "Welcome">) => {
@@ -31,54 +31,62 @@ export const PairScreen = ({ route, navigation }: ScreenProps<"Pair" | "Welcome"
   const [retryUri, setRetryUri] = useState<string | null>(null);
   // A scanner fires many times per second for one code; only the first attempt counts.
   const lastUri = useRef<string | null>(null);
+  const promptedUri = useRef<string | null>(null);
 
-  const pair = useCallback(
-    (uri: string) => {
-      if (uri === lastUri.current) return;
-      lastUri.current = uri;
-      if (!parsePairingUri(uri)) {
-        setError(pairingFailureMessage("invalid"));
-        return;
-      }
-      lightTap();
-      setError(null);
-      setRetryUri(null);
-      setPairing(true);
-      pairWithUri(uri)
-        .then(() => {
-          // First run swaps this screen for Home by itself; from Settings it is a modal to close.
-          if (navigation.canGoBack()) navigation.goBack();
-        })
-        .catch((cause: unknown) => {
-          const reason = pairingFailureReason(cause);
-          setError(pairingFailureMessage(reason));
-          if (reason === "unreachable" || reason === "busy") setRetryUri(uri);
-        })
-        .finally(() => setPairing(false));
-    },
-    [navigation],
-  );
+  const pair = useCallback((uri: string) => {
+    if (uri === lastUri.current) return;
+    lastUri.current = uri;
+    if (!parseDeviceLinkUri(uri)) {
+      setError(pairingFailureMessage("invalid"));
+      return;
+    }
+    lightTap();
+    setError(null);
+    setRetryUri(null);
+    setPairing(true);
+    pairWithUri(uri)
+      .then(() => {
+        // First run swaps this screen for Home by itself; from Settings it is a modal to close.
+        // Linking another Space makes it current and remounts the stack under this screen, so
+        // the sheet is closed through the container rather than this instance's navigation.
+        if (navigationRef.isReady() && navigationRef.getCurrentRoute()?.name === "Pair")
+          navigationRef.goBack();
+      })
+      .catch((cause: unknown) => {
+        const reason = pairingFailureReason(cause);
+        setError(pairingFailureMessage(reason));
+        if (reason === "unreachable" || reason === "busy") setRetryUri(uri);
+      })
+      .finally(() => setPairing(false));
+  }, []);
 
-  // A link can come from anywhere, so unlike a code aimed at on purpose it has to ask first.
-  useEffect(() => {
-    const uri = route.params?.uri;
-    const offer = uri ? parsePairingUri(uri) : null;
-    if (!uri || !offer) return;
+  const promptIncomingLink = useEffectEvent((uri: string) => {
+    const offer = parseDeviceLinkUri(uri);
+    if (!offer || promptedUri.current === uri) return;
+    promptedUri.current = uri;
+    // Enrollment switches the active Space and remounts its navigator. Consume the
+    // one-time navigation input before prompting, so that remount cannot replay it.
+    navigation.setParams({ uri: undefined });
     Alert.alert(
-      `Connect to ${offer.hostName}?`,
-      "Only continue if you just showed this code on your own computer. That desktop will receive what you send from this phone.",
+      `Connect to ${offer.space_name}?`,
+      "Continue only if you trust this Space host and requested this device link.",
       [
         { text: "Cancel", style: "cancel" },
         { text: "Connect", onPress: () => pair(uri) },
       ],
     );
-  }, [pair, route.params?.uri]);
+  });
+  // Only a new route input prompts. Callback/navigation changes read their latest
+  // committed values without reopening a confirmation for the same one-time code.
+  useEffect(() => {
+    if (route.params?.uri) promptIncomingLink(route.params.uri);
+  }, [route.params?.uri]);
 
   const pasteLink = async () => {
     const text = await Clipboard.getStringAsync();
     lastUri.current = null;
     if (text.trim()) pair(text);
-    else setError("The clipboard is empty. Copy the pairing link from your desktop first.");
+    else setError("The clipboard is empty. Copy a device link from the Space’s settings first.");
   };
 
   const cameraBlocked = permission !== null && !permission.granted && !permission.canAskAgain;
@@ -94,7 +102,7 @@ export const PairScreen = ({ route, navigation }: ScreenProps<"Pair" | "Welcome"
     >
       <View className="flex-row items-center gap-2.5">
         <NodexMark size={28} />
-        <Txt className="flex-1 text-xl font-semibold">Connect to your desktop</Txt>
+        <Txt className="flex-1 text-xl font-semibold">Link a Space</Txt>
         {hosts.length > 0 ? (
           <Tap accessibilityLabel="Close" hitSlop={8} onPress={() => navigation.goBack()}>
             <Icon name="close" />
@@ -168,7 +176,7 @@ export const PairScreen = ({ route, navigation }: ScreenProps<"Pair" | "Welcome"
       <View className="flex-1" />
       <Button
         icon="link"
-        label="Paste a pairing link"
+        label="Paste a device link"
         disabled={pairing}
         onPress={() => void pasteLink()}
       />

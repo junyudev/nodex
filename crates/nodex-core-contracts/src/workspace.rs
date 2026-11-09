@@ -204,6 +204,10 @@ pub enum ProjectWorkspaceRead {
         order: Option<ProjectWorkspaceSessionOrder>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         projectless_only: Option<bool>,
+        /// Leave out each Member's new chat until its first message starts it: a list of
+        /// conversations has nothing to show for one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        exclude_drafts: Option<bool>,
         project_id: Option<String>,
         query: Option<String>,
         native_only: Option<bool>,
@@ -337,6 +341,9 @@ pub enum ProjectWorkspaceRead {
         run_id: String,
     },
     InboxTurnNotifications,
+    /// Every Member's current notifying Page Turns, claimed by a desktop or not, for the local
+    /// Host's phone notifications.
+    CurrentTurnNotifications,
     InboxEntry {
         page_id: String,
     },
@@ -622,6 +629,9 @@ pub enum ProjectWorkspaceReadValue {
     },
     InboxTurnNotifications {
         intents: Vec<crate::inbox::InboxTurnNotification>,
+    },
+    CurrentTurnNotifications {
+        turns: Vec<crate::inbox::CurrentTurnNotification>,
     },
     InboxEntry {
         item: Option<Box<ProjectWorkspaceInboxItem>>,

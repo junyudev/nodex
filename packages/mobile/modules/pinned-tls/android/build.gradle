@@ -1,0 +1,12 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+group = 'app.nodex.tls'
+version = '0.1.0'
+android { namespace 'app.nodex.tls' }
+dependencies {
+  // Use React Native's networking generation.
+  implementation 'com.squareup.okhttp3:okhttp:4.9.2'
+  implementation 'com.squareup.okio:okio:2.9.0'
+}

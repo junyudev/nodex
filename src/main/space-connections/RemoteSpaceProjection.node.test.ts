@@ -28,6 +28,7 @@ it.effect(
           projectSessionInvalidations: Stream.empty,
           inboxInvalidations: Stream.empty,
           workInvalidations: Stream.empty,
+          projectInvalidations: Stream.empty,
         });
         const context = yield* Layer.build(
           live(Effect.void).pipe(Layer.provide(Layer.succeed(DatabaseNotifierRuntime, notifier))),
@@ -91,6 +92,7 @@ it.effect("publishes hosted chat changes and resync to the team's Session catalo
         projectSessionInvalidations: Stream.empty,
         inboxInvalidations: Stream.empty,
         workInvalidations: Stream.empty,
+        projectInvalidations: Stream.empty,
       });
       const context = yield* Layer.build(
         live(Effect.void).pipe(Layer.provide(Layer.succeed(DatabaseNotifierRuntime, notifier))),

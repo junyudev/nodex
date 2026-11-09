@@ -47,6 +47,10 @@ const clientFor = (spaceId: string, spaceName = "Team"): CoreGenerationClient =>
   return client;
 };
 
+const fixture = Effect.fnUntraced(function* (
+  saved: readonly SpaceCredential[] = [credential],
+  enroll?: Parameters<typeof make>[0]["enroll"],
+) {
   let personalName = "Personal";
   const client = Object.assign(clientFor(personalId), {
     spaceInfo: () =>
@@ -90,6 +94,7 @@ const clientFor = (spaceId: string, spaceName = "Team"): CoreGenerationClient =>
   });
   const registry = yield* make({
     buildId: "test",
+    ...(enroll ? { enroll } : {}),
     remote: (saved, observe) =>
       RemoteSpaceAuthority.live({
         credential: saved,
@@ -438,6 +443,33 @@ it.effect(
       assert.strictEqual((yield* SubscriptionRef.get(registry.summaries))[1]?.name, "Platform");
       assert.deepEqual(persisted, [{ ...credential, name: "Platform" }]);
     }),
+);
+
+it.effect("joining keeps Core's reason for refusing the person's name", () =>
+  Effect.gen(function* () {
+    const refusal =
+      "Choose a name others will recognize; Nodex shows each person their own actions as You";
+    let status = 400;
+    const { registry } = yield* fixture([], () =>
+      Promise.reject(new CoreHttpError(status, status === 400 ? refusal : "unauthorized")),
+    );
+    const join = () =>
+      Effect.flip(
+        registry.join({
+          inviteUrl: `https://team.example?fingerprint=${"a".repeat(64)}`,
+          fingerprint: "a".repeat(64),
+          code: "one-use-code",
+          displayName: "Alice",
+          deviceLabel: "Desktop",
+        }),
+      );
+    assert.strictEqual((yield* join()).message, refusal);
+    status = 401;
+    assert.strictEqual(
+      (yield* join()).message,
+      "Could not join this Space. Check the invite and certificate fingerprint",
+    );
+  }),
 );
 
 it.effect("a connected team Space follows its host's rename without reconnecting", () =>

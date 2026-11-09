@@ -123,6 +123,12 @@ const program = Effect.gen(function* () {
       return yield* Effect.fail(new Error("Host configuration belongs to another Space"));
     yield* Effect.tryPromise(() => verifyHostSecrets(coreHome, coreExecutable));
     const listener = yield* Effect.tryPromise(() =>
+      admin.listenSpace({
+        address: config.address,
+        cert: null,
+        key: null,
+        peer_policy: "operator",
+      }),
     );
     yield* Effect.tryPromise(() =>
       writeHostStatus(coreHome, {
@@ -159,6 +165,7 @@ const program = Effect.gen(function* () {
     Effect.provide(
       hostLayer({
         coreHome,
+        listenerAddress: config.address,
         workerDirectory: __dirname,
         agentRunner: config.agentRunner,
         repositories: config.repositories,

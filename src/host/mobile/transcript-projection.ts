@@ -1,10 +1,12 @@
 import type { HostPathFlavor } from "../host-paths";
+import { posix, win32 } from "node:path";
 import type { AgentSnapshot, AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import {
   localMarkdownImagePaths,
   rebindMarkdownImages,
 } from "@nodex/agent-runtime/markdown-images";
 import { replyPictureAttachmentId } from "../../shared/agent-runtime-attachments";
+import { nativeSessionMediaResources } from "@nodex/agent-runtime/native-attachment-resource";
 import {
   resolveAgentApprovalOptions,
   splitAgentApprovalOptions,
@@ -18,6 +20,8 @@ import type {
   ChatRequest,
   ChatSnapshot,
   ChatStatus,
+  FileRef,
+  UnavailablePicture,
 } from "@nodex/mobile-protocol";
 import type { AgentRuntimeSessionActivity } from "../../shared/agent-runtime-api";
 import { attachmentRef } from "./files";
@@ -26,14 +30,99 @@ const TEXT_BYTES = 64 * 1024;
 const OUTPUT_BYTES = 4 * 1024;
 const WINDOW_BYTES = 256 * 1024;
 export const WINDOW_ITEMS = 80;
+/** A tool returns one screenshot or a few frames; the Runtime keeps no more than this. */
+const STEP_IMAGES = 8;
+/** A step's pictures a transcript window names; the opened step names the rest. */
+const WINDOW_STEP_IMAGES = 4;
 
 type Activity = Extract<ChatItem, { kind: "activity" }>;
+type DynamicTool = Extract<AgentTurnItem, { type: "dynamic_tool" }>;
 const json = (data: unknown): string | null =>
   data === undefined || data === null
     ? null
     : typeof data === "string"
       ? data
       : JSON.stringify(data);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const isImageBlock = (block: unknown) =>
+  isRecord(block) &&
+  (block.type === "image" || block.type === "inputImage" || block.type === "input_image");
+const textOf = (block: unknown): string | null =>
+  isRecord(block) &&
+  (block.type === "text" || block.type === "inputText" || block.type === "input_text") &&
+  typeof block.text === "string"
+    ? block.text
+    : null;
+/**
+ * What a tool said, as text. Pictures never travel as text: a list of text and pictures reads as
+ * its text, and anything else keeps its shape with each picture's bytes left out.
+ */
+const toolOutput = (value: unknown): string | null => {
+  const blocks = Array.isArray(value)
+    ? value
+    : isRecord(value) && Array.isArray(value.content) && value.structuredContent == null
+      ? value.content
+      : null;
+  if (blocks?.every((block) => textOf(block) !== null || isImageBlock(block)))
+    return blocks.flatMap((block) => textOf(block) ?? []).join("\n\n") || null;
+  const withoutBytes = (entry: unknown) =>
+    isRecord(entry) && isImageBlock(entry) ? { type: entry.type } : entry;
+  if (Array.isArray(value)) return json(value.map(withoutBytes));
+  if (isRecord(value) && Array.isArray(value.content))
+    return json({ ...value, content: value.content.map(withoutBytes) });
+  return json(withoutBytes(value));
+};
+/** Why a picture the transcript shows has no bytes the phone can read. */
+const PROVIDER_KEEPS = "Codex keeps this picture with its provider; the desktop has no copy.";
+const NOT_SAVED = "This picture isn't saved where the desktop can read it.";
+const SOURCE_MISSING = "Its original file is missing.";
+
+/** Pictures an imported conversation named whose files were already gone. */
+const missingCopies = (item: AgentTurnItem): UnavailablePicture[] =>
+  (item.unavailableImages ?? [])
+    .map(({ name }) => ({ name, reason: SOURCE_MISSING }))
+    .slice(0, STEP_IMAGES);
+
+const isAbsolutePath = (source: string) =>
+  source.startsWith("file:") || posix.isAbsolute(source) || win32.isAbsolute(source);
+
+/**
+ * The pictures of a connected conversation's item. Its desktop reads one saved as a file or held
+ * in the conversation itself, with the Member's authority, as it reads any chat picture; one on the
+ * web loads from there. A picture the provider keeps, or one saved anywhere else, is named with the
+ * reason instead.
+ */
+const nativePictures = (
+  sessionId: string,
+  threadId: string,
+  runId: string | null,
+  item: ThreadItem,
+): { readonly images: FileRef[]; readonly unavailableImages: UnavailablePicture[] } => {
+  const images: FileRef[] = [];
+  const unavailableImages: UnavailablePicture[] = [];
+  for (const { id, media, resource } of nativeSessionMediaResources(item)) {
+    if (media !== "image") continue;
+    const source = resource?.source ?? "";
+    const picture = { name: resource?.name ?? "Picture", mimeType: resource?.mimeType ?? null };
+    if (resource && /^https:\/\//iu.test(source))
+      images.push({ ...picture, ref: source, size: null });
+    else if (resource && runId && (/^data:image\//iu.test(source) || isAbsolutePath(source)))
+      images.push({
+        ...picture,
+        ref: attachmentRef([sessionId, threadId, item.id, id, runId]),
+        size: null,
+      });
+    else
+      unavailableImages.push({ name: picture.name, reason: resource ? NOT_SAVED : PROVIDER_KEEPS });
+  }
+  return {
+    images: images.slice(0, STEP_IMAGES),
+    unavailableImages: unavailableImages.slice(0, STEP_IMAGES),
+  };
+};
+
 const activityStatus = (status: string): Activity["status"] => {
   if (["running", "waiting", "pending", "inProgress", "in_progress"].includes(status))
     return "running";
@@ -292,6 +381,7 @@ export const runtimeItemProjector =
   };
 
 export const projectNativeItem = (
+  sessionId: string,
   threadId: string,
   runId: string | null,
   item: ThreadItem,
@@ -300,6 +390,7 @@ export const projectNativeItem = (
     id: chatItemId(threadId, item.id, runId),
     at: new Date(item.startedAtMs ?? item.completedAtMs ?? 0).toISOString(),
   };
+  const pictures = nativePictures(sessionId, threadId, runId, item);
   const work = (
     category: Activity["category"],
     title: string,
@@ -315,6 +406,7 @@ export const projectNativeItem = (
     output,
     outputTruncated: false,
     status: activityStatus(status),
+    ...pictures,
   });
   switch (item.type) {
     case "userMessage":
@@ -325,8 +417,18 @@ export const projectNativeItem = (
           .flatMap((input) => (input.type === "text" ? [input.text] : []))
           .join("\n"),
         queued: false,
+        files: pictures.images,
+        unavailableImages: pictures.unavailableImages,
       };
     case "agentMessage":
+      return {
+        ...base,
+        kind: "assistant",
+        text: item.text,
+        streaming: false,
+        truncated: false,
+        unavailableImages: [],
+      };
     case "reasoning":
       return {
         ...base,
@@ -342,8 +444,21 @@ export const projectNativeItem = (
     case "webSearch":
       return work("web", "Search the web", item.query, null);
     case "mcpToolCall":
+      return work(
+        "tool",
+        item.tool,
+        item.server,
+        toolOutput(item.result) ?? json(item.error),
+        item.status,
+      );
     case "dynamicToolCall":
+      return work("tool", item.tool, item.namespace, toolOutput(item.contentItems), item.status);
     case "functionCallOutput":
+      return work("tool", item.name, item.namespace, toolOutput(item.output));
+    case "imageView":
+      return work("file", "View image", item.path, null);
+    case "imageGeneration":
+      return work("tool", "Generate image", item.revisedPrompt, null, item.status);
     case "plan":
       return work("plan", "Plan", null, item.text);
     case "subAgentActivity":
@@ -353,6 +468,25 @@ export const projectNativeItem = (
     default:
       return work("other", "Activity", null, null);
   }
+};
+
+/**
+ * A running command's output enters its record only when it ends. Until then the Agent keeps what
+ * it has written as live work named by the command's own id, where the desktop reads it too.
+ */
+export const liveOutputTask = (item: AgentTurnItem): string | null =>
+  item.type === "command_execution" && activityStatus(item.status) === "running"
+    ? (item.nativeItemRef?.nativeId ?? null)
+    : null;
+
+/** A step that is still running shows the end of what it has written so far. */
+export const withLiveOutput = (
+  item: ChatItem,
+  live: { readonly text: string; readonly truncated: boolean } | null,
+): ChatItem => {
+  if (item.kind !== "activity" || item.status !== "running" || live === null) return item;
+  const { text, truncated } = utf8Tail(live.text, TEXT_BYTES);
+  return { ...item, output: text, outputTruncated: live.truncated || truncated };
 };
 
 export const boundChatItem = (item: ChatItem): ChatItem => {
@@ -367,6 +501,7 @@ export const boundChatItem = (item: ChatItem): ChatItem => {
   const { text, truncated } = utf8Tail(item.output ?? "", OUTPUT_BYTES);
   return {
     ...item,
+    images: item.images.slice(0, WINDOW_STEP_IMAGES),
     title: utf8Tail(item.title, 512).text,
     detail: item.detail === null ? null : utf8Tail(item.detail, OUTPUT_BYTES).text,
     output: item.output === null ? null : text,

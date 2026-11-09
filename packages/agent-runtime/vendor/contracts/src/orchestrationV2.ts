@@ -1660,6 +1660,13 @@ export const OrchestrationV2ImportedImageLink = Schema.Struct({
 });
 export type OrchestrationV2ImportedImageLink = typeof OrchestrationV2ImportedImageLink.Type;
 
+/** A picture a tool returned, addressed by its place in the result as `tool-result:<index>`. */
+export const OrchestrationV2ToolResultImage = Schema.Struct({
+  attachmentId: TrimmedNonEmptyString,
+  mimeType: TrimmedNonEmptyString,
+});
+export type OrchestrationV2ToolResultImage = typeof OrchestrationV2ToolResultImage.Type;
+
 const OrchestrationV2TurnItemBaseFields = {
   unavailableImages: Schema.optional(Schema.Array(OrchestrationV2UnavailableImage)),
   toolNonExecutionKind: Schema.optional(Schema.String),
@@ -2034,6 +2041,11 @@ export const OrchestrationV2TurnItem = Schema.Union([
     output: Schema.optional(Schema.Unknown),
     /** Set on the wire when output was withheld; fetch it with getTurnItem. */
     outputOmitted: Schema.optional(Schema.Boolean),
+    /**
+     * Set on reads, never stored: the pictures its result holds that an attachment read serves,
+     * by attachment id and type, in result order, so a reader lists them without the output.
+     */
+    resultImages: Schema.optional(Schema.Array(OrchestrationV2ToolResultImage)),
   }),
   Schema.Struct({ ...OrchestrationV2TurnItemBaseFields, ...OrchestrationV2HookRunFields }),
   Schema.Struct({ ...OrchestrationV2TurnItemBaseFields, ...OrchestrationV2ApprovalReviewFields }),
@@ -2877,6 +2889,11 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     output: Schema.optional(Schema.Unknown),
     /** Set on the wire when output was withheld; fetch it with getTurnItem. */
     outputOmitted: Schema.optional(Schema.Boolean),
+    /**
+     * Set on reads, never stored: the pictures its result holds that an attachment read serves,
+     * by attachment id and type, in result order, so a reader lists them without the output.
+     */
+    resultImages: Schema.optional(Schema.Array(OrchestrationV2ToolResultImage)),
   }),
   Schema.Struct({ ...OrchestrationV2TurnItemJsonBaseFields, ...OrchestrationV2HookRunFields }),
   Schema.Struct({

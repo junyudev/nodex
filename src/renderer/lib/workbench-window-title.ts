@@ -17,17 +17,28 @@ export interface WorkbenchWindowTitleInput {
   readonly project: { readonly id: string; readonly name: string } | null;
   /** Space's active surface as its breadcrumb names it, most specific first. */
   readonly spaceTrail: readonly string[];
+  /** The team Space a team window belongs to; a personal window names none. */
+  readonly teamSpaceName?: string | null;
 }
 
 /**
  * Names what a window shows, most specific first. A Scene is named by its owner: a chat and
  * its Project, a Project, or the Inbox. Space has no owner root, so it is named by its active
  * surface. Other destinations use their own name. An owner the window has not loaded yet
- * contributes nothing, so the title never names a previous location.
+ * contributes nothing, so the title never names a previous location. A team window ends its
+ * location with the team Space, whose own name also stands for its Space destination.
  */
 export function resolveWorkbenchWindowTitleParts(
   input: WorkbenchWindowTitleInput,
 ): readonly string[] {
+  const team = input.teamSpaceName?.trim() || null;
+  const parts = resolveLocationTitleParts(input);
+  if (!team || parts.length === 0) return parts;
+  if (input.location.kind === "library" && input.spaceTrail.length === 0) return [team];
+  return [...parts, team];
+}
+
+function resolveLocationTitleParts(input: WorkbenchWindowTitleInput): readonly string[] {
   const { location } = input;
   switch (location.kind) {
     case "session":
@@ -44,7 +55,7 @@ export function resolveWorkbenchWindowTitleParts(
     case "pending-worktree":
       return ["New chat"];
     case "automations":
-      return ["Scheduled"];
+      return ["Automations"];
     case "plugins":
       return ["Plugins"];
     case "insights":

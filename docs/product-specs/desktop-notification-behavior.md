@@ -17,6 +17,7 @@ toasts, Page reminders, and remote cloud-task watchers are separate features.
 
 Nodex has these task notification families:
 
+- `nodex`: one current local-Member Page Turn episode. Question and approval notify by rule; review, blocked, failed and stalled notify when Nodex's Turn note requests it. A durable Member/Page/episode intent is claimed once while current. Answers stay quiet. Clicking opens its Inbox row, or the Page after the row leaves. The same Turn reaches that Member's phones while they are away.
 - `turn-complete`: a local-host top-level task turn reached `completed`,
   `failed`, or `interrupted`.
 - `question`: an asynchronous question arrived or a user-input request became pending, including ordinary
@@ -38,7 +39,13 @@ and OS permission through the shared native notification owner. A restart or
 repeated note never creates a second interruption. Migrated waiting episodes
 start quietly. Question and approval use the question preference and suppress
 while their chat is presented; note-requested notifications use the turn preference.
+A desktop's claim is its own. The host's phone notifications read every Member's
+current notifying Turns, claimed or not, tell each episode once to the phones of the
+Member whose move it is while that Member is away, and withdraw one still waiting once
+its episode moves on. Turns current when the host starts stay quiet there too; see
+[Nodex Mobile Behavior](mobile-companion-behavior.md#notifications).
 
+The chat notification feature has five owners:
 
 1. `CodexProtocolNotificationEffects` publishes a typed application occurrence
    only after the canonical conversation transition or pending-request state
@@ -46,7 +53,7 @@ while their chat is presented; note-requested notifications use the turn prefere
    producers. Agent Runtime Sessions publish the same occurrences from Main's
    Session activity transitions (see [Agent Runtime Sessions](#agent-runtime-sessions)).
    Every channel, desktop and phone, consumes these occurrences; none derives its own.
-2. `UserPresence` answers where the person is (see [Presence](#presence)).
+2. The host's `UserPresence` answers where people are (see [Presence](#presence)).
 3. The pure Codex notification handler decides policy, settings, focus,
    presentation, host, and target renderer; its Main-scoped runtime owns event
    subscription and action admission.
@@ -62,26 +69,45 @@ record; replacement is lifecycle behavior, not producer deduplication.
 
 ## Presence
 
-A conversation is **seen** while it is in front of the person:
+A conversation is **seen** while it is in front of someone:
 
-- a focused Workbench window presents it while the screen is unlocked; or
+- a focused Workbench window of the desktop that hosts the personal Space presents it
+  while the screen is unlocked; or
 - Nodex Mobile shows it on a phone with a live connection.
 
 A locked screen puts no window in the foreground. Locking withdraws foreground
 presentation from every window, and unlocking restores it to the focused window,
 which counts as presenting its conversations again. Main tracks window
-presentation per `(rendererClientId, conversationId, surfaceId)` and phone views
-per open chat, so closing one duplicate surface or one phone view does not clear
-another that remains visible. Stream ownership is not presentation.
+presentation per `(rendererClientId, conversationId, surfaceId)` and the host
+tracks phone views per Member and open chat, so closing one duplicate surface or
+one phone view does not clear another that remains visible. Stream ownership is
+not presentation.
 
 A conversation becoming seen, in a window or on a phone, dismisses all desktop
 notifications for it and withdraws a phone notification still waiting for it.
-Seen conversations are not marked unread and produce no request notifications.
+Seen conversations are not marked unread and produce no request notifications. A
+phone view belongs to its phone's Member: in a team Space it withdraws and holds
+back only what concerns that Member, never another Member's notification.
 
-Presence also answers whether the person stayed at this computer after an
-occurrence: input after it means they were here, and a locked screen or five
-minutes without input means they left. Phone delivery uses this answer; desktop
-notifications do not.
+Presence also answers whether a Member stayed at a computer after an occurrence.
+The rule is the same at every computer: input after the occurrence means they were
+here, and a locked screen or five minutes without input means they left. The
+computers that count are the desktop hosting a personal Space, and every desktop a
+Member has connected to the Space, which reports their presence there. A Member is
+away once every one of these agrees, and at once when none vouches for them. Phone
+delivery uses this answer; desktop notifications do not.
+
+A team host has no screen of its own, so its Members' desktops report for them.
+Each desktop with a team Space connected tells that Space's Core, with its own
+Device session: every 30 seconds while its screen is unlocked and someone has used
+it within five minutes, at once when the screen locks, and once more when five
+minutes pass without input; then nothing until they return. A report says only
+how long ago the computer was last used, or that it is locked, and speaks only for
+its own Device and Member. Core keeps the latest report from each Device in memory,
+forgets it after 90 seconds, and never counts a revoked Device, an expired session
+or a removed Member; a restart forgets them all. The host reads a Member's
+presence under its lease and checks again at least every 30 seconds while it
+waits, so a Member who comes back is noticed within about a minute.
 
 ## Child Classification
 
@@ -120,6 +146,12 @@ Turn policy is evaluated in this order. Steps 1–6 decide whether the occurrenc
 is worth telling anyone and are shared by every channel; steps 7–9 belong to the
 desktop.
 
+A managed chat first suppresses its own terminal-turn notification with reason `managed`,
+on every channel; Nodex receives its work events instead. The host resolves membership
+from the occurrence Session or the exact native host/root binding before any channel
+decides. Managed question, approval and reminder notifications also yield to Page Turn
+intents, on the phone as on the desktop, preventing duplicate interruptions. Shared
+observation occurrences remain intact. See [Coordinator behavior](coordinator-behavior.md).
 
 1. non-default hosts do not emit turn notifications;
 2. an automation-level `DONT_NOTIFY` suppresses;
@@ -399,6 +431,9 @@ Native notification attempts settle before presentation and are not replayed aft
 restart. System permission or process termination can prevent visible delivery.
 The existing turn notification preference and native authorization gate apply;
 suppressed or denied presentation does not undo the unread transition. Seeing the chat
+dismisses its reminder notification through the ordinary notification lifecycle. The
+Member who set the reminder receives it on their phones while they are away; see
+[Nodex Mobile Behavior](mobile-companion-behavior.md#notifications).
 
 Handback updates intake and its badge without creating a desktop notification of
 its own. Turn notifications continue to depend on current Member episodes.

@@ -2468,6 +2468,7 @@ fn normalize_space_sources(
     values: &[String],
 ) -> Result<Vec<ProjectSource>, StoreError> {
     let kind: String = connection.query_row(
+        "SELECT CASE WHEN hosted=1 THEN 'team' ELSE space_kind END FROM libraries WHERE id=?1",
         [library],
         |row| row.get(0),
     )?;

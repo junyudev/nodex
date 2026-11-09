@@ -95,6 +95,11 @@ export const live: Layer.Layer<
         ),
       ),
     );
+    yield* handleQuery("asset:preview:read", (event, input) =>
+      authorize(event).pipe(
+        Effect.andThen(run("read-preview", () => assets.readManagedAssetPreview(input))),
+      ),
+    );
     yield* handlePlainCommand("clipboard:write-image", (event, input) =>
       authorize(event).pipe(
         Effect.andThen(

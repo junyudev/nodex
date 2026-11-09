@@ -55,6 +55,11 @@ export interface ConnectOrStartCoreInput extends ResolveCoreExecutableInput {
   readonly connectionId?: string;
   readonly maximumJsonResponseBytes?: number;
   readonly nodexHome: string;
+  /** Explicit Host deployment; Core skips restoring personal Remote access for this launch. */
+  readonly operatorListener?: Pick<
+    components["schemas"]["ListenRequest"],
+    "address" | "cert" | "key"
+  >;
   readonly onAuthorityProcessExit?: (event: CoreAuthorityProcessExit) => void;
   readonly onStartupEvent?: (event: CoreStartupEvent) => void;
   readonly pollIntervalMs?: number;
@@ -450,6 +455,14 @@ export async function connectOrStartCore(
       "prefer-current-artifact",
       "--launcher",
       "electron-host",
+      ...(input.operatorListener
+        ? [
+            "--listen",
+            input.operatorListener.address,
+            ...(input.operatorListener.cert ? ["--cert", input.operatorListener.cert] : []),
+            ...(input.operatorListener.key ? ["--key", input.operatorListener.key] : []),
+          ]
+        : []),
     ],
     {
       detached: true,

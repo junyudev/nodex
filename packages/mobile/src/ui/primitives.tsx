@@ -154,6 +154,7 @@ export const Button = ({
 export const Row = ({
   icon,
   iconColor,
+  leading,
   label,
   detail,
   trailing,
@@ -162,6 +163,8 @@ export const Row = ({
   ...props
 }: Omit<PressableProps, "children" | "className"> & {
   readonly icon?: IconName;
+  /** A richer mark than an icon, such as a Space's avatar. */
+  readonly leading?: ReactNode;
   readonly iconColor?: ColorToken;
   readonly label: string;
   readonly detail?: string | null;
@@ -174,9 +177,10 @@ export const Row = ({
     pressedClassName="active:bg-fill"
     {...props}
   >
-    {icon ? (
-      <Icon name={icon} color={iconColor ?? (tone === "danger" ? "danger" : "ink-2")} />
-    ) : null}
+    {leading ??
+      (icon ? (
+        <Icon name={icon} color={iconColor ?? (tone === "danger" ? "danger" : "ink-2")} />
+      ) : null)}
     <View className="flex-1">
       <Txt className={cn(tone === "danger" && "text-danger")} numberOfLines={1}>
         {label}

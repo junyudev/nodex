@@ -30,6 +30,44 @@ HTTPS adds untrusted network peers and potentially hostile Members to the local
 Profile boundary. Core itself verifies membership even behind a reverse proxy.
 The network listener cannot authenticate with `core.auth`, impersonate Electron
 Host/Test, issue Agent attribution, or select maintenance execution priority.
+Private local IPC keeps its existing bearer plus OS-user checks. Owner-only
+operations require the active local Owner; own-Device operations honor the local
+Member.
+
+Remote access is independent of team membership. A personal Space can expose its
+Owner's Device sessions without adding another Member. The personal Remote access
+listener explicitly admits private, loopback, CGNAT and link-local peers before
+TLS admission. Operator-managed `serve` and `nodex-core --listen` retain their own policy;
+choosing an operator listener is an explicit local action.
+
+| Remote administration command                             | Admitted person                       | Enforcement                                                                             |
+| --------------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------- |
+| Invite, Members, rename, remove Member                    | Owner                                 | Core membership read; writes recheck current session and role inside writer transaction |
+| Devices                                                   | Every Member, own Devices; Owner, all | Core query scoped by Space and current Member/role                                      |
+| Link Device                                               | Every Member, own identity only       | Writer binds Member, checks session, cap and offer rate                                 |
+| Revoke Device                                             | Member, own Device; Owner, any        | Writer rechecks session, role and target ownership; withdraws live connections          |
+| Remote access state                                       | Authenticated Member                  | Explicit remote route admission; contains no private key                                |
+| Listener start/stop, certificates/keys, backups, shutdown | Local Host only                       | Default-deny remote frontier and local Owner checks                                     |
+
+Administrative writes seal T1 Member Actors in LocalCommit evidence. A stale role
+or revoked session fails again after writer queueing. Form factor is metadata,
+never a distinct authority. Devices are scoped to `(Space, Member)`; revocation
+never withdraws that person's enrollments in another Space.
+
+A Device-link offer is an authenticated Member's five-minute, one-time enrollment
+of their own Member. It contains Space display identity, pin, reachable routes,
+code and expiry; only a hash of the code is stored. It reserves capacity under
+the 16-Device cap and has a durable six-per-hour Member rate limit, including
+consumed offers. Redemption rechecks expiry, active membership, role and Device
+capacity atomically, creates only a Device, and consumes the code. New-Member
+invites remain Owner-only. Codes and credentials are never URL parameters.
+
+Device withdrawal also retires that Member's outstanding Device-link offers,
+preventing re-entry through a previously minted self-link code. Owner-issued
+invitations retain their existing grant policy. A Device's self-revocation
+command may finish a fixed acknowledgement on a closing socket; this grants no
+further content access. Codes issued by other Members and other enrolled Devices
+remain valid.
 
 A remote handshake requires a device session and the existing generation,
 transport, event, Store and Module compatibility negotiation. Every admitted
@@ -69,6 +107,11 @@ attempts spend pre-authentication admission; already authenticated requests and
 handshakes do not spend or consult that IP window. Desktops behind one NAT retain
 their independent authenticated budgets. Only pinned device-credential renewal
 may return typed access-withdrawal evidence; per-operation authorization refusals
+use HTTP 403 with no withdrawal recovery and cannot revoke a Desktop connection.
+Administration preserves writer-time renewal evidence when a queued session or
+role becomes stale. Revoking a Device withdraws only that Device's sessions;
+other Devices of the same Member retain their authority. Device-link rate
+refusals carry `member_device_links` retry evidence and a `Retry-After` header.
 The authenticated minute windows admit up to 1,200 requests and 32 MiB per Device,
 and 2,400 requests and 64 MiB per Member, including refused semantic commands. A
 Desktop opening a Space measured 530–600 requests in its first minute and under 100
@@ -109,6 +152,14 @@ Member byte budgets. The owner names a picture's type from its leading bytes and
 reports any other bytes claiming an image type as opaque. A desktop draws only a
 whole PNG, JPEG, GIF or WebP picture, never one larger than a chat can hold, reads
 at most two at a time and keeps them only in that Space's renderer cache.
+
+A desktop's connected Codex conversation can name any file as a picture, so the same
+owner serves such a picture to the phone only as a picture. It reads the item again
+from the conversation the chat is bound to, identified by its Run, takes the bytes
+from the conversation itself or from that file through the execution host that ran
+it, and refuses anything over 10 MiB or whose leading bytes are not a PNG, JPEG, GIF
+or WebP picture. A hosted Space has no connected conversations, so the owner reads
+none there.
 
 Person-authored hosted commands retain the Core-admitted Member. An accepted
 chat-message mutation additionally requires the exact live Session and message
@@ -247,13 +298,85 @@ an alias never replaces a receipt or execution identity.
 
 Nodex is local-first. Main risks are malformed local inputs, accidental data loss, renderer capability abuse, and stale or incorrectly attributed Agent execution. Native execution follows each chat's permission mode: narrower modes keep the Agent inside its workspace boundary and route native permission requests to the person, while Full access requires explicit confirmation. Agents can never answer execution approvals, and delegated work cannot exceed its caller's mode. Content access through Nodex tools is Profile-wide in every mode; connection and execution identity remain enforced.
 
+Personal listener intent has one Core-owned private Profile configuration owner.
+Desktop settings and native CLI commands share it. Listener status exposes only
+public intent and live routes; selected certificate/key paths stay private.
+Operator listener configuration remains separate. Core restores saved personal
+intent during startup; Desktop adds no listener or restoration owner.
+
+## Phone access
+
+Phones are independent Devices of a Member in one Space, with the same authority
+as that Member's desktop. Core's pinned-TLS listener is their only ingress. The
+host façade accepts Core-issued invocation proof and never derives identity from
+phone JSON or substitutes a local Host bearer. See
+[ADR 0084](adr/0084-phones-as-member-devices.md).
+
+- **Enrollment.** A Device-link offer is bound to the requesting Member, expires
+  after five minutes and is consumed once in Core's writer transaction. The
+  versioned QR/link carries Space identity, routes, certificate fingerprint,
+  code and expiry. Whoever holds a live offer can enroll that Member's Device;
+  offers and credentials must not enter logs or broadcasts.
+- **TLS.** Native HTTPS/WSS checks SHA-256 of the complete leaf certificate DER,
+  in constant time, before sending application bytes. TLS 1.2 is the minimum;
+  each operation has its own TLS session, without resumption. System trust or
+  SPKI does not substitute for the matching leaf pin. Redirects, cookies and
+  ambient credentials are disabled; cancellation belongs to the owning Effect
+  Scope.
+- **Platform policy.** The pin alone admits a host, so a self-signed host is
+  reachable at LAN, tailnet or DNS addresses on iOS and Android. The pinned
+  transport bypasses each platform's URL loading stack by design: on iOS it is
+  Network.framework, which App Transport Security does not evaluate, and ATS stays
+  at `NSAllowsLocalNetworking` for every other connection the app makes, with no
+  arbitrary-loads or per-domain exception. Android's custom trust manager and
+  hostname policy belong only to its pinned clients.
+- **Credentials.** Each `(Space, Member)` enrollment has its own Device credential,
+  kept in SecureStore with device-only accessibility. Sessions renew at Core's
+  existing Device frontier. No phone credential migration or plaintext fallback
+  exists. Android backup remains disabled.
+- **Admission and withdrawal.** Core authenticates the WebSocket upgrade and
+  meters bounded frames, requests, concurrent streams and bytes under Device and
+  Member budgets. Device revocation or Member removal closes live streams.
+  Semantic writes recheck current membership and Device authority; a queued
+  request cannot outlive withdrawal by borrowing Host authority.
+- **Member scope.** The façade uses the requesting Member's Actors, Inbox,
+  attention, unread state and answer entitlement. Unsupported operations return
+  typed unavailable capabilities. There is no fallback to a personal Runtime or
+  another Space's filesystem or credentials.
+- **Files.** File references are opaque, never caller-selected host paths. Reads
   and uploads stay within the admitted Space and bounded channel lifetime. A chat's
   attachments use the same Member-invoked host owner as a team desktop.
+- **Local state.** Caches, drafts and capture delivery are keyed by `(Space,
+  Member)`. An old Member's queued capture cannot be delivered through a new
+  Member's enrollment. Local removal and remote revocation are distinct; neither
+  promises remote erasure of downloaded content.
+- **Notifications.** Core stores each phone Device's push registration: an opaque
+  relay handle, a 32-byte key and two preferences. Only that Device's own live
+  `push.register` or `push.unregister` request can set or clear it; the host
+  relays the request but cannot choose the Device, handle or key. Device listings
+  expose only whether notifications are on, and revocation or Member removal
+  drops the registration. Core resolves each event's recipient with its
+  answer-entitlement rule, so a Member's phone is told only about requests that
+  Member may answer, Runs that Member requested and Page Turns that are that Member's
+  move. Only the local host may list every Member's current Turns, and Core names a
+  Turn's Member only while its episode is current. The host seals each payload
+  with ChaCha20-Poly1305 under that Device's key and a fresh nonce; the relay can
+  read neither the chat content nor the enrollment, and the host never learns the
+  phone's push address. Secret prompts are omitted even from the sealed payload.
+- **Presence.** A desktop's presence report is its own Device session's statement
+  about its own person: only how long ago the computer was used, or that it is
+  locked. It can only hold back that Member's own phone notifications, never
+  another's. Core keeps one report per Device in memory with a 90-second lifetime,
+  rechecks the Device, session and Member whenever the host reads it, and serves it
+  only under the local host lease.
+
+Configuration, native limits and proof workflow live in the
+[Mobile transport documentation](../packages/mobile/README.md#pinned-tls-capability).
 
 ## Mobile Push Relay
 
 The hosted relay accepts only Nodex's two iOS bundle IDs. Its AES-256-GCM handles hide device tokens
-from desktops and authenticate the token, environment and bundle ID together. A handle is a bearer
+from Space hosts and authenticate the token, environment and bundle ID together. A handle is a bearer
 capability to send to that phone; it must stay private. The relay sees the device token while routing
 to APNs, but never receives the key that decrypts notification content. APNs receives a placeholder
 alert and opaque ciphertext. There is no relay database or retained device registration.

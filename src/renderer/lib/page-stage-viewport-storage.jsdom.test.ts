@@ -85,6 +85,14 @@ describe("Page Stage viewport storage", () => {
     const openSpace = async (spaceId: string, memberId: string) => {
       vi.resetModules();
       const { bindRendererSpace } = await import("./renderer-space");
+      bindRendererSpace({
+        spaceId,
+        memberId,
+        deviceId: null,
+        name: spaceId,
+        kind: "team",
+        availability: "ready",
+      });
       return import("./page-stage-viewport-storage");
     };
     const first = await openSpace("space-a", "member-a");

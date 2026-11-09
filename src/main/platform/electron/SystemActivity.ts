@@ -4,17 +4,10 @@ import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import { powerMonitor } from "electron";
+import type { ActivitySample } from "../../../host/UserPresencePolicy";
 
 /** Whether someone is using this computer, as the operating system reports it. */
-export interface SystemActivitySample {
-  /**
-   * Time since the last keyboard or pointer input, rounded up to the system's one-second
-   * resolution so that input is never placed later than it happened. Null where the system cannot
-   * tell, such as some Linux sessions.
-   */
-  readonly idleMillis: number | null;
-  readonly locked: boolean;
-}
+export type SystemActivitySample = ActivitySample;
 
 export class SystemActivity extends Context.Service<
   SystemActivity,

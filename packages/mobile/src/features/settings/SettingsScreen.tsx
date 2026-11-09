@@ -15,23 +15,35 @@ import {
   type NotificationProblem,
   type SavedHost,
 } from "../../runtime";
-import { Icon } from "../../ui/icons";
 import { Row, RowGroup, SectionLabel, StatusDot, Txt } from "../../ui/primitives";
+import { SpaceAvatar } from "../../ui/SpaceAvatar";
 import { showFailure } from "../../ui/snackbar";
+import { useHomeState } from "../home/home-state";
+import { spaceKindLabel } from "./space-presentation";
 
 const STATUS_WORDS = {
   idle: "Not connected",
   connecting: "Connecting",
   connected: "Connected",
-  offline: "Can't reach it right now",
+  offline: "Unavailable",
+  unavailable: "Unavailable",
   incompatible: "Needs an update",
-  revoked: "Removed this phone",
+  revoked: "Access revoked",
 } as const;
+
+const kindOf = (host: SavedHost) => spaceKindLabel({ name: host.hostName, kind: host.spaceKind });
+
+const HostAvatar = ({ host }: { readonly host: SavedHost }) => (
+  <SpaceAvatar
+    space={{ spaceId: host.spaceId, name: host.hostName, kind: host.spaceKind }}
+    size={28}
+  />
+);
 
 const PROBLEM_WORDS: Readonly<Record<NotificationProblem, string>> = {
   "no-address": "The system hasn't given this phone a notification address.",
   relay: "Nodex's notification service can't be reached from this network.",
-  desktop: "Your desktop didn't accept this phone. It may need an update.",
+  space: "This Space didn't accept this phone. Its host may need an update.",
 };
 
 /** A preference that takes effect at once, whichever part of the row is tapped. */
@@ -103,30 +115,30 @@ const NotificationSettings = () => {
         ) : null}
       </RowGroup>
       <Txt className="px-1 pt-2 text-xs text-ink-3">
-        Sent by your desktop while you're away from it, and readable only on this phone.
+        Sent by each Space while you're away from your computer, and readable only on this phone.
       </Txt>
     </View>
   );
 };
 
-/** Which desktops this phone knows, and how the current one is doing. */
+/** The Spaces enrolled for this phone, and how the current one is doing. */
 export const SettingsScreen = ({ navigation }: ScreenProps<"Settings">) => {
   const connection = useConnection();
   const { hosts, activeHostId } = useHosts();
 
   const confirmForget = (host: SavedHost) =>
     Alert.alert(
-      `Forget ${host.hostName}?`,
-      "This phone stops connecting to it, and captures not yet delivered are lost. To also remove the phone from your desktop, use Settings there.",
+      `Remove ${host.hostName}?`,
+      "Remove this Space and its local cache and pending captures from this phone. The Device stays enrolled until revoked in the Space’s settings.",
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Forget",
+          text: "Remove",
           style: "destructive",
           onPress: () => {
-            forgetHost(host.hostId).catch((cause: unknown) =>
-              showFailure("Could not forget it", cause),
-            );
+            forgetHost(host.hostId)
+              .then(() => useHomeState.getState().forgetSpace(host.hostId))
+              .catch((cause: unknown) => showFailure("Could not remove this Space", cause));
           },
         },
       ],
@@ -142,12 +154,12 @@ export const SettingsScreen = ({ navigation }: ScreenProps<"Settings">) => {
     >
       {active ? (
         <View>
-          <SectionLabel>This phone is connected to</SectionLabel>
+          <SectionLabel>Current Space</SectionLabel>
           <RowGroup>
             <Row
-              icon="laptop"
+              leading={<HostAvatar host={active} />}
               label={active.hostName}
-              detail={STATUS_WORDS[connection.status]}
+              detail={[kindOf(active), STATUS_WORDS[connection.status]].filter(Boolean).join(" · ")}
               trailing={
                 <StatusDot
                   tone={
@@ -163,7 +175,7 @@ export const SettingsScreen = ({ navigation }: ScreenProps<"Settings">) => {
             />
             <Row
               icon="close"
-              label={`Forget ${active.hostName}`}
+              label="Remove from this phone"
               tone="danger"
               onPress={() => confirmForget(active)}
             />
@@ -175,15 +187,16 @@ export const SettingsScreen = ({ navigation }: ScreenProps<"Settings">) => {
 
       {hosts.length > 1 ? (
         <View>
-          <SectionLabel>Other desktops</SectionLabel>
+          <SectionLabel>Other Spaces</SectionLabel>
           <RowGroup>
             {hosts
               .filter((host) => host.hostId !== activeHostId)
               .map((host) => (
                 <Row
                   key={host.hostId}
-                  icon="laptop"
+                  leading={<HostAvatar host={host} />}
                   label={host.hostName}
+                  detail={kindOf(host) ?? undefined}
                   onPress={() => activateHost(host.hostId)}
                   onLongPress={() => confirmForget(host)}
                 />
@@ -193,16 +206,9 @@ export const SettingsScreen = ({ navigation }: ScreenProps<"Settings">) => {
       ) : null}
 
       <RowGroup>
-        <Row icon="scan" label="Pair another desktop" onPress={() => navigation.navigate("Pair")} />
+        <Row icon="scan" label="Link a Space" onPress={() => navigation.navigate("Pair")} />
       </RowGroup>
 
-      <View className="flex-row gap-2 px-1">
-        <Icon name="check" size={15} color="ink-3" />
-        <Txt className="flex-1 text-xs text-ink-3">
-          Everything between this phone and your desktop is end-to-end encrypted, on any network.
-          Chats run on your desktop, so it needs to be on and open.
-        </Txt>
-      </View>
       <Txt className="px-1 text-xs text-ink-3">
         Nodex Mobile {Application.nativeApplicationVersion ?? ""}
       </Txt>

@@ -1,4 +1,4 @@
-import type { InboxMessage, InboxProposal } from "@nodex/mobile-protocol";
+import type { InboxEntry, InboxProposal } from "@nodex/mobile-protocol";
 import { useEffect, useState, type ReactNode } from "react";
 import { ScrollView, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,6 +23,8 @@ import { useDecide } from "./use-decide";
  * The message as its Space has it now, showing the copy already in hand until that arrives, and
  * following it as it changes, so a decision's progress shows where it was made.
  */
+export const useInboxEntry = (pageId: string, initial: InboxEntry | undefined) => {
+  const [message, setMessage] = useState<InboxEntry | null>(initial ?? null);
   useEffect(() => {
     let latest = 0;
     let open = true;
@@ -61,7 +63,7 @@ const AcceptButton = ({
   compact,
   onAccepted,
 }: {
-  readonly message: InboxMessage;
+  readonly message: InboxEntry;
   readonly proposal: InboxProposal;
   readonly compact?: boolean;
   readonly onAccepted?: () => void;
@@ -76,7 +78,7 @@ const AcceptButton = ({
       label={action.label}
       tone="primary"
       onPress={() => {
-        void decide(message.pageId, decision, done);
+        void decide(message.id, decision, done);
         onAccepted?.();
       }}
     />
@@ -87,7 +89,7 @@ const AcceptButton = ({
  * Suggestion states that are not an offer, wherever a message's advice is shown: still being
  * written, failed, or undeliverable. Returns null for an offer and for no advice at all.
  */
-const SuggestionStatus = ({ message }: { readonly message: InboxMessage }) => {
+const SuggestionStatus = ({ message }: { readonly message: InboxEntry }) => {
   const decide = useDecide();
   const view = suggestionView(message);
   switch (view.kind) {
@@ -136,7 +138,7 @@ const SuggestionStatus = ({ message }: { readonly message: InboxMessage }) => {
  * A message's advice in the stream: enough to decide at a glance, one decision labeled by what it
  * does, and the whole suggestion a tap away.
  */
-export const SuggestionCard = ({ message }: { readonly message: InboxMessage }) => {
+export const SuggestionCard = ({ message }: { readonly message: InboxEntry }) => {
   const navigation = useRootNavigation();
   const view = suggestionView(message);
   if (view.kind !== "offer") return <SuggestionStatus message={message} />;
@@ -146,9 +148,7 @@ export const SuggestionCard = ({ message }: { readonly message: InboxMessage }) 
     <Tap
       accessibilityHint="Shows the whole suggestion"
       className="gap-2 rounded-[20px] bg-fill p-3"
-      onPress={() =>
-        navigation.navigate("Suggestion", { pageId: message.pageId, initial: message })
-      }
+      onPress={() => navigation.navigate("Suggestion", { pageId: message.id, initial: message })}
     >
       <Txt className="text-sm" numberOfLines={3}>
         {proposal.outdated ? OUTDATED : proposal.summary}
@@ -178,6 +178,7 @@ const Section = ({ label, children }: { readonly label: string; readonly childre
 const SuggestionDetail = ({ proposal }: { readonly proposal: InboxProposal }) => {
   const navigation = useRootNavigation();
   const { catalog } = useAgentCatalog();
+  const { projects } = useProjects();
   const { action } = proposal;
   const chatAction = action.type === "new_chat" || action.type === "send_to_chat" ? action : null;
   return (
@@ -226,6 +227,33 @@ const SuggestionDetail = ({ proposal }: { readonly proposal: InboxProposal }) =>
           </View>
         </Section>
       ) : null}
+      {action.type === "plan" ? (
+        <Section label="Plan">
+          {action.summary ? <Txt selectable>{action.summary}</Txt> : null}
+          {action.steps.map((step, index) => (
+            <View key={step.key} className="gap-1">
+              <Txt selectable className="font-medium">
+                {index + 1}. {step.title}
+              </Txt>
+              <Markdown text={step.body} />
+              <Txt className="text-xs text-ink-3">
+                {projects.find((project) => project.id === step.projectId)?.name ?? step.projectId}
+              </Txt>
+              {step.blockedBy.length > 0 ? (
+                <Txt className="text-xs text-ink-3">
+                  Waits for{" "}
+                  {step.blockedBy
+                    .map(
+                      (key) =>
+                        action.steps.find((candidate) => candidate.key === key)?.title ?? key,
+                    )
+                    .join(", ")}
+                </Txt>
+              ) : null}
+            </View>
+          ))}
+        </Section>
+      ) : null}
       {proposal.rationale ? (
         <Section label="Why">
           <Txt selectable className="text-ink-2">
@@ -243,7 +271,7 @@ const SuggestionDetail = ({ proposal }: { readonly proposal: InboxProposal }) =>
 };
 
 /** A message's advice laid open, for a screen already showing that message. */
-export const SuggestionPanel = ({ message }: { readonly message: InboxMessage }) => {
+export const SuggestionPanel = ({ message }: { readonly message: InboxEntry }) => {
   const view = suggestionView(message);
   if (view.kind !== "offer") return <SuggestionStatus message={message} />;
   return (
@@ -261,7 +289,7 @@ const SHEET_TEXT_FRACTION = 0.72;
 export const SuggestionScreen = ({ route, navigation }: ScreenProps<"Suggestion">) => {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const [message] = useInboxMessage(route.params.pageId, route.params.initial);
+  const [message] = useInboxEntry(route.params.pageId, route.params.initial);
   const view = message ? suggestionView(message) : null;
   if (!message || view?.kind !== "offer") {
     // A sheet that hugs its content has no height of its own for this to fill.

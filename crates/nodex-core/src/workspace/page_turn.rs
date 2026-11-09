@@ -415,6 +415,7 @@ pub(super) fn observer(
     id: &str,
 ) -> Result<Option<SessionExecutionObserver>, StoreError> {
     super::session_mutation::validate_id("session_id", id)?;
+    let row: Option<(String,i64,Option<String>)> = connection.query_row("SELECT session.created_at,COALESCE(observation.revision,0),observation.observed_json FROM project_sessions session LEFT JOIN session_execution_observations observation ON observation.session_id=session.id WHERE session.id=?1 AND session.archived=0 AND (EXISTS (SELECT 1 FROM coordinator_managed_sessions WHERE session_id=session.id) OR EXISTS (SELECT 1 FROM page_active_chats WHERE session_id=session.id) OR EXISTS (SELECT 1 FROM project_session_execution_bindings WHERE session_id=session.id))",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
     row.map(|(since, revision, observation)| {
         Ok(SessionExecutionObserver {
             session_id: id.into(),
@@ -434,6 +435,7 @@ pub(super) fn observers(
     if !(1..=100).contains(&limit) {
         return Err(invalid("Observation window is bounded to 100 Sessions"));
     }
+    let ids=connection.prepare("SELECT id FROM project_sessions session WHERE archived=0 AND (?1 IS NULL OR id>?1) AND (EXISTS (SELECT 1 FROM coordinator_managed_sessions WHERE session_id=session.id) OR EXISTS (SELECT 1 FROM page_active_chats WHERE session_id=session.id) OR EXISTS (SELECT 1 FROM project_session_execution_bindings WHERE session_id=session.id)) ORDER BY id LIMIT ?2")?.query_map(params![after,limit],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
     ids.iter()
         .map(|id| observer(connection, id)?.ok_or_else(|| invalid("Observed Session disappeared")))
         .collect()

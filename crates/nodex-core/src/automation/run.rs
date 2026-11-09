@@ -281,6 +281,7 @@ pub(super) fn apply(
                 message_id: message_id.as_deref(),
                 notification_policy: *notification_policy,
                 agent_selection: agent_selection.as_ref(),
+            },
         ),
         AutomationIntent::BindRunSession {
             run_id,
@@ -388,11 +389,14 @@ struct RunAdmission<'a> {
     message_id: Option<&'a str>,
     notification_policy: Option<nodex_core_contracts::automation::AutomationNotificationPolicy>,
     agent_selection: Option<&'a nodex_core_contracts::library::AgentWorkSelection>,
+}
+
 fn begin_run(
     connection: &Connection,
     run_admission: RunAdmission<'_>,
 ) -> Result<RunMutationEffects, StoreError> {
     let RunAdmission {
+        run_id,
         automation_id,
         dispatch_id,
         session_id,

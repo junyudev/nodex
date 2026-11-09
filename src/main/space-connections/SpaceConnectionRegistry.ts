@@ -6,6 +6,7 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Stream from "effect/Stream";
+import { z } from "zod";
 import {
   JoinSpaceInputSchema,
   SpaceRequestSchema,
@@ -14,6 +15,7 @@ import {
   type SpaceAvailability,
   type SpaceConnectionSummary,
 } from "../../shared/space-connection";
+import { CoreHttpError } from "../core-client/local-http";
 import { enrollRemoteCore } from "../core-client/remote-http";
 import { CoreAuthority, CoreSessionAccess } from "../core-runtime/CoreAuthority";
 import type { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
@@ -106,6 +108,7 @@ export const make = Effect.fn("SpaceConnectionRegistry.make")(function* (input: 
       kind: "personal",
       name: (yield* readName(Context.get(personal, CoreSessionAccess))) ?? "Space",
       memberId: null,
+      deviceId: null,
       availability: "ready",
     },
     ...[...unavailable].map((spaceId): SpaceConnectionSummary => ({
@@ -113,6 +116,7 @@ export const make = Effect.fn("SpaceConnectionRegistry.make")(function* (input: 
       kind: "team",
       name: "Space",
       memberId: null,
+      deviceId: null,
       availability: "unavailable",
     })),
     ...[...credentials.values()].map((credential): SpaceConnectionSummary => ({
@@ -120,6 +124,7 @@ export const make = Effect.fn("SpaceConnectionRegistry.make")(function* (input: 
       kind: "team",
       name: credential.name,
       memberId: credential.memberId,
+      deviceId: credential.deviceId,
       availability: "reconnecting",
     })),
   ]);
@@ -212,7 +217,12 @@ export const make = Effect.fn("SpaceConnectionRegistry.make")(function* (input: 
         const value = JoinSpaceInputSchema.parse(raw);
         return { ...value, endpoint: parseSpaceInvite(value.inviteUrl) };
       },
+      catch: (cause) =>
         new SpaceConnectionError({
+          message:
+            (cause instanceof z.ZodError &&
+              cause.issues.find((issue) => issue.path[0] === "displayName")?.message) ||
+            "Check the invite URL, fingerprint, code and your name",
         }),
     });
     const enrolled = yield* Effect.tryPromise({
@@ -222,7 +232,13 @@ export const make = Effect.fn("SpaceConnectionRegistry.make")(function* (input: 
           { code: parsed.code, display_name: parsed.displayName, device_label: parsed.deviceLabel },
           signal,
         ),
+      // Core's reason for refusing what the person entered, such as their name, stays readable.
+      catch: (cause) =>
         new SpaceConnectionError({
+          message:
+            cause instanceof CoreHttpError && cause.status === 400
+              ? cause.message
+              : "Could not join this Space. Check the invite and certificate fingerprint",
         }),
     });
     if (
@@ -245,6 +261,7 @@ export const make = Effect.fn("SpaceConnectionRegistry.make")(function* (input: 
     const summary: SpaceConnectionSummary = {
       spaceId: credential.spaceId,
       memberId: credential.memberId,
+      deviceId: credential.deviceId,
       kind: "team",
       name: credential.name,
       availability: "reconnecting",

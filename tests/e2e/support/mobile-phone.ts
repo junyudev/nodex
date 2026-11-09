@@ -1,13 +1,16 @@
-import { randomBytes } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { Agent, request as requestHttps, type RequestOptions } from "node:https";
+import { connect } from "node:tls";
+import type { Duplex } from "node:stream";
+import { enrollRemoteCore } from "../../../src/main/core-client/remote-http";
 import { WebSocket } from "ws";
 import {
-  beginHandshake,
-  generateStaticKeyPair,
   MOBILE_PROTOCOL_REVISION,
   MobileEnvelopeSchema,
   mobileEvents,
   mobileMethods,
-  parsePairingUri,
+  parseDeviceLinkUri,
+  type DeviceLinkOffer,
   type ChatSnapshot,
   type Hello,
   type MobileEnvelope,
@@ -15,15 +18,8 @@ import {
   type MobileMethod,
   type MobileParams,
   type MobileResult,
-  type PairingOffer,
-  type SecureChannel,
-  type StaticKeyPair,
 } from "@nodex/mobile-protocol";
 
-const bytes = (length: number) => new Uint8Array(randomBytes(length));
-const decodeKey = (value: string) => new Uint8Array(Buffer.from(value, "base64url"));
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 const DEADLINE_MS = 15_000;
 
 const deferred = <Value>() => {
@@ -42,30 +38,107 @@ export class PhoneConnectionClosed extends Error {
   }
 }
 
-/** Retains the same phone key for pairing, reconnecting, and checking revocation. */
-export class MobilePhone {
-  private constructor(
-    readonly offer: PairingOffer,
-    private readonly device: StaticKeyPair,
-  ) {}
-
-  static fromCopiedLink(uri: string): MobilePhone {
-    const offer = parsePairingUri(uri);
-    if (!offer) throw new Error("Copy link did not put a mobile pairing link on the clipboard");
-    return new MobilePhone(offer, generateStaticKeyPair(bytes));
+/** TLS authenticates the full leaf DER before HTTP can write a credential or application byte. */
+class PinnedAgent extends Agent {
+  constructor(private readonly fingerprint: string) {
+    super({ maxCachedSessions: 0 });
   }
+  override createConnection(
+    options: RequestOptions,
+    callback?: (error: Error | null, stream: Duplex) => void,
+  ): undefined {
+    const socket = connect({
+      host: options.hostname ?? options.host ?? "localhost",
+      port: Number(options.port ?? 443),
+      rejectUnauthorized: false,
+      minVersion: "TLSv1.2",
+    });
+    const timer = setTimeout(() => socket.destroy(new Error("TLS deadline")), 5000);
+    socket.once("error", (error) => {
+      clearTimeout(timer);
+      callback?.(error, socket);
+    });
+    socket.once("secureConnect", () => {
+      clearTimeout(timer);
+      const raw = socket.getPeerCertificate().raw;
+      if (
+        !raw ||
+        !timingSafeEqual(
+          createHash("sha256").update(raw).digest(),
+          Buffer.from(this.fingerprint, "hex"),
+        )
+      ) {
+        socket.destroy(new Error("Certificate pin mismatch"));
+        return;
+      }
+      callback?.(null, socket);
+    });
+    return undefined;
+  }
+}
 
-  async connect(pairing = false): Promise<PhoneChannel> {
-    // Use an advertised route, including its real listener port. Never discover gateway internals.
+/** Retains only the Device credential issued for this exact Space and Member. */
+export class MobilePhone {
+  private credential: string | null = null;
+  private constructor(readonly offer: DeviceLinkOffer) {}
+  static fromCopiedLink(uri: string): MobilePhone {
+    const offer = parseDeviceLinkUri(uri);
+    if (!offer) throw new Error("Invalid Device link");
+    return new MobilePhone(offer);
+  }
+  async connect(enroll = false): Promise<PhoneChannel> {
     const route =
       this.offer.routes.find((route) => new URL(route).hostname === "127.0.0.1") ??
       this.offer.routes[0]!;
-    return PhoneChannel.connect(
-      route,
-      this.offer.hostKey,
-      this.device,
-      pairing ? decodeKey(this.offer.secret) : undefined,
+    if (enroll) {
+      const device = await enrollRemoteCore(
+        { url: route, fingerprint: this.offer.fingerprint },
+        {
+          code: this.offer.code,
+          device_label: "Test phone",
+          display_name: "Phone",
+          form_factor: "phone",
+        },
+      );
+      if (device.space_id !== this.offer.space_id || device.member_id !== this.offer.member_id)
+        throw new Error("Enrollment identity mismatch");
+      this.credential = device.device_credential;
+    }
+    if (!this.credential) throw new Error("Device is not enrolled");
+    const agent = new PinnedAgent(this.offer.fingerprint);
+    const session = await new Promise<{ session_token: string }>((resolve, reject) => {
+      const req = requestHttps(
+        new URL("/session", route),
+        { method: "POST", agent, headers: { "content-type": "application/json" } },
+        (res) => {
+          let body = "";
+          res.on("data", (data: Buffer) => {
+            body += data.toString();
+          });
+          res.once("end", () => {
+            if (res.statusCode !== 200) {
+              reject(new Error(`Device renewal refused (${res.statusCode})`));
+              return;
+            }
+            resolve(JSON.parse(body));
+          });
+          res.once("error", reject);
+        },
+      );
+      req.once("error", reject);
+      req.end(JSON.stringify({ device_credential: this.credential }));
+    }).finally(() => agent.destroy());
+    const phone = await PhoneChannel.connect(
+      new URL("/core/v1/phone", route).toString().replace("https:", "wss:"),
+      this.offer.fingerprint,
+      session.session_token,
     );
+    const hello = await phone.hello;
+    if (hello.spaceId !== this.offer.space_id || hello.memberId !== this.offer.member_id) {
+      await phone.close();
+      throw new Error("Channel identity mismatch");
+    }
+    return phone;
   }
 }
 
@@ -82,33 +155,13 @@ export class PhoneChannel {
   >();
   private readonly chats = new Map<string, ChatSnapshot>();
   private readonly patches: MobileEventData<"chat.patch">[] = [];
-  private channel: SecureChannel | null = null;
   private failure: Error | null = null;
   private nextId = 1;
   private closeCode: number | null = null;
   readonly hello: Promise<Hello>;
 
-  private constructor(
-    private readonly socket: WebSocket,
-    hostKey: string,
-    device: StaticKeyPair,
-    psk?: Uint8Array,
-  ) {
+  private constructor(private readonly socket: WebSocket) {
     this.hello = this.ready.promise;
-    const handshake = beginHandshake({
-      hostPublicKey: decodeKey(hostKey),
-      device,
-      ...(psk ? { psk } : {}),
-      payload: encoder.encode(
-        JSON.stringify({
-          protocol: MOBILE_PROTOCOL_REVISION,
-          deviceName: "Gateway test phone",
-          platform: "ios",
-          appVersion: "e2e",
-        }),
-      ),
-      randomBytes: bytes,
-    });
     socket.on("error", (error) => this.fail(error));
     socket.on("close", (code) => {
       this.closeCode = code;
@@ -117,26 +170,24 @@ export class PhoneChannel {
     });
     socket.on("message", (data, binary) => {
       try {
-        if (!binary) throw new Error("The gateway sent an unencrypted text frame");
-        const frame = new Uint8Array(data as Buffer);
-        if (!this.channel) {
-          this.channel = handshake.finish(frame).channel;
-          this.send({ t: "ping" });
-          return;
-        }
-        const opened = this.channel.open(frame);
-        if (!opened) return;
-        this.receive(MobileEnvelopeSchema.parse(JSON.parse(decoder.decode(opened))));
+        if (binary) throw new Error("Phone protocol requires text envelopes");
+        this.receive(MobileEnvelopeSchema.parse(JSON.parse(data.toString())));
       } catch (cause) {
         this.fail(cause instanceof Error ? cause : new Error(String(cause)));
         socket.close();
       }
     });
-    socket.once("open", () => socket.send(handshake.message));
   }
 
-  static async connect(route: string, hostKey: string, device: StaticKeyPair, psk?: Uint8Array) {
-    const phone = new PhoneChannel(new WebSocket(route), hostKey, device, psk);
+  static async connect(route: string, fingerprint: string, token: string) {
+    const agent = new PinnedAgent(fingerprint);
+    const socket = new WebSocket(route, {
+      agent,
+      headers: { authorization: `Bearer ${token}` },
+      maxPayload: 1024 * 1024,
+    });
+    socket.once("close", () => agent.destroy());
+    const phone = new PhoneChannel(socket);
     try {
       await phone.deadline(phone.hello, "authenticated hello");
       return phone;
@@ -171,9 +222,7 @@ export class PhoneChannel {
   }
 
   private send(envelope: MobileEnvelope) {
-    if (!this.channel) throw new Error("Phone channel is not authenticated");
-    for (const frame of this.channel.seal(encoder.encode(JSON.stringify(envelope))))
-      this.socket.send(frame);
+    this.socket.send(JSON.stringify(envelope));
   }
 
   private receive(envelope: MobileEnvelope) {
@@ -188,7 +237,12 @@ export class PhoneChannel {
       if (!request) throw new Error(`Unsolicited phone response ${envelope.id}`);
       this.pending.delete(envelope.id);
       if (!envelope.ok) {
-        request.reject(new Error(`Mobile RPC ${envelope.e.code}: ${envelope.e.message}`));
+        request.reject(
+          Object.assign(new Error(`Mobile RPC ${envelope.e.code}: ${envelope.e.message}`), {
+            code: envelope.e.code,
+            retryable: envelope.e.retryable,
+          }),
+        );
         return;
       }
       request.resolve(envelope.r);

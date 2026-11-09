@@ -12,11 +12,22 @@ import * as Semaphore from "effect/Semaphore";
 import { z } from "zod";
 import { libraryContentRoute } from "../../shared/content-routing-context";
 import { fileSource, parseFileSource } from "../../shared/file-resources";
+import { LibraryModule } from "../../main/library-application/LibraryModule";
 import { makeLibraryUploads } from "../../main/library-application/LibraryUploads";
+import { PhoneFiles } from "../../main/platform/node/PhoneFiles";
+import { MainConfig } from "../../main/app/MainConfig";
 import { ChatAttachments } from "../ChatAttachments";
 import { invalid, missing, rpcError, unavailable, type MobileHandlers } from "./rpc";
 
 const attachmentPrefix = "nodex://chat-attachments/";
+const identity = z.string().min(1).max(512);
+/**
+ * A chat picture by the identities its transcript carries: Session, source thread, item and the
+ * picture's place in it. A connected conversation's item is also named by its Run.
+ */
+const attachmentLocator = z.union([
+  z.tuple([identity, identity, identity, identity]),
+  z.tuple([identity, identity, identity, identity, identity]),
 ]);
 type AttachmentLocator = z.infer<typeof attachmentLocator>;
 
@@ -57,6 +68,7 @@ const writeFailure = () => unavailable("Nodex on your desktop could not save thi
 export const makeMobileFiles = Effect.gen(function* () {
   const attachments = yield* ChatAttachments;
   const library = yield* LibraryModule;
+  const platform = yield* PhoneFiles;
   const uploads = yield* makeLibraryUploads;
   const config = yield* MainConfig;
   const fs = yield* FileSystem.FileSystem;
@@ -172,6 +184,7 @@ export const makeMobileFiles = Effect.gen(function* () {
           const locator = parseAttachmentRef(ref);
           if (!locator) return yield* Effect.fail(notFound());
           // A chat's attachments have one owner for every Device the Member reads them from.
+          const [sessionId, sourceThreadId, itemId, attachmentId, runId] = locator;
           return yield* attachments
             .read({
               sessionId,
@@ -180,6 +193,7 @@ export const makeMobileFiles = Effect.gen(function* () {
               attachmentId,
               offset,
               length,
+              ...(runId === undefined ? {} : { runId }),
               ...(version == null ? {} : { version }),
             })
             .pipe(

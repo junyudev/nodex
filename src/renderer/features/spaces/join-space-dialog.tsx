@@ -17,6 +17,7 @@ import { useScopeHandle, appScope } from "@/lib/maitai";
 import { openModal, type ModalCloseProps } from "@/lib/modal-registry";
 import {
   JoinSpaceInputSchema,
+  memberNameProblem,
   parseSpaceInvite,
   type JoinSpaceInput,
 } from "../../../shared/space-connection";
@@ -42,11 +43,23 @@ function invitedFingerprint(inviteUrl: string): string | null {
 const shortFingerprint = (fingerprint: string): string =>
   `${fingerprint.slice(0, 8)}…${fingerprint.slice(-8)}`.toUpperCase();
 
+const namedByCore = ({ value }: { value: string }) => memberNameProblem(value) ?? undefined;
+
+/** The first reason a field's validators gave, whether a message or a schema issue. */
+const fieldReason = (errors: readonly unknown[]): string | null => {
+  const [first] = errors;
+  if (typeof first === "string") return first;
+  if (first && typeof first === "object" && "message" in first && typeof first.message === "string")
+    return first.message;
+  return null;
+};
+
 function TextField({
   label,
   name,
   type,
   value,
+  reason,
   onBlur,
   onChange,
 }: {
@@ -54,10 +67,31 @@ function TextField({
   name: string;
   type: "url" | "text" | "password";
   value: string;
+  reason?: string | null;
   onBlur: () => void;
   onChange: (value: string) => void;
 }) {
   return (
+    <div className="space-y-1">
+      <label className="block space-y-1 text-sm">
+        <span>{label}</span>
+        <Input
+          name={name}
+          type={type}
+          value={value}
+          required
+          autoComplete="off"
+          aria-invalid={reason ? true : undefined}
+          onBlur={onBlur}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </label>
+      {reason ? (
+        <p role="alert" className="text-xs text-danger">
+          {reason}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -145,12 +179,19 @@ export function JoinSpaceDialog({ onClose }: ModalCloseProps) {
               </form.Field>
             )}
             {PERSON_FIELDS.map(([name, label, type]) => (
+              <form.Field
+                key={name}
+                name={name}
+                // Others will see this name; say why Core would refuse it before joining.
+                validators={name === "displayName" ? { onChange: namedByCore } : undefined}
+              >
                 {(field) => (
                   <TextField
                     label={label}
                     name={name}
                     type={type}
                     value={field.state.value}
+                    reason={name === "displayName" ? fieldReason(field.state.meta.errors) : null}
                     onBlur={field.handleBlur}
                     onChange={field.handleChange}
                   />

@@ -2,6 +2,7 @@
 
 ## Status
 
+Accepted. Supersedes ADR 0078's Inbox posts and their notification ownership.
 
 ## Decision
 

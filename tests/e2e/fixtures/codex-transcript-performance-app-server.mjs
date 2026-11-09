@@ -42,7 +42,9 @@ const handle = (command, state) => {
     writeState(state);
     if (index < 0)
       notify("item/started", { threadId, turnId: turn.id, item: command.item, startedAtMs: Date.now() });
-    notify("item/completed", { threadId, turnId: turn.id, item: command.item, completedAtMs: Date.now() });
+    // An item can stay in progress, as a long command does, until a later command completes it.
+    if (command.completed !== false)
+      notify("item/completed", { threadId, turnId: turn.id, item: command.item, completedAtMs: Date.now() });
     record(command);
     return true;
   }

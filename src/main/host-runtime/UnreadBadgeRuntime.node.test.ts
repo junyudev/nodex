@@ -36,10 +36,8 @@ it.effect(
         .pipe(Scope.provide(scope));
       yield* yields;
       const change = PubSub.publish(changes, undefined);
-      const settle = TestClock.adjust("150 millis").pipe(Effect.andThen(yields));
 
       // The first read sets the badge even at zero, replacing one an earlier run left behind.
-      yield* change;
       yield* settle;
       assert.deepEqual(badges, [0]);
 

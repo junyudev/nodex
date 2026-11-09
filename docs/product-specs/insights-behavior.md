@@ -9,7 +9,7 @@ those numbers into a picture worth sharing.
 
 ## Access
 
-Insights is a rail destination between Scheduled and Plugins, a command (`Go to Insights`, `G I`) and
+Insights is a rail destination between Automations and Plugins, a command (`Go to Insights`, `G I`) and
 a page route beside the Home sidebar.
 
 Reading Claude Code and Codex history needs one explicit grant per Profile. Before it, Insights reads

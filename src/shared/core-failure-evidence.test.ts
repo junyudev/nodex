@@ -52,3 +52,22 @@ describe("Core error payloads", () => {
     expect(() => parseCoreError(value)).toThrow(TypeError);
   });
 });
+
+describe("Device-link retry evidence", () => {
+  const evidence = {
+    code: "overloaded",
+    recovery: { kind: "retry_after", budget: "member_device_links", milliseconds: 3_599_000 },
+  } as const;
+
+  it("preserves the Member budget and retry time across the transport boundary", () => {
+    expect(parseCoreFailureEvidence(evidence)).toEqual(evidence);
+  });
+
+  it.each([
+    { ...evidence.recovery, budget: "unknown" },
+    { ...evidence.recovery, milliseconds: -1 },
+    { ...evidence.recovery, milliseconds: 1.5 },
+  ])("rejects invalid retry evidence: %j", (recovery) => {
+    expect(() => parseCoreFailureEvidence({ ...evidence, recovery })).toThrow(TypeError);
+  });
+});

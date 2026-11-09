@@ -19,6 +19,7 @@ nodex serve start --home /srv/nodex/team --foreground
 nodex serve status --home /srv/nodex/team
 ```
 
+Initialization prepares a hosted Space, its local Owner Member and its TLS identity
 without opening a network listener. It prints the Space ID and certificate
 fingerprint. Members see the local Owner by the name the host's OS account gives
 its person; `init --owner-name NAME` chooses another, and `nodex serve
@@ -226,3 +227,46 @@ cleanup. Do not put provider secrets or Core capabilities in unit arguments.
 
 Read [Security](SECURITY.md) before opening the listener beyond loopback and
 [Reliability](RELIABILITY.md) for the execution and Core recovery boundaries.
+
+## Remote administration and Devices
+
+Owners can administer membership from an enrolled remote desktop using the same
+Core commands as the local `serve` CLI: invite, Members, Devices, revoke, remove
+Member and rename. Every Member can manage their own Devices. Desktop and phone
+form factors share the same `(Space, Member)` Device authority; a self-link offer
+never adds another Member. Certificate/key management, listener lifecycle,
+backups and host shutdown remain local.
+
+`nodex space remote-access on|off|status` controls a personal host's private-peer
+listener. `serve` continues to use the configured operator listener policy.
+Preparing or starting either listener does not make the Space team; admission of
+a second active Member does. Headless repository and clone semantics are explicit
+hosting state and work before any remote Member joins.
+
+A native CLI can select a remote Space with
+`--remote-connection /absolute/private.json`; see
+[administration surfaces](product-specs/team-space-behavior.md#administration-surfaces)
+for the private credential-file contract. Commands use pinned HTTPS and never
+fall back to local administration after a remote connection failure.
+
+## Phones
+
+An enrolled desktop Member creates a Device-link offer for their own Member.
+Scan or paste that link in Nodex Mobile. The phone redeems it over pinned HTTPS
+and opens its authenticated mobile WebSocket on this host's existing Core
+listener. There is no additional phone port, registry or pairing service.
+
+The host phone façade runs the same semantic owners as the team desktop under
+Core-issued Member invocation. Bob's phone sees Bob's Turns and attention, even
+while Alice's laptop is closed. Unsupported operations show unavailable
+capabilities and never execute through a personal desktop. The host and its
+network route must remain available.
+
+A phone pins the host's leaf certificate exactly as a desktop does, so an iPhone
+or Android phone reaches a host with its own self-signed certificate at any
+address its link carries: a LAN or tailnet (100.64.0.0/10) address, or a name. No
+certificate authority, `tailscale cert` or trust-store change is needed. A phone
+tries the host's local addresses first, then its tailnet addresses. Certificate
+replacement requires a new trusted link.
+Revoking the phone Device closes its active channel without affecting its other
+Space enrollments. See [phone access security](SECURITY.md#phone-access).

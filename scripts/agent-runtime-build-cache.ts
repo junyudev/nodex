@@ -78,7 +78,18 @@ function treeIdentity(root: string, ignoreGenerated = true): string {
         hash.update(JSON.stringify(dependencyLinks(join(entry, name))));
         continue;
       }
-      if (!ignoreGenerated || !ignoredDirectories.has(name)) visit(join(entry, name));
+      const child = join(entry, name);
+      const workspacePath = relative(root, child).split(sep).join("/");
+      // Expo native projects and Gradle output are writable build products. Keep
+      // authored local modules and esbuild's actual inputs in the fingerprint.
+      if (
+        ignoreGenerated &&
+        /^mobile\/(?:ios|android|\.expo)(?:\/|$)|^mobile\/modules\/[^/]+\/android\/(?:build|\.gradle)(?:\/|$)/u.test(
+          workspacePath,
+        )
+      )
+        continue;
+      if (!ignoreGenerated || !ignoredDirectories.has(name)) visit(child);
     }
   };
   visit(root);

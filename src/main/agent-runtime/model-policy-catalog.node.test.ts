@@ -1,8 +1,8 @@
 import { expect, it } from "vite-plus/test";
 import { modelPolicyCatalog } from "./model-policy-catalog";
 import { DEFAULT_MODEL_POLICY, automaticModelCatalog, setModelOn } from "../../shared/model-policy";
-import { projectAgentCatalog } from "../mobile-gateway/catalog";
-import { inboxAgentCandidates } from "../inbox-application/inbox-agent-candidates";
+import { projectAgentCatalog } from "../../host/mobile/catalog";
+import { inboxAgentCandidates } from "../../host/inbox-application/inbox-agent-candidates";
 import { selectPageTextRewriteModel } from "../page-text-rewrite/rewrite-model";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 const alice = {

@@ -45,5 +45,6 @@ including recovery. Members may read Activity and use person Retry actions;
 source producers, sender internals and settlement retain Host authority. Origin
 replies require the Coordinator's live Agent provenance.
 
+This supersedes ADR 0078's exclusion of Source-driven milestones. The owning
 behavior contracts are [Sources](../product-specs/sources-behavior.md) and
 [Inbox](../product-specs/inbox-behavior.md).

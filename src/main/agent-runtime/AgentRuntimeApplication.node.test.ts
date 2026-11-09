@@ -1,3 +1,4 @@
+import { HostInvocation } from "../../host/HostInvocation";
 import { HostWorkspace, HostWorkspaceError } from "../../host/HostWorkspace";
 import {
   ApplicationSettings,
@@ -184,6 +185,7 @@ const setup = (
   const acceptedUserMessages: string[] = [];
   const receipt = new Map<string, string>();
   const actors: unknown[] = [];
+  const hostInvocations: { kind: string; proof: string | null }[] = [];
   const order: string[] = [];
   const cleanups = new Map<
     string,
@@ -462,6 +464,10 @@ const setup = (
   const apply = (input: ProjectWorkspaceApplyInput) =>
     Effect.gen(function* () {
       actors.push(yield* CoreApplicationAgent);
+      hostInvocations.push({
+        kind: input.intent.kind === "mutate_session" ? input.intent.intent.kind : input.intent.kind,
+        proof: yield* HostInvocation,
+      });
       if (state.failCore) return yield* Effect.fail(new Error("Core refused Page access"));
       if (
         state.failTitleWrite &&
@@ -1463,6 +1469,7 @@ const setup = (
     applied,
     acceptedUserMessages,
     actors,
+    hostInvocations,
     order,
     state,
     cleanups,
@@ -3123,7 +3130,9 @@ it.effect("a person's first prompt is titled once, replacing only the provisiona
     const fixture = setup();
     fixture.state.generatedTitle = "Fix login failure";
     const owner = yield* fixture.owner;
-    yield* owner.launch({ ...launch, modelSelection: { instanceId: "codex", model: "model-b" } });
+    yield* owner
+      .launch({ ...launch, modelSelection: { instanceId: "codex", model: "model-b" } })
+      .pipe(Effect.provideService(HostInvocation, "short-lived-member-proof"));
     const titled = yield* Effect.gen(function* () {
       for (let attempt = 0; attempt < 50; attempt += 1) {
         const write = fixture.applied.find(
@@ -3141,6 +3150,14 @@ it.effect("a person's first prompt is titled once, replacing only the provisiona
       session_id: "session:one",
       intent: { kind: "set_fallback_title", title: "Fix login failure", replaces: "Task" },
     });
+    assert.equal(
+      fixture.hostInvocations.find(({ kind }) => kind === "create_agent_runtime_session")?.proof,
+      "short-lived-member-proof",
+    );
+    assert.equal(
+      fixture.hostInvocations.find(({ kind }) => kind === "set_fallback_title")?.proof,
+      null,
+    );
     const generation = fixture.calls.find((call) => call.method === "text.generate-structured");
     assert.deepEqual((generation?.input as { modelSelection: unknown }).modelSelection, {
       instanceId: "codex",
@@ -3979,11 +3996,13 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const events: string[] = [];
+      const preparationProofs: (string | null)[] = [];
       const prepared: import("../agent-backend/NativeSessionWorkspace").NativeSessionWorkspaceInput[] =
         [];
       const fixture = setup({
         prepareWorkspace: (input) =>
           Effect.gen(function* () {
+            preparationProofs.push(yield* HostInvocation);
             prepared.push(input);
             yield* Effect.addFinalizer(() =>
               Effect.sync(() => {
@@ -4015,7 +4034,9 @@ it.effect(
         runInEnvironmentPath: "environment.toml",
         worktreeStartingState: { type: "branch" as const, branchName: "feature" },
       };
-      const result = yield* owner.launch(input);
+      const result = yield* owner
+        .launch(input)
+        .pipe(Effect.provideService(HostInvocation, "short-lived-member-proof"));
       yield* awaitCommand(fixture, "prepared-run.release");
       const types = [...fixture.commands.values()].map((command) => command.type);
       // The prompt is durable before any filesystem work; the Run starts after relocation.
@@ -4046,6 +4067,11 @@ it.effect(
         "Launch must not hydrate transcript bodies",
       );
       yield* owner.launch(input);
+      assert.deepEqual(preparationProofs, [null]);
+      assert.equal(
+        fixture.hostInvocations.find(({ kind }) => kind === "create_agent_runtime_session")?.proof,
+        "short-lived-member-proof",
+      );
       assert.equal(prepared.length, 1, "Receipt replay never prepares a second workspace");
     }),
 );

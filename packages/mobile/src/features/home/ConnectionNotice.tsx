@@ -24,11 +24,17 @@ const noticeFor = (
     case "offline":
       return {
         tone: "warning",
-        text: `Can't reach ${hostName}. This may be out of date.`,
+        text: connection.message ?? `Can't reach ${hostName}. This may be out of date.`,
         action: "retry",
       };
     case "revoked":
-      return { tone: "danger", text: `${hostName} no longer knows this phone.`, action: "pair" };
+      return { tone: "danger", text: "Access revoked.", action: "pair" };
+    case "unavailable":
+      return {
+        tone: "danger",
+        text: connection.message ?? `${hostName} is unavailable.`,
+        action: "pair",
+      };
     case "incompatible":
       return {
         tone: "danger",
@@ -40,12 +46,16 @@ const noticeFor = (
   }
 };
 
+/** This phone cannot reach the Space again without linking or an update; waiting will not help. */
+export const spaceUnreachable = (status: ConnectionState["status"]): boolean =>
+  status === "revoked" || status === "unavailable" || status === "incompatible";
+
 /** A standing condition of the connection, wherever it matters: what it means, and the fix. */
 export const ConnectionNotice = () => {
   const navigation = useRootNavigation();
   const connection = useConnection();
   const { hosts, activeHostId } = useHosts();
-  const hostName = hosts.find((host) => host.hostId === activeHostId)?.hostName ?? "your desktop";
+  const hostName = hosts.find((host) => host.hostId === activeHostId)?.hostName ?? "this Space";
   const notice = noticeFor(connection, hostName);
   if (!notice) return null;
   return (
@@ -60,7 +70,7 @@ export const ConnectionNotice = () => {
           </Tap>
         ) : notice.action === "pair" ? (
           <Tap hitSlop={8} onPress={() => navigation.navigate("Pair")}>
-            <Txt className="text-sm font-medium">Pair again</Txt>
+            <Txt className="text-sm font-medium">Link again</Txt>
           </Tap>
         ) : notice.action === "update" ? (
           <Tap hitSlop={8} onPress={() => void Linking.openURL(APP_UPDATE_URL)}>

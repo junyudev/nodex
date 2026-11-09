@@ -51,6 +51,7 @@ impl Core {
         let local = CoreClient::connect(home.path(), "team-test").unwrap();
         let info = local
             .space_listen(ListenRequest {
+                peer_policy: Default::default(),
                 address: "127.0.0.1:0".into(),
                 cert: None,
                 key: None,
@@ -63,6 +64,38 @@ impl Core {
             info,
         }
     }
+    fn restart(&mut self, operator_address: Option<&str>) {
+        let _ = self.child.kill();
+        self.child.wait().unwrap();
+        let mut command = Command::new(env!("CARGO_BIN_EXE_nodex-core"));
+        command.args(["--home", self.home.path().to_str().unwrap()]);
+        if let Some(address) = operator_address {
+            command.args(["--listen", address]);
+        }
+        let mut child = command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut line = String::new();
+        BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        if line.is_empty() {
+            let mut errors = String::new();
+            child
+                .stderr
+                .take()
+                .unwrap()
+                .read_to_string(&mut errors)
+                .unwrap();
+            panic!("Core restart failed: {errors}");
+        }
+        let _: CoreSelectionResult = serde_json::from_str(&line).unwrap();
+        self.child = child;
+        self.local = CoreClient::connect(self.home.path(), "transport-restart").unwrap();
+    }
+
     fn tls(
         &self,
         pin: &str,
@@ -102,9 +135,20 @@ impl Core {
         binding: Option<(&str, &str)>,
         body: Value,
     ) -> (u16, Value) {
+        self.request_method("POST", path, token, binding, body)
+    }
+    fn request_method(
+        &self,
+        method: &str,
+        path: &str,
+        token: &str,
+        binding: Option<(&str, &str)>,
+        body: Value,
+    ) -> (u16, Value) {
         let mut tls = self.tls(&self.info.fingerprint).unwrap();
         let bytes = serde_json::to_vec(&body).unwrap();
         let (id, binding) = binding.unwrap_or(("", ""));
+        write!(tls,"{method} {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nx-nodex-connection-id: {id}\r\nx-nodex-connection-binding: {binding}\r\nx-nodex-request-id: request:{}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",random_id(),bytes.len()).unwrap();
         tls.write_all(&bytes).unwrap();
         tls.flush().unwrap();
         let mut raw = Vec::new();
@@ -120,6 +164,15 @@ impl Core {
         binding: Option<(&str, &str)>,
         body: Value,
     ) -> (u16, Value) {
+        self.local_request_proof(path, binding, body, None)
+    }
+    fn local_request_proof(
+        &self,
+        path: &str,
+        binding: Option<(&str, &str)>,
+        body: Value,
+        proof: Option<&str>,
+    ) -> (u16, Value) {
         let auth = fs::read_to_string(self.home.path().join("run/core/core.auth")).unwrap();
         let descriptor = &self.local.descriptor;
         let mut stream = nodex_platform::local_endpoint::connect(
@@ -129,6 +182,10 @@ impl Core {
         .unwrap();
         let body = serde_json::to_string(&body).unwrap();
         let (id, binding) = binding.unwrap_or(("", ""));
+        let proof = proof
+            .map(|p| format!("x-nodex-host-invocation: {p}\r\n"))
+            .unwrap_or_default();
+        write!(stream,"POST {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nx-nodex-connection-id: {id}\r\nx-nodex-connection-binding: {binding}\r\n{proof}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",auth.trim(),body.len()).unwrap();
         let mut response = Vec::new();
         stream.read_to_end(&mut response).unwrap();
         decode_response(&response)
@@ -609,6 +666,7 @@ fn member_device_and_pre_auth_budgets_fail_closed() {
             if index % 2 == 0 {
                 request.clone()
             } else {
+                json!({"role":"owner"})
             },
         );
         if status == 429 {
@@ -696,13 +754,30 @@ fn enroll_more_devices_without_granting_remote_owners_host_authority() {
     let session = core.session(&owner.device_credential);
     assert_eq!(session.principal.role, MemberRole::Owner);
     assert_eq!(
+        core.request_method(
+            "GET",
             "/core/v1/admin/space/devices",
             &session.session_token,
             None,
             json!({})
         )
         .0,
+        200
     );
+    for path in [
+        "/core/v1/admin/space/listen",
+        "/core/v1/admin/space/stop-listener",
+        "/core/v1/admin/space/prepare",
+        "/core/v1/shutdown",
+        "/core/v1/admin/host/register",
+    ] {
+        assert_eq!(
+            core.request(path, &session.session_token, None, json!({}))
+                .0,
+            403,
+            "{path}"
+        );
+    }
 }
 
 #[test]
@@ -1090,10 +1165,745 @@ fn remote_attention_belongs_to_the_requesting_member() {
             .any(|intent| intent["page_id"] == page)
     );
 }
+
+#[test]
+fn personal_device_link_and_remote_owner_administration_share_core_identity() {
+    let core = Core::start();
+    let offer = core.local.space_link_device().unwrap();
+    let db = rusqlite::Connection::open(core.home.path().join("nodex.db")).unwrap();
+    assert_eq!(
+        db.query_row("SELECT space_kind FROM libraries", [], |r| r
+            .get::<_, String>(0))
+            .unwrap(),
+        "personal"
+    );
+    let (status,value)=core.request("/enroll","",None,json!({"code":offer.code,"device_label":"Phone","display_name":"Ignored name","form_factor":"phone"}));
+    assert_eq!(status, 200, "{value}");
+    let device: EnrollmentResponse = serde_json::from_value(value).unwrap();
+    assert_eq!(device.member_id, offer.member_id);
+    let session = core.session(&device.device_credential);
+    let token = &session.session_token;
+    let (_, devices) = core.request_method(
+        "GET",
+        "/core/v1/admin/space/devices",
+        token,
+        None,
+        json!({}),
+    );
+    assert_eq!(devices[0]["form_factor"], "phone");
+    assert_eq!(devices[0]["space_id"], device.space_id);
+    let connection = nodex_core_protocol::client::RemoteConnection {
+        url: core.info.url.clone(),
+        fingerprint: core.info.fingerprint.clone(),
+        space_id: device.space_id.clone(),
+        device_credential: device.device_credential.clone(),
+    };
+    let native = CoreClient::connect_remote(&connection, "identity-test").unwrap();
+    native.space_rename("Remote personal".into()).unwrap();
+    assert_eq!(native.space_members().unwrap().len(), 1);
+    assert_eq!(
+        db.query_row("SELECT space_kind FROM libraries", [], |r| r
+            .get::<_, String>(0))
+            .unwrap(),
+        "personal"
+    );
+    let offer2 = native.space_link_device().unwrap();
+    assert_eq!(offer2.member_id, device.member_id);
+    let (status, value) = core.request(
+        "/enroll",
+        "",
+        None,
+        json!({"code":offer2.code,"device_label":"Second Owner Device","display_name":"Ignored"}),
+    );
+    assert_eq!(status, 200, "{value}");
+    let owner_second: EnrollmentResponse = serde_json::from_value(value).unwrap();
+    assert_eq!(owner_second.member_id, device.member_id);
+    let owner_second_session = core.session(&owner_second.device_credential);
+    let (status, invite) = core.request(
+        "/core/v1/admin/space/invite",
+        token,
+        None,
+        json!({"role":"member"}),
+    );
+    assert_eq!(status, 200, "{invite}");
+    let (status, value) = core.request(
+        "/enroll",
+        "",
+        None,
+        json!({"code":invite["code"],"device_label":"Teammate","display_name":"Teammate"}),
+    );
+    assert_eq!(status, 200, "{value}");
+    let teammate: EnrollmentResponse = serde_json::from_value(value).unwrap();
+    let teammate_session = core.session(&teammate.device_credential);
+    let (status, linked) = core.request(
+        "/core/v1/admin/space/link-device",
+        &teammate_session.session_token,
+        None,
+        json!({}),
+    );
+    assert_eq!(status, 200, "{linked}");
+    assert_eq!(linked["member_id"], teammate.member_id);
+    let (status, value) = core.request("/enroll", "", None,
+        json!({"code":linked["code"],"device_label":"Second Member Device","display_name":"Ignored"}));
+    assert_eq!(status, 200, "{value}");
+    let teammate_second: EnrollmentResponse = serde_json::from_value(value).unwrap();
+    assert_eq!(teammate_second.member_id, teammate.member_id);
+    let teammate_second_session = core.session(&teammate_second.device_credential);
+    for _ in 1..6 {
+        let (status, value) = core.request(
+            "/core/v1/admin/space/link-device",
+            &teammate_session.session_token,
+            None,
+            json!({}),
+        );
+        assert_eq!(status, 200, "{value}");
+    }
+    let (status, limited) = core.request(
+        "/core/v1/admin/space/link-device",
+        &teammate_session.session_token,
+        None,
+        json!({}),
+    );
+    assert_eq!(status, 429, "{limited}");
+    assert_eq!(limited["payload"]["recovery"]["kind"], "retry_after");
+    assert_eq!(
+        limited["payload"]["recovery"]["budget"],
+        "member_device_links"
+    );
+    assert!(
+        (1..=3_600_000).contains(
+            &limited["payload"]["recovery"]["milliseconds"]
+                .as_u64()
+                .unwrap()
+        )
+    );
+    for (path, body) in [
+        ("invite", json!({"role":"owner"})),
+        ("name", json!({"name":"Forbidden"})),
+        ("remove-member", json!({"member_id":device.member_id})),
+        ("revoke", json!({"device_id":device.device_id})),
+    ] {
+        let (status, value) = core.request(
+            &format!("/core/v1/admin/space/{path}"),
+            &teammate_session.session_token,
+            None,
+            body,
+        );
+        assert_eq!(status, 403, "{path}: {value}");
+        assert_eq!(value["payload"]["recovery"]["kind"], "none", "{value}");
+    }
+    let (status, own) = core.request_method(
+        "GET",
+        "/core/v1/admin/space/devices",
+        &teammate_session.session_token,
+        None,
+        json!({}),
+    );
+    assert_eq!(status, 200);
+    assert_eq!(own.as_array().unwrap().len(), 2);
+    assert!(
+        own.as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["member_id"] == teammate.member_id)
+    );
+    let (status, forbidden) = core.request_method(
+        "GET",
+        "/core/v1/admin/space/members",
+        &teammate_session.session_token,
+        None,
+        json!({}),
+    );
+    assert_eq!(status, 403, "{forbidden}");
+    assert_eq!(forbidden["payload"]["recovery"]["kind"], "none");
+    assert_eq!(
+        core.request(
+            "/core/v1/admin/space/revoke",
+            &teammate_session.session_token,
+            None,
+            json!({"device_id":teammate.device_id})
+        )
+        .0,
+        200
+    );
+    assert_eq!(
+        core.request_method(
+            "GET",
+            "/core/v1/admin/space/devices",
+            &teammate_session.session_token,
+            None,
+            json!({})
+        )
+        .0,
+        401
+    );
+    let (status, withdrawn) = core.request(
+        "/session",
+        "",
+        None,
+        json!({"device_credential":teammate.device_credential}),
+    );
+    assert_eq!(status, 401, "{withdrawn}");
+    assert_eq!(
+        withdrawn["payload"]["recovery"]["kind"],
+        "remote_access_withdrawn"
+    );
+    assert_eq!(
+        core.request_method(
+            "GET",
+            "/core/v1/admin/space/devices",
+            &teammate_second_session.session_token,
+            None,
+            json!({})
+        )
+        .0,
+        200
+    );
+    core.session(&teammate_second.device_credential);
+
+    native
+        .space_revoke(RevokeDeviceRequest {
+            device_id: teammate_second.device_id,
+        })
+        .unwrap();
+    let (status, withdrawn) = core.request(
+        "/session",
+        "",
+        None,
+        json!({"device_credential":teammate_second.device_credential}),
+    );
+    assert_eq!(status, 401, "{withdrawn}");
+    assert_eq!(
+        withdrawn["payload"]["recovery"]["kind"],
+        "remote_access_withdrawn"
+    );
+    for session in [&session, &owner_second_session] {
+        assert_eq!(
+            core.request_method(
+                "GET",
+                "/core/v1/admin/space/devices",
+                &session.session_token,
+                None,
+                json!({})
+            )
+            .0,
+            200
+        );
+    }
+    core.session(&device.device_credential);
+    core.session(&owner_second.device_credential);
+    native
+        .space_remove_member(RemoveMemberRequest {
+            member_id: teammate.member_id,
+        })
+        .unwrap();
+    // Wrong pin fails before the session endpoint receives the Device credential.
+    let mut wrong = connection;
+    wrong.fingerprint = "0".repeat(64);
+    assert!(CoreClient::connect_remote(&wrong, "identity-test").is_err());
+    let db = rusqlite::Connection::open(core.home.path().join("nodex.db")).unwrap();
+    let kind: String = db
+        .query_row("SELECT space_kind FROM libraries", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(kind, "team");
+}
+
+#[test]
+fn phone_hello_space_kind_tracks_membership_instead_of_remote_access() {
+    use tungstenite::client::IntoClientRequest;
+    let core = Core::start();
+    let offer = core.local.space_link_device().unwrap();
+    let (status, enrolled) = core.request(
+        "/enroll", "", None,
+        json!({"code":offer.code,"device_label":"Owner phone","display_name":"Owner","form_factor":"phone"}),
+    );
+    assert_eq!(status, 200, "{enrolled}");
+    let device: EnrollmentResponse = serde_json::from_value(enrolled).unwrap();
+    let session = core.session(&device.device_credential);
+    let (status, lease) = core.local_request(
+        "/core/v1/admin/host/register",
+        None,
+        json!({"instance":random_id()}),
+    );
+    assert_eq!(status, 200, "{lease}");
+    let connect = || {
+        let mut request = format!(
+            "{}/core/v1/phone",
+            core.info.url.replace("https://", "wss://")
+        )
+        .into_client_request()
+        .unwrap();
+        request.headers_mut().insert(
+            "authorization",
+            format!("Bearer {}", session.session_token).parse().unwrap(),
+        );
+        tungstenite::client(request, core.tls(&core.info.fingerprint).unwrap())
+            .unwrap()
+            .0
+    };
+    let _personal = connect();
+    let (status, open) = core.local_request("/core/v1/host/phone/poll", None, lease.clone());
+    assert_eq!(status, 200, "{open}");
+    assert_eq!(open["kind"], "open");
+    assert_eq!(open["space_kind"], "personal");
+    assert_eq!(open["member_id"], offer.member_id);
+
+    let second = core.enroll();
+    assert_ne!(second.member_id, device.member_id);
+    let _team = connect();
+    let (status, open) = core.local_request("/core/v1/host/phone/poll", None, lease.clone());
+    assert_eq!(status, 200, "{open}");
+    assert_eq!(open["kind"], "open");
+    assert_eq!(open["space_kind"], "team");
+
+    core.local
+        .space_remove_member(RemoveMemberRequest {
+            member_id: second.member_id,
+        })
+        .unwrap();
+    let _after_removal = connect();
+    let (status, open) = core.local_request("/core/v1/host/phone/poll", None, lease.clone());
+    assert_eq!(status, 200, "{open}");
+    assert_eq!(open["space_kind"], "team");
+}
+
+#[test]
+fn a_phone_holding_only_its_channel_open_stays_seen() {
+    use tungstenite::client::IntoClientRequest;
+    let core = Core::start();
+    let offer = core.local.space_link_device().unwrap();
+    let (status, enrolled) = core.request(
+        "/enroll", "", None,
+        json!({"code":offer.code,"device_label":"Phone","display_name":"Owner","form_factor":"phone"}),
+    );
+    assert_eq!(status, 200, "{enrolled}");
+    let device: EnrollmentResponse = serde_json::from_value(enrolled).unwrap();
+    let session = core.session(&device.device_credential);
+    let (status, lease) = core.local_request(
+        "/core/v1/admin/host/register",
+        None,
+        json!({"instance":random_id()}),
+    );
+    assert_eq!(status, 200, "{lease}");
+    let db = rusqlite::Connection::open(core.home.path().join("nodex.db")).unwrap();
+    db.busy_timeout(Duration::from_secs(5)).unwrap();
+    let epoch = |at: SystemTime| at.duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+    let last_seen = || -> i64 {
+        db.query_row(
+            "SELECT last_seen FROM member_devices WHERE id=?1",
+            [&device.device_id],
+            |row| row.get(0),
+        )
+        .unwrap()
+    };
+    // The phone was last seen 38 minutes ago, then opens its channel and sends nothing more.
+    let stale = epoch(SystemTime::now()) - 38 * 60;
+    db.execute(
+        "UPDATE member_devices SET last_seen=?2 WHERE id=?1",
+        rusqlite::params![device.device_id, stale],
+    )
+    .unwrap();
+    let mut request = format!(
+        "{}/core/v1/phone",
+        core.info.url.replace("https://", "wss://")
+    )
+    .into_client_request()
+    .unwrap();
+    request.headers_mut().insert(
+        "authorization",
+        format!("Bearer {}", session.session_token).parse().unwrap(),
+    );
+    let opened = epoch(SystemTime::now());
+    let (_phone, _) = tungstenite::client(request, core.tls(&core.info.fingerprint).unwrap())
+        .expect("phone channel");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while last_seen() == stale && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        last_seen() >= opened,
+        "an open phone channel keeps its Device seen"
+    );
+}
+
+#[test]
+fn phone_push_registration_is_the_phones_own_request_and_recipients_follow_core() {
+    use tungstenite::{Message, client::IntoClientRequest};
+    let core = Core::start();
+    let offer = core.local.space_link_device().unwrap();
+    let (status, enrolled) = core.request(
+        "/enroll", "", None,
+        json!({"code":offer.code,"device_label":"Owner phone","display_name":"Owner","form_factor":"phone"}),
+    );
+    assert_eq!(status, 200, "{enrolled}");
+    let device: EnrollmentResponse = serde_json::from_value(enrolled).unwrap();
+    let session = core.session(&device.device_credential);
+    let (status, lease) = core.local_request(
+        "/core/v1/admin/host/register",
+        None,
+        json!({"instance":random_id()}),
+    );
+    assert_eq!(status, 200, "{lease}");
+    let mut request = format!(
+        "{}/core/v1/phone",
+        core.info.url.replace("https://", "wss://")
+    )
+    .into_client_request()
+    .unwrap();
+    request.headers_mut().insert(
+        "authorization",
+        format!("Bearer {}", session.session_token).parse().unwrap(),
+    );
+    let (mut phone, _) =
+        tungstenite::client(request, core.tls(&core.info.fingerprint).unwrap()).unwrap();
+    let (_, open) = core.local_request("/core/v1/host/phone/poll", None, lease.clone());
+    assert_eq!(open["kind"], "open");
+    let commit = |credential: &Value| {
+        core.local_request(
+            "/core/v1/host/phone/push",
+            None,
+            json!({"credential":credential}),
+        )
+    };
+    assert_ne!(
+        commit(&open["credential"]).0,
+        200,
+        "an observation proof is not the phone's registration"
+    );
+    let registration = json!({"handle":"relay-handle","key":"A".repeat(43),"preferences":{"needsYou":true,"finished":true}});
+    phone
+        .send(Message::text(
+            json!({"t":"req","id":1,"m":"push.register","p":registration}).to_string(),
+        ))
+        .unwrap();
+    let (_, registered) = core.local_request("/core/v1/host/phone/poll", None, lease.clone());
+    assert_eq!(registered["method"], "push.register");
+    let (status, committed) = commit(&registered["credential"]);
+    assert_eq!(status, 200, "{committed}");
+    let devices = core.local.space_devices().unwrap();
+    let listed = serde_json::to_value(&devices).unwrap().to_string();
+    assert!(
+        devices
+            .iter()
+            .any(|d| d.id == device.device_id && d.notifications_enabled)
+    );
+    assert!(
+        !listed.contains("relay-handle"),
+        "listings never carry the handle or key"
+    );
+
+    let recipients = |audience: Value| {
+        core.local_request(
+            "/core/v1/host/phone/push-recipients",
+            None,
+            json!({"token":lease["token"],"session_id":"push-session","audience":audience}),
+        )
+    };
+    let (status, _) = core.local_request(
+        "/core/v1/host/phone/push-recipients",
+        None,
+        json!({"token":"0".repeat(64),"session_id":"push-session","audience":{"kind":"run_requester","run_id":"run"}}),
+    );
+    assert_ne!(status, 200, "recipients need the live Host lease");
+    let (status, none) = recipients(json!({"kind":"run_requester","run_id":"run"}));
+    assert_eq!((status, none.clone()), (200, json!([])), "{none}");
+    let host_id = random_id();
+    let (_, host) = core.local_request(
+        "/core/v1/handshake",
+        None,
+        serde_json::to_value(HandshakeRequest {
+            requirements: core_client_requirements(),
+            client: ClientIdentity {
+                kind: ClientKind::ElectronHost,
+                build_id: "push-host".into(),
+            },
+            connection_id: host_id.clone(),
+            expected_generation: RuntimeGenerationIdentity::from(&core.local.descriptor),
+        })
+        .unwrap(),
+    );
+    let host: HandshakeResponse = serde_json::from_value(host).unwrap();
+    let binding = Some((host_id.as_str(), host.connection_binding.as_str()));
+    let (_, initialized) = core.local_request("/core/v1/modules/workspace/apply",binding,
+        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,"store_epoch":host.store_epoch,"operation_id":team_operation_id(),
         "intent":{"kind":"create_project","project_id":"push-project","name":"Push","description":"","source_roots":["/tmp/nodex-push-test"]}}));
+    assert_eq!(initialized["status"], "ok", "{initialized}");
+    let (_, created) = core.local_request("/core/v1/modules/workspace/apply",binding,
+        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,"store_epoch":host.store_epoch,
+        "operation_id":team_operation_id(),"intent":{"kind":"create_agent_runtime_session","session_id":"push-session",
+        "project_id":null,"title":"Push","initial_page_ids":[],"runtime_id":"runtime","runtime_thread_id":"thread",
+        "launch_request_id":"launch","coordinator":false}}));
+    assert_eq!(created["status"], "ok", "{created}");
+    // A personal Space's only Member hears about its chats, on the Device that registered.
+    let (status, found) = recipients(json!({"kind":"request","run_id":"run","request":"question"}));
+    assert_eq!(status, 200, "{found}");
+    assert_eq!(found[0]["device_id"], device.device_id.as_str());
+    assert_eq!(found[0]["member_id"], device.member_id.as_str());
+    assert_eq!(found[0]["registration"], registration);
+
+    let forget = |handle: &str| {
+        core.local_request(
+            "/core/v1/host/phone/push-forget",
+            None,
+            json!({"token":lease["token"],"device_id":device.device_id,"handle":handle}),
+        )
+        .1
+    };
+    assert_eq!(forget("another-handle"), json!(false));
+    assert_eq!(forget("relay-handle"), json!(true));
+    assert_eq!(
+        recipients(json!({"kind":"run_requester","run_id":"run"})).1,
+        json!([])
+    );
+}
+
+#[test]
+fn phone_stream_authentication_invocation_proofs_budgets_and_revocation() {
+    use tungstenite::{Message, client::IntoClientRequest};
+    let core = Core::start();
+    let device = core.enroll();
+    let session = core.session(&device.device_credential);
+    let connect = |token: &str| {
+        let mut request = format!(
+            "{}/core/v1/phone",
+            core.info.url.replace("https://", "wss://")
+        )
+        .into_client_request()
+        .unwrap();
+        request
+            .headers_mut()
+            .insert("authorization", format!("Bearer {token}").parse().unwrap());
         // The refused handshake carries a whole HTTP response; box it so the closure stays small.
+        tungstenite::client(request, core.tls(&core.info.fingerprint).unwrap()).map_err(Box::new)
+    };
+    assert!(
+        matches!(connect("not-a-session"),Err(error) if matches!(&*error, tungstenite::HandshakeError::Failure(tungstenite::Error::Http(response)) if response.status().as_u16()==401))
+    );
+    let (status, lease) = core.local_request(
+        "/core/v1/admin/host/register",
+        None,
+        json!({"instance":random_id()}),
+    );
+    assert_eq!(status, 200, "{lease}");
+    let host_id = random_id();
+    let (status, host) = core.local_request(
+        "/core/v1/handshake",
+        None,
+        serde_json::to_value(HandshakeRequest {
+            requirements: core_client_requirements(),
+            client: ClientIdentity {
+                kind: ClientKind::ElectronHost,
+                build_id: "phone-host".into(),
+            },
+            connection_id: host_id.clone(),
+            expected_generation: RuntimeGenerationIdentity::from(&core.local.descriptor),
+        })
+        .unwrap(),
+    );
+    assert_eq!(status, 200, "{host}");
+    let host: HandshakeResponse = serde_json::from_value(host).unwrap();
+    let binding = Some((host_id.as_str(), host.connection_binding.as_str()));
+    let (_, initialized) = core.local_request("/core/v1/modules/workspace/apply",binding,
+        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,"store_epoch":host.store_epoch,"operation_id":team_operation_id(),
         "intent":{"kind":"create_project","project_id":"phone-project","name":"Phone","description":"","source_roots":["https://git.example/team/phone"]}}));
+    assert_eq!(initialized["status"], "ok", "{initialized}");
+    let read = |proof: &str| {
+        core.local_request_proof("/core/v1/modules/workspace/read",binding,
+        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,"read":{"kind":"inbox_routing_consent"}}),Some(proof))
+    };
+    let (mut phone, _) = connect(&session.session_token).unwrap();
+    let (status, open) = core.local_request("/core/v1/host/phone/poll", None, lease.clone());
+    assert_eq!(status, 200, "{open}");
+    assert_eq!(open["kind"], "open");
+    assert_eq!(open["member_id"], device.member_id);
+    let channel = open["channel_id"].clone();
+    let publish = |envelope: Value| {
+        core.local_request(
+            "/core/v1/host/phone/publish",
+            None,
+            json!({"token":lease["token"],"channel_id":channel,"envelope":envelope}),
+        )
+    };
+    assert_eq!(publish(json!({"t":"hello","d":{"test":true}})).1, true);
+    assert!(phone.read().unwrap().into_text().unwrap().contains("hello"));
+    phone
+        .send(Message::text(
+            json!({"t":"req","id":1,"m":"inbox.window","p":{}}).to_string(),
+        ))
+        .unwrap();
+    let (_, request) = core.local_request("/core/v1/host/phone/poll", None, lease.clone());
+    assert_eq!(request["kind"], "request");
+    assert_ne!(open["credential"], request["credential"]);
+    assert_eq!(read(open["credential"].as_str().unwrap()).1["status"], "ok");
+    assert_eq!(
+        read(request["credential"].as_str().unwrap()).1["status"],
+        "ok"
+    );
+    let mutate = |proof: &str| {
+        core.local_request_proof("/core/v1/modules/workspace/apply",binding,
+        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,"store_epoch":host.store_epoch,
+        "operation_id":team_operation_id(),"intent":{"kind":"set_inbox_routing_consent","start_my_requests":true,"initialize_only":false}}),Some(proof))
+    };
+    assert_eq!(
+        mutate(open["credential"].as_str().unwrap()).0,
+        403,
+        "observation proof cannot write"
+    );
+    let mutation = mutate(request["credential"].as_str().unwrap()).1;
+    assert_eq!(mutation["status"], "ok", "{mutation}");
+
+    let (_, created) = core.local_request("/core/v1/modules/workspace/apply",binding,
+        json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,"store_epoch":host.store_epoch,
+        "operation_id":team_operation_id(),"intent":{"kind":"create_agent_runtime_session","session_id":"phone-delivery-session",
+        "project_id":null,"title":"Delivery","initial_page_ids":[],"runtime_id":"runtime","runtime_thread_id":"thread",
+        "launch_request_id":"launch","coordinator":false}}));
+    assert_eq!(created["status"], "ok", "{created}");
+    let delivery = |proof: &str, id: &str, author: Value| {
+        core.local_request_proof("/core/v1/modules/workspace/apply",binding,
+            json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,"store_epoch":host.store_epoch,
+            "operation_id":team_operation_id(),"intent":{"kind":"record_chat_delivery","session_id":"phone-delivery-session",
+            "delivery_id":id,"body_hash":"0".repeat(64),"author":author,"attachment_count":0,"question_answer_run_id":null}}),Some(proof)).1
+    };
+    assert_eq!(
+        delivery(
+            request["credential"].as_str().unwrap(),
+            "phone-message",
+            json!({"kind":"user"})
+        )["status"],
+        "error",
+        "An unrelated Member invocation cannot fabricate delivery evidence"
+    );
+
+    assert_eq!(publish(json!({"t":"res","id":1,"ok":true,"r":{}})).1, true);
+    assert!(phone.read().unwrap().into_text().unwrap().contains("res"));
+    assert_eq!(
+        publish(json!({"t":"res","id":1,"ok":true,"r":{}})).1,
+        false,
+        "completed proof cannot replay"
+    );
+    assert_eq!(
+        read(request["credential"].as_str().unwrap()).1["status"],
+        "error",
+        "completed proof must retire"
+    );
+    phone.send(Message::text(json!({"t":"req","id":2,"m":"chat.send","p":{
+        "sessionId":"phone-delivery-session","messageId":"phone-message","text":"Hello","fileRefs":[],"delivery":"queue"
+    }}).to_string())).unwrap();
+    let (_, message) = core.local_request("/core/v1/host/phone/poll", None, lease.clone());
+    let proof = message["credential"].as_str().unwrap();
+    assert_eq!(
+        delivery(proof, "another-message", json!({"kind":"user"}))["status"],
+        "error"
+    );
+    assert_eq!(
+        delivery(
+            proof,
+            "phone-message",
+            json!({"kind":"agent","session_id":null,"thread_id":null,"run_id":null,"project_id":null,"label":"Agent"})
+        )["status"],
+        "error"
+    );
+    let accepted = delivery(proof, "phone-message", json!({"kind":"user"}));
+    assert_eq!(accepted["status"], "ok", "{accepted}");
+    assert_eq!(publish(json!({"t":"res","id":2,"ok":true,"r":{}})).1, true);
+    assert!(phone.read().unwrap().into_text().unwrap().contains("res"));
+    assert_eq!(
+        delivery(proof, "phone-message", json!({"kind":"user"}))["status"],
+        "error"
+    );
+    // The network cannot use either a local lease or an invocation proof to impersonate a Host.
+    assert_eq!(
+        core.request(
+            "/core/v1/host/phone/publish",
+            &session.session_token,
+            None,
+            json!({"token":lease["token"],"channel_id":channel,"envelope":{}})
+        )
+        .0,
+        403
+    );
+    core.local
+        .space_revoke(RevokeDeviceRequest {
+            device_id: device.device_id.clone(),
+        })
+        .unwrap();
+    let started = Instant::now();
+    let closed = phone.read();
+    assert!(closed.is_err() || matches!(closed, Ok(Message::Close(_))));
+    assert!(started.elapsed() < Duration::from_secs(4));
+    assert_eq!(publish(json!({"t":"evt","k":"changed","d":{}})).1, false);
+    assert!(connect(&session.session_token).is_err());
+
+    // Fresh Device: every WebSocket frame spends the same Device/Member request budget as HTTPS.
+    let second = core.enroll();
+    let second_session = core.session(&second.device_credential);
+    let (mut phone, _) = connect(&second_session.session_token).unwrap();
+    let (_, open) = core.local_request("/core/v1/host/phone/poll", None, lease.clone());
+    assert_eq!(open["kind"], "close");
+    let (_, open) = core.local_request("/core/v1/host/phone/poll", None, lease.clone());
+    assert_eq!(open["kind"], "open");
+    let mut metered = false;
     for attempt in 0..DEVICE_REQUESTS_PER_MINUTE + 10 {
+        if attempt % 100 == 0 {
+            core.local_request("/core/v1/host/phone/publish",None,json!({"token":lease["token"],"channel_id":"lease-heartbeat","envelope":{"t":"pong"}}));
+        }
+        phone.send(Message::text("{\"t\":\"ping\"}")).unwrap();
+        match phone.read() {
+            Ok(Message::Text(_)) => {}
+            Ok(Message::Close(Some(frame))) => {
+                assert!(frame.reason.contains("budget"), "{frame:?}");
+                metered = true;
+                break;
+            }
+            value => panic!("unexpected frame {value:?}"),
+        }
+    }
+    assert!(metered, "phone frames must exhaust the Device budget");
+    let third = core.enroll();
+    let third_session = core.session(&third.device_credential);
+    let (mut phone, _) = connect(&third_session.session_token).unwrap();
+    let channel = loop {
+        let (_, event) = core.local_request("/core/v1/host/phone/poll", None, lease.clone());
+        if event["kind"] == "open" && event["device_id"] == third.device_id {
+            break event["channel_id"].clone();
+        }
+    };
+    let large =
+        json!({"t":"evt","k":"changed","d":{"topics":["inbox"],"padding":"x".repeat(900_000)}});
+    let mut bytes_metered = false;
+    for _ in 0..40 {
+        let (_, accepted) = core.local_request(
+            "/core/v1/host/phone/publish",
+            None,
+            json!({"token":lease["token"],"channel_id":channel,"envelope":large}),
+        );
+        assert_eq!(accepted, true);
+        match phone.read() {
+            Ok(Message::Text(_)) => {}
+            Ok(Message::Close(Some(frame))) => {
+                assert!(frame.reason.contains("byte budget"), "{frame:?}");
+                bytes_metered = true;
+                break;
+            }
+            value => panic!("unexpected byte-budget frame {value:?}"),
+        }
+    }
+    assert!(
+        bytes_metered,
+        "upgraded outbound frames must exhaust the Device byte budget"
+    );
+    let fourth = core.enroll();
+    let fourth_session = core.session(&fourth.device_credential);
+    let mut streams = Vec::new();
+    for _ in 0..8 {
+        streams.push(connect(&fourth_session.session_token).unwrap().0);
+    }
+    assert!(
+        matches!(connect(&fourth_session.session_token),Err(error) if matches!(&*error, tungstenite::HandshakeError::Failure(tungstenite::Error::Http(response)) if response.status().as_u16()==429))
+    );
+    drop(streams);
+}
+
 #[test]
 fn member_inbox_decisions_start_work_only_through_the_space_host() {
     use tungstenite::{Message, client::IntoClientRequest};
@@ -1750,6 +2560,177 @@ fn members_name_themselves_and_the_local_owner_starts_with_a_real_name() {
 }
 
 #[test]
+fn personal_listener_keeps_its_certificate_and_saved_port_after_core_restart() {
+    let mut core = Core::start();
+    let fingerprint = core.info.fingerprint.clone();
+    let address = core.info.url.trim_start_matches("https://").to_owned();
+    let identity = fs::read(core.home.path().join("team-transport/server-identity.pem")).unwrap();
+    let intent = core.local.space_remote_access().unwrap().intent;
+    assert!(intent.enabled);
+    assert_eq!(intent.address, address);
+    core.restart(None);
+    let restored = core.local.space_remote_access().unwrap();
+    assert_eq!(
+        restored.listener.as_ref().unwrap().url,
+        core.info.url,
+        "Core restores the saved listener before serving local clients"
+    );
+    assert!(!restored.routes_changed);
+    assert_eq!(restored.intent, intent);
+    core.info = core
+        .local
+        .space_listen(ListenRequest {
+            address: address.clone(),
+            cert: None,
+            key: None,
+            peer_policy: ListenerPeerPolicy::Private,
+        })
+        .unwrap();
+    assert_eq!(core.info.url, format!("https://{address}"));
+    assert_eq!(core.info.fingerprint, fingerprint);
+    assert_eq!(
+        fs::read(core.home.path().join("team-transport/server-identity.pem")).unwrap(),
+        identity
+    );
+    assert!(core.tls(&fingerprint).is_ok());
+    let disabled = core.local.space_stop_listener().unwrap();
+    assert!(!disabled.intent.enabled);
+    assert_eq!(disabled.intent.address, address);
+    assert!(
+        core.local
+            .space_listen(ListenRequest {
+                address: "192.0.2.254:8443".into(),
+                cert: None,
+                key: None,
+                peer_policy: ListenerPeerPolicy::Private
+            })
+            .is_err()
+    );
+    assert_eq!(
+        core.local.space_remote_access().unwrap().intent,
+        disabled.intent,
+        "a failed binding preserves valid intent"
+    );
+    core.local
+        .space_listen(ListenRequest {
+            address: "127.0.0.1:0".into(),
+            cert: None,
+            key: None,
+            peer_policy: ListenerPeerPolicy::Operator,
+        })
+        .unwrap();
+    assert_eq!(
+        core.local.space_remote_access().unwrap().intent,
+        disabled.intent,
+        "operator hosting does not change personal intent"
+    );
+    assert_eq!(
+        core.local.space_stop_listener().unwrap().intent,
+        disabled.intent
+    );
+}
+
+#[test]
+fn personal_custom_certificate_paths_restore_without_changing_the_pin() {
+    use nodex_core_protocol::client::RemoteConnection;
+    let mut core = Core::start();
+    let device = core.enroll();
+    let fingerprint = core.info.fingerprint.clone();
+    let address = core.info.url.trim_start_matches("https://").to_owned();
+    let source = core.home.path().join("team-transport/server-identity.pem");
+    let cert = core.home.path().join("custom-certificate.pem");
+    nodex_platform::private_fs::write(&cert, fs::read(&source).unwrap()).unwrap();
+    core.local.space_stop_listener().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match core.local.space_listen(ListenRequest {
+            address: address.clone(),
+            cert: Some(cert.to_string_lossy().into_owned()),
+            key: Some(cert.to_string_lossy().into_owned()),
+            peer_policy: ListenerPeerPolicy::Private,
+        }) {
+            Ok(info) => {
+                core.info = info;
+                break;
+            }
+            Err(_) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
+            Err(error) => panic!("custom listener failed: {error}"),
+        }
+    }
+    assert_eq!(core.info.fingerprint, fingerprint);
+    core.child.kill().unwrap();
+    core.child.wait().unwrap();
+    fs::remove_file(&source).unwrap();
+    core.restart(None);
+    let restored = core.local.space_remote_access().unwrap();
+    core.info = restored.listener.unwrap();
+    assert!(!restored.routes_changed);
+    assert_eq!(core.info.fingerprint, fingerprint);
+    assert!(
+        !source.exists(),
+        "restoring custom trust never creates a substitute identity"
+    );
+    let remote = CoreClient::connect_remote(
+        &RemoteConnection {
+            url: core.info.url.clone(),
+            fingerprint,
+            space_id: device.space_id,
+            device_credential: device.device_credential,
+        },
+        "custom-tls-proof",
+    )
+    .unwrap();
+    assert!(remote.space_remote_access().unwrap().intent.enabled);
+    assert!(
+        serde_json::to_value(remote.space_remote_access().unwrap())
+            .unwrap()
+            .get("cert")
+            .is_none()
+    );
+}
+
+#[test]
+fn personal_startup_uses_a_new_port_when_saved_address_is_occupied() {
+    let mut core = Core::start();
+    let original = core.info.clone();
+    core.child.kill().unwrap();
+    core.child.wait().unwrap();
+    let occupied =
+        std::net::TcpListener::bind(original.url.trim_start_matches("https://")).unwrap();
+    core.restart(None);
+    let state = core.local.space_remote_access().unwrap();
+    core.info = state.listener.unwrap();
+    assert!(state.routes_changed);
+    assert_ne!(core.info.url, original.url);
+    assert_eq!(
+        state.intent.address,
+        core.info.url.trim_start_matches("https://")
+    );
+    assert!(state.intent.enabled);
+    assert_eq!(core.info.fingerprint, original.fingerprint);
+    assert!(core.tls(&original.fingerprint).is_ok());
+    drop(occupied);
+}
+
+#[test]
+fn explicit_operator_startup_does_not_restore_or_change_personal_intent() {
+    let mut core = Core::start();
+    let intent = core.local.space_remote_access().unwrap().intent;
+    core.child.kill().unwrap();
+    core.child.wait().unwrap();
+    let occupied = std::net::TcpListener::bind(&intent.address).unwrap();
+    core.restart(Some("127.0.0.1:0"));
+    let state = core.local.space_remote_access().unwrap();
+    assert_eq!(
+        state.listener.unwrap().peer_policy,
+        ListenerPeerPolicy::Operator
+    );
+    assert_eq!(state.intent, intent);
+    assert!(!state.routes_changed);
+    drop(occupied);
+}
+
+#[test]
 fn explicit_shutdown_stops_a_core_whose_listener_started_with_it() {
     // A listener restored or requested at startup begins waiting for drain before the
     // local server does, and the execution owner keeps a long poll open; an explicit
@@ -1794,6 +2775,30 @@ fn explicit_shutdown_stops_a_core_whose_listener_started_with_it() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn unsafe_personal_intent_keeps_core_available_without_a_network_listener() {
+    use std::os::unix::fs::PermissionsExt;
+    let mut core = Core::start();
+    let address = core.info.url.trim_start_matches("https://").to_owned();
+    core.child.kill().unwrap();
+    core.child.wait().unwrap();
+    std::fs::set_permissions(
+        core.home.path().join("team-transport/remote-access.json"),
+        std::fs::Permissions::from_mode(0o644),
+    )
+    .unwrap();
+    core.restart(None);
+    assert!(core.local.space_remote_access().is_err());
+    assert!(
+        core.local.space_members().is_ok(),
+        "local content authority remains available"
+    );
+    assert!(
+        TcpStream::connect(address).is_err(),
+        "unsafe intent never opens remote access"
+    );
+}
 
 /// A remote Member's enrolled Device with its live session and authenticated connection.
 struct RemoteMember {
@@ -2580,4 +3585,70 @@ fn a_hosted_chat_stays_its_owners_when_another_member_replies() {
     };
     assert_eq!(rename(bob, "Bob's title"), "error");
     assert_eq!(rename(alice, "Alice's title"), "ok");
+}
+
+#[test]
+fn member_presence_follows_each_members_own_live_desktops() {
+    let core = Core::start();
+    let bob = core.enroll_as(MemberRole::Member, "Bob");
+    let carol = core.enroll_as(MemberRole::Member, "Carol");
+    let bob_session = core.session(&bob.device_credential);
+    let (status, lease) = core.local_request(
+        "/core/v1/admin/host/register",
+        None,
+        json!({"instance":random_id()}),
+    );
+    assert_eq!(status, 200, "{lease}");
+    let presence = |member: &str| {
+        let (status, value) = core.local_request(
+            "/core/v1/admin/host/member-presence",
+            None,
+            json!({"token":lease["token"],"member_id":member}),
+        );
+        assert_eq!(status, 200, "{value}");
+        value["idle_ms"].clone()
+    };
+    let report = |token: &str, idle: Value| {
+        core.request(
+            "/core/v1/host/presence",
+            token,
+            None,
+            json!({ "idle_ms": idle }),
+        )
+    };
+    // Nobody has vouched for either Member yet.
+    assert_eq!(presence(&bob.member_id), Value::Null);
+    assert_eq!(report(&bob_session.session_token, json!(2_000)).0, 200);
+    let idle = presence(&bob.member_id)
+        .as_u64()
+        .expect("Bob is at his desktop");
+    assert!((2_000..60_000).contains(&idle), "{idle}");
+    // One Member's desktop says nothing about another, and only the Host's lease reads it.
+    assert_eq!(presence(&carol.member_id), Value::Null);
+    let (status, _) = core.local_request(
+        "/core/v1/admin/host/member-presence",
+        None,
+        json!({"token":"0".repeat(64),"member_id":bob.member_id}),
+    );
+    assert_ne!(status, 200, "presence needs the live Host lease");
+    let (status, _) = core.request(
+        "/core/v1/admin/host/member-presence",
+        &bob_session.session_token,
+        None,
+        json!({"token":lease["token"],"member_id":bob.member_id}),
+    );
+    assert_ne!(status, 200, "a Member cannot read anyone's presence");
+    // A locked screen vouches for nobody.
+    assert_eq!(report(&bob_session.session_token, Value::Null).0, 200);
+    assert_eq!(presence(&bob.member_id), Value::Null);
+    assert_eq!(report(&bob_session.session_token, json!(500)).0, 200);
+    assert!(presence(&bob.member_id).is_u64());
+    // A revoked Device's presence never counts, and it can no longer report.
+    core.local
+        .space_revoke(RevokeDeviceRequest {
+            device_id: bob.device_id,
+        })
+        .unwrap();
+    assert_eq!(presence(&bob.member_id), Value::Null);
+    assert_ne!(report(&bob_session.session_token, json!(0)).0, 200);
 }

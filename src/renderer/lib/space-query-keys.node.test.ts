@@ -8,6 +8,7 @@ test("each renderer retains its own cache keys even when both Spaces reuse resou
   a.bindRendererSpace({
     spaceId: "space-a",
     memberId: "alice",
+    deviceId: null,
     kind: "team",
     name: "A",
     availability: "ready",
@@ -19,6 +20,7 @@ test("each renderer retains its own cache keys even when both Spaces reuse resou
   b.bindRendererSpace({
     spaceId: "space-b",
     memberId: "alice",
+    deviceId: null,
     kind: "team",
     name: "B",
     availability: "ready",

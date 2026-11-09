@@ -22,6 +22,7 @@ import { testLayer as configLayer } from "../../main/app/MainConfig";
 import { subscribeToBackendLogs, type BackendLogEntry } from "../../main/logging/logger";
 import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { CoreModuleResponseError } from "../../main/core-client/core-client";
+import { InboxApplication } from "./InboxApplication";
 import {
   captureInbox,
   bindTestCoordinator,

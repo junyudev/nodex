@@ -246,6 +246,24 @@ test("pinned remote clients enroll, collaborate, renew and lose access after dev
         ...input,
         deviceCredential: ownerDevice.device_credential,
       });
+      const linked = await remote.spaceLinkDevice();
+      expect(linked.member_id).toBe(device.member_id);
+      await expect(remote.spaceMembers()).rejects.toMatchObject({ status: 403 });
+      expect(
+        (await remote.spaceDevices()).every((item) => item.member_id === device.member_id),
+      ).toBe(true);
+      await remoteOwner.spaceRename({ name: "Owner renamed" });
+      const nextInvite = await remoteOwner.spaceInvite({ role: "member" });
+      const second = await enrollRemoteCore(nextInvite, {
+        code: nextInvite.code,
+        device_label: "Second desktop",
+        display_name: "Second Member",
+      });
+      expect(
+        (await remoteOwner.spaceMembers()).some((member) => member.id === second.member_id),
+      ).toBe(true);
+      await remoteOwner.spaceRevokeDevice({ device_id: second.device_id });
+      await remoteOwner.spaceRemoveMember({ member_id: second.member_id });
       await verifyRemoteSources(host, [remote, remoteOwner]);
       const members = await remote.libraryRead({ kind: "members" });
       expect(members.value).toMatchObject({

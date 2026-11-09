@@ -1,4 +1,5 @@
 import { PUSH_RELAY_ORIGIN, type RelayDeviceRequest } from "@nodex/mobile-protocol";
+import { requireNativeModule } from "expo";
 import {
   ApplicationReleaseType,
   applicationId,
@@ -14,40 +15,9 @@ import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 import Storage from "expo-sqlite/kv-store";
 import { AppState, Platform } from "react-native";
-import { chatOfNotificationRequest } from "./notification-payload";
-import type {
-  DeliveredChat,
-  MobilePlatform,
-  MobilePush,
-  MobileSocket,
-  PushPermission,
-} from "./platform";
-
-function openSocket(route: string): MobileSocket {
-  const socket = new WebSocket(route);
-  socket.binaryType = "arraybuffer";
-  return {
-    send: (bytes) => socket.send(bytes),
-    close: () => socket.close(),
-    listen(events) {
-      const message = ({ data }: MessageEvent) => {
-        if (data instanceof ArrayBuffer) events.frame(new Uint8Array(data));
-        else events.failed();
-      };
-      const close = ({ code }: CloseEvent) => events.closed(code);
-      socket.addEventListener("open", events.open);
-      socket.addEventListener("message", message);
-      socket.addEventListener("close", close);
-      socket.addEventListener("error", events.failed);
-      return () => {
-        socket.removeEventListener("open", events.open);
-        socket.removeEventListener("message", message);
-        socket.removeEventListener("close", close);
-        socket.removeEventListener("error", events.failed);
-      };
-    },
-  };
-}
+import { subjectOfNotificationRequest } from "./notification-payload";
+import { makePinnedTls, type NativePinnedTls, type TlsEvent } from "./pinned-tls";
+import type { DeliveredNotification, MobilePlatform, MobilePush, PushPermission } from "./platform";
 
 const permissionOf = ({ status }: { readonly status: string }): PushPermission =>
   status === "granted" || status === "denied" ? status : "undetermined";
@@ -64,19 +34,14 @@ const registerAddress = async (request: RelayDeviceRequest): Promise<string> => 
   return handle;
 };
 
-const delivered = async (): Promise<readonly DeliveredChat[]> =>
+const delivered = async (): Promise<readonly DeliveredNotification[]> =>
   (await Notifications.getPresentedNotificationsAsync()).flatMap(({ request }) => {
-    const chat = chatOfNotificationRequest(request);
-    return chat ? [chat] : [];
+    const subject = subjectOfNotificationRequest(request);
+    return subject ? [{ ...subject, id: request.identifier }] : [];
   });
 
-const clearDelivered = async (sessionId: string): Promise<void> => {
-  const presented = await Notifications.getPresentedNotificationsAsync();
-  await Promise.all(
-    presented
-      .filter(({ request }) => chatOfNotificationRequest(request)?.sessionId === sessionId)
-      .map(({ request }) => Notifications.dismissNotificationAsync(request.identifier)),
-  );
+const dismiss = async (ids: readonly string[]): Promise<void> => {
+  await Promise.all(ids.map((id) => Notifications.dismissNotificationAsync(id)));
 };
 
 /**
@@ -118,11 +83,11 @@ const makePush = (): MobilePush | null => {
     writeKey: (key) => SecureStore.setItemAsync("push-key", key, keychain),
     registerAddress,
     delivered,
-    clearDelivered,
+    dismiss,
   };
 };
 
-export const mobilePlatform: MobilePlatform = {
+const platform: Omit<MobilePlatform, "pinnedTls"> = {
   deviceName: Platform.OS === "ios" ? "iPhone" : "Android phone",
   push: makePush(),
   platform: Platform.OS === "ios" ? "ios" : "android",
@@ -213,7 +178,6 @@ export const mobilePlatform: MobilePlatform = {
     const timer = setTimeout(callback, milliseconds);
     return () => clearTimeout(timer);
   },
-  socket: openSocket,
   // `inactive` is a system dialog or a passing gesture over a running app, not leaving it.
   isForeground: () => AppState.currentState !== "background",
   onForegroundChange(callback) {
@@ -223,3 +187,27 @@ export const mobilePlatform: MobilePlatform = {
     return () => listener.remove();
   },
 };
+
+// Exact leaf pinning is the only network capability used by enrollment and content.
+const nativeTls = requireNativeModule<
+  NativePinnedTls & {
+    addListener(
+      name: "event",
+      callback: (event: TlsEvent & { id: string }) => void,
+    ): { remove(): void };
+  }
+>("NodexPinnedTls");
+export const pinnedTls = makePinnedTls({
+  startRequest: (id, options) => nativeTls.startRequest(id, options),
+  openSocket: (id, options) => nativeTls.openSocket(id, options),
+  send: (id, body, binary) => nativeTls.send(id, body, binary),
+  cancel: (id) => nativeTls.cancel(id),
+  listen(id, callback) {
+    const listener = nativeTls.addListener("event", (event) => {
+      if (event.id === id) callback(event);
+    });
+    return () => listener.remove();
+  },
+});
+
+export const mobilePlatform: MobilePlatform = { ...platform, pinnedTls };

@@ -1,3 +1,4 @@
+import { live as spaceAdministration } from "./SpaceAdministrationIpc";
 import { live as memberAttention } from "./RemoteMemberAttentionIpc";
 import { live as turnNotifications } from "../host-runtime/NodexEntryNotifications";
 import { projectAutomation } from "../../host/automation-application/AutomationProjection";
@@ -48,6 +49,7 @@ import type { CodexSidebarSnapshot } from "../../shared/types";
 import { SpaceConnectionRegistry } from "./SpaceConnectionRegistry";
 import { makeSpaceIpcCollector } from "./SpaceIpcCollector";
 import * as RemoteHostIpc from "./RemoteHostIpc";
+import * as RemotePresenceReporter from "./RemotePresenceReporter";
 import * as ChatMemberActionsIpc from "../ipc/handlers/ChatMemberActionsIpc";
 import {
   inboxCountsFromCore,
@@ -417,8 +419,10 @@ export const live = (spaceId: string) =>
         StructuralClipboardIpc.live,
         readModels,
         memberAttention,
+        spaceAdministration,
         turnNotifications,
         RemoteHostIpc.live,
+        RemotePresenceReporter.live,
         unreadBadge(spaceId),
         ChatMemberActionsIpc.live,
       ).pipe(

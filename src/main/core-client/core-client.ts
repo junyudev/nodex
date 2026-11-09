@@ -154,6 +154,7 @@ export class CoreClient implements CoreClientPort {
   readonly #transport: LocalHttpTransport;
   readonly #projectId: string | undefined;
   readonly #connectionId: string;
+  readonly #invocation: string | undefined;
   readonly handshake: CoreHandshakeResponse;
   readonly spaceName: string | undefined;
 
@@ -163,7 +164,9 @@ export class CoreClient implements CoreClientPort {
     projectId: string | undefined,
     connectionId: string,
     spaceName?: string,
+    invocation?: string,
   ) {
+    this.#invocation = invocation;
     this.spaceName = spaceName;
     this.#transport = transport;
     this.handshake = handshake;
@@ -283,6 +286,19 @@ export class CoreClient implements CoreClientPort {
       normalized,
       this.#connectionId,
       this.spaceName,
+      this.#invocation,
+    );
+  }
+
+  /** A Core-issued proof narrows every request to its invoking Member. */
+  forInvocation(credential: string): CoreClient {
+    return new CoreClient(
+      this.#transport,
+      this.handshake,
+      this.#projectId,
+      this.#connectionId,
+      this.spaceName,
+      credential,
     );
   }
 
@@ -303,6 +319,7 @@ export class CoreClient implements CoreClientPort {
   }
 
   renameSpace(name: string): Promise<components["schemas"]["SpaceName"]> {
+    return this.spaceRename({ name });
   }
 
   async admitAppToolOperation(
@@ -328,6 +345,117 @@ export class CoreClient implements CoreClientPort {
     );
   }
 
+  spaceMembers(options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<readonly components["schemas"]["Member"][]>(
+      "GET",
+      "/core/v1/admin/space/members",
+      undefined,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+  spaceDevices(options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<readonly components["schemas"]["MemberDevice"][]>(
+      "GET",
+      "/core/v1/admin/space/devices",
+      undefined,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+  spaceInvite(input: components["schemas"]["InviteRequest"], options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<components["schemas"]["InviteResponse"]>(
+      "POST",
+      "/core/v1/admin/space/invite",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+  spaceLinkDevice(options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<components["schemas"]["DeviceLinkOffer"]>(
+      "POST",
+      "/core/v1/admin/space/link-device",
+      {},
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+  spaceRevokeDevice(
+    input: components["schemas"]["RevokeDeviceRequest"],
+    options: CoreRequestOptions = {},
+  ) {
+    return this.#transport.requestJson<boolean>(
+      "POST",
+      "/core/v1/admin/space/revoke",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+  spaceRemoveMember(
+    input: components["schemas"]["RemoveMemberRequest"],
+    options: CoreRequestOptions = {},
+  ) {
+    return this.#transport.requestJson<boolean>(
+      "POST",
+      "/core/v1/admin/space/remove-member",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+  spaceRename(
+    input: components["schemas"]["RenameSpaceRequest"],
+    options: CoreRequestOptions = {},
+  ) {
+    return this.#transport.requestJson<components["schemas"]["SpaceName"]>(
+      "POST",
+      "/core/v1/admin/space/name",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+  spaceRenameMember(
+    input: components["schemas"]["RenameMemberRequest"],
+    options: CoreRequestOptions = {},
+  ) {
+    return this.#transport.requestJson<components["schemas"]["Member"]>(
+      "POST",
+      "/core/v1/admin/space/member-name",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+  spaceRemoteAccess(options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<components["schemas"]["RemoteAccessState"]>(
+      "GET",
+      "/core/v1/admin/space/remote-access",
+      undefined,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+  spaceRemoteAccessOn(input: { readonly address: string }, options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<components["schemas"]["ListenerInfo"]>(
+      "POST",
+      "/core/v1/admin/space/listen",
+      { address: input.address, cert: null, key: null, peer_policy: "private" },
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+  spaceRemoteAccessOff(options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<components["schemas"]["RemoteAccessState"]>(
+      "POST",
+      "/core/v1/admin/space/stop-listener",
+      {},
+      this.#moduleHeaders(),
+      options,
+    );
+  }
   hostCall(input: components["schemas"]["HostCall"], options: CoreRequestOptions = {}) {
     return this.#transport.requestJson<components["schemas"]["HostCallResult"]>(
       "POST",
@@ -362,6 +490,107 @@ export class CoreClient implements CoreClientPort {
     return this.#transport.requestJson<components["schemas"]["HostInvocation"] | null>(
       "POST",
       "/core/v1/admin/host/poll",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+
+  pollPhone(input: components["schemas"]["HostLease"], options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<components["schemas"]["PhoneHostEvent"] | null>(
+      "POST",
+      "/core/v1/host/phone/poll",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+
+  publishPhone(input: components["schemas"]["PhoneHostPublish"], options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<boolean>(
+      "POST",
+      "/core/v1/host/phone/publish",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+
+  phoneResponseEntitlement(
+    input: components["schemas"]["PhoneResponseEntitlementRequest"],
+    options: CoreRequestOptions = {},
+  ) {
+    return this.#transport.requestJson<readonly string[]>(
+      "POST",
+      "/core/v1/host/phone/response-entitlements",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+
+  /** Commits the phone's in-flight `push.register` or `push.unregister` to its own Device. */
+  commitPhonePush(
+    input: components["schemas"]["PhonePushCommit"],
+    options: CoreRequestOptions = {},
+  ) {
+    return this.#transport.requestJson<boolean>(
+      "POST",
+      "/core/v1/host/phone/push",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+
+  phonePushRecipients(
+    input: components["schemas"]["PhonePushRecipientsRequest"],
+    options: CoreRequestOptions = {},
+  ) {
+    return this.#transport.requestJson<readonly components["schemas"]["PhonePushRecipient"][]>(
+      "POST",
+      "/core/v1/host/phone/push-recipients",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+
+  forgetPhonePush(
+    input: components["schemas"]["PhonePushForget"],
+    options: CoreRequestOptions = {},
+  ) {
+    return this.#transport.requestJson<boolean>(
+      "POST",
+      "/core/v1/host/phone/push-forget",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+
+  /** A Member's Device says whether its person is at it, for the Space host's phone notifications. */
+  reportPresence(
+    input: components["schemas"]["MemberPresenceReport"],
+    options: CoreRequestOptions = {},
+  ) {
+    return this.#transport.requestJson<boolean>(
+      "POST",
+      "/core/v1/host/presence",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
+  }
+
+  /** Whether one of a Member's computers vouches for them, read under the Host lease. */
+  memberPresence(
+    input: components["schemas"]["MemberPresenceRequest"],
+    options: CoreRequestOptions = {},
+  ) {
+    return this.#transport.requestJson<components["schemas"]["MemberPresence"]>(
+      "POST",
+      "/core/v1/admin/host/member-presence",
       input,
       this.#moduleHeaders(),
       options,
@@ -1050,6 +1279,7 @@ export class CoreClient implements CoreClientPort {
       throw new Error("CoreClient requires a Project binding for this Module access");
     }
     return {
+      ...(this.#invocation ? { "x-nodex-host-invocation": this.#invocation } : {}),
       "x-nodex-connection-id": this.#connectionId,
       "x-nodex-connection-binding": this.handshake.connection_binding,
       ...(this.#projectId ? { "x-nodex-project-id": this.#projectId } : {}),

@@ -1,3 +1,4 @@
+import type { SpaceAdministrationIpcApi } from "./space-administration";
 import type {
   InsightsContentSnapshot,
   InsightsHistoryAccess,
@@ -719,6 +720,8 @@ export interface IpcApi
     AcpIpcApi,
     PluginManagementIpcApi,
     McpAppDataIpcApi,
+    SpaceConnectionIpcApi,
+    SpaceAdministrationIpcApi {
   "codex:turn-presentation:capture": {
     args: [input: CodexTurnPresentationCaptureInput];
     result: CodexTurnPresentationTicket | undefined;

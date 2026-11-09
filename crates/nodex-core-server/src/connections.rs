@@ -111,6 +111,8 @@ pub(crate) struct ConnectionIdentity<'a> {
     pub(crate) build_id: &'a str,
     pub(crate) transport_version: u32,
     pub(crate) principal: Option<RemotePrincipal>,
+}
+
 impl ConnectionRegistry {
     pub(crate) fn new() -> Self {
         Self {
@@ -127,6 +129,10 @@ impl ConnectionRegistry {
         identity: ConnectionIdentity<'_>,
     ) -> Result<(), ConnectionRegistryError> {
         let ConnectionIdentity {
+            binding,
+            adapter,
+            peer,
+            build_id,
             transport_version,
             principal,
         } = identity;
@@ -414,6 +420,7 @@ mod tests {
                     build_id: "host-build",
                     transport_version: 1,
                     principal: None,
+                },
             )
             .expect("first registration");
         assert!(
@@ -450,6 +457,7 @@ mod tests {
                         build_id: "cli-build",
                         transport_version: 1,
                         principal: None
+                    }
                 )
                 .is_err()
         );
@@ -468,6 +476,7 @@ mod tests {
                     build_id: "host-build",
                     transport_version: 1,
                     principal: None,
+                },
             )
             .expect("registration");
 
@@ -525,6 +534,7 @@ mod tests {
                     build_id: "host-build",
                     transport_version: 1,
                     principal: None,
+                },
             )
             .expect("registration");
 
@@ -566,6 +576,7 @@ mod tests {
                         build_id: "host-build",
                         transport_version: 1,
                         principal: None,
+                    },
                 )
                 .expect("registration");
         }
@@ -618,6 +629,7 @@ mod tests {
                         build_id: "build",
                         transport_version: 1,
                         principal: Some(member_principal("device")),
+                    },
                 )
                 .unwrap();
             leases.push(
@@ -637,6 +649,7 @@ mod tests {
                         build_id: "build",
                         transport_version: 1,
                         principal: Some(member_principal("device"))
+                    }
                 )
                 .unwrap_err()
                 .kind,
@@ -652,6 +665,7 @@ mod tests {
                     build_id: "build",
                     transport_version: 1,
                     principal: Some(member_principal("other")),
+                },
             )
             .unwrap();
         drop(leases);
@@ -665,6 +679,7 @@ mod tests {
                     build_id: "build",
                     transport_version: 1,
                     principal: Some(member_principal("device")),
+                },
             )
             .unwrap();
         assert_eq!(registry.activity_with(|_| false).unwrap().clients, 5);
@@ -683,6 +698,7 @@ mod tests {
                     build_id: "build",
                     transport_version: 1,
                     principal: Some(member_principal("old")),
+                },
             )
             .unwrap();
         let old = registry
@@ -699,6 +715,7 @@ mod tests {
                     build_id: "build",
                     transport_version: 1,
                     principal: Some(member_principal("new")),
+                },
             )
             .unwrap();
         let new = registry

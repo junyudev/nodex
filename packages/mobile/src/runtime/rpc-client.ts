@@ -28,7 +28,7 @@ export class RpcFailure extends Error {
   }
 }
 export const disconnected = () =>
-  new RpcFailure("disconnected", "Connect to your desktop and try again.", true);
+  new RpcFailure("disconnected", "Connect to this Space and try again.", true);
 type Response = Extract<MobileEnvelope, { t: "res" }>;
 type Event = { [K in MobileEvent]: { event: K; data: MobileEventData<K> } }[MobileEvent];
 type Send = (envelope: MobileEnvelope) => Effect.Effect<void, RpcFailure>;
@@ -97,7 +97,9 @@ export const makeRpcClient = Effect.gen(function* () {
         Effect.timeoutOrElse({
           duration: 30_000,
           orElse: () =>
-            Effect.fail(new RpcFailure("deadline", "Your desktop took too long to respond.", true)),
+            Effect.fail(
+              new RpcFailure("deadline", "The Space host took too long to respond.", true),
+            ),
         }),
       );
       if (!response.ok)
@@ -109,7 +111,7 @@ export const makeRpcClient = Effect.gen(function* () {
         return yield* Effect.fail(
           new RpcFailure(
             "invalid_result",
-            "Your desktop sent a reply this version can't read.",
+            "The Space host sent a reply this version can't read.",
             false,
           ),
         );

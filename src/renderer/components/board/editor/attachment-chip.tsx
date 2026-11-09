@@ -1,53 +1,44 @@
-import { useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactElement } from "react";
+import { CopyIcon, FolderOpenIcon, OpenExternalIcon } from "@/components/shared/icons";
+import { useCallback, useMemo, useState, type ComponentType } from "react";
 import { createReactInlineContentSpec } from "@blocknote/react";
 import { Link2 } from "@/components/shared/icons/generic-icons";
 
-import {
-  useBlockReferenceHostRuntime,
-  type BlockReferenceHostRuntime,
-} from "@/components/block-documents/block-reference-runtime-context";
-import {
-  NodexContextMenuContent,
-  NodexContextMenuItem,
-  NodexContextMenuPortal,
-  NodexContextMenuRoot,
-  NodexContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { toast } from "@/components/ui/toast";
+import { NodexPopover, NodexPopoverTrigger } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { LibraryFileViewerDialog } from "@/features/page-files/library-file-viewer-dialog";
 import { resolveManagedAssetPath } from "@/lib/assets";
-import { writeTextToClipboard } from "@/lib/clipboard";
-import { openFileReferenceContextMenu } from "@/lib/file-reference-context-menu";
-import { useFileReferenceRouter, type FileReferenceRouter } from "@/lib/file-reference-router";
-import { appScope, useScopeHandle, type ScopeHandle } from "@/lib/maitai";
-import { openModal } from "@/lib/modal-registry";
-import { showNativeContextMenu } from "@/lib/native-context-menu";
+import { openFileLink } from "@/lib/file-system-operations";
+import { useFileReferenceRouter } from "@/lib/file-reference-router";
+import { useFileLinkOpener } from "@/lib/use-file-link-opener";
 import { attachmentInlineContentConfig } from "../../../../shared/block-documents/blocknote-schema-config";
-import { getFileManagerRevealLabel } from "../../../../shared/file-link-openers";
-import { parseFileSource } from "../../../../shared/file-resources";
+import { formatAttachmentBytes } from "./attachment-chip-format";
 import { AttachmentResourceIcon } from "../attachment-resource-icon";
+import { getAttachmentTooltipLines } from "./attachment-chip-tooltip";
+import { parseFileSource } from "../../../../shared/file-resources";
+import { useFilePlacementRuntime, useFileReadSnapshot } from "./file-runtime";
 import { InlineReferenceVisual } from "../inline-reference-visual";
-import { MentionInlineFocusAffordance } from "../mention-inline-focus-affordance";
 import {
-  describeAttachment,
-  resolveAttachmentDestination,
-  type AttachmentDestination,
-  type AttachmentReferenceProps,
-} from "./attachment-reference";
-import {
-  useFilePlacementRuntime,
-  useFileReadSnapshot,
-  type FilePlacementRuntime,
-} from "./file-runtime";
+  isTextLikeMimeType,
+  useAttachmentPreview,
+  type AttachmentPreviewInput,
+  type AttachmentPreviewState,
+} from "./attachment-preview";
+import { NfmEditorPopoverContent } from "./nfm-editor-popover-content";
 
-export interface AttachmentProps extends AttachmentReferenceProps {
-  readonly origin?: string;
+export { isTextLikeMimeType };
+export type { AttachmentPreviewState };
+
+export interface AttachmentProps extends AttachmentPreviewInput {
+  name: string;
+  bytes?: number;
+  origin?: string;
 }
 
-type OpenMode = "preview" | "durable";
-
 const ATTACHMENT_INLINE_LABEL_LIMIT = 48;
+
+function getAttachmentSizeLabel(props: Pick<AttachmentProps, "kind" | "bytes">): string {
+  if (props.kind === "folder") return "";
+  return formatAttachmentBytes(props.bytes);
+}
 
 export function getAttachmentLabel(
   props: Pick<AttachmentProps, "kind" | "name">,
@@ -59,273 +50,335 @@ export function getAttachmentLabel(
   return label.length > maxLength ? `${label.slice(0, maxLength).trimEnd()}...` : label;
 }
 
-interface AttachmentOpenPorts {
-  readonly host: BlockReferenceHostRuntime | null;
-  readonly router: FileReferenceRouter;
-  readonly appHandle: ScopeHandle;
-}
-
-/** A saved copy from an older surface lives at a local path only this computer can resolve. */
-const resolveLocalPath = async (
-  destination: Extract<AttachmentDestination, { kind: "local-path" | "managed-asset" }>,
-): Promise<string | null> =>
-  destination.kind === "local-path"
-    ? destination.path
-    : await resolveManagedAssetPath(destination.source);
-
-async function openAttachment(
-  destination: AttachmentDestination,
-  title: string,
-  mode: OpenMode,
-  { host, router, appHandle }: AttachmentOpenPorts,
-): Promise<void> {
-  if (destination.kind === "none") return;
-  if (destination.kind === "page-file") {
-    await host?.openPageFile?.({
-      routingContext: destination.routingContext,
-      pageId: destination.pageId,
-      fileId: destination.fileId,
-      logicalPath: null,
-      title,
-      openMode: mode,
-    });
-    return;
-  }
-  if (destination.kind === "file-viewer") {
-    openModal(appHandle, LibraryFileViewerDialog, {
-      authority: destination.authority,
-      fileId: destination.fileId,
-      name: title,
-    });
-    return;
-  }
-  const path = await resolveLocalPath(destination);
-  const opened = path
-    ? await router.open(
-        { path },
-        {
-          hostId: "local",
-          kind: destination.directory ? "directory" : "file",
-          title,
-          mode,
-        },
-      )
-    : false;
-  if (!opened) toast.danger(`Couldn’t open ${title}`);
-}
-
-/** Linked files share every local file reference's menu; a folder can only be shown or copied. */
-async function openLocalAttachmentMenu(
-  event: ReactMouseEvent<HTMLElement>,
-  destination: Extract<AttachmentDestination, { kind: "local-path" | "managed-asset" }>,
-  title: string,
-  router: FileReferenceRouter,
-): Promise<void> {
-  const point = { x: event.clientX, y: event.clientY };
-  const path = await resolveLocalPath(destination);
-  if (!path) return;
-  if (!destination.directory) {
-    await openFileReferenceContextMenu({
-      hostId: "local",
-      target: { path },
-      label: title,
-      open: router.open,
-      browserAvailable: router.browserAvailable,
-      ...point,
-    });
-    return;
-  }
-  const selected = await showNativeContextMenu(
-    [
-      { id: "reveal", label: getFileManagerRevealLabel(navigator.platform), iconKey: "folder" },
-      { id: "copy-path", label: "Copy path", iconKey: "copy" },
-    ],
-    point,
-  );
-  if (selected === "reveal") {
-    await router.open({ path }, { hostId: "local", kind: "directory", title });
-  } else if (selected === "copy-path") {
-    await writeTextToClipboard(path);
-  }
-}
-
-/** A Library File's actions, in the same words as the Page's Files list. */
-function LibraryFileMenu({
-  chip,
-  destination,
-  runtime,
-  source,
-  name,
-  open,
-  onOpenChange,
+function AttachmentPopover({
+  props,
+  previewState,
+  onPrimaryOpen,
 }: {
-  readonly chip: ReactElement;
-  readonly destination: Extract<AttachmentDestination, { kind: "page-file" | "file-viewer" }>;
-  readonly runtime: FilePlacementRuntime | null;
-  readonly source: string;
-  readonly name: string;
-  readonly open: (mode: OpenMode) => void;
-  readonly onOpenChange: (open: boolean) => void;
+  props: AttachmentProps;
+  previewState: AttachmentPreviewState;
+  onPrimaryOpen: () => Promise<void>;
 }) {
-  const save = async (): Promise<void> => {
-    if (!runtime) return;
-    try {
-      await runtime.save(source, name);
-    } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Couldn’t save File");
-    }
-  };
+  const { opener } = useFileLinkOpener();
+  const isOwnedFile = parseFileSource(props.source) !== null;
+
+  const sizeLabel = getAttachmentSizeLabel(props);
+  const stateLabel = isOwnedFile
+    ? "Saved in Nodex"
+    : props.mode === "materialized"
+      ? "Saved in Nodex"
+      : "Linked to the original";
+  const hasOriginal =
+    typeof props.origin === "string" && props.origin.length > 0 && props.origin !== props.source;
+
+  const resolvePrimaryPath = useCallback(async (): Promise<string | null> => {
+    if (props.mode === "link") return props.source || null;
+    if (isOwnedFile) return null;
+    return await resolveManagedAssetPath(props.source);
+  }, [isOwnedFile, props.mode, props.source]);
+
+  const openPath = useCallback(
+    async (path: string, nextOpener = opener) => {
+      await openFileLink({ path }, nextOpener);
+    },
+    [opener],
+  );
+
+  const handleReveal = useCallback(async () => {
+    const targetPath = await resolvePrimaryPath();
+    if (!targetPath) return;
+    await openPath(targetPath, "fileManager");
+  }, [openPath, resolvePrimaryPath]);
+
+  const handleCopyPath = useCallback(async () => {
+    const targetPath = await resolvePrimaryPath();
+    await navigator.clipboard.writeText(targetPath || props.source);
+  }, [props.source, resolvePrimaryPath]);
+
+  const handleOpenOriginal = useCallback(async () => {
+    if (!props.origin) return;
+    await openPath(props.origin);
+  }, [openPath, props.origin]);
+
   return (
-    <NodexContextMenuRoot onOpenChange={onOpenChange}>
-      <NodexContextMenuTrigger>{chip}</NodexContextMenuTrigger>
-      <NodexContextMenuPortal>
-        <NodexContextMenuContent finalFocus={false} data-attachment-menu="true">
-          <NodexContextMenuItem onSelect={() => open("preview")}>Open</NodexContextMenuItem>
-          {destination.kind === "page-file" ? (
-            <NodexContextMenuItem onSelect={() => open("durable")}>
-              Open in new tab
-            </NodexContextMenuItem>
-          ) : null}
-          <NodexContextMenuItem onSelect={() => void save()}>Save…</NodexContextMenuItem>
-          <NodexContextMenuItem onSelect={() => void writeTextToClipboard(source)}>
-            Copy reference
-          </NodexContextMenuItem>
-        </NodexContextMenuContent>
-      </NodexContextMenuPortal>
-    </NodexContextMenuRoot>
+    <AttachmentPopoverView
+      attachment={props}
+      previewState={previewState}
+      isOwnedFile={isOwnedFile}
+      stateLabel={stateLabel}
+      sizeLabel={sizeLabel}
+      onPrimaryOpen={onPrimaryOpen}
+      onReveal={isOwnedFile ? null : handleReveal}
+      onCopyPath={handleCopyPath}
+      onOpenOriginal={hasOriginal ? handleOpenOriginal : null}
+    />
   );
 }
 
-/**
- * An attachment is a reference to a File, read like a Page mention: clicking or pressing Enter
- * opens the File where it is best read, and its context menu holds the File's other actions.
- */
+export function AttachmentPopoverView({
+  attachment,
+  previewState,
+  isOwnedFile,
+  stateLabel,
+  sizeLabel,
+  onPrimaryOpen,
+  onReveal,
+  onCopyPath,
+  onOpenOriginal,
+}: {
+  readonly attachment: AttachmentProps;
+  readonly previewState: AttachmentPreviewState;
+  readonly isOwnedFile: boolean;
+  readonly stateLabel: string;
+  readonly sizeLabel: string;
+  readonly onPrimaryOpen: () => Promise<void>;
+  readonly onReveal: (() => Promise<void>) | null;
+  readonly onCopyPath: () => Promise<void>;
+  readonly onOpenOriginal: (() => Promise<void>) | null;
+}) {
+  const hasOriginal =
+    typeof attachment.origin === "string" &&
+    attachment.origin.length > 0 &&
+    attachment.origin !== attachment.source;
+
+  return (
+    <div className="w-[min(32rem,calc(100vw-2rem))] p-2 text-sm">
+      <header className="flex min-w-0 items-center gap-2.5 px-1 pt-0.5">
+        <AttachmentResourceIcon
+          kind={attachment.kind}
+          name={attachment.name}
+          mimeType={attachment.mimeType}
+          className="size-5 shrink-0"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-token-text-primary">
+            {attachment.name || "Untitled attachment"}
+          </div>
+          <div className="mt-0.5 text-xs text-token-description-foreground">
+            {attachment.kind}
+            {sizeLabel ? ` · ${sizeLabel}` : ""} · {stateLabel}
+          </div>
+        </div>
+      </header>
+
+      <dl className="mt-3 grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-2 gap-y-1 border-t-[0.5px] border-token-border px-1 pt-3 text-xs">
+        <dt className="text-token-description-foreground">Source</dt>
+        <dd className="truncate font-mono text-token-text-secondary">{attachment.source}</dd>
+        {hasOriginal ? (
+          <>
+            <dt className="text-token-description-foreground">Original</dt>
+            <dd className="truncate font-mono text-token-text-secondary">{attachment.origin}</dd>
+          </>
+        ) : null}
+      </dl>
+
+      <div className="mt-3 flex flex-wrap gap-1.5 px-1">
+        <AttachmentActionButton
+          label={isOwnedFile ? "Save" : "Open"}
+          icon={OpenExternalIcon}
+          onClick={onPrimaryOpen}
+        />
+        {onReveal ? (
+          <AttachmentActionButton label="Reveal" icon={FolderOpenIcon} onClick={onReveal} />
+        ) : null}
+        <AttachmentActionButton
+          label={isOwnedFile ? "Copy reference" : "Copy path"}
+          icon={CopyIcon}
+          onClick={onCopyPath}
+        />
+        {onOpenOriginal ? (
+          <AttachmentActionButton label="Open original" icon={Link2} onClick={onOpenOriginal} />
+        ) : null}
+      </div>
+
+      {previewState.status !== "unavailable" ? (
+        <div className="mt-3 overflow-hidden rounded-lg bg-transparent ring-[0.5px] ring-inset ring-token-border">
+          {previewState.status === "loading" ? (
+            <div className="px-3 py-2 text-xs text-token-description-foreground">
+              Loading preview...
+            </div>
+          ) : null}
+
+          {previewState.status === "failed" ? (
+            <div className="px-3 py-2 text-xs text-token-description-foreground">
+              Preview unavailable.
+            </div>
+          ) : null}
+
+          {previewState.status === "ready" && previewState.preview.type === "text" ? (
+            <div className="px-3 py-2">
+              <pre className="scrollbar-token max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-size-code leading-5 text-token-text-primary">
+                {previewState.preview.content}
+              </pre>
+              {previewState.preview.truncated ? (
+                <p className="mt-2 text-[11px] text-token-description-foreground">
+                  Preview limited to 200 lines or 64 KiB.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {previewState.status === "ready" && previewState.preview.type === "folder" ? (
+            <div className="px-3 py-2">
+              <div className="max-h-64 space-y-1 overflow-auto font-mono text-size-code leading-5 text-token-text-secondary">
+                {previewState.preview.manifest.entries.map((entry) => (
+                  <div key={`${entry.kind}:${entry.path}`} className="truncate">
+                    {entry.kind === "folder" ? "📁" : "·"} {entry.path}
+                    {entry.kind === "file" && typeof entry.bytes === "number"
+                      ? ` (${formatAttachmentBytes(entry.bytes)})`
+                      : ""}
+                  </div>
+                ))}
+              </div>
+              {previewState.preview.manifest.truncated ? (
+                <p className="mt-2 text-[11px] text-token-description-foreground">
+                  Snapshot limited to {previewState.preview.manifest.maxEntries} entries and{" "}
+                  {previewState.preview.manifest.maxDepth} levels.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {previewState.status === "unavailable" && attachment.mode === "link" ? (
+        <p className="mt-3 px-1 text-xs text-token-description-foreground">
+          This attachment keeps a link to the original location instead of copying its contents into
+          Nodex.
+        </p>
+      ) : null}
+
+      {previewState.status === "unavailable" && attachment.mode === "materialized" ? (
+        <p className="mt-3 px-1 text-xs text-token-description-foreground">
+          This saved attachment doesn&apos;t have an inline preview.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function AttachmentActionButton({
+  label,
+  icon: Icon,
+  onClick,
+}: {
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  onClick: () => Promise<void>;
+}) {
+  return (
+    <button
+      type="button"
+      className="inline-flex h-7 items-center gap-1.5 rounded-md bg-transparent px-2 text-xs text-token-text-secondary ring-[0.5px] ring-inset ring-token-border hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus-border"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void onClick();
+      }}
+    >
+      <Icon className="size-3.5" />
+      <span>{label}</span>
+    </button>
+  );
+}
+
 export function AttachmentInlineContent({
   inlineContent,
 }: {
   inlineContent: { props: AttachmentProps };
 }) {
-  const host = useBlockReferenceHostRuntime();
-  const router = useFileReferenceRouter();
-  const appHandle = useScopeHandle(appScope);
+  const [open, setOpen] = useState(false);
+  const fileReferenceRouter = useFileReferenceRouter();
   const fileRuntime = useFilePlacementRuntime();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const isLibraryFile = parseFileSource(inlineContent.props.source) !== null;
-  const { metadata } = useFileReadSnapshot(fileRuntime, inlineContent.props.source, {
-    metadata: isLibraryFile,
+  const isOwnedFile = parseFileSource(inlineContent.props.source) !== null;
+  const metadataSnapshot = useFileReadSnapshot(fileRuntime, inlineContent.props.source, {
+    metadata: isOwnedFile,
   });
+  const ownedMetadata = metadataSnapshot.metadata;
   const resolvedProps = useMemo<AttachmentProps>(() => {
-    if (!metadata) return inlineContent.props;
+    if (!ownedMetadata) return inlineContent.props;
     return {
       ...inlineContent.props,
-      name: metadata.default_name || inlineContent.props.name,
-      mimeType: metadata.mime_type,
-      bytes: metadata.byte_length,
+      name: ownedMetadata.default_name || inlineContent.props.name,
+      mimeType: ownedMetadata.mime_type,
+      bytes: ownedMetadata.byte_length,
     };
-  }, [inlineContent.props, metadata]);
-  const label = getAttachmentLabel(resolvedProps);
-  const summary = describeAttachment(resolvedProps);
-  const destination = resolveAttachmentDestination({
-    attachment: resolvedProps,
-    authority: fileRuntime?.authority ?? null,
-    canOpenPageFile: Boolean(host?.openPageFile),
-  });
-  const canOpen = destination.kind !== "none";
-  const open = (mode: OpenMode): void => {
-    void openAttachment(destination, summary.title, mode, { host, router, appHandle }).catch(() =>
-      toast.danger(`Couldn’t open ${summary.title}`),
-    );
-  };
+  }, [inlineContent.props, ownedMetadata]);
+  const label = useMemo(() => getAttachmentLabel(resolvedProps), [resolvedProps]);
+  const tooltipLines = getAttachmentTooltipLines(resolvedProps);
 
-  const chip = (
-    <InlineReferenceVisual
-      as="button"
-      type="button"
-      contentEditable={false}
-      className={canOpen ? "blend cursor-interaction" : "blend"}
-      label={label}
-      labelClassName="blend"
-      aria-label={canOpen ? `Open ${summary.title}` : summary.title}
-      icon={
-        <AttachmentResourceIcon
-          kind={resolvedProps.kind}
-          name={resolvedProps.name}
-          mimeType={resolvedProps.mimeType}
-          className="size-full"
-        />
-      }
-      trailing={resolvedProps.mode === "link" ? <Link2 className="size-full" /> : undefined}
-      data-attachment-inline-chip="true"
-      onMouseDown={(event) => {
-        event.preventDefault();
-      }}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (canOpen) open(event.metaKey || event.ctrlKey ? "durable" : "preview");
-      }}
-      onDoubleClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (destination.kind === "page-file" || destination.kind === "local-path") open("durable");
-      }}
-      onContextMenu={
-        destination.kind === "local-path" || destination.kind === "managed-asset"
-          ? (event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              void openLocalAttachmentMenu(event, destination, summary.title, router);
-            }
-          : undefined
-      }
-    />
-  );
-  const reference =
-    destination.kind === "page-file" || destination.kind === "file-viewer" ? (
-      <LibraryFileMenu
-        chip={chip}
-        destination={destination}
-        runtime={fileRuntime}
-        source={resolvedProps.source}
-        name={summary.title}
-        open={open}
-        onOpenChange={setMenuOpen}
-      />
-    ) : (
-      chip
-    );
-  const surface = (
-    <span className="inline align-baseline">
+  const resolvePrimaryPath = useCallback(async (): Promise<string | null> => {
+    if (inlineContent.props.mode === "link") return inlineContent.props.source || null;
+    if (isOwnedFile) return null;
+    return await resolveManagedAssetPath(inlineContent.props.source);
+  }, [inlineContent.props.mode, inlineContent.props.source, isOwnedFile]);
+
+  const handlePrimaryOpen = useCallback(async () => {
+    if (isOwnedFile) {
+      if (!fileRuntime) return;
+      await fileRuntime.save(resolvedProps.source, resolvedProps.name || "File");
+      return;
+    }
+    const path = await resolvePrimaryPath();
+    if (!path) return;
+    await fileReferenceRouter.open({ path }, { title: label });
+  }, [fileReferenceRouter, isOwnedFile, label, fileRuntime, resolvePrimaryPath, resolvedProps]);
+  const attachmentPreview = useAttachmentPreview(resolvedProps, fileRuntime, open);
+
+  return (
+    <NodexPopover open={open} onOpenChange={setOpen}>
       <NodexTooltip
         tooltipContent={
-          <div className="max-w-[24rem] space-y-0.5 text-left">
-            <div className="truncate font-medium text-[var(--foreground)]">{summary.title}</div>
-            <div className="truncate text-xs text-[color-mix(in_srgb,var(--foreground)_58%,transparent)]">
-              {summary.detail}
+          <div className="space-y-0.5">
+            <div className="font-medium text-[var(--foreground)]">{tooltipLines.primary}</div>
+            <div className="text-xs text-[color-mix(in_srgb,var(--foreground)_58%,transparent)]">
+              {tooltipLines.secondary}
             </div>
           </div>
         }
         side="top"
-        align="start"
-        sideOffset={4}
         delay={0}
-        disabled={menuOpen}
-        tooltipClassName="px-2 py-1.5"
+        disabled={open}
       >
-        <span className="inline align-baseline">{reference}</span>
+        <span className="inline align-baseline">
+          <NodexPopoverTrigger>
+            <InlineReferenceVisual
+              as="button"
+              type="button"
+              contentEditable={false}
+              className="blend cursor-interaction"
+              label={label}
+              labelClassName="blend"
+              icon={
+                <AttachmentResourceIcon
+                  kind={resolvedProps.kind}
+                  name={resolvedProps.name}
+                  mimeType={resolvedProps.mimeType}
+                  className="size-full"
+                />
+              }
+              trailing={resolvedProps.mode === "link" ? <Link2 className="size-full" /> : undefined}
+              data-attachment-inline-chip="true"
+              onMouseDown={(event) => {
+                event.preventDefault();
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+            />
+          </NodexPopoverTrigger>
+        </span>
       </NodexTooltip>
-    </span>
-  );
 
-  if (!canOpen) return surface;
-  return (
-    <MentionInlineFocusAffordance
-      label={
-        destination.kind === "local-path" && destination.directory ? "Open folder" : "Open file"
-      }
-    >
-      {surface}
-    </MentionInlineFocusAffordance>
+      <NfmEditorPopoverContent side="top" align="start" className="w-auto">
+        <AttachmentPopover
+          props={resolvedProps}
+          previewState={attachmentPreview}
+          onPrimaryOpen={handlePrimaryOpen}
+        />
+      </NfmEditorPopoverContent>
+    </NodexPopover>
   );
 }
 
