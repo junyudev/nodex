@@ -142,7 +142,6 @@ type QueryEndpointPolicy =
   | "app:runtime-capabilities:get"
   | "app:update:status"
   | "asset:image:read"
-  | "asset:preview:read"
   | "asset:resolve-path"
   | "backup:capacity:get"
   | "backup:job:get"

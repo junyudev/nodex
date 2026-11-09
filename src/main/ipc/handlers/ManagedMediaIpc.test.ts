@@ -48,8 +48,8 @@ it.effect("owns managed asset, clipboard, and composer ingress with the Main Sco
       scope,
     );
 
-    assert.strictEqual(channels.size, 11);
-    assert.isTrue(channels.has("asset:preview:read"));
+    assert.strictEqual(channels.size, 10);
+    assert.isTrue(channels.has("asset:resource:materialize"));
     assert.isTrue(channels.has("clipboard:read-paste"));
     assert.isTrue(channels.has("composer:pick-files"));
 

@@ -66,8 +66,6 @@ import type { ContentRoutingContext } from "./content-routing-context";
 import type { LocalPathPresentationContext } from "./local-path-presentation";
 import type {
   ManagedAssetImageBytes,
-  ManagedAssetPreview,
-  ManagedAssetPreviewInput,
   ManagedAssetUploadInput,
   ManagedCanvasImageMaterializationResult,
   ManagedImageSaveResult,
@@ -1870,10 +1868,6 @@ export interface IpcApi
   "asset:resource:materialize": {
     args: [localPath: string];
     result: ManagedResourceSaveResult;
-  };
-  "asset:preview:read": {
-    args: [input: ManagedAssetPreviewInput];
-    result: ManagedAssetPreview;
   };
   "clipboard:write-image": {
     args: [input: { source: string }];

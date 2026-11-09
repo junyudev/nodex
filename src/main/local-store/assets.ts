@@ -6,12 +6,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { getAssetSource, isSafeAssetFileName, parseAssetSource } from "../../shared/assets";
 import {
   MAX_MANAGED_IMAGE_BYTES,
-  MAX_MANAGED_PREVIEW_BYTES,
   MAX_MANAGED_RESOURCE_BYTES,
-  createManagedTextPreview,
   type ManagedAssetImageBytes,
-  type ManagedAssetPreview,
-  type ManagedAssetPreviewInput,
   type ManagedAssetUploadInput,
   type ManagedCanvasImageMaterializationResult,
   type ManagedFolderManifest,
@@ -470,79 +466,6 @@ function readManagedAssetImageAtRoot(
   return { mimeType, bytes };
 }
 
-function isManagedFolderManifest(value: unknown): value is ManagedFolderManifest {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const manifest = value as Partial<ManagedFolderManifest>;
-  if (
-    typeof manifest.rootName !== "string" ||
-    typeof manifest.generatedAt !== "string" ||
-    typeof manifest.maxEntries !== "number" ||
-    typeof manifest.maxDepth !== "number" ||
-    typeof manifest.truncated !== "boolean" ||
-    !Array.isArray(manifest.entries) ||
-    manifest.entries.length > 100
-  ) {
-    return false;
-  }
-  return manifest.entries.every((entry) => {
-    if (!entry || typeof entry !== "object") return false;
-    const candidate = entry as Partial<ManagedFolderManifestEntry>;
-    return (
-      typeof candidate.path === "string" &&
-      candidate.path.length <= 4096 &&
-      (candidate.kind === "file" || candidate.kind === "folder") &&
-      (candidate.bytes === undefined ||
-        (typeof candidate.bytes === "number" &&
-          Number.isFinite(candidate.bytes) &&
-          candidate.bytes >= 0))
-    );
-  });
-}
-
-function isTextPreviewMimeType(mimeType: string): boolean {
-  return (
-    mimeType.startsWith("text/") ||
-    mimeType === "application/json" ||
-    mimeType === "application/sql" ||
-    mimeType === "application/toml" ||
-    mimeType === "application/xml" ||
-    mimeType === "application/yaml"
-  );
-}
-
-function readManagedAssetPreviewAtRoot(
-  input: ManagedAssetPreviewInput,
-  assetsRootPath: string,
-): ManagedAssetPreview {
-  const fileName = parseManagedAssetFileName(input.source);
-  const mimeType = getMimeTypeForAssetFile(fileName);
-  if (input.kind === "text") {
-    if (!isTextPreviewMimeType(mimeType)) {
-      throw new Error("Managed asset is not text-previewable");
-    }
-    const bytes = readAssetFileBounded(assetsRootPath, fileName, MAX_MANAGED_PREVIEW_BYTES);
-    const text = bytes.toString("utf8");
-    const preview = createManagedTextPreview(text);
-    return {
-      ...preview,
-      truncated: preview.truncated || bytes.byteLength > MAX_MANAGED_PREVIEW_BYTES,
-    };
-  }
-
-  if (mimeType !== "application/json") {
-    throw new Error("Managed folder manifest must be JSON");
-  }
-  const bytes = readAssetFileBounded(assetsRootPath, fileName, MAX_MANAGED_PREVIEW_BYTES);
-  if (bytes.byteLength > MAX_MANAGED_PREVIEW_BYTES) {
-    throw new Error("Managed folder manifest exceeds preview limit");
-  }
-  const parsed = JSON.parse(bytes.toString("utf8")) as unknown;
-  if (!isManagedFolderManifest(parsed)) {
-    throw new Error("Managed folder manifest is invalid");
-  }
-  return { kind: "folder", manifest: parsed };
-}
-
 export interface TemporaryAssetsService {
   readonly rootPath: string;
   readonly resolveAssetPath: (fileName: string) => string;
@@ -555,7 +478,6 @@ export interface TemporaryAssetsService {
   ) => Promise<ManagedResourceSaveResult>;
   readonly materializeLocalResource: (localPath: string) => Promise<ManagedResourceSaveResult>;
   readonly readManagedAssetImage: (source: string) => ManagedAssetImageBytes;
-  readonly readManagedAssetPreview: (input: ManagedAssetPreviewInput) => ManagedAssetPreview;
 }
 
 /** Binds all managed-asset operations to one immutable Profile root. */
@@ -575,7 +497,6 @@ export function makeTemporaryAssets(input: {
     saveUploadedResource: (upload) => saveUploadedResourceAtRoot(upload, rootPath),
     materializeLocalResource: (localPath) => materializeLocalResourceAtRoot(localPath, rootPath),
     readManagedAssetImage: (source) => readManagedAssetImageAtRoot(source, rootPath),
-    readManagedAssetPreview: (preview) => readManagedAssetPreviewAtRoot(preview, rootPath),
   };
   return Object.freeze(service);
 }
