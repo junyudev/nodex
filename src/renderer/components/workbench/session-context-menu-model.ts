@@ -192,7 +192,7 @@ export function buildSessionContextMenuItems(
                 : SESSION_CONTEXT_MENU_ACTION_IDS.fork,
             label: destination.label,
             enabled: true,
-            iconKey: destination.target === "newWorktree" ? "worktree" : "fork",
+            iconKey: destination.iconKey,
           })),
         },
       ]

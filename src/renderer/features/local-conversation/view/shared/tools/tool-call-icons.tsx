@@ -41,7 +41,7 @@ import {
   PageIcon,
   PluginsIcon,
   ReadFilesIcon,
-  SidebarSortClockIcon,
+  ClockIcon,
   SidebarVisibleIcon,
   SkillIcon,
   ThreadIcon,
@@ -157,7 +157,7 @@ function SemanticToolIcon({ icon, className }: { icon: ToolActivityIconId; class
     case "read-files":
       return <ReadFilesIcon aria-hidden className={iconClassName} />;
     case "schedule":
-      return <SidebarSortClockIcon className={iconClassName} />;
+      return <ClockIcon className={iconClassName} />;
     case "settings":
       return <SettingsGeneralIcon className={iconClassName} />;
     case "skill":

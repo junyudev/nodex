@@ -1,9 +1,11 @@
 import { describe, expect, test } from "vite-plus/test";
 import { render } from "@/test/dom";
+import { WorkbenchScheduledIcon } from "./workbench-navigation-icons";
 import {
   AskAiIcon,
   AutomationMoreIcon,
   BoardIcon,
+  BranchStatusIcon,
   CalendarIcon,
   CalendarOverdueIcon,
   CanvasIcon,
@@ -19,6 +21,8 @@ import {
   FileTabIconSvg,
   FolderIcon,
   FolderOpenIcon,
+  ForkIcon,
+  LocalStatusIcon,
   MultiSelectIcon,
   NfmLinkToolbarOpenIcon,
   NewChatIcon,
@@ -27,6 +31,7 @@ import {
   PageIcon,
   PanelRightHiddenIcon,
   PanelRightVisibleIcon,
+  PendingWorktreeLocalIcon,
   QueueFailureIcon,
   QueuePauseIcon,
   QueuePendingInfoIcon,
@@ -82,6 +87,21 @@ describe("Database Property type icons", () => {
     expect(svg?.querySelector("path")?.getAttribute("d")).toBe(
       "M17.5 4.063v1.875H6.875V4.063zM6.875 10.938H17.5V9.062H6.875zm0 5H17.5v-1.876H6.875zM3.75 3.75a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5m0 5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5m0 5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5",
     );
+  });
+});
+
+describe("one glyph behind each semantic wrapper", () => {
+  test.each([
+    ["clock", ClockIcon, WorkbenchScheduledIcon],
+    ["branch", BranchStatusIcon, ForkIcon],
+    ["laptop", LocalStatusIcon, PendingWorktreeLocalIcon],
+  ])("draws the %s from one geometry on the 20-unit grid", (_label, First, Second) => {
+    const first = render(<First />).container;
+    const second = render(<Second />).container;
+
+    expect(first.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 20 20");
+    expect(second.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 20 20");
+    expect(pathSignature(first)).toEqual(pathSignature(second));
   });
 });
 
