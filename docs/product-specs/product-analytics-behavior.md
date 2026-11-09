@@ -31,6 +31,9 @@ sent since launch. A switch that cannot take effect says why: an environment var
   two minutes or 25 events, and once more on quit.
 - A network failure or transient service error keeps the events and retries with growing delays. A
   rejected batch is dropped. Analytics failures are never shown and never affect the app.
+- While usage analytics is off nothing is sent, and waiting events are discarded. That includes
+  events an earlier launch left behind when analytics is off by the next launch, for example
+  because `DO_NOT_TRACK` was set in between.
 - Development builds, CI and `DO_NOT_TRACK` send nothing and create no analytics state.
   `NODEX_TELEMETRY_ENABLED` overrides all of these, in either direction.
 
