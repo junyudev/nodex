@@ -24,7 +24,7 @@ import {
   CopyIcon,
   PlayIcon,
   SuccessCircleIcon,
-  ThreadIcon,
+  ChatIcon,
 } from "@/components/shared/icons";
 import { MentionInlineFocusAffordance } from "../mention-inline-focus-affordance";
 import { ThreadMentionInlineVisual } from "../thread-mention-inline-visual";
@@ -92,7 +92,7 @@ function ThreadMentionStateIcon({
     return <PlayIcon className="inline-block size-3.5 shrink-0" />;
   if (thread?.statusType === "idle")
     return <SuccessCircleIcon className="inline-block size-3.5 shrink-0" />;
-  return <ThreadIcon className="inline-block size-3.5 shrink-0" />;
+  return <ChatIcon className="inline-block size-3.5 shrink-0" />;
 }
 
 export { formatThreadMentionShortUuid };

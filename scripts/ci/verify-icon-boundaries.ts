@@ -717,9 +717,6 @@ function geometryReason(owners: readonly string[]): string {
   const names = owners.map((owner) => owner.slice(owner.lastIndexOf("#") + 1));
   const has = (...tokens: string[]) => tokens.every((token) => names.includes(token));
 
-  if (has("CreatedTaskIcon", "ProjectTaskIcon")) {
-    return "Activity and project task wrappers retain distinct product semantics while sharing the task-bubble glyph.";
-  }
   if (has("DownloadIcon", "SettingsImportIcon")) {
     return "Download and settings-import wrappers retain distinct product semantics while sharing the transfer glyph.";
   }

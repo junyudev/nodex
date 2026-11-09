@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CreatedTaskIcon } from "@/components/shared/icons";
+import { ChatIcon } from "@/components/shared/icons";
 import type { CodexCreatedThreadResult } from "../../../../shared/codex-created-thread-result";
 import type { ThreadStageActions } from "../thread-stage-types";
 import { useCreatedThreadCardState } from "../use-created-thread-card-state";
@@ -25,7 +25,7 @@ function CreatedThreadCard({
   return (
     <ThreadResourceCard
       aria-label={`Open chat: ${title}`}
-      icon={<CreatedTaskIcon className="icon-sm" aria-hidden />}
+      icon={<ChatIcon className="icon-sm" aria-hidden />}
       title={title}
       detail={
         state.isWorking ? (

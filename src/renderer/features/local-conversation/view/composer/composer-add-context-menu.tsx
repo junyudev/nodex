@@ -18,12 +18,7 @@ import {
   type ReactNode,
   type SVGProps,
 } from "react";
-import {
-  CircleDotIcon,
-  MessageSquare,
-  SplitIcon,
-  Sparkles,
-} from "@/components/shared/icons/generic-icons";
+import { CircleDotIcon, SplitIcon, Sparkles } from "@/components/shared/icons/generic-icons";
 import {
   GoalTargetIcon,
   PageIcon,
@@ -35,7 +30,7 @@ import {
   ComposerPlanModeIcon,
   PluginsIcon,
   CheckmarkIcon,
-  ConversationIcon,
+  ChatIcon,
   PlusIcon,
 } from "@/components/shared/icons";
 import { toast } from "@/components/ui/toast";
@@ -508,7 +503,7 @@ function buildComposerChatGptConversationItem(
         },
       },
     },
-    icon: <ConversationIcon className="size-4 shrink-0" />,
+    icon: <ChatIcon className="size-4 shrink-0" />,
     active: false,
   };
 }
@@ -1084,7 +1079,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
                   },
                 },
               },
-              icon: <MessageSquare className="size-4 shrink-0" />,
+              icon: <ChatIcon className="size-4 shrink-0" />,
               active: false,
             },
           ];
@@ -1271,7 +1266,7 @@ const ComposerProjectMenuContent = forwardRef<
                   run: () => onProjectChange(null),
                 },
               },
-              icon: <MessageSquare className="size-4 shrink-0" />,
+              icon: <ChatIcon className="size-4 shrink-0" />,
               active: projectSelector.selectedProjectId === null,
             },
           ]

@@ -1,5 +1,5 @@
 import { ChatWaitingIcon } from "@/components/shared/chat-waiting-icon";
-import { ActivitySpinnerIcon, ThreadIcon } from "@/components/shared/icons";
+import { ActivitySpinnerIcon, ChatIcon } from "@/components/shared/icons";
 import { CircleAlert } from "@/components/shared/icons/generic-icons";
 import type { PageChatActivityPresentation } from "@/lib/page-chat-activity-presentation";
 import { cn } from "@/lib/utils";
@@ -23,7 +23,7 @@ export function PageChatActivityGlyph({
     ) : activity.execution === "approval" || activity.execution === "input" ? (
       <ChatWaitingIcon className="size-3" />
     ) : (
-      <ThreadIcon className="size-3" />
+      <ChatIcon className="size-3" />
     );
 
   return (

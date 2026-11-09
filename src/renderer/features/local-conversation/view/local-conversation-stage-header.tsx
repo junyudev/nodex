@@ -13,7 +13,7 @@ import {
   SidePanelSideChatIcon,
   CopyIcon,
   SlashStatusIcon,
-  ProjectTaskIcon,
+  ChatIcon,
   ForkIcon,
   MoveToLeftPaneIcon,
   MoveToRightPaneIcon,
@@ -335,7 +335,7 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
       {hasRuntimeActions ? <NodexDropdownSeparator /> : null}
       {canOpenNativeTasks ? (
         <NodexDropdownItem
-          leftSlot={<ProjectTaskIcon className={menuIconClassName} />}
+          leftSlot={<ChatIcon className={menuIconClassName} />}
           onSelect={() => {
             pendingModal.current = () => {
               void handleAction(

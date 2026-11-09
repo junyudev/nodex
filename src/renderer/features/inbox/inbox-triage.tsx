@@ -26,7 +26,7 @@ import {
   RefreshIcon,
   RetryIcon,
   StopIcon,
-  ThreadIcon,
+  ChatIcon,
 } from "@/components/shared/icons";
 import { Reply } from "@/components/shared/icons/generic-icons";
 import { NodexButton } from "@/components/ui/button";
@@ -632,7 +632,7 @@ export function InboxTriage({
           <InboxIconActions>
             <InboxIconAction
               label="Open chat"
-              icon={ThreadIcon}
+              icon={ChatIcon}
               onClick={() => onOpenSession?.(chatId)}
             />
           </InboxIconActions>
@@ -892,7 +892,7 @@ export function InboxTriage({
                     <Decision
                       label="Open chat"
                       target={null}
-                      icon={ThreadIcon}
+                      icon={ChatIcon}
                       onClick={() => onOpenSession?.(uncertainChat.sessionId)}
                     />
                   ) : null}

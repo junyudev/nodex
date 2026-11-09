@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ThreadIcon, WorktreeSetupStatusIcon, WorktreeStatusIcon } from "@/components/shared/icons";
+import { ChatIcon, WorktreeSetupStatusIcon, WorktreeStatusIcon } from "@/components/shared/icons";
 import type { CodexWorktreeInitActivity } from "@/lib/codex-worktree-init-activity";
 import { codexWorktreeInitActivityLabel } from "@/lib/codex-worktree-init-activity";
 import { cn } from "@/lib/utils";
@@ -27,7 +27,7 @@ function WorktreeInitActivityIcon({
   if (activity.kind === "setup") {
     return <WorktreeSetupStatusIcon aria-hidden="true" className={className} />;
   }
-  return <ThreadIcon className={className} />;
+  return <ChatIcon className={className} />;
 }
 
 function RunningConversationActivity({ activity }: { activity: CodexWorktreeInitActivity }) {

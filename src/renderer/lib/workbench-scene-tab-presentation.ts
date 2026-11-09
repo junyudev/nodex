@@ -1,7 +1,6 @@
 import { resolveFileResourceIcon } from "@/components/shared/file-resource-icon";
 import type { ComponentType } from "react";
-import { MessageSquare } from "@/components/shared/icons/generic-icons";
-import { ImageEditorTabIcon, InboxIcon } from "@/components/shared/icons";
+import { ImageEditorTabIcon, InboxIcon, ChatIcon } from "@/components/shared/icons";
 import type { WorkbenchSurfaceDescriptor } from "../../shared/workbench-scene";
 import { getPanelNewTabAction } from "./workbench-panel-actions";
 
@@ -16,7 +15,7 @@ export function resolveWorkbenchSceneTabPresentation(
   // A Project's Home is its own Inbox.
   if (surface.kind === "inbox") return { title: "Inbox", icon: InboxIcon };
   if (surface.kind === "conversation") {
-    return { title: surface.titleSnapshot, icon: MessageSquare };
+    return { title: surface.titleSnapshot, icon: ChatIcon };
   }
   if (surface.kind === "image_editor") {
     return { title: surface.titleSnapshot, icon: ImageEditorTabIcon };

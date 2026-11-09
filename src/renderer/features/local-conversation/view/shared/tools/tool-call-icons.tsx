@@ -44,7 +44,7 @@ import {
   ClockIcon,
   SidebarVisibleIcon,
   SkillIcon,
-  ThreadIcon,
+  ChatIcon,
   TerminalActivityIcon,
   DeniedCircleIcon,
   withActivityIconClass,
@@ -129,7 +129,7 @@ function SemanticToolIcon({ icon, className }: { icon: ToolActivityIconId; class
     case "browser-use":
       return <BrowserUseIcon aria-hidden className={iconClassName} />;
     case "chat":
-      return <ThreadIcon className={iconClassName} />;
+      return <ChatIcon className={iconClassName} />;
     case "computer-use":
       return <ComputerUseIcon aria-hidden className={iconClassName} />;
     case "connector":

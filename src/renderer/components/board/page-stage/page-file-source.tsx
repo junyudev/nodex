@@ -1,7 +1,7 @@
 import { useQueries } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
-import { ChatBubbleIcon } from "@/components/shared/icons";
+import { ChatIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { formatCompactRelativeTime } from "@/lib/compact-relative-time";
 import { formatDate } from "@/lib/file-metadata-format";
@@ -102,7 +102,7 @@ export function PageFileSourceLabel({
   const { source, sessionId } = presentation;
   const label = (
     <>
-      {source.type === "agent" ? <ChatBubbleIcon className="size-3 shrink-0" /> : null}
+      {source.type === "agent" ? <ChatIcon className="size-3 shrink-0" /> : null}
       <span className="min-w-0 truncate">{presentation.label}</span>
     </>
   );

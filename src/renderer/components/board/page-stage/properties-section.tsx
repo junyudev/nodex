@@ -18,7 +18,7 @@ import {
   PageMenuOpenNewChatIcon,
   PlusIcon,
   StatusIcon,
-  ThreadIcon,
+  ChatIcon,
 } from "@/components/shared/icons";
 import { PageChatActivityGlyph } from "@/components/shared/page-chat-activity-glyph";
 import { usePageChatItemActivity } from "@/lib/use-page-chat-activity";
@@ -196,7 +196,7 @@ function RelatedChatAddControl({
       {onLinkRelatedChat ? (
         <NodexDropdown.FlyoutSubmenuItem
           label="Link to chat…"
-          leftSlot={<ThreadIcon className="icon-xs shrink-0" />}
+          leftSlot={<ChatIcon className="icon-xs shrink-0" />}
           disabled={!hasLinkableChats}
           contentClassName="w-[280px] p-1"
         >
@@ -225,7 +225,7 @@ function RelatedChatAddControl({
                       .finally(() => setLinkingSessionId(null));
                   }}
                 >
-                  <ThreadIcon className="icon-xs shrink-0 text-token-text-secondary" />
+                  <ChatIcon className="icon-xs shrink-0 text-token-text-secondary" />
                   <span className="min-w-0 flex-1 truncate text-left">
                     {candidate.displayTitle}
                   </span>

@@ -6,7 +6,7 @@ import {
   PlusIcon,
   PriorityValueIcon,
   SpinnerIcon,
-  ThreadIcon,
+  ChatIcon,
   WorkflowDoingIcon,
   WorkflowPlanIcon,
   WorkflowReviewIcon,
@@ -127,7 +127,7 @@ export function BoardCardView({
             {card.chat.working ? (
               <SpinnerIcon className="size-2.5" />
             ) : (
-              <ThreadIcon className="size-2.5" />
+              <ChatIcon className="size-2.5" />
             )}
           </span>
         ) : null}

@@ -15,7 +15,7 @@ import {
   ProjectPinnedIcon,
   ProjectPinIcon,
   ProjectRepositoryIcon,
-  ProjectTaskIcon,
+  ChatIcon,
   SettingsGeneralIcon,
 } from "@/components/shared/icons";
 import { toast } from "@/components/ui/toast";
@@ -272,7 +272,7 @@ export function ProjectHoverCard({
             ) : null}
           </span>
         </ProjectHoverCardRow>
-        <ProjectHoverCardRow icon={<ProjectTaskIcon />}>
+        <ProjectHoverCardRow icon={<ChatIcon />}>
           <span className="flex min-w-0 flex-1 flex-wrap text-sm leading-5 text-token-foreground">
             {formatProjectActivitySummary(activity)}
           </span>

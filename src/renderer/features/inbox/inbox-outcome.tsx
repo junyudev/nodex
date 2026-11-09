@@ -4,7 +4,7 @@ import {
   CheckmarkIcon,
   InboxIcon,
   MoveToIcon,
-  ThreadIcon,
+  ChatIcon,
 } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
 import type { InboxChatTone, InboxOutcome, InboxOutcomeIcon } from "./inbox-presentation";
@@ -26,7 +26,7 @@ function InboxOutcomeGlyph({
   const shared = cn("icon-xs shrink-0", className);
   switch (icon) {
     case "chat":
-      return <ThreadIcon className={shared} />;
+      return <ChatIcon className={shared} />;
     case "pending":
       return <ActivitySpinnerIcon className={shared} />;
     case "move":

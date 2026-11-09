@@ -57,7 +57,7 @@ import {
 } from "./sidebar-thread-reorder";
 import type { StableWorktreeEntry } from "./stable-worktree-production";
 import { StableWorktreeSidebarRows } from "./stable-worktree-sidebar-row";
-import { NewChatIcon, ThreadIcon } from "@/components/shared/icons";
+import { NewChatIcon, ChatIcon } from "@/components/shared/icons";
 import { toast } from "@/components/ui/toast";
 import { setPendingWorktreePinnedBeforeThread } from "@/lib/pending-worktree-runtime";
 import { workspaceSidebarCommands } from "@/lib/workspace-catalog-commands";
@@ -328,7 +328,7 @@ function SidebarPinnedThreadRowsContent({
             return (
               <div className="flex h-[var(--height-token-nav-row)] max-w-80 items-center gap-2 px-2 text-base text-token-foreground">
                 <span className="flex size-5 shrink-0 items-center justify-center">
-                  <ThreadIcon className="icon-xs" />
+                  <ChatIcon className="icon-xs" />
                 </span>
                 <span className="min-w-0 truncate">{item.title}</span>
               </div>
@@ -452,7 +452,7 @@ function SidebarThreadContainerRowsContent({
                     return (
                       <div className="flex h-[var(--height-token-nav-row)] max-w-80 items-center gap-2 px-2 text-base text-token-foreground">
                         <span className="flex size-5 shrink-0 items-center justify-center">
-                          <ThreadIcon className="icon-xs" />
+                          <ChatIcon className="icon-xs" />
                         </span>
                         <span className="min-w-0 truncate">{item.title}</span>
                       </div>
@@ -632,7 +632,7 @@ function SidebarProjectThreadRowsContent({
     return (
       <div className="flex h-[var(--height-token-nav-row)] max-w-80 items-center gap-2 px-2 text-base text-token-foreground">
         <span className="flex size-5 shrink-0 items-center justify-center">
-          <ThreadIcon className="icon-xs" />
+          <ChatIcon className="icon-xs" />
         </span>
         <span className="min-w-0 truncate">{item.title}</span>
       </div>

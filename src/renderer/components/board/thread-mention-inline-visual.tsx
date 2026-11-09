@@ -1,4 +1,4 @@
-import { ThreadIcon } from "@/components/shared/icons";
+import { ChatIcon } from "@/components/shared/icons";
 import { MentionInlineVisual, type MentionInlineVisualProps } from "./mention-inline-visual";
 
 export type ThreadMentionInlineVisualProps = MentionInlineVisualProps & {
@@ -10,7 +10,7 @@ export function ThreadMentionInlineVisual(props: ThreadMentionInlineVisualProps)
     <MentionInlineVisual
       {...props}
       kind="thread"
-      icon={props.icon ?? <ThreadIcon className="size-full" />}
+      icon={props.icon ?? <ChatIcon className="size-full" />}
     />
   );
 }

@@ -32,7 +32,6 @@ import {
   LockKeyhole as LucideLockKeyhole,
   Maximize2 as LucideMaximize2,
   MessageCirclePlusIcon as LucideMessageCirclePlusIcon,
-  MessageSquare as LucideMessageSquare,
   Minimize2 as LucideMinimize2,
   Minus as LucideMinus,
   MonitorCog as LucideMonitorCog,
@@ -228,10 +227,6 @@ export const Maximize2: LucideIconType = /* @__PURE__ */ createGenericIcon(
 export const MessageCirclePlusIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideMessageCirclePlusIcon,
   "MessageCirclePlusIcon",
-);
-export const MessageSquare: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideMessageSquare,
-  "MessageSquare",
 );
 export const Minimize2: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideMinimize2,

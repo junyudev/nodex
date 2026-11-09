@@ -4,7 +4,7 @@ import {
   CloseIcon,
   ContentSearchDiffIcon,
   SettingsSearchIcon,
-  ThreadIcon,
+  ChatIcon,
   GlobeIcon,
   ActivitySpinnerIcon,
   UpArrowIcon,
@@ -143,7 +143,7 @@ export function ContentSearchSurfaceView({
             activeDomain: domain,
             label: "Search chat",
             onDomainChange,
-            children: <ThreadIcon className="size-4" />,
+            children: <ChatIcon className="size-4" />,
           })}
           {renderDomainButton({
             domain: "diff",

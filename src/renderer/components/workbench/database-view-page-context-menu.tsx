@@ -25,7 +25,7 @@ import {
   PageMenuMoveUpIcon,
   PageMenuOpenInIcon,
   PageMenuOpenNewChatIcon,
-  ThreadIcon,
+  ChatIcon,
 } from "@/components/shared/icons";
 import {
   DataSourcePagePropertyContextMenuItems,
@@ -122,7 +122,7 @@ function DatabaseViewPageMenuActionIcon({
     case "open-in-new-chat":
       return <PageMenuOpenNewChatIcon />;
     case "send-to-chat":
-      return <ThreadIcon className="icon-xs shrink-0" />;
+      return <ChatIcon className="icon-xs shrink-0" />;
     case "delete":
       return <PageMenuDeleteIcon />;
   }

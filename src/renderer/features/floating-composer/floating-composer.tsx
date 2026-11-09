@@ -28,7 +28,7 @@ import {
 } from "motion/react";
 import {
   ActivitySpinnerIcon,
-  ChatBubbleIcon,
+  ChatIcon,
   DragHandleDotsIcon,
   MinimizeIcon,
 } from "@/components/shared/icons";
@@ -1313,7 +1313,7 @@ export function FloatingComposer({
           {attention === "activity" ? (
             <ActivitySpinnerIcon className="icon-sm" />
           ) : (
-            <ChatBubbleIcon className="icon-sm" />
+            <ChatIcon className="icon-sm" />
           )}
           {attention === "request" ? (
             <span

@@ -52,7 +52,7 @@ import {
 } from "./nfm-blocknote-floating-ui";
 import { formatThreadMentionShortUuid } from "@/lib/editor-model/thread-mention-display";
 import {
-  ThreadIcon,
+  ChatIcon,
   BellIcon,
   CalendarIcon,
   ClockIcon,
@@ -1390,7 +1390,7 @@ export function buildNfmThreadMentionSuggestionItems(
         activeContext: inActiveProject,
         sourceOrder,
       },
-      icon: <ThreadIcon className="size-4" />,
+      icon: <ChatIcon className="size-4" />,
       onItemClick: () => {
         insertInlineContent(editor, buildNfmThreadMentionInlineContent(chat));
       },

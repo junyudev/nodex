@@ -5,7 +5,6 @@ import {
   TERMINAL_PROMPT_PATH,
   TERMINAL_SEPARATOR_PATH,
 } from "../../../../shared/icon-geometry";
-import { ConversationIcon } from "./canonical-icons";
 
 type IconProps = {
   className?: string;
@@ -113,10 +112,6 @@ export function AppActivityIcon(props: IconProps) {
       />
     </svg>
   );
-}
-
-export function CreatedTaskIcon(props: IconProps) {
-  return <ConversationIcon {...props} />;
 }
 
 export function ContextCompactionIcon({ className, ...props }: IconProps) {

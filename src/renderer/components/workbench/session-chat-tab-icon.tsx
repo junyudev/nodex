@@ -1,5 +1,5 @@
 import { ChatWaitingIcon } from "@/components/shared/chat-waiting-icon";
-import { ActivitySpinnerIcon, ConversationIcon } from "@/components/shared/icons";
+import { ActivitySpinnerIcon, ChatIcon } from "@/components/shared/icons";
 import { SESSION_LIVE_INDICATOR_LABELS } from "@/lib/session-execution";
 import type { SidebarRowLiveStatus } from "@/lib/sidebar-status";
 import { cn } from "@/lib/utils";
@@ -41,7 +41,7 @@ export function SessionChatTabIcon({ status }: { readonly status: SidebarRowLive
   }
   return (
     <span data-chat-tab-status={status ?? undefined} className="relative flex">
-      <ConversationIcon className="icon-xs" />
+      <ChatIcon className="icon-xs" />
       {status ? (
         <span className="absolute -end-0.5 -top-0.5 size-1.5 rounded-full bg-info-solid" />
       ) : null}

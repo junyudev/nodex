@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ActivityFilter, ActivityRow, InboxItem } from "../../../shared/inbox";
 import {
-  ChatBubbleIcon,
+  ChatIcon,
   CheckmarkIcon,
   DeleteIcon,
   InboxIcon,
@@ -9,7 +9,6 @@ import {
   OpenExternalIcon,
   PageIcon,
   ProjectFolderIcon,
-  ThreadIcon,
 } from "@/components/shared/icons";
 import { PersonCircleIcon } from "@/components/shared/icons/customize-action-icons";
 import { WebsiteGitHubIcon } from "@/components/shared/icons/website-icons";
@@ -107,7 +106,7 @@ function ActorGlyph({ row }: { readonly row: ActivityRow }) {
         ) : actor.type === "member" ? (
           <PersonCircleIcon className="icon-2xs shrink-0" />
         ) : (
-          <ChatBubbleIcon className="icon-2xs shrink-0" />
+          <ChatIcon className="icon-2xs shrink-0" />
         )}
       </span>
     </NodexTooltip>
@@ -233,14 +232,14 @@ function ActivityLine({
               {item && target ? (
                 <InboxIconAction
                   label={target.kind === "session" ? "Open chat" : "Open in Project"}
-                  icon={target.kind === "session" ? ThreadIcon : ProjectFolderIcon}
+                  icon={target.kind === "session" ? ChatIcon : ProjectFolderIcon}
                   onClick={() => handlers.onOpenTarget(target)}
                 />
               ) : null}
               {!item && row.session_id ? (
                 <InboxIconAction
                   label="Open chat"
-                  icon={ThreadIcon}
+                  icon={ChatIcon}
                   onClick={() => handlers.onOpenSession(row.session_id!)}
                 />
               ) : null}

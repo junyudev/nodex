@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { ActivitySpinnerIcon, PlusIcon, SearchIcon, ThreadIcon } from "@/components/shared/icons";
+import { ActivitySpinnerIcon, PlusIcon, SearchIcon, ChatIcon } from "@/components/shared/icons";
 import {
   chatHighlightSegments,
   mergeChatSearchMatches,
@@ -145,7 +145,7 @@ function SendToThreadRow({
         {row.kind === "new-thread" && !row.isPreferredTarget ? (
           <PlusIcon className="size-4" aria-hidden="true" />
         ) : (
-          <ThreadIcon className="size-4" aria-hidden="true" />
+          <ChatIcon className="size-4" aria-hidden="true" />
         )}
       </span>
       <span className="min-w-0 flex-1">

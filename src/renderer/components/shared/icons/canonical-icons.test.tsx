@@ -2,7 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { render } from "@/test/dom";
 import { TERMINAL_ICON_GEOMETRY } from "../../../../shared/icon-geometry";
 import {
-  ConversationIcon,
+  ChatIcon,
   CopyIcon,
   DatabaseLabelIcon,
   DispatchIcon,
@@ -48,7 +48,7 @@ describe("canonical shared icons", () => {
   });
 
   test.each([
-    ["conversation", ConversationIcon, 1],
+    ["chat", ChatIcon, 1],
     ["database label", DatabaseLabelIcon, 2],
   ])("preserves the app-owned 16px %s identity", (_label, Icon, pathCount) => {
     const view = render(<Icon />);

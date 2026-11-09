@@ -32,7 +32,6 @@ import {
 } from "../../../../shared/session-context-menu-icons";
 import {
   BackIcon,
-  ConversationIcon,
   CopyIcon,
   FilterIcon,
   ImageIcon,
@@ -147,9 +146,6 @@ const GOAL_PLAY_PAUSE_RING_PATH =
   "M10 2.08496C14.3713 2.08496 17.915 5.62867 17.915 10C17.915 14.3713 14.3713 17.915 10 17.915C5.62867 17.915 2.08496 14.3713 2.08496 10C2.08496 5.62867 5.62867 2.08496 10 2.08496ZM10 3.41504C6.3632 3.41504 3.41504 6.3632 3.41504 10C3.41504 13.6368 6.3632 16.585 10 16.585C13.6368 16.585 16.585 13.6368 16.585 10C16.585 6.3632 13.6368 3.41504 10 3.41504Z";
 const SHORTCUT_RESET_PATH =
   "M15.998 10.833C15.9978 8.439 14.0571 6.49805 11.663 6.49805H4.9355L7.13374 8.69629L7.2187 8.80078C7.38911 9.05884 7.36084 9.40947 7.13374 9.63672C6.90652 9.86394 6.55592 9.89207 6.2978 9.72168L6.19331 9.63672L2.85932 6.30371C2.5999 6.04411 2.60001 5.62295 2.85932 5.36328L6.19331 2.0293C6.45298 1.76998 6.87414 1.76987 7.13374 2.0293C7.39344 2.289 7.39344 2.711 7.13374 2.9707L4.93647 5.16797H11.663C14.7916 5.16797 17.3279 7.70446 17.3281 10.833C17.3281 13.9617 14.7917 16.498 11.663 16.498H8.33003C7.96276 16.498 7.66499 16.2003 7.66499 15.833C7.66516 15.4659 7.96287 15.168 8.33003 15.168H11.663C14.0572 15.168 15.998 13.2272 15.998 10.833Z";
-const THREAD_BUBBLE_PATH =
-  "M12 21.25c-1.62 0-3.13-.33-4.53-.98l-2.68.4c-.48.07-.86-.01-1.14-.24-.28-.23-.42-.55-.42-.94 0-.16.02-.33.07-.51l.47-1.86A8.96 8.96 0 0 1 2.25 12c0-1.7.43-3.27 1.3-4.69.87-1.41 2.05-2.53 3.54-3.36C8.58 3.13 10.22 2.72 12 2.72s3.42.41 4.91 1.23c1.49.83 2.67 1.95 3.54 3.36.87 1.42 1.3 2.99 1.3 4.69s-.43 3.27-1.3 4.69c-.87 1.41-2.05 2.53-3.54 3.36-1.49.8-3.13 1.2-4.91 1.2Z";
-const THREAD_LINES_PATH = "M8.8 9.778h6.667M8.8 14.222h4.444";
 const CONTENT_SEARCH_DIFF_RULE_PATH =
   "M12.084 12.668a.666.666 0 0 1 0 1.33H7.917a.665.665 0 1 1 0-1.33h4.167ZM10 5.585c.367 0 .665.298.665.665v1.418h1.419a.666.666 0 0 1 0 1.33h-1.419v1.419a.666.666 0 0 1-1.33 0V8.998H7.917a.665.665 0 0 1 0-1.33h1.418V6.25c0-.367.298-.665.665-.665Z";
 const CONTENT_SEARCH_DIFF_BOX_PATH =
@@ -474,25 +470,6 @@ export function UndoIcon({ className }: IconProps) {
       aria-hidden="true"
     >
       <path d={SHORTCUT_RESET_PATH} fill="currentColor" />
-    </svg>
-  );
-}
-
-export function ThreadIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path d={THREAD_BUBBLE_PATH} />
-      <path d={THREAD_LINES_PATH} strokeWidth="1.773" />
     </svg>
   );
 }
@@ -1418,10 +1395,6 @@ export function ProjectFolderIcon({ className }: IconProps) {
       <path d={PROJECT_FOLDER_PATH} fill="currentColor" />
     </svg>
   );
-}
-
-export function ProjectTaskIcon({ className }: IconProps) {
-  return <ConversationIcon className={cn("icon-xs shrink-0", className)} />;
 }
 
 export function ProjectRepositoryIcon({ className }: IconProps) {
@@ -3659,21 +3632,6 @@ export function MinimizeIcon({ className }: IconProps) {
       aria-hidden="true"
     >
       <path d="M6 12a1 1 0 0 1 1-1h10a1 1 0 1 1 0 2H7a1 1 0 0 1-1-1Z" />
-    </svg>
-  );
-}
-
-export function ChatBubbleIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      className={cn("shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M12 4.5C7.527 4.5 4 7.911 4 12c0 1.696.6 3.263 1.62 4.525.185.228.26.526.206.814-.096.512-.222 1.011-.369 1.501a12.4 12.4 0 0 0 1.841-.4 1 1 0 0 1 .745.08A8.6 8.6 0 0 0 12 19.5c4.473 0 8-3.411 8-7.5s-3.527-7.5-8-7.5ZM2 12c0-5.3 4.532-9.5 10-9.5S22 6.7 22 12s-4.532 9.5-10 9.5a10.6 10.6 0 0 1-4.539-1.033 17.6 17.6 0 0 1-3.4.53 1 1 0 0 1-.995-1.356c.29-.755.534-1.497.704-2.242A9.2 9.2 0 0 1 2 12Z" />
     </svg>
   );
 }
