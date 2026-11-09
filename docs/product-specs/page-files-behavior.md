@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last Updated: 2026-11-01
+Last Updated: 2026-11-09
 
 Page Files is the Page-local view of Library Files related to one Page. It lets a
 person organize a File under a portable path, see Files used in the Page body,
@@ -126,7 +126,9 @@ not who attached it to a Page.
 ## Opening Files
 
 A Page File opens as a tab in its Page's tab group, immediately after the Page
-tab, so the Page stays one click away. A click opens a preview tab that the next
+tab, so the Page stays one click away. A File referenced in the Page body, as an
+inline attachment, opens the same way from the reference itself (see
+[Attachment Chip](nfm-editor-attachment-chip-behavior.md#opening)). A click opens a preview tab that the next
 preview in that group replaces; a double click, Cmd/Ctrl-click, Open in new tab,
 or switching between preview and source keeps the tab. Opening a File that
 already has a tab activates it. The tab follows its entry: a renamed path keeps

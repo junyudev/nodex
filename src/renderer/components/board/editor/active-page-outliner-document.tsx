@@ -248,6 +248,7 @@ function ActivePageOutlinerContent({
             surfaceMutationBarrier={surface.runtime}
             onOpenPage={hostRuntime.openPage}
             onOpenCanvas={hostRuntime.openCanvas}
+            onOpenPageFile={hostRuntime.openPageFile}
             isActivePanelTab={hostRuntime.isActiveSurface}
             placeholder={PAGE_DESCRIPTION_PLACEHOLDER}
             className="min-h-0! min-w-0"

@@ -1,7 +1,7 @@
 # Page Editor Attachment Chip Behavior
 
 Status: Active
-Last Updated: 2026-10-20
+Last Updated: 2026-11-09
 
 This document describes the current pasted-attachment behavior inside the BlockNote Page editor.
 
@@ -10,7 +10,7 @@ It is the detailed source of truth for:
 - oversized-text paste prompting
 - native file/folder paste prompting
 - inline attachment chip insertion
-- attachment chip rendering, hover, click, and preview behavior
+- attachment chip rendering, hover, opening, and actions
 - attachment-related Nodex Markdown serialization and clipboard plain-text behavior
 
 The main product spec should stay high-level and defer to this document for exact behavior and examples.
@@ -23,7 +23,7 @@ Included:
 - dialog choices and when each choice is shown
 - inline Nodex Markdown syntax for attachments
 - attachment chip visual contract and interaction model
-- preview rules for saved text, files, and folders
+- where each kind of attachment opens
 - plain-text clipboard output for attachments
 
 Not included:
@@ -42,7 +42,6 @@ Not included:
 - `legacy saved attachment`: a materialized `nodex://assets/...` attachment
   created by a non-Page or older authoring surface
 - `linked attachment`: an attachment with `mode="link"` that points to an original absolute local path
-- `attachment popover`: the click-open details surface anchored to the chip
 
 User-facing copy uses:
 
@@ -292,138 +291,60 @@ The chip should feel like a mention/reference token, not like a separate block e
 
 Inline display truncates labels to 48 characters.
 
-### Click and hover
+### Hover
 
-Hover:
+Hover shows the full name, then what the attachment is:
 
-- shows a tooltip with concise summary
-- includes saved/link state
-- includes byte size when available
-- prompts the user to click for details
+- saved attachments: their format and byte size, such as `Markdown · 31 KB`
+- linked attachments: the path they point to
+- saved folders: `Folder`
 
-Click:
+The chip is a reference, like a Page mention: it never expands into a card or an
+anchored details surface.
 
-- opens an anchored popover
-- does not directly open the file on click
+## Opening
 
-## Popover Behavior
+Click opens the attachment where it is best read. Cmd-click (Ctrl-click on
+Windows and Linux) or a double click keeps the tab it opens instead of reusing
+the group's preview tab. With the chip selected by Arrow keys, Enter opens it;
+the selected chip shows `Open file ↵` (`Open folder ↵` for a linked folder).
 
-The attachment popover is the detailed interaction surface.
+- A Library File in a Page's body opens as a Page File tab beside that Page,
+  exactly as its row in the Page's Files property does (see
+  [Page Files](page-files-behavior.md#opening-files)). Markdown renders, HTML
+  shows its isolated preview, images and media play, and text shows as source.
+  Opening a File that already has a tab activates it.
+- A Library File shown where no Page tab can open, such as a Page history
+  revision, a recovery draft, or another read-only preview, opens in a viewer
+  over the current surface. The viewer reads through that surface's exact File
+  binding, so a revision shows the version it captured. It presents the File
+  as a Page File tab does, except that HTML shows as source, and offers View
+  source or View preview for Markdown and SVG, and Save….
+- A linked file opens as a local file reference does anywhere in Nodex: in a
+  Files tab in the side panel, or in the Browser for a local HTML page. A
+  linked folder opens in the system file manager.
+- A legacy saved attachment resolves its managed copy to a local path and
+  opens it the same way.
 
-Header shows:
+The import `origin` of a saved attachment is provenance only. Nodex never opens
+the original path in an external app; the saved File is the attachment.
 
-- the same type-colored, path/MIME-derived icon as the attachment chip
-- full label
-- kind
-- byte size when available
-- saved/link state
+## Actions
 
-Metadata area shows:
+Right-click opens the attachment's context menu.
 
-- primary source/path
-- original path when present and different
+Library File:
 
-Actions:
-
-- Library File: `Save` and `Copy reference`
-- legacy saved or linked attachment: `Open`, `Reveal`, and `Copy path`
-- `Open original` when `origin` exists and differs from the primary source
-
-### Primary target resolution
-
-Library File attachment:
-
-- `Save` reads the currently authorized File bytes through Core and opens a
+- `Open` and, where a Page File tab can open, `Open in new tab`
+- `Save…` reads the currently authorized File bytes through Core and opens a
   destination chooser; no Profile path is revealed
 - `Copy reference` copies the stable `nodex://files/<file-id>` reference
 
-Legacy saved attachment:
+Linked file or legacy saved attachment: the same menu as every local file
+reference, including Open file, Open in the preferred editor, Open with, Save
+as…, Copy path, Copy file contents and Reveal in Finder.
 
-- `Open` resolves the `nodex://assets/...` source to a local asset path, then opens it
-
-Linked attachment:
-
-- `Open` opens the original local path directly
-
-`Reveal`:
-
-- reveals the primary resolved path in the file manager
-
-`Copy path`:
-
-- copies the resolved primary path when available
-- otherwise copies the displayed source/path string
-
-`Open original`:
-
-- opens `origin`
-- shown only when `origin` is present and differs from the primary source
-
-## Preview Rules
-
-Opening the popover activates its preview read; hover and keyboard focus only
-show attachment metadata. Library File previews retain their loaded content or
-failure while open. Metadata-only label refreshes reuse that result; closing
-releases the preview's content, and reopening reads again unless another open
-preview still retains the same File. Managed-asset previews retain their loaded
-result while the attachment chip stays mounted. A change to source, owner
-authority, File version, kind, or
-preview-relevant MIME invalidates the result, and an older in-flight result
-cannot replace the new resource.
-
-A previewable attachment opens directly into either its retained preview or a
-visible loading state. It never renders an empty preview container between
-those states. A failed read presents `Preview unavailable.` while unsupported
-formats continue to use the truthful no-preview state. Closing the last open
-preview releases a failed Library File read so a later opening retries it.
-Failed managed-asset previews retry when reopened.
-
-### Saved text
-
-Saved text attachments show a scrollable text preview in the popover.
-
-Preview caps:
-
-- at most `200` lines
-- at most `64 KiB`
-
-When truncated, the popover states that the preview was limited.
-
-### Saved text-like files
-
-Saved file attachments preview only when the MIME type is treated as text-like.
-
-Current text-like MIME handling includes:
-
-- `text/*`
-- `application/json`
-- `application/sql`
-- `application/toml`
-- `application/xml`
-- `application/yaml`
-
-Binary files show metadata and actions only.
-
-### Saved folders
-
-The current paste flow does not create saved folder attachments.
-
-If a saved folder attachment is created by another internal path, the popover previews the persisted manifest snapshot:
-
-- scrollable list of manifest entries
-- folder/file distinction
-- file byte sizes when present
-- truncation note when manifest caps were hit
-
-### Linked file/folder attachments
-
-Linked attachments do not preview raw file/folder contents in the popover.
-
-They show:
-
-- metadata
-- actions
-- explanatory copy that the chip points to the original location
+Linked folder: Reveal in Finder and Copy path.
 
 ## Copy And Export Behavior
 
@@ -524,6 +445,6 @@ If that text is pasted as plain text only:
 
 This feature does not currently try to:
 
-- inline-preview arbitrary linked local file contents
+- expand an attachment's contents inline in the Page; it opens in its own viewer
 - support linked oversized plain text
 - provide browser-only support for desktop folder paste inspection

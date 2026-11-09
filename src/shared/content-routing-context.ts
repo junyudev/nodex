@@ -37,6 +37,18 @@ export interface ContentCanvasNavigationTarget {
   readonly titleSnapshot?: string;
 }
 
+/** A Library File related to a Page, opened beside that Page. */
+export interface ContentPageFileNavigationTarget {
+  readonly routingContext: ContentRoutingContext;
+  readonly pageId: string;
+  readonly fileId: string;
+  /** The Page entry path when the opener knows it; the tab follows the entry either way. */
+  readonly logicalPath: string | null;
+  readonly title: string;
+  /** A preview tab is replaced by the next preview in its group; a durable tab stays. */
+  readonly openMode: "preview" | "durable";
+}
+
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 

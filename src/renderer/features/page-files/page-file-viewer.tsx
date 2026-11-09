@@ -1,14 +1,9 @@
-import { lazy, Suspense, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { DownloadIcon, PageIcon, RefreshIcon } from "@/components/shared/icons";
 import { ChevronRightLgIcon, EllipsisIcon } from "@/components/shared/icons/customize-action-icons";
 import { FileBlankIcon } from "@/components/shared/icons/file-viewer-icons";
-import {
-  FileReadBoundary,
-  useFilePlacementRuntime,
-  useFileReadSnapshot,
-} from "@/components/board/editor/file-runtime";
-import { LazySourceViewer } from "@/components/ui/lazy-source-viewer";
+import { FileReadBoundary } from "@/components/board/editor/file-runtime";
 import { EmptyState } from "@/components/ui/empty-state";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
@@ -18,39 +13,16 @@ import {
   ViewerHeader,
   ViewerIconButton,
 } from "@/components/ui/viewer-header";
-import { MarkdownRenderer } from "@/features/local-conversation/view/shared/markdown/markdown-renderer";
-import {
-  WorkspaceFileErrorState,
-  WorkspaceFileLoadingState,
-  WorkspaceFileTooLargeState,
-} from "@/features/workspace-files/workspace-file-preview-states";
-import { resolveWorkspaceSourceLanguage } from "@/features/workspace-files/workspace-file-model";
 import { writeTextToClipboard } from "@/lib/clipboard";
-import { formatBytes } from "@/lib/file-metadata-format";
 import { saveAuthorizedFile } from "@/lib/library-file-resources";
-import {
-  PAGE_FILE_TEXT_PREVIEW_MAX_BYTES,
-  pageFileHasSourceView,
-  pageFileReadsText,
-  resolvePageFileViewKind,
-  type PageFileViewKind,
-} from "@/lib/page-file-view-kind";
+import { pageFileHasSourceView, resolvePageFileViewKind } from "@/lib/page-file-view-kind";
 import { useLibraryMetadata } from "@/lib/use-library-navigation";
 import { useTheme } from "@/lib/use-theme";
-import { cn } from "@/lib/utils";
 import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import { fileSource } from "../../../shared/file-resources";
 import type { LibraryPageFileItem } from "../../../shared/library-files";
+import { LibraryFileContent } from "./library-file-content";
 import { PageFileHtmlView } from "./page-file-html-view";
-
-const LazyWorkspacePdfPreview = lazy(async () => {
-  const { WorkspacePdfPreview } = await import("@/features/workspace-files/workspace-pdf-preview");
-  return { default: WorkspacePdfPreview };
-});
-
-/** Leaves room for a floating composer resting over a full-width side panel. */
-const COMPOSER_RESERVE =
-  "pb-[calc(var(--right-panel-composer-overlay-reserve,0px)+var(--spacing)*4)]";
 
 export interface PageFileViewerProps {
   readonly routingContext: ContentRoutingContext;
@@ -198,11 +170,15 @@ export function PageFileViewer({
           />
         ) : (
           <FileReadBoundary authority={authority}>
-            <PageFileContent
+            <LibraryFileContent
               key={`${item.file.file_id}:${item.file.head_version}`}
-              item={item}
-              name={name}
-              kind={kind}
+              file={{
+                fileId: item.file.file_id,
+                identity: String(item.file.head_version),
+                name,
+                kind,
+                byteLength: item.file.byte_length,
+              }}
               source={sourceView}
               onOpenExternalLink={onOpenExternalLink}
             />
@@ -258,153 +234,6 @@ function PageFileBreadcrumb({
         </li>
       </ol>
     </nav>
-  );
-}
-
-function PageFileContent({
-  item,
-  name,
-  kind,
-  source,
-  onOpenExternalLink,
-}: {
-  readonly item: LibraryPageFileItem;
-  readonly name: string;
-  readonly kind: PageFileViewKind;
-  readonly source: boolean;
-  readonly onOpenExternalLink: (url: string) => void;
-}) {
-  const runtime = useFilePlacementRuntime();
-  const size = item.file.byte_length;
-  const readsText = (source || kind === "text" || kind === "markdown") && pageFileReadsText(kind);
-  const textTooLarge = readsText && size > PAGE_FILE_TEXT_PREVIEW_MAX_BYTES;
-  const media =
-    !source && (kind === "image" || kind === "svg" || kind === "audio" || kind === "video");
-  const snapshot = useFileReadSnapshot(runtime, fileSource(item.file.file_id), {
-    content: readsText && !textTooLarge,
-    objectUrl: media,
-  });
-  const [pdfUrl, setPdfUrl] = useState<{ readonly fileId: string; readonly url: string } | null>(
-    null,
-  );
-
-  if (kind === "unsupported") {
-    return (
-      <EmptyState
-        className="h-full min-h-0 px-4"
-        icon={<FileBlankIcon />}
-        title="This format can’t be previewed"
-        description="Save it to open it in another app."
-      />
-    );
-  }
-  if (textTooLarge) {
-    return (
-      <WorkspaceFileTooLargeState sizeBytes={size} limitBytes={PAGE_FILE_TEXT_PREVIEW_MAX_BYTES} />
-    );
-  }
-  if (kind === "pdf") {
-    if (!runtime) return <WorkspaceFileLoadingState />;
-    if (pdfUrl?.fileId !== item.file.file_id) {
-      void runtime
-        .readImageDataUrl(fileSource(item.file.file_id))
-        .then((url) => setPdfUrl({ fileId: item.file.file_id, url }))
-        .catch(() => setPdfUrl(null));
-      return <WorkspaceFileLoadingState />;
-    }
-    return (
-      <Suspense fallback={<WorkspaceFileLoadingState />}>
-        <LazyWorkspacePdfPreview
-          fileDataUrl={pdfUrl.url}
-          title={name}
-          onOpenExternalLink={onOpenExternalLink}
-        />
-      </Suspense>
-    );
-  }
-  if (snapshot.contentError || snapshot.metadataError) {
-    return <WorkspaceFileErrorState message="This File is no longer available." />;
-  }
-  if (media) {
-    if (!snapshot.objectUrl) return <WorkspaceFileLoadingState />;
-    if (kind === "audio" || kind === "video") {
-      return (
-        <div className={cn("flex h-full items-center justify-center p-6", COMPOSER_RESERVE)}>
-          {kind === "audio" ? (
-            <audio controls src={snapshot.objectUrl} className="w-full max-w-xl" />
-          ) : (
-            <video controls src={snapshot.objectUrl} className="max-h-full max-w-full rounded-lg" />
-          )}
-        </div>
-      );
-    }
-    return <PageFileImage url={snapshot.objectUrl} name={name} byteLength={size} />;
-  }
-  if (!snapshot.bytes) return <WorkspaceFileLoadingState />;
-  const text = new TextDecoder().decode(snapshot.bytes.bytes);
-  if (kind === "markdown" && !source) {
-    return (
-      <div className={cn("h-full overflow-auto px-6 pt-4", COMPOSER_RESERVE)}>
-        <MarkdownRenderer content={text} className="mx-auto max-w-3xl" />
-      </div>
-    );
-  }
-  return (
-    <div className="h-full min-h-0 pb-[var(--right-panel-composer-overlay-reserve,0px)]">
-      <LazySourceViewer
-        value={readableSource(text, name)}
-        ariaLabel={`${name} source`}
-        filename={name}
-        language={resolveWorkspaceSourceLanguage(name)}
-        lineNumbers
-        sourceIdentity={`${item.file.file_id}:${item.file.head_version}`}
-        className="h-full"
-      />
-    </div>
-  );
-}
-
-/** Minified JSON reads as one endless line; show it indented. Saving keeps the original bytes. */
-function readableSource(text: string, name: string): string {
-  if (!/\.(?:json|geojson)$/iu.test(name) || text.includes("\n")) return text;
-  try {
-    return JSON.stringify(JSON.parse(text), null, 2);
-  } catch {
-    return text;
-  }
-}
-
-function PageFileImage({
-  url,
-  name,
-  byteLength,
-}: {
-  readonly url: string;
-  readonly name: string;
-  readonly byteLength: number;
-}) {
-  const [dimensions, setDimensions] = useState<string | null>(null);
-  return (
-    <figure
-      className={cn(
-        "m-0 flex h-full min-h-0 flex-col items-center justify-center gap-3 overflow-auto p-6",
-        COMPOSER_RESERVE,
-      )}
-    >
-      <img
-        src={url}
-        alt={name}
-        className="min-h-0 max-w-full shrink object-contain"
-        onLoad={(event) =>
-          setDimensions(
-            `${event.currentTarget.naturalWidth} × ${event.currentTarget.naturalHeight}`,
-          )
-        }
-      />
-      <figcaption className="text-xs text-(--color-text-tertiary) tabular-nums">
-        {[dimensions, formatBytes(byteLength)].filter(Boolean).join(" · ")}
-      </figcaption>
-    </figure>
   );
 }
 

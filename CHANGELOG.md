@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Clicking a file attached in a Page now opens it, instead of a small details popup. A file saved in the Page opens in a tab beside the Page, just like from the Page's Files list, so Markdown renders, HTML reports show as pages, and images, PDFs and media play. A linked file opens in Files. Right-click a file for Open in new tab, Save… and Copy reference, and press Enter on a selected file to open it. In Page history and other read-only previews, a file opens in a viewer that shows the version that was captured.
+
 ### Fixed
 
 - Page history opens again after you edit a Page and pause. The automatic revision Nodex saves when you stop editing made the Page's history show a database error instead of its revisions.
