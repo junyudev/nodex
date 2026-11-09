@@ -252,7 +252,7 @@
 }
 
 .nfm-editor
-  :is([data-mention-inline-chip="true"]):is(:focus-visible, [data-mention-token-selected="true"])
+  :is([data-inline-reference-chip="true"]):is(:focus-visible, [data-mention-token-selected="true"])
   > [data-inline-reference-label="true"] {
   text-decoration-color: currentColor !important;
 }

@@ -23,6 +23,10 @@ describe("page/file-provenance authoritative scenario", () => {
         context.manifest.projectId,
         facts.reportPageId,
       );
+      // Each body refers to one of its Files inline.
+      expect(
+        report.files.find((item) => item.logical_path === "profile/report.html")?.body_count,
+      ).toBe(1);
       for (const item of report.files) {
         expect(item.attachment?.attached_by).toEqual({
           type: "agent",
@@ -41,6 +45,7 @@ describe("page/file-provenance authoritative scenario", () => {
         type: "member",
         member_id: memberId,
       });
+      expect(byPath.get("brief.md")?.body_count).toBe(1);
       expect(byPath.get("mockups/settings-dark.png")?.attachment?.attached_by).toEqual({
         type: "agent",
         run_id: null,

@@ -34,11 +34,20 @@ const schema = new Schema({
       selectable: false,
       toDOM: () => ["span", { "data-thread-mention": "true" }],
     },
+    attachment: {
+      group: "inline",
+      inline: true,
+      atom: true,
+      selectable: false,
+      toDOM: () => ["span", { "data-attachment": "true" }],
+    },
   },
   marks: {},
 });
 
-function createDocument(type: "pageMention" | "threadMention" = "pageMention") {
+type TokenType = "pageMention" | "threadMention" | "attachment";
+
+function createDocument(type: TokenType = "pageMention") {
   return schema.node("doc", null, [
     schema.node("paragraph", null, [
       schema.text("before"),
@@ -63,7 +72,7 @@ describe("mention chip keyboard navigation", () => {
     vi.restoreAllMocks();
   });
 
-  test.each(["pageMention", "threadMention"] as const)(
+  test.each(["pageMention", "threadMention", "attachment"] as const)(
     "selects the complete %s when ArrowLeft reaches its boundary",
     (type) => {
       const doc = createDocument(type);
@@ -123,7 +132,7 @@ describe("mention chip keyboard navigation", () => {
     expect(getSelectedMentionTokenRange(partialRange)).toBeNull();
   });
 
-  test.each(["pageMention", "threadMention"] as const)(
+  test.each(["pageMention", "threadMention", "attachment"] as const)(
     "Enter activates the selected %s through its rendered action",
     (type) => {
       const doc = createDocument(type);
@@ -134,11 +143,8 @@ describe("mention chip keyboard navigation", () => {
       });
       const action =
         type === "pageMention" ? document.createElement("a") : document.createElement("button");
-      if (type === "pageMention") {
-        action.dataset.pageMentionInlineAnchor = "true";
-      } else {
-        action.dataset.mentionInlineChip = "true";
-      }
+      action.dataset.inlineReferenceChip = "true";
+      if (type === "pageMention") action.dataset.pageMentionInlineAnchor = "true";
       const click = vi.fn();
       action.addEventListener("click", click);
       const nodeViewRoot = document.createElement("span");
@@ -158,7 +164,7 @@ describe("mention chip keyboard navigation", () => {
       selection: TextSelection.create(doc, 8),
     });
     const button = document.createElement("button");
-    button.dataset.mentionInlineChip = "true";
+    button.dataset.inlineReferenceChip = "true";
     const click = vi.fn();
     button.addEventListener("click", click);
     const nodeViewRoot = document.createElement("span");
@@ -205,7 +211,7 @@ describe("mention chip keyboard navigation", () => {
       selection: TextSelection.create(doc, 7, 8),
     });
     const chip = document.createElement("button");
-    chip.dataset.mentionInlineChip = "true";
+    chip.dataset.inlineReferenceChip = "true";
     const nodeViewRoot = document.createElement("span");
     nodeViewRoot.append(chip);
     const view = createView(state, nodeViewRoot);

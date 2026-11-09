@@ -117,6 +117,7 @@ export function EmbeddedReferencedPageDocument({
                   surfaceMutationBarrier={surface.runtime}
                   onOpenPage={hostRuntime?.openPage}
                   onOpenCanvas={hostRuntime?.openCanvas}
+                  onOpenPageFile={hostRuntime?.openPageFile}
                   isActivePanelTab={isActive}
                   placeholder={PAGE_DESCRIPTION_PLACEHOLDER}
                   className="min-w-0"

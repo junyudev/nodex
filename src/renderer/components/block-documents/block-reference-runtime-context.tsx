@@ -3,6 +3,7 @@ import type { DatabaseId } from "../../../shared/database-identities";
 import type {
   ContentRoutingContext,
   ContentCanvasNavigationTarget,
+  ContentPageFileNavigationTarget,
   ContentPageNavigationTarget,
 } from "../../../shared/content-routing-context";
 import type { PortableRichText } from "../../../shared/block-documents/portable-rich-text";
@@ -33,6 +34,8 @@ export interface BlockReferenceHostRuntime {
   readonly openPage?: (input: ContentPageNavigationTarget) => void | Promise<void>;
   readonly openDatabase?: (databaseId: DatabaseId) => void | Promise<void>;
   readonly openCanvas?: (input: ContentCanvasNavigationTarget) => void | Promise<void>;
+  /** Opens a Library File used in a Page as a tab beside that Page. */
+  readonly openPageFile?: (input: ContentPageFileNavigationTarget) => void | Promise<void>;
   readonly createCanvasAtEmptyParagraph?: (input: {
     readonly blockId: string;
     readonly displayName?: string;
