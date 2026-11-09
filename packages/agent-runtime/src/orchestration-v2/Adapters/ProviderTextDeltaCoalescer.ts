@@ -23,6 +23,10 @@ export interface ProviderTextDeltaCoalescer {
     readonly finalText?: string;
     readonly emitEmpty?: boolean;
   }) => Effect.Effect<string>;
+  readonly discard: (input: {
+    readonly turnId: string;
+    readonly itemId: string;
+  }) => Effect.Effect<void>;
   readonly flushTurn: (turnId: string) => Effect.Effect<void>;
 }
 
@@ -128,6 +132,14 @@ export const makeProviderTextDeltaCoalescer = Effect.fn("makeProviderTextDeltaCo
                 }
               }),
             ),
+      discard: ({ turnId, itemId }) =>
+        flushLock.withPermit(
+          Ref.update(buffered, (current) => {
+            const next = new Map(current);
+            next.delete(providerTextBufferKey(turnId, itemId));
+            return next;
+          }),
+        ),
       complete: ({ turnId, itemId, finalText, emitEmpty = true }) =>
         flushLock.withPermit(
           Effect.gen(function* () {

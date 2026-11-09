@@ -1437,7 +1437,7 @@ type PendingCodexRuntimeRequest =
       >;
     };
 
-const approvalOwnerCodexTurn = (context: ActiveCodexTurnContext) => {
+const requestOwnerCodexTurn = (context: ActiveCodexTurnContext) => {
   let owner = context;
   let subagent: CodexSubagentThreadContext | null = null;
   while (owner.subagent !== null) {
@@ -5110,7 +5110,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           readonly options?: ReadonlyArray<ProviderApprovalOption>;
         }) {
           const createdAt = yield* DateTime.now;
-          const { owner, subagent } = approvalOwnerCodexTurn(input.context);
+          const { owner, subagent } = requestOwnerCodexTurn(input.context);
           const parentNodeId =
             subagent?.subagentNodeId ??
             idAllocator.derive.nodeFromProviderItem({
@@ -5307,16 +5307,23 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           readonly autoResolutionMs?: number | null;
         }) =>
           Effect.gen(function* () {
+            // Native information callbacks share approval ownership; the Deferred still
+            // belongs to the exact child callback that emitted the request.
+            const { owner, subagent } = requestOwnerCodexTurn(input.context);
+            if (subagent !== null && input.responseMode === "message")
+              return yield* toProtocolError(
+                "Asynchronous user questions require a native root thread.",
+              );
             const createdAt = yield* DateTime.now;
             const requestId = yield* idAllocator.allocate.runtimeRequest({
               driver: CODEX_PROVIDER,
-              providerTurnId: input.context.providerTurnId,
+              providerTurnId: owner.providerTurnId,
               nativeRequestId: input.nativeRequestId,
             });
-            const providerSessionId = input.context.input.providerThread.providerSessionId;
+            const providerSessionId = owner.input.providerThread.providerSessionId;
             if (providerSessionId === null) {
               return yield* toProtocolError(
-                `Provider thread ${input.context.providerThread.id} is missing a provider session id.`,
+                `Provider thread ${owner.providerThread.id} is missing a provider session id.`,
               );
             }
             const questions = input.questions.map((question, index) => ({
@@ -5341,18 +5348,18 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               driver: CODEX_PROVIDER,
               nativeItemId: input.nativeItemId,
             });
-            const ordinal = yield* resolveItemOrdinal(input.context, input.nativeItemId);
+            const ordinal = yield* resolveItemOrdinal(owner, input.nativeItemId);
             const node: OrchestrationV2ExecutionNode = {
               id: nodeId,
-              threadId: input.context.projectionThreadId,
-              runId: input.context.projectionRunId,
-              parentNodeId: input.context.itemParentNodeId,
-              rootNodeId: input.context.rootNodeId,
+              threadId: owner.projectionThreadId,
+              runId: owner.projectionRunId,
+              parentNodeId: subagent?.subagentNodeId ?? owner.itemParentNodeId,
+              rootNodeId: owner.rootNodeId,
               kind: "user_input_request",
               status: "waiting",
               countsForRun: false,
-              providerThreadId: input.context.providerThread.id,
-              providerTurnId: input.context.providerTurnId,
+              providerThreadId: owner.providerThread.id,
+              providerTurnId: owner.providerTurnId,
               nativeItemRef: codexNativeItemRef(input.nativeItemId),
               runtimeRequestId: requestId,
               checkpointScopeId: null,
@@ -5362,7 +5369,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             const request: OrchestrationV2RuntimeRequest = {
               id: requestId,
               nodeId,
-              providerTurnId: input.context.providerTurnId,
+              providerTurnId: owner.providerTurnId,
               nativeRequestRef: {
                 driver: CODEX_PROVIDER,
                 nativeId: input.nativeRequestId,
@@ -5383,11 +5390,11 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             };
             const turnItem: OrchestrationV2TurnItem = {
               id: turnItemId,
-              threadId: input.context.projectionThreadId,
-              runId: input.context.projectionRunId,
+              threadId: owner.projectionThreadId,
+              runId: owner.projectionRunId,
               nodeId,
-              providerThreadId: input.context.providerThread.id,
-              providerTurnId: input.context.providerTurnId,
+              providerThreadId: owner.providerThread.id,
+              providerTurnId: owner.providerTurnId,
               nativeItemRef: codexNativeItemRef(input.nativeItemId),
               parentItemId: null,
               ordinal,
@@ -6451,6 +6458,11 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             }
 
             if (payload.item.delivery === "async" && payload.item.questions?.length) {
+              // The question card owns this item; buffered text must never replace it.
+              yield* agentMessageDeltas.discard({
+                turnId: payload.turnId,
+                itemId: payload.item.id,
+              });
               const artifacts = yield* buildUserInputRequestArtifacts({
                 context,
                 nativeItemId: payload.item.id,

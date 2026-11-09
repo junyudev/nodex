@@ -1202,8 +1202,11 @@ asynchronous questions wait only while it has no preparing, starting or running 
 Run has ended its provider turn and only drains effects. A pending secret card waits only while
 its own Run is live. Delegated conversations roll up only approvals, including MCP elicitation,
 and only while their Run is live. Their questions belong to the delegating Agent. Provider-native
-children ask on their parent, so none of their requests roll up. Tool calls and authentication
-refreshes never count as user attention.
+children's live information requests, including informational MCP elicitations, belong to the
+native tree's root conversation and Run; answers resume the originating child callback.
+Codex's synchronous question tool and optional asynchronous questions are root-only.
+Provider-native requests therefore need no separate activity rollup. Tool calls and
+authentication refreshes never count as user attention.
 
 Side chats have independent execution roots and no catalog row. Their questions,
 secret cards and approvals also reach their source Session whenever their own conversation

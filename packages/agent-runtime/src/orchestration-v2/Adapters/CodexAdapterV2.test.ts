@@ -74,6 +74,7 @@ import * as ProviderContinuationRequests from "@nodex/provider-core/server/Provi
 import * as CodexAdapterV2 from "./CodexAdapterV2.ts";
 import { makeReplayServerConfig, withCodexReplayChildMetadata } from "./CodexAdapterV2.testkit.ts";
 import * as CodexAdapterV2Testkit from "./CodexAdapterV2.testkit.ts";
+import { readUserQuestion, pendingUserQuestionIds } from "../../nodex/PendingUserQuestions.ts";
 import { codexAsyncQuestionId } from "../../nodex/CodexConventions.ts";
 import { SIDE_CHAT_BOUNDARY_TEXT } from "../../nodex/SideChat.ts";
 
@@ -2797,54 +2798,59 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
+  const nativeRequestOwnershipPreamble = (nested: boolean) => {
+    const root = "ownership-root";
+    const child = "ownership-child";
+    const grandchild = "ownership-grandchild";
+    const entries = codexReplayPreamble({
+      nativeThreadId: root,
+      nativeTurnId: `${root}-turn`,
+      prompt: "spawn",
+    });
+    for (const [parent, threadId, callId] of [
+      [root, child, "spawn-child"],
+      ...(nested ? [[child, grandchild, "spawn-grandchild"]] : []),
+    ]) {
+      entries.push(
+        {
+          type: "emit_inbound",
+          frame: {
+            method: "item/completed",
+            params: {
+              threadId: parent,
+              turnId: `${parent}-turn`,
+              item: {
+                type: "subAgentActivity",
+                id: callId,
+                kind: "started",
+                agentThreadId: threadId,
+                agentPath: "/root/worker",
+              },
+            },
+          },
+        },
+        {
+          type: "emit_inbound",
+          frame: {
+            method: "turn/started",
+            params: {
+              threadId,
+              turn: makeCodexReplayTurn({ id: `${threadId}-turn`, status: "inProgress" }),
+            },
+          },
+        },
+      );
+    }
+    return { root, child, grandchild, entries };
+  };
+
   it.effect.each([false, true])(
     "routes a nested=%s native approval to one root-owned request",
     (nested) =>
       Effect.scoped(
         Effect.gen(function* () {
-          const root = "ownership-root";
-          const child = "ownership-child";
-          const grandchild = "ownership-grandchild";
+          const { root, child, grandchild, entries } = nativeRequestOwnershipPreamble(nested);
           const askingThread = nested ? grandchild : child;
-          const entries = codexReplayPreamble({
-            nativeThreadId: root,
-            nativeTurnId: `${root}-turn`,
-            prompt: "spawn",
-          });
-          for (const [parent, threadId, callId] of [
-            [root, child, "spawn-child"],
-            ...(nested ? [[child, grandchild, "spawn-grandchild"]] : []),
-          ]) {
-            entries.push(
-              {
-                type: "emit_inbound",
-                frame: {
-                  method: "item/completed",
-                  params: {
-                    threadId: parent,
-                    turnId: `${parent}-turn`,
-                    item: {
-                      type: "subAgentActivity",
-                      id: callId,
-                      kind: "started",
-                      agentThreadId: threadId,
-                      agentPath: "/root/worker",
-                    },
-                  },
-                },
-              },
-              {
-                type: "emit_inbound",
-                frame: {
-                  method: "turn/started",
-                  params: {
-                    threadId,
-                    turn: makeCodexReplayTurn({ id: `${threadId}-turn`, status: "inProgress" }),
-                  },
-                },
-              },
-            );
-          }
           entries.push(
             {
               type: "emit_inbound",
@@ -2916,6 +2922,225 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             decision: "accept",
           });
           yield* harness.firstTerminal;
+        }),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect.each([false, true])(
+    "routes a nested=%s native informational MCP elicitation to one root-owned request",
+    (nested) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { root, child, grandchild, entries } = nativeRequestOwnershipPreamble(nested);
+          const askingThread = nested ? grandchild : child;
+          entries.push(
+            {
+              type: "emit_inbound",
+              frame: {
+                id: "owned-request",
+                method: "mcpServer/elicitation/request",
+                params: {
+                  threadId: askingThread,
+                  turnId: `${askingThread}-turn`,
+                  serverName: "project-settings",
+                  _meta: null,
+                  mode: "form",
+                  message: "Which branch?",
+                  requestedSchema: {
+                    type: "object",
+                    properties: { branch: { type: "string" } },
+                    required: ["branch"],
+                  },
+                },
+              },
+            },
+            {
+              type: "expect_outbound",
+              frame: {
+                id: "owned-request",
+                result: { action: "accept", content: { branch: "main" } },
+              },
+            },
+          );
+          for (const threadId of [...(nested ? [grandchild] : []), child, root])
+            entries.push({
+              type: "emit_inbound",
+              frame: {
+                method: "turn/completed",
+                params: {
+                  threadId,
+                  turn: makeCodexReplayTurn({ id: `${threadId}-turn`, status: "completed" }),
+                },
+              },
+            });
+          const pending = yield* Deferred.make<OrchestrationV2RuntimeRequest>();
+          const harness = yield* makeCodexReplayHarness(
+            makeCodexReplayTranscript({ scenario: `information-ownership-${nested}`, entries }),
+            (event) =>
+              event.type === "runtime_request.updated"
+                ? Deferred.succeed(pending, event.runtimeRequest)
+                : Effect.void,
+          );
+          yield* harness.runtime.startTurn(
+            makeCodexTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now: yield* DateTime.now,
+              attemptId: RunAttemptId.make("ownership-attempt"),
+              text: "spawn",
+            }),
+          );
+          const request = yield* Deferred.await(pending);
+          const nodeEvent = harness.events.find(
+            (event) => event.type === "node.updated" && event.node.id === request.nodeId,
+          );
+          if (nodeEvent?.type !== "node.updated")
+            return yield* Effect.die("Missing information node");
+          assert.equal(nodeEvent.node.threadId, harness.threadId);
+          assert.isNotNull(nodeEvent.node.runId);
+          assert.equal(request.kind, "user_input");
+          const card = harness.events.findLast(
+            (event) =>
+              event.type === "turn_item.updated" && event.turnItem.nodeId === request.nodeId,
+          );
+          assert.equal(
+            card?.type === "turn_item.updated" && card.turnItem.threadId,
+            harness.threadId,
+          );
+          assert.equal(nodeEvent.node.providerThreadId, harness.providerThread.id);
+          assert.equal(nodeEvent.node.parentNodeId, harness.subagentUpdates()[0]?.subagent.id);
+          assert.equal(
+            nodeEvent.node.providerTurnId,
+            (yield* IdAllocator.IdAllocatorV2).derive.providerTurn({
+              driver: CodexAdapterV2.CODEX_DRIVER_KIND,
+              nativeTurnId: `${root}-turn`,
+            }),
+          );
+          assert.equal(
+            harness.events.filter((event) => event.type === "runtime_request.updated").length,
+            1,
+          );
+          yield* harness.runtime.respondToRuntimeRequest({
+            requestId: request.id,
+            answers: { branch: "main" },
+          });
+          yield* harness.firstTerminal;
+        }),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect(
+    "rejects native-child async questions because Codex exposes that tool only to roots",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const failures: string[] = [];
+          const root = "async-owner-root";
+          const child = "async-owner-child";
+          const entries = codexReplayPreamble({
+            nativeThreadId: root,
+            nativeTurnId: `${root}-turn`,
+            prompt: "spawn",
+          });
+          entries.push(
+            {
+              type: "emit_inbound",
+              frame: {
+                method: "item/completed",
+                params: {
+                  threadId: root,
+                  turnId: `${root}-turn`,
+                  item: {
+                    type: "subAgentActivity",
+                    id: "spawn-child",
+                    kind: "started",
+                    agentThreadId: child,
+                    agentPath: "/root/worker",
+                  },
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: {
+                method: "turn/started",
+                params: {
+                  threadId: child,
+                  turn: makeCodexReplayTurn({ id: `${child}-turn`, status: "inProgress" }),
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: {
+                method: "item/completed",
+                params: {
+                  threadId: child,
+                  turnId: `${child}-turn`,
+                  item: {
+                    type: "agentMessage",
+                    id: "unsupported-question",
+                    text: "Which branch?",
+                    delivery: "async",
+                    questions: [{ title: "Which branch?" }],
+                  },
+                },
+              },
+            },
+          );
+          for (const threadId of [child, root])
+            entries.push({
+              type: "emit_inbound",
+              frame: {
+                method: "turn/completed",
+                params: {
+                  threadId,
+                  turn: makeCodexReplayTurn({ id: `${threadId}-turn`, status: "completed" }),
+                },
+              },
+            });
+          const harness = yield* makeCodexReplayHarness(
+            makeCodexReplayTranscript({ scenario: "unsupported-child-async-question", entries }),
+            undefined,
+            undefined,
+            undefined,
+            (client) => ({
+              ...client,
+              handleServerNotification: (method, handler) =>
+                client.handleServerNotification(method, (payload) =>
+                  handler(payload).pipe(
+                    Effect.catchCause((cause) =>
+                      Effect.sync(() => {
+                        failures.push(Cause.pretty(cause));
+                      }),
+                    ),
+                  ),
+                ),
+            }),
+          );
+          yield* harness.runtime.startTurn(
+            makeCodexTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now: yield* DateTime.now,
+              attemptId: RunAttemptId.make("async-owner-attempt"),
+              text: "spawn",
+            }),
+          );
+          yield* harness.firstTerminal;
+          assert.lengthOf(failures, 1);
+          assert.include(failures[0], "Asynchronous user questions require a native root thread");
+          assert.isEmpty(
+            harness.events.filter((event) => event.type === "runtime_request.updated"),
+          );
         }),
       ).pipe(
         Effect.provide(
@@ -5152,6 +5377,18 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             }),
             {
               type: "emit_inbound",
+              frame: {
+                method: "item/agentMessage/delta",
+                params: {
+                  threadId: nativeThreadId,
+                  turnId: nativeTurnId,
+                  itemId: "async-question-item",
+                  delta: "Which branch?",
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
               label: "question",
               frame: {
                 method: "item/completed",
@@ -5234,6 +5471,30 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           assert.equal(questionItem.turnItem.questions[0]?.required, false);
           assert.equal(questionItem.turnItem.responseMode, "message");
         }
+        const latestItem = harness.events.findLast(
+          (event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.nativeItemRef?.nativeId === "async-question-item",
+        );
+        assert.equal(
+          latestItem?.type === "turn_item.updated" && latestItem.turnItem.type,
+          "user_input_request",
+        );
+        const projection = {
+          runtimeRequests: requests,
+          turnItems: [
+            ...new Map(
+              harness.events.flatMap((event) =>
+                event.type === "turn_item.updated"
+                  ? [[event.turnItem.id, event.turnItem] as const]
+                  : [],
+              ),
+            ).values(),
+          ],
+        };
+        const listed = pendingUserQuestionIds(projection.runtimeRequests);
+        assert.lengthOf(listed, 1);
+        assert.notProperty(readUserQuestion(projection, listed[0]!), "error");
         const questionNode = harness.events.find(
           (event) => event.type === "node.updated" && event.node.id === requests[0]?.nodeId,
         );
