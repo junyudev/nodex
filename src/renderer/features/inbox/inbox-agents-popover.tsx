@@ -17,8 +17,8 @@ import {
 import { InboxSuggestionModePicker } from "./inbox-suggestion-mode-picker";
 
 const SUGGESTION_HINTS = {
-  automatic: "Names and routes each message as you send it.",
-  on_request: "Names and routes a message when you ask.",
+  automatic: "Routes each message as you send it.",
+  on_request: "Routes a message when you ask.",
   off: "You handle every message by hand.",
 } as const;
 
@@ -87,7 +87,7 @@ export function InboxAgentsPopover({
       >
         <div className="flex flex-col divide-y divide-token-border/60">
           <Section
-            title="Suggestions"
+            title="Nodex"
             hint={SUGGESTION_HINTS[mode]}
             control={
               <InboxSuggestionModePicker
@@ -102,6 +102,21 @@ export function InboxAgentsPopover({
               trigger="field"
               disabled={!suggestions || !ready}
             />
+            <label className="flex items-center justify-between gap-3 text-xs text-token-text-secondary">
+              <span className="min-w-0">
+                <span className="block text-token-description-foreground">
+                  What you clearly ask for starts without a click.
+                </span>
+              </span>
+              <NodexSwitch
+                size="compact"
+                checked={agents.settings.dispatchMode === "act_on_requests"}
+                disabled={!suggestions}
+                onCheckedChange={(start) =>
+                  void agents.save({ dispatchMode: start ? "act_on_requests" : "suggest" })
+                }
+              />
+            </label>
           </Section>
           <Section
             title="New chats"

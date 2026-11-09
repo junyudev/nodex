@@ -17,12 +17,14 @@ import { CodexRendererPresentationRegistry } from "../codex-application/CodexRen
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { DesktopNotificationRuntime } from "./DesktopNotificationRuntime";
 import { RendererClientRuntime } from "./RendererClientRuntime";
-import { UserPresence } from "./UserPresence";
+import { UserPresence } from "../../host/UserPresence";
 import {
   ApplicationSettings,
   make as makeApplicationSettings,
 } from "../settings/ApplicationSettings";
+import { CoreModules } from "../core-runtime/CoreModules";
 import { live } from "./CodexThreadNotificationRuntime";
+import { turnSpeaksThroughNodex } from "../../host/coordinator/notification-session";
 
 it.effect("releases every Codex notification listener with the Main Scope", () =>
   Effect.gen(function* () {
@@ -43,6 +45,12 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
       live.pipe(
         Layer.provide(
           Layer.mergeAll(
+            Layer.succeed(CoreModules, {
+              workspace: {
+                read: () =>
+                  Effect.succeed({ value: { kind: "read_managed_session", managed: null } }),
+              },
+            } as never),
             Layer.succeed(CodexApplicationEventHub, {
               events: Stream.fromPubSub(applicationEvents),
               publish: (event: CodexApplicationEvent) => {
@@ -130,5 +138,49 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
     });
     assert.strictEqual(dispatchedActionCount, 0);
     rmSync(settingsRoot, { recursive: true, force: true });
+  }),
+);
+
+it.effect("a finished turn stays quiet only when Nodex speaks for it", () =>
+  Effect.gen(function* () {
+    const core = (managed: readonly string[]) =>
+      ({
+        workspace: {
+          read: (request: { readonly kind: string; readonly session_id?: string }) =>
+            Effect.succeed({
+              value:
+                request.kind === "read_coordinator"
+                  ? { kind: "read_coordinator", session_id: "nodex" }
+                  : {
+                      kind: "read_managed_session",
+                      managed: managed.includes(request.session_id ?? "") ? {} : null,
+                    },
+            }),
+        },
+      }) as never;
+    const finished = (sessionId: string) =>
+      ({
+        type: "turn-completed",
+        hostId: "local",
+        conversation: {
+          conversationId: `thread-${sessionId}`,
+          runtimeSessionId: sessionId,
+          title: sessionId,
+          threadSource: null,
+          parentThreadId: null,
+          source: null,
+          sideConversationParentNavigationPath: null,
+        },
+        turnId: `turn-${sessionId}`,
+        status: "completed",
+        lastAgentMessage: "Done.",
+        heartbeatAssistantMessage: null,
+        automationNotificationDecision: null,
+        hasPendingContinuation: false,
+      }) as never;
+    // Nodex speaks only through its posts, and for the chats it manages.
+    assert.isTrue(yield* turnSpeaksThroughNodex(core([]), finished("nodex")));
+    assert.isTrue(yield* turnSpeaksThroughNodex(core(["work"]), finished("work")));
+    assert.isFalse(yield* turnSpeaksThroughNodex(core([]), finished("chat")));
   }),
 );

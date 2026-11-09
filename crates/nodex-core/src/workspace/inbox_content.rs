@@ -108,7 +108,7 @@ impl MessageContent {
 
 /// All Agent consumers use this renderer. Numbering is supplied by the whole request or
 /// handoff; repeated occurrences use the same number. External images remain Markdown.
-pub(super) fn agent_markdown(
+pub(crate) fn agent_markdown(
     content: &MessageContent,
     numbers: &HashMap<String, usize>,
     image_limit: usize,

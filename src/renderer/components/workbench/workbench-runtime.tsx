@@ -1,4 +1,6 @@
 import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { requestInboxEntryOpen } from "../../lib/inbox-entry-navigation";
+import { readInboxEntry } from "../../lib/inbox-runtime";
 import { WorkbenchWorkspaceFrame } from "./workbench-workspace-frame";
 import type { CSSProperties } from "react";
 import { NodexApplicationMenubar } from "@/components/ui/application-menubar";
@@ -3605,6 +3607,13 @@ export function WorkbenchRuntime({
   const handleDesktopNotificationAction = async (
     invocation: DesktopNotificationActionInvocation,
   ): Promise<void> => {
+    if (invocation.inboxEntry) {
+      const entry = await readInboxEntry(invocation.inboxEntry.pageId);
+      requestInboxEntryOpen({
+        pageId: entry.pageId,
+      });
+      return;
+    }
     const target = resolveDesktopNotificationTarget(invocation);
     if (!target) return;
 

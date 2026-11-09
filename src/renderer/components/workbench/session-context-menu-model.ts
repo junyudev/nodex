@@ -24,6 +24,7 @@ export const SESSION_CONTEXT_MENU_REMIND_AT_PREFIX = "session.remindAt:";
 
 export const SESSION_CONTEXT_MENU_ACTION_IDS = {
   togglePin: "session.togglePin",
+  toggleManaged: "session.toggleManaged",
   removeFromProject: "session.removeFromProject",
   rename: "session.rename",
   archive: "archive-thread",

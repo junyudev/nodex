@@ -27,6 +27,8 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
   pageIds: ["page:1"],
   basis: [{ pageId: "page:1", contentHash: "content:1" }],
   outdated: false,
+  explicitRequest: false,
+  confirmedBy: null,
   action: {
     type: "new_chat",
     additions: [],
@@ -59,6 +61,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   bodyEditable: true,
   submittedAt: "2026-10-11T10:00:00.000Z",
   source: { kind: "user" },
+  replyToPageId: null,
   kind: "question",
   important: false,
   state: "open",
@@ -837,6 +840,14 @@ describe("The message menu", () => {
     await screen.findByRole("menuitem", { name: "Handle manually" });
     expect(menuItems()).not.toContain("Mark done");
     expect(menuItems()).toContain("Suggest again");
+  });
+});
+
+    const onReply = vi.fn();
+    renderTriage({
+      }),
+    });
+    expect(lastButtonName()).toBe("Reply");
   });
 });
 

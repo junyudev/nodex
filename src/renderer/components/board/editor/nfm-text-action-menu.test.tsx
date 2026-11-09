@@ -493,6 +493,7 @@ describe("markdown text action menu surface", () => {
       threadPreview: "",
       threadStatus: null,
       threadArchived: false,
+      report: null,
       sessionArchived: false,
       unread: false,
       conversationRecencyAt: 0,

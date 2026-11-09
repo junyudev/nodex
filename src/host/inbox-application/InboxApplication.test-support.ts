@@ -5,12 +5,7 @@ import {
   type CoreScenarioContext,
 } from "../../../scripts/scenarios/harness/core-scenario-harness";
 import { BOARD_DENSE_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/board-dense";
-import { CoreModules } from "../core-runtime/CoreModules";
-import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
-import { StoreAdministration } from "../core-runtime/StoreAdministration";
 import { make as makeInboxApplication } from "./InboxApplication";
-import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
-import { ApplicationSettings } from "../settings/ApplicationSettings";
 import {
   DEFAULT_INBOX_SETTINGS,
   LIBRARY_INBOX,
@@ -115,16 +110,35 @@ export const inboxOverRealCore = (
   Effect.gen(function* () {
     const { context } = yield* scenario;
     const inbox = yield* makeInboxApplication.pipe(
-      Effect.provideService(CoreModules, coreModulesOver(context.client)),
       Effect.provideService(StoreAdministration, {
         requestErasure,
       } as unknown as StoreAdministration["Service"]),
       Effect.provideService(AgentRuntimeApplication, {
         catalog,
+        runOutcome: () => Effect.succeed(null),
       } as unknown as AgentRuntimeApplication["Service"]),
       Effect.provideService(ApplicationSettings, {
         snapshot: () => Effect.sync(() => ({ inbox: inboxSettings() })),
       } as unknown as ApplicationSettings["Service"]),
     );
-    return { inbox, client: context.client, projectId: context.manifest.projectId };
+  });
+
+export const bindTestCoordinator = (client: CoreScenarioContext["client"]) =>
+  Effect.promise(async () => {
+    const sessionId = createUuidV7();
+    await client.workspaceApply({
+      operationId: createBoundedOperationId("test.coordinator"),
+      intent: {
+        kind: "create_agent_runtime_session",
+        coordinator: true,
+        session_id: sessionId,
+        project_id: null,
+        title: "Nodex",
+        initial_page_ids: [],
+        runtime_id: "test-runtime",
+        runtime_thread_id: `thread:${sessionId}`,
+        launch_request_id: `launch:${sessionId}`,
+      },
+    });
+    return sessionId;
   });

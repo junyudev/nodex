@@ -98,6 +98,7 @@ describe("codex thread notification policy", () => {
 
   test("does not blanket suppress system, ephemeral-like, or side conversations", () => {
     const policy = {
+      managed: false,
       isAppForegrounded: false,
       isConversationSeen: false,
       turnMode: "unfocused" as const,
@@ -125,6 +126,7 @@ describe("codex thread notification policy", () => {
 
   test("applies turn suppression in reference order for every terminal status", () => {
     const always = {
+      managed: false,
       isAppForegrounded: true,
       isConversationSeen: true,
       turnMode: "always" as const,
@@ -203,14 +205,20 @@ describe("codex thread notification policy", () => {
   });
 
   test("the occurrence decision is shared by every channel and ignores desktop settings", () => {
-    expect(decideCodexTurnOccurrence(turn())).toEqual({ type: "show" });
-    expect(decideCodexTurnOccurrence(turn({ status: "interrupted" }))).toEqual({ type: "show" });
-    expect(decideCodexTurnOccurrence(turn({ hasPendingContinuation: true }))).toEqual({
+    const unmanaged = { managed: false };
+    expect(decideCodexTurnOccurrence(turn(), unmanaged)).toEqual({ type: "show" });
+    expect(decideCodexTurnOccurrence(turn({ status: "interrupted" }), unmanaged)).toEqual({
+      type: "show",
+    });
+    expect(decideCodexTurnOccurrence(turn({ hasPendingContinuation: true }), unmanaged)).toEqual({
       type: "suppress",
       reason: "pending-continuation",
     });
     expect(
-      decideCodexTurnOccurrence(turn({ conversation: conversation({ parentThreadId: "parent" }) })),
+      decideCodexTurnOccurrence(
+        turn({ conversation: conversation({ parentThreadId: "parent" }) }),
+        unmanaged,
+      ),
     ).toEqual({ type: "suppress", reason: "child-conversation" });
     expect(resolveCodexTurnNotificationReply(turn({ lastAgentMessage: "  " }))).toBeNull();
   });
@@ -273,5 +281,20 @@ describe("codex thread notification policy", () => {
     expect(
       buildCodexRequestNotificationOccurrenceId("question", "remote-a", "thread-1", 73),
     ).not.toBe(buildCodexRequestNotificationOccurrenceId("question", "remote-a", "thread-1", "73"));
+  });
+});
+
+test("managed completions are quiet on every channel, with an explicit reason", () => {
+  expect(
+    decideCodexTurnNotification(turn(), {
+      managed: true,
+      turnMode: "always",
+      isAppForegrounded: false,
+      isConversationSeen: false,
+    }),
+  ).toEqual({ type: "suppress", reason: "managed" });
+  expect(decideCodexTurnOccurrence(turn(), { managed: true })).toEqual({
+    type: "suppress",
+    reason: "managed",
   });
 });

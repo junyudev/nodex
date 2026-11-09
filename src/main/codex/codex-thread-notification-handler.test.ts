@@ -61,7 +61,7 @@ function setup(
   let foregrounded = false;
   let presented = false;
   const focusTargetClient = vi.fn();
-  source.eventListener = makeCodexThreadNotificationHandler({
+  const handle = makeCodexThreadNotificationHandler({
     getSettings: () => settings,
     isAppForegrounded: () => foregrounded,
     isConversationSeen: () => presented,
@@ -77,8 +77,10 @@ function setup(
     },
     focusTargetClient,
   });
+  source.eventListener = handle;
   source.presentedListener = (conversationId) => dismissed.push({ conversationId });
   return {
+    handle,
     actions,
     dismissed,
     dispatched,
@@ -408,6 +410,7 @@ test("chat reminders respect settings and presentation and open their exact Sess
     type: "session-reminder" as const,
     hostId: "local",
     remindAt: "2026-11-02T09:00:00.000Z",
+    memberId: "member",
     conversation: conversation({ title: "Return here", runtimeSessionId: "chat" }),
   };
   runtime.source.eventListener!(event);
@@ -425,4 +428,47 @@ test("chat reminders respect settings and presentation and open their exact Sess
   const disabled = setup({ turnMode: "off", questionsEnabled: true });
   disabled.source.eventListener!(event);
   expect(disabled.shown).toHaveLength(0);
+});
+
+test("managed chat completion stays quiet while questions and approvals keep notifying", () => {
+  const runtime = setup({ turnMode: "always", questionsEnabled: true });
+  const event = {
+    type: "turn-completed" as const,
+    hostId: "local",
+    conversation: conversation(),
+    turnId: "managed:turn",
+    status: "completed" as const,
+    lastAgentMessage: "Done",
+    heartbeatAssistantMessage: null,
+    automationNotificationDecision: null,
+    hasPendingContinuation: false,
+  };
+  runtime.handle(event, { managed: true });
+  expect(runtime.shown).toHaveLength(0);
+  runtime.handle(event, { managed: false });
+  expect(runtime.shown.map((n) => n.kind)).toEqual(["turn-complete"]);
+  runtime.handle(
+    {
+      type: "user-input-requested",
+      hostId: "local",
+      conversation: conversation(),
+      turnId: "managed:turn",
+      requestId: "question",
+      questionCount: 1,
+    },
+    { managed: true },
+  );
+  runtime.handle(
+    {
+      type: "approval-requested",
+      hostId: "local",
+      conversation: conversation(),
+      turnId: "managed:turn",
+      requestId: "approval",
+      prompt: "Push?",
+    },
+    { managed: true },
+  );
+  expect(runtime.shown.map((n) => n.kind)).toEqual(["turn-complete", "question", "question"]);
+  expect(runtime.shown[2]?.id).toBe("approval-local-approval");
 });

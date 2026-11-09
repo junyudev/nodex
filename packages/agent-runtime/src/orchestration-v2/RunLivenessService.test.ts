@@ -239,6 +239,7 @@ const withLiveness = <A>(input: {
       getRunOutcome: () =>
         Effect.succeed({
           runId: run.id,
+          startedAt: null,
           status: run.status,
           completedAt: null,
           finalAssistantItemId: null,

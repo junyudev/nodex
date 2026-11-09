@@ -97,7 +97,7 @@ pub(super) fn read_session_sidebar_placements(
             "WITH requested(session_id) AS (SELECT DISTINCT value FROM json_each(?2)) \
              SELECT session.id, session.project_id, session.unread, session.remind_at, \
                CASE WHEN NOT EXISTS (SELECT 1 FROM project_session_side_chats side \
-                 WHERE side.session_id = session.id) THEN COALESCE( \
+                 WHERE side.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) THEN COALESCE( \
                  (SELECT item.section_id FROM workspace_sidebar_section_items item \
                    JOIN workspace_sidebar_sections section \
                      ON section.library_id = item.library_id AND section.section_id = item.section_id \
@@ -285,7 +285,7 @@ pub(super) fn read_section_item_window(
          LEFT JOIN project_sessions session ON session.id = item.session_id \
          LEFT JOIN project_session_threads link ON link.session_id = session.id \
          LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
-         WHERE item.section_id = ?1 AND item.library_id = ?2 AND section.lifecycle = 'active' \
+         WHERE item.section_id = ?1 AND item.library_id = ?2 AND section.lifecycle = 'active' AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = item.session_id) \
            AND ((project.id IS NOT NULL AND (?3 = 1 OR project.lifecycle <> 'archived')) \
              OR (session.id IS NOT NULL AND (?3 = 1 OR session.archived = 0))) \
            AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL) \
@@ -1024,7 +1024,7 @@ fn section_metrics(
         ProjectWorkspaceSidebarSectionKind::Custom => {
             let direct = connection.query_row(
                 "SELECT count(*) FROM workspace_sidebar_section_items \
-                 WHERE library_id = ?1 AND section_id = ?2",
+                 WHERE library_id = ?1 AND section_id = ?2 AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = workspace_sidebar_section_items.session_id)",
                 params![library_id, section_id],
                 |row| row.get::<_, i64>(0),
             )?;
@@ -1118,7 +1118,7 @@ fn effective_session_ids(
     connection
         .prepare(
             "SELECT session.id FROM project_sessions session \
-             WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND (?3 = 1 OR session.archived = 0) AND ( \
+             WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) AND (?3 = 1 OR session.archived = 0) AND ( \
                EXISTS (SELECT 1 FROM workspace_sidebar_section_items direct \
                  WHERE direct.library_id = ?1 AND direct.section_id = ?2 \
                    AND direct.session_id = session.id) \
@@ -1665,6 +1665,7 @@ mod tests {
             module,
             "side-chat",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                coordinator: false,
                 session_id: "session:side".into(),
                 project_id: Some("project:default".into()),
                 title: "Side".into(),

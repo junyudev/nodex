@@ -12,6 +12,7 @@ import type {
   ProjectSessionRenameInput,
   ProjectSessionUnreadInput,
   ProjectSessionReminderInput,
+  SessionManagedInput,
   ProjectSessionUpdateInput,
 } from "./types";
 import type {
@@ -190,3 +191,5 @@ export type BuiltinSidebarProjectPriorityCommandInput = OperationIdentifiedComma
   readonly expectedOrderRevision: string;
   readonly projectIds: readonly string[];
 }>;
+
+export type ProjectSessionManagedCommandInput = OperationIdentifiedCommand<SessionManagedInput>;

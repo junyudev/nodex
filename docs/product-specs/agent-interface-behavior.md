@@ -319,6 +319,8 @@ answers?, idempotencyKey? }`. Read requires `requestId`; respond requires both `
 read returns `{ requestId, questions }`, and respond returns `{ requestId, status: "answered",
 operationId }`. Live questions and asynchronous questions remain addressable through their
 original requests, including informational elicitation normalized to a user question.
+A pending asynchronous question remains readable and answerable by its request ID after
+its Run ends or later Runs start.
 Approvals, permission requests and MCP permission elicitations never appear in this tool
 and cannot be answered through it.
 

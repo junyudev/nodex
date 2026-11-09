@@ -9,7 +9,7 @@ import type {
   InboxItem,
   InboxPageStatus,
   InboxProposal,
-  InboxWindowFilter,
+  NodexEntryPurpose,
 } from "../../../shared/inbox";
 import type {
   InboxSuggestionPause,
@@ -35,8 +35,12 @@ export type InboxTriageModel =
     }
   | { readonly kind: "suggestion-failed"; readonly message: string }
   | { readonly kind: "dispatch-failed"; readonly proposal: InboxProposal; readonly message: string }
-  /** A scheduled task's waiting run whose task is gone, so it can no longer run. */
-  | { readonly kind: "firing-withdrawn" }
+  /** A post Nodex wrote about a chat or Page; it takes no advice. */
+  | {
+      readonly purpose: NodexEntryPurpose;
+      readonly subjectSessionId: string | null;
+      readonly subjectPageId: string | null;
+    }
   /** No advice has been asked for, or suggestions are off. */
   | { readonly kind: "undecided" }
   /** Handled; the message is on its way to History. */
@@ -124,7 +128,10 @@ export function inboxTriageModel(item: InboxItem, policy: InboxSuggestionPolicy)
     };
   }
   if (isInboxItemHandled(item)) return { kind: "handled" };
-  if (item.firing?.status === "withdrawn") return { kind: "firing-withdrawn" };
+  if (item.source.kind === "nodex")
+    return {
+      purpose: item.source.purpose,
+    };
   // A message waiting for automatic advice gets it only while suggestions run on their own;
   // otherwise Main releases it and it simply has none.
   const advising =
@@ -250,16 +257,26 @@ const KEPT = { icon: "keep", status: null, open: null, canReturn: true, done: nu
 const DONE = { icon: "done", label: "Done", status: null, open: null, canReturn: true } as const;
 const SKIPPED = { ...DONE, label: "Skipped" } as const;
 
-/** The task a scheduled run came from, as the message names it. */
-const firingTaskName = (item: InboxItem): string =>
-  item.source.kind === "scheduled_task" ? item.source.label : "scheduled task";
+const doneLabel = (item: InboxItem): string => {
+  return DONE.label;
+};
 
+
+/** Work Nodex started on the person's standing consent says so; the person's own does not. */
 const chatLabel = (
   type: "new_chat" | "send_to_chat",
   delivered: boolean,
   title: string,
   projectName: string | null,
+  byNodex: boolean,
 ) => {
+  if (byNodex) {
+    if (type === "send_to_chat")
+      return delivered ? `Nodex sent it to “${title}”` : `Nodex is sending it to “${title}”`;
+    return delivered
+      ? `Nodex started “${title}”`
+      : `Nodex is starting a chat in ${projectName ?? "no Project"}`;
+  }
   if (type === "send_to_chat") return delivered ? `Sent to “${title}”` : `Sending to “${title}”`;
   return delivered ? `Started “${title}”` : `Starting a chat in ${projectName ?? "no Project"}`;
 };
@@ -280,7 +297,8 @@ export function describeInboxOutcome(
   }
   if (item.outcome === "done") {
     return {
-      ...(item.firing?.status === "skipped" ? SKIPPED : DONE),
+      ...DONE,
+      label: doneLabel(item),
       done: null,
       inProgress: false,
     };
@@ -327,12 +345,15 @@ export function describeInboxOutcome(
       ? { kind: "session", sessionId: chat.sessionId }
       : null;
     const done = item.state === "done";
-    const label = chatLabel(
-      proposal.action.type,
-      proposal.state === "completed",
-      chat?.displayTitle ?? "chat",
-      proposal.targetProjectName,
-    );
+    const label = proposal.answeredQuestion
+      ? `${proposal.state === "completed" ? "Answered" : "Answering"} “${chat?.displayTitle ?? "chat"}”’s question`
+      : chatLabel(
+          proposal.action.type,
+          proposal.state === "completed",
+          chat?.displayTitle ?? "chat",
+          proposal.targetProjectName,
+          proposal.confirmedBy === "nodex",
+        );
     if (proposal.state === "dispatching") {
       return {
         icon: "pending",
@@ -428,7 +449,14 @@ export function describeInboxDecision(item: InboxItem, decision: InboxDecision):
     case "chat":
       return {
         icon: "pending",
-        label: chatLabel(decision.type, false, decision.chatTitle ?? "chat", decision.projectName),
+        // A decision made in this window is the person's own.
+        label: chatLabel(
+          decision.type,
+          false,
+          decision.chatTitle ?? "chat",
+          decision.projectName,
+          false,
+        ),
         status: null,
         open: { kind: "session", sessionId: decision.sessionId },
         canReturn: false,
@@ -670,14 +698,6 @@ export function inboxBuriedImportant(
   const index = important.findIndex((message) => !inView(message.pageId));
   const message = important[index];
   return message ? { message, position: index + 1, total } : null;
-}
-
-/** A message's time when it was sent today, else its day. */
-export function formatInboxWhen(submittedAt: string, now: Date): string {
-  const date = new Date(submittedAt);
-  return startOfDay(date).getTime() === startOfDay(now).getTime()
-    ? formatInboxTime(submittedAt)
-    : inboxDayLabel(date, now);
 }
 
 /** An example of what routing preferences say, wherever they are written. */

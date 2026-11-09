@@ -33,6 +33,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   bodyEditable: true,
   submittedAt: "2026-10-11T10:00:00.000Z",
   source: { kind: "user" },
+  replyToPageId: null,
   kind: null,
   important: false,
   state: "open",
@@ -54,6 +55,8 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
   pageIds: ["page:1"],
   basis: [{ pageId: "page:1", contentHash: "content:1" }],
   outdated: false,
+  explicitRequest: false,
+  confirmedBy: null,
   action: {
     type: "new_chat",
     additions: [],
@@ -296,6 +299,30 @@ describe("describeInboxOutcome", () => {
         }),
       ).open,
     ).toEqual({ kind: "session", sessionId: "session:1" });
+  });
+
+  it("says Nodex started work it started on the person's standing consent", () => {
+    expect(
+      describeInboxOutcome(
+        item({
+          outcome: "chat",
+          proposal: proposal({ state: "completed", chat, confirmedBy: "nodex" }),
+        }),
+      ).label,
+    ).toBe("Nodex started “Homepage positioning”");
+    expect(
+      describeInboxOutcome(
+        item({ proposal: proposal({ state: "dispatching", confirmedBy: "nodex" }) }),
+      ).label,
+    ).toBe("Nodex is starting a chat in Nodex");
+    expect(
+      describeInboxOutcome(
+        item({
+          outcome: "chat",
+          proposal: proposal({ state: "completed", chat, confirmedBy: "user" }),
+        }),
+      ).label,
+    ).toBe("Started “Homepage positioning”");
   });
 
   it("names where a handled message went and how to get back to it", () => {

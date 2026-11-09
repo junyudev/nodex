@@ -1,15 +1,7 @@
-import { sessionControlSchemas } from "../../shared/nodex-app-tools/session-control-schemas";
-import { makeWithCapture as makeSessionControls } from "../app-tools/SessionControlAppTools";
+import type { AppToolInvocation } from "../app-tools/AppToolInvocationInbox";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { AgentHostTool } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
-import { sidebarSchemas } from "../../shared/nodex-app-tools/sidebar-schemas";
-import { sessionSchemas } from "../../shared/nodex-app-tools/session-schemas";
-import { sessionObservationSchemas } from "../../shared/nodex-app-tools/session-observation-schemas";
-import { accountSchemas } from "../../shared/nodex-app-tools/account-schemas";
-import { workbenchObservationSchemas } from "../../shared/nodex-app-tools/workbench-observation-schemas";
-import { workbenchControlSchemas } from "../../shared/nodex-app-tools/workbench-control-schemas";
-import { sessionPresentationSchemas } from "../../shared/nodex-app-tools/session-presentation-schemas";
 import { makeWithCapture as makeAccount } from "../app-tools/AccountAppTools";
 import { makeWithCapture as makeTerminal } from "../app-tools/TerminalAppTools";
 import { makeWithCapture as makePlugin } from "../app-tools/PluginAppTools";
@@ -26,41 +18,8 @@ import { SessionObservation } from "../app-tools/SessionObservation";
 import { SessionWaiter, make as makeWaiter } from "../app-tools/SessionWaiter";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { GitWorkerRuntime } from "../host-runtime/GitWorkerRuntime";
-import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
-import { isContentTool } from "../../shared/nodex-app-tools/content-catalog";
-import {
-  captureHostedAppToolAuthority,
-  readHostedAppToolSessionContext,
-  type AppToolCaller,
-} from "../app-tools/AppToolCaller";
-import { makeWithCapture as makeContentTools } from "../app-tools/ContentAppTools";
-import { makeWithCapture as makeContentQueries } from "../app-tools/ContentQueryAppTools";
+import { captureHostedAppToolAuthority, type AppToolCaller } from "../app-tools/AppToolCaller";
 import { toolFailure, toolSuccess } from "../app-tools/app-tool-result";
-import { WorkspaceDependencyRuntime } from "../host-runtime/WorkspaceDependencyRuntime";
-
-const queries = new Set(["query_content", "describe_content_schema"]);
-export const runtimeHostToolCatalog: ReadonlyArray<AgentHostTool> = appToolCatalog.map((tool) => ({
-  name: tool.name,
-  ...(tool.description
-    ? {
-        description:
-          tool.name === "create_session"
-            ? "Create and start a Session using the calling Session's provider and model unless model is supplied. Choose the Project and local or worktree environment explicitly. Reuse operationId with identical arguments for retries."
-            : tool.name === "fork_session"
-              ? "Fork captured conversation history into an independent Session in the source Project. Omit sessionId to fork the exact calling Thread, including an app-owned child. Choose same-directory or worktree explicitly; reuse operationId for retries."
-              : tool.description,
-      }
-    : {}),
-  inputSchema: tool.inputSchema,
-  ...(tool.annotations ? { annotations: { ...tool.annotations } } : {}),
-}));
-const names = new Set(runtimeHostToolCatalog.map((tool) => tool.name));
-
-export type AgentRuntimeHostToolExecutor = (
-  caller: AppToolCaller,
-  name: string,
-  input: Record<string, unknown>,
-) => Effect.Effect<CallToolResult>;
 
 /** Application content semantics are shared; execution identity comes from the Runtime Host. */
 export const make = Effect.gen(function* () {
@@ -74,8 +33,6 @@ export const make = Effect.gen(function* () {
   const plugin = yield* makePlugin(captureHostedAppToolAuthority);
   const workspaceTools = yield* makeWorkspace(captureHostedAppToolAuthority);
   const workbench = yield* makeWorkbench(captureHostedAppToolAuthority);
-  const automation = yield* makeAutomation(captureHostedAppToolAuthority);
-  const inbox = yield* makeInbox(captureHostedAppToolAuthority);
   const observations = yield* makeObservation;
   const waiter = yield* makeWaiter.pipe(Effect.provideService(SessionObservation, observations));
   const session = yield* makeSession(captureHostedAppToolAuthority).pipe(
@@ -86,42 +43,8 @@ export const make = Effect.gen(function* () {
   const sessionControls = yield* makeSessionControls(captureHostedAppToolAuthority);
   const handoff = yield* makeHandoff(captureHostedAppToolAuthority);
   const handoffStatus = yield* makeHandoffStatus(captureHostedAppToolAuthority);
-  return Effect.fn("AgentRuntimeHostTools.execute")(function* (
-    caller: AppToolCaller,
-    name: string,
-    input: Record<string, unknown>,
-  ) {
-    if (!names.has(name)) return toolFailure("tool_unavailable");
-    if (!(yield* captureHostedAppToolAuthority(caller)))
-      return toolFailure("authority_unavailable");
-    const invocation = { caller, name, arguments: input };
-    if (isContentTool(name)) return yield* content(invocation);
-    if (queries.has(name)) return yield* query(invocation);
-    if (name === "read_session_terminal") return yield* terminal(invocation);
-    if (name === "uninstall_plugin") return yield* plugin(invocation);
-    if (Object.hasOwn(sessionControlSchemas, name)) return yield* sessionControls(invocation);
-    if (Object.hasOwn(accountSchemas, name)) return yield* account(invocation);
-    if (Object.hasOwn(sidebarSchemas, name) || Object.hasOwn(sessionSchemas, name))
-      return yield* workspaceTools(invocation);
-    if (Object.hasOwn(sessionObservationSchemas, name)) return yield* session(invocation);
-    if (
-      Object.hasOwn(workbenchObservationSchemas, name) ||
-      Object.hasOwn(workbenchControlSchemas, name) ||
-      Object.hasOwn(sessionPresentationSchemas, name)
-    )
-      return yield* workbench(invocation);
-    if (name === "automation_update") return yield* automation(invocation);
-    if (name === "send_to_inbox") return yield* inbox(invocation);
-    if (name === "handoff_session") return yield* handoff(invocation);
-    if (name === "get_handoff_status") return yield* handoffStatus(invocation);
-    if (
-      name === "create_session" ||
-      name === "fork_session" ||
-      name === "merge_session_back" ||
-      name === "send_message_to_session" ||
-      name === "session_question"
-    )
-      return yield* commands(invocation);
+  const basic = Effect.fn("AgentRuntimeHostTools.basic")(function* (invocation: AppToolInvocation) {
+    const { caller, name, arguments: input } = invocation;
     if (Object.keys(input).length !== 0) return toolFailure("invalid_arguments");
     if (name === "get_app_capabilities")
       return toolSuccess({
@@ -166,8 +89,33 @@ export const make = Effect.gen(function* () {
       );
       return caller.isActive() ? toolSuccess({ projects }) : toolFailure("call_withdrawn");
     }
-    if (name === "load_workspace_dependencies") return toolSuccess(yield* dependencies.read);
-    const context = readHostedAppToolSessionContext(caller);
-    return context ? toolSuccess({ ...context }) : toolFailure("session_unavailable");
+    return toolFailure("tool_unavailable");
+  });
+  // Exhaustiveness ties advertisement to execution: a new group requires its executor here.
+  const executors = {
+    terminal,
+    plugin,
+    sessionControls,
+    account,
+    workspace: workspaceTools,
+    session,
+    workbench,
+    handoff,
+    handoffStatus,
+    sessionCommands: commands,
+    basic,
+  } satisfies Record<
+    keyof typeof appToolGroups,
+    (input: AppToolInvocation) => Effect.Effect<CallToolResult>
+  >;
+  return Effect.fn("AgentRuntimeHostTools.execute")(function* (
+    caller: AppToolCaller,
+    name: string,
+    input: Record<string, unknown>,
+  ) {
+    if (!group) return toolFailure("tool_unavailable");
+    if (!(yield* captureHostedAppToolAuthority(caller)))
+      return toolFailure("authority_unavailable");
+    return yield* executors[group]({ caller, name, arguments: input });
   }) satisfies AgentRuntimeHostToolExecutor;
 });

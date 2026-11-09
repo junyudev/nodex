@@ -44,7 +44,7 @@ code fence is removed; actual language-tagged code Blocks retain their fences.
 
 Generation is independent of every chat and uses the Runtime's existing ephemeral Codex or
 Claude utility execution and configured authentication, including available Nodex Account models.
-It prefers the Inbox suggestion Agent and its explicit suggestion model when available. Otherwise
+It prefers the Agent and model Nodex runs on, chosen in Inbox settings, when available. Otherwise
 it chooses an available economical model: GPT-6 Luna for Codex, Haiku then Sonnet for Claude,
 then the existing Inbox utility default. Unavailable or signed-out providers are excluded; another
 usable utility provider may be selected. Reasoning uses the lightest offered `minimal` or `low`

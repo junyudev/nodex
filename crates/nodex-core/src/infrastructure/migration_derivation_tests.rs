@@ -163,9 +163,13 @@ fn migration_normalizes_legacy_cleanup_time_without_changing_its_instant() {
     let profile = nodex_platform::test_support::tempdir().unwrap();
     let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
     prepare_profile_store(&mut connection, profile.path()).unwrap();
-    // v202 changes the timestamp contract without changing the SQL schema.
-    rewind_v203_to_v202(&connection).unwrap();
-    connection.pragma_update(None, "user_version", 201).unwrap();
+    with_schema_rebuild_transaction(&mut connection, |transaction| {
+        rewind_current_to_v202(transaction)?;
+        // v202 changes the timestamp contract without changing the SQL schema.
+        transaction.pragma_update(None, "user_version", 201)?;
+        Ok(())
+    })
+    .unwrap();
     connection
         .execute(
             "INSERT INTO nodex_agent_runtime_execution_cleanups

@@ -8,8 +8,12 @@
 //! `DispatchInboxEntries` can turn it into dispatch work, and confirmed chat
 //! work is delivered by the Desktop Host through the dispatch outbox.
 
+#[path = "inbox_nodex.rs"]
+pub(super) mod nodex;
 #[path = "inbox_reliable.rs"]
 pub(super) mod reliable;
+#[path = "inbox_reply.rs"]
+mod reply;
 #[path = "inbox_scheduled.rs"]
 pub(crate) mod scheduled;
 pub(super) use reliable::{
@@ -73,7 +77,7 @@ pub(super) struct InboxHome {
 }
 
 /// Dispatch suggestions and delivery are Desktop Host responsibilities.
-fn require_host(context: &BoundModuleContext) -> Result<(), StoreError> {
+pub(super) fn require_host(context: &BoundModuleContext) -> Result<(), StoreError> {
     if matches!(
         context.adapter,
         AdapterKind::ElectronHost | AdapterKind::Test
@@ -499,6 +503,7 @@ fn plain_text(text: &str) -> Inline {
 #[derive(Default)]
 struct EntrySource {
     kind: &'static str,
+    reply_to_page_id: Option<String>,
     automation_id: Option<String>,
     dispatch_id: Option<String>,
     session_id: Option<String>,
@@ -688,6 +693,7 @@ fn agent_source(
         budget_key: Some(budget_key),
         project_id: authority.actor_project_id.clone(),
         label: Some(truncate_chars(label.trim(), MAX_SOURCE_LABEL_CHARS)),
+        ..EntrySource::default()
     })
 }
 
@@ -705,6 +711,7 @@ pub(super) fn send_message(
     body: &str,
     title: Option<&str>,
     project_id: Option<&str>,
+    reply_to_page_id: Option<&str>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("page_id", page_id)?;
     validate_id("document_id", document_id)?;
@@ -719,6 +726,13 @@ pub(super) fn send_message(
     {
         source.label = Some(COMMAND_LINE_SOURCE_LABEL.to_owned());
     }
+    let reply_kind = nodex::require_reply(
+        connection,
+        library_id,
+        reply_to_page_id,
+        inbox_project.as_deref(),
+    )?;
+    source.reply_to_page_id = reply_to_page_id.map(str::to_owned);
     let now = sqlite_now(connection)?;
     run_mutation(
         connection,
@@ -728,7 +742,7 @@ pub(super) fn send_message(
         request_hash,
         &now,
         |scope| {
-            capture_message_in_scope(
+            let mut effects = capture_message_in_scope(
                 connection,
                 library_id,
                 context,
@@ -741,7 +755,11 @@ pub(super) fn send_message(
                 &source,
                 inbox_project.as_deref(),
                 &now,
-            )
+            )?;
+                nodex::finish_reply(connection, library_id, reply_to_page_id, &now)?;
+                effects.page_ids.extend(reply_to_page_id.map(str::to_owned));
+            }
+            Ok(effects)
         },
     )
 }
@@ -821,6 +839,7 @@ fn capture_message_in_scope(
                     source.dispatch_id,
                     message.provisional_title,
                     inbox_project,
+                    source.reply_to_page_id,
                 ],
             )?;
     let mut block_ids = vec![created_page.page_create.page_id.clone()];
@@ -1379,7 +1398,7 @@ fn finish_proposal(
 ) -> Result<(), StoreError> {
     connection.execute(
         "UPDATE inbox_proposals SET state = 'completed', action_json = ?2, \
-           revision = revision + 1, confirmed_at = ?3, updated_at = ?3 \
+           revision = revision + 1, confirmed_at = ?3, confirmed_by='user', updated_at = ?3 \
          WHERE proposal_id = ?1",
         params![proposal_id, action_json, now],
     )?;
@@ -1407,9 +1426,10 @@ fn start_dispatch(
     thread_id: Option<&str>,
     now: &str,
 ) -> Result<(), StoreError> {
+    super::coordinator::set_managed(connection, session_id, true, now)?;
     connection.execute(
         "UPDATE inbox_proposals SET state = 'dispatching', action_json = ?2, \
-           dispatch_session_id = ?3, dispatch_thread_id = ?4, confirmed_at = ?5, \
+           dispatch_session_id = ?3, dispatch_thread_id = ?4, confirmed_at = ?5, confirmed_by='user', \
            failure_message = NULL, revision = revision + 1, updated_at = ?5 \
          WHERE proposal_id = ?1",
         params![proposal_id, action_json, session_id, thread_id, now],

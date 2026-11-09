@@ -13,6 +13,8 @@ use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
 };
 use nodex_core_contracts::inbox::{
+};
+use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxChat, ProjectWorkspaceInboxContextProject,
     ProjectWorkspaceInboxContextProposal, ProjectWorkspaceInboxContextSession,
     ProjectWorkspaceInboxCounts, ProjectWorkspaceInboxDispatchAction,
@@ -196,13 +198,6 @@ pub(super) fn read_counts(
     Ok(counts)
 }
 
-fn filter_predicate(filter: ProjectWorkspaceInboxWindowFilter) -> String {
-    match filter {
-        ProjectWorkspaceInboxWindowFilter::Inbox => IN_INBOX.to_owned(),
-        ProjectWorkspaceInboxWindowFilter::Processed => format!("NOT {IN_INBOX}"),
-    }
-}
-
 /// One pinned read shares content evidence and resolved advice across every group member.
 #[derive(Default)]
 struct InboxReadCache {
@@ -335,6 +330,7 @@ pub(super) fn read_window(
 }
 
 struct EntryRow {
+    reply_to_page_id: Option<String>,
     page_status: Option<ProjectWorkspaceInboxPageStatus>,
     seq: i64,
     submitted_at: String,
@@ -364,6 +360,7 @@ struct EntryRow {
 
 /// Admit a small complete Markdown or bounded text prefix in SQLite before decoding.
 /// Byte lengths read column metadata; oversized documents never enter the Markdown parser.
+/// Historical content migrations reuse this read; current Inbox disposition belongs in `read_item`.
 fn read_entry(
     connection: &Connection,
     page_id: &str,
@@ -572,9 +569,7 @@ fn bounded_utf8(value: &str, maximum: usize) -> (String, bool) {
     (value[..boundary].to_owned(), true)
 }
 
-fn source(row: &EntryRow) -> ProjectWorkspaceInboxSource {
-    match row.source_kind.as_str() {
-        "scheduled_task" => ProjectWorkspaceInboxSource::ScheduledTask {
+    Ok(match row.source_kind.as_str() {
             automation_id: row.source_automation_id.clone().unwrap_or_default(),
             dispatch_id: row.source_dispatch_id.clone().unwrap_or_default(),
             project_id: row.source_project_id.clone(),
@@ -597,17 +592,17 @@ fn source(row: &EntryRow) -> ProjectWorkspaceInboxSource {
                 .clone()
                 .unwrap_or_else(|| super::inbox::COMMAND_LINE_SOURCE_LABEL.to_owned()),
         },
-        _ => ProjectWorkspaceInboxSource::User,
-    }
+        "user" => ProjectWorkspaceInboxSource::User,
+        _ => return Err(corrupt("Invalid Inbox source kind")),
+    })
 }
 
-pub(super) fn read_message(
+pub(super) fn read_single_entry(
     connection: &Connection,
-    library_id: &str,
-    page_id: &str,
-) -> Result<ProjectWorkspaceInboxItem, StoreError> {
-    super::session_mutation::validate_id("page_id", page_id)?;
-    let project_id = connection
+    library: &str,
+    id: &str,
+) -> Result<Option<ProjectWorkspaceInboxItem>, StoreError> {
+    super::session_mutation::validate_id("page_id", id)?;
         .query_row(
             "SELECT entry.scope_project_id FROM inbox_entries entry \
              JOIN blocks block ON block.id = entry.page_id AND block.lifecycle = 'active' \
@@ -615,33 +610,27 @@ pub(super) fn read_message(
             params![library_id, page_id],
             |row| row.get::<_, Option<String>>(0),
         )
-        .optional()?
-        .ok_or_else(|| super::inbox::not_found("Inbox message is unavailable"))?;
-    let home = scope_home(connection, library_id, project_id.as_deref())?;
-    let (mut item, _) = read_item(
+    let project=connection.query_row("SELECT entry.scope_project_id FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.page_id=?1 AND entry.library_id=?2",params![id,library],|r|r.get::<_,Option<String>>(0)).optional()?;
+    let Some(project) = project else {
+        return Ok(None);
+    };
+    let home = match project {
+        Some(project) => super::inbox::project_home(connection, library, &project)?,
+        None => super::inbox::read_registry(connection, library)?,
+    };
+    read_item(
         connection,
-        library_id,
+        library,
         home.as_ref(),
-        page_id,
+        id,
         &mut InboxReadCache::default(),
-    )?;
-    if item.body_truncated {
-        // Keep room for the view model and JSON string escaping on a remote channel.
-        let markdown = connection.query_row(
-            "SELECT CASE WHEN octet_length(body.markdown) <= 512 * 1024 THEN body.markdown END \
-             FROM pages page LEFT JOIN document_materializations body ON body.document_id = page.document_id \
-             WHERE page.block_id = ?1",
-            [page_id],
-            |row| row.get::<_, Option<String>>(0),
-        )?;
-        if let Some(markdown) = markdown {
-            item.body = markdown;
-            item.body_truncated = false;
+    )
         }
     }
     Ok(item)
 }
 
+/// Current-schema Inbox/History projection; content migrations use `read_entry` instead.
 /// `home` is the Database of the Inbox the message belongs to.
 fn read_item(
     connection: &Connection,
@@ -659,15 +648,12 @@ fn read_item(
         .map(|proposal_id| cache.proposal(connection, library_id, proposal_id))
         .transpose()?
         .flatten();
+        [page_id],
+    )?;
     Ok((
         ProjectWorkspaceInboxItem {
             basis: cache.basis(connection, page_id)?,
-            outcome: connection
-                .query_row(
-                    "SELECT outcome FROM inbox_entries WHERE page_id=?1",
-                    [page_id],
-                    |row| row.get::<_, Option<String>>(0),
-                )?
+            outcome: outcome
                 .map(|value| {
                     serde_json::from_value(serde_json::Value::String(value))
                         .map_err(|_| corrupt("Invalid Inbox outcome"))
@@ -681,7 +667,7 @@ fn read_item(
             body,
             body_truncated,
             submitted_at: row.submitted_at.clone(),
-            source: source(&row),
+            reply_to_page_id: row.reply_to_page_id.clone(),
             kind: parse_kind(row.kind.as_deref())?,
             important: connection.query_row(
                 "SELECT important FROM inbox_entries WHERE page_id=?1",
@@ -733,6 +719,26 @@ fn location(
         )
         .optional()?
         .unwrap_or(ProjectWorkspaceInboxLocation::Other))
+}
+
+pub(super) fn automatic_dispatches(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library: &str,
+    limit: u32,
+) -> Result<Vec<ProjectWorkspaceInboxProposal>, StoreError> {
+    super::inbox::require_host(context)?;
+    let mut cache = InboxReadCache::default();
+    ids.into_iter()
+        .map(|id| read_proposal(connection, library, &id, &mut cache))
+        .collect::<Result<Vec<_>, _>>()
+        .map(|items| {
+            items
+                .into_iter()
+                .flatten()
+                .filter(|proposal| !proposal.outdated)
+                .collect()
+        })
 }
 
 fn read_proposal(
@@ -850,6 +856,10 @@ fn read_proposal(
         .collect::<Result<Vec<_>, _>>()?;
     let outdated = basis.iter().any(|current| !written.basis.contains(current));
     Ok(Some(ProjectWorkspaceInboxProposal {
+        answered_question: super::inbox::reliable::read_handoff_json::<
+            nodex_core_contracts::inbox::InboxQuestionResponse,
+        >(connection, proposal_id, "question_response_json")?
+        .is_some(),
         failure_kind: connection
             .query_row(
                 "SELECT failure_kind FROM inbox_proposals WHERE proposal_id=?1",
@@ -863,6 +873,22 @@ fn read_proposal(
             .transpose()?,
         basis,
         outdated,
+        explicit_request: connection.query_row(
+            "SELECT explicit_request FROM inbox_proposals WHERE proposal_id=?1",
+            [proposal_id],
+            |r| r.get(0),
+        )?,
+        confirmed_by: connection
+            .query_row(
+                "SELECT confirmed_by FROM inbox_proposals WHERE proposal_id=?1",
+                [proposal_id],
+                |r| r.get::<_, Option<String>>(0),
+            )?
+            .map(|v| {
+                serde_json::from_value::<InboxConfirmedBy>(serde_json::Value::String(v))
+                    .map_err(|_| corrupt("Invalid confirmation author"))
+            })
+            .transpose()?,
         proposal_id: proposal_id.to_owned(),
         revision,
         origin: if origin == "schedule" {
@@ -1012,7 +1038,14 @@ pub(crate) fn frozen_input_for_content(
         return Err(invalid("Inbox input exceeds the complete 64 KiB bound"));
     }
     let row = read_entry(connection, page_id, MAX_AGENT_BODY_BYTES)?;
+    let reply_to = row
+        .reply_to_page_id
+        .as_deref()
+        .map(|id| -> Result<InboxReplyContext, StoreError> {
+        })
+        .transpose()?;
     let input = ProjectWorkspaceInboxSuggestionInput {
+        reply_to,
         page_id: page_id.to_owned(),
         page_key: crate::database::current_page_key_for_page(connection, library_id, page_id)?,
         body: agent_markdown(&content, &image_numbers(&content, image_offset), usize::MAX)?,
@@ -1115,13 +1148,8 @@ pub(super) fn read_dispatch_context(
     let mut entries = Vec::with_capacity(page_ids.len());
     for page_id in page_ids {
         super::session_mutation::validate_id("page_id", page_id)?;
-        let exists = connection.query_row(
-            "SELECT EXISTS(SELECT 1 FROM inbox_entries WHERE page_id = ?1 AND library_id = ?2)",
-            params![page_id, library_id],
-            |row| row.get::<_, bool>(0),
-        )?;
-        if !exists {
-            return Err(super::inbox::not_found("Inbox entry is unavailable"));
+        }
+    }
         }
     }
     entries.extend(
@@ -1208,7 +1236,7 @@ pub(super) fn dispatch_context_for_inputs(
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
              LEFT JOIN projects project ON project.id = session.project_id \
-             WHERE session.archived = 0 AND COALESCE(thread.archived, 0) = 0 \
+             WHERE NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id=session.id) AND session.archived = 0 AND COALESCE(thread.archived, 0) = 0 \
                AND (binding.runtime_thread_id IS NOT NULL OR thread.thread_id IS NOT NULL) \
                AND (session.project_id IS NULL OR (project.library_id = ?1 \
                  AND project.lifecycle = 'active')) \
@@ -1356,6 +1384,11 @@ pub(super) fn read_dispatch_outbox(
             }
         }
         let item = ProjectWorkspaceInboxDispatchWork {
+            question_response: super::inbox::reliable::read_handoff_json(
+                connection,
+                &proposal_id,
+                "question_response_json",
+            )?,
             final_text: connection
                 .query_row(
                     "SELECT final_text FROM inbox_handoffs WHERE proposal_id=?1",
@@ -1493,7 +1526,7 @@ pub(super) fn read_chat_targets(
             Ok(coordinate.stable_id)
         })
         .transpose()?;
-    let rows=connection.prepare("SELECT session.id FROM project_sessions session LEFT JOIN projects project ON project.id=session.project_id LEFT JOIN project_session_execution_bindings binding ON binding.session_id=session.id LEFT JOIN project_session_threads link ON link.session_id=session.id LEFT JOIN codex_threads thread ON thread.thread_id=link.thread_id WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id=session.id) AND session.archived=0 AND (session.project_id IS NULL OR (project.library_id=?1 AND project.lifecycle='active')) AND (?2 IS NULL OR session.project_id=?2) AND (binding.runtime_thread_id IS NOT NULL OR thread.thread_id IS NOT NULL) AND (?3='' OR instr(lower(COALESCE(thread.thread_name,'') || ' ' || session.no_thread_fallback_title || ' ' || COALESCE(thread.thread_preview,'')),?3)>0) AND (?4 IS NULL OR session.id>?4) ORDER BY session.id LIMIT ?5")?.query_map(params![library_id,project_id,query,after,normalized.first as i64+1],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let rows=connection.prepare("SELECT session.id FROM project_sessions session LEFT JOIN projects project ON project.id=session.project_id LEFT JOIN project_session_execution_bindings binding ON binding.session_id=session.id LEFT JOIN project_session_threads link ON link.session_id=session.id LEFT JOIN codex_threads thread ON thread.thread_id=link.thread_id WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id=session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) AND session.archived=0 AND (session.project_id IS NULL OR (project.library_id=?1 AND project.lifecycle='active')) AND (?2 IS NULL OR session.project_id=?2) AND (binding.runtime_thread_id IS NOT NULL OR thread.thread_id IS NOT NULL) AND (?3='' OR instr(lower(COALESCE(thread.thread_name,'') || ' ' || session.no_thread_fallback_title || ' ' || COALESCE(thread.thread_preview,'')),?3)>0) AND (?4 IS NULL OR session.id>?4) ORDER BY session.id LIMIT ?5")?.query_map(params![library_id,project_id,query,after,normalized.first as i64+1],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
     let candidates = rows
         .into_iter()
         .map(|id| {
@@ -1524,6 +1557,17 @@ pub(super) fn read_chat_targets(
     )
 }
 
+    if item.body_truncated {
+        // Keep room for the view model and JSON string escaping on a remote channel.
+        let markdown = connection.query_row(
+            "SELECT CASE WHEN octet_length(body.markdown) <= 512 * 1024 THEN body.markdown END \
+             FROM pages page LEFT JOIN document_materializations body ON body.document_id = page.document_id \
+             WHERE page.block_id = ?1",
+            [page_id],
+            |row| row.get::<_, Option<String>>(0),
+        if let Some(markdown) = markdown {
+            item.body = markdown;
+            item.body_truncated = false;
 #[cfg(test)]
 mod tests {
     use super::super::test_support::{apply, seeded_workspace};
@@ -1537,6 +1581,7 @@ mod tests {
             &workspace.module,
             "large-capture",
             ProjectWorkspaceIntent::SendInboxMessage {
+                reply_to_page_id: None,
                 expected_store_epoch: None,
                 page_id: "page:large".into(),
                 document_id: "document:large".into(),

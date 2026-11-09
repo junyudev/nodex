@@ -98,17 +98,35 @@ export function buildBoundedThreadStreamSnapshot(input: {
   readonly requiredRunId?: string | undefined;
   readonly requiredRequestId?: string | undefined;
 }): ThreadSnapshotStreamItem {
+  const projection = projectThreadProjectionForWire(input.projection);
   const bounded = buildBoundedThreadProjection({
     snapshotSequence: input.snapshotSequence,
-    projection: projectThreadProjectionForWire(input.projection),
+    projection,
     hasEarlierHistory: input.hasEarlierHistory,
     latestLocalTurnOrdinal: input.latestLocalTurnOrdinal,
   });
+  // An explicitly addressed card is a control dependency, independent of visible history.
+  const requestItem = projection.turnItems.find(
+    (item) =>
+      (item.type === "approval_request" || item.type === "user_input_request") &&
+      item.requestId === input.requiredRequestId,
+  );
+  const retained =
+    requestItem === undefined ||
+    bounded.projection.turnItems.some((item) => item.id === requestItem.id)
+      ? bounded
+      : {
+          ...bounded,
+          projection: {
+            ...bounded.projection,
+            turnItems: [...bounded.projection.turnItems, requestItem],
+          },
+        };
   return {
     kind: "snapshot",
     snapshotSequence: input.snapshotSequence,
     ...boundedSnapshotResponseFields({
-      bounded,
+      bounded: retained,
       compactTurnItems: input.compactTurnItems === true,
       requiredRunId: input.requiredRunId,
       requiredRequestId: input.requiredRequestId,

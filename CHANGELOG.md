@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Nodex now coordinates your chats. One long-lived Nodex conversation routes every Inbox message knowing what is already running, watches the chats it starts, and keeps your Inbox focused on waiting messages and Pages waiting for you. Nodex adds a note when a Page needs more context, and one notification follows each episode. A chat can return a misrouted message with a reason for Nodex to route again. Reply to a Page waiting for you and your words go straight to its active chat, or answer the question it asked; open Nodex from the Inbox header to talk to it directly, and turn on Start my requests to let it start what you clearly ask for without a click. Work advances through Triage, Todo, In Progress and In Review as it starts and reports; your later Status choices take precedence. Accept reviewed work with `nodex page accept`; canceled work retires without releasing its dependents.
 ### Changed
 
 - Clicking a file attached in a Page now opens it, instead of a small details popup. A file saved in the Page opens in a tab beside the Page, just like from the Page's Files list, so Markdown renders, HTML reports show as pages, and images, PDFs and media play. A linked file opens in Files. Right-click a file for Open in new tab, Save… and Copy reference, and press Enter on a selected file to open it. In Page history and other read-only previews, a file opens in a viewer that shows the version that was captured.

@@ -218,3 +218,8 @@ export const ProjectSessionThreadLinkInputSchema = z.object({
   updatedAt: z.number().finite().optional(),
   recencyAt: z.number().finite().optional(),
 }) satisfies z.ZodType<ProjectSessionThreadLinkInput>;
+
+export const SessionManagedInputSchema = z.strictObject({
+  sessionId: z.string().trim().min(1),
+  managed: z.boolean(),
+}) satisfies z.ZodType<import("../types").SessionManagedInput>;

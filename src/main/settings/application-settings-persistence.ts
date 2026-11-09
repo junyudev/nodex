@@ -159,6 +159,7 @@ interface ServerTomlConfig {
   external_browser_link_shortcut?: LinkOpeningSettings["externalBrowserLinkShortcut"];
   mobile_access_enabled?: boolean;
   inbox_suggestions?: InboxSuggestionMode;
+  inbox_dispatch_mode?: InboxSettings["dispatchMode"];
   /** Read only to migrate the former boolean preference. */
   inbox_suggestions_enabled?: boolean;
   inbox_suggestion_agent?: string;
@@ -1297,6 +1298,7 @@ const inboxAgentChoiceFromConfig = (
 function inboxSettingsFromConfig(config: ServerTomlConfig): InboxSettings {
   return {
     suggestions: inboxSuggestionModeFromConfig(config),
+    dispatchMode: config.inbox_dispatch_mode === "act_on_requests" ? "act_on_requests" : "suggest",
     suggestionAgent: inboxAgentChoiceFromConfig(
       config.inbox_suggestion_agent,
       {
@@ -1352,6 +1354,7 @@ export function updateInboxSettings(
   const server: ServerTomlConfig = {
     ...loadProfileServerTomlConfig(source),
     inbox_suggestions: next.suggestions,
+    inbox_dispatch_mode: next.dispatchMode,
     inbox_suggestion_agent: encodeInboxAgentBinding(next.suggestionAgent),
     inbox_suggestion_concurrency: next.suggestionConcurrency,
     inbox_instructions: next.instructions,

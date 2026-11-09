@@ -374,6 +374,7 @@ fn runtime_launch_hands_off_initial_pages_for_new_and_existing_sessions() {
         let page = create_page(&workspace, &format!("runtime-page-{session_id}"), false);
         let before = status(&workspace, &page).unwrap();
         let intent = ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            coordinator: false,
             session_id: session_id.into(),
             project_id: Some(PROJECT.into()),
             title: "Work".into(),

@@ -17,6 +17,25 @@ import {
 } from "./database-context-menu-performance";
 
 class PerformanceSeedPort implements ScenarioSeedPort {
+  async createCoordinatorSession(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+  async setSessionManaged(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+  async reportPageWork(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+  async settleCoordinatorSuggestion(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+  async confirmInboxRequestByNodex(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
   readonly pages: ScenarioPageSeed[] = [];
   ensuredPropertyCount = 0;
 

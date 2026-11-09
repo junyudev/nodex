@@ -31,6 +31,7 @@ function createSession(overrides: Partial<ProjectSession> = {}): ProjectSession 
     displayTitle: overrides.displayTitle ?? "Session",
     activityAt: overrides.activityAt ?? 0,
     pinned: overrides.pinned ?? false,
+    managed: overrides.managed ?? false,
     pinnedOrder: overrides.pinnedOrder ?? null,
     archived: overrides.archived ?? false,
     archivedAt: overrides.archivedAt ?? null,
@@ -111,6 +112,7 @@ describe("project session query cache", () => {
     const initial = createSession({ displayTitle: "Old title", unread: true });
     const updated = createSession({
       displayTitle: "New title",
+      managed: true,
       unread: false,
       updatedAt: "2026-01-02T00:00:00.000Z",
     });
@@ -123,6 +125,7 @@ describe("project session query cache", () => {
     );
     const summary = window?.items[0] ?? null;
     expect(summary?.displayTitle).toBe("New title");
+    expect(summary?.managed).toBe(true);
     expect(summary?.unread).toBe(false);
     expect(summary?.updatedAt).toBe("2026-01-02T00:00:00.000Z");
     queryClient.clear();

@@ -10,10 +10,17 @@ const deliveryMarkers = [
 ] as const satisfies ReadonlyArray<readonly [keyof OrchestrationV2ConversationMessage, string]>;
 
 export type QueuedRunKind = "message" | (typeof deliveryMarkers)[number][1];
-type Message = Pick<OrchestrationV2ConversationMessage, (typeof deliveryMarkers)[number][0]>;
+type Message = Pick<
+  OrchestrationV2ConversationMessage,
+  (typeof deliveryMarkers)[number][0] | "createdBy" | "creationSource"
+>;
 
+// Host work messages use the same protected queue category as Runtime notifications.
 export const queuedMessageKind = (message: Message): QueuedRunKind =>
-  deliveryMarkers.find(([marker]) => message[marker] !== undefined)?.[1] ?? "message";
+  deliveryMarkers.find(([marker]) => message[marker] !== undefined)?.[1] ??
+  (message.createdBy === "system" && message.creationSource === "server"
+    ? "notification"
+    : "message");
 
 export const isRuntimeDeliveryMessage = (message: Message): boolean =>
   queuedMessageKind(message) !== "message";
@@ -23,7 +30,10 @@ export const queuedMessageKindSql = (sql: SqlClient, payload: Fragment): Fragmen
   const cases = deliveryMarkers.map(
     ([marker, kind]) => sql`WHEN json_type(${payload}, ${`$.${marker}`}) IS NOT NULL THEN ${kind}`,
   );
-  return sql`CASE ${sql.join(" ", false)(cases)} ELSE 'message' END`;
+  return sql`CASE ${sql.join(" ", false)(cases)}
+    WHEN json_extract(${payload}, '$.createdBy') = 'system'
+      AND json_extract(${payload}, '$.creationSource') = 'server' THEN 'notification'
+    ELSE 'message' END`;
 };
 
 /** SQL delivery priority matching queuedRunsInDeliveryOrder: 0 runs before 1. */

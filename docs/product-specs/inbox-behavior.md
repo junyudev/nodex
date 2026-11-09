@@ -11,7 +11,7 @@ where it should go; a proposal never confirms itself.
 
 Rust Core owns the Library Inbox Database, each Inbox entry's Inbox, provenance,
 and triage state, and versioned dispatch proposals. The Desktop Host owns
-suggestion generation, handoff of confirmed chat work, and the Profile's Inbox
+routing admission and validated settlement, handoff of confirmed chat work, and the Profile's Inbox
 preferences. Agent Runtime owns accepted messages, execution queues and Runs.
 The renderer owns route presentation, durable authored drafts and pending capture
 intents, and selection.
@@ -60,7 +60,7 @@ intents, and selection.
   message menu opens the Page.
 - A sender may give the title. Otherwise Core labels the Page with a provisional
   title: the message's opening words, cut to about 48 columns, where wide
-  characters count twice. Later, the suggestion Agent replaces that title with
+  characters count twice. Later, Nodex replaces that title with
   a short name in the message's language. A title the user or an earlier
   suggestion has changed is never replaced.
 - A message is saved whether or not any suggestion runtime is available. The
@@ -88,6 +88,9 @@ intents, and selection.
   failed earlier send never overwrites the next message. Retrying the same
   capture preserves its identity, and recovering it restores its text and
   images. A read failure offers retry rather than appearing to be an empty Inbox.
+  A reply stays in the composer until its save is confirmed. A capture being saved
+  offers no recovery action; Retry appears only after saving fails or recovery
+  cannot establish the earlier outcome.
 - The Inbox entry records who sent the message. That source is written by Core
   from the connection and never by the caller:
   - **User:** typed in the Inbox composer. Renders as a right-aligned user bubble.
@@ -265,9 +268,32 @@ The user can mark a message important so it stays within reach while it waits.
   it off that list, and `Return to Inbox` brings it back with its mark. History
   does not show the mark.
 
+
 ## Suggestions
 
-Each suggestion spends the suggestion Agent's usage, so only a send asks for
+Each suggestion request reaches Nodex's conversation as a message carrying its
+Inbox entries, images, and possible destinations. Nodex records the answer with
+`inbox_suggest`. A request keeps its conversation and deadline across restarts.
+Starting Nodex fresh leaves any unsettled requests with the previous conversation.
+Five requests can await Nodex by default. Inbox settings can raise or lower that
+limit. A request has five minutes from when Nodex starts on it: time it waits
+behind Nodex's other work does not count, and requests Nodex takes up together
+share one start, kept across restarts. A request Nodex has not started thirty
+minutes after it was handed over fails with Retry. Nodex can correct an invalid
+answer within its deadline. If Nodex ends its turn without answering, it gets
+one follow-up naming the unanswered request and its latest refusal, if any.
+This follow-up survives app restarts and keeps the original deadline. If Nodex
+ends that follow-up without answering, the request fails immediately with Retry
+and an explanation.
+Answers that arrive after settlement, replacement, withdrawal, or failure record
+nothing. The request text remains in its conversation after the Inbox entry is deleted.
+
+When Suggestions choose models is off, each routing request explicitly offers
+no Agent choices. New chats use the Inbox default; Nodex must leave the Agent,
+model and effort fields empty, including each plan step's Agent. Choices from
+earlier requests do not apply.
+
+Each suggestion spends the usage of the Agent Nodex runs on, so only a send asks for
 one on its own. The `Suggestions` preference chooses when they run:
 
 - **Automatically**, the default: each message gets advice once, when it is
@@ -276,7 +302,7 @@ one on its own. The `Suggestions` preference chooses when they run:
   `Suggest again`, `Retry`, or `Suggest together`.
 - **Off:** nothing suggests, and the Inbox offers no way to ask.
 
-Automatic suggestions also step back when the suggestion Agent is about to run
+Automatic suggestions also step back when the Agent Nodex runs on is about to run
 out. When one of its usage windows is used up, or is spending its share faster
 than its time and has less than 10% left, a message sent then waits with
 `Suggest` instead, and a quiet line above the composer, marked with the pause
@@ -300,13 +326,11 @@ to sixteen, rather than being split by the automatic batch size. Each request
 and response is fenced by its identity; an old success or failure cannot
 replace a newer request.
 
-Up to five requests run at once, oldest first, so one slow suggestion never holds
-up the messages behind it. `Settings → Inbox` changes the limit, from one to
-sixteen. Raising it admits waiting messages at once; lowering it stops nothing
+Up to five requests can await Nodex at once, admitted oldest first.
+`Settings → Inbox` changes the limit, from one to sixteen. Raising it admits waiting messages at once; lowering it stops nothing
 already running, and new requests wait until fewer are. Messages sent while the
 limit is reached wait for the next free place and are gathered into one request
-then, which keeps a long burst from spending a request per message. Requests
-running at once do not see each other's advice.
+then, which keeps a long burst from spending a request per message.
 
 A running suggestion can be stopped from its spinner, which becomes a stop button
 under the pointer or keyboard focus. Stopping ends the work and the usage it
@@ -324,7 +348,7 @@ late success or failure cannot restore that advice or hold up other requests,
 including after a restart. A restored archived message can be asked for advice
 again.
 
-The suggestion Agent reads each message whole: its body as Nodex Markdown, as the
+Nodex reads each message whole: its body as Nodex Markdown, as the
 user wrote it, with its Library images attached as images in the order they
 appear, each marked in the text where it sits. An image that cannot be read is
 marked as unavailable rather than dropped silently. One request reads at most
@@ -342,8 +366,8 @@ reminders get no look, and it stops after a few reads or searches, as soon as
 more would not change the proposal. It decides where and how work runs and
 never does the work: it answers no question, investigates no cause, runs no
 build or test, and changes no file, Nodex content or other state. The rationale
-says what it checked. A Project's Inbox looks from that Project's primary
-source directory when it exists; anything else looks from the Profile's home.
+says what it checked. The request supplies each eligible Project's source
+directories so Nodex can identify where the work belongs.
 
 A chat suggestion separates what the user asked for from what the suggestion
 adds on its own. Its prompt is what the user wants: the task, its scope and
@@ -356,14 +380,12 @@ what the chat delivers, and nothing the user asked for is ever an addition, so
 dropping one never drops a requirement. A suggestion carries as many additions
 as it finds worth offering, up to twelve of 600 characters each.
 
-A suggestion sees only what Nodex gives it: its prompt, the messages' images,
-and those two ways to look things up. It does not load the user's personal
-Agent setup (global instructions, skills, MCP servers, plugins, hooks or the
-Agent's own configuration file), and a Project's agent instruction files are
-files it may read, not instructions it follows. Those all belong to the chat,
-whose Agent follows them itself, so a suggestion's prompt never restates them;
-it keeps only the requirements the user wrote in the message. The routing
-preferences are the one place to give suggestions standing instructions.
+The Coordinator receives standing routing instructions on every turn. Its
+normal Runtime configuration and permissions apply, while its role directs it
+to treat captured text, personal and Project instructions, and lookup results
+as routing data. It leaves the receiving chat to follow that chat's own
+instructions and does not restate them in a proposal. Routing preferences are
+the user's standing instructions for these decisions.
 
 Image markers use `[Image #N]`, followed by ` (caption: <alt text>)` when the
 occurrence has alt text. Within a message, repeated occurrences of a Library
@@ -391,8 +413,9 @@ the Inbox's scope, covering every message and changing nothing stay above them.
 So turning the guide off and writing the same knowledge, or a different view, as
 preferences takes effect at least as strongly as the guide did.
 
-It uses the shared Agent Runtime utility policy: read-only native execution without approval
-prompts, with web search allowed. The prompt and output schema constrain its output.
+Only the verified Coordinator Session may submit `inbox_suggest`. Its strict
+tool schema and the Inbox validator constrain the output; validation errors
+are returned to the Coordinator for correction without settling the request.
 
 A Project's Inbox narrows that context to the Project. Its messages are already
 that Project's Pages, so a new chat starts in the Project, an existing chat must
@@ -425,6 +448,9 @@ one it was offered, since Nodex starts the chat on it exactly. An explicit group
 covering all its members. Generation and transport failures remain failures
 with Retry; they do not masquerade as completed advice. A failure names its own
 cause: a timeout, missing sign-in, a rate limit, an answer too long or in a form
+Nodex cannot read, or the Agent's own reason when it gives one. Nodex can correct
+an invalid tool submission within its deadline. A request that
+cannot be settled fails on its own and can be retried explicitly.
 Nodex cannot read, or the Agent's own reason when it gives one. Advice Core will
 not accept is a failure too, explained as advice that could not be saved or a
 message or destination that changed or became unavailable, without internal
@@ -550,7 +576,7 @@ until the Inbox's settings have loaded. A Project's Inbox shows the same plan,
 since its settings and Agents are the Profile's; its closing line adds that
 chats stay in the Project.
 
-- `Suggested by` names the suggestion Agent's model at the effort suggestions
+- `Suggested by` names Nodex's model at the effort suggestions
   run it, such as `GPT-6.1 Sol · High`, and opens the composer's model menu to
   choose another. It reads `When you ask` beside it when suggestions run only on
   request, and `Paused` while automatic suggestions are paused.
@@ -585,9 +611,18 @@ and `Settings → Inbox`.
 
 ## Dispatch
 
-Only a user action turns a suggestion into work: confirming a proposal, or
-submitting the dispatch editor. Confirmation is fenced by the message the user
-reviewed, including for an outdated suggestion.
+Work starts when the user confirms a proposal or submits the dispatch editor.
+Confirmation is fenced by the message the user reviewed, including for an
+outdated suggestion.
+
+only when it is a new chat or a send to a chat, every message it covers is the
+user's own, Nodex marked it as the user's clear request for work now, and the
+message still reads as it did when Nodex wrote the suggestion. Core checks all
+of this when it records the confirmation. Such a start sends the prompt without
+any of the suggestion's optional additions, and its decision records that Nodex
+made it. Keep, filing, plans and scheduled runs always wait for the user. A
+retried start reuses the same chat and decision. Turning the preference on never
+starts a suggestion written before it.
 
 Every confirmation, including an edited action, checks the message the user
 reviewed. It freezes the complete original message, final prompt and
@@ -788,23 +823,22 @@ creates a second message, and does not count against the Agent budget again.
     Database's views, the Inbox showing its count;
   - `Open Inbox as a Database` in the Library Inbox, or `Open Board` in a
     Project's Inbox;
-  - `Inbox settings`, a panel that changes in place what suggests and what new
-    chats run on: when suggestions run and the suggestion model, then whether
-    suggestions choose each new chat's models and the model new chats otherwise
-    run on, each with the composer's model menu. `Routing preferences and more`
-    opens `Settings → Inbox`.
+  - `Open Nodex`, the Nodex mark, which opens Nodex's own conversation;
+  - `Inbox settings`, a panel that changes in place what routes and what new
+    chats run on: under `Nodex`, when suggestions run, what Nodex runs on, and
+    and the model new chats otherwise run on, each with the composer's model
+    menu. `Routing preferences and more` opens `Settings → Inbox`.
 
   Each Inbox is a tab, so its header spans the tab like a Board's: views at
   the start and tools at the end, in the same places as on every other tab.
 
 - `Settings → Inbox` holds these Profile preferences:
-  - when suggestions run: automatically, when the user asks, or never;
-  - what suggestions run on, chosen with the composer's model menu among the
-    Agents that can write suggestions: the Agent, its model, and the model's
-    effort and speed;
-  - how many suggestions run at once, five by default;
-  - free-text routing preferences: the user's standing instructions to the
-    suggestion Agent, which outrank Nodex's own guidance;
+  - under `Nodex`: when suggestions run (automatically, when the user asks, or
+    model, effort and speed selected in the model menu);
+  - how many suggestions can await Nodex at once, five by default;
+  - `Start fresh` archives Nodex's conversation;
+  - free-text routing preferences are the user's standing instructions to Nodex
+    and take priority over its defaults;
   - whether a chat the Inbox starts opens with its message Pages in its right
     panel, which is on by default;
   - whether suggestions choose each new chat's models, which is on by default;

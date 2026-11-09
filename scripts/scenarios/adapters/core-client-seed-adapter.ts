@@ -56,11 +56,13 @@ import {
 } from "./core-client-seed-runtime";
 import {
   LIBRARY_INBOX,
+  DEFAULT_INBOX_SETTINGS,
   type InboxScope,
   type InboxWindow,
   type InboxWindowFilter,
 } from "../../../src/shared/inbox";
-import type { ScenarioInboxDispatchSeed, ScenarioInboxProposalSeed } from "../contracts";
+import type { ProjectWorkspaceApplyInput } from "../../../src/main/core-client/types";
+import { inboxDispatchActionToCore } from "../../../src/main/core-client/inbox-adapter";
 import { inboxPageBasisFromCore } from "../../../src/main/core-client/inbox-adapter";
 
 const requireSuccess = <Value>(
@@ -87,6 +89,208 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
 
   constructor(runtime: RustDataAuthorityRuntime) {
     this.#runtime = runtime;
+  }
+
+  async createCoordinatorSession(): Promise<string> {
+    const sessionId = createUuidV7();
+    await this.#runtime.rootClient.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "create_agent_runtime_session",
+        coordinator: true,
+        session_id: sessionId,
+        project_id: null,
+        title: "Nodex",
+        initial_page_ids: [],
+        runtime_id: "scenario:coordinator",
+        runtime_thread_id: createUuidV7(),
+        launch_request_id: createUuidV7(),
+      },
+    });
+    return sessionId;
+  }
+
+    requireSuccess(
+      await this.#library(projectId).applyBlockPropertyMutation({
+        mutationId: createUuidV7(),
+        projectId,
+        storeEpoch: this.#runtime.identity.storeEpoch,
+        actor: { kind: "scenario_seed" },
+        fields: [
+          {
+            scope: "intrinsic",
+            blockId: pageId,
+            operation: "set",
+          },
+        ],
+      }),
+      "Set Page Agent work",
+    );
+  }
+
+  async setSessionManaged(sessionId: string, managed: boolean) {
+    await this.#runtime.rootClient.workspaceApply({
+      operationId: createUuidV7(),
+      intent: { kind: "set_session_managed", session_id: sessionId, managed },
+    });
+  }
+
+  async reportPageWork(input: Parameters<ScenarioSeedPort["reportPageWork"]>[0]) {
+    await this.setSessionManaged(input.sessionId, true);
+    await this.#agentCommand(input.sessionId, {
+      kind: "report_page_work",
+      page_id: input.pageId,
+      outcome: input.outcome,
+      summary: input.summary,
+    });
+  }
+
+    const client = this.#runtime.rootClient;
+          },
+    await this.#agentCommand(input.coordinatorSessionId, {
+      page_id: pageId,
+      document_id: createUuidV7(),
+      body: input.body,
+    });
+    return { pageId };
+  }
+
+  async settleCoordinatorSuggestion(
+    input: Parameters<ScenarioSeedPort["settleCoordinatorSuggestion"]>[0],
+  ) {
+    return await runScenarioInbox(
+      this.#runtime,
+      Effect.fn("Scenario.settleCoordinatorSuggestion")(function* (inbox) {
+        const context = yield* inbox.dispatchContext(input.pageIds);
+        yield* inbox.requestSuggestion({
+          requestId: createUuidV7(),
+          pageIds: input.pageIds,
+          mode: "auto",
+          basis: context.entries.map((entry) => inboxPageBasisFromCore(entry.basis)),
+        });
+        const request = (yield* inbox.suggestionRequests(100)).find((request) =>
+          input.pageIds.every((id) => request.page_ids.includes(id)),
+        );
+        if (!request) throw new Error("Scenario routing request was not admitted");
+        yield* inbox.beginRouting(request, input.coordinatorSessionId);
+        const proposalId = createUuidV7();
+        yield* inbox.settleSuggestion({
+          request_id: request.request_id,
+          generation: request.generation,
+          titles: [],
+          produced_by: "Nodex",
+          error: null,
+          automatic_dispatch: input.automaticDispatch ?? false,
+          suggestions: [
+            {
+              proposal_id: proposalId,
+              page_ids: input.pageIds,
+              action: inboxDispatchActionToCore(input.action),
+              entry_kind: input.kind,
+              summary: input.summary,
+              rationale: input.rationale,
+              explicit_request: input.explicitRequest ?? false,
+            },
+          ],
+        });
+        return proposalId;
+      }),
+    );
+  }
+
+  async confirmInboxRequestByNodex(
+    proposalId: string,
+    selection: Parameters<ScenarioSeedPort["confirmInboxRequestByNodex"]>[1],
+  ) {
+    await runScenarioInbox(
+      this.#runtime,
+      Effect.fn("Scenario.confirmInboxRequestByNodex")(function* (inbox) {
+        const window = yield* inbox.window({ scope: LIBRARY_INBOX, filter: "inbox", first: 200 });
+        const proposal = window.items
+          .flatMap((item) => (item.proposal ? [item.proposal] : []))
+          .find((proposal) => proposal.proposalId === proposalId);
+        if (!proposal) throw new Error("Scenario automatic proposal is missing");
+        const prepared = yield* inbox.prepareConfirmation({
+          kind: "proposal",
+          storeEpoch: window.storeEpoch,
+          proposalId,
+          expectedRevision: proposal.revision,
+          basis: proposal.basis,
+          action: proposal.action,
+        });
+        if (prepared.kind !== "proposal") throw new Error("Expected a proposal confirmation");
+        const { kind: _kind, ...confirmation } = prepared;
+        yield* inbox.confirm(confirmation, "nodex");
+      }),
+      { ...DEFAULT_INBOX_SETTINGS, dispatchMode: "act_on_requests" },
+      [
+        {
+          instanceId: selection.instanceId,
+          driver: "codex",
+          enabled: true,
+          installed: true,
+          status: "ready",
+          version: "scenario",
+          auth: { status: "authenticated" },
+          checkedAt: new Date().toISOString(),
+          models: [
+            {
+              slug: selection.model,
+              name: selection.model,
+              isDefault: true,
+              isCustom: false,
+              capabilities: {},
+            },
+          ],
+          skills: [],
+          slashCommands: [],
+        },
+      ],
+    );
+  }
+
+  /** The Host supplies only the execution identity an actual Agent would have produced. */
+    const session = await this.readSession(sessionId);
+    const threadId = session?.executionRef?.threadId ?? session?.thread?.threadId;
+    if (!session || !threadId) throw new Error("Scenario Agent requires an execution identity");
+    if (!session.executionRef)
+      await this.#runtime.rootClient.workspaceApply({
+        operationId: createUuidV7(),
+        intent: {
+          kind: "admit_turn_authority",
+          thread_id: threadId,
+          root_thread_id: threadId,
+          turn_id: turnId,
+          actor_project_id: session.projectId,
+        },
+      });
+    await this.#runtime.rootClient.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "agent_command",
+        intent,
+        provenance: {
+          profile_id: this.#runtime.identity.profileId,
+          authority: {
+            thread_id: threadId,
+            root_thread_id: threadId,
+            turn_id: turnId,
+            actor_project_id: session.projectId,
+            library_id: this.#runtime.rootClient.handshake.library_id,
+            store_epoch: this.#runtime.identity.storeEpoch,
+            ...(session.executionRef
+              ? {
+                  runtime: {
+                    session_id: sessionId,
+                    runtime_id: session.executionRef.runtimeId,
+                    turn_kind: "run" as const,
+                  },
+                }
+              : {}),
+          },
+        },
+      },
+    });
   }
 
   async createProject(input: ProjectCreateInput): Promise<Project> {
@@ -417,6 +621,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
       title: detail.page.title,
       descriptionPreview: detail.page.preview,
       documentReadiness: detail.document.readiness,
+      ),
       commitSeq: detail.commitSeq,
     };
   }

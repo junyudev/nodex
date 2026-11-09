@@ -13,6 +13,8 @@ import { InboxComposer } from "./inbox-composer";
 import { InboxMessageEditor } from "./inbox-message-editor";
 import { useInboxImageAccess } from "./use-inbox-image-access";
 
+const replyDestination = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/inbox-runtime", () => ({ readInboxReplyDestination: replyDestination }));
 const files = vi.hoisted(() => ({ importFile: vi.fn(), bytes: vi.fn(), metadata: vi.fn() }));
 vi.mock("@/lib/library-file-resources", async (original) => ({
   ...(await original<typeof import("@/lib/library-file-resources")>()),
@@ -32,6 +34,7 @@ vi.mock("@/lib/use-library-navigation", () => ({
 const createObjectUrl = URL.createObjectURL;
 const revokeObjectUrl = URL.revokeObjectURL;
 beforeEach(() => {
+  replyDestination.mockResolvedValue({ kind: "nodex", chat: null });
   URL.createObjectURL = vi.fn(() => "blob:shot");
   URL.revokeObjectURL = vi.fn();
   files.importFile.mockResolvedValue({
@@ -508,4 +511,89 @@ test("focus requests keep the composer mounted", async () => {
     other.remove();
     view.unmount();
   }
+});
+
+test("a reply names the post it answers until it is let go", async () => {
+  const onSend = vi.fn();
+  function Replying() {
+    const [draft, setDraft] = useState<InboxDraft>({
+      ...EMPTY_INBOX_DRAFT,
+      replyTo: { pageId: "page:post", label: "README typo fixed" },
+    });
+    return (
+      <InboxComposer
+        draft={draft}
+        onDraftChange={(change) => setDraft(change)}
+        images={null}
+        onSend={async () => onSend(draft)}
+      />
+    );
+  }
+  const view = render(
+    <TestQueryProvider>
+      <Replying />
+    </TestQueryProvider>,
+  );
+  const textarea = view.getByRole("textbox", { name: "Message your Inbox" });
+  expect(view.getByTestId("inbox-composer-reply").textContent).toContain("README typo fixed");
+  expect(textarea.getAttribute("placeholder")).toBe("Reply to Nodex…");
+  await act(async () => {
+    fireEvent.keyDown(textarea, { key: "Escape" });
+    await Promise.resolve();
+  });
+  await waitFor(() => expect(view.queryByTestId("inbox-composer-reply")).toBeNull());
+  expect(onSend).not.toHaveBeenCalled();
+});
+
+test.each(["send", "answer", "nodex"] as const)(
+  "the reply bar shows its %s destination",
+  async (kind) => {
+    replyDestination.mockResolvedValue({ kind, chat: { sessionId: "chat", title: "Review work" } });
+    const view = render(
+      <InboxComposer
+        draft={{
+          ...EMPTY_INBOX_DRAFT,
+          text: "Small change",
+          replyTo: { pageId: "post", label: "Ready" },
+        }}
+        onDraftChange={vi.fn()}
+        images={null}
+        onSend={async () => {}}
+      />,
+    );
+    await waitFor(() =>
+      expect(view.getByLabelText("Reply destination").textContent).toBe(
+        {
+          send: "· goes to Review work",
+          answer: "· answers Review work’s question",
+          nodex: "· Nodex routes it",
+        }[kind],
+      ),
+    );
+  },
+);
+
+test("the reply bar waits for typing to settle before asking where a reply goes", async () => {
+  replyDestination.mockClear();
+  replyDestination.mockResolvedValue({
+    kind: "send",
+    chat: { sessionId: "chat", title: "Review work" },
+  });
+  const props = {
+    onDraftChange: vi.fn(),
+    images: null,
+    onSend: async () => {},
+  };
+  const draft = (text: string) => ({
+    ...EMPTY_INBOX_DRAFT,
+    text,
+    replyTo: { pageId: "post", label: "Ready" },
+  });
+  const view = render(<InboxComposer draft={draft("S")} {...props} />);
+  await waitFor(() => expect(view.getByLabelText("Reply destination")).toBeTruthy());
+  view.rerender(<InboxComposer draft={draft("Sm")} {...props} />);
+  view.rerender(<InboxComposer draft={draft("Small")} {...props} />);
+  await waitFor(() => expect(replyDestination).toHaveBeenCalledWith("post", "Small"));
+  expect(replyDestination).not.toHaveBeenCalledWith("post", "Sm");
+  expect(view.getByLabelText("Reply destination").textContent).toBe("· goes to Review work");
 });

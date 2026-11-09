@@ -20,8 +20,28 @@ pub(super) fn admit<'a>(
         return Ok(intent);
     };
     admit_read_caller(connection, library_id, context, provenance)?;
+    if matches!(
+        intent.as_ref(),
+        ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::Nodex,
+            ..
+        } | ProjectWorkspaceIntent::BeginInboxRouting { .. }
+    ) {
+        return Err(denied(
+            "Automatic Inbox dispatch and routing belong to the Desktop Host",
+        ));
+    }
     if matches!(intent.as_ref(), ProjectWorkspaceIntent::AgentCommand { .. }) {
         return Err(denied("Agent command envelopes cannot be nested"));
+    }
+    if matches!(
+        intent.as_ref(),
+        ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            coordinator: true,
+            ..
+        }
+    ) {
+        return Err(denied("Only the Desktop Host can create the Coordinator"));
     }
     if matches!(
         intent.as_ref(),

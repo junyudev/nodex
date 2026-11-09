@@ -100,6 +100,7 @@ export type CodexThreadNotificationEvent =
   | CodexRequestResolvedNotificationEvent;
 
 export type CodexNotificationSuppressionReason =
+  | "managed"
   | "app-focused"
   | "automation-dont-notify"
   | "child-conversation"

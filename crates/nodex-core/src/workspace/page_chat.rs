@@ -417,7 +417,7 @@ pub(super) fn read_page_chat_activity_summaries(
          JOIN pages page ON page.block_id = requested.page_id AND page.library_id = ?1 \
          LEFT JOIN project_session_pages relation ON relation.page_id = page.block_id \
          LEFT JOIN project_sessions session \
-           ON session.id = relation.session_id AND session.archived = 0 \
+           ON session.id = relation.session_id AND session.archived = 0 AND NOT EXISTS(SELECT 1 FROM coordinator WHERE coordinator.session_id=session.id) \
            AND (session.project_id IS NULL OR EXISTS ( \
              SELECT 1 FROM projects owner \
              WHERE owner.id = session.project_id AND owner.library_id = ?1 \
@@ -460,6 +460,7 @@ pub(super) fn read_page_chat_activity_summaries(
             )| {
                 Ok(ProjectWorkspacePageChatActivitySummary {
                     runtime_session_ids: runtime_sessions.remove(&page_id).unwrap_or_default(),
+                    work: super::coordinator::work_descriptor(connection, &page_id)?,
                     page_id,
                     related_count: bounded_count(related_count)?,
                     working_count: bounded_count(working_count)?,
@@ -502,7 +503,7 @@ fn read_runtime_session_ids(
            FROM requested \
            JOIN project_session_pages relation ON relation.page_id = requested.page_id \
            JOIN project_sessions session \
-             ON session.id = relation.session_id AND session.archived = 0 \
+             ON session.id = relation.session_id AND session.archived = 0 AND NOT EXISTS(SELECT 1 FROM coordinator WHERE coordinator.session_id=session.id) \
              AND (session.project_id IS NULL OR EXISTS ( \
                SELECT 1 FROM projects owner \
                WHERE owner.id = session.project_id AND owner.library_id = ?1 \
@@ -615,7 +616,7 @@ pub(super) fn read_page_chat_window(
            LEFT JOIN codex_threads thread ON thread.thread_id = session_thread.thread_id \
            LEFT JOIN project_session_execution_bindings binding \
              ON binding.session_id = session.id \
-           WHERE relation.page_id = ?1 \
+           WHERE relation.page_id = ?1 AND NOT EXISTS(SELECT 1 FROM coordinator WHERE coordinator.session_id=session.id) \
              AND (session.project_id IS NULL OR project.library_id = ?2) \
              AND (?3 = 1 OR session.archived = 0) \
          ) chat \
@@ -712,6 +713,18 @@ fn page_chat_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PageChatRow> {
     });
     Ok(PageChatRow {
         item: ProjectWorkspacePageChatItem {
+            report: row
+                .get::<_, Option<String>>(18)?
+                .map(|outcome| -> rusqlite::Result<_> {
+                    Ok(nodex_core_contracts::workspace::PageWorkReport {
+                        outcome: serde_json::from_value(serde_json::Value::String(outcome))
+                            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        summary: row.get(19)?,
+                        at: row.get(20)?,
+                        revision: row.get(21)?,
+                    })
+                })
+                .transpose()?,
             session_id: row.get(0)?,
             project_id: row.get(1)?,
             project_name: row.get(2)?,
@@ -1205,6 +1218,7 @@ mod tests {
             &workspace.module,
             "launch-runtime-chat",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                coordinator: false,
                 side_chat_source_session_id: None,
                 session_id: "session:runtime".to_owned(),
                 project_id: Some("project:default".to_owned()),

@@ -25,6 +25,7 @@ function makeSession(overrides: Partial<ProjectSession> = {}): ProjectSession {
     displayTitle: "Session one",
     activityAt: 0,
     pinned: false,
+    managed: false,
     pinnedOrder: null,
     archived: false,
     archivedAt: null,
@@ -87,6 +88,24 @@ function flattenActionIds(items: ReturnType<typeof buildSessionContextMenuItems>
 }
 
 describe("session context menu model", () => {
+  test.each([false, true])("shows managed=%s as a checkbox action", (managed) => {
+    const items = buildSessionContextMenuItems({ session: makeSession({ managed }) });
+    expect(items).toContainEqual({
+      id: SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged,
+      type: "checkbox",
+      label: "Managed by Nodex",
+      checked: managed,
+      enabled: true,
+    });
+  });
+
+  test("hides management for archived chats", () => {
+    const items = buildSessionContextMenuItems({
+      session: makeSession({ archived: true, managed: true }),
+    });
+    expect(flattenActionIds(items)).not.toContain(SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged);
+  });
+
   test("offers an enabled Fork chat action for a Runtime Session", () => {
     const items = buildSessionContextMenuItems({
       session: makeSession({
@@ -107,19 +126,14 @@ describe("session context menu model", () => {
         executionRef: { runtimeId: "runtime-1", threadId: "root-1" },
       }),
       forkDestinations: [
-        { target: "local", label: "Fork chat in same worktree", iconKey: "fork" },
-        { target: "newWorktree", label: "Fork chat in new worktree", iconKey: "worktree" },
+        { target: "local", label: "Fork chat in same worktree" },
+        { target: "newWorktree", label: "Fork chat in new worktree" },
       ],
     });
     const fork = items.find((item) => item.type === "submenu" && item.label === "Fork");
     expect(fork?.type === "submenu" ? fork.submenu : []).toMatchObject([
-      { id: "session.fork", label: "Fork chat in same worktree", enabled: true, iconKey: "fork" },
-      {
-        id: "session.forkInNewWorktree",
-        label: "Fork chat in new worktree",
-        enabled: true,
-        iconKey: "worktree",
-      },
+      { id: "session.fork", label: "Fork chat in same worktree", enabled: true },
+      { id: "session.forkInNewWorktree", label: "Fork chat in new worktree", enabled: true },
     ]);
   });
 
@@ -142,6 +156,7 @@ describe("session context menu model", () => {
       ...chatReminderPresets(MENU_OPENED_AT).map((preset) =>
         sessionRemindAtActionId(preset.remindAt),
       ),
+      SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged,
       SESSION_CONTEXT_MENU_ACTION_IDS.archive,
       "separator",
       "session.moveToProject",
@@ -173,12 +188,13 @@ describe("session context menu model", () => {
   test("shows the exact command accelerators without registering global shortcuts", () => {
     const items = buildSessionContextMenuItems({ session: makeSession() });
     const accelerators = items
-      .slice(0, 5)
+      .slice(0, 6)
       .map((item) => (item.type === "separator" ? null : item.accelerator));
     expect(accelerators).toEqual([
       "Alt+CommandOrControl+P",
       "Alt+CommandOrControl+R",
       "Shift+CommandOrControl+U",
+      undefined,
       undefined,
       "Shift+CommandOrControl+A",
     ]);

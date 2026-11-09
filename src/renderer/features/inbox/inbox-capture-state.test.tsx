@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
@@ -41,6 +41,10 @@ import { prepareInboxConfirmation, dispatchInboxEntries } from "@/lib/inbox-runt
 import { createBoundedOperationId } from "../../../shared/operation-identity";
 import { CoreApiError } from "@/lib/core-api-error";
 import { createUuidV7 } from "../../../shared/uuid-v7";
+import { InboxCaptureRecovery } from "./inbox-capture-recovery";
+import { InboxComposer } from "./inbox-composer";
+
+vi.mock("./use-inbox-reply-destination", () => ({ useInboxReplyDestination: () => null }));
 
 vi.mock("@/lib/inbox-runtime", () => ({
   prepareInboxConfirmation: vi.fn(),
@@ -125,6 +129,122 @@ function setup(
 }
 
 describe("Inbox capture ownership", () => {
+  test.each(["saved", "failed"] as const)(
+    "a reply being saved never offers Retry before its %s receipt, without entering the open stream",
+    async (outcome) => {
+      const store = createMaitaiStore();
+      const persistence = new MemoryPersistence();
+      const draft = {
+        ...EMPTY_INBOX_DRAFT,
+        text: "Cedar",
+        replyTo: { pageId: "post", label: "Choose a label" },
+      };
+      persistence.snapshot = {
+        revision: 0,
+        values: {
+          [inboxCaptureStorageKey("window:reply", LIBRARY_INBOX)]: {
+            ...EMPTY_INBOX_CAPTURE_STATE,
+            draft,
+          },
+        },
+      };
+      setMaitaiPersistenceTransport(store, persistence);
+      let finish!: (result: InboxSendResult) => void;
+      let fail!: (error: Error) => void;
+      const onSend = vi.fn(
+        () =>
+          new Promise<InboxSendResult>((resolve, reject) => {
+            finish = resolve;
+            fail = reject;
+          }),
+      );
+      function Form() {
+        const input = {
+          windowSessionId: "window:reply",
+          scope: LIBRARY_INBOX,
+          storeEpoch: "epoch:1",
+          visiblePageIds: [],
+          onSend,
+        };
+        const capture = useInboxCapture(input);
+        const observer = useInboxCapture(input);
+        return (
+          <>
+            <InboxCaptureRecovery
+              captures={observer.pending}
+              storeEpoch="epoch:1"
+              ready={capture.ready}
+              onRetry={capture.retry}
+              onRecover={capture.recover}
+            />
+            <InboxComposer
+              draft={capture.draft}
+              onDraftChange={capture.changeDraft}
+              images={null}
+              disabled={!capture.ready || capture.savingDraft}
+              readOnly={!capture.canEdit || capture.savingDraft}
+              onSend={capture.submit}
+            />
+          </>
+        );
+      }
+      const view = render(
+        <MaitaiProvider store={store}>
+          <Form />
+        </MaitaiProvider>,
+      );
+      try {
+        await waitFor(() =>
+          expect(
+            (screen.getByRole("button", { name: "Send to Inbox" }) as HTMLButtonElement).disabled,
+          ).toBe(false),
+        );
+        await act(async () => {
+          fireEvent.click(screen.getByRole("button", { name: "Send to Inbox" }));
+          await Promise.resolve();
+        });
+        await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+        expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+        expect(
+          (screen.getByRole("textbox", { name: "Message your Inbox" }) as HTMLTextAreaElement)
+            .value,
+        ).toBe("Cedar");
+        expect(
+          (screen.getByRole("button", { name: "Send to Inbox" }) as HTMLButtonElement).disabled,
+        ).toBe(true);
+        const savedCapture = decodeInboxCaptureState(
+          persistence.snapshot.values[inboxCaptureStorageKey("window:reply", LIBRARY_INBOX)],
+        ).captures[0]!;
+        if (outcome === "failed") {
+          await act(async () => fail(new Error("Save response lost")));
+          const retry = await screen.findByRole("button", { name: "Retry" });
+          await act(async () => {
+            fireEvent.click(retry);
+            await Promise.resolve();
+          });
+          await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2));
+          expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+          expect(
+            decodeInboxCaptureState(
+              persistence.snapshot.values[inboxCaptureStorageKey("window:reply", LIBRARY_INBOX)],
+            ).captures[0]?.intent,
+          ).toEqual(savedCapture.intent);
+        }
+        await act(async () => finish({ pageId: savedCapture.intent.pageId, state: "saved" }));
+        await waitFor(() =>
+          expect(
+            (screen.getByRole("textbox", { name: "Message your Inbox" }) as HTMLTextAreaElement)
+              .value,
+          ).toBe(""),
+        );
+        expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      } finally {
+        view.unmount();
+        disposeMaitaiStore(store);
+      }
+    },
+  );
+
   test("carries a trimmed title into a capture, clears it on consume, and restores it on recovery", () => {
     const draft = { title: "  *Release* [notes]  ", text: "Prepare the release", images: [] };
     const state = { ...EMPTY_INBOX_CAPTURE_STATE, draft };
@@ -136,6 +256,25 @@ describe("Inbox capture ownership", () => {
     const newer = changeInboxDraft(state, (current) => ({ ...current, title: "New title" }));
     expect(consumeInboxDraft(newer, capture).draft).toEqual(newer.draft);
     expect(recoverInboxDraft(newer.draft, capture.draft).title).toBe("New title");
+  });
+
+  test("a reply carries the post it answers into its capture and back on recovery", () => {
+    const replyTo = { pageId: "page:post", label: "README typo fixed" };
+    const draft = { ...EMPTY_INBOX_DRAFT, text: "Also fix CONTRIBUTING", replyTo };
+    const state = { ...EMPTY_INBOX_CAPTURE_STATE, draft };
+    const capture = createInboxCapture(state, LIBRARY_INBOX, "epoch:1");
+    expect(capture.intent.replyToPageId).toBe("page:post");
+    expect(consumeInboxDraft(state, capture).draft.replyTo).toBeUndefined();
+    expect(recoverInboxDraft(EMPTY_INBOX_DRAFT, capture.draft).replyTo).toEqual(replyTo);
+    // A reply alone says nothing yet, and an ordinary message names no post.
+    expect(isEmptyInboxDraft({ ...EMPTY_INBOX_DRAFT, replyTo })).toBe(true);
+    expect(
+      createInboxCapture(
+        { ...EMPTY_INBOX_CAPTURE_STATE, draft: { ...EMPTY_INBOX_DRAFT, text: "Hi" } },
+        LIBRARY_INBOX,
+        "epoch:1",
+      ).intent,
+    ).not.toHaveProperty("replyToPageId");
   });
 
   test("a title alone is empty and blank titles are omitted from capture intents", () => {
@@ -208,6 +347,7 @@ describe("Inbox capture ownership", () => {
         expect.objectContaining({ title: "*Final* [label]", body: "A message" }),
       );
       expect(hook.result.current.draft).toEqual(EMPTY_INBOX_DRAFT);
+      expect(hook.result.current.pending).toEqual([]);
     } finally {
       hook.dispose();
     }
@@ -249,10 +389,8 @@ describe("Inbox capture ownership", () => {
         await hook.result.current.retry(hook.result.current.pending[0]!);
       });
       expect(onSend.mock.calls[1]?.[0]).toEqual(onSend.mock.calls[0]?.[0]);
-      expect(hook.result.current.pending[0]?.status).toBe("accepted");
-      const pageId = hook.result.current.pending[0]!.intent.pageId;
-      hook.rerender({ visiblePageIds: [pageId], storeEpoch: "epoch:1" });
-      await waitFor(() => expect(hook.result.current.pending).toEqual([]));
+      // The receipt is sufficient even when delivery moves A out of the visible stream.
+      expect(hook.result.current.pending).toEqual([]);
       expect(hook.result.current.draft.text).toBe("B");
     } finally {
       hook.dispose();
@@ -282,9 +420,7 @@ describe("Inbox capture ownership", () => {
         await hook.result.current.retry(hook.result.current.pending[0]!);
       });
       expect(hook.result.current.draft.text).toBe("");
-      const pageId = hook.result.current.pending[0]!.intent.pageId;
-      hook.rerender({ visiblePageIds: [pageId], storeEpoch: "epoch:1" });
-      await waitFor(() => expect(hook.result.current.pending).toEqual([]));
+      expect(hook.result.current.pending).toEqual([]);
       await act(async () => {
         await hook.result.current.submit();
       });

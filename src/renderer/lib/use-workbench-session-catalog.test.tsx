@@ -68,6 +68,7 @@ function makeSummary(
     noThreadFallbackTitle: id,
     displayTitle: id,
     activityAt: 0,
+    managed: false,
     pinned: false,
     pinnedOrder: null,
     archived: false,

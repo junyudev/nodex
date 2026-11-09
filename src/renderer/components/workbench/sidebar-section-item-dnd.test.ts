@@ -31,6 +31,7 @@ const sessionItem = {
     noThreadFallbackTitle: "Alpha chat",
     displayTitle: "Alpha chat",
     activityAt: Date.parse("2026-08-31T00:00:00.000Z"),
+    managed: false,
     pinned: false,
     pinnedOrder: null,
     archived: false,

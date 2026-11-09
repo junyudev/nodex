@@ -30,6 +30,9 @@ import {
 import { resolveAppToolCallingSession } from "../app-tools/AppToolCallingSession";
 import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-authorization";
 import { make } from "./AgentRuntimeHost";
+import {
+  COORDINATOR_INSTRUCTIONS,
+  MANAGED_SESSION_INSTRUCTIONS,
 
 const frame = {
   runtimeId: "runtime",
@@ -99,6 +102,8 @@ const fixture = Effect.gen(function* () {
   bind(turn());
   let caller: AppToolCaller | undefined;
   let bound = true;
+  let coordinatorId: string | null = null;
+  let managed = false;
   let boundProjectId: string | null = "current-project";
   const projectSources = new Map<string, readonly string[]>([
     ["current-project", ["/project/frontend", "/project/backend"]],
@@ -139,6 +144,10 @@ const fixture = Effect.gen(function* () {
   const read = (input: ProjectWorkspaceRead) =>
     Effect.sync(() => {
       coreReads.push(input);
+      if (input.kind === "read_coordinator")
+        return { value: { kind: input.kind, session_id: coordinatorId } };
+      if (input.kind === "read_managed_session")
+        return { value: { kind: input.kind, managed: managed ? { session_id: "session" } : null } };
       if (input.kind === "project")
         return {
           value: {
@@ -241,6 +250,12 @@ const fixture = Effect.gen(function* () {
     setProjectSources: (projectId: string, roots: readonly string[]) => {
       projectSources.set(projectId, roots);
     },
+    setCoordinator: (id: string | null) => {
+      coordinatorId = id;
+    },
+    setManaged: (value: boolean) => {
+      managed = value;
+    },
     unbind: () => {
       bound = false;
     },
@@ -276,7 +291,7 @@ it.effect("a delegated Turn receives its bound Project's current Sources", () =>
     assert.deepInclude(yield* f.execute(prepareTurn()), {
       sourceRoots: ["/destination/source"],
     });
-    assert.deepEqual(f.coreReads.at(-1), {
+    assert.deepEqual(f.coreReads.filter((read) => read.kind === "project").at(-1), {
       kind: "project",
       project_id: "destination-project",
     });
@@ -510,6 +525,28 @@ it.effect("a starting Codex Turn names its live Run and Session; ending needs on
       { nativeThreadId: "codex-thread", nativeTurnId: "native-turn", phase: "ended" },
     ]);
   }).pipe(Effect.scoped),
+);
+
+it.effect("standing instructions follow the verified Session role on each turn", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const prepare = Effect.gen(function* () {
+      const response = yield* f.execute(prepareTurn());
+      return (response as { instructions: string }).instructions;
+    });
+    assert.notInclude(yield* prepare, COORDINATOR_INSTRUCTIONS);
+    assert.notInclude(yield* prepare, MANAGED_SESSION_INSTRUCTIONS);
+    f.setCoordinator("another-session");
+    f.setManaged(true);
+    assert.include(yield* prepare, MANAGED_SESSION_INSTRUCTIONS);
+    assert.notInclude(yield* prepare, COORDINATOR_INSTRUCTIONS);
+    f.setManaged(false);
+    f.setCoordinator("session");
+    assert.include(yield* prepare, COORDINATOR_INSTRUCTIONS);
+    assert.notInclude(yield* prepare, MANAGED_SESSION_INSTRUCTIONS);
+  }).pipe(Effect.scoped),
+);
+  }),
 );
 
 it.effect("Claude desktop preparation requires both driver identities and the current lease", () =>

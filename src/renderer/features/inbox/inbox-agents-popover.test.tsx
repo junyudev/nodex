@@ -76,6 +76,24 @@ describe("the Inbox's settings panel", () => {
     expect(agents.save).toHaveBeenCalledWith({ suggestions: "on_request" });
   });
 
+  test("lets Nodex start the person's clear requests, but only while it routes", async () => {
+    const agents = inboxAgentsFixture();
+    render(<InboxAgentsPopover agents={agents} onOpenSettings={vi.fn()} />);
+    await click(screen.getByRole("button", { name: "Inbox settings" }));
+    expect(agents.save).toHaveBeenLastCalledWith({ dispatchMode: "act_on_requests" });
+  });
+
+  test("nothing starts on its own while suggestions are off", async () => {
+    const agents = inboxAgentsFixture({
+      settings: { ...DEFAULT_INBOX_SETTINGS, suggestions: "off" },
+    });
+    render(<InboxAgentsPopover agents={agents} onOpenSettings={vi.fn()} />);
+    await click(screen.getByRole("button", { name: "Inbox settings" }));
+    expect(start.hasAttribute("disabled") || start.getAttribute("aria-disabled") === "true").toBe(
+      true,
+    );
+  });
+
   test("hands routing preferences to Settings and closes", async () => {
     const onOpenSettings = vi.fn();
     render(<InboxAgentsPopover agents={inboxAgentsFixture()} onOpenSettings={onOpenSettings} />);

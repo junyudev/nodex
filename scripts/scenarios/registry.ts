@@ -1,3 +1,4 @@
+import { nodexCoordinatorScenario } from "./scenarios/nodex-coordinator";
 import {
   structuralInteractionsScenario,
   structuralInteractionsPressureScenario,
@@ -28,6 +29,7 @@ import { spaceContentScenario } from "./scenarios/space-content";
 import { windowTitlesScenario } from "./scenarios/window-titles";
 
 const scenarios = new Map<string, ScenarioDomainRecipe>([
+  [nodexCoordinatorScenario.id, nodexCoordinatorScenario],
   [structuralInteractionsScenario.id, structuralInteractionsScenario],
   [structuralInteractionsPressureScenario.id, structuralInteractionsPressureScenario],
   [landingShowcaseScenario.id, landingShowcaseScenario],

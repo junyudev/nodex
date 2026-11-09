@@ -72,9 +72,20 @@ function RelatedChatRow({
               {projectLabel}
             </span>
           </span>
-          <span className="block truncate text-[11px] text-token-description-foreground">
-            {item.threadPreview.trim() || (item.threadId ? "No preview" : "No thread yet")}
-          </span>
+          {item.report ? (
+            // What the chat reported says more about the Page than its last words.
+            <span
+              data-related-chat-report={item.report.outcome}
+              className="flex min-w-0 items-center gap-1 text-[11px] text-token-description-foreground"
+            >
+              <WorkReportGlyph outcome={item.report.outcome} />
+              <span className="truncate">{workReportLine(item.report.summary)}</span>
+            </span>
+          ) : (
+            <span className="block truncate text-[11px] text-token-description-foreground">
+              {item.threadPreview.trim() || (item.threadId ? "No preview" : "No thread yet")}
+            </span>
+          )}
         </span>
       </button>
       {onRemove ? (

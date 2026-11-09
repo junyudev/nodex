@@ -96,17 +96,17 @@ const agentBackends = agentBackendApplicationLive.pipe(
 );
 
 /** Application operations that depend on the Core, host, and canonical Conversation graphs. */
-export const live = appToolInterpreterLive.pipe(
-  Layer.provideMerge(workspaceDependencies),
-  Layer.provideMerge(
-    Layer.merge(
-      workbenchObservationLive,
-      Layer.effect(WorkbenchContentRouting, makeWorkbenchContentRouting),
-    ),
-  ),
+export const live = Layer.mergeAll(
+  workspaceDependencies,
+  workbenchObservationLive,
+  Layer.effect(WorkbenchContentRouting, makeWorkbenchContentRouting),
+).pipe(
   Layer.provideMerge(
     sessionWaiterLive.pipe(
       Layer.provideMerge(sessionObservationLive.pipe(Layer.provideMerge(agentBackends))),
     ),
   ),
 );
+
+/** Tools activate after the Inbox and Coordinator application Interfaces exist. */
+export const tools = appToolInterpreterLive;

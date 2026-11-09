@@ -468,7 +468,7 @@ export interface AgentRuntimeOperations
       readonly modelSelection?: AgentWire<ModelSelection>;
       readonly mode: "auto" | "queue" | "steer" | "restart";
       /** Host-authenticated origin; message admission retains it when another caller retries. */
-      readonly createdBy: "user" | "agent";
+      readonly createdBy: "user" | "agent" | "system";
       readonly senderThreadId?: string;
       readonly senderRunId?: string | null;
       readonly modeLimit?: AgentDispatchModeLimit;
@@ -645,6 +645,10 @@ export interface AgentRuntimeOperations
     readonly input: import("./SessionControlReceipts.ts").SessionControlReceiptInput;
     readonly output: import("./SessionControlReceipts.ts").SessionControlReceipt;
   };
+  readonly "thread.stop-host-input": {
+    readonly input: { readonly threadId: string; readonly messageId: string };
+    readonly output: null;
+  };
   readonly "thread.stop": {
     readonly input: {
       readonly threadId: string;
@@ -698,6 +702,7 @@ export interface AgentRuntimeOperations
     readonly input: {
       readonly threadId: string;
       readonly runId?: string;
+      /** Retains this request's card and execution source independently of the current Run. */
       readonly requestId?: string;
     };
     readonly output: AgentSnapshot;
@@ -738,6 +743,7 @@ export interface AgentRuntimeOperations
       readonly threadId: string;
       readonly runLimit: number;
       readonly beforeOrdinal?: number;
+      readonly runId?: string;
     };
     readonly output: import("../orchestration-v2/SessionReadDetails.ts").SessionReadDetails;
   };

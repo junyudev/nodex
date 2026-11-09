@@ -1167,6 +1167,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       launch_request_id: input.launchId,
     };
     yield* validateCaller();
+    if (
+      (input.messageOrigin === "host" || input.coordinator) &&
+      (yield* CoreApplicationAgent) !== null
+    )
+      return yield* failure("launch", "Host launches require Desktop authority");
     const previousBinding = yield* lookupDestinationBinding(input.sessionId);
     if (previousBinding && !matchesBinding(previousBinding, binding))
       return yield* new AgentRuntimeApplicationError({
@@ -1176,6 +1181,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       });
     if (input.messageFingerprint && previousBinding) {
       const replay = yield* replayMessage({
+        ...(input.messageOrigin === "host" ? { origin: "host" as const } : {}),
         sessionId: input.sessionId,
         threadId,
         messageId: input.message.messageId,
@@ -1299,6 +1305,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             }),
             intent: {
               kind: "create_agent_runtime_session",
+              ...(input.coordinator ? { coordinator: true } : {}),
               ...binding,
               title: input.title.trim(),
               initial_page_ids: [...new Set(input.initialPageIds ?? [])],
@@ -1314,6 +1321,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       yield* reconcileExecution(connection, yield* readBinding(connection, input.sessionId, true));
     if (existing && input.messageFingerprint) {
       const accepted = yield* replayMessage({
+        ...(input.messageOrigin === "host" ? { origin: "host" as const } : {}),
         sessionId: input.sessionId,
         threadId,
         messageId: input.message.messageId,
@@ -1367,8 +1375,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           interactionMode: prepared.message.interactionMode ?? input.interactionMode,
           branch: input.branch ?? null,
           worktreePath: cwd,
-          createdBy: provenance ? "agent" : "user",
-          creationSource: provenance ? "mcp" : "web",
+          createdBy: input.messageOrigin === "host" ? "system" : provenance ? "agent" : "user",
+          creationSource: input.messageOrigin === "host" ? "server" : provenance ? "mcp" : "web",
         },
         input.modeLimit,
       );
@@ -1407,14 +1415,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }
       : prepared.message;
     const message = yield* prepareMessage(connection, threadId, outgoing);
-    const command = messageCommand(
-      threadId,
-      message,
-      undefined,
-      provenance !== null,
-      false,
-      sender,
-    );
+    const command = {
+      ...(input.messageOrigin === "host"
+        ? { createdBy: "system" as const, creationSource: "server" as const }
+        : {}),
+    };
     const firstLaunch = !existing && !previousBinding;
     yield* dispatch(
       connection,
@@ -1435,7 +1440,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         : command,
       input.modeLimit,
     );
-    if (!provenance && !input.sender && input.messageOrigin !== "automation")
+    if (
+      !provenance &&
+      !input.sender &&
+      input.messageOrigin !== "automation" &&
+      input.messageOrigin !== "host"
+    )
       yield* recordAcceptedUserMessage(core, input.sessionId, message.messageId);
     if (deferWorktree) {
       const outcome = yield* connection.request("run.outcome", {
@@ -2695,7 +2705,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
 
   /** The same intake preparation as interactive messages, with canonical delivery receipts. */
   const replayMessage = Effect.fn("AgentRuntimeApplication.replayMessage")(function* (
-    input: AgentRuntimeSessionTarget & { readonly messageId: string; readonly fingerprint: string },
+    input: AgentRuntimeSessionTarget & {
+      readonly messageId: string;
+      readonly fingerprint: string;
+      readonly origin?: "host";
+    },
   ) {
     yield* validateCaller();
     const connection = yield* options.connect;
@@ -2716,7 +2730,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       fingerprint: input.fingerprint,
     });
     if (!result) return null;
-    if ((yield* CoreApplicationAgent) === null)
+    if ((yield* CoreApplicationAgent) === null && input.origin !== "host")
       yield* recordAcceptedUserMessage(core, input.sessionId, input.messageId);
     const sideChatTitle = yield* titleSideChatRequest(
       connection,
@@ -2788,8 +2802,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       readonly mode: "auto" | "queue" | "steer" | "restart";
       readonly senderThreadId?: string;
       readonly senderRunId?: string | null;
+      readonly origin?: "host";
     },
   ) {
+    if (input.origin === "host" && (yield* CoreApplicationAgent) !== null)
+      return yield* failure("message", "Host input requires Desktop authority");
     if (input.messageFingerprint) {
       const replay = yield* replayMessage({
         ...input,
@@ -2830,7 +2847,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       text: prepared.text,
       attachments: prepared.attachments ?? [],
       mode: preparation.hasConfig ? "queue" : input.mode,
-      createdBy: agent ? "agent" : "user",
+      createdBy: input.origin === "host" ? "system" : agent ? "agent" : "user",
       ...(input.modeLimit ? { modeLimit: input.modeLimit } : {}),
       ...(prepared.context === undefined ? {} : { context: prepared.context }),
       ...(prepared.interactionMode === undefined
@@ -2840,7 +2857,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
       ...(input.senderRunId === undefined ? {} : { senderRunId: input.senderRunId }),
     });
-    if (!agent && !input.senderThreadId)
+    if (!agent && !input.senderThreadId && input.origin !== "host")
       yield* recordAcceptedUserMessage(core, input.sessionId, prepared.messageId);
     const sideChatTitle = yield* titleSideChatRequest(
       connection,
@@ -2854,6 +2871,19 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ...result,
       ...(sideChatTitle ? { sideChatTitle } : {}),
     };
+  });
+
+  const stopHostInput = Effect.fn("AgentRuntimeApplication.stopHostInput")(function* (
+    input: AgentRuntimeSessionTarget & { readonly messageId: string },
+  ) {
+    if ((yield* CoreApplicationAgent) !== null || !validId(input.messageId))
+      return yield* failure(
+        "stop-host-input",
+        "Host input cancellation requires Desktop authority",
+      );
+    const connection = yield* options.connect;
+    const { threadId } = yield* targetInfo(connection, input);
+    yield* connection.request("thread.stop-host-input", { threadId, messageId: input.messageId });
   });
 
   const interruptReply = (
@@ -4074,6 +4104,32 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           return { runtimeId: connection.identity.runtimeId, ...page };
         }),
       ),
+    /** Observation never repairs roots, reconciles execution, or reads transcript bodies. */
+    observeSessionMetadata: (input: { readonly sessionId: string }) =>
+      owned(
+        "observe-session-metadata",
+        Effect.gen(function* () {
+          yield* validateCaller();
+          if (options.runtimeExists && !(yield* options.runtimeExists)) return null;
+          const connection = yield* options.connect;
+          const binding = yield* readBinding(connection, input.sessionId, false);
+          const threadId = binding.runtime_thread_id;
+          const metadata = (yield* connection.request("sessions.metadata", {
+            threadIds: [threadId],
+          }))[0];
+          if (!metadata) return null;
+          const execution = yield* connection.request("thread.execution", {
+            threadId,
+            ...(metadata.activeRunId ? { runId: metadata.activeRunId } : {}),
+          });
+          const details = yield* connection.request("thread.read-details", {
+            threadId,
+            runLimit: 1,
+            ...(execution.runId ? { runId: execution.runId } : {}),
+          });
+          return { metadata, execution, details };
+        }),
+      ),
     sessionMetadata: (
       input: AgentRuntimeOperations["sessions.metadata"]["input"] & { readonly runtimeId: string },
     ) =>
@@ -4230,7 +4286,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           });
         }),
       ),
-    runOutcome: (input: AgentRuntimeSessionTarget & { readonly messageId: string }) =>
+    runOutcome: (
+      input: AgentRuntimeSessionTarget & {
+        readonly messageId: string;
+        readonly carryingRun?: true;
+      },
+    ) =>
       owned(
         "run-outcome",
         Effect.gen(function* () {
@@ -4238,10 +4299,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             return yield* failure("run-outcome", "Message identity is invalid");
           const connection = yield* options.connect;
           const loaded = yield* targetInfo(connection, input);
-          return yield* connection.request("run.outcome", {
-            threadId: loaded.threadId,
-            messageId: input.messageId,
-          });
+          return yield* connection.request(
+            input.carryingRun ? "thread.message-turn" : "run.outcome",
+            {
+              threadId: loaded.threadId,
+              messageId: input.messageId,
+            },
+          );
         }),
       ),
     message: (input: Parameters<typeof message>[0]) =>
@@ -4256,6 +4320,28 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ownedWrite("merge-back", mergeBack(input)),
     clearContext: (input: Parameters<typeof clearContext>[0]) =>
       ownedWrite("clear-context", clearContext(input)),
+    /** Reconcile a frozen question answer before inspecting the request's current state. */
+    responseAdmission: (
+      input: AgentRuntimeSessionTarget & {
+        readonly requestId: string;
+        readonly submissionId: string;
+      },
+    ) =>
+      owned(
+        "response-admission",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request("command.receipt", {
+            threadId: loaded.threadId,
+            commandId: commandId("response", {
+              threadId: loaded.threadId,
+              requestId: input.requestId,
+              submissionId: input.submissionId,
+            }),
+          });
+        }),
+      ),
     /** Read before retrying a durable handoff: archive and execution failure do not erase admission. */
     messageAdmission: (input: {
       readonly sessionId: string;
@@ -4440,6 +4526,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       ),
     stop: (input: Parameters<typeof stop>[0]) => ownedWrite("stop", stop(input)),
+    stopHostInput: (input: Parameters<typeof stopHostInput>[0]) =>
+      ownedWrite("stop-host-input", stopHostInput(input)),
     retryPreparation: (input: Parameters<typeof retryPreparation>[0]) =>
       ownedWrite("retry-preparation", retryPreparation(input)),
     reconcileLiveExecutions: () => owned("reconcile-live", reconcileLiveExecutions()),
@@ -4660,6 +4748,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           return yield* connection.request("thread.read-details", {
             threadId: loaded.threadId,
             runLimit: input.runLimit,
+            ...(input.runId === undefined ? {} : { runId: input.runId }),
             ...(input.beforeOrdinal === undefined ? {} : { beforeOrdinal: input.beforeOrdinal }),
           });
         }),

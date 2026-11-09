@@ -124,6 +124,7 @@ function makeSession(input: {
     noThreadFallbackTitle: input.id,
     displayTitle: input.id,
     activityAt: input.activityAt,
+    managed: false,
     pinned: input.pinned === true,
     pinnedOrder: input.pinnedOrder ?? null,
     archived: false,

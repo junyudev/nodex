@@ -118,3 +118,25 @@ export const undoInboxDecision = (input: InboxUndoInput) =>
 
 export const readInboxChatTargets = (input: InboxChatTargetsInput) =>
   invokeRendererQuery("inbox:chat-targets", input);
+
+const openNodexCommand = defineRendererCommand({
+  key: "inbox.open-nodex",
+  channel: "inbox:open-nodex",
+  authority: "main",
+  owner: "Inbox",
+  protocol: { kind: "pending_operation" },
+});
+const resetNodexCommand = defineRendererCommand({
+  key: "inbox.reset-nodex",
+  channel: "inbox:reset-nodex",
+  authority: "main",
+  owner: "Inbox",
+  protocol: { kind: "pending_operation" },
+});
+export const openNodex = () => invokePlainCommand(openNodexCommand);
+export const resetNodex = () => invokePlainCommand(resetNodexCommand);
+
+export const readInboxEntry = (pageId: string) => invokeRendererQuery("inbox:entry", pageId);
+
+export const readInboxReplyDestination = (pageId: string, body: string) =>
+  invokeRendererQuery("inbox:reply-destination", pageId, body);

@@ -16,6 +16,7 @@ import type {
 } from "./Interface.ts";
 import type { PersistChatAttachmentsResult } from "@nodex/runtime-contracts";
 import * as Application from "./Application.ts";
+import { readUserQuestion } from "./PendingUserQuestions.ts";
 import { AgentRuntime } from "./Service.ts";
 import type { AgentShellSnapshot } from "./Interface.ts";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
@@ -848,4 +849,237 @@ it.live(
         Effect.provide(Application.layer({ home, cwd: home, providers: {} }, () => Effect.void)),
       );
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+);
+
+const questions = [
+  {
+    id: "format",
+    header: "Format",
+    question: "Which format?",
+    options: [],
+    allowCustomAnswer: true,
+  },
+];
+const responder = {
+  kind: "agent",
+  senderThreadId: "coordinator",
+  senderSessionId: "sender-session",
+} as const;
+
+it.live("lists, reads and answers a persisted async question after its Run completed", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-ended-run-question-" });
+    yield* Effect.gen(function* () {
+      const runtime = yield* AgentRuntime;
+      const threadId = "thread:question";
+      yield* runtime.handle({
+        id: "project",
+        method: "project.upsert",
+        input: { id: "project:question", title: "Questions", workspaceRoot: home },
+      });
+      yield* runtime.handle({
+        id: "create",
+        method: "command.dispatch",
+        input: {
+          command: {
+            type: "thread.create",
+            commandId: "create:question",
+            threadId,
+            projectId: "project:question",
+            title: "Questions",
+            modelSelection: { instanceId: "codex", model: "model" },
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdBy: "user",
+            creationSource: "web",
+          },
+        },
+      });
+      // Persisted control-read fixture: the question outlives its Run and a newer completed Run.
+      yield* Effect.sync(() => {
+        const database = new DatabaseSync(runtime.identity.databasePath);
+        const now = "2026-11-05T00:00:00.000Z";
+        try {
+          for (const ordinal of [1, 2]) {
+            const run = {
+              id: `run:${ordinal}`,
+              threadId,
+              ordinal,
+              providerInstanceId: "codex",
+              modelSelection: { instanceId: "codex", model: "model" },
+              providerThreadId: null,
+              userMessageId: `message:${ordinal}`,
+              rootNodeId: null,
+              activeAttemptId: null,
+              status: "completed",
+              requestedAt: now,
+              startedAt: now,
+              completedAt: now,
+              checkpointId: null,
+              contextHandoffId: null,
+            };
+            database
+              .prepare(`INSERT INTO orchestration_v2_projection_runs
+              (run_id,thread_id,ordinal,provider,provider_instance_id,status,requested_at,completed_at,payload_json)
+              VALUES(?,?,?,'codex','codex',?,?,?,?)`)
+              .run(
+                run.id,
+                threadId,
+                ordinal,
+                run.status,
+                now,
+                run.completedAt,
+                JSON.stringify(run),
+              );
+          }
+          const node = {
+            id: "node:question",
+            threadId,
+            runId: "run:1",
+            parentNodeId: null,
+            rootNodeId: "node:question",
+            kind: "user_input_request",
+            status: "waiting",
+            countsForRun: false,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            runtimeRequestId: "question",
+            checkpointScopeId: null,
+            startedAt: now,
+            completedAt: null,
+          };
+          database
+            .prepare(`INSERT INTO orchestration_v2_projection_nodes
+            (node_id,thread_id,run_id,root_node_id,kind,status,started_at,payload_json)
+            VALUES(?,?,'run:1',?,'user_input_request','waiting',?,?)`)
+            .run(node.id, threadId, node.id, now, JSON.stringify(node));
+          const request = {
+            id: "question",
+            nodeId: node.id,
+            providerTurnId: null,
+            nativeRequestRef: null,
+            kind: "user_input",
+            status: "pending",
+            createdAt: now,
+            resolvedAt: null,
+            responseCapability: { type: "message", replyFormat: "codex_question_reply" },
+          };
+          database
+            .prepare(`INSERT INTO orchestration_v2_projection_runtime_requests
+            (runtime_request_id,thread_id,node_id,kind,status,created_at,payload_json)
+            VALUES(?,?,?,'user_input','pending',?,?)`)
+            .run(request.id, threadId, node.id, now, JSON.stringify(request));
+          const item = {
+            id: "item:question",
+            threadId,
+            runId: "run:1",
+            nodeId: node.id,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal: 1,
+            status: "waiting",
+            title: null,
+            startedAt: now,
+            completedAt: null,
+            updatedAt: now,
+            type: "user_input_request",
+            requestId: request.id,
+            questions,
+            responseMode: "message",
+          };
+          database
+            .prepare(`INSERT INTO orchestration_v2_projection_turn_items
+            (turn_item_id,thread_id,run_id,node_id,ordinal,type,status,updated_at,payload_json)
+            VALUES(?,?,'run:1',?,1,'user_input_request','waiting',?,?)`)
+            .run(item.id, threadId, node.id, now, JSON.stringify(item));
+          database
+            .prepare(`INSERT INTO orchestration_v2_projection_turn_items
+            (turn_item_id,thread_id,ordinal,type,status,updated_at,payload_json)
+            VALUES('opaque-history',?,2,'command_execution','completed',?,'not a transcript envelope')`)
+            .run(threadId, now);
+        } finally {
+          database.close();
+        }
+      });
+      const listed = (yield* runtime.handle({
+        id: "list",
+        method: "thread.questions.list",
+        input: { threadId },
+      })) as { requestIds: string[] };
+      expect(listed).toEqual({ requestIds: ["question"] });
+      const requestId = listed.requestIds[0]!;
+      const control = (yield* runtime.handle({
+        id: "read",
+        method: "thread.control",
+        input: { threadId, requestId },
+      })) as AgentSnapshot;
+      const selected = readUserQuestion(control.projection, requestId);
+      if ("error" in selected) throw new Error(selected.message);
+      expect(selected.item.questions).toEqual(questions);
+      expect(
+        control.projection.nodes.find((node) => node.id === selected.request.nodeId)?.runId,
+      ).toBe("run:1");
+      expect(control.projection.turnItems.map((item) => item.id)).toEqual(["item:question"]);
+      expect(control.projection.visibleTurnItems).toEqual([]);
+      const command = {
+        type: "runtime-request.respond",
+        commandId: "answer",
+        threadId,
+        requestId,
+        answers: { format: "Markdown" },
+        respondedBy: responder,
+        requirePending: true,
+        responseFingerprint: "answer:Markdown",
+      };
+      const accepted = yield* runtime.handle({
+        id: "answer",
+        method: "command.dispatch",
+        input: { command },
+      });
+      expect(
+        yield* runtime.handle({
+          id: "listed-after",
+          method: "thread.questions.list",
+          input: { threadId },
+        }),
+      ).toEqual({ requestIds: [] });
+      const answeredControl = (yield* runtime.handle({
+        id: "read-after",
+        method: "thread.control",
+        input: { threadId, requestId },
+      })) as AgentSnapshot;
+      expect(readUserQuestion(answeredControl.projection, requestId)).toMatchObject({
+        error: "not_pending",
+      });
+      const answered = readUserQuestion(answeredControl.projection, requestId, false);
+      if ("error" in answered) throw new Error(answered.message);
+      expect(answered.item.questionAnswer?.answers).toEqual({ format: "Markdown" });
+      expect(
+        yield* runtime.handle({
+          id: "retry",
+          method: "command.dispatch",
+          input: { command },
+        }),
+      ).toEqual(accepted);
+    }).pipe(
+      Effect.provide(
+        Application.layer(
+          {
+            home,
+            cwd: home,
+            providers: {
+              codex: { driver: "codex", config: { binaryPath: "/missing-codex", homePath: home } },
+            },
+          },
+          () => Effect.void,
+        ),
+      ),
+    );
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 );

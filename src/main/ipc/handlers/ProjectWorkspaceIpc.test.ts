@@ -12,9 +12,11 @@ import type {
   Project,
   ProjectUpdateCommandInput,
   SessionLinkedPageSummaryInput,
+  SessionManagedState,
 } from "../../../shared/types";
 import type {
   ProjectSessionOpenedCommandInput,
+  ProjectSessionManagedCommandInput,
   BuiltinSidebarReorderCommandInput,
 } from "../../../shared/workspace-catalog-commands";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
@@ -132,6 +134,8 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
         remindAt: null,
       },
     ];
+    let managedState: SessionManagedState = { managed: false, since: null };
+    const managedInputs: ProjectSessionManagedCommandInput[] = [];
     const workspace = ProjectWorkspace.of({
       createPageFor: (input: CreatePageForCommand) =>
         Effect.sync(() => {
@@ -168,6 +172,19 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
         Effect.sync(() => {
           pinnedOrderInputs.push(command);
           return { value: undefined, apply: applied };
+        }),
+      readSessionManaged: (sessionId: string) => {
+        assert.equal(sessionId, "session:one");
+        return Effect.succeed(managedState);
+      },
+      setSessionManaged: (command: ProjectSessionManagedCommandInput) =>
+        Effect.sync(() => {
+          managedInputs.push(command);
+          managedState = {
+            managed: command.payload.managed,
+            since: command.payload.managed ? "2026-11-03T00:00:00Z" : null,
+          };
+          return { value: managedState, apply: applied };
         }),
       updateProject: (input: ProjectUpdateCommandInput) => {
         if (input.projectId === "project:missing") {
@@ -233,8 +250,9 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       scope,
     );
 
-    assert.strictEqual(handlers.size, 52);
+    assert.strictEqual(handlers.size, 55);
     assert.isTrue(handlers.has("projects:create"));
+    assert.isTrue(handlers.has("project-sessions:start"));
     assert.isTrue(handlers.has("project-sessions:set-reminder"));
     assert.isTrue(handlers.has("projects:update"));
     assert.isTrue(handlers.has("project-sessions:fork"));
@@ -245,6 +263,35 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
     assert.isTrue(handlers.has("page-chats:link"));
     assert.isTrue(handlers.has("page-chats:unlink"));
     assert.isTrue(handlers.has("sidebar-sections:sessions:placements"));
+
+    assert.deepEqual(
+      yield* handlers.get("project-sessions:managed")!(rendererEvent(17), "session:one"),
+      { managed: false, since: null },
+    );
+    const managedCommand: ProjectSessionManagedCommandInput = {
+      operationId: createBoundedOperationId("workspace.session.managed", 1_800_000_000_000),
+      payload: { sessionId: "session:one", managed: true },
+    };
+    const deniedManaged = yield* handlers.get("project-sessions:set-managed")!(
+      rendererEvent(99),
+      managedCommand,
+    ).pipe(Effect.result);
+    assert.equal(deniedManaged._tag, "Failure");
+    assert.deepEqual(managedInputs, []);
+    const managedResult = yield* handlers.get("project-sessions:set-managed")!(
+      rendererEvent(17),
+      managedCommand,
+    );
+    assert.deepEqual(managedInputs, [managedCommand]);
+    assert.deepEqual(managedResult, {
+      ok: true,
+      value: { managed: true, since: "2026-11-03T00:00:00Z" },
+      localCommit: { status: "committed", commit: applied.commit, delivery: null },
+    });
+    assert.deepEqual(
+      yield* handlers.get("project-sessions:managed")!(rendererEvent(17), "session:one"),
+      managedState,
+    );
 
     const pageInput: CreatePageForCommand = {
       for: { kind: "session", sessionId: "session:one" },

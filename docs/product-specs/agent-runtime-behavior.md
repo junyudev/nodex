@@ -918,6 +918,14 @@ Workbench, sidebar, terminal, account, plugin and Automation commands use their 
 application owners with the same caller checks. Session messages, launches and forks
 use the canonical Runtime writer and stable command identities.
 
+Work tools follow [Coordinator behavior](coordinator-behavior.md#application-tools):
+`report_work` lets a chat linked to a Page report its work there, and `start_work` lets
+from any Session other than the Profile's Coordinator. Host input to the Coordinator
+and managed-chat work updates are server-created messages, never the person's own, and
+read `Sent by Nodex`. The Host attaches Nodex's standing instructions, and those of a
+managed chat, on every turn through the same preparation hook as other Session
+instructions, so compaction and model changes never lose them.
+
 Every provider attaches the application tools as one MCP server named `nodex_app`. Session
 tools address product Sessions by sessionId across Projects. The Runtime's task tools
 (`list_agent_models`, `delegate_task`, `task_status`, `task_wait`, `task_send`, `task_read`,

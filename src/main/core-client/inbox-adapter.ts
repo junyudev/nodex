@@ -164,6 +164,13 @@ export const inboxSourceFromCore = (source: CoreInboxSource): InboxSource => {
         projectId: source.project_id ?? null,
         label: source.label,
       };
+    case "nodex":
+      return {
+        kind: "nodex",
+        purpose: source.purpose,
+        subjectSessionId: source.subject_session_id ?? null,
+        subjectPageId: source.subject_page_id ?? null,
+      };
     case "user":
       return { kind: "user" };
     case "agent":
@@ -215,6 +222,7 @@ export const inboxChatFromCore = (chat: CoreInboxChat): InboxChat => ({
 });
 
 const proposalFromCore = (proposal: CoreInboxProposal): InboxProposal => ({
+  answeredQuestion: proposal.answered_question,
   proposalId: proposal.proposal_id,
   revision: proposal.revision,
   origin: proposal.origin,
@@ -222,6 +230,8 @@ const proposalFromCore = (proposal: CoreInboxProposal): InboxProposal => ({
   pageIds: [...proposal.page_ids],
   basis: proposal.basis.map(inboxPageBasisFromCore),
   outdated: proposal.outdated,
+  explicitRequest: proposal.explicit_request,
+  confirmedBy: proposal.confirmed_by ?? null,
   action: inboxDispatchActionFromCore(proposal.action),
   kind: proposal.kind ?? null,
   summary: proposal.summary,
@@ -245,6 +255,7 @@ export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   bodyEditable: item.body_editable,
   submittedAt: item.submitted_at,
   source: inboxSourceFromCore(item.source),
+  replyToPageId: item.reply_to_page_id ?? null,
   kind: item.kind ?? null,
   important: item.important,
   state: item.state,

@@ -699,6 +699,8 @@ export interface ProjectionQueuedRunPage {
   readonly nextRunId: string | null;
 }
 export interface ProjectionRunOutcome {
+  readonly startedAt: string | null;
+  readonly failureMessage?: string;
   readonly runId: RunId;
   readonly status: OrchestrationV2Run["status"];
   readonly completedAt: string | null;
@@ -9020,8 +9022,13 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 : {}),
               ...(historyAnchor === undefined ? {} : { historyAnchor }),
             });
+            // A request's card is control state even when its Run has left the transcript window.
+            const requestItem =
+              options.controlOnly && options.requiredRequestId !== undefined
+                ? (yield* getRuntimeResponseContext(threadId, options.requiredRequestId)).item
+                : undefined;
             const projection = options.controlOnly
-              ? read.projection
+              ? { ...read.projection, turnItems: requestItem === undefined ? [] : [requestItem] }
               : {
                   ...read.projection,
                   rewindContext: yield* Schema.decodeUnknownEffect(
@@ -9862,9 +9869,18 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         run_id: string;
         status: OrchestrationV2Run["status"];
         completed_at: string | null;
+        started_at: string | null;
         final_assistant_item_id: string | null;
+        failure_message: string | null;
       }>`
-        SELECT run.run_id, run.status, run.completed_at,
+        SELECT run.run_id, run.status, run.completed_at, json_extract(run.payload_json, '$.startedAt') AS started_at,
+          CASE WHEN run.status = 'failed' THEN (
+            SELECT json_extract(item.payload_json, '$.failure.message')
+            FROM orchestration_v2_projection_turn_items item
+            WHERE item.thread_id = run.thread_id AND item.run_id = run.run_id
+              AND item.type = 'error' AND item.status = 'failed'
+            ORDER BY item.ordinal DESC, item.turn_item_id DESC LIMIT 1
+          ) END AS failure_message,
           (SELECT item.turn_item_id FROM orchestration_v2_projection_turn_items item
             WHERE item.thread_id = run.thread_id AND item.run_id = run.run_id
               AND item.type = 'assistant_message'
@@ -9893,7 +9909,11 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           rows[0] === undefined
             ? null
             : {
+                ...(rows[0].failure_message === null
+                  ? {}
+                  : { failureMessage: rows[0].failure_message }),
                 runId: RunId.make(rows[0].run_id),
+                startedAt: rows[0].started_at,
                 status: rows[0].status,
                 completedAt: rows[0].completed_at,
                 finalAssistantItemId:
@@ -11697,8 +11717,17 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
               .toSorted(
                 (left, right) => right.ordinal - left.ordinal || right.id.localeCompare(left.id),
               )[0];
+            const failure =
+              run.status === "failed"
+                ? projection.turnItems.findLast(
+                    (item) =>
+                      item.runId === run.id && item.type === "error" && item.status === "failed",
+                  )
+                : undefined;
             return {
+              ...(failure?.type === "error" ? { failureMessage: failure.failure.message } : {}),
               runId: run.id,
+              startedAt: run.startedAt === null ? null : DateTime.formatIso(run.startedAt),
               status: run.status,
               completedAt: run.completedAt === null ? null : DateTime.formatIso(run.completedAt),
               finalAssistantItemId: final?.id ?? null,
@@ -11989,7 +12018,11 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                 retainPublicThreadControlClosure(
                   {
                     ...projection,
-                    turnItems: [],
+                    turnItems: projection.turnItems.filter(
+                      (item) =>
+                        (item.type === "approval_request" || item.type === "user_input_request") &&
+                        item.requestId === options.requiredRequestId,
+                    ),
                     visibleTurnItems: [],
                     messages: [],
                     plans: [],

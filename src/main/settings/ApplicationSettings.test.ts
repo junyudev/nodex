@@ -446,6 +446,35 @@ describe("ApplicationSettings", () => {
     }),
   );
 
+  it.effect.each(["suggest", "act_on_requests"] as const)(
+    "persists the Inbox's %s dispatch policy",
+    (mode) =>
+      Effect.gen(function* () {
+        const { root, settingsPath } = fixture();
+        const input = { environment: {}, hostHomeDirectory: root, settingsPath };
+        const settings = yield* makeApplicationSettings(input);
+        assert.equal((yield* settings.snapshot()).inbox.dispatchMode, "suggest");
+        yield* settings.update({ type: "update-inbox", input: { dispatchMode: mode } });
+        const reopened = yield* makeApplicationSettings(input);
+        assert.equal((yield* reopened.snapshot()).inbox.dispatchMode, mode);
+        const document = parseToml(readFileSync(settingsPath, "utf8")) as {
+          server: { inbox_dispatch_mode: string };
+        };
+        assert.equal(document.server.inbox_dispatch_mode, mode);
+      }),
+  );
+  it.effect("defaults an unknown saved Inbox dispatch mode to Suggest", () =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture('[server]\ninbox_dispatch_mode = "unattended"\n');
+      const settings = yield* makeApplicationSettings({
+        environment: {},
+        hostHomeDirectory: root,
+        settingsPath,
+      });
+      assert.equal((yield* settings.snapshot()).inbox.dispatchMode, "suggest");
+    }),
+  );
+
   it.effect.each(INBOX_SUGGESTION_MODES)("persists the Inbox's %s suggestion mode", (mode) =>
     Effect.gen(function* () {
       const { root, settingsPath } = fixture();

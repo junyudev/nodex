@@ -18,6 +18,7 @@ describe("Prompt Turn projection", () => {
   ] as const)("maps %s to %s without borrowing another Turn's activity", (status, phase) => {
     const outcome: Outcome = {
       runId: "original",
+      startedAt: null,
       status,
       completedAt: null,
       finalAssistantItemId: "answer",

@@ -990,6 +990,11 @@ export function useWorkbenchSidebarController({
       await toggleSessionPin(session);
       return;
     }
+    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged) {
+      if (session.archived) return;
+      await catalog.setManaged(session, !session.managed);
+      return;
+    }
     if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.rename) {
       openRenameSessionDialog(session);
       return;

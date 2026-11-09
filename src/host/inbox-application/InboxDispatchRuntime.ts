@@ -5,21 +5,13 @@ import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import type { CodexPromptImageInput } from "../../shared/types";
 import { createUuidV7FromTimestamp } from "../../shared/uuid-v7";
-import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
-import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
-import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
 import {
   inboxDispatchActionFromCore,
   inboxExecutionSelectionFromCore,
   type CoreInboxDispatchWork,
-} from "../core-client/inbox-adapter";
-import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
-import { getLogger } from "../logging/logger";
-import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { InboxApplication } from "./InboxApplication";
-import { makeInboxImageLoader } from "./inbox-images";
+import { inboxPromptImages, makeInboxImageLoader } from "./inbox-images";
 
 const OUTBOX_BATCH = 200;
 const SAFETY_POLL = "30 seconds";
@@ -63,7 +55,6 @@ export const make = Effect.gen(function* () {
   const runtime = yield* AgentRuntimeApplication;
   const workspace = yield* ProjectWorkspace;
   const loadImages = yield* makeInboxImageLoader;
-  const remoteTurns = yield* Effect.serviceOption(CodexTurnCommands);
   const logger = getLogger({ component: "inbox-dispatch-runtime" });
   const lane = yield* Semaphore.make(1);
 
@@ -88,16 +79,34 @@ export const make = Effect.gen(function* () {
       messageId: work.message_id,
       text: note ? `${text}\n\n${note} could not be attached.` : text,
       agentConfigs: [],
-      images: loaded.images.map((image, index): CodexPromptImageInput => ({
-        source: `data:${image.mediaType};base64,${image.data}`,
-        caption: `[Image #${loaded.attachedMarkers[index]}]`,
-      })),
+      images: inboxPromptImages(loaded),
     };
   });
 
   const reconcile = Effect.fn("InboxDispatchRuntime.reconcile")(function* (
     work: CoreInboxDispatchWork,
   ) {
+    if (work.question_response) {
+      const receipt = yield* runtime.responseAdmission({
+        sessionId: work.session_id,
+        ...(work.target_execution_ref ? { threadId: work.target_execution_ref.thread_id } : {}),
+        requestId: work.question_response.request_id,
+        submissionId: work.message_id,
+      });
+      if (!receipt) return false;
+      if (receipt.status === "accepted")
+        yield* inbox.completeDispatch(
+          work,
+          work.target_execution_ref?.thread_id ?? work.thread_id ?? null,
+        );
+      else
+        yield* inbox.failDispatch(
+          work,
+          receipt.error || "The question could not be answered",
+          "rejected",
+        );
+      return true;
+    }
     const receipt = yield* runtime.messageAdmission({
       sessionId: work.session_id,
       ...(work.action.type === "new_chat"
@@ -137,6 +146,24 @@ export const make = Effect.gen(function* () {
         "This decision does not send a chat message",
         "rejected",
       );
+    if (work.question_response) {
+      if (yield* reconcile(work)) return;
+      const response = work.question_response;
+      yield* runtime.respond({
+        sessionId: work.session_id,
+        ...(work.target_execution_ref ? { threadId: work.target_execution_ref.thread_id } : {}),
+        requestId: response.request_id,
+        runId: response.run_id ?? null,
+        submissionId: work.message_id,
+        responseFingerprint: inboxDispatchFingerprint(work),
+        requirePending: true,
+        answers: { [response.question_id]: response.answer },
+      });
+      return yield* inbox.completeDispatch(
+        work,
+        work.target_execution_ref?.thread_id ?? work.thread_id ?? null,
+      );
+    }
     // A recorded acceptance wins over later archive, model changes or an execution failure.
     if (yield* reconcile(work)) return;
     if (!work.final_text)
@@ -148,14 +175,6 @@ export const make = Effect.gen(function* () {
     const session = yield* workspace.getProjectSession(work.session_id);
     if (!session || session.archived)
       return yield* inbox.failDispatch(work, "The target chat is unavailable", "unavailable");
-    if (session.projectId && (action.type === "new_chat" || session.executionRef)) {
-      const project = yield* workspace.getProject(session.projectId);
-      if (!project || project.lifecycle !== "active" || !project.primaryWorkspaceRoot)
-        return yield* inbox.failDispatch(
-          work,
-          "The Project has no available execution workspace",
-          "unavailable",
-        );
     }
     const message = yield* prepareMessage(work, work.final_text);
     if (action.type === "new_chat") {
@@ -178,7 +197,6 @@ export const make = Effect.gen(function* () {
           "rejected",
         );
       const selection = inboxExecutionSelectionFromCore(work.execution_selection);
-      const started = yield* runtime.launch({
         launchId: work.launch_id,
         messageFingerprint: inboxDispatchFingerprint(work),
         acceptedAt: Date.parse(work.confirmed_at),
@@ -187,10 +205,8 @@ export const make = Effect.gen(function* () {
         title: session.displayTitle,
         modelSelection: selection.modelSelection,
         interactionMode: selection.interactionMode,
-        runInTarget: "localProject",
         message,
       });
-      return yield* inbox.completeDispatch(work, started.threadId);
     }
     if (session.executionRef) {
       if (
@@ -262,7 +278,9 @@ export const make = Effect.gen(function* () {
                     settled ? Effect.void : inbox.failDispatch(work, error.message, "rejected"),
                   ),
                 )
-              : Effect.fail(error),
+              : work.question_response && error.questionReason
+                ? inbox.failDispatch(work, error.message, "rejected")
+                : Effect.fail(error),
           ),
           Effect.timeout(ADMISSION_TIMEOUT),
           Effect.catchCause(() =>

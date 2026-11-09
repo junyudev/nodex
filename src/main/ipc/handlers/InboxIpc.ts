@@ -34,41 +34,17 @@ type Handler<Channel extends keyof IpcApi> = (
   ...args: IpcApi[Channel]["args"]
 ) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
 
-const coreRejection = (cause: unknown): CoreModuleResponseError | null => {
-  if (cause instanceof CoreModuleResponseError) return cause;
-  if (Schema.is(InboxApplicationError)(cause) && cause.mayHaveCommitted) return null;
-  if (cause instanceof InboxApplicationError || Schema.is(CoreRuntimeError)(cause))
-    return coreRejection(cause.cause);
-  return null;
-};
-
-/** Preserve the durable receipt and typed rejection across the renderer boundary. */
-const committed = <Value>(
-  task: Effect.Effect<ProjectWorkspaceCommandResult<Value>, InboxApplicationError>,
-): Effect.Effect<CoreLocalCommitResult<Value>, InboxApplicationError> =>
-  task.pipe(
-    Effect.map(({ value, apply }) => ({
-      ok: true as const,
-      value,
-      localCommit: rendererLocalCommitApply(apply),
-    })),
-    Effect.catch((cause) => {
-      const rejection = coreRejection(cause);
-      if (!rejection) return Effect.fail(cause);
-      return Effect.succeed({ ok: false as const, error: rejection.coreError });
-    }),
-  );
-
 /** Trusted-window ingress for the Inbox application Interface. */
 export const live: Layer.Layer<
   never,
   never,
-  ElectronIpc | InboxApplication | MainConfig | WindowRuntime
+  ElectronIpc | InboxApplication | CoordinatorSession | MainConfig | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
     const inbox = yield* InboxApplication;
+    const coordinator = yield* CoordinatorSession;
     const windows = yield* WindowRuntime;
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
@@ -104,6 +80,12 @@ export const live: Layer.Layer<
       task: Handler<Channel>,
     ) => invokeIpc.handleLocalCommitCommand(channel, task);
 
+    yield* invokeIpc.handlePlainCommand("inbox:open-nodex", () => coordinator.ensure());
+    yield* invokeIpc.handlePlainCommand("inbox:reset-nodex", () => coordinator.reset());
+    yield* query("inbox:reply-destination", (_, pageId, body) =>
+      inbox.replyDestination(pageId, body),
+    );
+    yield* query("inbox:entry", (_, pageId) => inbox.entry(pageId));
     yield* query("inbox:summary", (_, input) => inbox.summary(input));
     yield* query("inbox:counts", () => inbox.counts);
     yield* query("inbox:window", (_, input) => inbox.window(input));

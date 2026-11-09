@@ -201,6 +201,17 @@ export const projectWorkspaceSessionLinkedPageSummaryFromCore = (
 export const projectWorkspacePageChatActivitySummaryFromCore = (
   summary: CorePageChatActivitySummary,
 ): PageChatActivitySummary => ({
+  work: {
+    latestReport: summary.work.latest_report
+      ? {
+          sessionId: summary.work.latest_report.session_id,
+          outcome: summary.work.latest_report.outcome,
+          at: summary.work.latest_report.at,
+          revision: summary.work.latest_report.revision,
+        }
+      : null,
+    managedSessionCount: summary.work.managed_session_count,
+  },
   pageId: summary.page_id,
   relatedCount: summary.related_count,
   workingCount: summary.working_count,
@@ -213,6 +224,7 @@ export const projectWorkspacePageChatActivitySummaryFromCore = (
 });
 
 export const projectWorkspacePageChatItemFromCore = (item: CorePageChatItem): PageChatItem => ({
+  report: item.report ?? null,
   sessionId: item.session_id,
   projectId: item.project_id ?? null,
   projectName: item.project_name ?? null,
@@ -765,6 +777,7 @@ const fromCoreSessionSummary = (
   displayTitle: session.display_title,
   activityAt: session.activity_at,
   pinned: session.pinned,
+  managed: session.managed,
   pinnedOrder: session.pinned_order ?? null,
   archived: session.archived,
   archivedAt: session.archived_at ?? null,

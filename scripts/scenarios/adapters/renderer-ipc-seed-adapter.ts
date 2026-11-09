@@ -456,6 +456,7 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       title: detail.page.title,
       descriptionPreview: detail.page.preview,
       documentReadiness: detail.document.readiness,
+      ),
       commitSeq: detail.commitSeq,
     };
   }
@@ -493,6 +494,31 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       }),
       "Capture Inbox message",
     );
+  }
+
+  async createCoordinatorSession(): Promise<never> {
+    throw new Error("Coordinator admission is seeded only through Core");
+  }
+  async setSessionManaged(sessionId: string, managed: boolean): Promise<void> {
+    requireSuccess(
+      await this.#invoke("project-sessions:set-managed", {
+        operationId: createUuidV7(),
+        payload: { sessionId, managed },
+      }),
+      "Manage scenario chat",
+    );
+  }
+    throw new Error("Agent work is seeded only through Core");
+  }
+  async reportPageWork(): Promise<never> {
+    throw new Error("Agent reports are seeded only through Core");
+  }
+  }
+  async settleCoordinatorSuggestion(): Promise<never> {
+    throw new Error("Coordinator suggestions are seeded only through Core");
+  }
+  async confirmInboxRequestByNodex(): Promise<never> {
+    throw new Error("Nodex confirmation is seeded only through Core");
   }
 
   async prepareInboxSuggestions(): Promise<void> {

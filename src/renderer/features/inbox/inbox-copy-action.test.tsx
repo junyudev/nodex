@@ -24,6 +24,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   bodyEditable: true,
   submittedAt: "2026-10-11T10:00:00.000Z",
   source: { kind: "user" },
+  replyToPageId: null,
   kind: null,
   important: false,
   state: "open",

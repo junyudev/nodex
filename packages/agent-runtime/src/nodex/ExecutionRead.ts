@@ -102,6 +102,10 @@ export const readExecution = Effect.fn("Runtime.readExecution")(function* (input
       const attention = (yield* readSessionAttention([input.threadId], run.run_id)).get(
         input.threadId,
       );
+      const progress = yield* sql<{ updated_at: string | null; item_count: number }>`
+        SELECT MAX(updated_at) AS updated_at, COUNT(*) AS item_count
+        FROM orchestration_v2_projection_turn_items
+        WHERE thread_id = ${input.threadId} AND run_id = ${run.run_id}`;
       const items = yield* sql<{
         turn_item_id: string;
         type: string;

@@ -358,12 +358,13 @@ const AgentRequest = Schema.Union([
       interactionMode: Schema.optional(ProviderInteractionMode),
       modelSelection: Schema.optional(ModelSelection),
       mode: Schema.Literals(["auto", "queue", "steer", "restart"]),
-      createdBy: Schema.Literals(["user", "agent"]),
+      createdBy: Schema.Literals(["user", "agent", "system"]),
       senderThreadId: Schema.optional(ThreadId),
       senderRunId: Schema.optional(Schema.NullOr(RunId)),
       modeLimit: Schema.optional(DispatchModeLimitSchema),
     }),
   ),
+  request("thread.stop-host-input", Schema.Struct({ threadId: ThreadId, messageId: MessageId })),
   request("thread.read", Schema.Struct({ threadId: ThreadId })),
   request("thread.questions.list", Schema.Struct({ threadId: ThreadId })),
   request(
@@ -546,6 +547,7 @@ const AgentRequest = Schema.Union([
       threadId: ThreadId,
       runLimit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 50 })),
       beforeOrdinal: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
+      runId: Schema.optional(RunId),
     }),
   ),
   request(
@@ -1206,7 +1208,42 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
               yield* providerSessions.close(ProviderSessionId.make(session.provider_session_id));
           }
         }
-        return yield* providerConfiguration.configure(wanted);
+      case "thread.stop-host-input": {
+        const { threadId, messageId } = input.input;
+        const read = projections.getRunOutcome({ threadId, messageId });
+        let run = yield* read;
+        if (!run) return null;
+        const message = yield* projections.getRunUserMessage(threadId, run.runId);
+        if (message?.createdBy !== "system" || message.creationSource !== "server") return null;
+        if (run.status === "queued") {
+          const cancelled = yield* orchestrator
+            .dispatch({
+              type: "queued-run.cancel-internal",
+              commandId: CommandId.make(`host-input:cancel:${run.runId}`),
+              threadId,
+              runId: run.runId,
+            })
+            .pipe(Effect.result);
+          if (cancelled._tag === "Success") return null;
+          // A queued Run can start between its lookup and cancellation.
+          run = yield* read;
+          if (run?.status === "queued") return yield* cancelled.failure;
+        }
+        if (
+          run?.status !== "preparing" &&
+          run?.status !== "starting" &&
+          run?.status !== "running" &&
+          run?.status !== "waiting"
+        )
+          return null;
+        yield* orchestrator.dispatch({
+          type: "run.interrupt",
+          commandId: CommandId.make(`host-input:interrupt:${run.runId}`),
+          threadId,
+          runId: run.runId,
+        });
+        return null;
+      }
       }
       case "thread.send": {
         const shell = yield* orchestrator.getThreadShell(input.input.threadId);
@@ -1233,7 +1270,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
               : { senderThreadId: request.senderThreadId }),
             ...(request.senderRunId === undefined ? {} : { senderRunId: request.senderRunId }),
             createdBy: request.createdBy,
-            creationSource: request.createdBy === "agent" ? "mcp" : "web",
+            creationSource:
+              request.createdBy === "system"
+                ? "server"
+                : request.createdBy === "agent"
+                  ? "mcp"
+                  : "web",
           })
           .pipe(Effect.provideService(DispatchModeLimit, request.modeLimit));
         return {
@@ -1502,6 +1544,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           input.input.threadId,
           input.input.runLimit,
           input.input.beforeOrdinal,
+          input.input.runId,
         ).pipe(Effect.provideService(SqlClient.SqlClient, sql));
       case "thread.timeline":
         return yield* projections

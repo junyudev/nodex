@@ -14,7 +14,8 @@ const commonNames = new Set([
   "send_message_to_session",
   "session_question",
   "send_to_inbox",
-  "automation_update",
+  "report_work",
+  "inbox_suggest",
   "read_session_terminal",
 ]);
 

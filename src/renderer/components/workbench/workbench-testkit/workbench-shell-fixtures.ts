@@ -508,6 +508,7 @@ export function makeSession(overrides: SessionFixtureOverrides = {}): ProjectSes
     updatedAt: "2026-06-07T00:00:00.000Z",
     ...sessionOverrides,
     pinned: sessionOverrides.pinned ?? databaseViewStarter,
+    managed: sessionOverrides.managed ?? false,
     pinnedOrder: sessionOverrides.pinnedOrder ?? (databaseViewStarter ? 0 : null),
     archived: sessionOverrides.archived ?? false,
     archivedAt: sessionOverrides.archivedAt ?? null,

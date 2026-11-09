@@ -1,3 +1,6 @@
+import {
+  COORDINATOR_INSTRUCTIONS,
+  MANAGED_SESSION_INSTRUCTIONS,
 import { isDeepStrictEqual } from "node:util";
 import type {
   AgentHostRequest,
@@ -165,8 +168,19 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         ? (identity.nativeThreadRef.nativeId ?? null)
         : null,
       agentAttribution,
+    const coordinator = yield* core.workspace.read({ kind: "read_coordinator" }, undefined, null);
+    const managed = yield* core.workspace.read(
+      { kind: "read_managed_session", session_id: sessionId },
+      undefined,
+      null,
     );
-    return { instructions: cli ? `${base}\n\n${cli}` : base, sourceRoots };
+    const role =
+      coordinator.value.kind === "read_coordinator" && coordinator.value.session_id === sessionId
+        ? COORDINATOR_INSTRUCTIONS
+        : managed.value.kind === "read_managed_session" && managed.value.managed
+          ? MANAGED_SESSION_INSTRUCTIONS
+          : null;
+    return { instructions: [base, cli, role].filter(Boolean).join("\n\n"), sourceRoots };
   });
 
   const execute = Effect.fn("AgentRuntimeHost.execute")(

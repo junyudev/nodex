@@ -902,6 +902,33 @@ const setup = (
         }
         return { sequence: commands.size } as AgentRuntimeOperations[M]["output"];
       }
+      if (method === "sessions.metadata") {
+        const ids = (input as AgentRuntimeOperations["sessions.metadata"]["input"]).threadIds;
+        return ids
+          .filter((id) => snapshots.has(id))
+          .map((threadId) => ({
+            threadId,
+            activeRunId: null,
+            itemCount: 0,
+          })) as unknown as AgentRuntimeOperations[M]["output"];
+      }
+      if (method === "thread.execution")
+        return {
+          selectedRunId: null,
+          runId: null,
+          status: null,
+          continuationPending: false,
+          activeFlags: [],
+          revision: "metadata",
+        } as unknown as AgentRuntimeOperations[M]["output"];
+      if (method === "thread.read-details")
+        return {
+          runCount: 0,
+          pendingRequestCount: 0,
+          pendingRequests: [],
+          recentRuns: [],
+          nextOrdinal: null,
+        } as unknown as AgentRuntimeOperations[M]["output"];
       if (method === "thread.read") {
         const value = snapshots.get((input as { threadId: string }).threadId);
         if (!value) return null as AgentRuntimeOperations[M]["output"];
@@ -7661,6 +7688,81 @@ it.effect("aligns inactive bound roots with restored Session placement and archi
   }),
 );
 
+it.effect("host input is server-created and never confirms person activity, including replay", () =>
+  Effect.gen(function* () {
+    const f = setup();
+    const owner = yield* f.owner;
+    const started = yield* owner.launch({ ...launch, messageOrigin: "host" });
+    assert.deepEqual(f.acceptedUserMessages, []);
+    const initial = [...f.commands.values()].find((command) => command.type === "message.dispatch");
+    assert.deepInclude(initial, { createdBy: "system", creationSource: "server" });
+    const host = {
+      sessionId: started.sessionId,
+      mode: "queue" as const,
+      origin: "host" as const,
+      messageFingerprint: "host-fingerprint",
+      message: { messageId: "host-update", text: "Work updates" },
+    };
+    yield* owner.sendMessage(host);
+    const sent = f.calls.find((call) => call.method === "thread.send");
+    assert.deepInclude(sent?.input, { createdBy: "system" });
+    assert.deepEqual(f.acceptedUserMessages, []);
+    f.state.messageReplay = {
+      delivery: "queued",
+      messageId: "host-update",
+      runId: "run:host",
+      turnItemId: null,
+    } as never;
+    yield* owner.sendMessage(host);
+    assert.deepEqual(f.acceptedUserMessages, []);
+    assert.equal(
+      (yield* owner.sendMessage(host).pipe(
+        Effect.provideService(CoreApplicationAgent, {
+          profile_id: "profile",
+          authority: {
+            thread_id: "source",
+            turn_id: "turn",
+            root_thread_id: "source",
+            actor_project_id: "project",
+            library_id: "library",
+            store_epoch: "epoch",
+          },
+        }),
+        Effect.result,
+      ))._tag,
+      "Failure",
+    );
+  }),
+);
+
+it.effect(
+  "observes Session metadata without repairing missing roots or starting an absent Runtime",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const started = yield* owner.launch(launch);
+      const commandCount = fixture.commands.size;
+      fixture.calls.length = 0;
+      assert.isNotNull(yield* owner.observeSessionMetadata({ sessionId: started.sessionId }));
+      assert.deepEqual(
+        fixture.calls.map((call) => call.method),
+        ["sessions.metadata", "thread.execution", "thread.read-details"],
+      );
+      assert.deepInclude(fixture.calls.at(-1)?.input, { runLimit: 1 });
+      fixture.snapshots.delete(started.threadId);
+      fixture.calls.length = 0;
+      assert.isNull(yield* owner.observeSessionMetadata({ sessionId: started.sessionId }));
+      assert.deepEqual(
+        fixture.calls.map((call) => call.method),
+        ["sessions.metadata"],
+      );
+      assert.equal(fixture.commands.size, commandCount);
+      const cold = setup({ runtimeExists: Effect.succeed(false) });
+      assert.isNull(yield* (yield* cold.owner).observeSessionMetadata({ sessionId: "chat" }));
+      assert.deepEqual(cold.calls, []);
+    }),
+);
 it.effect(
   "rewrites persist replacement images before rollback and leave history intact on preparation failure",
   () =>

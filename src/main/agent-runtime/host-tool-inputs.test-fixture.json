@@ -1,0 +1,335 @@
+{
+  "load_workspace_dependencies": {},
+  "get_context": {
+    "include": {}
+  },
+  "search": {
+    "query": "value"
+  },
+  "fetch": {
+    "id": "value"
+  },
+  "query_database_view": {
+    "viewId": "value"
+  },
+  "query_data_source": {
+    "dataSourceId": "value"
+  },
+  "create_pages": {
+    "destination": {
+      "kind": "library"
+    },
+    "pages": [
+      {
+        "title": "value"
+      }
+    ]
+  },
+  "update_page": {
+    "pageId": "value",
+    "title": {
+      "markdown": "Ready",
+      "ifMatch": "nxe2.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "advanced_update_page": {
+    "pageId": "value",
+    "edits": [
+      {
+        "kind": "insert",
+        "at": {
+          "kind": "start"
+        },
+        "block": {
+          "localId": "value",
+          "type": "value"
+        }
+      }
+    ]
+  },
+  "move_pages": {
+    "pageIds": ["value"],
+    "destination": {
+      "kind": "library"
+    }
+  },
+  "duplicate_page": {
+    "pageId": "value",
+    "destination": {
+      "kind": "library"
+    }
+  },
+  "read_session_terminal": {
+    "terminalId": "value"
+  },
+  "get_usage_limits": {},
+  "consume_usage_reset": {
+    "idempotencyKey": "value"
+  },
+  "uninstall_plugin": {
+    "plugin": "value"
+  },
+  "handoff_session": {
+    "sessionId": "value"
+  },
+  "get_handoff_status": {
+    "sessionId": "value",
+    "operationId": "value"
+  },
+  "create_session": {
+    "prompt": "value",
+    "target": {
+      "type": "project",
+      "projectId": "value",
+      "environment": {
+        "type": "local"
+      }
+    }
+  },
+  "send_message_to_session": {
+    "sessionId": "value"
+  },
+  "session_question": {
+    "action": "list",
+    "sessionId": "value"
+  },
+  "fork_session": {
+    "sessionId": "value"
+  },
+  "merge_session_back": {
+    "sessionId": "value"
+  },
+  "send_to_inbox": {
+    "body": "value"
+  },
+  "report_work": {
+    "outcome": "ready",
+    "summary": "value"
+  },
+  "start_work": {
+    "pageId": "value"
+  },
+  "follow_thread": {
+    "url": "https://github.com/nodex/scenario/issues/1"
+  },
+  "hand_back_message": {
+    "reason": "value"
+  },
+  "reply_to_origin": {
+    "pageId": "value",
+    "body": "value"
+  },
+  "automation_assessment_read": {
+    "request_id": "value",
+    "generation": 1,
+    "resource": "triggers"
+  },
+  "automation_assessment_submit": {
+    "request_id": "value",
+    "generation": 1,
+    "policy_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "automation_assessments": [],
+    "proposed_actions": []
+  },
+  "inbox_suggest": {
+    "request_id": "value",
+    "generation": 1,
+    "titles": [],
+    "suggestions": [
+      {
+        "explicit_request": false,
+        "page_ids": ["value"],
+        "kind": "note",
+        "action": "keep",
+        "project_id": "value",
+        "session_id": "value",
+        "prompt": "value",
+        "additions": [],
+        "chat_instance_id": "value",
+        "chat_model": "value",
+        "chat_effort": "value",
+        "summary": "value",
+        "rationale": "value"
+      }
+    ]
+  },
+  "write_turn_note": {
+    "pageId": "value",
+    "eventIds": ["value"],
+    "body": "value",
+    "notify": false
+  },
+  "answer_inbox_question": {
+    "questionPageId": "value",
+    "body": "value"
+  },
+  "automations_update": {
+    "operation": "list"
+  },
+  "list_sidebar_sections": {
+    "after": "value"
+  },
+  "list_sidebar_section_items": {
+    "sectionId": "value"
+  },
+  "list_sidebar_order": {
+    "sectionId": "value",
+    "itemKind": "project"
+  },
+  "reorder_sidebar_projects": {
+    "sectionId": "value",
+    "projectIds": [],
+    "expectedOrderRevision": "value"
+  },
+  "reorder_section": {
+    "sectionId": "value",
+    "items": []
+  },
+  "create_sidebar_section": {
+    "name": "value"
+  },
+  "rename_sidebar_section": {
+    "sectionId": "value",
+    "expectedRevision": 1,
+    "name": "value"
+  },
+  "delete_sidebar_section": {
+    "sectionId": "value",
+    "expectedRevision": 1
+  },
+  "move_project_to_sidebar_section": {
+    "projectId": "value",
+    "sectionId": "value"
+  },
+  "move_session_to_sidebar_section": {
+    "sessionId": "value",
+    "sectionId": "value"
+  },
+  "reorder_sidebar_sections": {
+    "sectionIds": []
+  },
+  "set_session_title": {
+    "title": "value"
+  },
+  "set_session_archived": {
+    "archived": false
+  },
+  "set_session_pinned": {
+    "pinned": false
+  },
+  "stop_session": {
+    "sessionId": "value"
+  },
+  "set_session_reminder": {
+    "remindAt": "2026-11-06T00:00:00.000Z"
+  },
+  "set_session_unread": {
+    "unread": false
+  },
+  "session_queue": {
+    "sessionId": "value",
+    "action": "list"
+  },
+  "search_sessions": {
+    "query": "value"
+  },
+  "wait_sessions": {
+    "targets": [
+      {
+        "sessionId": "value"
+      }
+    ]
+  },
+  "list_sessions": {
+    "scope": "project"
+  },
+  "list_archived_sessions": {
+    "scope": "project"
+  },
+  "read_session": {
+    "execution": {
+      "threadId": "value"
+    }
+  },
+  "get_session_context": {
+    "mode": "anchored"
+  },
+  "list_session_tabs": {
+    "observationId": "00000000-0000-4000-8000-000000000001"
+  },
+  "list_tab_groups": {
+    "observationId": "00000000-0000-4000-8000-000000000001"
+  },
+  "read_tab_content": {
+    "observationId": "00000000-0000-4000-8000-000000000001",
+    "tabId": "value"
+  },
+  "query_displayed_view": {
+    "observationId": "00000000-0000-4000-8000-000000000001",
+    "tabId": "value"
+  },
+  "open_tab": {
+    "observationId": "00000000-0000-4000-8000-000000000001",
+    "panelId": "right",
+    "groupId": "value",
+    "target": {
+      "kind": "page",
+      "pageId": "value"
+    }
+  },
+  "activate_tab": {
+    "observationId": "00000000-0000-4000-8000-000000000001",
+    "tabId": "value"
+  },
+  "close_tab": {
+    "observationId": "00000000-0000-4000-8000-000000000001",
+    "tabId": "value"
+  },
+  "move_tab": {
+    "observationId": "00000000-0000-4000-8000-000000000001",
+    "panelId": "right",
+    "groupId": "value",
+    "tabId": "value",
+    "index": 1
+  },
+  "reorder_tabs": {
+    "observationId": "00000000-0000-4000-8000-000000000001",
+    "panelId": "right",
+    "groupId": "value",
+    "tabIds": []
+  },
+  "split_tab_group": {
+    "observationId": "00000000-0000-4000-8000-000000000001",
+    "panelId": "right",
+    "groupId": "value",
+    "side": "left"
+  },
+  "merge_tab_group": {
+    "observationId": "00000000-0000-4000-8000-000000000001",
+    "panelId": "right",
+    "groupId": "value"
+  },
+  "set_panel_state": {
+    "observationId": "00000000-0000-4000-8000-000000000001",
+    "panelId": "right",
+    "collapsed": true
+  },
+  "navigate_to_session": {
+    "sessionId": "value"
+  },
+  "open_in_nodex": {
+    "target": {
+      "kind": "file",
+      "path": "value"
+    }
+  },
+  "query_content": {
+    "scope": {},
+    "sql": "value"
+  },
+  "describe_content_schema": {
+    "scope": {}
+  },
+  "list_projects": {},
+  "get_app_capabilities": {}
+}

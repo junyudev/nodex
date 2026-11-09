@@ -18,11 +18,14 @@ import {
   type MessageDraftImage,
   type MessageImageAccess,
 } from "@/components/message/message-images-input";
-import { UpArrowIcon } from "@/components/shared/icons";
+import { CloseIcon, NodexLogoMarkIcon, UpArrowIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { isEmptyInboxDraft, type InboxDraft } from "./inbox-capture-state";
 import { MAX_INBOX_TITLE_LENGTH } from "../../../shared/schemas/inbox";
+
+import { useInboxReplyDestination } from "./use-inbox-reply-destination";
+import type { InboxReplyDestination } from "../../../shared/inbox";
 
 const FIELD_CLASS_NAME =
   "block w-full bg-transparent outline-none placeholder:text-token-input-placeholder-foreground placeholder:opacity-50";
@@ -95,7 +98,21 @@ export function InboxComposer({
     textareaRef.current?.focus();
   };
 
+  const stopReplying = () => onDraftChange((current) => ({ ...current, replyTo: null }));
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Escape in an empty reply lets go of the post it answers, the way it was taken up.
+    if (
+      event.key === "Escape" &&
+      draft.replyTo &&
+      draft.text === "" &&
+      !event.nativeEvent.isComposing
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      stopReplying();
+      return;
+    }
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
     void submit();
@@ -129,6 +146,31 @@ export function InboxComposer({
         input.dropActive && COMPOSER_DROP_TARGET_CLASS_NAME,
       )}
     >
+      {draft.replyTo ? (
+        <div
+          data-testid="inbox-composer-reply"
+          className="flex min-w-0 items-center gap-1.5 pt-0.5 pr-1 pl-3 text-xs text-token-description-foreground"
+        >
+          <span className="min-w-0 truncate">
+            Replying to <span className="text-token-foreground">{draft.replyTo.label}</span>
+          </span>
+          {replyDestination ? (
+            <span className="max-w-1/2 min-w-0 shrink-0 truncate" aria-label="Reply destination">
+              <ReplyDestinationPhrase destination={replyDestination} />
+            </span>
+          ) : null}
+          <NodexTooltip tooltipContent="Stop replying" side="top">
+            <button
+              type="button"
+              aria-label="Stop replying"
+              onClick={stopReplying}
+              className="cursor-interaction ml-auto flex size-5 shrink-0 items-center justify-center rounded-full hover:bg-token-foreground/5 hover:text-token-foreground"
+            >
+              <CloseIcon className="icon-2xs" />
+            </button>
+          </NodexTooltip>
+        </div>
+      ) : null}
       <ComposerAttachments>
         <MessageImageRow
           images={draft.images}
@@ -198,7 +240,7 @@ export function InboxComposer({
             <NodexTooltip tooltipContent="Send to Inbox" shortcutLabel="↵" side="top">
               <button
                 type="submit"
-                aria-label="Send to Inbox"
+                aria-label={draft.replyTo?.turnEpisode ? "Send reply" : "Send to Inbox"}
                 disabled={!canSend}
                 className={cn(COMPOSER_PRIMARY_ACTION_BUTTON_CLASS_NAME, !canSend && "opacity-50")}
               >
@@ -210,4 +252,13 @@ export function InboxComposer({
       />
     </form>
   );
+}
+/** Where a reply to a Nodex post will go, phrased after the post it replies to. */
+function ReplyDestinationPhrase({ destination }: { readonly destination: InboxReplyDestination }) {
+  const chat = destination.chat ? (
+    <span className="text-token-foreground">{destination.chat.title}</span>
+  ) : null;
+  if (destination.kind === "nodex" || !chat) return <>· Nodex routes it</>;
+  if (destination.kind === "answer") return <>· answers {chat}’s question</>;
+  return <>· goes to {chat}</>;
 }

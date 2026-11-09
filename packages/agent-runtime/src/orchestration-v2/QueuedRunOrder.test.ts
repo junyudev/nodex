@@ -17,8 +17,16 @@ describe("queued run delivery order", () => {
         },
         { id: "message:visible-second" },
         { id: "message:notice", notification: { summary: "Background work" } },
+        { id: "message:host-input", createdBy: "system", creationSource: "server" },
       ],
       runs: [
+        {
+          id: "run:host-input",
+          ordinal: 6,
+          queuePosition: 5,
+          status: "queued",
+          userMessageId: "message:host-input",
+        },
         {
           id: "run:notice",
           ordinal: 5,
@@ -55,12 +63,14 @@ describe("queued run delivery order", () => {
       "run:visible-first",
       "run:visible-second",
       "run:notice",
+      "run:host-input",
     ]);
     const ordered = queuedRunsInDeliveryOrder(projection);
     expect(ordered.map((run) => isRuntimeDeliveryRun(projection, run))).toEqual([
       true,
       false,
       false,
+      true,
       true,
     ]);
   });

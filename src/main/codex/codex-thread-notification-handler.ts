@@ -139,8 +139,8 @@ function showNotification(
 export const makeCodexThreadNotificationHandler =
   (
     options: CodexThreadNotificationHandlerOptions,
-  ): ((event: CodexThreadNotificationEvent) => void) =>
-  (event) => {
+  ): ((event: CodexThreadNotificationEvent, facts?: { managed: boolean }) => void) =>
+  (event, facts = { managed: false }) => {
     if (event.type === "async-question-resolved") {
       options.dismissNotification({
         notificationId: buildCodexAsyncQuestionNotificationId(
@@ -188,6 +188,7 @@ export const makeCodexThreadNotificationHandler =
     }
     if (event.type === "turn-completed") {
       const decision = decideCodexTurnNotification(event, {
+        managed: facts.managed,
         turnMode: settings.turnMode,
         isAppForegrounded: options.isAppForegrounded(),
         isConversationSeen: options.isConversationSeen(event.hostId, event.conversation),

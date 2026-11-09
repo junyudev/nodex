@@ -641,7 +641,19 @@ export interface SessionLinkedPageSummaryResult {
   projectionRevision: number;
 }
 
+export type PageWorkReport = import("@nodex/core-protocol").components["schemas"]["PageWorkReport"];
+export interface PageWorkDescriptor {
+  latestReport: {
+    sessionId: string;
+    outcome: PageWorkReport["outcome"];
+    at: string;
+    revision: number;
+  } | null;
+  managedSessionCount: number;
+}
+
 export interface PageChatActivitySummary {
+  work: PageWorkDescriptor;
   pageId: string;
   relatedCount: number;
   workingCount: number;
@@ -664,6 +676,7 @@ export interface PageChatActivitySummaryResult {
 }
 
 export interface PageChatItem {
+  report: PageWorkReport | null;
   sessionId: string;
   projectId: string | null;
   projectName: string | null;
@@ -1125,6 +1138,7 @@ export interface ProjectSession {
   displayTitle: string;
   activityAt: number;
   pinned: boolean;
+  managed: boolean;
   pinnedOrder: number | null;
   archived: boolean;
   archivedAt: string | null;
@@ -1143,6 +1157,7 @@ export interface ProjectSessionSummary {
   displayTitle: string;
   activityAt: number;
   pinned: boolean;
+  managed: boolean;
   pinnedOrder: number | null;
   archived: boolean;
   archivedAt: string | null;
@@ -1211,6 +1226,15 @@ export interface ProjectSessionPinnedInput {
 
 export interface ProjectSessionPinnedOrderInput {
   orderedSessionIds: string[];
+}
+
+export interface SessionManagedState {
+  managed: boolean;
+  since: string | null;
+}
+export interface SessionManagedInput {
+  sessionId: string;
+  managed: boolean;
 }
 
 export interface ProjectSessionReminderInput {
@@ -1808,7 +1832,7 @@ export interface UpdateThreadNotificationSettingsInput {
   questionsEnabled: boolean;
 }
 
-export type DesktopNotificationKind = "turn-complete" | "question" | "reminder";
+export type DesktopNotificationKind = "turn-complete" | "question" | "reminder" | "nodex";
 
 export interface DesktopNotificationAction {
   id: string;

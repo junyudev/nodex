@@ -27,6 +27,7 @@ import {
   LayoutGrid as LucideLayoutGrid,
   LayoutTemplate as LucideLayoutTemplate,
   Link2 as LucideLink2,
+  Reply as LucideReply,
   ListTree as LucideListTree,
   LockKeyhole as LucideLockKeyhole,
   Maximize2 as LucideMaximize2,
@@ -184,6 +185,7 @@ export const CornerDownLeft: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideCornerDownLeft,
   "CornerDownLeft",
 );
+export const Reply: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideReply, "Reply");
 export const CornerDownRight: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideCornerDownRight,
   "CornerDownRight",

@@ -97,6 +97,7 @@ describe("Page Chat activity presentation", () => {
       threadStatus: { statusType: "active", activeFlags: [] },
       threadArchived: false,
       unread: true,
+      report: null,
       sessionArchived: false,
       conversationRecencyAt: 1,
       linkedAt: "2026-10-15T00:00:00Z",

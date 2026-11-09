@@ -21,6 +21,7 @@ import {
   ProjectSessionCreateInputSchema,
   ProjectSessionRenameInputSchema,
   ProjectSessionReminderInputSchema,
+  SessionManagedInputSchema,
   ProjectSessionThreadLinkInputSchema,
   ProjectSessionUpdateInputSchema,
 } from "../../shared/schemas/project-sessions";
@@ -36,6 +37,7 @@ import type {
   PageChatWindow,
   PageChatWindowInput,
   ProjectSession,
+  SessionManagedState,
   ProjectSessionSummaryWindow,
   ProjectSessionSummaryWindowInput,
   ProjectSessionThreadLink,
@@ -60,6 +62,7 @@ import type {
   ProjectSessionPlaceCommandInput,
   ProjectSessionUnreadCommandInput,
   ProjectSessionReminderCommandInput,
+  ProjectSessionManagedCommandInput,
   ProjectSessionOpenedCommandInput,
   ProjectSessionUpdateCommandInput,
   BuiltinSidebarReorderCommandInput,
@@ -297,6 +300,10 @@ export interface ProjectWorkspaceService {
     includeArchived?: boolean,
     input?: ProjectSessionSummaryWindowInput,
   ) => ProjectWorkspaceEffect<ProjectSessionSummaryWindow>;
+  readonly readSessionManaged: (sessionId: string) => ProjectWorkspaceEffect<SessionManagedState>;
+  readonly setSessionManaged: (
+    command: ProjectSessionManagedCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<SessionManagedState>>;
   readonly getProjectSession: (sessionId: string) => ProjectWorkspaceEffect<ProjectSession | null>;
   readonly updateProjectSession: (
     command: ProjectSessionUpdateCommandInput,
@@ -1559,7 +1566,34 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         return { value: yield* requireSession(sessionId), apply: applied };
       },
     );
+    const readSessionManaged = Effect.fn("ProjectWorkspace.readSessionManaged")(function* (
+      sessionId: string,
+    ) {
+      yield* requireSession(sessionId);
+      const snapshot = yield* read("session.managed.read", {
+        kind: "read_managed_session",
+        session_id: sessionId,
+      });
+      const { managed } = expectVariant(snapshot, "read_managed_session");
+      return { managed: managed !== null && managed !== undefined, since: managed?.since ?? null };
+    });
+    const setSessionManaged = Effect.fn("ProjectWorkspace.setSessionManaged")(function* (
+      command: ProjectSessionManagedCommandInput,
+    ) {
+      const { sessionId, managed } = yield* evaluate("session.managed.validate", () =>
+        SessionManagedInputSchema.parse(command.payload),
+      );
+      yield* requireSession(sessionId);
+      const applied = yield* applyWithId("session.managed.set", command.operationId, {
+        kind: "set_session_managed",
+        session_id: sessionId,
+        managed,
+      });
+      return { value: yield* readSessionManaged(sessionId), apply: applied };
+    });
     const service = ProjectWorkspace.of({
+      readSessionManaged,
+      setSessionManaged,
       setProjectSessionReminder,
       unreadChatCount: read("session.unread.count", { kind: "unread_chat_count" }).pipe(
         Effect.map((snapshot) => expectVariant(snapshot, "unread_chat_count").count),

@@ -153,4 +153,15 @@ describe("Inbox boundary contracts", () => {
     expect(decodeInboxAgentBinding("codex")).toEqual({ instanceId: "codex" });
     expect(decodeInboxAgentBinding("claude:")).toBeNull();
   });
+  it("validates dispatch policy independently of suggestion admission", () => {
+    expect(
+      UpdateInboxSettingsInputSchema.parse({
+        dispatchMode: "act_on_requests",
+        suggestions: "on_request",
+      }),
+    ).toEqual({ dispatchMode: "act_on_requests", suggestions: "on_request" });
+    expect(UpdateInboxSettingsInputSchema.safeParse({ dispatchMode: "automatic" }).success).toBe(
+      false,
+    );
+  });
 });

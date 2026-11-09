@@ -22,6 +22,7 @@ import type {
   ProjectSessionUnreadInput,
   ProjectSessionReminderInput,
   ProjectSessionUpdateInput,
+  SessionManagedInput,
 } from "../../shared/types";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import {
@@ -114,6 +115,13 @@ export const workspaceCatalogCommandDefinitions = {
   sessionSetPinned: defineLocalCommitRendererCommand({
     key: "workspace.session.set-pinned",
     channel: "project-sessions:set-pinned",
+    authority: "core",
+    owner: "workbench-session-catalog",
+    protocol: receiptFenced("pending"),
+  }),
+  sessionSetManaged: defineLocalCommitRendererCommand({
+    key: "workspace.session.set-managed",
+    channel: "project-sessions:set-managed",
     authority: "core",
     owner: "workbench-session-catalog",
     protocol: receiptFenced("pending"),
@@ -245,6 +253,7 @@ const {
   sessionDelete: sessionDeleteCommand,
   sessionPlace: sessionPlaceCommand,
   sessionSetPinned: sessionSetPinnedCommand,
+  sessionSetManaged: sessionSetManagedCommand,
   sessionSetPinnedOrder: sessionSetPinnedOrderCommand,
   sessionReorderPinned: sessionReorderPinnedCommand,
   sessionArchive: sessionArchiveCommand,
@@ -361,6 +370,13 @@ export const workspaceSessionCommands = {
     (
       await invokeLocalCommitCommand(sessionSetPinnedCommand, {
         operationId: operation("session.set-pinned"),
+        payload: { sessionId, ...input },
+      })
+    ).value,
+  setManaged: async (sessionId: string, input: Omit<SessionManagedInput, "sessionId">) =>
+    (
+      await invokeLocalCommitCommand(sessionSetManagedCommand, {
+        operationId: operation("session.set-managed"),
         payload: { sessionId, ...input },
       })
     ).value,

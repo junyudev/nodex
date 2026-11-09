@@ -438,6 +438,7 @@ The standard **Task Parent** is a non-owning cardinality-one self-Relation on a
 Data Source Page. Its children have one shared manual order independent of any
 View's personal sorting or presentation.
 
+
 ### Database View
 
 A Database View is a durable named query and Presentation belonging to one
@@ -568,6 +569,8 @@ only associate. The Inbox moves its message Pages through its own handling.
 A Session rests on its earliest-linked live Page, the Page it started from; later
 links never displace it.
 
+A Linked chat may carry the chat's latest Work report about that Page.
+
 Workspace owns the relation and derives bounded Page Chat activity from it,
 Project Sessions, and optional Threads. Execution and unread are orthogonal
 signals. Database Page rows do not store or project Chat state; renderer
@@ -597,9 +600,7 @@ provisional excerpt that the suggestion Agent may replace with a name once.
 
 An Inbox entry is the Workspace-owned record beside a message Page. It holds:
 
-- the message's immutable source: the user, an Agent Turn's chat and Project,
-  the command line with an optional Project, or a Scheduled task's Firing;
-- a user-editable kind: note, todo, or question;
+- a user-editable kind: note, todo, or question, for messages that take advice;
 - whether the user marked it important, which keeps it within reach while it
   waits;
 - a triage state: open, kept, or done.
@@ -620,12 +621,15 @@ a Project went, while the Project's own Properties apply to the Page.
 ### Dispatch proposal
 
 A Dispatch proposal is one typed action for one or more Inbox entries: keep,
-new chat, send to chat, move to Project, or run a Scheduled task's held Firing. A new chat may also name the Agent it
+work and Prerequisites. A new chat may also name the Agent it
 runs on. A chat action's prompt holds what the user asked for; its optional additions hold what the suggestion added on
 its own, such as advice to delegate part of the work, each dropped before confirmation if the user unchecks it. It is versioned and records the
 message it was written for, its Markdown body and Library images; once that message changes it is outdated, still
 reviewable and confirmable, never withdrawn or replaced on its own. A proposal is advice. Only the user's
-confirmation, or a user-written dispatch, makes it Dispatch work. Confirmed chat
+confirmation, a user-written dispatch, or the user's standing consent to start their own clear requests
+makes it Dispatch work. Nodex marks each chat proposal that answers a request the user themselves clearly
+made; under that consent the Host confirms such a proposal for the user's own unchanged messages, and the
+confirmation records that Nodex made it. Plans, Keep and filing always wait for the user. Confirmed chat
 work stays in the `dispatching` state until the Desktop Host delivers it. A
 Scheduled task writes the run proposal for its own Firing; the suggestion Agent
 never does.
@@ -657,6 +661,43 @@ or deleting its task ends it.
 A Runbook is a Library Page that a Scheduled task follows as standing
 instructions. Each run reads its current content and may update it for later
 runs, and each run's chat links to it.
+
+### Coordinator
+
+The Coordinator is the Profile's one persistent coordinating chat, shown to the
+user as **Nodex**. It routes every Inbox message by answering its suggestion
+chats; the Inbox is its face. Its conversation is working memory, not authority:
+what it decides is recorded in Core, so it can be compacted, restarted or
+started fresh without losing work. It never does the work it routes.
+
+_Avoid_: router, bot, dispatcher (in product copy).
+
+### Managed chat
+
+A Managed chat is a chat whose work the Coordinator watches: every chat an Inbox
+dispatch or a Page start creates or continues, and any chat the user hands to
+
+### Work report
+
+A Work report is the outcome a chat last reported for a Page it is linked to:
+`ready` for the user to review, `blocked` on the user or another piece of work,
+
+### Work event
+
+A Work event is a durable fact the Coordinator must hear about a Managed chat or
+a Page: a Work report, a question or approval waiting, a turn that ended without
+a report, a failure, an apparent stall, or a Page that became ready to start.
+Each is recorded once by its identity and delivered to the Coordinator in
+batches as Host input.
+
+### Agent work
+
+
+### Prerequisite
+
+satisfied is ready to start. Starting it hands it to a new Managed chat with a
+brief of the Page and of what its Prerequisites reported.
+
 
 ### Conversation recency
 
@@ -877,11 +918,13 @@ state is rejected rather than replayed.
     and may occur in any Page Document in the same Library. The containing Page
     may resolve only the File's current presentation metadata and bytes.
 28. A Dispatch proposal never starts work, sends a prompt, or moves content by
-    itself. Agent and command-line Inbox workflow endpoints append entries; their
-    backing Pages follow the same full-Profile content model. Core records each
-    entry's actual execution source, and confirmed triage owns dispatch intent.
-29. Only the user grants a Scheduled task unattended execution. Agent commands may
-    create or move tasks toward `Ask`, never toward `Automatic`.
+    itself; only the user's confirmation or the user's standing consent, applied
+    by the Host to the user's own unchanged messages, does. Agent and
+    command-line Inbox workflow endpoints append entries; their backing Pages
+    follow the same full-Profile content model. Core records each entry's actual
+    execution source, and confirmed triage owns dispatch intent.
+    requests through its tool; the source is derived from verified execution
+    identity, never from a name.
 
 ## Operation semantics
 
@@ -1056,6 +1099,8 @@ idempotency, projections, and post-commit events behind `read` and `apply`.
 - `docs/adr/0073-scheduled-runs-that-ask-in-the-inbox.md`: Scheduled tasks as
   the only Agent scheduler, held Firings reviewed in the Inbox, user-granted
   unattended execution, and runbook Pages.
+  Inbox, watches Managed chats through durable Work events and speaks through
+  without a second task authority.
 - `docs/adr/0043-database-scoped-page-keys.md`: Database-owned Page-key
   namespaces, Library-unique prefix history, monotonic allocation, UUID
   identity boundary, resolution, and presentation projection.

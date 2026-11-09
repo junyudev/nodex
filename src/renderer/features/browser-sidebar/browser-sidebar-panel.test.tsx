@@ -829,6 +829,7 @@ const activeSession: WorkbenchSessionRenderProjection = {
   noThreadFallbackTitle: "Session",
   displayTitle: "Session",
   activityAt: 0,
+  managed: false,
   pinned: false,
   pinnedOrder: null,
   archived: false,

@@ -48,6 +48,9 @@ pub(in crate::workspace) fn read_handoff_json<T: serde::de::DeserializeOwned>(
         "execution_selection_json" => {
             "SELECT execution_selection_json FROM inbox_handoffs WHERE proposal_id=?1"
         }
+        "question_response_json" => {
+            "SELECT question_response_json FROM inbox_handoffs WHERE proposal_id=?1"
+        }
         "target_execution_ref_json" => {
             "SELECT target_execution_ref_json FROM inbox_handoffs WHERE proposal_id=?1"
         }
@@ -157,7 +160,71 @@ pub(in crate::workspace) fn apply_reliable(
         &now,
         |scope| {
             match intent {
+                ProjectWorkspaceIntent::BeginInboxRouting {
+                    request_id,
+                    generation,
+                    coordinator_session_id,
+                } => {
+                    require_host(context)?;
+                    if read_request(connection, context, library_id, &request_id)?
+                        .is_none_or(|request| request.generation != generation)
+                    {
+                        return Err(conflict("This request is no longer pending"));
+                    }
+                    if super::super::coordinator::binding(connection)?.as_deref()
+                        != Some(&coordinator_session_id)
+                    {
+                        return Err(invalid("Routing requires the current Coordinator"));
+                    }
+                    let count: i64 = connection.query_row("SELECT count(*) FROM inbox_routing_deliveries delivery JOIN inbox_suggestion_requests request USING(request_id) WHERE request.state='pending' AND request.generation=delivery.generation", [], |r|r.get(0))?;
+                    if count >= 16 {
+                        return Err(conflict("Too many routing requests are already pending"));
+                    }
+                    connection.execute("INSERT INTO inbox_routing_deliveries(request_id,generation,coordinator_session_id,handed_over_at_ms) VALUES(?1,?2,?3,CAST(unixepoch('subsec')*1000 AS INTEGER))",params![request_id,generation,coordinator_session_id])?;
+                    Ok(simple_effects("inbox_begin_routing", &now))
+                }
+                ProjectWorkspaceIntent::RecordInboxRoutingRefusal {
+                    request_id,
+                    generation,
+                    coordinator_session_id,
+                    reason,
+                } => {
+                    require_host(context)?;
+                    if reason.is_empty() || reason.chars().count() > 2048 {
+                        return Err(invalid("A routing refusal must contain 1–2048 characters"));
+                    }
+                    if read_request(connection, context, library_id, &request_id)?
+                        .is_none_or(|request| request.generation != generation)
+                    {
+                        return Err(conflict("This routing request is no longer pending"));
+                    }
+                    let changed = connection.execute("UPDATE inbox_routing_deliveries SET last_refusal=?4 WHERE request_id=?1 AND generation=?2 AND coordinator_session_id=?3", params![request_id,generation,coordinator_session_id,reason])?;
+                    if changed == 0 {
+                        return Err(conflict("The routing delivery changed"));
+                    }
+                    Ok(simple_effects("inbox_routing_refusal", &now))
+                }
+                ProjectWorkspaceIntent::StartInboxRoutingRun {
+                    request_id,
+                    generation,
+                    coordinator_session_id,
+                    run_started_at_ms,
+                } => {
+                    require_host(context)?;
+                    if run_started_at_ms < 0
+                        || read_request(connection, context, library_id, &request_id)?
+                            .is_none_or(|request| request.generation != generation)
+                    {
+                        return Err(conflict("This routing request is no longer pending"));
+                    }
+                    let changed = connection.execute("UPDATE inbox_routing_deliveries SET run_started_at_ms=COALESCE(run_started_at_ms,?4) WHERE request_id=?1 AND generation=?2 AND coordinator_session_id=?3", params![request_id,generation,coordinator_session_id,run_started_at_ms])?;
+                    if changed == 0 {
+                        return Err(conflict("The routing delivery changed"));
+                    }
+                    Ok(simple_effects("inbox_start_routing_run", &now))
+                }
                 ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                    confirmed_by,
                     expected_store_epoch,
                     proposal_id,
                     expected_revision,
@@ -182,7 +249,16 @@ pub(in crate::workspace) fn apply_reliable(
                         return Err(conflict("The suggestion membership changed"));
                     }
                     require_basis(connection, &proposal.page_ids, &basis)?;
-                    decide(
+                    if confirmed_by == InboxConfirmedBy::Nodex {
+                        require_host(context)?;
+                        require_automatic_confirmation(
+                            connection,
+                            &proposal_id,
+                            &proposal,
+                            action.as_ref(),
+                        )?;
+                    }
+                    let effects = decide(
                         connection,
                         library_id,
                         context,
@@ -196,7 +272,9 @@ pub(in crate::workspace) fn apply_reliable(
                         execution_selection.as_ref(),
                         assets_root,
                         &now,
-                    )
+                    )?;
+                    connection.execute("UPDATE inbox_proposals SET confirmed_by=?2,auto_confirm_pending=0 WHERE proposal_id=?1", params![proposal_id, if confirmed_by==InboxConfirmedBy::Nodex { "nodex" } else { "user" }])?;
+                    Ok(effects)
                 }
                 ProjectWorkspaceIntent::DispatchInboxEntries {
                     expected_store_epoch,
@@ -291,7 +369,7 @@ pub(in crate::workspace) fn apply_reliable(
                         operation_id,
                     )?;
                     if !scheduled::refence(connection, &page_id, &now)? {
-                        connection.execute("UPDATE inbox_entries SET suggestion_state='waiting',suggestion_error=NULL,revision=revision+1,updated_at=?2 WHERE page_id=?1",params![page_id,now])?;
+                        connection.execute("UPDATE inbox_entries SET suggestion_state=CASE WHEN source_kind='nodex' THEN 'none' ELSE 'waiting' END,suggestion_error=NULL,revision=revision+1,updated_at=?2 WHERE page_id=?1",params![page_id,now])?;
                     }
                     if edit.title_markdown.is_some() {
                         connection.execute("UPDATE inbox_entries SET provisional_title=(SELECT title FROM document_materializations WHERE document_id=(SELECT document_id FROM pages WHERE block_id=?1)) WHERE page_id=?1",[&page_id])?;
@@ -364,6 +442,13 @@ pub(in crate::workspace) fn apply_reliable(
                         return Err(conflict("Wait for the current dispatch to finish"));
                     }
                     for page in &pages {
+                        if connection.query_row(
+                            "SELECT source_kind='nodex' FROM inbox_entries WHERE page_id=?1",
+                            [page],
+                            |r| r.get::<_, bool>(0),
+                        )? {
+                            return Err(invalid("Nodex posts do not receive routing suggestions"));
+                        }
                         if crate::automation::firing::item(connection, page)?.is_some() {
                             return Err(conflict(
                                 "A scheduled run takes its decision from its task.",
@@ -400,6 +485,7 @@ pub(in crate::workspace) fn apply_reliable(
                     Ok(simple_effects("inbox_request_suggestion", &now))
                 }
                 ProjectWorkspaceIntent::SettleInboxSuggestion {
+                    automatic_dispatch,
                     request_id,
                     generation,
                     titles,
@@ -422,6 +508,10 @@ pub(in crate::workspace) fn apply_reliable(
                         error.as_deref(),
                         &now,
                     )?;
+                    if automatic_dispatch && error.is_none() {
+                        for suggestion in &suggestions {
+                        }
+                    }
                     Ok(simple_effects("inbox_settle_suggestion", &now))
                 }
                 ProjectWorkspaceIntent::BeginInboxDispatch {
@@ -587,10 +677,11 @@ fn decide(
     let mut effects = apply_confirmation(
         connection,
         library_id,
-        proposal_id,
-        pages,
-        &action,
-        session_id,
+        ConfirmedProposal {
+            proposal_id,
+            page_ids: pages,
+            action: &action,
+            session_id,
         now,
     )?;
     for page in pages {
@@ -1070,6 +1161,10 @@ fn settle_request(
             },
             now,
         )?;
+        connection.execute(
+            "UPDATE inbox_proposals SET explicit_request=?2 WHERE proposal_id=?1",
+            params![suggestion.proposal_id, suggestion.explicit_request],
+        )?;
     }
     connection.execute("UPDATE inbox_suggestion_requests SET state='settled',correction=NULL,updated_at=?2 WHERE request_id=?1",params![id,now])?;
     Ok(())
@@ -1116,7 +1211,7 @@ pub(in crate::workspace) fn read_pending_request_ids(
     context: &BoundModuleContext,
     library_id: &str,
     request_ids: &[String],
-) -> Result<Vec<String>, StoreError> {
+) -> Result<(Vec<String>, Vec<InboxRoutingCancellation>), StoreError> {
     require_host(context)?;
     if request_ids.len() > 16 {
         return Err(invalid(
@@ -1126,15 +1221,32 @@ pub(in crate::workspace) fn read_pending_request_ids(
     for id in request_ids {
         validate_id("request_id", id)?;
     }
-    let live = pending_request_filter();
     let ids = encode(request_ids)?;
-    Ok(connection
-        .prepare(&format!(
-            "SELECT request_id FROM inbox_suggestion_requests WHERE {live}
-         AND request_id IN (SELECT value FROM json_each(?2)) ORDER BY created_at,request_id"
-        ))?
-        .query_map(params![library_id, ids], |row| row.get(0))?
-        .collect::<rusqlite::Result<Vec<_>>>()?)
+    let stale = format!("request_id IN ({STALE_REQUESTS})");
+    let mut statement = connection.prepare(&format!(
+        "SELECT request_id, state='pending' AND NOT ({stale}), delivery.generation, coordinator_session_id
+         FROM inbox_suggestion_requests
+         LEFT JOIN inbox_routing_deliveries delivery USING (request_id)
+         WHERE library_id=?1 AND state IN ('pending','superseded')
+           AND request_id IN (SELECT value FROM json_each(?2))
+         ORDER BY created_at,request_id"
+    ))?;
+    let mut rows = statement.query(params![library_id, ids])?;
+    let mut pending = Vec::new();
+    let mut cancelled = Vec::new();
+    while let Some(row) = rows.next()? {
+        let request_id = row.get(0)?;
+        if row.get::<_, bool>(1)? {
+            pending.push(request_id);
+        } else if let Some(coordinator_session_id) = row.get::<_, Option<String>>(3)? {
+            cancelled.push(InboxRoutingCancellation {
+                request_id,
+                generation: row.get(2)?,
+                coordinator_session_id,
+            });
+        }
+    }
+    Ok((pending, cancelled))
 }
 
 fn pickup_request(
@@ -1218,6 +1330,49 @@ fn pickup_request(
         expected_revision: row.expected_revision,
         correction: row.correction.clone(),
     })
+}
+
+pub(in crate::workspace) fn read_request(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    id: &str,
+) -> Result<Option<ProjectWorkspaceInboxSuggestionRequest>, StoreError> {
+    require_host(context)?;
+    validate_id("request_id", id)?;
+    let row = connection.query_row(&format!("SELECT request_id,generation,mode,basis_json,proposal_id,expected_revision,correction FROM inbox_suggestion_requests WHERE library_id=?1 AND request_id=?2 AND state='pending' AND request_id NOT IN ({STALE_REQUESTS})"),params![library_id,id],|r| Ok(PendingRequest { id:r.get(0)?, generation:r.get(1)?, mode:r.get(2)?, basis:r.get(3)?, proposal_id:r.get(4)?, expected_revision:r.get(5)?, correction:r.get(6)? })).optional()?;
+    row.map(|row| pickup_request(connection, library_id, &row))
+        .transpose()
+}
+
+fn require_automatic_confirmation(
+    connection: &Connection,
+    id: &str,
+    proposal: &StoredProposal,
+    supplied: Option<&ProjectWorkspaceInboxDispatchAction>,
+) -> Result<(), StoreError> {
+    if !eligible {
+        return Err(invalid(
+            "Nodex may only act on the user's explicit requests",
+        ));
+    }
+    require_basis(connection, &proposal.page_ids, &proposal.basis)?;
+    let mut expected = proposal.action.clone();
+    match &mut expected {
+        ProjectWorkspaceInboxDispatchAction::NewChat { additions, .. }
+        | ProjectWorkspaceInboxDispatchAction::SendToChat { additions, .. } => additions.clear(),
+        _ => {
+            return Err(invalid(
+                "Nodex may only confirm a new chat or a chat follow-up",
+            ));
+        }
+    }
+    if supplied != Some(&expected) {
+        return Err(invalid(
+            "Automatic dispatch must preserve the request and omit additions",
+        ));
+    }
+    Ok(())
 }
 
 /// Preparation records durable failures; reads skip the same bad requests, including a

@@ -50,6 +50,7 @@ function makeSession(
     noThreadFallbackTitle: "Thread",
     displayTitle: "Thread",
     activityAt: 0,
+    managed: false,
     pinned: false,
     pinnedOrder: null,
     archived: false,

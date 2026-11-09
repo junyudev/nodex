@@ -94,9 +94,11 @@ fn plant_inbox_snapshot(connection: &Connection) -> (String, String, String) {
             },
         ],
     };
+    prepare_current_inbox_capture_columns(connection).unwrap();
     let mut frozen =
         crate::workspace::frozen_input_for_content(connection, &library, &page, content, 0)
             .unwrap();
+    finish_current_inbox_capture_columns(connection).unwrap();
     // The old Agent body is an equivalent exact spelling, independent of the live Page.
     let expected_body = frozen.input.body.clone();
     frozen.input.body = frozen.input.body.replacen("Hello,", r"Hello\,", 1);
@@ -129,18 +131,25 @@ fn rows(connection: &Connection, query: &str) -> Vec<Vec<rusqlite::types::Value>
 
 /// Compare all durable tables, including FTS backing tables, execution receipts,
 /// immutable history, File bindings, recovery packages, indexes and timestamps.
-/// Later upgrades in the same run rebuild Session ordering (v201); its own migration tests cover it.
-const REBUILT_AFTER_SERIALIZER: &str =
-    "'project_sessions','workspace_sidebar_lanes','workspace_sidebar_positions'";
+/// Later upgrades change Session ordering and add Coordinator state; their migration tests cover it.
+const STRUCTURAL_UPGRADES_AFTER_SERIALIZER: &str = "'project_sessions','workspace_sidebar_lanes','workspace_sidebar_positions','coordinator','coordinator_managed_sessions','coordinator_work_events','coordinator_event_batches','inbox_routing_deliveries'";
 
 /// Tables, and planner statistics for them, that the serializer upgrade must leave intact.
 fn unaffected(connection: &Connection) -> BTreeMap<String, Vec<Vec<rusqlite::types::Value>>> {
-    let tables = connection.prepare(&format!("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('document_materializations','core_store_migration_history','inbox_suggestion_requests','inbox_proposals','core_automation_firings',{REBUILT_AFTER_SERIALIZER}) ORDER BY name")).unwrap().query_map([],|r|r.get::<_,String>(0)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap();
+    let tables = connection.prepare(&format!("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('document_materializations','core_store_migration_history','inbox_suggestion_requests','inbox_proposals','core_automation_firings',{STRUCTURAL_UPGRADES_AFTER_SERIALIZER}) ORDER BY name")).unwrap().query_map([],|r|r.get::<_,String>(0)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap();
     tables
         .into_iter()
         .map(|name| {
+            // The link's original fields are unchanged; report columns first appear in v203.
+            let columns = if name == "project_session_pages" {
+                "session_id,page_id,linked_at"
+            } else if name == "inbox_entries" {
+                "page_id,library_id,seq,submitted_at,source_kind,source_session_id,source_thread_id,source_turn_id,source_project_id,source_label,provisional_title,kind,kind_set_by_user,state,suggestion_state,suggestion_error,current_proposal_id,revision,updated_at,source_budget_key,scope_project_id,outcome,suggestion_request_id,important,source_automation_id,source_dispatch_id"
+            } else {
+                "*"
+            };
             let count = connection
-                .prepare(&format!("SELECT * FROM \"{name}\""))
+                .prepare(&format!("SELECT {columns} FROM \"{name}\""))
                 .unwrap()
                 .column_count();
             let order = (1..=count)
@@ -148,13 +157,13 @@ fn unaffected(connection: &Connection) -> BTreeMap<String, Vec<Vec<rusqlite::typ
                 .collect::<Vec<_>>()
                 .join(",");
             let only_stable = if name.starts_with("sqlite_stat") {
-                format!(" WHERE tbl NOT IN ({REBUILT_AFTER_SERIALIZER})")
+                format!(" WHERE tbl NOT IN ({STRUCTURAL_UPGRADES_AFTER_SERIALIZER})")
             } else {
                 String::new()
             };
             let values = rows(
                 connection,
-                &format!("SELECT * FROM \"{name}\"{only_stable} ORDER BY {order}"),
+                &format!("SELECT {columns} FROM \"{name}\"{only_stable} ORDER BY {order}"),
             );
             (name, values)
         })

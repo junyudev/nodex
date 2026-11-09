@@ -38,9 +38,9 @@ pub(super) fn create_session(
     operation_kind: &'static str,
     detached_native_thread_id: Option<&str>,
     side_chat_source_session_id: Option<&str>,
+    coordinator: bool,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    // Agent adapters reach this function only after AgentCommand has verified Turn provenance.
-    if !matches!(context.adapter, AdapterKind::Agent) {
+    if coordinator {
         require_host(context)?;
     }
     if let Some(source_id) = side_chat_source_session_id {
@@ -184,6 +184,9 @@ pub(super) fn create_session(
             now
         ],
     )?;
+    if coordinator {
+        super::coordinator::bind(connection, library_id, session_id, &now)?;
+    }
     finish_lifecycle_mutation(
         connection,
         library_id,
@@ -270,6 +273,7 @@ pub(super) fn adopt_native_session(
         "adopt_native_session_execution",
         Some(expected_native_thread_id),
         None,
+        false,
     )
 }
 
@@ -479,6 +483,7 @@ mod tests {
     };
     fn create_intent(session_id: &str) -> ProjectWorkspaceIntent {
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            coordinator: false,
             side_chat_source_session_id: None,
             session_id: session_id.into(),
             project_id: Some("project:default".into()),

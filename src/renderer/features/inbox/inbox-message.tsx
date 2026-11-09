@@ -67,6 +67,8 @@ export function InboxMessageMenu({
 }) {
   const done = item.state === "done";
   const kind = inboxEntryKind(item);
+  // A Nodex post takes no advice: nothing about it is suggested, dispatched or classified.
+  const advisable = item.source.kind !== "nodex";
   return (
     <NodexDropdownMenu
       align="end"
@@ -85,7 +87,7 @@ export function InboxMessageMenu({
       <NodexDropdownItem leftSlot={<PageIcon className="icon-xs" />} onSelect={handlers.onOpenPage}>
         Open page
       </NodexDropdownItem>
-      {rowOffers.handleManually ? null : (
+      {rowOffers.handleManually || !advisable ? null : (
         <NodexDropdownItem
           leftSlot={<DispatchIcon className="icon-xs" />}
           onSelect={handlers.onDispatch}
@@ -93,8 +95,10 @@ export function InboxMessageMenu({
           Handle manually
         </NodexDropdownItem>
       )}
-      {/* A scheduled run takes its decision from its task, never from advice. */}
-      {item.state === "open" && !rowOffers.suggest && !item.firing && handlers.onSuggestAgain ? (
+      {advisable &&
+      item.state === "open" &&
+      !rowOffers.suggest &&
+      handlers.onSuggestAgain ? (
         <NodexDropdownItem
           leftSlot={<RefreshIcon className="icon-xs" />}
           onSelect={handlers.onSuggestAgain}
@@ -125,33 +129,27 @@ export function InboxMessageMenu({
         </NodexDropdownItem>
       ) : null}
       {/* What kind of thought it is only steers suggestions, so it is corrected here, not shown. */}
-      <NodexDropdownSummarySubmenuItem
-        label="Kind"
-        leftSlot={<TagsIcon className="icon-xs" />}
-        value={kind ? INBOX_KIND_LABELS[kind] : "None"}
-      >
-        {INBOX_ENTRY_KINDS.map((option) => {
-          const KindIcon = INBOX_KIND_ICONS[option];
-          return (
-            <NodexDropdownItem
-              key={option}
-              leftSlot={<KindIcon className="icon-xs" />}
-              rightSlot={option === kind ? <NodexDropdownSelectedIcon /> : null}
-              onSelect={() => handlers.onSetKind(option)}
-            >
-              {INBOX_KIND_LABELS[option]}
-            </NodexDropdownItem>
-          );
-        })}
-      </NodexDropdownSummarySubmenuItem>
-      <NodexDropdownSeparator />
-      <NodexDropdownItem
-        className="text-token-error-foreground"
-        leftSlot={<DeleteIcon className="icon-xs" />}
-        onSelect={handlers.onDelete}
-      >
-        Delete
-      </NodexDropdownItem>
+      {advisable ? (
+        <NodexDropdownSummarySubmenuItem
+          label="Kind"
+          leftSlot={<TagsIcon className="icon-xs" />}
+          value={kind ? INBOX_KIND_LABELS[kind] : "None"}
+        >
+          {INBOX_ENTRY_KINDS.map((option) => {
+            const KindIcon = INBOX_KIND_ICONS[option];
+            return (
+              <NodexDropdownItem
+                key={option}
+                leftSlot={<KindIcon className="icon-xs" />}
+                rightSlot={option === kind ? <NodexDropdownSelectedIcon /> : null}
+                onSelect={() => handlers.onSetKind(option)}
+              >
+                {INBOX_KIND_LABELS[option]}
+              </NodexDropdownItem>
+            );
+          })}
+        </NodexDropdownSummarySubmenuItem>
+      ) : null}
     </NodexDropdownMenu>
   );
 }
@@ -293,7 +291,9 @@ export function InboxMessage({
         fromUser ? "items-end" : "items-start",
       )}
     >
-      {item.source.kind === "agent" ? (
+      {item.source.kind === "nodex" ? (
+        <NodexAuthor />
+      ) : item.source.kind === "agent" ? (
         <button
           type="button"
           disabled={!item.source.sessionId}

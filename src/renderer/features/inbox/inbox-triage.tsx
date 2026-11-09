@@ -26,6 +26,7 @@ import {
   StopIcon,
   ThreadIcon,
 } from "@/components/shared/icons";
+import { Reply } from "@/components/shared/icons/generic-icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { NodexCheckbox } from "@/components/ui/settings";
@@ -437,8 +438,11 @@ export function InboxTriage({
   onOpenSession,
   onOpenScheduledTask,
   decided = null,
+  onReply,
 }: {
   readonly item: InboxItem;
+  /** Answers a Nodex post from the composer. */
+  readonly onReply?: () => void;
   /**
    * Where this window just sent the message. The card shows it in place of everything else
    * until the message folds away, so a decision never makes a message simply vanish.
@@ -920,6 +924,14 @@ export function InboxTriage({
             </Row>
           ),
         };
+        return {
+          strip: null,
+          actions: (
+            <Row>
+              {onReply ? (
+            </Row>
+          ),
+        };
       case "handled":
         return outcomeParts(handled);
     }
@@ -949,8 +961,12 @@ export function InboxTriage({
     });
   }
   // A delivered or failed delivery's text is settled, and a dispatch editor is already open.
+  // Nodex's own words are not the user's to rewrite.
   const editable =
-    !manualDraft && !decided && model.kind !== "handled" && model.kind !== "dispatch-failed";
+    !manualDraft &&
+    !decided &&
+    model.kind !== "handled" &&
+    model.kind !== "dispatch-failed" &&
   return children({
     editor: null,
     opensChat: false,

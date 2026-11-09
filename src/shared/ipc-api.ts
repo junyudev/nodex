@@ -406,6 +406,7 @@ import type {
   ProjectWindowInput,
   ProjectUpdateCommandInput,
   ProjectSession,
+  SessionManagedState,
   ProjectSessionForkInput,
   ProjectSessionForkResult,
   ProjectSessionSummaryWindow,
@@ -472,6 +473,7 @@ import type {
   ProjectSessionPlaceCommandInput,
   ProjectSessionUnreadCommandInput,
   ProjectSessionReminderCommandInput,
+  ProjectSessionManagedCommandInput,
   ProjectSessionOpenedCommandInput,
   ProjectSessionUpdateCommandInput,
   BuiltinSidebarReorderCommandInput,
@@ -1078,6 +1080,13 @@ export interface IpcApi
     args: [input: import("./inbox").InboxChatTargetsInput];
     result: import("./inbox").InboxChatTargets;
   };
+  "inbox:reply-destination": {
+    args: [pageId: string, body: string];
+    result: import("./inbox").InboxReplyDestination;
+  };
+  "inbox:entry": { args: [pageId: string]; result: import("./inbox").InboxItem | null };
+  "inbox:open-nodex": { args: []; result: string };
+  "inbox:reset-nodex": { args: []; result: void };
   "inbox:send": {
     args: [input: import("./inbox").InboxSendInput];
     result: CoreLocalCommitResult<import("./inbox").InboxSendResult>;
@@ -1274,6 +1283,14 @@ export interface IpcApi
   "project-sessions:record-opened": {
     args: [command: ProjectSessionOpenedCommandInput];
     result: CoreLocalCommitResult<void>;
+  };
+  "project-sessions:managed": {
+    args: [sessionId: string];
+    result: SessionManagedState;
+  };
+  "project-sessions:set-managed": {
+    args: [command: ProjectSessionManagedCommandInput];
+    result: CoreLocalCommitResult<SessionManagedState>;
   };
   "project-sessions:set-reminder": {
     args: [command: ProjectSessionReminderCommandInput];

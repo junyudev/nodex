@@ -303,7 +303,7 @@ it.effect("keeps attention and compact progress scoped to the selected Run", () 
       yield* sql`INSERT INTO orchestration_v2_projection_nodes(node_id,thread_id,run_id,root_node_id,kind,status,payload_json)
         VALUES(${node},${threadId},${runId},${node},'tool','waiting','{}')`;
       yield* sql`INSERT INTO orchestration_v2_projection_runtime_requests(runtime_request_id,thread_id,node_id,kind,status,created_at,payload_json)
-        VALUES(${`request:${index}`},${threadId},${node},${index ? "approval" : "user_input"},'pending','2026-10-27','{}')`;
+        VALUES(${`request:${index}`},${threadId},${node},${index ? "approval" : "user_input"},'pending','2026-10-27','{"responseCapability":{"type":"live"}}')`;
       for (const [ordinal, type] of ["assistant_message", "command"].entries()) {
         yield* sql`INSERT INTO orchestration_v2_projection_turn_items(turn_item_id,thread_id,run_id,ordinal,type,status,updated_at,payload_json)
           VALUES(${`item:${index}:${type}`},${threadId},${runId},${index * 10 + ordinal},${type},'completed','2026-10-27','{}')`;
@@ -322,6 +322,15 @@ it.effect("keeps attention and compact progress scoped to the selected Run", () 
     const resolved = yield* readExecution({ threadId, runId: "run:first" });
     assert.deepEqual(resolved.activeFlags, []);
     assert.notEqual(resolved.revision, selected.revision);
+    // Streaming an earlier item still counts as progress when the latest ordinal is unchanged.
+    yield* sql`UPDATE orchestration_v2_projection_turn_items SET updated_at='2026-10-28' WHERE turn_item_id='item:0:assistant_message'`;
+    const streamed = yield* readExecution({ threadId, runId: "run:first" });
+    assert.notEqual(streamed.revision, resolved.revision);
+    yield* sql`UPDATE orchestration_v2_projection_turn_items SET updated_at='2026-10-29' WHERE run_id='run:other'`;
+    assert.equal(
+      (yield* readExecution({ threadId, runId: "run:first" })).revision,
+      streamed.revision,
+    );
   }).pipe(Effect.provide(layer)),
 );
 

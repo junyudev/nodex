@@ -55,7 +55,9 @@ export interface AgentRuntimeLaunch {
   /** The Agent conversation whose message starts this chat; Main sets it, never a window. */
   readonly sender?: { readonly threadId: string; readonly runId?: string | null };
   /** Scheduled launches retain automatic provenance independently of Agent tool authority. */
-  readonly messageOrigin?: "automation";
+  readonly messageOrigin?: "automation" | "host";
+  /** Desktop-only launch role, bound before the first provider turn. */
+  readonly coordinator?: boolean;
 }
 
 const AGENT_EXECUTION_THREAD_PREFIX = "nodex:thread:";

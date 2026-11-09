@@ -37,6 +37,7 @@ struct SessionRow {
     fallback_title: String,
     activity_at: i64,
     pinned: i64,
+    managed: bool,
     pinned_order: Option<i64>,
     archived: i64,
     archived_at: Option<String>,
@@ -58,6 +59,39 @@ pub(super) fn read(
     request: ProjectWorkspaceRead,
 ) -> Result<ProjectWorkspaceReadValue, StoreError> {
     match request {
+        ProjectWorkspaceRead::ReadCoordinator => Ok(ProjectWorkspaceReadValue::ReadCoordinator {
+            session_id: super::coordinator::binding(connection)?,
+        }),
+        ProjectWorkspaceRead::ReadManagedSessions {
+            after_session_id,
+            limit,
+        } => Ok(ProjectWorkspaceReadValue::ReadManagedSessions {
+            sessions: super::coordinator::managed_sessions(
+                connection,
+                after_session_id.as_deref(),
+                limit,
+            )?,
+        }),
+        ProjectWorkspaceRead::ReadManagedSession { session_id } => {
+            Ok(ProjectWorkspaceReadValue::ReadManagedSession {
+                managed: super::coordinator::managed(connection, &session_id)?,
+            })
+        }
+        ProjectWorkspaceRead::ReadPendingWorkEvents { limit } => {
+            Ok(ProjectWorkspaceReadValue::ReadPendingWorkEvents {
+                events: super::coordinator::pending(connection, library_id, limit)?,
+            })
+        }
+        ProjectWorkspaceRead::ReadEventBatch { batch_id } => {
+            Ok(ProjectWorkspaceReadValue::ReadEventBatch {
+                batch: super::coordinator::event_batch(connection, &batch_id)?,
+            })
+        }
+        ProjectWorkspaceRead::ReadOpenEventBatches { limit } => {
+            Ok(ProjectWorkspaceReadValue::ReadOpenEventBatches {
+                batches: super::coordinator::open_batches(connection, limit)?,
+            })
+        }
         ProjectWorkspaceRead::NextSessionReminder => {
             let work = connection.query_row(
                 "WITH work AS (SELECT id AS session_id,remind_at AS wake_at,remind_at,NULL AS delivery_id FROM project_sessions WHERE archived=0 AND remind_at IS NOT NULL UNION ALL SELECT session_id,next_attempt_at AS wake_at,remind_at,delivery_id FROM project_session_reminder_deliveries) SELECT session.id,work.wake_at,work.remind_at,work.delivery_id FROM work JOIN project_sessions session ON session.id=work.session_id WHERE session.archived=0 AND (session.project_id IS NULL OR EXISTS (SELECT 1 FROM projects owner WHERE owner.id=session.project_id AND owner.library_id=?1)) ORDER BY work.wake_at,session.id,work.delivery_id LIMIT 1",
@@ -84,7 +118,7 @@ pub(super) fn read(
             })
         }
         ProjectWorkspaceRead::UnreadChatCount => Ok(ProjectWorkspaceReadValue::UnreadChatCount {
-            count: super::session_listing::read_unread_chat_count(connection, library_id)?,
+            count: super::session_listing::read_unread_chat_count(connection, library_id, &member)?,
         }),
         ProjectWorkspaceRead::InboxChatTargets {
             scope,
@@ -100,21 +134,50 @@ pub(super) fn read(
                 &window,
             )?,
         }),
+        ProjectWorkspaceRead::InboxAutomaticDispatches { limit } => {
+            Ok(ProjectWorkspaceReadValue::InboxAutomaticDispatches {
+                proposals: super::inbox_read::automatic_dispatches(
+                    connection, context, library_id, limit,
+                )?,
+            })
+        }
+        ProjectWorkspaceRead::InboxSuggestionRequest { request_id } => {
+            Ok(ProjectWorkspaceReadValue::InboxSuggestionRequest {
+                request: super::inbox::reliable::read_request(
+                    connection,
+                    context,
+                    library_id,
+                    &request_id,
+                )?,
+            })
+        }
         ProjectWorkspaceRead::InboxSuggestionRequests { limit } => {
             Ok(ProjectWorkspaceReadValue::InboxSuggestionRequests {
                 requests: super::inbox::read_requests(connection, context, library_id, limit)?,
             })
         }
-        ProjectWorkspaceRead::InboxPendingSuggestionRequestIds { request_ids } => Ok(
-            ProjectWorkspaceReadValue::InboxPendingSuggestionRequestIds {
-                request_ids: super::inbox::read_pending_request_ids(
+        ProjectWorkspaceRead::InboxPendingSuggestionRequestIds { request_ids } => {
+            let (request_ids, cancelled_deliveries) = super::inbox::read_pending_request_ids(
+                connection,
+                context,
+                library_id,
+                &request_ids,
+            )?;
+            Ok(
+                ProjectWorkspaceReadValue::InboxPendingSuggestionRequestIds {
+                    request_ids,
+                    cancelled_deliveries,
+                },
+            )
+        }
                     connection,
-                    context,
                     library_id,
                     &request_ids,
                 )?,
-            },
-        ),
+        ProjectWorkspaceRead::InboxEntry { page_id } => Ok(ProjectWorkspaceReadValue::InboxEntry {
+            item: super::inbox_read::read_single_entry(connection, context, library_id, &page_id)?
+                .map(Box::new),
+        }),
         ProjectWorkspaceRead::InboxSummary { scope } => {
             Ok(ProjectWorkspaceReadValue::InboxSummary {
                 summary: super::inbox_read::read_summary(connection, context, library_id, &scope)?,
@@ -157,6 +220,13 @@ pub(super) fn read(
                 context: super::inbox_read::read_dispatch_context(
                     connection, context, library_id, &page_ids,
                 )?,
+            })
+        }
+        ProjectWorkspaceRead::InboxMessage { page_id } => {
+            Ok(ProjectWorkspaceReadValue::InboxMessage {
+                item: Box::new(super::inbox_read::read_message(
+                    connection, context, library_id, &page_id,
+                )?),
             })
         }
         ProjectWorkspaceRead::InboxMessageEdit {
@@ -826,6 +896,7 @@ fn session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionRow> {
         fallback_title: row.get(2)?,
         activity_at: row.get(3)?,
         pinned: row.get(4)?,
+        managed: row.get(17)?,
         pinned_order: row.get(5)?,
         archived: row.get(6)?,
         archived_at: row.get(7)?,
@@ -861,6 +932,7 @@ fn session_summary(row: SessionRow) -> ProjectWorkspaceSessionSummary {
         display_title,
         activity_at: row.activity_at,
         pinned: row.pinned == 1,
+        managed: row.managed,
         pinned_order: row.pinned_order,
         archived: row.archived == 1,
         archived_at: row.archived_at,

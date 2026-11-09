@@ -53,6 +53,24 @@ pub enum ProjectWorkspaceTaskPlacementScope {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceRead {
+    ReadCoordinator,
+    ReadManagedSession {
+        session_id: String,
+    },
+    /// Identity-ordered, bounded managed chat metadata; no transcript bodies.
+    ReadManagedSessions {
+        after_session_id: Option<String>,
+        limit: u32,
+    },
+    ReadPendingWorkEvents {
+        limit: u32,
+    },
+    ReadEventBatch {
+        batch_id: String,
+    },
+    ReadOpenEventBatches {
+        limit: u32,
+    },
     /// The earliest chat reminder or unfinished delivery, at most one item.
     NextSessionReminder,
     /// How many chats the chat list shows as unread, across every Project.
@@ -220,6 +238,9 @@ pub enum ProjectWorkspaceRead {
         window: CollectionWindowRequest,
     },
     ManagedWorktreeLifecycleSnapshot,
+    InboxEntry {
+        page_id: String,
+    },
     InboxSummary {
         scope: ProjectWorkspaceInboxScope,
     },
@@ -239,6 +260,12 @@ pub enum ProjectWorkspaceRead {
         scope: ProjectWorkspaceInboxScope,
         query: String,
         window: CollectionWindowRequest,
+    },
+    InboxAutomaticDispatches {
+        limit: u32,
+    },
+    InboxSuggestionRequest {
+        request_id: String,
     },
     InboxSuggestionRequests {
         limit: u32,
@@ -272,6 +299,24 @@ pub enum ProjectWorkspaceRead {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceReadValue {
+    ReadCoordinator {
+        session_id: Option<String>,
+    },
+    ReadManagedSession {
+        managed: Option<CoordinatorManagedSession>,
+    },
+    ReadManagedSessions {
+        sessions: Vec<CoordinatorManagedSession>,
+    },
+    ReadPendingWorkEvents {
+        events: Vec<CoordinatorWorkEvent>,
+    },
+    ReadEventBatch {
+        batch: Option<CoordinatorEventBatch>,
+    },
+    ReadOpenEventBatches {
+        batches: Vec<CoordinatorEventBatch>,
+    },
     NextSessionReminder {
         session: Option<ProjectWorkspaceSessionSummary>,
         delivery: Option<ProjectWorkspaceSessionReminderDelivery>,
@@ -398,6 +443,9 @@ pub enum ProjectWorkspaceReadValue {
     ManagedWorktreeLifecycleSnapshot {
         snapshot: ProjectWorkspaceManagedWorktreeLifecycleSnapshot,
     },
+    InboxEntry {
+        item: Option<Box<ProjectWorkspaceInboxItem>>,
+    },
     InboxSummary {
         summary: ProjectWorkspaceInboxSummary,
     },
@@ -413,11 +461,18 @@ pub enum ProjectWorkspaceReadValue {
     InboxChatTargets {
         window: CollectionWindow<crate::inbox::ProjectWorkspaceInboxChat>,
     },
+    InboxAutomaticDispatches {
+        proposals: Vec<crate::inbox::ProjectWorkspaceInboxProposal>,
+    },
+    InboxSuggestionRequest {
+        request: Option<ProjectWorkspaceInboxSuggestionRequest>,
+    },
     InboxSuggestionRequests {
         requests: Vec<ProjectWorkspaceInboxSuggestionRequest>,
     },
     InboxPendingSuggestionRequestIds {
         request_ids: Vec<String>,
+        cancelled_deliveries: Vec<crate::inbox::InboxRoutingCancellation>,
     },
     InboxPendingSuggestions {
         entries: Vec<ProjectWorkspaceInboxSuggestionInput>,
@@ -1326,8 +1381,100 @@ pub struct ProjectWorkspaceSessionLinkedPageStatus {
     pub label: String,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkReportOutcome {
+    Ready,
+    Blocked,
+    Failed,
+    Dropped,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct PageWorkReport {
+    pub outcome: WorkReportOutcome,
+    pub summary: String,
+    pub at: String,
+    pub revision: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct PageLatestWorkReport {
+    pub session_id: String,
+    pub outcome: WorkReportOutcome,
+    pub at: String,
+    pub revision: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct PageWorkDescriptor {
+    pub latest_report: Option<PageLatestWorkReport>,
+    pub managed_session_count: u32,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CoordinatorWorkEventKind {
+    Report,
+    Attention,
+    TurnEnded,
+    Failed,
+    Stalled,
+    ReadyToStart,
+    Started,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct CoordinatorWorkEventInput {
+    pub kind: CoordinatorWorkEventKind,
+    pub session_id: Option<String>,
+    pub page_id: Option<String>,
+    pub payload: serde_json::Value,
+    pub dedupe_key: String,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct CoordinatorObservationInput {
+    pub resolved_request_ids: Vec<String>,
+    pub session_id: String,
+    pub observed_json: serde_json::Value,
+    pub expected_revision: i64,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct CoordinatorManagedSession {
+    pub session_id: String,
+    pub since: String,
+    pub observed_json: Option<serde_json::Value>,
+    pub observed_revision: i64,
+    pub latest_report_at: Option<String>,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct CoordinatorWorkEvent {
+    pub event_id: String,
+    pub dedupe_key: String,
+    pub kind: CoordinatorWorkEventKind,
+    pub session_id: Option<String>,
+    pub page_id: Option<String>,
+    pub payload: serde_json::Value,
+    pub created_at: String,
+    pub session_title: Option<String>,
+    pub page_title: Option<String>,
+    pub page_key: Option<String>,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct CoordinatorEventBatch {
+    pub invalidated_at: Option<String>,
+    pub batch_id: String,
+    pub coordinator_session_id: String,
+    pub message_id: String,
+    pub body: String,
+    pub fingerprint: String,
+    pub created_at: String,
+    pub accepted_at: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspacePageChatActivitySummary {
+    pub work: PageWorkDescriptor,
     pub page_id: String,
     pub related_count: u32,
     /// Native thread status only; Runtime-bound Sessions report live status outside Core.
@@ -1343,6 +1490,7 @@ pub struct ProjectWorkspacePageChatActivitySummary {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspacePageChatItem {
+    pub report: Option<PageWorkReport>,
     pub session_id: String,
     pub project_id: Option<String>,
     pub project_name: Option<String>,
@@ -1383,6 +1531,7 @@ pub struct ProjectWorkspaceSessionSummary {
     pub display_title: String,
     pub activity_at: i64,
     pub pinned: bool,
+    pub managed: bool,
     pub pinned_order: Option<i64>,
     pub archived: bool,
     pub archived_at: Option<String>,
@@ -1552,6 +1701,40 @@ pub struct ProjectWorkspaceCreatedPage {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceIntent {
+    BindCoordinator {
+        session_id: String,
+    },
+    UnbindCoordinator {
+        session_id: String,
+    },
+    SetSessionManaged {
+        session_id: String,
+        managed: bool,
+    },
+    ReportPageWork {
+        page_id: Option<String>,
+        outcome: WorkReportOutcome,
+        summary: String,
+    },
+    RecordWorkEvents {
+        events: Vec<CoordinatorWorkEventInput>,
+        observed: Vec<CoordinatorObservationInput>,
+    },
+    CreateEventBatch {
+        batch_id: String,
+        coordinator_session_id: String,
+        event_ids: Vec<String>,
+        message_id: String,
+        body: String,
+        fingerprint: String,
+    },
+    DiscardEventBatch {
+        batch_id: String,
+    },
+    SettleEventBatch {
+        batch_id: String,
+        accepted_at: String,
+    },
     CreatePageFor {
         #[serde(rename = "for")]
         target: ProjectWorkspacePageCreationTarget,
@@ -1677,6 +1860,9 @@ pub enum ProjectWorkspaceIntent {
     /// Atomically binds an unstarted Session (or creates one), authorized Linked chats, and runtime launch identity.
     /// Core does not execute the launch or persist the external Thread's mutable state.
     CreateAgentRuntimeSession {
+        /// Host-only role binding, atomic with Session/execution admission.
+        #[serde(default)]
+        coordinator: bool,
         session_id: String,
         project_id: Option<String>,
         title: String,
@@ -1910,7 +2096,30 @@ pub enum ProjectWorkspaceIntent {
     /// The body is message text with the message shape, text followed by images, and
     /// becomes the Page body as canonical Nodex Markdown. Without a sender title, Core gives the Page a provisional
     /// title that the suggestion Agent may later replace.
+        page_id: String,
+        body: String,
+        event_ids: Vec<String>,
+    },
+    BeginInboxRouting {
+        request_id: String,
+        generation: i64,
+        coordinator_session_id: String,
+    },
+    RecordInboxRoutingRefusal {
+        request_id: String,
+        generation: i64,
+        coordinator_session_id: String,
+        reason: String,
+    },
+    StartInboxRoutingRun {
+        request_id: String,
+        generation: i64,
+        coordinator_session_id: String,
+        run_started_at_ms: i64,
+    },
     SendInboxMessage {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply_to_page_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         expected_store_epoch: Option<String>,
         page_id: String,
@@ -1942,6 +2151,8 @@ pub enum ProjectWorkspaceIntent {
     },
     /// The user authorizes one exact proposal revision, optionally with edits.
     ConfirmInboxDispatch {
+        #[serde(default)]
+        confirmed_by: crate::inbox::InboxConfirmedBy,
         expected_store_epoch: String,
         basis: Vec<ProjectWorkspaceInboxPageBasis>,
         execution_selection: Option<ProjectWorkspaceInboxExecutionSelection>,
@@ -1996,6 +2207,8 @@ pub enum ProjectWorkspaceIntent {
         page_id: String,
     },
     SettleInboxSuggestion {
+        #[serde(default)]
+        automatic_dispatch: bool,
         request_id: String,
         generation: i64,
         titles: Vec<ProjectWorkspaceInboxSuggestionTitle>,
@@ -2154,7 +2367,13 @@ pub struct ProjectWorkspaceCodexThreadObservation {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+    pub page_id: String,
+    pub replay: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceCommitValue {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_page: Option<ProjectWorkspaceCreatedPage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

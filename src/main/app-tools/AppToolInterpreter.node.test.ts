@@ -1,3 +1,4 @@
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { CodexThreadReadState } from "../codex-application/CodexThreadReadState";
 import { CodexMainConversationInterrupt } from "../codex-application/CodexMainConversationInterrupt";
 import { CodexQueuedFollowUps } from "../codex-application/CodexQueuedFollowUps";
@@ -91,6 +92,12 @@ const interpreter = (options: { hostId?: string; afterRead?: () => void } = {}) 
       Effect.provideService(SessionObservation, {} as never),
       Effect.provideService(SessionWaiter, {} as never),
       Effect.provideService(AgentRuntimeApplication, {} as never),
+      Effect.provideService(CoordinatorSession, {
+        isCoordinator: () => Effect.succeed(false),
+      } as never),
+      Effect.provideService(InboxApplication, {} as never),
+      Effect.provideService(NodexEntryNotifications, {} as never),
+      Effect.provideService(ApplicationSettings, {} as never),
       Effect.provideService(CoreModules, {} as never),
       Effect.provideService(AutomationApplication, {} as never),
       Effect.provideService(CodexTurnAuthority, {} as never),

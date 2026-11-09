@@ -229,7 +229,10 @@ pub(super) fn apply(
             )?;
             // An Agent command retry belongs to its caller root across Turns. Admission above
             // still checks the current Turn's persisted authority before receipt replay.
-            let fingerprint_intent = match &request.intent {
+            // Runtime observations can change after a lost response. Capture identity is the
+            // person's immutable input; receipt replay preserves the first durable decision.
+            let mut capture_intent = request.intent.clone();
+            let fingerprint_intent = match &capture_intent {
                 ProjectWorkspaceIntent::AgentCommand { provenance, intent } => {
                     MutationFingerprintIntent::SessionDispatch {
                         caller_thread_id: &provenance.authority.root_thread_id,
@@ -290,6 +293,7 @@ pub(super) fn apply(
                     )
                 }
                 ProjectWorkspaceIntent::SendInboxMessage {
+                    reply_to_page_id,
                     expected_store_epoch,
                     page_id,
                     document_id,
@@ -317,6 +321,7 @@ pub(super) fn apply(
                         body,
                         title.as_deref(),
                         project_id.as_deref(),
+                        reply_to_page_id.as_deref(),
                     )
                 },
                 ProjectWorkspaceIntent::ProposeInboxDispatch {
@@ -350,7 +355,8 @@ pub(super) fn apply(
                     transaction, &library_id, &context, &store_epoch, &request.operation_id,
                     &request_hash, page_id,
                 ),
-                intent @ (ProjectWorkspaceIntent::ConfirmInboxDispatch { .. }
+                intent @ (ProjectWorkspaceIntent::BeginInboxRouting { .. } | ProjectWorkspaceIntent::StartInboxRoutingRun { .. } | ProjectWorkspaceIntent::RecordInboxRoutingRefusal { .. }
+                    | ProjectWorkspaceIntent::ConfirmInboxDispatch { .. }
                     | ProjectWorkspaceIntent::DispatchInboxEntries { .. }
                     | ProjectWorkspaceIntent::EditInboxMessage { .. }
                     | ProjectWorkspaceIntent::UndoInboxDecision { .. }
@@ -751,6 +757,7 @@ pub(super) fn apply(
                     None,
                 ),
                 ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                    coordinator,
                     session_id,
                     project_id,
                     title,
@@ -776,6 +783,7 @@ pub(super) fn apply(
                     "create_agent_runtime_session",
                     None,
                     side_chat_source_session_id.as_deref(),
+                    *coordinator,
                 ),
                 ProjectWorkspaceIntent::AdoptNativeSessionExecution {
                     session_id,project_id,expected_native_thread_id,expected_native_host_id,
@@ -1592,6 +1600,13 @@ pub(super) fn seal_mutation_with_created_page(
     )?;
     let committed = crate::ModuleWriterResult {
         value: ProjectWorkspaceCommitValue {
+                effects.page_ids.first().map(|id| {
+                        page_id: id.clone(),
+                    }
+                })
+            } else {
+                None
+            },
             created_page,
             inbox_undo_token: connection
                 .query_row(

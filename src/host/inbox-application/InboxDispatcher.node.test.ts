@@ -12,31 +12,27 @@ import {
   type InboxSuggestionMode,
 } from "../../shared/inbox";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import { NativePromptImages } from "../agent-backend/NativePromptImages";
-import { LibraryModule } from "../library-application/LibraryModule";
 import {
   AgentRuntimeApplication,
   AgentRuntimeApplicationError,
-} from "../agent-runtime/AgentRuntimeApplication";
-import { testLayer as configLayer } from "../app/MainConfig";
-import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
-import { CoreModuleResponseError } from "../core-client/core-client";
-import { subscribeToBackendLogs, type BackendLogEntry } from "../logging/logger";
-import { ApplicationSettings } from "../settings/ApplicationSettings";
-import { InboxApplication, InboxApplicationError } from "./InboxApplication";
+import { CoreModuleResponseError } from "../../main/core-client/core-client";
 import {
   captureInbox,
+  bindTestCoordinator,
   inboxOverRealCore,
   suggestionHostLayer,
 } from "./InboxApplication.test-support";
+import { CoordinatorSession } from "../coordinator/CoordinatorSession";
+import { validateInboxSuggestions } from "./inbox-suggestions";
 import { make } from "./InboxDispatcher";
+import { inboxRoutingIdentity } from "./inbox-suggestions";
 
 type Runtime = AgentRuntimeApplication["Service"];
 type Provider = Effect.Success<ReturnType<Runtime["catalog"]>>[number];
 type Mode = InboxSuggestionMode | "paused";
 
-const generationInput = (input: Parameters<Runtime["generateStructured"]>[0]) =>
-  JSON.parse(input.prompt.split("JSON data:\n")[1]!) as {
+const generationInput = (input: Parameters<Runtime["sendMessage"]>[0]) =>
+  JSON.parse(input.message.text.split("JSON data:\n")[1]!) as {
     request: { request_id: string; generation: number };
     messages: { page_id: string }[];
   };
@@ -46,7 +42,6 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
   let current: InboxSettings = {
     ...DEFAULT_INBOX_SETTINGS,
     suggestions: mode === "paused" ? "automatic" : mode,
-    // Small enough that a test fills every lane in a few lines.
     suggestionConcurrency: 3,
   };
   const suggestionAgent: Provider = {
@@ -83,35 +78,66 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
     { ...suggestionAgent, usageLimits: mode === "paused" ? tight : undefined },
   ];
   const catalog = vi.fn<Runtime["catalog"]>(() => Effect.sync(() => providers));
-  const generated = vi.fn<Runtime["generateStructured"]>((input) => {
-    const data = generationInput(input);
-    return Effect.succeed({
-      request_id: data.request.request_id,
-      generation: data.request.generation,
-      titles: [],
-      suggestions: data.messages.map(({ page_id }) => ({
-        page_ids: [page_id],
-        kind: "note",
-        action: "keep",
-        project_id: null,
-        session_id: null,
-        prompt: null,
-        chat_instance_id: null,
-        chat_model: null,
-        chat_effort: null,
-        additions: [],
-        summary: "Keep this reference",
-        rationale: null,
-      })),
-    });
-  });
   const { inbox, client, projectId } = yield* inboxOverRealCore(
     Effect.void,
     catalog,
     () => current,
   );
+  const coordinatorId = yield* bindTestCoordinator(client);
+  const generated = vi.fn<Runtime["sendMessage"]>((input) =>
+    Effect.gen(function* () {
+      const data = generationInput(input);
+      const request = yield* inbox.suggestionRequest(data.request.request_id);
+      if (request === null) return {} as Effect.Success<ReturnType<Runtime["sendMessage"]>>;
+      const output = {
+        request_id: data.request.request_id,
+        generation: data.request.generation,
+        titles: [],
+        suggestions: data.messages.map(({ page_id }) => ({
+          explicit_request: false,
+          page_ids: [page_id],
+          kind: "note",
+          action: "keep",
+          project_id: null,
+          session_id: null,
+          prompt: null,
+          chat_instance_id: null,
+          chat_model: null,
+          chat_effort: null,
+          additions: [],
+          summary: "Keep this reference",
+          rationale: null,
+        })),
+      };
+      const validated = validateInboxSuggestions(
+        output,
+        request!.context,
+        request!.context.entries,
+        { requestId: request!.request_id, generation: request!.generation, mode: request!.mode },
+      );
+      yield* inbox.settleSuggestion({
+        request_id: request!.request_id,
+        generation: request!.generation,
+        titles: [],
+        suggestions: validated.suggestions.map((suggestion) => ({
+          proposal_id: createUuidV7(),
+          page_ids: [...suggestion.pageIds],
+          action: inboxDispatchActionToCore(suggestion.action),
+          entry_kind: suggestion.kind,
+          summary: suggestion.summary,
+          rationale: suggestion.rationale,
+          explicit_request: false,
+        })),
+        produced_by: "Nodex",
+        error: null,
+        automatic_dispatch: false,
+      });
+      return {} as Effect.Success<ReturnType<Runtime["sendMessage"]>>;
+    }).pipe(Effect.orDie),
+  );
   // Source directories that exist on this machine; every other path is missing.
   const directories = new Set<string>();
+  const stopHostInput = vi.fn<Runtime["stopHostInput"]>(() => Effect.succeed(undefined));
   const dispatcher = yield* make.pipe(
     Effect.provideService(LibraryModule, {
       readFileBlob: () => Effect.die("Text-only suggestions must not read image files"),
@@ -121,12 +147,19 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
       fit: () => Effect.die("Text-only suggestions must not fit images"),
     } as unknown as NativePromptImages["Service"]),
     Effect.provideService(InboxApplication, inbox),
+    Effect.provideService(CoordinatorSession, {
+      ensure: () => Effect.succeed(coordinatorId),
+      isCoordinator: () => Effect.succeed(true),
+    } as never),
     Effect.provideService(ApplicationSettings, {
       snapshot: () => Effect.sync(() => ({ inbox: current })),
     } as unknown as ApplicationSettings["Service"]),
     Effect.provideService(AgentRuntimeApplication, {
       catalog,
-      generateStructured: generated,
+      sendMessage: generated,
+      stopHostInput,
+      runOutcome: () => Effect.succeed(null),
+      messageAdmission: () => Effect.succeed(null),
     } as unknown as Runtime),
     Effect.provide(suggestionHostLayer(directories)),
     Effect.provide(configLayer({ nodexHome: "/profiles/inbox" })),
@@ -148,13 +181,15 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
   });
   return {
     inbox,
+    client,
     ...dispatcher,
     generated,
+    stopHostInput,
+    coordinatorId,
     catalog,
     item,
     request,
     projectId,
-    client,
     directories,
     setMode: (suggestions: InboxSuggestionMode) => {
       current = { ...current, suggestions };
@@ -168,9 +203,7 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
   };
 });
 
-const holdNextGeneration = Effect.fnUntraced(function* (
-  generated: Mock<Runtime["generateStructured"]>,
-) {
+const holdNextGeneration = Effect.fnUntraced(function* (generated: Mock<Runtime["sendMessage"]>) {
   const started = yield* Deferred.make<ReturnType<typeof generationInput>>();
   const resume = yield* Deferred.make<void, AgentRuntimeApplicationError>();
   const interrupted = yield* Deferred.make<void>();
@@ -358,36 +391,21 @@ it.effect("resumes only for new sends and logs each usage transition once", () =
   ),
 );
 
-it.effect("looks things up from a Project Inbox's source directory while it exists", () =>
+it.effect("offers the Project's source directories in a queued host routing request", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const { inbox, drain, generated, projectId, directories } = yield* harness("automatic");
-      const suggested = Effect.fn("InboxDispatcher.testSuggested")(function* (
-        body: string,
-        scope = projectInbox(projectId),
-      ) {
-        yield* captureInbox(inbox, body, scope);
-        yield* drain;
-        const call = generated.mock.calls.at(-1);
-        if (!call) return assert.fail("No suggestion ran");
-        const data = JSON.parse(call[0].prompt.split("JSON data:\n")[1]!) as {
-          projects: { project_id: string; sources: string[] }[];
-        };
-        return { input: call[0], projects: data.projects };
-      });
-
-      const missing = yield* suggested("Which module owns the suggestion prompt?");
-      const source = missing.projects.find((project) => project.project_id === projectId)
-        ?.sources[0];
-      if (!source) return assert.fail("The Project's source directory was not offered");
-      assert.strictEqual(missing.input.cwd, "/profiles/inbox");
-      assert.isTrue(missing.input.webSearch);
-
-      directories.add(source);
-      assert.strictEqual((yield* suggested("Where are routing rules tested?")).input.cwd, source);
-      assert.strictEqual(
-        (yield* suggested("Remember the venue", LIBRARY_INBOX)).input.cwd,
-        "/profiles/inbox",
+      const { inbox, drain, generated, projectId } = yield* harness("automatic");
+      yield* captureInbox(inbox, "Which module owns routing?", projectInbox(projectId));
+      yield* drain;
+      const call = generated.mock.calls[0]![0];
+      assert.equal(call.origin, "host");
+      assert.equal(call.mode, "queue");
+      assert.isString(call.messageFingerprint);
+      const data = JSON.parse(call.message.text.split("JSON data:\n")[1]!);
+      assert.isAbove(
+        data.projects.find((project: { project_id: string }) => project.project_id === projectId)
+          .sources.length,
+        0,
       );
     }),
   ),
@@ -492,128 +510,6 @@ it.effect("reads the limit at each admission: raising admits, lowering stops not
   ),
 );
 
-it.effect("refills after a generation failure while a hanging lane is still active", () =>
-  Effect.gen(function* () {
-    const hangingInterrupted = yield* Effect.scoped(
-      Effect.gen(function* () {
-        const { inbox, trigger, generated, item } = yield* harness("automatic");
-        const hanging = yield* holdNextGeneration(generated);
-        const first = yield* captureInbox(inbox, "This generation will hang");
-        yield* trigger;
-        yield* Deferred.await(hanging.started);
-
-        const failing = yield* holdNextGeneration(generated);
-        const second = yield* captureInbox(inbox, "This generation will fail");
-        yield* trigger;
-        yield* Deferred.await(failing.started);
-
-        const refill = yield* holdNextGeneration(generated);
-        const third = yield* captureInbox(inbox, "This generation can still settle");
-        yield* Deferred.fail(
-          failing.resume,
-          new AgentRuntimeApplicationError({
-            operation: "structured-generation",
-            message: "The Agent could not generate a suggestion",
-          }),
-        );
-        const input = yield* Deferred.await(refill.started);
-        assert.deepEqual(
-          input.messages.map(({ page_id }) => page_id),
-          [third.pageId],
-        );
-        assert.strictEqual((yield* item(second.pageId)).suggestionState, "failed");
-
-        const settled = yield* Deferred.make<void>();
-        const settle = inbox.settleSuggestion;
-        vi.spyOn(inbox, "settleSuggestion").mockImplementationOnce((settlement) =>
-          settle(settlement).pipe(Effect.tap(() => Deferred.succeed(settled, undefined))),
-        );
-        yield* Deferred.succeed(refill.resume, undefined);
-        yield* Deferred.await(settled);
-        assert.strictEqual((yield* item(third.pageId)).suggestionState, "settled");
-        assert.strictEqual((yield* item(first.pageId)).suggestionState, "pending");
-        return hanging.interrupted;
-      }),
-    );
-    assert.isTrue(yield* Deferred.isDone(hangingInterrupted));
-  }),
-);
-
-it.effect("retries an unsettled request only after an ordinary trigger", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const { inbox, trigger, drain, generated, item } = yield* harness("automatic");
-      const warning = yield* Deferred.make<BackendLogEntry>();
-      yield* Effect.acquireRelease(
-        Effect.sync(() =>
-          subscribeToBackendLogs(
-            (entry) => {
-              if (
-                entry.component === "inbox-dispatcher" &&
-                entry.msg === "Inbox suggestion pass could not settle"
-              ) {
-                Deferred.doneUnsafe(warning, Effect.succeed(entry));
-              }
-            },
-            { level: "warn" },
-          ),
-        ),
-        (unsubscribe) => Effect.sync(unsubscribe),
-      );
-      const failing = yield* holdNextGeneration(generated);
-      const first = yield* captureInbox(inbox, "First private message");
-      yield* trigger;
-      const initial = yield* Deferred.await(failing.started);
-
-      const sibling = yield* holdNextGeneration(generated);
-      yield* captureInbox(inbox, "Sibling message");
-      const running = yield* drain.pipe(Effect.forkScoped);
-      yield* Deferred.await(sibling.started);
-      // Wait for the drain's admission pass before adding the message that must wait for refill.
-      yield* trigger;
-
-      const refill = yield* holdNextGeneration(generated);
-      const third = yield* captureInbox(inbox, "This message should be next");
-      vi.spyOn(inbox, "settleSuggestion").mockImplementationOnce(() =>
-        Effect.fail(
-          new InboxApplicationError({
-            operation: "settle-suggestion",
-            message: "Cannot settle First private message",
-            cause: coreRuntimeError({
-              operation: "workspace.apply",
-              reason: "transport-loss",
-              retryable: true,
-            }),
-          }),
-        ),
-      );
-      yield* Deferred.succeed(failing.resume, undefined);
-      assert.notInclude(JSON.stringify(yield* Deferred.await(warning)), "First private message");
-      assert.strictEqual((yield* item(first.pageId)).suggestionState, "pending");
-      assert.strictEqual(generated.mock.calls.length, 2);
-
-      yield* Deferred.succeed(sibling.resume, undefined);
-      const input = yield* Deferred.await(refill.started);
-      assert.deepEqual(
-        input.messages.map(({ page_id }) => page_id),
-        [third.pageId],
-      );
-      assert.strictEqual(generated.mock.calls.length, 3);
-
-      yield* Deferred.succeed(refill.resume, undefined);
-      yield* Fiber.join(running);
-      assert.strictEqual(generated.mock.calls.length, 3);
-      assert.strictEqual((yield* item(first.pageId)).suggestionState, "pending");
-
-      yield* drain;
-      assert.strictEqual(generated.mock.calls.length, 4);
-      const retry = generated.mock.calls[3]!;
-      assert.deepEqual(generationInput(retry[0]).request, initial.request);
-      assert.strictEqual((yield* item(first.pageId)).suggestionState, "settled");
-    }),
-  ),
-);
-
 it.effect("releases waiting messages and admits no more work when turned off at capacity", () =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -650,8 +546,18 @@ it.effect.each(["stop", "archive", "request again"] as const)(
   (change) =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { client, inbox, trigger, reconcile, drain, generated, item, request } =
-          yield* harness("automatic");
+        const {
+          client,
+          inbox,
+          trigger,
+          reconcile,
+          drain,
+          generated,
+          item,
+          request,
+          stopHostInput,
+          coordinatorId,
+        } = yield* harness("automatic");
         const read = vi.spyOn(inbox, "pendingSuggestionRequestIds");
         yield* reconcile;
         assert.strictEqual(read.mock.calls.length, 0);
@@ -662,7 +568,7 @@ it.effect.each(["stop", "archive", "request again"] as const)(
             const { pageId } = yield* captureInbox(inbox, `Active message ${index}`);
             yield* trigger;
             const { request } = yield* Deferred.await(gate.started);
-            return { ...gate, pageId, requestId: request.request_id };
+            return { ...gate, pageId, requestId: request.request_id, request };
           }),
         );
         const stopped = active[0]!;
@@ -697,6 +603,20 @@ it.effect.each(["stop", "archive", "request again"] as const)(
         yield* reconcile;
         const input = yield* Deferred.await(refill.started);
         assert.isTrue(yield* Deferred.isDone(stopped.interrupted));
+        assert.deepEqual(stopHostInput.mock.calls, [
+          [
+            {
+              sessionId: coordinatorId,
+              messageId: inboxRoutingIdentity(stopped.request).messageId,
+            },
+          ],
+          [
+            {
+              sessionId: coordinatorId,
+              messageId: inboxRoutingIdentity(stopped.request, true).messageId,
+            },
+          ],
+        ]);
         assert.isFalse(yield* Deferred.isDone(active[1]!.interrupted));
         assert.isFalse(yield* Deferred.isDone(active[2]!.interrupted));
         assert.notStrictEqual(input.request.request_id, stopped.requestId);

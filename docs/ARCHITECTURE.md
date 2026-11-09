@@ -952,12 +952,33 @@ configuration in memory and cannot persist a second configuration source. See
 [ACP Agent behavior](product-specs/acp-agent-behavior.md) and
 [ADR 0071](adr/0071-configured-acp-agents-and-explicit-management.md).
 
+Inbox routing enters the Profile's persistent Coordinator through queued Host messages.
+Core owns each request's fence, retained routing recipient and deadline; Runtime
+admission prevents duplicate delivery. Coordinator-only tools validate suggestions
+automatic confirmations. See [Inbox behavior](product-specs/inbox-behavior.md).
+
 Inbox confirmation freezes the reviewed message, its Markdown and images, target and execution
 selection in Core before Main hands the stable command to the Runtime. Durable message
 admission ends the local Inbox handoff; execution progress remains owned by the chat.
 Uncertain remote delivery requires explicit reconciliation rather than automatic replay.
 Inbox edits and grouped filing decisions compose Document and Library work inside one
 Workspace transaction. See [Inbox behavior](product-specs/inbox-behavior.md).
+
+The Coordinator is an ordinary Runtime Session that Core binds as the Profile's one Coordinator
+and excludes from chat catalogs and routing candidates. Main attaches its standing instructions,
+and those of Managed chats, through the per-turn Host preparation hook, so they survive
+compaction and model changes. Inbox suggestion requests reach it as Host-authored input with
+identities derived from the request, and its `inbox_suggest` answer settles through the same
+fenced Core request as before; the dispatcher only delivers and times out. Work events flow the
+other way: a Main monitor reads each Managed chat's metadata-only facts on live occurrences and
+a periodic sweep, compares them with the last observation Core holds, and records deduplicated
+events; a delivery runtime freezes pending events into a batch and hands it to the Coordinator
+after reconciling Runtime message admission, so neither a restart nor a lost reply delivers
+twice. Live notification occurrences only wake the monitor; they are never the record. Page
+starts, whether the user's, an Agent's `start_work`, or an automatic start once Prerequisites
+are satisfied, commit the Session, the handoff link, managed membership and a frozen launch in
+one Workspace transaction and reach the Runtime through the same launch outbox as Inbox dispatch.
+See [Coordinator behavior](product-specs/coordinator-behavior.md) and
 
 ### Native Codex conversation peers
 

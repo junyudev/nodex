@@ -8,7 +8,7 @@ import {
   inboxDefaultChatCandidate,
 } from "../../src/main/inbox-application/inbox-agent-candidates";
 import {
-  buildInboxSuggestionPrompt,
+  renderInboxRoutingRequest,
   INBOX_PROMPT_VERSION,
   validateInboxSuggestions,
   type InboxSuggestionAgents,
@@ -359,6 +359,7 @@ const exampleOutput = (value: RoutingCase) => ({
   generation: 1,
   titles: [],
   suggestions: value.decisions.map((decision) => ({
+    explicit_request: false,
     page_ids: decision.members.map((i) => `message-${i}`),
     action: decision.action,
     kind: decision.action === "keep" ? "note" : "todo",
@@ -468,7 +469,7 @@ async function main() {
           const input = fixture(value);
           return {
             id: value.id,
-            prompt: buildInboxSuggestionPrompt({
+            prompt: renderInboxRoutingRequest({
               ...input,
               instructions: "",
               agents: evalAgents(value),

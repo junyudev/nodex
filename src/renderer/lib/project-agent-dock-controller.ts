@@ -61,6 +61,7 @@ export function createProjectAgentDockDraftSession(
     noThreadFallbackTitle: "New chat",
     displayTitle: "New chat",
     activityAt: 0,
+    managed: false,
     pinned: false,
     pinnedOrder: null,
     archived: false,

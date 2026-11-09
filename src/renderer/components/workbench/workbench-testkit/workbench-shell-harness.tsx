@@ -62,6 +62,7 @@ import type {
 } from "../../../../shared/agent-runtime-api";
 import type { LibraryNavigationNode } from "../../../../shared/library-module";
 import type { ProjectSessionsChangeEvent } from "../../../../shared/ipc-api";
+import { projectSessionToSummary } from "@/lib/project-session-query-cache";
 import type { WorkbenchLayoutSnapshot } from "../../../../shared/workbench-layout";
 import {
   DEFAULT_SIDEBAR_COLLAPSIBLE_SECTIONS,
@@ -3329,22 +3330,7 @@ export function renderWorkbench({
         : 0;
       const summaries = (sessionState[projectId] ?? [])
         .filter((session) => !session.archived)
-        .map((session) => ({
-          id: session.id,
-          projectId: session.projectId,
-          noThreadFallbackTitle: session.noThreadFallbackTitle,
-          displayTitle: session.displayTitle,
-          activityAt: session.activityAt,
-          pinned: session.pinned,
-          pinnedOrder: session.pinnedOrder,
-          archived: session.archived,
-          archivedAt: session.archivedAt,
-          unread: session.unread,
-          executionRef: session.executionRef ?? null,
-          thread: session.thread,
-          createdAt: session.createdAt,
-          updatedAt: session.updatedAt,
-        }));
+        .map(projectSessionToSummary);
       const items = summaries.slice(offset, offset + first);
       const nextOffset = offset + items.length;
       const hasMore = nextOffset < summaries.length;
@@ -3937,6 +3923,20 @@ export function renderWorkbench({
               };
         if (changed) sessionState = replaceSession(sessionState, updated);
         return { changed, value: updated };
+      });
+    }
+    if (channel === "project-sessions:set-managed") {
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const sessionId = String(command.payload.sessionId);
+      const managed = command.payload.managed === true;
+      return completeWorkspaceCommand(command, command, () => {
+        const session = Object.values(sessionState)
+          .flat()
+          .find((item) => item.id === sessionId);
+        if (!session) throw new Error(`Project Session not found: ${sessionId}`);
+        const changed = session.managed !== managed;
+        if (changed) sessionState = replaceSession(sessionState, { ...session, managed });
+        return { changed, value: { managed, since: managed ? session.createdAt : null } };
       });
     }
     if (channel === "project-sessions:set-pinned") {

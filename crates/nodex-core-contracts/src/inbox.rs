@@ -147,6 +147,11 @@ pub struct ProjectWorkspaceInboxPageBasis {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceInboxSource {
     User,
+    Nodex {
+        purpose: NodexEntryPurpose,
+        subject_session_id: Option<String>,
+        subject_page_id: Option<String>,
+    },
     Agent {
         session_id: Option<String>,
         thread_id: Option<String>,
@@ -170,9 +175,63 @@ pub enum ProjectWorkspaceInboxSource {
     },
 }
 
-/// The firing behind a scheduled task's message, as it stands now.
+/// Why Nodex is speaking; independent of a message's user-editable kind.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum NodexEntryPurpose {
+    Answer,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum InboxConfirmedBy {
+    #[default]
+    User,
+    Nodex,
+}
+
+pub struct InboxReplyContext {
+    pub page_id: String,
+    pub purpose: Option<NodexEntryPurpose>,
+    pub body: String,
+    pub subject_session_id: Option<String>,
+    pub subject_page_id: Option<String>,
+}
+
+/// Host observation used only for the first capture decision. Core validates its post and chat.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceInboxFiring {
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum InboxReplyDispatch {
+    Send,
+    Answer { response: InboxQuestionResponse },
+}
+
+/// Frozen person answer delivered with the reply entry's stable handoff identity.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxQuestionResponse {
+    pub request_id: String,
+    pub run_id: Option<String>,
+    pub question_id: String,
+    pub answer: String,
+}
+
+/// Handover and the carrying Run start survive restarts.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxRoutingDelivery {
+    pub coordinator_session_id: String,
+    pub handed_over_at_ms: i64,
+    pub run_started_at_ms: Option<i64>,
+    pub last_refusal: Option<String>,
+}
+
+/// An admitted delivery whose result no longer belongs to an open request.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxRoutingCancellation {
+    pub request_id: String,
+    pub generation: i64,
+    pub coordinator_session_id: String,
+}
+
     pub automation_id: String,
     pub dispatch_id: String,
     pub status: crate::automation::AutomationFiringStatus,
@@ -227,11 +286,14 @@ pub struct ProjectWorkspaceInboxChat {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxProposal {
+    pub answered_question: bool,
     pub failure_kind: Option<ProjectWorkspaceInboxFailureKind>,
     /// Current member fingerprints, fenced when the user confirms.
     pub basis: Vec<ProjectWorkspaceInboxPageBasis>,
     /// Any current member text differs from the text this advice was written from.
     pub outdated: bool,
+    pub explicit_request: bool,
+    pub confirmed_by: Option<InboxConfirmedBy>,
     pub proposal_id: String,
     pub revision: i64,
     pub origin: ProjectWorkspaceInboxProposalOrigin,
@@ -275,6 +337,7 @@ pub struct ProjectWorkspaceInboxItem {
     pub body_editable: bool,
     pub submitted_at: String,
     pub source: ProjectWorkspaceInboxSource,
+    pub reply_to_page_id: Option<String>,
     pub kind: Option<ProjectWorkspaceInboxEntryKind>,
     /// The user marked the message important, so it stays in view while it waits.
     pub important: bool,
@@ -355,6 +418,8 @@ pub struct ProjectWorkspaceInboxMessageImage {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxSuggestionInput {
     pub page_id: String,
+    #[serde(default)]
+    pub reply_to: Option<InboxReplyContext>,
     pub page_key: Option<String>,
     /// Exact body Markdown with numbered Library image markers.
     pub body: String,
@@ -411,6 +476,7 @@ pub struct ProjectWorkspaceInboxDispatchContext {
 /// A confirmed dispatch that the Desktop Host must deliver.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxDispatchWork {
+    pub question_response: Option<InboxQuestionResponse>,
     /// None only for pre-snapshot history that must be reconciled, never sent.
     pub final_text: Option<String>,
     /// Bindings to the reviewed Library image bytes, in marker order. Delivery must read
@@ -491,6 +557,7 @@ pub enum ProjectWorkspaceInboxSuggestionMode {
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxSuggestionRequest {
+    pub delivery: Option<InboxRoutingDelivery>,
     pub request_id: String,
     pub generation: i64,
     pub mode: ProjectWorkspaceInboxSuggestionMode,
@@ -508,6 +575,7 @@ pub struct ProjectWorkspaceInboxSuggestionTitle {
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxSuggestedDispatch {
+    pub explicit_request: bool,
     pub proposal_id: String,
     pub page_ids: Vec<String>,
     pub action: ProjectWorkspaceInboxDispatchAction,

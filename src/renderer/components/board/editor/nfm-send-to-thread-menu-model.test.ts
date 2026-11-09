@@ -73,6 +73,7 @@ function makeLinkedChat(overrides: Partial<PageChatItem> = {}): PageChatItem {
     threadStatus: null,
     threadArchived: false,
     unread: false,
+    report: null,
     sessionArchived: false,
     conversationRecencyAt: 1,
     linkedAt: "2026-01-01T00:00:00.000Z",

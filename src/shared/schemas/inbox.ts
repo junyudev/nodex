@@ -153,6 +153,7 @@ export const InboxWindowInputSchema = z
 
 export const InboxSendInputSchema = z
   .object({
+    replyToPageId: id.optional(),
     operationId,
     pageId: id,
     documentId: id,
@@ -297,6 +298,7 @@ export const InboxSetImportantInputSchema = z
 export const UpdateInboxSettingsInputSchema = z
   .object({
     suggestions: z.enum(INBOX_SUGGESTION_MODES).optional(),
+    dispatchMode: z.enum(["suggest", "act_on_requests"]).optional(),
     suggestionAgent: InboxAgentChoiceSchema.optional(),
     suggestionConcurrency: z.number().int().min(1).max(MAX_INBOX_SUGGESTION_CONCURRENCY).optional(),
     instructions: z.string().max(MAX_INBOX_INSTRUCTIONS_CHARS).optional(),

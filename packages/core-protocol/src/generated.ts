@@ -896,7 +896,10 @@ export interface components {
             readonly target_session_id?: string | null;
         };
         /** @enum {string} */
-        readonly AutomationDefinitionKind: "cron" | "heartbeat";
+            readonly coordinator_session_id: string;
+            readonly coordinator_session_id: string;
+            readonly kind: "start_run";
+            readonly run_started_at_ms?: number | null;
         /** @enum {string} */
         readonly AutomationDefinitionStatus: "ACTIVE" | "PAUSED" | "DELETED";
         /** @enum {string} */
@@ -1764,6 +1767,7 @@ export interface components {
                 readonly page_key?: string | null;
                 readonly page_status?: components["schemas"]["ProjectWorkspaceInboxPageStatus"] | null;
                 readonly proposal?: components["schemas"]["ProjectWorkspaceInboxProposal"] | null;
+                readonly reply_to_page_id?: string | null;
                 /** Format: int64 */
                 readonly revision: number;
                 readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
@@ -1799,6 +1803,7 @@ export interface components {
                 readonly linked_at: string;
                 readonly project_id?: string | null;
                 readonly project_name?: string | null;
+                readonly report?: components["schemas"]["PageWorkReport"] | null;
                 readonly session_archived: boolean;
                 readonly session_id: string;
                 readonly status?: components["schemas"]["ProjectWorkspaceThreadStatus"] | null;
@@ -2110,6 +2115,52 @@ export interface components {
             readonly kind: "project";
             readonly projectId: string;
         };
+        readonly CoordinatorEventBatch: {
+            readonly accepted_at?: string | null;
+            readonly batch_id: string;
+            readonly body: string;
+            readonly coordinator_session_id: string;
+            readonly created_at: string;
+            readonly fingerprint: string;
+            readonly invalidated_at?: string | null;
+            readonly message_id: string;
+        };
+        readonly CoordinatorManagedSession: {
+            readonly latest_report_at?: string | null;
+            readonly observed_json?: unknown;
+            /** Format: int64 */
+            readonly observed_revision: number;
+            readonly session_id: string;
+            readonly since: string;
+        };
+        readonly CoordinatorObservationInput: {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            readonly observed_json: unknown;
+            readonly resolved_request_ids: readonly string[];
+            readonly session_id: string;
+        };
+        readonly CoordinatorWorkEvent: {
+            readonly created_at: string;
+            readonly dedupe_key: string;
+            readonly event_id: string;
+            readonly kind: components["schemas"]["CoordinatorWorkEventKind"];
+            readonly page_id?: string | null;
+            readonly page_key?: string | null;
+            readonly page_title?: string | null;
+            readonly payload: unknown;
+            readonly session_id?: string | null;
+            readonly session_title?: string | null;
+        };
+        readonly CoordinatorWorkEventInput: {
+            readonly dedupe_key: string;
+            readonly kind: components["schemas"]["CoordinatorWorkEventKind"];
+            readonly page_id?: string | null;
+            readonly payload: unknown;
+            readonly session_id?: string | null;
+        };
+        /** @enum {string} */
+        readonly CoordinatorWorkEventKind: "report" | "attention" | "turn_ended" | "failed" | "stalled" | "ready_to_start" | "started";
         readonly CoreArtifactIdentity: {
             readonly build_id: string;
             readonly sha256: string;
@@ -4152,6 +4203,44 @@ export interface components {
             readonly status: "error";
         };
         /** @enum {string} */
+        readonly InboxConfirmedBy: "user" | "nodex";
+        /** @description Frozen person answer delivered with the reply entry's stable handoff identity. */
+        readonly InboxQuestionResponse: {
+            readonly answer: string;
+            readonly question_id: string;
+            readonly request_id: string;
+            readonly run_id?: string | null;
+        };
+        readonly InboxReplyContext: {
+            readonly body: string;
+            readonly purpose?: components["schemas"]["NodexEntryPurpose"] | null;
+            readonly subject_page_id?: string | null;
+            readonly subject_session_id?: string | null;
+        };
+        /** @description Host observation used only for the first capture decision. Core validates its post and chat. */
+        readonly InboxReplyDispatch: {
+            /** @enum {string} */
+            readonly type: "send";
+        } | {
+            readonly response: components["schemas"]["InboxQuestionResponse"];
+            /** @enum {string} */
+            readonly type: "answer";
+        };
+        /** @description An admitted delivery whose result no longer belongs to an open request. */
+        readonly InboxRoutingCancellation: {
+            readonly coordinator_session_id: string;
+            /** Format: int64 */
+            readonly generation: number;
+            readonly request_id: string;
+        };
+        /** @description Handover and the carrying Run start survive restarts. */
+        readonly InboxRoutingDelivery: {
+            readonly coordinator_session_id: string;
+            /** Format: int64 */
+            readonly handed_over_at_ms: number;
+            readonly last_refusal?: string | null;
+            /** Format: int64 */
+            readonly run_started_at_ms?: number | null;
         readonly LauncherKind: "electron_host" | "native_cli" | "test";
         readonly LibraryAgentBlockTarget: {
             readonly block_id: string;
@@ -7134,8 +7223,48 @@ export interface components {
             } | {
                 readonly intent: components["schemas"]["ProjectWorkspaceIntent"];
                 /** @enum {string} */
-                readonly kind: "agent_command";
-                readonly provenance: components["schemas"]["AgentTurnProvenance"];
+                /** @enum {string} */
+                readonly kind: "bind_coordinator";
+                readonly session_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "unbind_coordinator";
+                readonly session_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "set_session_managed";
+                readonly managed: boolean;
+                readonly session_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "report_page_work";
+                readonly outcome: components["schemas"]["WorkReportOutcome"];
+                readonly page_id?: string | null;
+                readonly summary: string;
+            } | {
+                readonly events: readonly components["schemas"]["CoordinatorWorkEventInput"][];
+                /** @enum {string} */
+                readonly kind: "record_work_events";
+                readonly observed: readonly components["schemas"]["CoordinatorObservationInput"][];
+            } | {
+                readonly batch_id: string;
+                readonly body: string;
+                readonly coordinator_session_id: string;
+                readonly event_ids: readonly string[];
+                readonly fingerprint: string;
+                /** @enum {string} */
+                readonly kind: "create_event_batch";
+                readonly message_id: string;
+            } | {
+                readonly batch_id: string;
+                /** @enum {string} */
+                readonly kind: "discard_event_batch";
+            } | {
+                readonly accepted_at: string;
+                readonly batch_id: string;
+                /** @enum {string} */
+                readonly kind: "settle_event_batch";
+            } | {
             } | {
                 readonly appearance?: components["schemas"]["ProjectAppearance"] | null;
                 readonly description: string;
@@ -7253,6 +7382,8 @@ export interface components {
                 readonly session_id: string;
                 readonly title: string;
             } | {
+                /** @description Host-only role binding, atomic with Session/execution admission. */
+                readonly coordinator?: boolean;
                 /** @description Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress. */
                 readonly initial_page_ids: readonly string[];
                 /** @enum {string} */
@@ -7510,6 +7641,34 @@ export interface components {
                 readonly session_id: string;
             } | {
                 readonly body: string;
+                readonly event_ids: readonly string[];
+                /** @enum {string} */
+                readonly page_id: string;
+            } | {
+                readonly coordinator_session_id: string;
+                readonly generation: number;
+                /** @enum {string} */
+                readonly kind: "begin_inbox_routing";
+                readonly request_id: string;
+            } | {
+                readonly coordinator_session_id: string;
+                /** Format: int64 */
+                readonly generation: number;
+                /** @enum {string} */
+                readonly kind: "record_inbox_routing_refusal";
+                readonly reason: string;
+                readonly request_id: string;
+            } | {
+                readonly coordinator_session_id: string;
+                /** Format: int64 */
+                readonly generation: number;
+                /** @enum {string} */
+                readonly kind: "start_inbox_routing_run";
+                readonly request_id: string;
+                /** Format: int64 */
+                readonly run_started_at_ms: number;
+            } | {
+                readonly body: string;
                 readonly document_id: string;
                 readonly expected_store_epoch?: string | null;
                 /** @enum {string} */
@@ -7520,6 +7679,7 @@ export interface components {
                  *     an Agent Turn uses its own Project and the command line its bound Project.
                  */
                 readonly project_id?: string | null;
+                readonly reply_to_page_id?: string | null;
                 readonly title?: string | null;
             } | {
                 /** @enum {string} */
@@ -7539,6 +7699,7 @@ export interface components {
             } | {
                 readonly action?: components["schemas"]["ProjectWorkspaceInboxDispatchAction"] | null;
                 readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
+                readonly confirmed_by?: components["schemas"]["InboxConfirmedBy"];
                 readonly execution_selection?: components["schemas"]["ProjectWorkspaceInboxExecutionSelection"] | null;
                 /** Format: int64 */
                 readonly expected_revision: number;
@@ -7599,6 +7760,7 @@ export interface components {
                 readonly kind: "stop_inbox_suggestion";
                 readonly page_id: string;
             } | {
+                readonly automatic_dispatch?: boolean;
                 readonly error?: string | null;
                 /** Format: int64 */
                 readonly generation: number;
@@ -8524,6 +8686,33 @@ export interface components {
             readonly contract_version: number;
             readonly read: {
                 /** @enum {string} */
+                readonly kind: "read_coordinator";
+            } | {
+                /** @enum {string} */
+                readonly kind: "read_managed_session";
+                readonly session_id: string;
+            } | {
+                readonly after_session_id?: string | null;
+                /** @enum {string} */
+                readonly kind: "read_managed_sessions";
+                /** Format: int32 */
+                readonly limit: number;
+            } | {
+                /** @enum {string} */
+                readonly kind: "read_pending_work_events";
+                /** Format: int32 */
+                readonly limit: number;
+            } | {
+                readonly batch_id: string;
+                /** @enum {string} */
+                readonly kind: "read_event_batch";
+            } | {
+                /** @enum {string} */
+                readonly kind: "read_open_event_batches";
+                /** Format: int32 */
+                readonly limit: number;
+            } | {
+                /** @enum {string} */
                 readonly kind: "next_session_reminder";
             } | {
                 /** @enum {string} */
@@ -8720,6 +8909,10 @@ export interface components {
                 readonly kind: "managed_worktree_lifecycle_snapshot";
             } | {
                 /** @enum {string} */
+                readonly kind: "inbox_entry";
+                readonly page_id: string;
+            } | {
+                /** @enum {string} */
                 readonly kind: "inbox_summary";
                 readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
             } | {
@@ -8741,6 +8934,15 @@ export interface components {
                 readonly query: string;
                 readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
                 readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
+                /** @enum {string} */
+                readonly kind: "inbox_automatic_dispatches";
+                /** Format: int32 */
+                readonly limit: number;
+            } | {
+                /** @enum {string} */
+                readonly kind: "inbox_suggestion_request";
+                readonly request_id: string;
             } | {
                 /** @enum {string} */
                 readonly kind: "inbox_suggestion_requests";
@@ -8831,6 +9033,10 @@ export interface components {
                 readonly tasks: readonly components["schemas"]["MaintenanceTask"][];
             };
         };
+        /**
+         * @description Why Nodex is speaking; independent of a message's user-editable kind.
+         * @enum {string}
+         */
         readonly OperationalJournalStatus: {
             /** Format: int64 */
             readonly commit_head_seq: number;
@@ -8972,6 +9178,13 @@ export interface components {
             /** @enum {string} */
             readonly kind: "reset";
         };
+        readonly PageLatestWorkReport: {
+            readonly at: string;
+            readonly outcome: components["schemas"]["WorkReportOutcome"];
+            /** Format: int64 */
+            readonly revision: number;
+            readonly session_id: string;
+        };
         readonly PageMetaProjectionV2: {
             readonly id: string;
             readonly page_key?: string | null;
@@ -9024,6 +9237,17 @@ export interface components {
             /** Format: int32 */
             readonly offsetMinutes: number;
         };
+        readonly PageWorkDescriptor: {
+            readonly latest_report?: components["schemas"]["PageLatestWorkReport"] | null;
+            /** Format: int32 */
+            readonly managed_session_count: number;
+        };
+        readonly PageWorkReport: {
+            readonly at: string;
+            readonly outcome: components["schemas"]["WorkReportOutcome"];
+            /** Format: int64 */
+            readonly revision: number;
+            readonly summary: string;
         readonly PreparedBlobReceipt: {
             readonly blob_etag: string;
             /** Format: int64 */
@@ -9487,6 +9711,7 @@ export interface components {
             readonly page_keys: readonly string[];
             readonly project_id?: string | null;
             readonly proposal_id: string;
+            readonly question_response?: components["schemas"]["InboxQuestionResponse"] | null;
             /** Format: int64 */
             readonly revision: number;
             readonly session_id: string;
@@ -9562,6 +9787,7 @@ export interface components {
             readonly page_key?: string | null;
             readonly page_status?: components["schemas"]["ProjectWorkspaceInboxPageStatus"] | null;
             readonly proposal?: components["schemas"]["ProjectWorkspaceInboxProposal"] | null;
+            readonly reply_to_page_id?: string | null;
             /** Format: int64 */
             readonly revision: number;
             readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
@@ -9637,10 +9863,13 @@ export interface components {
         };
         readonly ProjectWorkspaceInboxProposal: {
             readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+            readonly answered_question: boolean;
             /** @description Current member fingerprints, fenced when the user confirms. */
             readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
             readonly chat?: components["schemas"]["ProjectWorkspaceInboxChat"] | null;
+            readonly confirmed_by?: components["schemas"]["InboxConfirmedBy"] | null;
             readonly created_at: string;
+            readonly explicit_request: boolean;
             readonly failure_kind?: components["schemas"]["ProjectWorkspaceInboxFailureKind"] | null;
             readonly failure_message?: string | null;
             readonly kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
@@ -9680,6 +9909,12 @@ export interface components {
             readonly kind: "user";
         } | {
             /** @enum {string} */
+            readonly kind: "nodex";
+            readonly purpose: components["schemas"]["NodexEntryPurpose"];
+            readonly subject_page_id?: string | null;
+            readonly subject_session_id?: string | null;
+        } | {
+            /** @enum {string} */
             readonly kind: "agent";
             readonly label: string;
             readonly project_id?: string | null;
@@ -9704,6 +9939,7 @@ export interface components {
         readonly ProjectWorkspaceInboxSuggestedDispatch: {
             readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
             readonly entry_kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
+            readonly explicit_request: boolean;
             readonly page_ids: readonly string[];
             readonly proposal_id: string;
             readonly rationale?: string | null;
@@ -9718,6 +9954,7 @@ export interface components {
             readonly kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
             readonly page_id: string;
             readonly page_key?: string | null;
+            readonly reply_to?: components["schemas"]["InboxReplyContext"] | null;
             readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
             readonly source: components["schemas"]["ProjectWorkspaceInboxSource"];
             readonly submitted_at: string;
@@ -9730,6 +9967,7 @@ export interface components {
             readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
             readonly context: components["schemas"]["ProjectWorkspaceInboxDispatchContext"];
             readonly correction?: string | null;
+            readonly delivery?: components["schemas"]["InboxRoutingDelivery"] | null;
             /** Format: int64 */
             readonly expected_revision?: number | null;
             /** Format: int64 */
@@ -9776,6 +10014,48 @@ export interface components {
         /** @enum {string} */
         readonly ProjectWorkspaceInboxWindowFilter: "inbox" | "processed";
         readonly ProjectWorkspaceIntent: {
+            /** @enum {string} */
+            readonly kind: "bind_coordinator";
+            readonly session_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "unbind_coordinator";
+            readonly session_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "set_session_managed";
+            readonly managed: boolean;
+            readonly session_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "report_page_work";
+            readonly outcome: components["schemas"]["WorkReportOutcome"];
+            readonly page_id?: string | null;
+            readonly summary: string;
+        } | {
+            readonly events: readonly components["schemas"]["CoordinatorWorkEventInput"][];
+            /** @enum {string} */
+            readonly kind: "record_work_events";
+            readonly observed: readonly components["schemas"]["CoordinatorObservationInput"][];
+        } | {
+            readonly batch_id: string;
+            readonly body: string;
+            readonly coordinator_session_id: string;
+            readonly event_ids: readonly string[];
+            readonly fingerprint: string;
+            /** @enum {string} */
+            readonly kind: "create_event_batch";
+            readonly message_id: string;
+        } | {
+            readonly batch_id: string;
+            /** @enum {string} */
+            readonly kind: "discard_event_batch";
+        } | {
+            readonly accepted_at: string;
+            readonly batch_id: string;
+            /** @enum {string} */
+            readonly kind: "settle_event_batch";
+        } | {
             readonly document_id: string;
             readonly for: components["schemas"]["ProjectWorkspacePageCreationTarget"];
             /** @enum {string} */
@@ -9928,6 +10208,8 @@ export interface components {
             readonly session_id: string;
             readonly title: string;
         } | {
+            /** @description Host-only role binding, atomic with Session/execution admission. */
+            readonly coordinator?: boolean;
             /** @description Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress. */
             readonly initial_page_ids: readonly string[];
             /** @enum {string} */
@@ -10185,6 +10467,35 @@ export interface components {
             readonly session_id: string;
         } | {
             readonly body: string;
+            readonly event_ids: readonly string[];
+            /** @enum {string} */
+            readonly page_id: string;
+        } | {
+            readonly coordinator_session_id: string;
+            /** Format: int64 */
+            readonly generation: number;
+            /** @enum {string} */
+            readonly kind: "begin_inbox_routing";
+            readonly request_id: string;
+        } | {
+            readonly coordinator_session_id: string;
+            /** Format: int64 */
+            readonly generation: number;
+            /** @enum {string} */
+            readonly kind: "record_inbox_routing_refusal";
+            readonly reason: string;
+            readonly request_id: string;
+        } | {
+            readonly coordinator_session_id: string;
+            /** Format: int64 */
+            readonly generation: number;
+            /** @enum {string} */
+            readonly kind: "start_inbox_routing_run";
+            readonly request_id: string;
+            /** Format: int64 */
+            readonly run_started_at_ms: number;
+        } | {
+            readonly body: string;
             readonly document_id: string;
             readonly expected_store_epoch?: string | null;
             /** @enum {string} */
@@ -10195,6 +10506,7 @@ export interface components {
              *     an Agent Turn uses its own Project and the command line its bound Project.
              */
             readonly project_id?: string | null;
+            readonly reply_to_page_id?: string | null;
             readonly title?: string | null;
         } | {
             /** @enum {string} */
@@ -10214,6 +10526,7 @@ export interface components {
         } | {
             readonly action?: components["schemas"]["ProjectWorkspaceInboxDispatchAction"] | null;
             readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
+            readonly confirmed_by?: components["schemas"]["InboxConfirmedBy"];
             readonly execution_selection?: components["schemas"]["ProjectWorkspaceInboxExecutionSelection"] | null;
             /** Format: int64 */
             readonly expected_revision: number;
@@ -10274,6 +10587,7 @@ export interface components {
             readonly kind: "stop_inbox_suggestion";
             readonly page_id: string;
         } | {
+            readonly automatic_dispatch?: boolean;
             readonly error?: string | null;
             /** Format: int64 */
             readonly generation: number;
@@ -10466,6 +10780,7 @@ export interface components {
             readonly waiting_on_approval_count: number;
             /** Format: int32 */
             readonly waiting_on_user_input_count: number;
+            readonly work: components["schemas"]["PageWorkDescriptor"];
             /**
              * Format: int32
              * @description Native thread status only; Runtime-bound Sessions report live status outside Core.
@@ -10580,6 +10895,7 @@ export interface components {
             readonly display_title: string;
             readonly execution_ref?: components["schemas"]["ProjectWorkspaceSessionExecutionRef"] | null;
             readonly id: string;
+            readonly managed: boolean;
             readonly no_thread_fallback_title: string;
             readonly pinned: boolean;
             /** Format: int64 */
@@ -12149,6 +12465,30 @@ export interface components {
                 readonly contract_version: number;
                 readonly store_epoch: components["schemas"]["StoreEpoch"];
                 readonly value: {
+                    /** @enum {string} */
+                    readonly kind: "read_coordinator";
+                    readonly session_id?: string | null;
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "read_managed_session";
+                    readonly managed?: components["schemas"]["CoordinatorManagedSession"] | null;
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "read_managed_sessions";
+                    readonly sessions: readonly components["schemas"]["CoordinatorManagedSession"][];
+                } | {
+                    readonly events: readonly components["schemas"]["CoordinatorWorkEvent"][];
+                    /** @enum {string} */
+                    readonly kind: "read_pending_work_events";
+                } | {
+                    readonly batch?: components["schemas"]["CoordinatorEventBatch"] | null;
+                    /** @enum {string} */
+                    readonly kind: "read_event_batch";
+                } | {
+                    readonly batches: readonly components["schemas"]["CoordinatorEventBatch"][];
+                    /** @enum {string} */
+                    readonly kind: "read_open_event_batches";
+                } | {
                     readonly delivery?: components["schemas"]["ProjectWorkspaceSessionReminderDelivery"] | null;
                     /** @enum {string} */
                     readonly kind: "next_session_reminder";
@@ -12322,6 +12662,10 @@ export interface components {
                     readonly kind: "managed_worktree_lifecycle_snapshot";
                     readonly snapshot: components["schemas"]["ProjectWorkspaceManagedWorktreeLifecycleSnapshot"];
                 } | {
+                    readonly item?: components["schemas"]["ProjectWorkspaceInboxItem"] | null;
+                    /** @enum {string} */
+                    readonly kind: "inbox_entry";
+                } | {
                     /** @enum {string} */
                     readonly kind: "inbox_summary";
                     readonly summary: components["schemas"]["ProjectWorkspaceInboxSummary"];
@@ -12365,6 +12709,8 @@ export interface components {
                     readonly edit: components["schemas"]["ProjectWorkspaceInboxMessageEdit"];
                     /** @enum {string} */
                     readonly kind: "inbox_message_edit";
+                } | {
+                    /** @enum {string} */
                 };
             };
             /** @enum {string} */

@@ -112,6 +112,7 @@ mod tests {
             &workspace.module,
             "launch:root",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                coordinator: false,
                 side_chat_source_session_id: None,
                 session_id: "session:root".into(),
                 project_id: Some("project:default".into()),
@@ -203,6 +204,7 @@ mod tests {
             &workspace.module,
             "launch:other",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                coordinator: false,
                 side_chat_source_session_id: None,
                 session_id: "session:other".into(),
                 project_id: Some("project:default".into()),
@@ -242,6 +244,7 @@ mod tests {
             .admit_app_tool_operation(&context(), admission.clone())
             .unwrap();
         let intent = ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            coordinator: false,
             side_chat_source_session_id: None,
             session_id: "session:new".into(),
             project_id: None,

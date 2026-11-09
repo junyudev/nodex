@@ -75,6 +75,7 @@ export function projectSessionToSummary(session: ProjectSession): ProjectSession
     displayTitle: session.displayTitle,
     activityAt: session.activityAt,
     pinned: session.pinned,
+    managed: session.managed,
     pinnedOrder: session.pinnedOrder,
     archived: session.archived,
     archivedAt: session.archivedAt,

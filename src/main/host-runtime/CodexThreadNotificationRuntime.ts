@@ -1,6 +1,8 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
+import { CoreModules } from "../core-runtime/CoreModules";
+import { turnSpeaksThroughNodex } from "../../host/coordinator/notification-session";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { makeCodexThreadNotificationHandler } from "../codex/codex-thread-notification-handler";
@@ -9,7 +11,7 @@ import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { DesktopNotificationRuntime } from "./DesktopNotificationRuntime";
 import { RendererClientRuntime } from "./RendererClientRuntime";
-import { UserPresence } from "./UserPresence";
+import { UserPresence } from "../../host/UserPresence";
 
 const logger = getLogger({ component: "codex-thread-notification-runtime" });
 
@@ -17,6 +19,7 @@ const logger = getLogger({ component: "codex-thread-notification-runtime" });
 export const live: Layer.Layer<
   never,
   never,
+  | CoreModules
   | CodexApplicationEventHub
   | ApplicationSettings
   | CodexRendererPresentationRegistry
@@ -27,6 +30,7 @@ export const live: Layer.Layer<
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const events = yield* CodexApplicationEventHub;
+    const core = yield* CoreModules;
     const applicationSettings = yield* ApplicationSettings;
     const conversations = yield* CodexRendererPresentationRegistry;
     const presence = yield* UserPresence;
@@ -85,15 +89,18 @@ export const live: Layer.Layer<
           return Effect.sync(() => notifications.dismiss({ conversationId: event.value }));
         }
         if (event.kind !== "threadNotification") return Effect.void;
-        return applicationSettings.snapshot().pipe(
-          Effect.tap((snapshot) =>
-            Effect.sync(() => {
-              currentSettings = snapshot.notifications;
-              handle(event.value);
-            }),
-          ),
+        return Effect.gen(function* () {
+          const snapshot = yield* applicationSettings.snapshot();
+          currentSettings = snapshot.notifications;
+          const notification = event.value;
+          if (notification.type !== "turn-completed") {
+            handle(notification);
+            return;
+          }
+          handle(notification, { managed: yield* turnSpeaksThroughNodex(core, notification) });
+        }).pipe(
           Effect.catch((cause) =>
-            Effect.sync(() => logger.warn("Could not read notification settings", { cause })),
+            Effect.sync(() => logger.warn("Could not resolve notification policy", { cause })),
           ),
         );
       }),

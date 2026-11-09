@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
 import { readableIpcError } from "@/lib/ipc-error-message";
+import { resetNodex } from "@/lib/inbox-runtime";
 import { useInboxSettingsQuery, useUpdateInboxSettings } from "./use-inbox";
 import {
   InboxChatAgentPicker,
@@ -103,7 +104,7 @@ export function InboxSettingsPage() {
   return (
     <SettingsPageSurface
       title="Inbox"
-      subtitle="How captured messages are suggested and handed to chats."
+      subtitle="How Nodex routes what you capture and hands it to chats."
     >
       {agents.readFailed ? (
         <div
@@ -116,10 +117,10 @@ export function InboxSettingsPage() {
           </NodexButton>
         </div>
       ) : null}
-      <SectionBlock title="Suggestions">
+      <SectionBlock title="Nodex">
         <SettingRow
           label="Suggest where messages go"
-          description="Automatically suggests each message as you send it, pausing when the suggestion Agent’s usage is about to run out. Each suggestion is one request to that Agent."
+          description="Nodex suggests where each message goes as you send it, pausing when its Agent’s usage is about to run out. Each suggestion is one request to that Agent."
         >
           <InboxSuggestionModePicker
             trigger="settings"
@@ -128,8 +129,18 @@ export function InboxSettingsPage() {
           />
         </SettingRow>
         <SettingRow
-          label="Suggest with"
-          description="Suggestions run often, so on Codex they start on the economical GPT-6.1 Sol."
+        >
+          <NodexSwitch
+            checked={settings.dispatchMode === "act_on_requests"}
+            disabled={settings.suggestions === "off"}
+            onCheckedChange={(start) =>
+              save({ dispatchMode: start ? "act_on_requests" : "suggest" })
+            }
+          />
+        </SettingRow>
+        <SettingRow
+          label="Nodex runs on"
+          description="Nodex routes often and never does the work itself, so on Codex it starts on the economical GPT-6.1 Sol."
         >
           <div className="w-72 max-w-full">
             <InboxSuggestionAgentPicker
@@ -141,7 +152,7 @@ export function InboxSettingsPage() {
         </SettingRow>
         <SettingRow
           label="Suggestions at once"
-          description={`How many run at the same time, up to ${MAX_INBOX_SUGGESTION_CONCURRENCY}. More answers sooner and spends usage faster; messages beyond this wait and are suggested together.`}
+          description={`How many can await Nodex at once, up to ${MAX_INBOX_SUGGESTION_CONCURRENCY}. Messages beyond this wait and are suggested together.`}
         >
           <SuggestionConcurrencyInput
             value={settings.suggestionConcurrency}
@@ -149,12 +160,29 @@ export function InboxSettingsPage() {
             onChange={(suggestionConcurrency, settled) => save({ suggestionConcurrency }, settled)}
           />
         </SettingRow>
+        <SettingRow
+          label="Start Nodex fresh"
+          description="Nodex’s conversation is only its working memory; what it decided stays in your Inbox, Pages, and chats. Starting fresh archives the conversation, and the next message begins a new one."
+        >
+          <NodexButton
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              void resetNodex().then(
+                () => toast.success("Nodex will start fresh"),
+                (error) => toast.danger(readableIpcError(error, "Nodex could not start fresh")),
+              )
+            }
+          >
+            Start fresh
+          </NodexButton>
+        </SettingRow>
       </SectionBlock>
       <SectionBlock title="Routing preferences">
         <div className="flex items-start justify-between gap-4 p-3 pb-0">
           <p className="text-sm text-token-text-secondary">
-            Standing instructions suggestions follow over Nodex’s own guidance, such as which
-            Project research belongs in or which model leads UI work.
+            Standing instructions Nodex follows over its own guidance, such as which Project
+            research belongs in or which model leads UI work.
           </p>
           <NodexButton
             variant="secondary"

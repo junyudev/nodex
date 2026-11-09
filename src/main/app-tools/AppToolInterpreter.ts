@@ -30,6 +30,8 @@ import { make as makeDependencyTools } from "./WorkspaceDependencyAppTools";
 import { make as makePluginTools } from "./PluginAppTools";
 import { make as makeWorkspaceTools } from "./WorkspaceAppTools";
 import { make as makeSessionTools } from "./SessionAppTools";
+import { make as makeCoordinatorTools } from "./CoordinatorAppTools";
+import { make as makeWorkTools } from "./WorkAppTools";
 import { make as makeInboxTools } from "./InboxAppTools";
 import { make as makeSessionCommands } from "./RuntimeSessionCommands";
 import { make as makeAutomationTools } from "./AutomationAppTools";
@@ -56,6 +58,8 @@ export const make = Effect.gen(function* () {
   const sessionControls = yield* makeSessionControls;
   const sessionTools = yield* makeSessionTools;
   const inboxTools = yield* makeInboxTools;
+  const workTools = yield* makeWorkTools;
+  const coordinatorTools = yield* makeCoordinatorTools;
   const sessionCommands = yield* makeSessionCommands;
   const sessionHandoffTools = yield* makeSessionHandoffTools;
   const handoffStatusTools = yield* makeHandoffStatusTools;
@@ -92,6 +96,8 @@ export const make = Effect.gen(function* () {
       input.name !== "send_message_to_session" &&
       input.name !== "session_question" &&
       input.name !== "send_to_inbox" &&
+      input.name !== "report_work" &&
+      input.name !== "inbox_suggest" &&
       input.name !== "fork_session" &&
       input.name !== "merge_session_back" &&
       input.name !== "handoff_session" &&
@@ -122,6 +128,7 @@ export const make = Effect.gen(function* () {
     if (input.name === "automation_update") return yield* automationTools(input);
     if (input.name === "handoff_session") return yield* sessionHandoffTools(input);
     if (input.name === "get_handoff_status") return yield* handoffStatusTools(input);
+      return yield* coordinatorTools(input);
     if (input.name === "send_to_inbox") return yield* inboxTools(input);
     if (
       input.name === "create_session" ||

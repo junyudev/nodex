@@ -33,6 +33,11 @@ enum ReadBudgetPolicy {
 
 fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
     match read {
+        | ProjectWorkspaceRead::ReadManagedSession { .. }
+        | ProjectWorkspaceRead::ReadEventBatch { .. } => ReadBudgetPolicy::Identity,
+        ProjectWorkspaceRead::ReadManagedSessions { .. }
+        | ProjectWorkspaceRead::ReadPendingWorkEvents { .. }
+        | ProjectWorkspaceRead::ReadOpenEventBatches { .. } => ReadBudgetPolicy::BoundedBatch,
         // Atomic queue updates operate on one complete application-owned message document.
         ProjectWorkspaceRead::QueuedMessageState | ProjectWorkspaceRead::InboxMessage { .. } => {
             ReadBudgetPolicy::LargeObject
@@ -61,6 +66,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         ProjectWorkspaceRead::InboxPendingSuggestions { .. }
         | ProjectWorkspaceRead::InboxSuggestionRequests { .. }
         | ProjectWorkspaceRead::InboxPendingSuggestionRequestIds { .. }
+        | ProjectWorkspaceRead::InboxAutomaticDispatches { .. }
         | ProjectWorkspaceRead::InboxDispatchContext { .. }
         | ProjectWorkspaceRead::InboxDispatchOutbox { .. }
         | ProjectWorkspaceRead::InboxCounts => ReadBudgetPolicy::BoundedBatch,
@@ -87,6 +93,8 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::ExecutionContext { .. }
         | ProjectWorkspaceRead::TurnAuthority { .. }
         | ProjectWorkspaceRead::SidebarSectionPlacement { .. }
+        | ProjectWorkspaceRead::InboxEntry { .. }
+        | ProjectWorkspaceRead::InboxSuggestionRequest { .. }
         | ProjectWorkspaceRead::InboxSummary { .. }
         | ProjectWorkspaceRead::InboxMessageEdit { .. } => ReadBudgetPolicy::Identity,
     }

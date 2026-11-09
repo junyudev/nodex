@@ -90,6 +90,7 @@ const pageChatRuntime = vi.hoisted(() => ({
     unreadCount: number;
     soleSessionId: string | null;
     runtimeSessionIds: string[];
+    work: import("@/lib/types").PageChatActivitySummary["work"];
   }>,
 }));
 vi.mock("@/lib/database-property-options-runtime", async (importOriginal) => ({

@@ -16,7 +16,7 @@ import {
 } from "../../../src/main/inbox-application/InboxApplication";
 import { AgentRuntimeApplication } from "../../../src/main/agent-runtime/AgentRuntimeApplication";
 import { ApplicationSettings } from "../../../src/main/settings/ApplicationSettings";
-import { DEFAULT_INBOX_SETTINGS } from "../../../src/shared/inbox";
+import { DEFAULT_INBOX_SETTINGS, type InboxSettings } from "../../../src/shared/inbox";
 import { live as storeAdministrationLive } from "../../../src/main/core-runtime/StoreAdministration";
 import {
   DatabaseModule,
@@ -31,7 +31,7 @@ import {
   live as projectWorkspaceLive,
 } from "../../../src/main/project-application/ProjectWorkspace";
 
-const runWithScenarioCore = <A, E>(
+export const runWithScenarioCore = <A, E>(
   runtime: RustDataAuthorityRuntime,
   operation: Effect.Effect<A, E, CoreAuthority | CoreSessionAccess | Scope.Scope>,
 ): Promise<A> =>
@@ -117,6 +117,8 @@ export const runScenarioLibrary = <A, E>(
 export const runScenarioInbox = <A, E>(
   runtime: RustDataAuthorityRuntime,
   use: (inbox: InboxApplication["Service"]) => Effect.Effect<A, E>,
+  inboxSettings: InboxSettings = DEFAULT_INBOX_SETTINGS,
+  catalog?: Effect.Success<ReturnType<AgentRuntimeApplication["Service"]["catalog"]>>,
 ): Promise<A> =>
   runWithScenarioCore(
     runtime,
@@ -127,15 +129,18 @@ export const runScenarioInbox = <A, E>(
       const inboxContext = yield* Layer.build(
         inboxApplicationLive.pipe(
           Layer.provide(storeAdministrationLive.pipe(Layer.provideMerge(coreLayer))),
-          // Scenario content setup has no execution process; new Agent work is never seeded.
+          // Scenario content setup has no execution process; confirmation never launches an Agent.
           Layer.provide(
             Layer.succeed(AgentRuntimeApplication, {
-              catalog: () => Effect.die("Scenario capture must not start an Agent catalog"),
+              catalog: () =>
+                catalog
+                  ? Effect.succeed(catalog)
+                  : Effect.die("Scenario capture must not start an Agent catalog"),
             } as unknown as AgentRuntimeApplication["Service"]),
           ),
           Layer.provide(
             Layer.succeed(ApplicationSettings, {
-              snapshot: () => Effect.succeed({ inbox: DEFAULT_INBOX_SETTINGS }),
+              snapshot: () => Effect.succeed({ inbox: inboxSettings }),
             } as unknown as ApplicationSettings["Service"]),
           ),
         ),

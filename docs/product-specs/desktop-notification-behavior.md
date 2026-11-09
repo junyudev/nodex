@@ -15,7 +15,7 @@ toasts, Page reminders, and remote cloud-task watchers are separate features.
 
 ## Notification Families
 
-Nodex has three task notification families:
+Nodex has these task notification families:
 
 - `turn-complete`: a local-host top-level task turn reached `completed`,
   `failed`, or `interrupted`.
@@ -32,7 +32,7 @@ and unsupported private requests do not produce desktop notifications.
 
 ## Ownership and Ordering
 
-The feature has five owners:
+
 
 1. `CodexProtocolNotificationEffects` publishes a typed application occurrence
    only after the canonical conversation transition or pending-request state
@@ -113,6 +113,7 @@ notifications does not change OS permission.
 Turn policy is evaluated in this order. Steps 1–6 decide whether the occurrence
 is worth telling anyone and are shared by every channel; steps 7–9 belong to the
 desktop.
+
 
 1. non-default hosts do not emit turn notifications;
 2. an automation-level `DONT_NOTIFY` suppresses;

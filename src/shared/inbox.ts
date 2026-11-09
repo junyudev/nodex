@@ -1,5 +1,6 @@
 import { modelIsOn, spendsNodexCredit } from "./model-policy";
 import type { CodexThreadActiveFlag, CodexThreadStatusType } from "./types";
+import type { components } from "@nodex/core-protocol";
 import type { AgentRuntimeLaunch } from "./agent-runtime-api";
 import {
   agentRuntimeProviderId,
@@ -105,8 +106,15 @@ export const MAX_INBOX_ADDITION_CHARS = 600;
 export const inboxPromptWithAdditions = (prompt: string, additions: readonly string[]): string =>
   [prompt.trim(), ...additions].join("\n\n");
 
+
 export type InboxSource =
   | { readonly kind: "user" }
+  | {
+      readonly kind: "nodex";
+      readonly purpose: NodexEntryPurpose;
+      readonly subjectSessionId: string | null;
+      readonly subjectPageId: string | null;
+    }
   | {
       readonly kind: "agent";
       readonly sessionId: string | null;
@@ -182,6 +190,7 @@ export interface InboxChat {
 }
 
 export interface InboxProposal {
+  readonly answeredQuestion?: boolean;
   readonly failureKind: "rejected" | "unavailable" | "unknown" | null;
   readonly proposalId: string;
   readonly revision: number;
@@ -195,6 +204,8 @@ export interface InboxProposal {
    * be confirmed as the user reviews it; editing the text back makes it current again.
    */
   readonly outdated: boolean;
+  readonly explicitRequest: boolean;
+  readonly confirmedBy: "user" | "nodex" | null;
   readonly action: InboxDispatchAction;
   readonly kind: InboxEntryKind | null;
   readonly summary: string;
@@ -225,6 +236,7 @@ export interface InboxItem {
   readonly bodyEditable: boolean;
   readonly submittedAt: string;
   readonly source: InboxSource;
+  readonly replyToPageId: string | null;
   readonly kind: InboxEntryKind | null;
   /** Marked by the user, so the message stays in view while it waits. */
   readonly important: boolean;
@@ -311,7 +323,12 @@ export interface InboxWindowInput {
   readonly first?: number;
 }
 
+export interface InboxReplyDestination {
+  readonly chat: { readonly sessionId: string; readonly title: string } | null;
+}
+
 export interface InboxSendInput {
+  readonly replyToPageId?: string;
   readonly operationId: string;
   readonly pageId: string;
   readonly documentId: string;
@@ -643,6 +660,7 @@ export const INBOX_SUGGESTION_MODES: readonly InboxSuggestionMode[] = [
 ];
 
 export interface InboxSettings {
+  readonly dispatchMode: "suggest" | "act_on_requests";
   readonly suggestions: InboxSuggestionMode;
   /** What suggestions run on. */
   readonly suggestionAgent: InboxAgentChoice;
@@ -678,6 +696,7 @@ export const clampInboxSuggestionConcurrency = (value: number): number =>
   Math.min(Math.max(Math.round(value), 1), MAX_INBOX_SUGGESTION_CONCURRENCY);
 
 export const DEFAULT_INBOX_SETTINGS: InboxSettings = {
+  dispatchMode: "suggest",
   suggestions: "automatic",
   suggestionAgent: { instanceId: "codex", model: null, reasoningEffort: null, serviceTier: null },
   suggestionConcurrency: 5,

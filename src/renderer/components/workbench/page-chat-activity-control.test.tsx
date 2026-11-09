@@ -30,6 +30,7 @@ const item = (overrides: Partial<PageChatItem> = {}): PageChatItem => ({
   threadStatus: { statusType: "idle", activeFlags: [] },
   threadArchived: false,
   unread: false,
+  report: null,
   sessionArchived: false,
   conversationRecencyAt: 1,
   linkedAt: "2026-08-24T00:00:00Z",
@@ -143,6 +144,29 @@ describe("PageChatActivityControl", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(onOpenChat).toHaveBeenCalledWith("session-2"));
+  });
+
+  test("previews what a chat reported in place of its last words", async () => {
+    const { screen } = renderControl({
+      activity: summary({ relatedCount: 2, soleSessionId: null }),
+      items: [
+        item({
+          report: {
+            outcome: "ready",
+            summary: "## Fixed the README typo\n\nNo other occurrences.",
+            at: "2026-11-03T00:00:00Z",
+            revision: 1,
+          },
+        }),
+        item({ sessionId: "session-2", displayTitle: "Research notes" }),
+      ],
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "2 linked chats" }));
+      await Promise.resolve();
+    });
+    expect(await screen.findByText("Fixed the README typo")).not.toBeNull();
+    expect(screen.getAllByText("Working through the renderer projection")).toHaveLength(1);
   });
 
   test("removes only the selected relation after confirmation from the owner", async () => {

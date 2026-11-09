@@ -17,6 +17,7 @@ const linkedChat = {
   threadStatus: null,
   threadArchived: false,
   unread: false,
+  report: null,
   sessionArchived: false,
   conversationRecencyAt: null,
   linkedAt: "2026-08-28T00:00:00Z",

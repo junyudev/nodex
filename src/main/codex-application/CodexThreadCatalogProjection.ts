@@ -203,6 +203,7 @@ export const projectCoreWorkspaceTask = (task: CoreWorkspaceTask): ProjectSessio
       : task.session.display_title,
   activityAt: task.session.activity_at,
   pinned: task.session.pinned,
+  managed: task.session.managed,
   pinnedOrder: task.session.pinned_order ?? null,
   archived: task.session.archived,
   archivedAt: task.session.archived_at ?? null,

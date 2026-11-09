@@ -542,8 +542,24 @@ Library Inbox. A security task runs automatically and has no firing. Seeding
 never starts an Agent:
 
 ```bash
-vp run dev --home "$HOME/repo/nodex/runs.local/scheduled-ask-in-inbox" --seed scheduled/ask-in-inbox
 ```
+
+`nodex-coordinator` shows Nodex's posts, a three-card plan, and a request Nodex
+is itself a Page on the Board.
+
+```bash
+vp run dev --home "$HOME/repo/nodex/runs.local/work-router-scenario" --seed nodex-coordinator
+```
+
+The recipe uses public Core operations. The Host binds a Coordinator Session;
+Agent command envelopes record reports and Nodex posts against persisted
+execution identities. Suggestions begin Host routing and settle through the
+same command as `inbox_suggest`; the completed request uses Nodex confirmation
+and outbox completion without launching an Agent. Native chat status uses the
+same seed adapter as `sidebar/chat-status`. The bootstrap Project is archived,
+leaving one active Project. `tests/e2e/nodex-coordinator.spec.ts` captures the
+at the default window size. Screenshots go to Playwright's output and
+`notes.local/artifacts/work-router/screenshots/` in the primary checkout.
 
 `inbox/suggestion-spend` seeds the Library Inbox with a current New chat suggestion,
 an outdated suggestion after a Page edit, a message with no advice requested, a

@@ -18,11 +18,21 @@ import { readMarkdown } from "../../../shared/nodex-markdown";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 
-/** What the composer holds: an optional title, the message text as typed, and its images. */
+/** The Nodex post a draft answers, named as the composer shows it. */
+export interface InboxDraftReply {
+  readonly pageId: string;
+  readonly label: string;
+}
+
+/**
+ * What the composer holds: an optional title, the message text as typed, its images, and the
+ * Nodex post it replies to.
+ */
 export interface InboxDraft {
   readonly title: string;
   readonly text: string;
   readonly images: readonly MessageDraftImage[];
+  readonly replyTo?: InboxDraftReply | null;
 }
 
 export const EMPTY_INBOX_DRAFT: InboxDraft = { title: "", text: "", images: [] };
@@ -98,6 +108,9 @@ const draftSchema = z.object({
       importedRevision: z.number().int().nonnegative().optional(),
     }),
   ),
+  replyTo: z
+    .nullable()
+    .optional(),
 });
 
 const stateSchema = z.object({
@@ -135,6 +148,7 @@ export const changeInboxDraft = (
 /** A capture that may not have been saved goes back into the draft, after what is there. */
 export const recoverInboxDraft = (draft: InboxDraft, recovered: InboxDraft): InboxDraft => ({
   title: draft.title.trim() ? draft.title : recovered.title,
+  ...((draft.replyTo ?? recovered.replyTo) ? { replyTo: draft.replyTo ?? recovered.replyTo } : {}),
   text: [draft.text, recovered.text].filter((text) => text.trim()).join("\n\n"),
   images: [
     ...draft.images,

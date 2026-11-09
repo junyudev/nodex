@@ -5278,11 +5278,7 @@
             "type": "integer",
             "format": "int64"
           },
-          "session_id": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "failed",
           },
           "session_title": {
             "type": [
@@ -9053,17 +9049,7 @@
               }
             }
           },
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "none"
-                ]
+                "page_key": {
               }
             }
           },
@@ -9104,81 +9090,25 @@
               }
             }
           },
-          {
-            "type": "object",
-            "required": [
-              "generation",
-              "head_seq",
-              "kind"
-            ],
-            "properties": {
-              "generation": {
-                "type": "integer",
-                "format": "int64"
-              },
-              "head_seq": {
-                "type": "integer",
-                "format": "int64"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "current_document_head"
-                ]
+      "CollectionWindow_DatabaseViewRecord": {
+          "items",
+          "authority"
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+              "type": "object",
+                "definition",
+              "properties": {
+                  "type": "string"
+                  "$ref": "#/components/schemas/DatabaseViewDefinition"
+                  "type": "string"
               }
             }
           },
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "reconnect_document_subscription"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "view_id",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "database_view_order_preparation"
-                ]
-              },
-              "view_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/DocumentRecoveryArtifactReference"
-              },
-              {
-                "type": "object",
-                "required": [
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "document_recovery_artifact"
-                    ]
-                  }
-                }
-              }
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
             ]
           },
           {
@@ -9213,41 +9143,12 @@
               }
             }
           }
-        ]
+        }
       },
-      "CoreHealthMetrics": {
+      "CollectionWindow_DatabaseWorkPage": {
         "type": "object",
         "required": [
-          "writer_queue_depth",
-          "active_writer_commands",
-          "active_read_commands",
-          "command_latency",
-          "writer_queue_wait",
-          "writer_execution",
-          "transaction_duration",
-          "document_cache_entries",
-          "document_cache_state_bytes",
-          "document_cache_hits",
-          "document_cache_misses",
-          "document_cache_hit_rate_ppm",
-          "document_reconstruction_duration",
-          "block_transfer_prepare_duration",
-          "block_transfer_reconstruct_duration",
-          "block_transfer_decode_duration",
-          "block_transfer_transform_duration",
-          "block_transfer_encode_duration",
-          "block_transfer_apply_duration",
-          "local_commit_publication_duration",
-          "commit_head",
-          "event_replay_lag",
-          "event_replay_lag_max",
-          "wal_size_bytes",
-          "backup_duration",
-          "active_clients",
-          "active_event_subscriptions",
-          "active_document_subscriptions",
-          "active_awareness_clients",
-          "active_prepared_agent_operations"
+          "authority"
         ],
         "properties": {
           "active_awareness_clients": {
@@ -9421,66 +9322,63 @@
           "writer_execution": {
             "$ref": "#/components/schemas/HealthDurationMetric"
           },
-          "writer_queue_depth": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
+                "page_key": {
           },
-          "writer_queue_wait": {
-            "$ref": "#/components/schemas/HealthDurationMetric"
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
-      "CoreReadiness": {
-        "type": "string",
-        "enum": [
-          "starting",
-          "ready",
-          "maintenance",
-          "draining",
-          "failed"
-        ]
-      },
-      "CoreReplacementRequest": {
+      "CollectionWindow_ProjectWorkspaceAgentRuntimeExecutionCleanup": {
         "type": "object",
         "required": [
-          "candidate_manifest",
-          "candidate_manifest_digest",
-          "candidate_artifact",
-          "policy",
-          "launcher",
-          "expected"
+          "items",
+          "authority"
         ],
         "properties": {
-          "candidate_artifact": {
-            "$ref": "#/components/schemas/CoreArtifactIdentity"
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
           },
-          "candidate_manifest": {
-            "$ref": "#/components/schemas/CoreCompatibilityManifest"
+          "items": {
+                "session_id",
+                "created_at"
+                  "type": "string"
           },
-          "candidate_manifest_digest": {
-            "type": "string"
-          },
-          "expected": {
-            "$ref": "#/components/schemas/RuntimeGenerationIdentity"
-          },
-          "launcher": {
-            "$ref": "#/components/schemas/LauncherKind"
-          },
-          "policy": {
-            "$ref": "#/components/schemas/CoreSelectionPolicy"
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "additionalProperties": false
       },
-      "CoreRequestCancelRequest": {
+      "CollectionWindow_ProjectWorkspaceAgentRuntimeSessionBinding": {
         "type": "object",
         "required": [
-          "request_id"
+          "items",
+          "authority"
         ],
         "properties": {
-          "request_id": {
-            "type": "string"
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+                "session_id",
+                "runtime_id",
+                "project_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -9845,7 +9743,7 @@
           "authorization": {
             "$ref": "#/components/schemas/AgentExecutionAuthorization"
           },
-          "cursor": {
+                "session_id",
             "type": [
               "string",
               "null"
@@ -9943,210 +9841,17 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
-              },
-              "schema": {
-                "$ref": "#/components/schemas/DatabasePropertySchema"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "property",
-              "name",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "rename_property"
-                ]
-              },
-              "name": {
-                "type": "string"
-              },
-              "property": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "property",
-              "schema",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "change_property_type"
-                ]
-              },
-              "property": {
-                "type": "string"
-              },
-              "schema": {
-                "$ref": "#/components/schemas/DatabasePropertySchema"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "property",
-              "name",
-              "kind"
-            ],
-            "properties": {
-              "color": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "add_option"
-                ]
-              },
-              "name": {
-                "type": "string"
-              },
-              "property": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "property",
-              "option",
-              "name",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "rename_option"
-                ]
-              },
-              "name": {
-                "type": "string"
-              },
-              "option": {
-                "type": "string"
-              },
-              "property": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "name",
-              "layout",
-              "kind"
-            ],
-            "properties": {
-              "filter": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/DatabaseViewFilter",
-                    "description": "Complete saved filter. propertyId and select option values accept exact IDs or unique names.\nUses the shared View expression grammar; omitted or null means no filter."
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "group_by": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "create_view"
-                ]
-              },
-              "layout": {
-                "$ref": "#/components/schemas/DatabaseViewLayout"
-              },
-              "name": {
-                "type": "string"
-              },
-              "sorts": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/ConfigurationSort"
+                "page_key": {
+                  "type": [
+                  "format": "int64"
+                  "type": [
+                    "string",
                 }
               }
             }
           },
-          {
-            "type": "object",
-            "required": [
-              "view",
-              "if_revision",
-              "kind"
-            ],
-            "properties": {
-              "filter": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/DatabaseViewFilter",
-                    "description": "Replace all saved filters; omitted preserves them and null clears them.\npropertyId and select option values accept exact IDs or unique names."
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "group_by": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "if_revision": {
-                "type": "integer",
-                "format": "int64"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "update_view"
-                ]
-              },
-              "name": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "sorts": {
-                "type": [
-                  "array",
-                  "null"
-                ],
-                "items": {
-                  "$ref": "#/components/schemas/ConfigurationSort"
-                }
-              },
-              "view": {
-                "type": "string"
-              }
-            }
+            "type": [
+              "string",
           }
         ]
       },
@@ -10165,7 +9870,8 @@
           "operations": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/DatabaseConfigurationOperation"
+                  "type": [
+                    "string",
             }
           }
         },
@@ -10239,7 +9945,17 @@
           "page_ids": {
             "type": "array",
             "items": {
-              "type": "string"
+                  "type": [
+                  "type": "string"
+                  "type": [
+                    "string",
+                  "type": [
+                    "string",
+                "report": {
+                "session_id": {
+                  "type": "string"
+                  "type": [
+                    "string",
             }
           }
         },
@@ -10264,7 +9980,10 @@
           "before_runs": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/DatabaseDataEditPositionRun"
+                "created_at": {
+                  "type": [
+                  "type": [
+                  "type": [
             }
           },
           "data_source_id": {
@@ -10294,8 +10013,9 @@
           "after_value": {
             "$ref": "#/components/schemas/DatabasePropertyValueInput"
           },
-          "before_value": {
-            "$ref": "#/components/schemas/DatabasePropertyValueInput"
+                  "type": [
+                  "type": [
+                  "type": [
           },
           "property_type": {
             "$ref": "#/components/schemas/DatabasePropertyType"
@@ -10322,18 +10042,7 @@
             "items": {
               "$ref": "#/components/schemas/DatabaseDataEditPropertyState"
             }
-          }
-        },
-        "additionalProperties": false
-      },
-      "DatabaseDataSourceDescriptor": {
-        "type": "object",
-        "required": [
-          "data_source"
-        ],
-        "properties": {
-          "data_source": {
-            "$ref": "#/components/schemas/DatabaseDataSourceRecord"
+            "type": [
           }
         }
       },
@@ -10373,8 +10082,10 @@
           "sort": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/DatabaseViewSort"
+                  "type": [
+                  "type": [
             }
+            "type": [
           }
         },
         "additionalProperties": false
@@ -10435,18 +10146,9 @@
           "name": {
             "type": "string"
           },
-          "rank_key": {
-            "type": "string"
+                  "type": [
           },
-          "schema_key": {
-            "type": "string"
-          },
-          "schema_revision": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "updated_at": {
-            "type": "string"
+            "type": [
           }
         }
       },
@@ -10643,8 +10345,8 @@
           "data_source_id": {
             "type": "string"
           },
-          "database_id": {
-            "type": "string"
+                "created_at": {
+                "session_id": {
           },
           "expected_preferences_revision": {
             "type": [
@@ -10708,9 +10410,7 @@
           "personal_view_changes": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/DatabasePersonalViewChange"
-            },
-            "description": "Profile-owned deltas are routed through View identity but do not\ninvalidate shared Database/View projections."
+                "page_key": {
           },
           "project_id": {
             "type": [
@@ -10799,7 +10499,24 @@
           }
         ]
       },
-      "DatabaseIntent": {
+          "batch_id",
+          "coordinator_session_id",
+          "message_id",
+          "body": {
+          "coordinator_session_id": {
+          "message_id": {
+          "observed_revision"
+          "observed_revision": {
+          "since": {
+          "payload": {},
+          "session_title": {
+          "payload",
+          "dedupe_key"
+          "payload": {},
+          "session_id": {
+          "turn_ended",
+          "failed",
+          "stalled",
         "oneOf": [
           {
             "type": "object",
@@ -11186,6 +10903,7 @@
                 "type": "string"
               }
             }
+          "request_id": {
           },
           {
             "type": "object",
@@ -11338,9 +11056,9 @@
               "page_id": {
                 "type": "string"
               },
-              "target": {
-                "$ref": "#/components/schemas/DatabaseTransferTarget"
+          "body": {
               }
+          "session_id": {
             }
           },
           {
@@ -17322,10 +17040,7 @@
               "null"
             ]
           },
-          "destination_document": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/LibraryAgentDocumentHead"
+              "response",
               },
               {
                 "type": "null"
@@ -17359,7 +17074,7 @@
           "destination": {
             "$ref": "#/components/schemas/LibraryAgentPageDestination"
           },
-          "page_ids": {
+          "coordination": {
             "type": "array",
             "items": {
               "type": "string"
@@ -18041,7 +17756,11 @@
           }
         ]
       },
-      "LibraryAgentSearchTarget": {
+          "generation",
+          "generation": {
+            "format": "int64"
+            "format": "int64"
+            "format": "int64"
         "type": "string",
         "enum": [
           "pages",
@@ -18061,6 +17780,8 @@
                 "enum": [
                   "start"
                 ]
+                "type": [
+                  "string",
               }
             }
           },
@@ -18075,6 +17796,7 @@
                 "enum": [
                   "end"
                 ]
+                  "string",
               }
             }
           },
@@ -18296,6 +18018,8 @@
               "kind"
             ],
             "properties": {
+                "type": "string"
+                "type": "string"
               "kind": {
                 "type": "string",
                 "enum": [
@@ -18314,14 +18038,16 @@
               "kind"
             ],
             "properties": {
+                  "string",
+                "type": [
+                  "integer",
               "kind": {
                 "type": "string",
                 "enum": [
                   "database_view"
                 ]
               },
-              "target": {
-                "$ref": "#/components/schemas/LibraryAgentSurfaceViewTarget"
+                "type": "string"
               }
             }
           },
@@ -18553,12 +18279,7 @@
           "fields"
         ],
         "properties": {
-          "actor": {},
-          "client_session_id": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "body": {
           },
           "fields": {
             "type": "array",
@@ -19023,29 +18744,7 @@
               }
             }
           },
-          {
-            "type": "object",
-            "required": [
-              "grammar_version",
-              "reason",
-              "kind"
-            ],
-            "properties": {
-              "grammar_version": {
-                "type": "integer",
-                "format": "int32",
-                "minimum": 0
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "preserved"
-                ]
-              },
-              "reason": {
-                "$ref": "#/components/schemas/LibraryTaskShorthandPreservedReason"
-              }
-            }
+          "type": {
           }
         ]
       },
@@ -19874,6 +19573,13 @@
                 "type": "string"
               }
             }
+      "InboxConfirmedBy": {
+        "type": "string",
+        "enum": [
+          "user",
+          "nodex"
+        ]
+      },
           },
           {
             "type": "object",
@@ -19903,27 +19609,81 @@
               }
             }
           },
+      "InboxQuestionResponse": {
+        "type": "object",
+        "description": "Frozen person answer delivered with the reply entry's stable handoff identity.",
+        "required": [
+          "request_id",
+          "question_id",
+          "answer"
+        ],
+        "properties": {
+          "answer": {
+            "type": "string"
+          },
+          "question_id": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "InboxReplyContext": {
+        "type": "object",
+        "required": [
+          "page_id",
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "page_id": {
+            "type": "string"
+          },
+          "purpose": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NodexEntryPurpose"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subject_page_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject_session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "InboxReplyDispatch": {
+        "oneOf": [
           {
             "type": "object",
             "required": [
-              "sourceBlockId",
-              "databaseViewId",
-              "kind"
+              "type"
             ],
             "properties": {
-              "databaseViewId": {
-                "type": "string"
-              },
-              "displayHint": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "kind": {
+              "type": {
                 "type": "string",
                 "enum": [
-                  "database_view"
+                  "send"
                 ]
               },
               "sourceBlockId": {
@@ -19934,15 +19694,17 @@
           {
             "type": "object",
             "required": [
-              "sourceBlockId",
-              "targetSessionId",
-              "kind"
+              "response",
+              "type"
             ],
             "properties": {
-              "kind": {
+              "response": {
+                "$ref": "#/components/schemas/InboxQuestionResponse"
+              },
+              "type": {
                 "type": "string",
                 "enum": [
-                  "session"
+                  "answer"
                 ]
               },
               "sourceBlockId": {
@@ -19953,52 +19715,46 @@
               }
             }
           }
-        ]
+        ],
+        "description": "Host observation used only for the first capture decision. Core validates its post and chat."
       },
-      "LibraryDocumentRevisionKind": {
-        "type": "string",
-        "enum": [
-          "automatic",
-          "manual",
-          "operation",
-          "restore",
-          "safety"
-        ]
-      },
-      "LibraryDocumentVersionMetadata": {
+      "InboxRoutingCancellation": {
         "type": "object",
+        "description": "An admitted delivery whose result no longer belongs to an open request.",
         "required": [
-          "version_id",
+          "request_id",
           "generation",
-          "base_head_seq",
-          "schema_key",
-          "schema_version",
-          "cause",
-          "revision_kind",
-          "pinned",
-          "checkpoint_hash",
-          "byte_length"
+          "coordinator_session_id"
         ],
         "properties": {
-          "base_head_seq": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "byte_length": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "cause": {
-            "type": "string"
-          },
-          "checkpoint_hash": {
+          "coordinator_session_id": {
             "type": "string"
           },
           "generation": {
             "type": "integer",
             "format": "int64"
           },
-          "label": {
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "InboxRoutingDelivery": {
+        "type": "object",
+        "description": "Handover and the carrying Run start survive restarts.",
+        "required": [
+          "coordinator_session_id",
+          "handed_over_at_ms"
+        ],
+        "properties": {
+          "coordinator_session_id": {
+            "type": "string"
+          },
+          "handed_over_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_refusal": {
             "type": [
               "string",
               "null"
@@ -20024,14 +19780,12 @@
             ],
             "format": "int64"
           },
-          "source_mutation_id": {
+          "run_started_at_ms": {
             "type": [
-              "string",
+              "integer",
               "null"
-            ]
-          },
-          "version_id": {
-            "type": "string"
+            ],
+            "format": "int64"
           }
         }
       },
@@ -34376,7 +34130,7 @@
               {
                 "type": "object",
                 "required": [
-                  "file_id",
+                  "session_id",
                   "kind"
                 ],
                 "properties": {
@@ -34392,48 +34146,37 @@
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "file_usages"
+                      "bind_coordinator"
                     ]
                   },
-                  "limit": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
-                    "format": "int32",
-                    "minimum": 0
+                  "session_id": {
                   }
                 }
               },
               {
                 "type": "object",
                 "required": [
-                  "file_id",
+                  "session_id",
                   "kind"
                 ],
                 "properties": {
-                  "cursor": {
-                    "type": [
-                      "string",
-                      "null"
+                      "unbind_coordinator"
                     ]
                   },
-                  "file_id": {
+                  "session_id": {
                     "type": "string"
-                  },
+                  "session_id",
+                  "managed",
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "file_versions"
+                      "set_session_managed"
                     ]
                   },
-                  "limit": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
-                    "format": "int32",
-                    "minimum": 0
+                  "managed": {
+                    "type": "boolean"
+                  },
+                  "session_id": {
                   }
                 }
               },
@@ -34478,42 +34221,47 @@
               {
                 "type": "object",
                 "required": [
-                  "page_id",
-                  "selector",
+                  "outcome",
+                  "summary",
                   "kind"
                 ],
                 "properties": {
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "resolve_page_file"
+                      "report_page_work"
                     ]
                   },
+                  "outcome": {
+                    "$ref": "#/components/schemas/WorkReportOutcome"
                   "page_id": {
                     "type": "string"
                   },
-                  "selector": {
-                    "$ref": "#/components/schemas/LibraryPageFileSelector"
+                  "summary": {
+                    "type": "string"
                   }
                 }
               },
               {
                 "type": "object",
                 "required": [
-                  "tokens",
+                  "events",
+                  "observed",
                   "kind"
                 ],
                 "properties": {
+                  "events": {
+                      "$ref": "#/components/schemas/CoordinatorWorkEventInput"
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "structural_history_states"
+                      "record_work_events"
                     ]
                   },
-                  "tokens": {
+                  "observed": {
                     "type": "array",
                     "items": {
-                      "$ref": "#/components/schemas/LibraryStructuralHistoryToken"
+                      "$ref": "#/components/schemas/CoordinatorObservationInput"
                     }
                   }
                 }
@@ -34521,25 +34269,32 @@
               {
                 "type": "object",
                 "required": [
-                  "operation_id",
-                  "store_epoch",
-                  "intent",
+                  "batch_id",
+                  "coordinator_session_id",
+                  "event_ids",
+                  "message_id",
+                  "body",
+                  "fingerprint",
                   "kind"
                 ],
                 "properties": {
-                  "intent": {
-                    "$ref": "#/components/schemas/LibraryBlockTransferLogicalIntent"
+                  "batch_id": {
+                    "type": "string"
+                  },
+                  "body": {
+                  "coordinator_session_id": {
+                    "type": "string"
+                  "event_ids": {
+                  "fingerprint": {
+                    "type": "string"
                   },
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "block_transfer_presentation_plan"
+                      "create_event_batch"
                     ]
                   },
-                  "operation_id": {
-                    "type": "string"
-                  },
-                  "store_epoch": {
+                  "message_id": {
                     "type": "string"
                   }
                 }
@@ -34547,30 +34302,16 @@
               {
                 "type": "object",
                 "required": [
-                  "parent",
+                  "batch_id",
                   "kind"
                 ],
                 "properties": {
-                  "cursor": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "force_include_target": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryRouteTarget"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
+                  "batch_id": {
                   },
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "children"
+                      "discard_event_batch"
                     ]
                   },
                   "limit": {
@@ -34589,29 +34330,20 @@
               {
                 "type": "object",
                 "required": [
+                  "batch_id",
+                  "accepted_at",
                   "kind"
                 ],
                 "properties": {
-                  "cursor": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
+                  "accepted_at": {
+                    "type": "string"
                   },
-                  "force_include_target": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryPlacedResourceTarget"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
+                  "batch_id": {
                   },
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "standalone_roots"
+                      "settle_event_batch"
                     ]
                   },
                   "limit": {
@@ -36562,17 +36294,23 @@
               {
                 "type": "object",
                 "required": [
-                  "thread_id",
+                  "request_id",
+                  "generation",
+                  "coordinator_session_id",
                   "kind"
                 ],
                 "properties": {
+                  "coordinator_session_id": {
+                  "generation": {
+                    "type": "integer",
+                    "format": "int64"
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "thread_backend_session"
+                      "begin_inbox_routing"
                     ]
                   },
-                  "thread_id": {
+                  "request_id": {
                     "type": "string"
                   }
                 }
@@ -36580,57 +36318,60 @@
               {
                 "type": "object",
                 "required": [
-                  "backend_kind",
-                  "native_home",
-                  "native_session_ids",
+                  "request_id",
+                  "generation",
+                  "coordinator_session_id",
+                  "reason",
                   "kind"
                 ],
                 "properties": {
-                  "backend_kind": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceNativeBackendKind"
+                  "coordinator_session_id": {
+                  "generation": {
+                    "type": "integer",
+                    "format": "int64"
                   },
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "native_session_bindings"
+                      "record_inbox_routing_refusal"
                     ]
                   },
-                  "native_home": {
+                  "reason": {
                     "type": "string"
                   },
-                  "native_session_ids": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
+                  "request_id": {
+                    "type": "string"
                   }
                 }
               },
               {
                 "type": "object",
                 "required": [
-                  "parent_thread_id",
-                  "window",
+                  "request_id",
+                  "generation",
+                  "coordinator_session_id",
+                  "run_started_at_ms",
                   "kind"
                 ],
                 "properties": {
-                  "include_archived": {
-                    "type": [
-                      "boolean",
-                      "null"
-                    ]
+                  "coordinator_session_id": {
+                    "type": "string"
+                  },
+                  "generation": {
+                    "type": "integer",
+                    "format": "int64"
                   },
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "child_thread_window"
+                      "start_inbox_routing_run"
                     ]
                   },
-                  "parent_thread_id": {
+                  "request_id": {
                     "type": "string"
                   },
-                  "window": {
-                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  "run_started_at_ms": {
+                    "format": "int64"
                   }
                 }
               },
@@ -36677,8 +36418,11 @@
                   "thread_id": {
                     "type": "string"
                   },
-                  "universe": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceSubagentUniverse"
+                  "reply_to_page_id": {
+                    "type": [
+                      "string",
+                      "null"
+                  },
                   }
                 }
               },
@@ -51709,11 +51453,14 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "update_resource_unavailable"
+                              "read_coordinator"
                             ]
                           },
-                          "unavailable": {
-                            "$ref": "#/components/schemas/DocumentUpdateResourceUnavailable"
+                          "session_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         }
                       },
@@ -51731,13 +51478,13 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "versions"
+                              "read_managed_session"
                             ]
                           },
-                          "next": {
+                          "managed": {
                             "oneOf": [
                               {
-                                "$ref": "#/components/schemas/DocumentVersionCursor"
+                                "$ref": "#/components/schemas/CoordinatorManagedSession"
                               },
                               {
                                 "type": "null"
@@ -51749,30 +51496,41 @@
                       {
                         "type": "object",
                         "required": [
-                          "value",
+                          "sessions",
                           "kind"
                         ],
                         "properties": {
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "version"
+                              "read_managed_sessions"
                             ]
                           },
-                          "value": {}
+                          "sessions": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/CoordinatorManagedSession"
+                            }
+                          }
                         }
                       },
                       {
                         "type": "object",
                         "required": [
-                          "stats",
+                          "events",
                           "kind"
                         ],
                         "properties": {
+                          "events": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/CoordinatorWorkEvent"
+                            }
+                          },
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "canvas_compaction_eligibility"
+                              "read_pending_work_events"
                             ]
                           },
                           "stats": {
@@ -51787,10 +51545,10 @@
                           "kind"
                         ],
                         "properties": {
-                          "committed": {
+                          "batch": {
                             "oneOf": [
                               {
-                                "$ref": "#/components/schemas/ApplyResponse_OwnedDocumentCommitValue_OwnedDocumentReceipt"
+                                "$ref": "#/components/schemas/CoordinatorEventBatch"
                               },
                               {
                                 "type": "null"
@@ -51800,7 +51558,7 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "agent_semantic_mutation_preparation"
+                              "read_event_batch"
                             ]
                           },
                           "preparation": {
@@ -51811,85 +51569,27 @@
                       {
                         "type": "object",
                         "required": [
-                          "snapshot",
+                          "batches",
                           "kind"
                         ],
                         "properties": {
+                          "batches": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/CoordinatorEventBatch"
+                            }
+                          },
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "agent_semantic_snapshot"
+                              "read_open_event_batches"
                             ]
                           },
                           "snapshot": {
                             "$ref": "#/components/schemas/AgentDocumentSemanticSnapshot"
                           }
                         }
-                      }
-                    ]
-                  }
-                }
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "ok"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "payload",
-              "status"
-            ],
-            "properties": {
-              "payload": {
-                "$ref": "#/components/schemas/CoreError"
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "error"
-                ]
-              }
-            }
-          }
-        ]
-      },
-      "ResponseEnvelope_ModuleReadSnapshot_ProjectWorkspaceReadValue": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "payload",
-              "status"
-            ],
-            "properties": {
-              "payload": {
-                "type": "object",
-                "required": [
-                  "contract_version",
-                  "store_epoch",
-                  "commit_head",
-                  "value"
-                ],
-                "properties": {
-                  "commit_head": {
-                    "type": "integer",
-                    "format": "int64"
-                  },
-                  "contract_version": {
-                    "type": "integer",
-                    "format": "int32",
-                    "minimum": 0
-                  },
-                  "store_epoch": {
-                    "$ref": "#/components/schemas/StoreEpoch"
-                  },
-                  "value": {
-                    "oneOf": [
+                      },
                       {
                         "type": "object",
                         "required": [
@@ -52438,7 +52138,54 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "agent_authority"
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                            "oneOf": [
+                              {
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                            "oneOf": [
+                              {
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                             ]
                           },
                           "resolution": {
@@ -53847,6 +53594,15 @@
           }
         },
         "additionalProperties": false
+      },
+      "WorkReportOutcome": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "blocked",
+          "failed",
+          "dropped"
+        ]
       }
     }
   }

@@ -176,6 +176,7 @@ const mobileAccess = MobileAccessIpc.live.pipe(
   Layer.provide(
     Layer.mergeAll(MobileProfileFiles.live, SecretEncryption.live, MobilePushRelay.live),
   ),
+  ApplicationOperationsLive.tools,
 );
 const applicationGraph = Layer.mergeAll(
   RendererIngressLive.live,

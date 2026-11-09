@@ -20,6 +20,7 @@ const message = (pageId: string, submittedAt: string): InboxItem => ({
   bodyEditable: true,
   submittedAt,
   source: { kind: "user" },
+  replyToPageId: null,
   kind: null,
   important: false,
   state: "open",

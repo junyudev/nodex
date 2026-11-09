@@ -40,6 +40,25 @@ const DATA_SOURCE_ID = parseDataSourceId("source:board-dense");
 const CREATED_AT = "2026-01-01T00:00:00.000Z";
 
 class RecordingSeedPort implements ScenarioSeedPort {
+  async createCoordinatorSession(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+  async setSessionManaged(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+  async reportPageWork(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+  async settleCoordinatorSuggestion(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
+  async confirmInboxRequestByNodex(): Promise<never> {
+    throw new Error("Coordinator work is not part of this scenario");
+  }
   readonly pages: ScenarioPageSeed[] = [];
   readonly replacements: ScenarioDocumentReplacement[] = [];
   readonly #failFirstPageOnce: boolean;

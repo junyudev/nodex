@@ -1,7 +1,12 @@
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useLayoutEffect, useRef, useState } from "react";
 import { InboxSendInputSchema } from "../../../shared/schemas/inbox";
-import type { InboxScope, InboxSendInput, InboxSendResult } from "../../../shared/inbox";
+import {
+  inboxScopeKey,
+  type InboxScope,
+  type InboxSendInput,
+  type InboxSendResult,
+} from "../../../shared/inbox";
 import {
   persistedAtom,
   usePersistedAtomValue,
@@ -9,6 +14,10 @@ import {
   useMaitaiStore,
   getConcretePersistedAtom,
   retryPersistedAtom,
+  appScope,
+  scopedAtomFamily,
+  scopedAtomWithInitializer,
+  useScopedAtom,
   type PersistedAtomDefinition,
 } from "@/lib/maitai";
 import { readableIpcError } from "@/lib/ipc-error-message";
@@ -31,6 +40,15 @@ import {
 } from "./inbox-capture-state";
 
 const definitions = new Map<string, PersistedAtomDefinition<InboxCaptureState>>();
+const savingCapturesFamily = scopedAtomFamily({
+  scope: appScope,
+  debugLabel: "inbox-saving-captures",
+  key: (key: string) => key,
+  create: () =>
+    scopedAtomWithInitializer<ReadonlyMap<string, PendingInboxCapture>>(appScope, () => new Map(), {
+      debugLabel: "saving-captures",
+    }),
+});
 
 /** An untouched draft stays unsent; a consumed draft with a delivery error waits for recovery. */
 export type InboxSubmitOutcome = "sent" | "unsent" | "failed";
@@ -78,6 +96,24 @@ export function useInboxCapture({
   const [validationError, setValidationError] = useState<string | null>(null);
   const preparing = useRef(false);
   const inFlight = useRef(new Set<string>());
+  const [savingCaptures, setSavingCaptures] = useScopedAtom(
+    savingCapturesFamily(inboxCaptureStorageKey(windowSessionId, scope)),
+  );
+  const markSaving = (capture: PendingInboxCapture, saving: boolean) =>
+    setSavingCaptures((current) => {
+      const pageId = capture.intent.pageId;
+      if (current.has(pageId) === saving) return current;
+      const next = new Map(current);
+      if (saving) next.set(pageId, capture);
+      else next.delete(pageId);
+      return next;
+    });
+  const savingDraft = [...savingCaptures.values()].some(
+    (capture) =>
+      capture.draftRevision === state.value.draftRevision &&
+      capture.intent.storeEpoch === storeEpoch &&
+      inboxScopeKey(capture.intent.scope) === inboxScopeKey(scope),
+  );
 
   useLayoutEffect(() => {
     if (!storeEpoch) return;
@@ -102,20 +138,24 @@ export function useInboxCapture({
     )
       return "failed";
     inFlight.current.add(intent.pageId);
+    markSaving(capture, true);
     return runWithCleanup<InboxSubmitOutcome>(
       async () => {
         // Retry may follow a failed local write. Admission always waits for the envelope's disk write.
         await write((current) => retainInboxCapture(current, capture));
-        await write((current) => consumeInboxDraft(current, capture));
+        if (!capture.draft.replyTo) await write((current) => consumeInboxDraft(current, capture));
         const result = await onSend(intent);
         if (result.pageId !== intent.pageId)
           throw new Error("The saved message did not match this capture. Retry to check it.");
         await write((current) =>
-          result.state === "deleted"
-            ? observeInboxCaptures(current, new Set([intent.pageId]), intent.storeEpoch)
-            : settleInboxCapture(current, intent.pageId, null),
+          observeInboxCaptures(
+            consumeInboxDraft(current, capture),
+            new Set([intent.pageId]),
+            intent.storeEpoch,
+          ),
         );
-        // A deleted receipt also confirms this capture was saved, then removed elsewhere.
+        // A confirmed capture may already be delivered and absent from the open Inbox.
+        // Its receipt settles recovery independently of which stream is currently visible.
         return "sent";
       },
       {
@@ -134,19 +174,25 @@ export function useInboxCapture({
         },
         cleanup: () => {
           inFlight.current.delete(intent.pageId);
+          markSaving(capture, false);
         },
       },
     );
   };
 
   const submit = async (): Promise<InboxSubmitOutcome> => {
-    if (preparing.current || !storeEpoch || state.status !== "ready") return "unsent";
+    if (preparing.current || savingDraft || !storeEpoch || state.status !== "ready")
+      return "unsent";
     const current = read();
     if (isEmptyInboxDraft(current.draft)) return "unsent";
     preparing.current = true;
     const capture =
       current.captures.find((entry) => entry.draftRevision === current.draftRevision) ??
       createInboxCapture(current, scope, storeEpoch);
+    if (inFlight.current.has(capture.intent.pageId)) {
+      preparing.current = false;
+      return "unsent";
+    }
     if (capture.status === "needs_review" || capture.intent.storeEpoch !== storeEpoch) {
       setValidationError("Review the earlier capture before sending again.");
       preparing.current = false;
@@ -158,29 +204,37 @@ export function useInboxCapture({
       preparing.current = false;
       return "unsent";
     }
-    const outcome = await runWithCleanup<InboxSubmitOutcome | null>(
+    markSaving(capture, true);
+    return runWithCleanup(
       async () => {
-        await write((latest) => retainInboxCapture(latest, capture));
-        await write((latest) => consumeInboxDraft(latest, capture));
-        return null;
+        const outcome = await runWithCleanup<InboxSubmitOutcome | null>(
+          async () => {
+            await write((latest) => retainInboxCapture(latest, capture));
+            if (!capture.draft.replyTo) await write((latest) => consumeInboxDraft(latest, capture));
+            return null;
+          },
+          {
+            onError: () => (read().draftRevision === capture.draftRevision ? "unsent" : "failed"),
+            cleanup: () => {
+              preparing.current = false;
+            },
+          },
+        );
+        if (outcome !== null) return outcome;
+        return deliver(capture);
       },
-      {
-        onError: () => (read().draftRevision === capture.draftRevision ? "unsent" : "failed"),
-        cleanup: () => {
-          preparing.current = false;
-        },
-      },
+      { cleanup: () => markSaving(capture, false) },
     );
-    if (outcome !== null) return outcome;
-    return deliver(capture);
   };
 
   return {
     draft: state.value.draft,
     pending: state.value.captures.filter(
       (entry) =>
-        entry.intent.storeEpoch !== storeEpoch || !visiblePageIds.includes(entry.intent.pageId),
+        !savingCaptures.has(entry.intent.pageId) &&
+        (entry.intent.storeEpoch !== storeEpoch || !visiblePageIds.includes(entry.intent.pageId)),
     ),
+    savingDraft,
     error: state.error,
     validationError,
     canEdit: state.status === "ready" || state.pendingMutationCount > 0,

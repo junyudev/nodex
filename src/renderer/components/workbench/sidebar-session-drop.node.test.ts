@@ -44,6 +44,7 @@ function session(overrides: Partial<ProjectSession> = {}): ProjectSession {
     noThreadFallbackTitle: "Chat alpha",
     displayTitle: "Chat alpha",
     activityAt: 0,
+    managed: false,
     pinned: false,
     pinnedOrder: null,
     archived: false,

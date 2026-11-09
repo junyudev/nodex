@@ -37,6 +37,7 @@ import type {
   LibraryPageFileInventory,
 } from "../../src/shared/library-files";
 
+
 export const SCENARIO_MANIFEST_VERSION = 1 as const;
 
 /** A committed Block's identity, type and place, enough to seed against an existing Document. */
@@ -122,7 +123,7 @@ export interface ScenarioBoardObservation {
 
 /** A Chat with related Pages, linked through the manual association command without a hand-off. */
 export interface ScenarioRelatedChatSeed {
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly relatedPageIds: readonly string[];
   readonly noThreadFallbackTitle: string;
   readonly pinned?: boolean;
@@ -155,6 +156,14 @@ export interface ScenarioRelatedChatSeedResult {
   readonly threadId: string | null;
 }
 
+  readonly coordinatorSessionId: string;
+  readonly body: string;
+}
+export interface ScenarioCoordinatorSuggestionSeed extends ScenarioInboxProposalSeed {
+  readonly coordinatorSessionId: string;
+  readonly explicitRequest?: boolean;
+  readonly automaticDispatch?: boolean;
+}
 export interface ScenarioRecoveryDraftSeed {
   readonly projectId: string;
   readonly documentId: string;
@@ -165,6 +174,18 @@ export interface ScenarioRecoveryDraftSeed {
 }
 
 export interface ScenarioSeedPort {
+  /** Host admission binds Nodex without starting an execution process. Core seeding only. */
+  createCoordinatorSession(): Promise<string>;
+  setSessionManaged(sessionId: string, managed: boolean): Promise<void>;
+  /** Uses a persisted Agent execution identity; never writes report columns directly. */
+  reportPageWork(input: {
+    readonly sessionId: string;
+    readonly pageId: string;
+    readonly outcome: "ready" | "blocked" | "failed" | "dropped";
+    readonly summary: string;
+  }): Promise<void>;
+  /** Begins Host routing and settles the same request as inbox_suggest. */
+  settleCoordinatorSuggestion(input: ScenarioCoordinatorSuggestionSeed): Promise<string>;
   createProject(input: ProjectCreateInput): Promise<Project>;
   createPage(input: ScenarioPageSeed): Promise<{ readonly documentId: string }>;
   createStandalonePage(input: ScenarioStandalonePageSeed): Promise<void>;

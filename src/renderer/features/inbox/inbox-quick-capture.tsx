@@ -130,8 +130,8 @@ export function InboxQuickCapture({
           draft={capture.draft}
           onDraftChange={capture.changeDraft}
           images={images}
-          disabled={!capture.ready}
-          readOnly={!capture.canEdit}
+          disabled={!capture.ready || capture.savingDraft}
+          readOnly={!capture.canEdit || capture.savingDraft}
           focusToken={0}
           titleOpen={titleOpen}
           onTitleOpenChange={setTitleOpen}

@@ -1,7 +1,11 @@
+import { inboxRoutingDeadline, inboxRoutingIdentity } from "./inbox-suggestions";
+import { decideInboxReply, inboxReplyDestination, type ReplyDispatch } from "./inbox-replies";
+import type { components } from "@nodex/core-protocol";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import type {
   InboxChatTargets,
   InboxChatTargetsInput,
@@ -65,24 +69,11 @@ import {
   type CoreInboxPageBasis,
   type CoreInboxSuggestionInput,
   type CoreInboxSuggestionRequest,
-} from "../core-client/inbox-adapter";
 import type {
   ProjectWorkspaceApplyInput,
   ProjectWorkspaceRead,
   ProjectWorkspaceReadSnapshot,
-} from "../core-client/types";
-import { CoreModuleResponseError } from "../core-client/core-client";
-import { CoreModules } from "../core-runtime/CoreModules";
-import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
-import { StoreAdministration } from "../core-runtime/StoreAdministration";
-import type { ProjectWorkspaceCommandResult } from "../project-application/ProjectWorkspace";
-import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
-import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { resolveInboxModel } from "./InboxRuntimeSelection";
-import { createOperationId } from "../core-runtime/operation-identity";
-import { scheduledFiringCapture, scheduledFiringTitle } from "./scheduled-firing";
-import type { AutomationDefinitionClaim } from "../automation-application/AutomationApplication";
-import type { CodexScheduledAutomationHeldFiring } from "../../shared/types";
 
 export class InboxApplicationError extends Schema.TaggedError<InboxApplicationError>()(
   "InboxApplicationError",
@@ -123,33 +114,40 @@ export type InboxDispatchFence = Pick<
   "proposal_id" | "revision" | "message_id"
 >;
 
+export interface InboxRoutingStatus {
+  readonly deadline: number;
+  readonly failureMessage: string | null;
+  readonly needsFollowup: boolean;
+}
+
 /** The Inbox's Core-backed application Interface for renderers, Agents, and host workers. */
 export class InboxApplication extends Context.Service<
   InboxApplication,
   {
-    readonly holdScheduledFiring: (claim: AutomationDefinitionClaim) => InboxEffect<void>;
-    readonly confirmScheduledFiring: (
-      firing: CodexScheduledAutomationHeldFiring,
-    ) => InboxEffect<void>;
     readonly chatTargets: (input: InboxChatTargetsInput) => InboxEffect<InboxChatTargets>;
+    readonly entry: (pageId: string) => InboxEffect<import("../../shared/inbox").InboxItem | null>;
     readonly summary: (input: InboxSummaryInput) => InboxEffect<InboxSummary>;
     /** Messages waiting in the Library Inbox and in each Project's Inbox. */
     readonly counts: InboxEffect<InboxCounts>;
     readonly window: (input: InboxWindowInput) => InboxEffect<InboxWindow>;
-    readonly message: (pageId: string) => InboxEffect<{
-      readonly item: InboxWindow["items"][number];
-      readonly storeEpoch: string;
-    }>;
+    readonly replyDestination: (
+      pageId: string,
+      body: string,
+    ) => InboxEffect<import("../../shared/inbox").InboxReplyDestination>;
     readonly send: (input: InboxSendInput) => InboxMutation<InboxSendResult>;
     readonly prepareConfirmation: (
       input: InboxConfirmationDraft,
+      identity?: { readonly operationId: string; readonly sessionId: string },
     ) => InboxEffect<InboxPreparedConfirmation>;
     readonly undo: (input: InboxUndoInput) => InboxMutation;
     /**
      * Saves a stream rewrite and queues automatic advice, keeping the previous proposal visible.
      */
     readonly edit: (input: InboxEditInput) => InboxMutation;
-    readonly confirm: (input: InboxConfirmInput) => InboxMutation<InboxDecisionResult>;
+    readonly confirm: (
+      input: InboxConfirmInput,
+      confirmedBy?: "user" | "nodex",
+    ) => InboxMutation<InboxDecisionResult>;
     readonly dispatch: (input: InboxDispatchInput) => InboxMutation<InboxDecisionResult>;
     readonly keep: (input: InboxPageIdsInput, operationId?: string) => InboxMutation;
     readonly setState: (input: InboxSetStateInput, operationId?: string) => InboxMutation;
@@ -160,11 +158,33 @@ export class InboxApplication extends Context.Service<
     readonly pendingSuggestionRequestIds: (
       requestIds: readonly string[],
     ) => InboxEffect<readonly string[]>;
+    readonly cancelledRoutingDeliveries: (
+      requestIds: readonly string[],
+    ) => InboxEffect<readonly components["schemas"]["InboxRoutingCancellation"][]>;
     readonly prepareSuggestions: (limit: number, automatic: boolean) => InboxEffect<void>;
     readonly suggestionRequests: (
       limit: number,
     ) => InboxEffect<readonly CoreInboxSuggestionRequest[]>;
-    readonly settleSuggestion: (input: InboxSuggestionSettlement) => InboxEffect<void>;
+    readonly suggestionRequest: (
+      requestId: string,
+    ) => InboxEffect<CoreInboxSuggestionRequest | null>;
+    readonly beginRouting: (
+      request: CoreInboxSuggestionRequest,
+      coordinatorSessionId: string,
+    ) => InboxEffect<void>;
+    readonly recordRoutingRefusal: (
+      request: CoreInboxSuggestionRequest,
+      reason: string,
+    ) => InboxEffect<void>;
+    /** Observes both carrying Runs without extending Core's first retained deadline. */
+    readonly routingStatus: (
+      request: CoreInboxSuggestionRequest,
+    ) => InboxEffect<InboxRoutingStatus>;
+    readonly autoConfirm: InboxEffect<void>;
+    readonly settleSuggestion: (
+      input: InboxSuggestionSettlement,
+      operationId?: string,
+    ) => InboxEffect<void>;
     readonly retryDispatch: (input: InboxProposalInput, operationId?: string) => InboxMutation;
     /** Erases messages: the Inbox forgets them now and Store maintenance collects their Pages. */
     readonly delete: (input: InboxPageIdsInput, operationId?: string) => InboxMutation;
@@ -236,18 +256,13 @@ export const make = Effect.gen(function* () {
   const parse = <A>(operation: string, run: () => A): InboxEffect<A> =>
     Effect.try({ try: run, catch: fail(operation) });
 
-  // Inbox authority is trusted local Library authority: never bind a Project.
   const read = (operation: string, request: ProjectWorkspaceRead) =>
-    core.workspace.read(request, undefined, null).pipe(Effect.mapError(fail(operation)));
 
   const apply = (
     operation: string,
     intent: ApplyIntent,
     operationId = createOperationId(`inbox.${operation}`),
   ) =>
-    core.workspace
-      .apply({ operationId, intent }, undefined, null)
-      .pipe(Effect.mapError(fail(operation)));
   const mutate = (operation: string, intent: ApplyIntent, operationId?: string): InboxMutation =>
     apply(operation, intent, operationId).pipe(
       Effect.map((apply) => ({ value: undefined, apply })),
@@ -259,7 +274,6 @@ export const make = Effect.gen(function* () {
   ): InboxMutation<InboxDecisionResult> =>
     apply(operation, intent, operationId).pipe(
       Effect.map((apply) => ({
-        value: { undoToken: apply.outcome.inbox_undo_token ?? null },
         apply,
       })),
     );
@@ -324,8 +338,56 @@ export const make = Effect.gen(function* () {
     });
   });
 
+  const entry = (pageId: string) =>
+    read("entry", { kind: "inbox_entry", page_id: pageId }).pipe(
+      Effect.map((snapshot) => {
+        const item = expectVariant(snapshot, "inbox_entry").item;
+        return item ? inboxItemFromCore(item) : null;
+      }),
+    );
+
+  const resolveReply = Effect.fn("InboxApplication.resolveReply")(function* (
+    pageId: string,
+    body: string,
+  ) {
+    const session = yield* read("reply-session", { kind: "session", session_id: sessionId }).pipe(
+      Effect.map((snapshot) => expectVariant(snapshot, "session").session),
+      Effect.catchIf(isNotFound, () => Effect.succeed(null)),
+    );
+    if (!session || session.archived) return { chat: null, dispatch: null };
+    const chat = { sessionId, title: session.display_title || "chat" };
+    if (!session.execution_ref && session.thread_id) {
+      const thread = yield* read("reply-thread", {
+        kind: "thread",
+        thread_id: session.thread_id,
+      }).pipe(
+        Effect.map((snapshot) => expectVariant(snapshot, "thread").thread),
+        Effect.catchIf(isNotFound, () => Effect.succeed(null)),
+      );
+      const waiting = thread?.status.active_flags.some(
+        (flag) => flag === "waitingOnApproval" || flag === "waitingOnUserInput",
+      );
+      return {
+        chat,
+        dispatch: thread && !thread.archived && !waiting ? { type: "send" as const } : null,
+      };
+    }
+    const control = yield* runtime.control({ sessionId, requireActive: true }).pipe(Effect.result);
+    if (control._tag === "Failure") return { chat, dispatch: null };
+    const metadata = yield* runtime
+      .observeSessionMetadata({ sessionId })
+      .pipe(Effect.orElseSucceed(() => null));
+    const dispatch: ReplyDispatch | null = metadata
+      : null;
+    return { chat, dispatch };
+  });
+  const replyDestination = (pageId: string, body: string) =>
+
   const send = Effect.fn("InboxApplication.send")(function* (input: InboxSendInput) {
     const parsed = yield* parse("send", () => InboxSendInputSchema.parse(input));
+    const reply = parsed.replyToPageId
+      ? yield* resolveReply(parsed.replyToPageId, parsed.body)
+      : null;
     const applied = yield* apply(
       "send",
       {
@@ -333,8 +395,8 @@ export const make = Effect.gen(function* () {
         page_id: parsed.pageId,
         document_id: parsed.documentId,
         body: parsed.body,
+        reply_to_page_id: parsed.replyToPageId ?? null,
         ...(parsed.title === undefined ? {} : { title: parsed.title }),
-        project_id: parsed.scope.kind === "project" ? parsed.scope.projectId : null,
         expected_store_epoch: parsed.storeEpoch,
       },
       parsed.operationId,
@@ -348,14 +410,8 @@ export const make = Effect.gen(function* () {
         mayHaveCommitted: true,
       });
     const visible = yield* core.library
-      .read(
-        { kind: "page_projection_file", page_id: parsed.pageId, file_kind: "meta_yaml" },
-        undefined,
-        null,
-      )
       .pipe(
         Effect.flatMap((snapshot) =>
-          snapshot.value.kind === "page_projection_file"
             ? Effect.succeed(snapshot)
             : Effect.fail(new Error("Core did not confirm the captured Page")),
         ),
@@ -385,6 +441,7 @@ export const make = Effect.gen(function* () {
 
   const prepareConfirmation = Effect.fn("InboxApplication.prepareConfirmation")(function* (
     input: InboxConfirmationDraft,
+    identity?: { readonly operationId: string; readonly sessionId: string },
   ): Effect.fn.Return<InboxPreparedConfirmation, InboxApplicationError> {
     const draft = yield* parse("prepare-confirmation", () =>
       InboxConfirmationDraftSchema.parse(input),
@@ -399,30 +456,25 @@ export const make = Effect.gen(function* () {
       return yield* fail("prepare-confirmation")(
         new Error("Review this suggestion before deciding"),
       );
-    if (action.type === "run_task" && action.agent)
       yield* resolveInboxModel(runtime, action.agent).pipe(
         Effect.mapError(fail("prepare-confirmation")),
       );
-    // A new chat runs on the Agent its decision chose, or else the Inbox's own, frozen now.
     const modelSelection =
-      action.type === "new_chat"
         ? yield* resolveInboxModel(
             runtime,
-            action.agent ??
               (yield* settings.snapshot().pipe(Effect.mapError(fail("prepare-confirmation")))).inbox
                 .chatAgent,
           ).pipe(Effect.mapError(fail("prepare-confirmation")))
         : null;
     const executionSelection =
-      action.type === "new_chat" && modelSelection
         ? { modelSelection, interactionMode: "default" as const }
         : null;
     const prepared = {
       ...draft,
       action,
       executionSelection,
-      operationId: createOperationId("inbox.confirm"),
-      sessionId: createUuidV7(),
+      operationId: identity?.operationId ?? createOperationId("inbox.confirm"),
+      sessionId: identity?.sessionId ?? createUuidV7(),
     };
     return draft.kind === "proposal"
       ? {
@@ -434,7 +486,10 @@ export const make = Effect.gen(function* () {
       : { ...prepared, kind: "direct", pageIds: draft.pageIds, proposalId: createUuidV7() };
   });
 
-  const confirm = Effect.fn("InboxApplication.confirm")(function* (input: InboxConfirmInput) {
+  const confirm = Effect.fn("InboxApplication.confirm")(function* (
+    input: InboxConfirmInput,
+    confirmedBy: "user" | "nodex" = "user",
+  ) {
     const parsed = yield* parse("confirm", () => InboxConfirmInputSchema.parse(input));
     const context = yield* dispatchContext(parsed.basis.map((basis) => basis.pageId));
     const proposal = context.open_proposals.find(
@@ -442,12 +497,12 @@ export const make = Effect.gen(function* () {
     );
     const action =
       parsed.action ?? (proposal ? inboxDispatchActionFromCore(proposal.action) : null);
-    if (action?.type === "run_task" && action.agent)
       yield* resolveInboxModel(runtime, action.agent).pipe(Effect.mapError(fail("confirm")));
     return yield* decision(
       "confirm",
       {
         kind: "confirm_inbox_dispatch",
+        confirmed_by: confirmedBy,
         expected_store_epoch: parsed.storeEpoch,
         proposal_id: parsed.proposalId,
         expected_revision: parsed.expectedRevision,
@@ -462,7 +517,6 @@ export const make = Effect.gen(function* () {
 
   const dispatch = Effect.fn("InboxApplication.dispatch")(function* (input: InboxDispatchInput) {
     const parsed = yield* parse("dispatch", () => InboxDispatchInputSchema.parse(input));
-    if (parsed.action.type === "run_task" && parsed.action.agent)
       yield* resolveInboxModel(runtime, parsed.action.agent).pipe(
         Effect.mapError(fail("dispatch")),
       );
@@ -579,18 +633,19 @@ export const make = Effect.gen(function* () {
     );
     return yield* mutate("stop-suggestion", inboxStopSuggestionToCore(parsed));
   });
-  const pendingSuggestionRequestIds = (requestIds: readonly string[]) =>
+  const suggestionLifetimes = (requestIds: readonly string[]) =>
     read("pending-suggestion-request-ids", {
       kind: "inbox_pending_suggestion_request_ids",
       request_ids: requestIds,
     }).pipe(
       Effect.flatMap((snapshot) =>
-        parse(
-          "pending-suggestion-request-ids",
-          () => expectVariant(snapshot, "inbox_pending_suggestion_request_ids").request_ids,
+        parse("pending-suggestion-request-ids", () =>
+          expectVariant(snapshot, "inbox_pending_suggestion_request_ids"),
         ),
       ),
     );
+  const pendingSuggestionRequestIds = (requestIds: readonly string[]) =>
+    suggestionLifetimes(requestIds).pipe(Effect.map((result) => result.request_ids));
   const prepareSuggestions = (limit: number, automatic: boolean) =>
     apply("prepare-suggestions", {
       kind: "prepare_inbox_suggestions",
@@ -607,9 +662,102 @@ export const make = Effect.gen(function* () {
         ),
       ),
     );
-  const writeSettlement = (input: InboxSuggestionSettlement) =>
-    apply("settle-suggestion", { kind: "settle_inbox_suggestion", ...input }).pipe(Effect.asVoid);
-  const settlementRefusalReason = (failure: InboxApplicationError): string | null => {
+  const suggestionRequest = (requestId: string) =>
+    read("suggestion-request", { kind: "inbox_suggestion_request", request_id: requestId }).pipe(
+      Effect.map((snapshot) => expectVariant(snapshot, "inbox_suggestion_request").request ?? null),
+    );
+  const beginRouting = (request: CoreInboxSuggestionRequest, coordinatorSessionId: string) =>
+    apply(
+      "begin-routing",
+      {
+        kind: "begin_inbox_routing",
+        request_id: request.request_id,
+        generation: request.generation,
+        coordinator_session_id: coordinatorSessionId,
+      },
+      `inbox.routing:${request.request_id}:${request.generation}`,
+    ).pipe(Effect.asVoid);
+  const startRoutingRun = Effect.fn("InboxApplication.startRoutingRun")(function* (
+    request: CoreInboxSuggestionRequest,
+    startedAt: number,
+  ) {
+    yield* apply("start-routing-run", {
+      kind: "start_inbox_routing_run",
+      request_id: request.request_id,
+      generation: request.generation,
+      coordinator_session_id: request.delivery!.coordinator_session_id,
+      run_started_at_ms: startedAt,
+    });
+    const current = yield* suggestionRequest(request.request_id);
+    return current?.delivery?.run_started_at_ms ?? startedAt;
+  });
+  // Routing workers and tool submissions share this observation boundary. A callback can
+  // arrive before the worker's next poll; both must fence it against the same retained start.
+  const routingStatus = Effect.fn("InboxApplication.routingStatus")(function* (
+    request: CoreInboxSuggestionRequest,
+  ): Effect.fn.Return<InboxRoutingStatus, InboxApplicationError> {
+    let delivery = request.delivery;
+    if (!delivery)
+      return yield* fail("routing-status")(
+        new Error("This routing request has not been delivered"),
+      );
+    const outcome = yield* runtime
+      .runOutcome({
+        sessionId: delivery.coordinator_session_id,
+        messageId: inboxRoutingIdentity(request).messageId,
+        carryingRun: true,
+      })
+      .pipe(Effect.result);
+    const run = outcome._tag === "Success" ? outcome.success : null;
+    if (delivery.run_started_at_ms == null && run?.startedAt) {
+      const startedAt = Date.parse(run.startedAt);
+      if (Number.isFinite(startedAt)) {
+        const persisted = yield* startRoutingRun(request, startedAt);
+        delivery = { ...delivery, run_started_at_ms: persisted };
+      }
+    }
+    const status = {
+      deadline: inboxRoutingDeadline(delivery),
+      failureMessage: null as string | null,
+      needsFollowup: false,
+    };
+    if (run?.status === "failed")
+      return { ...status, failureMessage: run.failureMessage ?? "The suggestion failed" };
+    if (run?.status === "cancelled")
+      return { ...status, failureMessage: "Nodex stopped before answering this routing request" };
+    if (run?.status !== "completed") return status;
+    const followup = yield* runtime
+      .runOutcome({
+        sessionId: delivery.coordinator_session_id,
+        messageId: inboxRoutingIdentity(request, true).messageId,
+        carryingRun: true,
+      })
+      .pipe(Effect.result);
+    const next = followup._tag === "Success" ? followup.success : null;
+    if (next?.status === "failed")
+      return { ...status, failureMessage: next.failureMessage ?? "The suggestion failed" };
+    if (next?.status === "completed" || next?.status === "cancelled")
+      return {
+        ...status,
+        failureMessage:
+          "Nodex ended its follow-up without answering this routing request. Retry to ask again.",
+      };
+    return { ...status, needsFollowup: true };
+  });
+  const recordRoutingRefusal = (request: CoreInboxSuggestionRequest, reason: string) =>
+    mutate("routing-refusal", {
+      kind: "record_inbox_routing_refusal",
+      request_id: request.request_id,
+      generation: request.generation,
+      coordinator_session_id: request.delivery!.coordinator_session_id,
+      reason: reason.slice(0, 2048),
+    }).pipe(Effect.asVoid);
+
+  const writeSettlement = (input: InboxSuggestionSettlement, operationId?: string) =>
+    apply("settle-suggestion", { kind: "settle_inbox_suggestion", ...input }, operationId).pipe(
+      Effect.asVoid,
+    );
+  const settlementRefusalReason = (failure: InboxApplicationError) => {
     const refusal = coreRefusal(failure.cause);
     switch (refusal?.code) {
       case "invalid_input":
@@ -625,7 +773,10 @@ export const make = Effect.gen(function* () {
   };
   const settleSuggestion = Effect.fn("InboxApplication.settleSuggestion")(function* (
     input: InboxSuggestionSettlement,
+    operationId?: string,
   ) {
+    // A tool submission can correct invalid advice within the same routing deadline.
+    if (operationId !== undefined) return yield* writeSettlement(input, operationId);
     const result = yield* writeSettlement(input).pipe(Effect.result);
     if (result._tag === "Success") return;
     const reason = settlementRefusalReason(result.failure);
@@ -642,6 +793,7 @@ export const make = Effect.gen(function* () {
       suggestions: [],
       produced_by: null,
       error: reason,
+      automatic_dispatch: false,
     }).pipe(
       Effect.catch((failure) => {
         if (!settlementRefusalReason(failure)) return Effect.fail(failure);
@@ -652,6 +804,49 @@ export const make = Effect.gen(function* () {
       }),
     );
   });
+
+  const autoLane = yield* Semaphore.make(1);
+  const autoConfirm = autoLane.withPermits(1)(
+    Effect.gen(function* () {
+      const snapshot = yield* read("automatic-dispatches", {
+        kind: "inbox_automatic_dispatches",
+        limit: 100,
+      });
+      const { proposals } = expectVariant(snapshot, "inbox_automatic_dispatches");
+      for (const proposal of proposals) {
+        const action = inboxDispatchActionFromCore(proposal.action);
+        if (
+          proposal.outdated ||
+          !proposal.explicit_request ||
+          (action.type !== "new_chat" && action.type !== "send_to_chat")
+        )
+          continue;
+        const at = Date.parse(proposal.created_at);
+        const operationId = createStableOperationId("inbox.auto-confirm", at, [
+          proposal.proposal_id,
+          proposal.revision,
+        ]);
+        const prepared = yield* prepareConfirmation(
+          {
+            kind: "proposal",
+            storeEpoch: snapshot.store_epoch,
+            proposalId: proposal.proposal_id,
+            expectedRevision: proposal.revision,
+            basis: proposal.basis.map(inboxPageBasisFromCore),
+            action: { ...action, additions: [] },
+          },
+          {
+            operationId,
+            sessionId: deriveSessionDispatchIdentity(operationId, "inbox-auto-session", at),
+          },
+        ).pipe(Effect.result);
+        if (prepared._tag === "Failure" || prepared.success.kind !== "proposal") continue;
+        // Core rechecks written content, all-user membership and the exact unchanged action atomically.
+        const { kind: _kind, ...confirmation } = prepared.success;
+        yield* confirm(confirmation, "nodex").pipe(Effect.catch(() => Effect.void));
+      }
+    }),
+  );
 
   const retryDispatch = Effect.fn("InboxApplication.retryDispatch")(function* (
     input: InboxProposalInput,
@@ -693,7 +888,6 @@ export const make = Effect.gen(function* () {
           () => expectVariant(snapshot, "inbox_pending_suggestions").entries,
         ),
       ),
-      Effect.map((entries) => entries.filter((entry) => entry.source.kind !== "scheduled_task")),
     );
 
   const dispatchContext = (pageIds: readonly string[]) =>
@@ -768,62 +962,44 @@ export const make = Effect.gen(function* () {
       message,
     }).pipe(Effect.asVoid);
 
-  const holdScheduledFiring = Effect.fn("InboxApplication.holdScheduledFiring")(function* (
-    claim: AutomationDefinitionClaim,
   ) {
-    const capture = scheduledFiringCapture(claim.dispatchId);
     yield* apply(
-      "hold-scheduled-firing",
       {
-        kind: "hold_scheduled_firing",
         lease_id: claim.leaseId,
         page_id: capture.pageId,
         document_id: capture.documentId,
-        title: scheduledFiringTitle(claim.definition.name, claim.scheduledFor),
       },
       capture.operationId,
     );
   });
 
-  const confirmScheduledFiring = Effect.fn("InboxApplication.confirmScheduledFiring")(function* (
-    firing: CodexScheduledAutomationHeldFiring,
-  ) {
-    const scope = firing.inboxProjectId
-      ? { kind: "project" as const, projectId: firing.inboxProjectId }
-      : { kind: "library" as const };
-    let after: string | null = null;
-    do {
-      const snapshot: InboxWindow = yield* window({ scope, filter: "inbox", first: 200, after });
-      const item = snapshot.items.find((item) => item.pageId === firing.pageId);
-      const proposal = item?.proposal;
-      if (
-        item &&
-        proposal?.origin === "schedule" &&
-        proposal.action.type === "run_task" &&
-        proposal.action.dispatchId === firing.dispatchId
-      ) {
-        if (proposal.state === "failed" && item.firing?.status === "failed") {
-          return yield* retryDispatch({ proposalId: proposal.proposalId }).pipe(Effect.asVoid);
+        : { kind: "library" as const };
+      let after: string | null = null;
+      do {
+        const snapshot: InboxWindow = yield* window({ scope, filter: "inbox", first: 200, after });
+        const proposal = item?.proposal;
+        if (
+          item &&
+        ) {
+            return yield* retryDispatch({ proposalId: proposal.proposalId }).pipe(Effect.asVoid);
+          }
+          if (proposal.state !== "open") break;
+          const prepared = yield* prepareConfirmation({
+            kind: "proposal",
+            storeEpoch: snapshot.storeEpoch,
+            proposalId: proposal.proposalId,
+            expectedRevision: proposal.revision,
+            basis: [item.basis],
+          });
+          if (prepared.kind === "proposal") {
+            const { kind: _kind, ...input } = prepared;
+            return yield* confirm(input).pipe(Effect.asVoid);
         }
-        if (proposal.state !== "open") break;
-        const prepared = yield* prepareConfirmation({
-          kind: "proposal",
-          storeEpoch: snapshot.storeEpoch,
-          proposalId: proposal.proposalId,
-          expectedRevision: proposal.revision,
-          basis: [item.basis],
-        });
-        if (prepared.kind === "proposal") {
-          const { kind: _kind, ...input } = prepared;
-          return yield* confirm(input).pipe(Effect.asVoid);
-        }
-      }
-      after = snapshot.nextCursor;
-    } while (after !== null);
-    return yield* fail("confirm-scheduled-firing")(
-      new Error("This scheduled task's waiting run changed. Review it in the Inbox."),
-    );
-  });
+        after = snapshot.nextCursor;
+      } while (after !== null);
+      );
+    },
+  );
 
   const outbox = (limit: number) =>
     read("outbox", { kind: "inbox_dispatch_outbox", limit }).pipe(
@@ -860,14 +1036,13 @@ export const make = Effect.gen(function* () {
     }).pipe(Effect.asVoid);
 
   return InboxApplication.of({
-    holdScheduledFiring,
-    confirmScheduledFiring,
     summary,
     chatTargets,
     counts,
     window,
     message,
     send,
+    replyDestination,
     edit,
     prepareConfirmation,
     confirm,
@@ -880,9 +1055,17 @@ export const make = Effect.gen(function* () {
     requestSuggestion,
     stopSuggestion,
     pendingSuggestionRequestIds,
+    cancelledRoutingDeliveries: (requestIds) =>
+      suggestionLifetimes(requestIds).pipe(Effect.map((result) => result.cancelled_deliveries)),
     prepareSuggestions,
     suggestionRequests,
+    entry,
     settleSuggestion,
+    suggestionRequest,
+    beginRouting,
+    routingStatus,
+    recordRoutingRefusal,
+    autoConfirm,
     retryDispatch,
     delete: deleteMessages,
     pendingSuggestions,

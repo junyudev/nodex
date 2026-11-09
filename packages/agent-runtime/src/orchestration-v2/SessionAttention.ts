@@ -25,7 +25,10 @@ export const ASYNC_QUESTION_PREDICATE = `kind = '${USER_INPUT_REQUEST_KIND}' AND
       THEN json_extract(payload_json, '$.responseCapability.type') = 'message' ELSE 0 END`;
 export const REQUEST_ATTENTION_KIND_SQL = `CASE WHEN kind <> '${USER_INPUT_REQUEST_KIND}' THEN '${ATTENTION_KINDS.approval}'
       WHEN ${ASYNC_QUESTION_PREDICATE} THEN '${ATTENTION_KINDS.question}' ELSE '${ATTENTION_KINDS.input}' END`;
-export const PENDING_ATTENTION_REQUEST_PREDICATE = `status = 'pending' AND kind NOT IN ('dynamic_tool_call', 'auth_refresh')`;
+/** Request status and response capability own answerability, independently of the Run. */
+export const PENDING_ATTENTION_REQUEST_PREDICATE = `status = 'pending' AND kind NOT IN ('dynamic_tool_call', 'auth_refresh')
+  AND CASE WHEN json_valid(payload_json)
+    THEN json_extract(payload_json, '$.responseCapability.type') IN ('live', 'message') ELSE 0 END`;
 
 /** Async questions await the person only after their own Thread stops working. */
 export const AWAITS_PERSON_PREDICATE = `facts.kind <> '${ATTENTION_KINDS.question}' OR NOT EXISTS (
@@ -71,7 +74,11 @@ export const readSessionAttention = Effect.fn("SessionAttention.read")(function*
 ) {
   const attention = new Map<
     string,
-    { readonly activeFlags: readonly ThreadActiveFlag[]; readonly requestIds: readonly string[] }
+    {
+      readonly activeFlags: readonly ThreadActiveFlag[];
+      readonly requestIds: readonly string[];
+      readonly requests: readonly { readonly id: string; readonly kind: "question" | "approval" }[];
+    }
   >();
   if (threadIds.length === 0) return attention;
   const sql = yield* SqlClient.SqlClient;
@@ -106,6 +113,11 @@ export const readSessionAttention = Effect.fn("SessionAttention.read")(function*
         facts.map((fact) => ({ kind: fact.kind, awaitsPerson: fact.awaits_person !== 0 })),
       ),
       requestIds: facts.map((fact) => fact.id),
+      requests: facts.map((fact) => ({
+        id: fact.id,
+        kind:
+          fact.kind === ATTENTION_KINDS.approval ? ("approval" as const) : ("question" as const),
+      })),
     });
   }
   return attention;

@@ -1,4 +1,8 @@
 import { useInboxClock } from "./use-inbox-clock";
+import { consumeInboxEntryOpen, useInboxEntryOpen } from "../../lib/inbox-entry-navigation";
+import { openNodex } from "../../lib/inbox-runtime";
+import { readableIpcError } from "@/lib/ipc-error-message";
+import { toast } from "@/components/ui/toast";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -20,6 +24,7 @@ import { extractMarkdownText } from "../../../shared/nodex-markdown";
 import {
   ArchiveIcon,
   BoardIcon,
+  NodexLogoMarkIcon,
   CheckmarkIcon,
   CloseIcon,
   DeleteIcon,
@@ -63,7 +68,7 @@ import { InboxAgentsPopover } from "./inbox-agents-popover";
 import { InboxPlanningSummary } from "./inbox-planning-summary";
 import { InboxSuggestionPauseNotice } from "./inbox-suggestion-pause-notice";
 import { InboxTriage } from "./inbox-triage";
-import { inboxDraftLabel } from "./inbox-capture-state";
+import { InboxCaptureRecovery } from "./inbox-capture-recovery";
 import { useInboxCapture } from "./use-inbox-capture";
 import { useInboxImageAccess } from "./use-inbox-image-access";
 import { useInboxJump, useInboxMessagesInView } from "./use-inbox-important";
@@ -106,6 +111,7 @@ function InboxHeader({
   onViewChange,
   onOpenDatabase,
   onOpenSettings,
+  onOpenNodex,
 }: {
   readonly view: InboxWindowFilter;
   readonly inboxCount: number;
@@ -116,6 +122,8 @@ function InboxHeader({
   readonly onViewChange: (view: InboxWindowFilter) => void;
   readonly onOpenDatabase: (databaseId: string) => void;
   readonly onOpenSettings: () => void;
+  /** Opens Nodex's own conversation, where the reader can talk to it directly. */
+  readonly onOpenNodex: () => void;
 }) {
   return (
     // An Inbox is its Scene's Home tab, so it tops the tab like a Board's views do.
@@ -271,8 +279,7 @@ export function InboxRoute({
   onOpenSettings,
   visible = true,
 }: InboxRouteProps) {
-  // Keeps the scheduled tasks behind waiting runs current while the Inbox shows them.
-  useCodexScheduledAutomations();
+  const entryOpen = useInboxEntryOpen(scope);
   const scopeKey = inboxScopeKey(scope);
   const inboxProjectId = inboxScopeProjectId(scope);
   const projectName = inboxProjectId
@@ -287,7 +294,10 @@ export function InboxRoute({
   );
   const [bulkDraft, setBulkDraft] = useState<InboxDispatchDraft | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<InboxDeleteRequest | null>(null);
-  const stream = useInboxStream(scope, view);
+    setSelected(new Set());
+    setBulkDraft(null);
+    setView(entryOpen.view);
+  }
   const summary = useInboxSummary(scope);
   useApplicationPending(visible && (stream.isPending || summary.isPending));
   // The Inbox's preferences arrive with the Agents they name.
@@ -374,6 +384,10 @@ export function InboxRoute({
     isFetchingNextPage: stream.isFetchingNextPage,
     fetchNextPage: stream.fetchNextPage,
   });
+  const jumpToEntry = jump.jump;
+  useLayoutEffect(() => {
+    jumpToEntry(entryOpen.pageId);
+    consumeInboxEntryOpen(entryOpen);
 
   const following = view === "inbox" && inboxItems.length > 0;
   // While the reader is at the bottom, the Inbox follows new content like a conversation.
@@ -421,6 +435,13 @@ export function InboxRoute({
     visiblePageIds: stream.items.map((item) => item.pageId),
     onSend: send,
   });
+  const [replyFocusToken, setReplyFocusToken] = useState(0);
+  const replyTo = (item: InboxItem) => {
+    capture.changeDraft((draft) => ({
+      ...draft,
+    }));
+    setReplyFocusToken((token) => token + 1);
+  };
   const setManualDraft = (pageId: string, draft: InboxDispatchDraft | null) =>
     setManualDrafts((current) => {
       const next = { ...current };
@@ -488,6 +509,7 @@ export function InboxRoute({
         onOpenSession={onOpenSession}
         onOpenScheduledTask={onOpenScheduledTask}
         onManualDraftChange={(draft) => setManualDraft(item.pageId, draft)}
+        onReply={item.source.kind === "nodex" ? () => replyTo(item) : undefined}
       >
         {(triage) => (
           <InboxMessage
@@ -541,6 +563,11 @@ export function InboxRoute({
       agents={agents}
       onOpenDatabase={onOpenDatabase}
       onOpenSettings={onOpenSettings}
+      onOpenNodex={() =>
+        void openNodex().then(onOpenSession, (error: unknown) =>
+          toast.danger(readableIpcError(error, "Couldn’t open Nodex")),
+        )
+      }
     />
   );
 
@@ -790,41 +817,13 @@ export function InboxRoute({
             )}
           </div>
         ))}
-        {capture.pending.map((pending) => (
-          <div
-            key={pending.intent.pageId}
-            role="status"
-            className="mb-2 flex min-w-0 items-center gap-2 px-2 text-sm text-token-description-foreground"
-          >
-            <details className="min-w-0 flex-1">
-              <summary className="cursor-interaction truncate">
-                {inboxDraftLabel(pending.draft)}
-              </summary>
-              <p className="whitespace-pre-wrap">{pending.draft.text}</p>
-              <p className="mt-1 text-xs">
-                {summary.data && pending.intent.storeEpoch !== summary.data.storeEpoch
-                  ? "From before a Profile restore. The original message may already exist."
-                  : (pending.error ?? "Waiting for Inbox")}
-              </p>
-            </details>
-            {pending.status === "needs_review" ||
-            (summary.data && pending.intent.storeEpoch !== summary.data.storeEpoch) ? (
-              <NodexButton size="xs" variant="ghost" onClick={() => void capture.recover(pending)}>
-                Recover
-              </NodexButton>
-            ) : (
-              <NodexButton
-                size="xs"
-                variant="ghost"
-                disabled={!capture.ready}
-                onClick={() => void capture.retry(pending)}
-              >
-                Retry
-              </NodexButton>
-            )}
-          </div>
-        ))}
-        {policy.kind === "paused" && view === "inbox" ? (
+        <InboxCaptureRecovery
+          captures={capture.pending}
+          storeEpoch={summary.data?.storeEpoch ?? null}
+          ready={capture.ready}
+          onRetry={capture.retry}
+          onRecover={capture.recover}
+        />
           <InboxSuggestionPauseNotice pause={policy.pause} nowMs={nowMs} />
         ) : null}
         {capture.validationError ? (
@@ -849,10 +848,10 @@ export function InboxRoute({
           draft={capture.draft}
           onDraftChange={capture.changeDraft}
           images={imageAccess}
-          disabled={!capture.ready}
-          readOnly={!capture.canEdit}
+          disabled={!capture.ready || capture.savingDraft}
+          readOnly={!capture.canEdit || capture.savingDraft}
           onSend={capture.submit}
-          focusToken={focusComposerToken}
+          focusToken={(focusComposerToken ?? 0) + replyFocusToken}
           placeholder={projectName ? `Add a thought to ${projectName}…` : undefined}
         />
       </div>

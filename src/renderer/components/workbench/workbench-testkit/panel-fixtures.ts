@@ -158,6 +158,7 @@ export function makeTestWorkbenchSession(
     noThreadFallbackTitle: "Test Session",
     displayTitle: "Test Session",
     activityAt: Date.parse(TIMESTAMP),
+    managed: false,
     pinned: false,
     pinnedOrder: null,
     archived: false,

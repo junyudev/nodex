@@ -12,6 +12,7 @@ const session = (overrides: Partial<ProjectSession> = {}): ProjectSession => ({
   noThreadFallbackTitle: "Fallback",
   displayTitle: "Chat one",
   activityAt: 0,
+  managed: false,
   pinned: false,
   pinnedOrder: null,
   archived: false,

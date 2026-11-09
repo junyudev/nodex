@@ -97,6 +97,7 @@ fn send_to(module: &ProjectWorkspaceModule, id: &str, text: &str, project_id: Op
         module,
         &format!("send:{id}"),
         ProjectWorkspaceIntent::SendInboxMessage {
+            reply_to_page_id: None,
             expected_store_epoch: None,
             page_id: format!("page:{id}"),
             document_id: format!("document:{id}"),
@@ -295,6 +296,7 @@ fn project_selection_preserves_the_profile_inbox() {
             request(
                 "project-send",
                 ProjectWorkspaceIntent::SendInboxMessage {
+                    reply_to_page_id: None,
                     expected_store_epoch: None,
                     page_id: "page:cross-project".into(),
                     document_id: "document:cross-project".into(),
@@ -357,6 +359,7 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
     assert_eq!(summary(module).needs_decision_count, 1);
 
     let confirm = ProjectWorkspaceIntent::ConfirmInboxDispatch {
+        confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
         expected_store_epoch: "epoch-1".into(),
         basis: proposal_basis(module, "proposal:1"),
         execution_selection: Some(selection()),
@@ -490,6 +493,7 @@ fn chat_additions_round_trip_and_only_the_confirmed_additions_reach_the_chat() {
             module,
             "confirm:planned",
             ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
                 expected_store_epoch: "epoch-1".into(),
                 basis: proposal_basis(module, "proposal:planned"),
                 execution_selection: Some(selection()),
@@ -498,6 +502,23 @@ fn chat_additions_round_trip_and_only_the_confirmed_additions_reach_the_chat() {
                 action: edited.then(|| action(confirmed_additions.clone())),
                 session_id: (!existing_chat).then(|| "session:planned".into()),
             },
+        );
+        let receiving_session = if existing_chat {
+            "session:target"
+        } else {
+            "session:planned"
+        };
+        let ProjectWorkspaceReadValue::ReadManagedSession { managed } = read_host(
+            module,
+            ProjectWorkspaceRead::ReadManagedSession {
+                session_id: receiving_session.into(),
+            },
+        ) else {
+            panic!("managed read");
+        };
+        assert_eq!(
+            managed.expect("confirmed dispatch is managed").session_id,
+            receiving_session
         );
         let work = outbox(module).remove(0);
         let text = work.final_text.as_deref().expect("frozen text");
@@ -659,6 +680,7 @@ fn stored_chat_actions_without_additions_decode_and_dispatch_without_a_migration
             module,
             "confirm:stored",
             ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
                 expected_store_epoch: "epoch-1".into(),
                 basis: proposal_basis(module, "proposal:stored"),
                 execution_selection: Some(selection()),
@@ -953,6 +975,7 @@ fn confirming_a_move_owns_the_library_relocation() {
         module,
         "confirm:move",
         ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
             expected_store_epoch: "epoch-1".into(),
             basis: proposal_basis(module, "proposal:move"),
             execution_selection: None,
@@ -1005,6 +1028,7 @@ fn agents_capture_authenticated_provenance_with_a_replay_safe_turn_cap() {
             },
         }),
         intent: Box::new(ProjectWorkspaceIntent::SendInboxMessage {
+            reply_to_page_id: None,
             expected_store_epoch: None,
             page_id: format!("page:{id}"),
             document_id: format!("document:{id}"),
@@ -1091,6 +1115,7 @@ fn command_line_sends_are_labeled_with_their_project() {
         ..context()
     };
     let intent = |id: &str| ProjectWorkspaceIntent::SendInboxMessage {
+        reply_to_page_id: None,
         expected_store_epoch: None,
         page_id: format!("page:{id}"),
         document_id: format!("document:{id}"),
@@ -1468,6 +1493,7 @@ fn runtime_session(module: &ProjectWorkspaceModule) {
         module,
         "runtime-session",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            coordinator: false,
             side_chat_source_session_id: None,
             session_id: "session:runtime-source".into(),
             project_id: Some("project:default".into()),
@@ -1495,6 +1521,7 @@ fn agent_send(
             ProjectWorkspaceIntent::AgentCommand {
                 provenance: Box::new(provenance.clone()),
                 intent: Box::new(ProjectWorkspaceIntent::SendInboxMessage {
+                    reply_to_page_id: None,
                     expected_store_epoch: None,
                     page_id: format!("page:{id}"),
                     document_id: format!("document:{id}"),
@@ -1688,6 +1715,7 @@ fn runtime_bound_chats_remain_suggestion_and_dispatch_targets() {
         module,
         "confirm:runtime-target",
         ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
             expected_store_epoch: "epoch-1".into(),
             basis: proposal_basis(module, "proposal:runtime-target"),
             execution_selection: Some(selection()),
@@ -1843,6 +1871,7 @@ fn only_the_desktop_app_chooses_a_project_inbox() {
                 request(
                     "cli:choose",
                     ProjectWorkspaceIntent::SendInboxMessage {
+                        reply_to_page_id: None,
                         expected_store_epoch: None,
                         page_id: "page:cli".into(),
                         document_id: "document:cli".into(),
@@ -1861,6 +1890,7 @@ fn only_the_desktop_app_chooses_a_project_inbox() {
             module,
             "send:missing",
             ProjectWorkspaceIntent::SendInboxMessage {
+                reply_to_page_id: None,
                 expected_store_epoch: None,
                 page_id: "page:missing".into(),
                 document_id: "document:missing".into(),
@@ -1891,6 +1921,7 @@ fn filing_into_a_project_keeps_the_message_handled_in_its_own_inbox() {
         module,
         "confirm:file",
         ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
             expected_store_epoch: "epoch-1".into(),
             basis: proposal_basis(module, "proposal:file"),
             execution_selection: Some(selection()),
@@ -2908,6 +2939,7 @@ fn grouped_settlement_is_atomic_and_refine_preserves_explicit_membership() {
     let pages = vec!["page:a".into(), "page:b".into()];
     grouped_request(module, "request:ab", pages.clone());
     let settlement = ProjectWorkspaceIntent::SettleInboxSuggestion {
+        automatic_dispatch: false,
         request_id: "request:ab".into(),
         generation: 1,
         titles: vec![ProjectWorkspaceInboxSuggestionTitle {
@@ -2915,6 +2947,7 @@ fn grouped_settlement_is_atomic_and_refine_preserves_explicit_membership() {
             title: "Grouped thought".into(),
         }],
         suggestions: vec![ProjectWorkspaceInboxSuggestedDispatch {
+            explicit_request: false,
             proposal_id: "proposal:ab".into(),
             page_ids: pages,
             action: ProjectWorkspaceInboxDispatchAction::Keep,
@@ -3142,6 +3175,7 @@ fn deleting_a_lost_reply_capture_never_resurrects_its_page_on_replay() {
     let workspace = seeded_workspace();
     let module = &workspace.module;
     let intent = ProjectWorkspaceIntent::SendInboxMessage {
+        reply_to_page_id: None,
         expected_store_epoch: Some("epoch-1".into()),
         page_id: "page:lost".into(),
         document_id: "document:lost".into(),
@@ -3329,6 +3363,7 @@ fn migrating_a_pending_abstention_refinement_releases_the_suggestion_lane() {
             module,
             "settle:old",
             ProjectWorkspaceIntent::SettleInboxSuggestion {
+                automatic_dispatch: false,
                 request_id: "request:old".into(),
                 generation: 1,
                 titles: vec![],
@@ -3343,10 +3378,12 @@ fn migrating_a_pending_abstention_refinement_releases_the_suggestion_lane() {
         module,
         "settle:concrete",
         ProjectWorkspaceIntent::SettleInboxSuggestion {
+            automatic_dispatch: false,
             request_id: fresh.request_id,
             generation: fresh.generation,
             titles: vec![],
             suggestions: vec![ProjectWorkspaceInboxSuggestedDispatch {
+                explicit_request: false,
                 proposal_id: "proposal:concrete".into(),
                 page_ids: fresh.page_ids,
                 action: ProjectWorkspaceInboxDispatchAction::Keep,
@@ -3391,6 +3428,7 @@ fn successful_suggestion_settlement_requires_a_concrete_action_for_every_member(
         (
             "settle:partial",
             vec![ProjectWorkspaceInboxSuggestedDispatch {
+                explicit_request: false,
                 proposal_id: "proposal:a".into(),
                 page_ids: vec!["page:a".into()],
                 action: ProjectWorkspaceInboxDispatchAction::Keep,
@@ -3405,6 +3443,7 @@ fn successful_suggestion_settlement_requires_a_concrete_action_for_every_member(
                 module,
                 operation,
                 ProjectWorkspaceIntent::SettleInboxSuggestion {
+                    automatic_dispatch: false,
                     request_id: input.request_id.clone(),
                     generation: input.generation,
                     titles: vec![ProjectWorkspaceInboxSuggestionTitle {
@@ -3460,6 +3499,7 @@ fn failed_settlement_rolls_back_titles_and_prior_suggestions() {
         .page_ids
         .iter()
         .map(|page| ProjectWorkspaceInboxSuggestedDispatch {
+            explicit_request: false,
             proposal_id: "proposal:duplicate".into(),
             page_ids: vec![page.clone()],
             action: ProjectWorkspaceInboxDispatchAction::Keep,
@@ -3473,6 +3513,7 @@ fn failed_settlement_rolls_back_titles_and_prior_suggestions() {
             module,
             "settle:bad",
             ProjectWorkspaceIntent::SettleInboxSuggestion {
+                automatic_dispatch: false,
                 request_id: input.request_id,
                 generation: input.generation,
                 titles: vec![ProjectWorkspaceInboxSuggestionTitle {
@@ -3703,6 +3744,7 @@ fn keep_request(
 ) -> ProjectWorkspaceIntent {
     use nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestedDispatch;
     ProjectWorkspaceIntent::SettleInboxSuggestion {
+        automatic_dispatch: false,
         request_id: request.request_id.clone(),
         generation: request.generation,
         titles: vec![],
@@ -3710,6 +3752,7 @@ fn keep_request(
             vec![]
         } else {
             vec![ProjectWorkspaceInboxSuggestedDispatch {
+                explicit_request: false,
                 proposal_id: format!("proposal:{}", request.request_id),
                 page_ids: request.page_ids.clone(),
                 action: ProjectWorkspaceInboxDispatchAction::Keep,
@@ -3734,7 +3777,7 @@ fn stop_suggestion(module: &ProjectWorkspaceModule, operation: &str, page_id: &s
 }
 
 fn pending_request_ids(module: &ProjectWorkspaceModule, ids: &[&str]) -> Vec<String> {
-    let ProjectWorkspaceReadValue::InboxPendingSuggestionRequestIds { request_ids } = read_host(
+    let ProjectWorkspaceReadValue::InboxPendingSuggestionRequestIds { request_ids, .. } = read_host(
         module,
         ProjectWorkspaceRead::InboxPendingSuggestionRequestIds {
             request_ids: ids.iter().map(|id| (*id).into()).collect(),
@@ -4265,6 +4308,7 @@ fn send_error(module: &ProjectWorkspaceModule, id: &str, body: &str) -> CoreErro
         module,
         &format!("send:{id}"),
         ProjectWorkspaceIntent::SendInboxMessage {
+            reply_to_page_id: None,
             expected_store_epoch: None,
             page_id: format!("page:{id}"),
             document_id: format!("document:{id}"),
@@ -4960,6 +5004,7 @@ mod scheduled {
             &workspace.module,
             "confirm-task",
             ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
                 expected_store_epoch: "epoch-1".into(),
                 proposal_id: proposal.proposal_id,
                 expected_revision: proposal.revision,
@@ -5271,6 +5316,23 @@ mod scheduled {
         let workspace = seeded_workspace();
         setup(&workspace, task_input());
         let message = item(&workspace);
+        let proposal = message.proposal.as_ref().unwrap();
+        assert_eq!(
+            apply_host_error(
+                &workspace.module,
+                "auto-confirm-task",
+                ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                    confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::Nodex,
+                    expected_store_epoch: "epoch-1".into(),
+                    proposal_id: proposal.proposal_id.clone(),
+                    expected_revision: proposal.revision,
+                    action: Some(proposal.action.clone()),
+                    session_id: None,
+                    basis: vec![message.basis.clone()],
+                    execution_selection: None,
+                }
+            ),
+        );
         let error = workspace.module.apply(&host(), request("suggest-firing", ProjectWorkspaceIntent::RequestInboxSuggestion {
             request_id: "suggest:task".into(), mode: nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionMode::Grouped,
             page_ids: vec![message.page_id], basis: vec![message.basis], proposal_id: None, expected_revision: None, correction: None,
@@ -5700,6 +5762,7 @@ mod scheduled {
                 request(
                     "confirm-deleted",
                     ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                        confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
                         expected_store_epoch: "epoch-1".into(),
                         proposal_id: proposal.proposal_id,
                         expected_revision: proposal.revision,
@@ -6173,6 +6236,7 @@ mod scheduled {
                     },
                 }),
                 intent: Box::new(ProjectWorkspaceIntent::SendInboxMessage {
+                    reply_to_page_id: None,
                     expected_store_epoch: None,
                     page_id: "page:report".into(),
                     document_id: "document:report".into(),
@@ -6418,6 +6482,7 @@ fn outdated_advice_confirms_the_current_content_and_rejects_a_stale_review() {
     let reviewed = item(module, "page:review").proposal.unwrap();
     assert!(reviewed.outdated);
     let confirm = |basis| ProjectWorkspaceIntent::ConfirmInboxDispatch {
+        confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
         expected_store_epoch: "epoch-1".into(),
         proposal_id: reviewed.proposal_id.clone(),
         expected_revision: reviewed.revision,
@@ -7555,3 +7620,105 @@ fn inbox_migration_never_claims_replaced_images_as_reviewed_even_at_the_same_doc
         );
     }
 }
+
+#[test]
+fn inbox_confirmation_rolls_back_managed_membership_with_a_rejected_handoff() {
+    for existing_chat in [false, true] {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        create_session_thread(
+            module,
+            "target",
+            "session:target",
+            "thread:target",
+            Some(PROJECT),
+            1,
+        );
+        send(module, "work", "Check the build");
+        let entry = pending(module).remove(0);
+        let action = if existing_chat {
+            ProjectWorkspaceInboxDispatchAction::SendToChat {
+                session_id: "session:target".into(),
+                prompt: "Check the build".into(),
+                additions: vec![],
+            }
+        } else {
+            ProjectWorkspaceInboxDispatchAction::NewChat {
+                project_id: Some(PROJECT.into()),
+                prompt: "Check the build".into(),
+                additions: vec![],
+                agent: None,
+            }
+        };
+        propose(module, "proposal:atomic", &entry, action);
+        let proposal = item(module, "page:work").proposal.unwrap();
+        let confirm = ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            confirmed_by: Default::default(),
+            expected_store_epoch: "epoch-1".into(),
+            basis: proposal_basis(module, "proposal:atomic"),
+            execution_selection: Some(selection()),
+            proposal_id: "proposal:atomic".into(),
+            expected_revision: proposal.revision,
+            action: None,
+            session_id: (!existing_chat).then(|| "session:new".into()),
+        };
+        // Reject at the durable outbox boundary, after Session/link/managed changes were staged.
+        workspace.kernel.writer().call(|connection| {
+            connection.execute_batch("CREATE TRIGGER reject_test_handoff BEFORE INSERT ON inbox_handoffs BEGIN SELECT RAISE(ABORT, 'handoff rejected'); END;")?;
+            Ok(())
+        }).unwrap();
+        assert!(
+            module
+                .apply(&host(), request("confirm:atomic", confirm.clone()))
+                .is_err()
+        );
+        assert_eq!(
+            count(
+                &workspace,
+                "SELECT count(*) FROM coordinator_managed_sessions"
+            ),
+            0
+        );
+        assert!(outbox(module).is_empty());
+        assert_eq!(
+            item(module, "page:work").proposal.unwrap().revision,
+            proposal.revision
+        );
+        assert_eq!(
+            count(
+                &workspace,
+                "SELECT count(*) FROM project_session_pages WHERE session_id IN ('session:new','session:target')"
+            ),
+            0
+        );
+        if !existing_chat {
+            assert_eq!(
+                count(
+                    &workspace,
+                    "SELECT count(*) FROM project_sessions WHERE id='session:new'"
+                ),
+                0
+            );
+        }
+        workspace
+            .kernel
+            .writer()
+            .call(|connection| {
+                connection.execute_batch("DROP TRIGGER reject_test_handoff")?;
+                Ok(())
+            })
+            .unwrap();
+        apply_host(module, "confirm:atomic", confirm);
+        assert_eq!(
+            count(
+                &workspace,
+                "SELECT count(*) FROM coordinator_managed_sessions"
+            ),
+            1
+        );
+        assert_eq!(outbox(module).len(), 1);
+    }
+}
+
+#[path = "inbox_nodex_tests.rs"]
+mod nodex_tests;

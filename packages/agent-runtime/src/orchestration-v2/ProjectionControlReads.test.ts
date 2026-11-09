@@ -579,6 +579,7 @@ it.effect.each(storageCases)(
       });
       assert.deepEqual(yield* store.getRunOutcome({ threadId, messageId }), {
         runId,
+        startedAt: DateTime.formatIso(now),
         status: "running",
         completedAt: null,
         finalAssistantItemId: null,
@@ -607,6 +608,7 @@ it.effect(
       yield* sql`UPDATE orchestration_v2_projection_runs SET status='completed',completed_at=${DateTime.formatIso(now)} WHERE run_id=${runId}`;
       const expected = {
         runId,
+        startedAt: DateTime.formatIso(now),
         status: "completed",
         completedAt: DateTime.formatIso(now),
         finalAssistantItemId: TurnItemId.make("root-answer"),
@@ -723,6 +725,7 @@ it.effect.each(storageCases)(
         });
         const expected = {
           runId,
+          startedAt: DateTime.formatIso(now),
           status,
           completedAt: DateTime.formatIso(now),
           finalAssistantItemId: TurnItemId.make("final-root-reply"),
@@ -1351,5 +1354,33 @@ it.effect.each(storageCases)(
       assert.equal((yield* store.getMessageTurnOutcome(threadId, steeredId))?.status, "completed");
       assert.isNull(yield* store.getMessageTurnOutcome(ThreadId.make("another-thread"), steeredId));
       assert.isNull(yield* store.getMessageTurnOutcome(threadId, MessageId.make("missing")));
+    }).pipe(Effect.provide(storeLayer)),
+);
+
+it.effect.each(storageCases)(
+  "$storage: messages carried by one Run share its persisted start",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const events = fixtureEvents(now);
+      yield* Effect.forEach(events, (event) => store.apply(event), { discard: true });
+      const original = events.find((event) => event.type === "message.updated");
+      if (original?.type !== "message.updated") throw new Error("Missing message fixture");
+      const siblingId = MessageId.make("message:carried-with-first");
+      yield* store.apply({
+        ...original,
+        id: EventId.make("carried-message"),
+        payload: { ...original.payload, id: siblingId },
+      });
+      assert.equal(
+        (yield* store.getMessageTurnOutcome(threadId, messageId))?.startedAt,
+        DateTime.formatIso(now),
+      );
+      assert.equal(
+        (yield* store.getMessageTurnOutcome(threadId, siblingId))?.startedAt,
+        DateTime.formatIso(now),
+      );
+      assert.equal((yield* store.getMessageTurnOutcome(threadId, siblingId))?.runId, runId);
     }).pipe(Effect.provide(storeLayer)),
 );
