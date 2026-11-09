@@ -1,5 +1,5 @@
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import {
-  MessageId,
   type OrchestrationV2RuntimeRequest,
   type OrchestrationV2TurnItem,
   type OrchestrationV2Subagent,
@@ -10,7 +10,7 @@ import * as DateTime from "effect/DateTime";
 
 /** One durable identity, shared by wait consumption, notices, cancellation and recovery. */
 export const questionNoticeId = (parentId: ThreadId, requestId: RuntimeRequestId) =>
-  MessageId.make(`message:delegated-task-question:${parentId}:${requestId}`);
+  IdAllocator.derive.delegatedQuestionNotice({ parentThreadId: parentId, requestId });
 
 export function pendingTaskQuestions(
   requests: readonly OrchestrationV2RuntimeRequest[],

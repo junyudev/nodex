@@ -1,3 +1,4 @@
+import * as IdAllocator from "@nodex/provider-core/server/IdAllocator";
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
@@ -519,19 +520,20 @@ it.effect(
           const { turnItems } = yield* projections.getThreadRecords(threadId, ["turnItems"], {
             turnItemTypes: ["user_message"],
           });
+          const answerId = IdAllocator.derive.questionAnswerMessage({
+            requestId,
+            commandId: CommandId.make(`respond:${mode}`),
+          });
           const { messages } = yield* projections.getThreadRecords(threadId, ["messages"], {
-            messageIds: [MessageId.make(`async-answer:${requestId}:respond:${mode}`)],
+            messageIds: [answerId],
           });
           const reply = turnItems.find(
-            (item) =>
-              item.type === "user_message" &&
-              item.messageId === `async-answer:${requestId}:respond:${mode}`,
+            (item) => item.type === "user_message" && item.messageId === answerId,
           );
           assert.equal(reply?.type === "user_message" ? reply.text : null, "/repo/target");
           assert.deepEqual(
             decodeCodexAsyncQuestionReplies(
-              messages.find((message) => message.id === `async-answer:${requestId}:respond:${mode}`)
-                ?.providerText ?? "",
+              messages.find((message) => message.id === answerId)?.providerText ?? "",
             ),
             [
               {

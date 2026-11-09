@@ -8729,7 +8729,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           approvalTurnItem.questions.every((question) => answers?.[question.id] !== undefined));
       const messageId =
         command.inboundMessage?.id ??
-        MessageId.make(`async-answer:${command.requestId}:${command.commandId}`);
+        idAllocator.derive.questionAnswerMessage({
+          requestId: command.requestId,
+          commandId: command.commandId,
+        });
       const attachmentsByQuestionId = {
         ...previousAnswer?.attachmentsByQuestionId,
         ...Object.fromEntries(

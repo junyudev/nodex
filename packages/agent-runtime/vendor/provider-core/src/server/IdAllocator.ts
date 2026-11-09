@@ -179,6 +179,16 @@ export interface IdAllocatorV2Derive {
   }) => TurnItemId;
   readonly approvalNode: (input: { readonly requestId: RuntimeRequestId }) => NodeId;
   readonly approvalTurnItem: (input: { readonly requestId: RuntimeRequestId }) => TurnItemId;
+  /** One answer batch sent as a message to a question that has no live callback. */
+  readonly questionAnswerMessage: (input: {
+    readonly requestId: RuntimeRequestId;
+    readonly commandId: CommandId;
+  }) => MessageId;
+  /** The notice that tells a delegating Thread about one of its task's questions. */
+  readonly delegatedQuestionNotice: (input: {
+    readonly parentThreadId: ThreadId;
+    readonly requestId: RuntimeRequestId;
+  }) => MessageId;
 }
 
 export class IdAllocatorV2 extends Context.Service<
@@ -198,8 +208,11 @@ const joinId = (prefix: string, ...parts: ReadonlyArray<string | number>): strin
  * Agents address delegated tasks by id and copy it into every task tool call, so it is a short
  * digest of the delegating command instead of the command id's nested, escaped coordinates.
  */
+const digest = (...parts: ReadonlyArray<string>): string =>
+  createHash("sha256").update(parts.join("\u0000")).digest("base64url").slice(0, 22);
+
 const delegatedTask = (prefix: string, commandId: CommandId): string =>
-  joinId(prefix, "task", createHash("sha256").update(commandId).digest("base64url").slice(0, 22));
+  joinId(prefix, "task", digest(commandId));
 
 export function deriveThreadFromProviderThread(input: {
   readonly driver: ProviderDriverKind;
@@ -297,6 +310,14 @@ export const derive: IdAllocatorV2Derive = {
   approvalNode: (input) => NodeId.make(joinId("node", "runtime-request", input.requestId)),
   approvalTurnItem: (input) =>
     TurnItemId.make(joinId("turn-item", "runtime-request", input.requestId)),
+  // Request and command ids already nest escaped coordinates; composing them verbatim
+  // outgrows read boundaries once the message's turn item escapes them again.
+  questionAnswerMessage: (input) =>
+    MessageId.make(`async-answer:${digest(input.requestId, input.commandId)}`),
+  delegatedQuestionNotice: (input) =>
+    MessageId.make(
+      `message:delegated-task-question:${digest(input.parentThreadId, input.requestId)}`,
+    ),
 };
 
 export const layer: Layer.Layer<IdAllocatorV2> = Layer.succeed(
