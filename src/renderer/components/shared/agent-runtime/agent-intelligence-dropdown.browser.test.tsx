@@ -101,3 +101,50 @@ test("selects effort with the pointer after a model change commits", async () =>
   await act(async () => userEvent.click(track, { position: { x: 1, y: height / 2 } }));
   await waitFor(() => expect(change).toHaveBeenCalledWith({ effort: "low", thinking: true }));
 });
+
+test("opens the model menu without widening the button, aligned to its trailing edge", async () => {
+  function Probe() {
+    const [open, setOpen] = useState(false);
+    const [selection, setSelection] = useState<AgentIntelligenceSelection>({
+      kind: "claude",
+      model: "claude-opus-5",
+      reasoningEffort: "medium",
+      serviceTier: null,
+    });
+    return (
+      <NodexTooltipProvider>
+        {/* The trailing edge has room on its left for the whole menu, as in the Composer. */}
+        <div style={{ position: "fixed", bottom: 100, right: 16 }}>
+          <AgentIntelligenceDropdown
+            models={models}
+            agent={{ binding: { kind: "claude", instanceConfigId: "claude" }, label: "Claude" }}
+            selection={selection}
+            onSelectionChange={setSelection}
+            open={open}
+            onOpenChange={setOpen}
+            provider={{ label: "Claude", selection: "claude" }}
+          />
+        </div>
+      </NodexTooltipProvider>
+    );
+  }
+  const view = render(
+    <CodexServiceTierSettingsProvider>
+      <Probe />
+    </CodexServiceTierSettingsProvider>,
+  );
+  const trigger = view.getByRole("button", { name: "Select model" });
+  const closed = trigger.getBoundingClientRect();
+
+  await act(async () => userEvent.click(trigger));
+  await view.findByRole("listbox");
+
+  await waitFor(() => {
+    const menu = document.querySelector<HTMLElement>('[data-slot="popover-content"]');
+    if (!menu) throw new Error("Expected the model menu.");
+    const opened = trigger.getBoundingClientRect();
+    expect(opened.width).toBeCloseTo(closed.width, 1);
+    expect(opened.left).toBeCloseTo(closed.left, 1);
+    expect(menu.getBoundingClientRect().right).toBeCloseTo(opened.right, 0);
+  });
+});
