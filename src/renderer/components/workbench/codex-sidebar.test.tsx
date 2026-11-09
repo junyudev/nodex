@@ -408,6 +408,69 @@ describe("codex sidebar thread row", () => {
     expect(describedRow()).toBeNull();
   });
 
+  test("shows what a working Runtime chat said it would do in its hover card", async () => {
+    const readback = {
+      runId: "run-2",
+      itemId: "item-1",
+      text: "Two things to do; I'll redo the review covering **the whole branch**.",
+      startedByPerson: true,
+    };
+    const activityFor = (activeRunId: string | null): AgentRuntimeSessionActivity => ({
+      sessionId: "session-test",
+      threadId: "root-1",
+      status: activeRunId ? "running" : "background",
+      activeRunId,
+      pendingRequestCount: 0,
+      backgroundTasks: [],
+      readback,
+      providerInstanceId: "claude",
+      model: "claude-sonnet",
+      updatedAt: "2026-11-09T00:00:00.000Z",
+    });
+    const listeners = new Set<(change: AgentRuntimeSessionActivityChange) => void>();
+    const store = createAgentRuntimeActivityStore({
+      read: async () => ({ sequence: 1, items: [activityFor("run-2")], complete: true }),
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      readConnection: async () => ({ status: "idle" }),
+      subscribeConnection: () => () => {},
+    });
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(
+        <TestQueryProvider>
+          <NodexHoverCardProvider>
+            <NodexTooltipProvider>
+              <CodexSidebarThreadRow
+                item={makeThreadItem()}
+                runtime={{ sessionId: "session-test", rootThreadId: "root-1" }}
+                activityStore={store}
+                active={false}
+                hoverCardOpen
+                onSelect={() => {}}
+              />
+            </NodexTooltipProvider>
+          </NodexHoverCardProvider>
+        </TestQueryProvider>,
+      );
+    });
+    const readbackText = () =>
+      document.querySelector("[data-app-action-sidebar-thread-hover-card-readback]");
+    await waitFor(() => expect(readbackText()?.textContent ?? "").toContain("the whole branch"));
+
+    // A readback speaks only for its own Run.
+    await act(async () => {
+      for (const listener of listeners)
+        listener({ type: "upsert", sequence: 2, activity: activityFor("run-3") });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(readbackText()).toBeNull());
+    expect(document.querySelector("[data-app-action-sidebar-thread-hover-card]")).not.toBeNull();
+    expect(view.container.querySelector("[data-app-action-sidebar-thread-row]")).not.toBeNull();
+  });
+
   test("shows the worktree glyph without changing the row accessible name", async () => {
     let view!: ReturnType<typeof render>;
     await act(async () => {

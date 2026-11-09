@@ -7,8 +7,9 @@ Active
 ## Purpose
 
 This document is the source of truth for Nodex OS-level notifications produced
-by Codex task lifecycle events, Agent Runtime Sessions, and chat reminders, and for the
-presence that decides whether anyone needs telling. Phone notifications consume the same
+by Codex task lifecycle events, Agent Runtime Sessions, and chat reminders, for the in-app
+[Readback](#readback) that shows how an agent understood a request, and for the presence that
+decides whether anyone needs telling. Phone notifications consume the same
 occurrences and presence; their delivery rules are in
 [Nodex Mobile Behavior](mobile-companion-behavior.md#notifications). Browser delivery, in-app
 toasts, Page reminders, and remote cloud-task watchers are separate features.
@@ -384,6 +385,69 @@ selects the side chat's tab there, so the reply is read beside the source
 conversation. Whether a Session is a side chat and which Session it came from
 are read from Core's execution binding, not from live activity. A side chat
 whose source cannot be resolved does not notify.
+
+## Readback
+
+A Readback is the agent's opening statement for a Run a person started, shown in the window
+they moved to, so a misunderstanding can be caught before the agent acts on it. It is an in-app
+card: it never reaches the operating system or a phone and never marks a chat unread.
+
+**What it says.** The Run's first assistant message that comments on the work rather than
+answering it: one its Agent marks as commentary, or one an action follows in the same Run (a
+command, file change, tool call or delegation). A message that ends the Run is its answer, so a
+Run that only answers has no Readback. Only the Run's root execution speaks for it; delegated and
+provider-native children never do. The text is the agent's own Markdown, unedited, up to 4,000
+characters, and it never changes once chosen.
+
+**When it appears.** Every condition holds:
+
+- Readback is on: Settings → General → Notifications, independent of the turn and question
+  preferences and of system notification permission, and on by default;
+- a person's own message started the Run, from any surface: a chat's composer, the Agent Dock, a
+  phone or a notification reply. Automations and their heartbeats, other agents, automatic wakes
+  after delegated results, and work Nodex starts on a person's behalf, such as routing an Inbox
+  message or starting a Page's work, never produce one. Steering does not change a Run's origin,
+  and a restarted Run keeps the origin of the Run it continues;
+- the chat runs on this computer through the Agent Runtime and is not archived;
+- the conversation is not [seen](#presence) when the statement arrives: someone still looking at
+  the chat has already read it.
+
+Process restarts, Runtime reconnection, snapshot reloads and history loading never produce a
+Readback. A side chat's Readback uses the side chat's own conversation and title, opens its source
+chat with the side chat's tab selected, and sends Stop and Reply to the side chat. Chats running
+on another host have no Readback.
+
+**Where.** Main sends it to exactly one window, chosen as a notification's
+[target renderer](#target-renderer-and-focus). Cards stack at the window's trailing edge under the
+titlebar, newest first and at most three: a newer Readback of the same chat replaces its card, and
+the oldest card leaves when a fourth chat's arrives. Cards float above the workspace and below
+menus, tooltips and dialogs.
+
+**The card.** It shows the chat's live status glyph, title and Project, then the statement
+clamped to five lines. Pointing at or focusing the card shows the whole statement and its actions:
+`Stop` while the card's own Run is working, and `Reply`. Clicking the title or the text opens the
+chat as its notification would; links in the text open as links. Escape leaves a reply first,
+then dismisses the card.
+
+**Time on screen.** Eight to twenty seconds, by the statement's length. The clock runs only while
+the window is focused and no card in the stack is pointed at or focused, and at least two seconds
+remain once attention leaves. A card being replied to stays while its reply holds text or has
+focus; moving on from an empty reply lets the clock run again.
+
+**Stop and Reply.** Stop interrupts exactly the Run the card describes, never a later Run of the
+same chat, then opens Reply. Reply sends to the chat that spoke without opening it. While the Run
+is working, the chat's Agent takes it the way it takes guidance mid-Run: steering when it can,
+otherwise stopping and restarting with it, otherwise as the next message. After the Run has ended
+it starts the next one. A sent reply shows `Sent` before the card leaves; a failure is a toast and
+the card stays.
+
+**Withdrawal.** Main withdraws a card when its conversation becomes seen in any window or on a
+phone, when its Run ends while the card's window is in the background, when the chat is archived or
+deleted, and when Readback is turned off. A Run that ends while the window is focused leaves its card to finish its time, its status
+glyph showing how the chat stands.
+
+A working chat's sidebar hover card shows its active Run's Readback whether or not a card was
+shown; see [Workbench Shell](workbench-shell.md).
 
 ## App badge
 

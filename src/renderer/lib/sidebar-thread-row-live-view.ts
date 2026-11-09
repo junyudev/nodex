@@ -10,6 +10,8 @@ import {
 export interface SidebarThreadRowRuntimeFacts {
   readonly indicator: SessionLiveIndicator | null;
   readonly location: ThreadExecutionLocationView | null;
+  /** The active Run's opening statement, once the agent has made one. */
+  readonly readback?: string | null;
 }
 
 export interface SidebarThreadRowLiveView {
@@ -22,10 +24,20 @@ export interface SidebarThreadRowLiveView {
   readonly needsApproval?: boolean;
   /** The live status the row shows; with none, the row may rest on a resting status. */
   readonly status: SidebarRowLiveStatus | null;
+  /** What the agent said it would do in the Run it is working on. */
+  readonly readback: string | null;
 }
 
-function withStatus(view: Omit<SidebarThreadRowLiveView, "status">): SidebarThreadRowLiveView {
-  return { ...view, status: resolveSidebarRowStatus({ ...view, unread: view.item.unread }) };
+function withStatus(
+  view: Omit<SidebarThreadRowLiveView, "status" | "readback"> & {
+    readonly readback?: string | null;
+  },
+): SidebarThreadRowLiveView {
+  return {
+    ...view,
+    readback: view.readback ?? null,
+    status: resolveSidebarRowStatus({ ...view, unread: view.item.unread }),
+  };
 }
 
 /**
@@ -61,6 +73,7 @@ export function projectSidebarThreadRowLiveView(
     : item;
   return withStatus({
     item: located,
+    readback: runtime.readback,
     running: runtime.indicator === "running",
     background: runtime.indicator === "background",
     ...(runtime.indicator === "approval" ? { needsApproval: true } : {}),

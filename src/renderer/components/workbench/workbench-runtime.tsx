@@ -195,9 +195,13 @@ import {
   executeDesktopNotificationAction,
   executeRuntimeDesktopNotificationAction,
   resolveDesktopNotificationTarget,
+  type DesktopNotificationTarget,
+  type DesktopNotificationTargetSource,
 } from "@/lib/desktop-notification-action";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { createUuidV7 } from "../../../shared/uuid-v7";
+import type { Readback } from "../../../shared/readback";
+import { ReadbackHost } from "@/features/readback/readback-stack";
 import type { DesktopNotificationActionInvocation } from "../../../shared/types";
 import {
   makeBrowserSidebarTabKey,
@@ -1110,7 +1114,7 @@ export function WorkbenchRuntime({
       resolve: (session: ProjectSession | null) => void;
     }>(),
   );
-  const desktopNotificationActionChainRef = useRef<Promise<unknown>>(Promise.resolve());
+  const noticeActionChainRef = useRef<Promise<unknown>>(Promise.resolve());
   const shellAtMediumWidthRef = useRef(false);
   const shellAtNarrowWidthRef = useRef(false);
   const pinnedProjectsSectionCollapsed = sidebarState.sections.pinned;
@@ -3656,6 +3660,42 @@ export function WorkbenchRuntime({
     },
   });
 
+  /**
+   * Opens the conversation a notice is about: its chat, then the side-chat tab inside it when a
+   * side chat spoke. Desktop notifications and Readbacks share this route.
+   */
+  const presentNoticeConversation = async (
+    notice: DesktopNotificationTargetSource,
+  ): Promise<DesktopNotificationTarget | null> => {
+    const target = resolveDesktopNotificationTarget(notice);
+    if (!target) return null;
+
+    const opened = await openAttachedThreadSessionById(
+      target.threadId,
+      target.kind === "runtime" ? { runtimeSessionId: target.sessionId } : undefined,
+    );
+    if (!opened) return null;
+    // Side chats open in the Session navigation presented, not the one this action started in.
+    const presented = await waitForThreadSession(target.threadId);
+    if (!presented) return null;
+
+    const sideChat =
+      target.kind === "runtime"
+        ? target.sideChatSessionId && {
+            kind: "runtime" as const,
+            sessionId: target.sideChatSessionId,
+            parentThreadId: target.threadId,
+          }
+        : target.sideChatThreadId && {
+            kind: "native" as const,
+            threadId: target.sideChatThreadId,
+            parentThreadId: target.threadId,
+            parentNavigationPath: notice.navigationPath ?? `thread:${target.threadId}`,
+          };
+    if (sideChat && !(await openExistingSideChat(sideChat, presented))) return null;
+    return target;
+  };
+
   const handleDesktopNotificationAction = async (
     invocation: DesktopNotificationActionInvocation,
   ): Promise<void> => {
@@ -3679,27 +3719,10 @@ export function WorkbenchRuntime({
       openInboxScope(inboxScope);
       return;
     }
-    const target = resolveDesktopNotificationTarget(invocation);
+    const target = await presentNoticeConversation(invocation);
     if (!target) return;
 
-    const opened = await openAttachedThreadSessionById(
-      target.threadId,
-      target.kind === "runtime" ? { runtimeSessionId: target.sessionId } : undefined,
-    );
-    if (!opened) return;
-    // Side chats open in the Session navigation presented, not the one this action started in.
-    const presented = await waitForThreadSession(target.threadId);
-    if (!presented) return;
-
     if (target.kind === "runtime") {
-      if (
-        target.sideChatSessionId &&
-        !(await openExistingSideChat(
-          { kind: "runtime", sessionId: target.sideChatSessionId, parentThreadId: target.threadId },
-          presented,
-        ))
-      )
-        return;
       await executeRuntimeDesktopNotificationAction(
         invocation,
         target.sideChatSessionId ?? target.sessionId,
@@ -3712,32 +3735,25 @@ export function WorkbenchRuntime({
       return;
     }
 
-    if (
-      target.sideChatThreadId &&
-      !(await openExistingSideChat(
-        {
-          kind: "native",
-          threadId: target.sideChatThreadId,
-          parentThreadId: target.threadId,
-          parentNavigationPath: invocation.navigationPath ?? `thread:${target.threadId}`,
-        },
-        presented,
-      ))
-    )
-      return;
-
     const manager = codexAppServerRegistry.getForHostId(invocation.hostId);
     await executeDesktopNotificationAction(invocation, manager);
   };
 
-  const openDesktopNotification = (
-    invocation: DesktopNotificationActionInvocation,
-  ): Promise<void> => {
-    const action = desktopNotificationActionChainRef.current
+  /** Notices act one at a time, so a later click never lands before an earlier navigation. */
+  const runNoticeAction = (run: () => Promise<unknown>): Promise<void> => {
+    const action = noticeActionChainRef.current
       .catch(() => undefined)
-      .then(() => handleDesktopNotificationAction(invocation));
-    desktopNotificationActionChainRef.current = action;
+      .then(run)
+      .then(() => undefined);
+    noticeActionChainRef.current = action;
     return action;
+  };
+
+  const openDesktopNotification = (invocation: DesktopNotificationActionInvocation) =>
+    runNoticeAction(() => handleDesktopNotificationAction(invocation));
+
+  const openReadback = (readback: Readback) => {
+    void runNoticeAction(() => presentNoticeConversation(readback.navigation));
   };
 
   const executeWorkbenchCommand = ({ commandId, source }: WorkbenchCommandInvocation): boolean => {
@@ -5947,6 +5963,7 @@ export function WorkbenchRuntime({
                     />
                   </WorkbenchWorkspaceFrame>
                 </WorkbenchTitlebarProvider>
+                <ReadbackHost onOpen={openReadback} />
               </motion.div>
               <FirstRunOverlay
                 presentation={firstRun}

@@ -5,6 +5,8 @@ export const APP_SHELL_RIGHT_PANEL_LAYER_CLASS = "z-[41]";
 export const APP_SHELL_RIGHT_PANEL_COMPOSER_OVERLAY_LAYER_CLASS = "z-[42]";
 export const APP_SHELL_BROWSER_WEBVIEW_LAYER_INDEX = 42;
 export const APP_SHELL_FLOATING_LEFT_PANEL_LAYER_CLASS = "z-[43]";
+/** Readbacks float over the workspace but under menus, tooltips and dialogs opened from it. */
+export const APP_SHELL_READBACK_LAYER_INDEX = 50;
 export const APP_SHELL_FLOATING_UI_LAYER_INDEX = 55;
 export const APP_SHELL_FLOATING_UI_LAYER_CLASS = "z-[55]";
 export const APP_SHELL_EDITOR_FLOATING_UI_LAYER_INDEX = 80;

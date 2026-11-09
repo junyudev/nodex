@@ -273,6 +273,11 @@ export const SETTINGS_SEARCH_PANELS = {
             "Only when unfocused",
             "Always",
           ]),
+          entry(
+            "Readback",
+            "Show what an agent plans to do after you send a message and move on.",
+            ["opening statement", "plan", "Stop", "Reply"],
+          ),
         ],
       },
       {

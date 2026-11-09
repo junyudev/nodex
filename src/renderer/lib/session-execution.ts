@@ -257,6 +257,17 @@ export function runtimeSessionLiveIndicator(
     : (activity?.status ?? null);
 }
 
+/**
+ * What the agent said it would do in the Run it is working on. A readback belongs to one Run, so
+ * an earlier Run's never stands for the current one.
+ */
+export function activeRunReadback(
+  activity: Pick<AgentRuntimeSessionActivity, "activeRunId" | "readback"> | null | undefined,
+): string | null {
+  const readback = activity?.readback;
+  return readback && readback.runId === activity.activeRunId ? readback.text : null;
+}
+
 export const SESSION_LIVE_INDICATOR_LABELS: Readonly<Record<SessionLiveIndicator, string>> = {
   running: "Running",
   waiting: "Waiting for you",

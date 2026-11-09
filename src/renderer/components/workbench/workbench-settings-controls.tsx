@@ -401,6 +401,22 @@ export function ThreadNotificationSettingControl({ open }: { open: boolean }) {
           disabled={busy || isLoading}
         />
       </SettingRow>
+      <SettingRow
+        label="Readback"
+        description="Show what an agent plans to do after you send a message and move on"
+      >
+        <TogglePill
+          ariaLabel="Readback"
+          value={settings.readbackEnabled}
+          onChange={(readbackEnabled) => {
+            void handleChange({
+              ...settings,
+              readbackEnabled,
+            });
+          }}
+          disabled={busy || isLoading}
+        />
+      </SettingRow>
       {error ? (
         <div role="alert" className="px-4 pb-3 text-xs text-token-error-foreground">
           {error}

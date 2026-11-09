@@ -18,6 +18,9 @@ if (log && /[/\\]agent-runtime[/\\]entry\.mjs$/u.test(entry)) {
         try {
           const message = JSON.parse(line);
           if (typeof message.method === "string") record({ type: "request", method: message.method });
+          // Delivery evidence belongs to the real Runtime command, before provider routing.
+          if (message.method === "command.dispatch" && message.input?.command?.type === "message.dispatch")
+            record({ type: "message.dispatch", command: message.input.command });
           if (message.method === "events.observe") record({ type: "observation", id: message.id, input: message.input });
           if (message.method === "thread.authority") authorityReads.add(message.id);
           if (message.method === "run.outcome" || message.method === "thread.item") {

@@ -76,11 +76,13 @@ import type {
 } from "@/lib/types";
 import { useProjectAppearanceMutation } from "@/lib/use-project-appearance-mutation";
 import { useRuntimeSessionLiveState } from "@/lib/use-session-execution";
+import { ReadbackText } from "@/features/readback/readback-text";
 import {
   projectSidebarThreadRowLiveView,
   type SidebarThreadRowLiveView,
 } from "@/lib/sidebar-thread-row-live-view";
 import {
+  activeRunReadback,
   runtimeSessionLiveIndicator,
   SESSION_LIVE_INDICATOR_LABELS,
 } from "@/lib/session-execution";
@@ -1580,6 +1582,7 @@ function CodexSidebarThreadHoverCardLinkedPage({
 function CodexSidebarThreadHoverCard({
   item,
   waiting,
+  readback,
   draftExcerpt,
   linkedPage,
   projectLabel,
@@ -1590,6 +1593,8 @@ function CodexSidebarThreadHoverCard({
   item: CodexSidebarThreadItem;
   /** The chat waits on its person; hovering hides the row's own status glyph. */
   waiting: boolean;
+  /** What the agent said it would do in the Run it is working on. */
+  readback?: string | null;
   /** The first line of the chat's unsent prompt. */
   draftExcerpt: string | null;
   linkedPage: SessionLinkedPage | null;
@@ -1656,6 +1661,11 @@ function CodexSidebarThreadHoverCard({
           </div>
         ) : null}
       </div>
+      {readback ? (
+        <div className="-mt-0.5 mb-1" data-app-action-sidebar-thread-hover-card-readback="">
+          <ReadbackText text={readback} mode="scroll" />
+        </div>
+      ) : null}
       {draftExcerpt ? (
         <div data-app-action-sidebar-thread-hover-card-draft="">
           <CodexSidebarThreadHoverCardMetadataRow
@@ -1823,6 +1833,7 @@ function RuntimeCodexSidebarThreadRow(
       live={projectSidebarThreadRowLiveView(props.item, {
         indicator: runtimeSessionLiveIndicator(state.activity),
         location: state.location,
+        readback: activeRunReadback(state.activity),
       })}
     />
   );
@@ -2140,6 +2151,7 @@ function CodexSidebarThreadRowView({
           <CodexSidebarThreadHoverCard
             item={item}
             waiting={needsAttention}
+            readback={live.readback}
             draftExcerpt={draftExcerpt}
             linkedPage={linkedPage}
             projectLabel={hoverCardProjectLabel}

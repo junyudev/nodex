@@ -19,7 +19,13 @@ function decodeNavigationSegment(value: string): string {
   }
 }
 
-function resolveNavigationThreadId(invocation: DesktopNotificationActionInvocation): string | null {
+/** What a notice about a conversation names to open it: a desktop notification or a Readback. */
+export type DesktopNotificationTargetSource = Pick<
+  DesktopNotificationActionInvocation,
+  "conversationId" | "navigationPath" | "activateTabId"
+>;
+
+function resolveNavigationThreadId(invocation: DesktopNotificationTargetSource): string | null {
   const path = invocation.navigationPath?.trim() ?? "";
   if (path.length > 0) {
     const threadSegment = path.split("/").findLast((segment) => segment.startsWith("thread:"));
@@ -29,9 +35,7 @@ function resolveNavigationThreadId(invocation: DesktopNotificationActionInvocati
   return invocation.conversationId;
 }
 
-function resolveNavigationSessionId(
-  invocation: DesktopNotificationActionInvocation,
-): string | null {
+function resolveNavigationSessionId(invocation: DesktopNotificationTargetSource): string | null {
   const segment = (invocation.navigationPath ?? "")
     .split("/")
     .find((part) => part.startsWith("session:"));
@@ -60,7 +64,7 @@ export type DesktopNotificationTarget =
     };
 
 export function resolveDesktopNotificationTarget(
-  invocation: DesktopNotificationActionInvocation,
+  invocation: DesktopNotificationTargetSource,
 ): DesktopNotificationTarget | null {
   const threadId = resolveNavigationThreadId(invocation);
   if (!threadId) return null;

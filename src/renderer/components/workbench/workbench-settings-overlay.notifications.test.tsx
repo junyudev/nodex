@@ -16,10 +16,11 @@ afterEach(() => {
 });
 
 describe("ThreadNotificationSettingControl", () => {
-  test("renders turn and question preferences and persists each choice", async () => {
+  test("renders turn, question and Readback preferences and persists each choice", async () => {
     let settings: ThreadNotificationSettings = {
       turnMode: "unfocused",
       questionsEnabled: true,
+      readbackEnabled: true,
     };
     const updates: UpdateThreadNotificationSettingsInput[] = [];
 
@@ -31,7 +32,7 @@ describe("ThreadNotificationSettingControl", () => {
         if (channel === "settings:thread-notifications:update") {
           const nextSettings = args[0] as UpdateThreadNotificationSettingsInput;
           updates.push(nextSettings);
-          settings = nextSettings;
+          settings = { ...settings, ...nextSettings };
           return settings;
         }
         return originalApi?.invoke(channel, ...args);
@@ -87,6 +88,7 @@ describe("ThreadNotificationSettingControl", () => {
     expect(updates[0]).toEqual({
       turnMode: "always",
       questionsEnabled: true,
+      readbackEnabled: true,
     });
 
     await act(async () => {
@@ -97,6 +99,21 @@ describe("ThreadNotificationSettingControl", () => {
     expect(updates[1]).toEqual({
       turnMode: "always",
       questionsEnabled: false,
+      readbackEnabled: true,
+    });
+
+    view.getByText("Show what an agent plans to do after you send a message and move on");
+    const readbackSwitch = view.getByRole("switch", { name: "Readback" });
+    expect(readbackSwitch.getAttribute("aria-checked")).toBe("true");
+    await act(async () => {
+      fireEvent.click(readbackSwitch);
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(updates[2]).toEqual({
+      turnMode: "always",
+      questionsEnabled: false,
+      readbackEnabled: false,
     });
   });
 });
@@ -114,7 +131,7 @@ test("requests native permission and updates its status without changing notific
         return permission;
       }
       if (channel === "settings:thread-notifications:get")
-        return { turnMode: "unfocused", questionsEnabled: true };
+        return { turnMode: "unfocused", questionsEnabled: true, readbackEnabled: true };
       return originalApi?.invoke(channel, ...args);
     },
   } as typeof window.api;
@@ -150,7 +167,7 @@ test("shows denied native authorization with a settings action and preserves app
       if (channel === "settings:notification-authorization:read") return status;
       if (channel === "settings:notification-authorization:open-settings") return;
       if (channel === "settings:thread-notifications:get")
-        return { turnMode: "always", questionsEnabled: true };
+        return { turnMode: "always", questionsEnabled: true, readbackEnabled: true };
       return originalApi?.invoke(channel, ...args);
     },
   } as typeof window.api;

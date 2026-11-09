@@ -116,6 +116,20 @@ const rendererEvents = [
     outcome: Code,
     reason: Code.optional(),
   }),
+  /** A Readback appeared, was acted on from its card, or left the window, and how. */
+  event("readback", {
+    action: z.enum([
+      "shown",
+      "stopped",
+      "opened",
+      "replied",
+      "dismissed",
+      "expired",
+      "withdrawn",
+      "replaced",
+      "overflow",
+    ]),
+  }),
   /** A surface a person looked at or used in a window session: adoption, not volume. */
   event("feature_used", {
     feature: z.enum([
