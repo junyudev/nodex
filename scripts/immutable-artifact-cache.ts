@@ -24,6 +24,7 @@ import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
+import { DownloadHttpError, retryTransientDownload } from "./transient-download";
 
 export const LOCAL_ARTIFACT_CACHE_DIRECTORY = "cache.local";
 
@@ -67,6 +68,8 @@ export interface EnsureImmutableArtifactInput {
   readonly fetch?: (url: string, init: RequestInit) => Promise<Response>;
   readonly label: string;
   readonly replaceInvalid?: boolean;
+  /** Waits between download attempts, primarily for isolated verification. */
+  readonly retryDelaysMs?: readonly number[];
   readonly url: string;
   readonly validate: (archivePath: string) => void;
 }
@@ -288,7 +291,7 @@ async function downloadAndPublish(input: EnsureImmutableArtifactInput): Promise<
     throw new Error(`Failed to download ${input.label}: ${errorChain(error)}`, { cause: error });
   }
   if (!response.ok || !response.body) {
-    throw new Error(`Failed to download ${input.label}: HTTP ${response.status}`);
+    throw new DownloadHttpError(input.label, response.status);
   }
   const reportedLength = response.headers.get("content-length");
   if (reportedLength && Number(reportedLength) !== input.expectedSize) {
@@ -361,7 +364,8 @@ export async function ensureImmutableArtifact(input: EnsureImmutableArtifactInpu
     if (validArtifactExists(input.destinationPath, input.validate, replaceInvalid)) return;
     if (existsSync(input.destinationPath)) rmSync(input.destinationPath, { force: true });
     removeAbandonedPartialFiles(input.destinationPath);
-    await downloadAndPublish(input);
+    // Each attempt writes its own partial file and removes it, so a retry starts clean.
+    await retryTransientDownload(() => downloadAndPublish(input), input.retryDelaysMs);
   } finally {
     lock.release();
   }

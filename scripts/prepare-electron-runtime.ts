@@ -18,26 +18,10 @@ import {
   resolveImmutableDirectoryPath,
 } from "./immutable-artifact-cache";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
+import { retryTransientDownload } from "./transient-download";
 
 const RECEIPT_NAME = ".nodex-electron.json";
 const RECIPE = "dist-v1";
-/** About two minutes, enough to ride out a release host that is briefly failing at its gateway. */
-const DOWNLOAD_RETRY_DELAYS_MS = [1_000, 5_000, 15_000, 30_000, 60_000] as const;
-/** Gateway and rate-limit answers clear on their own; any other HTTP status is final. */
-const TRANSIENT_HTTP_STATUSES = new Set([429, 502, 503, 504]);
-const TRANSIENT_DOWNLOAD_CODES = new Set([
-  "EAI_AGAIN",
-  "ECONNREFUSED",
-  "ECONNRESET",
-  "EHOSTUNREACH",
-  "ENETUNREACH",
-  "ETIMEDOUT",
-  "UND_ERR_BODY_TIMEOUT",
-  "UND_ERR_CONNECT_TIMEOUT",
-  "UND_ERR_HEADERS_TIMEOUT",
-  "UND_ERR_SOCKET",
-]);
-
 interface ElectronArchive {
   readonly arch: string;
   readonly artifactName: "electron";
@@ -111,47 +95,6 @@ function writeAtomic(filePath: string, contents: string): void {
   }
 }
 
-function isTransientDownloadError(error: unknown): boolean {
-  const visited = new Set<Error>();
-  for (let cause = error; cause instanceof Error && !visited.has(cause); cause = cause.cause) {
-    visited.add(cause);
-    if (
-      "code" in cause &&
-      typeof cause.code === "string" &&
-      TRANSIENT_DOWNLOAD_CODES.has(cause.code)
-    ) {
-      return true;
-    }
-    // Electron's downloader keeps the HTTP response on its error: a fetch Response or a got one.
-    const response = (
-      cause as { readonly response?: { readonly status?: unknown; readonly statusCode?: unknown } }
-    ).response;
-    const status = response?.status ?? response?.statusCode;
-    if (typeof status === "number" && TRANSIENT_HTTP_STATUSES.has(status)) return true;
-  }
-  return false;
-}
-
-/**
- * Transport failures and transient gateway answers are retried; any other HTTP status, archive
- * verification and extraction remain fail-fast.
- */
-async function downloadElectronArchive(
-  installer: ElectronInstaller,
-  archive: ElectronArchive,
-  retryDelaysMs: readonly number[],
-) {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await installer.downloadArtifact(archive);
-    } catch (error) {
-      const delay = retryDelaysMs[attempt];
-      if (delay === undefined || !isTransientDownloadError(error)) throw error;
-      await new Promise<void>((resolve) => setTimeout(resolve, delay));
-    }
-  }
-}
-
 /** Shares verified Electron extraction, while each installation owns independent writable files. */
 export async function prepareElectronRuntime(
   options: PrepareElectronRuntimeOptions,
@@ -203,10 +146,16 @@ export async function prepareElectronRuntime(
             "extract"
           >),
         };
-        const archivePath = await downloadElectronArchive(
-          installer,
-          { arch, artifactName: "electron", checksums, platform, version },
-          options.retryDelaysMs ?? DOWNLOAD_RETRY_DELAYS_MS,
+        const archivePath = await retryTransientDownload(
+          () =>
+            installer.downloadArtifact({
+              arch,
+              artifactName: "electron",
+              checksums,
+              platform,
+              version,
+            }),
+          options.retryDelaysMs,
         );
         const metadata = lstatSync(archivePath);
         if (!metadata.isFile() || metadata.isSymbolicLink()) {

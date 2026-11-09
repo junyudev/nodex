@@ -214,7 +214,10 @@ Archives are addressed by their locked SHA-256. Verified extracted third-party
 trees are also cached by content identity and extraction recipe, so equal inputs
 across worktrees download and extract once. Cross-process locks, verification,
 and atomic publication protect both cache layers. Corrupt entries are rebuilt;
-different pinned versions can coexist.
+different pinned versions can coexist. Downloads, including Electron's, ride out
+about two minutes of dropped connections and gateway or rate-limit answers
+(429, 502, 503, 504); any other status and every verification failure stop at
+once.
 
 Electron retains its upstream machine-wide ZIP cache and shares verified extracted
 distributions through the same immutable cache. Set `NODEX_BUILD_CACHE_DIR` to an

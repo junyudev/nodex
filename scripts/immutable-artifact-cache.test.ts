@@ -194,6 +194,59 @@ describe("immutable artifact cache", () => {
     expect(fs.existsSync(`${destinationPath}.lock`)).toBe(false);
   });
 
+  test("rides out a briefly failing release host, but not a missing or wrong artifact", async () => {
+    const root = makeRoot();
+    const destinationPath = path.join(root, "cache", HASH, "runtime.tar.gz");
+    const contents = Buffer.from("verified runtime");
+    const archive = () =>
+      new Response(contents, {
+        headers: { "content-length": String(contents.length) },
+        status: 200,
+      });
+    const input = {
+      destinationPath,
+      expectedSize: contents.length,
+      label: "Test runtime",
+      retryDelaysMs: [0, 0, 0],
+      url: "https://example.test/runtime.tar.gz",
+      validate: contentValidator(contents),
+    };
+
+    const flaky = vi
+      .fn<() => Promise<Response>>()
+      .mockResolvedValueOnce(new Response("Gateway Time-out", { status: 504 }))
+      .mockRejectedValueOnce(
+        new TypeError("fetch failed", {
+          cause: Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }),
+        }),
+      )
+      .mockImplementation(async () => archive());
+    await ensureImmutableArtifact({ ...input, fetch: flaky });
+    expect(flaky).toHaveBeenCalledTimes(3);
+    expect(fs.readFileSync(destinationPath)).toEqual(contents);
+    expect(fs.readdirSync(path.dirname(destinationPath))).toEqual(["runtime.tar.gz"]);
+
+    fs.rmSync(destinationPath);
+    const missing = vi.fn(async () => new Response("Not Found", { status: 404 }));
+    await expect(ensureImmutableArtifact({ ...input, fetch: missing })).rejects.toThrow(
+      "Failed to download Test runtime: HTTP 404",
+    );
+    expect(missing).toHaveBeenCalledTimes(1);
+
+    const wrong = vi.fn(
+      async () =>
+        new Response("tampered runtime", {
+          headers: { "content-length": String(contents.length) },
+          status: 200,
+        }),
+    );
+    await expect(ensureImmutableArtifact({ ...input, fetch: wrong })).rejects.toThrow(
+      "artifact content mismatch",
+    );
+    expect(wrong).toHaveBeenCalledTimes(1);
+    expect(fs.existsSync(destinationPath)).toBe(false);
+  });
+
   test("publishes one verified build across concurrent callers", async () => {
     const root = makeRoot();
     const destinationPath = path.join(root, "cache", HASH, "runtime.tar.gz");
