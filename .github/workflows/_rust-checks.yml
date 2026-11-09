@@ -60,8 +60,6 @@ jobs:
       CI_CHANGED_PATHS_JSON: ${{ inputs.changed_paths_json }}
       CI_TIMING_JOB: ${{ inputs.timing_prefix }}-clippy
       CI_RUST_FULL: ${{ inputs.full_workspace }}
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -81,8 +79,6 @@ jobs:
       CI_CHANGED_PATHS_JSON: ${{ inputs.changed_paths_json }}
       CI_TIMING_JOB: ${{ inputs.timing_prefix }}-tests
       CI_RUST_FULL: ${{ inputs.full_workspace }}
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -102,8 +98,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI_TIMING_JOB: ${{ inputs.timing_prefix }}-protocol
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -122,8 +116,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI_TIMING_JOB: ${{ inputs.timing_prefix }}-migration
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

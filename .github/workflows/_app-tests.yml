@@ -56,15 +56,10 @@ jobs:
           CI_GATE_PLAN_JSON: ${{ inputs.gate_plan_json }}
           APP_TEST_SUITE: ${{ matrix.suite }}
           DEBUG: ${{ matrix.suite == 'browser' && 'pw:browser,vitest:browser*,vite:deps,vite:hmr' || '' }}
-          NEEDS_RUST: ${{ steps.suite.outputs.needs_rust }}
           NEEDS_XVFB: ${{ steps.suite.outputs.needs_xvfb }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${NEEDS_RUST}" == "true" ]]; then
-            export RUSTC_WRAPPER=sccache
-            export SCCACHE_GHA_ENABLED=true
-          fi
           if [[ "${NEEDS_XVFB}" == "true" ]]; then
             vp exec tsx scripts/ci/run-timed.ts \
               --name "app-${APP_TEST_SUITE}" \

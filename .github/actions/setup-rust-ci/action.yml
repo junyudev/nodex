@@ -16,10 +16,36 @@ runs:
           sudo apt-get update
           sudo apt-get install --yes ripgrep
         fi
+    # The compiler cache only makes builds faster, so a release host that briefly fails to serve
+    # sccache must not fail the job: try twice, then build uncached. This action alone enables the
+    # cache, so cargo never points at a wrapper that was not installed.
     - name: Install sccache
+      id: sccache
+      continue-on-error: true
       uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       with:
         disable_annotations: true
+    - name: Wait before retrying sccache
+      if: steps.sccache.outcome == 'failure'
+      shell: bash
+      run: sleep 30
+    - name: Retry sccache
+      id: sccache-retry
+      if: steps.sccache.outcome == 'failure'
+      continue-on-error: true
+      uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      with:
+        disable_annotations: true
+    - name: Enable the compiler cache
+      shell: bash
+      env:
+        SCCACHE_INSTALLED: ${{ steps.sccache.outcome == 'success' || steps.sccache-retry.outcome == 'success' }}
+      run: |
+        if [[ "${SCCACHE_INSTALLED}" == "true" ]]; then
+          { echo "RUSTC_WRAPPER=sccache"; echo "SCCACHE_GHA_ENABLED=true"; } >> "${GITHUB_ENV}"
+        else
+          echo "::warning title=Compiler cache unavailable::sccache could not be installed; Rust builds in this job run uncached."
+        fi
     - name: Install cargo-nextest
       if: inputs.nextest == 'true'
       uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
