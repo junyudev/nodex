@@ -103,14 +103,15 @@ automatic-start consent.
 
 ### Automatic start consent
 
-A person can set a Page assigned to an Agent to **Start automatically** when it is ready.
-Changing its Assignee clears that permission. Agents cannot grant it.
+A Member can set a Page assigned to an Agent to **Start automatically** when it is ready,
+themselves or through an Agent acting for them; the consent records that Member. Changing
+its Assignee clears that permission, and a copied Page does not carry it.
 
 ### Hold
 
-A Hold is a person's durable pause of Agent work on a Page, in a Project, or throughout
-the Space. A Page is held when any of those scopes is held. Clearing a child Hold cannot
-waive a parent Hold. Only a person pauses or resumes work.
+A Hold is a Member's durable pause of Agent work on a Page, in a Project, or throughout
+the Space, set by that person or an Agent acting for them. A Page is held when any of those
+scopes is held. Clearing a child Hold cannot waive a parent Hold.
 
 Core owns the policy. Runtime stops the affected native execution and its delegated
 Threads while retaining inputs, recovery intent and delegated results. Work facts continue
@@ -941,8 +942,8 @@ batches as Host input.
 ### Agent work
 
 A Page has Agent work when its Assignee is an Agent. Its assignment names the Agent
-instance, model and optional effort. A person can set it to Start automatically when
-its Prerequisites are satisfied, or let Nodex ask first. Changing the Assignee clears
+instance, model and optional effort. A Member can set it to Start automatically when
+its Prerequisites are satisfied, or leave it waiting for them. Changing the Assignee clears
 that consent. The Owner remains the Member responsible for the Page.
 
 ### Page Workspace
@@ -1001,7 +1002,7 @@ Original words, images, author and dispatch history remain intact. A direct-chat
 message gets one intake envelope. Returned messages re-enter at their return time.
 At most two handbacks are allowed per original message across destinations. An
 already-answered question cannot be returned. A handback grants no automatic-start
-consent, and only a person may send it to the previous destination again.
+consent; Nodex sends it to the previous destination again only when the person insists.
 
 ### Turn note
 
@@ -1241,10 +1242,9 @@ state is rejected rather than replayed.
     command-line Inbox workflow endpoints append entries; their backing Pages
     follow the same full-Profile content model. Core records each entry's actual
     execution source, and confirmed triage owns dispatch intent.
-29. Only the Automation Owner grants Run execution; Agents propose Automation edits for
-    Owner review. A Page's Start automatically and a plan's starts require the
-    user's consent. Agent commands may move those toward asking, never toward
-    running unattended.
+29. Only the Automation Owner grants Run execution, and a Page's Start automatically and
+    a plan's starts record the consenting Member. An Agent carries exactly the authority
+    of the Member it acts for: it may grant these for that Member, never for another.
 30. Only the Coordinator authors Turn notes and Inbox answers and answers suggestion
     requests through its tool; the source is derived from verified execution
     identity, never from a name.
@@ -1428,7 +1428,7 @@ idempotency, projections, and post-commit events behind `read` and `apply`.
   open beside their Inbox, and each Inbox's primary Database is protected
   Library content listed in Space.
 - `docs/adr/0082-automations-replace-scheduled-tasks.md`: Owner-authorized Automations, clock
-  Triggers and editable held decisions in the Inbox, person-granted
+  Triggers and editable held decisions in the Inbox, Owner-granted
   unattended execution, and runbook Pages.
 - `docs/adr/0079-status-moves-on-facts-a-persons-move-wins.md`: guarded Status
   transitions preserve the person's later move; Done accepts prerequisites, Canceled

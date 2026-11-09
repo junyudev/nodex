@@ -105,7 +105,7 @@ it.effect("start_work admits the caller's stable operation and records a valid P
         workspace: { admitToolOperation: createAppToolAdmissionFixture().admitToolOperation },
       } as never),
       Effect.provideService(WorkApplication, {
-        // Core attributes the start, and checks Nodex's consent, from the ambient Turn provenance.
+        // Core attributes the start to the calling Agent's Member from the ambient Turn provenance.
         startWork: (input: unknown) =>
           Effect.flatMap(CoreApplicationAgent, (caller) => {
             callers.push(caller);
@@ -116,7 +116,7 @@ it.effect("start_work admits the caller's stable operation and records a valid P
                   reason: "operation",
                   retryable: false,
                   cause: new CoreModuleResponseError({
-                    code: "unauthorized",
+                    code: "conflict",
                     message: refusal,
                     retryable: false,
                   } as never),
@@ -157,7 +157,7 @@ it.effect("start_work admits the caller's stable operation and records a valid P
       turn_id: "turn",
     });
 
-    refusal = "Nodex starts only Pages that start on their own";
+    refusal = "Page already has an active chat; use again to start another attempt";
     const refused = yield* execute({
       ...invocation,
       arguments: { pageId: "asked", idempotencyKey: "start:asked" },

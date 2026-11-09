@@ -229,8 +229,8 @@ pub(super) fn apply(
                     Some(episode),
                 )?;
             }
-            if provenance.is_some()
-                || context.agent_attribution.is_some()
+            // A person accepts, or an Agent accepts for its Member; its instructions say when.
+            if context.actor.member_id().is_none()
                 || !matches!(
                     context.adapter,
                     nodex_core_contracts::AdapterKind::RemoteMember
@@ -240,7 +240,7 @@ pub(super) fn apply(
                         | nodex_core_contracts::AdapterKind::Test
                 )
             {
-                return Err(denied("Only a person may accept Page work"));
+                return Err(denied("Accepting work acts for a Member"));
             }
             validate_id("page_id", page_id)?;
             crate::library::require_page_read_access(connection, library, page_id)?;
@@ -257,7 +257,10 @@ pub(super) fn apply(
                 }],
                 &now,
             )?;
-            if status_receipt.is_some() {
+            // Like its other Status edits, an Agent's acceptance is not a person's move.
+            if status_receipt.is_some()
+                && matches!(context.actor, nodex_core_contracts::Actor::Member { .. })
+            {
                 crate::database::record_person_status_edit(connection, page_id)?;
             }
             pages.push(page_id.clone());

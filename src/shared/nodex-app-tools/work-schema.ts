@@ -42,7 +42,7 @@ export const startWorkSchema = z.strictObject({
 export const startWorkTool: Tool = {
   name: "start_work",
   description:
-    "Start work on a Page in its Project's primary Database, in a new managed chat. Uses the Page's Agent Assignee; supplying agent assigns that Agent before starting and turns off Start automatically if the Agent changes. The Page's brief and prerequisites are included. A Page with an active chat cannot be started again through this tool. Reuse idempotencyKey for an identical retry.",
+    "Start work on a Page in its Project's primary Database, in a new managed chat, acting for the user. Start a Page that isn't set to Start automatically only when the user asked you to start it. Uses the Page's Agent Assignee; supplying agent assigns that Agent before starting and turns off Start automatically if the Agent changes. The Page's brief and prerequisites are included. A Page with an active chat cannot be started again through this tool. Reuse idempotencyKey for an identical retry.",
   inputSchema: toolInputSchema(startWorkSchema),
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
 };

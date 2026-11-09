@@ -265,12 +265,6 @@ pub(super) fn apply(
                 &request.intent,
             )?;
             let context = crate::infrastructure::actors::workspace(transaction, &context, &request.intent)?;
-            if matches!(admitted_intent, ProjectWorkspaceIntent::PauseWork { .. } | ProjectWorkspaceIntent::ResumeWork { .. }) {
-                super::execution_holds::require_person(&context)?;
-                if matches!(request.intent,ProjectWorkspaceIntent::AgentCommand { .. }) {
-                    return Err(StoreError::new(StoreErrorCode::Unauthorized,"Only a person may pause or resume work",false));
-                }
-            }
             // An Agent command retry belongs to its caller root across Turns. Admission above
             // still checks the current Turn's persisted authority before receipt replay.
             // Runtime observations can change after a lost response. Capture identity is the

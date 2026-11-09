@@ -252,6 +252,10 @@ or an admitted Host producer. Command JSON cannot choose an actor. An invalid
 Agent credential refuses the request; it cannot fall back to a local person's
 identity. Agent launches require the Core-issued credential before exposing CLI
 access. An Agent records its Session, optional Run and the Member it represents.
+Its authority is exactly that Member's: Core refuses an Agent what only another Member
+may do, such as changing another Owner's Automation set to Run, and admits what the
+represented Member may. How an Agent should use that authority belongs to its
+instructions, not to refusals.
 Schedulers and Automation admission retain the authorizing Member separately from the
 Service that executes the grant.
 
@@ -451,9 +455,10 @@ JavaScript can still consume CPU/memory or display deceptive report content.
 
 ## GitHub Source credentials
 
-Source configuration requires the active local Owner. Core accepts configuration
-and polling commands only from the trusted Desktop Host without Agent attribution.
-Polling leases, ingestion and failure/success recording are Host producer commands.
+Source configuration requires the active local Owner, or an Agent acting for them
+through the trusted Desktop Host's tools. Core accepts polling commands only from the
+trusted Desktop Host without Agent identity. Polling leases, ingestion and
+failure/success recording are Host producer commands.
 Remote Members and Owners can read Sources, positions, threads, Triggers, problems
 and known pull requests, but cannot issue any Source command. CLI and Agent reads
 expose public configuration and observations, never credentials.

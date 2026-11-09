@@ -210,7 +210,7 @@ fn handback_preserves_original_page_images_without_granting_new_consent() {
             "no-new-consent",
             ProjectWorkspaceIntent::SettleInboxSuggestion {
                 automatic_dispatch: true,
-                request_id: request.request_id,
+                request_id: request.request_id.clone(),
                 generation: request.generation,
                 titles: vec![],
                 suggestions: vec![ProjectWorkspaceInboxSuggestedDispatch {
@@ -233,6 +233,8 @@ fn handback_preserves_original_page_images_without_granting_new_consent() {
         ),
         CoreErrorCode::InvalidInput
     );
+    // Nodex sees which chat returned the message, and that chat stays a destination: sending it
+    // back is Nodex's judgement on the person's word, and it still waits for the person.
     let ProjectWorkspaceReadValue::InboxDispatchContext { context: source } = read_host(
         &w.module,
         ProjectWorkspaceRead::InboxDispatchContext {
@@ -241,11 +243,47 @@ fn handback_preserves_original_page_images_without_granting_new_consent() {
     ) else {
         panic!("routing context")
     };
+    assert_eq!(
+        source.entries[0].handback.as_ref().unwrap().chat.session_id,
+        "worker"
+    );
     assert!(
-        !source
+        source
             .sessions
             .iter()
             .any(|chat| chat.session_id == "worker")
+    );
+    apply_host(
+        &w.module,
+        "resend-returned",
+        ProjectWorkspaceIntent::SettleInboxSuggestion {
+            automatic_dispatch: true,
+            request_id: request.request_id,
+            generation: request.generation,
+            titles: vec![],
+            suggestions: vec![ProjectWorkspaceInboxSuggestedDispatch {
+                explicit_request: false,
+                proposal_id: "resend-returned".into(),
+                page_ids: vec!["page:image".into()],
+                action: ProjectWorkspaceInboxDispatchAction::SendToChat {
+                    session_id: "worker".into(),
+                    prompt: "The person wants this chat to finish it".into(),
+                    additions: vec![],
+                },
+                entry_kind: None,
+                summary: "Send back to the worker".into(),
+                rationale: None,
+            }],
+            produced_by: None,
+            error: None,
+        },
+    );
+    assert_eq!(
+        count(
+            &w,
+            "SELECT count(*) FROM inbox_proposals WHERE proposal_id='resend-returned' AND state='open' AND auto_confirm_pending=0"
+        ),
+        1
     );
 }
 #[test]

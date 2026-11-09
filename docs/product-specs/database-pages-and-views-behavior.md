@@ -959,10 +959,11 @@ without its effort. Owner stays hidden in a personal Library. The picker's **Sta
 automatically** switch appears only for an Agent Assignee; while it is on, the
 Assignee row reads `Auto-start` after the name.
 
-Only a person can grant automatic starts. Verified Agent attribution cannot create
-a new grant, including through copy; caller-authored actor labels do not supply
-consent. Reassigning a Page to another Agent, a person, or nobody clears consent.
-An Agent can retain an existing grant for the same assignment or revoke it.
+A Member grants automatic starts: the person, or an Agent acting for them, and the
+grant records that Member. Caller-authored actor labels do not supply consent. An Agent's
+instructions keep it from granting consent unless the person asked. Reassigning a Page to
+another Agent, a person, or nobody clears consent, and a copied Page keeps its Assignee
+without the source's consent.
 
 The bounded Database `ReadyWork` read returns active Pages in active Projects'
 primary Databases with an Agent Assignee, Status `triage` or `plan`, no active chat,
@@ -989,11 +990,12 @@ Main delivers frozen launches as automatic work-tree starts through local-chat a
 path as Inbox dispatches. A lost reply is reconciled against Runtime admission
 before another launch is sent. In a Git Project, work starts allocate or reuse the
 Page's Workspace; non-Git Projects retain their local environment.
-`start_work` is available to any verified Agent and accepts a Page and optional
-Agent selection; it cannot grant automatic launch or start another attempt. Core
-records the start as that Agent's command. For the Coordinator it also requires the
-consent the scheduler uses: the Page is ready, is set to Start automatically, and the
-selection is its Agent Assignee; the start acts for the granting Member.
+`start_work` is available to any verified Agent, the Coordinator included, and accepts a
+Page and optional Agent selection; it cannot grant automatic launch or start another
+attempt. Core records the start as that Agent's command on behalf of its Member; the
+Coordinator's start of a Page set to Start automatically acts for the granting Member.
+Agents start a Page that isn't set to Start automatically only when the person asked, by
+instruction rather than refusal.
 
 The Main scheduler checks ready work at startup, on Database, Library, and
 Workspace changes, and every 60 seconds. Automatic launches use a stable identity

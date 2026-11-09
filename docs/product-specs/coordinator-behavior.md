@@ -160,9 +160,10 @@ Member or Agent Assignee and never grants automatic-start consent.
 
 - **Start automatically** lets an Agent Assignee start once its Prerequisites are
   satisfied. It is a switch in the Assignee menu, and the Assignee row then reads
-  `Auto-start` after the name. Only a person grants this consent. Reassigning the Page
-  clears it. Without consent, Nodex asks first: Core refuses Nodex's own start, and the
-  Page's Status offers the person Start. Person assignments never offer this switch.
+  `Auto-start` after the name. A person grants this consent, or an Agent grants it for the
+  person it works for when they ask. Reassigning the Page clears it. Without consent, the Page
+  waits for the person: its Status offers Start, and Nodex starts it only when the person asks.
+  Person assignments never offer this switch.
 - **Waits for** names the Pages it must wait for. A Page cannot wait for itself, and no chain of
   Waits for may lead back to where it started. A Prerequisite is satisfied only when it is active in its retained Data Source and Done.
   In Review awaits acceptance, and Canceled never satisfies a Prerequisite.
@@ -173,7 +174,7 @@ Board cards, List rows, the Page, CLI and work briefs use that same answer.
 | Actor and reason         | When                                                                                                              |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
 | None                     | Status is Done or Canceled.                                                                                       |
-| Paused                   | The most specific effective hold gives the Turn to the Member who paused it.                                      |
+| Paused                   | The most specific effective hold gives the Turn to the Member whose hold it is.                                   |
 | Owner · Question         | The active chat has a pending question.                                                                           |
 | Owner · Approval         | The active chat has a pending approval.                                                                           |
 | Agent · Working          | The active chat is working with healthy progress. Its Agent executes for the Page's Assignee, including a Member. |
@@ -270,9 +271,10 @@ PR supplies guarded lifecycle milestones; context follows never move Status.
 Unfollowed assignments, review requests and mentions enter the Inbox with GitHub
 provenance and require the person's dispatch decision. See [Sources](sources-behavior.md).
 
-**Acceptance.** The person accepts reviewed work with `nodex page accept <page>`, which moves
-In Review to Done. A verified merge of its own PR also records Done. Agents cannot
-accept work themselves. Done and Canceled share terminal View filtering,
+**Acceptance.** The person accepts reviewed work with Accept or `nodex page accept <page>`,
+which moves In Review to Done. An Agent may accept for the person it works for; its
+instructions keep it from accepting its own work unless the person told it to. A verified
+merge of its own PR also records Done. Done and Canceled share terminal View filtering,
 sorting and `completed_at` behavior, but only Done records acceptance.
 
 **When Prerequisites are satisfied**, a Page that starts automatically starts once, and one that
@@ -283,7 +285,9 @@ asks makes Nodex ask the person, naming what finished.
 A person can pause a Page from its actions menu, a Project from its sidebar context menu,
 or all Agent work from the Inbox header. The Space control becomes `Paused · Resume`.
 Page, Project and Space holds compose: resuming a Page never clears a Project or Space
-hold. Agents cannot change holds, including through their attributed CLI.
+hold. An Agent may pause and resume for the person it works for, including through its
+attributed CLI, and the hold is that person's. Its instructions keep it from resuming work the
+person paused unless they ask.
 
 Pause commits before native execution is stopped. Runtime acknowledges either that pause
 was requested or that all affected native work has stopped. Running work and delegated
@@ -313,7 +317,7 @@ The CLI offers `work pause --page <selector>`, `work pause --project <selector>`
 When one message asks for several distinct pieces of work that must happen in order or belong in
 different Projects, Nodex may propose a plan instead of one chat. Its strip lists each step: the
 Project, title, Agent and what it waits for. Confirming the plan creates each step as a Page in its
-Project's Database, with its Agent Assignee, person-granted Start automatically and Waits for edges, and
+Project's Database, with its Agent Assignee, Start automatically granted by the confirming person and Waits for edges, and
 starts the steps that wait for nothing; the rest wait until their Prerequisites are Done. A plan never
 starts on the `Let Nodex start chats for me` consent.
 
@@ -332,10 +336,11 @@ Ready steps start through the Host scheduler after this transaction commits.
 
 - `report_work { pageId?, outcome, summary }`: any chat linked to a Page reports its work on it.
   `pageId` may be omitted when the chat is linked to exactly one Page.
-- `start_work { pageId, agent? }`: any Agent starts a Page's work in a new managed chat. Nodex
-  starts only ready work set to Start automatically, on its assigned Agent; Core refuses any other
-  Page, whose Turn already asks the person. Its starts read as Nodex on behalf of the consenting
-  person, and another Agent's as that Agent on behalf of the person it works for.
+- `start_work { pageId, agent? }`: any Agent, Nodex included, starts a Page's work in a new
+  managed chat for the person it works for. Its instructions start a Page that isn't set to Start
+  automatically only when the person asked. Nodex's start of a Page set to Start automatically
+  reads as Nodex on behalf of the consenting person; any other start reads as that Agent on
+  behalf of the person it works for.
 - `write_turn_note { pageId, eventIds, body, notify }`: the Coordinator adds at most 100 words of context to the local Member's current Page Turn, backed by 1–8 delivered Work events. It decides whether review or a problem needs an interruption.
 - `answer_inbox_question { questionPageId, body }`: the Coordinator writes one quiet answer and handles that question atomically.
 - `inbox_suggest`, `write_turn_note` and `answer_inbox_question` are Coordinator-only tools.
@@ -352,4 +357,5 @@ with the person’s original words and delivery identity.
 
 For Nodex, a returned message is a new routing decision, never new start consent.
 It carries the previous chat and reason. Nodex sets `explicit_request: false` and
-chooses another destination; only the person can explicitly choose the prior chat.
+chooses another destination unless the person insists on the prior chat. A returned message
+never starts on `Let Nodex start chats for me`, so that suggestion waits for the person.

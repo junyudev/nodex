@@ -96,7 +96,8 @@ test("a scoped Agent CLI reads content without Core paths and cannot use Host ad
         expect(response.status).toBe(403);
         await response.arrayBuffer();
       }
-      // Headers supplied by the Agent cannot turn a content request into a Host command.
+      // Headers supplied by the Agent cannot turn a content request into a command that stays
+      // the person's own, such as whether Nodex may start their requests.
       const workspaceContract = CORE_CLIENT_REQUIREMENTS.modules.find(
         (module) => module.module === "project_workspace",
       )!.contract_version;
@@ -111,9 +112,13 @@ test("a scoped Agent CLI reads content without Core paths and cannot use Host ad
         },
         body: JSON.stringify({
           contract_version: workspaceContract,
-          operation_id: createBoundedOperationId("test.agent-content.pause"),
+          operation_id: createBoundedOperationId("test.agent-content.routing-consent"),
           store_epoch: host.handshake.store_epoch,
-          intent: { kind: "pause_work", scope: { kind: "space" } },
+          intent: {
+            kind: "set_inbox_routing_consent",
+            start_my_requests: true,
+            initialize_only: false,
+          },
         }),
       }).then((response) => response.json());
       expect(forged).toMatchObject({ status: "error", payload: { code: "unauthorized" } });

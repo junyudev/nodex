@@ -19,6 +19,10 @@ Let people and Agents share one source of truth for work, so that the right pers
 - **Portable data model**: one database, assets and backups per Space.
 - **Explicit isolation**: each piece of Agent work runs in its own workspace, and Projects stay separate.
 
+## Agents Act For People
+
+An Agent acting for a person can do what that person can do. How an Agent should behave — asking before unattended work, leaving its own work for review, not resuming paused work — belongs in its instructions and tool descriptions. Code enforces only boundaries that protect other people, the person's own explicit settings and data integrity. A refusal in code blocks exactly the case where the person asked for it; a clear instruction does not.
+
 ## Decision Heuristics
 
 When choosing between alternatives, prefer options that:

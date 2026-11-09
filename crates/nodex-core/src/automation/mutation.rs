@@ -279,36 +279,6 @@ pub(super) fn apply(
                 });
             }
 
-            let agent_input;
-            let intent = if matches!(&request.intent, AutomationIntent::AgentCommand { .. })
-                || context.agent_attribution.is_some()
-            {
-                agent_input = match intent {
-                    AutomationIntent::CreateAutomation {
-                        automation_id,
-                        automation: definition,
-                    } => {
-                        let mut definition = definition.clone();
-                        if definition.owner_member_id.is_none() {
-                            definition.owner_member_id = Some(super::agent_command::default_owner(
-                                transaction,
-                                &library_id,
-                                &context,
-                                &request.intent,
-                            )?);
-                        }
-                        definition.mode = Some(definition.mode.unwrap_or(AutomationMode::AskFirst));
-                        AutomationIntent::CreateAutomation {
-                            automation_id: automation_id.clone(),
-                            automation: definition,
-                        }
-                    }
-                    _ => intent.clone(),
-                };
-                &agent_input
-            } else {
-                intent
-            };
             match intent {
                 AutomationIntent::AgentCommand { .. } => {
                     Err(invalid("Nested Agent Automation commands are unavailable"))
@@ -810,13 +780,12 @@ fn create_definition(
     }
     require_active_definition_capacity(connection)?;
     let definition = normalize_definition(connection, library_id, input, None)?;
-    let mode = input.mode.unwrap_or({
-        if matches!(context.adapter, AdapterKind::Agent) || context.agent_attribution.is_some() {
-            AutomationMode::AskFirst
-        } else {
-            AutomationMode::Run
-        }
-    });
+    let mode = input
+        .mode
+        .unwrap_or(super::agent_command::omitted_mode(matches!(
+            context.actor,
+            nodex_core_contracts::Actor::Agent { .. }
+        )));
     require_unique_active_heartbeat(
         connection,
         automation_id,

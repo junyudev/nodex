@@ -999,32 +999,53 @@ fn an_old_chat_reports_evidence_without_moving_the_new_attempt() {
     assert!(managed.unwrap().active_page_ids.is_empty());
 }
 #[test]
-fn only_a_person_accepts_reviewed_work_and_acceptance_is_a_person_edit() {
+fn a_person_or_their_agent_accepts_reviewed_work_and_only_a_person_advances_the_fence() {
     use nodex_core_contracts::AdapterKind;
+    let w = stage_fixture();
+    apply(&w.module, "ready", outcome_report(WorkReportOutcome::Ready));
+    let ProjectWorkspaceIntent::AgentCommand { provenance, .. } = report(None, "Reviewed") else {
+        panic!()
+    };
+    w.module
+        .apply(
+            &context(),
+            request(
+                "agent:accept",
+                ProjectWorkspaceIntent::AgentCommand {
+                    provenance,
+                    intent: Box::new(ProjectWorkspaceIntent::AcceptPageWork {
+                        expected_turn_episode: None,
+                        page_id: STAGE_PAGE.into(),
+                    }),
+                },
+            ),
+        )
+        .unwrap();
+    assert_eq!(stage(&w), "done");
+    // The Agent accepted for its Member; like its other Status edits, that is not a person's move.
+    let (actor, member) = w
+        .kernel
+        .readers()
+        .read_default(|c| {
+            Ok((
+                c.query_row("SELECT actor_json FROM mutation_actors WHERE module_name='project_workspace' AND operation_id='agent:accept'", [], |r| r.get::<_, String>(0))?,
+                c.query_row("SELECT member_id FROM local_profile_members", [], |r| r.get::<_, String>(0))?,
+            ))
+        })
+        .unwrap();
+    let actor: serde_json::Value = serde_json::from_str(&actor).unwrap();
+    assert_eq!(actor["type"], "agent");
+    assert_eq!(actor["on_behalf_of"], member.as_str());
+    assert_eq!(
+        w.kernel
+            .readers()
+            .read_default(|c| crate::database::status_person_revision(c, STAGE_PAGE))
+            .unwrap(),
+        0
+    );
     for adapter in [AdapterKind::ElectronHost, AdapterKind::NativeCli] {
         let w = stage_fixture();
         apply(&w.module, "ready", outcome_report(WorkReportOutcome::Ready));
-        let ProjectWorkspaceIntent::AgentCommand { provenance, .. } = report(None, "Reviewed")
-        else {
-            panic!()
-        };
-        let rejected = w
-            .module
-            .apply(
-                &context(),
-                request(
-                    "agent:accept",
-                    ProjectWorkspaceIntent::AgentCommand {
-                        provenance,
-                        intent: Box::new(ProjectWorkspaceIntent::AcceptPageWork {
-                            expected_turn_episode: None,
-                            page_id: STAGE_PAGE.into(),
-                        }),
-                    },
-                ),
-            )
-            .unwrap_err();
-        assert_eq!(rejected.code, CoreErrorCode::Unauthorized);
         let mut person = context();
         person.adapter = adapter;
         w.module

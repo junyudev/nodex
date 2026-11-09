@@ -672,9 +672,6 @@ fn decide(
     let action = normalize_action(connection, library_id, inbox_scope.as_deref(), action)?;
     if let ProjectWorkspaceInboxDispatchAction::Plan { summary, steps } = &action {
         require_decision_authority(context)?;
-        if context.agent_attribution.is_some() {
-            return Err(invalid("Only the user may confirm a plan"));
-        }
         return super::plan::confirm(
             connection,
             library_id,

@@ -61,7 +61,7 @@ export function PageAssigneeRow({
                 }),
               );
           }}
-          // Only a person grants automatic starts, and only an Agent Assignee can hold one.
+          // Only an Agent Assignee can start automatically.
           toggles={
             agent
               ? [

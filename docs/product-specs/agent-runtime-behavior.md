@@ -126,7 +126,7 @@ without new events in that chat. Internal wakes stay outside the editable Compos
 
 ## Pause and Stop
 
-Pause is a resumable execution fence backed by Core's person-owned Page, Project and
+Pause is a resumable execution fence backed by Core's Member-owned Page, Project and
 Space holds. Runtime persists the affected root Thread fence before it retires native
 execution, including delegated descendants. The fence denies tool authority immediately
 and gates provider starts, retries, queued input, answers and internal wakes. Core policy

@@ -207,23 +207,24 @@ fn validate_scope(
     }
     Ok(())
 }
-pub(super) fn require_person(context: &BoundModuleContext) -> Result<(), StoreError> {
-    if context.agent_attribution.is_some()
-        || !matches!(
+/// A Hold belongs to a Member: the person who paused, or the Member whose Agent paused for them.
+fn hold_member(context: &BoundModuleContext) -> Result<String, StoreError> {
+    let member = context.actor.member_id().filter(|_| {
+        matches!(
             context.adapter,
             AdapterKind::ElectronHost
                 | AdapterKind::NativeCli
                 | AdapterKind::RemoteMember
                 | AdapterKind::Test
         )
-    {
-        return Err(StoreError::new(
+    });
+    member.map(str::to_owned).ok_or_else(|| {
+        StoreError::new(
             StoreErrorCode::Unauthorized,
-            "Only a person may pause or resume work",
+            "Pausing and resuming work act for a Member",
             false,
-        ));
-    }
-    Ok(())
+        )
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -236,7 +237,7 @@ pub(super) fn apply(
     hash: &str,
     intent: &ProjectWorkspaceIntent,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_person(context)?;
+    let member = hold_member(context)?;
     let (scope, pause) = match intent {
         ProjectWorkspaceIntent::PauseWork { scope } => (scope, true),
         ProjectWorkspaceIntent::ResumeWork { scope } => (scope, false),
@@ -246,17 +247,8 @@ pub(super) fn apply(
     let (kind, id) = coordinates(scope, library);
     let now = sqlite_now(connection)?;
     let changed = if pause {
-        let actor: String = if let Some(principal) = &context.principal {
-            principal.member_id.clone()
-        } else {
-            connection.query_row(
-                "SELECT member_id FROM local_profile_members WHERE library_id=?1",
-                [library],
-                |r| r.get(0),
-            )?
-        };
         let revision = crate::infrastructure::local_commit::head(connection)? + 1;
-        connection.execute("INSERT INTO execution_holds(scope_kind,scope_id,actor,revision,paused_at) VALUES(?1,?2,?3,?4,?5) ON CONFLICT DO NOTHING",params![kind,id,actor,revision,now])?
+        connection.execute("INSERT INTO execution_holds(scope_kind,scope_id,actor,revision,paused_at) VALUES(?1,?2,?3,?4,?5) ON CONFLICT DO NOTHING",params![kind,id,member,revision,now])?
     } else {
         connection.execute(
             "DELETE FROM execution_holds WHERE scope_kind=?1 AND scope_id=?2",

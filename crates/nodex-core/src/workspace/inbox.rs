@@ -1206,37 +1206,12 @@ struct NewProposal<'a> {
     produced_by: Option<&'a str>,
 }
 
-/// A returned message needs a fresh routing decision, not another loop to its last chat.
-fn validate_returned_destination(
-    connection: &Connection,
-    library_id: &str,
-    proposal: &NewProposal<'_>,
-) -> Result<(), StoreError> {
-    if proposal.origin != ProjectWorkspaceInboxProposalOrigin::Agent {
-        return Ok(());
-    }
-    let ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, .. } = proposal.action else {
-        return Ok(());
-    };
-    for page in proposal.page_ids {
-        if handback::context(connection, library_id, page)?
-            .is_some_and(|returned| returned.chat.session_id == *session_id)
-        {
-            return Err(invalid(
-                "Choose another destination for a handed-back message; only a person can send it back to the previous chat",
-            ));
-        }
-    }
-    Ok(())
-}
-
 fn insert_proposal(
     connection: &Connection,
     library_id: &str,
     proposal: NewProposal<'_>,
     now: &str,
 ) -> Result<(), StoreError> {
-    validate_returned_destination(connection, library_id, &proposal)?;
     if connection
         .query_row(
             "SELECT 1 FROM inbox_proposals WHERE proposal_id = ?1",

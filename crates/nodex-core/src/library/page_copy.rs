@@ -408,7 +408,6 @@ pub(super) fn execute_page_copy(
         &source.document_id,
         None,
     )?;
-    require_copy_work_consent(connection, context, &plan)?;
     let target_page_id = plan
         .block_ids
         .get(source_page_id)
@@ -1422,10 +1421,14 @@ fn stage_copy_authority(
                 now,
             ],
         )?;
+        // A copy is new work: it keeps its Assignee but not the source's standing consent to
+        // start on its own, which a person or their Agent grants again on the copy.
         connection.execute(
             "INSERT INTO block_properties( \
                block_id, library_id, property_key, value_type, value_json, revision, updated_at \
-             ) SELECT ?1, ?2, property_key, value_type, value_json, 1, ?3 \
+             ) SELECT ?1, ?2, property_key, value_type, \
+               CASE property_key WHEN 'work' THEN json_set(value_json, '$.auto_start', json('false')) \
+                 ELSE value_json END, 1, ?3 \
                FROM block_properties WHERE block_id = ?4 AND library_id = ?5",
             params![
                 document.target_owner_id,
@@ -1591,37 +1594,6 @@ fn embedded_page(page_id: &str) -> MaterializedBlockNode {
         content: None,
         children: Vec::new(),
     }
-}
-
-fn require_copy_work_consent(
-    connection: &Connection,
-    context: &BoundModuleContext,
-    plan: &CopyPlan,
-) -> Result<(), StoreError> {
-    if context.agent_attribution.is_none() {
-        return Ok(());
-    }
-    let source_ids = plan
-        .documents
-        .iter()
-        .map(|document| document.source_owner_id.as_str())
-        .collect::<Vec<_>>();
-    let source_ids = serde_json::to_string(&source_ids)
-        .map_err(|_| internal("Copied Page identities cannot be encoded"))?;
-    let work_values = connection.prepare(
-        "SELECT property.value_json FROM json_each(?1) source \
-         JOIN block_properties property ON property.block_id = source.value AND property.property_key = 'work'"
-    )?.query_map([source_ids], |row| row.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
-    for value in work_values {
-        let value = serde_json::from_str(&value)
-            .map_err(|_| corrupt("Copied Page work JSON is invalid"))?;
-        super::page_property_mutation::require_work_launch_consent(
-            context,
-            &serde_json::Value::Null,
-            &value,
-        )?;
-    }
-    Ok(())
 }
 
 fn invalid(message: impl Into<String>) -> StoreError {

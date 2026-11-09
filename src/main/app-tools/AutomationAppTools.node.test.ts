@@ -241,7 +241,7 @@ it.effect(
     }),
 );
 
-it.effect("an Agent refused automatic execution is directed to a user-reviewed suggestion", () =>
+it.effect("Run for another Member is directed to a suggestion for that Owner to review", () =>
   Effect.gen(function* () {
     const execute = yield* setup({
       create: () =>
@@ -250,14 +250,17 @@ it.effect("an Agent refused automatic execution is directed to a user-reviewed s
             operation: "create",
             cause: new CoreModuleResponseError({
               code: "unauthorized",
-              message: "Only the user may enable automatic runs.",
+              message:
+                "Only this Automation's Owner can change its mode, edit it while set to Run, or run it now",
               retryable: false,
               recovery: { kind: "none" },
             }),
           }),
         ),
     });
-    const refused = yield* execute(input({ ...cron, operation: "create", mode: "run" }));
+    const refused = yield* execute(
+      input({ ...cron, operation: "create", mode: "run", ownerMemberId: "member:b" }),
+    );
     assert.isTrue(refused.isError);
     assert.deepEqual(refused.structuredContent, {
       error: {
@@ -275,13 +278,20 @@ it.effect("an Agent refused automatic execution is directed to a user-reviewed s
     const text = refused.content[0];
     assert.match(text?.type === "text" ? text.text : "", /Return a suggested_create change/);
     const proposed = yield* execute(
-      input({ ...cron, operation: "suggested_create", mode: "run", runbookPageId: "runbook" }),
+      input({
+        ...cron,
+        operation: "suggested_create",
+        mode: "run",
+        ownerMemberId: "member:b",
+        runbookPageId: "runbook",
+      }),
     );
     assert.isUndefined(proposed.isError);
     assert.deepEqual(proposed.structuredContent?.proposal, {
       ...cron,
       operation: "suggested_create",
       mode: "run",
+      ownerMemberId: "member:b",
       runbookPageId: "runbook",
       backendBinding: { kind: "codex" },
     });
@@ -313,50 +323,47 @@ it.effect(
     }),
 );
 
-it.effect(
-  "keeps every existing Automation edit waiting for its Owner, including omitted mode",
-  () =>
-    Effect.gen(function* () {
-      for (const mode of ["dry_run", "ask_first", "run"] as const) {
-        const current = { ...item, mode };
-        const execute = yield* setup({
-          get: () => Effect.succeed(current),
-          update: () =>
-            Effect.fail(
-              new AutomationApplicationError({
-                operation: "update",
-                cause: new CoreModuleResponseError({
-                  code: "unauthorized",
-                  message: "An Agent's Automation edits wait for its Owner.",
-                  retryable: false,
-                  recovery: { kind: "none" },
-                }),
-              }),
-            ),
-        });
-        const fields = {
-          ...cron,
-          id: item.id,
-          status: "ACTIVE",
-          expectedRevision: item.automationRevision,
-        } as const;
-        const result = yield* execute(input({ ...fields, operation: "update" }));
-        assert.isTrue(result.isError);
-        const content = result.content[0];
-        assert.match(
-          content?.type === "text" ? content.text : "",
-          /Return a suggested_update change for the Automation Owner/,
-        );
-        const proposed = yield* execute(input({ ...fields, operation: "suggested_update" }));
-        assert.isUndefined(proposed.isError);
-        assert.strictEqual(proposed.structuredContent?.committed, false);
-        assert.deepEqual(proposed.structuredContent?.proposal, {
-          ...fields,
-          operation: "suggested_update",
-          backendBinding: { kind: "codex" },
-        });
-      }
-    }),
+it.effect("an edit only another Owner may make is directed to a suggestion for that Owner", () =>
+  Effect.gen(function* () {
+    const current = { ...item, ownerMemberId: "member:b" };
+    const execute = yield* setup({
+      get: () => Effect.succeed(current),
+      update: () =>
+        Effect.fail(
+          new AutomationApplicationError({
+            operation: "update",
+            cause: new CoreModuleResponseError({
+              code: "unauthorized",
+              message:
+                "Only this Automation's Owner can change its mode, edit it while set to Run, or run it now",
+              retryable: false,
+              recovery: { kind: "none" },
+            }),
+          }),
+        ),
+    });
+    const fields = {
+      ...cron,
+      id: item.id,
+      status: "ACTIVE",
+      expectedRevision: item.automationRevision,
+    } as const;
+    const result = yield* execute(input({ ...fields, operation: "update" }));
+    assert.isTrue(result.isError);
+    const content = result.content[0];
+    assert.match(
+      content?.type === "text" ? content.text : "",
+      /Return a suggested_update change for the Automation Owner/,
+    );
+    const proposed = yield* execute(input({ ...fields, operation: "suggested_update" }));
+    assert.isUndefined(proposed.isError);
+    assert.strictEqual(proposed.structuredContent?.committed, false);
+    assert.deepEqual(proposed.structuredContent?.proposal, {
+      ...fields,
+      operation: "suggested_update",
+      backendBinding: { kind: "codex" },
+    });
+  }),
 );
 
 it.effect("reads definition windows with execution provenance and rejects forged authority", () =>

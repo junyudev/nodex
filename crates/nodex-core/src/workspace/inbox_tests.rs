@@ -5376,7 +5376,7 @@ mod scheduled {
         );
     }
     #[test]
-    fn agent_envelopes_cannot_confirm_retry_or_produce_automation_decisions() {
+    fn an_agent_for_the_owner_settles_its_decision_but_never_produces_decisions() {
         let workspace = seeded_workspace();
         let lease = setup(&workspace, task_input());
         create_session_thread(
@@ -5411,7 +5411,55 @@ mod scheduled {
         };
         let held = item(&workspace);
         let proposal = held.proposal.unwrap();
-        let intents = [
+        let agent = |operation: &str, intent| {
+            workspace.module.apply(
+                &host(),
+                request(
+                    operation,
+                    ProjectWorkspaceIntent::AgentCommand {
+                        provenance: Box::new(provenance.clone()),
+                        intent: Box::new(intent),
+                    },
+                ),
+            )
+        };
+        // Holding and refreshing decisions remain the Automation producer's own work.
+        for (operation, intent) in [
+            (
+                "automation-agent-hold",
+                ProjectWorkspaceIntent::HoldAutomationDecision {
+                    lease_id: lease.lease_id,
+                    page_id: "another-page".into(),
+                    document_id: "another-document".into(),
+                    title: "Another decision".into(),
+                },
+            ),
+            (
+                "automation-agent-refresh",
+                ProjectWorkspaceIntent::RefreshAutomationDecision {
+                    dispatch_id: held.automation_decision.unwrap().dispatch_id,
+                },
+            ),
+        ] {
+            assert_eq!(
+                agent(operation, intent).unwrap_err().code,
+                CoreErrorCode::Unauthorized
+            );
+        }
+        // An Agent acting for the Owner passes the Owner check; only a failed decision retries.
+        assert_eq!(
+            agent(
+                "automation-agent-retry",
+                ProjectWorkspaceIntent::RetryInboxDispatch {
+                    proposal_id: proposal.proposal_id.clone(),
+                },
+            )
+            .unwrap_err()
+            .code,
+            CoreErrorCode::Conflict
+        );
+        agent(
+            "automation-agent-confirm",
             ProjectWorkspaceIntent::ConfirmInboxDispatch {
                 confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
                 expected_store_epoch: "epoch-1".into(),
@@ -5422,42 +5470,25 @@ mod scheduled {
                 basis: vec![held.basis],
                 execution_selection: None,
             },
-            ProjectWorkspaceIntent::RetryInboxDispatch {
-                proposal_id: proposal.proposal_id,
-            },
-            ProjectWorkspaceIntent::HoldAutomationDecision {
-                lease_id: lease.lease_id,
-                page_id: "another-page".into(),
-                document_id: "another-document".into(),
-                title: "Another decision".into(),
-            },
-            ProjectWorkspaceIntent::RefreshAutomationDecision {
-                dispatch_id: held.automation_decision.unwrap().dispatch_id,
-            },
-        ];
-        for (index, intent) in intents.into_iter().enumerate() {
-            let error = workspace
-                .module
-                .apply(
-                    &host(),
-                    request(
-                        &format!("automation-agent:{index}"),
-                        ProjectWorkspaceIntent::AgentCommand {
-                            provenance: Box::new(provenance.clone()),
-                            intent: Box::new(intent),
-                        },
-                    ),
-                )
-                .unwrap_err();
-            assert_eq!(error.code, CoreErrorCode::Unauthorized);
-        }
+        )
+        .unwrap();
         assert_eq!(
             count(
                 &workspace,
                 "SELECT count(*) FROM automation_decisions WHERE status='held'"
             ),
-            1
+            0
         );
+        let member = super::super::test_support::local_member(&workspace);
+        let id = proposal.proposal_id.clone();
+        let actor: String = workspace
+            .kernel
+            .readers()
+            .read_default(move |c| {
+                Ok(c.query_row("SELECT json_extract(confirmed_actor_json,'$.type')||':'||json_extract(confirmed_actor_json,'$.on_behalf_of') FROM inbox_proposals WHERE proposal_id=?1", [id], |r| r.get(0))?)
+            })
+            .unwrap();
+        assert_eq!(actor, format!("agent:{member}"));
     }
 
     #[test]
@@ -6902,7 +6933,7 @@ mod scheduled {
 }
 
 #[test]
-fn scheduled_launch_defaults_and_agent_commands_cannot_escalate_execution() {
+fn scheduled_launch_defaults_and_agents_manage_automations_for_their_member() {
     use crate::automation::AutomationModule;
     use nodex_core_contracts::automation::*;
     let workspace = seeded_workspace();
@@ -6983,7 +7014,13 @@ fn scheduled_launch_defaults_and_agent_commands_cannot_escalate_execution() {
         agent_created.committed.value.automations[0].mode,
         AutomationMode::AskFirst
     );
-    let update = apply(
+    // An Agent carries its Member's authority: it keeps, escalates, edits and runs Automations
+    // as that person could. Its instructions, not Core, say when to choose Run.
+    let member = super::test_support::local_member(&workspace);
+    let mode = |outcome: &crate::automation::AutomationApplyOutcome| {
+        outcome.committed.value.automations[0].mode
+    };
+    let kept = apply(
         "agent-preserves-launch",
         AutomationIntent::UpdateAutomation {
             automation_id: "agent-task".into(),
@@ -6993,35 +7030,37 @@ fn scheduled_launch_defaults_and_agent_commands_cannot_escalate_execution() {
         },
         true,
     )
-    .unwrap_err();
-    assert_eq!(update.code, CoreErrorCode::Unauthorized);
+    .unwrap();
+    assert_eq!(mode(&kept), AutomationMode::AskFirst);
     input.mode = Some(AutomationMode::Run);
-    let create = apply(
-        "agent-auto",
+    let created = apply(
+        "agent-run",
         AutomationIntent::CreateAutomation {
-            automation_id: "forbidden".into(),
+            automation_id: "agent-run-task".into(),
             automation: input.clone(),
         },
         true,
     )
-    .unwrap_err();
-    assert_eq!(create.code, CoreErrorCode::Unauthorized);
-    let escalation = apply(
+    .unwrap();
+    assert_eq!(mode(&created), AutomationMode::Run);
+    assert_eq!(
+        created.committed.value.automations[0].owner_member_id,
+        member
+    );
+    let escalated = apply(
         "agent-escalates",
         AutomationIntent::UpdateAutomation {
             automation_id: "agent-task".into(),
-            expected_revision: 1,
+            expected_revision: 2,
             status: AutomationStatus::Active,
             automation: input.clone(),
         },
         true,
     )
-    .unwrap_err();
-    assert_eq!(escalation.code, CoreErrorCode::Unauthorized);
-
-    // A standing Run grant protects all definition edits, including attributed Agents.
+    .unwrap();
+    assert_eq!(mode(&escalated), AutomationMode::Run);
     apply(
-        "agent-edits-automatic",
+        "agent-edits-run",
         AutomationIntent::UpdateAutomation {
             automation_id: "host-task".into(),
             expected_revision: 1,
@@ -7030,16 +7069,31 @@ fn scheduled_launch_defaults_and_agent_commands_cannot_escalate_execution() {
         },
         true,
     )
-    .unwrap_err();
-    let execution = apply(
+    .unwrap();
+    apply(
         "agent-run-now",
         AutomationIntent::DispatchNow {
             automation_id: "agent-task".into(),
         },
         true,
     )
-    .unwrap_err();
-    assert_eq!(execution.code, CoreErrorCode::Unauthorized);
+    .unwrap();
+    let actor: serde_json::Value = serde_json::from_str(
+        &workspace
+            .kernel
+            .readers()
+            .read_default(|c| {
+                Ok(c.query_row(
+                    "SELECT actor_json FROM automation_decisions WHERE automation_id='agent-task'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )?)
+            })
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(actor["type"], "agent");
+    assert_eq!(actor["on_behalf_of"], member.as_str());
     input.runbook_page_id = Some("missing-page".into());
     let invalid = apply(
         "invalid-runbook",

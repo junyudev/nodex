@@ -107,6 +107,7 @@ that version's exact upstream tag only when its tests are needed to resolve deep
 - Large refactors are acceptable, but they must still be coherent: preserve project scoping, update the source-of-truth docs, migrate affected call sites, remove obsolete code paths, and run the relevant checks.
 - Do not overbuild speculative abstractions. A long-term solution should reduce conceptual complexity, not add indirection for its own sake.
 - If a long-term fix is too large for one safe change, implement a clean vertical slice and document the remaining migration path instead of landing a temporary workaround.
+- When designing tools or behavior for Agents, prefer soft limits over hard limits: an Agent acting for a person may do what that person may do, and how it should behave belongs in its instructions and tool descriptions. Enforce in code only other people's authority, the person's own explicit settings and data integrity. See [Agents act for people](docs/PRODUCT_SENSE.md#agents-act-for-people).
 
 ## Architecture
 

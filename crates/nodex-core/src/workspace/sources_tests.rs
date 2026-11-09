@@ -1,5 +1,5 @@
 use super::test_support::*;
-use nodex_core_contracts::{AdapterKind, sources::*, workspace::*};
+use nodex_core_contracts::{sources::*, workspace::*};
 use serde_json::json;
 fn config() -> GitHubSourceConfig {
     GitHubSourceConfig {
@@ -242,59 +242,104 @@ fn sources_baseline_excludes_history_and_configuration_fences_lease() {
             .is_err()
     );
 }
-#[test]
-fn sources_configuration_and_ingestion_are_not_agent_capabilities() {
-    let w = setup();
-    let mut agent = context();
-    agent.adapter = AdapterKind::Agent;
-    for cmd in [
-        SourceCommand::ConfigureSource {
-            source_id: "github".into(),
-            expected_revision: 1,
-            enabled: false,
-            config: config(),
+/// An Agent chat that `member` opened.
+fn agent_chat(w: &TestWorkspace, session: &str, member: &str) {
+    apply(
+        &w.module,
+        &format!("chat-{session}"),
+        ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            agent_selection: None,
+            coordinator: false,
+            side_chat_source_session_id: None,
+            session_id: session.into(),
+            project_id: None,
+            title: "Agent chat".into(),
+            initial_page_ids: vec![],
+            runtime_id: "runtime".into(),
+            runtime_thread_id: format!("thread:{session}"),
+            launch_request_id: format!("launch:{session}"),
         },
-        ingest(&w, 0, "lease"),
-    ] {
-        let error = w
-            .module
-            .apply(&agent, request("agent", command(cmd)))
-            .unwrap_err();
-        assert_eq!(
-            error.code,
-            nodex_core_contracts::CoreErrorCode::Unauthorized
-        );
+    );
+    let (session, member) = (session.to_owned(), member.to_owned());
+    w.kernel
+        .writer()
+        .call(move |c| {
+            c.execute(
+                "UPDATE session_requesting_members SET member_id=?2 WHERE session_id=?1",
+                [session, member],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+}
+fn agent(session: &str, command: SourceCommand) -> ProjectWorkspaceIntent {
+    ProjectWorkspaceIntent::AgentCommand {
+        provenance: Box::new(nodex_core_contracts::agent::AgentTurnProvenance {
+            profile_id: "profile-1".into(),
+            authority: ProjectWorkspaceTurnAuthority {
+                thread_id: format!("thread:{session}"),
+                root_thread_id: format!("thread:{session}"),
+                turn_id: "run".into(),
+                actor_project_id: None,
+                library_id: "library-1".into(),
+                store_epoch: "epoch-1".into(),
+                runtime: Some(ProjectWorkspaceAgentRuntimeAuthority {
+                    session_id: session.into(),
+                    runtime_id: "runtime".into(),
+                    turn_kind: ProjectWorkspaceAgentRuntimeTurnKind::Run,
+                }),
+            },
+        }),
+        intent: Box::new(ProjectWorkspaceIntent::Source { command }),
     }
 }
 #[test]
-fn sources_reject_agent_attribution_even_on_a_persons_receipt_replay() {
+fn an_agent_configures_sources_for_the_local_owner_but_never_for_another_member_or_the_host() {
     let w = setup();
-    let mut agent = context();
-    agent.adapter = AdapterKind::ElectronHost;
-    agent.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
-        run_id: None,
-        session_id: "chat".into(),
-        backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
-    });
-    let error = w
-        .module
-        .apply(
-            &agent,
-            request(
-                "configure",
-                command(SourceCommand::ConfigureSource {
-                    source_id: "github".into(),
-                    expected_revision: 0,
-                    enabled: true,
-                    config: config(),
-                }),
-            ),
-        )
-        .unwrap_err();
+    let owner = local_member(&w);
+    w.kernel.writer().call(|c| {
+        c.execute_batch("UPDATE libraries SET space_kind='team' WHERE id='library-1'; INSERT INTO members(id,library_id,display_name,lifecycle,role) VALUES('other','library-1','Other Owner','active','owner');")?;
+        Ok(())
+    }).unwrap();
+    agent_chat(&w, "mine", &owner);
+    agent_chat(&w, "theirs", "other");
+    let configure = || SourceCommand::ConfigureSource {
+        source_id: "github".into(),
+        expected_revision: 1,
+        enabled: false,
+        config: config(),
+    };
+    let refused = |operation: &str, intent| {
+        w.module
+            .apply(&context(), request(operation, intent))
+            .unwrap_err()
+            .code
+    };
+    // Configuration needs the local Owner; another Member's Agent, even an Owner's, cannot.
     assert_eq!(
-        error.code,
+        refused("theirs", agent("theirs", configure())),
         nodex_core_contracts::CoreErrorCode::Unauthorized
     );
+    // Polling and ingestion stay the Desktop Host's own work.
+    assert_eq!(
+        refused("ingest", agent("mine", ingest(&w, 0, "lease"))),
+        nodex_core_contracts::CoreErrorCode::Unauthorized
+    );
+    // The person's receipt is never replayed for an Agent.
+    assert!(
+        w.module
+            .apply(&context(), request("configure", agent("mine", configure())))
+            .is_err()
+    );
+    apply(&w.module, "mine", agent("mine", configure()));
+    let actor: String = w
+        .kernel
+        .readers()
+        .read_default(|c| {
+            Ok(c.query_row("SELECT json_extract(actor_json,'$.type')||':'||json_extract(actor_json,'$.on_behalf_of') FROM mutation_actors WHERE module_name='project_workspace' AND operation_id='mine'", [], |r| r.get(0))?)
+        })
+        .unwrap();
+    assert_eq!(actor, format!("agent:{owner}"));
 }
 #[test]
 fn sources_share_semantic_deduplication_across_overlapping_connections() {

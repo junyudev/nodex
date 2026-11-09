@@ -36,7 +36,8 @@ this owner. Unmanaged chats retain their policy.
 
 Remote membership admits Inbox reads and person Turn actions through the semantic
 allowlist. It does not grant Coordinator writing, managed-chat handback or Host
-notification authority.
+notification authority. An Agent takes Turn actions only on its own Member's Turns,
+as that Member could; when to act for them is its instructions' concern.
 Receipt ownership and writer-time revocation remain Member-bound.
 
 A managed chat returns one inbound message under a Core receipt. The Host proves
@@ -45,7 +46,8 @@ bindings rather than a second transcript. Runtime supplies direct-chat content
 and attachments when intake publication is needed. Return preserves author,
 content and dispatch history, is bounded to two handbacks across destinations,
 and never grants automatic-start consent. Already-answered questions cannot be
-returned. Only the person may explicitly choose the previous destination again.
+returned. Nodex routes a returned message elsewhere unless the person insists on the
+previous destination; that suggestion still waits for the person.
 
 ## Consequences
 

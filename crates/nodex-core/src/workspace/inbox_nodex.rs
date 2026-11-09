@@ -113,13 +113,8 @@ pub(in crate::workspace) fn apply(
         {
             require_host(context)?;
         }
-        if provenance.is_some() || context.agent_attribution.is_some() {
-            return Err(StoreError::new(
-                StoreErrorCode::Unauthorized,
-                "Only a person may act on an Inbox Turn",
-                false,
-            ));
-        }
+        // A Turn action acts for its Member: the person, or an Agent acting for them. The Turn
+        // itself must be that Member's; whether to act is the Agent's instructions' concern.
         None
     };
     run_mutation(

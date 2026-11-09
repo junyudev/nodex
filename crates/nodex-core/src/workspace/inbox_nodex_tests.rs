@@ -499,7 +499,7 @@ fn resolved_questions_in_unadmitted_batches_are_discarded_without_losing_other_f
 }
 
 #[test]
-fn routing_clocks_preserve_the_pause_union_across_reopen_and_agents_cannot_change_holds() {
+fn routing_clocks_preserve_the_pause_union_across_reopen_and_agents_hold_for_their_person() {
     use nodex_core_contracts::workspace::ExecutionHoldScope;
     let w = seeded_workspace();
     let m = &w.module;
@@ -518,24 +518,47 @@ fn routing_clocks_preserve_the_pause_union_across_reopen_and_agents_cannot_chang
     let page = ExecutionHoldScope::Page {
         page_id: "page:paused-route".into(),
     };
-    for intent in [
-        ProjectWorkspaceIntent::PauseWork {
-            scope: page.clone(),
-        },
-        ProjectWorkspaceIntent::ResumeWork {
-            scope: page.clone(),
-        },
-    ] {
-        assert_eq!(
-            m.apply(
-                &host(),
-                request("agent-hold", agent_command("nodex", intent))
-            )
-            .unwrap_err()
-            .code,
-            CoreErrorCode::Unauthorized
-        );
-    }
+    // Nodex pauses and resumes for the person it works for; the hold is that person's.
+    m.apply(
+        &host(),
+        request(
+            "agent-pause",
+            agent_command(
+                "nodex",
+                ProjectWorkspaceIntent::PauseWork {
+                    scope: page.clone(),
+                },
+            ),
+        ),
+    )
+    .unwrap();
+    assert!(requests(m).is_empty());
+    let (holder, actor) = w
+        .kernel
+        .readers()
+        .read_default(|c| {
+            Ok((
+                c.query_row("SELECT actor FROM execution_holds WHERE scope_kind='page' AND scope_id='page:paused-route'", [], |r| r.get::<_, String>(0))?,
+                c.query_row("SELECT json_extract(actor_json,'$.type')||':'||json_extract(actor_json,'$.on_behalf_of') FROM mutation_actors WHERE module_name='project_workspace' AND operation_id='agent-pause'", [], |r| r.get::<_, String>(0))?,
+            ))
+        })
+        .unwrap();
+    assert_eq!(holder, local_member(&w));
+    assert_eq!(actor, format!("agent:{holder}"));
+    m.apply(
+        &host(),
+        request(
+            "agent-resume",
+            agent_command(
+                "nodex",
+                ProjectWorkspaceIntent::ResumeWork {
+                    scope: page.clone(),
+                },
+            ),
+        ),
+    )
+    .unwrap();
+    assert_eq!(requests(m).len(), 1);
     apply_host(
         m,
         "hold-page",
@@ -600,7 +623,11 @@ fn create_work_page(w: &TestWorkspace, id: &str) {
             page_id: id.into(),
             document_id: format!(
                 "019d0000-0000-7000-8000-{:012}",
-                if id.ends_with("91") { 92 } else { 94 }
+                match &id[id.len() - 2..] {
+                    "91" => 92,
+                    "93" => 94,
+                    _ => 96,
+                }
             ),
             title: id.into(),
         },
@@ -943,6 +970,94 @@ fn turn_reply_is_durable_unchanged_and_never_creates_intake_and_stale_episode_fa
         CoreErrorCode::Conflict
     );
 }
+#[test]
+fn an_agent_replies_on_its_members_turn_but_never_on_another_members() {
+    let w = seeded_workspace();
+    let page = "019d0000-0000-7000-8000-000000000091";
+    create_work_page(&w, page);
+    start_work_page(&w, page);
+    set_status_by_hand(&w, page, "review");
+    let episode = mixed(&w, project_scope(), None, 10)
+        .items
+        .remove(0)
+        .turn
+        .unwrap()
+        .turn
+        .episode;
+    runtime_session(&w.module, "helper", None, false);
+    runtime_session(&w.module, "theirs", None, false);
+    let member = local_member(&w);
+    // Another Member of a team Space opened the second chat.
+    w.kernel
+        .writer()
+        .call(|c| {
+            c.execute_batch("UPDATE libraries SET space_kind='team' WHERE id='library-1'; INSERT INTO members(id,library_id,display_name,lifecycle,role) VALUES('other','library-1','Other','active','member'); UPDATE session_requesting_members SET member_id='other' WHERE session_id='theirs';")?;
+            Ok(())
+        })
+        .unwrap();
+    let reply = |chat: &str, operation: &str| {
+        w.module.apply(
+            &host(),
+            request(
+                operation,
+                agent_command(
+                    chat,
+                    ProjectWorkspaceIntent::ReplyToPageTurn {
+                        page_id: page.into(),
+                        episode: episode.clone(),
+                        body: "Ship it as reviewed.".into(),
+                        dispatch: Some(nodex_core_contracts::inbox::InboxReplyDispatch::Send),
+                    },
+                ),
+            ),
+        )
+    };
+    // Nobody answers another Member's Turn, through an Agent or otherwise.
+    assert_eq!(
+        reply("theirs", "agent_reply_theirs").unwrap_err().code,
+        CoreErrorCode::Unauthorized
+    );
+    // The Agent acts on its own Member's Turn when the person asked it to.
+    reply("helper", "agent_reply").unwrap();
+    let ProjectWorkspaceReadValue::InboxDispatchOutbox { dispatches } = read_host(
+        &w.module,
+        ProjectWorkspaceRead::InboxDispatchOutbox { limit: 10 },
+    ) else {
+        panic!()
+    };
+    assert_eq!(
+        dispatches[0].final_text.as_deref(),
+        Some("Ship it as reviewed.")
+    );
+    let actor: String = w
+        .kernel
+        .readers()
+        .read_default(|c| {
+            Ok(c.query_row("SELECT json_extract(actor_json,'$.type')||':'||json_extract(actor_json,'$.on_behalf_of') FROM mutation_actors WHERE module_name='project_workspace' AND operation_id='agent_reply'", [], |r| r.get(0))?)
+        })
+        .unwrap();
+    assert_eq!(actor, format!("agent:{member}"));
+    // Showing a Turn notification remains the person's devices' own receipt.
+    assert_eq!(
+        w.module
+            .apply(
+                &host(),
+                request(
+                    "agent_claim",
+                    agent_command(
+                        "helper",
+                        ProjectWorkspaceIntent::ClaimTurnNotification {
+                            page_id: page.into(),
+                            episode,
+                        },
+                    ),
+                ),
+            )
+            .unwrap_err()
+            .code,
+        CoreErrorCode::Unauthorized
+    );
+}
 fn entry(module: &ProjectWorkspaceModule, id: &str) -> ProjectWorkspaceInboxItem {
     let ProjectWorkspaceReadValue::InboxEntry { item } = read_host(
         module,
@@ -1239,56 +1354,58 @@ fn agent_start(session: &str, page: &str, launch: &str) -> ProjectWorkspaceInten
 }
 
 #[test]
-fn nodex_starts_only_work_that_may_start_on_its_own_and_reads_as_nodex() {
+fn nodex_starts_work_for_the_person_and_reads_as_nodex_on_their_behalf() {
     let w = seeded_workspace();
     runtime_session(&w.module, "nodex", None, true);
     runtime_session(&w.module, "helper", Some(PROJECT), false);
     let page = "019d0000-0000-7000-8000-000000000091";
-    let other = "019d0000-0000-7000-8000-000000000093";
-    create_work_page(&w, page);
-    create_work_page(&w, other);
+    let consented = "019d0000-0000-7000-8000-000000000093";
+    let other = "019d0000-0000-7000-8000-000000000095";
+    for id in [page, consented, other] {
+        create_work_page(&w, id);
+    }
+    let member = local_member(&w);
+    let launch = |id: &str| {
+        super::super::test_support::activity_rows(&w.module)
+            .into_iter()
+            .find(|row| row.id == format!("launch:launch:{id}"))
+            .unwrap()
+    };
+    let nodex = nodex_acting_for(&member);
+    // Ready work without consent waits for the person; when they ask, Nodex starts it for them.
     assign_agent(&w, "assign-ask", page, false, 1);
-    // Ready work without consent is the person's Turn to start; Nodex cannot take it.
-    assert_eq!(
-        apply_host_error(&w.module, "nodex:ask", agent_start("nodex", page, "asked")),
-        CoreErrorCode::Unauthorized
-    );
-    assert_eq!(count(&w, "SELECT count(*) FROM page_work_launches"), 0);
-    assign_agent(&w, "assign-consent", page, true, 2);
+    apply_host(&w.module, "nodex:ask", agent_start("nodex", page, "asked"));
+    assert_eq!(launch("asked").actor, nodex);
+    assert_eq!(launch("asked").actor_label, "by Nodex on behalf of You");
+    // A Page set to Start automatically starts on its consenting Member's standing grant.
+    assign_agent(&w, "assign-consent", consented, true, 1);
     apply_host(
         &w.module,
         "nodex:consented",
-        agent_start("nodex", page, "consented"),
+        agent_start("nodex", consented, "consented"),
     );
-    let launch = super::super::test_support::activity_rows(&w.module)
-        .into_iter()
-        .find(|row| row.id == "launch:launch:consented")
-        .unwrap();
-    let member = local_member(&w);
-    assert_eq!(
-        launch.actor,
-        nodex_core_contracts::Actor::Agent {
-            session_id: "nodex".into(),
-            run_id: Some("run:test".into()),
-            on_behalf_of: member,
-        }
-    );
-    assert_eq!(launch.actor_label, "by Nodex on behalf of You");
-    // Another Agent still starts work for the person it serves, under its own name.
+    assert_eq!(launch("consented").actor, nodex);
+    assert_eq!(launch("consented").actor_label, "by Nodex on behalf of You");
+    // Another Agent starts work for the person it serves, under its own name.
     assign_agent(&w, "assign-helper", other, false, 1);
     apply_host(
         &w.module,
         "helper:start",
         agent_start("helper", other, "helper"),
     );
-    let helper = super::super::test_support::activity_rows(&w.module)
-        .into_iter()
-        .find(|row| row.id == "launch:launch:helper")
-        .unwrap();
+    let helper = launch("helper");
     assert!(
         matches!(helper.actor, nodex_core_contracts::Actor::Agent { ref session_id, .. } if session_id == "helper")
     );
     assert_eq!(helper.actor_label, "by Agent on behalf of You");
+}
+
+fn nodex_acting_for(member: &str) -> nodex_core_contracts::Actor {
+    nodex_core_contracts::Actor::Agent {
+        session_id: "nodex".into(),
+        run_id: Some("run:test".into()),
+        on_behalf_of: member.into(),
+    }
 }
 
 #[path = "inbox_remote_tests.rs"]

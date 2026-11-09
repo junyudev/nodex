@@ -2135,7 +2135,7 @@ pub enum ProjectWorkspaceIntent {
         session_id: String,
         managed: bool,
     },
-    /// Only a person accepts reviewed work.
+    /// Accepts reviewed work for a Member: the person, or the Member an Agent acts for.
     AcceptPageWork {
         page_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -739,7 +739,7 @@ pub(crate) struct PageAcceptanceResult {
     duplicate: bool,
 }
 
-/// Acceptance is a person command; Core guards both identity and the review predecessor.
+/// Acceptance acts for a Member, a person or their Agent; Core guards the review predecessor.
 pub(crate) fn accept_page(
     client: &CoreClient,
     explicit_project: Option<&str>,

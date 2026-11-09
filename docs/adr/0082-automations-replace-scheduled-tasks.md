@@ -34,8 +34,11 @@ Every Automation has one mode, named for what it does:
 Only the Automation's Owner may change its mode or edit an Automation set to Run.
 Removing the Owner retires their Automations and withdraws unstarted decisions while
 retaining history. Members may edit
-Automations set to Ask first or Dry run within their scope. Agents propose edits for the Owner
-to apply; they cannot change existing Automations directly. Triggers, Pages, runbooks and external text are evidence or instructions,
+Automations set to Ask first or Dry run within their scope. An Agent carries exactly the
+authority of the Member it acts for, so it may create and change Automations as that Member
+could, Run included. Its instructions, not Core, keep it to Ask first unless the person asked
+for unattended runs; a change only the Owner may make can be proposed for the Owner to apply.
+Triggers, Pages, runbooks and external text are evidence or instructions,
 never authorization to change the Automation.
 
 An Automation decision records the immutable Trigger references, inputs, reason, frozen

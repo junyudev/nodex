@@ -329,51 +329,59 @@ fn success(connection: &Connection, id: &str, scope: &str, _now: i64) -> Result<
 }
 #[allow(clippy::too_many_arguments)]
 /// Check the current person and Host before receipt replay or Source writes.
+/// Source configuration belongs to the local Owner: the person at this host, or an Agent acting
+/// for them. Any Member, or their Agent, retries a Problem. Polling, ingestion and delivery
+/// settlement are the Desktop Host's own work.
 pub(super) fn authorize(
     connection: &Connection,
     context: &BoundModuleContext,
     library: &str,
     command: &SourceCommand,
 ) -> Result<(), StoreError> {
-    if matches!(command, SourceCommand::RetryProblem { .. })
-        && matches!(
-            context.adapter,
-            AdapterKind::ElectronHost | AdapterKind::RemoteMember | AdapterKind::Test
-        )
-        && context.agent_attribution.is_none()
-    {
-        return Ok(());
-    }
-    if matches!(
-        command,
-        SourceCommand::FollowThread { .. } | SourceCommand::ReplyToOrigin { .. }
-    ) || !matches!(
+    let refused = |message: &str| {
+        Err(StoreError::new(
+            StoreErrorCode::Unauthorized,
+            message,
+            false,
+        ))
+    };
+    let host = matches!(
         context.adapter,
         AdapterKind::ElectronHost | AdapterKind::Test
-    ) || context.agent_attribution.is_some()
-    {
-        return Err(StoreError::new(
-            StoreErrorCode::Unauthorized,
-            "Sources are configured by a person and polled by the Desktop Host",
-            false,
-        ));
+    );
+    match command {
+        SourceCommand::RetryProblem { .. }
+            if host || context.adapter == AdapterKind::RemoteMember =>
+        {
+            Ok(())
+        }
+        SourceCommand::ConfigureSource { .. } if host => {
+            let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+            let owner: bool = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM local_profile_members local JOIN members member ON member.id=local.member_id AND member.library_id=local.library_id WHERE local.profile_id=?1 AND local.library_id=?2 AND local.member_id=?3 AND member.role='owner' AND member.lifecycle='active')",
+                params![context.profile_id.0, library, member],
+                |row| row.get(0),
+            )?;
+            if owner {
+                Ok(())
+            } else {
+                refused("Source configuration requires the local Owner")
+            }
+        }
+        SourceCommand::FollowThread { .. }
+        | SourceCommand::ReplyToOrigin { .. }
+        | SourceCommand::RetryProblem { .. }
+        | SourceCommand::ConfigureSource { .. } => {
+            refused("Sources are configured by their Owner and polled by the Desktop Host")
+        }
+        _ if host
+            && context.agent_attribution.is_none()
+            && !matches!(context.actor, nodex_core_contracts::Actor::Agent { .. }) =>
+        {
+            Ok(())
+        }
+        _ => refused("Source polling and delivery belong to the Desktop Host"),
     }
-    if !matches!(command, SourceCommand::ConfigureSource { .. }) {
-        return Ok(());
-    }
-    let owner: bool = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM local_profile_members local JOIN members member ON member.id=local.member_id AND member.library_id=local.library_id WHERE local.profile_id=?1 AND local.library_id=?2 AND member.role='owner' AND member.lifecycle='active')",
-        params![context.profile_id.0, library],
-        |row| row.get(0),
-    )?;
-    if !owner {
-        return Err(StoreError::new(
-            StoreErrorCode::Unauthorized,
-            "Source configuration requires the local Owner",
-            false,
-        ));
-    }
-    Ok(())
 }
 
 /// The receipt identity of one Source command: the Store epoch, operation and request hash it replays under.

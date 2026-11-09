@@ -6,7 +6,6 @@ use super::inbox_content::{
     MessageContentLimit, agent_markdown, read_message_content,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 
 use nodex_core_contracts::BoundModuleContext;
@@ -1372,19 +1371,8 @@ pub(super) fn dispatch_context_for_inputs(
             summary,
         });
     }
-    let excluded = entries
-        .iter()
-        .filter_map(|entry| {
-            entry
-                .handback
-                .as_ref()
-                .map(|returned| returned.chat.session_id.as_str())
-        })
-        .collect::<BTreeSet<_>>();
-    let sessions = sessions
-        .into_iter()
-        .filter(|session| !excluded.contains(session.session_id.as_str()))
-        .collect();
+    // A returned message names the chat that returned it; whether to route it there again is
+    // Nodex's judgement on the person's word, so that chat stays a destination.
     Ok(ProjectWorkspaceInboxDispatchContext {
         scope,
         entries,

@@ -176,7 +176,7 @@ identity survives retirement of the rebuildable delivery window.
 Library owns Member identity and the local Profile binding. Each Page owns its
 Member Owner, typed person-or-Agent Assignee, and consent to start automatically.
 Data Source Views project those fields without owning another assignment value.
-Core enforces assignment references and person-granted consent; the Host resolves
+Core enforces assignment references and records the Member who granted consent; the Host resolves
 Agent availability when starting work. See
 [Database Pages and Views](product-specs/database-pages-and-views-behavior.md#work-prerequisites-and-agent-work).
 
@@ -199,7 +199,7 @@ handoff journal. Core also owns each Page Workspace's stable repository/branch i
 [Agent Runtime behavior](product-specs/agent-runtime-behavior.md) and
 [ADR 0068](adr/0068-agent-runtime-execution-authority.md).
 
-Core owns person-only execution holds over Page, Project and Space scopes. Main resolves
+Core owns Member-owned execution holds over Page, Project and Space scopes. Main resolves
 that union at start and delivery boundaries and supplies held roots before Runtime recovery.
 Runtime owns native retirement, the durable execution fence and episode reconciliation; monitoring
 continues to record facts. See [Coordinator Pause](product-specs/coordinator-behavior.md#pause).

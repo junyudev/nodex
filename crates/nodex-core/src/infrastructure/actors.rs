@@ -230,10 +230,10 @@ pub(crate) fn workspace(
         let target=match intent.as_ref() {
             W::WriteTurnNote {page_id,..}=>c.query_row("SELECT json_extract(signature,'$[0].member_id') FROM page_turn_episodes WHERE page_id=?1",[page_id],|r|r.get::<_,Option<String>>(0)).optional()?.flatten().map(|member|(member,None)),
             W::AnswerInboxQuestion {question_page_id,..}=>c.query_row("SELECT author_member_id FROM inbox_entries WHERE page_id=?1",[question_page_id],|r|r.get::<_,Option<String>>(0)).optional()?.flatten().map(|member|(member,None)),
-            // Nodex starts only on a person's standing consent, so it acts for that person.
+            // Nodex starting a Page set to Start automatically acts on that Member's standing
+            // consent; any other start acts for the Member whose request it is handling.
             W::StartPageWork { page_id, .. } if is_coordinator(c, &turn_session(c, provenance)?)? => {
-                let grant = work_grant(c, page_id)?.ok_or_else(denied)?;
-                Some((grant.clone(), Some(grant)))
+                work_grant(c, page_id)?.map(|grant| (grant.clone(), Some(grant)))
             }
             _=>None,
         };

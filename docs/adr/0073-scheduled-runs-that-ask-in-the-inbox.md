@@ -1,6 +1,6 @@
 # ADR 0073: Scheduled runs that ask in the Inbox
 
-- Status: Entity model superseded by [ADR 0082](0082-automations-replace-scheduled-tasks.md); Ask-in-the-Inbox behavior retained
+- Status: Entity model and Agent authority superseded by [ADR 0082](0082-automations-replace-scheduled-tasks.md); Ask-in-the-Inbox behavior retained
 - Date: 2026-10-27
 - Owners: Nodex maintainers
 - Refines: Inbox dispatch in [ADR 0067](0067-inbox-entries-and-dispatch-proposals.md)

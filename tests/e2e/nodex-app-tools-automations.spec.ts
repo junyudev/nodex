@@ -40,7 +40,7 @@ const toolOutputRecords = (output: unknown) =>
 const labeledResult = (records: Record<string, unknown>[], label: string) =>
   requireRecord(records.find((record) => record[label])?.[label], label);
 
-test("reviews Agent Automation changes as Owner and retains native receipts across a restart", async ({}, testInfo) => {
+test("an Agent changes Automations for its person, its proposals are reviewed as Owner, and receipts survive a restart", async ({}, testInfo) => {
   test.setTimeout(180_000);
   let callerSessionId = "";
   let workspaceRoot = "";
@@ -71,9 +71,8 @@ test("reviews Agent Automation changes as Owner and retains native receipts acro
               "const created = unwrap(await app.automations_update(cronArgs)); text({created});",
               "text({createReplay:unwrap(await app.automations_update(cronArgs))});",
               "const viewed = unwrap(await app.automations_update({operation:'view',id:created.item.id})); text({viewed});",
-              "const {idempotencyKey: _createKey,...definition} = cronArgs; const updateArgs = {...definition,operation:'update',id:viewed.item.id,expectedRevision:viewed.item.automationRevision,status:'PAUSED',name:'MCP paused review',notificationPolicy:null};",
-              "text({updateRefused:raw(await app.automations_update(updateArgs))});",
-              "text({proposed:unwrap(await app.automations_update({...updateArgs,operation:'suggested_update'}))});",
+              "const {idempotencyKey: _createKey,...definition} = cronArgs; const updated = unwrap(await app.automations_update({...definition,operation:'update',id:viewed.item.id,expectedRevision:viewed.item.automationRevision,status:'ACTIVE',name:'MCP direct review'})); text({updated});",
+              "text({proposed:unwrap(await app.automations_update({...definition,operation:'suggested_update',id:viewed.item.id,expectedRevision:updated.item.automationRevision,status:'PAUSED',name:'MCP paused review',notificationPolicy:null}))});",
               "text({afterProposal:unwrap(await app.automations_update({operation:'view',id:created.item.id}))});",
               `const heartbeatArgs = {operation:'create',kind:'heartbeat',name:'MCP follow-up',prompt:'Check this Session for progress',rrule:'FREQ=YEARLY',notificationPolicy:'failed_runs_only',idempotencyKey:${JSON.stringify(heartbeatCreateKey)}};`,
               "const heartbeat = unwrap(await app.automations_update(heartbeatArgs)); text({heartbeat});",
@@ -86,10 +85,7 @@ test("reviews Agent Automation changes as Owner and retains native receipts acro
               "text({restoredHeartbeat:unwrap(await app.automations_update({operation:'view',id:retained.heartbeatId}))});",
               "text({restoredCreateReplay:unwrap(await app.automations_update(retained.cronCreateArgs))});",
               "text({restoredHeartbeatReplay:unwrap(await app.automations_update(retained.heartbeatCreateArgs))});",
-              "const deleteArgs = {operation:'delete',id:retained.cronId,expectedRevision:retained.cronRevision};",
-              "text({deleteRefused:raw(await app.automations_update(deleteArgs))});",
-              "const heartbeatDeleteArgs = {operation:'delete',id:retained.heartbeatId,expectedRevision:retained.heartbeatRevision};",
-              "text({heartbeatDeleteRefused:raw(await app.automations_update(heartbeatDeleteArgs))});",
+              "text({heartbeatDeleted:unwrap(await app.automations_update({operation:'delete',id:retained.heartbeatId,expectedRevision:retained.heartbeatRevision}))});",
             ];
             return responses.stream([
               responses.created(`${phase}_call`),
@@ -123,23 +119,28 @@ test("reviews Agent Automation changes as Owner and retains native receipts acro
             });
             expect(labeledResult(records, "createReplay").item).toEqual(created.item);
             expect(labeledResult(records, "viewed").item).toEqual(created.item);
-            expect(labeledResult(records, "updateRefused")).toMatchObject({
-              isError: true,
-              structuredContent: { error: { code: "unauthorized" } },
+            // The Agent acts with its person's authority: its edit commits directly.
+            const updated = labeledResult(records, "updated");
+            expect(updated.item).toMatchObject({
+              id: requireRecord(created.item, "Created Automation").id,
+              name: "MCP direct review",
+              status: "ACTIVE",
+              mode: "ask_first",
+              automationRevision: 2,
             });
             expect(labeledResult(records, "proposed")).toMatchObject({
               committed: false,
               proposal: {
                 operation: "suggested_update",
                 id: requireRecord(created.item, "Created Automation").id,
-                expectedRevision: 1,
+                expectedRevision: 2,
                 status: "PAUSED",
                 projectId: selectedProjectId,
                 name: "MCP paused review",
                 notificationPolicy: null,
               },
             });
-            expect(labeledResult(records, "afterProposal").item).toEqual(created.item);
+            expect(labeledResult(records, "afterProposal").item).toEqual(updated.item);
             const heartbeat = labeledResult(records, "heartbeat");
             expect(heartbeat.item).toMatchObject({
               kind: "heartbeat",
@@ -180,14 +181,9 @@ test("reviews Agent Automation changes as Owner and retains native receipts acro
             expect(labeledResult(records, "restoredHeartbeatReplay").operationId).toBe(
               retained.heartbeatOperationId,
             );
-            expect(labeledResult(records, "deleteRefused")).toMatchObject({
-              isError: true,
-              structuredContent: { error: { code: "unauthorized" } },
-            });
-            expect(labeledResult(records, "heartbeatDeleteRefused")).toMatchObject({
-              isError: true,
-              structuredContent: { error: { code: "unauthorized" } },
-            });
+            expect(labeledResult(records, "heartbeatDeleted").operationId).toEqual(
+              expect.any(String),
+            );
           }
           return responses.stream([
             responses.created(`${phase}_done`),
@@ -260,10 +256,10 @@ test("reviews Agent Automation changes as Owner and retains native receipts acro
         expect(beforeReview.items).toContainEqual(
           expect.objectContaining({
             id: receipts.cronId,
-            name: "MCP clock review",
+            name: "MCP direct review",
             status: "ACTIVE",
             mode: "ask_first",
-            automationRevision: 1,
+            automationRevision: 2,
           }),
         );
 
@@ -332,9 +328,9 @@ test("reviews Agent Automation changes as Owner and retains native receipts acro
             name: "MCP paused review",
             mode: "ask_first",
             notificationPolicy: null,
-            automationRevision: 2,
+            automationRevision: 3,
           });
-        retained = { ...receipts, cronRevision: 2 };
+        retained = { ...receipts, cronRevision: 3 };
         const persisted = (await invokeIpc(page, "automations:list")) as AutomationListResponse;
         expect(persisted.items).toHaveLength(2);
         expect(persisted.items).toContainEqual(
@@ -343,7 +339,7 @@ test("reviews Agent Automation changes as Owner and retains native receipts acro
             id: receipts.cronId,
             projectId: selectedProjectId,
             status: "PAUSED",
-            automationRevision: 2,
+            automationRevision: 3,
           }),
         );
         expect(persisted.items).toContainEqual(
@@ -373,20 +369,21 @@ test("reviews Agent Automation changes as Owner and retains native receipts acro
             (candidate) => candidate.id === providerThreadId,
           )?.nativeThreadRef,
         ).toEqual(nativeThread);
-        expect(await invokeIpc(page, "automations:list")).toEqual(persisted);
+        // The Agent deleted the heartbeat for its person; the person deletes the other one.
+        expect(await invokeIpc(page, "automations:list")).toEqual({
+          items: persisted.items.filter((automation) => automation.id !== receipts.heartbeatId),
+        });
         await page.getByRole("button", { name: "Automations", exact: true }).click();
-        for (const id of [receipts.cronId, receipts.heartbeatId]) {
-          const row = page.locator(`[data-automation-id="${id}"]`);
-          await row.hover();
-          await row.getByRole("button", { name: "More automation actions", exact: true }).click();
-          await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
-          const confirmation = page.getByRole("dialog", {
-            name: "Delete automation?",
-            exact: true,
-          });
-          await confirmation.getByRole("button", { name: "Delete", exact: true }).click();
-          await expect(row).toBeHidden();
-        }
+        const row = page.locator(`[data-automation-id="${String(receipts.cronId)}"]`);
+        await row.hover();
+        await row.getByRole("button", { name: "More automation actions", exact: true }).click();
+        await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+        const confirmation = page.getByRole("dialog", {
+          name: "Delete automation?",
+          exact: true,
+        });
+        await confirmation.getByRole("button", { name: "Delete", exact: true }).click();
+        await expect(row).toBeHidden();
         expect(await invokeIpc(page, "automations:list")).toEqual({ items: [] });
       } catch (error) {
         const presentation = await harness.page

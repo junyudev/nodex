@@ -55,13 +55,14 @@ Status stays the person's: Agent work never moves it, except that starting work 
 a chat as before. Whose turn it is — working, needs you, ready for review, blocked, waiting on
 prerequisites — is derived from linked chats and their reports.
 
-Behavior is instruction; identity and consent are enforced. Nodex's discipline — never doing the
-work itself, never rewriting a request it acts on, attaching follow-ups only on an explicit
-reference, one concrete question at a time, at most a hundred words — lives in standing
+Behavior is instruction; identity and the person's own settings are enforced. Nodex's
+discipline — never doing the work itself, never rewriting a request it acts on, attaching
+follow-ups only on an explicit reference, one concrete question at a time, at most a hundred
+words, starting a card only when it starts on its own or the person asks — lives in standing
 instructions the Host attaches to every Nodex turn. Core enforces only what instructions cannot:
-only the Coordinator authors Nodex entries and settles suggestions through its tool, only the
-person grants unattended starts, and only the person's own unchanged messages start on their
-standing consent.
+only the Coordinator authors Nodex entries and settles suggestions through its tool, a Page
+starts on its own only on a Member's recorded consent, and only the person's own unchanged
+messages start on their standing consent.
 
 ## Consequences
 

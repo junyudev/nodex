@@ -695,7 +695,7 @@ fn a_member_starts_a_chat_from_the_inbox_and_the_host_keeps_delivery() {
             },
         )
     };
-    // Only a person's decision starts Agent work; other connections cannot.
+    // Decisions arrive from the Desktop Host or a Member's device; other connections cannot.
     for adapter in [AdapterKind::NativeCli, AdapterKind::LoopbackHttp] {
         let caller = BoundModuleContext { adapter, ..host() };
         let refused = start(&caller, "other:start", "other").unwrap_err();

@@ -235,8 +235,10 @@ the local Member. Assignee accepts `member:<id>`, `me`,
 `agent:<instanceId>/<model>[/<effort>]`, or `none`. Owner accepts
 `--owner member:<id>` or `--owner me`. Owner and Assignee use the observed Page
 work revision and can be changed together. They belong to the Page, including
-standalone Pages; no Data Source selector or Property ID is needed. Changing the
-Assignee revokes its consent to start automatically.
+standalone Pages; no Data Source selector or Property ID is needed. `--auto-start true|false`
+sets whether an Agent Assignee starts on its own once its prerequisites are Done; the consent
+records the Member the command acts for. Changing the Assignee revokes its consent to start
+automatically, so set `--auto-start true` in a separate command after reassigning.
 For Owner and Assignee, omitting `--if-revision` uses the revision observed by the
 command's Page read; a concurrent edit still fails the revision precondition.
 
@@ -279,9 +281,10 @@ Pending retries replay the exact saved edit plan and operation identity.
 `draft discard` removes only a validated generated draft.
 
 `page insert PAGE` defaults to the end; explicit anchors select another position.
-`page accept PAGE` accepts work in In Review and moves it to Done. Only a person may
-accept work; Agent credentials cannot. Other stages stay unchanged. A prerequisite
-waits for Done, including when its chat has reported ready.
+`page accept PAGE` accepts work in In Review and moves it to Done, for the person or for
+the Member an Agent acts for. Agents accept their own work only when the person told them
+to. Other stages stay unchanged. A prerequisite waits for Done, including when its chat has
+reported ready.
 
 `page rename PAGE TITLE --if-match ETAG` changes only the title. Structured
 `read` and SQL provide title/body validators from the observed state. Use
@@ -324,19 +327,21 @@ replaces it. `automations pause|resume|delete <id> --if-revision <revision>` ret
 observed revision. Every write accepts `--idempotency-key` for an uncertain retry.
 
 `automations run <id>` records a manual dispatch, confirms a waiting Ask first decision or
-retries its frozen action. Repeating its operation key retains the same dispatch.
+retries its frozen action, for the Owner or an Agent acting for them. Agents confirm a waiting
+decision only when the person asked. Repeating its operation key retains the same dispatch.
 Dry run records only; Ask first waits in the Inbox; Run starts under the Automation Owner's
-grant. Only that Owner can change mode or edit an Automation set to Run. Agent calls obey the
-same restrictions and can propose changes through `automations_update` for review.
+grant. Only that Owner can change mode, edit an Automation set to Run or run it now. An
+Agent's calls carry its Member's authority under the same rules; for a change only another
+Member may make, it proposes the change through `automations_update` for that Owner to review.
 See [Automations behavior](product-specs/automations-behavior.md).
 
 ## Pause Agent work
 
 `nodex work pause --page <selector>`, `--project <selector>`, or `--space` creates a
-durable person-owned hold. `nodex work resume` with the same scope clears only that
-hold; parent holds continue to apply. `nodex work holds` lists scope, person, revision
-and pause time. Use `--idempotency-key <key>` to retry the same pause or resume.
-Verified Agents cannot pause or resume work.
+durable hold owned by the person, or by the Member an Agent acts for. `nodex work resume`
+with the same scope clears only that hold; parent holds continue to apply. `nodex work holds`
+lists scope, person, revision and pause time. Use `--idempotency-key <key>` to retry the
+same pause or resume. Agents resume work the person paused only when asked.
 
 ## Library Files and Page relations
 

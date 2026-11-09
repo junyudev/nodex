@@ -382,7 +382,10 @@ Actions revalidate the episode. Questions show the exact option labels: four
 buttons then More… when needed, plus Reply. Approval offers Open chat. Review
 offers Accept, Open PR when linked, and Reply. Blocked, failed and stalled offer
 Open chat and Reply. Newly ready work offers Start. Accept moves reviewed work
-to Done through the person-only work command.
+to Done through the work command a person, or an Agent acting for them, uses.
+An Agent may take any of these actions on a Turn of the Member it acts for, and never on
+another Member's Turn; its instructions limit it to what the person told it to answer or
+asked it to handle. Execution approvals stay with the person's chosen permission mode.
 
 Reply sends the person's unchanged words to the Page's active chat through the
 durable person-dispatch outbox. Its single pending question is answered directly
@@ -1041,8 +1044,10 @@ author and dispatch history. A receipt makes exact retries return the same resul
 The row shows `<chat> sent this back: <reason>` and re-enters at the return time.
 
 Handback never grants consent to start work. Nodex routes with `explicit_request`
-false and excludes the previous chat; the person may explicitly reconsider that
-chat in the manual destination picker. Core enforces at most two handbacks per
+false, so a returned message never starts without the person. Its routing context names
+the previous chat and keeps it a destination: Nodex's instructions route elsewhere unless
+the person insists on that chat, and the person may choose it in the manual destination
+picker. Core enforces at most two handbacks per
 original message across rerouting and refuses already-answered questions, replaced
 delivery attempts and changed, closed or erased original Pages. Unavailable causal identity or
 attachments produce a refusal, preserving the message in its current owner.

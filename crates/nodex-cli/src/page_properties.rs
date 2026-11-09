@@ -42,7 +42,7 @@ pub enum PagePropertiesCommand {
     Set(PropertySetArgs),
 }
 #[derive(Clone, Debug, PartialEq, Args)]
-#[command(group(clap::ArgGroup::new("value").required(true).multiple(true).args(["option", "text", "number", "assignee", "owner"])))]
+#[command(group(clap::ArgGroup::new("value").required(true).multiple(true).args(["option", "text", "number", "assignee", "owner", "auto_start"])))]
 pub struct PropertySetArgs {
     /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
@@ -58,6 +58,9 @@ pub struct PropertySetArgs {
     /// Member identity (member:<id>) or me.
     #[arg(long)]
     pub owner: Option<String>,
+    /// Whether an Agent Assignee starts on its own once its prerequisites are Done.
+    #[arg(long, value_name = "true|false")]
+    pub auto_start: Option<bool>,
     /// Select option ID; choose exactly one of --option, --text or --number.
     #[arg(long)]
     pub option: Option<String>,
@@ -67,8 +70,8 @@ pub struct PropertySetArgs {
     /// Replacement numeric value.
     #[arg(long, allow_hyphen_values = true)]
     pub number: Option<f64>,
-    /// Observed value revision. Owner/Assignee default to the revision read by this command.
-    #[arg(long, required_unless_present_any = ["assignee", "owner"])]
+    /// Observed value revision. Owner, Assignee and Start automatically default to the revision read by this command.
+    #[arg(long, required_unless_present_any = ["assignee", "owner", "auto_start"])]
     pub if_revision: Option<i64>,
     #[command(flatten)]
     pub mutation: MutationArgs,
@@ -117,7 +120,7 @@ pub(crate) fn execute(
         ),
         PagePropertiesCommand::Set(args) => {
             let page_id = resolve_page_selector(client, &project.id, &args.page)?;
-            if args.assignee.is_some() || args.owner.is_some() {
+            if args.assignee.is_some() || args.owner.is_some() || args.auto_start.is_some() {
                 return set_work(client, &project.id, &page_id, args);
             }
             let property = args
@@ -268,6 +271,30 @@ fn assignee_reference(
         member_id: member_reference(value, me, ASSIGNEE_FORMS)?,
     }))
 }
+/// Applies the Owner, Assignee and Start automatically flags to the observed Page work.
+fn edit_work(
+    mut work: nodex_core_contracts::library::PageWork,
+    args: &PropertySetArgs,
+    me: &str,
+) -> Result<nodex_core_contracts::library::PageWork, CliError> {
+    if let Some(owner) = &args.owner {
+        work.owner = member_reference(owner, me, OWNER_FORMS)?;
+    }
+    if let Some(assignee) = &args.assignee {
+        let assignee = assignee_reference(assignee, me)?;
+        // Consent belongs to one assignment: changing the Assignee clears it in Core.
+        if args.auto_start == Some(true) && work.assignee.is_some() && work.assignee != assignee {
+            return Err(invalid(
+                "Changing the Assignee clears Start automatically; set --auto-start in a separate command",
+            ));
+        }
+        work.assignee = assignee;
+    }
+    if let Some(auto_start) = args.auto_start {
+        work.auto_start = auto_start;
+    }
+    Ok(work)
+}
 fn set_work(
     client: &CoreClient,
     project: &str,
@@ -282,7 +309,7 @@ fn set_work(
         || args.data_source.is_some()
     {
         return Err(invalid(
-            "Set Owner and Assignee separately from Data Source Properties",
+            "Set Owner, Assignee and Start automatically separately from Data Source Properties",
         ));
     }
     crate::page_mutation::validate_return_fields(&args.mutation.r#return)?;
@@ -306,13 +333,11 @@ fn set_work(
         .iter()
         .find(|p| p.key == "work")
         .ok_or_else(|| internal("Page work is absent"))?;
-    let mut work: PageWork = serde_json::from_value(property.value.clone()).map_err(internal)?;
-    if let Some(owner) = args.owner {
-        work.owner = member_reference(&owner, &me.id, OWNER_FORMS)?;
-    }
-    if let Some(assignee) = args.assignee {
-        work.assignee = assignee_reference(&assignee, &me.id)?;
-    }
+    let work = edit_work(
+        serde_json::from_value(property.value.clone()).map_err(internal)?,
+        &args,
+        &me.id,
+    )?;
     let response = client
         .library_apply(
             Some(project),
@@ -360,7 +385,55 @@ fn set_work(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nodex_core_contracts::library::PageAssignee;
+    use clap::Parser;
+    use nodex_core_contracts::library::{PageAssignee, PageWork};
+    fn set_args(flags: &[&str]) -> PropertySetArgs {
+        #[derive(Parser)]
+        struct Command {
+            #[command(flatten)]
+            args: PropertySetArgs,
+        }
+        Command::try_parse_from(["set", "NODEX-1"].iter().chain(flags))
+            .unwrap()
+            .args
+    }
+    #[test]
+    fn start_automatically_is_set_with_page_work_and_never_rides_a_reassignment() {
+        let agent = |model: &str| PageAssignee::Agent {
+            instance_id: "codex".into(),
+            model: model.into(),
+            effort: None,
+        };
+        let work = PageWork {
+            owner: "person".into(),
+            assignee: Some(agent("model")),
+            auto_start: false,
+        };
+        let edited =
+            edit_work(work.clone(), &set_args(&["--auto-start", "true"]), "person").unwrap();
+        assert!(edited.auto_start);
+        assert_eq!(edited.assignee, work.assignee);
+        let edited = edit_work(
+            PageWork {
+                assignee: None,
+                ..work.clone()
+            },
+            &set_args(&["--assignee", "agent:codex/model", "--auto-start", "true"]),
+            "person",
+        )
+        .unwrap();
+        assert!(edited.auto_start);
+        assert!(
+            edit_work(
+                work,
+                &set_args(&["--assignee", "agent:codex/other", "--auto-start", "true"]),
+                "person",
+            )
+            .unwrap_err()
+            .message
+            .contains("separate command")
+        );
+    }
     #[test]
     fn assignment_references_are_typed_and_reject_incomplete_agents() {
         assert_eq!(

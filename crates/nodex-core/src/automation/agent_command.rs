@@ -1,10 +1,11 @@
-//! Automation authority is checked inside the writer before receipt replay. An Agent
-//! proposes edits for the Owner to apply, including through the attributed CLI.
+//! Automation authority is checked inside the writer before receipt replay. An Agent carries
+//! exactly the authority of the Member it acts for, including through the attributed CLI;
+//! what it should do with that authority belongs in its instructions.
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 use nodex_core_contracts::agent::AgentTurnProvenance;
 use nodex_core_contracts::automation::{Automation, AutomationIntent, AutomationMode};
 use nodex_core_contracts::{AdapterKind, BoundModuleContext};
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::Connection;
 
 pub(super) fn admit_read(
     connection: &Connection,
@@ -24,39 +25,44 @@ pub(super) fn admit_read(
     crate::workspace::validate_persisted_turn_authority(connection, library_id, provenance)?;
     Ok(())
 }
-fn actor(
-    connection: &Connection,
-    library: &str,
-    context: &BoundModuleContext,
-) -> Result<String, StoreError> {
-    crate::library::members::requester_owner(connection, library, context)
-}
-pub(super) fn default_owner(
+
+/// The Member whose authority a command carries: a person's own, or the Member an Agent acts
+/// on behalf of, exactly as Core derives the command's Actor.
+fn acting_member(
     connection: &Connection,
     library: &str,
     context: &BoundModuleContext,
     request: &AutomationIntent,
 ) -> Result<String, StoreError> {
-    if let AutomationIntent::AgentCommand { provenance, .. } = request {
-        let session = match &provenance.authority.runtime {
-            Some(runtime) => Some(runtime.session_id.clone()),
-            None => connection
-                .query_row(
-                    "SELECT session_id FROM project_session_threads WHERE thread_id=?1",
-                    [&provenance.authority.root_thread_id],
-                    |r| r.get::<_, String>(0),
-                )
-                .optional()?,
-        };
-        if let Some(session) = session
-            && let Some(owner) =
-                crate::library::members::requester_owner_for_session(connection, library, &session)?
-        {
-            return Ok(owner);
+    let actor = match request {
+        AutomationIntent::AgentCommand { provenance, .. } => {
+            crate::infrastructure::actors::verified_turn(connection, context, provenance)?.actor
         }
-    }
-    actor(connection, library, context)
+        _ => crate::infrastructure::actors::derive(
+            connection,
+            library,
+            &context.adapter,
+            context.principal.as_ref(),
+            context.agent_attribution.as_ref(),
+        )?,
+    };
+    actor
+        .member_id()
+        .map(str::to_owned)
+        .ok_or_else(|| denied("Automation changes act for a Member"))
 }
+
+/// An omitted mode starts a person's Automation in Run, as the desktop editor does, and an
+/// Agent's in Ask first. Agents may choose any mode; their instructions say when to use Run.
+pub(super) fn omitted_mode(agent: bool) -> AutomationMode {
+    if agent {
+        AutomationMode::AskFirst
+    } else {
+        AutomationMode::Run
+    }
+}
+
+/// `context` is bound: its Actor is the person or the Agent acting for one.
 pub(super) fn input_owner(
     connection: &Connection,
     library: &str,
@@ -64,10 +70,16 @@ pub(super) fn input_owner(
     requested: Option<&str>,
     current: Option<&Automation>,
 ) -> Result<String, StoreError> {
-    let owner = requested
+    let owner = match requested
         .map(str::to_owned)
         .or_else(|| current.map(|r| r.owner_member_id.clone()))
-        .unwrap_or(actor(connection, library, context)?);
+    {
+        Some(owner) => owner,
+        None => match context.actor.member_id() {
+            Some(member) => member.to_owned(),
+            None => crate::library::members::requester_owner(connection, library, context)?,
+        },
+    };
     if !crate::library::members::is_active(connection, library, &owner)? {
         return Err(denied(
             "An Automation Owner must be an active Member of this Space",
@@ -75,6 +87,10 @@ pub(super) fn input_owner(
     }
     Ok(owner)
 }
+
+/// Only an Automation's Owner lets it run unattended: choosing Run, changing its mode,
+/// editing it while set to Run, running it now and transferring it stay theirs. Any other
+/// Member, and an Agent acting for one, may manage it within scope.
 pub(super) fn admit<'a>(
     connection: &Connection,
     library: &str,
@@ -98,7 +114,6 @@ pub(super) fn admit<'a>(
     }
     let agent =
         enveloped || context.adapter == AdapterKind::Agent || context.agent_attribution.is_some();
-    let person = default_owner(connection, library, context, request)?;
     let (current, input) = match intent {
         AutomationIntent::CreateAutomation { automation, .. } => (None, Some(automation)),
         AutomationIntent::UpdateAutomation {
@@ -117,34 +132,16 @@ pub(super) fn admit<'a>(
         ),
         _ => return Ok(intent),
     };
-    if agent && !matches!(intent, AutomationIntent::CreateAutomation { .. }) {
-        return Err(denied(
-            "An Agent may propose Automation edits for the Owner to apply",
-        ));
-    }
+    let person = acting_member(connection, library, context, request)?;
     let current_mode = current.as_ref().map(|r| r.mode);
     let proposed_mode = input
         .and_then(|r| r.mode)
         .or(current_mode)
-        .unwrap_or(if agent {
-            AutomationMode::AskFirst
-        } else {
-            AutomationMode::Run
-        });
+        .unwrap_or(omitted_mode(agent));
     let changes_mode = current_mode.is_some_and(|mode| mode != proposed_mode);
-    if agent && matches!(intent, AutomationIntent::DispatchNow { .. }) {
-        return Err(denied(
-            "Only the Automation Owner can run this Automation now",
-        ));
-    }
     let protected = current_mode == Some(AutomationMode::Run)
         || proposed_mode == AutomationMode::Run
         || changes_mode;
-    if agent && protected {
-        return Err(denied(
-            "Only the Automation Owner can change its mode or edit an Automation set to Run. Suggest the change for the Owner to apply.",
-        ));
-    }
     let owner = current
         .as_ref()
         .map(|r| r.owner_member_id.as_str())
@@ -152,7 +149,7 @@ pub(super) fn admit<'a>(
         .unwrap_or(&person);
     if (protected || matches!(intent, AutomationIntent::DispatchNow { .. })) && owner != person {
         return Err(denied(
-            "Only this Automation's Owner can change its mode or edit it in Run",
+            "Only this Automation's Owner can change its mode, edit it while set to Run, or run it now",
         ));
     }
     if proposed_mode == AutomationMode::Run
@@ -167,21 +164,10 @@ pub(super) fn admit<'a>(
     if input
         .and_then(|r| r.owner_member_id.as_deref())
         .is_some_and(|next| next != owner)
-        && (agent || person != owner)
+        && person != owner
     {
         return Err(denied(
             "Only the current Automation Owner can transfer ownership",
-        ));
-    }
-    // Agent automation definitions may be scoped anywhere in the authenticated Space,
-    // but cannot choose a different authorizing person.
-    if agent
-        && input
-            .and_then(|r| r.owner_member_id.as_deref())
-            .is_some_and(|owner| owner != person)
-    {
-        return Err(denied(
-            "Suggest an Automation ownership change for its Owner",
         ));
     }
     if !crate::library::members::is_active(connection, library, owner)? {
@@ -237,89 +223,95 @@ mod tests {
             automation,
         }
     }
-    #[test]
-    fn an_attributed_cli_agent_cannot_edit_existing_auto_or_create_auto() {
-        let (c, mut context, _) = fixture();
+    /// An attributed CLI Agent working in a chat whose requests come from `member`.
+    fn agent_for(c: &Connection, context: &mut BoundModuleContext, member: &str) {
+        let session = format!("chat:{member}");
+        c.execute("INSERT INTO project_sessions(id,no_thread_fallback_title,created_at,updated_at,activity_at) VALUES(?1,'Agent chat','2026-11-09T00:00:00.000Z','2026-11-09T00:00:00.000Z',1794182400000)",[&session]).unwrap();
+        c.execute("INSERT INTO session_requesting_members(session_id,message_id,member_id,accepted_at) VALUES(?1,'message',?2,'2026-11-09T00:00:00.000Z')",[&session,member]).unwrap();
         context.agent_attribution = Some(BoundAgentAttribution {
             run_id: None,
-            session_id: "managed".into(),
+            session_id: session,
             backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
         });
-        assert_eq!(
-            admit(&c, "library", &context, &update("auto", input()))
-                .unwrap_err()
-                .code,
-            StoreErrorCode::Unauthorized
-        );
+    }
+    fn create(id: &str, mode: AutomationMode, owner: Option<&str>) -> AutomationIntent {
         let mut automation = input();
-        automation.mode = Some(AutomationMode::Run);
-        assert_eq!(
-            admit(
-                &c,
-                "library",
-                &context,
-                &AutomationIntent::CreateAutomation {
-                    automation_id: "new".into(),
-                    automation
-                }
-            )
-            .unwrap_err()
-            .code,
-            StoreErrorCode::Unauthorized
-        );
-        for mode in ["ask_first", "dry_run"] {
-            c.execute(
-                "UPDATE automations SET mode=?1 WHERE automation_id='ask'",
-                [mode],
-            )
-            .unwrap();
-            for intent in [
-                update("ask", input()),
-                AutomationIntent::DeleteAutomation {
-                    automation_id: "ask".into(),
-                    expected_revision: 1,
-                },
-                AutomationIntent::SetAutomationStatus {
-                    automation_id: "ask".into(),
-                    expected_revision: 1,
-                    status: AutomationStatus::Paused,
-                },
-            ] {
-                assert_eq!(
-                    admit(&c, "library", &context, &intent).unwrap_err().code,
-                    StoreErrorCode::Unauthorized
-                );
+        automation.mode = Some(mode);
+        automation.owner_member_id = owner.map(str::to_owned);
+        AutomationIntent::CreateAutomation {
+            automation_id: id.into(),
+            automation,
+        }
+    }
+    fn manage(id: &str) -> [AutomationIntent; 4] {
+        [
+            update(id, input()),
+            AutomationIntent::SetAutomationStatus {
+                automation_id: id.into(),
+                expected_revision: 1,
+                status: AutomationStatus::Paused,
+            },
+            AutomationIntent::DispatchNow {
+                automation_id: id.into(),
+            },
+            AutomationIntent::DeleteAutomation {
+                automation_id: id.into(),
+                expected_revision: 1,
+            },
+        ]
+    }
+    #[test]
+    fn an_agent_carries_its_members_automation_authority() {
+        let (c, mut context, owner) = fixture();
+        agent_for(&c, &mut context, &owner);
+        for id in ["auto", "ask"] {
+            for intent in manage(id) {
+                assert!(admit(&c, "library", &context, &intent).is_ok());
             }
         }
-        for mode in [AutomationMode::AskFirst, AutomationMode::DryRun] {
-            let mut automation = input();
-            automation.mode = Some(mode);
-            assert!(
-                admit(
-                    &c,
-                    "library",
-                    &context,
-                    &AutomationIntent::CreateAutomation {
-                        automation_id: "proposed".into(),
-                        automation
-                    }
-                )
-                .is_ok()
+        let mut to_run = input();
+        to_run.mode = Some(AutomationMode::Run);
+        assert!(admit(&c, "library", &context, &update("ask", to_run)).is_ok());
+        for mode in [
+            AutomationMode::Run,
+            AutomationMode::AskFirst,
+            AutomationMode::DryRun,
+        ] {
+            assert!(admit(&c, "library", &context, &create("new", mode, None)).is_ok());
+        }
+    }
+    #[test]
+    fn an_agent_for_another_member_cannot_do_what_only_the_owner_can() {
+        let (c, mut context, owner) = fixture();
+        agent_for(&c, &mut context, "other");
+        // Any Member, and so their Agent, manages an Automation that asks first.
+        for intent in [
+            update("ask", input()),
+            AutomationIntent::SetAutomationStatus {
+                automation_id: "ask".into(),
+                expected_revision: 1,
+                status: AutomationStatus::Paused,
+            },
+        ] {
+            assert!(admit(&c, "library", &context, &intent).is_ok());
+        }
+        let mut to_run = input();
+        to_run.mode = Some(AutomationMode::Run);
+        let mut transfer = input();
+        transfer.owner_member_id = Some("other".into());
+        for intent in manage("auto").into_iter().chain([
+            update("ask", to_run),
+            update("ask", transfer),
+            AutomationIntent::DispatchNow {
+                automation_id: "ask".into(),
+            },
+            create("granted", AutomationMode::Run, Some(&owner)),
+        ]) {
+            assert_eq!(
+                admit(&c, "library", &context, &intent).unwrap_err().code,
+                StoreErrorCode::Unauthorized
             );
         }
-        assert_eq!(
-            admit(
-                &c,
-                "library",
-                &context,
-                &AutomationIntent::DispatchNow {
-                    automation_id: "ask".into()
-                }
-            )
-            .unwrap_err()
-            .code,
-            StoreErrorCode::Unauthorized
-        );
     }
     #[test]
     fn only_the_exact_automation_owner_changes_modes_or_auto_even_for_another_space_owner() {

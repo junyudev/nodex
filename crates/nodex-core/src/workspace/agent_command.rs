@@ -19,9 +19,13 @@ pub(super) fn admit<'a>(
         }
         return Ok(intent);
     };
-    if matches!(intent.as_ref(), ProjectWorkspaceIntent::Source { command } if !matches!(command,nodex_core_contracts::sources::SourceCommand::FollowThread{..}|nodex_core_contracts::sources::SourceCommand::ReplyToOrigin{..}))
+    // An Agent configures Sources and retries their Problems for its Member, as that person
+    // could; polling, ingestion and delivery settlement remain the Desktop Host's own work.
+    if matches!(intent.as_ref(), ProjectWorkspaceIntent::Source { command } if !matches!(command,nodex_core_contracts::sources::SourceCommand::FollowThread{..}|nodex_core_contracts::sources::SourceCommand::ReplyToOrigin{..}|nodex_core_contracts::sources::SourceCommand::ConfigureSource{..}|nodex_core_contracts::sources::SourceCommand::RetryProblem{..}))
     {
-        return Err(denied("Sources belong to a person and the Desktop Host"));
+        return Err(denied(
+            "Source polling and delivery belong to the Desktop Host",
+        ));
     }
     admit_read_caller(connection, library_id, context, provenance)?;
     if matches!(intent.as_ref(), ProjectWorkspaceIntent::Source { .. }) {
@@ -31,7 +35,7 @@ pub(super) fn admit<'a>(
         ) || context.agent_attribution.is_some()
         {
             return Err(denied(
-                "Follow verification belongs to the Host's managed-chat tool",
+                "Agent Source commands come through the Desktop Host's tools",
             ));
         }
         if matches!(
@@ -44,35 +48,24 @@ pub(super) fn admit<'a>(
         }
     }
     if let ProjectWorkspaceIntent::StartPageWork {
-        page_id,
-        selection,
         again,
         expected_readiness_epoch,
-        expected_turn_episode,
         ..
     } = intent.as_ref()
     {
-        // The Host's start_work tool freezes the launch; Core binds it to the calling Turn.
+        // The Host's start_work tool freezes the launch; Core binds it to the calling Turn. A
+        // Turn-fenced start must be the Agent's Member's own Turn. Whether the person asked for
+        // this start is the Agent's judgement, not Core's.
         if !matches!(
             context.adapter,
             AdapterKind::ElectronHost | AdapterKind::Test
         ) || context.agent_attribution.is_some()
             || *again
             || expected_readiness_epoch.is_some()
-            || expected_turn_episode.is_some()
         {
             return Err(denied("Work launches belong to the Desktop Host"));
         }
-        let session = crate::infrastructure::actors::turn_session(connection, provenance)?;
-        if crate::infrastructure::actors::is_coordinator(connection, &session)? {
-            require_standing_consent(connection, library_id, page_id, selection.as_ref())?;
-        }
         return Ok(intent);
-    }
-    if automation_confirmation(connection, intent)? {
-        return Err(denied(
-            "Only the Automation Owner may confirm or retry this decision",
-        ));
     }
 
     if matches!(
@@ -104,14 +97,21 @@ pub(super) fn admit<'a>(
     ) {
         return Err(denied("Work launches belong to the Desktop Host"));
     }
+    // Claiming marks a Turn notification shown on one of the person's devices.
+    if matches!(
+        intent.as_ref(),
+        ProjectWorkspaceIntent::ClaimTurnNotification { .. }
+    ) {
+        return Err(denied("Turn notifications belong to the person's devices"));
+    }
+    // Whether Nodex may start a person's own requests is that person's setting.
     if matches!(
         intent.as_ref(),
         ProjectWorkspaceIntent::SetInboxRoutingConsent { .. }
-            | ProjectWorkspaceIntent::AcceptPageWork { .. }
-            | ProjectWorkspaceIntent::PauseWork { .. }
-            | ProjectWorkspaceIntent::ResumeWork { .. }
     ) {
-        return Err(denied("Only a person may accept Page work"));
+        return Err(denied(
+            "Only the person can change whether Nodex starts their requests",
+        ));
     }
     if matches!(intent.as_ref(), ProjectWorkspaceIntent::AgentCommand { .. }) {
         return Err(denied("Agent command envelopes cannot be nested"));
@@ -163,78 +163,4 @@ pub(super) fn admit_read_caller(
 }
 fn denied(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::Unauthorized, message, false)
-}
-
-/// Nodex may start a Page only on the consent the scheduler uses: its prerequisites are
-/// satisfied and a person let its assigned Agent start on its own. Any other Page's Turn
-/// asks that person.
-fn require_standing_consent(
-    connection: &Connection,
-    library_id: &str,
-    page_id: &str,
-    selection: Option<&nodex_core_contracts::library::AgentWorkSelection>,
-) -> Result<(), StoreError> {
-    let ready = crate::database::work_graph::ready_page(connection, library_id, page_id)?;
-    let consented = ready.is_some_and(|page| {
-        page.page_work.auto_start
-            && selection.is_none_or(|selection| {
-                page.page_work
-                    .assignee
-                    .as_ref()
-                    .and_then(|assignee| assignee.agent_selection())
-                    .as_ref()
-                    == Some(selection)
-            })
-    });
-    if consented && crate::infrastructure::actors::work_grant(connection, page_id)?.is_some() {
-        return Ok(());
-    }
-    Err(denied(
-        "Nodex starts only Pages that start on their own; this Page's Turn asks the person to start it",
-    ))
-}
-
-fn automation_confirmation(
-    connection: &Connection,
-    intent: &ProjectWorkspaceIntent,
-) -> Result<bool, StoreError> {
-    use nodex_core_contracts::inbox::ProjectWorkspaceInboxDispatchAction;
-    let proposal = match intent {
-        ProjectWorkspaceIntent::ConfirmInboxDispatch {
-            proposal_id,
-            action,
-            ..
-        } => {
-            if matches!(
-                action,
-                Some(ProjectWorkspaceInboxDispatchAction::ExecuteDecision { .. })
-            ) {
-                return Ok(true);
-            }
-            Some(proposal_id)
-        }
-        ProjectWorkspaceIntent::RetryInboxDispatch { proposal_id } => Some(proposal_id),
-        ProjectWorkspaceIntent::DispatchInboxEntries {
-            page_ids, action, ..
-        } => {
-            if matches!(
-                action,
-                ProjectWorkspaceInboxDispatchAction::ExecuteDecision { .. }
-            ) {
-                return Ok(true);
-            }
-            let ids = serde_json::to_string(page_ids)
-                .map_err(|_| denied("Invalid Automation decision pages"))?;
-            return Ok(connection.query_row("SELECT EXISTS(SELECT 1 FROM automation_decisions WHERE page_id IN(SELECT value FROM json_each(?1)))",[ids],|r|r.get(0))?);
-        }
-        _ => None,
-    };
-    let Some(proposal) = proposal else {
-        return Ok(false);
-    };
-    Ok(connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM inbox_proposals WHERE proposal_id=?1 AND (origin='automation' OR json_extract(action_json,'$.type')='execute_decision'))",
-        [proposal],
-        |r| r.get(0),
-    )?)
 }

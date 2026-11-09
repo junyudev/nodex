@@ -155,8 +155,10 @@ restarts without creating or updating twice. The captured execution identity and
 target lifecycle are checked again on every retry. See
 [Automations Behavior](automations-behavior.md) for execution and notification rules.
 
-`suggested_create` and `suggested_update` produce editable review proposals. They do
-not save an Automation until its Owner submits the editor. Suggested updates retain the
+An Agent's direct writes carry the authority of the Member it acts for; its instructions
+default new Automations to Ask first and choose Run only when the person asked for unattended
+runs. `suggested_create` and `suggested_update` produce editable review proposals for a change
+only another Member may make. They do not save an Automation until its Owner submits the editor. Suggested updates retain the
 observed definition revision, so a concurrent edit cannot be silently overwritten.
 Omitted notification policy preserves the saved preference; explicit null clears it.
 

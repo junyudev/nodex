@@ -7,11 +7,12 @@ requests addressed to the person enters the Inbox for a routing decision.
 
 ## GitHub setup
 
-Only the active local Owner can configure, enable or disable a Source through
-the trusted Desktop Host. Agents and remote Members, including remote Owners,
-can inspect its public configuration, positions, health and recorded Triggers
-but cannot change it. Polling leases, ingestion and health recording require
-the Host. The Desktop verifies the account's login and stable GitHub id before saving the
+Only the active local Owner, or an Agent acting for them, can configure, enable
+or disable a Source through the trusted Desktop Host; an Agent's instructions
+limit it to changes the person asked for. Remote Members, including remote Owners,
+and Agents acting for anyone else can inspect its public configuration, positions,
+health and recorded Triggers but cannot change it. Polling leases, ingestion and
+health recording require the Host. The Desktop verifies the account's login and stable GitHub id before saving the
 configuration. Changing account identity requires a separate Source.
 
 On connection, GitHub repositories from Projects' git remotes are watched by

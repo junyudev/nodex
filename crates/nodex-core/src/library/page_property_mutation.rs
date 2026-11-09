@@ -1040,20 +1040,23 @@ fn validate_intrinsic_value(
     ))
 }
 
-/// Verified Agent identity cannot create a new automatic-launch grant, including
-/// when execution configuration is copied onto a different Page.
-pub(super) fn require_work_launch_consent(
+/// Start automatically is a Member's standing consent, granted by that person or by an Agent
+/// acting for them. The grant records that Member; a Service grants it only on a Member's
+/// confirmed plan.
+fn require_work_launch_consent(
     context: &BoundModuleContext,
     current_value: &Value,
     value: &Value,
 ) -> Result<(), StoreError> {
-    if matches!(context.actor, nodex_core_contracts::Actor::Member { .. })
-        || (matches!(
-            context.actor,
-            nodex_core_contracts::Actor::Service {
-                kind: nodex_core_contracts::ServiceKind::InboxRouting
-            }
-        ) && context.authorizing_member_id.is_some())
+    if matches!(
+        context.actor,
+        nodex_core_contracts::Actor::Member { .. } | nodex_core_contracts::Actor::Agent { .. }
+    ) || (matches!(
+        context.actor,
+        nodex_core_contracts::Actor::Service {
+            kind: nodex_core_contracts::ServiceKind::InboxRouting
+        }
+    ) && context.authorizing_member_id.is_some())
         || value.get("auto_start").and_then(Value::as_bool) != Some(true)
         || current_value.get("auto_start").and_then(Value::as_bool) == Some(true)
     {
@@ -1061,7 +1064,7 @@ pub(super) fn require_work_launch_consent(
     }
     Err(StoreError::new(
         StoreErrorCode::InvalidInput,
-        "Only a person can grant automatic Agent work start",
+        "Starting automatically needs a Member's consent",
         false,
     ))
 }

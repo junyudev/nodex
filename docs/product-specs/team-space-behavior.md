@@ -97,13 +97,14 @@ synchronize Documents, read Sources, recorded observations, Problems and Activit
 retry failing deliveries or replies, and use the
 admitted collaboration commands, including the mixed Inbox read and its person
 Turn actions (answer an option, Reply, Accept and Start). Coordinator notes,
-Inbox answers and managed-chat handback require Agent authority; notification claiming is scoped to the requesting Member. Source configuration requires the local Owner
-and Host; origin replies require the Coordinator. Source ingestion, sender
+Inbox answers and managed-chat handback require Agent authority; notification claiming is scoped to the requesting Member. Source configuration requires the local Owner,
+or an Agent acting for them, and the Host; origin replies require the Coordinator. Source ingestion, sender
 leases, send settlement and health recording remain Host producer
 capabilities. Execution authority, native paths, backup, restore, maintenance and
 host producer commands remain local capabilities. Members can read Automations and edit those set to Ask first or Dry run within scope. Only the
 exact Automation Owner may change its mode or edit one set to Run, independent of their
-Space role. Agents submit suggested edits for the Owner to apply. Automation producers,
+Space role. An Agent has exactly its Member's rights, and suggests a change only another
+Member may make for that Owner to apply. Automation producers,
 scheduler and lease operations remain Host-only. New semantic commands are denied remotely until explicitly admitted.
 
 ## Administration surfaces

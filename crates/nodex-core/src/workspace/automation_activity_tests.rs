@@ -342,6 +342,64 @@ fn held_and_confirmed_automation_work_are_each_one_activity_transition() {
 }
 
 #[test]
+fn an_agent_starts_its_owners_waiting_decision_but_never_another_members() {
+    let w = seeded_workspace();
+    materialize(
+        &w,
+        "ask",
+        "Queue review",
+        AutomationMode::AskFirst,
+        AutomationScope::Space,
+    );
+    let owner = super::super::test_support::local_member(&w);
+    let local = owner.clone();
+    w.kernel
+        .writer()
+        .call(move |c| {
+            c.execute_batch("UPDATE libraries SET space_kind='team' WHERE id='library-1'; INSERT INTO members(id,library_id,display_name,lifecycle,role) VALUES('other','library-1','Other','active','member');")?;
+            for (session, member) in [("chat:owner", local.as_str()), ("chat:other", "other")] {
+                c.execute("INSERT INTO project_sessions(id,no_thread_fallback_title,created_at,updated_at,activity_at) VALUES(?1,'Agent chat','2026-11-09T00:00:00.000Z','2026-11-09T00:00:00.000Z',1794182400000)", [session])?;
+                c.execute("INSERT INTO session_requesting_members(session_id,message_id,member_id,accepted_at) VALUES(?1,'message',?2,'2026-11-09T00:00:00.000Z')", [session, member])?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    // `nodex automations run` from an Agent's chat confirms the waiting decision.
+    let run_now = |session: &str, operation: &str| {
+        let mut agent = context();
+        agent.adapter = nodex_core_contracts::AdapterKind::NativeCli;
+        agent.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
+            run_id: None,
+            session_id: session.into(),
+            backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
+        });
+        AutomationModule::new("profile-1", "library-1", &w.kernel).apply(
+            &agent,
+            ModuleApplyRequest {
+                contract_version: AUTOMATION_CONTRACT_VERSION,
+                operation_id: operation.into(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: AutomationIntent::DispatchNow {
+                    automation_id: "ask".into(),
+                },
+            },
+        )
+    };
+    assert_eq!(
+        run_now("chat:other", "other-run").unwrap_err().code,
+        nodex_core_contracts::CoreErrorCode::Unauthorized
+    );
+    run_now("chat:owner", "owner-run").unwrap();
+    let handled = messages(&w);
+    assert_eq!(handled.len(), 1);
+    assert_eq!(handled[0].description, "Started “Queue review”");
+    assert!(matches!(
+        &handled[0].actor,
+        nodex_core_contracts::Actor::Agent { on_behalf_of, .. } if on_behalf_of == &owner
+    ));
+}
+
+#[test]
 fn a_renamed_automation_keeps_the_original_proposal_label_after_confirmation() {
     let w = seeded_workspace();
     materialize(

@@ -2,13 +2,14 @@
 export const AUTOMATION_INSTRUCTIONS = `### Automations
 
 - Automations start Agent work on a schedule or on matching GitHub activity; a heartbeat continues one chat on its schedule. Manage them with \`automations_update\`; omit \`targetSessionId\` to continue your own chat.
-- You may create Automations set to Ask first or Dry run. Propose changes to existing ones with \`suggested_update\`; only an Automation's Owner can choose Run.
+- You act with the user's authority: create, change, pause, run or delete any Automation they may. Create new ones as Ask first. Choose Run, or switch an Automation to Run, only when the user asked for unattended runs or clearly wants them; when unsure, ask.
+- Only an Automation's Owner can choose Run, change its mode, edit it while it is set to Run, or run it now. For another Member's Automation, propose the change with \`suggested_create\` or \`suggested_update\` for its Owner to review.
 - Save the user's notification intent in a heartbeat's instructions: unless they asked for periodic updates, it stays quiet until something they should know about happens.`;
 
 /** How every Agent answers the scheduled message an Automation sends into its chat. */
 export const HEARTBEAT_INSTRUCTIONS = `### Heartbeats
 
-A user message wrapped in \`<heartbeat>\` is sent by an Automation, not by the user. Do what it asks, then end the turn with \`<heartbeat><automation_id>…</automation_id><decision>…</decision><message>One short sentence.</message></heartbeat>\`, copying the Automation ID and choosing the decision NOTIFY or DONT_NOTIFY. NOTIFY only for what the user should know now: completion, failure, a material change or a decision they must make; you may write a brief update before the block. Unchanged, pending or healthy results are DONT_NOTIFY, with nothing outside the block. When the heartbeat is no longer useful, ask its Owner to delete it or propose a change with \`suggested_update\`.`;
+A user message wrapped in \`<heartbeat>\` is sent by an Automation, not by the user. Do what it asks, then end the turn with \`<heartbeat><automation_id>…</automation_id><decision>…</decision><message>One short sentence.</message></heartbeat>\`, copying the Automation ID and choosing the decision NOTIFY or DONT_NOTIFY. NOTIFY only for what the user should know now: completion, failure, a material change or a decision they must make; you may write a brief update before the block. Unchanged, pending or healthy results are DONT_NOTIFY, with nothing outside the block. When the heartbeat is no longer useful, NOTIFY and offer to pause or delete it; do so yourself only when its instructions or the user told you to.`;
 
 /** Guidance for the tools attached on the `nodex_app` MCP server. */
 export const ORCHESTRATION_INSTRUCTIONS = `

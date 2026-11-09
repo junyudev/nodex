@@ -590,20 +590,14 @@ pub(crate) fn prepare_automation_run_pages(
     })
 }
 
+/// A held decision is its Automation Owner's to start or retry: the person, or an Agent
+/// acting for them. `context` is bound, so its Actor names that Member.
 pub(super) fn require_automation_owner(
     connection: &Connection,
     context: &BoundModuleContext,
     automation: &nodex_core_contracts::automation::Automation,
 ) -> Result<(), StoreError> {
-    if context.agent_attribution.is_some() || context.adapter == AdapterKind::Agent {
-        return Err(StoreError::new(
-            StoreErrorCode::Unauthorized,
-            "Only the Automation Owner can confirm this decision",
-            false,
-        ));
-    }
-    let actor =
-        crate::library::members::requester_owner(connection, &context.library_id.0, context)?;
+    let actor = crate::infrastructure::actors::requesting_member(connection, context)?;
     if actor != automation.owner_member_id {
         return Err(StoreError::new(
             StoreErrorCode::Unauthorized,

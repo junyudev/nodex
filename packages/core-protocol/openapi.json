@@ -34382,7 +34382,7 @@
               },
               {
                 "type": "object",
-                "description": "Only a person accepts reviewed work.",
+                "description": "Accepts reviewed work for a Member: the person, or the Member an Agent acts for.",
                 "required": [
                   "page_id",
                   "kind"
@@ -48587,7 +48587,7 @@
           },
           {
             "type": "object",
-            "description": "Only a person accepts reviewed work.",
+            "description": "Accepts reviewed work for a Member: the person, or the Member an Agent acts for.",
             "required": [
               "page_id",
               "kind"

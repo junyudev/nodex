@@ -16,23 +16,27 @@ configured folder. Source conditions select GitHub events for bounded judgement 
 
 - Dry run records a decision and reason without creating a Page, proposal, chat
   or execution lease.
-- Ask first holds an editable decision in the Inbox until its Owner starts or skips it.
+- Ask first holds an editable decision in the Inbox until its Owner, or an Agent acting
+  for them when asked, starts, retries or skips it.
 - Run starts the action under the Automation Owner's standing grant.
 
-The exact Automation Owner may change its mode or edit an Automation set to Run. Removing that
-Member retires their Automations and withdraws unstarted decisions while retaining
-history. Other active
-Members may read Automations and edit those set to Ask first or Dry run within scope. This applies
-to pause, resume and delete as well as replacement. Agents cannot choose Run or
-edit any existing Automation directly. They can propose a change that waits for its
-Owner in the same editor. Source text, runbooks and model output never change Automation authority. Producers and lease transitions remain
+Only the exact Automation Owner may choose Run, change its mode, edit an Automation set to
+Run, run it now or transfer it. Removing that Member retires their Automations and withdraws
+unstarted decisions while retaining history. Other active Members may read Automations and
+edit those set to Ask first or Dry run within scope. This applies to pause, resume and delete
+as well as replacement. An Agent has exactly the authority of the Member it acts for, so it
+may create an Automation in any mode, including Run, and change any Automation that Member
+may. Its instructions keep new Automations to Ask first, choose Run only when the person asked
+for unattended runs or clearly wants them, and ask when unsure. A change only another Member
+may make can be proposed for that Owner in the same editor. Source text, runbooks and model
+output never change Automation authority. Producers and lease transitions remain
 Host-only. Checks run before receipt replay and again in the durable writer. A clock Run
 action must still match the current standing grant when its message is dispatched.
 Reviewed Ask first and manual admissions retain their frozen action; accepted Turns
 are reconciled without a replacement launch after an Automation edit.
 
-New Automations created in the desktop default to Run; Agent-created Automations default
-to Ask first. An omitted mode, Owner or timezone on replacement retains its saved value.
+New Automations created in the desktop default to Run; an Agent's new Automation defaults
+to Ask first when it names no mode. An omitted mode, Owner or timezone on replacement retains its saved value.
 The active Automation collection is bounded to 200. Event condition and action text are
 each limited to 16 KiB; the complete event configuration is limited to 48 KiB. Read and history windows are
 bounded; search filters before its limit. Mutations retain a stable operation
@@ -228,9 +232,9 @@ run. Saved `/scheduled` routes and locations redirect to `/automations`. They do
 Create and update accept `--file <path|->` Automation JSON. Update requires
 `--if-revision` and `--status active|paused`; pause, resume and delete require
 `--if-revision`. Writes accept `--idempotency-key`. Run records a manual dispatch.
-`automations_update` provides Agent list, view, proposed and direct edits under the same
-Owner and revision checks. Proposed changes remain unsaved until the Owner
-selects Create or Apply changes.
+`automations_update` provides Agent list, view and direct edits under the same Owner and
+revision checks as the Agent's Member, and proposals for a change only the Automation's Owner
+may make. Proposed changes remain unsaved until the Owner selects Create or Apply changes.
 
 Page recurrence and reminders remain schedules for human work; they never start
 Agent execution. See [ADR 0082](../adr/0082-automations-replace-scheduled-tasks.md).

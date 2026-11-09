@@ -24,7 +24,7 @@ The Database transition collaborator runs inside the transaction recording each 
 | Start or handoff         | Triage, Todo              | In Progress |
 | Ready report             | In Progress               | In Review   |
 | Dropped report           | Triage, Todo, In Progress | Canceled    |
-| Person accepts           | In Review                 | Done        |
+| Member accepts           | In Review                 | Done        |
 | Blocked or failed report | None                      | Unchanged   |
 
 Core maintains a Page-local, monotonic revision for person Status edits. Explicit Desktop,
@@ -32,7 +32,9 @@ CLI and person commands advance it independently of automatic Property revisions
 A related-only link captures no attempt; its first handoff records the current fence. A fact moves Status only when
 the current predecessor and captured person revision match. Moving A → B → A still advances
 the fence. The same transaction retains skipped facts and whether the move applied. Acceptance
-is an explicit person command and advances that fence; verified Agents cannot accept work.
+is an explicit command for a Member: a person's acceptance advances that fence, and an Agent
+may accept for its Member without advancing it, like its other Status edits. Its instructions
+keep it from accepting its own work unless the person told it to.
 
 Each Page has at most one active chat, selected by Start, Start again, explicit handoff, or Inbox
 new-chat/send-to-chat dispatch. Ordinary related links do not select it. Archiving or unlinking
@@ -44,7 +46,8 @@ marks entering either terminal stage, survives moves between terminal stages, an
 reopening. It means terminal time, not acceptance. Only Done means accepted work. A prerequisite
 must be active in its retained Data Source and Done; ready or dropped reports never satisfy it.
 Ready-to-start requires Triage/Todo, an Agent Assignee, no active chat and all prerequisites satisfied.
-Automatic starts additionally require person-granted consent. Readiness epochs retain the
+Automatic starts additionally require a Member's Start automatically consent, granted by that
+person or an Agent acting for them. Readiness epochs retain the
 Page work revision and assignment/consent, Status and person-edit revisions, and Done
 prerequisite evidence; reports alone never change readiness.
 

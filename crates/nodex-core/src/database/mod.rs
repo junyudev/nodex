@@ -9102,7 +9102,7 @@ mod tests {
     }
 
     #[test]
-    fn work_graph_automatic_consent_uses_verified_provenance_and_validates_shape() {
+    fn work_graph_automatic_consent_records_the_member_an_agent_acts_for_and_validates_shape() {
         use nodex_core_contracts::library::{
             LibraryBlockPropertyMutationErrorCode as Code,
             LibraryBlockPropertyMutationOutcome as Outcome,
@@ -9118,17 +9118,38 @@ mod tests {
             session_id: "session:agent".into(),
             backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
         });
-        let result = graph_set_work(&kernel, &agent, "agent-auto", 0, agent_work("automatic"));
-        assert!(
-            matches!(result, Outcome::Rejected { error } if error.code == Code::PropertyValueInvalid)
-        );
-        let mut host = context();
-        host.adapter = AdapterKind::ElectronHost;
+        let read = |sql: &'static str| {
+            kernel
+                .readers()
+                .read_default(move |c| {
+                    c.query_row(sql, [], |r| r.get::<_, Option<String>>(0))
+                        .optional()
+                        .map(Option::flatten)
+                        .map_err(StoreError::from)
+                })
+                .unwrap()
+        };
+        let member =
+            read("SELECT member_id FROM local_profile_members WHERE library_id='library-1'")
+                .unwrap();
+        // An Agent grants Start automatically for the Member it acts for, as that person could.
         assert!(matches!(
-            graph_set_work(&kernel, &host, "host-auto", 0, agent_work("automatic")),
+            graph_set_work(&kernel, &agent, "agent-auto", 0, agent_work("automatic")),
             Outcome::Committed { .. }
         ));
-        let copied = LibraryModule::new("profile-1", "library-1", &kernel)
+        assert_eq!(
+            read("SELECT member_id FROM page_work_grants WHERE page_id='page:a'").as_ref(),
+            Some(&member)
+        );
+        let actor: Value = serde_json::from_str(
+            &read("SELECT actor_json FROM local_commits ORDER BY commit_seq DESC LIMIT 1").unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            actor,
+            json!({"type":"agent","session_id":"session:agent","run_id":null,"on_behalf_of":member})
+        );
+        LibraryModule::new("profile-1", "library-1", &kernel)
             .apply(
                 &agent,
                 ModuleApplyRequest {
@@ -9144,19 +9165,30 @@ mod tests {
                     },
                 },
             )
-            .unwrap_err();
-        assert_eq!(copied.code, CoreErrorCode::InvalidInput);
-        assert!(matches!(
-            graph_set_work(&kernel, &agent, "agent-retain", 1, agent_work("automatic")),
-            Outcome::Committed { .. }
-        ));
-        assert!(matches!(
-            graph_set_work(&kernel, &agent, "agent-ask", 2, agent_work("ask")),
-            Outcome::Committed { .. }
-        ));
-        assert!(
-            matches!(graph_set_work(&kernel, &agent, "agent-escalate", 3, agent_work("automatic")), Outcome::Rejected { error } if error.code == Code::PropertyValueInvalid)
+            .unwrap();
+        // A copy is new work: it keeps its Assignee but not the source's consent.
+        assert_eq!(
+            read("SELECT CAST(count(*) AS TEXT) FROM page_work_grants").as_deref(),
+            Some("1")
         );
+        assert_eq!(
+            read("SELECT CAST(count(*) AS TEXT) FROM block_properties WHERE property_key='work' AND json_extract(value_json,'$.assignee.kind')='agent' AND json_extract(value_json,'$.auto_start')=0").as_deref(),
+            Some("1")
+        );
+        assert!(matches!(
+            graph_set_work(&kernel, &agent, "agent-ask", 1, agent_work("ask")),
+            Outcome::Committed { .. }
+        ));
+        assert_eq!(
+            read("SELECT member_id FROM page_work_grants WHERE page_id='page:a'"),
+            None
+        );
+        let mut host = context();
+        host.adapter = AdapterKind::ElectronHost;
+        assert!(matches!(
+            graph_set_work(&kernel, &host, "host-auto", 2, agent_work("automatic")),
+            Outcome::Committed { .. }
+        ));
         assert!(matches!(
             graph_set_work(&kernel, &host, "host-null", 3, Value::Null),
             Outcome::Committed { .. }

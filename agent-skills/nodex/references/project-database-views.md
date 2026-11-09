@@ -49,8 +49,9 @@ person. Set `--owner me|member:<id>` and
 combined with each other. Omit `--if-revision` to use the command's own observed
 Page work revision, or supply an observed revision to fence an earlier decision.
 Source `property_values` revisions do not apply to these fields. An Agent
-Assignee is required to start work. Changing the assignment revokes automatic
-start consent, which only a person can grant.
+Assignee is required to start work. `--auto-start true|false` sets whether it starts
+on its own once its prerequisites are Done; set it only when the person asked.
+Changing the assignment revokes that consent, so set it again in a separate command.
 
 `page create-batch --input -` creates 1–16 Pages at an explicit destination in
 one transaction. Drafts use `title_markdown`, `markdown` and typed initial

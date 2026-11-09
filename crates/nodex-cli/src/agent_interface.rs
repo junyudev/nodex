@@ -1893,7 +1893,20 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
             "Conditions protect the edited fields and membership, not arbitrary WHERE or JOIN dependencies.",
         ],
         ["page", "accept"] => vec![
-            "Only a person may accept Page work. In Review moves to Done; every other stage stays unchanged. Agent credentials are refused.",
+            "In Review moves to Done; every other stage stays unchanged. An Agent accepts for the person it works for: never accept your own work unless the person told you to.",
+        ],
+        ["work", "pause"] => vec![
+            "The hold belongs to the person you work for; Agent work in its scope waits until it is resumed.",
+        ],
+        ["work", "resume"] => vec![
+            "Clears only the named scope; parent holds still apply. Resume work the person paused only when they ask you to.",
+        ],
+        ["automations", "create" | "update"] => vec![
+            "You act with the authority of the person you work for. Create Automations as Ask first; choose Run, or switch one to Run, only when the person asked for unattended runs or clearly wants them, and ask when unsure.",
+            "Only an Automation's Owner can choose Run, change its mode, edit it while set to Run, run it now or transfer it.",
+        ],
+        ["automations", "run"] => vec![
+            "Confirms a waiting Ask first decision when one exists, for the person you work for. Confirm it only when the person asked you to.",
         ],
         ["page", "prepare"] => vec![
             "Prepare validators apply only to the declared move or delete operation and scope; --view is valid only for move.",
@@ -1942,6 +1955,7 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
         ["page", "properties", "set"] => vec![
             "Read Property IDs and option IDs with sql schema tasks --bind tasks=SOURCE_ID; read value_revision from property_values before replacing a value.",
             "Prefer apply for several Pages or fields instead of repeated set calls; use SQL -> prepare-batch -> apply for query-selected targets. apply also supports clearing values, multi-select and Relation edits. Use data-source configure for definitions.",
+            "--owner, --assignee and --auto-start edit the Page's work for the person you work for. Set --auto-start true only when the person asked; changing the Assignee clears it.",
         ],
         ["page", "properties", "apply"] => vec![
             "All edits commit atomically. Each address uses Page, Data Source and Property IDs; replacement edits carry expected_value_revision from property_values.",
