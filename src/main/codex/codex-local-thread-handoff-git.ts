@@ -107,15 +107,7 @@ async function readCurrentBranch(cwd: string, signal: AbortSignal): Promise<stri
 }
 
 async function branchExists(cwd: string, branch: string, signal: AbortSignal): Promise<boolean> {
-  const result = await runCodexGitCommand(
-    ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`],
-    cwd,
-    { allowedExitCodes: [0, 1, 128], signal },
-  );
-  return (
-    result.stdout.length > 0 ||
-    (await readOptionalRef(cwd, `refs/heads/${branch}`, signal)) !== null
-  );
+  return (await readOptionalRef(cwd, `refs/heads/${branch}`, signal)) !== null;
 }
 
 async function resolveDefaultBranch(
@@ -173,7 +165,8 @@ async function applyStash(
   mode: "apply" | "drop" | "pop",
   signal: AbortSignal,
 ): Promise<void> {
-  const selector = await resolveStashSelector(cwd, stashRef, signal);
+  // Applying accepts the stash commit itself; only removing an entry needs its reflog selector.
+  const selector = mode === "apply" ? stashRef : await resolveStashSelector(cwd, stashRef, signal);
   await runCodexGitCommand(
     ["stash", mode, ...(mode === "drop" ? [] : ["--index"]), selector],
     cwd,
