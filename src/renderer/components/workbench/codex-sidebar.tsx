@@ -1418,7 +1418,7 @@ export function CodexProjectSessionList({
       data-app-action-sidebar-project-show-all={String(showAll)}
     >
       <div className="isolate flex flex-col [contain:layout]">
-        <div className="flex flex-col" role="list" aria-label={`Automations in ${project.name}`}>
+        <div className="flex flex-col" role="list" aria-label={`Chats in ${project.name}`}>
           {children}
         </div>
       </div>

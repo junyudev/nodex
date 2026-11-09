@@ -56,7 +56,7 @@ it("launches the packaged MCP layout through its private generation descriptor",
       default_tools_approval_mode: "approve",
       tool_timeout_sec: 3670,
       tools: {
-        automation_update: { approval_mode: "prompt" },
+        automations_update: { approval_mode: "prompt" },
         create_session: { approval_mode: "prompt" },
         send_message_to_session: { approval_mode: "prompt" },
         session_question: { approval_mode: "prompt" },

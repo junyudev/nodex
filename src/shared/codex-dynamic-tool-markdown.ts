@@ -39,8 +39,8 @@ function formatBlock(title: string, lines: readonly string[]): string {
 
 function formatAutomationUpdateMarkdownFallback(call: DynamicToolMarkdownInput): string {
   const parsed = call.success === true ? parseAnyInputTextJson(call) : null;
-  return formatBlock("Scheduled task update", [
-    `Mode: ${normalizeOptionalString(parsed?.mode) ?? "pending"}`,
+  return formatBlock("Automation update", [
+    `Operation: ${normalizeOptionalString(parsed?.operation) ?? "pending"}`,
     `Automation ID: ${normalizeOptionalString(parsed?.automationId) ?? "pending"}`,
   ]);
 }
@@ -48,7 +48,7 @@ function formatAutomationUpdateMarkdownFallback(call: DynamicToolMarkdownInput):
 export function formatDynamicToolCallMarkdownFallback(
   call: DynamicToolMarkdownInput,
 ): string | null {
-  if (call.namespace === "codex_app" && call.tool === "automation_update") {
+  if (call.namespace === "codex_app" && call.tool === "automations_update") {
     return formatAutomationUpdateMarkdownFallback(call);
   }
   return null;

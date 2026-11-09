@@ -8,7 +8,7 @@ import {
   makeAutomationInboxItem,
   makeBlankSession,
   makeProject,
-  makeScheduledAutomation,
+  makeAutomation,
 } from "./workbench-testkit/workbench-shell-fixtures";
 import {
   getLastThreadStageActions,
@@ -33,7 +33,7 @@ function expectFirstSubmissionIdentity(input: unknown): void {
   expect(isUuidV7(launch.message?.messageId ?? "")).toBe(true);
 }
 
-async function selectScheduledModel(screen: ReturnType<typeof renderWorkbench>, name: string) {
+async function selectAutomationModel(screen: ReturnType<typeof renderWorkbench>, name: string) {
   const trigger = await screen.findByRole("button", { name: "Agent intelligence" });
   await waitFor(() => expect((trigger as HTMLButtonElement).disabled).toBe(false));
   await act(async () => {
@@ -56,11 +56,11 @@ async function click(element: Element) {
   });
 }
 
-async function openScheduled(screen: WorkbenchScreen) {
+async function openAutomations(screen: WorkbenchScreen) {
   await settleAsyncRender();
   await settleAsyncRender();
-  await click(screen.getByRole("button", { name: "Scheduled" }));
-  await screen.findByTestId("scheduled-route");
+  await click(screen.getByRole("button", { name: "Automations" }));
+  await screen.findByTestId("automations-route");
   await settleAsyncRender();
 }
 
@@ -81,7 +81,7 @@ async function pick(
 }
 
 function taskRow(screen: WorkbenchScreen, taskId: string): HTMLElement {
-  const row = screen.container.querySelector(`[data-scheduled-task-id="${taskId}"]`);
+  const row = screen.container.querySelector(`[data-automation-id="${taskId}"]`);
   if (!(row instanceof HTMLElement)) throw new Error(`Expected the ${taskId} row`);
   return row;
 }
@@ -90,17 +90,119 @@ async function chooseTaskAction(screen: WorkbenchScreen, taskId: string, action:
   await waitFor(() => taskRow(screen, taskId));
   await pick(
     screen,
-    within(taskRow(screen, taskId)).getByRole("button", { name: "More task actions" }),
+    within(taskRow(screen, taskId)).getByRole("button", { name: "More automation actions" }),
     action,
   );
 }
 
 describe("workbench session shell / automations-conversation", () => {
-  test("replies about a scheduled task using the available OpenCode Agent", async () => {
+  test.each(["run", "ask_first"] as const)(
+    "%s Automations expose their Owner and enforce the Owner's editing controls",
+    async (mode) => {
+      const automation = makeAutomation({
+        id: "owned-automation",
+        kind: "cron",
+        mode,
+        ownerMemberId: "member-other",
+      });
+      const screen = renderWorkbench({ clockAutomations: [automation] });
+      const base = mockInvokeImpl;
+      if (!base) throw new Error("Expected Core transport");
+      setMockInvokeImpl(async (channel, ...args) => {
+        const read = args[1] as { read?: { mode?: string } } | undefined;
+        if (channel === "library-module:read" && read?.read?.mode === "members") {
+          return {
+            ok: true,
+            value: {
+              value: {
+                kind: "members",
+                items: [
+                  {
+                    id: "member-owner",
+                    library_id: "library:test",
+                    display_name: "You",
+                    lifecycle: "active",
+                    role: "owner",
+                    revision: 1,
+                  },
+                  {
+                    id: "member-other",
+                    library_id: "library:test",
+                    display_name: "Alex",
+                    lifecycle: "active",
+                    role: "member",
+                    revision: 1,
+                  },
+                ],
+              },
+            },
+          };
+        }
+        return await base(channel, ...args);
+      });
+      await openAutomations(screen);
+      await chooseTaskAction(screen, automation.id, "Edit");
+      const dialog = await screen.findByRole("dialog", { name: "Edit automation" });
+      const fields = within(dialog);
+      expect(fields.getByRole("button", { name: "Owner" })).toBeTruthy();
+      expect((fields.getByRole("button", { name: "Mode" }) as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+      expect(
+        (fields.getByRole("textbox", { name: "Condition" }) as HTMLInputElement).disabled,
+      ).toBe(mode === "run");
+      expect(
+        (fields.getByRole("textbox", { name: "Instructions" }) as HTMLTextAreaElement).disabled,
+      ).toBe(mode === "run");
+      expect((fields.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+    },
+  );
+
+  test("Dry run shows its recorded decisions without creating a chat or a run", async () => {
+    const automation = makeAutomation({
+      id: "observe-automation",
+      kind: "cron",
+      mode: "dry_run",
+      name: "Watch the queue",
+    });
+    const screen = renderWorkbench({ clockAutomations: [automation] });
+    const base = mockInvokeImpl;
+    if (!base) throw new Error("Expected Core transport");
+    setMockInvokeImpl(async (channel, ...args) =>
+      channel === "automations:decisions:list"
+        ? {
+            items: [
+              {
+                id: "decision-1",
+                dispatchId: "dispatch-1",
+                automationId: automation.id,
+                status: "completed",
+                mode: "dry_run",
+                reason: "The weekly condition matched",
+                occurredAt: Date.parse("2026-11-06T01:00:00Z"),
+                pageId: null,
+                sessionId: null,
+              },
+            ],
+          }
+        : await base(channel, ...args),
+    );
+    await openAutomations(screen);
+    await click(within(taskRow(screen, automation.id)).getAllByRole("button")[0]!);
+    const history = await screen.findByRole("region", { name: "Recent decisions" });
+    await within(history).findByText("The weekly condition matched");
+    expect(within(history).getByText("Dry run")).toBeTruthy();
+    expect(agentRuntimeLaunchCalls).toEqual([]);
+    expect(screen.getRunNowAutomationIds()).toEqual([]);
+  });
+
+  test("replies about an automation using the available OpenCode Agent", async () => {
     const screen = renderWorkbench({
       sessionsByProject: { alpha: [makeBlankSession({ id: "session:alpha:scheduled-reply" })] },
-      scheduledAutomations: [
-        makeScheduledAutomation({
+      clockAutomations: [
+        makeAutomation({
           id: "task-reply",
           kind: "cron",
           projectId: "alpha",
@@ -121,11 +223,11 @@ describe("workbench session shell / automations-conversation", () => {
           }))
         : value;
     });
-    await openScheduled(screen);
+    await openAutomations(screen);
     await click(
       within(taskRow(screen, "task-reply")).getByRole("button", { name: /Review task/u }),
     );
-    const reply = await screen.findByRole("textbox", { name: "Reply about this task" });
+    const reply = await screen.findByRole("textbox", { name: "Reply about this automation" });
     await act(async () => {
       fireEvent.change(reply, { target: { value: "Include the integration tests." } });
       await Promise.resolve();
@@ -137,8 +239,8 @@ describe("workbench session shell / automations-conversation", () => {
       modelSelection: { instanceId: "opencode:configured" },
       message: { text: expect.stringContaining("Include the integration tests.") },
     });
-    await waitFor(() => expect(screen.queryByTestId("scheduled-route")).toBeNull());
-    expect(screen.getByTestId("scheduled-sidebar")).not.toBeNull();
+    await waitFor(() => expect(screen.queryByTestId("automations-route")).toBeNull());
+    expect(screen.getByTestId("automations-sidebar")).not.toBeNull();
   });
 
   test("surfaces pending heartbeat handoff failure from the app-level coordinator", async () => {
@@ -168,13 +270,13 @@ describe("workbench session shell / automations-conversation", () => {
     );
   });
 
-  test("creates a task in the dialog, then edits and deletes it from the sidebar", async () => {
+  test("creates a Dry run Automation with its condition, then edits and deletes it from the sidebar", async () => {
     const screen = renderWorkbench({
       projects: [makeProject("alpha", "Alpha", "/tmp/project")],
       sessionsByProject: {
         alpha: [makeAttachedSession({ id: "session:alpha:automation-crud" })],
       },
-      scheduledAutomations: [],
+      clockAutomations: [],
       worktreeEnvironmentOptionsByProject: {
         alpha: [
           {
@@ -187,19 +289,23 @@ describe("workbench session shell / automations-conversation", () => {
         ],
       },
     });
-    await openScheduled(screen);
+    await openAutomations(screen);
 
-    await click(screen.getByRole("button", { name: "New task" }));
-    const dialog = await screen.findByRole("dialog", { name: "Schedule a task" });
+    await click(screen.getByRole("button", { name: "New automation" }));
+    const dialog = await screen.findByRole("dialog", { name: "New automation" });
     const create = within(dialog).getByRole("button", { name: "Create" }) as HTMLButtonElement;
     expect(create.disabled).toBe(true);
     await act(async () => {
       fireEvent.change(within(dialog).getByRole("textbox", { name: "Instructions" }), {
         target: { value: "Triage the weekly project queue." },
       });
+      fireEvent.change(within(dialog).getByRole("textbox", { name: "Condition" }), {
+        target: { value: "Every week before planning" },
+      });
       await Promise.resolve();
     });
     await pick(screen, within(dialog).getByRole("button", { name: "Repeat" }), "Weekly");
+    await pick(screen, within(dialog).getByRole("button", { name: "Mode" }), "Dry run");
     await pick(screen, within(dialog).getByRole("button", { name: "Time" }), "10:30 AM", "option");
     await click(within(dialog).getByRole("button", { name: "Advanced" }));
     await pick(screen, within(dialog).getByRole("button", { name: "Project" }), /Alpha/u);
@@ -209,12 +315,14 @@ describe("workbench session shell / automations-conversation", () => {
       await within(dialog).findByRole("button", { name: "Environment" }),
       /CI setup/u,
     );
-    await selectScheduledModel(screen, "GPT-5.5 High");
+    await selectAutomationModel(screen, "GPT-5.5 High");
     await waitFor(() => expect(create.disabled).toBe(false));
     await click(create);
 
-    await waitFor(() => expect(screen.getScheduledAutomations().length).toBe(1));
-    expect(screen.getScheduledAutomations()[0]).toMatchObject({
+    await waitFor(() => expect(screen.getAutomations().length).toBe(1));
+    expect(screen.getAutomations()[0]).toMatchObject({
+      mode: "dry_run",
+      conditionText: "Every week before planning",
       name: "Triage the weekly project queue",
       prompt: "Triage the weekly project queue.",
       cwds: ["/tmp/project"],
@@ -224,16 +332,16 @@ describe("workbench session shell / automations-conversation", () => {
       model: "gpt-5.5-high",
       reasoningEffort: "high",
     });
-    const route = screen.getByTestId("scheduled-route");
+    const route = screen.getByTestId("automations-route");
     expect(
       await within(route).findByRole("button", {
         name: "Triage the weekly project queue settings",
       }),
     ).not.toBeNull();
-    expect(screen.queryByRole("dialog", { name: "Schedule a task" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "New automation" })).toBeNull();
 
     await chooseTaskAction(screen, "automation-1", "Edit");
-    const editDialog = await screen.findByRole("dialog", { name: "Edit task" });
+    const editDialog = await screen.findByRole("dialog", { name: "Edit automation" });
     const name = within(editDialog).getByRole("textbox", { name: "Name" }) as HTMLInputElement;
     expect(name.value).toBe("Triage the weekly project queue");
     await act(async () => {
@@ -241,25 +349,25 @@ describe("workbench session shell / automations-conversation", () => {
       await Promise.resolve();
     });
     await click(within(editDialog).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(screen.getScheduledAutomations()[0]?.name).toBe("Updated triage"));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit task" })).toBeNull());
+    await waitFor(() => expect(screen.getAutomations()[0]?.name).toBe("Updated triage"));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Edit automation" })).toBeNull(),
+    );
 
     await chooseTaskAction(screen, "automation-1", "Delete");
-    const confirm = await screen.findByRole("dialog", { name: "Delete scheduled task?" });
+    const confirm = await screen.findByRole("dialog", { name: "Delete automation?" });
     await click(within(confirm).getByRole("button", { name: "Delete" }));
-    await waitFor(() => expect(screen.getScheduledAutomations().length).toBe(0));
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Schedule a task" }),
-    ).not.toBeNull();
+    await waitFor(() => expect(screen.getAutomations().length).toBe(0));
+    expect(await screen.findByRole("heading", { level: 1, name: "New automation" })).not.toBeNull();
   });
 
   test("starts a task from a template and asks before discarding changes", async () => {
-    const screen = renderWorkbench({ scheduledAutomations: [] });
-    await openScheduled(screen);
-    const suggestions = screen.getByRole("list", { name: "Suggested tasks" });
+    const screen = renderWorkbench({ clockAutomations: [] });
+    await openAutomations(screen);
+    const suggestions = screen.getByRole("list", { name: "Suggested automations" });
 
     await click(within(suggestions).getByRole("button", { name: /Daily bug scan/u }));
-    let dialog = await screen.findByRole("dialog", { name: "Schedule a task" });
+    let dialog = await screen.findByRole("dialog", { name: "New automation" });
     const instructions = within(dialog).getByRole("textbox", {
       name: "Instructions",
     }) as HTMLTextAreaElement;
@@ -270,11 +378,11 @@ describe("workbench session shell / automations-conversation", () => {
       await Promise.resolve();
     });
     await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "Schedule a task" })).toBeNull(),
+      expect(screen.queryByRole("dialog", { name: "New automation" })).toBeNull(),
     );
 
     await click(within(suggestions).getByRole("button", { name: /Daily bug scan/u }));
-    dialog = await screen.findByRole("dialog", { name: "Schedule a task" });
+    dialog = await screen.findByRole("dialog", { name: "New automation" });
     await act(async () => {
       fireEvent.change(within(dialog).getByRole("textbox", { name: "Instructions" }), {
         target: { value: "Only scan the API package." },
@@ -284,7 +392,7 @@ describe("workbench session shell / automations-conversation", () => {
     await click(within(dialog).getByRole("button", { name: "Cancel" }));
     const discard = await screen.findByRole("dialog", { name: "Discard changes?" });
     await click(within(discard).getByRole("button", { name: "Keep editing" }));
-    expect(screen.getByRole("dialog", { name: "Schedule a task" })).not.toBeNull();
+    expect(screen.getByRole("dialog", { name: "New automation" })).not.toBeNull();
 
     await click(within(dialog).getByRole("button", { name: "Cancel" }));
     await click(
@@ -293,19 +401,19 @@ describe("workbench session shell / automations-conversation", () => {
       }),
     );
     await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "Schedule a task" })).toBeNull(),
+      expect(screen.queryByRole("dialog", { name: "New automation" })).toBeNull(),
     );
-    expect(screen.getScheduledAutomations().length).toBe(0);
+    expect(screen.getAutomations().length).toBe(0);
   });
 
   test("task actions pause, resume, run now, and roll back a failed status change", async () => {
     installTerminalEventApiMock();
-    const active = makeScheduledAutomation({
+    const active = makeAutomation({
       id: "automation-active",
       name: "Runnable task",
       targetSessionId: "session:alpha:automation-row-actions",
     });
-    const paused = makeScheduledAutomation({
+    const paused = makeAutomation({
       id: "automation-paused",
       name: "Paused task",
       status: "PAUSED",
@@ -316,30 +424,30 @@ describe("workbench session shell / automations-conversation", () => {
       sessionsByProject: {
         alpha: [makeAttachedSession({ id: "session:alpha:automation-row-actions" })],
       },
-      scheduledAutomations: [active, paused],
+      clockAutomations: [active, paused],
     });
-    await openScheduled(screen);
+    await openAutomations(screen);
 
     expect(textContent(taskRow(screen, "automation-paused"))).toContain("Paused · Daily");
     await chooseTaskAction(screen, "automation-active", "Run now");
     await waitFor(() => expect(screen.getRunNowAutomationIds()).toEqual(["automation-active"]));
     expect(
       __getNodexToastSnapshotForTests().some(
-        (record) => record.level === "info" && record.title === "Scheduled task started",
+        (record) => record.level === "info" && record.title === "Automation started",
       ),
     ).toBe(true);
 
     await chooseTaskAction(screen, "automation-paused", "Resume");
     await waitFor(() =>
-      expect(
-        screen.getScheduledAutomations().find((task) => task.id === "automation-paused")?.status,
-      ).toBe("ACTIVE"),
+      expect(screen.getAutomations().find((task) => task.id === "automation-paused")?.status).toBe(
+        "ACTIVE",
+      ),
     );
 
     let rejectUpdate: ((error: Error) => void) | null = null;
     const baseMockInvokeImpl = mockInvokeImpl;
     setMockInvokeImpl(async (channel, ...args) => {
-      if (channel === "codex:scheduled-automations:update") {
+      if (channel === "automations:update") {
         return await new Promise<never>((_resolve, reject) => {
           rejectUpdate = reject;
         });
@@ -361,28 +469,28 @@ describe("workbench session shell / automations-conversation", () => {
       __getNodexToastSnapshotForTests().some(
         (record) =>
           record.level === "danger" &&
-          record.title === "Could not update scheduled task" &&
+          record.title === "Could not update automation" &&
           record.description === "Host update failed",
       ),
     ).toBe(true);
   });
 
-  test("reports run-now and delete failures with scheduled task toast titles", async () => {
+  test("reports run-now and delete failures with automation toast titles", async () => {
     installTerminalEventApiMock();
-    const active = makeScheduledAutomation({ id: "automation-failing", name: "Failing task" });
+    const active = makeAutomation({ id: "automation-failing", name: "Failing task" });
     const screen = renderWorkbench({
       sessionsByProject: {
         alpha: [makeAttachedSession({ id: "session:alpha:automation-failures" })],
       },
-      scheduledAutomations: [active],
+      clockAutomations: [active],
     });
-    await openScheduled(screen);
+    await openAutomations(screen);
     const baseMockInvokeImpl = mockInvokeImpl;
     setMockInvokeImpl(async (channel, ...args) => {
-      if (channel === "codex:scheduled-automations:run-now") {
+      if (channel === "automations:run-now") {
         throw new Error("Automation is missing");
       }
-      if (channel === "codex:scheduled-automations:delete") {
+      if (channel === "automations:delete") {
         return { item: active, success: false, status: "remove_failed" };
       }
       return baseMockInvokeImpl?.(channel, ...args) ?? null;
@@ -390,22 +498,22 @@ describe("workbench session shell / automations-conversation", () => {
 
     await chooseTaskAction(screen, "automation-failing", "Run now");
     await chooseTaskAction(screen, "automation-failing", "Delete");
-    const confirm = await screen.findByRole("dialog", { name: "Delete scheduled task?" });
+    const confirm = await screen.findByRole("dialog", { name: "Delete automation?" });
     await click(within(confirm).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
       const titles = __getNodexToastSnapshotForTests()
         .filter((record) => record.level === "danger")
         .map((record) => (record as { title?: unknown }).title);
-      expect(titles).toContain("Could not start scheduled task");
-      expect(titles).toContain("Could not delete scheduled task");
+      expect(titles).toContain("Could not start automation");
+      expect(titles).toContain("Could not delete automation");
     });
-    expect(screen.getScheduledAutomations().length).toBe(1);
+    expect(screen.getAutomations().length).toBe(1);
   });
 
   test("cron tasks open as folders of runs, and runs and Heartbeats open their chat in place", async () => {
     installTerminalEventApiMock();
-    const cron = makeScheduledAutomation({
+    const cron = makeAutomation({
       id: "automation-history",
       kind: "cron",
       projectId: "alpha",
@@ -416,7 +524,7 @@ describe("workbench session shell / automations-conversation", () => {
       reasoningEffort: "low",
       cwds: ["/tmp/project-alpha"],
     });
-    const heartbeat = makeScheduledAutomation({
+    const heartbeat = makeAutomation({
       id: "automation-heartbeat",
       name: "Standup check-in",
       targetSessionId: "session:alpha:heartbeat",
@@ -436,7 +544,7 @@ describe("workbench session shell / automations-conversation", () => {
           }),
         ],
       },
-      scheduledAutomations: [cron, heartbeat],
+      clockAutomations: [cron, heartbeat],
       automationInboxItems: [
         makeAutomationInboxItem({
           id: "thread-run-latest",
@@ -462,7 +570,7 @@ describe("workbench session shell / automations-conversation", () => {
         }),
       ],
     });
-    await openScheduled(screen);
+    await openAutomations(screen);
 
     const row = taskRow(screen, "automation-history");
     expect(within(row).getByLabelText("Unread")).not.toBeNull();
@@ -474,7 +582,7 @@ describe("workbench session shell / automations-conversation", () => {
         .map((item) => textContent(item)),
     ).toEqual(["Latest history run"]);
     expect(
-      await within(screen.getByTestId("scheduled-route")).findByText(
+      await within(screen.getByTestId("automations-route")).findByText(
         "Summarize the previous run history.",
       ),
     ).not.toBeNull();
@@ -483,9 +591,9 @@ describe("workbench session shell / automations-conversation", () => {
     await waitFor(() =>
       expect(textContent(screen.container)).toContain("Thread:thread-run-latest"),
     );
-    expect(screen.queryByTestId("scheduled-route")).toBeNull();
-    expect(screen.getByTestId("scheduled-sidebar")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Scheduled" }).getAttribute("aria-current")).toBe(
+    expect(screen.queryByTestId("automations-route")).toBeNull();
+    expect(screen.getByTestId("automations-sidebar")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Automations" }).getAttribute("aria-current")).toBe(
       "page",
     );
     await waitFor(() =>
@@ -505,22 +613,22 @@ describe("workbench session shell / automations-conversation", () => {
         .getByRole("button", { name: /Standup check-in/u })
         .getAttribute("aria-current"),
     ).toBe("page");
-    expect(screen.getByTestId("scheduled-sidebar")).not.toBeNull();
+    expect(screen.getByTestId("automations-sidebar")).not.toBeNull();
   });
 
   test("searches tasks by name from the sidebar", async () => {
     const screen = renderWorkbench({
-      scheduledAutomations: [
-        makeScheduledAutomation({ id: "automation-digest", name: "Morning digest" }),
-        makeScheduledAutomation({ id: "automation-review", name: "Code review sweep" }),
+      clockAutomations: [
+        makeAutomation({ id: "automation-digest", name: "Morning digest" }),
+        makeAutomation({ id: "automation-review", name: "Code review sweep" }),
       ],
     });
-    await openScheduled(screen);
+    await openAutomations(screen);
 
-    const toggle = screen.getByRole("button", { name: "Search scheduled tasks" });
+    const toggle = screen.getByRole("button", { name: "Search automations" });
     await click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    const search = screen.getByRole("textbox", { name: "Search scheduled tasks" });
+    const search = screen.getByRole("textbox", { name: "Search automations" });
     await act(async () => {
       fireEvent.change(search, { target: { value: "DIGEST" } });
       await Promise.resolve();
@@ -533,14 +641,14 @@ describe("workbench session shell / automations-conversation", () => {
       fireEvent.change(search, { target: { value: "nothing like this" } });
       await Promise.resolve();
     });
-    expect(within(screen.getByTestId("scheduled-sidebar")).getByRole("status").textContent).toBe(
-      "No matching tasks",
+    expect(within(screen.getByTestId("automations-sidebar")).getByRole("status").textContent).toBe(
+      "No matching automations",
     );
     await act(async () => {
       fireEvent.keyDown(search, { key: "Escape" });
       await Promise.resolve();
     });
-    expect(screen.queryByRole("textbox", { name: "Search scheduled tasks" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Search automations" })).toBeNull();
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(document.activeElement).toBe(toggle);
   });

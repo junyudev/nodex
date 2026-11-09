@@ -94,7 +94,7 @@ import type {
   ThreadSummaryPanelComputerUsePipState,
   ThreadSummaryPanelAuxiliaryRow,
   ThreadSummaryPanelBrowserRow,
-  ThreadSummaryPanelScheduledAutomationRow,
+  ThreadSummaryPanelAutomationRow,
 } from "../../thread-stage-types";
 import { ThreadSummaryPanelRow } from "./thread-summary-panel-row";
 import {
@@ -153,7 +153,7 @@ export interface ThreadSummaryPanelContentProps {
   knownConversationsById?: Record<string, CodexConversationSnapshot>;
   sideChatRows?: readonly ThreadSummaryPanelAuxiliaryRow[];
   browserRows?: readonly ThreadSummaryPanelBrowserRow[];
-  scheduledAutomation?: ThreadSummaryPanelScheduledAutomationRow | null;
+  clockAutomation?: ThreadSummaryPanelAutomationRow | null;
   computerUsePip?: ThreadSummaryPanelComputerUsePipState | null;
   isVisible?: boolean;
   executionLocation?: ThreadExecutionLocationModel | null;
@@ -413,15 +413,11 @@ function getBrowserRowTitle(row: ThreadSummaryPanelBrowserRow): string {
   return `${row.title}\n${row.url}`;
 }
 
-function getScheduledAutomationTitle(row: ThreadSummaryPanelScheduledAutomationRow): string {
+function getAutomationTitle(row: ThreadSummaryPanelAutomationRow): string {
   return `Next run: ${row.nextRunLabel}`;
 }
 
-function SummaryScheduledAutomationLabel({
-  row,
-}: {
-  row: ThreadSummaryPanelScheduledAutomationRow;
-}) {
+function SummaryAutomationLabel({ row }: { row: ThreadSummaryPanelAutomationRow }) {
   return (
     <>
       <span className="min-w-0 flex-1 truncate">{row.name}</span>
@@ -901,7 +897,7 @@ export function ThreadSummaryPanelSurface({
   knownConversationsById = EMPTY_KNOWN_CONVERSATIONS_BY_ID,
   sideChatRows = EMPTY_SIDE_CHAT_ROWS,
   browserRows = EMPTY_BROWSER_ROWS,
-  scheduledAutomation = null,
+  clockAutomation = null,
   computerUsePip = null,
   isVisible = true,
   executionLocation,
@@ -1104,7 +1100,7 @@ export function ThreadSummaryPanelSurface({
     () =>
       buildThreadSummaryPanelSectionModel({
         activeThreadId,
-        hasScheduledAutomation: scheduledAutomation !== null,
+        hasAutomation: clockAutomation !== null,
         hasEnvironment: hasGitEnvironmentSummary,
         hasPlan: planRow !== null,
         outputCount: outputRows.length,
@@ -1123,7 +1119,7 @@ export function ThreadSummaryPanelSurface({
       hasComputerUsePip,
       outputRows.length,
       planRow,
-      scheduledAutomation,
+      clockAutomation,
       sideChatRows.length,
       sourceModel.count,
       hasGitEnvironmentSummary,
@@ -1223,16 +1219,16 @@ export function ThreadSummaryPanelSurface({
     },
     [onOpenPlanInSidePanel],
   );
-  const onOpenScheduledAutomation = actions?.onOpenSummaryScheduledAutomation;
+  const onOpenAutomation = actions?.onOpenSummaryAutomation;
   const onToggleComputerUsePip = actions?.onToggleSummaryComputerUsePip;
-  const handleOpenScheduledAutomation = useCallback(
-    (row: ThreadSummaryPanelScheduledAutomationRow) => {
-      void onOpenScheduledAutomation?.({
+  const handleOpenAutomation = useCallback(
+    (row: ThreadSummaryPanelAutomationRow) => {
+      void onOpenAutomation?.({
         automationId: row.id,
         title: row.name,
       });
     },
-    [onOpenScheduledAutomation],
+    [onOpenAutomation],
   );
   const handleOpenAuxiliaryRow = useCallback(
     (
@@ -1275,25 +1271,23 @@ export function ThreadSummaryPanelSurface({
           <div className="flex flex-col gap-2 py-2.5">
             {summarySections.map((section: ThreadSummaryPanelSectionModel) => {
               switch (section.kind) {
-                case "scheduled":
-                  if (!scheduledAutomation) return null;
+                case "automations":
+                  if (!clockAutomation) return null;
                   return (
                     <ThreadSummaryPanelSection
                       key={section.kind}
                       sectionKey="automation"
-                      title="Scheduled"
+                      title="Automations"
                     >
                       <ThreadSummaryPanelRow
-                        aria-label="Open scheduled task"
+                        aria-label="Open automation"
                         icon={<ClockIcon className="icon-xs shrink-0" />}
-                        label={<SummaryScheduledAutomationLabel row={scheduledAutomation} />}
+                        label={<SummaryAutomationLabel row={clockAutomation} />}
                         labelClassName="flex min-w-0 flex-1 items-baseline gap-2"
-                        title={getScheduledAutomationTitle(scheduledAutomation)}
-                        interactive={Boolean(onOpenScheduledAutomation)}
+                        title={getAutomationTitle(clockAutomation)}
+                        interactive={Boolean(onOpenAutomation)}
                         onClick={
-                          onOpenScheduledAutomation
-                            ? () => handleOpenScheduledAutomation(scheduledAutomation)
-                            : undefined
+                          onOpenAutomation ? () => handleOpenAutomation(clockAutomation) : undefined
                         }
                       />
                     </ThreadSummaryPanelSection>

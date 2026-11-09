@@ -60,12 +60,7 @@ import {
   type ProjectSessionRenderableTab,
 } from "@/lib/workbench-panel-tab-model";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
-import type {
-  CodexScheduledAutomation,
-  PanelId,
-  Project,
-  WorkbenchTabProjection,
-} from "@/lib/types";
+import type { Automation, PanelId, Project, WorkbenchTabProjection } from "@/lib/types";
 import {
   makeBrowserSidebarTabKey,
   type BrowserSidebarTabSnapshot,
@@ -89,8 +84,8 @@ import { SideChatTabActions } from "./side-chat-tab-actions";
 import { SideChatTabIcon } from "./side-chat-tab-icon";
 import type { SideChatPanelTab } from "@/lib/workbench-panel-tab-model";
 
-const ScheduledTaskSidePanel = lazy(async () => ({
-  default: (await import("@/features/scheduled/scheduled-task-side-panel")).ScheduledTaskSidePanel,
+const AutomationSidePanel = lazy(async () => ({
+  default: (await import("@/features/automations/automation-side-panel")).AutomationSidePanel,
 }));
 
 type ProjectSession = WorkbenchSessionRenderProjection;
@@ -188,10 +183,10 @@ interface WorkbenchPanelProjectionInput {
     readonly onRefreshSessions: ComponentProps<typeof SideChatSessionTab>["onRefreshSessions"];
   };
   readonly automation: {
-    readonly chats: ComponentProps<typeof ScheduledTaskSidePanel>["chats"];
+    readonly chats: ComponentProps<typeof AutomationSidePanel>["chats"];
     readonly onOpenAutomations: (path: string) => void;
     readonly onOpenLocalEnvironmentsSettings: ComponentProps<
-      typeof ScheduledTaskSidePanel
+      typeof AutomationSidePanel
     >["onOpenLocalEnvironmentsSettings"];
   };
   readonly onTogglePageStageHistoryModal: SurfaceProps["onTogglePageStageHistoryModal"];
@@ -296,7 +291,7 @@ export function useWorkbenchPanelProjection({
     onQueueingEnabledChange,
     onRefreshSessions,
   } = conversation;
-  const { chats: scheduledChats, onOpenAutomations, onOpenLocalEnvironmentsSettings } = automation;
+  const { chats: automationChats, onOpenAutomations, onOpenLocalEnvironmentsSettings } = automation;
 
   const presentedPageIds = useMemo<ReadonlySet<string>>(() => {
     if (!activeRenderSession || !activeSessionPanelModel) return new Set();
@@ -511,22 +506,22 @@ export function useWorkbenchPanelProjection({
           if (isAutomationPanelTab(tab)) {
             return (
               <ApplicationSurface key={`${session.id}:${tab.id}:${tab.stateKey}`}>
-                <ScheduledTaskSidePanel
+                <AutomationSidePanel
                   automationId={tab.automationId}
                   createInput={tab.createInput}
                   mode={tab.mode}
                   projects={projects}
-                  chats={scheduledChats}
+                  chats={automationChats}
                   title={tab.title}
                   updateInput={tab.updateInput}
                   onClose={() => {
                     void closeEphemeralPanelTab(tab.panelId, tab.id);
                   }}
-                  onOpenInScheduled={(automationId) => {
+                  onOpenInAutomations={(automationId) => {
                     onOpenAutomations(buildAutomationsPath({ automationId }));
                   }}
                   onOpenLocalEnvironmentsSettings={onOpenLocalEnvironmentsSettings}
-                  onSaved={(automationValue: CodexScheduledAutomation) => {
+                  onSaved={(automationValue: Automation) => {
                     controller.updateAutomationTabsBySession((current) => {
                       const tabs = current[session.id] ?? [];
                       return {

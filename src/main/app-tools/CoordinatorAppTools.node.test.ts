@@ -88,3 +88,32 @@ it.effect("only the Coordinator can acknowledge an origin", () =>
     assert.isEmpty(f.commands);
   }),
 );
+
+it.effect("assessment tools reject authority and mode fields at the tool boundary", () =>
+  Effect.gen(function* () {
+    const f = yield* routingFixture();
+    const rejected = yield* f.tool(
+      invocation(
+        { request_id: "request", generation: 1, resource: "thread", url: "https://example.com" },
+        "automation_assessment_read",
+      ),
+    );
+    assert.isTrue(rejected.isError);
+    assert.isEmpty(f.commands);
+    const submitted = yield* f.tool(
+      invocation(
+        {
+          request_id: "request",
+          generation: 1,
+          policy_hash: "a".repeat(64),
+          automation_assessments: [],
+          proposed_actions: [],
+          mode: "auto",
+        },
+        "automation_assessment_submit",
+      ),
+    );
+    assert.isTrue(submitted.isError);
+    assert.isEmpty(f.commands);
+  }),
+);

@@ -84,6 +84,9 @@ function harness(
                 ],
               };
               break;
+            case "event_automation_watching":
+              value = { kind: "event_automation_watching", enabled: false };
+              break;
             case "known_pull_requests":
               value = { kind: "known_pull_requests", pull_requests: [] };
               break;

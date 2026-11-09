@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vite-plus/test";
-import { act, fireEvent } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState, type ReactElement } from "react";
 import type { CodexTranscriptEntry } from "../../../../../lib/types";
@@ -125,6 +125,60 @@ async function renderHandoff(
 }
 
 describe("DynamicToolCall", () => {
+  test("new item evidence retries detail and excludes the previous version's failure", async () => {
+    let rejectEarlier!: (cause: unknown) => void;
+    let rejectCurrent!: (cause: unknown) => void;
+    const readItemDetail = vi
+      .fn()
+      .mockImplementationOnce(
+        () => new Promise<void>((_resolve, reject) => (rejectEarlier = reject)),
+      )
+      .mockImplementationOnce(
+        () => new Promise<void>((_resolve, reject) => (rejectCurrent = reject)),
+      );
+    const runtime = { readItemDetail } as unknown as ConversationRuntime;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const card = (version: number) => (
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <ConversationRuntimeContext.Provider value={runtime}>
+            <DynamicToolCall
+              item={{
+                ...buildDynamicEntry({
+                  namespace: "node_repl",
+                  tool: "js",
+                  arguments: { title: "Inspect package metadata" },
+                  outputOmitted: true,
+                  contentItems: null,
+                }),
+                updatedAt: 1,
+                outputVersion: `runtime:${version}`,
+              }}
+            />
+          </ConversationRuntimeContext.Provider>
+        </TooltipProvider>
+      </QueryClientProvider>
+    );
+    const view = render(card(1));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Inspect package metadata" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(readItemDetail).toHaveBeenCalledTimes(1));
+    view.rerender(card(2));
+    await waitFor(() => expect(readItemDetail).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      rejectEarlier(new Error("Earlier version failed"));
+      await Promise.resolve();
+    });
+    expect(view.queryByRole("alert")).toBeNull();
+    await act(async () => {
+      rejectCurrent(new Error("Current version failed"));
+      await Promise.resolve();
+    });
+    expect((await view.findByRole("alert")).textContent).toBe("Unable to load tool output");
+  });
+
   test("hydrated output replaces a failed detail read in an open activity", async () => {
     const runtime = {
       readItemDetail: async () => {
@@ -375,7 +429,7 @@ describe("DynamicToolCall", () => {
     const { container } = render(
       <DynamicToolCall
         item={buildDynamicEntry({
-          tool: "automation_update",
+          tool: "automations_update",
           status: "inProgress",
           contentItems: null,
           success: null,
@@ -385,17 +439,17 @@ describe("DynamicToolCall", () => {
       />,
     );
 
-    expect(activityText(container)).toBe("Updating scheduled task");
+    expect(activityText(container)).toBe("Updating automation");
   });
 
-  test("renders completed automation_update results as openable scheduled task cards", async () => {
+  test("renders completed automations_update results as openable automation cards", async () => {
     const opened: string[] = [];
     const { container, getByRole } = renderWithQueryClient(
       <DynamicToolCall
         item={buildDynamicEntry({
-          tool: "automation_update",
+          tool: "automations_update",
           arguments: {
-            mode: "create",
+            operation: "create",
             kind: "cron",
             status: "ACTIVE",
             name: "Release notes",
@@ -412,7 +466,7 @@ describe("DynamicToolCall", () => {
             { type: "inputText", text: '{"automationId":"automation-release","mode":"create"}' },
           ],
         })}
-        onOpenSummaryScheduledAutomation={(input) => {
+        onOpenSummaryAutomation={(input) => {
           opened.push(`${input.automationId}:${input.title}`);
         }}
       />,
@@ -430,13 +484,13 @@ describe("DynamicToolCall", () => {
     expect(opened.join(",")).toBe("automation-release:Release notes");
   });
 
-  test("opens suggested automation_update create cards as scheduled task side-panel proposals", async () => {
+  test("opens suggested automations_update create cards as automation side-panel proposals", async () => {
     const opened: string[] = [];
     const item = {
       ...buildDynamicEntry({
-        tool: "automation_update",
+        tool: "automations_update",
         arguments: {
-          mode: "suggested_create",
+          operation: "suggested_create",
           kind: "cron",
           status: "ACTIVE",
           name: "Review release notes",
@@ -454,7 +508,7 @@ describe("DynamicToolCall", () => {
     const { container, getByRole } = renderWithQueryClient(
       <DynamicToolCall
         item={item}
-        onOpenSummaryScheduledAutomation={(input) => {
+        onOpenSummaryAutomation={(input) => {
           opened.push(
             [
               input.mode,
@@ -470,7 +524,7 @@ describe("DynamicToolCall", () => {
 
     expect(textContent(container).includes("Proposed")).toBe(true);
     expect(textContent(container).includes("Open")).toBe(true);
-    expect(textContent(container).includes("Create scheduled task")).toBe(false);
+    expect(textContent(container).includes("Create automation")).toBe(false);
     expect(textContent(container).includes("Cancel")).toBe(false);
 
     await act(async () => {

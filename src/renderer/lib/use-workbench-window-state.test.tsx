@@ -103,9 +103,9 @@ describe("Workbench synchronous Window owner", () => {
       owner.openRoute({ kind: "automations", path: "/automations" });
       owner.selectProject(null);
       owner.navigateBack();
-      owner.presentScheduledSession({
-        path: "/automations?runSessionId=scheduled",
-        session: { id: "scheduled", projectId: null },
+      owner.presentAutomationSession({
+        path: "/automations?runSessionId=automations",
+        session: { id: "automations", projectId: null },
       });
       owner.replaceFromSnapshot({
         ...createDefaultWorkbenchLayoutSnapshot(),
@@ -117,7 +117,7 @@ describe("Workbench synchronous Window owner", () => {
       );
       await Promise.resolve();
     });
-    expect(opened).toEqual(["one", "two", "one", "two", "scheduled"]);
+    expect(opened).toEqual(["one", "two", "one", "two", "automations"]);
     unregister();
     await act(async () => {
       owner.selectSession({ id: "after-unmount", projectId: null });

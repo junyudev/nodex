@@ -352,9 +352,6 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(payload);
       });
     },
-    subscribeMobileAccessChanges(callback) {
-      return bridge.on("mobile-access-changed", () => callback());
-    },
     subscribeProjectSessionChanges(callback: (event: ProjectSessionsChangeEvent) => void) {
       return bridge.on("project-sessions-changed", (...args: unknown[]) => {
         const payload = args[0] as ProjectSessionsChangeEvent | undefined;
@@ -538,22 +535,20 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(payload);
       });
     },
-    subscribeCodexScheduledAutomationChanges(
-      callback: (event: import("./types").CodexScheduledAutomationChangedEvent) => void,
+    subscribeAutomationChanges(
+      callback: (event: import("./types").AutomationChangedEvent) => void,
     ) {
-      return bridge.on("codex:scheduled-automations:changed", (...args: unknown[]) => {
-        const payload = args[0] as
-          | import("./types").CodexScheduledAutomationChangedEvent
-          | undefined;
+      return bridge.on("automations:changed", (...args: unknown[]) => {
+        const payload = args[0] as import("./types").AutomationChangedEvent | undefined;
         if (!payload || typeof payload.automationId !== "string") return;
         callback(payload);
       });
     },
-    subscribeCodexAutomationRunsUpdates(
-      callback: (event: import("./types").CodexAutomationRunsUpdatedEvent) => void,
+    subscribeAutomationRunsUpdates(
+      callback: (event: import("./types").AutomationRunsUpdatedEvent) => void,
     ) {
-      return bridge.on("codex:automation-runs:updated", (...args: unknown[]) => {
-        const payload = args[0] as import("./types").CodexAutomationRunsUpdatedEvent | undefined;
+      return bridge.on("automations:runs:updated", (...args: unknown[]) => {
+        const payload = args[0] as import("./types").AutomationRunsUpdatedEvent | undefined;
         if (!payload || typeof payload.reason !== "string") return;
         callback(payload);
       });

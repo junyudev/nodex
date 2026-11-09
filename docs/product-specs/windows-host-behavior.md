@@ -31,7 +31,7 @@ Core running; the CLI and other clients can also start Core without Desktop.
 ## Notification area and startup
 
 Windows keeps Nodex available in the notification area. Closing the last Workbench
-window hides it and retains its renderer, Core, Agent turns and scheduled tasks,
+window hides it and retains its renderer, Core, Agent turns and clock Automations,
 whether idle or busy. Other Workbench windows close normally. Left-clicking the
 icon restores and focuses the last window without changing its current chat.
 Right-click opens a native menu with nonempty Running, Unread, Pinned and Recent
@@ -41,7 +41,7 @@ the bounded catalog, activity, unread state and ordering; the tray owns no histo
 
 New chat opens the current Project's default draft, or a projectless draft when
 there is no Project context. Choosing a chat resolves its current Workspace
-placement. Quit asks for confirmation while local chats or scheduled tasks would
+placement. Quit asks for confirmation while local chats or clock Automations would
 be interrupted, then uses ordinary graceful Desktop shutdown. Cancel keeps Nodex
 running. Process termination bypasses this interactive confirmation.
 

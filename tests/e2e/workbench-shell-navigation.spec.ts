@@ -332,9 +332,10 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
             {
               rail: { width: 52, top: 44 },
               buttons: [
+                { label: "Switch Space", width: 36, height: 36 },
                 { label: "Home", width: 36, height: 36 },
                 { label: "Space", width: 36, height: 36 },
-                { label: "Scheduled", width: 36, height: 36 },
+                { label: "Automations", width: 36, height: 36 },
                 { label: "Insights", width: 36, height: 36 },
                 { label: "Plugins", width: 36, height: 36 },
                 { label: "Account and settings", width: 36, height: 36 },
@@ -355,30 +356,30 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
             rail(page)
               .locator('button[aria-current="page"]')
               .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")));
-          await rail(page).getByRole("button", { name: "Scheduled", exact: true }).click();
-          await expect(page.getByTestId("scheduled-route")).toBeVisible();
+          await rail(page).getByRole("button", { name: "Automations", exact: true }).click();
+          await expect(page.getByTestId("automations-route")).toBeVisible();
           claim(
-            "Scheduled is a rail destination with its own sidebar",
-            { current: ["Scheduled"], scheduledSidebar: true, homeSidebar: false },
+            "Automations is a rail destination with its own sidebar",
+            { current: ["Automations"], automationsSidebar: true, homeSidebar: false },
             {
               current: await currentRailEntries(),
-              scheduledSidebar: await page
-                .getByRole("navigation", { name: "Scheduled task folders", exact: true })
+              automationsSidebar: await page
+                .getByRole("navigation", { name: "Automations", exact: true })
                 .isVisible(),
               homeSidebar: await page
                 .getByRole("navigation", { name: "Home", exact: true })
                 .isVisible(),
             },
           );
-          await page.screenshot({ path: path.join(artifacts, "scheduled-rail.png") });
+          await page.screenshot({ path: path.join(artifacts, "automations-rail.png") });
           await rail(page).getByRole("button", { name: "Home", exact: true }).click();
           await expectHomeProject();
           claim(
-            "Home leaves Scheduled for its remembered Project",
-            { current: ["Home"], scheduledOpen: false },
+            "Home leaves Automations for its remembered Project",
+            { current: ["Home"], automationsOpen: false },
             {
               current: await currentRailEntries(),
-              scheduledOpen: await page.getByTestId("scheduled-route").isVisible(),
+              automationsOpen: await page.getByTestId("automations-route").isVisible(),
             },
           );
           const nativeChrome = await nativeWindow.evaluate((window) => ({
@@ -480,11 +481,18 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
             page.getByRole("button", { name: "Show sidebar", exact: true }),
           ).toBeVisible();
           const peek = page.getByTestId("app-shell-floating-left-panel");
-          await page.mouse.move(26, 70);
+          // Home's sidebar peeks from Home's own rail button, below the Space switcher.
+          const homeButton = await page
+            .getByRole("navigation", { name: "App navigation" })
+            .getByRole("button", { name: "Home", exact: true })
+            .boundingBox();
+          if (!homeButton) throw new Error("The Home rail button has no bounds");
+          const homeY = homeButton.y + homeButton.height / 2;
+          await page.mouse.move(26, homeY);
           await expect(peek).toBeVisible();
           // Cross the rail-to-surface gap slower than the close grace period.
           for (const x of [40, 44, 48, 52, 56, 64, 96, 160]) {
-            await page.mouse.move(x, 74);
+            await page.mouse.move(x, homeY + 4);
             await page.waitForTimeout(70);
           }
           await expect

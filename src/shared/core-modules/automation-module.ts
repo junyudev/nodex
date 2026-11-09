@@ -9,12 +9,12 @@ type SuccessfulPayload<Response> = Response extends {
   : never;
 
 // Runtime contracts come directly from Core; product projections own their camelCase view models.
-export type AutomationDefinitionKind = components["schemas"]["AutomationDefinitionKind"];
-export type AutomationDefinitionStatus = components["schemas"]["AutomationDefinitionStatus"];
+export type AutomationExecutionKind = components["schemas"]["AutomationExecutionKind"];
+export type AutomationStatus = components["schemas"]["AutomationStatus"];
 export type AutomationExecutionEnvironment =
   components["schemas"]["AutomationExecutionEnvironment"];
-export type AutomationDefinitionInput = components["schemas"]["AutomationDefinitionInput"];
-export type AutomationDefinition = components["schemas"]["AutomationDefinition"];
+export type AutomationInput = components["schemas"]["AutomationInput"];
+export type Automation = components["schemas"]["Automation"];
 export type AutomationLeaseStatus = components["schemas"]["AutomationLeaseStatus"];
 export type AutomationLease = components["schemas"]["AutomationLease"];
 export type AutomationRunStatus = components["schemas"]["AutomationRunStatus"];

@@ -104,6 +104,8 @@ export const make = Effect.gen(function* () {
       input.name !== "hand_back_message" &&
       input.name !== "follow_thread" &&
       input.name !== "inbox_suggest" &&
+      input.name !== "automation_assessment_read" &&
+      input.name !== "automation_assessment_submit" &&
       input.name !== "write_turn_note" &&
       input.name !== "reply_to_origin" &&
       input.name !== "answer_inbox_question" &&
@@ -112,7 +114,7 @@ export const make = Effect.gen(function* () {
       input.name !== "merge_session_back" &&
       input.name !== "handoff_session" &&
       input.name !== "get_handoff_status" &&
-      input.name !== "automation_update" &&
+      input.name !== "automations_update" &&
       input.name !== "read_session_terminal" &&
       input.name !== "uninstall_plugin" &&
       Object.keys(input.arguments).length !== 0
@@ -135,10 +137,12 @@ export const make = Effect.gen(function* () {
     if (isWorkspaceTool) return yield* workspaceTools(input);
     if (isSessionObservation) return yield* sessionTools(input);
     if (isWorkbenchTool) return yield* workbenchTools(input);
-    if (input.name === "automation_update") return yield* automationTools(input);
+    if (input.name === "automations_update") return yield* automationTools(input);
     if (input.name === "handoff_session") return yield* sessionHandoffTools(input);
     if (input.name === "get_handoff_status") return yield* handoffStatusTools(input);
     if (
+      input.name === "automation_assessment_read" ||
+      input.name === "automation_assessment_submit" ||
       input.name === "inbox_suggest" ||
       input.name === "reply_to_origin" ||
       input.name === "write_turn_note" ||

@@ -48,7 +48,7 @@ export const live = Layer.effect(
         ? Effect.succeed(true)
         : Effect.gen(function* () {
             const live = yield* activity.read;
-            const scheduled = yield* automations.definitions.list();
+            const scheduled = yield* automations.automations.list();
             const warning = windowsQuitWarning({
               activeChats:
                 live.items.some(

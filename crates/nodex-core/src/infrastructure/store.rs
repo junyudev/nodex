@@ -308,7 +308,7 @@ mod tests {
                     .query_row(
                         "SELECT token.key_material, runtime.jitter_salt \
                          FROM nodex_agent_token_keys token \
-                         CROSS JOIN core_automation_runtime_metadata runtime \
+                         CROSS JOIN automation_clock_metadata runtime \
                          WHERE token.id = 1 AND runtime.id = 1",
                         [],
                         |row| Ok((row.get(0)?, row.get(1)?)),

@@ -44,6 +44,7 @@ const threadSchema = z.object({
   body: bodySchema.nullish(),
   user: userSchema,
   pull_request: z.unknown().optional(),
+  labels: z.array(z.object({ name: z.string() })).optional(),
   draft: z.boolean().optional(),
   merged_at: z.string().nullish(),
   head: z
@@ -73,7 +74,17 @@ const eventSchema = z.object({
   target_url: z.string().nullish(),
   context: z.string().optional(),
   name: z.string().optional(),
+  label: z.object({ name: z.string() }).optional(),
 });
+const lifecycle = new Set([
+  "labeled",
+  "unlabeled",
+  "ready_for_review",
+  "convert_to_draft",
+  "closed",
+  "merged",
+  "reopened",
+]);
 const digest = (value: string) => bytesToHex(sha256(new TextEncoder().encode(value)));
 const timestamp = (value: string | undefined | null) => (value ? Date.parse(value) : NaN);
 export const overlapStart = (watermark: number, boundary: number) =>
@@ -103,6 +114,7 @@ export interface PollInput {
   known: readonly ExternalThread[];
   pullRequestNumbers: readonly number[];
   workspaceBranches?: readonly string[];
+  watchRepositoryEvents?: boolean;
   nowMs: number;
 }
 export interface GitHubSourceReader {
@@ -434,6 +446,7 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
             observation_revision: savedThreads.get(raw.number)?.observation_revision ?? 0,
             observations: threadObservations(raw.number),
           });
+          const roots = new Map<number, { text: string; actor_login: string; labels: string[] }>();
           const numbers = new Map<number, ExternalThread["kind"]>(
             input.known.map((t) => [t.number, t.kind]),
           );
@@ -516,6 +529,16 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
             }
             return values;
           });
+          if (input.watchRepositoryEvents) {
+            for (const item of yield* search("", since, nowMs)) {
+              const parsed = threadSchema.safeParse(item);
+              if (!parsed.success) {
+                quarantineItem("event_automation_threads", item);
+                continue;
+              }
+              numbers.set(parsed.data.number, parsed.data.pull_request ? "pull_request" : "issue");
+            }
+          }
           for (const [reason, enabled, qualifier] of discoveries) {
             if (!enabled) continue;
             const items = yield* search(qualifier, position.baseline ? since : 0, nowMs);
@@ -635,6 +658,9 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
                       : "person",
                 text,
                 metadata: {
+                  thread_root: roots.get(thread.number) ?? null,
+                  label: raw.label?.name ?? null,
+                  labels: roots.get(thread.number)?.labels ?? [],
                   comment_id: kind === "comment" ? String(raw.id) : null,
                   state,
                   effective:
@@ -668,6 +694,11 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
               continue;
             }
             const thread = external(raw, kind);
+            roots.set(number, {
+              text: raw.body ?? raw.title,
+              actor_login: raw.user.login,
+              labels: raw.labels?.map((label) => label.name) ?? [],
+            });
             threads.set(thread.id, thread);
             const snapshot = [raw.state, raw.draft ?? false, Boolean(raw.merged_at)];
             const change = changed(number, `thread:${number}`, jsonString(snapshot));
@@ -710,6 +741,11 @@ export const makeGitHubSourceAdapter = (api: GitHubApi["Service"]): GitHubSource
                   occurred_at_ms: change.initial ? timestamp(raw.created_at) : nowMs,
                   actor_login: raw.user.login,
                   actor_class: raw.user.type === "Bot" ? "bot" : "person",
+                  text: raw.body ?? raw.title,
+                  metadata: {
+                    observed_revision: change.revision,
+                    labels: raw.labels?.map((label) => label.name) ?? [],
+                  },
                   url: thread.url,
                 });
             }

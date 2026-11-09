@@ -1050,7 +1050,7 @@ it.effect.each([
 it.effect.each([
   { namespace: "nodex_app", tool: "get_context", message: /native MCP/ },
   { namespace: "codex_app", tool: "create_thread", message: /native MCP/ },
-  { namespace: "codex_app", tool: "automation_update", message: /native MCP/ },
+  { namespace: "codex_app", tool: "automations_update", message: /native MCP/ },
   { namespace: "codex_app", tool: "read_thread_terminal", message: /native MCP/ },
 ])("rejects retired local $namespace.$tool before dispatch or renderer storage", (input) =>
   withProtocol(({ inbox, conversations, executedDynamicTools }) =>

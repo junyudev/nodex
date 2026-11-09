@@ -40,7 +40,7 @@ export function WorkbenchThreadSummaryHeader({
       pinnedOpen={pinnedOpen}
       onPinnedOpenToggle={onTogglePinnedOpen}
       popoverOpen={summary.popoverOpen}
-      scheduledAutomation={summary.scheduledAutomation}
+      clockAutomation={summary.clockAutomation}
       actions={{
         ...summary.headerActions,
         onOpenSubagentsPanel: onOpenSubagentsPanel

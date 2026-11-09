@@ -9,6 +9,7 @@ import { DynamicToolCall } from "./dynamic-tool-call";
 import { FileChangeToolCall } from "./file-change-tool-call";
 import { McpToolCall } from "./mcp-tool-call";
 import { NativeAutomationToolCall } from "./native-automation-tool-call";
+import { isNativeAutomationUpdate } from "../../../projection/tool-metadata/native-automation-update";
 import { WebSearchToolCall } from "./web-search-tool-call";
 
 export interface ToolComponentProps {
@@ -21,7 +22,7 @@ export interface ToolComponentProps {
   hideHeader?: boolean;
   showDiffDetails?: boolean;
   onOpenFileInSidePanel?: ThreadStageActions["onOpenTurnDiffFileInSidePanel"];
-  onOpenSummaryScheduledAutomation?: ThreadStageActions["onOpenSummaryScheduledAutomation"];
+  onOpenSummaryAutomation?: ThreadStageActions["onOpenSummaryAutomation"];
   onOpenThread?: ThreadStageActions["onOpenThread"];
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
 }
@@ -31,7 +32,7 @@ type ToolComponent = ComponentType<ToolComponentProps>;
 export function getToolComponent(item: CodexTranscriptEntry): ToolComponent | null {
   if (resolveNativeSessionHandoffScope(item.mcpToolCall, item.threadId))
     return NativeSessionHandoffToolCall;
-  if (item.automationUpdate?.source === "nativeMcp") return NativeAutomationToolCall;
+  if (isNativeAutomationUpdate(item)) return NativeAutomationToolCall;
   if (item.semanticKind === "exec" || item.kind === "commandExecution") {
     return CommandToolCall;
   }

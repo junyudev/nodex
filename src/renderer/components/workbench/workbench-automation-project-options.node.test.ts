@@ -51,7 +51,7 @@ describe("workbench automation project options", () => {
     expect(options[0]?.description).toBe("/Users/asc/repo/nodex");
   });
 
-  test("keeps unmatched selected roots visible for existing automations", () => {
+  test("keeps unmatched selected roots visible for existing Automations", () => {
     const options = buildWorkbenchAutomationProjectOptions({
       selectedProjectId: "nodex",
       projects: [makeProject({ id: "nodex", name: "Nodex", roots: ["/Users/asc/repo/nodex"] })],

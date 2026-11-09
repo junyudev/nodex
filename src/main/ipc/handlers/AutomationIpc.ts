@@ -3,9 +3,9 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
 import type {
-  CodexAutomationRunsUpdatedEvent,
-  CodexScheduledAutomationCreateInput,
-  CodexScheduledAutomationUpdateInput,
+  AutomationRunsUpdatedEvent,
+  AutomationCreateInput,
+  AutomationUpdateInput,
   PageOccurrenceActionInput,
   PageOccurrenceCompleteInput,
   PageOccurrenceUpdateInput,
@@ -16,8 +16,7 @@ import { AutomationExecution } from "../../automation-application/AutomationExec
 import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
-import { ScheduledAutomationRuntime } from "../../host-runtime/ScheduledAutomationRuntime";
-import { safeBroadcastToWindows } from "../../ipc-safe-send";
+import { ClockAutomationRuntime } from "../../host-runtime/ClockAutomationRuntime";
 import { createOperationId } from "../../core-runtime/operation-identity";
 import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
@@ -28,11 +27,11 @@ export class AutomationIpcError extends Schema.TaggedError<AutomationIpcError>()
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
 
-const validateTaskOptions = (input: CodexScheduledAutomationCreateInput) =>
+const validateTaskOptions = (input: AutomationCreateInput) =>
   Effect.try({
     try: () => {
-      if (input.launch !== undefined && input.launch !== "ask" && input.launch !== "automatic")
-        throw new Error("Choose whether this task asks first or runs automatically.");
+      if (input.mode !== undefined && !["dry_run", "ask_first", "run"].includes(input.mode))
+        throw new Error("Choose Dry run, Ask first, or Run.");
       if (
         input.runbookPageId !== undefined &&
         input.runbookPageId !== null &&
@@ -48,7 +47,7 @@ const validateTaskOptions = (input: CodexScheduledAutomationCreateInput) =>
 
 /** A reviewed proposal keeps its observed revision through preparation and the Core commit. */
 export const updateAutomationFromRenderer = Effect.fn("AutomationIpc.updateDefinition")(function* (
-  input: CodexScheduledAutomationUpdateInput,
+  input: AutomationUpdateInput,
 ) {
   const automation = yield* AutomationApplication;
   const execution = yield* AutomationExecution;
@@ -59,21 +58,21 @@ export const updateAutomationFromRenderer = Effect.fn("AutomationIpc.updateDefin
     (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1)
   ) {
     return yield* new AutomationIpcError({
-      operation: "codex:scheduled-automations:update",
-      cause: new Error("Scheduled task revision is invalid."),
+      operation: "automations:update",
+      cause: new Error("Automation revision is invalid."),
     });
   }
-  const current = yield* automation.definitions.get(input.id);
-  if (expectedRevision !== undefined && current?.definitionRevision !== expectedRevision) {
+  const current = yield* automation.automations.get(input.id);
+  if (expectedRevision !== undefined && current?.automationRevision !== expectedRevision) {
     return yield* new AutomationIpcError({
-      operation: "codex:scheduled-automations:update",
+      operation: "automations:update",
       cause: new Error(
-        "This scheduled task changed after the proposal was created. Review a new proposal before saving.",
+        "This Automation changed after the proposal was created. Review a new proposal before saving.",
       ),
     });
   }
   const prepared = yield* execution.prepareDefinition(definition, current);
-  return yield* automation.definitions.update(
+  return yield* automation.automations.update(
     prepared,
     expectedRevision === undefined
       ? undefined
@@ -153,7 +152,7 @@ export const live: Layer.Layer<
   | ElectronIpc
   | MainConfig
   | RendererClientRuntime
-  | ScheduledAutomationRuntime
+  | ClockAutomationRuntime
   | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -162,7 +161,7 @@ export const live: Layer.Layer<
     const sessions = yield* AgentRuntimeApplication;
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
-    const scheduledAutomations = yield* ScheduledAutomationRuntime;
+    const clockAutomations = yield* ClockAutomationRuntime;
     const windows = yield* WindowRuntime;
     const rendererClients = yield* RendererClientRuntime;
     const authorize = (event: IpcMainInvokeEvent) =>
@@ -218,14 +217,11 @@ export const live: Layer.Layer<
           { automationId, targetSessionId, reason },
         ]);
       });
-    const broadcastRunsUpdated = (event: CodexAutomationRunsUpdatedEvent) =>
+    const broadcastRunsUpdated = (event: AutomationRunsUpdatedEvent) =>
       Effect.sync(() => {
         safeBroadcastToWindows(windows.all(), "codex:automation-runs:updated", [event]);
       });
-    const broadcastRunChanged = (
-      event: CodexAutomationRunsUpdatedEvent,
-      refreshDefinition = true,
-    ) =>
+    const broadcastRunChanged = (event: AutomationRunsUpdatedEvent, refreshDefinition = true) =>
       broadcastRunsUpdated(event).pipe(
         Effect.andThen(
           refreshDefinition && event.automationId
@@ -234,18 +230,23 @@ export const live: Layer.Layer<
         ),
       );
 
-    yield* handleQuery("codex:scheduled-automations:list", () =>
-      automation.definitions.list().pipe(Effect.map((items) => ({ items: [...items] }))),
+    yield* handleQuery("automations:list", () =>
+      automation.automations.list().pipe(Effect.map((items) => ({ items: [...items] }))),
     );
-    yield* handlePlainCommand("codex:scheduled-automations:create", (_, input) =>
+    yield* handleQuery("automations:decisions:list", (_, input) =>
+      automation.automations
+        .decisions(input.automationId, input.limit)
+        .pipe(Effect.map((items) => ({ items: [...items] }))),
+    );
+    yield* handlePlainCommand("automations:create", (_, input) =>
       validateTaskOptions(input).pipe(
         Effect.andThen(execution.prepareDefinition(input)),
-        Effect.flatMap(automation.definitions.create),
+        Effect.flatMap(automation.automations.create),
         Effect.tap((item) => broadcastDefinitionChanged(item.id, item.targetSessionId, "upsert")),
         Effect.map((item) => ({ item })),
       ),
     );
-    yield* handlePlainCommand("codex:scheduled-automations:update", (_, input) =>
+    yield* handlePlainCommand("automations:update", (_, input) =>
       updateAutomationFromRenderer(input).pipe(
         Effect.provideService(AutomationApplication, automation),
         Effect.provideService(AutomationExecution, execution),
@@ -256,15 +257,15 @@ export const live: Layer.Layer<
               )
             : Effect.fail(
                 new AutomationIpcError({
-                  operation: "codex:scheduled-automations:update",
-                  cause: new Error("Scheduled automation update failed."),
+                  operation: "automations:update",
+                  cause: new Error("Clock Automation update failed."),
                 }),
               ),
         ),
       ),
     );
-    yield* handlePlainCommand("codex:scheduled-automations:delete", (_, input) =>
-      automation.definitions.delete(input.id).pipe(
+    yield* handlePlainCommand("automations:delete", (_, input) =>
+      automation.automations.delete(input.id).pipe(
         Effect.tap((result) =>
           result.success
             ? Effect.all(
@@ -293,27 +294,25 @@ export const live: Layer.Layer<
         })),
       ),
     );
-    yield* handlePlainCommand("codex:scheduled-automations:run-now", (event, input) =>
+    yield* handlePlainCommand("automations:run-now", (event, input) =>
       execution
         .runNow(input, rendererClients.ensureClient(event.sender).clientId)
         .pipe(Effect.as({ success: true })),
     );
-    yield* handleControl("codex:scheduled-automations:heartbeat-enabled-changed", (_, input) =>
-      scheduledAutomations
+    yield* handleControl("automations:heartbeat-enabled-changed", (_, input) =>
+      clockAutomations
         .setHeartbeatAutomationsEnabled(input.enabled)
         .pipe(Effect.as({ success: true })),
     );
-    yield* handleControl(
-      "codex:scheduled-automations:heartbeat-thread-state-changed",
-      (event, input) =>
-        scheduledAutomations
-          .setHeartbeatThreadRendererState({
-            ...input,
-            rendererClientId: rendererClients.ensureClient(event.sender).clientId,
-          })
-          .pipe(Effect.as({ success: true })),
+    yield* handleControl("automations:heartbeat-thread-state-changed", (event, input) =>
+      clockAutomations
+        .setHeartbeatThreadRendererState({
+          ...input,
+          rendererClientId: rendererClients.ensureClient(event.sender).clientId,
+        })
+        .pipe(Effect.as({ success: true })),
     );
-    yield* handlePlainCommand("codex:automation-runs:archive", (_, input) =>
+    yield* handlePlainCommand("automations:runs:archive", (_, input) =>
       automation.runs.get(input.runId).pipe(
         Effect.flatMap((item) =>
           Effect.gen(function* () {
@@ -338,7 +337,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handlePlainCommand("codex:automation-runs:unarchive", (_, input) =>
+    yield* handlePlainCommand("automations:runs:unarchive", (_, input) =>
       automation.runs.get(input.runId).pipe(
         Effect.flatMap((item) =>
           Effect.gen(function* () {
@@ -359,10 +358,10 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handleQuery("codex:automation-runs:inbox-items", (_, limit) =>
+    yield* handleQuery("automations:runs:inbox-items", (_, limit) =>
       automation.inbox.read(limit ?? 200),
     );
-    yield* handlePlainCommand("codex:automation-runs:set-read-state", (_, input) =>
+    yield* handlePlainCommand("automations:runs:set-read-state", (_, input) =>
       automation.inbox.setReadState(input).pipe(
         Effect.tap((item) =>
           item

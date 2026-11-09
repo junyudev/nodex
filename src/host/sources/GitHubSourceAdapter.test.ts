@@ -457,3 +457,61 @@ it.effect("refuses a replacement repository before reading or delivering its thr
     expect(f.requests.map((r) => r.path)).toEqual(["user", "repos/alice/repo"]);
   }),
 );
+
+it.effect(
+  "event Automations discover unaddressed new threads and retain label and root evidence",
+  () =>
+    Effect.gen(function* () {
+      const issue = {
+        ...pr,
+        number: 8,
+        pull_request: undefined,
+        html_url: "https://github.com/alice/repo/issues/8",
+        created_at: "2026-11-05T00:00:05Z",
+        body: "Please fix this concrete failure",
+        labels: [{ name: "bug" }],
+      };
+      const f = fake(({ path }) => {
+        if (path.startsWith("search/"))
+          return response({ total_count: 1, incomplete_results: false, items: [issue] });
+        if (path === "repos/alice/repo/issues/8") return response(issue);
+        if (path.includes("issues/8/timeline"))
+          return response([
+            {
+              id: 45,
+              event: "labeled",
+              label: { name: "bug" },
+              actor: user,
+              created_at: "2026-11-05T00:00:10Z",
+            },
+          ]);
+        return response([]);
+      });
+      const result = yield* f.adapter.poll(
+        input({
+          watchRepositoryEvents: true,
+          pullRequestNumbers: [],
+          source: {
+            ...source,
+            config: {
+              ...source.config,
+              discovery: { assigned: false, mentions: false, review_requests: false },
+            },
+          },
+        }),
+      );
+      expect(result.triggers.find((t) => t.kind === "opened")).toMatchObject({
+        actor_class: "person",
+        text: "Please fix this concrete failure",
+        metadata: { labels: ["bug"] },
+      });
+      expect(result.triggers.find((t) => t.kind === "labeled")).toMatchObject({
+        metadata: {
+          label: "bug",
+          labels: ["bug"],
+          thread_root: { text: "Please fix this concrete failure", actor_login: "alice" },
+        },
+      });
+      expect(result.triggers.some((t) => t.kind.startsWith("discovery_"))).toBe(false);
+    }),
+);

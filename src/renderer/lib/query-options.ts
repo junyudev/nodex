@@ -6,12 +6,12 @@ import { invokeRendererQuery as invoke } from "./renderer-command";
 import { queryKeys } from "./query-keys";
 import { preferNewestProjectSessionSummaryWindow } from "./project-session-summary-window";
 import type {
-  CodexAutomationRunsInboxResponse,
+  AutomationRunsInboxResponse,
   CodexComposerChatGptConversationListResult,
   CodexComposerPlugin,
   CodexComposerSiteListResult,
   CodexComposerSkill,
-  CodexScheduledAutomationListResponse,
+  AutomationListResponse,
   ProtocolMcpResourceReadResponse,
   ProtocolAppInfo,
   ProtocolExperimentalFeature,
@@ -162,27 +162,32 @@ export function commandKeymapStateQueryOptions() {
   });
 }
 
-export function codexScheduledAutomationsListQueryOptions() {
+export function automationsListQueryOptions() {
   return queryOptions({
-    queryKey: queryKeys.codexScheduledAutomations.list(),
+    queryKey: queryKeys.automations.list(),
     queryFn: async () => {
-      const response = (await invoke(
-        "codex:scheduled-automations:list",
-      )) as CodexScheduledAutomationListResponse;
+      const response = (await invoke("automations:list")) as AutomationListResponse;
       return response.items;
     },
     staleTime: 30_000,
   });
 }
 
-export function codexAutomationRunsInboxQueryOptions(limit = 200) {
+export function automationDecisionsQueryOptions(automationId: string) {
+    queryKey: queryKeys.automations.decisions(automationId),
+    queryFn: async () => {
+      const response = await invoke("automations:decisions:list", { automationId, limit: 20 });
+      return response.items;
+    },
+    staleTime: 10_000,
+  });
+}
+
+export function automationRunsInboxQueryOptions(limit = 200) {
   return queryOptions({
-    queryKey: queryKeys.codexAutomationRuns.inbox(limit),
+    queryKey: queryKeys.automationRuns.inbox(limit),
     queryFn: () =>
-      invoke(
-        "codex:automation-runs:inbox-items",
-        limit,
-      ) as Promise<CodexAutomationRunsInboxResponse>,
+      invoke("automations:runs:inbox-items", limit) as Promise<AutomationRunsInboxResponse>,
     staleTime: 30_000,
   });
 }

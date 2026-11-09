@@ -686,3 +686,6 @@ fn sources_new_repositories_get_an_immutable_first_enable_boundary() {
 
 #[path = "thread_follows_tests.rs"]
 mod follows;
+
+#[path = "event_automations_tests.rs"]
+mod event_automations;

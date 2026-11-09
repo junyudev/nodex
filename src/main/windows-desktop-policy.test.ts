@@ -123,10 +123,10 @@ describe("Windows desktop policy", () => {
       "interrupted",
     );
     expect(windowsQuitWarning({ activeChats: false, scheduledTasks: true })).toContain(
-      "Scheduled tasks",
+      "Automations",
     );
     expect(windowsQuitWarning({ activeChats: true, scheduledTasks: true })).toContain(
-      "and scheduled tasks",
+      "and Automations",
     );
   });
 });

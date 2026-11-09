@@ -304,7 +304,7 @@ function isHeartbeatUserMessage(block: ThreadTranscriptBlockModel): boolean {
   return (
     rawType.toLowerCase().includes("heartbeat") ||
     source.toLowerCase().includes("heartbeat") ||
-    (block.entry.markdownText ?? "").includes("Sent by scheduled task")
+    (block.entry.markdownText ?? "").includes("Sent by rule")
   );
 }
 

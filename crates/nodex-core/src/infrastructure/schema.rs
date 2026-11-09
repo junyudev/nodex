@@ -157,6 +157,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn fresh_schema_initializes_completed_backfills_and_search_coordinate() {
+        let mut connection = Connection::open_in_memory().expect("Store");
+        install_current_schema(&mut connection).expect("current schema");
+        let initialized: (bool, bool, i64) = connection.query_row(
+            "SELECT history.complete, mutation.complete, search.revision FROM structural_history_payload_backfill history CROSS JOIN block_mutation_body_backfill mutation CROSS JOIN session_search_revision search WHERE history.id=1 AND mutation.id=1 AND search.id=1",
+            [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).expect("fresh Store maintenance and search coordinates");
+        assert_eq!(initialized, (true, true, 0));
+    }
+
+    #[test]
     fn schema_inventory_ignores_fts_shadow_implementation_objects() {
         let directory = tempdir().expect("schema store");
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");

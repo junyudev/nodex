@@ -32,8 +32,8 @@ import { PAGE_DOCUMENT_SCHEMA_VERSION } from "../../../../shared/block-documents
 import type { DatabaseViewConfigV6, DatabaseViewSort } from "../../../../shared/database-kernel";
 import { WorkbenchLayoutSnapshotSchema } from "../../../../shared/schemas/workbench-layout";
 import type {
-  CodexAutomationInboxItem,
-  CodexAutomationRunsInboxResponse,
+  AutomationInboxItem,
+  AutomationRunsInboxResponse,
   CodexEvent,
   CodexSubagentOverviewReadInput,
   CodexSubagentOverviewWindow,
@@ -42,9 +42,9 @@ import type {
   CodexHostMessage,
   CodexModelOption,
   CodexPromptImageInput,
-  CodexScheduledAutomation,
-  CodexScheduledAutomationCreateInput,
-  CodexScheduledAutomationUpdateInput,
+  Automation,
+  AutomationCreateInput,
+  AutomationUpdateInput,
   CodexSidebarSyncResult,
   CodexSidebarThreadItem,
   CodexThreadSummary,
@@ -860,24 +860,50 @@ vi.mock("@/lib/api", async (importOriginal) => {
       if (configured !== undefined && configured !== null) return configured;
       const mode = (request as { readonly read?: { readonly mode?: string } }).read?.mode;
       const value =
-        mode === "metadata"
-          ? { kind: "metadata" as const }
-          : mode === "standalone_roots"
+        mode === "members"
+          ? {
+              kind: "members" as const,
+              items: [
+                {
+                  id: "member-owner",
+                  library_id: "library:test",
+                  display_name: "You",
+                  lifecycle: "active" as const,
+                  role: "owner" as const,
+                  revision: 1,
+                },
+              ],
+            }
+          : mode === "local_member"
             ? {
-                kind: "standalone_roots" as const,
-                items: [],
-                nextCursor: null,
-                hasMore: false,
-                total: 0,
+                kind: "local_member" as const,
+                value: {
+                  id: "member-owner",
+                  library_id: "library:test",
+                  display_name: "You",
+                  lifecycle: "active" as const,
+                  role: "owner" as const,
+                  revision: 1,
+                },
               }
-            : {
-                kind: "children" as const,
-                parent: { kind: "library" as const },
-                items: [],
-                nextCursor: null,
-                hasMore: false,
-                total: 0,
-              };
+            : mode === "metadata"
+              ? { kind: "metadata" as const }
+              : mode === "standalone_roots"
+                ? {
+                    kind: "standalone_roots" as const,
+                    items: [],
+                    nextCursor: null,
+                    hasMore: false,
+                    total: 0,
+                  }
+                : {
+                    kind: "children" as const,
+                    parent: { kind: "library" as const },
+                    items: [],
+                    nextCursor: null,
+                    hasMore: false,
+                    total: 0,
+                  };
       return {
         ok: true,
         value: {
@@ -924,8 +950,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
       };
     },
     subscribeDesktopNotificationActions: () => () => undefined,
-    subscribeCodexScheduledAutomationChanges: () => () => undefined,
-    subscribeCodexAutomationRunsUpdates: () => () => undefined,
+    subscribeAutomationChanges: () => () => undefined,
+    subscribeAutomationRunsUpdates: () => () => undefined,
     subscribeCodexThreadHandoffsChanged: () => () => undefined,
     subscribeCodexPendingWorktreesChanged: () => () => undefined,
     subscribeCodexPendingWorktreeWarnings: (
@@ -2469,7 +2495,7 @@ export function renderWorkbench({
   initialBoardDataReady,
   initialInboxDataReady,
   ownershipPathsByPage = {},
-  scheduledAutomations = [],
+  clockAutomations = [],
   automationInboxItems = [],
   worktreeEnvironmentOptionsByProject = {},
   codexModels = DEFAULT_TEST_CODEX_MODELS,
@@ -2509,8 +2535,8 @@ export function renderWorkbench({
       lifecycle: "active" | "archived";
     }>
   >;
-  scheduledAutomations?: CodexScheduledAutomation[];
-  automationInboxItems?: CodexAutomationInboxItem[];
+  clockAutomations?: Automation[];
+  automationInboxItems?: AutomationInboxItem[];
   worktreeEnvironmentOptionsByProject?: Record<string, WorktreeEnvironmentOption[]>;
   codexModels?: CodexModelOption[];
   pendingWorktrees?: readonly CodexPendingWorktreeEntry[];
@@ -3018,30 +3044,56 @@ export function renderWorkbench({
           })
         : undefined;
       const value =
-        request.read?.mode === "metadata"
-          ? { kind: "metadata" as const }
-          : request.read?.mode === "path"
+        request.read?.mode === "members"
+          ? {
+              kind: "members" as const,
+              items: [
+                {
+                  id: "member-owner",
+                  library_id: "library:test",
+                  display_name: "You",
+                  lifecycle: "active" as const,
+                  role: "owner" as const,
+                  revision: 1,
+                },
+              ],
+            }
+          : request.read?.mode === "local_member"
             ? {
-                kind: "path" as const,
-                target,
-                nodes: pathNode ? [pathNode] : [],
+                kind: "local_member" as const,
+                value: {
+                  id: "member-owner",
+                  library_id: "library:test",
+                  display_name: "You",
+                  lifecycle: "active" as const,
+                  role: "owner" as const,
+                  revision: 1,
+                },
               }
-            : request.read?.mode === "children"
-              ? {
-                  kind: "children" as const,
-                  parent: { kind: "library" as const },
-                  items: libraryRoots.filter((node) => node.kind !== "view"),
-                  nextCursor: null,
-                  hasMore: false,
-                  total: libraryRoots.length,
-                }
-              : {
-                  kind: "standalone_roots" as const,
-                  items: libraryRoots.filter((node) => node.kind !== "view"),
-                  nextCursor: null,
-                  hasMore: false,
-                  total: libraryRoots.length,
-                };
+            : request.read?.mode === "metadata"
+              ? { kind: "metadata" as const }
+              : request.read?.mode === "path"
+                ? {
+                    kind: "path" as const,
+                    target,
+                    nodes: pathNode ? [pathNode] : [],
+                  }
+                : request.read?.mode === "children"
+                  ? {
+                      kind: "children" as const,
+                      parent: { kind: "library" as const },
+                      items: libraryRoots.filter((node) => node.kind !== "view"),
+                      nextCursor: null,
+                      hasMore: false,
+                      total: libraryRoots.length,
+                    }
+                  : {
+                      kind: "standalone_roots" as const,
+                      items: libraryRoots.filter((node) => node.kind !== "view"),
+                      nextCursor: null,
+                      hasMore: false,
+                      total: libraryRoots.length,
+                    };
       return {
         ok: true,
         value: {
@@ -3447,10 +3499,11 @@ export function renderWorkbench({
         failedThreadIds: [],
       } satisfies CodexSidebarSyncResult;
     }
-    if (channel === "codex:scheduled-automations:list") {
-      return { items: scheduledAutomations };
+    if (channel === "automations:decisions:list") return { items: [] };
+    if (channel === "automations:list") {
+      return { items: clockAutomations };
     }
-    if (channel === "codex:automation-runs:inbox-items") {
+    if (channel === "automations:runs:inbox-items") {
       const unreadItems = automationInboxItems.filter((item) => item.readAt === null);
       return {
         items: automationInboxItems,
@@ -3462,7 +3515,7 @@ export function renderWorkbench({
             runId: item.runId,
           })),
         },
-      } satisfies CodexAutomationRunsInboxResponse;
+      } satisfies AutomationRunsInboxResponse;
     }
     if (
       channel === "codex:app-server:request" &&
@@ -3481,7 +3534,7 @@ export function renderWorkbench({
         },
       };
     }
-    if (channel === "codex:automation-runs:archive") {
+    if (channel === "automations:runs:archive") {
       const runId = String((args[0] as { runId?: string } | undefined)?.runId ?? "");
       let success = false;
       automationInboxItems = automationInboxItems.map((item) => {
@@ -3496,7 +3549,7 @@ export function renderWorkbench({
       });
       return { success };
     }
-    if (channel === "codex:automation-runs:unarchive") {
+    if (channel === "automations:runs:unarchive") {
       const runId = String((args[0] as { runId?: string } | undefined)?.runId ?? "");
       let success = false;
       automationInboxItems = automationInboxItems.map((item) => {
@@ -3511,9 +3564,9 @@ export function renderWorkbench({
       });
       return { success };
     }
-    if (channel === "codex:automation-runs:set-read-state") {
+    if (channel === "automations:runs:set-read-state") {
       const input = args[0] as { runId?: string; readAt?: number | null };
-      let updated: CodexAutomationInboxItem | null = null;
+      let updated: AutomationInboxItem | null = null;
       automationInboxItems = automationInboxItems.map((item) => {
         if (item.runId !== input.runId) return item;
         updated = {
@@ -3524,21 +3577,25 @@ export function renderWorkbench({
       });
       return updated;
     }
-    if (channel === "codex:scheduled-automations:run-now") {
+    if (channel === "automations:run-now") {
       runNowAutomationIds.push(String((args[0] as { id?: string } | undefined)?.id ?? ""));
       return { success: true };
     }
-    if (channel === "codex:scheduled-automations:create") {
-      const input = args[0] as CodexScheduledAutomationCreateInput;
-      const saved: CodexScheduledAutomation = {
-        id: `automation-${scheduledAutomations.length + 1}`,
-        definitionRevision: 1,
+    if (channel === "automations:create") {
+      const input = args[0] as AutomationCreateInput;
+      const saved: Automation = {
+        id: `automation-${clockAutomations.length + 1}`,
+        automationRevision: 1,
+        scope: input.scope ?? { kind: "space" },
+        ownerMemberId: input.ownerMemberId ?? "member-owner",
+        conditionText: input.conditionText ?? "Every day",
+        timezone: input.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
         projectId: input.projectId ?? null,
         notificationPolicy: null,
-        launch: input.launch ?? "automatic",
+        mode: input.mode ?? "run",
         runbookPageId: input.runbookPageId ?? null,
         runbookTitle: null,
-        heldFiring: null,
+        heldDecision: null,
         kind: input.kind,
         status: "ACTIVE",
         targetSessionId: input.targetSessionId ?? null,
@@ -3557,21 +3614,25 @@ export function renderWorkbench({
         createdAt: 300,
         updatedAt: 400,
       };
-      scheduledAutomations = [...scheduledAutomations, saved];
+      clockAutomations = [...clockAutomations, saved];
       return { item: saved };
     }
-    if (channel === "codex:scheduled-automations:update") {
-      const input = args[0] as CodexScheduledAutomationUpdateInput;
-      const existing = scheduledAutomations.find((automation) => automation.id === input.id);
-      const saved: CodexScheduledAutomation = {
+    if (channel === "automations:update") {
+      const input = args[0] as AutomationUpdateInput;
+      const existing = clockAutomations.find((automation) => automation.id === input.id);
+      const saved: Automation = {
         id: input.id,
-        definitionRevision: (existing?.definitionRevision ?? 0) + 1,
+        automationRevision: (existing?.automationRevision ?? 0) + 1,
+        scope: input.scope ?? { kind: "space" },
+        ownerMemberId: input.ownerMemberId ?? "member-owner",
+        conditionText: input.conditionText ?? "Every day",
+        timezone: input.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
         projectId: input.projectId === undefined ? (existing?.projectId ?? null) : input.projectId,
         notificationPolicy: null,
-        launch: input.launch ?? existing?.launch ?? "automatic",
+        mode: input.mode ?? existing?.mode ?? "run",
         runbookPageId: input.runbookPageId ?? null,
         runbookTitle: null,
-        heldFiring: existing?.heldFiring ?? null,
+        heldDecision: existing?.heldDecision ?? null,
         kind: input.kind,
         status: input.status,
         targetSessionId: input.targetSessionId ?? null,
@@ -3590,24 +3651,19 @@ export function renderWorkbench({
         createdAt: existing?.createdAt ?? 300,
         updatedAt: 400,
       };
-      scheduledAutomations = scheduledAutomations.some((automation) => automation.id === saved.id)
-        ? scheduledAutomations.map((automation) =>
-            automation.id === saved.id ? saved : automation,
-          )
-        : [...scheduledAutomations, saved];
+      clockAutomations = clockAutomations.some((automation) => automation.id === saved.id)
+        ? clockAutomations.map((automation) => (automation.id === saved.id ? saved : automation))
+        : [...clockAutomations, saved];
       return { item: saved };
     }
-    if (channel === "codex:scheduled-automations:delete") {
+    if (channel === "automations:delete") {
       const automationId = String((args[0] as { id?: string } | undefined)?.id ?? "");
-      const item =
-        scheduledAutomations.find((automation) => automation.id === automationId) ?? null;
-      const previousLength = scheduledAutomations.length;
-      scheduledAutomations = scheduledAutomations.filter(
-        (automation) => automation.id !== automationId,
-      );
+      const item = clockAutomations.find((automation) => automation.id === automationId) ?? null;
+      const previousLength = clockAutomations.length;
+      clockAutomations = clockAutomations.filter((automation) => automation.id !== automationId);
       return {
         item,
-        success: scheduledAutomations.length !== previousLength || item === null,
+        success: clockAutomations.length !== previousLength || item === null,
         status: item ? "deleted" : "not_found",
       };
     }
@@ -4755,7 +4811,7 @@ export function renderWorkbench({
     requestInboxCaptureCommand: (source: WorkbenchCommandSource) => {
       requestInboxCaptureCommand(source);
     },
-    getScheduledAutomations: () => scheduledAutomations,
+    getAutomations: () => clockAutomations,
     getRunNowAutomationIds: () => runNowAutomationIds,
     getAutomationInboxItems: () => automationInboxItems,
   };

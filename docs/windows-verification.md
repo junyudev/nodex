@@ -138,7 +138,7 @@ Run the checklist with both the arm64 and the x64 installer.
     let it finish, then left-click the tray and verify the same chat and completed
     result. Right-click for Running, Unread, Pinned, Recent, New chat and Quit;
     verify empty sections, More, projectless chats, Unicode titles and navigation.
-    Test Quit/Cancel during a local turn and with a scheduled task enabled; accepted
+    Test Quit/Cancel during a local turn and with a clock Automation enabled; accepted
     Quit must drain Core and Agent children and remove the tray. Switch Windows'
     system light/dark appearance while Nodex uses the opposite app appearance,
     restart Explorer, and check icon visibility, refresh and stable placement.

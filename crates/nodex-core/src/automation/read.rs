@@ -1,9 +1,9 @@
 use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::automation::{
-    AutomationDefinition, AutomationDefinitionKind, AutomationDefinitionStatus,
-    AutomationDueWorkLane, AutomationExecutionEnvironment, AutomationLaunch, AutomationLease,
-    AutomationLeasePurpose, AutomationLeaseStatus, AutomationNotificationPolicy, AutomationRead,
-    AutomationReadValue,
+    Automation, AutomationCondition, AutomationDecision, AutomationDueWorkLane,
+    AutomationExecutionEnvironment, AutomationExecutionKind, AutomationLease,
+    AutomationLeasePurpose, AutomationLeaseStatus, AutomationMode, AutomationNotificationPolicy,
+    AutomationRead, AutomationReadValue, AutomationStatus,
 };
 use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
@@ -29,7 +29,7 @@ pub(super) fn read(
     if matches!(context.adapter, nodex_core_contracts::AdapterKind::Agent)
         && !matches!(
             &request,
-            AutomationRead::AgentDefinition { .. } | AutomationRead::AgentDefinitions { .. }
+            AutomationRead::AgentAutomation { .. } | AutomationRead::AgentAutomations { .. }
         )
     {
         return Err(unauthorized(
@@ -37,13 +37,47 @@ pub(super) fn read(
         ));
     }
     match request {
-        AutomationRead::AgentDefinitions {
+        AutomationRead::AutomationExecutionAdmission {
+            run_id,
+            lease_id,
+            dispatch_id,
+        } => {
+            if !matches!(
+                context.adapter,
+                nodex_core_contracts::AdapterKind::ElectronHost
+                    | nodex_core_contracts::AdapterKind::Test
+            ) || context.agent_attribution.is_some()
+            {
+                return Err(unauthorized(
+                    "Automation execution admission belongs to the Host",
+                ));
+            }
+            validate_id("run_id", &run_id)?;
+            validate_id("lease_id", &lease_id)?;
+            validate_id("dispatch_id", &dispatch_id)?;
+            let valid=connection.query_row("SELECT EXISTS(SELECT 1 FROM automation_execution_runs run JOIN automation_execution_leases lease ON lease.dispatch_id=run.dispatch_id AND lease.automation_id=run.automation_id JOIN automation_decisions decision ON decision.dispatch_id=lease.dispatch_id JOIN automations automation ON automation.automation_id=run.automation_id JOIN members owner ON owner.id=automation.owner_member_id AND owner.lifecycle='active' JOIN members grant_owner ON grant_owner.id=json_extract(decision.frozen_authority_json,'$.owner_member_id') AND grant_owner.lifecycle='active' WHERE run.run_id=?1 AND lease.lease_id=?2 AND lease.dispatch_id=?3 AND run.status='IN_PROGRESS' AND lease.status='claimed' AND lease.expires_at_ms>CAST(unixepoch('subsec')*1000 AS INTEGER) AND decision.status='admitted' AND decision.automation_id=run.automation_id AND lease.automation_revision=decision.automation_revision AND automation.status<>'DELETED' AND (decision.admitted_at_ms IS NOT NULL OR (decision.mode='run' AND automation.mode='run' AND automation.status='ACTIVE' AND automation.automation_revision=decision.automation_revision)) AND (run.page_id IS NULL OR EXISTS(SELECT 1 FROM blocks block WHERE block.id=run.page_id AND block.lifecycle='active')))",params![run_id,lease_id,dispatch_id],|r|r.get(0))?;
+            Ok(AutomationReadValue::AutomationExecutionAdmission { valid })
+        }
+        AutomationRead::AutomationDecisions {
+            automation_id,
+            window,
+        } => Ok(AutomationReadValue::AutomationDecisions {
+            window: read_decisions(connection, library_id, commit_head, &automation_id, &window)?,
+        }),
+        AutomationRead::AutomationNotificationPolicy { message_id } => {
+            validate_id("message_id", &message_id)?;
+            let policy:Option<String>=connection.query_row("SELECT notification_policy FROM automation_execution_runs WHERE message_id=?1 ORDER BY created_at DESC,run_id LIMIT 1",[message_id],|r|r.get(0)).optional()?.flatten();
+            Ok(AutomationReadValue::AutomationNotificationPolicy {
+                policy: policy.map(|_| AutomationNotificationPolicy::FailedRunsOnly),
+            })
+        }
+        AutomationRead::AgentAutomations {
             provenance,
             search_query,
             window,
         } => {
             super::agent_command::admit_read(connection, library_id, context, &provenance)?;
-            Ok(AutomationReadValue::Definitions {
+            Ok(AutomationReadValue::Automations {
                 window: read_definition_window(
                     connection,
                     library_id,
@@ -57,20 +91,20 @@ pub(super) fn read(
                 )?,
             })
         }
-        AutomationRead::AgentDefinition {
+        AutomationRead::AgentAutomation {
             provenance,
             automation_id,
         } => {
             super::agent_command::admit_read(connection, library_id, context, &provenance)?;
             validate_id("automation_id", &automation_id)?;
             let item = read_definition(connection, &automation_id)?;
-            Ok(AutomationReadValue::Definition {
+            Ok(AutomationReadValue::Automation {
                 item: item.map(Box::new),
             })
         }
         AutomationRead::DueWork { lane } => Ok(AutomationReadValue::DueWork {
             plan: match lane {
-                AutomationDueWorkLane::Definitions => {
+                AutomationDueWorkLane::Automations => {
                     super::mutation::plan_definition_due_work(connection)?
                 }
                 AutomationDueWorkLane::Reminders => {
@@ -78,11 +112,11 @@ pub(super) fn read(
                 }
             },
         }),
-        AutomationRead::Definitions {
+        AutomationRead::Automations {
             include_deleted,
             search_query,
             window,
-        } => Ok(AutomationReadValue::Definitions {
+        } => Ok(AutomationReadValue::Automations {
             window: read_definition_window(
                 connection,
                 library_id,
@@ -95,17 +129,20 @@ pub(super) fn read(
                 &window,
             )?,
         }),
-        AutomationRead::Definition { automation_id } => {
+        AutomationRead::Automation { automation_id } => {
             validate_id("automation_id", &automation_id)?;
-            Ok(AutomationReadValue::Definition {
+            Ok(AutomationReadValue::Automation {
                 item: read_definition(connection, &automation_id)?.map(Box::new),
             })
         }
-        AutomationRead::ExecutionDefinition { automation_id } => {
+        AutomationRead::AutomationForExecution { automation_id } => {
             validate_id("automation_id", &automation_id)?;
             let item = read_definition(connection, &automation_id)?;
+            if let Some(automation) = &item {
+                super::clock::require_owner_available(connection, automation)?;
+            }
             if let Some(definition) = &item
-                && definition.kind == AutomationDefinitionKind::Cron
+                && definition.kind == AutomationExecutionKind::Cron
             {
                 super::mutation::validate_cron_project_target(
                     connection,
@@ -115,7 +152,7 @@ pub(super) fn read(
                     definition.local_environment_config_path.as_deref(),
                 )?;
             }
-            Ok(AutomationReadValue::Definition {
+            Ok(AutomationReadValue::Automation {
                 item: item.map(Box::new),
             })
         }
@@ -232,7 +269,7 @@ fn read_definition_window(
     commit_head: i64,
     query: DefinitionWindowQuery<'_>,
     request: &CollectionWindowRequest,
-) -> Result<CollectionWindow<AutomationDefinition>, StoreError> {
+) -> Result<CollectionWindow<Automation>, StoreError> {
     let normalized = normalize_request(request)?;
     let search_query = query
         .search_query
@@ -274,13 +311,13 @@ fn read_definition_window(
         })
         .transpose()?;
     let mut statement = connection.prepare(
-        "SELECT automation_id, definition_revision, kind, status, target_session_id, name, \
+        "SELECT automation_id, automation_revision, kind, status, target_session_id, name, \
                 prompt, rrule, model, reasoning_effort, service_tier, cwds_json, \
                 agent_backend_kind, agent_backend_definition_id, \
                 agent_backend_instance_config_id, execution_environment, \
                 local_environment_config_path, next_run_at, last_run_at, created_at, updated_at, notification_policy, \
-                project_id, launch, runbook_page_id \
-         FROM codex_scheduled_automations \
+                project_id, mode, runbook_page_id, owner_member_id, condition_text, timezone, jitter_salt, scope_project_id \
+         FROM automations \
          WHERE (?1 OR status <> 'DELETED') \
            AND (?2 IS NULL OR created_at > ?2 OR (created_at = ?2 AND automation_id > ?3)) \
            AND (?5 IS NULL OR (kind = 'cron' AND project_id = ?5) \
@@ -305,7 +342,7 @@ fn read_definition_window(
             definition_from_row,
         )?
         .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(|_| corrupt("Scheduled Automation definition column types are invalid"))?
+        .map_err(|_| corrupt("Automation definition column types are invalid"))?
         .into_iter()
         .map(|item| enrich_definition(connection, item))
         .collect::<Result<Vec<_>, _>>()?;
@@ -338,36 +375,47 @@ fn read_definition_window(
 pub(super) fn read_definition(
     connection: &Connection,
     automation_id: &str,
-) -> Result<Option<AutomationDefinition>, StoreError> {
+) -> Result<Option<Automation>, StoreError> {
     let definition = connection
         .query_row(
-            "SELECT automation_id, definition_revision, kind, status, target_session_id, name, \
+            "SELECT automation_id, automation_revision, kind, status, target_session_id, name, \
                     prompt, rrule, model, reasoning_effort, service_tier, cwds_json, \
                     agent_backend_kind, agent_backend_definition_id, \
                     agent_backend_instance_config_id, execution_environment, \
                     local_environment_config_path, next_run_at, last_run_at, created_at, updated_at, notification_policy, \
-                project_id, launch, runbook_page_id \
-             FROM codex_scheduled_automations WHERE automation_id = ?1",
+                project_id, mode, runbook_page_id, owner_member_id, condition_text, timezone, jitter_salt, scope_project_id \
+             FROM automations WHERE automation_id = ?1",
             [automation_id],
             definition_from_row,
         )
         .optional()
-        .map_err(|_| corrupt("Scheduled Automation definition column types are invalid"))?;
+        .map_err(|_| corrupt("Automation definition column types are invalid"))?;
     definition
         .map(|item| enrich_definition(connection, item))
         .transpose()
 }
 
-fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationDefinition> {
+fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Automation> {
     let kind = parse_kind(row.get::<_, String>(2)?).map_err(rusqlite_conversion)?;
     let status = parse_status(row.get::<_, String>(3)?).map_err(rusqlite_conversion)?;
     let environment = parse_environment(row.get::<_, String>(15)?).map_err(rusqlite_conversion)?;
     let cwds_json = row.get::<_, String>(11)?;
     let cwds = serde_json::from_str::<Vec<String>>(&cwds_json)
-        .map_err(|_| rusqlite_conversion("Scheduled Automation cwd JSON is invalid".to_owned()))?;
-    Ok(AutomationDefinition {
+        .map_err(|_| rusqlite_conversion("Automation cwd JSON is invalid".to_owned()))?;
+    Ok(Automation {
+        scope: row.get::<_, Option<String>>(29)?.map_or(
+            nodex_core_contracts::automation::AutomationScope::Space,
+            |project_id| nodex_core_contracts::automation::AutomationScope::Project { project_id },
+        ),
+        owner_member_id: row.get(25)?,
+        condition_text: row.get(26)?,
+        typed_condition: Some(AutomationCondition::Clock {
+            rrule: row.get(7)?,
+            timezone: row.get(27)?,
+            jitter_salt: row.get(28)?,
+        }),
         automation_id: row.get(0)?,
-        definition_revision: row.get(1)?,
+        automation_revision: row.get(1)?,
         kind,
         status,
         project_id: row.get(22)?,
@@ -377,22 +425,21 @@ fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationDe
             Some("failed_runs_only") => Some(AutomationNotificationPolicy::FailedRunsOnly),
             Some(_) => {
                 return Err(rusqlite_conversion(
-                    "Scheduled Automation notification policy is invalid".into(),
+                    "Automation notification policy is invalid".into(),
                 ));
             }
         },
-        launch: match row.get::<_, String>(23)?.as_str() {
-            "ask" => AutomationLaunch::Ask,
-            "automatic" => AutomationLaunch::Automatic,
+        mode: match row.get::<_, String>(23)?.as_str() {
+            "ask_first" => AutomationMode::AskFirst,
+            "dry_run" => AutomationMode::DryRun,
+            "run" => AutomationMode::Run,
             _ => {
-                return Err(rusqlite_conversion(
-                    "Invalid scheduled launch choice".into(),
-                ));
+                return Err(rusqlite_conversion("Invalid scheduled mode choice".into()));
             }
         },
         runbook_page_id: row.get(24)?,
         runbook_title: None,
-        held_firing: None,
+        held_decision: None,
         name: row.get(5)?,
         prompt: row.get(6)?,
         rrule: row.get(7)?,
@@ -417,9 +464,32 @@ fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationDe
 
 fn enrich_definition(
     connection: &Connection,
-    mut item: AutomationDefinition,
-) -> Result<AutomationDefinition, StoreError> {
-    item.held_firing = super::firing::held(connection, &item.automation_id)?;
+    mut item: Automation,
+) -> Result<Automation, StoreError> {
+    // The clock migration freezes retained Automations before the event tables exist.
+    let has_events: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='automation_event_filters')",
+        [],
+        |r| r.get(0),
+    )?;
+    let filter: Option<String> = if has_events {
+        connection
+            .query_row(
+                "SELECT filter_json FROM automation_event_filters WHERE automation_id=?1",
+                [&item.automation_id],
+                |r| r.get(0),
+            )
+            .optional()?
+    } else {
+        None
+    };
+    if let Some(filter) = filter {
+        item.typed_condition = Some(AutomationCondition::Source {
+            filters: serde_json::from_str(&filter)
+                .map_err(|_| corrupt("Invalid Automation Source filter"))?,
+        });
+    }
+    item.held_decision = super::firing::held(connection, &item.automation_id)?;
     item.runbook_title = connection.query_row(
         "SELECT COALESCE(materialization.title,'') FROM pages page \
          JOIN blocks block ON block.id=page.block_id AND block.lifecycle='active' \
@@ -429,19 +499,17 @@ fn enrich_definition(
     validate_definition(item)
 }
 
-fn validate_definition(
-    definition: AutomationDefinition,
-) -> Result<AutomationDefinition, StoreError> {
+fn validate_definition(definition: Automation) -> Result<Automation, StoreError> {
     validate_id("stored automation_id", &definition.automation_id)
-        .map_err(|_| corrupt("Stored Scheduled Automation id is invalid"))?;
-    if definition.definition_revision < 1
+        .map_err(|_| corrupt("Stored Automation id is invalid"))?;
+    if definition.automation_revision < 1
         || definition.name.trim().is_empty()
         || definition.created_at_ms < 0
         || definition.updated_at_ms < definition.created_at_ms
         || definition.next_run_at_ms.is_some_and(|value| value < 0)
         || definition.last_run_at_ms.is_some_and(|value| value < 0)
     {
-        return Err(corrupt("Stored Scheduled Automation definition is invalid"));
+        return Err(corrupt("Stored Automation definition is invalid"));
     }
     for (label, value, max_bytes) in [
         ("model", definition.model.as_deref(), 512),
@@ -458,7 +526,7 @@ fn validate_definition(
                 || value.len() > max_bytes
                 || value.chars().any(char::is_control)
         }) {
-            let message = format!("Stored Scheduled Automation {label} is invalid");
+            let message = format!("Stored Automation {label} is invalid");
             return Err(corrupt(&message));
         }
     }
@@ -503,8 +571,8 @@ fn read_lease_window(
         .transpose()?;
     let mut statement = connection.prepare(
         "SELECT lease_id, automation_id, scheduled_for_ms, attempt, status, claimed_at_ms, \
-                expires_at_ms, settled_at_ms, retry_at_ms, reason_code, dispatch_id, definition_revision, purpose \
-         FROM core_automation_leases \
+                expires_at_ms, settled_at_ms, retry_at_ms, reason_code, dispatch_id, automation_revision, purpose \
+         FROM automation_execution_leases \
          WHERE (?1 IS NULL OR automation_id = ?1) AND (?2 OR status = 'claimed') \
            AND (?3 IS NULL OR scheduled_for_ms < ?3 \
              OR (scheduled_for_ms = ?3 AND attempt < ?4) \
@@ -567,8 +635,8 @@ pub(super) fn read_lease(
     connection
         .query_row(
             "SELECT lease_id, automation_id, scheduled_for_ms, attempt, status, claimed_at_ms, \
-                    expires_at_ms, settled_at_ms, retry_at_ms, reason_code, dispatch_id, definition_revision, purpose \
-             FROM core_automation_leases WHERE lease_id = ?1",
+                    expires_at_ms, settled_at_ms, retry_at_ms, reason_code, dispatch_id, automation_revision, purpose \
+             FROM automation_execution_leases WHERE lease_id = ?1",
             [lease_id],
             lease_from_row,
         )
@@ -583,9 +651,10 @@ fn lease_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationLease> 
     let attempt = u32::try_from(attempt)
         .map_err(|_| rusqlite_conversion("Automation lease attempt is invalid".to_owned()))?;
     Ok(AutomationLease {
+        execution_automation: None,
         lease_id: row.get(0)?,
         dispatch_id: row.get(10)?,
-        definition_revision: row.get(11)?,
+        automation_revision: row.get(11)?,
         automation_id: row.get(1)?,
         scheduled_for_ms: row.get(2)?,
         attempt,
@@ -615,6 +684,8 @@ fn enrich_lease(
     if lease.purpose == AutomationLeasePurpose::Run {
         lease.admission = super::firing::admission(connection, &lease.dispatch_id)?;
     }
+    lease.execution_automation =
+        super::clock::execution_automation(connection, &lease.dispatch_id)?;
     validate_lease(lease)
 }
 
@@ -627,7 +698,7 @@ fn validate_lease(lease: AutomationLease) -> Result<AutomationLease, StoreError>
         || lease.automation_id.len() > MAX_ID_LENGTH
         || lease.scheduled_for_ms < 0
         || lease.attempt == 0
-        || lease.definition_revision < 1
+        || lease.automation_revision < 1
         || lease.claimed_at_ms < 0
         || lease.expires_at_ms <= lease.claimed_at_ms
     {
@@ -636,18 +707,18 @@ fn validate_lease(lease: AutomationLease) -> Result<AutomationLease, StoreError>
     Ok(lease)
 }
 
-pub(super) fn kind_string(value: AutomationDefinitionKind) -> &'static str {
+pub(super) fn kind_string(value: AutomationExecutionKind) -> &'static str {
     match value {
-        AutomationDefinitionKind::Cron => "cron",
-        AutomationDefinitionKind::Heartbeat => "heartbeat",
+        AutomationExecutionKind::Cron => "cron",
+        AutomationExecutionKind::Heartbeat => "heartbeat",
     }
 }
 
-pub(super) fn status_string(value: AutomationDefinitionStatus) -> &'static str {
+pub(super) fn status_string(value: AutomationStatus) -> &'static str {
     match value {
-        AutomationDefinitionStatus::Active => "ACTIVE",
-        AutomationDefinitionStatus::Paused => "PAUSED",
-        AutomationDefinitionStatus::Deleted => "DELETED",
+        AutomationStatus::Active => "ACTIVE",
+        AutomationStatus::Paused => "PAUSED",
+        AutomationStatus::Deleted => "DELETED",
     }
 }
 
@@ -658,20 +729,20 @@ pub(super) fn environment_string(value: AutomationExecutionEnvironment) -> &'sta
     }
 }
 
-fn parse_kind(value: String) -> Result<AutomationDefinitionKind, String> {
+fn parse_kind(value: String) -> Result<AutomationExecutionKind, String> {
     match value.as_str() {
-        "cron" => Ok(AutomationDefinitionKind::Cron),
-        "heartbeat" => Ok(AutomationDefinitionKind::Heartbeat),
-        _ => Err("Scheduled Automation kind is invalid".to_owned()),
+        "cron" => Ok(AutomationExecutionKind::Cron),
+        "heartbeat" => Ok(AutomationExecutionKind::Heartbeat),
+        _ => Err("Automation kind is invalid".to_owned()),
     }
 }
 
-fn parse_status(value: String) -> Result<AutomationDefinitionStatus, String> {
+fn parse_status(value: String) -> Result<AutomationStatus, String> {
     match value.as_str() {
-        "ACTIVE" => Ok(AutomationDefinitionStatus::Active),
-        "PAUSED" => Ok(AutomationDefinitionStatus::Paused),
-        "DELETED" => Ok(AutomationDefinitionStatus::Deleted),
-        _ => Err("Scheduled Automation status is invalid".to_owned()),
+        "ACTIVE" => Ok(AutomationStatus::Active),
+        "PAUSED" => Ok(AutomationStatus::Paused),
+        "DELETED" => Ok(AutomationStatus::Deleted),
+        _ => Err("Automation status is invalid".to_owned()),
     }
 }
 
@@ -679,7 +750,7 @@ fn parse_environment(value: String) -> Result<AutomationExecutionEnvironment, St
     match value.as_str() {
         "local" => Ok(AutomationExecutionEnvironment::Local),
         "worktree" => Ok(AutomationExecutionEnvironment::Worktree),
-        _ => Err("Scheduled Automation execution environment is invalid".to_owned()),
+        _ => Err("Automation execution environment is invalid".to_owned()),
     }
 }
 
@@ -727,4 +798,105 @@ fn corrupt(message: &str) -> StoreError {
 
 fn unauthorized(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::Unauthorized, message, false)
+}
+
+fn read_decisions(
+    connection: &Connection,
+    library: &str,
+    head: i64,
+    automation: &str,
+    request: &CollectionWindowRequest,
+) -> Result<CollectionWindow<AutomationDecision>, StoreError> {
+    validate_id("automation_id", automation)?;
+    let normalized = normalize_request(request)?;
+    let fingerprint = cursor::query_fingerprint(&("automation_decisions", automation))?;
+    let subject = CollectionCursorSubject {
+        kind: "automation_decisions",
+        library_id: library,
+        query_fingerprint: &fingerprint,
+    };
+    let after = normalized
+        .after
+        .map(|encoded| cursor::decode(connection, encoded, subject))
+        .transpose()?
+        .map(|(direction, coordinate)| {
+            if direction != CursorDirection::Forward {
+                return Err(invalid("Automation decision cursor direction is invalid"));
+            }
+            let [KeysetValue::Integer { value }] = coordinate.values.as_slice() else {
+                return Err(invalid("Automation decision cursor is invalid"));
+            };
+            Ok((*value, coordinate.stable_id))
+        })
+        .transpose()?;
+    let rows=connection.prepare("SELECT dispatch_id,automation_id,automation_revision,reason,mode,status,frozen_action_json,frozen_authority_json,page_id,first_scheduled_for_ms,last_scheduled_for_ms,missed_count,created_at_ms,updated_at_ms,admitted_at_ms FROM automation_decisions WHERE automation_id=?1 AND (?2 IS NULL OR created_at_ms<?2 OR (created_at_ms=?2 AND dispatch_id>?3)) ORDER BY created_at_ms DESC,dispatch_id LIMIT ?4")?.query_map(params![automation,after.as_ref().map(|a|a.0),after.as_ref().map(|a|a.1.as_str()),i64::try_from(normalized.first+1).map_err(|_|invalid("Automation decision window size is invalid"))?],|r| {
+        let dispatch_id:String=r.get(0)?;
+        Ok((AutomationDecision {
+            decision_id:dispatch_id.clone(),dispatch_id,automation_id:r.get(1)?,automation_revision:r.get(2)?,reason:r.get(3)?,
+            mode:serde_json::from_value(serde_json::Value::String(r.get(4)?)).map_err(|_|rusqlite_conversion("Automation decision mode is invalid".into()))?,
+            status:serde_json::from_value(serde_json::Value::String(r.get(5)?)).map_err(|_|rusqlite_conversion("Automation decision state is invalid".into()))?,
+            frozen_action:serde_json::from_str(&r.get::<_,String>(6)?).map_err(|_|rusqlite_conversion("Automation action snapshot is invalid".into()))?,
+            frozen_authority:serde_json::from_str(&r.get::<_,String>(7)?).map_err(|_|rusqlite_conversion("Automation authority snapshot is invalid".into()))?,
+            page_id:r.get(8)?,proposal_id:None,trigger_ids:vec![],inputs:serde_json::json!({}),occurred_at_ms:r.get(9)?,session_id:None,
+            first_scheduled_for_ms:r.get(9)?,last_scheduled_for_ms:r.get(10)?,missed_count:r.get(11)?,created_at_ms:r.get(12)?,updated_at_ms:r.get(13)?,
+        }, r.get::<_,Option<i64>>(14)?))
+    })?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut candidates = Vec::new();
+    for (mut item, admitted_at_ms) in rows {
+        let manual = admitted_at_ms.is_some() && item.page_id.is_none();
+        if item.page_id.is_none() {
+            item.page_id=connection.query_row("SELECT page_id FROM automation_execution_runs WHERE dispatch_id=?1 AND page_id IS NOT NULL ORDER BY created_at,run_id LIMIT 1",[&item.dispatch_id],|r|r.get(0)).optional()?.flatten();
+        }
+        item.trigger_ids=connection.prepare("SELECT trigger_id FROM automation_decision_triggers WHERE dispatch_id=?1 ORDER BY trigger_id")?.query_map([&item.dispatch_id],|r|r.get(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        let occurrences = connection.prepare("SELECT trigger.id,trigger.schedule_revision,trigger.due_at_ms FROM automation_clock_triggers trigger JOIN automation_decision_triggers link ON link.trigger_id=trigger.id WHERE link.dispatch_id=?1 ORDER BY trigger.due_at_ms,trigger.id")?.query_map([&item.dispatch_id], |row| Ok(serde_json::json!({"trigger_id":row.get::<_,String>(0)?,"schedule_revision":row.get::<_,i64>(1)?,"due_at_ms":row.get::<_,i64>(2)?})))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        item.inputs = serde_json::json!({"clock_occurrences":occurrences});
+        if manual && item.trigger_ids.is_empty() {
+            item.inputs["manual_requested_at_ms"] = admitted_at_ms.into();
+        } else if !item.trigger_ids.is_empty() {
+            item.inputs["coalesced_clock"] = serde_json::json!({"first_due_at_ms":item.first_scheduled_for_ms,"last_due_at_ms":item.last_scheduled_for_ms,"missed_count":item.missed_count});
+        }
+        let assessment: Option<String> = connection.query_row(
+            "SELECT assessment_json FROM automation_decisions WHERE dispatch_id=?1",
+            [&item.dispatch_id],
+            |r| r.get(0),
+        )?;
+        if let Some(assessment) = assessment {
+            item.inputs = serde_json::from_str(&assessment)
+                .map_err(|_| corrupt("Invalid assessment decision"))?;
+            item.trigger_ids = connection.prepare("SELECT trigger_id FROM automation_decision_source_triggers WHERE dispatch_id=?1 ORDER BY trigger_id")?.query_map([&item.dispatch_id],|r|r.get(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        }
+        item.proposal_id = connection
+            .query_row(
+                "SELECT current_proposal_id FROM inbox_entries WHERE page_id=?1",
+                [&item.page_id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+        item.session_id=connection.query_row("SELECT session_id FROM automation_execution_runs WHERE dispatch_id=?1 AND session_id IS NOT NULL ORDER BY created_at DESC,run_id LIMIT 1",[&item.dispatch_id],|r|r.get(0)).optional()?.flatten();
+        candidates.push(WindowCandidate {
+            coordinate: KeysetCoordinate {
+                values: vec![KeysetValue::Integer {
+                    value: item.created_at_ms,
+                }],
+                stable_id: item.dispatch_id.clone(),
+            },
+            item,
+        });
+    }
+    assemble(
+        candidates,
+        normalized.first,
+        CollectionWindowAuthority {
+            projection_revision: head,
+        },
+        |coordinate| {
+            cursor::mint(
+                connection,
+                subject,
+                CursorDirection::Forward,
+                coordinate.clone(),
+            )
+        },
+    )
 }

@@ -1,37 +1,40 @@
 import type {
-  CodexScheduledAutomation,
-  CodexScheduledAutomationExecutionEnvironment,
-  CodexScheduledAutomationKind,
-  CodexScheduledAutomationLaunch,
+  Automation,
+  AutomationExecutionEnvironment,
+  AutomationExecutionKind,
+  AutomationMode,
   AgentModelOption,
-  CodexScheduledAutomationCreateInput,
-  CodexScheduledAutomationReasoningEffort,
-  CodexScheduledAutomationStatus,
-  CodexScheduledAutomationUpdateInput,
+  AutomationCreateInput,
+  AutomationReasoningEffort,
+  AutomationStatus,
+  AutomationUpdateInput,
 } from "@/lib/types";
 import { getVisibleCodexModels, resolveCodexModelSelection } from "@/lib/codex-thread-settings";
-import { hasCodexScheduledAutomationRruleFrequency } from "@/lib/codex-scheduled-automation-rrule";
+import { hasAutomationRruleFrequency } from "@/lib/automation-rrule";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
 
 export const DEFAULT_WORKBENCH_AUTOMATION_RRULE = "FREQ=DAILY;BYHOUR=9;BYMINUTE=0";
 export const DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT = "medium";
 
-function isScheduledAutomationReasoningEffort(
-  value: string,
-): value is CodexScheduledAutomationReasoningEffort {
+function isAutomationReasoningEffort(value: string): value is AutomationReasoningEffort {
   return value.length > 0 && value.length <= 64 && !/[\u0000-\u001f\u007f-\u009f]/u.test(value);
 }
 
 export interface WorkbenchAutomationDraft {
   id: string | null;
   backendBinding: AgentBackendBinding;
-  kind: CodexScheduledAutomationKind;
-  status: CodexScheduledAutomationStatus;
+  kind: AutomationExecutionKind;
+  status: AutomationStatus;
   projectId: string | null;
   targetSessionId: string;
-  notificationPolicy?: CodexScheduledAutomationCreateInput["notificationPolicy"];
+  notificationPolicy?: AutomationCreateInput["notificationPolicy"];
   /** Whether a due run starts on its own or waits in the Inbox first. */
-  launch: CodexScheduledAutomationLaunch;
+  mode: AutomationMode;
+  ownerMemberId: string | null;
+  scope?: Automation["scope"];
+  conditionText: string;
+  sourceCondition?: import("@/lib/types").AutomationSourceFilter | null;
+  timezone: string;
   /** A Page every run follows as standing instructions. */
   runbookPageId: string | null;
   /** The runbook's title when it was chosen, for display only; never saved. */
@@ -41,10 +44,10 @@ export interface WorkbenchAutomationDraft {
   prompt: string;
   rrule: string;
   model: string;
-  reasoningEffort: CodexScheduledAutomationReasoningEffort | "";
+  reasoningEffort: AutomationReasoningEffort | "";
   serviceTier: string;
   cwds: string[];
-  executionEnvironment: CodexScheduledAutomationExecutionEnvironment;
+  executionEnvironment: AutomationExecutionEnvironment;
   localEnvironmentConfigPath: string;
 }
 
@@ -61,37 +64,40 @@ export type WorkbenchAutomationDraftRequirement =
   | "thread"
   | "executionEnvironment"
   | "model"
-  | "schedule";
+  | "schedule"
+  | "condition"
+  | "events"
+  | "workspace";
 
 function normalizeOptionalText(value: string): string | null {
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
 }
 
-function normalizeKind(kind: CodexScheduledAutomationKind): CodexScheduledAutomationKind {
+function normalizeKind(kind: AutomationExecutionKind): AutomationExecutionKind {
   return kind === "cron" ? "cron" : "heartbeat";
 }
 
-function normalizeStatus(status: CodexScheduledAutomationStatus): CodexScheduledAutomationStatus {
+function normalizeStatus(status: AutomationStatus): AutomationStatus {
   return status === "PAUSED" || status === "DELETED" ? status : "ACTIVE";
 }
 
 function normalizeExecutionEnvironment(
-  executionEnvironment: CodexScheduledAutomationExecutionEnvironment | null | undefined,
-): CodexScheduledAutomationExecutionEnvironment {
+  executionEnvironment: AutomationExecutionEnvironment | null | undefined,
+): AutomationExecutionEnvironment {
   return executionEnvironment === "local" ? "local" : "worktree";
 }
 
 /** Claude uses its own default; an ACP model sends only options it advertises. */
 function defaultAutomationReasoningEffort(
   binding: AgentBackendBinding,
-): CodexScheduledAutomationReasoningEffort | "" {
+): AutomationReasoningEffort | "" {
   if (binding.kind === "claude") return "default";
   if (binding.kind === "acp") return "";
   return DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT;
 }
 
-export function createCodexScheduledAutomationId(
+export function createAutomationId(
   randomUUID: (() => string) | undefined = globalThis.crypto?.randomUUID?.bind(globalThis.crypto),
 ): string {
   const suffix = randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -107,7 +113,7 @@ export function parseWorkbenchAutomationCwds(value: string): string[] {
 
 export function createWorkbenchAutomationDraft(
   input: {
-    automation?: CodexScheduledAutomation | null;
+    automation?: Automation | null;
     id?: string;
   } = {},
 ): WorkbenchAutomationDraft {
@@ -115,14 +121,20 @@ export function createWorkbenchAutomationDraft(
   const kind = normalizeKind(automation?.kind ?? "cron");
   const backendBinding = automation?.backendBinding ?? { kind: "codex" as const };
   return {
-    id: automation?.id ?? input.id ?? createCodexScheduledAutomationId(),
+    id: automation?.id ?? input.id ?? createAutomationId(),
+    expectedRevision: automation?.automationRevision,
     backendBinding,
     kind,
     status: normalizeStatus(automation?.status ?? "ACTIVE"),
     projectId: automation?.projectId ?? null,
     targetSessionId: automation?.targetSessionId ?? "",
     notificationPolicy: automation?.notificationPolicy,
-    launch: automation?.launch ?? "automatic",
+    mode: automation?.mode ?? "run",
+    ownerMemberId: automation?.ownerMemberId ?? null,
+    scope: automation?.scope,
+    conditionText: automation?.conditionText ?? "",
+    sourceCondition: automation?.sourceCondition ?? null,
+    timezone: automation?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
     runbookPageId: automation?.runbookPageId ?? null,
     runbookTitle: automation?.runbookTitle ?? null,
     name: automation?.name ?? "",
@@ -145,19 +157,24 @@ export function createWorkbenchAutomationDraft(
 }
 
 export function createWorkbenchAutomationDraftFromCreateInput(
-  input: CodexScheduledAutomationCreateInput,
+  input: AutomationCreateInput,
 ): WorkbenchAutomationDraft {
   const kind = normalizeKind(input.kind);
   const backendBinding = input.backendBinding ?? { kind: "codex" as const };
   return {
-    id: createCodexScheduledAutomationId(),
+    id: createAutomationId(),
     backendBinding,
     kind,
     status: "ACTIVE",
     projectId: kind === "cron" ? (input.projectId ?? null) : null,
     targetSessionId: kind === "heartbeat" ? (input.targetSessionId ?? "") : "",
     notificationPolicy: input.notificationPolicy,
-    launch: input.launch ?? "automatic",
+    mode: input.mode ?? "run",
+    ownerMemberId: input.ownerMemberId ?? null,
+    scope: input.scope,
+    conditionText: input.conditionText ?? "",
+    sourceCondition: input.sourceCondition ?? null,
+    timezone: input.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
     runbookPageId: input.runbookPageId ?? null,
     runbookTitle: null,
     name: input.name ?? "",
@@ -177,8 +194,8 @@ export function createWorkbenchAutomationDraftFromCreateInput(
 }
 
 export function createWorkbenchAutomationDraftFromUpdateInput(input: {
-  update: CodexScheduledAutomationUpdateInput;
-  automation?: CodexScheduledAutomation | null;
+  update: AutomationUpdateInput;
+  automation?: Automation | null;
 }): WorkbenchAutomationDraft {
   const { update, automation } = input;
   const base =
@@ -194,7 +211,12 @@ export function createWorkbenchAutomationDraftFromUpdateInput(input: {
     backendBinding: update.backendBinding ?? base.backendBinding,
     expectedRevision: update.expectedRevision,
     notificationPolicy: update.notificationPolicy,
-    launch: update.launch ?? base.launch,
+    mode: update.mode ?? automation?.mode ?? base.mode,
+    ownerMemberId: update.ownerMemberId ?? automation?.ownerMemberId ?? base.ownerMemberId,
+    scope: update.scope ?? automation?.scope ?? base.scope,
+    conditionText: update.conditionText ?? automation?.conditionText ?? base.conditionText,
+    sourceCondition: update.sourceCondition ?? automation?.sourceCondition ?? null,
+    timezone: update.timezone ?? automation?.timezone ?? base.timezone,
     runbookPageId: update.runbookPageId === undefined ? base.runbookPageId : update.runbookPageId,
     runbookTitle:
       update.runbookPageId === undefined || update.runbookPageId === base.runbookPageId
@@ -257,7 +279,7 @@ export function resolveWorkbenchAutomationDraftModelSettings(input: {
     models: input.models,
     fallbackReasoningEffort: DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT,
   });
-  const reasoningEffort = isScheduledAutomationReasoningEffort(selection.reasoningEffort)
+  const reasoningEffort = isAutomationReasoningEffort(selection.reasoningEffort)
     ? selection.reasoningEffort
     : DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT;
 
@@ -278,7 +300,7 @@ export function validateWorkbenchAutomationDraft(
   if (!normalizeOptionalText(draft.id ?? "")) {
     return {
       canSave: false,
-      error: "Scheduled task id is missing.",
+      error: "Automation id is missing.",
       missingRequirements: [],
     };
   }
@@ -337,8 +359,14 @@ export function resolveWorkbenchAutomationDraftMissingRequirements(
     missingRequirements.push("model");
   }
 
+  if (draft.sourceCondition) {
+    if (draft.cwds.length > 1) missingRequirements.push("workspace");
+    if (!draft.projectId && !missingRequirements.includes("cwd")) missingRequirements.push("cwd");
+    if (!draft.conditionText.trim()) missingRequirements.push("condition");
+    if (!draft.sourceCondition.kinds.length) missingRequirements.push("events");
+  }
   const rrule = normalizeOptionalText(draft.rrule);
-  if (rrule && !hasCodexScheduledAutomationRruleFrequency(rrule)) {
+  if (!draft.sourceCondition && rrule && !hasAutomationRruleFrequency(rrule)) {
     missingRequirements.push("schedule");
   }
 
@@ -348,10 +376,13 @@ export function resolveWorkbenchAutomationDraftMissingRequirements(
 function formatWorkbenchAutomationDraftRequirementError(
   requirement: WorkbenchAutomationDraftRequirement,
 ): string {
-  if (requirement === "name") return "Scheduled task name is required.";
-  if (requirement === "prompt") return "Scheduled task prompt is required.";
+  if (requirement === "name") return "Automation name is required.";
+  if (requirement === "prompt") return "Automation prompt is required.";
+  if (requirement === "condition") return "Condition is required.";
+  if (requirement === "events") return "Choose an event kind.";
+  if (requirement === "workspace") return "Choose one workspace for an event Automation.";
   if (requirement === "schedule") return "Schedule RRULE must include FREQ.";
-  if (requirement === "thread") return "Chat is required for scheduled task chats.";
+  if (requirement === "thread") return "Chat is required for automation chats.";
   if (requirement === "cwd") return "Project is required.";
   if (requirement === "model") return "Model is required.";
   return "Execution environment is required.";
@@ -361,6 +392,9 @@ function formatWorkbenchAutomationDraftRequirementLabel(
   requirement: WorkbenchAutomationDraftRequirement,
   position: "initial" | "continuation",
 ): string {
+  if (requirement === "condition") return "Add condition";
+  if (requirement === "events") return "Choose events";
+  if (requirement === "workspace") return "Choose one workspace";
   if (requirement === "name") return position === "initial" ? "Create title" : "create title";
   if (requirement === "prompt") return position === "initial" ? "Add prompt" : "add prompt";
   if (requirement === "cwd") return position === "initial" ? "Select project" : "select project";
@@ -398,11 +432,11 @@ export function formatWorkbenchAutomationDraftSaveTooltip(input: {
   return `${requirementList} to ${input.action}`;
 }
 
-type DraftAutomationPayload = CodexScheduledAutomationCreateInput & {
-  status: CodexScheduledAutomationStatus;
+type DraftAutomationPayload = AutomationCreateInput & {
+  status: AutomationStatus;
 };
 
-function buildCodexScheduledAutomationDraftPayload(
+function buildAutomationDraftPayload(
   draft: WorkbenchAutomationDraft,
 ): DraftAutomationPayload | null {
   const validation = validateWorkbenchAutomationDraft(draft);
@@ -425,7 +459,12 @@ function buildCodexScheduledAutomationDraftPayload(
     ...(draft.notificationPolicy !== undefined
       ? { notificationPolicy: draft.notificationPolicy }
       : {}),
-    launch: draft.launch,
+    mode: draft.mode,
+    ...(draft.scope ? { scope: draft.scope } : {}),
+    ...(draft.ownerMemberId ? { ownerMemberId: draft.ownerMemberId } : {}),
+    ...(draft.conditionText.trim() ? { conditionText: draft.conditionText.trim() } : {}),
+    timezone: draft.timezone,
+    sourceCondition: draft.sourceCondition ?? null,
     runbookPageId: draft.runbookPageId,
     name,
     prompt,
@@ -443,10 +482,10 @@ function buildCodexScheduledAutomationDraftPayload(
   };
 }
 
-export function buildCodexScheduledAutomationCreateInput(input: {
+export function buildAutomationCreateInput(input: {
   draft: WorkbenchAutomationDraft;
-}): CodexScheduledAutomationCreateInput | null {
-  const payload = buildCodexScheduledAutomationDraftPayload(input.draft);
+}): AutomationCreateInput | null {
+  const payload = buildAutomationDraftPayload(input.draft);
   if (!payload) return null;
   return {
     kind: payload.kind,
@@ -456,7 +495,12 @@ export function buildCodexScheduledAutomationCreateInput(input: {
     ...(payload.notificationPolicy !== undefined
       ? { notificationPolicy: payload.notificationPolicy }
       : {}),
-    launch: payload.launch,
+    mode: payload.mode,
+    ...(payload.scope ? { scope: payload.scope } : {}),
+    ...(payload.ownerMemberId ? { ownerMemberId: payload.ownerMemberId } : {}),
+    ...(payload.conditionText ? { conditionText: payload.conditionText } : {}),
+    timezone: payload.timezone,
+    sourceCondition: payload.sourceCondition ?? null,
     runbookPageId: payload.runbookPageId,
     name: payload.name,
     prompt: payload.prompt,
@@ -470,11 +514,11 @@ export function buildCodexScheduledAutomationCreateInput(input: {
   };
 }
 
-export function buildCodexScheduledAutomationUpdateInput(input: {
+export function buildAutomationUpdateInput(input: {
   draft: WorkbenchAutomationDraft;
   id?: string | null;
-}): CodexScheduledAutomationUpdateInput | null {
-  const payload = buildCodexScheduledAutomationDraftPayload(input.draft);
+}): AutomationUpdateInput | null {
+  const payload = buildAutomationDraftPayload(input.draft);
   if (!payload) return null;
   const id = normalizeOptionalText(input.id ?? input.draft.id ?? "");
   if (!id) return null;
@@ -489,7 +533,7 @@ export function buildCodexScheduledAutomationUpdateInput(input: {
 
 export function isWorkbenchAutomationDraftDirty(input: {
   draft: WorkbenchAutomationDraft;
-  existing: CodexScheduledAutomation | null;
+  existing: Automation | null;
 }): boolean {
   const { draft, existing } = input;
   if (!existing) return true;
@@ -504,7 +548,13 @@ export function isWorkbenchAutomationDraftDirty(input: {
       existing.targetSessionId ||
     (draft.notificationPolicy !== undefined &&
       draft.notificationPolicy !== existing.notificationPolicy) ||
-    draft.launch !== existing.launch ||
+    draft.mode !== existing.mode ||
+    JSON.stringify(draft.scope) !== JSON.stringify(existing.scope) ||
+    draft.ownerMemberId !== existing.ownerMemberId ||
+    JSON.stringify(draft.sourceCondition ?? null) !==
+      JSON.stringify(existing.sourceCondition ?? null) ||
+    draft.conditionText.trim() !== existing.conditionText ||
+    draft.timezone !== existing.timezone ||
     draft.runbookPageId !== existing.runbookPageId ||
     normalizeOptionalText(draft.name) !== existing.name ||
     normalizeOptionalText(draft.prompt) !== existing.prompt ||
@@ -537,7 +587,13 @@ export function hasWorkbenchAutomationCreateDraftChanges(
       normalizeStatus(draft.status) !== normalizeStatus(initialDraft.status) ||
       normalizeOptionalText(draft.targetSessionId) !==
         normalizeOptionalText(initialDraft.targetSessionId) ||
-      draft.launch !== initialDraft.launch ||
+      draft.mode !== initialDraft.mode ||
+      JSON.stringify(draft.scope) !== JSON.stringify(initialDraft.scope) ||
+      draft.ownerMemberId !== initialDraft.ownerMemberId ||
+      JSON.stringify(draft.sourceCondition ?? null) !==
+        JSON.stringify(initialDraft.sourceCondition ?? null) ||
+      draft.conditionText.trim() !== initialDraft.conditionText.trim() ||
+      draft.timezone !== initialDraft.timezone ||
       draft.runbookPageId !== initialDraft.runbookPageId ||
       normalizeOptionalText(draft.name) !== normalizeOptionalText(initialDraft.name) ||
       normalizeOptionalText(draft.prompt) !== normalizeOptionalText(initialDraft.prompt) ||
@@ -561,7 +617,11 @@ export function hasWorkbenchAutomationCreateDraftChanges(
     draft.projectId !== null ||
     normalizeStatus(draft.status) !== "ACTIVE" ||
     normalizeOptionalText(draft.targetSessionId) !== null ||
-    draft.launch !== "automatic" ||
+    draft.mode !== "run" ||
+    draft.ownerMemberId !== null ||
+    draft.sourceCondition != null ||
+    draft.conditionText.trim() !== "" ||
+    draft.timezone !== Intl.DateTimeFormat().resolvedOptions().timeZone ||
     draft.runbookPageId !== null ||
     normalizeOptionalText(draft.name) !== null ||
     normalizeOptionalText(draft.prompt) !== null ||

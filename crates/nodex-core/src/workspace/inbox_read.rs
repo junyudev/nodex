@@ -103,7 +103,7 @@ pub(super) const IN_INBOX: &str = "(entry.state = 'open' \
     AND NOT (COALESCE(proposal.state, '') = 'dispatching' AND COALESCE(proposal.failure_kind,'') <> 'unknown') \
     AND NOT (COALESCE(proposal.state, '') = 'completed' \
       AND COALESCE(json_extract(proposal.action_json, '$.type'), '') \
-        IN ('new_chat', 'send_to_chat', 'run_task')))";
+        IN ('new_chat', 'send_to_chat', 'execute_decision')))";
 
 /// Messages still waiting in the Library Inbox and in each active Project's Inbox.
 pub(super) fn read_counts(
@@ -510,6 +510,7 @@ fn source(
 ) -> Result<ProjectWorkspaceInboxSource, StoreError> {
     Ok(match row.source_kind.as_str() {
         "github" => return super::inbox::github::read_source(connection, page),
+        "automation" => ProjectWorkspaceInboxSource::Automation {
             automation_id: row.source_automation_id.clone().unwrap_or_default(),
             dispatch_id: row.source_dispatch_id.clone().unwrap_or_default(),
             project_id: row.source_project_id.clone(),
@@ -658,7 +659,7 @@ fn read_item(
             scope: scope_of(row.scope_project_id.clone()),
             location,
             proposal,
-            firing: crate::automation::firing::item(connection, page_id)?,
+            automation_decision: crate::automation::firing::item(connection, page_id)?,
             revision: row.revision,
         },
         row.seq,
@@ -772,11 +773,17 @@ fn read_proposal(
     }
     let action = parse_action(&action_json)?;
     let task_target = match &action {
-        ProjectWorkspaceInboxDispatchAction::RunTask { automation_id, .. } => connection
+        ProjectWorkspaceInboxDispatchAction::ExecuteDecision { decision_id, .. } => connection
             .query_row(
-                "SELECT kind, project_id, target_session_id FROM codex_scheduled_automations WHERE automation_id=?1",
-                [automation_id],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, Option<String>>(2)?)),
+                "SELECT COALESCE(json_extract(decision.frozen_action_json,'$.kind'),automation.kind), COALESCE(json_extract(decision.frozen_action_json,'$.project_id'),automation.project_id), COALESCE(json_extract(decision.frozen_action_json,'$.target_session_id'),automation.target_session_id) FROM automation_decisions decision JOIN automations automation ON automation.automation_id=decision.automation_id WHERE decision.dispatch_id=?1",
+                [decision_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                },
             )
             .optional()?,
         _ => None,
@@ -786,7 +793,7 @@ fn read_proposal(
         ProjectWorkspaceInboxDispatchAction::MoveToProject { project_id } => {
             Some(project_id.clone())
         }
-        ProjectWorkspaceInboxDispatchAction::RunTask { .. } => task_target
+        ProjectWorkspaceInboxDispatchAction::ExecuteDecision { .. } => task_target
             .as_ref()
             .filter(|(kind, ..)| kind == "cron")
             .and_then(|(_, project_id, _)| project_id.clone()),
@@ -804,14 +811,14 @@ fn read_proposal(
         })
         .transpose()?
         .flatten();
-    let dispatch_session_id = if let ProjectWorkspaceInboxDispatchAction::RunTask {
-        dispatch_id,
+    let dispatch_session_id = if let ProjectWorkspaceInboxDispatchAction::ExecuteDecision {
+        decision_id,
         ..
     } = &action
     {
         match task_target.as_ref() {
             Some((kind, _, session_id)) if kind == "heartbeat" => session_id.clone(),
-            _ => connection.query_row("SELECT session_id FROM core_automation_runs WHERE dispatch_id=?1 AND session_id IS NOT NULL ORDER BY created_at,run_id LIMIT 1",[dispatch_id],|r|r.get::<_,String>(0)).optional()?,
+            _ => connection.query_row("SELECT session_id FROM automation_execution_runs WHERE dispatch_id=?1 AND session_id IS NOT NULL ORDER BY created_at,run_id LIMIT 1",[decision_id],|r|r.get::<_,String>(0)).optional()?,
         }
     } else {
         dispatch_session_id
@@ -883,8 +890,8 @@ fn read_proposal(
             .transpose()?,
         proposal_id: proposal_id.to_owned(),
         revision,
-        origin: if origin == "schedule" {
-            ProjectWorkspaceInboxProposalOrigin::Schedule
+        origin: if origin == "automation" {
+            ProjectWorkspaceInboxProposalOrigin::Automation
         } else if origin == "user" {
             ProjectWorkspaceInboxProposalOrigin::User
         } else {
@@ -991,7 +998,7 @@ pub(super) fn read_pending_suggestions(
                SELECT entry.page_id, entry.seq, entry.scope_project_id FROM inbox_entries entry \
                JOIN blocks block ON block.id = entry.page_id AND block.lifecycle = 'active' \
                WHERE entry.library_id = ?1 AND entry.state = 'open' \
-                 AND entry.suggestion_state IN ('waiting','pending') AND entry.source_kind <> 'scheduled_task'), \
+                 AND entry.suggestion_state IN ('waiting','pending') AND entry.source_kind NOT IN ('automation','nodex')), \
              oldest AS (SELECT scope_project_id FROM waiting ORDER BY seq LIMIT 1) \
              SELECT waiting.page_id FROM waiting, oldest \
              WHERE waiting.scope_project_id IS oldest.scope_project_id \

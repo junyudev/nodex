@@ -75,7 +75,10 @@ const output = (suggestions: unknown[], titles: unknown[] = []) =>
 describe("validateInboxSuggestions", () => {
   it("keeps scheduled firings out of suggestion context and refuses decisions for them", () => {
     const held = {
+      ...entry("held", "Do not suggest this automationDecision"),
       source: {
+        kind: "automation" as const,
+        automation_id: "task",
         dispatch_id: "dispatch",
         label: "Task",
       },
@@ -93,6 +96,10 @@ describe("validateInboxSuggestions", () => {
     expect(payload.messages.map((message: { page_id: string }) => message.page_id)).toEqual(["1"]);
     expect(() =>
       validateInboxSuggestions(output([raw({ page_ids: ["held"] })]), data, [held], request),
+    ).toThrow(/Automations already have a run decision/);
+    expect(
+      InboxSuggestionOutput.safeParse(output([raw({ action: "execute_decision" })])).success,
+    ).toBe(false);
   });
   it("accepts an exact group and preserves its full prompt", () => {
     const entries = [entry("1", "Homepage copy"), entry("2", "Homepage hero")];

@@ -7,7 +7,7 @@ compatibility layers, or third-party products.
 ## Product voice
 
 - User-visible copy names the application and its agent experience **Nodex**.
-  Nodex works on a task, runs a scheduled task, creates a worktree, compacts
+  Nodex works on a task, runs a clock Automation, creates a worktree, compacts
   context, and asks the user for approval or clarification.
 - Product-facing navigation and instructions use **task** for a Codex app-server
   Thread. Use `thread` only when the distinction is itself part of a technical

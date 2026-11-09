@@ -35,7 +35,7 @@ interface PageStageToolbarProps {
   limitMainContentWidth: boolean;
   showRawContent: boolean;
   onCopyDeeplink: () => void;
-  /** Opens a new scheduled task that follows this Page as its runbook. */
+  /** Opens a new automation that follows this Page as its runbook. */
   onSchedule?: () => void;
   onDelete: () => void;
   showDelete?: boolean;

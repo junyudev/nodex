@@ -18,6 +18,138 @@ const PAGE_A_DOCUMENT: &str = "019b1000-1000-7000-8000-0000000000a2";
 const PAGE_B: &str = "019b1000-1000-7000-8000-000000000003";
 
 #[test]
+fn automations_preserve_revisions_and_manual_dispatch_identity() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
+    let client =
+        connect_or_launch(&home, "automations-cli-integration", Some(&core_binary)).unwrap();
+    let _core = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+    let path = directory.path().join("automation.json");
+    let mut definition = serde_json::json!({
+        "kind": "cron",
+        "name": "Review releases",
+        "condition_text": "Every day",
+        "prompt": "Review the latest releases",
+        "rrule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
+        "timezone": "Asia/Singapore",
+        "mode": "dry_run",
+        "project_id": null,
+        "execution_environment": "local",
+        "backend_binding": {"kind": "codex"},
+        "model": "gpt-6"
+    });
+    fs::write(&path, serde_json::to_vec(&definition).unwrap()).unwrap();
+    let create = [
+        "automations",
+        "create",
+        "--file",
+        path.to_str().unwrap(),
+        "--idempotency-key",
+        "create-automation",
+    ];
+    let created = success(&home, &create);
+    let id = created["item"]["automation_id"].as_str().unwrap();
+    assert_eq!(created["item"]["mode"], "dry_run");
+    assert_eq!(
+        created["item"]["typed_condition"]["timezone"],
+        "Asia/Singapore"
+    );
+    let replay = success(&home, &create);
+    assert_eq!(replay["item"], created["item"]);
+    assert_eq!(replay["duplicate"], true);
+    let listed = success(
+        &home,
+        &["automations", "list", "--query", "Review releases"],
+    );
+    assert_eq!(listed["items"][0]["automation_id"], id);
+    assert_eq!(
+        success(&home, &["automations", "show", id]),
+        created["item"]
+    );
+
+    let revision = created["item"]["automation_revision"]
+        .as_i64()
+        .unwrap()
+        .to_string();
+    definition["prompt"] = serde_json::json!("Review releases and record breaking changes");
+    fs::write(&path, serde_json::to_vec(&definition).unwrap()).unwrap();
+    let updated = success(
+        &home,
+        &[
+            "automations",
+            "update",
+            id,
+            "--if-revision",
+            &revision,
+            "--status",
+            "active",
+            "--file",
+            path.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(updated["item"]["prompt"], definition["prompt"]);
+    assert_eq!(
+        run(
+            &home,
+            &["automations", "pause", id, "--if-revision", &revision]
+        )["ok"],
+        false
+    );
+    let revision = updated["item"]["automation_revision"]
+        .as_i64()
+        .unwrap()
+        .to_string();
+    let paused = success(
+        &home,
+        &["automations", "pause", id, "--if-revision", &revision],
+    );
+    assert_eq!(paused["item"]["status"], "PAUSED");
+    let revision = paused["item"]["automation_revision"]
+        .as_i64()
+        .unwrap()
+        .to_string();
+    let resumed = success(
+        &home,
+        &["automations", "resume", id, "--if-revision", &revision],
+    );
+    assert_eq!(resumed["item"]["status"], "ACTIVE");
+
+    let dispatch = [
+        "automations",
+        "run",
+        id,
+        "--idempotency-key",
+        "manual-automation-run",
+    ];
+    let dispatched = success(&home, &dispatch);
+    let replay = success(&home, &dispatch);
+    assert_eq!(replay["duplicate"], true);
+    assert_eq!(replay["item"], dispatched["item"]);
+    let revision = dispatched["item"]["automation_revision"]
+        .as_i64()
+        .unwrap()
+        .to_string();
+    success(
+        &home,
+        &["automations", "delete", id, "--if-revision", &revision],
+    );
+    assert_eq!(
+        success(&home, &["automations", "show", id])["status"],
+        "DELETED"
+    );
+    assert!(
+        success(&home, &["automations", "list"])["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
 fn members_and_page_assignments_use_typed_identity_and_revision_fences() {
     use nodex_core_contracts::library::{LibraryRead, LibraryReadValue};
     let directory = nodex_platform::test_support::tempdir().unwrap();

@@ -1,8 +1,5 @@
 import { rrulestr, type RRule, type RRuleSet } from "rrule";
-import {
-  normalizeCodexScheduledAutomationRruleText,
-  parseCodexScheduledAutomationRruleFields,
-} from "@/lib/codex-scheduled-automation-rrule";
+import { normalizeAutomationRruleText, parseAutomationRruleFields } from "@/lib/automation-rrule";
 import { DEFAULT_WORKBENCH_AUTOMATION_RRULE } from "./workbench-automation-draft";
 
 export type WorkbenchAutomationScheduleMode = "hourly" | "daily" | "weekdays" | "weekly" | "custom";
@@ -98,7 +95,7 @@ export function resolveWorkbenchAutomationScheduleConfig(input: {
   intervalStyle: WorkbenchAutomationScheduleIntervalStyle;
 }): WorkbenchAutomationScheduleConfig {
   const fallback = createDefaultWorkbenchAutomationScheduleConfig(input.intervalStyle);
-  const text = normalizeCodexScheduledAutomationRruleText(input.rrule);
+  const text = normalizeAutomationRruleText(input.rrule);
   if (!text) return fallback;
 
   const parsed = parseScheduleRrule(text);
@@ -338,7 +335,7 @@ function parseScheduleRrule(rrule: string): ParsedScheduleRrule | null {
 
     const origOptions = normalizeOrigOptions(rule.origOptions as Record<string, unknown>);
     return {
-      fields: parseCodexScheduledAutomationRruleFields(rrule),
+      fields: parseAutomationRruleFields(rrule),
       origKeys: origOptions,
       options: rule.options,
       isStandaloneRrule: !origOptions.has("dtstart"),

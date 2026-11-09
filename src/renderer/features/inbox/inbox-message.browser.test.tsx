@@ -38,7 +38,7 @@ const waiting: InboxItem = {
   state: "open",
   suggestionState: "pending",
   suggestionError: null,
-  firing: null,
+  automationDecision: null,
   scope: { kind: "library" },
   location: { kind: "inbox" },
   proposal: null,

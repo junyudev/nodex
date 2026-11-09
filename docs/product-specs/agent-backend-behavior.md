@@ -217,5 +217,5 @@ Scheduled work uses ordinary Agent Runtime Session admission, due leases, durabl
 inboxes and controls. Workspaces are bound before launch. Failed preparation cleans up
 unowned allocations; committed execution locations remain attached through uncertain
 readback. No automation or imported-history path can create a second local execution
-owner. See [Scheduled route behavior](scheduled-route-behavior.md),
+owner. See [Automations behavior](automations-behavior.md),
 [Configuration](../CONFIGURATION.md) and [Security](../SECURITY.md).

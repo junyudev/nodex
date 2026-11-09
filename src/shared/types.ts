@@ -2145,56 +2145,64 @@ export interface CodexThreadSummary {
   linkedAt: string;
 }
 
-export type CodexScheduledAutomationKind = "cron" | "heartbeat";
-export type CodexScheduledAutomationStatus = "ACTIVE" | "PAUSED" | "DELETED";
-export type CodexScheduledAutomationExecutionEnvironment = "local" | "worktree";
-export type CodexScheduledAutomationReasoningEffort = string;
+export type AutomationExecutionKind = "cron" | "heartbeat";
+export type AutomationStatus = "ACTIVE" | "PAUSED" | "DELETED";
+export type AutomationExecutionEnvironment = "local" | "worktree";
+export type AutomationReasoningEffort = string;
+export type AutomationScope =
+  | { readonly kind: "space" }
+  | { readonly kind: "project"; readonly projectId: string };
 
-export type CodexScheduledAutomationNotificationPolicy =
+export type AutomationNotificationPolicy =
   CoreProtocolComponents["schemas"]["AutomationNotificationPolicy"];
 
-/**
- * What happens when a task falls due: `automatic` runs it; `ask` places the firing in the Inbox
- * until the user runs, adjusts, or skips it. Only the user grants `automatic`.
- */
-export type CodexScheduledAutomationLaunch = "automatic" | "ask";
+/** Dry run records a decision; Ask first waits in the Inbox; Run starts under the Owner’s grant. */
+export type AutomationMode = CoreProtocolComponents["schemas"]["AutomationMode"];
 
-/** The firing of an `ask` task waiting in the Inbox. At most one waits per task. */
-export interface CodexScheduledAutomationHeldFiring {
+/** The Ask decision waiting in the Inbox. At most one waits per Automation. */
+export interface AutomationHeldDecision {
   dispatchId: string;
-  /** The Inbox message that holds the firing. */
+  /** The Inbox message that holds the decision. */
   pageId: string;
   /** The Project whose Inbox holds it; null for the Library Inbox. */
   inboxProjectId: string | null;
   firstScheduledFor: number;
   lastScheduledFor: number;
-  /** Later firings that fell due while this one waited. */
+  /** Later clock occurrences recorded while this decision waited. */
   missedCount: number;
 }
 
-export interface CodexScheduledAutomation {
+export type AutomationSourceFilter =
+  import("@nodex/core-protocol").components["schemas"]["AutomationSourceFilter"];
+
+export interface Automation {
+  sourceCondition?: AutomationSourceFilter | null;
   id: string;
-  definitionRevision: number;
-  kind: CodexScheduledAutomationKind;
-  status: CodexScheduledAutomationStatus;
+  scope: AutomationScope;
+  automationRevision: number;
+  kind: AutomationExecutionKind;
+  status: AutomationStatus;
   projectId: string | null;
   targetSessionId: string | null;
-  notificationPolicy: CodexScheduledAutomationNotificationPolicy | null;
-  launch: CodexScheduledAutomationLaunch;
+  notificationPolicy: AutomationNotificationPolicy | null;
+  mode: AutomationMode;
+  ownerMemberId: string;
+  conditionText: string;
+  timezone: string;
   /** A Page every run follows as standing instructions, and which each run's chat links to. */
   runbookPageId: string | null;
   /** The runbook Page's current title; null without a runbook or when the Page is gone. */
   runbookTitle: string | null;
-  heldFiring: CodexScheduledAutomationHeldFiring | null;
+  heldDecision: AutomationHeldDecision | null;
   name: string;
   prompt: string;
   rrule: string | null;
   model: string | null;
-  reasoningEffort: CodexScheduledAutomationReasoningEffort | null;
+  reasoningEffort: AutomationReasoningEffort | null;
   serviceTier: string | null;
   backendBinding: AgentBackendBinding;
   cwds: string[];
-  executionEnvironment: CodexScheduledAutomationExecutionEnvironment;
+  executionEnvironment: AutomationExecutionEnvironment;
   localEnvironmentConfigPath: string | null;
   nextRunAt: number | null;
   lastRunAt: number | null;
@@ -2202,37 +2210,64 @@ export interface CodexScheduledAutomation {
   updatedAt: number;
 }
 
-export interface CodexScheduledAutomationCreateInput {
-  kind: CodexScheduledAutomationKind;
+export interface AutomationDecision {
+  matched?: boolean;
+  id: string;
+  dispatchId: string;
+  automationId: string;
+  status: "held" | "admitted" | "completed" | "failed" | "skipped" | "withdrawn";
+  mode: AutomationMode;
+  reason: string;
+  occurredAt: number;
+  pageId: string | null;
+  sessionId: string | null;
+}
+
+export interface AutomationDecisionsInput {
+  automationId: string;
+  limit?: number;
+}
+
+export interface AutomationDecisionsResponse {
+  items: AutomationDecision[];
+}
+
+export interface AutomationCreateInput {
+  sourceCondition?: AutomationSourceFilter | null;
+  scope?: AutomationScope;
+  kind: AutomationExecutionKind;
   projectId?: string | null;
   targetSessionId?: string | null;
-  notificationPolicy?: CodexScheduledAutomationNotificationPolicy | null;
-  /** Omitted keeps the current launch; a new task launches `automatic`. */
-  launch?: CodexScheduledAutomationLaunch;
+  notificationPolicy?: AutomationNotificationPolicy | null;
+  /** Omitted preserves the current mode; desktop creation defaults to Run and Agent creation to Ask first. */
+  mode?: AutomationMode;
+  ownerMemberId?: string;
+  conditionText?: string;
+  timezone?: string;
   runbookPageId?: string | null;
   name: string;
   prompt?: string | null;
   rrule?: string | null;
   model?: string | null;
-  reasoningEffort?: CodexScheduledAutomationReasoningEffort | null;
+  reasoningEffort?: AutomationReasoningEffort | null;
   serviceTier?: string | null;
   backendBinding?: AgentBackendBinding;
   cwds?: string[];
-  executionEnvironment?: CodexScheduledAutomationExecutionEnvironment | null;
+  executionEnvironment?: AutomationExecutionEnvironment | null;
   localEnvironmentConfigPath?: string | null;
 }
 
-export interface CodexScheduledAutomationUpdateInput extends CodexScheduledAutomationCreateInput {
+export interface AutomationUpdateInput extends AutomationCreateInput {
   id: string;
-  status: CodexScheduledAutomationStatus;
+  status: AutomationStatus;
   expectedRevision?: number;
 }
 
-export interface CodexScheduledAutomationListResponse {
-  items: CodexScheduledAutomation[];
+export interface AutomationListResponse {
+  items: Automation[];
 }
 
-export type CodexScheduledAutomationDeleteStatus =
+export type AutomationDeleteStatus =
   | "store_unavailable"
   | "invalid_id"
   | "state_cleanup_failed"
@@ -2240,26 +2275,26 @@ export type CodexScheduledAutomationDeleteStatus =
   | "deleted"
   | "not_found";
 
-export interface CodexScheduledAutomationDeleteInput {
+export interface AutomationDeleteInput {
   id: string;
 }
 
-export interface CodexScheduledAutomationDeleteResponse {
-  item: CodexScheduledAutomation | null;
+export interface AutomationDeleteResponse {
+  item: Automation | null;
   success: boolean;
-  status: CodexScheduledAutomationDeleteStatus;
+  status: AutomationDeleteStatus;
 }
 
-export interface CodexScheduledAutomationMutationResponse {
-  item: CodexScheduledAutomation;
+export interface AutomationMutationResponse {
+  item: Automation;
 }
 
-export interface CodexScheduledAutomationRunNowInput {
+export interface AutomationRunNowInput {
   id: string;
   collaborationMode?: CodexHeartbeatAutomationCollaborationMode | null;
 }
 
-export interface CodexScheduledAutomationRunNowResponse {
+export interface AutomationRunNowResponse {
   success: boolean;
 }
 
@@ -2275,32 +2310,34 @@ export interface CodexHeartbeatAutomationThreadStateChangedInput {
   collaborationMode?: CodexHeartbeatAutomationCollaborationMode | null;
 }
 
-export interface CodexAutomationRunArchiveInput {
+export interface AutomationRunArchiveInput {
   runId: string;
   archivedAssistantMessage?: string | null;
   archivedUserMessage?: string | null;
   archivedReason?: string | null;
 }
 
-export interface CodexAutomationRunDeleteInput {
+export interface AutomationRunDeleteInput {
   runId: string;
 }
 
-export interface CodexAutomationRunUnarchiveInput {
+export interface AutomationRunUnarchiveInput {
   runId: string;
 }
 
-export interface CodexAutomationRunMutationResponse {
+export interface AutomationRunMutationResponse {
   success: boolean;
 }
 
-export type CodexAutomationRunStatus = "IN_PROGRESS" | "PENDING_REVIEW" | "ACCEPTED" | "ARCHIVED";
+export type AutomationRunStatus = "IN_PROGRESS" | "PENDING_REVIEW" | "ACCEPTED" | "ARCHIVED";
 
-export interface CodexAutomationRun {
+export interface AutomationRun {
   runId: string;
+  agentSelection: import("./work-graph").AgentSelection | null;
+  pageId: string | null;
   sessionId: string | null;
   automationId: string;
-  status: CodexAutomationRunStatus;
+  status: AutomationRunStatus;
   readAt: number | null;
   sessionTitle: string | null;
   sourceCwd: string | null;
@@ -2313,7 +2350,7 @@ export interface CodexAutomationRun {
   updatedAt: number;
 }
 
-export interface CodexAutomationInboxItem {
+export interface AutomationInboxItem {
   id: string;
   automationId: string;
   automationName: string | null;
@@ -2327,10 +2364,10 @@ export interface CodexAutomationInboxItem {
   sessionId: string | null;
   readAt: number | null;
   createdAt: number;
-  status: CodexAutomationRunStatus;
+  status: AutomationRunStatus;
 }
 
-export interface CodexAutomationRunUnreadCounts {
+export interface AutomationRunUnreadCounts {
   total: number;
   automationIds: string[];
   unreadRuns: Array<{
@@ -2339,31 +2376,31 @@ export interface CodexAutomationRunUnreadCounts {
   }>;
 }
 
-export interface CodexAutomationRunsInboxResponse {
-  items: CodexAutomationInboxItem[];
-  unreadRunCounts: CodexAutomationRunUnreadCounts;
+export interface AutomationRunsInboxResponse {
+  items: AutomationInboxItem[];
+  unreadRunCounts: AutomationRunUnreadCounts;
 }
 
-export interface CodexAutomationRunReadStateInput {
+export interface AutomationRunReadStateInput {
   runId: string;
   readAt: number | null;
 }
 
-export interface CodexAutomationRunMarkAllReadInput {
+export interface AutomationRunMarkAllReadInput {
   readAt: number;
 }
 
-export interface CodexAutomationRunMarkAllReadResponse {
+export interface AutomationRunMarkAllReadResponse {
   changedCount: number;
 }
 
-export interface CodexScheduledAutomationChangedEvent {
+export interface AutomationChangedEvent {
   automationId: string;
   sessionId: string | null;
   reason: "upsert" | "delete";
 }
 
-export interface CodexAutomationRunsUpdatedEvent {
+export interface AutomationRunsUpdatedEvent {
   automationId?: string | null;
   runId?: string | null;
   sessionId?: string | null;
@@ -3190,20 +3227,20 @@ export interface CodexDynamicToolCallView {
   completed: boolean;
 }
 
-export interface CodexAutomationUpdateView {
+export interface AutomationUpdateView {
   callId: string;
   arguments: Record<string, unknown>;
   source?: "nativeMcp";
   proposal?: AutomationProposal;
   result: {
     automationId: string;
-    mode: "create" | "update" | "delete" | null;
+    operation: "create" | "update" | "delete" | null;
     deleteStatus?: "deleted" | "not_found";
     snapshot?: {
       kind: "cron" | "heartbeat";
       name: string;
       rrule: string;
-      launch?: CodexScheduledAutomationLaunch;
+      mode?: AutomationMode;
       runbookPageId?: string | null;
     } | null;
   } | null;
@@ -3324,6 +3361,8 @@ export interface CodexMcpToolCallView {
 }
 
 export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
+  /** Execution-owned detail revision; independent of display time. */
+  outputVersion?: string;
   threadId: string;
   turnId: string | null;
   itemId: string;
@@ -3341,7 +3380,7 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   toolCall?: CodexToolCallView;
   mcpToolCall?: CodexMcpToolCallView;
   dynamicToolCall?: CodexDynamicToolCallView;
-  automationUpdate?: CodexAutomationUpdateView;
+  automationUpdate?: AutomationUpdateView;
   webSearch?: CodexWebSearchView;
   generatedImage?: CodexGeneratedImageView;
   subagentActivity?: CodexSubagentActivityView;
@@ -3385,6 +3424,8 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
 }
 
 export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFields {
+  /** Execution-owned detail revision; independent of display time. */
+  outputVersion?: string;
   /** Owner-bound lazy output, separate from the resident transcript and its byte budget. */
   toolOutputReference?: import("./agent-tool-output").AgentToolOutputReference;
   threadId: string;
@@ -3407,7 +3448,7 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   toolCall?: CodexToolCallView;
   mcpToolCall?: CodexMcpToolCallView;
   dynamicToolCall?: CodexDynamicToolCallView;
-  automationUpdate?: CodexAutomationUpdateView;
+  automationUpdate?: AutomationUpdateView;
   webSearch?: CodexWebSearchView;
   generatedImage?: CodexGeneratedImageView;
   subagentActivity?: CodexSubagentActivityView;
@@ -4686,8 +4727,8 @@ export type CodexEvent =
   | { type: "subagentOverviewInvalidated"; rootThreadId: string }
   | { type: "threadDeleted"; hostId: string; threadId: string }
   | { type: "threadArchivedState"; threadId: string; archived: boolean }
-  | { type: "scheduledAutomationChanged"; event: CodexScheduledAutomationChangedEvent }
-  | { type: "automationRunsUpdated"; event: CodexAutomationRunsUpdatedEvent }
+  | { type: "automationChanged"; event: AutomationChangedEvent }
+  | { type: "automationRunsUpdated"; event: AutomationRunsUpdatedEvent }
   | {
       type: "threadStatus";
       threadId: string;

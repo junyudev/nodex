@@ -165,8 +165,8 @@ a status line.
 
 ### Agent Backend
 
-An Agent Backend is the runtime and protocol family that executes a Thread or supported Scheduled
-Automation: native Codex, native Claude Code, native OpenCode, or ACP. A Backend Binding identifies
+An Agent Backend is the runtime and protocol family that executes a Thread or supported clock Automation:
+native Codex, native Claude Code, native OpenCode, or ACP. A Backend Binding identifies
 that family and, when required, its Agent Instance and ACP Agent Definition, independently of the
 native session's resume identity.
 
@@ -706,6 +706,7 @@ Done. Todo backlog and paused Pages stay out. Its episode start orders it;
 An Inbox entry is the Workspace-owned record beside a message Page. It holds:
 
 - the message's immutable source: the person, an Agent, the command line or a
+  Automation's held decision;
 - the Nodex answer it replies to, when it continues that conversation;
 - a user-editable kind: note, todo, or question, for messages that take advice;
 - whether the user marked it important, which keeps it within reach while it
@@ -728,6 +729,8 @@ a Project went, while the Project's own Properties apply to the Page.
 ### Dispatch proposal
 
 A Dispatch proposal is one typed action for one or more Inbox entries: keep,
+new chat, send to chat, move to Project, plan, or run an Automation's held
+decision. A plan names several Pages to create across Projects, each with its Agent
 work and Prerequisites. A new chat may also name the Agent it
 runs on. A chat action's prompt holds what the user asked for; its optional additions hold what the suggestion added on
 its own, such as advice to delegate part of the work, each dropped before confirmation if the user unchecks it. It is versioned and records the
@@ -738,19 +741,52 @@ makes it Dispatch work. Nodex marks each chat proposal that answers a request th
 made; under that consent the Host confirms such a proposal for the user's own unchanged messages, and the
 confirmation records that Nodex made it. Plans, Keep and filing always wait for the user. Confirmed chat
 work stays in the `dispatching` state until the Desktop Host delivers it. A
-Scheduled task writes the run proposal for its own Firing; the suggestion Agent
-never does.
+Automation writes the proposal for its own decision; Nodex never does.
 
 _Avoid_: task, job, routing rule.
 
+### Automation
 
+An Automation is a Core-owned standing instruction scoped to a Project or the Space.
+It has a Member Owner, a natural-language condition and action, an optional typed
+condition, execution target, mode, lifecycle and revision. A clock condition
+retains its schedule, explicit timezone and jitter salt. A heartbeat continues
+one stable Session; other clock Automations start new chats per configured folder.
 
+Its mode is Dry run, Ask first or Run. Dry run records what Nodex would have
+done. Ask first holds an editable decision in the Owner's Inbox. Run starts under
+the Owner's standing grant. Only that Owner may change an Automation's mode or
+edit one set to Run. Agents propose changes for the Owner to apply; they do not
+change existing Automations directly. Page recurrence and reminders schedule a
+person's work and never start an Agent.
 
+_Avoid_: Rule, Scheduled task, job, routine; Observe, Ask or Auto for the modes.
 
+### Automation assessment
+
+Core serializes one unsettled event assessment per primary external thread.
+Enabled Source filters select unfollowed Triggers; the Coordinator judges their
+written condition and action from bounded retained evidence. Generation and
+policy fences reject stale answers, and every applicable Automation receives a
+positive or negative factual judgement. Dry run records only; Ask first proposes
+to the Automation Owner; Run creates a Page owned by that person, assigns its Agent,
+follows the thread as origin and starts it under the standing grant. Equivalent
+actions share admission; incompatible actions ask. External actors never supply
+authority. See [Automations behavior](docs/product-specs/automations-behavior.md).
+
+### Automation decision
+
+An Automation decision records Trigger references, inputs, reason, frozen action and
+authority, state and proposal, Page and dispatch links. Clock Triggers are
+immutable due occurrences. A decision retains its dispatch identity across
+lease retries. A clock Automation set to Ask first has one waiting decision; later occurrences append
+references while its clock advances. Confirmation freezes the reviewed message
+and Agent choice. Skip, redirect and withdrawal settle the waiting decision.
+Dry run decisions create no work, proposal or chat.
 
 ### Runbook
 
-A Runbook is a Library Page that a Scheduled task follows as standing
+A Runbook is a Library Page that an Automation follows as standing
 instructions. Each run reads its current content and may update it for later
 runs, and each run's chat links to it.
 
@@ -1092,7 +1128,10 @@ state is rejected rather than replayed.
     command-line Inbox workflow endpoints append entries; their backing Pages
     follow the same full-Profile content model. Core records each entry's actual
     execution source, and confirmed triage owns dispatch intent.
+29. Only the Automation Owner grants Run execution; Agents propose Automation edits for
     Owner review. A Page's Start automatically and a plan's starts require the
+    user's consent. Agent commands may move those toward asking, never toward
+    running unattended.
 30. Only the Coordinator authors Turn notes and Inbox answers and answers suggestion
     requests through its tool; the source is derived from verified execution
     identity, never from a name.
@@ -1276,6 +1315,7 @@ idempotency, projections, and post-commit events behind `read` and `apply`.
   open beside their Inbox, and each Inbox's primary Database is protected
   Library content listed in Space.
 - `docs/adr/0082-automations-replace-scheduled-tasks.md`: Owner-authorized Automations, clock
+  Triggers and editable held decisions in the Inbox, person-granted
   unattended execution, and runbook Pages.
 - `docs/adr/0079-status-moves-on-facts-a-persons-move-wins.md`: guarded Status
   transitions preserve the person's later move; Done accepts prerequisites, Canceled

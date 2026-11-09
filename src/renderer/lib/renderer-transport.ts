@@ -174,11 +174,11 @@ export interface RendererTransport {
     callback: (status: import("./types").AppUpdateStatus) => void,
   ) => () => void;
   subscribeCommandKeymapChanges: (callback: (state: CommandKeymapState) => void) => () => void;
-  subscribeCodexScheduledAutomationChanges: (
-    callback: (event: import("../../shared/types").CodexScheduledAutomationChangedEvent) => void,
+  subscribeAutomationChanges: (
+    callback: (event: import("../../shared/types").AutomationChangedEvent) => void,
   ) => () => void;
-  subscribeCodexAutomationRunsUpdates: (
-    callback: (event: import("../../shared/types").CodexAutomationRunsUpdatedEvent) => void,
+  subscribeAutomationRunsUpdates: (
+    callback: (event: import("../../shared/types").AutomationRunsUpdatedEvent) => void,
   ) => () => void;
   subscribeCodexHooksChanged: (
     callback: (event: import("../../shared/codex-hooks").CodexHooksChangedEvent) => void,

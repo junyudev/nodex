@@ -1459,7 +1459,7 @@ export function LocalConversationThreadBodyOwner({
                 onOpenSideChat={actions.onOpenSideChat}
                 onOpenThread={actions.onOpenThread}
                 onOpenSubagentsPanel={actions.onOpenSubagentsPanel}
-                onOpenSummaryScheduledAutomation={actions.onOpenSummaryScheduledAutomation}
+                onOpenSummaryAutomation={actions.onOpenSummaryAutomation}
                 onOpenMcpAppSidePanel={actions.onOpenMcpAppSidePanel}
                 onOpenPlanInSidePanel={actions.onOpenPlanInSidePanel}
                 onClosePlanSidePanel={actions.onClosePlanSidePanel}

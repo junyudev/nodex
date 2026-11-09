@@ -2235,7 +2235,7 @@ describe("ThreadFloatingSummaryPanel", () => {
           ],
           { onStopBackgroundTerminals: async () => {} },
         )}
-        scheduledAutomation={{
+        clockAutomation={{
           id: "automation-1",
           name: "Review release notes",
           scheduleSummary: "Every weekday",
@@ -2267,7 +2267,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     await view.findByText("Generated image 1");
     const content = textContent(view.container);
     const orderedTitles = [
-      "Scheduled",
+      "Automations",
       "Plan",
       "Outputs",
       "Side chats",
@@ -2284,7 +2284,6 @@ describe("ThreadFloatingSummaryPanel", () => {
         .sort((left, right) => left - right)
         .join(","),
     );
-    expect(content.includes("Automations")).toBe(false);
     expect(content.includes("Review release notes")).toBe(true);
     expect(content.includes("Every weekday")).toBe(true);
     expect(content.includes("Summary panel parity")).toBe(true);
@@ -2300,10 +2299,10 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(content.includes("Environment")).toBe(false);
   });
 
-  test("opens the scheduled automation row with the reference action payload", async () => {
+  test("opens the Automation row with the reference action payload", async () => {
     const openedAutomations: unknown[] = [];
     const actions = {
-      onOpenSummaryScheduledAutomation: (input) => {
+      onOpenSummaryAutomation: (input) => {
         openedAutomations.push(input);
       },
     } as Partial<ThreadStageActions> as ThreadStageActions;
@@ -2316,7 +2315,7 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd={null}
         projectWorkspacePath={null}
         turns={[]}
-        scheduledAutomation={{
+        clockAutomation={{
           id: "automation-1",
           name: "Review release notes",
           scheduleSummary: "Every weekday",
@@ -2326,7 +2325,7 @@ describe("ThreadFloatingSummaryPanel", () => {
       />,
     );
 
-    const row = view.getByRole("button", { name: "Open scheduled task" });
+    const row = view.getByRole("button", { name: "Open automation" });
     await expectTooltipContent(row, "Next run: tomorrow at 9:00 AM");
     expect(textContent(row).includes("Review release notes")).toBe(true);
     expect(textContent(row).includes("Every weekday")).toBe(true);

@@ -1,11 +1,11 @@
 import { useEffect } from "react";
-import type { CodexScheduledAutomation } from "../../../shared/types";
-import { publishCodexHeartbeatEnabled } from "../../lib/codex-automation-runtime";
-import { useCodexScheduledAutomations } from "../../lib/use-codex-scheduled-automations";
+import type { Automation } from "../../../shared/types";
+import { publishCodexHeartbeatEnabled } from "../../lib/automations-runtime";
+import { useAutomationsQuery } from "../../lib/use-automations-query";
 import { RuntimeHeartbeatAutomationTarget } from "./runtime-heartbeat-automation";
 
 export function listHeartbeatAutomationTargetSessionIds(
-  automations: readonly CodexScheduledAutomation[],
+  automations: readonly Automation[],
 ): string[] {
   return Array.from(
     new Set(
@@ -21,7 +21,7 @@ export function listHeartbeatAutomationTargetSessionIds(
 /** Heartbeats retain execution controls for their stable Session, never transcript bodies. */
 export function HeartbeatAutomationController() {
   const electronAvailable = typeof window !== "undefined" && Boolean(window.api);
-  const automations = useCodexScheduledAutomations();
+  const automations = useAutomationsQuery();
   useEffect(() => {
     if (!electronAvailable) return;
     void publishCodexHeartbeatEnabled({ enabled: true }).catch(() => undefined);

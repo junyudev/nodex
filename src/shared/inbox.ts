@@ -19,8 +19,8 @@ export type InboxEntryState = "open" | "kept" | "done";
  * for automatic advice; `pending` has a suggestion running; `none` has no advice requested.
  */
 export type InboxSuggestionState = "none" | "waiting" | "pending" | "settled" | "failed";
-/** `schedule` proposals are written by a scheduled task for its own firing. */
-export type InboxProposalOrigin = "agent" | "user" | "schedule";
+/** Automation proposals are written from the Automation’s frozen decision. */
+export type InboxProposalOrigin = "agent" | "user" | "automation";
 export type InboxProposalState =
   | "open"
   | "superseded"
@@ -80,10 +80,9 @@ export type InboxDispatchAction =
     }
   | { readonly type: "move_to_project"; readonly projectId: string }
   | {
-      /** Run a scheduled task's waiting firing; the message's reviewed text is its instructions. */
-      readonly type: "run_task";
-      readonly automationId: string;
-      readonly dispatchId: string;
+      /** Admit a frozen decision using the message’s reviewed instructions. */
+      readonly type: "execute_decision";
+      readonly decisionId: string;
       /** What this run uses instead of the task's own Agent selection. */
       readonly agent: InboxAgentChoice | null;
     };
@@ -156,16 +155,16 @@ export type InboxSource =
       readonly label: string;
     }
   | {
-      /** A due firing of a scheduled task that asks before it runs. */
-      readonly kind: "scheduled_task";
+      /** An Automation decision waiting for its Owner in the Inbox. */
+      readonly kind: "automation";
       readonly automationId: string;
       readonly dispatchId: string;
       readonly projectId: string | null;
-      /** The task's name when the firing arrived. */
+      /** The task's name when the automationDecision arrived. */
       readonly label: string;
     };
 
-export type InboxFiringStatus =
+export type InboxAutomationDecisionStatus =
   | "held"
   | "admitted"
   | "completed"
@@ -173,14 +172,14 @@ export type InboxFiringStatus =
   | "skipped"
   | "withdrawn";
 
-/** The firing behind a scheduled task's message, as it stands now. */
-export interface InboxFiring {
+/** The Automation decision behind an Inbox message, as it stands now. */
+export interface InboxAutomationDecision {
   readonly automationId: string;
   readonly dispatchId: string;
-  readonly status: InboxFiringStatus;
+  readonly status: InboxAutomationDecisionStatus;
   readonly firstScheduledFor: number;
   readonly lastScheduledFor: number;
-  /** Later firings that fell due while this one waited. */
+  /** Later clock occurrences recorded while this decision waited. */
   readonly missedCount: number;
   /** Why its execution failed before reaching a chat. */
   readonly failureMessage: string | null;
@@ -278,8 +277,8 @@ export interface InboxItem {
   readonly location: InboxLocation;
   /** The current suggestion. An outdated one stays here while new advice waits, runs or fails. */
   readonly proposal: InboxProposal | null;
-  /** Present for a scheduled task's firing. */
-  readonly firing: InboxFiring | null;
+  /** Present for an Automation decision’s intake message. */
+  readonly automationDecision: InboxAutomationDecision | null;
   readonly revision: number;
   readonly basis: InboxPageBasis;
 }

@@ -54,7 +54,7 @@ describe("Codex desktop developer instructions", () => {
       "### Thread Coordination",
       "### Non-technical UI",
       "### Inline Code Comments",
-      "## Heartbeats",
+      "### Heartbeats",
       "### Git",
     ].map((section) => instructions.indexOf(section));
     expect(sectionOrder.every((index) => index >= 0)).toBe(true);

@@ -159,9 +159,9 @@ it.effect("binds Agent Automation reads and commands without leaking authority t
         live.pipe(Layer.provide(Layer.succeed(CoreSessionAccess, access))),
       );
       const core = Context.get(context, CoreModules);
-      const read: AutomationRead = { kind: "definition", automation_id: "automation:a" };
+      const read: AutomationRead = { kind: "automation", automation_id: "automation:a" };
       const list = {
-        kind: "definitions",
+        kind: "automations",
         include_deleted: false,
         search_query: "daily",
         window: { after: "cursor:next", first: 25 },
@@ -169,14 +169,14 @@ it.effect("binds Agent Automation reads and commands without leaking authority t
       const input: AutomationApplyInput = {
         operationId: "operation:delete",
         intent: {
-          kind: "delete_definition",
+          kind: "delete_automation",
           automation_id: "automation:a",
           expected_revision: 4,
         },
       };
 
       const rejected = yield* core.automation
-        .read({ kind: "due_work", lane: "definitions" }, undefined, "project:target")
+        .read({ kind: "due_work", lane: "automations" }, undefined, "project:target")
         .pipe(Effect.provideService(CoreApplicationAgent, provenance), Effect.flip);
       assert.strictEqual(rejected.operation, "automation.read");
       assert.isFalse(rejected.retryable);
@@ -199,12 +199,12 @@ it.effect("binds Agent Automation reads and commands without leaking authority t
       assert.deepStrictEqual(requests, [
         {
           projectId: "project:actor",
-          input: { kind: "agent_definition", automation_id: "automation:a", provenance },
+          input: { kind: "agent_automation", automation_id: "automation:a", provenance },
         },
         {
           projectId: "project:actor",
           input: {
-            kind: "agent_definitions",
+            kind: "agent_automations",
             search_query: "daily",
             window: { after: "cursor:next", first: 25 },
             provenance,

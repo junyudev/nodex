@@ -54,7 +54,7 @@ import {
 
 const PROJECTLESS_SCOPE_KEY = "__projectless__";
 
-/** Where a selected Session appears: its Home scene by default, or in place within Scheduled. */
+/** Where a selected Session appears: its Home scene by default, or in place within Automations. */
 export interface WorkbenchSessionPlacement {
   readonly scheduledPath: string;
 }
@@ -69,7 +69,7 @@ export interface WorkbenchSessionCatalogWindowPort {
       | ((previous: WorkbenchSceneSnapshot | undefined) => WorkbenchSceneSnapshot),
   ) => void;
   readonly selectSession: (session: WorkbenchSessionCatalogEntry) => void;
-  readonly presentScheduledSession: (input: {
+  readonly presentAutomationSession: (input: {
     readonly path: string;
     readonly session: WorkbenchSessionCatalogEntry;
   }) => void;
@@ -767,7 +767,7 @@ export function useWorkbenchSessionCatalog({
         dispatchWorkbenchCodexNavigation(domain.thread);
       const entry = { id: domain.id, projectId: domain.projectId };
       if (placement) {
-        window.presentScheduledSession({ path: placement.scheduledPath, session: entry });
+        window.presentAutomationSession({ path: placement.scheduledPath, session: entry });
         return;
       }
       window.selectSession(entry);

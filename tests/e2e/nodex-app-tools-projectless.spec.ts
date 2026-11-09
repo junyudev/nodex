@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
+import type { AutomationListResponse } from "../../src/shared/types";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
@@ -33,7 +34,7 @@ const outputRecords = (value: unknown) =>
     }
   });
 const unwrap =
-  'const unwrap = r => { const v = typeof r === "string" ? JSON.parse(r) : r; return v.structuredContent ?? (v.content ? JSON.parse(v.content[0].text) : v); };';
+  'const raw = r => typeof r === "string" ? JSON.parse(r) : r; const unwrap = r => { const v = raw(r); return v.structuredContent ?? (v.content ? JSON.parse(v.content[0].text) : v); };';
 
 const waitForCompletedSession = async (page: Page, sessionId: string) => {
   await expect
@@ -54,7 +55,7 @@ const waitForCompletedSession = async (page: Page, sessionId: string) => {
     .toBe("completed");
 };
 
-test("projectless agents use Profile content and Automation tools in both interaction modes", async () => {
+test("projectless agents use Profile content and Automations tools in both interaction modes", async () => {
   test.setTimeout(180_000);
   const pageId = createUuidV7();
   let viewId = "";
@@ -66,8 +67,9 @@ test("projectless agents use Profile content and Automation tools in both intera
       exchanges: ["write", "plan"].map<ScriptedModelExchange>((phase) => ({
         name: `projectless ${phase}`,
         match: (request) =>
-          request.hasUserInputText(`PROJECTLESS_${phase}`) &&
-          (phase === "plan" || !request.hasUserInputText("PROJECTLESS_plan")),
+          (request.hasUserInputText(`PROJECTLESS_${phase}`) &&
+            (phase === "plan" || !request.hasUserInputText("PROJECTLESS_plan"))) ||
+          request.toolCallOutput(`projectless_${phase}`) !== null,
         expectedCalls: 2,
         maximumCalls: 2,
         respond: (request, index) => {
@@ -90,8 +92,8 @@ test("projectless agents use Profile content and Automation tools in both intera
                     'text({sql:unwrap(await app.query_content({scope:{},sql:"SELECT title FROM pages",parameters:{}}))});',
                     // Table names prove the schema read without spending the output budget on it.
                     "const schema=unwrap(await app.describe_content_schema({scope:{}})); text({schema:{tables:schema.tables.map(t=>t.table)}});",
-                    'const cron={kind:"cron",name:"Projectless review",prompt:"Review this independent task",rrule:"FREQ=YEARLY",projectId:null,cwds:[],executionEnvironment:"local"}; const automation=unwrap(await app.automation_update({mode:"create",...cron})); text({automation});',
-                    'text({automationUpdated:unwrap(await app.automation_update({...cron,mode:"update",id:automation.item.id,expectedRevision:automation.item.definitionRevision,status:"PAUSED",name:"Projectless paused review"}))});',
+                    'const cron={kind:"cron",name:"Projectless review",prompt:"Review this independent task",rrule:"FREQ=YEARLY",projectId:null,cwds:[],executionEnvironment:"local"}; const automationCreated=unwrap(await app.automations_update({operation:"create",...cron})); text({automationCreated});',
+                    'text({automationUpdateRefused:raw(await app.automations_update({...cron,operation:"update",id:automationCreated.item.id,expectedRevision:automationCreated.item.automationRevision,status:"PAUSED",name:"Projectless paused review"}))});',
                     "const context=unwrap(await app.get_session_context({})); text({session:context}); const groups=unwrap(await app.list_tab_groups({observationId:context.presentation.observationId}));",
                     `text({opened:unwrap(await app.open_tab({observationId:context.presentation.observationId,panelId:"right",groupId:groups.items.find(g=>g.panelId==="right").groupId,target:{kind:"view",viewId:${JSON.stringify(viewId)}}}))});`,
                     'const current=unwrap(await app.get_session_context({mode:"refresh"})); const tabs=unwrap(await app.list_session_tabs({observationId:current.presentation.observationId}));',
@@ -100,8 +102,8 @@ test("projectless agents use Profile content and Automation tools in both intera
                 : [
                     ...common,
                     `text({planWrite:unwrap(await app.update_page({pageId:${JSON.stringify(pageId)},body:{kind:"replace",ifMatch:fetched.data.content.etag,markdown:"Planned content update"}}))});`,
-                    `text({automationRead:unwrap(await app.automation_update({mode:"view",id:${JSON.stringify(automationId)}}))});`,
-                    `text({deletedAutomation:unwrap(await app.automation_update({mode:"delete",id:${JSON.stringify(automationId)},expectedRevision:${automationRevision}}))});`,
+                    `text({automationRead:unwrap(await app.automations_update({operation:"view",id:${JSON.stringify(automationId)}}))});`,
+                    `text({automationDeleteRefused:raw(await app.automations_update({operation:"delete",id:${JSON.stringify(automationId)},expectedRevision:${automationRevision}}))});`,
                   ];
             return responses.stream([
               responses.created(callId),
@@ -133,19 +135,35 @@ test("projectless agents use Profile content and Automation tools in both intera
               kind: "database_view",
               query: { result: { returned_count: 1 } },
             });
-            const saved = requireRecord(result("automationUpdated").item, "saved Automation");
+            const saved = requireRecord(result("automationCreated").item, "created Automation");
             expect(saved).toMatchObject({
               projectId: null,
-              status: "PAUSED",
-              name: "Projectless paused review",
+              status: "ACTIVE",
+              mode: "ask_first",
+              name: "Projectless review",
+              automationRevision: 1,
+            });
+            expect(result("automationUpdateRefused")).toMatchObject({
+              isError: true,
+              structuredContent: { error: { code: "unauthorized" } },
             });
             automationId = saved.id as string;
-            automationRevision = saved.definitionRevision as number;
+            automationRevision = saved.automationRevision as number;
           } else {
             expect(result("planWrite")).toHaveProperty("data");
-            expect(result("deletedAutomation")).not.toHaveProperty("error");
+            expect(result("automationDeleteRefused")).toMatchObject({
+              isError: true,
+              structuredContent: { error: { code: "unauthorized" } },
+            });
             expect(result("automationRead")).toMatchObject({
-              item: { id: automationId, projectId: null },
+              item: {
+                id: automationId,
+                projectId: null,
+                status: "ACTIVE",
+                mode: "ask_first",
+                name: "Projectless review",
+                automationRevision,
+              },
             });
           }
           return responses.stream([
@@ -173,7 +191,6 @@ test("projectless agents use Profile content and Automation tools in both intera
           NODEX_LOG_CONSOLE: "0",
         },
       });
-      const workspaceHome = join(harness.profile.runRoot, "home");
       writeFileSync(
         join(harness.profile.codexHome, "config.toml"),
         `model_provider = "openai"\nopenai_base_url = ${JSON.stringify(`${model.baseUrl}/v1`)}\nrequest_max_retries = 0\nstream_max_retries = 0\n[features]\nrespect_system_proxy = false\n`,
@@ -247,6 +264,8 @@ test("projectless agents use Profile content and Automation tools in both intera
             return threadId;
           })
           .toBeTruthy();
+        await waitForFinalMarker(page, "PROJECTLESS_write_OK");
+        await waitForCompletedSession(page, callerSession.id);
         let executionCwd = "";
         await expect
           .poll(async () => {
@@ -263,11 +282,9 @@ test("projectless agents use Profile content and Automation tools in both intera
             return executionCwd;
           })
           .not.toBe("");
-        const workspacePath = relative(workspaceHome, executionCwd);
+        const workspacePath = relative(harness.profile.runRoot, executionCwd);
         expect(workspacePath).not.toMatch(/^\.\.(?:[/\\]|$)/);
         expect(isAbsolute(workspacePath)).toBe(false);
-        await waitForFinalMarker(page, "PROJECTLESS_write_OK");
-        await waitForCompletedSession(page, callerSession.id);
         await composer.focus();
         await composer.press("Shift+Tab");
         await expect(page.getByLabel("Plan", { exact: true })).toBeVisible();
@@ -278,6 +295,16 @@ test("projectless agents use Profile content and Automation tools in both intera
         expect((await seed.readPage(seedProject.projectId, pageId)).descriptionPreview).toContain(
           "Planned content update",
         );
+        expect((await invokeIpc(page, "automations:list")) as AutomationListResponse).toMatchObject(
+          {
+            items: [{ id: automationId, mode: "ask_first", status: "ACTIVE", automationRevision }],
+          },
+        );
+        expect(await invokeIpc(page, "automations:delete", { id: automationId })).toMatchObject({
+          success: true,
+          status: "deleted",
+        });
+        expect(await invokeIpc(page, "automations:list")).toEqual({ items: [] });
       } catch (error) {
         const presented = await harness.page
           .locator("body")

@@ -1,6 +1,8 @@
 pub(crate) const MAX_PROMPT_BYTES: usize = 1024 * 1024;
 
 mod agent_command;
+pub(crate) mod clock;
+pub(crate) mod event_filter;
 pub(crate) mod firing;
 mod mutation;
 mod occurrence;
@@ -12,7 +14,7 @@ pub(crate) use occurrence_mutation::refresh_scheduled_index;
 mod read;
 mod reminder;
 mod run;
-mod schedule;
+pub(crate) mod schedule;
 mod session_lifecycle;
 pub(crate) use session_lifecycle::{TargetSessionLifecycle, on_target_session_lifecycle};
 
@@ -152,13 +154,13 @@ impl AutomationModule {
                 connection
                     .query_row(
                         "SELECT EXISTS( \
-                           SELECT 1 FROM codex_scheduled_automations \
+                           SELECT 1 FROM automations \
                              WHERE status = 'ACTIVE' AND next_run_at IS NOT NULL \
                                AND next_run_at <= ?1 \
                            UNION ALL \
-                           SELECT 1 FROM core_automation_firings WHERE status='admitted' AND due_at_ms <= ?1 \
+                           SELECT 1 FROM automation_decisions WHERE status='admitted' AND due_at_ms <= ?1 \
                            UNION ALL \
-                           SELECT 1 FROM core_automation_leases \
+                           SELECT 1 FROM automation_execution_leases \
                              WHERE status = 'claimed' AND expires_at_ms > ?1 \
                            UNION ALL \
                            SELECT 1 FROM core_reminder_leases \

@@ -93,7 +93,7 @@ describe("Heartbeat execution observation", () => {
             archived: false,
             executionRef: { runtimeId: "engine", threadId: "engine:root" },
           };
-        if (channel === "codex:scheduled-automations:heartbeat-thread-state-changed") {
+        if (channel === "automations:heartbeat-thread-state-changed") {
           published.push(input);
           return;
         }

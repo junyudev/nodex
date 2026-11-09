@@ -45,6 +45,7 @@ import { PageStageDataSourcePropertyControl } from "./data-source-property-contr
 import type { PageStageController } from "./use-page-stage-controller";
 import type { PageStageRelatedChat } from "./types";
 import { PageFilesRow } from "./page-files-row";
+import { PageAutomationsRow } from "./automations-row";
 import { PageStatusTurn } from "./status-turn";
 import { PageWorkspaceRow } from "./page-workspace-row";
 import { PageAssigneeRow, PageOwnerRow } from "./assignee-row";
@@ -514,6 +515,7 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
         <PropertyListRow key={row.key} row={row} controller={controller} />
       ))}
       <PageWorkspaceRow pageId={pageId} />
+      <PageAutomationsRow pageId={pageId} />
 
       <PageOwnerRow
         pageWork={page.pageWork}

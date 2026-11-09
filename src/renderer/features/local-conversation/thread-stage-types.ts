@@ -46,8 +46,8 @@ import type {
   CodexReasoningEffort,
   CodexReasoningEffortOption,
   CodexServiceTier,
-  CodexScheduledAutomationCreateInput,
-  CodexScheduledAutomationUpdateInput,
+  AutomationCreateInput,
+  AutomationUpdateInput,
   GitReviewSource,
   PanelId,
   ProtocolAppInfo,
@@ -143,20 +143,20 @@ export interface ThreadSummaryPanelBrowserRowOpenInput {
   leafId?: string | null;
 }
 
-export interface ThreadSummaryPanelScheduledAutomationRow {
+export interface ThreadSummaryPanelAutomationRow {
   id: string;
   name: string;
   scheduleSummary: string | null;
   nextRunLabel: string;
 }
 
-export interface ThreadSummaryPanelScheduledAutomationOpenInput {
+export interface ThreadSummaryPanelAutomationOpenInput {
   proposalId?: string;
   automationId?: string | null;
-  createInput?: CodexScheduledAutomationCreateInput | null;
+  createInput?: AutomationCreateInput | null;
   mode?: "open" | "suggested-create" | "suggested-update";
   title: string;
-  updateInput?: CodexScheduledAutomationUpdateInput | null;
+  updateInput?: AutomationUpdateInput | null;
 }
 
 export interface ThreadSummaryPanelGitReviewOpenInput {
@@ -409,7 +409,7 @@ export interface ThreadStageRouteInput {
   searchOpenTick: number;
   summarySideChatRows?: readonly ThreadSummaryPanelAuxiliaryRow[];
   summaryBrowserRows?: readonly ThreadSummaryPanelBrowserRow[];
-  summaryScheduledAutomation?: ThreadSummaryPanelScheduledAutomationRow | null;
+  summaryAutomation?: ThreadSummaryPanelAutomationRow | null;
   summaryComputerUsePip?: ThreadSummaryPanelComputerUsePipState | null;
   planSidePanelState?: ThreadPlanSidePanelState | null;
   composerIntent: CodexComposerIntent | null;
@@ -512,9 +512,7 @@ export interface ThreadStageActions {
     input: ThreadSummaryPanelAuxiliaryRowOpenInput,
   ) => void | Promise<void>;
   onOpenSummaryBrowserRow?: (input: ThreadSummaryPanelBrowserRowOpenInput) => void | Promise<void>;
-  onOpenSummaryScheduledAutomation?: (
-    input: ThreadSummaryPanelScheduledAutomationOpenInput,
-  ) => void | Promise<void>;
+  onOpenSummaryAutomation?: (input: ThreadSummaryPanelAutomationOpenInput) => void | Promise<void>;
   onOpenSummaryGitReview?: (input: ThreadSummaryPanelGitReviewOpenInput) => void | Promise<void>;
   onStartSummaryGitAction?: (input: ThreadSummaryPanelGitActionInput) => void | Promise<void>;
   onOpenProcessManager?: () => void | Promise<void>;
@@ -626,7 +624,7 @@ export type ThreadStageHostActions = Pick<
   | "onOpenNewThreadLocalEnvironmentsSettings"
   | "onOpenVoiceSettings"
   | "onOpenSummaryBrowserRow"
-  | "onOpenSummaryScheduledAutomation"
+  | "onOpenSummaryAutomation"
   | "onOpenSummaryGitReview"
   | "onOpenProcessManager"
   | "onOpenBackgroundTerminalOutput"

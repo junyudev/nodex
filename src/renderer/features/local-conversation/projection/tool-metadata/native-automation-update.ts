@@ -1,33 +1,41 @@
-import type { CodexAutomationUpdateView } from "../../../../../shared/types";
-import { formatCodexScheduledAutomationRruleSummary } from "../../../../lib/codex-scheduled-automation-display";
+import type { CodexConversationItem, AutomationUpdateView } from "../../../../../shared/types";
+import { formatAutomationRruleSummary } from "../../../../lib/automation-display";
 import type { AutomationUpdateRenderState } from "./dynamic-tool-call-utils";
 
+/** Native identity exposes an Automation card before its bounded detail read has supplied the action. */
+export const isNativeAutomationUpdate = (
+  item: Pick<CodexConversationItem, "mcpToolCall" | "automationUpdate">,
+): boolean =>
+  item.automationUpdate?.source === "nativeMcp" ||
+  (item.mcpToolCall?.invocation.server === "nodex_app" &&
+    item.mcpToolCall.invocation.tool === "automations_update");
+
 export function resolveNativeAutomationUpdateRenderState(
-  view: CodexAutomationUpdateView,
+  view: AutomationUpdateView,
 ): AutomationUpdateRenderState | null {
   if (view.source !== "nativeMcp") return null;
   const { proposal, result } = view;
   const displayMode = proposal
-    ? proposal.mode === "suggested_create"
+    ? proposal.operation === "suggested_create"
       ? "suggested-create"
       : "suggested-update"
-    : (result?.mode ?? "view");
+    : (result?.operation ?? "view");
   const statusLabels = {
-    "suggested-create": "Proposed scheduled task",
+    "suggested-create": "Proposed automation",
     "suggested-update": "Proposed update",
-    create: "Scheduled task created",
-    update: "Scheduled task updated",
-    delete: "Scheduled task deleted",
-    view: "Scheduled task",
+    create: "Automation created",
+    update: "Automation updated",
+    delete: "Automation deleted",
+    view: "Automation",
   };
   return {
     proposalId: proposal ? view.callId : undefined,
     automationId:
-      proposal?.mode === "suggested_update" ? proposal.id : (result?.automationId ?? null),
+      proposal?.operation === "suggested_update" ? proposal.id : (result?.automationId ?? null),
     canAccept: proposal !== undefined,
-    createInput: proposal?.mode === "suggested_create" ? proposal : null,
-    updateInput: proposal?.mode === "suggested_update" ? proposal : null,
-    disabledReason: displayMode === "delete" ? "This scheduled task has been deleted." : null,
+    createInput: proposal?.operation === "suggested_create" ? proposal : null,
+    updateInput: proposal?.operation === "suggested_update" ? proposal : null,
+    disabledReason: displayMode === "delete" ? "This automation has been deleted." : null,
     displayMode,
     openLabel: displayMode === "delete" ? "Deleted" : "Open",
     result: result
@@ -35,9 +43,8 @@ export function resolveNativeAutomationUpdateRenderState(
       : null,
     statusLabel: statusLabels[displayMode],
     subtitle:
-      formatCodexScheduledAutomationRruleSummary(
-        proposal?.rrule ?? result?.snapshot?.rrule ?? null,
-      ) ?? "Custom schedule",
-    title: proposal?.name ?? result?.snapshot?.name ?? "Scheduled task",
+      formatAutomationRruleSummary(proposal?.rrule ?? result?.snapshot?.rrule ?? null) ??
+      "Custom schedule",
+    title: proposal?.name ?? result?.snapshot?.name ?? "Automation",
   };
 }

@@ -27,7 +27,7 @@ for responsive placement, focus, and motion behavior.
 
 The summary projects keyed sections in this order:
 
-1. Scheduled
+1. Automations
 2. Environment
 3. Plan
 4. Outputs
@@ -50,16 +50,16 @@ Headerless sections render their content directly. A finished background-agent
 section may initially collapse until the user changes it, after which the user's
 choice wins.
 
-## Scheduled
+## Automations
 
-Scheduled shows the first active heartbeat Automation attached to the Chat. It
-comes from the canonical scheduled-Automation read model, never from Board
+Automations shows the first active heartbeat Automation attached to the Chat. It
+comes from the canonical Automations read model, never from Board
 schedules or transcript tool labels.
 
 The row shows the Automation name, optional schedule summary, and next-run
-information. Activating `Open scheduled task` opens the Workbench Scheduled
-route with that exact Automation selected. Scheduled definition and run behavior
-is specified in [Scheduled Route Behavior](scheduled-route-behavior.md).
+information. Activating `Open Automation` opens the Workbench Automations
+route with that exact Automation selected. Automation definition and run behavior
+is specified in [Automations Behavior](automations-behavior.md).
 
 ## Environment and Git actions
 

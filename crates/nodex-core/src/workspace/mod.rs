@@ -15,6 +15,11 @@ pub(crate) mod execution_holds;
 #[cfg(test)]
 mod execution_holds_tests;
 mod inbox;
+pub(crate) use inbox::scheduled::{
+    PreparedRunPages, bind_automation_run_pages, prepare_automation_run_pages,
+    run_held_automation_now,
+};
+pub(crate) mod automation_assessment;
 pub(crate) mod page_turn;
 #[cfg(test)]
 mod page_turn_tests;

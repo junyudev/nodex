@@ -113,8 +113,19 @@ Deleting a message erases its lines, and a message whose Page is no longer in us
 Activity. An empty filter reads `Nothing here yet` and says what collects under it.
 
 Automation decisions appear under Nodex & automations and All. Dry run says `Would have started
+“<Automation>”`, Ask first says `Proposed “<Automation>”`, and Run says `Started “<Automation>”`. Skipped,
+withdrawn and failed settlements begin with “Skipped”, “Withdrew”, or “Could
+not run”, alongside the original decision at its original time. An Automation's generic
 routing proposal does not duplicate its Proposed row; the person's confirmed start is the
 message's own fact. The original decision keeps its name when the Automation
+is renamed before confirmation; the confirmed start links to the resulting chat
+under its current title. Run now without a held proposal says
+“Started” under its explicit manual admission; Dry run still records only what
+would have started. A terminal record without a dry run, proposal or
+admission shows only its settlement; it never invents an earlier start or proposal.
+The reason stays separate; the Automation
+is the primary link even when Dry run created no Page or chat. Execution links
+hydrate only after the bounded fact window is selected.
 
 ## Messages are Pages
 
@@ -185,9 +196,9 @@ message's own fact. The original decision keeps its name when the Automation
   - **Command line:** sent with `nodex inbox send`. Renders left-aligned and
     labeled `From Command line`. The label names the Project only when a message
     sent from inside one could not land in that Project's Inbox.
-  - **Scheduled task:** a run of a task that asks first; see
-    [Scheduled runs](#scheduled-runs). Renders left-aligned and labeled
-    `From <task>` with the Scheduled glyph; the label opens the task.
+  - **Automation:** an Ask first decision from a clock Automation; see
+    [Automation decisions](#automation-decisions). Renders left-aligned and labeled
+    `From <Automation>` with the Automation glyph; the label opens the Automation.
 - A message is its Page body, read as Nodex Markdown, with the Library images in
   it. That is what the stream shows, what a suggestion reads, and what a chat
   it is handed to receives; the Page title is only its label.
@@ -797,30 +808,29 @@ Before admission it shows that Nodex is delivering to the chat and
 already links to its Session. Failed or uncertain delivery returns to the Inbox
 with its reason and the recovery action appropriate to that result.
 
-## Scheduled runs
+## Automation decisions
 
-A scheduled task that asks in the Inbox before it runs sends each due run as a
-message; [Scheduled Route Behavior](./scheduled-route-behavior.md#tasks-that-ask-before-running)
+A clock Automation set to Ask first holds each due decision as an editable intake message; [Automations Behavior](./automations-behavior.md#decisions-that-ask-in-the-inbox)
 owns when that happens and how the run executes. The message is a todo titled
-`<task> · <date>`, its body is the task's instructions, and its decision comes
-from the task rather than the suggestion Agent. Suggestions never consider it,
+`<Automation> · <date>`, its body is the Automation's instructions, and its decision comes
+from the Automation rather than from Nodex. Suggestions never consider it,
 its menu offers no `Suggest again`, and no suggestion can write a run decision.
 
 - The text is this run's instructions, so `Edit` adjusts this run. A Page that
-  only the task has written still follows the task's own edits.
-- The strip under it says when the task fell due, how many times it has since
+  only the Automation has written still follows the Automation's own edits.
+- The strip under it says when the Automation fell due, how many times it has since
   (`Due 3 times since Mon, 9:00 AM`), and where it runs: `Worktree`, `Local`, a
-  folder count, `New workspace` for a projectless task, or `Continues its chat`
+  folder count, `New workspace` for a projectless Automation, or `Continues its chat`
   for a Heartbeat. It never repeats the instructions.
 - The decision reads `Run in <Project>`, `Run without a Project`, or for a
   Heartbeat `Run in “<chat>”`. Hovering it adds `Runs on` with what the run uses
-  and `From your scheduled task`. Its menu half opens the model menu for this run
-  alone, starting from the task's own choice, and names a different choice on
+  and `From your Automation`. Its menu half opens the model menu for this run
+  alone, starting from the Automation's own choice, and names a different choice on
   the button. A Heartbeat runs on its chat's Agent, so its decision has no menu.
 - The row offers the message menu and `Skip this run`, the `Mark done` check.
   There is no Keep: a run is run, skipped, or handed elsewhere.
-- `Handle manually` adds `Run task` to the dispatch editor, with the run's model
-  menu and `Edit task`, which opens the task where its folders, workspace and
+- `Handle manually` adds `Run` to the dispatch editor, with the run's model
+  menu and `Edit Automation`, which opens the Automation where its folders, workspace and
   schedule change for every run. Choosing another action hands the message on
   as any message and withdraws the run.
 
@@ -828,10 +838,11 @@ Running it reads `Started “<Automation>”` in Activity, linking the run's cha
 its live status once the run reaches one, until the user marks it done. A run that
 fails before reaching a chat returns with `Couldn’t run — <reason>` and `Retry`.
 Skipping a run marks its message done, and Activity says `Skipped “<Automation>”`.
+A run whose Automation was deleted says `Its Automation was deleted, so it can’t run`
 and offers `Mark done` and `Handle manually`.
 
 A run that needs the user after it starts says so with `send_to_inbox`; a
-message from a scheduled run's chat is labeled with its task's name.
+message from an Automation run's chat is labeled with its Automation's name.
 
 ## Deleting a message
 

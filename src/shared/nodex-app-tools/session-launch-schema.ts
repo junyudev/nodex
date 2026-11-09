@@ -2,6 +2,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { AgentRuntimeModeSchema } from "../schemas/agent-runtime-api";
 import { idempotencyKeySchema } from "./idempotency-key";
+import { toolInputSchema } from "./tool-input-schema";
 
 export const createSessionSchema = z.strictObject({
   prompt: z.string().regex(/\S/, "Must contain a non-whitespace character").min(1).max(100_000),
@@ -63,6 +64,6 @@ export const createSessionTool: Tool = {
   name: "create_session",
   description:
     "Create and start a Agent Session. Choose a Project environment explicitly: normally worktree for Git repositories and local for other Projects; use projectless for work without a Project. Use onMissing create-branch only when the user explicitly requested that exact new branch name; otherwise a missing branch is an error. Omit model unless the user requested one. Returns a stable sessionId and started, pending, or unconfirmed launch state. Reuse idempotencyKey with identical arguments for retries; replay never starts a second Thread. ",
-  inputSchema: z.toJSONSchema(createSessionSchema, { io: "input" }) as Tool["inputSchema"],
+  inputSchema: toolInputSchema(createSessionSchema),
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 };

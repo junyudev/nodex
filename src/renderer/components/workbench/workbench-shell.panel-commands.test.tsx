@@ -421,7 +421,7 @@ describe("workbench session shell / panel-commands", () => {
     expect(await screen.findByTestId("settings-route-shell")).not.toBeNull();
   });
 
-  test("command palette opens scheduled task management", async () => {
+  test("command palette opens automation management", async () => {
     const screen = renderWorkbench({
       sessionsByProject: {
         alpha: [makeAttachedSession({ id: "session:alpha:automation-command" })],
@@ -430,9 +430,9 @@ describe("workbench session shell / panel-commands", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    await executeCommandPaletteCommand(screen, "automation", "Manage automations");
+    await executeCommandPaletteCommand(screen, "automations", "Manage automations");
 
-    expect(await screen.findByTestId("scheduled-route")).not.toBeNull();
+    expect(await screen.findByTestId("automations-route")).not.toBeNull();
     expect(screen.container.querySelector('[data-thread-stage="true"]')).toBe(null);
   });
 

@@ -13,7 +13,7 @@ describe("Inbox capture scope", () => {
     ).toEqual({ kind: "project", projectId: "p1" });
   });
 
-  test("captures into the Library Inbox everywhere else", () => {
+  test("captures into All Inbox everywhere else", () => {
     for (const location of [
       { kind: "session", sessionId: "s1", projectContextId: null },
       { kind: "library" },
@@ -21,7 +21,7 @@ describe("Inbox capture scope", () => {
       { kind: "empty" },
       { kind: "automations", path: "/scheduled", returnTo: { kind: "project", projectId: "p1" } },
     ] as const) {
-      expect(resolveInboxCaptureScope(location)).toEqual({ kind: "library" });
+      expect(resolveInboxCaptureScope(location)).toEqual({ kind: "all" });
     }
   });
 });

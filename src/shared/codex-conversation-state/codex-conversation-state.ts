@@ -684,10 +684,14 @@ export type CodexCanonicalLifecycleSyntheticItem =
   | CodexCanonicalImageGenerationItem
   | CodexCanonicalCollabAgentToolCallItem;
 
-export type CodexCanonicalItem =
+export type CodexCanonicalItem = (
   | CodexCanonicalGeneratedItem
   | CodexCanonicalLifecycleSyntheticItem
-  | CodexCanonicalRequestSyntheticItem;
+  | CodexCanonicalRequestSyntheticItem
+) & {
+  /** Execution-owned detail revision; independent of the Turn's presentation timestamps. */
+  readonly outputVersion?: string;
+};
 
 export type CodexCanonicalTurnHeader = Omit<
   Turn,

@@ -1,10 +1,19 @@
+pub(crate) fn local_timezone() -> Result<String, crate::infrastructure::sqlite::StoreError> {
+    iana_time_zone::get_timezone().map_err(|_| {
+        crate::infrastructure::sqlite::StoreError::new(
+            crate::infrastructure::sqlite::StoreErrorCode::InvalidInput,
+            "The local timezone is unavailable; choose an Automation timezone",
+            false,
+        )
+    })
+}
 use std::collections::{BTreeMap, BTreeSet};
 
-use chrono::{Datelike, Days, Local, LocalResult, TimeZone, Timelike};
+use chrono::{Datelike, Days, LocalResult, TimeZone, Timelike};
 use rrule::{RRuleSet, Tz};
 use sha2::{Digest, Sha256};
 
-use nodex_core_contracts::automation::AutomationDefinitionKind;
+use nodex_core_contracts::automation::AutomationExecutionKind;
 
 pub(super) const DEFAULT_RRULE: &str = "FREQ=HOURLY;INTERVAL=24;BYMINUTE=0";
 const JITTER_MAX_SECONDS: u32 = 120;
@@ -29,15 +38,19 @@ pub(super) fn normalize_rrule(value: Option<&str>) -> Result<String, ScheduleErr
 
 pub(super) fn next_run_at(
     automation_id: &str,
-    kind: AutomationDefinitionKind,
+    kind: AutomationExecutionKind,
     rrule: &str,
     now_ms: i64,
     jitter_salt: &str,
+    timezone: &str,
 ) -> Result<Option<i64>, ScheduleError> {
     if now_ms < 0 {
         return Err(ScheduleError("Core clock is invalid"));
     }
-    let base = next_without_jitter(rrule, now_ms)?;
+    let timezone = timezone
+        .parse::<chrono_tz::Tz>()
+        .map_err(|_| ScheduleError("Automation timezone is invalid"))?;
+    let base = next_without_jitter(rrule, now_ms, timezone)?;
     let Some(base) = base else {
         return Ok(None);
     };
@@ -50,15 +63,19 @@ pub(super) fn next_run_at(
         .ok_or(ScheduleError("Scheduled time exceeds its bound"))
 }
 
-fn next_without_jitter(rrule: &str, now_ms: i64) -> Result<Option<i64>, ScheduleError> {
+fn next_without_jitter(
+    rrule: &str,
+    now_ms: i64,
+    timezone: chrono_tz::Tz,
+) -> Result<Option<i64>, ScheduleError> {
     let parsed = parse_rule(rrule)?;
-    if let Some(next) = wall_clock_next(&parsed, now_ms)? {
+    if let Some(next) = wall_clock_next(&parsed, now_ms, timezone)? {
         return Ok(Some(next));
     }
-    if let Some(next) = interval_next(&parsed, now_ms)? {
+    if let Some(next) = interval_next(&parsed, now_ms, timezone)? {
         return Ok(Some(next));
     }
-    advanced_next(parsed, now_ms)
+    advanced_next(parsed, now_ms, timezone)
 }
 
 fn interval_millis(parsed: &ParsedRule) -> Result<Option<i64>, ScheduleError> {
@@ -94,7 +111,11 @@ fn interval_millis(parsed: &ParsedRule) -> Result<Option<i64>, ScheduleError> {
         .ok_or(ScheduleError("RRULE interval exceeds its bound"))
 }
 
-fn interval_next(parsed: &ParsedRule, now_ms: i64) -> Result<Option<i64>, ScheduleError> {
+fn interval_next(
+    parsed: &ParsedRule,
+    now_ms: i64,
+    timezone: chrono_tz::Tz,
+) -> Result<Option<i64>, ScheduleError> {
     let Some(interval_ms) = interval_millis(parsed)? else {
         return Ok(None);
     };
@@ -106,7 +127,7 @@ fn interval_next(parsed: &ParsedRule, now_ms: i64) -> Result<Option<i64>, Schedu
             .ok_or(ScheduleError("Scheduled time exceeds its bound"));
     }
 
-    let local = Local
+    let local = timezone
         .timestamp_millis_opt(floor)
         .single()
         .ok_or(ScheduleError("Core local clock is invalid"))?;
@@ -123,7 +144,11 @@ fn interval_next(parsed: &ParsedRule, now_ms: i64) -> Result<Option<i64>, Schedu
     Ok(Some(candidate))
 }
 
-fn wall_clock_next(parsed: &ParsedRule, now_ms: i64) -> Result<Option<i64>, ScheduleError> {
+fn wall_clock_next(
+    parsed: &ParsedRule,
+    now_ms: i64,
+    timezone: chrono_tz::Tz,
+) -> Result<Option<i64>, ScheduleError> {
     if parsed.has_dtstart
         || parsed
             .text
@@ -164,7 +189,7 @@ fn wall_clock_next(parsed: &ParsedRule, now_ms: i64) -> Result<Option<i64>, Sche
         return Err(ScheduleError("RRULE wall-clock time is invalid"));
     }
     let weekdays = weekday_list(parsed.options.get("BYDAY"))?;
-    let local_now = Local
+    let local_now = timezone
         .timestamp_millis_opt(now_ms)
         .single()
         .ok_or(ScheduleError("Core local clock is invalid"))?;
@@ -186,7 +211,7 @@ fn wall_clock_next(parsed: &ParsedRule, now_ms: i64) -> Result<Option<i64>, Sche
                 let Some(naive) = date.and_hms_opt(*hour as u32, *minute as u32, 0) else {
                     continue;
                 };
-                let candidate = match Local.from_local_datetime(&naive) {
+                let candidate = match timezone.from_local_datetime(&naive) {
                     LocalResult::Single(value) => Some(value),
                     LocalResult::Ambiguous(first, second) => Some(first.min(second)),
                     LocalResult::None => None,
@@ -202,12 +227,16 @@ fn wall_clock_next(parsed: &ParsedRule, now_ms: i64) -> Result<Option<i64>, Sche
     Ok(candidates.into_iter().min())
 }
 
-fn advanced_next(parsed: ParsedRule, now_ms: i64) -> Result<Option<i64>, ScheduleError> {
-    let text = normalize_content_lines(&parsed, now_ms)?;
+fn advanced_next(
+    parsed: ParsedRule,
+    now_ms: i64,
+    timezone: chrono_tz::Tz,
+) -> Result<Option<i64>, ScheduleError> {
+    let text = normalize_content_lines(&parsed, now_ms, timezone)?;
     let set = text
         .parse::<RRuleSet>()
         .map_err(|_| ScheduleError("RRULE is invalid"))?;
-    let after = Tz::LOCAL
+    let after = Tz::from(timezone)
         .timestamp_millis_opt(now_ms)
         .single()
         .ok_or(ScheduleError("Core local clock is invalid"))?;
@@ -219,14 +248,22 @@ fn advanced_next(parsed: ParsedRule, now_ms: i64) -> Result<Option<i64>, Schedul
         .map(chrono::DateTime::timestamp_millis))
 }
 
-fn normalize_content_lines(parsed: &ParsedRule, now_ms: i64) -> Result<String, ScheduleError> {
+fn normalize_content_lines(
+    parsed: &ParsedRule,
+    now_ms: i64,
+    timezone: chrono_tz::Tz,
+) -> Result<String, ScheduleError> {
     let mut lines = Vec::new();
     if !parsed.has_dtstart {
-        let local = Local
+        let local = timezone
             .timestamp_millis_opt(now_ms - now_ms.rem_euclid(60_000))
             .single()
             .ok_or(ScheduleError("Core local clock is invalid"))?;
-        lines.push(format!("DTSTART:{}", local.format("%Y%m%dT%H%M%S")));
+        lines.push(format!(
+            "DTSTART;TZID={}:{}",
+            timezone.name(),
+            local.format("%Y%m%dT%H%M%S")
+        ));
     }
     for line in parsed
         .text
@@ -234,7 +271,12 @@ fn normalize_content_lines(parsed: &ParsedRule, now_ms: i64) -> Result<String, S
         .map(str::trim)
         .filter(|line| !line.is_empty())
     {
-        if line.contains(':') {
+        if let Some(value) = line
+            .strip_prefix("DTSTART:")
+            .filter(|value| !value.ends_with('Z'))
+        {
+            lines.push(format!("DTSTART;TZID={}:{}", timezone.name(), value));
+        } else if line.contains(':') {
             lines.push(line.to_owned());
         } else {
             lines.push(format!("RRULE:{line}"));
@@ -243,9 +285,9 @@ fn normalize_content_lines(parsed: &ParsedRule, now_ms: i64) -> Result<String, S
     Ok(lines.join("\n"))
 }
 
-fn should_jitter(kind: AutomationDefinitionKind, rrule: &str) -> Result<bool, ScheduleError> {
+fn should_jitter(kind: AutomationExecutionKind, rrule: &str) -> Result<bool, ScheduleError> {
     let parsed = parse_rule(rrule)?;
-    if kind == AutomationDefinitionKind::Heartbeat && interval_millis(&parsed)?.is_some() {
+    if kind == AutomationExecutionKind::Heartbeat && interval_millis(&parsed)?.is_some() {
         return Ok(false);
     }
     if positive_integer(parsed.options.get("COUNT"))? == Some(1) {
@@ -365,10 +407,11 @@ mod tests {
         let now = 1_783_520_207_000_i64;
         let next = next_run_at(
             "heartbeat-1",
-            AutomationDefinitionKind::Heartbeat,
+            AutomationExecutionKind::Heartbeat,
             "FREQ=MINUTELY;INTERVAL=5",
             now,
             "salt",
+            "UTC",
         )
         .expect("schedule");
         assert_eq!(next, Some(1_783_520_460_000));
@@ -383,12 +426,40 @@ mod tests {
     fn exhausted_count_one_rule_has_no_next_occurrence() {
         let next = next_run_at(
             "once",
-            AutomationDefinitionKind::Cron,
+            AutomationExecutionKind::Cron,
             "FREQ=MINUTELY;COUNT=1",
             1_783_520_207_000,
             "salt",
+            "UTC",
         )
         .expect("valid schedule");
         assert_eq!(next, None);
+    }
+    #[test]
+    fn persisted_clock_zone_preserves_wall_time_across_dst() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-03-07T15:00:00Z")
+            .unwrap()
+            .timestamp_millis();
+        let expected = chrono::DateTime::parse_from_rfc3339("2026-03-08T13:00:00Z")
+            .unwrap()
+            .timestamp_millis();
+        assert_eq!(
+            next_without_jitter(
+                "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
+                now,
+                chrono_tz::America::New_York
+            )
+            .unwrap(),
+            Some(expected)
+        );
+        assert_eq!(
+            next_without_jitter(
+                "DTSTART:20260307T090000\nRRULE:FREQ=DAILY;COUNT=3",
+                now,
+                chrono_tz::America::New_York
+            )
+            .unwrap(),
+            Some(expected)
+        );
     }
 }

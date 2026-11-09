@@ -2,10 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import { it } from "@effect/vitest";
 import { expect } from "vite-plus/test";
-import type {
-  CodexScheduledAutomation,
-  CodexScheduledAutomationUpdateInput,
-} from "../../../shared/types";
+import type { Automation, AutomationUpdateInput } from "../../../shared/types";
 import {
   AutomationApplication,
   AutomationApplicationError,
@@ -13,7 +10,7 @@ import {
 import { AutomationExecution } from "../../automation-application/AutomationExecution";
 import { updateAutomationFromRenderer } from "./AutomationIpc";
 
-const proposal: CodexScheduledAutomationUpdateInput = {
+const proposal: AutomationUpdateInput = {
   id: "automation-1",
   expectedRevision: 4,
   kind: "heartbeat",
@@ -30,9 +27,8 @@ function harness(revision: number, changeDuringPreparation = false) {
   const prepared: unknown[] = [];
   const updates: unknown[] = [];
   const committed: unknown[] = [];
-  const current = () =>
-    ({ ...proposal, definitionRevision: currentRevision }) as CodexScheduledAutomation;
-  const definitions: Pick<AutomationApplication["Service"]["definitions"], "get" | "update"> = {
+  const current = () => ({ ...proposal, automationRevision: currentRevision }) as Automation;
+  const automations: Pick<AutomationApplication["Service"]["automations"], "get" | "update"> = {
     get: () => Effect.sync(current),
     update: (input, command) =>
       Effect.gen(function* () {
@@ -42,7 +38,7 @@ function harness(revision: number, changeDuringPreparation = false) {
           command.expectedRevision !== currentRevision
         ) {
           return yield* new AutomationApplicationError({
-            operation: "definitions.update",
+            operation: "automations.update",
             cause: new Error("conflict"),
           });
         }
@@ -51,7 +47,7 @@ function harness(revision: number, changeDuringPreparation = false) {
       }),
   };
   const application = AutomationApplication.of({
-    definitions,
+    automations,
   } as unknown as AutomationApplication["Service"]);
   const executionMethods: Pick<AutomationExecution["Service"], "prepareDefinition"> = {
     prepareDefinition: (input) =>

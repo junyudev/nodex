@@ -40,8 +40,8 @@ notified, and no Agent home such as `~/.codex` or `~/.claude` is read. The clone
 Profile reads those transcripts normally and never continues the source's native Agent
 conversations; its next message in a chat starts a fresh native conversation that
 receives the chat's earlier history through a context handoff. Replies that were running
-or queued in the source are cancelled in the clone and copied scheduled automations are
-disabled, so nothing copied runs on its own.
+or queued in the source are cancelled in the clone and copied Automations are
+paused, so nothing copied runs on its own.
 
 The selected Store backup and the conversation copy have separate timestamps:
 `--backup` does not rewind conversations. Historical workspace and external file paths
@@ -314,6 +314,21 @@ key: an opaque string of 1–128 characters, omitted on first attempts and reuse
 arguments after an unseen outcome. Their host-issued `operationId` values are returned
 receipt or progress handles. CLI content mutations continue to expose their existing
 `--idempotency-key` flag and draft apply identities.
+
+## Automations
+
+`nodex automations list` lists Automations with bounded search and cursors; `automations show <id>`
+reads one. `automations create --file <path|->` accepts a Core Automation JSON definition.
+`automations update <id> --if-revision <revision> --status active|paused --file <path|->`
+replaces it. `automations pause|resume|delete <id> --if-revision <revision>` retains the
+observed revision. Every write accepts `--idempotency-key` for an uncertain retry.
+
+`automations run <id>` records a manual dispatch, confirms a waiting Ask first decision or
+retries its frozen action. Repeating its operation key retains the same dispatch.
+Dry run records only; Ask first waits in the Inbox; Run starts under the Automation Owner's
+grant. Only that Owner can change mode or edit an Automation set to Run. Agent calls obey the
+same restrictions and can propose changes through `automations_update` for review.
+See [Automations behavior](product-specs/automations-behavior.md).
 
 ## Pause Agent work
 

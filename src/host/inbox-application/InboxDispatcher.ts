@@ -266,6 +266,7 @@ export const make = Effect.gen(function* () {
     const fiber = yield* FiberSet.run(
       fibers,
       request.context.entries.some(
+        (entry) => entry.source.kind === "automation" || entry.source.kind === "nodex",
       )
         ? fail(request, "This message does not receive routing suggestions")
         : suggest(current, request),

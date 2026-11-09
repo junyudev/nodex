@@ -47,7 +47,7 @@ import type {
 import { buildCodexSteeringCompareKey } from "./codex-conversation-state/codex-steering-compare";
 import { readCodexCanonicalThreadGoalTranscriptProjection } from "./codex-conversation-state/codex-thread-goal-transcript";
 import type {
-  CodexAutomationUpdateView,
+  AutomationUpdateView,
   CodexCommandAction,
   CodexDynamicToolCallView,
   CodexFileChange,
@@ -122,6 +122,7 @@ function buildBaseView(
   | "turnId"
   | "type"
   | "updatedAt"
+  | "outputVersion"
 > {
   return {
     threadId: context.threadId,
@@ -133,6 +134,7 @@ function buildBaseView(
     rawItem: item,
     createdAt: context.observedAtMs,
     updatedAt: context.observedAtMs,
+    ...(item.outputVersion ? { outputVersion: item.outputVersion } : {}),
   };
 }
 
@@ -726,7 +728,7 @@ function parseAutomationResult(
       type: "dynamicToolCall";
     }
   >["contentItems"],
-): CodexAutomationUpdateView["result"] {
+): AutomationUpdateView["result"] {
   for (const contentItem of contentItems ?? []) {
     if (contentItem.type !== "inputText") continue;
     try {
@@ -734,9 +736,11 @@ function parseAutomationResult(
       const automationId =
         typeof parsed?.automationId === "string" ? parsed.automationId.trim() : "";
       if (!automationId) continue;
-      const mode =
-        parsed?.mode === "create" || parsed?.mode === "update" || parsed?.mode === "delete"
-          ? parsed.mode
+      const operation =
+        parsed?.operation === "create" ||
+        parsed?.operation === "update" ||
+        parsed?.operation === "delete"
+          ? parsed.operation
           : null;
       const deleteStatus =
         parsed?.deleteStatus === "deleted" || parsed?.deleteStatus === "not_found"
@@ -744,7 +748,7 @@ function parseAutomationResult(
           : undefined;
       const rawSnapshot = asJsonObject(parsed?.snapshot);
       const snapshot:
-        | NonNullable<NonNullable<CodexAutomationUpdateView["result"]>["snapshot"]>
+        | NonNullable<NonNullable<AutomationUpdateView["result"]>["snapshot"]>
         | undefined =
         rawSnapshot &&
         (rawSnapshot.kind === "cron" || rawSnapshot.kind === "heartbeat") &&
@@ -758,7 +762,7 @@ function parseAutomationResult(
           : undefined;
       return {
         automationId,
-        mode,
+        operation,
         ...(deleteStatus ? { deleteStatus } : {}),
         ...(snapshot ? { snapshot } : {}),
       };
@@ -780,13 +784,13 @@ function projectAutomationUpdate(
 ): CodexItemView[] {
   if (item.status !== "completed" || item.success !== true) return [];
   const args = asJsonObject(item.arguments);
-  if (!args || typeof args.mode !== "string") return [];
+  if (!args || typeof args.operation !== "string") return [];
 
   const result = parseAutomationResult(item.contentItems);
   const resolvedId =
     result?.automationId ??
     (typeof args.id === "string" && args.id.trim().length > 0 ? args.id : null);
-  const snapshot = result?.mode === "delete" ? result.snapshot : undefined;
+  const snapshot = result?.operation === "delete" ? result.snapshot : undefined;
   return [
     {
       ...buildBaseView(item, context),
@@ -815,7 +819,7 @@ function projectDynamicToolCall(
   >,
   context: ItemProjectionContext,
 ): CodexItemView[] {
-  if (item.tool === "automation_update") return projectAutomationUpdate(item, context);
+  if (item.tool === "automations_update") return projectAutomationUpdate(item, context);
   if (item.tool === "load_workspace_dependencies") return [];
 
   const dynamicToolCall: CodexDynamicToolCallView = {

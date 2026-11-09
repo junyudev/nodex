@@ -73,8 +73,8 @@ pub enum ProjectWorkspaceInboxSuggestionState {
 pub enum ProjectWorkspaceInboxProposalOrigin {
     Agent,
     User,
-    /// Written by a scheduled task for its own firing, from the user's saved definition.
-    Schedule,
+    /// Written by an Automation for its own decision, from the user's saved definition.
+    Automation,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -121,12 +121,11 @@ pub enum ProjectWorkspaceInboxDispatchAction {
     /// File the entries into one active Project: their Pages move into its primary
     /// Database and the entries are kept, without reopening there.
     MoveToProject { project_id: String },
-    /// Run one waiting firing of a scheduled task. The message's reviewed text is the run's
-    /// instructions; everything else comes from the task when it runs.
-    RunTask {
-        automation_id: String,
-        dispatch_id: String,
-        /// What this run uses instead of the task's own Agent selection.
+    /// Admit one waiting decision using its frozen action, target and authority.
+    /// The message supplies the reviewed instructions for this execution.
+    ExecuteDecision {
+        decision_id: String,
+        /// The Agent chosen while reviewing this decision.
         #[serde(default)]
         agent: Option<ProjectWorkspaceInboxChatAgent>,
     },
@@ -209,12 +208,12 @@ pub enum ProjectWorkspaceInboxSource {
         project_id: Option<String>,
         label: String,
     },
-    /// A due firing of a scheduled task that asks before it runs.
-    ScheduledTask {
+    /// A due decision of an Automation that asks before it runs.
+    Automation {
         automation_id: String,
         dispatch_id: String,
         project_id: Option<String>,
-        /// The task's name when the firing arrived.
+        /// The task's name when the decision arrived.
         label: String,
     },
 }
@@ -279,13 +278,15 @@ pub struct InboxRoutingCancellation {
     pub coordinator_session_id: String,
 }
 
+/// The decision behind an Automation's message, as it stands now.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct AutomationInboxDecision {
     pub automation_id: String,
     pub dispatch_id: String,
-    pub status: crate::automation::AutomationFiringStatus,
+    pub status: crate::automation::AutomationDecisionStatus,
     pub first_scheduled_for_ms: i64,
     pub last_scheduled_for_ms: i64,
-    /// Later firings that fell due while this one waited.
+    /// Later decisions that fell due while this one waited.
     pub missed_count: u32,
     /// Why its execution failed before reaching a chat.
     pub failure_message: Option<String>,
@@ -404,8 +405,8 @@ pub struct ProjectWorkspaceInboxItem {
     pub scope: ProjectWorkspaceInboxScope,
     pub location: ProjectWorkspaceInboxLocation,
     pub proposal: Option<ProjectWorkspaceInboxProposal>,
-    /// Present for a scheduled task's firing.
-    pub firing: Option<ProjectWorkspaceInboxFiring>,
+    /// Present for an Automation's decision.
+    pub automation_decision: Option<AutomationInboxDecision>,
     pub revision: i64,
 }
 

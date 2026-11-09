@@ -7,7 +7,7 @@ import { TestQueryProvider } from "@/test/query";
 import type { InboxItem, InboxProposal } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import { InboxDeleteDialog } from "./inbox-delete-dialog";
-import { draftForInboxItem } from "./inbox-dispatch-editor";
+import { actionFromDraft, draftForInboxItem, draftFromAction } from "./inbox-dispatch-editor";
 import { describeInboxDecision } from "./inbox-presentation";
 import { InboxMessage, InboxMessageMenu, type InboxMessageMenuHandlers } from "./inbox-message";
 import { NO_ROW_OFFERS } from "./inbox-presentation";
@@ -68,7 +68,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   state: "open",
   suggestionState: "settled",
   suggestionError: null,
-  firing: null,
+  automationDecision: null,
   scope: { kind: "library" },
   location: { kind: "inbox" },
   proposal: proposal(),
@@ -149,6 +149,26 @@ const click = async (name: string) => {
 };
 
 describe("InboxTriage", () => {
+  test("reviewing a frozen decision preserves its identity without an Automation lookup", () => {
+    const action = {
+      type: "execute_decision" as const,
+      decisionId: "decision:reviewed",
+      agent: null,
+    };
+    const draft = draftFromAction(action, "Use these reviewed instructions");
+    expect(actionFromDraft(draft)).toEqual(action);
+    const editedAgent = {
+      instanceId: CLAUDE_INSTANCE_ID,
+      model: "claude-opus-5-5",
+      reasoningEffort: "high",
+      serviceTier: null,
+    };
+    expect(actionFromDraft({ ...draft, agent: editedAgent })).toEqual({
+      ...action,
+      agent: editedAgent,
+    });
+  });
+
   test.each(["open", "failed", "dispatching"] as const)(
     "reviewing a %s group keeps all sources and only confirms an open proposal",
     (state) => {
@@ -279,13 +299,12 @@ describe("InboxTriage", () => {
     expect(screen.getByText("C")).toBeTruthy();
   });
 
-  test("a scheduled task's waiting run runs in its Project, or is skipped, never kept", async () => {
+  test("an automation's waiting run runs in its Project, or is skipped, never kept", async () => {
     const runTask = proposal({
-      origin: "schedule",
+      origin: "automation",
       action: {
-        type: "run_task",
-        automationId: "automation:deps",
-        dispatchId: "dispatch:1",
+        type: "execute_decision",
+        decisionId: "dispatch:1",
         agent: null,
       },
       kind: "todo",
@@ -297,13 +316,13 @@ describe("InboxTriage", () => {
       item: item({
         kind: "todo",
         source: {
-          kind: "scheduled_task",
+          kind: "automation",
           automationId: "automation:deps",
           dispatchId: "dispatch:1",
           projectId: "project:nodex",
           label: "Bump dependency versions",
         },
-        firing: {
+        automationDecision: {
           automationId: "automation:deps",
           dispatchId: "dispatch:1",
           status: "held",

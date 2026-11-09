@@ -15,7 +15,7 @@ describe("buildThreadSummaryPanelSectionModel", () => {
   test("keeps the Codex summary section order and gates empty optional sections", () => {
     const kinds = sectionKinds({
       activeThreadId: "thread-1",
-      hasScheduledAutomation: true,
+      hasAutomation: true,
       hasEnvironment: true,
       hasPlan: true,
       outputCount: 2,
@@ -30,14 +30,14 @@ describe("buildThreadSummaryPanelSectionModel", () => {
     });
 
     expect(kinds.join(",")).toBe(
-      "scheduled,environment,plan,outputs,sideChats,subagents,tasks,computerUsePip,browser,sources",
+      "automations,environment,plan,outputs,sideChats,subagents,tasks,computerUsePip,browser,sources",
     );
   });
 
   test("shows deliverables alongside the Git environment summary", () => {
     const sections = buildThreadSummaryPanelSectionModel({
       activeThreadId: "thread-1",
-      hasScheduledAutomation: false,
+      hasAutomation: false,
       hasEnvironment: true,
       hasPlan: false,
       outputCount: 1,
@@ -56,7 +56,7 @@ describe("buildThreadSummaryPanelSectionModel", () => {
   test("hides the Environment section when no git environment summary is available", () => {
     const sections = buildThreadSummaryPanelSectionModel({
       activeThreadId: "thread-1",
-      hasScheduledAutomation: false,
+      hasAutomation: false,
       hasEnvironment: false,
       hasPlan: false,
       outputCount: 1,
@@ -75,7 +75,7 @@ describe("buildThreadSummaryPanelSectionModel", () => {
   test("marks completed non-inline subagents for auto-collapse", () => {
     const sections = buildThreadSummaryPanelSectionModel({
       activeThreadId: "thread-1",
-      hasScheduledAutomation: false,
+      hasAutomation: false,
       hasEnvironment: false,
       hasPlan: false,
       outputCount: 0,
@@ -98,7 +98,7 @@ describe("buildThreadSummaryPanelSectionModel", () => {
   test("hides the Subagents header count when inline activity owns the compact summary", () => {
     const sections = buildThreadSummaryPanelSectionModel({
       activeThreadId: "thread-1",
-      hasScheduledAutomation: false,
+      hasAutomation: false,
       hasEnvironment: false,
       hasPlan: false,
       outputCount: 0,
@@ -121,7 +121,7 @@ describe("buildThreadSummaryPanelSectionModel", () => {
   test("keeps Sources and blank-thread hint as explicit model entries", () => {
     const sections = buildThreadSummaryPanelSectionModel({
       activeThreadId: null,
-      hasScheduledAutomation: false,
+      hasAutomation: false,
       hasEnvironment: false,
       hasPlan: false,
       outputCount: 0,

@@ -160,20 +160,20 @@ import {
   listPendingWorktrees,
   pendingWorktreeRouteTransport,
 } from "@/lib/pending-worktree-runtime";
-import { useScheduledTasks } from "@/features/scheduled/use-scheduled-tasks";
-import type { ScheduledSidebarNavigation } from "@/features/scheduled/scheduled-sidebar";
+import { useAutomations } from "@/features/automations/use-automations";
+import type { AutomationsSidebarNavigation } from "@/features/automations/automations-sidebar";
 import {
-  ScheduledNavigationProvider,
-  type ScheduledNavigation,
-} from "@/features/scheduled/scheduled-navigation";
+  AutomationsNavigationProvider,
+  type AutomationsNavigation,
+} from "@/features/automations/automations-navigation";
 import type { CustomizeNavigation } from "@/features/plugins/customize-navigation";
 import {
   buildPluginDirectoryPath,
   buildPluginSettingsPath,
   PLUGINS_SETTINGS_PATH,
 } from "@/features/plugins/plugins-routes";
-import type { ScheduledTaskChatOption } from "@/features/scheduled/scheduled-task-fields";
-import { buildScheduledTaskReplyPrompt } from "@/features/scheduled/scheduled-task-model";
+import type { AutomationChatOption } from "@/features/automations/automation-fields";
+import { buildAutomationReplyPrompt } from "@/features/automations/automation-model";
 import { createPageTitleProjectionStore } from "@/lib/page-title-projection-store";
 import { PageTitleProjectionProvider } from "@/lib/page-title-projection-context";
 import { useLibraryNavigationInvalidation } from "@/lib/use-library-navigation";
@@ -333,7 +333,7 @@ import {
   type WorkbenchLayoutSnapshot,
 } from "../../../shared/workbench-layout";
 import type {
-  CodexScheduledAutomation,
+  Automation,
   PanelId,
   Project,
   ProjectCreateInput,
@@ -656,7 +656,7 @@ export function WorkbenchRuntime({
     [settingsPath, workbenchWindow],
   );
   /**
-   * Scheduled, Customize and Insights are path routes over the current Scene. Closing one
+   * Automations, Customize and Insights are path routes over the current Scene. Closing one
    * returns to that Scene before another destination opens.
    */
   const setDestinationRoute = useCallback(
@@ -1521,7 +1521,7 @@ export function WorkbenchRuntime({
     forkTransferTargetSessionId,
     windowSessionId,
   ]);
-  const scheduledTasks = useScheduledTasks();
+  const automations = useAutomations();
   const {
     applySnapshot: applySidebarThreadSnapshot,
     model: sidebarThreadModel,
@@ -2877,22 +2877,22 @@ export function WorkbenchRuntime({
     openAttachedThreadSession,
     openAttachedThreadSessionById,
     openResolvedPendingThreadSession,
-    presentScheduledChat,
-    replyAboutScheduledTask,
+    presentAutomationChat,
+    replyAboutAutomation,
     openProcessOutputInCurrentSession,
     openProcessManagerOutput,
     openTurnDiffFileInSidePanel,
     forkSessionFromTurn,
     forkSessionFromTurnIntoWorktree,
   } = sessionCommands;
-  const scheduledRouteState = automationsPath
+  const automationsRouteState = automationsPath
     ? resolveAutomationsRouteState(automationsPath)
     : null;
-  // A run or Heartbeat chat opened from Scheduled is the route's active Session.
-  const scheduledRunPresented =
-    scheduledRouteState?.runSessionId != null &&
-    scheduledRouteState.runSessionId === activeSessionId;
-  const navigateScheduled = useCallback(
+  // A run or Heartbeat chat opened from Automations is the route's active Session.
+  const automationRunPresented =
+    automationsRouteState?.runSessionId != null &&
+    automationsRouteState.runSessionId === activeSessionId;
+  const navigateAutomations = useCallback(
     (path: string, options?: { readonly replace?: boolean }) => {
       if (workbenchWindow.location.kind !== "automations") {
         openAutomations(path);
@@ -2905,26 +2905,26 @@ export function WorkbenchRuntime({
     },
     [openAutomations, workbenchWindow],
   );
-  const openScheduledTaskChat = useCallback(
-    (task: CodexScheduledAutomation) => {
+  const openAutomationChat = useCallback(
+    (task: Automation) => {
       if (!task.targetSessionId) return;
-      void presentScheduledChat(task.targetSessionId, (sessionId) =>
+      void presentAutomationChat(task.targetSessionId, (sessionId) =>
         buildAutomationsPath({ automationId: task.id, runSessionId: sessionId }),
       );
     },
-    [presentScheduledChat],
+    [presentAutomationChat],
   );
-  const replyAboutScheduledTaskInPlace = useCallback(
-    (task: CodexScheduledAutomation, message: string) =>
-      replyAboutScheduledTask({
+  const replyAboutAutomationInPlace = useCallback(
+    (task: Automation, message: string) =>
+      replyAboutAutomation({
         projectId: task.projectId,
-        prompt: buildScheduledTaskReplyPrompt(task, message),
+        prompt: buildAutomationReplyPrompt(task, message),
         scheduledPath: (sessionId) =>
           buildAutomationsPath({ automationId: task.id, runSessionId: sessionId }),
       }),
-    [replyAboutScheduledTask],
+    [replyAboutAutomation],
   );
-  const scheduledChatOptions = useMemo<ScheduledTaskChatOption[]>(() => {
+  const automationChatOptions = useMemo<AutomationChatOption[]>(() => {
     const projectNames = new Map(projects.map((project) => [project.id, project.name]));
     return knownSessions
       .filter((session) => !session.archived && hasSessionConversation(session))
@@ -2957,11 +2957,11 @@ export function WorkbenchRuntime({
       openSettingsPath(target == null ? PLUGINS_SETTINGS_PATH : buildPluginSettingsPath(target)),
     onOpenHooksSettings: () => openSettingsAt("hooks-settings"),
   };
-  // Pages and Inboxes reach Scheduled through this, wherever they are shown.
-  const scheduledNavigation: ScheduledNavigation = {
-    openTask: (automationId) => navigateScheduled(buildAutomationsPath({ automationId })),
+  // Pages and Inboxes reach Automations through this, wherever they are shown.
+  const automationsNavigation: AutomationsNavigation = {
+    openTask: (automationId) => navigateAutomations(buildAutomationsPath({ automationId })),
     scheduleRunbook: ({ pageId, title, projectId }) =>
-      navigateScheduled(
+      navigateAutomations(
         buildAutomationsPath({
           automationMode: "create",
           runbookPageId: pageId,
@@ -2970,20 +2970,22 @@ export function WorkbenchRuntime({
         }),
       ),
   };
-  const scheduledSidebarNavigation: ScheduledSidebarNavigation = {
-    tasks: scheduledTasks,
-    selectedTaskId: scheduledRouteState?.automationId ?? null,
-    activeRunSessionId: scheduledRunPresented ? (scheduledRouteState?.runSessionId ?? null) : null,
+  const automationsSidebarNavigation: AutomationsSidebarNavigation = {
+    tasks: automations,
+    selectedTaskId: automationsRouteState?.automationId ?? null,
+    activeRunSessionId: automationRunPresented
+      ? (automationsRouteState?.runSessionId ?? null)
+      : null,
     onSelectTask: (task) => {
       if (task.kind === "heartbeat") {
-        openScheduledTaskChat(task);
+        openAutomationChat(task);
         return;
       }
-      navigateScheduled(buildAutomationsPath({ automationId: task.id }));
+      navigateAutomations(buildAutomationsPath({ automationId: task.id }));
     },
     onOpenRun: (task, run) => {
       if (!run.sessionId) return;
-      void presentScheduledChat(run.sessionId, (sessionId) =>
+      void presentAutomationChat(run.sessionId, (sessionId) =>
         buildAutomationsPath({ automationId: task.id, runSessionId: sessionId }),
       );
     },
@@ -2992,12 +2994,12 @@ export function WorkbenchRuntime({
       if (projectId === null) openInbox();
       else selectProject(projectId);
     },
-    onCreateTask: () => navigateScheduled(buildAutomationsPath({ automationMode: "create" })),
+    onCreateTask: () => navigateAutomations(buildAutomationsPath({ automationMode: "create" })),
     onEditTask: (task) =>
-      navigateScheduled(buildAutomationsPath({ automationId: task.id, automationMode: "edit" })),
+      navigateAutomations(buildAutomationsPath({ automationId: task.id, automationMode: "edit" })),
     onTaskDeleted: (task) => {
-      if (scheduledRouteState?.automationId === task.id)
-        navigateScheduled(buildAutomationsPath(), { replace: true });
+      if (automationsRouteState?.automationId === task.id)
+        navigateAutomations(buildAutomationsPath(), { replace: true });
     },
   };
   const openSettingsThreadSessionById = useCallback<SettingsOpenThread>(
@@ -3220,7 +3222,7 @@ export function WorkbenchRuntime({
         onRefreshSessions: refreshProjectSessions,
       },
       automation: {
-        chats: scheduledChatOptions,
+        chats: automationChatOptions,
         onOpenAutomations: openAutomations,
         onOpenLocalEnvironmentsSettings: openLocalEnvironmentsSettings,
       },
@@ -3372,7 +3374,7 @@ export function WorkbenchRuntime({
     pinnedOpen: threadSummaryPanelPinnedOpen,
     sideChatTabs: activeSession ? (sideChatTabsBySession[activeSession.id] ?? []) : [],
     previewTabsByPanel,
-    scheduledAutomations: scheduledTasks.tasks,
+    clockAutomations: automations.tasks,
     commands: threadSummaryCommands,
   });
   const {
@@ -3382,10 +3384,10 @@ export function WorkbenchRuntime({
     contentShift: threadSummaryPanelContentShift,
     sideChatRows: threadSummarySideChatRows,
     browserRows: threadSummaryBrowserRows,
-    scheduledAutomation: threadSummaryScheduledAutomation,
+    clockAutomation: threadSummaryAutomation,
     onOpenSideChatRow: openSummarySideChatRow,
     onOpenBrowserRow: openSummaryBrowserRow,
-    onOpenScheduledAutomation: openSummaryScheduledAutomation,
+    onOpenAutomation: openSummaryAutomation,
     onOpenProcessManager: openSummaryProcessManager,
     onOpenBackgroundTerminalOutput: openSummaryBackgroundTerminalOutput,
   } = threadSummary;
@@ -4161,14 +4163,14 @@ export function WorkbenchRuntime({
       },
     },
     automations: {
-      path: scheduledRunPresented ? null : automationsPath,
+      path: automationRunPresented ? null : automationsPath,
       props: {
-        tasks: scheduledTasks,
+        tasks: automations,
         projects,
-        chats: scheduledChatOptions,
-        onNavigate: navigateScheduled,
-        onOpenHeartbeatChat: openScheduledTaskChat,
-        onReplyAboutTask: replyAboutScheduledTaskInPlace,
+        chats: automationChatOptions,
+        onNavigate: navigateAutomations,
+        onOpenHeartbeatChat: openAutomationChat,
+        onReplyAboutTask: replyAboutAutomationInPlace,
         onOpenLocalEnvironmentsSettings: openLocalEnvironmentsSettings,
       },
     },
@@ -4213,7 +4215,7 @@ export function WorkbenchRuntime({
       },
     },
   });
-  // Scheduled, Customize and Insights are page routes over the Scene; they own the title row.
+  // Automations, Customize and Insights are page routes over the Scene; they own the title row.
   const destinationRouteShell = automationsRouteShell ?? pluginsRouteShell ?? insightsRouteShell;
   // A full-width Scene panel covers the title row only while its Scene is showing,
   // never under a route such as Automations opened over it.
@@ -5392,11 +5394,11 @@ export function WorkbenchRuntime({
           summaryPanelContentShift: threadSummaryPanelContentShift,
           summarySideChatRows: threadSummarySideChatRows,
           summaryBrowserRows: threadSummaryBrowserRows,
-          summaryScheduledAutomation: threadSummaryScheduledAutomation,
+          summaryAutomation: threadSummaryAutomation,
           summaryComputerUsePip: threadSummary.summaryComputerUsePip,
           onOpenSummarySideChatRow: openSummarySideChatRow,
           onOpenSummaryBrowserRow: openSummaryBrowserRow,
-          onOpenSummaryScheduledAutomation: openSummaryScheduledAutomation,
+          onOpenSummaryAutomation: openSummaryAutomation,
           onOpenProcessManager: openSummaryProcessManager,
           onOpenBackgroundTerminalOutput: openSummaryBackgroundTerminalOutput,
           onToggleSummaryComputerUsePip: threadSummary.onToggleSummaryComputerUsePip,
@@ -5743,7 +5745,7 @@ export function WorkbenchRuntime({
                         destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
                         onHome={workbenchWindow.selectHome}
                         onSpace={workbenchWindow.selectLibrary}
-                        onScheduled={() => openAutomations()}
+                        onAutomations={() => openAutomations()}
                         onInsights={openInsights}
                         onPlugins={() => openPlugins()}
                         footer={
@@ -5778,7 +5780,7 @@ export function WorkbenchRuntime({
                         <WorkbenchSidebar
                           destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
                           body={sidebarBody}
-                          scheduled={scheduledSidebarNavigation}
+                          automations={automationsSidebarNavigation}
                           customize={customizeNavigation}
                           inline={{
                             visible: showInlineSidebar,
@@ -5822,7 +5824,7 @@ export function WorkbenchRuntime({
                       }}
                       automations={{
                         content: () =>
-                          scheduledRunPresented ? (
+                          automationRunPresented ? (
                             activeSessionRoute
                           ) : (
                             <WorkbenchSessionScopePath
@@ -5905,7 +5907,7 @@ export function WorkbenchRuntime({
 
   return (
     <AgentSettingsNavigationProvider openAgentSettings={openAgentSettings}>
-      <ScheduledNavigationProvider value={scheduledNavigation}>
+      <AutomationsNavigationProvider value={automationsNavigation}>
         <WorkbenchNewTabPortProvider port={newTabPort}>
           <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
           {/* Its grace period counts from when it can be seen, which setup would prevent. */}
@@ -5915,7 +5917,7 @@ export function WorkbenchRuntime({
             />
           )}
         </WorkbenchNewTabPortProvider>
-      </ScheduledNavigationProvider>
+      </AutomationsNavigationProvider>
     </AgentSettingsNavigationProvider>
   );
 }

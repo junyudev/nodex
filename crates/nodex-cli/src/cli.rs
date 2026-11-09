@@ -86,6 +86,8 @@ pub enum HelpSchema {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum Command {
+    /// Read and manage standing Automations and their clock dispatches.
+    Automations(crate::automations::AutomationsArgs),
     /// Pause or resume Agent work by Page, Project or Space.
     Work(crate::work::WorkArgs),
     /// Discover people in the current Library.

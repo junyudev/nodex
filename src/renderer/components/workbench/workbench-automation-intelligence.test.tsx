@@ -140,7 +140,7 @@ const click = async (element: HTMLElement) =>
     await Promise.resolve();
   });
 
-test("scheduled tasks select the exact enabled Claude profile, concrete model and advertised effort", async () => {
+test("automations select the exact enabled Claude profile, concrete model and advertised effort", async () => {
   const { view, changed } = renderEditor({
     ...createWorkbenchAutomationDraft(),
     projectId: "project",
@@ -149,7 +149,7 @@ test("scheduled tasks select the exact enabled Claude profile, concrete model an
     serviceTier: "fast",
     localEnvironmentConfigPath: "/workspace/codex-env.toml",
   });
-  await click(view.getByRole("button", { name: "Scheduled agent" }));
+  await click(view.getByRole("button", { name: "Automations agent" }));
   expect(view.queryByRole("menuitem", { name: "Disabled profile" })).toBeNull();
   await click(await view.findByRole("menuitem", { name: "Gateway" }));
   expect(changed.mock.lastCall?.[0]).toMatchObject({
@@ -167,7 +167,7 @@ test("scheduled tasks select the exact enabled Claude profile, concrete model an
     }),
   );
   await waitFor(() =>
-    expect(view.getByRole("button", { name: "Scheduled agent" }).textContent).toBe("Gateway"),
+    expect(view.getByRole("button", { name: "Automations agent" }).textContent).toBe("Gateway"),
   );
 
   await click(view.getByRole("button", { name: "Agent intelligence" }));
@@ -197,12 +197,12 @@ test("scheduled tasks select the exact enabled Claude profile, concrete model an
   await waitFor(() => expect(view.queryByRole("listbox")).toBeNull());
 
   const acceptedChanges = changed.mock.calls.length;
-  await click(view.getByRole("button", { name: "Scheduled agent" }));
+  await click(view.getByRole("button", { name: "Automations agent" }));
   await click(await view.findByRole("menuitem", { name: "Gateway" }));
   expect(changed).toHaveBeenCalledTimes(acceptedChanges);
 });
 
-test("scheduled tasks can run an ACP instance with its exact advertised model and options", async () => {
+test("automations can run an ACP instance with its exact advertised model and options", async () => {
   const { view, changed } = renderEditor({
     ...createWorkbenchAutomationDraft(),
     projectId: "project",
@@ -210,7 +210,7 @@ test("scheduled tasks can run an ACP instance with its exact advertised model an
     reasoningEffort: "high",
     serviceTier: "fast",
   });
-  await click(view.getByRole("button", { name: "Scheduled agent" }));
+  await click(view.getByRole("button", { name: "Automations agent" }));
   // OpenCode isn't scheduled here; enabled Claude profiles and ACP instances are.
   expect(view.queryByRole("menuitem", { name: "OpenCode" })).toBeNull();
   await click(await view.findByRole("menuitem", { name: "ACP work" }));
@@ -253,6 +253,6 @@ test("scheduled tasks can run an ACP instance with its exact advertised model an
 
 test("a task that continues one chat chooses its Agent alone", async () => {
   const { view } = renderEditor({ ...createWorkbenchAutomationDraft(), kind: "heartbeat" });
-  expect(view.getByRole("button", { name: "Scheduled agent" }).textContent).toBe("Codex");
+  expect(view.getByRole("button", { name: "Automations agent" }).textContent).toBe("Codex");
   expect(view.queryByRole("button", { name: "Agent intelligence" })).toBeNull();
 });

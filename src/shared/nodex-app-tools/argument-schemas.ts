@@ -46,7 +46,7 @@ export const appToolArgumentSchemas: Readonly<Record<string, z.ZodType>> = {
   ...sidebarSchemas,
   ...workbenchControlSchemas,
   ...workbenchObservationSchemas,
-  automation_update: automationSchema,
+  automations_update: automationSchema,
   send_to_inbox: sendToInboxSchema,
   inbox_suggest: InboxSuggestionOutput,
   write_turn_note: writeTurnNoteSchema,

@@ -62,12 +62,14 @@ export const live: Layer.Layer<
           codexEvents.publish({
             kind: "codex",
             value: {
-              type: "scheduledAutomationChanged",
+              type: "automationChanged",
               event: { automationId, sessionId: null, reason: "upsert" },
             },
           });
         }
         if (automationEvent.automationIds.length > 0 || automationEvent.runIds.length > 0) {
+          // Activity reads Automation decisions and their execution links through the Inbox owner.
+          yield* notifications.notifyInboxChanged({ reason: "inbox" });
           codexEvents.publish({
             kind: "codex",
             value: {

@@ -205,11 +205,16 @@ fn remint_profile_secrets(database_path: &Path) -> Result<(), StoreError> {
             "UPDATE nodex_agent_token_keys SET key_material = randomblob(32) WHERE id = 1",
             [],
         )?;
+        // A verified predecessor clone keeps its published schema until its
+        // isolated Store is opened and upgraded.
+        let revision: u32 = transaction.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        let metadata = if revision >= 204 {
+            "automation_clock_metadata"
+        } else {
+            "core_automation_runtime_metadata"
+        };
         let runtime_changed = transaction.execute(
-            "UPDATE core_automation_runtime_metadata \
-             SET jitter_salt = lower(hex(randomblob(16))), \
-                 created_at_unix_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER) \
-             WHERE id = 1",
+            &format!("UPDATE {metadata} SET jitter_salt=lower(hex(randomblob(16))), created_at_unix_ms=CAST(unixepoch('subsec')*1000 AS INTEGER) WHERE id=1"),
             [],
         )?;
         if token_changed != 1 || runtime_changed != 1 {
@@ -431,7 +436,7 @@ mod tests {
                 let secrets = connection.query_row(
                     "SELECT token.key_material, runtime.jitter_salt \
                      FROM nodex_agent_token_keys token \
-                     CROSS JOIN core_automation_runtime_metadata runtime \
+                     CROSS JOIN automation_clock_metadata runtime \
                      WHERE token.id = 1 AND runtime.id = 1",
                     [],
                     |row| Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, String>(1)?)),
@@ -490,7 +495,7 @@ mod tests {
             .query_row(
                 "SELECT token.key_material, runtime.jitter_salt \
                  FROM nodex_agent_token_keys token \
-                 CROSS JOIN core_automation_runtime_metadata runtime \
+                 CROSS JOIN automation_clock_metadata runtime \
                  WHERE token.id = 1 AND runtime.id = 1",
                 [],
                 |row| Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, String>(1)?)),

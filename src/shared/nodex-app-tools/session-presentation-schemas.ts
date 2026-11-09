@@ -2,6 +2,7 @@ import { idempotencyKeySchema } from "./idempotency-key";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { WorkbenchWindowReferenceSchema } from "./workbench";
+import { toolInputSchema } from "./tool-input-schema";
 
 const identity = z.string().min(1).max(512);
 const path = z.string().min(1).max(4_096);
@@ -69,6 +70,6 @@ export const sessionPresentationToolCatalog: readonly Tool[] = Object.entries(
 ).map(([name, schema]) => ({
   name,
   description: `${descriptions[name as keyof typeof descriptions]} Reuse idempotencyKey only for an exact retry.`,
-  inputSchema: z.toJSONSchema(schema, { io: "input" }) as Tool["inputSchema"],
+  inputSchema: toolInputSchema(schema),
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
 }));

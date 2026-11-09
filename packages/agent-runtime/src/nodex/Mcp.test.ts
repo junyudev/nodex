@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import { TaskReadResult, TaskToolkit } from "../mcp/toolkits/task/tools.ts";
 import { taskReadView } from "../mcp/TaskHistoryRead.ts";
 import { NODEX_APP_TASK_TOOL_NAMES } from "@nodex/runtime-shared/nodexAppMcp";
+import { toolInputSchemaProblem } from "./ToolInputSchema.ts";
 
 const propertyNames = (schema: unknown): ReadonlyArray<string> => {
   if (Array.isArray(schema)) return schema.flatMap(propertyNames);
@@ -42,6 +43,11 @@ it("publishes task tools without Runtime conversation routing fields", () => {
       tool.name,
     ).toEqual([]);
   }
+});
+
+it("publishes task tool arguments as one object every provider accepts", () => {
+  for (const tool of Object.values(TaskToolkit.tools))
+    expect(toolInputSchemaProblem(Tool.getJsonSchema(tool)), tool.name).toBeUndefined();
 });
 
 it("projects Task routing fields while preserving canonical diagnostic content and opaque continuations", () => {

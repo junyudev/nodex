@@ -13,10 +13,10 @@ vi.mock("./workbench-settings-route-shell", () => {
   };
 });
 
-vi.mock("@/features/scheduled/scheduled-route", () => {
+vi.mock("@/features/automations/automations-route", () => {
   loadedRoutes.push("automations");
   return {
-    ScheduledRoute: ({ path }: { path: string }) => (
+    AutomationsRoute: ({ path }: { path: string }) => (
       <output aria-label="Automations route">{path}</output>
     ),
   };

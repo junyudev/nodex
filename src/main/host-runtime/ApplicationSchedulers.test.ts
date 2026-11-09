@@ -11,10 +11,10 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
-import type { CodexScheduledAutomation } from "../../shared/types";
+import type { Automation } from "../../shared/types";
 import {
   AutomationApplication,
-  type AutomationDefinitions,
+  type Automations,
   type AutomationReminders,
   type AutomationRuns,
 } from "../automation-application/AutomationApplication";
@@ -40,18 +40,12 @@ import {
   ApplicationSettings,
   type ApplicationSettingsSnapshot,
 } from "../settings/ApplicationSettings";
-import {
-  CodexScheduledAutomationRetryError,
-  type CodexScheduledAutomationRunContext,
-} from "./ScheduledAutomationPolicy";
+import { AutomationRetryError, type AutomationRunContext } from "./ClockAutomationPolicy";
 import {
   ReminderSchedulerRuntime,
   live as reminderSchedulerLive,
 } from "./ReminderSchedulerRuntime";
-import {
-  ScheduledAutomationRuntime,
-  live as scheduledAutomationLive,
-} from "./ScheduledAutomationRuntime";
+import { ClockAutomationRuntime, live as scheduledAutomationLive } from "./ClockAutomationRuntime";
 import {
   StoreAdministrationSchedulerRuntime,
   live as storeAdministrationSchedulerLive,
@@ -70,19 +64,20 @@ const reminderClaim = {
   expiresAt: Date.parse("2026-07-20T00:32:00.000Z"),
 };
 
-const automationDefinition = (
-  id: string,
-  kind: "cron" | "heartbeat" = "cron",
-): CodexScheduledAutomation => ({
+const automationDefinition = (id: string, kind: "cron" | "heartbeat" = "cron"): Automation => ({
   id,
-  definitionRevision: 1,
+  automationRevision: 1,
+  scope: { kind: "space" },
+  ownerMemberId: "member:owner",
+  conditionText: "On the clock",
+  timezone: "UTC",
   projectId: null,
   targetSessionId: kind === "heartbeat" ? "session-follow-up" : null,
   notificationPolicy: null,
-  launch: "automatic",
+  mode: "run",
   runbookPageId: null,
   runbookTitle: null,
-  heldFiring: null,
+  heldDecision: null,
   kind,
   status: "ACTIVE",
   name: id,
@@ -106,7 +101,7 @@ const automationClaim = (id: string) => ({
   dispatchId: `dispatch:${id}`,
   purpose: "run" as const,
   admission: null,
-  definitionRevision: 1,
+  automationRevision: 1,
   scheduledFor: 100,
   attempt: 1,
   expiresAt: 200,
@@ -114,12 +109,13 @@ const automationClaim = (id: string) => ({
 });
 
 const defaultAutomation = (input?: {
-  readonly definitions?: Partial<AutomationDefinitions>;
+  readonly automations?: Partial<Automations>;
   readonly reminders?: Partial<AutomationReminders>;
   readonly runs?: Partial<AutomationRuns>;
 }): AutomationApplication["Service"] =>
   AutomationApplication.of({
-    definitions: {
+    automations: {
+      decisions: () => Effect.die("unused"),
       listWindow: () => Effect.die("unused"),
       list: () => Effect.die("unused"),
       get: () => Effect.die("unused"),
@@ -132,12 +128,12 @@ const defaultAutomation = (input?: {
       planDue: Effect.succeed({
         dueNow: true,
         nextWakeAt: 100,
-        workToken: "definitions:due",
+        workToken: "automations:due",
       }),
       claimDue: () => Effect.succeed([]),
       completeLease: () => Effect.void,
       failLease: () => Effect.void,
-      ...input?.definitions,
+      ...input?.automations,
     },
     runs: {
       settleInterrupted: Effect.succeed({ archivedPendingCount: 0, pendingReviewCount: 0 }),
@@ -231,12 +227,15 @@ const waitUntil = (label: string, predicate: () => boolean): Effect.Effect<void>
   });
 
 const buildHarness = (input: {
+  readonly automationEvents?: Stream.Stream<
+    import("../codex-application/CodexApplicationEventHub").CodexApplicationEvent
+  >;
   readonly automation?: AutomationApplication["Service"];
-  readonly holdScheduledFiring?: InboxApplication["Service"]["holdScheduledFiring"];
+  readonly holdAutomationDecision?: InboxApplication["Service"]["holdAutomationDecision"];
   readonly administration?: StoreAdministration["Service"];
   readonly executeScheduled?: (
-    automation: CodexScheduledAutomation,
-    context: CodexScheduledAutomationRunContext,
+    automation: Automation,
+    context: AutomationRunContext,
   ) => Effect.Effect<void, AutomationExecutionError>;
   readonly settled?: () => void;
   readonly readBlockRetentionCount?: () => number;
@@ -302,7 +301,7 @@ const buildHarness = (input: {
     const automationEventsLayer = Layer.succeed(
       CodexApplicationEventHub,
       CodexApplicationEventHub.of({
-        events: Stream.empty,
+        events: input.automationEvents ?? Stream.empty,
         publish: (event) => {
           if (
             event.kind === "codex" &&
@@ -330,7 +329,7 @@ const buildHarness = (input: {
             automationLayer,
             executionLayer,
             Layer.succeed(InboxApplication, {
-              holdScheduledFiring: input.holdScheduledFiring ?? (() => Effect.void),
+              holdAutomationDecision: input.holdAutomationDecision ?? (() => Effect.void),
             } as unknown as InboxApplication["Service"]),
             automationEventsLayer,
             Layer.succeed(CoreAuthority, authority),
@@ -387,7 +386,7 @@ const buildHarness = (input: {
       notifications,
       powerResume: () => powerResume,
       reminders: Context.get(reminderContext, ReminderSchedulerRuntime),
-      scheduled: Context.get(scheduledContext, ScheduledAutomationRuntime),
+      scheduled: Context.get(scheduledContext, ClockAutomationRuntime),
       store: Context.get(storeContext, StoreAdministrationSchedulerRuntime),
       scope,
     };
@@ -473,7 +472,7 @@ it.effect("keeps idle scheduler probes read-only", () =>
     let reminderPlans = 0;
     let claims = 0;
     const automation = defaultAutomation({
-      definitions: {
+      automations: {
         planDue: Effect.sync(() => {
           definitionPlans += 1;
           return { dueNow: false, nextWakeAt: null, workToken: null };
@@ -553,7 +552,7 @@ it.effect("settles scheduled claims once and preserves explicit retry intent", (
       runs: {
         settleInterrupted: Effect.succeed({ archivedPendingCount: 1, pendingReviewCount: 0 }),
       },
-      definitions: {
+      automations: {
         claimDue: () =>
           Effect.sync(() => {
             claimCalls += 1;
@@ -574,7 +573,7 @@ it.effect("settles scheduled claims once and preserves explicit retry intent", (
           return Effect.fail(
             new AutomationExecutionError({
               operation: "execute",
-              cause: new CodexScheduledAutomationRetryError(
+              cause: new AutomationRetryError(
                 "Renderer owner is unavailable",
                 60_000,
                 "renderer_owner_unavailable",
@@ -586,7 +585,7 @@ it.effect("settles scheduled claims once and preserves explicit retry intent", (
           return Effect.fail(
             new AutomationExecutionError({
               operation: "execute",
-              cause: new CodexScheduledAutomationRetryError(
+              cause: new AutomationRetryError(
                 "Heartbeat automations are disabled",
                 null,
                 "heartbeat_disabled",
@@ -629,7 +628,7 @@ it.effect("hold leases go to the Inbox and retry failed captures without startin
     let claimed = false;
     const harness = yield* buildHarness({
       automation: defaultAutomation({
-        definitions: {
+        automations: {
           claimDue: () =>
             Effect.sync(() => {
               if (claimed) return [];
@@ -648,7 +647,7 @@ it.effect("hold leases go to the Inbox and retry failed captures without startin
         },
       }),
       executeScheduled: () => Effect.die("A hold lease must not execute"),
-      holdScheduledFiring: (claim) =>
+      holdAutomationDecision: (claim) =>
         claim.definition.id === "retry"
           ? Effect.fail(
               new InboxApplicationError({
@@ -676,7 +675,7 @@ it.effect("logs the actionable reason when a scheduled Inbox hold fails validati
     const logs: BackendLogEntry[] = [];
     const unsubscribe = subscribeToBackendLogs(
       (entry) => {
-        if (entry.component === "scheduled-automation-runtime") logs.push(entry);
+        if (entry.component === "clock-automation-runtime") logs.push(entry);
       },
       { level: "warn" },
     );
@@ -685,7 +684,7 @@ it.effect("logs the actionable reason when a scheduled Inbox hold fails validati
     const failures: string[] = [];
     const harness = yield* buildHarness({
       automation: defaultAutomation({
-        definitions: {
+        automations: {
           claimDue: () =>
             Effect.sync(() => {
               if (claimed) return [];
@@ -698,7 +697,7 @@ it.effect("logs the actionable reason when a scheduled Inbox hold fails validati
             }),
         },
       }),
-      holdScheduledFiring: () =>
+      holdAutomationDecision: () =>
         Effect.fail(
           new InboxApplicationError({
             operation: "hold",
@@ -729,7 +728,7 @@ it.effect(
       };
       const harness = yield* buildHarness({
         automation: defaultAutomation({
-          definitions: {
+          automations: {
             claimDue: () =>
               Effect.sync(() => {
                 if (claimed) return [];
@@ -766,7 +765,7 @@ it.effect("skips overlapping scheduled ticks while a claimed run is active", () 
     let releaseRun: (() => void) | null = null;
     let shouldBlock = true;
     const automation = defaultAutomation({
-      definitions: {
+      automations: {
         claimDue: () =>
           Effect.sync(() => {
             claimCalls += 1;
@@ -807,7 +806,7 @@ it.effect("returns an admitted automation lease when its Main Scope closes", () 
     let runStarted = false;
     let runInterrupted = false;
     const automation = defaultAutomation({
-      definitions: {
+      automations: {
         claimDue: () =>
           Effect.succeed([{ ...automationClaim("shutdown"), leaseId: "lease:shutdown" }]),
         failLease: (leaseId, _delay, reason) =>
@@ -839,9 +838,9 @@ it.effect("returns an admitted automation lease when its Main Scope closes", () 
 
 it.effect("projects heartbeat state with a TestClock-owned freshness deadline", () =>
   Effect.gen(function* () {
-    const contexts: CodexScheduledAutomationRunContext[] = [];
+    const contexts: AutomationRunContext[] = [];
     const automation = defaultAutomation({
-      definitions: {
+      automations: {
         claimDue: () =>
           Effect.succeed([
             {
@@ -1287,4 +1286,55 @@ it.effect("retries failed backups with exponential backoff capped at the configu
     assert.equal(times.length, completed + 1);
     yield* Scope.close(h.scope, Exit.void);
   }),
+);
+
+it.effect(
+  "committed Automation changes wake manual dispatch without waiting for the polling interval",
+  () =>
+    Effect.gen(function* () {
+      const events =
+        yield* PubSub.unbounded<
+          import("../codex-application/CodexApplicationEventHub").CodexApplicationEvent
+        >();
+      let due = false;
+      let probes = 0;
+      let completed = 0;
+      const harness = yield* buildHarness({
+        automationEvents: Stream.fromPubSub(events),
+        scheduled: { intervalMs: 3_600_000 },
+        automation: defaultAutomation({
+          automations: {
+            planDue: Effect.sync(() => {
+              probes += 1;
+              return {
+                dueNow: due,
+                nextWakeAt: due ? 0 : null,
+                workToken: due ? "manual:due" : null,
+              };
+            }),
+            claimDue: () =>
+              Effect.sync(() => {
+                due = false;
+                return [automationClaim("manual")];
+              }),
+            completeLease: () =>
+              Effect.sync(() => {
+                completed += 1;
+              }),
+          },
+        }),
+      });
+      yield* harness.scheduled.activate;
+      yield* waitUntil("initial idle probe", () => probes === 1);
+      due = true;
+      yield* PubSub.publish(events, {
+        kind: "codex",
+        value: {
+          type: "automationChanged",
+          event: { automationId: "manual", sessionId: null, reason: "upsert" },
+        },
+      });
+      yield* waitUntil("manual dispatch wake", () => completed === 1);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
 );

@@ -4,7 +4,7 @@ import { openNodexMenu, settleAsyncRender, settleLazyRender, textContent } from 
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { THREAD_QUEUE_FOLLOW_UPS_STORAGE_KEY } from "@/lib/thread-composer-follow-up-mode";
 import { COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY } from "@/lib/composer-enter-behavior";
-import { type CodexScheduledAutomationCreateInput } from "@/lib/types";
+import { type AutomationCreateInput } from "@/lib/types";
 import type { ThreadStageActions } from "@/features/local-conversation/thread-stage-types";
 import { __getNodexToastSnapshotForTests } from "@/components/ui/toast";
 import { parseDatabaseId, parseDatabaseViewId } from "../../../shared/database-identities";
@@ -14,7 +14,7 @@ import {
   makeBlankSession,
   makePanelLayout,
   makeProject,
-  makeScheduledAutomation,
+  makeAutomation,
   makeSession,
   makeSessionTab,
 } from "./workbench-testkit/workbench-shell-fixtures";
@@ -82,12 +82,16 @@ describe("workbench session shell / routes-threads", () => {
       const screen = renderWorkbench({
         projects: [],
         projectlessSessions: [makeAttachedSession({ id: "session:projectless", projectId: null })],
-        scheduledAutomations:
+        clockAutomations:
           mode === "suggested-update"
             ? [
-                makeScheduledAutomation({
+                makeAutomation({
                   id: "automation-reviewed",
-                  definitionRevision: 5,
+                  automationRevision: 5,
+                  scope: { kind: "space" },
+                  ownerMemberId: "member-owner",
+                  conditionText: "Every day",
+                  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                   targetSessionId: "session:newer",
                 }),
               ]
@@ -96,9 +100,9 @@ describe("workbench session shell / routes-threads", () => {
       await settleAsyncRender();
       await settleAsyncRender();
       const open = getLastThreadStageActions()
-        .onOpenSummaryScheduledAutomation as ThreadStageActions["onOpenSummaryScheduledAutomation"];
+        .onOpenSummaryAutomation as ThreadStageActions["onOpenSummaryAutomation"];
       expect(open).toBeTypeOf("function");
-      const definition: CodexScheduledAutomationCreateInput = {
+      const definition: AutomationCreateInput = {
         kind: "heartbeat",
         name: "Review original target",
         prompt: "Check progress",
@@ -130,10 +134,7 @@ describe("workbench session shell / routes-threads", () => {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 700));
       });
-      const channel =
-        mode === "suggested-create"
-          ? "codex:scheduled-automations:create"
-          : "codex:scheduled-automations:update";
+      const channel = mode === "suggested-create" ? "automations:create" : "automations:update";
       expect(invokeCalls.filter((call) => call[0] === channel)).toEqual([]);
       await act(async () => {
         fireEvent.click(
@@ -192,19 +193,19 @@ describe("workbench session shell / routes-threads", () => {
     expect(screen.container.querySelector('[data-thread-stage="true"]') !== null).toBe(true);
   });
 
-  test("opens Scheduled from the rail with its own sidebar and suggested tasks", async () => {
+  test("opens Automations from the rail with its own sidebar and suggested tasks", async () => {
     const screen = renderWorkbench();
     await settleAsyncRender();
     await settleAsyncRender();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Scheduled" }));
+      fireEvent.click(screen.getByRole("button", { name: "Automations" }));
       await Promise.resolve();
     });
     await settleAsyncRender();
 
     await settleLazyRender();
-    const route = await screen.findByTestId("scheduled-route");
+    const route = await screen.findByTestId("automations-route");
     const globalHeader = screen.getByTestId("workbench-global-header");
     const leftSlot = getHeaderShellSlot(screen, "left");
     const rightSlot = getHeaderShellSlot(screen, "right");
@@ -219,19 +220,18 @@ describe("workbench session shell / routes-threads", () => {
     expect(within(globalHeader).queryByRole("button", { name: "Toggle side panel" })).toBe(null);
     const rail = screen.getByRole("navigation", { name: "App navigation" });
     expect(
-      within(rail).getByRole("button", { name: "Scheduled" }).getAttribute("aria-current"),
+      within(rail).getByRole("button", { name: "Automations" }).getAttribute("aria-current"),
     ).toBe("page");
     expect(
       within(rail).getByRole("button", { name: "Home" }).getAttribute("aria-current"),
     ).toBeNull();
-    expect(screen.getByRole("navigation", { name: "Scheduled task folders" })).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "Automations" })).not.toBeNull();
     expect(screen.queryByTestId("project-session-sidebar")).toBeNull();
+    expect(within(route).getByRole("heading", { level: 1, name: "New automation" })).not.toBeNull();
     expect(
-      within(route).getByRole("heading", { level: 1, name: "Schedule a task" }),
-    ).not.toBeNull();
-    expect(
-      within(within(route).getByRole("list", { name: "Suggested tasks" })).getAllByRole("button")
-        .length,
+      within(within(route).getByRole("list", { name: "Suggested automations" })).getAllByRole(
+        "button",
+      ).length,
     ).toBe(6);
   });
 
@@ -682,9 +682,9 @@ describe("workbench session shell / routes-threads", () => {
     ).toBe(true);
   });
 
-  test("summary scheduled automation action opens the selected automation route", async () => {
+  test("summary clock Automation action opens the selected automation route", async () => {
     installTerminalEventApiMock();
-    const automation = makeScheduledAutomation({
+    const automation = makeAutomation({
       id: "automation-summary",
       kind: "cron",
       targetSessionId: null,
@@ -694,19 +694,19 @@ describe("workbench session shell / routes-threads", () => {
     });
     const screen = renderWorkbench({
       sessionsByProject: { alpha: [makeAttachedSession()] },
-      scheduledAutomations: [automation],
+      clockAutomations: [automation],
     });
     await settleAsyncRender();
     await settleAsyncRender();
 
     const actions = getLastThreadStageActions();
-    const openScheduledAutomation = actions.onOpenSummaryScheduledAutomation as
+    const openAutomation = actions.onOpenSummaryAutomation as
       | ((input: { automationId: string; title: string }) => void)
       | undefined;
-    expect(typeof openScheduledAutomation).toBe("function");
+    expect(typeof openAutomation).toBe("function");
 
     await act(async () => {
-      openScheduledAutomation?.({
+      openAutomation?.({
         automationId: automation.id,
         title: automation.name,
       });
@@ -714,7 +714,7 @@ describe("workbench session shell / routes-threads", () => {
     });
     await settleAsyncRender();
 
-    const route = await screen.findByTestId("scheduled-route");
+    const route = await screen.findByTestId("automations-route");
     expect(
       await within(route).findByRole("button", { name: "Summary cadence settings" }),
     ).not.toBeNull();
@@ -722,30 +722,30 @@ describe("workbench session shell / routes-threads", () => {
     expect(screen.container.querySelector('[data-thread-stage="true"]')).toBe(null);
   });
 
-  test("summary scheduled automation proposal opens and saves from the side panel", async () => {
+  test("summary clock Automation proposal opens and saves from the side panel", async () => {
     installTerminalEventApiMock();
     const screen = renderWorkbench({
       projects: [makeProject("alpha", "Alpha", "/tmp/project")],
       sessionsByProject: {
         alpha: [makeAttachedSession({ id: "session:alpha:automation-proposal" })],
       },
-      scheduledAutomations: [],
+      clockAutomations: [],
     });
     await settleAsyncRender();
     await settleAsyncRender();
 
     const actions = getLastThreadStageActions();
-    const openScheduledAutomation = actions.onOpenSummaryScheduledAutomation as
+    const openAutomation = actions.onOpenSummaryAutomation as
       | ((input: {
-          createInput: CodexScheduledAutomationCreateInput;
+          createInput: AutomationCreateInput;
           mode: "suggested-create";
           title: string;
         }) => void)
       | undefined;
-    expect(typeof openScheduledAutomation).toBe("function");
+    expect(typeof openAutomation).toBe("function");
 
     await act(async () => {
-      openScheduledAutomation?.({
+      openAutomation?.({
         mode: "suggested-create",
         title: "Review release notes",
         createInput: {
@@ -770,7 +770,7 @@ describe("workbench session shell / routes-threads", () => {
     ) as HTMLElement | null;
     expect(sidePanel !== null).toBe(true);
     if (!sidePanel) throw new Error("Expected automation side panel");
-    expect(screen.queryByTestId("scheduled-route")).toBe(null);
+    expect(screen.queryByTestId("automations-route")).toBe(null);
     expect(
       (within(sidePanel).getByRole("textbox", { name: "Name" }) as HTMLInputElement).value,
     ).toBe("Review release notes");
@@ -781,9 +781,9 @@ describe("workbench session shell / routes-threads", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getScheduledAutomations().length).toBe(1);
+      expect(screen.getAutomations().length).toBe(1);
     });
-    expect(screen.getScheduledAutomations()[0]?.name).toBe("Review release notes");
+    expect(screen.getAutomations()[0]?.name).toBe("Review release notes");
     await waitFor(() => {
       const currentSidePanel = screen.container.querySelector(
         '[data-automation-side-panel-tab="true"]',
@@ -791,36 +791,36 @@ describe("workbench session shell / routes-threads", () => {
       expect(currentSidePanel !== null).toBe(true);
       expect(
         within(currentSidePanel as HTMLElement).getByRole("button", {
-          name: "Open in Scheduled",
+          name: "Open in Automations",
         }) !== null,
       ).toBe(true);
     });
   });
 
-  test("summary scheduled automation proposal reports create failures with the scheduled task toast title", async () => {
+  test("summary clock Automation proposal reports create failures with the automation toast title", async () => {
     installTerminalEventApiMock();
     const screen = renderWorkbench({
       projects: [makeProject("alpha", "Alpha", "/tmp/project")],
       sessionsByProject: {
         alpha: [makeAttachedSession({ id: "session:alpha:automation-proposal-failure" })],
       },
-      scheduledAutomations: [],
+      clockAutomations: [],
     });
     await settleAsyncRender();
     await settleAsyncRender();
 
     const actions = getLastThreadStageActions();
-    const openScheduledAutomation = actions.onOpenSummaryScheduledAutomation as
+    const openAutomation = actions.onOpenSummaryAutomation as
       | ((input: {
-          createInput: CodexScheduledAutomationCreateInput;
+          createInput: AutomationCreateInput;
           mode: "suggested-create";
           title: string;
         }) => void)
       | undefined;
-    expect(typeof openScheduledAutomation).toBe("function");
+    expect(typeof openAutomation).toBe("function");
 
     await act(async () => {
-      openScheduledAutomation?.({
+      openAutomation?.({
         mode: "suggested-create",
         title: "Broken proposal",
         createInput: {
@@ -847,7 +847,7 @@ describe("workbench session shell / routes-threads", () => {
     if (!sidePanel) throw new Error("Expected automation side panel");
     const baseMockInvokeImpl = mockInvokeImpl;
     setMockInvokeImpl(async (channel, ...args) => {
-      if (channel === "codex:scheduled-automations:create") {
+      if (channel === "automations:create") {
         throw new Error("Create bridge failed");
       }
       return baseMockInvokeImpl?.(channel, ...args) ?? null;
@@ -863,11 +863,11 @@ describe("workbench session shell / routes-threads", () => {
         __getNodexToastSnapshotForTests().some(
           (record) =>
             record.level === "danger" &&
-            record.title === "Could not create scheduled task" &&
+            record.title === "Could not create automation" &&
             record.description === "Create bridge failed",
         ),
       ).toBe(true);
     });
-    expect(screen.getScheduledAutomations().length).toBe(0);
+    expect(screen.getAutomations().length).toBe(0);
   });
 });

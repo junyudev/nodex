@@ -95,7 +95,7 @@ export interface WorkbenchSidebarPeekController {
 
 function readPeekArea(element: Element | null): WorkbenchSidebarPeekArea | null {
   const value = element?.getAttribute(WORKBENCH_SIDEBAR_PEEK_AREA_ATTRIBUTE);
-  return value === "home" || value === "space" || value === "scheduled" ? value : null;
+  return value === "home" || value === "space" || value === "automations" ? value : null;
 }
 
 export function createWorkbenchSidebarPeekController({

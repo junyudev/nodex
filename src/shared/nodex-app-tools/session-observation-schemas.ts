@@ -5,6 +5,7 @@ import { SESSION_HISTORY_CURSOR_MAX_CHARS } from "./session-history";
 import { sessionWaitLimits } from "@nodex/app-tools-mcp/manifest";
 
 import { sessionScopeSchema } from "./session-scope";
+import { toolInputSchema } from "./tool-input-schema";
 
 const listSchema = z
   .strictObject({
@@ -222,29 +223,27 @@ export const sessionObservationToolCatalog: readonly Tool[] = [
     name: "search_sessions",
     description:
       "Search Session titles, branches, pull requests, Projects and historical user/assistant messages in the calling Project or projectless lane. Use scope: profile for every Project, or projectId for an explicit Project. Returns ranked matches, exact item coordinates, current placement, source coverage and continuation. Attention flags are waitingOnApproval or waitingOnUserInput across backends. A preparing response retains its query; unavailable sources remain retryable. Pass a match's sessionId, itemId and sourceThreadId to read_session for full content.",
-    inputSchema: z.toJSONSchema(searchSchema, { io: "input" }) as Tool["inputSchema"],
+    inputSchema: toolInputSchema(searchSchema),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },
   {
     name: "wait_sessions",
     description:
       "Wait for the first of up to eight Sessions in the current Profile to reach a terminal state, become unavailable, or start waiting on its person: a live question, secret or approval, with per-target errors. Asynchronous questions do not end a wait while work continues. Answer questions with session_question; approvals need the user. execution.threadId selects a Runtime child within its Session. One target defaults to ten minutes and supports up to one hour; multiple targets retain a two-minute default and maximum. Each target pins the latest Run when the call starts, or pass runId for a specific Run. Automatic restart continuations stay in the same wait; unrelated newer Runs never replace it. Results return selectedRunId and the resolved runId. Use timeoutMs: 0 for an immediate snapshot. Pass each returned cursor as afterCursor to avoid repeating unchanged completion, attention or progress. Core, native and Runtime events drive the same observer for every caller. Results include compact status, latest reply text with its read_session continuation and latest tool status. Progress coverage and response-budget deferral are explicit. Waits end when the calling Turn is cancelled. An unloaded backend is explicitly unavailable; it is not resumed by observation.",
-    inputSchema: z.toJSONSchema(waitSchema, { io: "input" }) as Tool["inputSchema"],
+    inputSchema: toolInputSchema(waitSchema),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },
   ...(["list_sessions", "list_archived_sessions"] as const).map((name): Tool => ({
     name,
     description: `List ${name === "list_sessions" ? "active" : "archived"} Sessions in the calling Project, or its projectless lane, in conversation-recency order. Use scope: profile for every Project, or projectId for an explicit Project. Runtime child executions are included by default; set includeSubagents: false for roots. Filter by title/preview query. Results include bounded previews, placement, source availability and a continuation cursor. Attention flags are waitingOnApproval or waitingOnUserInput across backends. A short or empty page may still have nextCursor; continue until null. If a source is unavailable, stop and retry later.`,
-    inputSchema: z.toJSONSchema(listSchema, { io: "input" }) as Tool["inputSchema"],
+    inputSchema: toolInputSchema(listSchema),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   })),
   {
     name: "read_session",
     description:
       "Read a Session without opening or resuming it; omit sessionId for your calling Session. Attention flags are waitingOnApproval or waitingOnUserInput across backends. messages returns messages and plans; activity returns complete typed JSON including tools, file changes and attachments. Default newest_first pages older items; oldest_first reads forward and its tailCursor resumes future appends. Preserve history.page.nextCursor separately from each content.nextCursor for exact text/JSON continuation. Execution metadata includes provenance, lineage, counts and recent Runs; execution.runsPage.nextCursor continues Run summaries via runCursor. Pass itemId and optional sourceThreadId/runId/textOffset to read a search hit directly. Sources without point lookup return page.locating and a nextCursor until found. execution.threadId selects a Runtime child within this Session. Positive quantity budgets normalize to safe limits, and the complete response budget remains fixed. Changed content reports cursor_stale. A direct parent reading a complete terminal child result acknowledges its task delivery.",
-    inputSchema: z.toJSONSchema(sessionObservationSchemas.read_session, {
-      io: "input",
-    }) as Tool["inputSchema"],
+    inputSchema: toolInputSchema(sessionObservationSchemas.read_session),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
 ];

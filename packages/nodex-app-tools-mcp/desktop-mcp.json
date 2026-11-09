@@ -7,7 +7,7 @@
       "enabled": true,
       "default_tools_approval_mode": "approve",
       "tools": {
-        "automation_update": { "approval_mode": "prompt" },
+        "automations_update": { "approval_mode": "prompt" },
         "create_session": { "approval_mode": "prompt" },
         "send_message_to_session": { "approval_mode": "prompt" },
         "session_question": { "approval_mode": "prompt" },

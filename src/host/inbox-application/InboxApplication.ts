@@ -78,6 +78,9 @@ import type {
   ProjectWorkspaceRead,
   ProjectWorkspaceReadSnapshot,
 import { resolveInboxModel } from "./InboxRuntimeSelection";
+import { automationDecisionCapture, automationDecisionTitle } from "./automation-decision";
+import type { AutomationClaim } from "../automation-application/AutomationApplication";
+import type { AutomationHeldDecision } from "../../shared/types";
 
 export class InboxApplicationError extends Schema.TaggedError<InboxApplicationError>()(
   "InboxApplicationError",
@@ -132,6 +135,10 @@ export class InboxApplication extends Context.Service<
       readonly pageIds?: readonly string[];
       readonly sessionId?: string;
     }) => InboxEffect<boolean>;
+    readonly holdAutomationDecision: (claim: AutomationClaim) => InboxEffect<void>;
+    readonly confirmAutomationDecision: (
+      automationDecision: AutomationHeldDecision,
+    ) => InboxEffect<void>;
     readonly chatTargets: (input: InboxChatTargetsInput) => InboxEffect<InboxChatTargets>;
     readonly entry: (pageId: string) => InboxEffect<import("../../shared/inbox").InboxItem | null>;
     readonly summary: (input: InboxSummaryInput) => InboxEffect<InboxSummary>;
@@ -557,6 +564,7 @@ export const make = Effect.gen(function* () {
       return yield* fail("prepare-confirmation")(
         new Error("Review this suggestion before deciding"),
       );
+    if (action.type === "execute_decision" && action.agent)
       yield* resolveInboxModel(runtime, action.agent).pipe(
         Effect.mapError(fail("prepare-confirmation")),
       );
@@ -614,6 +622,7 @@ export const make = Effect.gen(function* () {
     );
     const action =
       parsed.action ?? (proposal ? inboxDispatchActionFromCore(proposal.action) : null);
+    if (action?.type === "execute_decision" && action.agent)
       yield* resolveInboxModel(runtime, action.agent).pipe(Effect.mapError(fail("confirm")));
     return yield* decision(
       "confirm",
@@ -634,6 +643,7 @@ export const make = Effect.gen(function* () {
 
   const dispatch = Effect.fn("InboxApplication.dispatch")(function* (input: InboxDispatchInput) {
     const parsed = yield* parse("dispatch", () => InboxDispatchInputSchema.parse(input));
+    if (parsed.action.type === "execute_decision" && parsed.action.agent)
       yield* resolveInboxModel(runtime, parsed.action.agent).pipe(
         Effect.mapError(fail("dispatch")),
       );
@@ -1030,6 +1040,7 @@ export const make = Effect.gen(function* () {
           () => expectVariant(snapshot, "inbox_pending_suggestions").entries,
         ),
       ),
+      Effect.map((entries) => entries.filter((entry) => entry.source.kind !== "automation")),
     );
 
   const dispatchContext = (pageIds: readonly string[]) =>
@@ -1104,25 +1115,40 @@ export const make = Effect.gen(function* () {
       message,
     }).pipe(Effect.asVoid);
 
+  const holdAutomationDecision = Effect.fn("InboxApplication.holdAutomationDecision")(function* (
+    claim: AutomationClaim,
   ) {
+    const capture = automationDecisionCapture(claim.dispatchId);
     yield* apply(
+      "hold-automation-decision",
       {
+        kind: "hold_automation_decision",
         lease_id: claim.leaseId,
         page_id: capture.pageId,
         document_id: capture.documentId,
+        title: automationDecisionTitle(claim.definition.name, claim.scheduledFor),
       },
       capture.operationId,
     );
   });
 
+  const confirmAutomationDecision = Effect.fn("InboxApplication.confirmAutomationDecision")(
+    function* (automationDecision: AutomationHeldDecision) {
+      const scope = automationDecision.inboxProjectId
+        ? { kind: "project" as const, projectId: automationDecision.inboxProjectId }
         : { kind: "library" as const };
       let after: string | null = null;
       do {
         const snapshot: InboxWindow = yield* window({ scope, filter: "inbox", first: 200, after });
+        const item = snapshot.items.find((item) => item.pageId === automationDecision.pageId);
         const proposal = item?.proposal;
         if (
           item &&
+          proposal?.origin === "automation" &&
+          proposal.action.type === "execute_decision" &&
+          proposal.action.decisionId === automationDecision.dispatchId
         ) {
+          if (proposal.state === "failed" && item.automationDecision?.status === "failed") {
             return yield* retryDispatch({ proposalId: proposal.proposalId }).pipe(Effect.asVoid);
           }
           if (proposal.state !== "open") break;
@@ -1136,9 +1162,12 @@ export const make = Effect.gen(function* () {
           if (prepared.kind === "proposal") {
             const { kind: _kind, ...input } = prepared;
             return yield* confirm(input).pipe(Effect.asVoid);
+          }
         }
         after = snapshot.nextCursor;
       } while (after !== null);
+      return yield* fail("confirm-automation-decision")(
+        new Error("This Automation's waiting run changed. Review it in the Inbox."),
       );
     },
   );
@@ -1180,6 +1209,8 @@ export const make = Effect.gen(function* () {
   return InboxApplication.of({
     activity,
     retryProblem,
+    holdAutomationDecision,
+    confirmAutomationDecision,
     summary,
     chatTargets,
     counts,

@@ -86,11 +86,11 @@ export const live: Layer.Layer<
           }
           if (event.kind === "codex") {
             rendererClients.broadcast("codex:event", event.value);
-            if (event.value.type === "scheduledAutomationChanged") {
-              broadcastWindows("codex:scheduled-automations:changed", event.value.event);
+            if (event.value.type === "automationChanged") {
+              broadcastWindows("automations:changed", event.value.event);
             }
             if (event.value.type === "automationRunsUpdated") {
-              broadcastWindows("codex:automation-runs:updated", event.value.event);
+              broadcastWindows("automations:runs:updated", event.value.event);
             }
             return;
           }

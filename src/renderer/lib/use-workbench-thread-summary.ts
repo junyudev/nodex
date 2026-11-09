@@ -7,14 +7,14 @@ import {
   type ThreadSummaryPanelWorkbenchBrowserSource,
 } from "@/features/local-conversation/projection/thread-summary-panel-browser-row-model";
 import { buildThreadSummaryPanelSideChatRow } from "@/features/local-conversation/projection/thread-summary-panel-side-chat-row-model";
-import { buildThreadSummaryPanelScheduledAutomationRow } from "@/features/local-conversation/projection/thread-summary-panel-scheduled-automation-model";
+import { buildThreadSummaryPanelAutomationRow } from "@/features/local-conversation/projection/thread-summary-panel-automation-model";
 import { useRemoteHostedPipSummaryControl } from "@/features/local-conversation/view/use-remote-hosted-pip-summary-control";
 import type { ThreadStageActions } from "@/features/local-conversation";
 import type {
   ThreadSummaryPanelAuxiliaryRow,
   ThreadSummaryPanelBrowserRow,
-  ThreadSummaryPanelScheduledAutomationOpenInput,
-  ThreadSummaryPanelScheduledAutomationRow,
+  ThreadSummaryPanelAutomationOpenInput,
+  ThreadSummaryPanelAutomationRow,
 } from "@/features/local-conversation/thread-stage-types";
 import {
   readBrowserConfigFavicon,
@@ -26,7 +26,7 @@ import {
   requireWorkbenchBrowserTabProjectionId,
 } from "../../shared/browser-sidebar";
 import { useBrowserSidebarRendererState } from "@/features/browser-sidebar/browser-sidebar-renderer-state-store";
-import type { CodexScheduledAutomation, PanelId, WorkbenchTabProjection } from "./types";
+import type { Automation, PanelId, WorkbenchTabProjection } from "./types";
 import type { SideChatPanelTab } from "./workbench-panel-tab-model";
 import { resolveLeafIdForPanelTab } from "./workbench-panel-placement";
 import { resolveWorkbenchPanelSlotLeafId } from "./workbench-panel-slot-key";
@@ -43,9 +43,7 @@ import { sessionExecutionThreadId } from "./session-execution";
 export interface WorkbenchThreadSummaryCommands {
   readonly selectPanelTab: (panelId: PanelId, tabId: string, leafId?: string) => Promise<void>;
   readonly setPanelCollapsed: (panelId: PanelId, collapsed: boolean) => Promise<unknown>;
-  readonly openAutomationSidePanel: (
-    input: ThreadSummaryPanelScheduledAutomationOpenInput,
-  ) => Promise<void>;
+  readonly openAutomationSidePanel: (input: ThreadSummaryPanelAutomationOpenInput) => Promise<void>;
   readonly openAutomations: (path: string) => void;
   readonly openProcessOutput: (
     target: ReturnType<typeof buildProcessOutputTargetFromSummaryRow>,
@@ -63,7 +61,7 @@ interface WorkbenchThreadSummaryInput {
   readonly pinnedOpen: boolean;
   readonly sideChatTabs: readonly SideChatPanelTab[];
   readonly previewTabsByPanel: WorkbenchEphemeralPanelState["previewTabsByPanel"];
-  readonly scheduledAutomations: readonly CodexScheduledAutomation[];
+  readonly clockAutomations: readonly Automation[];
   readonly commands: WorkbenchThreadSummaryCommands;
 }
 
@@ -77,7 +75,7 @@ export interface WorkbenchThreadSummaryModel {
   readonly setPopoverOpen: (open: boolean) => void;
   readonly sideChatRows: ThreadSummaryPanelAuxiliaryRow[];
   readonly browserRows: ThreadSummaryPanelBrowserRow[];
-  readonly scheduledAutomation: ThreadSummaryPanelScheduledAutomationRow | null;
+  readonly clockAutomation: ThreadSummaryPanelAutomationRow | null;
   readonly summaryComputerUsePip: ReturnType<
     typeof useRemoteHostedPipSummaryControl
   >["summaryComputerUsePip"];
@@ -86,14 +84,12 @@ export interface WorkbenchThreadSummaryModel {
   >["onToggleSummaryComputerUsePip"];
   readonly onOpenSideChatRow: NonNullable<ThreadStageActions["onOpenSummarySideChatRow"]>;
   readonly onOpenBrowserRow: NonNullable<ThreadStageActions["onOpenSummaryBrowserRow"]>;
-  readonly onOpenScheduledAutomation: NonNullable<
-    ThreadStageActions["onOpenSummaryScheduledAutomation"]
-  >;
+  readonly onOpenAutomation: NonNullable<ThreadStageActions["onOpenSummaryAutomation"]>;
   readonly onOpenProcessManager: NonNullable<ThreadStageActions["onOpenProcessManager"]>;
   readonly onOpenBackgroundTerminalOutput: NonNullable<
     ThreadStageActions["onOpenBackgroundTerminalOutput"]
   >;
-  readonly headerActions: Pick<ThreadStageActions, "onOpenSummaryScheduledAutomation">;
+  readonly headerActions: Pick<ThreadStageActions, "onOpenSummaryAutomation">;
 }
 
 /**
@@ -110,7 +106,7 @@ export function useWorkbenchThreadSummary({
   pinnedOpen,
   sideChatTabs,
   previewTabsByPanel,
-  scheduledAutomations,
+  clockAutomations,
   commands,
 }: WorkbenchThreadSummaryInput): WorkbenchThreadSummaryModel {
   const conversationThreadId = sessionExecutionThreadId(activeSession);
@@ -209,13 +205,13 @@ export function useWorkbenchThreadSummary({
       activeBrowserUseTabId,
     });
   }, [activeSession, browserRuntime, previewTabsByPanel, windowSessionId]);
-  const scheduledAutomation = useMemo<ThreadSummaryPanelScheduledAutomationRow | null>(
+  const clockAutomation = useMemo<ThreadSummaryPanelAutomationRow | null>(
     () =>
-      buildThreadSummaryPanelScheduledAutomationRow({
-        automations: scheduledAutomations,
+      buildThreadSummaryPanelAutomationRow({
+        automations: clockAutomations,
         sessionId: activeSession?.id ?? null,
       }),
-    [activeSession?.id, scheduledAutomations],
+    [activeSession?.id, clockAutomations],
   );
   const pip = useRemoteHostedPipSummaryControl(conversationThreadId);
   const onOpenSideChatRow = useCallback<
@@ -235,9 +231,7 @@ export function useWorkbenchThreadSummary({
     },
     [activeSession, commands],
   );
-  const onOpenScheduledAutomation = useCallback<
-    NonNullable<ThreadStageActions["onOpenSummaryScheduledAutomation"]>
-  >(
+  const onOpenAutomation = useCallback<NonNullable<ThreadStageActions["onOpenSummaryAutomation"]>>(
     (input) => {
       if (input.mode === "suggested-create" || input.mode === "suggested-update") {
         void commands.openAutomationSidePanel(input);
@@ -268,9 +262,9 @@ export function useWorkbenchThreadSummary({
   );
   const headerActions = useMemo<WorkbenchThreadSummaryModel["headerActions"]>(
     () => ({
-      onOpenSummaryScheduledAutomation: onOpenScheduledAutomation,
+      onOpenSummaryAutomation: onOpenAutomation,
     }),
-    [onOpenScheduledAutomation],
+    [onOpenAutomation],
   );
 
   return {
@@ -283,12 +277,12 @@ export function useWorkbenchThreadSummary({
     setPopoverOpen,
     sideChatRows,
     browserRows,
-    scheduledAutomation,
+    clockAutomation,
     summaryComputerUsePip: pip.summaryComputerUsePip,
     onToggleSummaryComputerUsePip: pip.onToggleSummaryComputerUsePip,
     onOpenSideChatRow,
     onOpenBrowserRow,
-    onOpenScheduledAutomation,
+    onOpenAutomation,
     onOpenProcessManager,
     onOpenBackgroundTerminalOutput,
     headerActions,

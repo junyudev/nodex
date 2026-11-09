@@ -6,9 +6,9 @@ import {
 import { cn } from "@/lib/utils";
 import { WorkbenchSpaceSidebar } from "./workbench-space-sidebar";
 import {
-  ScheduledSidebar,
-  type ScheduledSidebarNavigation,
-} from "@/features/scheduled/scheduled-sidebar";
+  AutomationsSidebar,
+  type AutomationsSidebarNavigation,
+} from "@/features/automations/automations-sidebar";
 import { CustomizeSidebar } from "@/features/plugins/view/customize-sidebar";
 import type { CustomizeNavigation } from "@/features/plugins/customize-navigation";
 import type { WorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
@@ -60,7 +60,7 @@ interface WorkbenchFloatingSidebarPlacement {
 interface WorkbenchSidebarProps {
   readonly destination: WorkbenchPrimaryDestination;
   readonly body: WorkbenchSidebarBodyProps;
-  readonly scheduled: ScheduledSidebarNavigation;
+  readonly automations: AutomationsSidebarNavigation;
   readonly customize: CustomizeNavigation;
   readonly inline: WorkbenchInlineSidebarPlacement;
   readonly floating: WorkbenchFloatingSidebarPlacement;
@@ -73,7 +73,7 @@ interface WorkbenchSidebarProps {
 export function WorkbenchSidebar({
   destination,
   body,
-  scheduled,
+  automations,
   customize,
   inline,
   floating,
@@ -87,10 +87,10 @@ export function WorkbenchSidebar({
       : body;
     if (sidebarDestination === "space")
       return <WorkbenchSpaceSidebar body={placedBody} {...placement} />;
-    if (sidebarDestination === "scheduled")
+    if (sidebarDestination === "automations")
       return (
-        <ScheduledSidebar
-          navigation={scheduled}
+        <AutomationsSidebar
+          navigation={automations}
           width={placedBody.width}
           getWindowZoom={placedBody.getWindowZoom}
           onResizeWidth={placedBody.onResizeWidth}

@@ -322,7 +322,7 @@ interface LocalConversationVirtualizedTurnListProps {
   onOpenSideChat?: ThreadStageActions["onOpenSideChat"];
   onOpenThread?: ThreadStageActions["onOpenThread"];
   onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
-  onOpenSummaryScheduledAutomation?: ThreadStageActions["onOpenSummaryScheduledAutomation"];
+  onOpenSummaryAutomation?: ThreadStageActions["onOpenSummaryAutomation"];
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenPlanInSidePanel?: ThreadStageActions["onOpenPlanInSidePanel"];
   onClosePlanSidePanel?: ThreadStageActions["onClosePlanSidePanel"];
@@ -496,7 +496,7 @@ interface MeasuredTurnProps {
   onOpenSideChat?: ThreadStageActions["onOpenSideChat"];
   onOpenThread?: ThreadStageActions["onOpenThread"];
   onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
-  onOpenSummaryScheduledAutomation?: ThreadStageActions["onOpenSummaryScheduledAutomation"];
+  onOpenSummaryAutomation?: ThreadStageActions["onOpenSummaryAutomation"];
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenPlanInSidePanel?: ThreadStageActions["onOpenPlanInSidePanel"];
   onClosePlanSidePanel?: ThreadStageActions["onClosePlanSidePanel"];
@@ -533,7 +533,7 @@ function MeasuredTurnComponent({
   onOpenSideChat,
   onOpenThread,
   onOpenSubagentsPanel,
-  onOpenSummaryScheduledAutomation,
+  onOpenSummaryAutomation,
   onOpenMcpAppSidePanel,
   onOpenPlanInSidePanel,
   onClosePlanSidePanel,
@@ -607,7 +607,7 @@ function MeasuredTurnComponent({
           onOpenSideChat={onOpenSideChat}
           onOpenThread={onOpenThread}
           onOpenSubagentsPanel={onOpenSubagentsPanel}
-          onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
+          onOpenSummaryAutomation={onOpenSummaryAutomation}
           onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
           onOpenPlanInSidePanel={onOpenPlanInSidePanel}
           onClosePlanSidePanel={onClosePlanSidePanel}
@@ -673,7 +673,7 @@ const MeasuredTurn = memo(
     left.onOpenSideChat === right.onOpenSideChat &&
     left.onOpenThread === right.onOpenThread &&
     left.onOpenSubagentsPanel === right.onOpenSubagentsPanel &&
-    left.onOpenSummaryScheduledAutomation === right.onOpenSummaryScheduledAutomation &&
+    left.onOpenSummaryAutomation === right.onOpenSummaryAutomation &&
     left.onOpenMcpAppSidePanel === right.onOpenMcpAppSidePanel &&
     left.onOpenPlanInSidePanel === right.onOpenPlanInSidePanel &&
     left.onClosePlanSidePanel === right.onClosePlanSidePanel &&
@@ -709,7 +709,7 @@ function LocalConversationVirtualizedTurnListCore({
   onOpenSideChat,
   onOpenThread,
   onOpenSubagentsPanel,
-  onOpenSummaryScheduledAutomation,
+  onOpenSummaryAutomation,
   onOpenMcpAppSidePanel,
   onOpenPlanInSidePanel,
   onClosePlanSidePanel,
@@ -2231,7 +2231,7 @@ function LocalConversationVirtualizedTurnListCore({
               onOpenSideChat={onOpenSideChat}
               onOpenThread={onOpenThread}
               onOpenSubagentsPanel={onOpenSubagentsPanel}
-              onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
+              onOpenSummaryAutomation={onOpenSummaryAutomation}
               onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
               onOpenPlanInSidePanel={onOpenPlanInSidePanel}
               onClosePlanSidePanel={onClosePlanSidePanel}

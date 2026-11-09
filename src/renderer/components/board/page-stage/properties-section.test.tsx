@@ -26,8 +26,8 @@ const api = vi.hoisted(() => ({
   readFileBytes: vi.fn(),
   saveFile: vi.fn(),
   readLibraryModule: vi.fn(),
-  subscribeCodexScheduledAutomationChanges: vi.fn(() => () => undefined),
-  subscribeCodexAutomationRunsUpdates: vi.fn(() => () => undefined),
+  subscribeAutomationChanges: vi.fn(() => () => undefined),
+  subscribeAutomationRunsUpdates: vi.fn(() => () => undefined),
 }));
 const turnState = vi.hoisted(() => ({ turn: null as PageTurn | null }));
 vi.mock("@/lib/page-turn-runtime", () => ({

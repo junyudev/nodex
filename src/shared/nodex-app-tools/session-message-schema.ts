@@ -3,6 +3,7 @@ import { z } from "zod";
 import { PROVIDER_SEND_TURN_MAX_ATTACHMENTS } from "@nodex/agent-runtime/contracts";
 import { sessionExecutionSchema } from "./session-execution-target";
 import { idempotencyKeySchema } from "./idempotency-key";
+import { toolInputSchema } from "./tool-input-schema";
 
 export const sessionAttachmentSchema = z.discriminatedUnion("type", [
   z.strictObject({
@@ -89,6 +90,6 @@ export const sessionMessageTool: Tool = {
   name: "send_message_to_session",
   description:
     "Send a message or authorized attachment resource to an unarchived Session, including the calling Session or a Runtime child selected by execution.threadId. An unstarted draft starts in place. A settled local Native Session is adopted into Runtime in place; an active local source returns active_source_busy, and remote Native execution keeps its owner. Attach Library Files or visible Session attachments by resource reference. Choose auto, queue, steer, or restart. The target's settings apply within the calling execution's runtime and Plan permissions. Omit model to retain it; providerInstanceId plus model can switch a Runtime Session to another configured Agent. Reuse idempotencyKey and identical arguments to retry without another message. The canonical result reports actual delivery with messageId and an assigned runId for read_session and wait_sessions; an unassigned Native queue has a null runId. Use only when the user authorized continuing that Session.",
-  inputSchema: z.toJSONSchema(sessionMessageSchema, { io: "input" }) as Tool["inputSchema"],
+  inputSchema: toolInputSchema(sessionMessageSchema),
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 };

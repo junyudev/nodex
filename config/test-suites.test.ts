@@ -6,6 +6,7 @@ import {
   NATIVE_PIP_PROBE_TEST,
   NODEX_CLI_BOOTSTRAP_TEST,
   PROFILE_CLONE_TEST,
+  AUTOMATIONS_CLI_TEST,
   ownersOfTest,
   STRESS_TEST_SUITES,
   LIVE_TEST_SUITES,
@@ -72,6 +73,10 @@ describe("application test ownership", () => {
       "cli",
     ]);
     expect(nativeRequirements("core-client", [PROFILE_CLONE_TEST])).toEqual(["core-server", "cli"]);
+    expect(nativeRequirements("core-client", [AUTOMATIONS_CLI_TEST])).toEqual([
+      "core-server",
+      "cli",
+    ]);
     expect(nativeRequirements("core-client", [AGENT_EVAL_DESKTOP_ENVIRONMENT_TEST])).toEqual([
       "core-server",
       "cli",

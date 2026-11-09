@@ -8,6 +8,7 @@ import type {
   WorkbenchStableLocation,
 } from "../../shared/workbench-layout";
 import { WorkbenchLayoutSnapshotSchema } from "../../shared/schemas/workbench-layout";
+import { normalizeAutomationsPath } from "../../shared/automations-route";
 import {
   getRestorableWorkbenchLocation,
   getWorkbenchHomeLocation,
@@ -111,9 +112,13 @@ function recordWorkbenchNavigationTransition(
 
 export function navigateWorkbenchWindow(
   state: WorkbenchWindowState,
-  location: WorkbenchLocation,
+  destination: WorkbenchLocation,
   options: { readonly record?: boolean } = {},
 ): WorkbenchWindowState {
+  const location =
+    destination.kind === "automations"
+      ? { ...destination, path: normalizeAutomationsPath(destination.path) }
+      : destination;
   if (areWorkbenchLocationsEqual(state.location, location)) return state;
   const next = {
     ...state,
@@ -188,10 +193,10 @@ export function selectWorkbenchSession(
 }
 
 /**
- * Scheduled presents a run or Heartbeat chat in place: the route keeps the Scheduled
+ * Automations presents a run or Heartbeat chat in place: the route keeps the Automations
  * destination and carries the chat's Session as its Scene.
  */
-export function presentWorkbenchScheduledSession(
+export function presentWorkbenchAutomationSession(
   state: WorkbenchWindowState,
   input: { readonly path: string; readonly session: WorkbenchSessionCatalogEntry },
 ): WorkbenchWindowState {

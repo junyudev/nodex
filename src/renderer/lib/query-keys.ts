@@ -262,17 +262,13 @@ export const queryKeys = {
     list: () => ["codexExperimentalFeatures", "list"] as const,
   },
   codexHooks: {
-    all: () => ["codexHooks"] as const,
-    host: (hostId: string) => ["codexHooks", hostId] as const,
-    list: (hostId: string, cwds: readonly string[]) => ["codexHooks", hostId, cwds] as const,
+  automations: {
   },
   codexScheduledAutomations: {
     all: () => ["codexScheduledAutomations"] as const,
     list: () => ["codexScheduledAutomations", "list"] as const,
   },
-  codexAutomationRuns: {
-    all: () => ["codexAutomationRuns"] as const,
-    inbox: (limit: number) => ["codexAutomationRuns", "inbox", limit] as const,
+  automationRuns: {
   },
   codexBackgroundTerminals: {
     all: () => ["codexBackgroundTerminals"] as const,

@@ -57,7 +57,7 @@ it.effect(
         events: Stream.empty,
         publish: (event) => {
           if (event.kind !== "codex") return;
-          if (event.value.type === "scheduledAutomationChanged") {
+          if (event.value.type === "automationChanged") {
             scheduledEvents.push(event.value.event);
           }
           if (event.value.type === "automationRunsUpdated") runEvents.push(event.value.event);
@@ -108,6 +108,7 @@ it.effect(
       assert.deepEqual(runEvents, [
         { automationId: "daily-report", runId: "thread:daily-report", reason: "settle" },
       ]);
+      assert.deepEqual(inboxEvents, [{ reason: "inbox" }]);
 
       const pageChange = createCoreLocalCommitFixture({
         commitSeq: 9,
@@ -133,7 +134,7 @@ it.effect(
         pageChange.atoms[0]!,
         "library-1",
       );
-      assert.deepEqual(inboxEvents, [{ reason: "content" }]);
+      assert.deepEqual(inboxEvents, [{ reason: "inbox" }, { reason: "content" }]);
       assert.lengthOf(libraryEvents, 1);
 
       yield* runtime.publishResync({
@@ -156,6 +157,41 @@ it.effect(
       ]);
       assert.deepEqual(projectEvents, [{ changeType: "update", projectId: undefined }]);
       assert.strictEqual(sessionEvents.length, 1);
+
+      const previousInboxCount = inboxEvents.length;
+      for (const [offset, ids] of [
+        { automation_ids: ["observe-automation"], run_ids: [] },
+        { automation_ids: [], run_ids: ["bound-automation-run"] },
+      ].entries()) {
+        const change = createCoreLocalCommitFixture({
+          commitSeq: 11 + offset,
+          storeEpoch: "epoch:test",
+          payload: {
+            module: "automation",
+            library_id: "library-1",
+            project_id: null,
+            event: {
+              kind: "automation_changed",
+              ...ids,
+              lease_ids: [],
+              reminder_lease_ids: [],
+              snooze_ids: [],
+              page_ids: [],
+              document_ids: [],
+              database_ids: [],
+            },
+          },
+        });
+        yield* runtime.publish(
+          { transport_version: 4, packet: change },
+          change.atoms[0]!,
+          "library-1",
+        );
+      }
+      assert.deepEqual(inboxEvents.slice(previousInboxCount), [
+        { reason: "inbox" },
+        { reason: "inbox" },
+      ]);
 
       yield* Scope.close(scope, Exit.void);
     }),

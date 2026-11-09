@@ -15,13 +15,43 @@ fn conflict(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::Conflict, message, false)
 }
 
+fn validate_start(
+    c: &Connection,
+    page: &str,
+    session: &str,
+    launch: &str,
+    message: &str,
+    brief: &str,
+) -> Result<(), StoreError> {
+    for (name, id) in [
+        ("page_id", page),
+        ("session_id", session),
+        ("launch_id", launch),
+        ("message_id", message),
+    ] {
+        validate_id(name, id)?;
+    }
+    if brief.trim().is_empty() || brief.len() > 256_000 {
+        return Err(invalid("Work brief must contain 1–256000 bytes"));
+    }
+    if !super::execution_holds::for_page(c, page)?.is_empty() {
+        return Err(conflict("Resume work before starting this Page"));
+    }
+    Ok(())
+}
+
 pub(super) fn launch(
     connection: &Connection,
     id: &str,
 ) -> Result<Option<PageWorkLaunch>, StoreError> {
     validate_id("launch_id", id)?;
+    let automation_decision:Option<String> = connection.query_row("SELECT dispatch_id FROM automation_decisions WHERE page_id=(SELECT page_id FROM page_work_launches WHERE launch_id=?1) AND assessment_json IS NOT NULL", [id], |r|r.get(0)).optional()?;
+    let automation_decision = automation_decision.filter(|decision| {
+        crate::domain::identity::stable_uuid_v7("automation-page-start", decision, "launch") == id
+    });
     Ok(connection.query_row("SELECT launch_id,page_id,project_id,session_id,message_id,selection_json,brief,again,created_at,accepted_at,rejection,status_fence,status_moved FROM page_work_launches WHERE launch_id=?1", [id], |r| {
         let selection: String = r.get(5)?;
+        Ok(PageWorkLaunch {automation_decision_id:automation_decision.clone(),launch_id:r.get(0)?,page_id:r.get(1)?,project_id:r.get(2)?,session_id:r.get(3)?,message_id:r.get(4)?,selection:serde_json::from_str(&selection).map_err(|_|rusqlite::Error::InvalidQuery)?,brief:r.get(6)?,again:r.get(7)?,created_at:r.get(8)?,accepted_at:r.get(9)?,rejection:r.get(10)?,status_fence:r.get(11)?,status_moved:r.get(12)?})
     }).optional()?)
 }
 pub(super) fn outbox(
@@ -98,6 +128,9 @@ pub(super) fn apply(
             "UPDATE page_work_launches SET accepted_at=?2,rejection=?3 WHERE launch_id=?1",
             params![launch_id, accepted_at, rejection],
         )?;
+        if value.automation_decision_id.is_some() {
+            connection.execute("UPDATE automation_decisions SET status=?2,failure_message=?3,updated_at_ms=CAST(unixepoch(?4,'subsec')*1000 AS INTEGER) WHERE dispatch_id=?1 AND status='admitted'",params![value.automation_decision_id,if rejection.is_some(){"failed"}else{"admitted"},rejection,now])?;
+        }
         return super::session_lifecycle::finish_lifecycle_mutation(
             connection,
             library,
@@ -131,6 +164,9 @@ pub(super) fn apply(
     };
     if let Some(episode) = expected_turn_episode {
     }
+    validate_start(
+        connection, page_id, session_id, launch_id, message_id, brief,
+    )?;
     if let Some(stored) = launch(connection, launch_id)? {
         if stored.page_id != *page_id
             || stored.session_id != *session_id
@@ -154,11 +190,49 @@ pub(super) fn apply(
         );
     }
     super::mutation::run_mutation(connection, context, epoch, operation, hash, &now, |scope| {
+        prepare_start(
+            connection,
+            context,
             scope.evidence(),
+            library,
+            operation,
+            page_id,
+            selection.as_ref(),
+            session_id,
+            launch_id,
+            message_id,
+            brief,
+            *again,
+            expected_readiness_epoch.as_deref(),
+            &now,
+        )
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn prepare_start(
+    connection: &Connection,
+    context: &BoundModuleContext,
     commit: &crate::infrastructure::local_commit::CommitContext,
+    library: &str,
+    operation: &str,
+    page_id: &String,
+    selection: Option<&nodex_core_contracts::library::AgentWorkSelection>,
+    session_id: &String,
+    launch_id: &String,
+    message_id: &String,
+    brief: &String,
+    again: bool,
+    expected_readiness_epoch: Option<&str>,
+    now: &str,
+) -> Result<super::mutation::WorkspaceMutationEffects, StoreError> {
+    validate_start(
+        connection, page_id, session_id, launch_id, message_id, brief,
+    )?;
     let work = crate::database::work_graph::work_context(connection, library, page_id)?;
     if let Some(expected) = expected_readiness_epoch {
         let ready = crate::database::work_graph::ready_page(connection, library, page_id)?;
+        if !ready.is_some_and(|r| r.readiness_epoch == expected && r.page_work.auto_start) {
             return Err(conflict("Page is no longer ready for automatic work"));
         }
     }
@@ -174,6 +248,7 @@ pub(super) fn apply(
         ));
     }
     let selection = selection
+        .cloned()
         .or_else(|| {
             work.page_work
                 .as_ref()
@@ -215,5 +290,29 @@ pub(super) fn apply(
         },
         now,
     )?;
+    let effects = super::mutation::WorkspaceMutationEffects {
+        operation_kind: if inbox_changed {
+            "inbox_start_page_work"
+        } else {
+            "start_page_work"
+        },
+        project_catalog_change: None,
+        change_project_id: Some(work.project_id.clone()),
+        project_ids: vec![work.project_id.clone()],
+        session_ids: vec![session_id.clone()],
+        thread_ids: vec![],
+        session_summary_scopes: vec![project_session_scope(Some(&work.project_id))],
+        session_detail_ids: vec![session_id.clone()],
+        block_ids: retired.iter().cloned().chain([page_id.clone()]).collect(),
+        page_ids: retired.into_iter().chain([page_id.clone()]).collect(),
+        document_ids: vec![],
+        database_ids: vec![],
+        data_source_ids: vec![],
+        view_ids: vec![],
+        document_heads: vec![],
+        committed_at: now.to_owned(),
+    };
+    super::page_chat::advance_handed_off_pages(
         connection, library, context, commit, operation, &page_ids, effects,
+    )
 }

@@ -11,6 +11,7 @@ import * as Projections from "../orchestration-v2/ProjectionStore.ts";
 import { HostBridge } from "./HostBridge.ts";
 import { hostToolAuthorityRefusal } from "./HostToolAuthority.ts";
 import type { AgentRuntimeConfiguration } from "./Interface.ts";
+import { toolInputSchemaProblem } from "./ToolInputSchema.ts";
 
 const decodeTool = Schema.decodeUnknownEffect(Schema.toCodecJson(McpSchema.Tool));
 const decodeResult = Schema.decodeUnknownEffect(Schema.toCodecJson(McpSchema.CallToolResult));
@@ -30,6 +31,13 @@ export const layer = (configuration: AgentRuntimeConfiguration) =>
       const projections = yield* Projections.ProjectionStoreV2;
       for (const descriptor of configuration.host.tools) {
         const tool = yield* decodeTool(descriptor);
+        // Some providers silently drop a tool whose arguments are not one object.
+        const inputProblem = toolInputSchemaProblem(tool.inputSchema);
+        if (inputProblem !== undefined) {
+          return yield* Effect.fail(
+            new Error(`Host tool '${tool.name}' input schema ${inputProblem}.`),
+          );
+        }
         if (server.tools.some((existing) => existing.tool.name === tool.name)) {
           return yield* Effect.fail(
             new Error(`Host tool '${tool.name}' conflicts with an execution tool.`),

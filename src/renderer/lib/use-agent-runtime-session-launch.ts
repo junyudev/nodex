@@ -14,7 +14,7 @@ import {
 import { useCodexServiceTierSettings } from "./use-codex-service-tier-settings";
 import { launchAgentRuntimeSession } from "./agent-runtime-session-launch";
 
-/** Page and Scheduled launches read the same hydrated choices as the chat Composer. */
+/** Page and Automations launches read the same hydrated choices as the chat Composer. */
 export function useAgentRuntimeSessionLaunch() {
   const store = useMaitaiStore();
   const { serviceTierSettings } = useCodexServiceTierSettings();

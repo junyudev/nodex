@@ -8,6 +8,8 @@
 //! `DispatchInboxEntries` can turn it into dispatch work, and confirmed chat
 //! work is delivered by the Desktop Host through the dispatch outbox.
 
+#[path = "inbox_event_automation.rs"]
+pub(super) mod event_automation;
 #[path = "inbox_github.rs"]
 pub(super) mod github;
 #[path = "inbox_handback.rs"]
@@ -25,7 +27,7 @@ pub(crate) mod scheduled;
 pub(super) use reliable::{
     apply_reliable, read_pending_request_ids, read_requests, stop_suggestion,
 };
-pub(super) use scheduled::{hold_scheduled_firing, refresh_scheduled_firing};
+pub(super) use scheduled::{hold_automation_decision, refresh_automation_decision};
 use std::collections::BTreeSet;
 
 use nodex_core_contracts::agent::AgentTurnProvenance;
@@ -680,7 +682,7 @@ fn agent_source(
     };
     let label = if let Some(session_id) = &session_id {
         connection.query_row(
-            "SELECT COALESCE((SELECT definition.name FROM core_automation_runs run JOIN codex_scheduled_automations definition ON definition.automation_id=run.automation_id WHERE run.session_id=session.id AND definition.status<>'DELETED' ORDER BY run.created_at,run.run_id LIMIT 1), thread.thread_name,NULLIF(substr(thread.thread_preview,1,240),''), \
+            "SELECT COALESCE((SELECT definition.name FROM automation_execution_runs run JOIN automations definition ON definition.automation_id=run.automation_id WHERE run.session_id=session.id AND definition.status<>'DELETED' ORDER BY run.created_at,run.run_id LIMIT 1), thread.thread_name,NULLIF(substr(thread.thread_preview,1,240),''), \
                session.no_thread_fallback_title) \
              FROM project_sessions session LEFT JOIN project_session_threads link ON link.session_id=session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id=link.thread_id WHERE session.id=?1",
@@ -945,7 +947,7 @@ fn implied_status(connection: &Connection, page_id: &str) -> Result<String, Stor
         "SELECT CASE entry.state WHEN 'done' THEN 'done' WHEN 'kept' THEN 'plan' \
            ELSE CASE WHEN COALESCE(proposal.state, '') IN ('dispatching', 'completed', 'failed') \
              AND COALESCE(json_extract(proposal.action_json, '$.type'), '') \
-               IN ('new_chat', 'send_to_chat', 'run_task') \
+               IN ('new_chat', 'send_to_chat', 'execute_decision') \
            THEN 'doing' ELSE 'triage' END END \
          FROM inbox_entries entry \
          LEFT JOIN inbox_proposals proposal ON proposal.proposal_id = entry.current_proposal_id \
@@ -1088,11 +1090,9 @@ pub(super) fn propose(
     let page_ids = unique_page_ids(input.page_ids, MAX_PROPOSAL_PAGES)?;
     for page in &page_ids {
         if crate::automation::firing::item(connection, page)?.is_some_and(|firing| {
-            firing.status == nodex_core_contracts::automation::AutomationFiringStatus::Held
+            firing.status == nodex_core_contracts::automation::AutomationDecisionStatus::Held
         }) {
-            return Err(conflict(
-                "This scheduled task already has its own Run task decision",
-            ));
+            return Err(conflict("This Automation already has its own decision"));
         }
     }
     require_open_entries(connection, library_id, &page_ids)?;
@@ -1332,6 +1332,9 @@ fn user_summary(action: &ProjectWorkspaceInboxDispatchAction) -> String {
         ProjectWorkspaceInboxDispatchAction::Plan { steps, .. } => {
             format!("Plan {} cards", steps.len())
         }
+        ProjectWorkspaceInboxDispatchAction::ExecuteDecision { .. } => {
+            "Execute decision".to_owned()
+        }
         ProjectWorkspaceInboxDispatchAction::Keep => "Keep as a note".to_owned(),
         ProjectWorkspaceInboxDispatchAction::NewChat { .. } => "Start a new chat".to_owned(),
         ProjectWorkspaceInboxDispatchAction::SendToChat { .. } => {
@@ -1343,6 +1346,7 @@ fn user_summary(action: &ProjectWorkspaceInboxDispatchAction) -> String {
 
 fn apply_confirmation(
     connection: &Connection,
+    context: &BoundModuleContext,
     commit: &crate::infrastructure::local_commit::CommitContext,
     library_id: &str,
     proposal_id: &str,
@@ -1351,7 +1355,11 @@ fn apply_confirmation(
     session_id: Option<&str>,
     now: &str,
 ) -> Result<WorkspaceMutationEffects, StoreError> {
-    if !matches!(action, ProjectWorkspaceInboxDispatchAction::RunTask { .. }) {
+        proposal_id,
+    if !matches!(
+        action,
+        ProjectWorkspaceInboxDispatchAction::ExecuteDecision { .. }
+    ) {
         scheduled::consume(
             connection,
             page_ids,
@@ -1368,13 +1376,28 @@ fn apply_confirmation(
         ProjectWorkspaceInboxDispatchAction::Plan { .. } => {
             Err(internal("Plan must be confirmed inside its creation scope"))
         }
+        ProjectWorkspaceInboxDispatchAction::ExecuteDecision { decision_id, agent } => {
+            if event_automation::is_event(connection, decision_id)? {
+                let effects = event_automation::confirm(
+                    connection,
+                    library_id,
+                    context,
                     commit,
+                    proposal_id,
+                        pages: page_ids,
+                        dispatch: decision_id,
+                        agent: agent.as_ref(),
+                    now,
+                )?;
+                finish_proposal(connection, proposal_id, &encoded_action, now)?;
+                return Ok(effects);
+            }
             scheduled::admit(
                 connection,
+                context,
                 library_id,
                 page_ids,
-                automation_id,
-                dispatch_id,
+                decision_id,
                 agent.as_ref(),
                 now,
             )?;
@@ -1636,7 +1659,7 @@ pub(super) fn delete_messages(
             }
             scheduled::consume(connection, &page_ids, "withdrawn", &now)?;
             for page in &page_ids {
-                connection.execute("UPDATE core_automation_firings SET status='withdrawn',waiting_in_inbox=0,admission_prompt=NULL,admission_agent_json=NULL,admitted_at_ms=NULL,due_at_ms=NULL WHERE page_id=?1",[page])?;
+                connection.execute("UPDATE automation_decisions SET status='withdrawn',waiting_in_inbox=0,admission_prompt=NULL,admission_agent_json=NULL,admitted_at_ms=NULL,due_at_ms=NULL,frozen_action_json='{}' WHERE page_id=?1",[page])?;
             }
             forget_proposals(connection, &page_ids, &now)?;
             let page_ids_json = serde_json::to_string(&page_ids)
@@ -1798,11 +1821,11 @@ fn set_entries_state(
         connection.execute(
             // Work handed to a chat cannot be recalled; marking it done or not only closes it.
             "UPDATE inbox_entries SET state = ?2, outcome=CASE \
-               WHEN ?2 IN ('kept','done') AND EXISTS (SELECT 1 FROM core_automation_firings firing \
+               WHEN ?2 IN ('kept','done') AND EXISTS (SELECT 1 FROM automation_decisions firing \
                  WHERE firing.page_id=inbox_entries.page_id AND firing.status='skipped') THEN 'done' \
                WHEN outcome = 'chat' THEN outcome \
                WHEN ?2 = 'kept' THEN 'kept' WHEN ?2 = 'done' THEN 'done' ELSE NULL END, \
-               suggestion_state = CASE WHEN ?2 = 'open' AND source_kind <> 'scheduled_task' THEN 'none' \
+               suggestion_state = CASE WHEN ?2 = 'open' AND source_kind <> 'automation' THEN 'none' \
                  WHEN suggestion_state IN ('waiting','pending') AND ?2 <> 'open' \
                  THEN 'none' ELSE suggestion_state END, suggestion_error = NULL, \
                revision = revision + 1, updated_at = ?3 \
@@ -1988,7 +2011,7 @@ pub(super) fn retry_dispatch(
     let proposal = require_proposal(connection, library_id, proposal_id)?;
     if matches!(
         proposal.action,
-        ProjectWorkspaceInboxDispatchAction::RunTask { .. }
+        ProjectWorkspaceInboxDispatchAction::ExecuteDecision { .. }
     ) {
         require_host(context)?;
         let now = sqlite_now(connection)?;
@@ -2000,7 +2023,14 @@ pub(super) fn retry_dispatch(
             request_hash,
             &now,
             |_| {
-                scheduled::retry(connection, library_id, &proposal, proposal_id, &now)?;
+                scheduled::retry(
+                    connection,
+                    context,
+                    library_id,
+                    &proposal,
+                    proposal_id,
+                    &now,
+                )?;
                 let mut effects = simple_effects("inbox_retry_scheduled", &now);
                 effects.page_ids = proposal.page_ids.clone();
                 Ok(effects)
@@ -2311,6 +2341,10 @@ fn normalize_action(
             plan::validate(connection, library_id, scope, summary, steps)?;
             Ok(action.clone())
         }
+        ProjectWorkspaceInboxDispatchAction::ExecuteDecision { decision_id, agent } => {
+            validate_id("decision_id", decision_id)?;
+            Ok(ProjectWorkspaceInboxDispatchAction::ExecuteDecision {
+                decision_id: decision_id.clone(),
                 agent: agent.as_ref().map(normalize_chat_agent).transpose()?,
             })
         }
@@ -2499,7 +2533,7 @@ fn origin_literal(origin: ProjectWorkspaceInboxProposalOrigin) -> &'static str {
     match origin {
         ProjectWorkspaceInboxProposalOrigin::Agent => "agent",
         ProjectWorkspaceInboxProposalOrigin::User => "user",
-        ProjectWorkspaceInboxProposalOrigin::Schedule => "schedule",
+        ProjectWorkspaceInboxProposalOrigin::Automation => "automation",
     }
 }
 

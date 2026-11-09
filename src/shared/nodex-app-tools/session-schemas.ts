@@ -1,6 +1,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { idempotencyKeySchema } from "./idempotency-key";
+import { toolInputSchema } from "./tool-input-schema";
 
 const commandFields = {
   sessionId: z
@@ -33,7 +34,7 @@ export const sessionToolCatalog: readonly Tool[] = Object.entries(sessionSchemas
   ([name, schema]) => ({
     name,
     description: descriptions[name as keyof typeof descriptions],
-    inputSchema: z.toJSONSchema(schema, { io: "input" }) as Tool["inputSchema"],
+    inputSchema: toolInputSchema(schema),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   }),
 );

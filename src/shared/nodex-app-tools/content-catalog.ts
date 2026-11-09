@@ -1,7 +1,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod";
 import { NODEX_APP_TOOLS } from "../nodex-agent-tools/identity";
 import { NODEX_AGENT_V6_TOOL_CONTRACTS } from "../nodex-agent-tools/v6-contracts";
+import { toolInputSchema } from "./tool-input-schema";
 
 /** Native transport projects the same semantic content contracts as every Agent client. */
 export const contentToolCatalog: readonly Tool[] = NODEX_APP_TOOLS.map((name) => {
@@ -9,10 +9,7 @@ export const contentToolCatalog: readonly Tool[] = NODEX_APP_TOOLS.map((name) =>
   return {
     name,
     description: contract.description,
-    inputSchema: {
-      ...z.toJSONSchema(contract.inputSchema, { io: "input" }),
-      type: "object",
-    } as Tool["inputSchema"],
+    inputSchema: toolInputSchema(contract.inputSchema),
   };
 });
 

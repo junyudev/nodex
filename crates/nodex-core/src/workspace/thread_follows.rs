@@ -399,6 +399,16 @@ fn batch_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadDeliveryBatch> {
 }
 fn refresh_batch(c: &Connection, batch: &mut ThreadDeliveryBatch) -> Result<(), StoreError> {
     batch.eligible = !c.query_row("SELECT EXISTS(SELECT 1 FROM thread_deliveries d LEFT JOIN page_active_chats a ON a.page_id=d.page_id LEFT JOIN project_sessions s ON s.id=d.session_id LEFT JOIN project_session_execution_bindings e ON e.session_id=s.id WHERE d.message_id=?1 AND (a.session_id IS NOT d.session_id OR a.revision IS NOT d.binding_revision OR s.archived IS NOT 0 OR e.runtime_id IS NOT json_extract(d.execution_ref_json,'$.runtime_id') OR e.runtime_thread_id IS NOT json_extract(d.execution_ref_json,'$.thread_id')))",[&batch.message_id],|r|r.get::<_,bool>(0))?;
+    let launch:Option<String>=c.query_row("SELECT launch_id FROM page_work_launches WHERE session_id=?1 ORDER BY created_at DESC,launch_id DESC LIMIT 1",[&batch.session_id],|r|r.get(0)).optional()?;
+    let awaiting_automation_start = launch
+        .as_deref()
+        .map(|id| super::page_work::launch(c, id))
+        .transpose()?
+        .flatten()
+        .is_some_and(|start| start.automation_decision_id.is_some() && start.accepted_at.is_none());
+    // A follow cannot provide the first input while the Automation's own launch is unadmitted.
+    batch.held = awaiting_automation_start
+        || !super::execution_holds::for_session(c, &batch.session_id)?.is_empty();
     Ok(())
 }
 pub(super) fn begin_batch(c: &Connection, library: &str, message: &str) -> Result<(), StoreError> {

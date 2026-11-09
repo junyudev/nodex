@@ -70,6 +70,23 @@ pub(super) fn read(
     read: SourceRead,
 ) -> Result<SourceReadValue, StoreError> {
     match read {
+        SourceRead::EventAutomationWatching {
+            source_id,
+            repository,
+        } => {
+            require_source(connection, library, &source_id)?;
+            let filters=connection.prepare("SELECT f.filter_json FROM automation_event_filters f JOIN automations r ON r.automation_id=f.automation_id JOIN members m ON m.id=r.owner_member_id WHERE m.library_id=?1 AND m.lifecycle='active' AND r.status='ACTIVE' LIMIT 200")?.query_map([library],|r|decode::<nodex_core_contracts::automation::AutomationSourceFilter>(r.get(0)?))?.collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(SourceReadValue::EventAutomationWatching {
+                enabled: filters.iter().any(|f| {
+                    f.source_id.as_ref().is_none_or(|id| id == &source_id)
+                        && (f.repositories.is_empty()
+                            || f.repositories
+                                .iter()
+                                .any(|r| r.eq_ignore_ascii_case(&repository)))
+                }),
+            })
+        }
+
         SourceRead::ChannelOutbox {
             include_terminal,
             after_id,
@@ -428,6 +445,15 @@ pub(super) struct SourceReceiptIdentity<'a> {
                     &at,
                 )?;
                 effects.page_ids.push(page);
+                super::automation_assessment::flush_followed(
+                    connection,
+                    library,
+                    context,
+                    operation,
+                    &thread.id,
+                    &at,
+                    &mut effects,
+                )?;
             }
             SourceCommand::PrepareThreadDeliveryBatch {
                 message_id,
@@ -632,6 +658,21 @@ pub(super) struct SourceReceiptIdentity<'a> {
                             &at,
                             &mut effects,
                         )?;
+                        let assessed = if !followed {
+                            super::automation_assessment::enqueue(
+                                connection, library, &id, source_id, event,
+                            )?
+                        } else {
+                            false
+                        };
+                        if assessed {
+                            effects.operation_kind = "inbox_automation_assessment";
+                        }
+                        if !followed
+                            && !assessed
+                            && discovery
+                            && event.actor_class == SourceActorClass::Person
+                        {
                             let captured = super::inbox::github::ingest(
                                 connection, library, context, epoch, operation, scope, &id, event,
                                 &at,

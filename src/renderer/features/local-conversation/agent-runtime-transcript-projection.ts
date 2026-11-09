@@ -171,6 +171,9 @@ function jsonValue(value: unknown): JsonValue {
   return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, jsonValue(entry)]));
 }
 
+export const agentRuntimeItemVersion = (item: AgentTurnItem): string =>
+  JSON.stringify([item.type, item.status, item.updatedAt]);
+
 /** Preserve typed media and the complete MCP result used by application-tool renderers. */
 function dynamicToolOutputContent(
   item: Extract<AgentTurnItem, { type: "dynamic_tool" }>,
@@ -230,6 +233,7 @@ function projectRuntimeMcpToolCall(
     type: "mcpToolCall",
     id: item.id,
     nativeCallId: call.id,
+    outputVersion: agentRuntimeItemVersion(item),
     server: call.server,
     tool: call.tool,
     status,
@@ -651,6 +655,7 @@ export function projectAgentRuntimeItem(
     case "command_execution":
       return {
         type: "commandExecution",
+        outputVersion: agentRuntimeItemVersion(item),
         id,
         pluginId: null,
         scriptPath: null,
@@ -700,10 +705,11 @@ export function projectAgentRuntimeItem(
       }
       const { namespace, tool } = parseAgentRuntimeToolName(item.toolName);
       const toolStatus = status === "inProgress" || status === "completed" ? status : "failed";
-      if (item.mcpToolCall && namespace !== "nodex_app")
+      if (item.mcpToolCall && (namespace !== "nodex_app" || tool === "automations_update"))
         return projectRuntimeMcpToolCall(item, toolStatus, durationMs);
       return {
         type: "dynamicToolCall",
+        outputVersion: agentRuntimeItemVersion(item),
         id,
         namespace,
         tool,

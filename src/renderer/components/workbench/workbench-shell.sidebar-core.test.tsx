@@ -593,7 +593,7 @@ describe("workbench session shell / sidebar-core", () => {
     expect(fixedHeaderText.includes("Nodex")).toBe(true);
     expect(fixedHeaderText.includes("New chat")).toBe(true);
     expect(within(fixedHeader).getByRole("button", { name: "Search" }) !== null).toBe(true);
-    expect(fixedHeaderText.includes("Scheduled")).toBe(false);
+    expect(fixedHeaderText.includes("Automations")).toBe(false);
     expect(fixedHeaderText.includes("Plugins")).toBe(false);
     expect(fixedHeader.getAttribute("data-scrolled-content-under-header")).toBe("false");
 
@@ -602,7 +602,7 @@ describe("workbench session shell / sidebar-core", () => {
       throw new Error("Expected sidebar scroll area");
     }
 
-    expect(within(nav).queryByRole("button", { name: "Scheduled" })).toBeNull();
+    expect(within(nav).queryByRole("button", { name: "Automations" })).toBeNull();
     expect(within(nav).queryByRole("button", { name: "Plugins" })).toBeNull();
     const rail = screen.getByRole("navigation", { name: "App navigation" });
     expect(

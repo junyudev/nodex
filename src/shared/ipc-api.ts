@@ -64,6 +64,8 @@ import type { ContentRoutingContext } from "./content-routing-context";
 import type { LocalPathPresentationContext } from "./local-path-presentation";
 import type {
   ManagedAssetImageBytes,
+  ManagedAssetPreview,
+  ManagedAssetPreviewInput,
   ManagedAssetUploadInput,
   ManagedCanvasImageMaterializationResult,
   ManagedImageSaveResult,
@@ -287,24 +289,24 @@ import type {
   CodexConversationThreadSettingsPatch,
   CodexPersonality,
   CodexEvent,
-  CodexAutomationRunsInboxResponse,
-  CodexAutomationRunArchiveInput,
-  CodexAutomationRunsUpdatedEvent,
-  CodexAutomationRunUnarchiveInput,
-  CodexAutomationRunMutationResponse,
-  CodexAutomationRunReadStateInput,
-  CodexAutomationInboxItem,
+  AutomationRunsInboxResponse,
+  AutomationRunArchiveInput,
+  AutomationRunsUpdatedEvent,
+  AutomationRunUnarchiveInput,
+  AutomationRunMutationResponse,
+  AutomationRunReadStateInput,
+  AutomationInboxItem,
   CodexHeartbeatAutomationThreadStateChangedInput,
   CodexHeartbeatAutomationsEnabledChangedInput,
-  CodexScheduledAutomationChangedEvent,
-  CodexScheduledAutomationCreateInput,
-  CodexScheduledAutomationDeleteInput,
-  CodexScheduledAutomationDeleteResponse,
-  CodexScheduledAutomationListResponse,
-  CodexScheduledAutomationMutationResponse,
-  CodexScheduledAutomationRunNowInput,
-  CodexScheduledAutomationRunNowResponse,
-  CodexScheduledAutomationUpdateInput,
+  AutomationChangedEvent,
+  AutomationCreateInput,
+  AutomationDeleteInput,
+  AutomationDeleteResponse,
+  AutomationListResponse,
+  AutomationMutationResponse,
+  AutomationRunNowInput,
+  AutomationRunNowResponse,
+  AutomationUpdateInput,
   CodexSidebarRefreshPolicy,
   CodexSidebarRefreshReason,
   CodexSidebarSnapshot,
@@ -1049,20 +1051,6 @@ export interface IpcApi
     args: [sessionId: string, input: PageChatLinkInput];
     result: void;
   };
-  "mobile-access:status": { args: []; result: import("./mobile-access").MobileAccessStatus };
-  "mobile-access:set-enabled": {
-    args: [input: { enabled: boolean }];
-    result: import("./mobile-access").MobileAccessStatus;
-  };
-  "mobile-access:begin-pairing": { args: []; result: import("./mobile-access").MobileAccessStatus };
-  "mobile-access:cancel-pairing": {
-    args: [];
-    result: import("./mobile-access").MobileAccessStatus;
-  };
-  "mobile-access:revoke-device": {
-    args: [input: { deviceId: string }];
-    result: import("./mobile-access").MobileAccessStatus;
-  };
   "inbox:summary": {
     args: [input: import("./inbox").InboxSummaryInput];
     result: import("./inbox").InboxSummary;
@@ -1683,6 +1671,7 @@ export interface IpcApi
     result: import("./terminal-shell-settings").TerminalShellSettings;
   };
   "settings:window-restore:get": { args: []; result: WindowRestoreSettings };
+  "sources:automation-options": { args: []; result: readonly import("./sources").SourceOption[] };
   "sources:settings": { args: []; result: import("./sources").SourcesSettingsSnapshot };
   "sources:connect": { args: []; result: import("./core-result").CoreLocalCommitResult<void> };
   "sources:update": {
@@ -1859,6 +1848,10 @@ export interface IpcApi
   "asset:resource:materialize": {
     args: [localPath: string];
     result: ManagedResourceSaveResult;
+  };
+  "asset:preview:read": {
+    args: [input: ManagedAssetPreviewInput];
+    result: ManagedAssetPreview;
   };
   "clipboard:write-image": {
     args: [input: { source: string }];
@@ -2486,49 +2479,53 @@ export interface IpcApi
     args: [threadId: string];
     result: CodexThreadSummary | null;
   };
-  "codex:scheduled-automations:list": {
+  "automations:list": {
     args: [];
-    result: CodexScheduledAutomationListResponse;
+    result: AutomationListResponse;
   };
-  "codex:scheduled-automations:create": {
-    args: [input: CodexScheduledAutomationCreateInput];
-    result: CodexScheduledAutomationMutationResponse;
+  "automations:decisions:list": {
+    args: [input: import("./types").AutomationDecisionsInput];
+    result: import("./types").AutomationDecisionsResponse;
   };
-  "codex:scheduled-automations:update": {
-    args: [input: CodexScheduledAutomationUpdateInput];
-    result: CodexScheduledAutomationMutationResponse;
+  "automations:create": {
+    args: [input: AutomationCreateInput];
+    result: AutomationMutationResponse;
   };
-  "codex:scheduled-automations:delete": {
-    args: [input: CodexScheduledAutomationDeleteInput];
-    result: CodexScheduledAutomationDeleteResponse;
+  "automations:update": {
+    args: [input: AutomationUpdateInput];
+    result: AutomationMutationResponse;
   };
-  "codex:scheduled-automations:run-now": {
-    args: [input: CodexScheduledAutomationRunNowInput];
-    result: CodexScheduledAutomationRunNowResponse;
+  "automations:delete": {
+    args: [input: AutomationDeleteInput];
+    result: AutomationDeleteResponse;
   };
-  "codex:scheduled-automations:heartbeat-enabled-changed": {
+  "automations:run-now": {
+    args: [input: AutomationRunNowInput];
+    result: AutomationRunNowResponse;
+  };
+  "automations:heartbeat-enabled-changed": {
     args: [input: CodexHeartbeatAutomationsEnabledChangedInput];
     result: { success: boolean };
   };
-  "codex:scheduled-automations:heartbeat-thread-state-changed": {
+  "automations:heartbeat-thread-state-changed": {
     args: [input: CodexHeartbeatAutomationThreadStateChangedInput];
     result: { success: boolean };
   };
-  "codex:automation-runs:archive": {
-    args: [input: CodexAutomationRunArchiveInput];
-    result: CodexAutomationRunMutationResponse;
+  "automations:runs:archive": {
+    args: [input: AutomationRunArchiveInput];
+    result: AutomationRunMutationResponse;
   };
-  "codex:automation-runs:unarchive": {
-    args: [input: CodexAutomationRunUnarchiveInput];
-    result: CodexAutomationRunMutationResponse;
+  "automations:runs:unarchive": {
+    args: [input: AutomationRunUnarchiveInput];
+    result: AutomationRunMutationResponse;
   };
-  "codex:automation-runs:inbox-items": {
+  "automations:runs:inbox-items": {
     args: [limit?: number];
-    result: CodexAutomationRunsInboxResponse;
+    result: AutomationRunsInboxResponse;
   };
-  "codex:automation-runs:set-read-state": {
-    args: [input: CodexAutomationRunReadStateInput];
-    result: CodexAutomationInboxItem | null;
+  "automations:runs:set-read-state": {
+    args: [input: AutomationRunReadStateInput];
+    result: AutomationInboxItem | null;
   };
   "codex:composer-plugins:activate": {
     args: [input: CodexComposerPluginActivateInput];
@@ -3139,7 +3136,6 @@ export interface IpcEvents {
   "projects-changed": ProjectsChangeEvent;
   "project-sessions-changed": ProjectSessionsChangeEvent;
   "inbox-changed": import("./inbox").InboxChangedEvent;
-  "mobile-access-changed": void;
   "reminder:open": {
     projectId: string;
     pageId: string;
@@ -3157,8 +3153,8 @@ export interface IpcEvents {
   "codex:event": CodexEvent;
   "codex:host-message": CodexHostMessage;
   "codex:user-input:auto-resolution:changed": CodexUserInputAutoResolutionChange;
-  "codex:scheduled-automations:changed": CodexScheduledAutomationChangedEvent;
-  "codex:automation-runs:updated": CodexAutomationRunsUpdatedEvent;
+  "automations:changed": AutomationChangedEvent;
+  "automations:runs:updated": AutomationRunsUpdatedEvent;
   "codex:hooks:changed": CodexHooksChangedEvent;
   "codex:thread-handoffs:changed": CodexThreadHandoffSnapshot;
   "codex:pending-worktrees:changed": CodexPendingWorktreesChangedEvent;

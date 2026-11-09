@@ -1340,8 +1340,8 @@ export function useWorkbenchSessionCommands({
     [openAttachedThreadSessionResult],
   );
 
-  /** Opens a scheduled run or Heartbeat chat without leaving Scheduled. */
-  const presentScheduledChat = useCallback(
+  /** Opens a scheduled run or Heartbeat chat without leaving Automations. */
+  const presentAutomationChat = useCallback(
     async (sessionId: string, scheduledPath: (sessionId: string) => string): Promise<void> => {
       try {
         const session = await resolveChatSessionById(sessionId);
@@ -1355,8 +1355,8 @@ export function useWorkbenchSessionCommands({
     [resolveChatSessionById, selectSession],
   );
 
-  /** Starts a chat about a scheduled task in its Project and shows it within Scheduled. */
-  const replyAboutScheduledTask = useCallback(
+  /** Starts a chat about an automation in its Project and shows it within Automations. */
+  const replyAboutAutomation = useCallback(
     async (input: {
       readonly projectId: string | null;
       readonly prompt: string;
@@ -1613,8 +1613,8 @@ export function useWorkbenchSessionCommands({
     openAttachedThreadSession,
     openResolvedPendingThreadSession,
     openAttachedThreadSessionById,
-    presentScheduledChat,
-    replyAboutScheduledTask,
+    presentAutomationChat,
+    replyAboutAutomation,
     openProcessOutputInCurrentSession,
     openProcessManagerOutput,
     openTurnDiffFileInSidePanel,

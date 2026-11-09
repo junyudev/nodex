@@ -9026,10 +9026,12 @@ mod tests {
             (
                 0,
                 agent_work("ask"),
+                Some(nodex_core_contracts::automation::AutomationMode::AskFirst),
             ),
             (
                 1,
                 agent_work("automatic"),
+                Some(nodex_core_contracts::automation::AutomationMode::Run),
             ),
             (2, Value::Null, None),
         ] {
@@ -9072,6 +9074,7 @@ mod tests {
             assert_eq!(row.work.unsatisfied_count, 1);
             assert_eq!(
                 row.work.auto_start,
+                launch == Some(nodex_core_contracts::automation::AutomationMode::Run)
             );
             assert_eq!(
                 row.work

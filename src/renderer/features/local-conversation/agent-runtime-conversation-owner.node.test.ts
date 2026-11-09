@@ -2148,6 +2148,86 @@ describe("Agent Runtime keyed transcript reads", () => {
     release();
   });
 
+  test("resolved Automation detail survives identical metadata and reconnects, while newer evidence retires it", async () => {
+    const proposal = {
+      operation: "suggested_update",
+      kind: "heartbeat",
+      id: "automation:follow-up",
+      expectedRevision: 7,
+      status: "PAUSED",
+      name: "Follow up",
+      prompt: "Check progress",
+      rrule: "FREQ=DAILY",
+      targetSessionId: "session:resolved",
+    };
+    const metadata: Extract<AgentTurnItem, { type: "dynamic_tool" }> = {
+      ...base("automation-proposal", 0),
+      type: "dynamic_tool",
+      toolName: "nodex_app.automations_update",
+      input: proposal,
+      outputOmitted: true,
+      mcpToolCall: {
+        type: "mcpToolCall",
+        id: "native-automation-proposal",
+        server: "nodex_app",
+        tool: "automations_update",
+        status: "completed",
+        arguments: proposal,
+        result: { content: [] },
+      },
+    };
+    const full: typeof metadata = {
+      ...metadata,
+      outputOmitted: false,
+      mcpToolCall: {
+        ...metadata.mcpToolCall!,
+        result: { content: [], structuredContent: { proposal, committed: false } },
+      },
+    };
+    const { owner, wire, release } = await open(conversation([metadata, command(1)]));
+    try {
+      vi.spyOn(wire.port, "item").mockResolvedValue(full);
+      const key = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
+      await owner.readItem(metadata.id);
+      const detail = owner.readOwner.readItem(key, metadata.id);
+      expect(detail).toMatchObject({
+        result: { structuredContent: { proposal, committed: false } },
+      });
+      expect(detail).not.toHaveProperty("outputOmitted", true);
+      wire.emit(event(metadata));
+      expect(owner.readOwner.readItem(key, metadata.id)).toBe(detail);
+      wire.reset();
+      await owner.resume();
+      expect(owner.readOwner.readItem(key, metadata.id)).toBe(detail);
+      expect(wire.port.item).toHaveBeenCalledTimes(1);
+
+      const changed = { ...metadata, updatedAt: "2026-10-14T00:00:01.000Z" };
+      const before = owner.readOwner.readProjectedItem(key, metadata.id, metadata.id);
+      wire.emit(event(changed, 3));
+      expect(owner.readOwner.readItem(key, metadata.id)).toMatchObject({ outputOmitted: true });
+      const after = owner.readOwner.readProjectedItem(key, metadata.id, metadata.id);
+      expect(after?.updatedAt).toBe(before?.updatedAt);
+      expect(before?.outputVersion).toEqual(expect.any(String));
+      expect(after?.outputVersion).toEqual(expect.any(String));
+      expect(after?.outputVersion).not.toBe(before?.outputVersion);
+      let complete!: (value: AgentTurnItem) => void;
+      vi.mocked(wire.port.item).mockImplementationOnce(
+        () => new Promise((resolve) => (complete = resolve)),
+      );
+      const pending = owner.readItem(metadata.id);
+      const newer = { ...metadata, updatedAt: "2026-10-14T00:00:02.000Z" };
+      wire.emit(event(newer, 4));
+      const latest = owner.readOwner.readItem(key, metadata.id);
+      complete({ ...full, updatedAt: changed.updatedAt });
+      await pending;
+      expect(owner.readOwner.readItem(key, metadata.id)).toBe(latest);
+      expect(latest).toMatchObject({ outputOmitted: true });
+    } finally {
+      release();
+      owner.dispose();
+    }
+  });
+
   test("late snapshot and item delivery cannot repopulate a released read owner", async () => {
     let resolveRead!: (value: AgentRuntimeConversation) => void;
     const pending = new Promise<AgentRuntimeConversation>((resolve) => {
@@ -3613,6 +3693,7 @@ test.each(["accept", "decline", "cancel"] as const)(
     }
   },
 );
+
 
 describe("Agent Runtime resident history window", () => {
   const tick = () => new Promise((resolve) => setTimeout(resolve, 0));

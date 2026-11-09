@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { automationSchema, automationTool } from "./automation-schema";
 
 const heartbeat = {
-  mode: "create",
+  operation: "create",
   kind: "heartbeat",
   name: "Watch the build",
   prompt: "Check the build and report meaningful changes.",
@@ -17,7 +17,33 @@ const cron = {
   cwds: ["/workspace/project-1"],
 };
 
-describe("automation tool input", () => {
+describe("Automation tool input", () => {
+  it("separates Automation mode from the requested operation and retains clock authority", () => {
+    for (const mode of ["dry_run", "ask_first", "run"] as const) {
+      expect(
+        automationSchema.parse({
+          ...cron,
+          operation: "suggested_create",
+          mode,
+          ownerMemberId: "member:owner",
+          scope: { kind: "space" },
+          conditionText: "Every weekday at nine",
+          timezone: "Asia/Singapore",
+        }),
+      ).toMatchObject({
+        operation: "suggested_create",
+        mode,
+        ownerMemberId: "member:owner",
+        scope: { kind: "space" },
+        timezone: "Asia/Singapore",
+      });
+    }
+    expect(automationSchema.safeParse({ ...cron, mode: "automatic" }).success).toBe(false);
+    expect(
+      automationSchema.safeParse({ ...cron, operation: undefined, mode: "create" }).success,
+    ).toBe(false);
+  });
+
   it("accepts independent Cron runs and Session Heartbeats with explicit notification preferences", () => {
     expect(
       automationSchema.parse({ ...cron, projectId: null, cwds: [], notificationPolicy: null }),
@@ -50,9 +76,20 @@ describe("automation tool input", () => {
     }
   });
 
+  it("retains exact configured native Agent instances in Automations and proposed edits", () => {
+    for (const kind of ["claude", "opencode"] as const) {
+      const backendBinding = { kind, instanceConfigId: "configured-instance" };
+      expect(automationSchema.parse({ ...cron, backendBinding })).toMatchObject({ backendBinding });
+      expect(
+        automationSchema.parse({ ...heartbeat, operation: "suggested_create", backendBinding }),
+      ).toMatchObject({ backendBinding });
+      expect(automationSchema.safeParse({ ...cron, backendBinding: { kind } }).success).toBe(false);
+    }
+  });
+
   it("requires complete revision-fenced updates and deletion commands", () => {
-    const update = { ...cron, mode: "update", id: "automation-1", status: "PAUSED" };
-    const deletion = { mode: "delete", id: "automation-1" };
+    const update = { ...cron, operation: "update", id: "automation-1", status: "PAUSED" };
+    const deletion = { operation: "delete", id: "automation-1" };
     expect(automationSchema.safeParse(update).success).toBe(false);
     expect(automationSchema.safeParse(deletion).success).toBe(false);
     expect(automationSchema.parse({ ...update, expectedRevision: 1 })).toMatchObject({
@@ -67,7 +104,7 @@ describe("automation tool input", () => {
       expect(automationSchema.safeParse({ ...deletion, expectedRevision }).success).toBe(false);
     }
     for (const input of [
-      { mode: "update", id: "automation-1", expectedRevision: 1, status: "PAUSED" },
+      { operation: "update", id: "automation-1", expectedRevision: 1, status: "PAUSED" },
       { ...update, expectedRevision: 1, status: "DELETED" },
     ]) {
       expect(automationSchema.safeParse(input).success).toBe(false);
@@ -84,7 +121,7 @@ describe("automation tool input", () => {
       { ...heartbeat, targetThreadId: "thread-1" },
       { ...heartbeat, backendBinding: { kind: "acp", agentDefinitionId: "agent-1" } },
       { ...heartbeat, authority: { scope: "library" } },
-      { mode: "view", id: "automation-1", operationId: "unexpected" },
+      { operation: "view", id: "automation-1", operationId: "unexpected" },
     ]) {
       expect(automationSchema.safeParse(input).success).toBe(false);
     }
@@ -119,6 +156,7 @@ describe("automation tool input", () => {
       { ...heartbeat, prompt: " " },
       { ...heartbeat, rrule: " " },
       { ...cron, model: "界".repeat(171) },
+      { ...cron, scope: { kind: "project", projectId: "界".repeat(171) } },
       { ...cron, reasoningEffort: "界".repeat(22) },
       { ...cron, serviceTier: "x".repeat(65) },
       { ...cron, cwds: Array.from({ length: 129 }, (_, index) => `/workspace/${index}`) },
@@ -128,15 +166,15 @@ describe("automation tool input", () => {
   });
 
   it("bounds definition discovery and publishes a valid MCP tool contract", () => {
-    expect(automationSchema.parse({ mode: "list" })).toEqual({ mode: "list", limit: 20 });
+    expect(automationSchema.parse({ operation: "list" })).toEqual({ operation: "list", limit: 20 });
     expect(
-      automationSchema.parse({ mode: "list", query: " build ", cursor: "opaque", limit: 100 }),
-    ).toEqual({ mode: "list", query: " build ", cursor: "opaque", limit: 100 });
+      automationSchema.parse({ operation: "list", query: " build ", cursor: "opaque", limit: 100 }),
+    ).toEqual({ operation: "list", query: " build ", cursor: "opaque", limit: 100 });
     for (const input of [
-      { mode: "list", limit: 101 },
-      { mode: "list", limit: 0 },
-      { mode: "list", cursor: "x".repeat(2049) },
-      { mode: "list", query: "x".repeat(513) },
+      { operation: "list", limit: 101 },
+      { operation: "list", limit: 0 },
+      { operation: "list", cursor: "x".repeat(2049) },
+      { operation: "list", query: "x".repeat(513) },
     ]) {
       expect(automationSchema.safeParse(input).success).toBe(false);
     }

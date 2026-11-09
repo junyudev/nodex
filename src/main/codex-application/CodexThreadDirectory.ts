@@ -246,7 +246,7 @@ export class CodexThreadDirectory extends Context.Service<
       readonly mode?: string | null;
       readonly threadStartKind?: string | null;
     }) => Effect.Effect<CodexThreadDirectoryEntry, CodexThreadDirectoryError>;
-    /** Accepts a sessionless Main-owned Thread such as a scheduled Automation run. */
+    /** Accepts a sessionless Main-owned Thread such as a clock Automation run. */
     readonly acceptStandaloneStart: (input: {
       readonly response: ThreadStartResponse;
       /** Exact endpoint generation that created the Thread. */

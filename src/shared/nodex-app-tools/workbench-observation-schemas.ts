@@ -3,6 +3,7 @@ import { z } from "zod";
 import { WorkbenchSceneReferenceSchema } from "./workbench";
 import { FetchV3InputSchema } from "../nodex-agent-tools/v3-read-schemas";
 import { PropertyIdSchema } from "../nodex-agent-tools/base-schemas";
+import { toolInputSchema } from "./tool-input-schema";
 
 const pageFields = {
   observationId: z.string().uuid(),
@@ -76,6 +77,6 @@ export const workbenchObservationToolCatalog: readonly Tool[] = Object.entries(
 ).map(([name, schema]) => ({
   name,
   description: descriptions[name as keyof typeof descriptions],
-  inputSchema: z.toJSONSchema(schema, { io: "input" }) as Tool["inputSchema"],
+  inputSchema: toolInputSchema(schema),
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 }));

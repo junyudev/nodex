@@ -344,6 +344,7 @@ describe("resolveNodexToolActivity", () => {
     expect(parts).toEqual([{ kind: "text", text: "Couldn't fork chat" }]);
   });
 
+    expect(
   test("states a toggle by the direction it went", () => {
     expect(label(call("set_session_pinned", { pinned: true }))).toBe("Pinned chat");
     expect(label(call("set_session_pinned", { pinned: false }))).toBe("Unpinned chat");

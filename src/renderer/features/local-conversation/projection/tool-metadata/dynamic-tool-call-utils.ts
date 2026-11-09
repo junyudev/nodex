@@ -1,5 +1,5 @@
 import type { CodexAppHandoffOperation } from "../../../../../shared/codex-thread-handoff";
-import { formatCodexScheduledAutomationRruleSummary } from "../../../../lib/codex-scheduled-automation-display";
+import { formatAutomationRruleSummary } from "../../../../lib/automation-display";
 import { formatDynamicToolCallMarkdownFallback } from "../../../../../shared/codex-dynamic-tool-markdown";
 import {
   readCreatedThreadActivityResult,
@@ -8,12 +8,12 @@ import {
 import type {
   CodexConversationItem,
   CodexDynamicToolCallView,
-  CodexScheduledAutomationCreateInput,
-  CodexScheduledAutomationExecutionEnvironment,
-  CodexScheduledAutomationKind,
-  CodexScheduledAutomationReasoningEffort,
-  CodexScheduledAutomationStatus,
-  CodexScheduledAutomationUpdateInput,
+  AutomationCreateInput,
+  AutomationExecutionEnvironment,
+  AutomationExecutionKind,
+  AutomationReasoningEffort,
+  AutomationStatus,
+  AutomationUpdateInput,
 } from "../../../../lib/types";
 import { humanizeIdentifier, resolveScriptToolTitle } from "./tool-call-utils";
 import { NODEX_TOOL_ACTIVITY_TOOLS, resolveNodexToolActivity } from "./nodex-tool-activity";
@@ -21,14 +21,14 @@ import { NODEX_TOOL_ACTIVITY_TOOLS, resolveNodexToolActivity } from "./nodex-too
 const CODEX_APP_NAMESPACE = "codex_app";
 const CHROME_EXTENSION_NAMESPACE = "chrome_extension";
 const DYNAMIC_TOOL_COMPLETED_FALLBACK_LABELS: Record<string, string> = {
-  automation_update: "Scheduled task updated",
+  automations_update: "Automation updated",
   load_workspace_dependencies: "Loaded workspace dependencies",
   pia_slackbot_dm: "Pia Slackbot DM",
   read_thread_terminal: "Read thread terminal",
 };
 
 const DYNAMIC_TOOL_ACTIVE_FALLBACK_LABELS: Record<string, string> = {
-  automation_update: "Updating scheduled task",
+  automations_update: "Updating automation",
   load_workspace_dependencies: "Loading workspace dependencies",
   pia_slackbot_dm: "Pia Slackbot DM",
   read_thread_terminal: "Reading thread terminal",
@@ -199,9 +199,9 @@ type AutomationUpdateResultMode = "create" | "delete" | "update";
 export interface AutomationUpdateToolResult {
   automationId: string;
   deleteStatus: "deleted" | "not_found" | null;
-  mode: AutomationUpdateResultMode | null;
+  operation: AutomationUpdateResultMode | null;
   snapshot: {
-    kind: CodexScheduledAutomationKind | null;
+    kind: AutomationExecutionKind | null;
     name: string | null;
     rrule: string | null;
   } | null;
@@ -211,7 +211,7 @@ export interface AutomationUpdateRenderState {
   proposalId?: string;
   automationId: string | null;
   canAccept: boolean;
-  createInput: CodexScheduledAutomationCreateInput | null;
+  createInput: AutomationCreateInput | null;
   disabledReason: string | null;
   displayMode: AutomationUpdateDirectiveMode;
   openLabel: string;
@@ -219,7 +219,7 @@ export interface AutomationUpdateRenderState {
   statusLabel: string;
   subtitle: string | null;
   title: string;
-  updateInput: CodexScheduledAutomationUpdateInput | null;
+  updateInput: AutomationUpdateInput | null;
 }
 
 function normalizeAutomationUpdateMode(value: unknown): AutomationUpdateDirectiveMode | null {
@@ -258,23 +258,21 @@ function normalizeAutomationUpdateInputMode(value: unknown): AutomationUpdateInp
   }
 }
 
-function normalizeAutomationKind(value: unknown): CodexScheduledAutomationKind | null {
+function normalizeAutomationKind(value: unknown): AutomationExecutionKind | null {
   return value === "cron" || value === "heartbeat" ? value : null;
 }
 
-function normalizeAutomationStatus(value: unknown): CodexScheduledAutomationStatus | null {
+function normalizeAutomationStatus(value: unknown): AutomationStatus | null {
   return value === "ACTIVE" || value === "PAUSED" ? value : null;
 }
 
 function normalizeAutomationExecutionEnvironment(
   value: unknown,
-): CodexScheduledAutomationExecutionEnvironment | null {
+): AutomationExecutionEnvironment | null {
   return value === "local" || value === "worktree" ? value : null;
 }
 
-function normalizeAutomationReasoningEffort(
-  value: unknown,
-): CodexScheduledAutomationReasoningEffort | null {
+function normalizeAutomationReasoningEffort(value: unknown): AutomationReasoningEffort | null {
   if (
     value === "none" ||
     value === "minimal" ||
@@ -347,8 +345,10 @@ export function parseAutomationUpdateToolResult(
   const automationId = normalizeOptionalString(parsed?.automationId);
   if (!automationId) return null;
   const mode =
-    parsed?.mode === "create" || parsed?.mode === "update" || parsed?.mode === "delete"
-      ? parsed.mode
+    parsed?.operation === "create" ||
+    parsed?.operation === "update" ||
+    parsed?.operation === "delete"
+      ? parsed.operation
       : null;
   const deleteStatus =
     parsed?.deleteStatus === "deleted" || parsed?.deleteStatus === "not_found"
@@ -356,7 +356,7 @@ export function parseAutomationUpdateToolResult(
       : null;
   return {
     automationId,
-    mode,
+    operation: mode,
     deleteStatus,
     snapshot: parseAutomationUpdateToolResultSnapshot(parsed?.snapshot),
   };
@@ -378,12 +378,12 @@ function resolveAutomationUpdateStatusLabel(input: {
     case "suggested-update":
       return "Proposed update";
     case "view":
-      return "Scheduled task";
+      return "Automation";
   }
 }
 
 function resolveAutomationUpdateOpenLabel(mode: AutomationUpdateDirectiveMode): string {
-  if (mode === "suggested-create") return "Create scheduled task";
+  if (mode === "suggested-create") return "Create automation";
   if (mode === "suggested-update") return "Apply changes";
   return "Open";
 }
@@ -392,22 +392,37 @@ function resolveAutomationUpdateDisplayMode(
   argsMode: AutomationUpdateDirectiveMode,
   result: AutomationUpdateToolResult | null,
 ): AutomationUpdateDirectiveMode {
-  return result?.mode ?? argsMode;
+  return result?.operation ?? argsMode;
 }
 
 function buildAutomationUpdateCreateInput(
   args: Record<string, unknown>,
-): CodexScheduledAutomationCreateInput | null {
+): AutomationCreateInput | null {
   const kind = normalizeAutomationKind(args.kind);
   const name = normalizeOptionalString(args.name);
   const prompt = normalizeOptionalString(args.prompt);
   const rrule = normalizeOptionalString(args.rrule);
   if (!kind || !name || !prompt || !rrule) return null;
+  const scope = asRecord(args.scope);
+  const projectId = normalizeOptionalString(scope?.projectId);
+  const automationScope: AutomationCreateInput["scope"] =
+    scope?.kind === "space"
+      ? { kind: "space" }
+      : scope?.kind === "project" && projectId
+        ? { kind: "project", projectId }
+        : undefined;
+  if (args.scope !== undefined && !automationScope) return null;
   // A proposal may ask to run automatically; only the user's apply grants it.
-  const launch: CodexScheduledAutomationCreateInput["launch"] =
-    args.launch === "ask" || args.launch === "automatic" ? args.launch : undefined;
+  const mode: AutomationCreateInput["mode"] =
+    args.mode === "ask_first" || args.mode === "run" || args.mode === "dry_run"
+      ? args.mode
+      : undefined;
   const plan = {
-    ...(launch ? { launch } : {}),
+    ...(automationScope ? { scope: automationScope } : {}),
+    ...(mode ? { mode } : {}),
+    ...(typeof args.ownerMemberId === "string" ? { ownerMemberId: args.ownerMemberId } : {}),
+    ...(typeof args.conditionText === "string" ? { conditionText: args.conditionText } : {}),
+    ...(typeof args.timezone === "string" ? { timezone: args.timezone } : {}),
     runbookPageId: normalizeOptionalString(args.runbookPageId) ?? null,
   };
 
@@ -449,12 +464,12 @@ function buildAutomationUpdateCreateInput(
 
 function buildAutomationUpdateUpdateInput(
   args: Record<string, unknown>,
-): CodexScheduledAutomationUpdateInput | null {
+): AutomationUpdateInput | null {
   const id = normalizeOptionalString(args.id);
   const status = normalizeAutomationStatus(args.status);
   const createInput = buildAutomationUpdateCreateInput(args);
   if (!id || !status || !createInput) return null;
-  const updateInput: CodexScheduledAutomationUpdateInput = {
+  const updateInput: AutomationUpdateInput = {
     ...createInput,
     id,
     status,
@@ -467,24 +482,24 @@ function buildAutomationUpdateUpdateInput(
 
 function resolveAutomationUpdateDisabledReason(input: {
   mode: AutomationUpdateDirectiveMode;
-  createInput: CodexScheduledAutomationCreateInput | null;
-  updateInput: CodexScheduledAutomationUpdateInput | null;
+  createInput: AutomationCreateInput | null;
+  updateInput: AutomationUpdateInput | null;
 }): string | null {
   if (input.mode === "suggested-create" && !input.createInput)
-    return "This scheduled task proposal is missing required fields.";
+    return "This automation proposal is missing required fields.";
   if (input.mode === "suggested-update" && !input.updateInput)
-    return "This scheduled task update is missing required fields.";
+    return "This automation update is missing required fields.";
   return null;
 }
 
 export function resolveAutomationUpdateRenderState(
   call: CodexDynamicToolCallView,
 ): AutomationUpdateRenderState | null {
-  if (call.namespace !== CODEX_APP_NAMESPACE || call.tool !== "automation_update") return null;
+  if (call.namespace !== CODEX_APP_NAMESPACE || call.tool !== "automations_update") return null;
   const args = asRecord(call.arguments);
   if (!args) return null;
-  const argsMode = normalizeAutomationUpdateMode(args.mode);
-  const inputMode = normalizeAutomationUpdateInputMode(args.mode);
+  const argsMode = normalizeAutomationUpdateMode(args.operation);
+  const inputMode = normalizeAutomationUpdateInputMode(args.operation);
   if (!argsMode || !inputMode) return null;
 
   const result = call.success === true ? parseAutomationUpdateToolResult(call) : null;
@@ -502,9 +517,9 @@ export function resolveAutomationUpdateRenderState(
     normalizeOptionalString(args.name) ??
     snapshot?.name ??
     normalizeOptionalString(args.id) ??
-    "Untitled scheduled task";
+    "Untitled automation";
   const rrule = normalizeOptionalString(args.rrule) ?? snapshot?.rrule ?? null;
-  const schedule = formatCodexScheduledAutomationRruleSummary(rrule) ?? "Custom schedule";
+  const schedule = formatAutomationRruleSummary(rrule) ?? "Custom schedule";
   const statusLabel = resolveAutomationUpdateStatusLabel({
     deleteStatus: result?.deleteStatus ?? null,
     mode: displayMode,
@@ -679,13 +694,11 @@ function resolveCodexAppThreadSummaryKey(call: CodexDynamicToolCallView): string
 }
 
 function resolveAutomationUpdateLabel(call: CodexDynamicToolCallView): string | null {
-  if (!call.completed) return "Updating scheduled task";
-  if (call.success === false) return "Failed to update scheduled task";
+  if (!call.completed) return "Updating automation";
+  if (call.success === false) return "Failed to update automation";
   const state = resolveAutomationUpdateRenderState(call);
   if (!state) return null;
-  return state.statusLabel === "Scheduled task"
-    ? state.title
-    : `${state.statusLabel}: ${state.title}`;
+  return state.statusLabel === "Automation" ? state.title : `${state.statusLabel}: ${state.title}`;
 }
 
 function resolveAutomationUpdateSummaryKey(call: CodexDynamicToolCallView): string | null {
@@ -703,7 +716,7 @@ const DYNAMIC_TOOL_REGISTRY: DynamicToolRegistryEntry[] = [
   })),
   {
     namespace: CODEX_APP_NAMESPACE,
-    tool: "automation_update",
+    tool: "automations_update",
     rendererKind: "automationUpdate",
     resolveLabel: resolveAutomationUpdateLabel,
     getCompletedSummaryPartKey: resolveAutomationUpdateSummaryKey,

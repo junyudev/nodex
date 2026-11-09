@@ -2,7 +2,7 @@ import type { ThreadComposerShellBackgroundAgentRowModel } from "../thread-stage
 import { getBackgroundSubagentListRows } from "./background-subagent-summary-model";
 
 export type ThreadSummaryPanelSectionKind =
-  | "scheduled"
+  | "automations"
   | "environment"
   | "plan"
   | "outputs"
@@ -27,7 +27,7 @@ export interface ThreadSummaryPanelSectionModel {
 
 export interface ThreadSummaryPanelSectionModelInput {
   activeThreadId: string | null;
-  hasScheduledAutomation: boolean;
+  hasAutomation: boolean;
   hasEnvironment: boolean;
   hasPlan: boolean;
   outputCount: number;
@@ -82,11 +82,11 @@ export function buildThreadSummaryPanelSectionModel(
   input: ThreadSummaryPanelSectionModelInput,
 ): ThreadSummaryPanelSectionModel[] {
   const sections: Array<ThreadSummaryPanelSectionModel | null> = [
-    input.hasScheduledAutomation
+    input.hasAutomation
       ? {
-          kind: "scheduled",
+          kind: "automations",
           sectionKey: "automation",
-          title: "Scheduled",
+          title: "Automations",
           mode: "accordion",
           count: null,
           autoCollapse: false,

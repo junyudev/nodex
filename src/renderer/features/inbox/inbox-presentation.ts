@@ -4,7 +4,7 @@ import type {
   InboxAgentChoice,
   InboxDispatchAction,
   InboxEntryKind,
-  InboxFiring,
+  InboxAutomationDecision,
   InboxImportantMessage,
   InboxItem,
   InboxPageStatus,
@@ -15,7 +15,7 @@ import type {
   InboxSuggestionPause,
   InboxSuggestionPolicy,
 } from "../../../shared/inbox-suggestion-policy";
-import type { CodexScheduledAutomation } from "../../../shared/types";
+import type { Automation } from "../../../shared/types";
 import { DEFAULT_WORKFLOW_STATUS } from "../../../shared/workflow-status";
 import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import { USER_TURN_TIMESTAMP_GAP_MS } from "../local-conversation/projection/conversation-turn-timestamps";
@@ -35,6 +35,8 @@ export type InboxTriageModel =
     }
   | { readonly kind: "suggestion-failed"; readonly message: string }
   | { readonly kind: "dispatch-failed"; readonly proposal: InboxProposal; readonly message: string }
+  /** An automation's waiting run whose task is gone, so it can no longer run. */
+  | { readonly kind: "decision-withdrawn" }
   /** A post Nodex wrote about a chat or Page; it takes no advice. */
   | {
       readonly kind: "answer";
@@ -70,11 +72,11 @@ export function inboxRowAction(
 ): InboxDispatchAction | null {
   if (!edit) return null;
   const choosesAgent =
-    edit.agent !== undefined && (action.type === "new_chat" || action.type === "run_task");
+    edit.agent !== undefined && (action.type === "new_chat" || action.type === "execute_decision");
   const dropsAdditions = edit.dropped.length > 0 && isChatAction(action);
   if (!choosesAgent && !dropsAdditions) return null;
   const withAgent =
-    choosesAgent && (action.type === "new_chat" || action.type === "run_task")
+    choosesAgent && (action.type === "new_chat" || action.type === "execute_decision")
       ? { ...action, agent: edit.agent ?? null }
       : action;
   return isChatAction(withAgent) && dropsAdditions
@@ -85,16 +87,18 @@ export function inboxRowAction(
     : withAgent;
 }
 
-/** Hands the work on: to a chat, or to a run of the scheduled task the message came from. */
+/** Hands the work on: to a chat, or to a run of the automation the message came from. */
 export const isWorkAction = (
   action: InboxDispatchAction,
-): action is Extract<InboxDispatchAction, { type: "new_chat" | "send_to_chat" | "run_task" }> =>
-  isChatAction(action) || action.type === "run_task";
+): action is Extract<
+  InboxDispatchAction,
+  { type: "new_chat" | "send_to_chat" | "execute_decision" }
+> => isChatAction(action) || action.type === "execute_decision";
 
 /**
  * Mirrors Core's Inbox membership: a message is handled once its work is handed on, or once it
  * is filed, kept, or done. Where its Page lives never decides it. Failed or uncertain delivery,
- * and a scheduled run that failed before reaching a chat, remain in the Inbox for a decision.
+ * and an Automation run that failed before reaching a chat, remain in the Inbox for a decision.
  */
 export function isInboxItemHandled(item: InboxItem): boolean {
   if (item.state !== "open") return true;
@@ -103,7 +107,7 @@ export function isInboxItemHandled(item: InboxItem): boolean {
     proposal &&
     isWorkAction(proposal.action) &&
     proposal.failureKind !== "unknown" &&
-    item.firing?.status !== "failed" &&
+    item.automationDecision?.status !== "failed" &&
     (proposal.state === "dispatching" || proposal.state === "completed"),
   );
 }
@@ -114,7 +118,8 @@ export function inboxTriageModel(item: InboxItem, policy: InboxSuggestionPolicy)
     proposal &&
     isWorkAction(proposal.action) &&
     (proposal.state === "failed" ||
-      (proposal.action.type === "run_task" && item.firing?.status === "failed") ||
+      (proposal.action.type === "execute_decision" &&
+        item.automationDecision?.status === "failed") ||
       (proposal.state === "dispatching" && proposal.failureKind === "unknown"))
   ) {
     return {
@@ -122,13 +127,14 @@ export function inboxTriageModel(item: InboxItem, policy: InboxSuggestionPolicy)
       proposal,
       message:
         proposal.failureMessage ??
-        item.firing?.failureMessage ??
-        (proposal.action.type === "run_task"
+        item.automationDecision?.failureMessage ??
+        (proposal.action.type === "execute_decision"
           ? "The run could not be started"
           : "The chat could not be started"),
     };
   }
   if (isInboxItemHandled(item)) return { kind: "handled" };
+  if (item.automationDecision?.status === "withdrawn") return { kind: "decision-withdrawn" };
   if (item.source.kind === "nodex")
     return {
       kind: "answer",
@@ -176,7 +182,7 @@ export function inboxRowOffers(
     case "suggesting":
     case "dispatch-failed":
       return { done: true, handleManually: true, suggest: false };
-    case "firing-withdrawn":
+    case "decision-withdrawn":
       return { done: true, handleManually: true, suggest: false };
     case "answer":
       return { done: false, handleManually: false, suggest: false };
@@ -267,9 +273,13 @@ const DONE = { icon: "done", label: "Done", status: null, open: null, canReturn:
 const SKIPPED = { ...DONE, label: "Skipped" } as const;
 
 const doneLabel = (item: InboxItem): string => {
+  if (item.automationDecision?.status === "skipped") return SKIPPED.label;
   return DONE.label;
 };
 
+/** The Automation a decision came from, as the message names it. */
+const decisionAutomationName = (item: InboxItem): string =>
+  item.source.kind === "automation" ? item.source.label : "automation";
 
 /** Work Nodex started on the person's standing consent says so; the person's own does not. */
 const chatLabel = (
@@ -334,12 +344,12 @@ export function describeInboxOutcome(
   }
   const proposal = item.proposal;
   if (
-    proposal?.action.type === "run_task" &&
+    proposal?.action.type === "execute_decision" &&
     (item.outcome === "chat" || proposal.state === "completed")
   ) {
     const chat = proposal.chat;
     const done = item.state === "done";
-    const title = `“${firingTaskName(item)}”`;
+    const title = `“${decisionAutomationName(item)}”`;
     // A Cron run reaches a chat once its workspace is ready; a Heartbeat already has its chat.
     if (!chat) {
       return {
@@ -437,7 +447,7 @@ export type InboxDecision =
   | { readonly kind: "plan"; readonly count: number }
   | { readonly kind: "keep" }
   | { readonly kind: "done" }
-  /** A scheduled task's waiting run, confirmed to run now. */
+  /** An automation's waiting run, confirmed to run now. */
   | { readonly kind: "run"; readonly taskName: string }
   | { readonly kind: "move"; readonly projectName: string | null }
   | {
@@ -463,7 +473,7 @@ export function describeInboxDecision(item: InboxItem, decision: InboxDecision):
     case "keep":
       return { ...KEPT, label: keptLabel(inboxEntryKind(item)), inProgress: false };
     case "done":
-      return { ...(item.firing ? SKIPPED : DONE), done: null, inProgress: false };
+      return { ...(item.automationDecision ? SKIPPED : DONE), done: null, inProgress: false };
     case "run":
       return {
         icon: "pending",
@@ -543,7 +553,7 @@ export function describeInboxAction(
     }
     case "move_to_project":
       return { verb: "Move", target: `Move to ${context.targetProjectName ?? "Project"}` };
-    case "run_task":
+    case "execute_decision":
       return {
         verb: "Run",
         // A Heartbeat continues its chat; a Cron run starts in its Project or on its own.
@@ -556,7 +566,7 @@ export function describeInboxAction(
   }
 }
 
-const formatFiringTime = (at: number, now: Date): string => {
+const formatDecisionTime = (at: number, now: Date): string => {
   const date = new Date(at);
   const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   const day = startOfDay(date).getTime();
@@ -565,22 +575,19 @@ const formatFiringTime = (at: number, now: Date): string => {
 };
 
 /**
- * How a scheduled task's waiting run will go, in one quiet line beneath its instructions: when it
+ * How an automation's waiting run will go, in one quiet line beneath its instructions: when it
  * fell due, how often it has since, and where it runs. Its instructions are the message itself.
  */
-export function describeInboxFiring(
-  firing: InboxFiring,
-  task: Pick<
-    CodexScheduledAutomation,
-    "kind" | "projectId" | "executionEnvironment" | "cwds"
-  > | null,
+export function describeInboxAutomationDecision(
+  automationDecision: InboxAutomationDecision,
+  task: Pick<Automation, "kind" | "projectId" | "executionEnvironment" | "cwds"> | null,
   now: Date,
 ): string {
-  const dueCount = firing.missedCount + 1;
+  const dueCount = automationDecision.missedCount + 1;
   const due =
     dueCount > 1
-      ? `Due ${dueCount} times since ${formatFiringTime(firing.firstScheduledFor, now)}`
-      : `Due ${formatFiringTime(firing.firstScheduledFor, now)}`;
+      ? `Due ${dueCount} times since ${formatDecisionTime(automationDecision.firstScheduledFor, now)}`
+      : `Due ${formatDecisionTime(automationDecision.firstScheduledFor, now)}`;
   if (!task) return due;
   const where =
     task.kind === "heartbeat"

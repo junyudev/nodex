@@ -24,10 +24,10 @@ describe("workbench automation templates", () => {
     const launchOf = (id: string) => {
       const template = WORKBENCH_AUTOMATION_TEMPLATES.find((candidate) => candidate.id === id);
       if (!template) throw new Error(`Expected template ${id}`);
-      return createWorkbenchAutomationDraftFromTemplate(template).launch;
+      return createWorkbenchAutomationDraftFromTemplate(template).mode;
     };
-    expect(launchOf("bump-dependency-versions")).toBe("ask");
-    expect(launchOf("security-check")).toBe("automatic");
-    expect(launchOf("daily-bug-scan")).toBe("automatic");
+    expect(launchOf("bump-dependency-versions")).toBe("ask_first");
+    expect(launchOf("security-check")).toBe("run");
+    expect(launchOf("daily-bug-scan")).toBe("run");
   });
 });

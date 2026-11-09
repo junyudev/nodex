@@ -25,6 +25,7 @@ const row = (reason: TurnReason, options: string[] = []): InboxItem => ({
   scope: { kind: "project", projectId: "project" },
   location: { kind: "other" },
   proposal: null,
+  automationDecision: null,
   revision: 1,
   basis: { pageId: "page", contentHash: "0".repeat(64) },
   outcome: null,

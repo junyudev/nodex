@@ -3,7 +3,7 @@ import { PluginsIcon } from "@/components/shared/icons";
 import {
   WorkbenchHomeIcon,
   WorkbenchInsightsIcon,
-  WorkbenchScheduledIcon,
+  WorkbenchAutomationsIcon,
   WorkbenchSpaceIcon,
 } from "@/components/shared/icons/workbench-navigation-icons";
 import { NodexButton } from "@/components/ui/button";
@@ -23,7 +23,7 @@ export interface WorkbenchAppRailProps {
   destination: WorkbenchPrimaryDestination;
   onHome: () => void;
   onSpace: () => void;
-  onScheduled: () => void;
+  onAutomations: () => void;
   onInsights: () => void;
   onPlugins: () => void;
   /** App-wide controls pinned to the foot of the rail. */
@@ -42,7 +42,7 @@ export function WorkbenchAppRail({
   destination,
   onHome,
   onSpace,
-  onScheduled,
+  onAutomations,
   onInsights,
   onPlugins,
   footer,
@@ -63,11 +63,11 @@ export function WorkbenchAppRail({
       onSelect: onSpace,
     },
     {
-      id: "scheduled",
-      label: "Scheduled",
-      peekArea: "scheduled",
-      icon: (active) => <WorkbenchScheduledIcon filled={active} />,
-      onSelect: onScheduled,
+      id: "automations",
+      label: "Automations",
+      peekArea: "automations",
+      icon: (active) => <WorkbenchAutomationsIcon filled={active} />,
+      onSelect: onAutomations,
     },
     {
       id: "insights",

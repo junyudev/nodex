@@ -18,7 +18,7 @@ import {
   navigateForwardInWorkbenchWindow,
   navigateWorkbenchWindow,
   openWorkbenchRoute,
-  presentWorkbenchScheduledSession,
+  presentWorkbenchAutomationSession,
   reconcileMissingWorkbenchSession,
   selectWorkbenchProject,
   selectWorkbenchInbox,
@@ -32,6 +32,17 @@ import {
 } from "./workbench-window-state";
 
 describe("WorkbenchWindowState", () => {
+  test("incoming Scheduled links enter the canonical Automations route", () => {
+    const state = createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot());
+    const next = openWorkbenchRoute(state, {
+      kind: "automations",
+      path: "/scheduled/edit/kept",
+    });
+    expect(next.location).toMatchObject({
+      kind: "automations",
+      path: "/automations?automationId=kept&automationMode=edit",
+    });
+  });
   test.each([{ kind: "inbox" as const }])(
     "Settings retains its stable $kind origin after leaving Space",
     () => {
@@ -66,13 +77,13 @@ describe("WorkbenchWindowState", () => {
     },
   );
 
-  test("Scheduled presents a run chat in place and keeps Home's location", () => {
+  test("Automations presents a run chat in place and keeps Home's location", () => {
     const home = selectWorkbenchSession(
       createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
       { id: "session-home", projectId: "alpha" },
     );
     const scheduled = openWorkbenchRoute(home, { kind: "automations", path: "/automations" });
-    const run = presentWorkbenchScheduledSession(scheduled, {
+    const run = presentWorkbenchAutomationSession(scheduled, {
       path: "/automations?automationId=task-a&runSessionId=session-run",
       session: { id: "session-run", projectId: "beta" },
     });
@@ -82,7 +93,7 @@ describe("WorkbenchWindowState", () => {
       path: "/automations?automationId=task-a&runSessionId=session-run",
       returnTo: { kind: "session", sessionId: "session-run", projectContextId: "beta" },
     });
-    expect(getWorkbenchPrimaryDestination(run.location)).toBe("scheduled");
+    expect(getWorkbenchPrimaryDestination(run.location)).toBe("automations");
     expect(getWorkbenchSceneReturnLocation(run.location)).toMatchObject({
       sessionId: "session-run",
     });
@@ -91,7 +102,7 @@ describe("WorkbenchWindowState", () => {
     expect(selectWorkbenchHome(run).location).toEqual(home.location);
   });
 
-  test("Scheduled is its own destination outside the remembered Home route", () => {
+  test("Automations is its own destination outside the remembered Home route", () => {
     const session = selectWorkbenchSession(
       createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
       { id: "session-a", projectId: "alpha" },
@@ -100,7 +111,7 @@ describe("WorkbenchWindowState", () => {
       kind: "automations",
       path: "/automations/edit/a",
     });
-    expect(getWorkbenchPrimaryDestination(scheduled.location)).toBe("scheduled");
+    expect(getWorkbenchPrimaryDestination(scheduled.location)).toBe("automations");
     expect(scheduled.homeLocation).toEqual(session.location);
 
     const home = selectWorkbenchHome(scheduled);
@@ -108,14 +119,14 @@ describe("WorkbenchWindowState", () => {
     expect(navigateBackInWorkbenchWindow(home).location).toEqual(scheduled.location);
 
     const settings = openWorkbenchRoute(scheduled, { kind: "settings", path: "/settings/general" });
-    expect(getWorkbenchPrimaryDestination(settings.location)).toBe("scheduled");
+    expect(getWorkbenchPrimaryDestination(settings.location)).toBe("automations");
     expect(closeWorkbenchRoute(settings).location).toEqual(scheduled.location);
     const reopened = createWorkbenchWindowState(snapshotWorkbenchWindowState(settings));
     expect(reopened.homeLocation).toEqual(session.location);
     expect(selectWorkbenchHome(reopened).location).toEqual(session.location);
   });
 
-  test("Customize is its own destination and switching to Scheduled keeps its Scene", () => {
+  test("Customize is its own destination and switching to Automations keeps its Scene", () => {
     const session = selectWorkbenchSession(
       createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
       { id: "session-a", projectId: "alpha" },

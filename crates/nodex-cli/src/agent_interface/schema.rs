@@ -65,6 +65,16 @@ fn localize_references(value: &mut Value) {
 
 pub(super) fn result(path: &[&str]) -> Value {
     let mut schema = match path {
+        ["automations", "list"] => combine(
+            document::<
+                nodex_core_contracts::collection::CollectionWindow<
+                    nodex_core_contracts::automation::Automation,
+                >,
+            >(),
+            [document::<nodex_core_contracts::automation::Automation>()],
+        ),
+        ["automations", "show"] => document::<nodex_core_contracts::automation::Automation>(),
+        ["automations", _] => document::<crate::automations::AutomationMutationResult>(),
         ["sources", "list"] => document::<Vec<nodex_core_contracts::sources::Source>>(),
         ["sources", "status"] => document::<Vec<crate::sources::SourceStatus>>(),
         ["sources", "triggers"] => document::<crate::sources::SourceTriggerWindow>(),
@@ -206,6 +216,10 @@ fn draft_apply_schema() -> Value {
 
 pub(super) fn payloads(path: &[&str]) -> BTreeMap<String, Value> {
     match path {
+        ["automations", "create" | "update"] => BTreeMap::from([(
+            "--file".into(),
+            document::<nodex_core_contracts::automation::AutomationInput>(),
+        )]),
         ["data-source", "configure"] => BTreeMap::from([(
             "--input".into(),
             document::<nodex_core_contracts::database_configuration::DatabaseConfigurationScript>(),

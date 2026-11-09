@@ -156,7 +156,7 @@ native conversation, and its recorded Store coordinate is cleared so Main reconc
 Session set as described above. The same transition settles everything that was in flight
 when the source was copied: unfinished replies and queued messages are cancelled with a
 readable reason, pending requests, delegated work, recovery schedules and effects are
-retired, and copied scheduled automations are disabled. Nothing copied runs on its own. The clone therefore never continues the source's native
+retired, and copied Automations are paused. Nothing copied runs on its own. The clone therefore never continues the source's native
 conversations, even when both use the same Agent account.
 
 The Store backup and the execution copy are independently timestamped inputs: `--backup`

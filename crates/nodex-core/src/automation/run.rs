@@ -42,8 +42,8 @@ pub(super) fn read_run(
         .query_row(
             "SELECT run_id, automation_id, run_revision, status, read_at, session_title, \
                     source_cwd, inbox_title, inbox_summary, archived_user_message, \
-                    archived_assistant_message, archived_reason, created_at, updated_at, session_id, dispatch_id \
-             FROM core_automation_runs WHERE run_id = ?1",
+                    archived_assistant_message, archived_reason, created_at, updated_at, session_id, dispatch_id, page_id, agent_selection_json \
+             FROM automation_execution_runs WHERE run_id = ?1",
             [run_id],
             run_from_row,
         )
@@ -96,8 +96,8 @@ pub(super) fn read_runs_window(
     let mut statement = connection.prepare(
         "SELECT run_id, automation_id, run_revision, status, read_at, session_title, \
                 source_cwd, inbox_title, inbox_summary, archived_user_message, \
-                archived_assistant_message, archived_reason, created_at, updated_at, session_id, dispatch_id \
-         FROM core_automation_runs \
+                archived_assistant_message, archived_reason, created_at, updated_at, session_id, dispatch_id, page_id, agent_selection_json \
+         FROM automation_execution_runs \
          WHERE (?1 IS NULL OR automation_id = ?1) AND (?2 OR status <> 'ARCHIVED') \
            AND (?3 IS NULL OR created_at < ?3 OR (created_at = ?3 AND run_id > ?4)) \
          ORDER BY created_at DESC, run_id LIMIT ?5",
@@ -196,8 +196,8 @@ pub(super) fn read_inbox_window(
                 runs.created_at, runs.status, \
                 CASE runs.status WHEN 'IN_PROGRESS' THEN 0 \
                   WHEN 'PENDING_REVIEW' THEN 1 ELSE 2 END AS status_bucket, runs.session_id \
-         FROM core_automation_runs runs \
-         JOIN codex_scheduled_automations automations \
+         FROM automation_execution_runs runs \
+         JOIN automations automations \
            ON automations.automation_id = runs.automation_id \
          WHERE (?1 IS NULL OR status_bucket > ?1 \
            OR (status_bucket = ?1 AND runs.created_at < ?2) \
@@ -260,6 +260,9 @@ pub(super) fn apply(
 ) -> Result<RunMutationEffects, StoreError> {
     match intent {
         AutomationIntent::BeginRun {
+            agent_selection,
+            message_id,
+            notification_policy,
             run_id,
             automation_id,
             dispatch_id,
@@ -268,12 +271,16 @@ pub(super) fn apply(
             source_cwd,
         } => begin_run(
             connection,
-            run_id,
-            automation_id,
-            dispatch_id.as_deref(),
-            session_id.as_deref(),
-            session_title.as_deref(),
-            source_cwd.as_deref(),
+            RunAdmission {
+                run_id,
+                automation_id,
+                dispatch_id: dispatch_id.as_deref(),
+                session_id: session_id.as_deref(),
+                session_title: session_title.as_deref(),
+                source_cwd: source_cwd.as_deref(),
+                message_id: message_id.as_deref(),
+                notification_policy: *notification_policy,
+                agent_selection: agent_selection.as_ref(),
         ),
         AutomationIntent::BindRunSession {
             run_id,
@@ -356,7 +363,7 @@ pub(super) fn delete_for_automation(
     automation_id: &str,
 ) -> Result<Vec<String>, StoreError> {
     let mut statement = connection.prepare(
-        "SELECT run_id FROM core_automation_runs \
+        "SELECT run_id FROM automation_execution_runs \
          WHERE automation_id = ?1 ORDER BY run_id",
     )?;
     let ids = statement
@@ -364,32 +371,65 @@ pub(super) fn delete_for_automation(
         .collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
     connection.execute(
-        "DELETE FROM core_automation_runs WHERE automation_id = ?1",
+        "DELETE FROM automation_execution_runs WHERE automation_id = ?1",
         [automation_id],
     )?;
     Ok(ids)
 }
 
+/// The run an admitted Automation dispatch begins: its identities, the chat it may start in, and how it notifies.
+struct RunAdmission<'a> {
+    run_id: &'a str,
+    automation_id: &'a str,
+    dispatch_id: Option<&'a str>,
+    session_id: Option<&'a str>,
+    session_title: Option<&'a str>,
+    source_cwd: Option<&'a str>,
+    message_id: Option<&'a str>,
+    notification_policy: Option<nodex_core_contracts::automation::AutomationNotificationPolicy>,
+    agent_selection: Option<&'a nodex_core_contracts::library::AgentWorkSelection>,
 fn begin_run(
     connection: &Connection,
-    run_id: &str,
-    automation_id: &str,
-    dispatch_id: Option<&str>,
-    session_id: Option<&str>,
-    session_title: Option<&str>,
-    source_cwd: Option<&str>,
+    run_admission: RunAdmission<'_>,
 ) -> Result<RunMutationEffects, StoreError> {
+    let RunAdmission {
+        automation_id,
+        dispatch_id,
+        session_id,
+        session_title,
+        source_cwd,
+        message_id,
+        notification_policy,
+        agent_selection,
+    } = run_admission;
     validate_id("run_id", run_id)?;
     validate_id("automation_id", automation_id)?;
+    if let Some(selection) = agent_selection {
+        crate::library::validate_agent_selection(selection)?;
+    }
+    let selection_json = agent_selection
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|_| invalid("Automation Agent selection cannot be encoded"))?;
+    if let Some(message) = message_id {
+        validate_id("message_id", message)?;
+    }
+    if notification_policy.is_some() && message_id.is_none() {
+        return Err(invalid(
+            "An Automation notification preference needs its exact message",
+        ));
+    }
     require_definition(connection, automation_id)?;
     if let Some(dispatch) = dispatch_id {
         validate_id("dispatch_id", dispatch)?;
         super::firing::require_admitted(connection, dispatch)?;
-        let mismatched: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM core_automation_firings WHERE dispatch_id=?1 AND automation_id<>?2)",params![dispatch,automation_id],|row|row.get(0))?;
+        let mismatched: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM automation_decisions WHERE dispatch_id=?1 AND automation_id<>?2)",
+            params![dispatch, automation_id],
+            |row| row.get(0),
+        )?;
         if mismatched {
-            return Err(conflict(
-                "The Run does not match this scheduled task's firing",
-            ));
+            return Err(conflict("The Run does not match this Automation's firing"));
         }
     }
     let session_title = normalize_text(session_title, MAX_TITLE_BYTES, "run Session title")?;
@@ -409,7 +449,7 @@ fn begin_run(
     let (now_ms, committed_at) = core_now(connection)?;
     let existing: Option<String> = connection
         .query_row(
-            "SELECT admission_hash FROM core_automation_runs WHERE run_id = ?1",
+            "SELECT admission_hash FROM automation_execution_runs WHERE run_id = ?1",
             [run_id],
             |row| row.get(0),
         )
@@ -422,29 +462,92 @@ fn begin_run(
                 false,
             ));
         }
+        let (bound_message,bound_policy,bound_selection):(Option<String>,Option<String>,Option<String>)=connection.query_row("SELECT message_id,notification_policy,agent_selection_json FROM automation_execution_runs WHERE run_id=?1",[run_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?)))?;
+        let policy = notification_policy.map(|_| "failed_runs_only");
+        if message_id.is_some()
+            && bound_message
+                .as_deref()
+                .is_some_and(|bound| Some(bound) != message_id || bound_policy.as_deref() != policy)
+        {
+            return Err(StoreError::new(
+                StoreErrorCode::IdempotencyKeyReused,
+                "Automation Run message identity or notification preference changed",
+                false,
+            ));
+        }
+        if let (Some(bound), Some(selection)) = (&bound_selection, agent_selection) {
+            let bound: nodex_core_contracts::library::AgentWorkSelection =
+                serde_json::from_str(bound)
+                    .map_err(|_| corrupt("Stored Automation Agent selection is invalid"))?;
+            if bound != *selection {
+                return Err(StoreError::new(
+                    StoreErrorCode::IdempotencyKeyReused,
+                    "Automation Run Agent selection changed",
+                    false,
+                ));
+            }
+        }
+        let metadata_changed = (bound_message.is_none() && message_id.is_some())
+            || (bound_selection.is_none() && agent_selection.is_some());
+        if metadata_changed {
+            connection.execute("UPDATE automation_execution_runs SET notification_policy=CASE WHEN message_id IS NULL THEN ?3 ELSE notification_policy END,message_id=COALESCE(message_id,?2),agent_selection_json=COALESCE(agent_selection_json,?4),run_revision=run_revision+1 WHERE run_id=?1",params![run_id,message_id,policy,selection_json])?;
+        }
         let changed = connection.execute(
-            "UPDATE core_automation_runs SET status = 'IN_PROGRESS', archived_reason = NULL, \
+            "UPDATE automation_execution_runs SET status = 'IN_PROGRESS', archived_reason = NULL, \
                archived_user_message = NULL, archived_assistant_message = NULL, read_at = NULL, \
                updated_at = ?1, run_revision = run_revision + 1 \
              WHERE run_id = ?2 AND session_id IS NULL AND status = 'ARCHIVED' AND archived_reason = 'auto'",
             params![now_ms, run_id],
         )?;
-        let kind = if changed == 1 {
+        let (existing_page, existing_session): (Option<String>, Option<String>) = connection
+            .query_row(
+                "SELECT page_id,session_id FROM automation_execution_runs WHERE run_id=?1",
+                [run_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+        let needs_page = existing_page.is_none()
+            && existing_session.is_none()
+            && dispatch_id
+                .map(|id| super::clock::execution_automation(connection, id))
+                .transpose()?
+                .flatten()
+                .is_some_and(|automation| {
+                    automation.kind
+                        == nodex_core_contracts::automation::AutomationExecutionKind::Cron
+                });
+        if needs_page {
+            connection.execute("UPDATE automation_execution_runs SET run_revision=run_revision+1,updated_at=?2 WHERE run_id=?1",params![run_id,now_ms])?;
+        }
+        let kind = if changed == 1 || needs_page {
             "resume_run_admission"
+        } else if metadata_changed {
+            "bind_run_message"
         } else {
             "run_admission_unchanged"
         };
         return single_run_effects(connection, kind, run_id, committed_at);
     }
     if let Some(session_id) = session_id {
-        require_session(connection, automation_id, session_id)?;
+        require_session(connection, automation_id, dispatch_id, session_id)?;
     }
     connection.execute(
-        "INSERT INTO core_automation_runs(\
+        "INSERT INTO automation_execution_runs(\
            run_id, automation_id, session_id, status, session_title, source_cwd, created_at, updated_at, \
-           run_revision, admission_hash, dispatch_id\
-         ) VALUES (?1, ?2, ?3, 'IN_PROGRESS', ?4, ?5, ?6, ?6, 1, ?7, ?8)",
-        params![run_id, automation_id, session_id, session_title, source_cwd, now_ms, request_hash, dispatch_id],
+           run_revision, admission_hash, dispatch_id, message_id, notification_policy, agent_selection_json\
+         ) VALUES (?1, ?2, ?3, 'IN_PROGRESS', ?4, ?5, ?6, ?6, 1, ?7, ?8, ?9, ?10, ?11)",
+        params![
+            run_id,
+            automation_id,
+            session_id,
+            session_title,
+            source_cwd,
+            now_ms,
+            request_hash,
+            dispatch_id,
+            message_id,
+            notification_policy.map(|_| "failed_runs_only"),
+            selection_json,
+        ],
     )?;
     if let Some(session) = session_id {
         link_run_pages(
@@ -490,10 +593,15 @@ fn bind_run_session(
     if let Some(dispatch) = &current.dispatch_id {
         super::firing::require_admitted(connection, dispatch)?;
     }
-    require_session(connection, &current.automation_id, session_id)?;
+    require_session(
+        connection,
+        &current.automation_id,
+        current.dispatch_id.as_deref(),
+        session_id,
+    )?;
     update_one(
         connection,
-        "UPDATE core_automation_runs SET session_id = ?1, updated_at = ?2, run_revision = run_revision + 1 \
+        "UPDATE automation_execution_runs SET session_id = ?1, updated_at = ?2, run_revision = run_revision + 1 \
          WHERE run_id = ?3 AND run_revision = ?4 AND status = 'IN_PROGRESS' AND session_id IS NULL",
         params![session_id, now_ms, run_id, expected_revision],
         "Pending Automation run changed concurrently",
@@ -519,7 +627,7 @@ fn set_session_title(
     let (now_ms, committed_at) = core_now(connection)?;
     update_one(
         connection,
-        "UPDATE core_automation_runs SET session_title = ?1, updated_at = ?2, \
+        "UPDATE automation_execution_runs SET session_title = ?1, updated_at = ?2, \
            run_revision = run_revision + 1 WHERE run_id = ?3 AND run_revision = ?4",
         params![title, now_ms, run_id, expected_revision],
         "Automation run changed concurrently",
@@ -545,7 +653,7 @@ fn complete_for_review(
     let (now_ms, committed_at) = core_now(connection)?;
     update_one(
         connection,
-        "UPDATE core_automation_runs SET status = 'PENDING_REVIEW', inbox_title = ?1, \
+        "UPDATE automation_execution_runs SET status = 'PENDING_REVIEW', inbox_title = ?1, \
            inbox_summary = ?2, updated_at = ?3, run_revision = run_revision + 1 \
          WHERE run_id = ?4 AND run_revision = ?5 AND status = 'IN_PROGRESS'",
         params![title, summary, now_ms, run_id, expected_revision],
@@ -572,7 +680,7 @@ fn set_inbox_item(
     let (now_ms, committed_at) = core_now(connection)?;
     update_one(
         connection,
-        "UPDATE core_automation_runs SET inbox_title = ?1, inbox_summary = ?2, \
+        "UPDATE automation_execution_runs SET inbox_title = ?1, inbox_summary = ?2, \
            status = CASE WHEN status = 'IN_PROGRESS' THEN 'PENDING_REVIEW' ELSE status END, \
            updated_at = ?3, run_revision = run_revision + 1 \
          WHERE run_id = ?4 AND run_revision = ?5 AND status <> 'ARCHIVED'",
@@ -594,7 +702,7 @@ fn accept_run(
     let (now_ms, committed_at) = core_now(connection)?;
     update_one(
         connection,
-        "UPDATE core_automation_runs SET status = 'ACCEPTED', updated_at = ?1, \
+        "UPDATE automation_execution_runs SET status = 'ACCEPTED', updated_at = ?1, \
            run_revision = run_revision + 1 \
          WHERE run_id = ?2 AND run_revision = ?3 AND status <> 'ARCHIVED'",
         params![now_ms, run_id, expected_revision],
@@ -614,7 +722,7 @@ fn set_read_state(
     let read_at = read.then_some(now_ms);
     update_one(
         connection,
-        "UPDATE core_automation_runs SET read_at = ?1, run_revision = run_revision + 1 \
+        "UPDATE automation_execution_runs SET read_at = ?1, run_revision = run_revision + 1 \
          WHERE run_id = ?2 AND run_revision = ?3",
         params![read_at, run_id, expected_revision],
         "Automation run changed before read-state update",
@@ -626,7 +734,7 @@ fn mark_all_read(connection: &Connection) -> Result<RunMutationEffects, StoreErr
     let (now_ms, committed_at) = core_now(connection)?;
     let selected = select_run_ids(
         connection,
-        "SELECT run_id FROM core_automation_runs \
+        "SELECT run_id FROM automation_execution_runs \
          WHERE read_at IS NULL AND status IN ('PENDING_REVIEW', 'ACCEPTED', 'ARCHIVED') \
            AND updated_at <= ?1 \
          ORDER BY updated_at, run_id LIMIT ?2",
@@ -637,14 +745,14 @@ fn mark_all_read(connection: &Connection) -> Result<RunMutationEffects, StoreErr
     )?;
     for run_id in &selected {
         connection.execute(
-            "UPDATE core_automation_runs SET read_at = ?1, run_revision = run_revision + 1 \
+            "UPDATE automation_execution_runs SET read_at = ?1, run_revision = run_revision + 1 \
              WHERE run_id = ?2 AND read_at IS NULL",
             params![now_ms, run_id],
         )?;
     }
     let runs = read_selected_runs(connection, &selected)?;
     let has_more = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM core_automation_runs \
+        "SELECT EXISTS(SELECT 1 FROM automation_execution_runs \
          WHERE read_at IS NULL AND status IN ('PENDING_REVIEW', 'ACCEPTED', 'ARCHIVED') \
            AND updated_at <= ?1)",
         [now_ms],
@@ -686,7 +794,7 @@ fn archive_run(
     let (now_ms, committed_at) = core_now(connection)?;
     update_one(
         connection,
-        "UPDATE core_automation_runs SET status = 'ARCHIVED', archived_user_message = ?1, \
+        "UPDATE automation_execution_runs SET status = 'ARCHIVED', archived_user_message = ?1, \
            archived_assistant_message = ?2, archived_reason = COALESCE(archived_reason, ?3), \
            updated_at = ?4, run_revision = run_revision + 1 \
          WHERE run_id = ?5 AND run_revision = ?6",
@@ -715,7 +823,7 @@ fn unarchive_run(
     let (now_ms, committed_at) = core_now(connection)?;
     update_one(
         connection,
-        "UPDATE core_automation_runs SET status = 'ACCEPTED', read_at = COALESCE(read_at, ?1), \
+        "UPDATE automation_execution_runs SET status = 'ACCEPTED', read_at = COALESCE(read_at, ?1), \
            archived_reason = NULL, updated_at = ?1, run_revision = run_revision + 1 \
          WHERE run_id = ?2 AND run_revision = ?3 AND status = 'ARCHIVED'",
         params![now_ms, run_id, expected_revision],
@@ -732,7 +840,7 @@ fn delete_run(
     let current = require_run_revision(connection, run_id, expected_revision)?;
     let (_, committed_at) = core_now(connection)?;
     let changed = connection.execute(
-        "DELETE FROM core_automation_runs WHERE run_id = ?1 AND run_revision = ?2",
+        "DELETE FROM automation_execution_runs WHERE run_id = ?1 AND run_revision = ?2",
         params![run_id, expected_revision],
     )?;
     if changed != 1 {
@@ -753,7 +861,7 @@ fn settle_interrupted(connection: &Connection) -> Result<RunMutationEffects, Sto
     let (now_ms, committed_at) = core_now(connection)?;
     let selected = select_run_ids(
         connection,
-        "SELECT run_id FROM core_automation_runs WHERE status = 'IN_PROGRESS' \
+        "SELECT run_id FROM automation_execution_runs WHERE status = 'IN_PROGRESS' \
          ORDER BY created_at, run_id LIMIT ?1",
         [i64::try_from(MAX_BULK_RUNS).expect("bound fits i64")],
     )?;
@@ -761,13 +869,13 @@ fn settle_interrupted(connection: &Connection) -> Result<RunMutationEffects, Sto
     let mut pending_review_count = 0_u32;
     for run_id in &selected {
         let pending = connection.query_row(
-            "SELECT session_id IS NULL FROM core_automation_runs WHERE run_id = ?1",
+            "SELECT session_id IS NULL FROM automation_execution_runs WHERE run_id = ?1",
             [run_id],
             |row| row.get::<_, bool>(0),
         )?;
         if pending {
             connection.execute(
-                "UPDATE core_automation_runs SET status = 'ARCHIVED', \
+                "UPDATE automation_execution_runs SET status = 'ARCHIVED', \
                    archived_reason = COALESCE(archived_reason, 'auto'), updated_at = ?1, \
                    run_revision = run_revision + 1 \
                  WHERE run_id = ?2 AND status = 'IN_PROGRESS'",
@@ -776,7 +884,7 @@ fn settle_interrupted(connection: &Connection) -> Result<RunMutationEffects, Sto
             archived_pending_count += 1;
         } else {
             connection.execute(
-                "UPDATE core_automation_runs SET status = 'PENDING_REVIEW', updated_at = ?1, \
+                "UPDATE automation_execution_runs SET status = 'PENDING_REVIEW', updated_at = ?1, \
                    run_revision = run_revision + 1 \
                  WHERE run_id = ?2 AND status = 'IN_PROGRESS'",
                 params![now_ms, run_id],
@@ -786,7 +894,7 @@ fn settle_interrupted(connection: &Connection) -> Result<RunMutationEffects, Sto
     }
     let runs = read_selected_runs(connection, &selected)?;
     let has_more = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM core_automation_runs WHERE status = 'IN_PROGRESS')",
+        "SELECT EXISTS(SELECT 1 FROM automation_execution_runs WHERE status = 'IN_PROGRESS')",
         [],
         |row| row.get::<_, bool>(0),
     )?;
@@ -862,9 +970,12 @@ fn require_run_revision(
 }
 
 fn require_definition(connection: &Connection, automation_id: &str) -> Result<(), StoreError> {
+    if let Some(automation) = super::read::read_definition(connection, automation_id)? {
+        super::clock::require_owner_available(connection, &automation)?;
+    }
     let status = connection
         .query_row(
-            "SELECT status FROM codex_scheduled_automations WHERE automation_id = ?1",
+            "SELECT status FROM automations WHERE automation_id = ?1",
             [automation_id],
             |row| row.get::<_, String>(0),
         )
@@ -872,14 +983,15 @@ fn require_definition(connection: &Connection, automation_id: &str) -> Result<()
     match status.as_deref() {
         Some("ACTIVE" | "PAUSED") => Ok(()),
         Some("DELETED") => Err(conflict("Deleted Automation cannot start a run")),
-        Some(_) => Err(corrupt("Scheduled Automation status is invalid")),
-        None => Err(not_found("Scheduled Automation is unavailable")),
+        Some(_) => Err(corrupt("Automation status is invalid")),
+        None => Err(not_found("Automation is unavailable")),
     }
 }
 
 fn require_session(
     connection: &Connection,
     automation_id: &str,
+    dispatch_id: Option<&str>,
     session_id: &str,
 ) -> Result<(), StoreError> {
     validate_id("session_id", session_id)?;
@@ -902,9 +1014,17 @@ fn require_session(
             "Automation run target Session is archived or a draft",
         ));
     }
-    let definition = super::read::read_definition(connection, automation_id)?
-        .ok_or_else(|| not_found("Automation definition is unavailable"))?;
-    if definition.kind == nodex_core_contracts::automation::AutomationDefinitionKind::Heartbeat {
+    let definition = match dispatch_id
+        .map(|id| super::clock::execution_automation(connection, id))
+        .transpose()?
+        .flatten()
+    {
+        Some(automation) => *automation,
+        None => super::read::read_definition(connection, automation_id)?
+            .ok_or_else(|| not_found("Automation is unavailable"))?,
+    };
+    super::clock::require_owner_available(connection, &definition)?;
+    if definition.kind == nodex_core_contracts::automation::AutomationExecutionKind::Heartbeat {
         if definition.target_session_id.as_deref() != Some(session_id) {
             return Err(conflict(
                 "Automation run Session does not match its Heartbeat target",
@@ -958,8 +1078,8 @@ fn select_run_ids<P: rusqlite::Params>(
 fn unread_counts(connection: &Connection) -> Result<AutomationRunUnreadCounts, StoreError> {
     let total = connection.query_row(
         "SELECT count(*) \
-         FROM core_automation_runs runs \
-         JOIN codex_scheduled_automations automations \
+         FROM automation_execution_runs runs \
+         JOIN automations automations \
            ON automations.automation_id = runs.automation_id \
          WHERE runs.read_at IS NULL AND runs.status IN ('PENDING_REVIEW', 'ACCEPTED')",
         [],
@@ -972,6 +1092,12 @@ fn unread_counts(connection: &Connection) -> Result<AutomationRunUnreadCounts, S
 
 fn run_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationRun> {
     Ok(AutomationRun {
+        agent_selection: row
+            .get::<_, Option<String>>(17)?
+            .map(|value| serde_json::from_str(&value))
+            .transpose()
+            .map_err(|_| conversion("Stored Automation Agent selection is invalid".into()))?,
+        page_id: row.get(16)?,
         run_id: row.get(0)?,
         session_id: row.get(14)?,
         automation_id: row.get(1)?,
@@ -1023,7 +1149,7 @@ fn validate_run(connection: &Connection, run: AutomationRun) -> Result<Automatio
         .map_err(|_| corrupt("Stored Automation run definition id is invalid"))?;
     let definition_exists = connection
         .query_row(
-            "SELECT 1 FROM codex_scheduled_automations WHERE automation_id = ?1",
+            "SELECT 1 FROM automations WHERE automation_id = ?1",
             [&run.automation_id],
             |_| Ok(()),
         )
@@ -1156,7 +1282,7 @@ fn link_run_pages(
     let mut pages = Vec::new();
     if let Some(page) = connection
         .query_row(
-            "SELECT page_id FROM core_automation_firings WHERE dispatch_id=?1",
+            "SELECT page_id FROM automation_decisions WHERE dispatch_id=?1 AND page_id IS NOT NULL",
             [dispatch],
             |r| r.get::<_, String>(0),
         )
@@ -1164,15 +1290,30 @@ fn link_run_pages(
     {
         pages.push(page);
     }
-    let runbook: Option<String> = connection.query_row(
-        "SELECT runbook_page_id FROM codex_scheduled_automations WHERE automation_id=?1",
-        [automation],
-        |r| r.get(0),
-    )?;
+    let frozen = dispatch
+        .map(|id| super::clock::execution_automation(connection, id))
+        .transpose()?
+        .flatten();
+    let runbook = if let Some(automation) = frozen {
+        automation.runbook_page_id
+    } else {
+        connection.query_row(
+            "SELECT runbook_page_id FROM automations WHERE automation_id=?1",
+            [automation],
+            |r| r.get::<_, Option<String>>(0),
+        )?
+    };
     if let Some(page) = runbook {
         pages.push(page);
     }
+    let run_pages = connection
+        .prepare(
+            "SELECT page_id FROM automation_execution_runs WHERE session_id=?1 AND page_id IS NOT NULL",
+        )?
+        .query_map([session], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    pages.extend(run_pages.iter().cloned());
     pages.sort();
     pages.dedup();
-    crate::workspace::link_pages(connection, session, &pages, now)
+    crate::workspace::bind_automation_run_pages(connection, session, &pages, &run_pages, now)
 }

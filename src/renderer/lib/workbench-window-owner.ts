@@ -37,7 +37,7 @@ import {
   selectWorkbenchInbox,
   selectWorkbenchLibrary,
   selectWorkbenchProject,
-  presentWorkbenchScheduledSession,
+  presentWorkbenchAutomationSession,
   selectWorkbenchSession,
   setWorkbenchDatabaseSearch,
   snapshotWorkbenchWindowState,
@@ -280,8 +280,8 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
     navigateForward: () => navigateWindow(navigateForwardInWorkbenchWindow),
     selectSession: (session: WorkbenchSessionCatalogEntry) =>
       navigateWindow((state) => selectWorkbenchSession(state, session)),
-    presentScheduledSession: (input: Parameters<typeof presentWorkbenchScheduledSession>[1]) =>
-      navigateWindow((state) => presentWorkbenchScheduledSession(state, input)),
+    presentAutomationSession: (input: Parameters<typeof presentWorkbenchAutomationSession>[1]) =>
+      navigateWindow((state) => presentWorkbenchAutomationSession(state, input)),
     selectProject: (projectId: string | null) =>
       updateWindow((state) => selectWorkbenchProject(state, projectId)),
     selectLibrary: () => updateWindow(selectWorkbenchLibrary),

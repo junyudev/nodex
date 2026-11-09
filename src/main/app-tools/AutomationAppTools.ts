@@ -40,9 +40,9 @@ const AGENT_UNAVAILABLE_MESSAGE =
   "The selected Agent is off, removed or not ready. Ask the user to check it in Settings, or choose another Agent.";
 
 const definitionInput = (request: Extract<AutomationToolInput, { kind: "cron" | "heartbeat" }>) => {
-  if (request.mode === "update" || request.mode === "suggested_update") {
+  if (request.operation === "update" || request.operation === "suggested_update") {
     const {
-      mode: _mode,
+      operation: _mode,
       idempotencyKey: _idempotencyKey,
       id: _id,
       status: _status,
@@ -51,7 +51,7 @@ const definitionInput = (request: Extract<AutomationToolInput, { kind: "cron" | 
     } = request;
     return definition;
   }
-  const { mode: _mode, idempotencyKey: _idempotencyKey, ...definition } = request;
+  const { operation: _mode, idempotencyKey: _idempotencyKey, ...definition } = request;
   return definition;
 };
 
@@ -118,17 +118,17 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
       request: AutomationToolInput,
       operationId: string,
     ) {
-      if (request.mode === "list") {
-        const { mode: _mode, ...query } = request;
-        const result = yield* application.definitions.listWindow(query);
+      if (request.operation === "list") {
+        const { operation: _mode, ...query } = request;
+        const result = yield* application.automations.listWindow(query);
         return input.caller.isActive() ? toolSuccess({ ...result }) : toolFailure("call_withdrawn");
       }
-      if (request.mode === "view") {
-        const item = yield* application.definitions.get(request.id);
+      if (request.operation === "view") {
+        const item = yield* application.automations.get(request.id);
         return input.caller.isActive() ? toolSuccess({ item }) : toolFailure("call_withdrawn");
       }
-      if (request.mode === "delete") {
-        const result = yield* application.definitions.delete(request.id, {
+      if (request.operation === "delete") {
+        const result = yield* application.automations.delete(request.id, {
           operationId,
           expectedRevision: request.expectedRevision,
         });
@@ -147,8 +147,8 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         return toolFailure("call_withdrawn", undefined, { operationId });
       const fields = definitionInput(request);
       const current =
-        request.mode === "update" || request.mode === "suggested_update"
-          ? yield* application.definitions.get(request.id)
+        request.operation === "update" || request.operation === "suggested_update"
+          ? yield* application.automations.get(request.id)
           : null;
       const hosted = readHostedAppToolSessionContext(input.caller);
       const runtimeBinding = hosted
@@ -183,7 +183,7 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         if (agentRuntimeProviderId(sessionBinding) !== agentRuntimeProviderId(backendBinding))
           return toolFailure(
             AGENT_UNAVAILABLE,
-            request.mode === "update" || request.mode === "suggested_update"
+            request.operation === "update" || request.operation === "suggested_update"
               ? "A Heartbeat runs on its target Session's Agent, and update keeps the task's current backendBinding when it is omitted. Pass the backendBinding included here."
               : "A Heartbeat runs on its target Session's Agent. Omit backendBinding, or pass the one included here.",
             { backendBinding: sessionBinding },
@@ -259,19 +259,19 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           );
         }
       }
-      if (request.mode === "suggested_create" || request.mode === "suggested_update") {
-        if (request.mode === "suggested_update") {
-          const current = yield* application.definitions.get(request.id);
+      if (request.operation === "suggested_create" || request.operation === "suggested_update") {
+        if (request.operation === "suggested_update") {
+          const current = yield* application.automations.get(request.id);
           if (!current) return toolFailure("not_found");
-          if (current.definitionRevision !== request.expectedRevision)
+          if (current.automationRevision !== request.expectedRevision)
             return toolFailure("conflict");
         }
         if (!input.caller.isActive()) return toolFailure("call_withdrawn");
         return toolSuccess({
           proposal: {
             ...definition,
-            mode: request.mode,
-            ...(request.mode === "suggested_update"
+            operation: request.operation,
+            ...(request.operation === "suggested_update"
               ? {
                   id: request.id,
                   expectedRevision: request.expectedRevision,
@@ -283,9 +283,9 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         });
       }
       const item =
-        request.mode === "create"
-          ? yield* application.definitions.create(definition, { operationId })
-          : yield* application.definitions.update(
+        request.operation === "create"
+          ? yield* application.automations.create(definition, { operationId })
+          : yield* application.automations.update(
               { ...definition, id: request.id, status: request.status },
               {
                 operationId,
@@ -326,9 +326,8 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
               ? toolFailure(
                   cause.coreError.code,
                   cause.coreError.code === "unauthorized" &&
-                    (request.mode === "create" || request.mode === "update") &&
-                    request.launch === "automatic"
-                    ? `${cause.coreError.message} Return a ${request.mode === "create" ? "suggested_create" : "suggested_update"} change with launch: "automatic" for the user to apply instead.`
+                    (request.operation === "create" || request.operation === "update")
+                    ? `${cause.coreError.message} Return a ${request.operation === "create" ? "suggested_create" : "suggested_update"} change for the Automation Owner to review and apply.`
                     : cause.coreError.message,
                   { operationId },
                 )

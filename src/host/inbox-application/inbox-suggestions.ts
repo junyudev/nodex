@@ -97,6 +97,7 @@ export const renderInboxRoutingRequest = (input: {
   let imageNumber = 0;
   const messages = context.entries.flatMap((entry) => {
     const markers = entry.images.map(() => ++imageNumber);
+    if (entry.source.kind === "automation" || entry.source.kind === "nodex") return [];
     return [
       {
         page_id: entry.page_id,
@@ -150,6 +151,7 @@ export const renderInboxRoutingRequest = (input: {
     })),
     messages,
     current_proposals: context.open_proposals.filter(
+      (proposal) => proposal.action.type !== "execute_decision",
     ),
     correction: request.correction ?? null,
   };
@@ -209,6 +211,8 @@ export const validateInboxSuggestions = (
   const reject = (reason: string): never => {
     throw new Error(`Invalid Inbox suggestion: ${reason}`);
   };
+  if (entries.some((entry) => entry.source.kind === "automation" || entry.source.kind === "nodex"))
+    reject("Automations already have a run decision");
   if (output.request_id !== request.requestId || output.generation !== request.generation)
     reject("request identity changed");
   if (request.mode !== "auto" && output.suggestions.length !== 1)

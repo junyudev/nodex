@@ -83,6 +83,9 @@ pub struct ExecutionHold {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceRead {
+    AutomationAssessments {
+        read: crate::automation_assessment::AutomationAssessmentRead,
+    },
     ActivityWindow {
         scope: ProjectWorkspaceInboxScope,
         filter: crate::sources::ActivityFilter,
@@ -390,6 +393,9 @@ pub enum ProjectWorkspaceRead {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceReadValue {
+    AutomationAssessments {
+        value: crate::automation_assessment::AutomationAssessmentReadValue,
+    },
     ActivityWindow {
         rows: crate::collection::CollectionWindow<crate::sources::ActivityRow>,
     },
@@ -1866,6 +1872,9 @@ pub struct ProjectWorkspaceCreatedPage {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceIntent {
+    AutomationAssessment {
+        command: crate::automation_assessment::AutomationAssessmentCommand,
+    },
     Source {
         command: crate::sources::SourceCommand,
     },
@@ -2549,20 +2558,18 @@ pub enum ProjectWorkspaceIntent {
     RetryInboxDispatch {
         proposal_id: String,
     },
-    /// Places the firing of an `Ask` task, claimed under a hold lease, in its Inbox as a
-    /// message whose body is the task's instructions, with a `RunTask` proposal. A firing that
-    /// falls due while another of the task's firings waits folds into it instead. The hold
-    /// lease settles in the same commit. Only the Desktop Host holds firings.
-    HoldScheduledFiring {
+    /// Places a held Ask first decision in the Inbox with its editable action text and a generic
+    /// `ExecuteDecision` proposal. Later occurrences append to the waiting decision.
+    /// The hold lease settles in the same commit. Only the Desktop Host produces decisions.
+    HoldAutomationDecision {
         lease_id: String,
         page_id: String,
         document_id: String,
         /// The message title, formatted by the Host in the user's time zone.
         title: String,
     },
-    /// Rewrites a waiting firing's message to its task's current instructions, only while the
-    /// message is still exactly as the firing wrote it.
-    RefreshScheduledFiring {
+    /// Refreshes the waiting decision's message while its text remains unedited.
+    RefreshAutomationDecision {
         dispatch_id: String,
     },
 }
@@ -2907,6 +2914,8 @@ pub struct ThreadUnreadEntry {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct PageWorkLaunch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub automation_decision_id: Option<String>,
     pub status_fence: i64,
     pub status_moved: bool,
     pub launch_id: String,

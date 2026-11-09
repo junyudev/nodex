@@ -2,6 +2,7 @@ import { uniqueScalarValues } from "../schema-constraints";
 import { idempotencyKeySchema } from "./idempotency-key";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { toolInputSchema } from "./tool-input-schema";
 
 const identity = z.string().min(1).max(512);
 const panelId = z.enum(["right", "bottom"]);
@@ -101,6 +102,6 @@ export const workbenchControlToolCatalog: readonly Tool[] = Object.entries(
 ).map(([name, schema]) => ({
   name,
   description: `${descriptions[name as keyof typeof descriptions]} Use observation-scoped handles. Commands check the observed revision atomically; refresh context after a successful change. Reuse idempotencyKey only for an exact retry.`,
-  inputSchema: z.toJSONSchema(schema, { io: "input" }) as Tool["inputSchema"],
+  inputSchema: toolInputSchema(schema),
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
 }));

@@ -23,7 +23,7 @@ export const INBOX_ACTION_ICONS: Readonly<Record<InboxDispatchAction["type"], In
   new_chat: NewChatIcon,
   send_to_chat: SendToChatIcon,
   move_to_project: MoveToIcon,
-  run_task: AutomationRunNowIcon,
+  execute_decision: AutomationRunNowIcon,
 };
 
 /** What a message is, wherever its kind is named or changed. */

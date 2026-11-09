@@ -11,7 +11,7 @@ import type {
 import type { ProjectSessionsChangeEvent } from "../../shared/ipc-api";
 import type { CodexPendingWorktreeEntry } from "../../shared/codex-pending-worktree";
 import {
-  subscribeCodexAutomationRunsUpdates,
+  subscribeAutomationRunsUpdates,
   subscribeCodexHostMessages,
   subscribeCodexPendingWorktreesChanged,
   subscribeProjectChanges,

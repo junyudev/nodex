@@ -135,24 +135,28 @@ Malformed arguments return `invalid_arguments` with `error.details.issues`, an a
 text result includes the same issues. Published input schemas expose structural constraints;
 semantic cross-field checks retain explicit issue paths and reasons.
 
-`automation_update` lists, searches, reads, creates, replaces and deletes scheduled
-Codex and Claude tasks. The definition retains an explicit backend/Profile binding.
+Every published input schema is one object, so each provider can call every tool. A tool whose
+calls take several shapes publishes the object that covers all of them: its operation field is an
+enum, and each other field says which operations use or require it. Its validator still accepts
+exactly one shape per call. The Runtime refuses to advertise any other input schema.
+
+`automations_update` lists, searches, reads, creates, replaces and deletes Automations for Codex, Claude and ACP. The definition retains an explicit backend/Profile binding.
 An omitted cron binding selects the caller's native backend; an omitted Heartbeat
 binding selects its resolved target's backend. List results span the current Profile
 and use bounded cursors. Cron tasks select an explicit Project and its folders, or a projectless
 local run. Heartbeats target a stable Session; omitting the target selects the
 caller’s Session. Notification preferences are separate from the task prompt.
-Read the definition before editing or deleting and retain its `definitionRevision`
+Read the definition before editing or deleting and retain its `automationRevision`
 as `expectedRevision`. An update carries the complete replacement definition,
 including values that should be preserved. The response returns the committed
 definition and operation ID. Retry an uncertain write with the same `idempotencyKey`,
 revision and arguments; the same caller Thread can reconcile it across Turns and
 restarts without creating or updating twice. The captured execution identity and
 target lifecycle are checked again on every retry. See
-[Scheduled Route Behavior](scheduled-route-behavior.md) for execution and notification rules.
+[Automations Behavior](automations-behavior.md) for execution and notification rules.
 
 `suggested_create` and `suggested_update` produce editable review proposals. They do
-not save a task until the user submits the editor. Suggested updates retain the
+not save an Automation until its Owner submits the editor. Suggested updates retain the
 observed definition revision, so a concurrent edit cannot be silently overwritten.
 Omitted notification policy preserves the saved preference; explicit null clears it.
 

@@ -250,6 +250,7 @@ pub(super) fn apply(
             }
             validate_id("operation_id", &request.operation_id)?;
             }
+            super::automation_assessment::authorize(transaction, &library_id, &context, &request.intent)?;
             let admitted_intent = super::agent_command::admit(
                 transaction,
                 &library_id,
@@ -325,6 +326,7 @@ pub(super) fn apply(
                 intent @ (ProjectWorkspaceIntent::RecordChatDelivery{..}|ProjectWorkspaceIntent::BindChatInbound{..}|ProjectWorkspaceIntent::HandBackMessage{..}) => super::inbox::handback::apply(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, agent_provenance, intent),
 
                 intent @ (ProjectWorkspaceIntent::PauseWork { .. } | ProjectWorkspaceIntent::ResumeWork { .. }) => super::execution_holds::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, intent),
+                ProjectWorkspaceIntent::AutomationAssessment { command } => super::automation_assessment::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, command),
                 ProjectWorkspaceIntent::Source { command } => super::sources::apply(transaction, &context, &library_id, super::sources::SourceReceiptIdentity { epoch: &store_epoch, operation: &request.operation_id, hash: &request_hash }, command, agent_provenance),
                 intent @ (ProjectWorkspaceIntent::ClaimPageWorkspace { .. } | ProjectWorkspaceIntent::BindPageWorkspace { .. } | ProjectWorkspaceIntent::RecordPageWorkspaceReady { .. } | ProjectWorkspaceIntent::RecordPageWorkspaceFailed { .. } | ProjectWorkspaceIntent::RequestPageWorkspaceCleanup { .. } | ProjectWorkspaceIntent::MarkPageWorkspaceRemoved { .. } | ProjectWorkspaceIntent::UpsertPagePullRequest { .. }) => super::page_workspace::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, intent),
                 ProjectWorkspaceIntent::BindCoordinator { .. } | ProjectWorkspaceIntent::UnbindCoordinator { .. } | ProjectWorkspaceIntent::SetSessionManaged { .. } | ProjectWorkspaceIntent::AcceptPageWork { .. } | ProjectWorkspaceIntent::ReportPageWork { .. } | ProjectWorkspaceIntent::RecordWorkEvents { .. } | ProjectWorkspaceIntent::RecordSessionExecution { .. } | ProjectWorkspaceIntent::CreateEventBatch { .. } | ProjectWorkspaceIntent::SettleEventBatch { .. } | ProjectWorkspaceIntent::DiscardEventBatch { .. } => super::coordinator::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, admitted_intent, agent_provenance),
@@ -411,8 +413,8 @@ pub(super) fn apply(
                     | ProjectWorkspaceIntent::FailInboxDispatch { .. }) => super::inbox::apply_reliable(
                         transaction, &library_id, &context, &store_epoch, &request.operation_id,
                         &request_hash, intent.clone(), &assets_root),
-                ProjectWorkspaceIntent::HoldScheduledFiring {lease_id,page_id,document_id,title} => super::inbox::hold_scheduled_firing(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, lease_id, page_id, document_id, title),
-                ProjectWorkspaceIntent::RefreshScheduledFiring {dispatch_id} => super::inbox::refresh_scheduled_firing(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, dispatch_id),
+                ProjectWorkspaceIntent::HoldAutomationDecision {lease_id,page_id,document_id,title} => super::inbox::hold_automation_decision(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, lease_id, page_id, document_id, title),
+                ProjectWorkspaceIntent::RefreshAutomationDecision {dispatch_id} => super::inbox::refresh_automation_decision(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, dispatch_id),
                 ProjectWorkspaceIntent::KeepInboxEntries { page_ids } => super::inbox::keep_entries(
                     transaction,
                     &library_id,
@@ -1578,7 +1580,9 @@ pub(super) fn seal_mutation_with_created_page(
 > {
     let connection = scope.connection();
     let store_epoch = scope.store_epoch();
-    if effects.operation_kind.starts_with("inbox_") {
+    if effects.operation_kind.starts_with("inbox_")
+        && effects.operation_kind != "inbox_automation_assessment"
+    {
         crate::automation::firing::record_inbox_changes(
             scope,
             context,

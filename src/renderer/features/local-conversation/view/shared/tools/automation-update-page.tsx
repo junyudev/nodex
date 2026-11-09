@@ -4,11 +4,11 @@ import type { AutomationUpdateRenderState } from "./dynamic-tool-call-utils";
 
 function openAutomationUpdatePageTarget(
   state: AutomationUpdateRenderState,
-  onOpenSummaryScheduledAutomation?: ToolComponentProps["onOpenSummaryScheduledAutomation"],
+  onOpenSummaryAutomation?: ToolComponentProps["onOpenSummaryAutomation"],
 ) {
-  if (!onOpenSummaryScheduledAutomation) return;
+  if (!onOpenSummaryAutomation) return;
   if (!state.automationId && !state.createInput && !state.updateInput) return;
-  void onOpenSummaryScheduledAutomation?.({
+  void onOpenSummaryAutomation?.({
     proposalId: state.proposalId,
     automationId: state.automationId,
     createInput: state.createInput,
@@ -23,14 +23,14 @@ function openAutomationUpdatePageTarget(
 
 export function AutomationUpdatePage({
   initialState,
-  onOpenSummaryScheduledAutomation,
+  onOpenSummaryAutomation,
 }: {
   initialState: AutomationUpdateRenderState;
-  onOpenSummaryScheduledAutomation?: ToolComponentProps["onOpenSummaryScheduledAutomation"];
+  onOpenSummaryAutomation?: ToolComponentProps["onOpenSummaryAutomation"];
 }) {
   const state = initialState;
   const canOpen = Boolean(
-    onOpenSummaryScheduledAutomation &&
+    onOpenSummaryAutomation &&
     (state.automationId || state.createInput || state.updateInput) &&
     !state.disabledReason,
   );
@@ -45,7 +45,7 @@ export function AutomationUpdatePage({
           aria-label={[state.title, subtitle].filter(Boolean).join(" · ")}
           className="w-full cursor-interaction text-left hover:bg-token-list-hover-background/30 focus-visible:ring-1 focus-visible:ring-token-focus-border focus-visible:outline-none focus-visible:ring-inset disabled:cursor-default"
           disabled={!canOpen}
-          onClick={() => openAutomationUpdatePageTarget(state, onOpenSummaryScheduledAutomation)}
+          onClick={() => openAutomationUpdatePageTarget(state, onOpenSummaryAutomation)}
         >
           <div className="flex min-w-0 items-center gap-2 px-2 py-2">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-token-bg-secondary text-token-text-secondary">

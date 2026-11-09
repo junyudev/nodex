@@ -324,8 +324,8 @@ function renderSystemEvent(item: CodexConversationItem, cwd: string | null): str
         item.dynamicToolCall?.completed ? "Status: completed" : "Status: running",
       ]);
     case "automationUpdate":
-      return titledLines("Scheduled task update", [
-        `Mode: ${item.automationUpdate?.result?.mode ?? "pending"}`,
+      return titledLines("Automation update", [
+        `Mode: ${item.automationUpdate?.result?.operation ?? "pending"}`,
         `Automation ID: ${item.automationUpdate?.result?.automationId ?? "pending"}`,
       ]);
     case "userInputResponse": {

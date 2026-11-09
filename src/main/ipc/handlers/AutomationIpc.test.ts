@@ -9,13 +9,13 @@ import { AutomationExecution } from "../../automation-application/AutomationExec
 import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
 import type { RendererClientRuntimeService } from "../../codex/renderer-client-runtime-contracts";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
-import { ScheduledAutomationRuntime } from "../../host-runtime/ScheduledAutomationRuntime";
+import { ClockAutomationRuntime } from "../../host-runtime/ClockAutomationRuntime";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./AutomationIpc";
 
-it.effect("owns calendar and scheduled automation ingress with the Main Scope", () =>
+it.effect("owns calendar and clock Automation ingress with the Main Scope", () =>
   Effect.gen(function* () {
     const channels = new Set<string>();
     const ipc = makeTestElectronIpc({
@@ -41,7 +41,7 @@ it.effect("owns calendar and scheduled automation ingress with the Main Scope", 
             mainConfigLayer(),
             Layer.succeed(AutomationApplication, {} as AutomationApplication["Service"]),
             Layer.succeed(AutomationExecution, {} as AutomationExecution["Service"]),
-            Layer.succeed(ScheduledAutomationRuntime, {} as ScheduledAutomationRuntime["Service"]),
+            Layer.succeed(ClockAutomationRuntime, {} as ClockAutomationRuntime["Service"]),
             Layer.succeed(WindowRuntime, {
               has: () => true,
               all: () => [],
@@ -52,9 +52,10 @@ it.effect("owns calendar and scheduled automation ingress with the Main Scope", 
       scope,
     );
 
-    assert.strictEqual(channels.size, 15);
+    assert.strictEqual(channels.size, 16);
     assert.isTrue(channels.has("calendar:occurrences"));
-    assert.isTrue(channels.has("codex:scheduled-automations:run-now"));
+    assert.isTrue(channels.has("automations:run-now"));
+    assert.isTrue(channels.has("automations:decisions:list"));
 
     yield* Scope.close(scope, Exit.void);
     assert.strictEqual(channels.size, 0);

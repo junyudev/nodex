@@ -18,13 +18,17 @@ const definition = (input: {
   readonly targetSessionId: string;
 }): AutomationRoutingDefinition => ({
   automation_id: input.automationId,
-  definition_revision: 1,
+  automation_revision: 1,
+  scope: { kind: "space" },
+  owner_member_id: "member:owner",
+  condition_text: "On the clock",
+  typed_condition: { kind: "clock", rrule: "FREQ=DAILY", timezone: "UTC", jitter_salt: "salt" },
   kind: "heartbeat",
   status: "ACTIVE",
   target_session_id: input.targetSessionId,
   project_id: null,
   notification_policy: null,
-  launch: "automatic",
+  mode: "run",
   name: input.automationId,
   prompt: "Check for updates",
   rrule: "FREQ=HOURLY",
@@ -74,7 +78,7 @@ const definitionsSnapshot = (
   nextCursor: string | null = null,
 ): AutomationReadSnapshot =>
   snapshot({
-    kind: "definitions",
+    kind: "automations",
     window: { items, next_cursor: nextCursor, authority: { projection_revision: 1 } },
   });
 
@@ -112,19 +116,19 @@ it.effect("owns routing lookups and fences a stale rebuild behind a committed mu
       const read = (request: AutomationRead): Effect.Effect<AutomationReadSnapshot> =>
         Effect.suspend(() => {
           reads += 1;
-          if (request.kind !== "definitions" && request.kind !== "runs") {
+          if (request.kind !== "automations" && request.kind !== "runs") {
             return Effect.die(new Error(`Unexpected Automation read: ${request.kind}`));
           }
           if (phase === "initial") {
             if (request.window.after === null) {
               return Effect.succeed(
-                request.kind === "definitions"
-                  ? definitionsSnapshot([], "definitions:2")
+                request.kind === "automations"
+                  ? definitionsSnapshot([], "automations:2")
                   : runsSnapshot([], "runs:2"),
               );
             }
             return Effect.succeed(
-              request.kind === "definitions"
+              request.kind === "automations"
                 ? definitionsSnapshot([
                     definition({
                       automationId: "heartbeat:old",
@@ -137,12 +141,12 @@ it.effect("owns routing lookups and fences a stale rebuild behind a committed mu
           if (staleReads < 2) {
             staleReads += 1;
             if (staleReads === 2) Deferred.doneUnsafe(staleReadsStarted, Effect.void);
-            return request.kind === "definitions"
+            return request.kind === "automations"
               ? Deferred.await(staleDefinitions)
               : Deferred.await(staleRuns);
           }
           return Effect.succeed(
-            request.kind === "definitions"
+            request.kind === "automations"
               ? definitionsSnapshot([committedDefinition])
               : runsSnapshot([committedRun]),
           );
@@ -166,7 +170,7 @@ it.effect("owns routing lookups and fences a stale rebuild behind a committed mu
       const rebuilding = yield* Effect.forkChild(routing.synchronize);
       yield* Deferred.await(staleReadsStarted);
       routing.commit({
-        definitions: { upsert: [committedDefinition] },
+        automations: { upsert: [committedDefinition] },
         runs: { upsert: [committedRun] },
       });
       yield* Deferred.succeed(staleDefinitions, definitionsSnapshot([]));

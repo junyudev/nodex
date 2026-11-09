@@ -64,9 +64,30 @@ export const make = Effect.gen(function* () {
       yield* settle(launch, "The work chat is unavailable or moved to another Project");
       return;
     }
+    let target: components["schemas"]["Automation"] | null = null;
+    if (launch.automation_decision_id) {
+      const authority = yield* core.workspace.read(
+        {
+          kind: "automation_assessments",
+          read: { kind: "launch_authority", decision_id: launch.automation_decision_id },
+        },
+        undefined,
+        null,
+      );
+      if (
+        authority.value.kind !== "automation_assessments" ||
+        authority.value.value.kind !== "launch_authority" ||
+        !authority.value.value.valid
+      ) {
+        yield* settle(launch, "The Automation's standing grant changed before work could start");
+        return;
+      }
+      target = authority.value.value.target ?? null;
+    }
     const modelSelection = yield* resolveInboxModel(runtime, {
       ...launch.selection,
       reasoningEffort: launch.selection.effort,
+      serviceTier: target?.service_tier ?? null,
     });
     yield* deliverChatLaunch(runtime, {
       launchId: launch.launch_id,
@@ -76,6 +97,16 @@ export const make = Effect.gen(function* () {
       title: session.value.session.display_title,
       modelSelection,
       interactionMode: "default",
+      ...(target
+        ? {
+            sourceRoot: target.cwds[0],
+            runInTarget:
+              target.execution_environment === "worktree"
+                ? ("newWorktree" as const)
+                : ("localProject" as const),
+            runInEnvironmentPath: target.local_environment_config_path,
+          }
+        : {}),
       workPage: { pageId: launch.page_id },
       messageOrigin: "host",
       messageFingerprint: createHash("sha256")

@@ -1,8 +1,8 @@
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { components } from "@nodex/core-protocol";
 import sqlQueryArtifact from "@nodex/core-protocol/runtime-schemas/SqlQuery.schema.json";
 import sqlScopeArtifact from "@nodex/core-protocol/runtime-schemas/SqlScope.schema.json";
 import { z } from "zod";
+import { toolInputSchema } from "./tool-input-schema";
 
 const fromCoreSchema = <T>(artifact: unknown): z.ZodType<T> => {
   if (typeof artifact !== "object" || artifact === null || !("$schema" in artifact))
@@ -18,6 +18,4 @@ export const describeContentSchemaInput = z.strictObject({
   relation: z.string().max(256).nullable().optional(),
 });
 export const queryContentInputSchema = { ...sqlQueryArtifact, type: "object" as const };
-export const describeContentInputSchema = z.toJSONSchema(
-  describeContentSchemaInput,
-) as Tool["inputSchema"];
+export const describeContentInputSchema = toolInputSchema(describeContentSchemaInput);

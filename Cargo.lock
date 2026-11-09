@@ -1149,6 +1149,7 @@ dependencies = [
  "fs2",
  "getrandom 0.4.3",
  "hex",
+ "iana-time-zone",
  "nodex-core-contracts",
  "nodex-core-protocol",
  "nodex-markdown",

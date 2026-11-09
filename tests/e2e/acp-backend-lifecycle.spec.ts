@@ -13,8 +13,8 @@ import type { AgentRuntimeConversation } from "../../src/shared/agent-runtime-ap
 import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import type {
   ProjectSession,
-  CodexScheduledAutomation,
-  CodexAutomationInboxItem,
+  Automation,
+  AutomationInboxItem,
   PageChatWindow,
 } from "../../src/shared/types";
 
@@ -323,7 +323,7 @@ test("runs a chat on an ACP agent and continues its protocol session after resta
   }
 });
 
-test("ACP automations preserve their instance through Cron, Page-linked Heartbeat and disabled admission", async () => {
+test("ACP clock Automations preserve their instance through new chats, Page-linked Heartbeat and disabled admission", async () => {
   test.setTimeout(120_000);
   await withElectronScenario(
     { label: "acp-automation", scenarioId: "agent/cli-workflow" },
@@ -374,37 +374,29 @@ test("ACP automations preserve their instance through Cron, Page-linked Heartbea
         executionEnvironment: "local",
         cwds: [profile.projectsDirectory],
       };
-      const created = await invoke<{ item: CodexScheduledAutomation }>(
-        page,
-        "codex:scheduled-automations:create",
-        input,
-      );
-      const updated = await invoke<{ item: CodexScheduledAutomation }>(
-        page,
-        "codex:scheduled-automations:update",
-        {
-          ...input,
-          id: created.item.id,
-          expectedRevision: created.item.definitionRevision,
-          status: "ACTIVE",
-          name: "ACP retained instance",
-        },
-      );
+      const created = await invoke<{ item: Automation }>(page, "automations:create", input);
+      const updated = await invoke<{ item: Automation }>(page, "automations:update", {
+        ...input,
+        id: created.item.id,
+        expectedRevision: created.item.automationRevision,
+        status: "ACTIVE",
+        name: "ACP retained instance",
+      });
       expect(updated.item.backendBinding).toEqual(binding);
       expect(
-        (
-          await invoke<{ items: CodexScheduledAutomation[] }>(
-            page,
-            "codex:scheduled-automations:list",
-          )
-        ).items.find((item) => item.id === created.item.id)?.backendBinding,
+        (await invoke<{ items: Automation[] }>(page, "automations:list")).items.find(
+          (item) => item.id === created.item.id,
+        )?.backendBinding,
       ).toEqual(binding);
-      await invoke(page, "codex:scheduled-automations:run-now", { id: created.item.id });
-      const inbox = await invoke<{ items: CodexAutomationInboxItem[] }>(
-        page,
-        "codex:automation-runs:inbox-items",
-      );
-      const run = inbox.items.find((item) => item.automationId === created.item.id);
+      await invoke(page, "automations:run-now", { id: created.item.id });
+      const readAutomationRun = async (automationId: string) =>
+        (
+          await invoke<{ items: AutomationInboxItem[] }>(page, "automations:runs:inbox-items")
+        ).items.find((item) => item.automationId === automationId);
+      await expect
+        .poll(async () => (await readAutomationRun(created.item.id))?.status, { timeout: 60_000 })
+        .toBe("PENDING_REVIEW");
+      const run = await readAutomationRun(created.item.id);
       expect(run?.status).toBe("PENDING_REVIEW");
       if (!run?.sessionId) throw new Error("ACP Cron did not bind its product Session");
       const readSession = () =>
@@ -426,22 +418,21 @@ test("ACP automations preserve their instance through Cron, Page-linked Heartbea
       await invoke(page, "page-chats:link", run.sessionId, {
         pageId,
       });
-      const heartbeat = await invoke<{ item: CodexScheduledAutomation }>(
-        page,
-        "codex:scheduled-automations:create",
-        {
-          kind: "heartbeat",
-          name: "ACP linked follow-up",
-          prompt: "Continue the fixture report",
-          rrule: "FREQ=HOURLY;INTERVAL=1",
-          targetSessionId: run.sessionId,
-          backendBinding: binding,
-          model: "scripted-model",
-        },
-      );
+      const heartbeat = await invoke<{ item: Automation }>(page, "automations:create", {
+        kind: "heartbeat",
+        name: "ACP linked follow-up",
+        prompt: "Continue the fixture report",
+        rrule: "FREQ=HOURLY;INTERVAL=1",
+        targetSessionId: run.sessionId,
+        backendBinding: binding,
+        model: "scripted-model",
+      });
       // The Heartbeat runs in its target Session's context instead of carrying its own Project.
       expect(heartbeat.item).toMatchObject({ projectId: null, targetSessionId: run.sessionId });
-      await invoke(page, "codex:scheduled-automations:run-now", { id: heartbeat.item.id });
+      await invoke(page, "automations:run-now", { id: heartbeat.item.id });
+      await expect
+        .poll(async () => (await readAutomationRun(heartbeat.item.id))?.status, { timeout: 60_000 })
+        .toBe("PENDING_REVIEW");
       const continued = await readSession();
       expect(continued.threadId).toBe(first.threadId);
       expect(continued.snapshot.projection.thread.providerInstanceId).toBe(
@@ -461,20 +452,13 @@ test("ACP automations preserve their instance through Cron, Page-linked Heartbea
         instances: [{ ...instance, enabled: false }],
       });
       const before = readObservations(observationPath);
+      await expect(invoke(page, "automations:run-now", { id: created.item.id })).rejects.toThrow();
       await expect(
-        invoke(page, "codex:scheduled-automations:run-now", { id: created.item.id }),
-      ).rejects.toThrow();
-      await expect(
-        invoke(page, "codex:scheduled-automations:run-now", { id: heartbeat.item.id }),
+        invoke(page, "automations:run-now", { id: heartbeat.item.id }),
       ).rejects.toThrow();
       expect(readObservations(observationPath)).toEqual(before);
       expect(
-        (
-          await invoke<{ items: CodexScheduledAutomation[] }>(
-            page,
-            "codex:scheduled-automations:list",
-          )
-        ).items
+        (await invoke<{ items: Automation[] }>(page, "automations:list")).items
           .filter((item) => [created.item.id, heartbeat.item.id].includes(item.id))
           .map((item) => item.backendBinding),
       ).toEqual([binding, binding]);

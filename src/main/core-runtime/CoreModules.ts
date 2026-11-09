@@ -252,25 +252,25 @@ export const live: Layer.Layer<CoreModules, never, CoreSessionAccess> = Layer.ef
           const provenance = yield* CoreApplicationAgent;
           if (
             provenance &&
-            read.kind !== "definition" &&
-            read.kind !== "agent_definition" &&
-            read.kind !== "definitions" &&
-            read.kind !== "agent_definitions"
+            read.kind !== "automation" &&
+            read.kind !== "agent_automation" &&
+            read.kind !== "automations" &&
+            read.kind !== "agent_automations"
           ) {
             return yield* coreRuntimeError({
               operation: "automation.read",
               reason: "operation",
               retryable: false,
-              cause: new Error("Agent Automation access is limited to definitions"),
+              cause: new Error("Agent Automation access is limited to automations"),
             });
           }
           let request: AutomationRead = read;
-          if (provenance && (read.kind === "definition" || read.kind === "agent_definition")) {
-            request = { kind: "agent_definition", provenance, automation_id: read.automation_id };
+          if (provenance && (read.kind === "automation" || read.kind === "agent_automation")) {
+            request = { kind: "agent_automation", provenance, automation_id: read.automation_id };
           }
-          if (provenance && (read.kind === "definitions" || read.kind === "agent_definitions")) {
+          if (provenance && (read.kind === "automations" || read.kind === "agent_automations")) {
             request = {
-              kind: "agent_definitions",
+              kind: "agent_automations",
               provenance,
               search_query: read.search_query,
               window: read.window,

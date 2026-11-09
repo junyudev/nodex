@@ -33,6 +33,8 @@ enum ReadBudgetPolicy {
 
 fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
     match read {
+        ProjectWorkspaceRead::AutomationAssessments { .. }
+        | ProjectWorkspaceRead::Sources { .. } => ReadBudgetPolicy::BoundedQuery,
         ProjectWorkspaceRead::EffectiveExecutionHold { .. } => ReadBudgetPolicy::Identity,
         ProjectWorkspaceRead::ExecutionHolds { .. }
         | ProjectWorkspaceRead::HeldSessionWindow { .. } => ReadBudgetPolicy::BoundedBatch,
@@ -167,18 +169,21 @@ fn database_policy(read: &DatabaseRead) -> ReadBudgetPolicy {
 
 fn automation_policy(read: &AutomationRead) -> ReadBudgetPolicy {
     match read {
-        AutomationRead::Definitions { .. }
-        | AutomationRead::AgentDefinitions { .. }
+        AutomationRead::AutomationDecisions { .. }
+        | AutomationRead::Automations { .. }
+        | AutomationRead::AgentAutomations { .. }
         | AutomationRead::Leases { .. }
         | AutomationRead::Runs { .. }
         | AutomationRead::Inbox { .. }
         | AutomationRead::Occurrences { .. }
         | AutomationRead::ReminderLeases { .. }
         | AutomationRead::ReminderSnoozes { .. } => ReadBudgetPolicy::CollectionWindow,
-        AutomationRead::DueWork { .. }
-        | AutomationRead::Definition { .. }
-        | AutomationRead::AgentDefinition { .. }
-        | AutomationRead::ExecutionDefinition { .. }
+        AutomationRead::AutomationExecutionAdmission { .. }
+        | AutomationRead::AutomationNotificationPolicy { .. }
+        | AutomationRead::DueWork { .. }
+        | AutomationRead::Automation { .. }
+        | AutomationRead::AgentAutomation { .. }
+        | AutomationRead::AutomationForExecution { .. }
         | AutomationRead::Run { .. } => ReadBudgetPolicy::Identity,
     }
 }

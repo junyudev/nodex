@@ -73,7 +73,7 @@ import type {
   ThreadMcpAppSidePanelInput,
   ThreadOpenSideChatInput,
   ThreadPlanSidePanelTarget,
-  ThreadSummaryPanelScheduledAutomationOpenInput,
+  ThreadSummaryPanelAutomationOpenInput,
 } from "@/features/local-conversation/thread-stage-types";
 import type { OpenPageTabHandler } from "@/components/workbench/workbench-page-stage-panel";
 import type { OpenPageStageOptions } from "@/components/board/open-page-stage";
@@ -926,7 +926,7 @@ export function useWorkbenchPanelOpeners({
   );
 
   const openAutomationSidePanel = useCallback(
-    async (input: ThreadSummaryPanelScheduledAutomationOpenInput) => {
+    async (input: ThreadSummaryPanelAutomationOpenInput) => {
       if (!activeSession) return;
       const projectId = activeSession.projectId;
       const panelId: PanelId = "right";
@@ -952,7 +952,7 @@ export function useWorkbenchPanelOpeners({
         projectId,
         panelId,
         leafId,
-        title: input.title.trim() || "Scheduled task",
+        title: input.title.trim() || "Automation",
         stateKey: Date.now(),
         automationId,
         createInput: input.createInput ?? null,

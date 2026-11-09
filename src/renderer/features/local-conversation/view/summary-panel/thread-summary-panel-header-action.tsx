@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type {
   ThreadStageActions,
   ThreadSummaryPanelMode,
-  ThreadSummaryPanelScheduledAutomationRow,
+  ThreadSummaryPanelAutomationRow,
 } from "../../thread-stage-types";
 import {
   ThreadSummaryPanelPopover,
@@ -19,8 +19,8 @@ export interface ThreadSummaryPanelHeaderActionProps {
   pinnedOpen: boolean;
   onPinnedOpenToggle?: () => void;
   popoverOpen?: boolean;
-  scheduledAutomation?: ThreadSummaryPanelScheduledAutomationRow | null;
-  actions?: Pick<ThreadStageActions, "onOpenSummaryScheduledAutomation" | "onOpenSubagentsPanel">;
+  clockAutomation?: ThreadSummaryPanelAutomationRow | null;
+  actions?: Pick<ThreadStageActions, "onOpenSummaryAutomation" | "onOpenSubagentsPanel">;
 }
 
 export function ThreadSummaryPanelHeaderAction({
@@ -31,7 +31,7 @@ export function ThreadSummaryPanelHeaderAction({
   pinnedOpen,
   onPinnedOpenToggle,
   popoverOpen,
-  scheduledAutomation,
+  clockAutomation,
   actions,
 }: ThreadSummaryPanelHeaderActionProps) {
   // The conversation stage owns the summary; the popover presents that same content.
@@ -42,11 +42,11 @@ export function ThreadSummaryPanelHeaderAction({
         ...content,
         activeThreadIsManagedWorktree:
           Boolean(content.activeThreadIsManagedWorktree) || activeThreadIsManagedWorktree,
-        scheduledAutomation: scheduledAutomation ?? content.scheduledAutomation ?? null,
+        clockAutomation: clockAutomation ?? content.clockAutomation ?? null,
         // Header actions close the popover before navigating away from it.
         actions: { ...content.actions, ...actions },
       },
-    [actions, activeThreadIsManagedWorktree, content, scheduledAutomation],
+    [actions, activeThreadIsManagedWorktree, content, clockAutomation],
   );
 
   if (mode === "hidden") return null;

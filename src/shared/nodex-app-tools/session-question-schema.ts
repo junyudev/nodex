@@ -2,6 +2,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { idempotencyKeySchema } from "./idempotency-key";
 import { sessionExecutionSchema } from "./session-execution-target";
+import { toolInputSchema } from "./tool-input-schema";
 
 export const sessionQuestionSchema = z
   .strictObject({
@@ -34,6 +35,6 @@ export const sessionQuestionTool: Tool = {
   name: "session_question",
   description:
     "Pending questions in a Session's conversation, or in a Runtime child selected by execution.threadId. list: their requestIds; approvals are excluded. read: one by requestId. respond: answer it with answers, as the user would in its question panel; this cannot approve a permission request. Answer only when the user's instructions decide it; otherwise ask the user. The answer is attributed to your conversation. Reuse idempotencyKey and identical arguments to retry without another answer.",
-  inputSchema: z.toJSONSchema(sessionQuestionSchema, { io: "input" }) as Tool["inputSchema"],
+  inputSchema: toolInputSchema(sessionQuestionSchema),
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 };

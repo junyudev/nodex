@@ -177,6 +177,7 @@ pub(super) fn inbox_item(
         scope,
         location: ProjectWorkspaceInboxLocation::Other,
         proposal: None,
+        automation_decision: None,
         revision: 1,
         basis: ProjectWorkspaceInboxPageBasis {
             page_id: page.into(),

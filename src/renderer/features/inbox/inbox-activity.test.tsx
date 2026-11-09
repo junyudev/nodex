@@ -296,6 +296,7 @@ const subjects = [
   { kind: "page", page_id: "page", label: "NODEX-3" },
   { kind: "page", page_id: "page", label: "Fix navigation" },
   { kind: "chat", session_id: "chat", label: "Keyboard navigation" },
+  { kind: "automation", automation_id: "automation", label: "Morning review" },
   { kind: "thread", url: "https://github.com/owner/repo/pull/7", label: "owner/repo #7" },
   { kind: "source", source_id: "github", label: "GitHub" },
 ] satisfies NonNullable<ActivityRow["subject"]>[];
@@ -307,8 +308,10 @@ test.each(subjects)("opens the named $kind subject: $label", async (subject) => 
   if (subject.kind === "chat") {
     expect(actions.onOpenSession).toHaveBeenCalledWith(subject.session_id);
   }
+  if (subject.kind === "automation") {
     expect(actions.onOpenAutomation).toHaveBeenCalledWith(subject.automation_id);
     expect(actions.onOpenGitHubSettings).not.toHaveBeenCalled();
+  }
   if (subject.kind === "thread") expect(external).toHaveBeenCalledWith(subject.url);
   if (subject.kind === "source") expect(actions.onOpenGitHubSettings).toHaveBeenCalledOnce();
 });

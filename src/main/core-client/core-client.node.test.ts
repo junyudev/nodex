@@ -870,9 +870,9 @@ describe("CoreClient over a private local endpoint", () => {
       const automationInput = {
         operationId: "node-automation-create-1",
         intent: {
-          kind: "create_definition" as const,
+          kind: "create_automation" as const,
           automation_id: "node-daily-report",
-          definition: {
+          automation: {
             kind: "cron" as const,
             name: "Node daily report",
             prompt: "Prepare the report",
@@ -883,10 +883,10 @@ describe("CoreClient over a private local endpoint", () => {
         },
       };
       const automationCommitted = await client.automationApply(automationInput);
-      expect(automationCommitted.outcome.definitions).toMatchObject([
+      expect(automationCommitted.outcome.automations).toMatchObject([
         {
           automation_id: "node-daily-report",
-          definition_revision: 1,
+          automation_revision: 1,
           status: "ACTIVE",
           next_run_at_ms: expect.any(Number),
         },
@@ -895,12 +895,12 @@ describe("CoreClient over a private local endpoint", () => {
       expect(applyResultCursor(automationReplay)).toBe(applyResultCursor(automationCommitted));
       expect(automationReplay.receipt.duplicate).toBe(true);
       const automations = await client.automationRead({
-        kind: "definitions",
+        kind: "automations",
         include_deleted: false,
         window: { after: null, first: 10 },
       });
       expect(automations.value).toMatchObject({
-        kind: "definitions",
+        kind: "automations",
         window: {
           items: [{ automation_id: "node-daily-report" }],
           next_cursor: null,
@@ -908,7 +908,7 @@ describe("CoreClient over a private local endpoint", () => {
       });
       const noDueWork = await client.automationRead({
         kind: "due_work",
-        lane: "definitions",
+        lane: "automations",
       });
       expect(noDueWork.value).toEqual({
         kind: "due_work",

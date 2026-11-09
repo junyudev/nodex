@@ -27,6 +27,7 @@ import * as Layer from "effect/Layer";
 import * as Deferred from "effect/Deferred";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
+import * as Exit from "effect/Exit";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { CoreModules, live as coreModulesLive } from "../core-runtime/CoreModules";
@@ -294,6 +295,9 @@ const setup = (
     rollbackImmediate: true,
     rollbackFails: false,
     workLaunchPage: null as string | null,
+    automationExecutionValid: true,
+    automationAssessmentDecisionId: null as string | null,
+    automationAssessmentValid: true,
     sessionWorkPage: null as string | null,
     messageReplay: null as AgentRuntimeOperations["thread.message-replay"]["output"],
     nativeReceipt: null as AgentRuntimeOperations["native-message.receipt"]["output"],
@@ -323,6 +327,13 @@ const setup = (
                     },
                   },
                 };
+              if (input.kind === "automation_assessments")
+                return {
+                  value: {
+                    kind: "automation_assessments",
+                    value: { kind: "launch_authority", valid: state.automationAssessmentValid },
+                  },
+                };
               if (input.kind === "session_work_page")
                 return { value: { kind: "session_work_page", page_id: state.sessionWorkPage } };
               if (input.kind === "page_work_launch")
@@ -330,6 +341,11 @@ const setup = (
                   value: {
                     kind: "page_work_launch",
                     launch: state.workLaunchPage
+                      ? {
+                          page_id: state.workLaunchPage,
+                          session_id: launch.sessionId,
+                          automation_decision_id: state.automationAssessmentDecisionId,
+                        }
                       : null,
                   },
                 };
@@ -1332,7 +1348,21 @@ const setup = (
       ensureWorkspaceRoot: Effect.void,
     },
   }).pipe(
-    Effect.provideService(CoreModules, { workspace: coreWorkspace ?? { read, apply } } as never),
+    Effect.provideService(CoreModules, {
+      workspace: coreWorkspace ?? { read, apply },
+      automation: {
+        read: () =>
+          Effect.sync(() => {
+            order.push("core.automation-execution");
+            return {
+              value: {
+                kind: "automation_execution_admission",
+                valid: state.automationExecutionValid,
+              },
+            };
+          }),
+      },
+    } as never),
     Effect.provideService(ProjectWorkspace, {
       getProject: (id: string) =>
         Effect.succeed(
@@ -7912,6 +7942,127 @@ it.effect("reconciles durable parent holds after Main restart and blocks Compose
     yield* restarted.reconcileExecutionHolds;
     assert.equal(f.calls.filter((call) => call.method === "thread.resume").length, 1);
   }),
+);
+
+it.effect("a withdrawn Automation cannot dispatch after blocked workspace preparation", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const fixture = setup({
+        ensurePageWorkspace: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(entered, undefined);
+            yield* Deferred.await(release);
+            return {
+              branchName: "nodex-12-automation",
+              location: {
+                cwd: "/automation-workspace",
+                workspaceRoots: ["/automation-workspace"],
+                managedWorktreePath: "/automation-workspace",
+                projectlessOutputDirectory: null,
+                projectlessWorkspaceBrowserRoot: null,
+              },
+              retain: Effect.void,
+              attach: () => Effect.void,
+            };
+          }),
+      });
+      const owner = yield* fixture.owner;
+      const fiber = yield* owner
+        .launch({
+          ...launch,
+          workPage: { pageId: "page:automation" },
+          automationExecution: {
+            runId: "automation:run",
+            leaseId: "automation:lease",
+            dispatchId: "automation:dispatch",
+          },
+        })
+        .pipe(Effect.exit, Effect.forkChild);
+      yield* Deferred.await(entered);
+      fixture.state.automationExecutionValid = false;
+      yield* Deferred.succeed(release, undefined);
+      assert.isTrue(Exit.isFailure(yield* Fiber.join(fiber)));
+      assert.equal(
+        [...fixture.commands.values()].filter((command) => command.type === "message.dispatch")
+          .length,
+        0,
+      );
+    }),
+  ),
+);
+
+it.effect("an event Automation grant is rechecked after workspace preparation", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const fixture = setup({
+        ensurePageWorkspace: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(entered, undefined);
+            yield* Deferred.await(release);
+            return {
+              branchName: "nodex-12-automation",
+              location: {
+                cwd: "/automation-workspace",
+                workspaceRoots: ["/automation-workspace"],
+                managedWorktreePath: "/automation-workspace",
+                projectlessOutputDirectory: null,
+                projectlessWorkspaceBrowserRoot: null,
+              },
+              retain: Effect.void,
+              attach: () => Effect.void,
+            };
+          }),
+      });
+      fixture.state.workLaunchPage = "page:automation";
+      fixture.state.automationAssessmentDecisionId = "decision:event";
+      const owner = yield* fixture.owner;
+      const fiber = yield* owner
+        .launch({
+          ...launch,
+          workPage: { pageId: "page:automation" },
+          messageOrigin: "host",
+        })
+        .pipe(Effect.exit, Effect.forkChild);
+      yield* Deferred.await(entered);
+      fixture.state.automationAssessmentValid = false;
+      yield* Deferred.succeed(release, undefined);
+      assert.isTrue(Exit.isFailure(yield* Fiber.join(fiber)));
+      assert.equal(
+        [...fixture.commands.values()].filter((command) => command.type === "message.dispatch")
+          .length,
+        0,
+      );
+    }),
+  ),
+);
+
+it.effect("a withdrawn heartbeat claim cannot queue its native message", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      yield* owner.launch(launch);
+      const before = fixture.commands.size;
+      fixture.state.automationExecutionValid = false;
+      const result = yield* owner
+        .queueMessage({
+          sessionId: launch.sessionId,
+          message: { messageId: "automation:heartbeat", text: "Continue this Automation" },
+          automationExecution: {
+            runId: "automation:run",
+            leaseId: "automation:lease",
+            dispatchId: "automation:dispatch",
+          },
+        })
+        .pipe(Effect.exit);
+      assert.isTrue(Exit.isFailure(result));
+      assert.equal(fixture.commands.size, before);
+    }),
+  ),
 );
 
 it.effect(

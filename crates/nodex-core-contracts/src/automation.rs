@@ -6,12 +6,12 @@ use crate::agent::AgentBackendBinding;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const AUTOMATION_CONTRACT_VERSION: u32 = 11;
+pub const AUTOMATION_CONTRACT_VERSION: u32 = 14;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AutomationDueWorkLane {
-    Definitions,
+    Automations,
     Reminders,
 }
 
@@ -26,14 +26,14 @@ pub struct AutomationDueWorkPlan {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum AutomationDefinitionKind {
+pub enum AutomationExecutionKind {
     Cron,
     Heartbeat,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum AutomationDefinitionStatus {
+pub enum AutomationStatus {
     Active,
     Paused,
     Deleted,
@@ -46,15 +46,15 @@ pub enum AutomationExecutionEnvironment {
     Worktree,
 }
 
-/// What happens when a task falls due: it runs, or its firing waits in the Inbox until the
-/// user confirms, adjusts, or skips it. Only the user grants `Automatic`; an Agent may create
-/// or move a task toward `Ask` but never escalate one to `Automatic`.
+/// An Automation records a dry run, asks its Owner first in the Inbox, or runs the work.
+/// Only its person Owner can change the mode or edit an Automation set to Run.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum AutomationLaunch {
+pub enum AutomationMode {
     #[default]
-    Automatic,
-    Ask,
+    Run,
+    AskFirst,
+    DryRun,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -74,16 +74,33 @@ pub enum AutomationNotificationPreference {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct AutomationDefinitionInput {
-    pub kind: AutomationDefinitionKind,
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AutomationScope {
+    Space,
+    Project { project_id: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct AutomationInput {
+    #[serde(default)]
+    pub source_condition: Option<AutomationSourceFilter>,
+    #[serde(default)]
+    pub scope: Option<AutomationScope>,
+    #[serde(default)]
+    pub owner_member_id: Option<String>,
+    #[serde(default)]
+    pub condition_text: Option<String>,
+    #[serde(default)]
+    pub timezone: Option<String>,
+    pub kind: AutomationExecutionKind,
     pub project_id: Option<String>,
     pub target_session_id: Option<String>,
     #[serde(default)]
     pub notification_policy: AutomationNotificationPreference,
-    /// Absent preserves the current launch on update. A new task launches `Automatic` when the
-    /// Desktop Host creates it and `Ask` when an Agent does.
+    /// Absent preserves the current mode on update. A new Automation uses `Run` when the
+    /// Desktop Host creates it and `AskFirst` when an Agent does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub launch: Option<AutomationLaunch>,
+    pub mode: Option<AutomationMode>,
     /// A Page whose current content every run follows as standing instructions, and which
     /// each run's chat links to. Absent clears it, like other optional fields.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -102,21 +119,25 @@ pub struct AutomationDefinitionInput {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct AutomationDefinition {
+pub struct Automation {
+    pub scope: AutomationScope,
+    pub owner_member_id: String,
+    pub condition_text: String,
+    pub typed_condition: Option<AutomationCondition>,
     pub automation_id: String,
-    pub definition_revision: i64,
-    pub kind: AutomationDefinitionKind,
-    pub status: AutomationDefinitionStatus,
+    pub automation_revision: i64,
+    pub kind: AutomationExecutionKind,
+    pub status: AutomationStatus,
     pub project_id: Option<String>,
     pub target_session_id: Option<String>,
     #[serde(default)]
     pub notification_policy: Option<AutomationNotificationPolicy>,
-    pub launch: AutomationLaunch,
+    pub mode: AutomationMode,
     pub runbook_page_id: Option<String>,
     /// The runbook Page's current title; None without a runbook or when the Page is no longer active.
     pub runbook_title: Option<String>,
-    /// The firing of an `Ask` task waiting in the Inbox, if any. At most one waits per task.
-    pub held_firing: Option<AutomationHeldFiring>,
+    /// The decision of an `AskFirst` Automation waiting in the Inbox, if any. At most one waits per Automation.
+    pub held_decision: Option<AutomationHeldDecision>,
     pub name: String,
     pub prompt: String,
     pub rrule: String,
@@ -133,25 +154,94 @@ pub struct AutomationDefinition {
     pub updated_at_ms: i64,
 }
 
-/// One firing of an `Ask` task while it waits in the Inbox. Firings that fall due while it
-/// waits fold into it instead of adding messages.
+/// A typed condition narrows an Automation's natural-language condition. Clock schedules
+/// retain their own zone and jitter seed, independent of the execution Host.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct AutomationHeldFiring {
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AutomationCondition {
+    Clock {
+        rrule: String,
+        timezone: String,
+        jitter_salt: String,
+    },
+    Source {
+        filters: AutomationSourceFilter,
+    },
+}
+
+/// Event filters select evidence, never authorize work or replace the written condition.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AutomationSourceFilter {
+    pub source_id: Option<String>,
+    pub repositories: Vec<String>,
+    pub kinds: Vec<AutomationSourceEventKind>,
+    #[serde(default)]
+    pub labels: Vec<String>,
+    pub actor_class: Option<AutomationActorFilter>,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationActorFilter {
+    Person,
+    Any,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationSourceEventKind {
+    NewIssue,
+    NewPr,
+    Comment,
+    Review,
+    CheckFailed,
+    CheckPassed,
+    LabelAdded,
+    LabelRemoved,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct AutomationDecision {
+    pub occurred_at_ms: i64,
+    pub session_id: Option<String>,
+    pub decision_id: String,
     pub dispatch_id: String,
-    /// The Inbox message that holds the firing.
+    pub automation_id: String,
+    pub automation_revision: i64,
+    pub trigger_ids: Vec<String>,
+    /// Retained Trigger evidence and a manual request instant when known.
+    pub inputs: Value,
+    pub reason: String,
+    pub mode: AutomationMode,
+    pub status: AutomationDecisionStatus,
+    pub frozen_action: Value,
+    pub frozen_authority: Value,
+    pub page_id: Option<String>,
+    pub proposal_id: Option<String>,
+    pub first_scheduled_for_ms: i64,
+    pub last_scheduled_for_ms: i64,
+    pub missed_count: u32,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+}
+
+/// An Ask first decision waiting in the Inbox. Later occurrences append to it.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct AutomationHeldDecision {
+    pub dispatch_id: String,
+    /// The Inbox message that holds the decision.
     pub page_id: String,
     /// The Project whose Inbox holds the message; None for the Library Inbox.
     pub inbox_project_id: Option<String>,
     pub first_scheduled_for_ms: i64,
     pub last_scheduled_for_ms: i64,
-    /// Later firings that fell due while this one waited.
+    /// Later decisions that fell due while this one waited.
     pub missed_count: u32,
 }
 
-/// Lifecycle of a firing that went through the Inbox.
+/// Lifecycle of a decision that went through the Inbox.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum AutomationFiringStatus {
+pub enum AutomationDecisionStatus {
     /// Waiting in the Inbox for the user.
     Held,
     /// Confirmed; waiting for, or holding, its execution lease.
@@ -162,7 +252,7 @@ pub enum AutomationFiringStatus {
     Failed,
     /// The user skipped it.
     Skipped,
-    /// Its task or message is gone, so it can no longer run.
+    /// Its Automation or message is gone, so it can no longer run.
     Withdrawn,
 }
 
@@ -170,21 +260,21 @@ pub enum AutomationFiringStatus {
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AutomationLeasePurpose {
-    /// Execute the firing.
+    /// Execute the decision.
     #[default]
     Run,
-    /// Place the firing of an `Ask` task in its Inbox; nothing runs until the user confirms.
+    /// Place the decision of an `AskFirst` Automation in its Inbox; nothing runs until the user confirms.
     Hold,
 }
 
-/// What the user confirmed for a firing that waited in the Inbox, frozen at confirmation.
+/// What the user confirmed for a decision that waited in the Inbox, frozen at confirmation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct AutomationFiringAdmission {
+pub struct AutomationAdmission {
     /// The Inbox message whose reviewed text became the run's instructions.
-    pub page_id: String,
+    pub page_id: Option<String>,
     /// The instructions for this run, frozen from the reviewed message.
     pub prompt: String,
-    /// What this run uses instead of the task's own Agent selection.
+    /// What this run uses instead of the Automation's own Agent selection.
     pub agent: Option<crate::inbox::ProjectWorkspaceInboxChatAgent>,
     pub admitted_at_ms: i64,
 }
@@ -200,9 +290,11 @@ pub enum AutomationLeaseStatus {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct AutomationLease {
+    #[serde(default)]
+    pub execution_automation: Option<Box<Automation>>,
     pub lease_id: String,
     pub dispatch_id: String,
-    pub definition_revision: i64,
+    pub automation_revision: i64,
     pub automation_id: String,
     pub scheduled_for_ms: i64,
     pub attempt: u32,
@@ -214,9 +306,9 @@ pub struct AutomationLease {
     pub reason_code: Option<String>,
     #[serde(default)]
     pub purpose: AutomationLeasePurpose,
-    /// Present when the lease executes a firing the user confirmed in the Inbox.
+    /// Present when the lease executes a decision the user confirmed in the Inbox.
     #[serde(default)]
-    pub admission: Option<AutomationFiringAdmission>,
+    pub admission: Option<AutomationAdmission>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -230,10 +322,13 @@ pub enum AutomationRunStatus {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct AutomationRun {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_selection: Option<crate::library::AgentWorkSelection>,
+    pub page_id: Option<String>,
     pub run_id: String,
     pub session_id: Option<String>,
     pub automation_id: String,
-    /// The firing this Run executes.
+    /// The decision this Run executes.
     pub dispatch_id: Option<String>,
     pub run_revision: i64,
     pub status: AutomationRunStatus,
@@ -453,27 +548,39 @@ pub struct PageOccurrenceMutationResult {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AutomationRead {
-    AgentDefinitions {
+    AutomationExecutionAdmission {
+        run_id: String,
+        lease_id: String,
+        dispatch_id: String,
+    },
+    AutomationNotificationPolicy {
+        message_id: String,
+    },
+    AutomationDecisions {
+        automation_id: String,
+        window: CollectionWindowRequest,
+    },
+    AgentAutomations {
         provenance: crate::agent::AgentTurnProvenance,
         search_query: Option<String>,
         window: CollectionWindowRequest,
     },
-    AgentDefinition {
+    AgentAutomation {
         provenance: crate::agent::AgentTurnProvenance,
         automation_id: String,
     },
     DueWork {
         lane: AutomationDueWorkLane,
     },
-    Definitions {
+    Automations {
         include_deleted: Option<bool>,
         search_query: Option<String>,
         window: CollectionWindowRequest,
     },
-    Definition {
+    Automation {
         automation_id: String,
     },
-    ExecutionDefinition {
+    AutomationForExecution {
         automation_id: String,
     },
     Leases {
@@ -511,14 +618,23 @@ pub enum AutomationRead {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AutomationReadValue {
+    AutomationExecutionAdmission {
+        valid: bool,
+    },
+    AutomationNotificationPolicy {
+        policy: Option<AutomationNotificationPolicy>,
+    },
+    AutomationDecisions {
+        window: CollectionWindow<AutomationDecision>,
+    },
     DueWork {
         plan: AutomationDueWorkPlan,
     },
-    Definitions {
-        window: CollectionWindow<AutomationDefinition>,
+    Automations {
+        window: CollectionWindow<Automation>,
     },
-    Definition {
-        item: Option<Box<AutomationDefinition>>,
+    Automation {
+        item: Option<Box<Automation>>,
     },
     Leases {
         window: CollectionWindow<AutomationLease>,
@@ -552,24 +668,29 @@ pub enum AutomationIntent {
         #[schema(no_recursion)]
         intent: Box<AutomationIntent>,
     },
-    CreateDefinition {
+    CreateAutomation {
         automation_id: String,
-        definition: AutomationDefinitionInput,
+        automation: AutomationInput,
     },
-    UpdateDefinition {
+    UpdateAutomation {
         automation_id: String,
         expected_revision: i64,
-        status: AutomationDefinitionStatus,
-        definition: AutomationDefinitionInput,
+        status: AutomationStatus,
+        automation: AutomationInput,
     },
-    DeleteDefinition {
+    DeleteAutomation {
         automation_id: String,
         expected_revision: i64,
+    },
+    SetAutomationStatus {
+        automation_id: String,
+        expected_revision: i64,
+        status: AutomationStatus,
     },
     DispatchNow {
         automation_id: String,
     },
-    RescheduleDefinition {
+    RescheduleAutomation {
         automation_id: String,
         expected_revision: i64,
         not_before_ms: Option<i64>,
@@ -589,6 +710,12 @@ pub enum AutomationIntent {
         reason_code: String,
     },
     BeginRun {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agent_selection: Option<crate::library::AgentWorkSelection>,
+        #[serde(default)]
+        message_id: Option<String>,
+        #[serde(default)]
+        notification_policy: Option<AutomationNotificationPolicy>,
         run_id: String,
         automation_id: String,
         #[serde(default)]
@@ -684,7 +811,7 @@ pub enum AutomationIntent {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct AutomationCommitValue {
     pub affected_automation_ids: Vec<String>,
-    pub definitions: Vec<AutomationDefinition>,
+    pub automations: Vec<Automation>,
     pub claimed_leases: Vec<AutomationLease>,
     pub runs: Vec<AutomationRun>,
     pub deleted_run_ids: Vec<String>,
@@ -790,7 +917,7 @@ mod tests {
     #[test]
     fn definition_status_preserves_the_product_wire_values() {
         assert_eq!(
-            serde_json::to_value(AutomationDefinitionStatus::Active).expect("status"),
+            serde_json::to_value(AutomationStatus::Active).expect("status"),
             "ACTIVE"
         );
         assert_eq!(

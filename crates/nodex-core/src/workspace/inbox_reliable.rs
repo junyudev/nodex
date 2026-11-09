@@ -421,7 +421,7 @@ pub(in crate::workspace) fn apply_reliable(
                     require_host(context)?;
                     reconcile_advice(connection, library_id, &now)?;
                     if !automatic {
-                        connection.execute("UPDATE inbox_entries SET suggestion_state='none',revision=revision+1,updated_at=?2 WHERE library_id=?1 AND suggestion_state='waiting' AND source_kind<>'scheduled_task'",params![library_id,now])?;
+                        connection.execute("UPDATE inbox_entries SET suggestion_state='none',revision=revision+1,updated_at=?2 WHERE library_id=?1 AND suggestion_state='waiting' AND source_kind NOT IN ('automation','nodex')",params![library_id,now])?;
                         return Ok(simple_effects("inbox_prepare_suggestions", &now));
                     }
                     let pages=connection.prepare("WITH waiting AS (SELECT entry.page_id,entry.seq,entry.scope_project_id FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.library_id=?1 AND entry.state='open' AND entry.suggestion_state='waiting' AND entry.source_kind<>'scheduled_task'), oldest AS (SELECT scope_project_id FROM waiting ORDER BY seq LIMIT 1) SELECT waiting.page_id FROM waiting,oldest WHERE waiting.scope_project_id IS oldest.scope_project_id ORDER BY waiting.seq LIMIT ?2")?.query_map(params![library_id,i64::from(limit.clamp(1,8))],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -485,9 +485,7 @@ pub(in crate::workspace) fn apply_reliable(
                             return Err(invalid("Nodex posts do not receive routing suggestions"));
                         }
                         if crate::automation::firing::item(connection, page)?.is_some() {
-                            return Err(conflict(
-                                "A scheduled run takes its decision from its task.",
-                            ));
+                            return Err(conflict("An Automation decision uses its saved action."));
                         }
                     }
                     if mode == ProjectWorkspaceInboxSuggestionMode::Refine {
@@ -762,6 +760,7 @@ fn decide(
     supersede_requests(connection, pages, now)?;
     let mut effects = apply_confirmation(
         connection,
+        context,
         scope.evidence(),
         library_id,
         ConfirmedProposal {
@@ -1620,7 +1619,7 @@ const STALE_REQUESTS: &str = "
         OR document.id IS NULL
     )";
 fn needs_preparation(connection: &Connection, library_id: &str) -> Result<bool, StoreError> {
-    let waiting:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM inbox_entries entry WHERE entry.library_id=?1 AND entry.suggestion_state='waiting' AND entry.source_kind<>'scheduled_task')",[library_id],|r|r.get(0))?;
+    let waiting:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM inbox_entries entry WHERE entry.library_id=?1 AND entry.suggestion_state='waiting' AND entry.source_kind NOT IN ('automation','nodex'))",[library_id],|r|r.get(0))?;
     if waiting {
         return Ok(true);
     }
@@ -1648,7 +1647,7 @@ fn reconcile_advice(
     for id in proposals {
         invalidate(connection, &proposal_page_ids(connection, &id)?, now)?;
         if connection.query_row(
-            "SELECT origin='schedule' FROM inbox_proposals WHERE proposal_id=?1",
+            "SELECT origin='automation' FROM inbox_proposals WHERE proposal_id=?1",
             [&id],
             |r| r.get::<_, bool>(0),
         )? {

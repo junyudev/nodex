@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { CodexHeartbeatAutomationThreadStateChangedInput } from "../../../shared/types";
-import { publishCodexHeartbeatThreadState } from "../../lib/codex-automation-runtime";
+import { publishCodexHeartbeatThreadState } from "../../lib/automations-runtime";
 import { projectSessionDetailQueryOptions } from "../../lib/query-options";
 import {
   acquireAgentRuntimeConversationOwner,

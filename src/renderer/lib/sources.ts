@@ -28,6 +28,7 @@ const retryCommand = defineRendererCommand({
   owner: "Sources",
 });
 /** Sources settings read only public account and health metadata. */
+export const readSourceOptions = () => invokeRendererQuery("sources:automation-options");
 export const readSourcesSettings = () => invokeRendererQuery("sources:settings");
 export const connectGitHubSource = () => invokeLocalCommitCommand(connectCommand);
 export const updateSourcesSettings = (input: UpdateSourceSettingsInput) =>

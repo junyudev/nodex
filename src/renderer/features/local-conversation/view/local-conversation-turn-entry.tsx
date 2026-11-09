@@ -62,7 +62,7 @@ interface LocalConversationTurnEntryProps {
   onOpenSideChat?: ThreadStageActions["onOpenSideChat"];
   onOpenThread?: ThreadStageActions["onOpenThread"];
   onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
-  onOpenSummaryScheduledAutomation?: ThreadStageActions["onOpenSummaryScheduledAutomation"];
+  onOpenSummaryAutomation?: ThreadStageActions["onOpenSummaryAutomation"];
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenPlanInSidePanel?: ThreadStageActions["onOpenPlanInSidePanel"];
   onClosePlanSidePanel?: ThreadStageActions["onClosePlanSidePanel"];
@@ -93,7 +93,7 @@ function LocalConversationTurnEntryComponent({
   onOpenSideChat,
   onOpenThread,
   onOpenSubagentsPanel,
-  onOpenSummaryScheduledAutomation,
+  onOpenSummaryAutomation,
   onOpenMcpAppSidePanel,
   onOpenPlanInSidePanel,
   onClosePlanSidePanel,
@@ -228,7 +228,7 @@ function LocalConversationTurnEntryComponent({
           onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
           onOpenSideChat={onOpenSideChat}
           onOpenThread={onOpenThread}
-          onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
+          onOpenSummaryAutomation={onOpenSummaryAutomation}
           onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
           onOpenPlanInSidePanel={onOpenPlanInSidePanel}
           onClosePlanSidePanel={onClosePlanSidePanel}
@@ -283,7 +283,7 @@ function LocalConversationTurnEntryComponent({
             onOpenSideChat={onOpenSideChat}
             onOpenThread={onOpenThread}
             onOpenSubagentsPanel={onOpenSubagentsPanel}
-            onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
+            onOpenSummaryAutomation={onOpenSummaryAutomation}
             onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
             onOpenPlanInSidePanel={onOpenPlanInSidePanel}
             onClosePlanSidePanel={onClosePlanSidePanel}

@@ -3,7 +3,11 @@ import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { buildCodexTurnStartParams } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { makeClaudeQueryOptions } from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
-import { ORCHESTRATION_INSTRUCTIONS } from "./Instructions.ts";
+import {
+  AUTOMATION_INSTRUCTIONS,
+  HEARTBEAT_INSTRUCTIONS,
+  ORCHESTRATION_INSTRUCTIONS,
+} from "./Instructions.ts";
 import { acpPromptWithInstructions } from "@nodex/provider-core/server/orchestrationInstructions";
 import { compileClaudeModelSelection } from "../claudeModelOptions.ts";
 import {
@@ -76,6 +80,9 @@ it.each(["acceptEdits", "auto", "bypassPermissions"] as const)(
     expect(prompt).toContain("Nodex content tools work in every execution mode.");
     expect(prompt).toContain("The admitted CLI context is ready.");
     expect(prompt).toContain("running in Nodex through the Claude Code harness");
+    // Automations and heartbeats are not a Codex feature: every Agent learns them here.
+    expect(prompt).toContain(AUTOMATION_INSTRUCTIONS);
+    expect(prompt).toContain(HEARTBEAT_INSTRUCTIONS);
   },
 );
 

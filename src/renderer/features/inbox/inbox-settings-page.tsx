@@ -130,6 +130,7 @@ export function InboxSettingsPage() {
         </SettingRow>
         <SettingRow
           label="Let Nodex start chats for me"
+          description="When you clearly ask for something to be done, Nodex starts it instead of suggesting it. Notes, plans, filing, and anything an Agent or an automation sent still wait for you."
         >
           <NodexSwitch
             ariaLabel="Let Nodex start chats for me"

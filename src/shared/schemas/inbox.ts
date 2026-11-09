@@ -110,9 +110,8 @@ export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
   }),
   z
     .object({
-      type: z.literal("run_task"),
-      automationId: id,
-      dispatchId: id,
+      type: z.literal("execute_decision"),
+      decisionId: id,
       agent: InboxAgentChoiceSchema.nullable(),
     })
     .strict(),

@@ -168,6 +168,7 @@ it.live("deletes a shared attachment only after its last live Session is deleted
           }),
           Effect.timeout("10 seconds"),
         )) as { readonly runId: string };
+        expect(outcome).toMatchObject({ userMessageId: "message:source" });
         expect(
           yield* request("run.outcome", { threadId: "thread:source", runId: outcome.runId }),
         ).toEqual(outcome);

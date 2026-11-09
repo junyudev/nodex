@@ -28,6 +28,7 @@ export const live = Layer.effectDiscard(
               }),
           }).pipe(Effect.andThen(handler(event, ...args))),
     );
+    yield* handlers.handleQuery("sources:automation-options", () => sources.automationOptions);
     yield* handlers.handleQuery("sources:settings", () => sources.snapshot);
     yield* handlers.handleLocalCommitCommand("sources:connect", () =>
       sources.connect.pipe(

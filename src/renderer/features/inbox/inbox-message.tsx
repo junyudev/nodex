@@ -98,9 +98,11 @@ export function InboxMessageMenu({
           Handle manually
         </NodexDropdownItem>
       )}
+      {/* A held Automation decision carries its frozen action, never routing advice. */}
       {advisable &&
       item.state === "open" &&
       !rowOffers.suggest &&
+      !item.automationDecision &&
       handlers.onSuggestAgain ? (
         <NodexDropdownItem
           leftSlot={<RefreshIcon className="icon-xs" />}
@@ -197,7 +199,7 @@ export function InboxMessage({
   onToggleSelected,
   linkedChats,
   onOpenChat,
-  onOpenScheduledTask,
+  onOpenAutomation,
   onOpenPage,
   onUnmarkImportant,
   arrivalToken = null,
@@ -218,8 +220,8 @@ export function InboxMessage({
   readonly linkedChats: PageChatActivitySummary | null;
   /** Opens a chat: the one that sent the message, or one its Page is linked to. */
   readonly onOpenChat: (sessionId: string) => void;
-  /** Opens the scheduled task a waiting run came from. */
-  readonly onOpenScheduledTask?: (automationId: string) => void;
+  /** Opens the automation a waiting run came from. */
+  readonly onOpenAutomation?: (automationId: string) => void;
   /** Opens the message's Page; its time is the link. */
   readonly onOpenPage: () => void;
   readonly onUnmarkImportant: () => void;
@@ -352,12 +354,12 @@ export function InboxMessage({
         >
           From {item.source.label}
         </button>
-      ) : item.source.kind === "scheduled_task" ? (
+      ) : item.source.kind === "automation" ? (
         <button
           type="button"
-          disabled={!onOpenScheduledTask}
+          disabled={!onOpenAutomation}
           onClick={() =>
-            item.source.kind === "scheduled_task" && onOpenScheduledTask?.(item.source.automationId)
+            item.source.kind === "automation" && onOpenAutomation?.(item.source.automationId)
           }
           className="cursor-interaction flex max-w-[80%] min-w-0 items-center gap-1 pl-1 text-xs text-token-description-foreground hover:text-token-foreground disabled:cursor-default disabled:hover:text-token-description-foreground"
         >

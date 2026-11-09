@@ -18,7 +18,7 @@ describe("codex app meta thread tool specs", () => {
     expect(JSON.stringify(toolNames)).toBe(
       JSON.stringify(
         [
-          "automation_update",
+          "automations_update",
           "create_sidebar_section",
           "create_thread",
           "delete_sidebar_section",
@@ -49,7 +49,7 @@ describe("codex app meta thread tool specs", () => {
     const forkThread = tools.find((spec) => spec.name === "fork_thread");
     const readThread = tools.find((spec) => spec.name === "read_thread");
     const sendMessage = tools.find((spec) => spec.name === "send_message_to_thread");
-    const automationUpdate = tools.find((spec) => spec.name === "automation_update");
+    const automationUpdate = tools.find((spec) => spec.name === "automations_update");
     const listThreads = tools.find((spec) => spec.name === "list_threads");
     const moveTask = tools.find((spec) => spec.name === "move_thread_to_sidebar_section");
 
@@ -96,43 +96,17 @@ describe("codex app meta thread tool specs", () => {
     expect(JSON.stringify((moveTask?.inputSchema as Record<string, unknown>).required)).toBe(
       JSON.stringify(["threadId", "sectionId"]),
     );
+    // One object for every provider: operations and kinds are enums, not top-level branches.
     const automationSchema = automationUpdate?.inputSchema as {
-      anyOf?: Array<{
-        properties?: Record<string, { enum?: string[] } | unknown>;
-      }>;
+      readonly type?: string;
+      readonly properties?: Record<string, { readonly enum?: readonly string[] }>;
     };
-    const automationBranches = automationSchema.anyOf ?? [];
-    const automationModes = [
-      ...new Set(
-        automationBranches.flatMap((branch) => {
-          const mode = branch.properties?.mode as { enum?: string[] } | undefined;
-          return mode?.enum ?? [];
-        }),
-      ),
-    ].sort();
-    const hasHeartbeatBranch = automationBranches.some((branch) => {
-      const kind = branch.properties?.kind as { enum?: string[] } | undefined;
-      return kind?.enum?.[0] === "heartbeat";
-    });
-    const hasSetupPathBranch = automationBranches.some(
-      (branch) => branch.properties?.localEnvironmentConfigPath !== undefined,
+    expect(automationSchema.type).toBe("object");
+    expect([...(automationSchema.properties?.operation?.enum ?? [])].sort()).toEqual(
+      ["create", "delete", "list", "suggested_create", "suggested_update", "update", "view"].sort(),
     );
-
-    expect(JSON.stringify(automationModes)).toBe(
-      JSON.stringify(
-        [
-          "create",
-          "delete",
-          "list",
-          "suggested_create",
-          "suggested_update",
-          "update",
-          "view",
-        ].sort(),
-      ),
-    );
-    expect(hasHeartbeatBranch).toBe(true);
-    expect(hasSetupPathBranch).toBe(true);
+    expect(automationSchema.properties?.kind?.enum).toContain("heartbeat");
+    expect(automationSchema.properties).toHaveProperty("localEnvironmentConfigPath");
   });
 
   test("does not advertise handoff before the transaction capability is ready", () => {

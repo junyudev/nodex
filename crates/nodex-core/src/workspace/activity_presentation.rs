@@ -7,6 +7,7 @@ pub(super) struct Labels {
     pub page_key: Option<String>,
     pub chat_title: Option<String>,
     pub project_title: Option<String>,
+    pub automation_name: Option<String>,
     /// Whose request an automatic start answered, as the reader reads it: "your" or "Alice’s".
     pub requester: Option<String>,
 }
@@ -200,6 +201,53 @@ pub(super) fn present(row: &mut ActivityRow, labels: &Labels) -> rusqlite::Resul
     });
     let kind = row.id.split(':').next().unwrap_or_default();
     match kind {
+        "assessment" => {
+            let name = labels.automation_name.as_deref().unwrap_or("Automation");
+            let outcome = if row.evidence["error"].is_string() {
+                "Could not assess"
+            } else if row.evidence["matched"] == false {
+                "Did not match"
+            } else {
+                match if text(&row.evidence, "mode") == "dry_run" {
+                    "dry_run"
+                } else {
+                    text(&row.evidence, "admission_mode")
+                } {
+                    "dry_run" => "Would have started",
+                    "ask_first" => "Proposed",
+                    _ => "Started",
+                }
+            };
+            row.description = format!("{outcome} {}", quoted(name));
+            row.subject = Some(ActivitySubject::Automation {
+                automation_id: text(&row.evidence, "automation_id").into(),
+                label: line(name),
+            });
+        }
+        "automation" | "automation-settlement" => {
+            let name = labels.automation_name.as_deref().unwrap_or("Automation");
+            let outcome = if kind == "automation-settlement" {
+                match text(&row.evidence, "status") {
+                    "skipped" => "Skipped",
+                    "withdrawn" => "Withdrew",
+                    "failed" => "Could not run",
+                    _ => return Err(rusqlite::Error::InvalidQuery),
+                }
+            } else {
+                match text(&row.evidence, "mode") {
+                    "dry_run" => "Would have started",
+                    "ask_first" if row.evidence["manual"] == true => "Started",
+                    "ask_first" => "Proposed",
+                    "run" => "Started",
+                    _ => return Err(rusqlite::Error::InvalidQuery),
+                }
+            };
+            row.description = format!("{outcome} {}", quoted(name));
+            row.subject = Some(ActivitySubject::Automation {
+                automation_id: text(&row.evidence, "automation_id").into(),
+                label: line(name),
+            });
+        }
         "message" => handled_message(row, labels, message, project)?,
         "launch" => {
             row.description = format!(
@@ -346,7 +394,41 @@ mod tests {
             page_key: Some("NODEX-3".into()),
             chat_title: Some("Keyboard navigation".into()),
             project_title: Some("Nodex".into()),
+            automation_name: Some("Daily\nreview".into()),
             requester: Some("your".into()),
+        }
+    }
+    #[test]
+    fn automation_decisions_name_the_frozen_automation_and_prioritize_settled_outcomes() {
+        for (mode, expected) in [
+            ("dry_run", "Would have started “Daily review”"),
+            ("ask_first", "Proposed “Daily review”"),
+            ("run", "Started “Daily review”"),
+        ] {
+            let evidence =
+                json!({"automation_id":"automation:review","mode":mode,"status":"completed"});
+            let mut decision = row("automation", evidence.clone());
+            present(&mut decision, &labels()).unwrap();
+            assert_eq!(decision.description, expected);
+            assert_eq!(decision.reason.as_deref(), Some("A reason"));
+            assert_eq!(
+                decision.subject,
+                Some(ActivitySubject::Automation {
+                    automation_id: "automation:review".into(),
+                    label: "Daily review".into(),
+                })
+            );
+            for (status, expected) in [
+                ("skipped", "Skipped “Daily review”"),
+                ("withdrawn", "Withdrew “Daily review”"),
+                ("failed", "Could not run “Daily review”"),
+            ] {
+                let mut evidence = evidence.clone();
+                evidence["status"] = json!(status);
+                let mut decision = row("automation-settlement", evidence);
+                present(&mut decision, &labels()).unwrap();
+                assert_eq!(decision.description, expected);
+            }
         }
     }
     #[test]

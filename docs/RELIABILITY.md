@@ -741,14 +741,14 @@ the visible contract is [Review Right Panel Behavior](product-specs/review-right
 
 ### Automations and reminders
 
-Core owns definitions, schedules, occurrences, leases, run/inbox state, and
+Core owns Automations, immutable clock Triggers, decisions, schedules, occurrences, leases, run/inbox state, and
 receipts. Host executors and notification delivery revalidate authority after
 every async claim. Recovery defers work; it never starts an agent or notification
 from a lease tied to the previous authority generation.
 The Main application scope owns reminder and scheduled-agent timers, native
 reminder notifications, and the system-resume listener as one runtime.
 
-Read [Scheduled Route Behavior](product-specs/scheduled-route-behavior.md),
+Read [Automations Behavior](product-specs/automations-behavior.md),
 [Calendar and Reminders Behavior](product-specs/calendar-and-reminders-behavior.md),
 and [Desktop Notification Behavior](product-specs/desktop-notification-behavior.md).
 

@@ -78,6 +78,7 @@ export const appToolGroups = {
       name: "describe_content_schema",
       description:
         "Describe public content relations and bound Data Source columns in the current Profile's Library.",
+      inputSchema: describeContentInputSchema,
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
   ],

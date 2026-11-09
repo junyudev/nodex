@@ -27,7 +27,7 @@ interface AutomationDraftEditor {
   readonly onChange: (draft: WorkbenchAutomationDraft) => void;
 }
 
-/** The Agents a scheduled task can run with, and switching between them. */
+/** The Agents an automation can run with, and switching between them. */
 export function useAutomationAgent({ draft, codexModels, onChange }: AutomationDraftEditor) {
   const { instances } = useAgentInstances();
   const binding = draft.backendBinding;
@@ -90,7 +90,7 @@ export function AutomationAgentDropdown({
     <NodexDropdownMenu
       disabled={disabled}
       triggerButton={
-        <NodexSettingsDropdownTrigger aria-label="Scheduled agent">
+        <NodexSettingsDropdownTrigger aria-label="Automations agent">
           {agent.label}
         </NodexSettingsDropdownTrigger>
       }

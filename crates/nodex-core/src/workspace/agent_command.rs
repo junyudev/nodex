@@ -69,6 +69,12 @@ pub(super) fn admit<'a>(
         }
         return Ok(intent);
     }
+    if automation_confirmation(connection, intent)? {
+        return Err(denied(
+            "Only the Automation Owner may confirm or retry this decision",
+        ));
+    }
+
     if matches!(
         intent.as_ref(),
         ProjectWorkspaceIntent::ConfirmInboxDispatch {
@@ -82,6 +88,9 @@ pub(super) fn admit<'a>(
     }
     if matches!(
         intent.as_ref(),
+        ProjectWorkspaceIntent::HoldAutomationDecision { .. }
+            | ProjectWorkspaceIntent::RefreshAutomationDecision { .. }
+            | ProjectWorkspaceIntent::RecordChatDelivery { .. }
             | ProjectWorkspaceIntent::BindChatInbound { .. }
             | ProjectWorkspaceIntent::RecordSessionExecution { .. }
             | ProjectWorkspaceIntent::SettlePageWorkLaunch { .. }
@@ -153,6 +162,7 @@ pub(super) fn admit_read_caller(
 fn denied(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::Unauthorized, message, false)
 }
+
 /// Nodex may start a Page only on the consent the scheduler uses: its prerequisites are
 /// satisfied and a person let its assigned Agent start on its own. Any other Page's Turn
 /// asks that person.
@@ -182,3 +192,47 @@ fn require_standing_consent(
     ))
 }
 
+fn automation_confirmation(
+    connection: &Connection,
+    intent: &ProjectWorkspaceIntent,
+) -> Result<bool, StoreError> {
+    use nodex_core_contracts::inbox::ProjectWorkspaceInboxDispatchAction;
+    let proposal = match intent {
+        ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            proposal_id,
+            action,
+            ..
+        } => {
+            if matches!(
+                action,
+                Some(ProjectWorkspaceInboxDispatchAction::ExecuteDecision { .. })
+            ) {
+                return Ok(true);
+            }
+            Some(proposal_id)
+        }
+        ProjectWorkspaceIntent::RetryInboxDispatch { proposal_id } => Some(proposal_id),
+        ProjectWorkspaceIntent::DispatchInboxEntries {
+            page_ids, action, ..
+        } => {
+            if matches!(
+                action,
+                ProjectWorkspaceInboxDispatchAction::ExecuteDecision { .. }
+            ) {
+                return Ok(true);
+            }
+            let ids = serde_json::to_string(page_ids)
+                .map_err(|_| denied("Invalid Automation decision pages"))?;
+            return Ok(connection.query_row("SELECT EXISTS(SELECT 1 FROM automation_decisions WHERE page_id IN(SELECT value FROM json_each(?1)))",[ids],|r|r.get(0))?);
+        }
+        _ => None,
+    };
+    let Some(proposal) = proposal else {
+        return Ok(false);
+    };
+    Ok(connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM inbox_proposals WHERE proposal_id=?1 AND (origin='automation' OR json_extract(action_json,'$.type')='execute_decision'))",
+        [proposal],
+        |r| r.get(0),
+    )?)
+}

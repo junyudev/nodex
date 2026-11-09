@@ -163,6 +163,7 @@ function ActivityLine({
         return;
       case "source":
         handlers.onOpenGitHubSettings();
+    }
   };
   const target = outcome?.open ?? null;
   return (
@@ -201,9 +202,13 @@ function ActivityLine({
         </button>
         {subject ? (
           <NodexTooltip tooltipContent={live ? `${subject.label} · ${live.label}` : subject.label}>
+            <NodexButton
+              size="xs"
+              variant="ghost"
               onClick={openSubject}
               disabled={subject.kind === "automation" && !handlers.onOpenAutomation}
               className="max-w-[30%] shrink-0 gap-1.5"
+            >
               {live ? <InboxChatStatusDot tone={live.tone} /> : null}
               <span className="truncate">{subject.label}</span>
             </NodexButton>

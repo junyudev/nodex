@@ -12,6 +12,7 @@ nodex-sqlite-query.workspace = true
 nodex-store-format.workspace = true
 nodex-page-search-kernel.workspace = true
 base64.workspace = true
+iana-time-zone = "=0.1.65"
 chrono.workspace = true
 chrono-tz.workspace = true
 nodex-markdown.workspace = true

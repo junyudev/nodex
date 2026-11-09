@@ -62,7 +62,10 @@ export const inboxDispatchActionFromCore = (
           blockedBy: step.blocked_by,
         })),
       };
+    case "execute_decision":
       return {
+        type: "execute_decision",
+        decisionId: action.decision_id,
         agent: action.agent ? inboxChatAgentFromCore(action.agent) : null,
       };
     case "keep":
@@ -122,10 +125,10 @@ export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInbo
           blocked_by: [...step.blockedBy],
         })),
       };
+    case "execute_decision":
       return {
-        type: "run_task",
-        automation_id: action.automationId,
-        dispatch_id: action.dispatchId,
+        type: "execute_decision",
+        decision_id: action.decisionId,
         agent: action.agent ? chatAgentToCore(action.agent) : null,
       };
     case "keep":
@@ -204,7 +207,9 @@ export const inboxSourceFromCore = (source: CoreInboxSource): InboxSource => {
         title: source.title,
         url: source.url,
       };
+    case "automation":
       return {
+        kind: "automation",
         automationId: source.automation_id,
         dispatchId: source.dispatch_id,
         projectId: source.project_id ?? null,
@@ -316,15 +321,15 @@ export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   scope: inboxScopeFromCore(item.scope),
   location: locationFromCore(item.location),
   proposal: item.proposal ? proposalFromCore(item.proposal) : null,
-  firing: item.firing
+  automationDecision: item.automation_decision
     ? {
-        automationId: item.firing.automation_id,
-        dispatchId: item.firing.dispatch_id,
-        status: item.firing.status,
-        firstScheduledFor: item.firing.first_scheduled_for_ms,
-        lastScheduledFor: item.firing.last_scheduled_for_ms,
-        missedCount: item.firing.missed_count,
-        failureMessage: item.firing.failure_message ?? null,
+        automationId: item.automation_decision.automation_id,
+        dispatchId: item.automation_decision.dispatch_id,
+        status: item.automation_decision.status,
+        firstScheduledFor: item.automation_decision.first_scheduled_for_ms,
+        lastScheduledFor: item.automation_decision.last_scheduled_for_ms,
+        missedCount: item.automation_decision.missed_count,
+        failureMessage: item.automation_decision.failure_message ?? null,
       }
     : null,
   revision: item.revision,

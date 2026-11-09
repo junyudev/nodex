@@ -3,6 +3,8 @@ import * as Effect from "effect/Effect";
 import { countWords } from "../../shared/word-count";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import {
+  automationAssessmentReadSchema,
+  automationAssessmentSubmitSchema,
   InboxSuggestionOutput,
   replyToOriginSchema,
   writeTurnNoteSchema,
@@ -47,6 +49,7 @@ export const makeWithCapture = (
     const identity = yield* CoreAuthority;
     const prepare = yield* makeRoutingContext;
     const admit = yield* makeAppToolOperation;
+    const assessment = yield* makeAssessmentDelivery;
     const rememberArgumentRefusal = Effect.fn("CoordinatorAppTools.rememberArgumentRefusal")(
       function* (sessionId: string, args: unknown, reason: string) {
         const identity = suggestionIdentity.safeParse(args);
@@ -73,6 +76,63 @@ export const makeWithCapture = (
             "coordinator_only",
             "Only Nodex's Coordinator Session can use this tool.",
           );
+        if (input.name === "automation_assessment_read") {
+          const parsed = parseAppToolArguments(automationAssessmentReadSchema, input.arguments);
+          if (!parsed.success) return parsed.result;
+          const result = yield* assessment
+            .read({
+              kind: "resource",
+              ...parsed.data,
+              cursor: parsed.data.cursor ?? null,
+              provenance: toCoreAgentTurnProvenance(identity.identity.profileId, authority),
+            })
+            .pipe(Effect.result);
+          return result._tag === "Failure"
+            ? toolFailure("assessment_unavailable", failureMessage(result.failure))
+            : toolSuccess(result.success);
+        }
+        if (input.name === "automation_assessment_submit") {
+          const parsed = parseAppToolArguments(automationAssessmentSubmitSchema, input.arguments);
+          if (!parsed.success) return parsed.result;
+          const r = yield* assessment.request(parsed.data.request_id);
+          if (!r || r.generation !== parsed.data.generation) return noLongerPending();
+          if (r.coordinator_session_id !== sessionId)
+            return toolFailure("assessment_recipient_changed");
+          const status = yield* assessment.status(r);
+          if (status.failure) return toolFailure("assessment_unavailable", status.failure);
+          const operation = yield* admit(
+            input,
+            authority,
+            identity.identity.profileId,
+            parsed.data,
+          );
+          if (!operation.success) return operation.result;
+          const result = yield* core.workspace
+            .apply(
+              {
+                operationId: operation.operationId,
+                intent: {
+                  kind: "agent_command",
+                  provenance: toCoreAgentTurnProvenance(identity.identity.profileId, authority),
+                  intent: {
+                    kind: "automation_assessment",
+                    command: { kind: "submit", ...parsed.data },
+                  },
+                },
+              },
+              undefined,
+              null,
+            )
+            .pipe(Effect.result);
+          if (result._tag === "Failure")
+            return toolFailure("assessment_refused", failureMessage(result.failure));
+          const current = yield* assessment.request(r.request_id);
+          return toolSuccess({
+            recorded: !current,
+            requeued: current !== null,
+            generation: current?.generation ?? r.generation,
+          });
+        }
         if (input.name === "reply_to_origin") {
           const parsed = parseAppToolArguments(replyToOriginSchema, input.arguments);
           if (!parsed.success) return parsed.result;

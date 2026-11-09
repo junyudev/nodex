@@ -6,7 +6,7 @@ import {
   inboxChatPageIds,
   describeInboxChatStatus,
   describeInboxDecision,
-  describeInboxFiring,
+  describeInboxAutomationDecision,
   describeInboxOutcome,
   groupByDay,
   inboxBuriedImportant,
@@ -40,7 +40,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   state: "open",
   suggestionState: "settled",
   suggestionError: null,
-  firing: null,
+  automationDecision: null,
   scope: { kind: "library" },
   location: { kind: "inbox" },
   proposal: null,
@@ -651,15 +651,15 @@ describe("inboxRowOffers", () => {
   });
 });
 
-describe("a scheduled task's waiting run", () => {
+describe("an automation's waiting run", () => {
   const firingSource = {
-    kind: "scheduled_task" as const,
+    kind: "automation" as const,
     automationId: "automation:deps",
     dispatchId: "dispatch:1",
     projectId: "project:nodex",
     label: "Bump dependency versions",
   };
-  const firing = {
+  const automationDecision = {
     automationId: "automation:deps",
     dispatchId: "dispatch:1",
     status: "held" as const,
@@ -669,11 +669,10 @@ describe("a scheduled task's waiting run", () => {
     failureMessage: null,
   };
   const runTask = proposal({
-    origin: "schedule",
+    origin: "automation",
     action: {
-      type: "run_task",
-      automationId: "automation:deps",
-      dispatchId: "dispatch:1",
+      type: "execute_decision",
+      decisionId: "dispatch:1",
       agent: null,
     },
     kind: "todo",
@@ -681,7 +680,7 @@ describe("a scheduled task's waiting run", () => {
     producedBy: null,
   });
   const waiting = (overrides: Partial<InboxItem> = {}) =>
-    item({ source: firingSource, firing, proposal: runTask, ...overrides });
+    item({ source: firingSource, automationDecision, proposal: runTask, ...overrides });
 
   it("asks to run in its Project, or in its chat for a Heartbeat", () => {
     expect(describeInboxAction(runTask.action, { targetProjectName: "Nodex", chat: null })).toEqual(
@@ -702,7 +701,7 @@ describe("a scheduled task's waiting run", () => {
     });
     const admitted = waiting({
       outcome: "chat",
-      firing: { ...firing, status: "admitted" },
+      automationDecision: { ...automationDecision, status: "admitted" },
       proposal: { ...runTask, state: "completed" },
     });
     expect(isInboxItemHandled(admitted)).toBe(true);
@@ -713,7 +712,11 @@ describe("a scheduled task's waiting run", () => {
     });
     const failed = waiting({
       outcome: "chat",
-      firing: { ...firing, status: "failed", failureMessage: "The Agent is off" },
+      automationDecision: {
+        ...automationDecision,
+        status: "failed",
+        failureMessage: "The Agent is off",
+      },
       proposal: { ...runTask, state: "failed", failureKind: "rejected", failureMessage: null },
     });
     expect(isInboxItemHandled(failed)).toBe(false);
@@ -724,10 +727,10 @@ describe("a scheduled task's waiting run", () => {
   });
 
   it("follows its run's chat in History as soon as the run reaches one", () => {
-    // The firing stays admitted while its run works; the chat's own status tells how it goes.
+    // The automationDecision stays admitted while its run works; the chat's own status tells how it goes.
     const ran = waiting({
       outcome: "chat",
-      firing: { ...firing, status: "admitted" },
+      automationDecision: { ...automationDecision, status: "admitted" },
       proposal: { ...runTask, state: "completed", chat },
     });
     expect(describeInboxOutcome(ran)).toMatchObject({
@@ -743,7 +746,7 @@ describe("a scheduled task's waiting run", () => {
     const skipped = waiting({
       state: "done",
       outcome: "done",
-      firing: { ...firing, status: "skipped" },
+      automationDecision: { ...automationDecision, status: "skipped" },
     });
     expect(describeInboxOutcome(skipped).label).toBe("Skipped");
     expect(describeInboxDecision(waiting(), { kind: "done" }).label).toBe("Skipped");
@@ -755,9 +758,12 @@ describe("a scheduled task's waiting run", () => {
 
   it("can no longer run once its task is deleted", () => {
     expect(
-      inboxTriageModel(waiting({ firing: { ...firing, status: "withdrawn" } }), AUTOMATIC),
+      inboxTriageModel(
+        waiting({ automationDecision: { ...automationDecision, status: "withdrawn" } }),
+        AUTOMATIC,
+      ),
     ).toEqual({
-      kind: "firing-withdrawn",
+      kind: "decision-withdrawn",
     });
   });
 
@@ -769,14 +775,22 @@ describe("a scheduled task's waiting run", () => {
       executionEnvironment: "worktree" as const,
       cwds: ["/repo"],
     };
-    expect(describeInboxFiring(firing, task, now)).toMatch(/^Due Yesterday, .+ · Worktree$/u);
-    expect(describeInboxFiring({ ...firing, missedCount: 2 }, task, now)).toMatch(
-      /^Due 3 times since Yesterday, .+ · Worktree$/u,
+    expect(describeInboxAutomationDecision(automationDecision, task, now)).toMatch(
+      /^Due Yesterday, .+ · Worktree$/u,
     );
     expect(
-      describeInboxFiring(firing, { ...task, kind: "heartbeat" as const, projectId: null }, now),
+      describeInboxAutomationDecision({ ...automationDecision, missedCount: 2 }, task, now),
+    ).toMatch(/^Due 3 times since Yesterday, .+ · Worktree$/u);
+    expect(
+      describeInboxAutomationDecision(
+        automationDecision,
+        { ...task, kind: "heartbeat" as const, projectId: null },
+        now,
+      ),
     ).toMatch(/· Continues its chat$/u);
-    expect(describeInboxFiring(firing, null, now)).toMatch(/^Due Yesterday, /u);
+    expect(describeInboxAutomationDecision(automationDecision, null, now)).toMatch(
+      /^Due Yesterday, /u,
+    );
   });
 });
 

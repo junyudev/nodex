@@ -46,6 +46,7 @@ const row = (fix: "reconnect" | "retry" | "open_card"): InboxItem => ({
   scope: { kind: "all" },
   location: { kind: "other" },
   proposal: null,
+  automationDecision: null,
   revision: 1,
 });
 test.each([

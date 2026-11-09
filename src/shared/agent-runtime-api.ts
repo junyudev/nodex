@@ -26,9 +26,15 @@ export interface AgentRuntimeMessage {
   readonly interactionMode?: CreateThread["interactionMode"];
   /** Structured editor input is authoritative; absent input permits standalone Nodex Markdown lines. */
   readonly agentConfigs?: readonly import("./types").CodexPromptAgentConfigInput[];
+/** The Host rechecks this exact Automation attempt after preparation, immediately before dispatch. */
+export interface AgentRuntimeAutomationExecution {
+  readonly runId: string;
+  readonly leaseId: string;
+  readonly dispatchId: string;
 }
 
 export interface AgentRuntimeLaunch {
+  readonly automationExecution?: AgentRuntimeAutomationExecution;
   /** Immutable application-tool request identity; receipt replay precedes mutable preparation. */
   readonly messageFingerprint?: string;
   readonly modeLimit?: AgentDispatchModeLimit;
@@ -136,6 +142,7 @@ export interface AgentRuntimeInspection extends AgentRuntimeLaunchResult {
 }
 
 export type AgentRuntimeMessageInput = AgentRuntimeSessionTarget & {
+  readonly automationExecution?: AgentRuntimeAutomationExecution;
   readonly message: AgentRuntimeMessage;
   readonly intent?: DispatchMessage["deliveryIntent"];
   readonly presentationTicket?: import("./nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;

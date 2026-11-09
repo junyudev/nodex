@@ -21,6 +21,7 @@ export const NATIVE_PIP_PROBE_TEST = "scripts/desktop-tools/probe-remote-hosted-
 export const NODEX_CLI_BOOTSTRAP_TEST = "src/main/platform/node/NodexCliBootstrap.node.test.ts";
 export const AGENT_EVAL_DESKTOP_ENVIRONMENT_TEST =
   "src/main/core-client/agent-eval-desktop-environment.node.test.ts";
+export const AUTOMATIONS_CLI_TEST = "src/main/core-client/automations-cli.node.test.ts";
 export const PROFILE_CLONE_TEST = "src/main/core-client/profile-clone.node.test.ts";
 export const CODEX_SCALE_TEST =
   "src/main/core-client/CodexSubagentParityPerformance.stress.test.ts";
@@ -254,7 +255,8 @@ export function nativeRequirements(
       (file) =>
         file === NODEX_CLI_BOOTSTRAP_TEST ||
         file === AGENT_EVAL_DESKTOP_ENVIRONMENT_TEST ||
-        file === PROFILE_CLONE_TEST,
+        file === PROFILE_CLONE_TEST ||
+        file === AUTOMATIONS_CLI_TEST,
     )
       ? ["cli" as const]
       : []),

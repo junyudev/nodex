@@ -420,6 +420,27 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     return yield* failure("configuration", "A projectless execution workspace is required");
   const host = <A, E, R>(operation: Effect.Effect<A, E, R>) =>
     operation.pipe(Effect.provideService(CoreApplicationAgent, null));
+  const requireAutomationExecution = Effect.fn(
+    "AgentRuntimeApplication.requireAutomationExecution",
+  )(function* (
+    execution: import("../../shared/agent-runtime-api").AgentRuntimeAutomationExecution | undefined,
+  ) {
+    if (!execution) return;
+    const snapshot = yield* core.automation.read(
+      {
+        kind: "automation_execution_admission",
+        run_id: execution.runId,
+        lease_id: execution.leaseId,
+        dispatch_id: execution.dispatchId,
+      },
+      { class: "background" },
+    );
+    if (snapshot.value.kind !== "automation_execution_admission" || !snapshot.value.valid)
+      return yield* failure(
+        "automation-execution",
+        "This Automation execution was withdrawn before it started.",
+      );
+  });
   const owned = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
     effect.pipe(
       Effect.mapError((cause) =>
@@ -1350,6 +1371,16 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     if ((yield* effectiveHolds(core, { kind: "session", session_id: input.sessionId })).length)
       return yield* failure("launch", "Resume work before starting this chat");
     const sourceCwd = input.sourceRoot ?? scope.workspaceRoot;
+    const workLaunch =
+      options.ensurePageWorkspace || (input.workPage && input.messageOrigin === "host")
+        ? yield* host(
+            core.workspace.read(
+              { kind: "page_work_launch", launch_id: input.launchId },
+              undefined,
+              projectId,
+            ),
+          )
+        : null;
     const sessionWorkPage = options.ensurePageWorkspace
       ? yield* host(
           core.workspace.read(
@@ -1376,6 +1407,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         ? yield* options
             .ensurePageWorkspace({
               launch: { ...input, workPage },
+              sourceCwd,
               sourceRoots: scope.sourceRoots,
             })
             .pipe(
@@ -1481,6 +1513,33 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         pageId: admissionPageId,
       });
     const firstLaunch = !existing && !previousBinding;
+    yield* requireAutomationExecution(input.automationExecution);
+    const eventDecision =
+      workLaunch?.value.kind === "page_work_launch"
+        ? workLaunch.value.launch?.automation_decision_id
+        : null;
+    if (eventDecision) {
+      const grant = yield* host(
+        core.workspace.read(
+          {
+            kind: "automation_assessments",
+            read: { kind: "launch_authority", decision_id: eventDecision },
+          },
+          undefined,
+          null,
+        ),
+      );
+      if (
+        grant.value.kind !== "automation_assessments" ||
+        grant.value.value.kind !== "launch_authority" ||
+        !grant.value.value.valid
+      )
+        return yield* failure(
+          "automation-execution",
+          "The Automation's standing grant changed before work could start.",
+        );
+    }
+
     yield* dispatch(
       connection,
       deferWorktree
@@ -2652,6 +2711,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         readonly resources?: AgentRuntimeOperations["attachments.import"]["input"]["attachments"];
         readonly modeLimit?: AgentDispatchModeLimit;
         readonly messageFingerprint?: string;
+        readonly automationExecution?: import("../../shared/agent-runtime-api").AgentRuntimeAutomationExecution;
         readonly presentationTicket?: import("../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
       },
       queueAfterActive = false,

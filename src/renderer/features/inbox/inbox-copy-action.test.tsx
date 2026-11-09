@@ -32,7 +32,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   state: "open",
   suggestionState: "settled",
   suggestionError: null,
-  firing: null,
+  automationDecision: null,
   scope: { kind: "project", projectId: "project:nodex" },
   location: { kind: "inbox" },
   proposal: null,

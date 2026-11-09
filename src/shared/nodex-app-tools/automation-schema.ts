@@ -1,6 +1,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { idempotencyKeySchema } from "./idempotency-key";
+import { toolInputSchema } from "./tool-input-schema";
 
 const boundedText = (maxBytes: number) =>
   z
@@ -15,11 +16,58 @@ const operationFields = {
   idempotencyKey: idempotencyKeySchema.optional(),
 };
 const definitionFields = {
-  launch: z
-    .enum(["automatic", "ask"])
+  scope: z
+    .discriminatedUnion("kind", [
+      z.strictObject({ kind: z.literal("space") }),
+      z.strictObject({ kind: z.literal("project"), projectId: id }),
+    ])
     .optional()
     .describe(
-      "Ask before running or run automatically. Agents may create ask tasks or switch to ask; automatic requires a suggested change the user applies. Omitted on create defaults to ask; omitted on update preserves the current choice.",
+      "Where this Automation applies, independently of its execution Project; omitted preserves its scope on update.",
+    ),
+  mode: z
+    .enum(["dry_run", "ask_first", "run"])
+    .optional()
+    .describe(
+      "dry_run records decisions, ask_first waits in the Inbox, and run starts work. Agents may create ask_first or dry_run Automations. Changes to existing Automations wait for their Owner through suggested_update; use suggested_create when proposing run. Omitted on create defaults to ask_first; omitted on update preserves the current mode.",
+    ),
+  ownerMemberId: id
+    .optional()
+    .describe("Member who authorizes this Automation; defaults to the current person."),
+  sourceCondition: z
+    .strictObject({
+      source_id: id.nullable(),
+      repositories: z.array(boundedText(512)).max(100),
+      kinds: z
+        .array(
+          z.enum([
+            "new_issue",
+            "new_pr",
+            "comment",
+            "review",
+            "check_failed",
+            "check_passed",
+            "label_added",
+            "label_removed",
+          ]),
+        )
+        .min(1)
+        .max(8),
+      labels: z.array(boundedText(100)).max(100),
+      actor_class: z.enum(["person", "any"]).nullable(),
+    })
+    .nullable()
+    .optional()
+    .describe(
+      "Event filter for GitHub. The written condition and action control judgement; filters only select Triggers. Requires a Project, an Agent model, and kind cron. Use null for a clock Automation.",
+    ),
+  conditionText: boundedText(16 * 1024)
+    .optional()
+    .describe("Natural-language condition for this Automation."),
+  timezone: boundedText(512)
+    .optional()
+    .describe(
+      "IANA timezone for the clock condition; defaults to the current timezone on creation and is preserved on update.",
     ),
   runbookPageId: id
     .nullable()
@@ -31,6 +79,7 @@ const definitionFields = {
     .discriminatedUnion("kind", [
       z.strictObject({ kind: z.literal("codex") }),
       z.strictObject({ kind: z.literal("claude"), instanceConfigId: id }),
+      z.strictObject({ kind: z.literal("opencode"), instanceConfigId: id }),
       z.strictObject({ kind: z.literal("acp"), agentDefinitionId: id, instanceConfigId: id }),
     ])
     .optional()
@@ -47,7 +96,7 @@ const definitionFields = {
     "Self-contained task instructions, at most 1048576 UTF-8 bytes. Keep scheduling, execution settings, and notification preferences in their separate fields.",
   ),
   rrule: boundedText(16 * 1024).describe(
-    "RRULE schedule interpreted by the local scheduler, at most 16384 UTF-8 bytes.",
+    "RRULE clock condition interpreted in the explicit timezone, at most 16384 UTF-8 bytes.",
   ),
   notificationPolicy: z
     .literal("failed_runs_only")
@@ -99,9 +148,9 @@ const updateFields = {
 };
 
 export const automationSchema = z
-  .discriminatedUnion("mode", [
+  .discriminatedUnion("operation", [
     z.strictObject({
-      mode: z.literal("list"),
+      operation: z.literal("list"),
       query: boundedText(512).optional(),
       cursor: z
         .string()
@@ -111,30 +160,37 @@ export const automationSchema = z
         .optional(),
       limit: z.number().int().min(1).max(100).default(20),
     }),
-    z.strictObject({ mode: z.literal("view"), id }),
+    z.strictObject({ operation: z.literal("view"), id }),
     z.discriminatedUnion("kind", [
-      z.strictObject({ mode: z.literal("create"), ...cronFields }),
-      z.strictObject({ mode: z.literal("create"), ...heartbeatFields }),
+      z.strictObject({ operation: z.literal("create"), ...cronFields }),
+      z.strictObject({ operation: z.literal("create"), ...heartbeatFields }),
     ]),
     z.discriminatedUnion("kind", [
-      z.strictObject({ mode: z.literal("update"), ...cronFields, ...updateFields }),
-      z.strictObject({ mode: z.literal("update"), ...heartbeatFields, ...updateFields }),
+      z.strictObject({ operation: z.literal("update"), ...cronFields, ...updateFields }),
+      z.strictObject({ operation: z.literal("update"), ...heartbeatFields, ...updateFields }),
     ]),
     z.discriminatedUnion("kind", [
-      z.strictObject({ mode: z.literal("suggested_create"), ...cronFields }),
-      z.strictObject({ mode: z.literal("suggested_create"), ...heartbeatFields }),
+      z.strictObject({ operation: z.literal("suggested_create"), ...cronFields }),
+      z.strictObject({ operation: z.literal("suggested_create"), ...heartbeatFields }),
     ]),
     z.discriminatedUnion("kind", [
-      z.strictObject({ mode: z.literal("suggested_update"), ...cronFields, ...updateFields }),
-      z.strictObject({ mode: z.literal("suggested_update"), ...heartbeatFields, ...updateFields }),
+      z.strictObject({ operation: z.literal("suggested_update"), ...cronFields, ...updateFields }),
+      z.strictObject({
+        operation: z.literal("suggested_update"),
+        ...heartbeatFields,
+        ...updateFields,
+      }),
     ]),
-    z.strictObject({ mode: z.literal("delete"), id, expectedRevision, ...operationFields }),
+    z.strictObject({ operation: z.literal("delete"), id, expectedRevision, ...operationFields }),
   ])
   .superRefine((input, context) => {
     const bytes = new TextEncoder();
     const byteBounds: Readonly<Record<string, number>> = {
       query: 512,
       id: 512,
+      ownerMemberId: 512,
+      conditionText: 16 * 1024,
+      timezone: 512,
       runbookPageId: 512,
       targetSessionId: 512,
       projectId: 512,
@@ -155,6 +211,8 @@ export const automationSchema = z
     };
     for (const [field, maximum] of Object.entries(byteBounds))
       check(Reflect.get(input, field), maximum, [field]);
+    if ("scope" in input && input.scope?.kind === "project")
+      check(input.scope.projectId, 512, ["scope", "projectId"]);
     if ("name" in input && Array.from(input.name).length > 256)
       context.addIssue({
         code: "custom",
@@ -171,16 +229,13 @@ export const automationSchema = z
 export type AutomationToolInput = z.infer<typeof automationSchema>;
 export type AutomationProposal = Extract<
   AutomationToolInput,
-  { mode: "suggested_create" | "suggested_update" }
+  { operation: "suggested_create" | "suggested_update" }
 >;
 
 export const automationTool: Tool = {
-  name: "automation_update",
+  name: "automations_update",
   description:
-    "List, view, propose, create, replace, or delete a scheduled Agent task. suggested_create and suggested_update return review proposals without saving or scheduling; the user reviews and explicitly saves them. Use heartbeat for follow-ups in a Session; its omitted targetSessionId defaults to the calling Session. Use cron for standalone runs in an explicit Project or with projectId null; Project runs require cwds from that Project, and projectless runs require local execution with no folders or Environment. Creation starts ACTIVE. Use list with an optional name/prompt/ID query and follow nextCursor to find existing tasks. View before update or delete and supply the returned definitionRevision as expectedRevision. Update replaces the complete definition: preserve existing values explicitly; omitted optional fields reset to defaults except backendBinding, notificationPolicy and launch, which keep their current values when omitted; pass notificationPolicy null to restore normal notifications. Reuse idempotencyKey and identical arguments to reconcile an uncertain mutation. Agents may create tasks that ask first or switch a task to ask. Making a task run automatically requires suggested_create or suggested_update for the user to apply. An ask task waits for confirmation in the Inbox before each run. Once launched, scheduled turns do not wait for interactive approval.",
-  inputSchema: {
-    ...z.toJSONSchema(automationSchema, { io: "input" }),
-    type: "object",
-  } as Tool["inputSchema"],
+    "List, read, propose, create, replace, or delete an Automation. Use operation to select the command and mode for dry_run, ask_first, or run. dry_run records decisions only; ask_first holds an editable decision in the Inbox; run starts work. Agents may create ask_first or dry_run Automations. Propose changes to every existing Automation with suggested_update for Owner review, and ask its Owner to delete it. Use suggested_create to propose run. Only the Automation Owner may choose run, change its mode, or edit an Automation set to run. Proposals do not save or enable an Automation. Use heartbeat to continue a stable Session, defaulting to the calling Session; use cron for a new chat per configured folder, with an explicit Project or projectId null. Preserve the explicit timezone returned by view. Creation starts ACTIVE. List supports query/cursor/limit. Read before update/delete and pass automationRevision as expectedRevision. Update replaces the definition; scope selects where it applies independently of the execution Project. Omitted scope, backendBinding, notificationPolicy, mode, Owner and timezone retain their values. Reuse idempotencyKey with identical input to reconcile an uncertain write. Runbook content is read when work executes and never changes Automation authority. Automated Turns do not wait for interactive questions or approvals.",
+  inputSchema: toolInputSchema(automationSchema),
   annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
 };

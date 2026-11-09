@@ -17,7 +17,7 @@ fn abrupt_writer_process() {
     let connection = open_writer(&PathBuf::from(database_path)).expect("crash writer opens Store");
     connection
         .execute(
-            "UPDATE core_automation_runtime_metadata \
+            "UPDATE automation_clock_metadata \
              SET created_at_unix_ms = created_at_unix_ms + 1 WHERE id = 1",
             [],
         )
@@ -36,7 +36,7 @@ fn current_store_recovers_a_committed_wal_after_abrupt_writer_exit() {
         .read_default(|connection| {
             connection
                 .query_row(
-                    "SELECT created_at_unix_ms FROM core_automation_runtime_metadata WHERE id = 1",
+                    "SELECT created_at_unix_ms FROM automation_clock_metadata WHERE id = 1",
                     [],
                     |row| row.get::<_, i64>(0),
                 )
@@ -65,7 +65,7 @@ fn current_store_recovers_a_committed_wal_after_abrupt_writer_exit() {
         .read_default(|connection| {
             validate_store(connection)?;
             let after: i64 = connection.query_row(
-                "SELECT created_at_unix_ms FROM core_automation_runtime_metadata WHERE id = 1",
+                "SELECT created_at_unix_ms FROM automation_clock_metadata WHERE id = 1",
                 [],
                 |row| row.get(0),
             )?;

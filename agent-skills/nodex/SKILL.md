@@ -1,6 +1,6 @@
 ---
 name: nodex
-description: Read, search, edit, organize, or open Nodex Pages; query Pages, Data Sources and saved Views with SQL; configure schemas and Views; update properties; and manage Library Files and Page attachments through the Nodex CLI.
+description: Read, search, edit, organize, or open Nodex Pages; query Pages, Data Sources and saved Views with SQL; configure schemas and Views; update properties; manage Library Files and Page attachments; and configure standing Automations through the Nodex CLI.
 ---
 
 # Nodex
@@ -62,6 +62,24 @@ and recovery. Only Nodex's Coordinator uses `reply_to_origin { pageId, body }`, 
 most 100 words, once to acknowledge work starting or announce its result ready or
 merged. Never use it for routine progress or repeat the same acknowledgement or
 result. Its origin address is fixed by the Page.
+
+## Manage Automations
+
+Use `automations list` to discover Automations and `automations show <id>` before changing one.
+Clock Automations use an explicit timezone and an execution target. Dry run records
+what would happen, Ask first waits in the Inbox, and Run starts work. Create or
+replace a definition with `automations create|update --file -`; consult that command's
+`--help-schema input` for its typed JSON. Updates, pause, resume and deletion
+require the observed `automation_revision` as `--if-revision`. Replacement also carries the observed lifecycle as
+`--status active|paused`.
+
+Agents may create Automations set to Ask first or Dry run. Propose changes to existing Automations with
+`automations_update` using `suggested_update`, then let the Owner review and apply them.
+Ask the Owner to delete an Automation. Only the Automation's Owner can change its mode or edit
+it in Run; use `suggested_create` to propose Run. Preserve scope, Owner, timezone
+and exact Agent binding in proposals.
+`automations run <id>` creates one manual dispatch, or confirms an existing waiting
+Ask first decision. Reuse its idempotency key to retry the same dispatch.
 
 ## Work directly
 

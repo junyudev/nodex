@@ -67,6 +67,7 @@ When it is on, a new-chat or send-to-chat suggestion that Nodex marked as the pe
 request, for a message the person wrote and has not changed since, starts at once, without its
 optional additions. The card says where the work went, such as `Nodex is starting a chat in
 Nodex`, and Activity says `Sent “<message>” to a new chat on your request`. Every other suggestion — notes, filing, plans,
+anything an Agent, the command line or an Automation sent — still waits. While suggestions
 are off the switch is unavailable.
 
 Turning it on never starts messages sent before it.

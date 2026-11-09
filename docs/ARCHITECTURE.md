@@ -289,15 +289,7 @@ The Rust Core is the only production authority allowed to open `nodex.db`, write
 
 Core is organized as seven deep semantic Modules under [`crates/nodex-core/src`](../crates/nodex-core/src):
 
-| Module         | Owns                                                                        |
-| -------------- | --------------------------------------------------------------------------- |
-| Library        | Block/Page ownership, Files, navigation, lifecycle, content operations      |
-| Database       | Database/Data Source/View schema, values, relations, queries, and positions |
-| Query          | Cross-domain SQL observations, lazy public projections, query budgets       |
-| Document       | Yrs/Canvas persistence, live sync, versions, and content operations         |
-| Workspace      | Projects, Sessions, execution references, sidebar order and Inbox triage    |
-| Automation     | Definitions, schedules, runs, occurrences, reminders, leases                |
-| Administration | Backup, restore, retention, compaction, Store maintenance                   |
+| Automation     | Automations, decisions, schedules, runs, occurrences, reminders, leases                               |
 
 Each public Module presents a versioned `read` Interface and, where it owns mutations, an `apply` Interface in [`crates/nodex-core-contracts`](../crates/nodex-core-contracts). Module implementations may share internal transaction kernels, but callers may not compose several public Module calls and call the result atomic. A cross-domain mutation belongs to one owning aggregate that invokes the other domain seams inside the same Core transaction.
 
@@ -1297,7 +1289,7 @@ scoped runtime. Core and renderer read models never own the secret material. See
 Application scheduling is split by authority rather than hidden behind a
 process-wide scheduler facade. `ReminderSchedulerRuntime` owns reminder claims,
 delivery, power-resume recovery, and notification callbacks;
-`ScheduledAutomationRuntime` owns scheduled execution leases and heartbeat
+`ClockAutomationRuntime` owns scheduled execution leases and heartbeat
 projection; `StoreAdministrationSchedulerRuntime` owns automatic backup and the
 three Store maintenance lanes. Every schedule is a scoped Effect fiber.
 Per-domain semaphores reject overlapping ticks, the maintenance lanes share one
@@ -1307,21 +1299,24 @@ Module's typed due-work plan and claims only the stable work token that plan
 returned. Core re-plans inside the writer transaction before applying the
 claim, so idle polling and stale ticks neither create semantic commits nor turn
 Main's clock into a second due-work authority. Core remains the durable
-definition, firing, and lease authority. A Scheduled task is the only scheduler of
-Agent work, and the Inbox is the only place work waits for the user: a due `Ask`
-task's hold lease is answered through the Inbox application Interface, and
-Workspace records its held Firing, Inbox Page and run proposal in the same
-LocalCommit. Confirmation admits the Firing in Core with its frozen instructions
-and Agent choice; Main executes it through the task's ordinary Automation lease,
-never through the Inbox chat outbox, and it never moves the recurring schedule.
-See [ADR 0073](adr/0073-scheduled-runs-that-ask-in-the-inbox.md).
+Automation, Trigger, decision and lease authority. Clock Automations use the same frozen
+execution owner for Ask first and Run; Dry run records a decision without execution.
+Workspace commits a held Ask first decision, editable Inbox Page and proposal together.
+Confirmation freezes reviewed instructions and Agent choice and admits that
+same decision to Automation execution. There is no duplicate Inbox chat outbox.
+Workspace also owns per-thread event assessment serialization and generation fences.
+The Coordinator judges bounded retained evidence through durable Host input; Core
+validates policy and mode authority, then commits event work through the ordinary
+Page-start outbox. Runtime rechecks its standing grant after workspace preparation.
+The Automation's exact Member Owner controls mode changes and edits in Run; event text
+and model output cannot grant authority. See [Automations behavior](product-specs/automations-behavior.md)
 `AutomationRoutingIndex` owns the synchronous routing
-projection from Automation Run IDs to definitions and stable Session IDs to active heartbeat definitions.
+projection from Automation Run IDs to Automations and stable Session IDs to active heartbeat Automations.
 Automation Runs retain a stable identity and an immutable optional Session binding. Heartbeat
 definitions own a Session target; execution resolves its current Workspace execution reference.
 Core-authored dispatch identity survives lease reclamation and retry, so physical scheduling
-attempts cannot mint a second execution for the same firing.
-Cron definitions own an optional Project identity; Core validates selected sources
+attempts cannot mint a second execution for the same decision.
+Clock Automations own an optional Project identity; Core validates selected sources
 against that Project, and execution places the new Session in the same Project.
 Projectless runs receive independent workspaces.
 A complete cursor-paginated background read, including archived runs, atomically
@@ -1331,7 +1326,7 @@ routing consequence before returning to application code. The Automation
 command adapters may borrow only that commit or pure
 lookup capability; neither owns a parallel Map or synchronization policy. Core
 recovery triggers an immediate projection rebuild and
-automation pass, while Main Scope closure interrupts every schedule and returns
+clock Automation pass, while Main Scope closure interrupts every schedule and returns
 admitted leases. `AutomationExecution` owns provider-profile normalization,
 run-now admission, Cron and Heartbeat execution, worktree and projectless launch,
 run lifecycle projection, and archive-message capture. The scheduler and Automation

@@ -47,7 +47,7 @@ pub(crate) fn on_target_session_lifecycle(
     for session_id in session_ids {
         let definitions = connection
             .prepare(
-                "SELECT automation_id, status FROM codex_scheduled_automations \
+                "SELECT automation_id, status FROM automations \
              WHERE kind = 'heartbeat' AND target_session_id = ?1 AND status != 'DELETED' \
              ORDER BY automation_id",
             )?
@@ -60,8 +60,8 @@ pub(crate) fn on_target_session_lifecycle(
                 0
             } else {
                 connection.execute(
-                    "UPDATE codex_scheduled_automations SET status = ?1, next_run_at = NULL, \
-                       updated_at = ?2, definition_revision = definition_revision + 1 \
+                    "UPDATE automations SET status = ?1, next_run_at = NULL, \
+                       updated_at = ?2, automation_revision = automation_revision + 1 \
                      WHERE automation_id = ?3 AND status = ?4",
                     params![target_status, now_ms, automation_id, status],
                 )?

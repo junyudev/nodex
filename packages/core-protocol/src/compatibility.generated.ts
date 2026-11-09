@@ -25,7 +25,7 @@ export const CORE_CLIENT_REQUIREMENTS = {
     },
     {
       "module": "automation",
-      "contract_version": 11
+      "contract_version": 14
     },
     {
       "module": "store_administration",

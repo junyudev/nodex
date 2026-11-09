@@ -77,7 +77,7 @@ interface ThreadTurnProps {
   onOpenSideChat?: ThreadStageActions["onOpenSideChat"];
   onOpenThread?: ThreadStageActions["onOpenThread"];
   onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
-  onOpenSummaryScheduledAutomation?: ThreadStageActions["onOpenSummaryScheduledAutomation"];
+  onOpenSummaryAutomation?: ThreadStageActions["onOpenSummaryAutomation"];
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenPlanInSidePanel?: ThreadStageActions["onOpenPlanInSidePanel"];
   onClosePlanSidePanel?: ThreadStageActions["onClosePlanSidePanel"];
@@ -252,7 +252,7 @@ function ThreadTurnBody({
   onOpenSideChat,
   onOpenThread,
   onOpenSubagentsPanel,
-  onOpenSummaryScheduledAutomation,
+  onOpenSummaryAutomation,
   onOpenMcpAppSidePanel,
   onOpenPlanInSidePanel,
   onClosePlanSidePanel,
@@ -378,7 +378,7 @@ function ThreadTurnBody({
         onOpenSideChat={onOpenSideChat}
         onOpenThread={onOpenThread}
         onOpenSubagentsPanel={onOpenSubagentsPanel}
-        onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
+        onOpenSummaryAutomation={onOpenSummaryAutomation}
         onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
         onOpenPlanInSidePanel={onOpenPlanInSidePanel}
         onClosePlanSidePanel={onClosePlanSidePanel}
@@ -406,7 +406,7 @@ function ThreadTurnBody({
       onOpenSideChat={onOpenSideChat}
       onOpenThread={onOpenThread}
       onOpenSubagentsPanel={onOpenSubagentsPanel}
-      onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
+      onOpenSummaryAutomation={onOpenSummaryAutomation}
       onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
       onOpenPlanInSidePanel={onOpenPlanInSidePanel}
       onClosePlanSidePanel={onClosePlanSidePanel}

@@ -64,6 +64,7 @@ import type {
 } from "../workbench-session-view";
 import { parseDatabaseId, parseDatabaseViewId } from "../database-identities";
 import type { LibraryPlacedResourceTarget } from "../library-module";
+import { normalizeAutomationsLayout } from "../automations-route";
 
 const UnknownRecordSchema = z.record(z.string(), z.unknown());
 
@@ -712,7 +713,7 @@ const WorkbenchHomeLocationV8Schema = z.union([
     ...WorkbenchSceneLocationV5Schema.options,
     WorkbenchInboxLocationV7Schema,
   ]),
-  // Scheduled was once remembered as a Home route; Home resumes from its origin instead.
+  // Automations was once remembered as a Home route; Home resumes from its origin instead.
   WorkbenchAutomationsLocationV7Schema.transform(
     (location): WorkbenchHomeLocationV8 =>
       getWorkbenchHomeLocationV8(location.returnTo) ?? { kind: "empty" },
@@ -1045,8 +1046,10 @@ function migrateHomeLocationV8ToV9(location: WorkbenchHomeLocationV8): Workbench
 }
 
 const migrateWorkbenchLayoutSnapshotToV9 = (value: unknown): unknown => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
-  const record = value as Record<string, unknown>;
+  const normalized = normalizeAutomationsLayout(value);
+  if (typeof normalized !== "object" || normalized === null || Array.isArray(normalized))
+    return normalized;
+  const record = normalized as Record<string, unknown>;
   if (record.version === 9) {
     const location = record.location;
     if (
@@ -1057,11 +1060,11 @@ const migrateWorkbenchLayoutSnapshotToV9 = (value: unknown): unknown => {
     ) {
       return { ...record, location: (location as Record<string, unknown>).returnTo };
     }
-    return value;
+    return normalized;
   }
 
-  const parsed = WorkbenchLayoutSnapshotV8Schema.safeParse(value);
-  if (!parsed.success) return value;
+  const parsed = WorkbenchLayoutSnapshotV8Schema.safeParse(normalized);
+  if (!parsed.success) return normalized;
   const layout = parsed.data;
   return {
     ...layout,

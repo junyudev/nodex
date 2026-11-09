@@ -1,3 +1,4 @@
+import { assessSeededAutomationCheck } from "../seed/automation-event";
 import { createHash } from "node:crypto";
 import {
   createCoreDocumentSyncAdapter,
@@ -9,9 +10,8 @@ import * as Y from "yjs";
 import { readPageBlockOutline } from "./page-block-outline";
 import type { AutomationIntent, AutomationReadSnapshot } from "../../../src/main/core-client/types";
 import {
-  projectAutomationDefinition,
-  toCoreAutomationDefinitionInput,
-} from "../../../src/main/automation-application/AutomationProjection";
+  projectAutomation,
+  toCoreAutomationInput,
 import { compilePageLifecycleRequestV2 } from "../../../src/shared/page-lifecycle-v2-runtime";
 import { createBoundedOperationId } from "../../../src/shared/operation-identity";
 import type {
@@ -96,6 +96,10 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
 
   constructor(runtime: RustDataAuthorityRuntime) {
     this.#runtime = runtime;
+  }
+
+  async assessAutomationCheck(coordinatorSessionId: string, sequence: number) {
+    await assessSeededAutomationCheck(this.#runtime.rootClient, coordinatorSessionId, sequence);
   }
 
   async createCoordinatorSession(): Promise<string> {
@@ -1149,56 +1153,57 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     );
   }
 
-  async createScheduledTask(input: Parameters<ScenarioSeedPort["createScheduledTask"]>[0]) {
+  async createAutomation(input: Parameters<ScenarioSeedPort["createAutomation"]>[0]) {
     const automationId = createUuidV7();
     const result = await this.#applyAutomation({
-      kind: "create_definition",
+      kind: "create_automation",
       automation_id: automationId,
-      definition: toCoreAutomationDefinitionInput(input),
+      automation: toCoreAutomationInput(input),
     });
-    const definition = result.outcome.definitions.find(
+    const definition = result.outcome.automations.find(
       (item) => item.automation_id === automationId,
     );
-    if (!definition) throw new Error(`Scheduled task ${input.name} was not created`);
-    return projectAutomationDefinition(definition);
+    if (!definition) throw new Error(`Automation ${input.name} was not created`);
+    return projectAutomation(definition);
   }
 
-  async holdScheduledTaskNow(automationId: string): Promise<{ readonly pageId: string }> {
-    const task = await this.#scheduledTask(automationId);
-    if (task.launch !== "ask") throw new Error("Only an Ask task can wait in the Inbox");
+  async holdAutomationNow(automationId: string): Promise<{ readonly pageId: string }> {
+    const task = await this.#automation(automationId);
+    if (task.mode !== "ask_first")
+      throw new Error("Only an Ask first Automation can wait in the Inbox");
     // A zero retry window makes this task due without waiting for its recurrence.
     await this.#applyAutomation({
-      kind: "reschedule_definition",
+      kind: "reschedule_automation",
       automation_id: automationId,
-      expected_revision: task.definitionRevision,
+      expected_revision: task.automationRevision,
       not_before_ms: null,
       retry_within_ms: 0,
     });
-    const { lease, definition } = await this.#claimScheduledTask(automationId);
-    if (lease.purpose !== "hold") throw new Error("Expected a scheduled hold lease");
+    const { lease, definition } = await this.#claimAutomation(automationId);
+    if (lease.purpose !== "hold") throw new Error("Expected an Automation hold lease");
     await runScenarioInbox(this.#runtime, (inbox) =>
-      inbox.holdScheduledFiring({
+      inbox.holdAutomationDecision({
         leaseId: lease.lease_id,
         dispatchId: lease.dispatch_id,
         purpose: "hold",
         admission: null,
-        definitionRevision: lease.definition_revision,
+        automationRevision: lease.automation_revision,
         scheduledFor: lease.scheduled_for_ms,
         attempt: lease.attempt,
         expiresAt: lease.expires_at_ms,
-        definition: projectAutomationDefinition(definition),
+        definition: projectAutomation(definition),
       }),
     );
-    const firing = (await this.#scheduledTask(automationId)).heldFiring;
-    if (!firing) throw new Error("Scheduled hold omitted its Inbox message");
+    const firing = (await this.#automation(automationId)).heldDecision;
+    if (!firing) throw new Error("Automation hold omitted its Inbox message");
     return { pageId: firing.pageId };
   }
 
-  async failScheduledRunNow(automationId: string): Promise<void> {
-    const firing = (await this.#scheduledTask(automationId)).heldFiring;
-    if (!firing) throw new Error("Scheduled failure needs a waiting firing to confirm");
-    await runScenarioInbox(this.#runtime, (inbox) => inbox.confirmScheduledFiring(firing));
-    const { lease } = await this.#claimScheduledTask(automationId);
+  async failAutomationRunNow(automationId: string): Promise<void> {
+    const firing = (await this.#automation(automationId)).heldDecision;
+    if (!firing) throw new Error("Automation failure needs a waiting decision to confirm");
+    await runScenarioInbox(this.#runtime, (inbox) => inbox.confirmAutomationDecision(firing));
+    const { lease } = await this.#claimAutomation(automationId);
     if (lease.purpose !== "run" || lease.admission?.page_id !== firing.pageId) {
       throw new Error("Expected the confirmed firing's admitted run lease");
     }
@@ -1207,31 +1212,31 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
       lease_id: lease.lease_id,
       retry_delay_ms: null,
       reason_code:
-        "This scheduled task's Agent is off or unavailable. Turn it on in Settings or choose another Agent.",
+        "This Automation's Agent is off or unavailable. Turn it on in Settings or choose another Agent.",
     });
   }
 
-  async skipScheduledFiring(pageId: string): Promise<void> {
+  async skipAutomationDecision(pageId: string): Promise<void> {
     await runScenarioInbox(this.#runtime, (inbox) =>
       inbox.setState({ pageIds: [pageId], state: "done" }),
     );
   }
 
-  async readScheduledTasks() {
+  async readAutomations() {
     return await runScenarioAutomation(
       this.#runtime,
-      Effect.fn("CoreClientSeedAdapter.readScheduledTasks")(function* (automation) {
+      Effect.fn("CoreClientSeedAdapter.readAutomations")(function* (automation) {
         const items = [];
         let after: string | null = null;
         do {
           const snapshot: AutomationReadSnapshot = yield* automation.read({
-            kind: "definitions",
+            kind: "automations",
             window: { after, first: 200 },
           });
-          if (snapshot.value.kind !== "definitions") {
-            throw new Error("Scheduled task inspection returned an unexpected value");
+          if (snapshot.value.kind !== "automations") {
+            throw new Error("Automation inspection returned an unexpected value");
           }
-          items.push(...snapshot.value.window.items.map(projectAutomationDefinition));
+          items.push(...snapshot.value.window.items.map(projectAutomation));
           after = snapshot.value.window.next_cursor ?? null;
         } while (after !== null);
         return items;
@@ -1239,22 +1244,22 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     );
   }
 
-  async #scheduledTask(automationId: string) {
+  async #automation(automationId: string) {
     const snapshot = await runScenarioAutomation(this.#runtime, (automation) =>
-      automation.read({ kind: "definition", automation_id: automationId }),
+      automation.read({ kind: "automation", automation_id: automationId }),
     );
-    if (snapshot.value.kind !== "definition" || !snapshot.value.item) {
-      throw new Error(`Scheduled task ${automationId} is missing`);
+    if (snapshot.value.kind !== "automation" || !snapshot.value.item) {
+      throw new Error(`Automation ${automationId} is missing`);
     }
-    return projectAutomationDefinition(snapshot.value.item);
+    return projectAutomation(snapshot.value.item);
   }
 
-  async #claimScheduledTask(automationId: string) {
+  async #claimAutomation(automationId: string) {
     const due = await runScenarioAutomation(this.#runtime, (automation) =>
-      automation.read({ kind: "due_work", lane: "definitions" }),
+      automation.read({ kind: "due_work", lane: "automations" }),
     );
     if (due.value.kind !== "due_work" || !due.value.plan.work_token) {
-      throw new Error(`Scheduled task ${automationId} has no due firing`);
+      throw new Error(`Automation ${automationId} has no due firing`);
     }
     const result = await this.#applyAutomation({
       kind: "claim_due",
@@ -1263,11 +1268,11 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
       lease_duration_ms: 60_000,
     });
     const lease = result.outcome.claimed_leases[0];
-    const definition = result.outcome.definitions.find(
+    const definition = result.outcome.automations.find(
       (item) => item.automation_id === automationId,
     );
     if (!lease || lease.automation_id !== automationId || !definition) {
-      throw new Error(`Claim did not return scheduled task ${automationId}`);
+      throw new Error(`Claim did not return Automation ${automationId}`);
     }
     return { lease, definition };
   }

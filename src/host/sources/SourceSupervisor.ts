@@ -25,6 +25,10 @@ export class SourceSupervisor extends Context.Service<
   SourceSupervisor,
   {
     snapshot: Effect.Effect<SourcesSettingsSnapshot, SourceSupervisorError>;
+    automationOptions: Effect.Effect<
+      readonly import("../../shared/sources").SourceOption[],
+      SourceSupervisorError
+    >;
     connect: Effect.Effect<ProjectWorkspaceApplyResult, SourceSupervisorError>;
     update: (
       input: UpdateSourceSettingsInput,
@@ -246,6 +250,11 @@ export const make = Effect.gen(function* () {
         known: yield* knownThreads(source, repo),
         pullRequestNumbers: yield* ownPrNumbers(source, repo),
         workspaceBranches: yield* workspaceBranches(source, repo),
+        watchRepositoryEvents: yield* read({
+          kind: "event_automation_watching",
+          source_id: source.id,
+          repository: repo.name,
+        }).pipe(Effect.map((v) => v.kind === "event_automation_watching" && v.enabled)),
         nowMs: now,
       });
       yield* apply({
@@ -434,6 +443,14 @@ export const make = Effect.gen(function* () {
   });
   return SourceSupervisor.of({
     snapshot,
+    automationOptions: allSources.pipe(
+      Effect.map((sources) =>
+        sources.map((s) => ({
+          id: s.id,
+          label: `GitHub · ${s.config.account_login} · ${s.config.host}`,
+        })),
+      ),
+    ),
     connect,
     update,
     retry: (sourceId) =>

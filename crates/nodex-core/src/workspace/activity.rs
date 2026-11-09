@@ -1,5 +1,8 @@
 //! Rebuildable, scope-bound Activity over committed product facts.
 use super::problems::invalid;
+#[cfg(test)]
+#[path = "automation_activity_tests.rs"]
+mod automation_activity_tests;
 #[path = "activity_presentation.rs"]
 mod presentation;
 use crate::infrastructure::{
@@ -66,7 +69,9 @@ pub(super) fn window(
             AND json_extract(actor_json,'$.type')<>'member'))
           AND (?5 IS NULL OR (at,id)<(?5,?6)) ORDER BY at DESC,id DESC LIMIT ?7
       )
+      SELECT f.id,f.at,f.actor_json,f.description,f.reason,COALESCE(f.page_id,automation_run.page_id),COALESCE(f.session_id,automation_run.session_id),f.url,json_set(f.evidence_json,'$.thread',json(COALESCE(json_extract(f.evidence_json,'$.thread'),external.thread_json,'null'))),f.category,
         substr(model.title,1,512), prefix.normalized_prefix||'-'||assignment.number,
+        substr(COALESCE(NULLIF(trim(thread.thread_name),''),session.no_thread_fallback_title),1,512), project.name,
         substr(COALESCE(NULLIF(trim(decision.automation_name),''),NULLIF(trim(json_extract(decision.frozen_action_json,'$.name')),''),automation.name),1,512),
         CASE
           WHEN f.id LIKE 'message:%' THEN (SELECT author_member_id FROM inbox_entries WHERE page_id=f.page_id)
@@ -75,13 +80,23 @@ pub(super) fn window(
             WHERE launch.launch_id=json_extract(f.evidence_json,'$.launch_id'))
         END
       FROM selected f
+      LEFT JOIN automation_decisions decision ON decision.dispatch_id=COALESCE(
+        json_extract(f.evidence_json,'$.decision_id'),json_extract(f.evidence_json,'$.action.decision_id'))
+      LEFT JOIN automations automation ON automation.automation_id=decision.automation_id
+      LEFT JOIN automation_execution_runs automation_run ON automation_run.run_id=(
+        SELECT run_id FROM automation_execution_runs
+        WHERE dispatch_id=decision.dispatch_id
+        ORDER BY created_at,run_id LIMIT 1
+      )
       LEFT JOIN external_threads external ON external.id=json_extract(f.evidence_json,'$.event.thread_id')
+      LEFT JOIN pages page ON page.block_id=COALESCE(f.page_id,automation_run.page_id)
       LEFT JOIN document_materializations model ON model.document_id=page.document_id
       LEFT JOIN data_sources source ON page.parent_kind='data_source' AND source.id=page.parent_id
       LEFT JOIN page_key_prefixes prefix ON prefix.database_block_id=source.home_database_block_id
         AND prefix.library_id=page.library_id AND prefix.retired_at IS NULL
       LEFT JOIN page_key_assignments assignment ON assignment.database_block_id=source.home_database_block_id
         AND assignment.page_block_id=page.block_id
+      LEFT JOIN project_sessions session ON session.id=COALESCE(f.session_id,automation_run.session_id)
       LEFT JOIN project_session_threads link ON link.session_id=session.id
       LEFT JOIN codex_threads thread ON thread.thread_id=link.thread_id
       LEFT JOIN projects project ON project.id=COALESCE(json_extract(f.evidence_json,'$.action.project_id'),f.project_id)

@@ -8,7 +8,7 @@ import { WorkbenchAppRail } from "./workbench-app-rail";
 test("rail entries remain keyboard reachable and reflect the selected destination", async () => {
   const onHome = vi.fn();
   const onSpace = vi.fn();
-  const onScheduled = vi.fn();
+  const onAutomations = vi.fn();
   const onInsights = vi.fn();
   const onPlugins = vi.fn();
 
@@ -29,9 +29,9 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
           onSpace();
           setDestination("space");
         }}
-        onScheduled={() => {
-          onScheduled();
-          setDestination("scheduled");
+        onAutomations={() => {
+          onAutomations();
+          setDestination("automations");
         }}
         onPlugins={() => {
           onPlugins();
@@ -44,11 +44,11 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
   const view = render(<RailHarness />);
   const home = view.getByRole("button", { name: "Home" });
   const space = view.getByRole("button", { name: "Space" });
-  const scheduled = view.getByRole("button", { name: "Scheduled" });
+  const automations = view.getByRole("button", { name: "Automations" });
   const insights = view.getByRole("button", { name: "Insights" });
   const plugins = view.getByRole("button", { name: "Plugins" });
   const current = () =>
-    [home, space, scheduled, insights, plugins]
+    [home, space, automations, insights, plugins]
       .filter((button) => button.getAttribute("aria-current") === "page")
       .map((button) => button.getAttribute("aria-label"));
   expect(current()).toEqual(["Home"]);
@@ -71,9 +71,9 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
     await userEvent.tab();
     await userEvent.keyboard("{Enter}");
   });
-  expect(document.activeElement).toBe(scheduled);
-  expect(onScheduled).toHaveBeenCalledOnce();
-  expect(current()).toEqual(["Scheduled"]);
+  expect(document.activeElement).toBe(automations);
+  expect(onAutomations).toHaveBeenCalledOnce();
+  expect(current()).toEqual(["Automations"]);
 
   await act(async () => {
     await userEvent.tab();

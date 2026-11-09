@@ -1,10 +1,10 @@
 export const AUTOMATIONS_ROOT_PATH = "/automations";
 
-/** The task dialog open over the Scheduled main pane. */
+/** The task dialog open over the Automations main pane. */
 export type WorkbenchAutomationMode = "create" | "edit";
 
 /**
- * Scheduled route state. `automationId` selects a task; `automationMode` opens the create or
+ * Automations route state. `automationId` selects a task; `automationMode` opens the create or
  * edit dialog, and `templateId` or `runbookPageId` seeds a new task; `runSessionId` presents a
  * run or Heartbeat chat in place.
  */
@@ -67,8 +67,9 @@ export function buildAutomationsPath(input: BuildAutomationsPathInput = {}): str
 }
 
 export function resolveAutomationsRouteState(path: string): WorkbenchAutomationsRouteState {
-  const queryStart = path.indexOf("?");
-  const query = queryStart >= 0 ? path.slice(queryStart + 1) : "";
+  const normalized = normalizeAutomationsPath(path);
+  const queryStart = normalized.indexOf("?");
+  const query = queryStart >= 0 ? normalized.slice(queryStart + 1) : "";
   const searchParams = new URLSearchParams(query);
   const automationId = normalizeId(searchParams.get("automationId"));
   const automationMode = normalizeAutomationMode(searchParams.get("automationMode"));
@@ -86,3 +87,4 @@ export function resolveAutomationsRouteState(path: string): WorkbenchAutomations
     runSessionId: normalizeId(searchParams.get("runSessionId")),
   };
 }
+import { normalizeAutomationsPath } from "../../shared/automations-route";

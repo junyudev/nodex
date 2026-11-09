@@ -156,11 +156,12 @@ describe("dynamic tool registry", () => {
     ).toBe(cases.map(([name, , label]) => `${name}:${label}`).join("|"));
   });
 
-  test("keeps automation_update rendering separate from dynamic standalone policy", () => {
+  test("keeps automations_update rendering separate from dynamic standalone policy", () => {
     const call = dynamicCall({
-      tool: "automation_update",
+      tool: "automations_update",
       arguments: {
-        mode: "suggested_create",
+        operation: "suggested_create",
+        scope: { kind: "project", projectId: "scope-project" },
         kind: "cron",
         status: "ACTIVE",
         name: "Review release notes",
@@ -184,6 +185,7 @@ describe("dynamic tool registry", () => {
     expect(state?.subtitle ?? "").toBe("Daily");
     expect(state?.canAccept ?? false).toBe(true);
     expect(state?.createInput?.projectId).toBe("project:nodex");
+    expect(state?.createInput?.scope).toEqual({ kind: "project", projectId: "scope-project" });
     expect(state?.createInput?.cwds?.join(",") ?? "").toBe("/repo/nodex");
     expect(state?.createInput?.executionEnvironment ?? "").toBe("worktree");
   });
@@ -205,11 +207,11 @@ describe("dynamic tool registry", () => {
     expect(continuesCodexAppLiveActivityBetweenCalls(completedSetup)).toBe(false);
   });
 
-  test("parses automation_update JSON result from later content items", () => {
+  test("parses automations_update JSON result from later content items", () => {
     const call = dynamicCall({
-      tool: "automation_update",
+      tool: "automations_update",
       arguments: {
-        mode: "delete",
+        operation: "delete",
         id: "automation-release",
       },
       contentItems: [
@@ -218,7 +220,7 @@ describe("dynamic tool registry", () => {
           type: "inputText",
           text: JSON.stringify({
             automationId: "automation-release",
-            mode: "delete",
+            operation: "delete",
             deleteStatus: "not_found",
             snapshot: {
               kind: "cron",
@@ -233,18 +235,18 @@ describe("dynamic tool registry", () => {
     const state = resolveAutomationUpdateRenderState(call);
 
     expect(result?.automationId ?? "").toBe("automation-release");
-    expect(result?.mode ?? "").toBe("delete");
+    expect(result?.operation ?? "").toBe("delete");
     expect(result?.deleteStatus ?? "").toBe("not_found");
     expect(state?.statusLabel ?? "").toBe("Missing");
     expect(state?.title ?? "").toBe("Release notes");
   });
 
-  test("keeps omitted automation_update local environment paths out of update payloads", () => {
+  test("keeps omitted automations_update local environment paths out of update payloads", () => {
     const state = resolveAutomationUpdateRenderState(
       dynamicCall({
-        tool: "automation_update",
+        tool: "automations_update",
         arguments: {
-          mode: "suggested_update",
+          operation: "suggested_update",
           id: "automation-release",
           kind: "cron",
           status: "ACTIVE",
@@ -266,7 +268,7 @@ describe("dynamic tool registry", () => {
 
   test("accepts a Heartbeat proposal only with its resolved Session target", () => {
     const argumentsBase = {
-      mode: "suggested_create",
+      operation: "suggested_create",
       kind: "heartbeat",
       name: "Follow up",
       prompt: "Check progress",
@@ -274,14 +276,14 @@ describe("dynamic tool registry", () => {
     };
     const unresolved = resolveAutomationUpdateRenderState(
       dynamicCall({
-        tool: "automation_update",
+        tool: "automations_update",
         arguments: { ...argumentsBase, destination: "thread", targetThreadId: "thread:foreign" },
       }),
     );
     expect(unresolved?.canAccept).toBe(false);
     const resolved = resolveAutomationUpdateRenderState(
       dynamicCall({
-        tool: "automation_update",
+        tool: "automations_update",
         arguments: { ...argumentsBase, targetSessionId: "session:one" },
       }),
     );
@@ -463,19 +465,19 @@ describe("dynamic tool registry", () => {
     expect(
       resolveDynamicToolFallbackLabel(
         dynamicCall({
-          tool: "automation_update",
+          tool: "automations_update",
           completed: true,
         }),
       ),
-    ).toBe("Scheduled task updated");
+    ).toBe("Automation updated");
     expect(
       resolveDynamicToolFallbackLabel(
         dynamicCall({
-          tool: "automation_update",
+          tool: "automations_update",
           completed: false,
         }),
       ),
-    ).toBe("Updating scheduled task");
+    ).toBe("Updating automation");
     expect(
       resolveDynamicToolFallbackLabel(
         dynamicCall({
@@ -494,24 +496,24 @@ describe("dynamic tool registry", () => {
     ).toBe("Inspect Project Graph");
   });
 
-  test("extracts automation_update text as the Codex markdown fallback instead of raw JSON", () => {
+  test("extracts automations_update text as the Codex markdown fallback instead of raw JSON", () => {
     const text = extractDynamicToolTextContent(
       dynamicCall({
-        tool: "automation_update",
+        tool: "automations_update",
         contentItems: [
           { type: "inputText", text: "Updated automation in the app." },
           {
             type: "inputText",
             text: JSON.stringify({
               automationId: "automation-review",
-              mode: "update",
+              operation: "update",
             }),
           },
         ],
       }),
     ).join("\n");
 
-    expect(text).toBe("Scheduled task update\n\nMode: update\nAutomation ID: automation-review");
+    expect(text).toBe("Automation update\n\nOperation: update\nAutomation ID: automation-review");
   });
   test.each([
     [{ completed: false, arguments: {} }, "Updating settings"],

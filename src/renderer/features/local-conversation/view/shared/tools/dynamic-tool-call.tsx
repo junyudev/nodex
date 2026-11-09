@@ -46,11 +46,11 @@ import {
 
 function AutomationUpdateToolCall({
   call,
-  onOpenSummaryScheduledAutomation,
+  onOpenSummaryAutomation,
   variant = "row",
 }: {
   call: CodexDynamicToolCallView;
-  onOpenSummaryScheduledAutomation?: ToolComponentProps["onOpenSummaryScheduledAutomation"];
+  onOpenSummaryAutomation?: ToolComponentProps["onOpenSummaryAutomation"];
   variant?: DynamicToolCallRenderVariant;
 }) {
   const state = resolveAutomationUpdateRenderState(call);
@@ -76,10 +76,7 @@ function AutomationUpdateToolCall({
   }
 
   return (
-    <AutomationUpdatePage
-      initialState={state}
-      onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
-    />
+    <AutomationUpdatePage initialState={state} onOpenSummaryAutomation={onOpenSummaryAutomation} />
   );
 }
 
@@ -543,7 +540,7 @@ function renderRegisteredDynamicToolCall({
   isLeadingSummaryPart = true,
   entry,
   currentThreadId,
-  onOpenSummaryScheduledAutomation,
+  onOpenSummaryAutomation,
   onOpenThread,
   variant,
 }: {
@@ -551,7 +548,7 @@ function renderRegisteredDynamicToolCall({
   isLeadingSummaryPart?: boolean;
   entry: DynamicToolRegistryEntry;
   currentThreadId?: string | null;
-  onOpenSummaryScheduledAutomation?: ToolComponentProps["onOpenSummaryScheduledAutomation"];
+  onOpenSummaryAutomation?: ToolComponentProps["onOpenSummaryAutomation"];
   onOpenThread?: ToolComponentProps["onOpenThread"];
   variant: DynamicToolCallRenderVariant;
 }) {
@@ -561,7 +558,7 @@ function renderRegisteredDynamicToolCall({
       return (
         <AutomationUpdateToolCall
           call={call}
-          onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
+          onOpenSummaryAutomation={onOpenSummaryAutomation}
           variant={variant}
         />
       );
@@ -693,7 +690,7 @@ export function DynamicToolCallSummary({
 
 export function DynamicToolCall({
   item,
-  onOpenSummaryScheduledAutomation,
+  onOpenSummaryAutomation,
   onOpenThread,
 }: ToolComponentProps) {
   const call = item.dynamicToolCall ?? null;
@@ -710,7 +707,7 @@ export function DynamicToolCall({
       call,
       entry,
       currentThreadId: item.threadId,
-      onOpenSummaryScheduledAutomation,
+      onOpenSummaryAutomation,
       onOpenThread,
       variant: "row",
     });

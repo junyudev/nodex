@@ -36,6 +36,7 @@ const item: InboxItem = {
   state: "open",
   suggestionState: "waiting",
   suggestionError: null,
+  automationDecision: null,
   scope: { kind: "library" },
   location: { kind: "inbox" },
   proposal: null,

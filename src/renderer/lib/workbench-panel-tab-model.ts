@@ -6,8 +6,8 @@ import type {
 } from "@/features/local-conversation/thread-stage-types";
 import type {
   CodexEvent,
-  CodexScheduledAutomationCreateInput,
-  CodexScheduledAutomationUpdateInput,
+  AutomationCreateInput,
+  AutomationUpdateInput,
   CodexSelectedSubagentHydrateResult,
   PanelId,
   WorkbenchTabProjection,
@@ -104,9 +104,9 @@ export interface AutomationPanelTab {
   title: string;
   stateKey: number;
   automationId: string | null;
-  createInput: CodexScheduledAutomationCreateInput | null;
+  createInput: AutomationCreateInput | null;
   mode: "open" | "suggested-create" | "suggested-update";
-  updateInput: CodexScheduledAutomationUpdateInput | null;
+  updateInput: AutomationUpdateInput | null;
 }
 
 export interface BackgroundAgentPanelTab {

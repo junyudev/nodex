@@ -2365,6 +2365,15 @@ mod tests {
         let (published, manifest) = publish_v3_predecessor_backup(&source);
         let original_hash =
             sha256_regular_file(&published.join(BACKUP_DATABASE_FILE_NAME)).unwrap();
+        let original_salt: String =
+            open_immutable_reader(&published.join(BACKUP_DATABASE_FILE_NAME))
+                .unwrap()
+                .query_row(
+                    "SELECT jitter_salt FROM core_automation_runtime_metadata WHERE id=1",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
         let original_sessions = backend_sessions(
             &open_immutable_reader(&published.join(BACKUP_DATABASE_FILE_NAME)).unwrap(),
         );
@@ -2388,6 +2397,15 @@ mod tests {
             174,
         );
 
+        let cloned_salt: String = open_immutable_reader(&target.join(BACKUP_DATABASE_FILE_NAME))
+            .unwrap()
+            .query_row(
+                "SELECT jitter_salt FROM core_automation_runtime_metadata WHERE id=1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_ne!(cloned_salt, original_salt);
         let store = SqliteStoreKernel::open(&target).unwrap();
         assert_eq!(store.preparation().migrated_from_version, Some(174));
         assert_eq!(store.preparation().schema_version, CURRENT_STORE_REVISION);
@@ -2395,6 +2413,14 @@ mod tests {
             .readers()
             .read_default(|connection| {
                 assert_eq!(backend_sessions(connection), original_sessions);
+                assert_eq!(
+                    connection.query_row(
+                        "SELECT jitter_salt FROM automation_clock_metadata WHERE id=1",
+                        [],
+                        |row| row.get::<_, String>(0)
+                    )?,
+                    cloned_salt
+                );
                 assert_eq!(
                     connection.query_row("SELECT profile_id,id FROM libraries", [], |row| {
                         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))

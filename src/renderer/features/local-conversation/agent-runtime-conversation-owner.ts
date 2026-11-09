@@ -80,6 +80,7 @@ import {
 } from "../../lib/agent-runtime-runtime";
 import {
   agentRuntimeItemStatus,
+  agentRuntimeItemVersion as itemVersion,
   agentRuntimeTime,
   agentRuntimeTurnStatus,
   projectAgentRuntimeItem,
@@ -140,6 +141,8 @@ interface ResidentItem {
   readonly nodeId: string | null;
   readonly status: AgentTurnItem["status"];
   readonly startedAt: string | null;
+  readonly version?: string;
+  readonly detailVersion?: string;
   readonly nativeItemRef?: AgentTurnItem["nativeItemRef"];
   readonly providerTurnId?: AgentTurnItem["providerTurnId"];
   readonly providerThreadId?: AgentTurnItem["providerThreadId"];
@@ -705,14 +708,26 @@ export class AgentRuntimeConversationOwner {
       sourceThreadId: source.sourceThreadId,
       itemId: source.sourceItemId,
     });
-    if (generation !== this.#generation || !this.#transcriptActive || !item) return item;
-    this.#rememberItem(source, item);
+    const current = this.#items.get(itemId);
+    if (
+      generation !== this.#generation ||
+      !this.#transcriptActive ||
+      !item ||
+      !current ||
+      current.version !== source.version
+    )
+      return item;
+    this.#rememberItem(current, item);
     const value = projectAgentRuntimeItem(item, this.#thread()?.worktreePath ?? "", {
       sessionId: this.#target.sessionId,
       rootThreadId: this.#thread()?.lineage.rootThreadId ?? this.#target.threadId ?? "",
       parentThreadId: this.#thread()?.lineage.parentThreadId,
     });
-    if (value)
+    if (value) {
+      this.#items.set(itemId, {
+        ...this.#items.get(itemId)!,
+        detailVersion: itemVersion(item),
+      });
       this.#applyChanges([
         {
           type: "item",
@@ -720,6 +735,7 @@ export class AgentRuntimeConversationOwner {
           value,
         },
       ]);
+    }
     return item;
   };
   dispose(): void {
@@ -948,9 +964,33 @@ export class AgentRuntimeConversationOwner {
   }
 
   #reset(snapshot: AgentSnapshot): void {
+    const details = new Map<
+      string,
+      { readonly source: ResidentItem; readonly value: CodexCanonicalItem }
+    >();
+    for (const [id, source] of this.#items) {
+      if (source.detailVersion === undefined) continue;
+      const value = this.readOwner.readItem(source.entityKey, id);
+      if (value) details.set(id, { source, value });
+    }
     this.#clearTranscript();
     if (this.#cursor !== null) this.#historyCursors.add(this.#cursor);
     const changes = this.#admit(snapshot.projection.visibleTurnItems, true);
+    changes.forEach((change, index) => {
+      if (change.type !== "item") return;
+      const retained = details.get(change.key.itemId);
+      const current = this.#items.get(change.key.itemId);
+      if (
+        !retained ||
+        !current ||
+        retained.source.detailVersion !== current.version ||
+        retained.source.sourceThreadId !== current.sourceThreadId ||
+        retained.source.sourceItemId !== current.sourceItemId
+      )
+        return;
+      this.#items.set(change.key.itemId, { ...current, detailVersion: current.version });
+      changes[index] = { ...change, value: retained.value };
+    });
     const turnsByKey: Record<string, CodexTranscriptSnapshot["turnsByKey"][string]> = {};
     for (const [entityKey, turn] of this.#turns)
       turnsByKey[entityKey] = {
@@ -1687,6 +1727,8 @@ export class AgentRuntimeConversationOwner {
       nodeId: item.nodeId,
       status: item.status,
       startedAt: item.startedAt ?? (item.type === source.type ? source.startedAt : null),
+      version: itemVersion(item),
+      detailVersion: source.detailVersion === itemVersion(item) ? source.detailVersion : undefined,
       nativeItemRef: item.nativeItemRef,
       providerTurnId: item.providerTurnId,
       providerThreadId: item.providerThreadId,
@@ -1896,12 +1938,17 @@ export class AgentRuntimeConversationOwner {
       const item = event.payload;
       if (this.#transcriptActive && this.#transcriptHydrated) {
         const resident = this.#items.get(item.id);
+        const retained =
+          resident?.detailVersion === itemVersion(item)
+            ? this.readOwner.readItem(resident.entityKey, item.id)
+            : null;
         const value = resident
-          ? projectAgentRuntimeItem(item, this.#thread()?.worktreePath ?? "", {
+          ? (retained ??
+            projectAgentRuntimeItem(item, this.#thread()?.worktreePath ?? "", {
               sessionId: this.#target.sessionId,
               rootThreadId: this.#thread()?.lineage.rootThreadId ?? this.#target.threadId ?? "",
               parentThreadId: this.#thread()?.lineage.parentThreadId,
-            })
+            }))
           : null;
         if (resident) {
           const settled = this.#isItemLive(item.id) && !itemIsLive(item);

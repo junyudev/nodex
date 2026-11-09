@@ -142,6 +142,12 @@ pub struct ContentInputHelp {
 
 pub(super) fn content_input(path: &[&str]) -> Option<ContentInputHelp> {
     let (argument, syntax, stdin_when, maximum_bytes) = match path {
+        ["automations", "create" | "update"] => (
+            "--file",
+            "AutomationInput JSON",
+            "--file omitted or -",
+            crate::input::MAX_JSON_BYTES,
+        ),
         ["patch"] => (
             "--file",
             "Nodex exact patch",

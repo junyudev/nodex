@@ -328,7 +328,7 @@ after a failure. Partial failure returns a typed failure instead of reporting su
 Hook event summaries include the native before-model-request and after-model-response events.
 Plugin hook inventory filters native hook metadata by the exact owning plugin ID and counts
 untrusted or modified hooks as needing review. Rootless contexts explicitly mark hook inventory unavailable; their zero scanned review count
-does not establish that the plugin is trusted. Hook summaries and scheduled tasks remain available directly on native detail.
+does not establish that the plugin is trusted. Hook summaries and Rules remain available directly on native detail.
 Detail exposes `hooksNeedingReviewCount`, `hooksAvailable` and `hooksError`.
 `trustAllPluginHooks` reloads current metadata and writes each unmanaged, untrusted or
 modified hook's current hash to its quoted `hooks.state.<key>.trusted_hash` entry. It cannot

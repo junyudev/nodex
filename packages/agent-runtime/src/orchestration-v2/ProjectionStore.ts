@@ -700,6 +700,8 @@ export interface ProjectionQueuedRunPage {
   readonly nextRunId: string | null;
 }
 export interface ProjectionRunOutcome {
+  /** The originating input binds Host policies to this exact Turn, including after restart. */
+  readonly userMessageId?: MessageId;
   readonly startedAt: string | null;
   readonly failureMessage?: string;
   readonly runId: RunId;
@@ -9871,6 +9873,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
     const getRunOutcome: ProjectionStoreV2Shape["getRunOutcome"] = (query) =>
       sql<{
         run_id: string;
+        user_message_id: string;
         status: OrchestrationV2Run["status"];
         completed_at: string | null;
         started_at: string | null;
@@ -9878,6 +9881,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         failure_message: string | null;
       }>`
         SELECT run.run_id, run.status, run.completed_at, json_extract(run.payload_json, '$.startedAt') AS started_at,
+          json_extract(run.payload_json, '$.userMessageId') AS user_message_id,
           CASE WHEN run.status = 'failed' THEN (
             SELECT json_extract(item.payload_json, '$.failure.message')
             FROM orchestration_v2_projection_turn_items item
@@ -9917,6 +9921,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   ? {}
                   : { failureMessage: rows[0].failure_message }),
                 runId: RunId.make(rows[0].run_id),
+                userMessageId: MessageId.make(rows[0].user_message_id),
                 startedAt: rows[0].started_at,
                 status: rows[0].status,
                 completedAt: rows[0].completed_at,
@@ -11738,6 +11743,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             return {
               ...(failure?.type === "error" ? { failureMessage: failure.failure.message } : {}),
               runId: run.id,
+              userMessageId: run.userMessageId,
               startedAt: run.startedAt === null ? null : DateTime.formatIso(run.startedAt),
               status: run.status,
               completedAt: run.completedAt === null ? null : DateTime.formatIso(run.completedAt),

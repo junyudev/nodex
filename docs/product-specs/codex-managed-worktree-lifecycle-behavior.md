@@ -307,7 +307,7 @@ current settings, host inventories, lifecycle, automation, pending, newborn,
 and permanent-root facts. A changed limit, disappeared entry, or newly
 protected candidate therefore cannot be deleted from a stale plan.
 
-Scheduled automations use the same creation, owner, snapshot, cleanup, and
+Clock Automations use the same creation, owner, snapshot, cleanup, and
 retention lifecycle and the same host worker as interactive creation. A
 running, retrying, or otherwise live automation protects its worktree.
 Retention is requested after application initialization, successful owner

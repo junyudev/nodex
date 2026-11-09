@@ -22,23 +22,28 @@ Nodex helps a local builder:
 - start and resume coding-agent Chats in the correct filesystem context;
 - use local worktrees and Environments for isolated execution;
 - keep Browser, Files, Terminal, Review, and agent output beside the Chat;
-- let local agents read and change all content in the current Profile through semantic
+- let local agents read and change all content in the current Space through semantic
   tools rather than raw storage access;
+- hand work to agents and let Nodex follow it, asking for the person only when it is
+  their turn;
+- work with other people in a team Space that an always-on host keeps running;
 - recover windows, Documents, history, and whole-Store backups without creating
   a second cloud authority.
 
-Nodex is desktop-first. [Nodex Mobile](mobile-companion-behavior.md) is a
-companion that reaches a running desktop and owns no data of its own. Nodex does
-not provide cloud content sync, remote multi-account collaboration, or a general
+Nodex is desktop-first. A personal Space lives on its desktop; a
+[team Space](team-space-behavior.md) lives on one host, which a desktop or
+`nodex serve` runs, and every Member's desktops and phones reach it directly.
+[Nodex Mobile](mobile-companion-behavior.md) reaches a running host and owns no
+data of its own. Nodex does not provide cloud content sync or a general
 database/filesystem server.
 
 ## Product model
 
-A local Profile owns one Library. The Library owns durable content: Blocks,
+Each Space owns one Library. The Library owns durable content: Blocks,
 Pages, Documents, Databases, Data Sources, Views, Canvases, assets, schedules,
 and history. A Project is an execution context: it owns filesystem sources,
 Chats, terminals, execution settings, and one primary Database binding. Every
-Agent has full content access to the current Profile, including across Projects and Sessions.
+Agent has full content access to its Space, including across Projects and Sessions.
 Native execution on the computer follows each chat's
 [permission mode](agent-permissions-behavior.md).
 
@@ -114,7 +119,7 @@ selection, tools, and undo.
 
 Read [Canvas Behavior](canvas-behavior.md).
 
-### Calendar and Scheduled work
+### Calendar and Automations work
 
 Page schedule, recurrence, occurrences, reminders, and notifications are
 available independently of the Calendar renderer. Recurring edits require an
@@ -122,10 +127,10 @@ explicit occurrence scope and are idempotent semantic operations. Calendar
 presentation remains behind its checked-in release gate while preserving all
 durable View and scheduling data.
 
-Scheduled tasks are separate Automation definitions and runs managed through
-the Workbench Scheduled route. Read
+Automations hold standing Agent instructions, with clock conditions for recurring work
+and one Owner-authorized Dry run, Ask first or Run mode. Read
 [Calendar and Reminders Behavior](calendar-and-reminders-behavior.md),
-[Scheduled Route Behavior](scheduled-route-behavior.md), and
+[Automations Behavior](automations-behavior.md), and
 [Desktop Notification Behavior](desktop-notification-behavior.md).
 
 ### Chats and agent work
@@ -146,6 +151,18 @@ for visible turns, tools, requests, composer, search, and history presentation,
 and [Codex Owner/Follower Streaming](codex-thread-owner-follower-streaming.md)
 for multi-window publication and recovery.
 
+### Coordinated work and people
+
+Nodex, the Space's coordinating Agent, routes Inbox requests and follows the
+chats doing a Page's work. Each work Page has a Status, an Owner, one person or
+Agent Assignee and a current turn, so the Inbox holds only what needs its reader.
+GitHub activity reaches the Page whose work it concerns. A team Space keeps each
+Member's Inbox, unread state and Devices separate, and records who made every
+change. Read [Coordinator Behavior](coordinator-behavior.md),
+[Inbox Behavior](inbox-behavior.md), [Sources Behavior](sources-behavior.md),
+[Team Space Behavior](team-space-behavior.md) and
+[Nodex Mobile Behavior](mobile-companion-behavior.md).
+
 ### Review and outputs
 
 Review is a generation-fenced live Git read surface scoped to the current
@@ -163,7 +180,7 @@ Read [Review Right Panel Behavior](review-right-panel-behavior.md) and
 ### Settings and command surfaces
 
 Settings is a full Workbench route with one canonical section catalog and local
-search. Each feature page owns its state and mutations. Scheduled, Settings,
+search. Each feature page owns its state and mutations. Automations, Settings,
 command palette, and keyboard navigation remain scoped command surfaces rather
 than alternate content authorities.
 

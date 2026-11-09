@@ -7,6 +7,7 @@ const PAGE: &str = "019d0000-0000-7000-8000-000000000091";
 fn board(w: &TestWorkspace) {
     create_project(&w.module, "project-work", "project:work");
 }
+pub(super) fn card(w: &TestWorkspace, page: &str, session: &str, active: bool) {
     apply(
         &w.module,
         &format!("create-{page}"),
@@ -79,6 +80,7 @@ fn current_thread(w: &TestWorkspace) -> ExternalThread {
     };
     threads.into_iter().next().unwrap_or_else(thread)
 }
+pub(super) fn context_follow(w: &TestWorkspace, session: &str, op: &str) {
     apply(
         &w.module,
         op,

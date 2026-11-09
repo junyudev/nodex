@@ -13,6 +13,8 @@
     "./windows-shell": "./vendor/shared/src/windowsShell.ts",
     "./windows-pty": "./src/nodex/WindowsPty.ts",
     "./side-chat": "./src/nodex/SideChat.ts",
+    "./instructions": "./src/nodex/Instructions.ts",
+    "./tool-input-schema": "./src/nodex/ToolInputSchema.ts",
     "./contracts": "./src/nodex/contracts.ts",
     "./codex-conventions": "./src/nodex/CodexConventions.ts",
     "./process-lifecycle": "./src/nodex/ProcessLifecycle.ts",

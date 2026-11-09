@@ -304,14 +304,14 @@ export type WorkbenchLocationV9 =
       readonly returnTo: WorkbenchSceneLocation;
     };
 
-/** Home remembers its own routes; Space, Scheduled, Customize and Insights restore their own state. */
+/** Home remembers its own routes; Space, Automations, Customize and Insights restore their own state. */
 export type WorkbenchHomeLocation = Exclude<
   WorkbenchStableLocation,
   { readonly kind: "library" | "automations" | "plugins" | "insights" }
 >;
 
 /** Rail destinations. Insights shares Home's sidebar; the others own a contextual sidebar. */
-export type WorkbenchPrimaryDestination = "home" | "space" | "scheduled" | "plugins" | "insights";
+export type WorkbenchPrimaryDestination = "home" | "space" | "automations" | "plugins" | "insights";
 
 export interface WorkbenchLayoutSnapshotV9 {
   readonly version: 9;
@@ -426,7 +426,7 @@ export function getWorkbenchPrimaryDestination(
   if (location.kind === "library") return "space";
   if (location.kind === "plugins") return "plugins";
   if (location.kind === "insights") return "insights";
-  return location.kind === "automations" ? "scheduled" : "home";
+  return location.kind === "automations" ? "automations" : "home";
 }
 
 /** Resolves the stable Home route, including the actual Settings origin. */

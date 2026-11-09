@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const BrowserUseApprovalModeSchema = z.enum(["alwaysAsk", "neverAsk"]);
 export const BrowserUsePolicyResourceSchema = z.enum(["origin", "download", "upload", "fullCdp"]);
-export const BrowserUseOriginRuleKindSchema = z.enum(["allowed", "denied"]);
+export const BrowserUseOriginRuleExecutionKindSchema = z.enum(["allowed", "denied"]);
 export const MAX_BROWSER_USE_POLICY_ORIGINS = 1_000;
 
 const BrowserUseOriginSchema = z
@@ -52,7 +52,7 @@ export const BrowserUsePolicyModesUpdateSchema = z
 
 export const BrowserUseOriginRuleUpdateSchema = z.strictObject({
   action: z.enum(["add", "remove"]),
-  kind: BrowserUseOriginRuleKindSchema,
+  kind: BrowserUseOriginRuleExecutionKindSchema,
   origin: z.string().trim().min(1).max(2_048),
   resource: BrowserUsePolicyResourceSchema,
 });

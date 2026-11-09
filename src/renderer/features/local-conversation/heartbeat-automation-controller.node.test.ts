@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import type { CodexScheduledAutomation } from "../../../shared/types";
+import type { Automation } from "../../../shared/types";
 import { listHeartbeatAutomationTargetSessionIds } from "./heartbeat-automation-controller";
 
 describe("heartbeat Session targets", () => {
@@ -11,7 +11,7 @@ describe("heartbeat Session targets", () => {
         status: "ACTIVE",
         targetSessionId,
         ...extra,
-      }) as CodexScheduledAutomation;
+      }) as Automation;
     expect(
       listHeartbeatAutomationTargetSessionIds([
         definition("codex", "session:one", { backendBinding: { kind: "codex" } }),

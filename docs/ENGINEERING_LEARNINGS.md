@@ -61,13 +61,13 @@ Authority accepts intent and determines truth. A read model makes that truth
 cheap to query. A UI projection decides how it is presented. Information flows
 from left to right and never returns through the same path as a write:
 
-| Domain               | Authority                                                       | Read model or projection                                   |
-| -------------------- | --------------------------------------------------------------- | ---------------------------------------------------------- |
-| Block content        | Yjs `block_tree` or normalized `canvas_scene` Document          | Markdown text, title, preview, search, assets, Card detail |
-| Database capability  | relational Database membership, properties, and Views           | Board rows, Calendar occurrences, Database View results    |
-| Codex conversation   | generated protocol items/requests plus explicit app-local state | transcript entries, activity groups, summaries             |
-| Scheduled automation | `automation.toml`                                               | SQLite mirror and renderer detail                          |
-| Review changes       | Git/file metadata and validated content                         | file tree, patch rows, summary counts                      |
+| Domain              | Authority                                                       | Read model or projection                                   |
+| ------------------- | --------------------------------------------------------------- | ---------------------------------------------------------- |
+| Block content       | Yjs `block_tree` or normalized `canvas_scene` Document          | Markdown text, title, preview, search, assets, Card detail |
+| Database capability | relational Database membership, properties, and Views           | Board rows, Calendar occurrences, Database View results    |
+| Codex conversation  | generated protocol items/requests plus explicit app-local state | transcript entries, activity groups, summaries             |
+| Automation          | Core Automation configuration and frozen decisions              | Renderer Automation detail and decision history            |
+| Review changes      | Git/file metadata and validated content                         | file tree, patch rows, summary counts                      |
 
 This resolves an important retired ambiguity: `Card.description`, Card summaries,
 and metadata overlays are projections. They never seed, refresh, or save a
@@ -385,7 +385,7 @@ measurement loop is too expensive to rediscover through runtime testing alone.
 | Codex owner/follower ordering and recovery                                                                         | [Owner/follower streaming](product-specs/codex-thread-owner-follower-streaming.md) |
 | Codex transcript, request, activity, and composer projection                                                       | [Transcript behavior](product-specs/codex-thread-transcript-behavior.md)           |
 | Thread Summary sections, artifacts, Git actions, Browser, and PiP                                                  | [Thread Summary panel](product-specs/thread-summary-panel-behavior.md)             |
-| Scheduled sidebar, task drafts, runs, and discard guards                                                           | [Scheduled route](product-specs/scheduled-route-behavior.md)                       |
+| Automations sidebar, drafts, decisions, runs, and discard guards                                                   | [Automations](product-specs/automations-behavior.md)                               |
 | Settings routes, catalog, search, composition, and deep links                                                      | [Settings route](product-specs/settings-route-behavior.md)                         |
 | Block/Owned Document durability, sync, backup, recovery                                                            | [Reliability](RELIABILITY.md)                                                      |
 | Core selection, generation recovery, and Store migration policy                                                    | [Core lifecycle and Store](reliability/core-lifecycle-and-store.md)                |

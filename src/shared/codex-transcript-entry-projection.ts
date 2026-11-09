@@ -12,6 +12,7 @@ export function projectCodexItemViewToTranscriptEntry(
     itemId: item.itemId,
     rawItemId: item.rawItemId,
     rawItemType: item.rawItemType,
+    outputVersion: item.outputVersion,
     type: item.type,
     kind: item.normalizedKind,
     semanticKind: item.semanticKind,

@@ -458,7 +458,7 @@ a home already initialized without one, fails. Later manual edits belong to the
 environment and are not reset or compared with the original recipe.
 
 Every development seed materializes an independent Git repository under
-`<home>/workspace/<seed-slug>` before creating Projects or scheduled tasks.
+`<home>/workspace/<seed-slug>` before creating Projects or Automations.
 Their source folders and working directories point there, never at the Nodex
 checkout or another live repository. Each repository owns its `.git`, starts on
 `main` with committed fixture content, and has no remotes. This Git boundary also
@@ -539,13 +539,14 @@ several windows. `tests/e2e/window-titles.spec.ts` consumes it:
 vp run dev --home "$HOME/repo/nodex/runs.local/window-titles" --seed window/titles
 ```
 
-`scheduled/ask-in-inbox` creates five scheduled tasks, a Dependency policy runbook,
-and Inbox messages for waiting, skipped, and failed runs. The dependency task has
+`automations/ask-in-inbox` creates five clock Automations, a Dependency policy runbook,
+and Inbox messages for waiting, skipped, and failed runs. The dependency Automation has
 fallen due three times while waiting; a projectless reading list waits in the
 Library Inbox. A security task runs automatically and has no firing. Seeding
 never starts an Agent:
 
 ```bash
+vp run dev --home "$HOME/repo/nodex/runs.local/automations-ask-in-inbox" --seed automations/ask-in-inbox
 ```
 
 `nodex-coordinator` shows Nodex's posts, a three-card plan, and a request Nodex
@@ -665,7 +666,7 @@ lets Main reconcile Sessions with the copied conversations. Transcripts read nor
 next message in a copied chat starts a fresh native conversation in the clone's own Agent
 directory and receives the earlier history through a context handoff. The clone never
 continues or writes the source's native conversations, and nothing copied runs on its own:
-replies running or queued in the source are cancelled and copied scheduled automations are
+replies running or queued in the source are cancelled and copied Automations are
 disabled until re-enabled. Once a development home is
 initialized, reopening it does not recapture the source.
 

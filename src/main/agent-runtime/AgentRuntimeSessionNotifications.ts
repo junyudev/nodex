@@ -8,6 +8,8 @@ import type {
   CodexThreadNotificationEvent,
 } from "../../shared/codex-thread-notification";
 import { parseCodexHeartbeatAssistantMessage } from "../../shared/codex-turn-notification";
+import { automationNotificationDecision } from "../../shared/automation-notification-policy";
+import type { AutomationNotificationPolicy } from "../../shared/types";
 import type { AgentRuntimeSessionActivity } from "../../shared/agent-runtime-api";
 import type { AgentRuntimeActivityTransition } from "./AgentRuntimeSessionActivity";
 
@@ -33,6 +35,9 @@ export interface AgentRuntimeSessionNotificationOptions {
     sessionId: string,
   ) => Effect.Effect<AgentRuntimeNotificationSession | null, unknown>;
   readonly markUnread: (sessionId: string) => Effect.Effect<void, unknown>;
+  readonly readAutomationNotificationPolicy?: (
+    messageId: string,
+  ) => Effect.Effect<AutomationNotificationPolicy | null, unknown>;
   /** Desktop notifications and phone pushes each apply their own settings and presence. */
   readonly publish: (event: CodexThreadNotificationEvent) => void;
 }
@@ -132,15 +137,20 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
         runtimeSessionId: sessionId,
       };
       if (turnCompleted) {
+        const settledOutcome =
+          outcome === undefined ? yield* readOutcome(transition, endedRun.runId) : outcome;
+        const policy =
+          settledOutcome?.userMessageId && options.readAutomationNotificationPolicy
+            ? yield* options
+                .readAutomationNotificationPolicy(settledOutcome.userMessageId)
+                .pipe(Effect.catchCause(() => Effect.succeed(null)))
+            : null;
         // Delegated work that will wake the root, or a queued follow-up, continues this turn.
         const hasPendingContinuation =
           after?.status === "background" ||
           (after?.status === "running" && status !== "interrupted");
         const lastAgentMessage = !hasPendingContinuation
-          ? yield* finalReply(
-              transition,
-              outcome === undefined ? yield* readOutcome(transition, endedRun.runId) : outcome,
-            )
+          ? yield* finalReply(transition, settledOutcome)
           : null;
         options.publish({
           type: "turn-completed",
@@ -150,7 +160,7 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
           status,
           lastAgentMessage,
           heartbeatAssistantMessage: parseCodexHeartbeatAssistantMessage(lastAgentMessage),
-          automationNotificationDecision: null,
+          automationNotificationDecision: automationNotificationDecision(policy, status),
           hasPendingContinuation,
         });
       }

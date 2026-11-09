@@ -21,6 +21,7 @@ import {
 import { buildRendererItemStream } from "./projection/build-renderer-item-stream";
 import { bucketizeTurnItems } from "./projection/bucketize-turn-items";
 import { buildTurnViewModel } from "./projection/build-turn-view-model";
+import { resolveNativeAutomationUpdateRenderState } from "./projection/tool-metadata/native-automation-update";
 
 const at = "2026-10-15T00:00:00.000Z";
 const base = {
@@ -500,6 +501,57 @@ describe("Runtime application tool presentation", () => {
           }),
         },
       ],
+    });
+  });
+
+  test("native Automation proposals retain the resolved action and revision for Owner review", () => {
+    const arguments_ = {
+      operation: "suggested_update",
+      kind: "cron",
+      id: "automation:review",
+      expectedRevision: 7,
+      status: "PAUSED",
+      name: "Review the queue",
+      prompt: "Review the queue before planning",
+      rrule: "FREQ=YEARLY",
+      projectId: "project:chosen",
+      cwds: ["/workspace"],
+      executionEnvironment: "local",
+    };
+    const proposal = { ...arguments_, backendBinding: { kind: "codex" } };
+    const projected = projectAgentRuntimeItem({
+      ...tool("nodex_app.automations_update"),
+      input: arguments_,
+      mcpToolCall: {
+        type: "mcpToolCall",
+        id: "native-automation-proposal",
+        server: "nodex_app",
+        tool: "automations_update",
+        status: "completed",
+        arguments: arguments_,
+        result: {
+          content: [{ type: "text", text: JSON.stringify({ proposal, committed: false }) }],
+          structuredContent: { proposal, committed: false },
+        },
+      },
+    });
+    expect(projected?.type).toBe("mcpToolCall");
+    const view = projectCodexCanonicalTurnItemViews({
+      threadId: "parent",
+      turnId: "parent-run",
+      items: [projected!],
+      observedAtMs: 1,
+      turnStatus: "completed",
+    })[0];
+    expect(view?.automationUpdate).toMatchObject({ source: "nativeMcp", proposal, result: null });
+    if (!view?.automationUpdate) throw new Error("Missing Owner review proposal");
+    const entry = projectCodexItemViewToTranscriptEntry(view, "live", 1);
+    expect(entry.automationUpdate).toEqual(view.automationUpdate);
+    expect(resolveNativeAutomationUpdateRenderState(view.automationUpdate)).toMatchObject({
+      canAccept: true,
+      displayMode: "suggested-update",
+      automationId: "automation:review",
+      updateInput: proposal,
     });
   });
 

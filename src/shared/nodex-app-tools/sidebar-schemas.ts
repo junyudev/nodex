@@ -1,6 +1,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { idempotencyKeySchema } from "./idempotency-key";
+import { toolInputSchema } from "./tool-input-schema";
 
 const id = z.string().regex(/\S/, "Must contain a non-whitespace character").min(1).max(512);
 const windowFields = {
@@ -101,10 +102,7 @@ export const sidebarToolCatalog: readonly Tool[] = Object.entries(sidebarSchemas
   ([name, schema]) => ({
     name,
     description: descriptions[name as keyof typeof descriptions],
-    inputSchema: {
-      ...z.toJSONSchema(schema, { io: "input" }),
-      type: "object",
-    } as Tool["inputSchema"],
+    inputSchema: toolInputSchema(schema),
     annotations: {
       readOnlyHint:
         name === "list_sidebar_sections" ||

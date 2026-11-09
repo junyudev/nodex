@@ -1494,7 +1494,7 @@ function ConnectedThreadStageContent({
       knownConversationsById,
       sideChatRows: input.summarySideChatRows ?? [],
       browserRows: input.summaryBrowserRows ?? [],
-      scheduledAutomation: input.summaryScheduledAutomation ?? null,
+      clockAutomation: input.summaryAutomation ?? null,
       computerUsePip: input.summaryComputerUsePip ?? null,
       executionLocation:
         activeThreadId && (!runtimeSession || runtimeLocation)
@@ -1531,7 +1531,7 @@ function ConnectedThreadStageContent({
       childMemberships,
       input.summaryComputerUsePip,
       input.summaryBrowserRows,
-      input.summaryScheduledAutomation,
+      input.summaryAutomation,
       input.summarySideChatRows,
       knownConversationsById,
       cwd,

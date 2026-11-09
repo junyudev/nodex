@@ -40,6 +40,9 @@ const DATA_SOURCE_ID = parseDataSourceId("source:board-dense");
 const CREATED_AT = "2026-01-01T00:00:00.000Z";
 
 class RecordingSeedPort implements ScenarioSeedPort {
+  async assessAutomationCheck(): Promise<never> {
+    throw new Error("Automation events are outside this fixture");
+  }
   async createCoordinatorSession(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
@@ -406,24 +409,24 @@ class RecordingSeedPort implements ScenarioSeedPort {
     throw new Error("Inbox inspection is not part of this scenario");
   }
 
-  async createScheduledTask(): Promise<never> {
-    throw new Error("Scheduled tasks are not part of this scenario");
+  async createAutomation(): Promise<never> {
+    throw new Error("Automations are not part of this scenario");
   }
 
-  async holdScheduledTaskNow(): Promise<never> {
+  async holdAutomationNow(): Promise<never> {
     throw new Error("Scheduled firings are not part of this scenario");
   }
 
-  async failScheduledRunNow(): Promise<never> {
+  async failAutomationRunNow(): Promise<never> {
     throw new Error("Scheduled failures are not part of this scenario");
   }
 
-  async skipScheduledFiring(): Promise<never> {
+  async skipAutomationDecision(): Promise<never> {
     throw new Error("Scheduled firings are not part of this scenario");
   }
 
-  async readScheduledTasks(): Promise<never> {
-    throw new Error("Scheduled task inspection is not part of this scenario");
+  async readAutomations(): Promise<never> {
+    throw new Error("Automation inspection is not part of this scenario");
   }
 }
 

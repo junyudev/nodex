@@ -255,7 +255,7 @@ fails closed.
 
 The rewritten root sequence is the single execution-permission contract for
 app-server start/resume, Turn sandbox projection, Core durable writable roots,
-hydration, fork, stable Project creation, Auto-fix, and scheduled automation.
+hydration, fork, stable Project creation, Auto-fix, and clock Automations.
 It is always the new primary followed by path-equivalent-deduplicated
 additional roots in their original order. The old primary checkout is not
 retained as a writable root. An explicitly selected cwd outside the source

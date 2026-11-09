@@ -91,6 +91,7 @@ function buildTranscriptBlock(
 function buildMcpBlock(
   input: {
     server?: string;
+    tool?: string;
     source?: CodexMcpToolCallSource | null;
     mcpAppResourceUri?: string;
     result?: NonNullable<CodexConversationItem["mcpToolCall"]>["result"];
@@ -100,14 +101,14 @@ function buildMcpBlock(
   const entry = buildConversationItem("mcp-1", {
     mcpToolCall: {
       callId: "mcp-1",
-      functionName: `${input.server ?? "docs"}__search`,
+      functionName: `${input.server ?? "docs"}__${input.tool ?? "search"}`,
       pluginId: null,
       readOnlyHint: null,
       mcpAppResourceUri: input.mcpAppResourceUri,
       source: input.source ?? null,
       invocation: {
         server: input.server ?? "docs",
-        tool: "search",
+        tool: input.tool ?? "search",
         arguments: {},
       },
       result: input.result ?? null,
@@ -332,6 +333,12 @@ describe("agent activity v2 type boundary", () => {
     expect(classifyThreadExecPatchWebActivityItem(emptyPatch)).toBe(null);
   });
 
+  test("keeps native Automation cards visible while their resolved action awaits a bounded read", () => {
+    const automation = buildMcpBlock({ server: "nodex_app", tool: "automations_update" });
+    expect(automation.entry.automationUpdate).toBeUndefined();
+    expect(classifyThreadMcpActivityItem(automation, null)?.grouping).toBe("standalone");
+  });
+
   test("groups computer-use and browser calls without an app widget", () => {
     const sourceCall = buildMcpBlock({
       server: "node_repl",
@@ -396,7 +403,7 @@ describe("agent activity v2 type boundary", () => {
       namespace: "unsupported_namespace",
       tool: "request_option_picker",
     });
-    const automation = buildDynamicBlock({ tool: "automation_update" });
+    const automation = buildDynamicBlock({ tool: "automations_update" });
 
     expect(classifyThreadDynamicActivityItem(handoff)?.grouping).toBe("standalone");
     expect(classifyThreadDynamicActivityItem(foreignHandoff)?.grouping).toBe("groupable");

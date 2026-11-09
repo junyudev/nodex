@@ -461,7 +461,7 @@ export const agentActivityV2DynamicAutomationUpdateItem = {
   type: "dynamicToolCall",
   id: "dynamic-automation-update",
   namespace: "codex_app",
-  tool: "automation_update",
+  tool: "automations_update",
   arguments: {
     mode: "view",
     id: "automation-request-fixture",

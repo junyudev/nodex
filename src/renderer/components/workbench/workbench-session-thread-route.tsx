@@ -27,7 +27,7 @@ import type {
   ThreadSummaryPanelAuxiliaryRow,
   ThreadSummaryPanelBrowserRow,
   ThreadSummaryPanelComputerUsePipState,
-  ThreadSummaryPanelScheduledAutomationRow,
+  ThreadSummaryPanelAutomationRow,
 } from "@/features/local-conversation/thread-stage-types";
 import { useAgentInstances } from "@/features/local-conversation/use-agent-instances";
 import { useNewChatExecutionDraft } from "@/features/local-conversation/use-new-chat-execution-draft";
@@ -101,11 +101,11 @@ function SharedConnectedSessionThread({
   summaryPanelContentShift,
   summarySideChatRows,
   summaryBrowserRows,
-  summaryScheduledAutomation,
+  summaryAutomation,
   summaryComputerUsePip,
   onOpenSummarySideChatRow,
   onOpenSummaryBrowserRow,
-  onOpenSummaryScheduledAutomation,
+  onOpenSummaryAutomation,
   onOpenProcessManager,
   onOpenBackgroundTerminalOutput,
   onToggleSummaryComputerUsePip,
@@ -190,13 +190,11 @@ function SharedConnectedSessionThread({
   summaryPanelContentShift?: MotionValue<number>;
   summarySideChatRows: readonly ThreadSummaryPanelAuxiliaryRow[];
   summaryBrowserRows: readonly ThreadSummaryPanelBrowserRow[];
-  summaryScheduledAutomation: ThreadSummaryPanelScheduledAutomationRow | null;
+  summaryAutomation: ThreadSummaryPanelAutomationRow | null;
   summaryComputerUsePip: ThreadSummaryPanelComputerUsePipState | null;
   onOpenSummarySideChatRow: NonNullable<ThreadStageActions["onOpenSummarySideChatRow"]>;
   onOpenSummaryBrowserRow: NonNullable<ThreadStageActions["onOpenSummaryBrowserRow"]>;
-  onOpenSummaryScheduledAutomation: NonNullable<
-    ThreadStageActions["onOpenSummaryScheduledAutomation"]
-  >;
+  onOpenSummaryAutomation: NonNullable<ThreadStageActions["onOpenSummaryAutomation"]>;
   onOpenProcessManager?: ThreadStageActions["onOpenProcessManager"];
   onOpenBackgroundTerminalOutput?: ThreadStageActions["onOpenBackgroundTerminalOutput"];
   onToggleSummaryComputerUsePip: NonNullable<ThreadStageActions["onToggleSummaryComputerUsePip"]>;
@@ -428,7 +426,7 @@ function SharedConnectedSessionThread({
         }),
       onOpenVoiceSettings,
       onOpenSummaryBrowserRow,
-      onOpenSummaryScheduledAutomation,
+      onOpenSummaryAutomation,
       onOpenSummaryGitReview,
       onOpenProcessManager,
       onOpenBackgroundTerminalOutput,
@@ -518,7 +516,7 @@ function SharedConnectedSessionThread({
     searchOpenTick,
     summarySideChatRows,
     summaryBrowserRows,
-    summaryScheduledAutomation,
+    summaryAutomation,
     summaryComputerUsePip,
     planSidePanelState,
     actions,
@@ -933,11 +931,11 @@ export function ProjectSessionThreadComposerDock({
       summaryPanelHideImmediately={false}
       summarySideChatRows={[]}
       summaryBrowserRows={[]}
-      summaryScheduledAutomation={null}
+      summaryAutomation={null}
       summaryComputerUsePip={null}
       onOpenSummarySideChatRow={noOp}
       onOpenSummaryBrowserRow={noOp}
-      onOpenSummaryScheduledAutomation={noOp}
+      onOpenSummaryAutomation={noOp}
       onToggleSummaryComputerUsePip={noOp}
       rightPanelComposerOverlayEnabled={false}
       rightPanelComposerOverlayTarget={null}

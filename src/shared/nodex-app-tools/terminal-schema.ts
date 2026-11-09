@@ -1,5 +1,6 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { toolInputSchema } from "./tool-input-schema";
 
 export const readSessionTerminalSchema = z.strictObject({
   terminalId: z
@@ -20,6 +21,6 @@ export const readSessionTerminalTool: Tool = {
   name: "read_session_terminal",
   description:
     "Read a bounded terminal buffer attached to your calling Session or Thread. If several terminals exist, returns candidates; select their exact terminalId. Includes exited terminals while their owner retains them. Never reads another Session or redirects to a globally focused terminal.",
-  inputSchema: z.toJSONSchema(readSessionTerminalSchema, { io: "input" }) as Tool["inputSchema"],
+  inputSchema: toolInputSchema(readSessionTerminalSchema),
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 };

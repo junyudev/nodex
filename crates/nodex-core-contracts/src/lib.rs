@@ -222,6 +222,7 @@ pub const MAX_MANAGED_BLOB_BYTES: u64 = 256 * 1024 * 1024;
 pub mod administration;
 pub mod agent;
 pub mod automation;
+pub mod automation_assessment;
 pub mod collection;
 pub mod database;
 pub mod database_configuration;

@@ -5,8 +5,8 @@ import { SettingsRouteShell } from "./workbench-settings-route-shell";
 const PendingWorktreeRoute = lazy(async () => ({
   default: (await import("./pending-worktree-route")).PendingWorktreeRoute,
 }));
-const ScheduledRoute = lazy(async () => ({
-  default: (await import("@/features/scheduled/scheduled-route")).ScheduledRoute,
+const AutomationsRoute = lazy(async () => ({
+  default: (await import("@/features/automations/automations-route")).AutomationsRoute,
 }));
 const PluginsRoute = lazy(async () => ({
   default: (await import("@/features/plugins/view/plugins-route")).PluginsRoute,
@@ -17,7 +17,7 @@ const InsightsRoute = lazy(async () => ({
 }));
 
 type SettingsProps = Omit<ComponentProps<typeof SettingsRouteShell>, "path">;
-type AutomationsProps = Omit<ComponentProps<typeof ScheduledRoute>, "path">;
+type AutomationsProps = Omit<ComponentProps<typeof AutomationsRoute>, "path">;
 type PluginsProps = Omit<ComponentProps<typeof PluginsRoute>, "path">;
 type PendingWorktreeProps = Omit<ComponentProps<typeof PendingWorktreeRoute>, "clientThreadId">;
 

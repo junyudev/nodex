@@ -198,7 +198,7 @@ The model menu lists every connected instance's models with its name, and one se
 enabled instance that is not usable yet (Sign in, Install, Connect or Unavailable). Each opens the
 same account surface in place, whose next step keeps focus the same way; Settings opens the
 instance. Manage providers opens the selected Agent's settings. A chat whose ACP Agent needs sign-in
-shows Sign in beside the Composer. Scheduled tasks offer enabled ACP instances beside Codex and
+shows Sign in beside the Composer. Automations offer enabled ACP instances beside Codex and
 Claude Code profiles. A Cron task lists the instance's advertised models once it is connected
 (otherwise it asks to connect the Agent in Settings) and sends only the options that model
 advertises.

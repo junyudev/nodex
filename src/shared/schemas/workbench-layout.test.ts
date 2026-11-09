@@ -28,6 +28,29 @@ import {
 } from "./workbench-layout";
 
 describe("WorkbenchLayoutSnapshotSchema", () => {
+  test("restores Scheduled destinations and their deep links as Automations", () => {
+    const restored = WorkbenchLayoutSnapshotSchema.parse({
+      ...createDefaultWorkbenchLayoutSnapshot(),
+      location: {
+        kind: "settings",
+        path: "/settings/general",
+        returnTo: {
+          kind: "scheduled",
+          path: "/scheduled/edit/kept?runSessionId=chat",
+          returnTo: { kind: "project", projectId: "alpha" },
+        },
+      },
+    });
+    expect(restored.location).toEqual({
+      kind: "settings",
+      path: "/settings/general",
+      returnTo: {
+        kind: "automations",
+        path: "/automations?runSessionId=chat&automationId=kept&automationMode=edit",
+        returnTo: { kind: "project", projectId: "alpha" },
+      },
+    });
+  });
   test("round-trips Session side and full view with Chat selected without a version change", () => {
     const scene = patchWorkbenchScenePanel(
       materializeInitialWorkbenchScene({ kind: "session", sessionId: "session-1" }),
@@ -591,7 +614,7 @@ describe("WorkbenchLayoutSnapshotSchema v9", () => {
     expect(WorkbenchLayoutSnapshotSchema.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
   });
 
-  test("Settings and Scheduled keep returning to Space", () => {
+  test("Settings and Automations keep returning to Space", () => {
     const parsed = WorkbenchLayoutSnapshotSchema.parse({
       ...createDefaultWorkbenchLayoutSnapshotV7(),
       version: 8,
@@ -599,13 +622,21 @@ describe("WorkbenchLayoutSnapshotSchema v9", () => {
       location: {
         kind: "settings",
         path: "/settings/general",
-        returnTo: { kind: "automations", path: "/automations/new", returnTo: { kind: "pages" } },
+        returnTo: {
+          kind: "automations",
+          path: "/automations?automationMode=create",
+          returnTo: { kind: "pages" },
+        },
       },
     });
     expect(parsed.location).toEqual({
       kind: "settings",
       path: "/settings/general",
-      returnTo: { kind: "automations", path: "/automations/new", returnTo: { kind: "library" } },
+      returnTo: {
+        kind: "automations",
+        path: "/automations?automationMode=create",
+        returnTo: { kind: "library" },
+      },
     });
   });
 
@@ -641,7 +672,7 @@ describe("WorkbenchLayoutSnapshotSchema locations", () => {
     {
       returnTo: {
         kind: "automations" as const,
-        path: "/automations/edit/a",
+        path: "/automations?automationId=a&automationMode=edit",
         returnTo: { kind: "library" as const },
       },
       home: "unchanged",
@@ -720,10 +751,10 @@ describe("WorkbenchLayoutSnapshotSchema locations", () => {
     ).toEqual({ kind: "project", projectId: "alpha" });
   });
 
-  test("legacy Scheduled starts Home from the route Scheduled returns to", () => {
+  test("legacy Automations starts Home from the route Automations returns to", () => {
     const location = {
       kind: "automations",
-      path: "/automations/edit/a",
+      path: "/automations?automationId=a&automationMode=edit",
       returnTo: { kind: "project", projectId: "alpha" },
     } as const;
     const parsed = WorkbenchLayoutSnapshotSchema.parse({
@@ -741,7 +772,7 @@ describe("WorkbenchLayoutSnapshotSchema locations", () => {
     },
     { returnTo: { kind: "pages" }, home: "empty" },
   ] as const)(
-    "decodes a saved Scheduled Home checkpoint from its $returnTo.kind origin",
+    "decodes a saved Automations Home checkpoint from its $returnTo.kind origin",
     ({ returnTo, home }) => {
       const parsed = WorkbenchLayoutSnapshotSchema.parse({
         ...createDefaultWorkbenchLayoutSnapshot(),

@@ -201,6 +201,9 @@ pub struct ActivityRow {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ActivitySubject {
+    Automation {
+        automation_id: String,
+        label: String,
     },
     Page {
         page_id: String,
@@ -216,6 +219,7 @@ pub enum ActivitySubject {
     Source {
         source_id: String,
         label: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -280,6 +284,10 @@ pub struct ThreadDeliveryBatch {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SourceRead {
+    EventAutomationWatching {
+        source_id: String,
+        repository: String,
+    },
     ChannelOutbox {
         #[serde(default)]
         include_terminal: bool,
@@ -334,6 +342,9 @@ pub enum SourceRead {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SourceReadValue {
+    EventAutomationWatching {
+        enabled: bool,
+    },
     ChannelOutbox {
         items: Vec<ChannelOutboxItem>,
     },

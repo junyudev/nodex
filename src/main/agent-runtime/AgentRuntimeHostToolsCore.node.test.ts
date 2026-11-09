@@ -45,11 +45,13 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
               Effect.tryPromise(() => client.workspaceRead(read)),
             apply: (input: ProjectWorkspaceApplyInput) =>
               Effect.tryPromise(() => client.workspaceApply(input)),
+          },
         } as never),
         Layer.mock(AgentRuntimeApplication, { runOutcome: () => Effect.succeed(null) } as never),
       );
       const call = (name: string, input: Record<string, unknown>) =>
         runWithScenarioCore(
+          runtime,
           Effect.gen(function* () {
             const execute = yield* make.pipe(Effect.provide(services));
             return yield* execute(
@@ -60,6 +62,12 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
                 generation: 1,
                 isActive: () => true,
                 capture: Effect.succeed(authority),
+              }),
+              name,
+              input,
+            );
+          }),
+        );
       const read = await call("automation_assessment_read", {
         request_id: command.request_id,
         generation: command.generation,
@@ -74,17 +82,23 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
             expect.objectContaining({ id, kind: "check" }),
           ),
         },
+      });
       const { kind: _, ...submission } = command;
       expect(await call("automation_assessment_submit", submission)).toMatchObject({
         structuredContent: { recorded: true, requeued: false },
+      });
+      expect(
         await client.workspaceRead({
           kind: "automation_assessments",
           read: { kind: "request", request_id: command.request_id },
+        }),
       ).toMatchObject({ value: { value: { request: null } } });
+
       // An independently discovered issue enters Inbox through the public Source boundary.
       const source = await client.workspaceRead({
         kind: "sources",
         read: { kind: "sources", after_id: null, limit: 100 },
+      });
       if (source.value.kind !== "sources" || source.value.value.kind !== "sources")
         throw new Error("Missing Source");
       const s = source.value.value.sources.find((s) => s.id === "github:automation-events")!;
@@ -97,6 +111,7 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
         expected_revision: s.revision,
         enabled: true,
         config: { ...s.config, discovery: { ...s.config.discovery, assigned: true } },
+      });
       const token = createUuidV7();
       await applySource({
         kind: "claim_source_partition",
@@ -105,9 +120,11 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
         partition: "repo:10",
         lease_token: token,
         lease_duration_ms: 120000,
+      });
       const positions = await client.workspaceRead({
         kind: "sources",
         read: { kind: "positions", source_id: s.id, after_partition: null, limit: 1 },
+      });
       if (positions.value.kind !== "sources" || positions.value.value.kind !== "positions")
         throw new Error("Missing position");
       const position = positions.value.value.positions[0]!;
@@ -123,6 +140,7 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
         state: "open",
         observation_revision: 0,
         observations: {},
+      };
       await applySource({
         kind: "ingest_source_batch",
         source_id: s.id,
@@ -132,6 +150,7 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
         lease_token: token,
         threads: [thread],
         triggers: [
+          {
             semantic_key: "github:github.com:10:assigned:778",
             kind: "discovery_assigned",
             occurred_at_ms: Date.now(),
@@ -141,14 +160,18 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
             text: "Please fix the docs",
             metadata: {},
             url: thread.url,
+          },
+        ],
         next_position: position.cursor,
         next_poll_at_ms: 0,
         quarantine: [],
+      });
       const inbox = await client.workspaceRead({
         kind: "inbox_window",
         scope: { kind: "library" },
         filter: "inbox",
         window: { after: null, first: 100 },
+      });
       if (inbox.value.kind !== "inbox_window") throw new Error("Missing Inbox");
       const entry = inbox.value.items.items.find((item) => item.source.kind === "github")!;
       expect(entry).toBeDefined();
@@ -166,9 +189,11 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
             prompt: "Fix the docs",
             additions: [],
             agent: null,
+          },
           execution_selection: {
             model_selection: { instanceId: "codex", model: "model" },
             interaction_mode: "default",
+          },
           session_id: createUuidV7(),
         },
       });
@@ -182,12 +207,16 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
       const outbox = await client.workspaceRead({
         kind: "sources",
         read: { kind: "channel_outbox", limit: 100, after_id: null, include_terminal: false },
+      });
       expect(outbox).toMatchObject({
         value: {
           kind: "sources",
+          value: {
             kind: "channel_outbox",
             items: [expect.objectContaining({ page_id: entry.page_id })],
+          },
         },
+      });
     },
   );
 });

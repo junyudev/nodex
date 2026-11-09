@@ -1,6 +1,10 @@
 import type { components } from "@nodex/core-protocol";
 import { z } from "zod";
 type Model = components["schemas"];
+export interface SourceOption {
+  readonly id: string;
+  readonly label: string;
+}
 export interface SourcesSettingsSnapshot {
   readonly source: Model["Source"] | null;
   readonly account: { readonly login: string; readonly id: string } | null;

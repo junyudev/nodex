@@ -70,7 +70,9 @@ const CARDS = {
     outcome: "ready",
     summary: "Copy link works from the Page menu; keyboard and clipboard checks passed.",
   },
+} as const satisfies Readonly<Record<string, CardRecipeFields & { readonly blockedBy?: string }>>;
 type CardKey = keyof typeof CARDS;
+type CardRecipeFields = {
   readonly title: string;
   readonly status: WorkflowStatus;
   readonly outcome?: "ready" | "blocked" | "failed" | "dropped";
@@ -83,6 +85,7 @@ type CardKey = keyof typeof CARDS;
   readonly branch?: string;
   readonly pullRequest?: number;
 };
+type CardRecipe = CardRecipeFields & { readonly blockedBy?: CardKey };
 
 export interface NodexCoordinatorScenarioFacts extends ScenarioFacts {
   readonly cardCount: number;

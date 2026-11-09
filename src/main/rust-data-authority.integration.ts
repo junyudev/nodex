@@ -1096,10 +1096,10 @@ describe("Electron native data authority", () => {
               {
                 pageId: copiedDataSourcePageId,
                 dataSourceId: primaryDataSource.dataSourceId,
-                propertyId: parseDataSourcePropertyId("assignee"),
+                propertyId: nativePropertyId,
                 edit: {
                   kind: "replace",
-                  expectedValueRevision: 1,
+                  expectedValueRevision: 0,
                   value: { kind: "text", value: "native-core" },
                 },
               },
@@ -1152,10 +1152,10 @@ describe("Electron native data authority", () => {
                 {
                   pageId: copiedDataSourcePageId,
                   dataSourceId: primaryDataSource.dataSourceId,
-                  propertyId: parseDataSourcePropertyId("assignee"),
+                  propertyId: nativePropertyId,
                   edit: {
                     kind: "replace",
-                    expectedValueRevision: 1,
+                    expectedValueRevision: 0,
                     value: { kind: "text", value: "native-core" },
                   },
                 },
@@ -1800,7 +1800,7 @@ describe("Electron native data authority", () => {
       expect(listCurrentProcessFiles()).not.toContain(databasePath);
       await withFinalDataApplications(runtime, ({ automation, workspace }) =>
         Effect.gen(function* () {
-          const definition = yield* automation.definitions.create({
+          const definition = yield* automation.automations.create({
             kind: "cron",
             name: "Electron Automation Application",
             projectId,
@@ -1814,10 +1814,10 @@ describe("Electron native data authority", () => {
             status: "ACTIVE",
             prompt: "Exercise the native Automation boundary.",
           });
-          expect(yield* automation.definitions.list()).toEqual(
+          expect(yield* automation.automations.list()).toEqual(
             expect.arrayContaining([expect.objectContaining({ id: definition.id })]),
           );
-          expect(yield* automation.definitions.dispatchNow(definition.id)).toMatchObject({
+          expect(yield* automation.automations.dispatchNow(definition.id)).toMatchObject({
             id: definition.id,
             lastRunAt: expect.any(Number),
           });
@@ -1892,7 +1892,7 @@ describe("Electron native data authority", () => {
             nextWakeAt: null,
             workToken: null,
           });
-          expect(yield* automation.definitions.delete(definition.id)).toMatchObject({
+          expect(yield* automation.automations.delete(definition.id)).toMatchObject({
             success: true,
             status: "deleted",
             deletedRunCount: 0,

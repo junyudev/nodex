@@ -116,6 +116,19 @@ type CodexPromptRailUserContent = Extract<ThreadItem, { readonly type: "userMess
 const textFromInput = (content: CodexPromptRailUserContent): string =>
   content.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("\n");
 
+const isHeartbeatPrompt = (prompt: string): boolean => {
+  const text = prompt.trim();
+  if (
+    text.startsWith("<heartbeat>") &&
+    text.endsWith("</heartbeat>") &&
+    /<current_time_iso>[\s\S]*?<\/current_time_iso>/i.test(text) &&
+    /<instructions>[\s\S]*?<\/instructions>/i.test(text)
+  )
+    return true;
+  // History written before heartbeat XML keeps its original attribution.
+  return prompt.includes("Sent by scheduled task");
+};
+
 /** Truncates by Unicode code point so surrogate pairs are never split. */
 export function truncateCodexPromptRailPreview(
   value: string,
@@ -167,7 +180,7 @@ export function buildCodexPromptRailPreviews(input: {
         itemId: item.id,
         promptPreview: truncateCodexPromptRailPreview(prompt, maximumCodePoints),
         responsePreview: "",
-        isHeartbeat: prompt.includes("Sent by scheduled task"),
+        isHeartbeat: isHeartbeatPrompt(prompt),
       });
       continue;
     }

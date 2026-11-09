@@ -1,4 +1,4 @@
-import type { CodexScheduledAutomationLaunch } from "@/lib/types";
+import type { AutomationMode } from "@/lib/types";
 import {
   createWorkbenchAutomationDraft,
   type WorkbenchAutomationDraft,
@@ -11,7 +11,7 @@ export interface WorkbenchAutomationTemplate {
   prompt: string;
   rrule: string;
   /** Work that changes the repository asks in the Inbox first; reports run on their own. */
-  launch?: CodexScheduledAutomationLaunch;
+  mode?: AutomationMode;
 }
 
 export const WORKBENCH_AUTOMATION_TEMPLATES: readonly WorkbenchAutomationTemplate[] = [
@@ -30,7 +30,7 @@ export const WORKBENCH_AUTOMATION_TEMPLATES: readonly WorkbenchAutomationTemplat
     prompt:
       "Bump outdated dependencies to their latest compatible versions, run the project's checks, and open one draft PR per ecosystem.\n\nRules:\n- Skip major upgrades unless they need no code changes; list the skipped ones with their breaking changes.\n- Keep each PR to version bumps and the minimal fixes they require.",
     rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
-    launch: "ask",
+    mode: "ask_first",
   },
   {
     id: "security-check",
@@ -111,7 +111,7 @@ export const WORKBENCH_AUTOMATION_TEMPLATES: readonly WorkbenchAutomationTemplat
     prompt:
       "Identify untested paths from recent changes; add focused tests and use $yeet for draft PRs.\n\nConstraints:\n- Keep scope tight to the changed areas; avoid broad refactors.\n- Prefer small, reliable tests that fail before and pass after.",
     rrule: "FREQ=DAILY;BYHOUR=15;BYMINUTE=0",
-    launch: "ask",
+    mode: "ask_first",
   },
   {
     id: "pre-release-check",
@@ -128,7 +128,7 @@ export const WORKBENCH_AUTOMATION_TEMPLATES: readonly WorkbenchAutomationTemplat
     prompt:
       "Update AGENTS.md with newly discovered workflows and commands.\n\nConstraints:\n- Keep edits minimal, accurate, and grounded in repo usage.\n- Do not touch unrelated sections or auto-generated files.\n- If you are unsure, prefer adding a TODO with a short note rather than inventing.",
     rrule: "FREQ=WEEKLY;BYDAY=FR;BYHOUR=11;BYMINUTE=0",
-    launch: "ask",
+    mode: "ask_first",
   },
   {
     id: "weekly-pr-summary",
@@ -177,7 +177,7 @@ export const WORKBENCH_AUTOMATION_TEMPLATES: readonly WorkbenchAutomationTemplat
     prompt:
       "Update the changelog with this week's highlights and key PR links.\n\nConstraints:\n- Only include items supported by repo history.\n- Keep structure simple and consistent with existing changelog format.",
     rrule: "FREQ=WEEKLY;BYDAY=FR;BYHOUR=16;BYMINUTE=0",
-    launch: "ask",
+    mode: "ask_first",
   },
 ] as const;
 
@@ -190,6 +190,6 @@ export function createWorkbenchAutomationDraftFromTemplate(
     name: template.name,
     prompt: template.prompt,
     rrule: template.rrule,
-    launch: template.launch ?? draft.launch,
+    mode: template.mode ?? draft.mode,
   };
 }

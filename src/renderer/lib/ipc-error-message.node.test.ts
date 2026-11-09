@@ -6,7 +6,7 @@ describe("readableIpcError", () => {
     expect(
       readableIpcError(
         new Error(
-          "Error invoking remote method 'codex:scheduled-automations:create': Error: This Agent is turned off. Turn it on in Settings.",
+          "Error invoking remote method 'automations:create': Error: This Agent is turned off. Turn it on in Settings.",
         ),
       ),
     ).toBe("This Agent is turned off. Turn it on in Settings.");

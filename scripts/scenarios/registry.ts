@@ -1,3 +1,4 @@
+import { automationEventsScenario } from "./scenarios/automation-events";
 import { nodexCoordinatorScenario } from "./scenarios/nodex-coordinator";
 import {
   structuralInteractionsScenario,
@@ -24,11 +25,12 @@ import { libraryFilesScenario } from "./scenarios/library-files";
 import { pageFileProvenanceScenario } from "./scenarios/page-file-provenance";
 import { inboxTriageScenario } from "./scenarios/inbox-triage";
 import { inboxSuggestionSpendScenario } from "./scenarios/inbox-suggestion-spend";
-import { scheduledAskInInboxScenario } from "./scenarios/scheduled-ask-in-inbox";
+import { automationsAskInInboxScenario } from "./scenarios/automations-ask-in-inbox";
 import { spaceContentScenario } from "./scenarios/space-content";
 import { windowTitlesScenario } from "./scenarios/window-titles";
 
 const scenarios = new Map<string, ScenarioDomainRecipe>([
+  [automationEventsScenario.id, automationEventsScenario],
   [nodexCoordinatorScenario.id, nodexCoordinatorScenario],
   [structuralInteractionsScenario.id, structuralInteractionsScenario],
   [structuralInteractionsPressureScenario.id, structuralInteractionsPressureScenario],
@@ -52,7 +54,7 @@ const scenarios = new Map<string, ScenarioDomainRecipe>([
   [libraryFilesScenario.id, libraryFilesScenario],
   [pageFileProvenanceScenario.id, pageFileProvenanceScenario],
   [inboxTriageScenario.id, inboxTriageScenario],
-  [scheduledAskInInboxScenario.id, scheduledAskInInboxScenario],
+  [automationsAskInInboxScenario.id, automationsAskInInboxScenario],
   [inboxSuggestionSpendScenario.id, inboxSuggestionSpendScenario],
   [spaceContentScenario.id, spaceContentScenario],
   [windowTitlesScenario.id, windowTitlesScenario],

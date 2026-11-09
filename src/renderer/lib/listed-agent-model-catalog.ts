@@ -55,7 +55,7 @@ const LISTED_EFFORT_OPTION_ID = "reasoningEffort";
 
 /**
  * A model picker catalog for one Agent whose models arrive as a plain list, such as a remote
- * Codex host or a scheduled task. Codex and Claude efforts are native controls in the picker;
+ * Codex host or an automation. Codex and Claude efforts are native controls in the picker;
  * any other Agent's advertised effort levels become its Effort option.
  */
 export function listedModelCatalog(input: {

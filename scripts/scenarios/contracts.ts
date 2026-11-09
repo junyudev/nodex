@@ -9,8 +9,8 @@ import type {
   InboxWindow,
 } from "../../src/shared/inbox";
 import type {
-  CodexScheduledAutomation,
-  CodexScheduledAutomationCreateInput,
+  Automation,
+  AutomationCreateInput,
   CodexThreadActiveFlag,
   CodexThreadStatusType,
   PageChatActivitySummaryResult,
@@ -204,6 +204,7 @@ export interface ScenarioPageWorkspaceSeed {
 }
 
 export interface ScenarioSeedPort {
+  assessAutomationCheck(coordinatorSessionId: string, sequence: number): Promise<void>;
   recordSourceProblem(): Promise<string>;
   /** Holds Agent work for a scope as a person's Pause does. Core seeding only. */
   pauseWork(
@@ -318,6 +319,12 @@ export interface ScenarioSeedPort {
   readInbox(scope?: InboxScope): Promise<InboxWindow>;
   /** One Inbox's handled messages as Activity holds them: by their newest decision, once each. */
   readHandledMessages(scope?: InboxScope): Promise<readonly InboxItem[]>;
+  /** Automation transitions use Core and the Inbox application without starting Agents. */
+  createAutomation(input: AutomationCreateInput): Promise<Automation>;
+  holdAutomationNow(automationId: string): Promise<{ readonly pageId: string }>;
+  failAutomationRunNow(automationId: string): Promise<void>;
+  skipAutomationDecision(pageId: string): Promise<void>;
+  readAutomations(): Promise<readonly Automation[]>;
 }
 
 export interface ScenarioManifest {

@@ -47,7 +47,7 @@ import { INBOX_EASE_OUT } from "./inbox-stream-item";
 import { InboxOutcomeLine } from "./inbox-outcome";
 import {
   describeInboxAction,
-  describeInboxFiring,
+  describeInboxAutomationDecision,
   inboxPageRoutingContext,
   inboxRowAction,
   inboxRowOffers,
@@ -57,13 +57,13 @@ import {
   type InboxRowEdit,
   type InboxRowOffers,
 } from "./inbox-presentation";
-import { scheduledTaskChatAgent, useInboxFiringTask } from "./inbox-firing";
+import { automationChatAgent, useInboxAutomationDecisionTask } from "./inbox-automation-decision";
 import { useInboxOutcome } from "./use-inbox-outcome";
 import {
   InboxDispatchEditor,
   draftForInboxItem,
   type InboxDispatchDraft,
-  type InboxDispatchFiring,
+  type InboxDispatchAutomationDecision,
 } from "./inbox-dispatch-editor";
 import type { InboxActions } from "./use-inbox-actions";
 import { InboxAgentLabel, InboxAgentPicker, type InboxAgents } from "./inbox-agent-picker";
@@ -267,8 +267,8 @@ function SuggestionWhy({
           Suggested by {proposal.producedBy}
         </span>
       ) : null}
-      {proposal.origin === "schedule" ? (
-        <span className="text-token-description-foreground">From your scheduled task</span>
+      {proposal.origin === "automation" ? (
+        <span className="text-token-description-foreground">From your automation</span>
       ) : null}
     </>
   );
@@ -328,7 +328,7 @@ function ChatAgentMenu({
  */
 function SuggestionStrip({
   proposal,
-  firingLine,
+  decisionLine,
   dropped,
   onToggleAddition,
   planSteps,
@@ -336,6 +336,8 @@ function SuggestionStrip({
   readonly proposal: InboxProposal;
   /** The cards a plan would create, laid out by the caller that knows Projects and Agents. */
   readonly planSteps?: ReactNode;
+  /** For an automation's run, how it will go; its instructions are the message above. */
+  readonly decisionLine: string | null;
   /** Additions unchecked on this row. */
   readonly dropped: readonly number[];
   readonly onToggleAddition: (index: number) => void;
@@ -347,13 +349,13 @@ function SuggestionStrip({
     ? "text-token-description-foreground [--foreground:var(--color-token-description-foreground)]"
     : "text-token-foreground";
   const action = proposal.action;
-  if (action.type === "run_task") {
+  if (action.type === "execute_decision") {
     return (
       <p
         data-testid="inbox-suggestion"
         className="min-w-0 truncate text-[13px] leading-5 text-token-description-foreground"
       >
-        {firingLine ?? proposal.summary}
+        {decisionLine ?? proposal.summary}
       </p>
     );
   }
@@ -439,7 +441,7 @@ export function InboxTriage({
   members = NO_MEMBERS,
   onOpenPage,
   onOpenSession,
-  onOpenScheduledTask,
+  onOpenAutomation,
   decided = null,
   onReply,
 }: {
@@ -454,8 +456,8 @@ export function InboxTriage({
   readonly members?: readonly InboxGroupMember[];
   readonly onOpenPage?: (pageId: string) => void;
   readonly onOpenSession?: (sessionId: string) => void;
-  /** Opens a scheduled task, where it changes for every run. */
-  readonly onOpenScheduledTask?: (automationId: string) => void;
+  /** Opens an automation, where it changes for every run. */
+  readonly onOpenAutomation?: (automationId: string) => void;
   readonly projects: readonly Project[];
   /** What a new chat can run on, and the Inbox's own choice. */
   readonly agents: InboxAgents;
@@ -480,27 +482,26 @@ export function InboxTriage({
   // What the row changed on this suggestion before deciding; another suggestion starts afresh.
   const now = new Date(useInboxClock());
   const [rowEdit, setRowEdit] = useState<InboxRowEdit | null>(null);
-  const task = useInboxFiringTask(item);
-  const taskAgent = task ? scheduledTaskChatAgent(task) : null;
-  const firing: InboxDispatchFiring | null = item.firing
+  const task = useInboxAutomationDecisionTask(item);
+  const taskAgent = task ? automationChatAgent(task) : null;
+  const automationDecision: InboxDispatchAutomationDecision | null = item.automationDecision
     ? {
-        automationId: item.firing.automationId,
-        dispatchId: item.firing.dispatchId,
+        automationId: item.automationDecision.automationId,
         taskAgent,
         heartbeat: task?.kind === "heartbeat",
       }
     : null;
   const proposedAction = item.proposal?.action;
   const suggested =
-    proposedAction?.type === "new_chat" || proposedAction?.type === "run_task"
+    proposedAction?.type === "new_chat" || proposedAction?.type === "execute_decision"
       ? proposedAction
       : null;
   const edit =
     rowEdit && item.proposal && rowEdit.proposalId === item.proposal.proposalId ? rowEdit : null;
   // The suggestion as the row has it, once a model is chosen or an addition dropped here.
   const rowAction = item.proposal ? inboxRowAction(item.proposal.action, edit) : null;
-  // A new chat starts from the Inbox's own model; a scheduled run from its task's.
-  const baseAgent = suggested?.type === "run_task" ? taskAgent : agents.settings.chatAgent;
+  // A new chat starts from the Inbox's own model; an Automation admission from its Automation's.
+  const baseAgent = suggested?.type === "execute_decision" ? taskAgent : agents.settings.chatAgent;
   const chatAgent =
     (edit?.agent !== undefined ? edit.agent : suggested?.agent) ??
     baseAgent ??
@@ -536,7 +537,7 @@ export function InboxTriage({
   const done = () => void actions.setState([item.pageId], "done");
   const keep = () => void actions.keep([item.pageId]);
   const handleManually = () =>
-    onManualDraftChange(draftForInboxItem(item, inboxProjectId, rowAction, firing));
+    onManualDraftChange(draftForInboxItem(item, inboxProjectId, rowAction, automationDecision));
   const menuNode = menu(offers, handleManually);
   const editAction = (
     <InboxIconAction
@@ -558,10 +559,10 @@ export function InboxTriage({
     />
   );
   const keepAction = <InboxIconAction label="Keep" icon={ArchiveIcon} onClick={keep} />;
-  // Done with a scheduled task's waiting run means it does not run this time.
+  // Done with an automation's waiting run means it does not run this time.
   const doneAction = offers.done ? (
     <InboxIconAction
-      label={item.firing ? "Skip this run" : "Mark done"}
+      label={item.automationDecision ? "Skip this run" : "Mark done"}
       icon={CheckmarkIcon}
       onClick={done}
     />
@@ -651,7 +652,7 @@ export function InboxTriage({
               projects={projects}
               agents={agents}
               inboxProjectId={inboxProjectId}
-              onEditTask={onOpenScheduledTask}
+              onEditTask={onOpenAutomation}
               onCancel={() => onManualDraftChange(null)}
               onSubmit={(action, chat) =>
                 manualDraft.proposal
@@ -705,9 +706,10 @@ export function InboxTriage({
           chat: proposal.chat,
         });
         const newChat = proposal.action.type === "new_chat";
-        const runTask = proposal.action.type === "run_task";
+        const executesDecision = proposal.action.type === "execute_decision";
         // A Heartbeat's run continues its chat on that chat's own Agent.
-        const choosesModel = newChat || (runTask && taskAgent !== null && !firing?.heartbeat);
+        const choosesModel =
+          newChat || (executesDecision && taskAgent !== null && !automationDecision?.heartbeat);
         const outdated = proposal.outdated;
         const askAgain = () => void actions.requestSuggestion(proposal.pageIds, proposal.basis);
         // An outdated suggestion can still be confirmed as it reads, but asking again is the
@@ -729,7 +731,11 @@ export function InboxTriage({
               {groupMembers(proposal)}
               <SuggestionStrip
                 proposal={proposal}
-                firingLine={item.firing ? describeInboxFiring(item.firing, task, now) : null}
+                decisionLine={
+                  item.automationDecision
+                    ? describeInboxAutomationDecision(item.automationDecision, task, now)
+                    : null
+                }
                 dropped={edit?.dropped ?? []}
                 onToggleAddition={(index) => toggleAddition(proposal.proposalId, index)}
                 planSteps={
@@ -757,7 +763,7 @@ export function InboxTriage({
                     onClick={askAgain}
                   />
                 ) : null}
-                {proposal.action.type === "keep" || runTask ? null : keepAction}
+                {proposal.action.type === "keep" || executesDecision ? null : keepAction}
                 {doneAction}
               </InboxIconActions>
               <Decision
@@ -779,7 +785,7 @@ export function InboxTriage({
                       changed={
                         !sameInboxAgentChoice(chatAgent, baseAgent ?? agents.settings.chatAgent)
                       }
-                      label={runTask ? "Choose the model for this run" : undefined}
+                      label={executesDecision ? "Choose the model for this run" : undefined}
                       variant={variant}
                       onChange={(next) => chooseAgent(proposal.proposalId, next)}
                     />
@@ -846,7 +852,7 @@ export function InboxTriage({
               <Notice tone="error">
                 {failure === "unknown"
                   ? "Delivery not confirmed"
-                  : model.proposal.action.type === "run_task"
+                  : model.proposal.action.type === "execute_decision"
                     ? "Couldn’t run"
                     : "Couldn’t deliver"}{" "}
                 — {model.message}
@@ -857,7 +863,7 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menuNode}
-                {item.firing ? null : keepAction}
+                {item.automationDecision ? null : keepAction}
                 {doneAction}
               </InboxIconActions>
               {failure === "unknown" ? (
@@ -897,11 +903,11 @@ export function InboxTriage({
           ),
         };
       }
-      case "firing-withdrawn":
+      case "decision-withdrawn":
         return {
           strip: (
-            <Settle id="firing-withdrawn">
-              <Notice tone="quiet">Its scheduled task was deleted, so it can’t run</Notice>
+            <Settle id="decision-withdrawn">
+              <Notice tone="quiet">Its automation was deleted, so it can’t run</Notice>
             </Settle>
           ),
           actions: (

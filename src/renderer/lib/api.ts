@@ -955,10 +955,6 @@ export function subscribeInboxChanges(
   return resolveRendererTransport().subscribeInboxChanges?.(callback) ?? (() => {});
 }
 
-export function subscribeMobileAccessChanges(callback: () => void): () => void {
-  return resolveRendererTransport().subscribeMobileAccessChanges?.(callback) ?? (() => {});
-}
-
 export function subscribeProjectChanges(
   callback: (event: import("../../shared/ipc-api").ProjectsChangeEvent) => void,
 ): () => void {
@@ -1001,16 +997,16 @@ export function subscribeCommandKeymapChanges(
   return resolveRendererTransport().subscribeCommandKeymapChanges(callback);
 }
 
-export function subscribeCodexScheduledAutomationChanges(
-  callback: (event: import("./types").CodexScheduledAutomationChangedEvent) => void,
+export function subscribeAutomationChanges(
+  callback: (event: import("./types").AutomationChangedEvent) => void,
 ): () => void {
-  return resolveRendererTransport().subscribeCodexScheduledAutomationChanges(callback);
+  return resolveRendererTransport().subscribeAutomationChanges(callback);
 }
 
-export function subscribeCodexAutomationRunsUpdates(
-  callback: (event: import("./types").CodexAutomationRunsUpdatedEvent) => void,
+export function subscribeAutomationRunsUpdates(
+  callback: (event: import("./types").AutomationRunsUpdatedEvent) => void,
 ): () => void {
-  return resolveRendererTransport().subscribeCodexAutomationRunsUpdates(callback);
+  return resolveRendererTransport().subscribeAutomationRunsUpdates(callback);
 }
 
 export function subscribeCodexHooksChanged(

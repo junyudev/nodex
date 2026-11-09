@@ -41,6 +41,7 @@ const harness = (options: {
   readonly outcomeUnavailable?: boolean;
   readonly sideChatSource?: AgentRuntimeNotificationSession["sideChatSource"];
   readonly unreadableSessionId?: string;
+  readonly automationPolicy?: "failed_runs_only";
 }) => {
   const requests: string[] = [];
   const outcomeInputs: unknown[] = [];
@@ -56,6 +57,10 @@ const harness = (options: {
             ? null
             : {
                 status: options.runStatus ?? "completed",
+                userMessageId:
+                  (input as { runId?: string }).runId === "run:automation"
+                    ? "message:automation"
+                    : "message:person",
                 finalAssistantItemId: options.reply === null ? null : "item:reply",
               };
         }
@@ -107,6 +112,10 @@ const harness = (options: {
               sideChatSource: sessionId === "session:a" ? (options.sideChatSource ?? null) : null,
             }),
       markUnread: (sessionId) => Effect.sync(() => unread.push(sessionId)),
+      readAutomationNotificationPolicy: (messageId) =>
+        Effect.succeed(
+          messageId === "message:automation" ? (options.automationPolicy ?? null) : null,
+        ),
       publish: (event) => {
         if (event.type === "turn-completed") unreadAtCompletion.push([...unread]);
         if (event.type === "user-input-requested") unreadAtQuestion.push([...unread]);
@@ -548,4 +557,20 @@ it.effect("the ended Run's heartbeat decision still suppresses completion", () =
     assert.strictEqual(h.events.length, 1);
     assert.deepEqual(h.shown, []);
   }),
+);
+
+it.effect.each(["completed", "interrupted", "failed"] as const)(
+  "Automation notification policy binds only the exact %s Turn",
+  (status) =>
+    Effect.gen(function* () {
+      const h = harness({ runStatus: status, automationPolicy: "failed_runs_only" });
+      yield* h.deliver([
+        transition(activity("running"), null, { runId: "run:automation", status }),
+        transition(activity("running"), null, { runId: "run:person", status }),
+      ]);
+      assert.deepEqual(
+        h.shown.map((notice) => notice.id),
+        status === "failed" ? ["turn-run:automation", "turn-run:person"] : ["turn-run:person"],
+      );
+    }),
 );

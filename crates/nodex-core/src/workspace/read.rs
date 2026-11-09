@@ -59,6 +59,11 @@ pub(super) fn read(
     request: ProjectWorkspaceRead,
 ) -> Result<ProjectWorkspaceReadValue, StoreError> {
     match request {
+        ProjectWorkspaceRead::AutomationAssessments { read } => {
+            Ok(ProjectWorkspaceReadValue::AutomationAssessments {
+                value: super::automation_assessment::read(connection, context, library_id, read)?,
+            })
+        }
         ProjectWorkspaceRead::Sources { read } => Ok(ProjectWorkspaceReadValue::Sources {
             value: super::sources::read(connection, library_id, read)?,
         }),

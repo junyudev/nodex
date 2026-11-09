@@ -60,7 +60,14 @@ describe("getWorkbenchPrimaryDestination", () => {
     [{ kind: "project", projectId: "alpha" }, "home"],
     [{ kind: "session", sessionId: "session-a", projectContextId: null }, "home"],
     [{ kind: "inbox" }, "home"],
-    [{ kind: "automations", path: "/automations/new", returnTo: { kind: "library" } }, "scheduled"],
+    [
+      {
+        kind: "automations",
+        path: "/automations?automationMode=create",
+        returnTo: { kind: "library" },
+      },
+      "automations",
+    ],
     [{ kind: "plugins", path: "/plugins", returnTo: { kind: "library" } }, "plugins"],
     [{ kind: "insights", path: "/insights", returnTo: { kind: "library" } }, "insights"],
     [
@@ -91,11 +98,11 @@ describe("getWorkbenchPrimaryDestination", () => {
         path: "/settings/general",
         returnTo: {
           kind: "automations",
-          path: "/automations/edit/a",
+          path: "/automations?automationId=a&automationMode=edit",
           returnTo: { kind: "library" },
         },
       },
-      "scheduled",
+      "automations",
     ],
   ])("derives %s from the current route", (location, destination) => {
     expect(getWorkbenchPrimaryDestination(location)).toBe(destination);

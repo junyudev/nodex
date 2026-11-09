@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import {
+  flattenToolInputSchema,
+  toolInputSchemaProblem,
+} from "@nodex/agent-runtime/tool-input-schema";
 import { z } from "zod";
 import { appToolCatalog } from "./catalog";
 import { appToolArgumentSchemas } from "./argument-schemas";
@@ -118,8 +122,12 @@ describe("hosted tool schema honesty", () => {
     it(`${tool.name} publishes its executable input constraints`, () => {
       const schema = appToolArgumentSchemas[tool.name]!;
       expect(hiddenConstraints(schema)).toEqual([]);
+      // Every provider must be able to call it; a union validator publishes its one-object cover.
+      expect(toolInputSchemaProblem(tool.inputSchema)).toBeUndefined();
       const { $schema: _publishedDialect, ...published } = tool.inputSchema;
-      const { $schema: _validatorDialect, ...expected } = z.toJSONSchema(schema, { io: "input" });
+      const { $schema: _validatorDialect, ...expected } = flattenToolInputSchema(
+        z.toJSONSchema(schema, { io: "input" }),
+      );
       if (schema === sqlQuerySchema) {
         const expand = (document: Record<string, unknown>): unknown => {
           const definitions = document.$defs as Record<string, unknown> | undefined;

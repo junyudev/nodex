@@ -9,7 +9,6 @@ import { footerText } from "../shared/thread-footer-i18n";
 import { HookStatsIndicator } from "../shared/hook-stats-indicator";
 import { useCallback, useContext, useEffect, type CSSProperties, type ReactNode } from "react";
 import { motion } from "motion/react";
-import { NodexTooltip } from "@/components/ui/tooltip";
 import { SendIcon } from "@/components/shared/icons/generic-icons";
 import {
   ForkIcon,
@@ -53,6 +52,7 @@ import { getToolComponent, type ToolComponentProps } from "../shared/tools/get-t
 import { GenericToolCall } from "../shared/tools/generic-tool-call";
 import { NativeSessionHandoffToolCall } from "../shared/tools/native-session-handoff-tool-call";
 import { NativeAutomationToolCall } from "../shared/tools/native-automation-tool-call";
+import { isNativeAutomationUpdate } from "../../projection/tool-metadata/native-automation-update";
 import { CommandToolCall } from "../shared/tools/command-tool-call";
 import { FileChangeToolCall } from "../shared/tools/file-change-tool-call";
 import { WebSearchToolCall } from "../shared/tools/web-search-tool-call";
@@ -155,7 +155,7 @@ export interface ThreadLeafBlockProps {
   onOpenSideChat?: ThreadStageActions["onOpenSideChat"];
   onOpenThread?: ThreadStageActions["onOpenThread"];
   onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
-  onOpenSummaryScheduledAutomation?: ThreadStageActions["onOpenSummaryScheduledAutomation"];
+  onOpenSummaryAutomation?: ThreadStageActions["onOpenSummaryAutomation"];
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenPlanInSidePanel?: ThreadStageActions["onOpenPlanInSidePanel"];
   onClosePlanSidePanel?: ThreadStageActions["onClosePlanSidePanel"];
@@ -181,7 +181,7 @@ export interface ThreadSpecialBlockProps {
   onOpenSideChat?: ThreadStageActions["onOpenSideChat"];
   onOpenThread?: ThreadStageActions["onOpenThread"];
   onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
-  onOpenSummaryScheduledAutomation?: ThreadStageActions["onOpenSummaryScheduledAutomation"];
+  onOpenSummaryAutomation?: ThreadStageActions["onOpenSummaryAutomation"];
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenPlanInSidePanel?: ThreadStageActions["onOpenPlanInSidePanel"];
   onClosePlanSidePanel?: ThreadStageActions["onClosePlanSidePanel"];
@@ -293,7 +293,7 @@ function renderCollapsedActivityEntry({
   onOpenTurnDiffReview,
   onOpenTurnDiffFileInSidePanel,
   onOpenThread,
-  onOpenSummaryScheduledAutomation,
+  onOpenSummaryAutomation,
   onOpenMcpAppSidePanel,
   turnDiffHoverPreviewDisabled,
 }: {
@@ -306,7 +306,7 @@ function renderCollapsedActivityEntry({
   onOpenTurnDiffReview?: (intent: ReviewOpenIntent) => void | Promise<void>;
   onOpenTurnDiffFileInSidePanel?: ThreadStageActions["onOpenTurnDiffFileInSidePanel"];
   onOpenThread?: ThreadStageActions["onOpenThread"];
-  onOpenSummaryScheduledAutomation?: ThreadStageActions["onOpenSummaryScheduledAutomation"];
+  onOpenSummaryAutomation?: ThreadStageActions["onOpenSummaryAutomation"];
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
   turnDiffHoverPreviewDisabled?: boolean;
 }) {
@@ -319,7 +319,7 @@ function renderCollapsedActivityEntry({
     onOpenTurnDiffReview,
     onOpenTurnDiffFileInSidePanel,
     onOpenThread,
-    onOpenSummaryScheduledAutomation,
+    onOpenSummaryAutomation,
     onOpenMcpAppSidePanel,
     turnDiffHoverPreviewDisabled,
   };
@@ -438,7 +438,7 @@ export function ThreadAgentActivityGroupBlock({
   onOpenTurnDiffReview,
   onOpenTurnDiffFileInSidePanel,
   onOpenThread,
-  onOpenSummaryScheduledAutomation,
+  onOpenSummaryAutomation,
   onOpenMcpAppSidePanel,
   turnDiffHoverPreviewDisabled,
 }: ThreadSpecialBlockProps) {
@@ -507,7 +507,7 @@ export function ThreadAgentActivityGroupBlock({
               onOpenTurnDiffReview,
               onOpenTurnDiffFileInSidePanel,
               onOpenThread,
-              onOpenSummaryScheduledAutomation,
+              onOpenSummaryAutomation,
               onOpenMcpAppSidePanel,
               turnDiffHoverPreviewDisabled,
             })}
@@ -570,7 +570,7 @@ export function ThreadToolSurfaceBlock({
   threadCwd,
   onOpenTurnDiffFileInSidePanel,
   onOpenThread,
-  onOpenSummaryScheduledAutomation,
+  onOpenSummaryAutomation,
   onOpenMcpAppSidePanel,
 }: ThreadLeafBlockProps) {
   const block = useCodexTranscriptBlock(inputBlock);
@@ -580,7 +580,7 @@ export function ThreadToolSurfaceBlock({
   if (
     item.semanticKind === "mcpToolCall" &&
     threadDetailLevel === "STEPS_PROSE" &&
-    item.automationUpdate?.source !== "nativeMcp"
+    !isNativeAutomationUpdate(item)
   ) {
     return null;
   }
@@ -598,7 +598,7 @@ export function ThreadToolSurfaceBlock({
         automaticApprovalReviews={block.automaticApprovalReviews ?? []}
         showDiffDetails={threadDetailLevel !== "STEPS_PROSE"}
         onOpenFileInSidePanel={onOpenTurnDiffFileInSidePanel}
-        onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
+        onOpenSummaryAutomation={onOpenSummaryAutomation}
         onOpenThread={onOpenThread}
         onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
       />
@@ -848,7 +848,6 @@ function UserMessageDeliveryMarkers({
 }) {
   const origin = entry.userMessageOrigin;
   const answeredBy = entry.questionReplies ? entry.respondedBy : undefined;
-  const queued = entry.userInputIntent === "queued";
   const attribution = answeredBy ? (
     <ConversationAttribution
       label="Answered by"
@@ -862,7 +861,7 @@ function UserMessageDeliveryMarkers({
       onOpenThread={onOpenThread}
     />
   ) : origin?.kind === "automation" ? (
-    <span>Sent by automation</span>
+    <span>Sent by Automation</span>
   ) : origin?.kind === "nodex" ? (
     <span>Sent by Nodex</span>
   ) : null;
@@ -874,11 +873,6 @@ function UserMessageDeliveryMarkers({
       data-user-message-intent={entry.userInputIntent}
     >
       {attribution}
-      {queued ? (
-        <NodexTooltip tooltipContent="Queued behind the active turn">
-          <span>Queued</span>
-        </NodexTooltip>
-      ) : null}
     </div>
   );
 }

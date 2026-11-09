@@ -519,6 +519,9 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
   async reportPageWork(): Promise<never> {
     throw new Error("Agent reports are seeded only through Core");
   }
+  async assessAutomationCheck(): Promise<never> {
+    throw new Error("Automation assessment seeding requires Core");
+  }
   async recordSourceProblem(): Promise<never> {
     throw new Error("Source problems are seeded through Core");
   }
@@ -603,24 +606,24 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     throw new Error("Inbox delivery is seeded only through Core");
   }
 
-  async createScheduledTask(): Promise<never> {
-    throw new Error("Scheduled tasks are seeded only through Core");
+  async createAutomation(): Promise<never> {
+    throw new Error("Automations are seeded only through Core");
   }
 
-  async holdScheduledTaskNow(): Promise<never> {
+  async holdAutomationNow(): Promise<never> {
     throw new Error("Scheduled firings are seeded only through Core");
   }
 
-  async failScheduledRunNow(): Promise<void> {
+  async failAutomationRunNow(): Promise<void> {
     throw new Error("Scheduled failures are seeded only through Core");
   }
 
-  async skipScheduledFiring(): Promise<void> {
+  async skipAutomationDecision(): Promise<void> {
     throw new Error("Scheduled firings are seeded only through Core");
   }
 
-  async readScheduledTasks() {
-    return (await this.#invoke("codex:scheduled-automations:list")).items;
+  async readAutomations() {
+    return (await this.#invoke("automations:list")).items;
   }
 
   async readInbox(scope: InboxScope = LIBRARY_INBOX): Promise<InboxWindow> {

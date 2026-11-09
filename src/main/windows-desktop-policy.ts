@@ -37,9 +37,9 @@ export const windowsQuitWarning = (input: {
   readonly scheduledTasks: boolean;
 }): string | null => {
   if (input.activeChats && input.scheduledTasks)
-    return "Active chats on this computer will be interrupted and scheduled tasks won’t run while Nodex is closed.";
+    return "Active chats on this computer will be interrupted and Automations won’t run while Nodex is closed.";
   if (input.activeChats) return "Active chats on this computer will be interrupted.";
-  if (input.scheduledTasks) return "Scheduled tasks won’t run while Nodex is closed.";
+  if (input.scheduledTasks) return "Automations won’t run while Nodex is closed.";
   return null;
 };
 

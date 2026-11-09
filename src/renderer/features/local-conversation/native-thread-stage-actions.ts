@@ -20,7 +20,7 @@ export function composeNativeThreadStageActions(
     onOpenNewThreadLocalEnvironmentsSettings: host.onOpenNewThreadLocalEnvironmentsSettings,
     onOpenVoiceSettings: host.onOpenVoiceSettings,
     onOpenSummaryBrowserRow: host.onOpenSummaryBrowserRow,
-    onOpenSummaryScheduledAutomation: host.onOpenSummaryScheduledAutomation,
+    onOpenSummaryAutomation: host.onOpenSummaryAutomation,
     onOpenSummaryGitReview: host.onOpenSummaryGitReview,
     onOpenProcessManager: host.onOpenProcessManager,
     onOpenBackgroundTerminalOutput: host.onOpenBackgroundTerminalOutput,

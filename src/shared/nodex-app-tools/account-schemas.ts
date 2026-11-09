@@ -1,6 +1,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { idempotencyKeySchema } from "./idempotency-key";
+import { toolInputSchema } from "./tool-input-schema";
 
 export const accountSchemas = {
   get_usage_limits: z.strictObject({}),
@@ -16,7 +17,7 @@ export const accountToolCatalog: readonly Tool[] = Object.entries(accountSchemas
   ([name, schema]) => ({
     name,
     description: descriptions[name as keyof typeof descriptions],
-    inputSchema: z.toJSONSchema(schema, { io: "input" }) as Tool["inputSchema"],
+    inputSchema: toolInputSchema(schema),
     annotations: {
       readOnlyHint: name === "get_usage_limits",
       destructiveHint: name === "consume_usage_reset",

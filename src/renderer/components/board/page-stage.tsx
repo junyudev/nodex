@@ -52,7 +52,7 @@ import {
 } from "@/lib/page-stage-viewport-session";
 import { contentRoutingContextKey } from "../../../shared/content-routing-context";
 import { ApplicationPending } from "@/bootstrap/application-surface";
-import { useScheduledNavigation } from "@/features/scheduled/scheduled-navigation";
+import { useAutomationsNavigation } from "@/features/automations/automations-navigation";
 
 export type { PageStageProps } from "./page-stage/types";
 
@@ -88,7 +88,6 @@ interface PageStageDescriptionEditorProps {
   readonly onOpenPage: PageStageProps["onOpenPage"];
   readonly onOpenDatabase: PageStageProps["onOpenDatabase"];
   readonly onOpenCanvas: PageStageProps["onOpenCanvas"];
-  readonly onOpenPageFile: PageStageProps["onOpenPageFile"];
   readonly onStartNewSessionThreadFromEditor: PageStageProps["onStartNewSessionThreadFromEditor"];
   readonly onSendPagePrompt: PageStageProps["onSendPagePrompt"];
   readonly onAddPromptToChatComposer: PageStageProps["onAddPromptToChatComposer"];
@@ -140,7 +139,6 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   onOpenPage,
   onOpenDatabase,
   onOpenCanvas,
-  onOpenPageFile,
   onStartNewSessionThreadFromEditor,
   onSendPagePrompt,
   onAddPromptToChatComposer,
@@ -275,7 +273,6 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
       onOpenPage={onOpenPage}
       onOpenDatabase={onOpenDatabase}
       onOpenCanvas={onOpenCanvas}
-      onOpenPageFile={onOpenPageFile}
       onStartNewSessionThreadFromEditor={onStartNewSessionThreadFromEditor}
       onSendPagePrompt={onSendPagePrompt}
       onAddPromptToChatComposer={onAddPromptToChatComposer}
@@ -375,7 +372,7 @@ function isCaretAtEnd(root: HTMLElement): boolean {
 
 export function PageStage(props: PageStageProps) {
   const { onToggleHistoryPanel } = props;
-  const scheduledNavigation = useScheduledNavigation();
+  const automationsNavigation = useAutomationsNavigation();
   const documentRuntimeRef = useRef<BlockDocumentSurfaceRuntime | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const viewportSessionRef = useRef<PageStageViewportSession | null>(null);
@@ -460,7 +457,6 @@ export function PageStage(props: PageStageProps) {
           onOpenPage={props.onOpenPage}
           onOpenDatabase={props.onOpenDatabase}
           onOpenCanvas={props.onOpenCanvas}
-          onOpenPageFile={props.onOpenPageFile}
           onStartNewSessionThreadFromEditor={props.onStartNewSessionThreadFromEditor}
           onSendPagePrompt={props.onSendPagePrompt}
           onAddPromptToChatComposer={props.onAddPromptToChatComposer}
@@ -545,9 +541,9 @@ export function PageStage(props: PageStageProps) {
             void copyPageDeeplink(page.id);
           }}
           onSchedule={
-            scheduledNavigation
+            automationsNavigation
               ? () =>
-                  scheduledNavigation.scheduleRunbook({
+                  automationsNavigation.scheduleRunbook({
                     pageId: page.id,
                     title: controller.title,
                     projectId:

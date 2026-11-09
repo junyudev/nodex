@@ -579,6 +579,7 @@ it.effect.each(storageCases)(
       });
       assert.deepEqual(yield* store.getRunOutcome({ threadId, messageId }), {
         runId,
+        userMessageId: messageId,
         startedAt: DateTime.formatIso(now),
         status: "running",
         completedAt: null,
@@ -608,6 +609,7 @@ it.effect(
       yield* sql`UPDATE orchestration_v2_projection_runs SET status='completed',completed_at=${DateTime.formatIso(now)} WHERE run_id=${runId}`;
       const expected = {
         runId,
+        userMessageId: messageId,
         startedAt: DateTime.formatIso(now),
         status: "completed",
         completedAt: DateTime.formatIso(now),
@@ -725,6 +727,7 @@ it.effect.each(storageCases)(
         });
         const expected = {
           runId,
+          userMessageId: messageId,
           startedAt: DateTime.formatIso(now),
           status,
           completedAt: DateTime.formatIso(now),

@@ -40,11 +40,25 @@ pub(super) fn validate_work(
     Ok(())
 }
 fn require_member(connection: &Connection, library: &str, id: &str) -> Result<(), StoreError> {
+    if is_active(connection, library, id)? {
         return Ok(());
     }
     Err(invalid(
         "Page work requires an active Member in the same Library",
     ))
+}
+
+/// Shared transactional membership check; credentials and transport identity stay in Library.
+pub(crate) fn is_active(
+    connection: &Connection,
+    library: &str,
+    id: &str,
+) -> Result<bool, StoreError> {
+    Ok(connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM members WHERE id=?1 AND library_id=?2 AND lifecycle='active')",
+        params![id, library],
+        |r| r.get::<_, bool>(0),
+    )?)
 }
 
 /// Attribution chooses the requester; caller-authored JSON cannot choose an actor.
@@ -55,6 +69,9 @@ pub(crate) fn initialize_owner(
     source_page: Option<&str>,
 ) -> Result<(), StoreError> {
     let source = match (source_page, &context.agent_attribution) {
+        (Some(id), _) => Some(id.to_owned()),
+        (None, Some(actor)) => requester_page(connection, &actor.session_id)?,
+        (None, None) => None,
     };
     let Some(source) = source else {
         return Ok(());
@@ -98,4 +115,71 @@ pub(crate) fn assign_agent_if_unassigned(
         commit,
         &operation,
     )
+}
+
+/// Automation admission carries a person-authorized assignment. The Automation's dispatch
+/// owns execution, so Page readiness must not enqueue a second launch.
+pub(crate) fn initialize_automation_work(
+    connection: &Connection,
+    library: &str,
+    page: &str,
+    owner: &str,
+    selection: &nodex_core_contracts::library::AgentWorkSelection,
+    now: &str,
+) -> Result<(), StoreError> {
+    super::validate_agent_selection(selection)?;
+    let work = PageWork {
+        owner: owner.to_owned(),
+        assignee: Some(PageAssignee::Agent {
+            instance_id: selection.instance_id.clone(),
+            model: selection.model.clone(),
+            effort: selection.effort.clone(),
+        }),
+        auto_start: false,
+    };
+    validate_work(connection, library, &work)?;
+    connection.execute("UPDATE block_properties SET value_json=?2,revision=revision+1,updated_at=?3 WHERE block_id=?1 AND property_key='work'",params![page,serde_json::to_string(&work).map_err(|_|invalid("Automation work cannot be encoded"))?,now])?;
+    super::mutation::refresh_page_intrinsic_projection(connection, page, now)
+}
+
+pub(crate) fn initialize_automation_owner(
+    connection: &Connection,
+    library: &str,
+    page: &str,
+    owner: &str,
+    now: &str,
+) -> Result<(), StoreError> {
+    require_member(connection, library, owner)?;
+    connection.execute("UPDATE block_properties SET value_json=json_set(value_json,'$.owner',?2),revision=revision+1,updated_at=?3 WHERE block_id=?1 AND property_key='work'",params![page,owner,now])?;
+    super::mutation::refresh_page_intrinsic_projection(connection, page, now)
+}
+
+fn requester_page(connection: &Connection, session: &str) -> Result<Option<String>, StoreError> {
+}
+/// Managed work carries its requesting Member through new standing records.
+pub(crate) fn requester_owner(
+    connection: &Connection,
+    library: &str,
+    context: &BoundModuleContext,
+) -> Result<String, StoreError> {
+    if let Some(principal) = &context.principal {
+        return Ok(principal.member_id.clone());
+    }
+    if let Some(actor) = &context.agent_attribution
+        && let Some(page) = requester_page(connection, &actor.session_id)?
+            && let Some(owner)=connection.query_row("SELECT json_extract(value_json,'$.owner') FROM block_properties WHERE block_id=?1 AND library_id=?2 AND property_key='work'",params![page,library],|r|r.get::<_,String>(0)).optional()? {return Ok(owner);}
+    connection
+        .query_row(
+            "SELECT member_id FROM local_profile_members WHERE library_id=?1",
+            [library],
+            |r| r.get(0),
+        )
+        .map_err(Into::into)
+}
+
+pub(crate) fn requester_owner_for_session(
+    connection: &Connection,
+    library: &str,
+    session: &str,
+) -> Result<Option<String>, StoreError> {
 }

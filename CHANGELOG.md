@@ -16,11 +16,13 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - The Inbox's History is now part of Activity, one timeline of everything handled in that Inbox. Each message you send to a chat, file, keep or finish is a single line beside what Nodex, your Automations and GitHub did, and All, Messages, Nodex & automations and Problems narrow it down. Expand a message's line to read it, see why it went where it did, and open its chat, return it to the Inbox, mark it done or delete it. A chat it went to shows its live state on the line while the work is under way.
+- Scheduled tasks are now Automations. Keep the same schedules, runbooks, waiting Inbox runs and history, and choose Dry run, Ask first or Run under the Automation Owner’s authority. Automations can also react to GitHub events: a dry run records each judgement and its reason, Ask first proposes work in the Owner’s Inbox, and Run starts Pages under a standing grant.
 
 ### Fixed
 
 - Usage analytics that is off when Nodex starts no longer sends events an earlier launch left waiting. Setting `DO_NOT_TRACK`, or otherwise turning analytics off while Nodex was closed, now discards them as turning it off in Settings does.
 - Agent settings edits through symbolic links apply reliably, including immediately after startup or after a link points to a new file.
+- Every Agent can now set up and change Automations, reorder Sidebar Sections and manage a chat's queued messages, not only Codex. Claude Code never saw these Nodex tools, and its heartbeats now stay quiet unless something needs you.
 
 ## [0.5.3] - 2026-11-08
 

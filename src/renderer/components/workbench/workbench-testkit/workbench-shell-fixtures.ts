@@ -1,7 +1,7 @@
 import type {
-  CodexAutomationInboxItem,
+  AutomationInboxItem,
   CodexModelOption,
-  CodexScheduledAutomation,
+  Automation,
   CodexSidebarThreadItem,
   Project,
   WorkbenchPanelNode,
@@ -87,18 +87,20 @@ export function makeProject(id = "alpha", name = "Alpha", primarySourceRoot?: st
   };
 }
 
-export function makeScheduledAutomation(
-  overrides: Partial<CodexScheduledAutomation> = {},
-): CodexScheduledAutomation {
+export function makeAutomation(overrides: Partial<Automation> = {}): Automation {
   return {
     id: "automation-alpha",
-    definitionRevision: 1,
+    automationRevision: 1,
+    scope: { kind: "space" },
+    ownerMemberId: "member-owner",
+    conditionText: "Every day",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     projectId: null,
     notificationPolicy: null,
-    launch: "automatic",
+    mode: "run",
     runbookPageId: null,
     runbookTitle: null,
-    heldFiring: null,
+    heldDecision: null,
     kind: "heartbeat",
     status: "ACTIVE",
     targetSessionId: "session:alpha:attached",
@@ -121,8 +123,8 @@ export function makeScheduledAutomation(
 }
 
 export function makeAutomationInboxItem(
-  overrides: Partial<CodexAutomationInboxItem> = {},
-): CodexAutomationInboxItem {
+  overrides: Partial<AutomationInboxItem> = {},
+): AutomationInboxItem {
   return {
     id: "run-alpha",
     automationId: "automation-alpha",

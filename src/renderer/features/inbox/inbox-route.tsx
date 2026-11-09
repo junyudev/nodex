@@ -81,7 +81,7 @@ import { useInboxCapture } from "./use-inbox-capture";
 import { useInboxImageAccess } from "./use-inbox-image-access";
 import { useInboxJump, useInboxMessagesInView } from "./use-inbox-important";
 import { useInboxActions } from "./use-inbox-actions";
-import { useCodexScheduledAutomations } from "@/lib/use-codex-scheduled-automations";
+import { useAutomationsQuery } from "@/lib/use-automations-query";
 import { useInboxDepartures } from "./use-inbox-departures";
 import { useInboxActivity, useInboxStream, useInboxSummary } from "./use-inbox";
 import { INBOX_STICK_TO_BOTTOM_PX, type InboxView } from "./inbox-viewport";
@@ -103,8 +103,8 @@ export interface InboxRouteProps {
   readonly projects: readonly Project[];
   readonly focusComposerToken?: number;
   readonly onOpenSession: (sessionId: string) => void;
-  /** Opens a scheduled task in Scheduled, from a run of it waiting here. */
-  readonly onOpenScheduledTask?: (automationId: string) => void;
+  /** Opens an automation in Automations, from a run of it waiting here. */
+  readonly onOpenAutomation?: (automationId: string) => void;
   readonly onOpenPage: (pageId: string) => void;
   /** Shows a new chat's message Pages beside it, without leaving the Inbox. */
   readonly onShowPagesInChat: (input: ShowPagesInChatInput) => Promise<void>;
@@ -273,7 +273,7 @@ export function InboxRoute({
   projects,
   focusComposerToken,
   onOpenSession,
-  onOpenScheduledTask,
+  onOpenAutomation,
   onOpenPage,
   onShowPagesInChat,
   onOpenDatabase,
@@ -281,6 +281,8 @@ export function InboxRoute({
   onOpenGitHubSettings,
   visible = true,
 }: InboxRouteProps) {
+  // Keeps the automations behind waiting runs current while the Inbox shows them.
+  useAutomationsQuery();
   const entryOpen = useInboxEntryOpen(scope);
   const scopeKey = inboxScopeKey(scope);
   const inboxProjectId = inboxScopeProjectId(scope);
@@ -586,7 +588,7 @@ export function InboxRoute({
         })}
         onOpenPage={onOpenPage}
         onOpenSession={onOpenSession}
-        onOpenScheduledTask={onOpenScheduledTask}
+        onOpenAutomation={onOpenAutomation}
         onManualDraftChange={(draft) => setManualDraft(item.pageId, draft)}
         onReply={item.source.kind === "nodex" ? () => replyTo(item) : undefined}
       >
@@ -598,7 +600,7 @@ export function InboxRoute({
             onToggleSelected={() => toggleSelected(item.pageId)}
             linkedChats={triage.opensChat ? null : (linkedChats.get(item.pageId) ?? null)}
             onOpenChat={onOpenSession}
-            onOpenScheduledTask={onOpenScheduledTask}
+            onOpenAutomation={onOpenAutomation}
             onOpenPage={() => onOpenPage(item.pageId)}
             onUnmarkImportant={() => void actions.setImportant(item.pageId, false)}
             arrivalToken={jump.arrival.pageId === item.pageId ? jump.arrival.token : null}

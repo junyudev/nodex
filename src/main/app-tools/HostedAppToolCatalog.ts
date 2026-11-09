@@ -22,6 +22,7 @@ const commonNames = new Set([
   "reply_to_origin",
   "answer_inbox_question",
   "start_work",
+  "automations_update",
   "read_session_terminal",
 ]);
 

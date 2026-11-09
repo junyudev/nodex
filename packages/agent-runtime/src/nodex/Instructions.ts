@@ -1,3 +1,15 @@
+/** How every Agent manages Automations; Codex app-server threads reuse it. */
+export const AUTOMATION_INSTRUCTIONS = `### Automations
+
+- Automations start Agent work on a schedule or on matching GitHub activity; a heartbeat continues one chat on its schedule. Manage them with \`automations_update\`; omit \`targetSessionId\` to continue your own chat.
+- You may create Automations set to Ask first or Dry run. Propose changes to existing ones with \`suggested_update\`; only an Automation's Owner can choose Run.
+- Save the user's notification intent in a heartbeat's instructions: unless they asked for periodic updates, it stays quiet until something they should know about happens.`;
+
+/** How every Agent answers the scheduled message an Automation sends into its chat. */
+export const HEARTBEAT_INSTRUCTIONS = `### Heartbeats
+
+A user message wrapped in \`<heartbeat>\` is sent by an Automation, not by the user. Do what it asks, then end the turn with \`<heartbeat><automation_id>…</automation_id><decision>…</decision><message>One short sentence.</message></heartbeat>\`, copying the Automation ID and choosing the decision NOTIFY or DONT_NOTIFY. NOTIFY only for what the user should know now: completion, failure, a material change or a decision they must make; you may write a brief update before the block. Unchanged, pending or healthy results are DONT_NOTIFY, with nothing outside the block. When the heartbeat is no longer useful, ask its Owner to delete it or propose a change with \`suggested_update\`.`;
+
 /** Guidance for the tools attached on the `nodex_app` MCP server. */
 export const ORCHESTRATION_INSTRUCTIONS = `
 
@@ -18,4 +30,8 @@ Nodex content tools work in every execution mode. The bundled \`nodex\` CLI runs
 - \`task_read\` without taskId reads your own conversation, for example after a context handoff. \`stop_workflow\` stops a Claude workflow your conversation started.
 
 Harnesses may prefix these names, as in \`mcp__nodex_app__delegate_task\`. If tools load lazily, call \`list_agent_models\` once before concluding that delegation is unavailable.
+
+${AUTOMATION_INSTRUCTIONS}
+
+${HEARTBEAT_INSTRUCTIONS}
 `;

@@ -3,12 +3,11 @@ import { CoreModules } from "../core-runtime/CoreModules";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
-import type { CodexScheduledAutomation } from "../../shared/types";
+import type { Automation, AutomationCreateInput } from "../../shared/types";
 import {
   AutomationApplication,
   AutomationApplicationError,
-  type AutomationDefinitions,
-} from "../automation-application/AutomationApplication";
+  type Automations,
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
@@ -49,7 +48,7 @@ const provenance = {
   },
 };
 const input = (args: Record<string, unknown>): AppToolInvocation => ({
-  name: "automation_update",
+  name: "automations_update",
   arguments: args,
   caller: {
     threadId: "thread:a",
@@ -72,14 +71,18 @@ const cron = {
   model: "chosen-model",
   reasoningEffort: "ultra",
   serviceTier: "priority",
-};
-const item: CodexScheduledAutomation = {
-  launch: "automatic",
+} satisfies AutomationCreateInput;
+const item: Automation = {
+  scope: { kind: "project", projectId: "project:a" },
+  ownerMemberId: "member:a",
+  conditionText: "Daily",
+  timezone: "UTC",
+  mode: "run",
   runbookPageId: null,
   runbookTitle: null,
-  heldFiring: null,
+  heldDecision: null,
   id: "automation:a",
-  definitionRevision: 1,
+  automationRevision: 1,
   kind: "cron",
   status: "ACTIVE",
   projectId: "project:a",
@@ -101,7 +104,7 @@ const item: CodexScheduledAutomation = {
   updatedAt: 1_000,
 };
 const setup = (
-  definitions: Partial<AutomationDefinitions>,
+  definitions: Partial<Automations>,
   options: {
     readOnly?: boolean;
     workspace?: Partial<ProjectWorkspaceService>;
@@ -110,7 +113,7 @@ const setup = (
   make.pipe(
     Effect.provideService(CoreModules, createAppToolAdmissionFixture().core),
     Effect.provideService(AutomationApplication, {
-      definitions: { get: () => Effect.succeed(item), ...definitions },
+      automations: { get: () => Effect.succeed(item), ...definitions },
     } as never),
     Effect.provideService(ProjectWorkspace, {
       getThread: () => Effect.succeed({ backendBinding: { kind: "codex" } } as never),
@@ -150,7 +153,7 @@ it.effect.each(["model_off", "credit_requires_person"] as const)(
             ),
         } as never),
       );
-      const result = yield* execute(input({ ...cron, mode: "create" }));
+      const result = yield* execute(input({ ...cron, operation: "create" }));
       assert.isTrue(result.isError);
       assert.deepEqual(result.structuredContent, { error: { code } });
       assert.deepEqual(result.content, [{ type: "text", text: "Choose another provider." }]);
@@ -209,7 +212,7 @@ it.effect(
             }),
         } as never),
         Effect.provideService(AutomationApplication, {
-          definitions: {
+          automations: {
             create: (value: unknown) =>
               Effect.sync(() => {
                 definitions.push(value);
@@ -221,7 +224,7 @@ it.effect(
       const result = yield* execute({
         caller,
         name: "automation_update",
-        arguments: { ...cron, mode: "create" },
+        arguments: { ...cron, operation: "create" },
       });
       assert.isUndefined(result.isError);
       assert.deepInclude(definitions[0], {
@@ -253,13 +256,13 @@ it.effect("an Agent refused automatic execution is directed to a user-reviewed s
           }),
         ),
     });
-    const refused = yield* execute(input({ ...cron, mode: "create", launch: "automatic" }));
+    const refused = yield* execute(input({ ...cron, operation: "create", mode: "run" }));
     assert.isTrue(refused.isError);
     assert.deepEqual(refused.structuredContent, {
       error: {
         code: "unauthorized",
         details: {
-          operationId: createStableOperationId("app.automation_update", authority.admittedAtMs, [
+          operationId: createStableOperationId("app.automations_update", authority.admittedAtMs, [
             "profile:a",
             "thread:a",
             "turn:a",
@@ -271,17 +274,88 @@ it.effect("an Agent refused automatic execution is directed to a user-reviewed s
     const text = refused.content[0];
     assert.match(text?.type === "text" ? text.text : "", /Return a suggested_create change/);
     const proposed = yield* execute(
-      input({ ...cron, mode: "suggested_create", launch: "automatic", runbookPageId: "runbook" }),
+      input({ ...cron, operation: "suggested_create", mode: "run", runbookPageId: "runbook" }),
     );
     assert.isUndefined(proposed.isError);
     assert.deepEqual(proposed.structuredContent?.proposal, {
       ...cron,
-      mode: "suggested_create",
-      launch: "automatic",
+      operation: "suggested_create",
+      mode: "run",
       runbookPageId: "runbook",
       backendBinding: { kind: "codex" },
     });
   }),
+);
+
+it.effect(
+  "preserves a Dry run Automation's clock condition and Owner through the Agent boundary",
+  () =>
+    Effect.gen(function* () {
+      const received: Parameters<Automations["create"]>[0][] = [];
+      const execute = yield* setup({
+        create: (automation) => {
+          received.push(automation);
+          return Effect.succeed({ ...item, mode: "dry_run" as const });
+        },
+      });
+      const fields = {
+        ...cron,
+        mode: "dry_run",
+        conditionText: "Each weekday at nine",
+        scope: { kind: "space" as const },
+        timezone: "Asia/Singapore",
+        ownerMemberId: "member:a",
+      } satisfies AutomationCreateInput;
+      const result = yield* execute(input({ ...fields, operation: "create" }));
+      assert.isUndefined(result.isError);
+      assert.deepEqual(received, [{ ...fields, backendBinding: { kind: "codex" } }]);
+    }),
+);
+
+it.effect(
+  "keeps every existing Automation edit waiting for its Owner, including omitted mode",
+  () =>
+    Effect.gen(function* () {
+      for (const mode of ["dry_run", "ask_first", "run"] as const) {
+        const current = { ...item, mode };
+        const execute = yield* setup({
+          get: () => Effect.succeed(current),
+          update: () =>
+            Effect.fail(
+              new AutomationApplicationError({
+                operation: "update",
+                cause: new CoreModuleResponseError({
+                  code: "unauthorized",
+                  message: "An Agent's Automation edits wait for its Owner.",
+                  retryable: false,
+                  recovery: { kind: "none" },
+                }),
+              }),
+            ),
+        });
+        const fields = {
+          ...cron,
+          id: item.id,
+          status: "ACTIVE",
+          expectedRevision: item.automationRevision,
+        } as const;
+        const result = yield* execute(input({ ...fields, operation: "update" }));
+        assert.isTrue(result.isError);
+        const content = result.content[0];
+        assert.match(
+          content?.type === "text" ? content.text : "",
+          /Return a suggested_update change for the Automation Owner/,
+        );
+        const proposed = yield* execute(input({ ...fields, operation: "suggested_update" }));
+        assert.isUndefined(proposed.isError);
+        assert.strictEqual(proposed.structuredContent?.committed, false);
+        assert.deepEqual(proposed.structuredContent?.proposal, {
+          ...fields,
+          operation: "suggested_update",
+          backendBinding: { kind: "codex" },
+        });
+      }
+    }),
 );
 
 it.effect("reads definition windows with execution provenance and rejects forged authority", () =>
@@ -300,17 +374,17 @@ it.effect("reads definition windows with execution provenance and rejects forged
         }),
     });
     const listed = yield* execute(
-      input({ mode: "list", query: "build", cursor: "page", limit: 7 }),
+      input({ operation: "list", query: "build", cursor: "page", limit: 7 }),
     );
     assert.deepStrictEqual(listed.structuredContent, { items: [item], nextCursor: "older" });
-    const viewed = yield* execute(input({ mode: "view", id: item.id }));
+    const viewed = yield* execute(input({ operation: "view", id: item.id }));
     assert.deepStrictEqual(viewed.structuredContent, { item });
     assert.deepStrictEqual(reads, [
       { query: { query: "build", cursor: "page", limit: 7 }, provenance },
       { id: item.id, provenance },
     ]);
     const forged = yield* execute(
-      input({ ...cron, mode: "create", authority: { scope: "library" } }),
+      input({ ...cron, operation: "create", authority: { scope: "library" } }),
     );
     assert.nestedPropertyVal(forged.structuredContent, "error.code", "invalid_arguments");
     assert.nestedPropertyVal(
@@ -329,7 +403,7 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
       create: (definition, command) =>
         Effect.gen(function* () {
           calls.push({
-            mode: "create",
+            operation: "create",
             definition,
             command,
             provenance: yield* CoreApplicationAgent,
@@ -339,20 +413,20 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
       update: (definition, command) =>
         Effect.gen(function* () {
           calls.push({
-            mode: "update",
+            operation: "update",
             definition,
             command,
             provenance: yield* CoreApplicationAgent,
           });
-          return { ...item, status: "PAUSED", definitionRevision: 2 };
+          return { ...item, status: "PAUSED", automationRevision: 2 };
         }),
       delete: (id, command) =>
         Effect.gen(function* () {
-          calls.push({ mode: "delete", id, command, provenance: yield* CoreApplicationAgent });
+          calls.push({ operation: "delete", id, command, provenance: yield* CoreApplicationAgent });
           return { item: null, success: true, status: "deleted", deletedRunCount: 3 };
         }),
     });
-    const call = input({ ...cron, mode: "create" });
+    const call = input({ ...cron, operation: "create" });
     call.arguments.idempotencyKey = "06d6709c-45e7-4b37-8c26-74e9d64c5aa1";
     const first = yield* execute(call);
     const operationId = first.structuredContent?.operationId;
@@ -367,7 +441,7 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
     assert.deepStrictEqual(calls[0], calls[1]);
     assert.deepStrictEqual(calls[0], calls[2]);
     assert.deepStrictEqual(calls[0], {
-      mode: "create",
+      operation: "create",
       definition: { ...cron, backendBinding: { kind: "codex" } },
       command: { operationId },
       provenance,
@@ -377,7 +451,7 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
     const updated = yield* execute(
       input({
         ...cron,
-        mode: "update",
+        operation: "update",
         id: item.id,
         status: "PAUSED",
         notificationPolicy: null,
@@ -388,7 +462,7 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
     const updateId = updated.structuredContent?.operationId;
     assert.isString(updateId);
     assert.deepStrictEqual(calls[3], {
-      mode: "update",
+      operation: "update",
       definition: {
         ...cron,
         id: item.id,
@@ -402,7 +476,7 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
     const deleteKey = "delete";
     const deleted = yield* execute(
       input({
-        mode: "delete",
+        operation: "delete",
         id: item.id,
         expectedRevision: 2,
         idempotencyKey: deleteKey,
@@ -417,7 +491,7 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
       deletedRunCount: 3,
     });
     assert.deepStrictEqual(calls[4], {
-      mode: "delete",
+      operation: "delete",
       id: item.id,
       command: { operationId: deleteId, expectedRevision: 2 },
       provenance,
@@ -454,12 +528,12 @@ it.effect("defaults Heartbeats to the caller's stable Session and preserves expl
       prompt: "Report build changes.",
       rrule: "FREQ=MINUTELY;INTERVAL=30",
     };
-    assert.isUndefined((yield* execute(input({ ...definition, mode: "create" }))).isError);
+    assert.isUndefined((yield* execute(input({ ...definition, operation: "create" }))).isError);
     assert.isUndefined(
       (yield* execute(
         input({
           ...definition,
-          mode: "create",
+          operation: "create",
           targetSessionId: "session:other",
         }),
       )).isError,
@@ -495,7 +569,7 @@ it.effect("rejects a caller withdrawn during target lookup before committing a H
       },
     );
     const call = input({
-      mode: "create",
+      operation: "create",
       kind: "heartbeat",
       name: "Build",
       prompt: "Check builds.",
@@ -513,7 +587,7 @@ it.effect(
     Effect.gen(function* () {
       const missing = yield* setup({ get: () => Effect.succeed(null) });
       assert.deepStrictEqual(
-        (yield* missing(input({ mode: "view", id: "missing" }))).structuredContent,
+        (yield* missing(input({ operation: "view", id: "missing" }))).structuredContent,
         { item: null },
       );
       const denied = yield* setup({
@@ -525,7 +599,7 @@ it.effect(
             }),
           ),
       });
-      const rejected = yield* denied(input({ mode: "view", id: "private" }));
+      const rejected = yield* denied(input({ operation: "view", id: "private" }));
       assert.isTrue(rejected.isError);
       assert.notInclude(JSON.stringify(rejected), "private persisted authority detail");
       let active = true;
@@ -536,7 +610,7 @@ it.effect(
             return item;
           }),
       });
-      const call = input({ ...cron, mode: "create" });
+      const call = input({ ...cron, operation: "create" });
       assert.isTrue(
         (yield* withdrawn({
           ...call,
@@ -549,14 +623,14 @@ it.effect(
 it.effect("returns review proposals without mutation and rejects stale update proposals", () =>
   Effect.gen(function* () {
     const execute = yield* setup({ get: () => Effect.succeed(item) }, {});
-    const created = yield* execute(input({ ...cron, mode: "suggested_create" }));
+    const created = yield* execute(input({ ...cron, operation: "suggested_create" }));
     assert.deepStrictEqual(created.structuredContent, {
-      proposal: { ...cron, mode: "suggested_create", backendBinding: { kind: "codex" } },
+      proposal: { ...cron, operation: "suggested_create", backendBinding: { kind: "codex" } },
       committed: false,
     });
     const args = {
       ...cron,
-      mode: "suggested_update",
+      operation: "suggested_update",
       id: item.id,
       expectedRevision: 1,
       status: "PAUSED",
@@ -611,7 +685,7 @@ it.effect(
             ]),
         } as never),
         Effect.provideService(AutomationApplication, {
-          definitions: {
+          automations: {
             get: () => Effect.succeed(null),
             create: (definition: unknown) =>
               Effect.sync(() => {
@@ -623,9 +697,9 @@ it.effect(
       );
       const result = yield* execute({
         caller,
-        name: "automation_update",
+        name: "automations_update",
         arguments: {
-          mode: "create",
+          operation: "create",
           kind: "heartbeat",
           name: "Watch",
           prompt: "Report changes",
@@ -653,7 +727,7 @@ it.effect(
         instanceConfigId: "personal",
       } as const;
       const providerId = agentRuntimeProviderId(binding);
-      const workHeartbeat: CodexScheduledAutomation = {
+      const workHeartbeat: Automation = {
         ...item,
         id: "automation:work-heartbeat",
         kind: "heartbeat",
@@ -661,7 +735,7 @@ it.effect(
         backendBinding: { ...binding, instanceConfigId: "work" },
       };
       let enabled = true;
-      const definitions: Array<Parameters<AutomationDefinitions["create"]>[0]> = [];
+      const definitions: Array<Parameters<Automations["create"]>[0]> = [];
       const caller = createHostedAppToolCaller({
         backend: "acp",
         authority,
@@ -714,9 +788,9 @@ it.effect(
             ]),
         } as never),
         Effect.provideService(AutomationApplication, {
-          definitions: {
+          automations: {
             get: (id: string) => Effect.succeed(id === workHeartbeat.id ? workHeartbeat : null),
-            create: (definition: Parameters<AutomationDefinitions["create"]>[0]) =>
+            create: (definition: Parameters<Automations["create"]>[0]) =>
               Effect.sync(() => {
                 definitions.push(definition);
                 return { ...item, backendBinding: binding };
@@ -725,13 +799,13 @@ it.effect(
         } as never),
       );
       const request = (arguments_: Record<string, unknown>) =>
-        execute({ caller, name: "automation_update", arguments: arguments_ });
+        execute({ caller, name: "automations_update", arguments: arguments_ });
       assert.isUndefined(
-        (yield* request({ ...cron, mode: "create", backendBinding: binding })).isError,
+        (yield* request({ ...cron, operation: "create", backendBinding: binding })).isError,
       );
       assert.isUndefined(
         (yield* request({
-          mode: "create",
+          operation: "create",
           kind: "heartbeat",
           name: "Watch",
           prompt: "Report changes",
@@ -756,7 +830,7 @@ it.effect(
       };
       const wrongInstance = yield* request({
         ...heartbeat,
-        mode: "create",
+        operation: "create",
         name: "Wrong instance",
         backendBinding: { ...binding, instanceConfigId: "work" },
       });
@@ -768,9 +842,9 @@ it.effect(
       });
       const retarget = {
         ...heartbeat,
-        mode: "suggested_update",
+        operation: "suggested_update",
         id: workHeartbeat.id,
-        expectedRevision: workHeartbeat.definitionRevision,
+        expectedRevision: workHeartbeat.automationRevision,
         status: "ACTIVE",
         name: "Moved",
         targetSessionId: "acp-session",
@@ -789,7 +863,7 @@ it.effect(
       });
       const retired = yield* request({
         ...cron,
-        mode: "create",
+        operation: "create",
         backendBinding: binding,
         model: "retired-model",
       });
@@ -803,7 +877,7 @@ it.effect(
         },
       ]);
       enabled = false;
-      const off = yield* request({ ...cron, mode: "create", backendBinding: binding });
+      const off = yield* request({ ...cron, operation: "create", backendBinding: binding });
       assert.deepEqual(off.structuredContent, {
         error: { code: "automation_backend_unavailable" },
       });
@@ -815,7 +889,7 @@ it.effect(
       ]);
       const unknownAgent = yield* request({
         ...heartbeat,
-        mode: "create",
+        operation: "create",
         name: "Off",
         backendBinding: binding,
       });

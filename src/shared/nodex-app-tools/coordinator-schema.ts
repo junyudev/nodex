@@ -1,6 +1,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { MAX_INBOX_ADDITION_CHARS, MAX_INBOX_ADDITIONS } from "../inbox";
+import { toolInputSchema } from "./tool-input-schema";
 const MAX_PROMPT_CHARS = 2000;
 const MAX_SUMMARY_CHARS = 200;
 const MAX_RATIONALE_CHARS = 600;
@@ -88,23 +89,75 @@ export const writeTurnNoteSchema = z.strictObject({
   notify: z.boolean(),
 });
 export const answerInboxQuestionSchema = z.strictObject({ questionPageId: eventId, body });
+export const automationAssessmentReadSchema = z.strictObject({
+  request_id: eventId,
+  generation: z.number().int().positive(),
+  resource: z.enum(["triggers", "thread", "automations", "pages", "follows", "decisions"]),
+  cursor: z.string().max(128).optional(),
+});
+export const automationAssessmentSubmitSchema = z.strictObject({
+  request_id: eventId,
+  generation: z.number().int().positive(),
+  policy_hash: z.string().regex(/^[0-9a-f]{64}$/u),
+  automation_assessments: z
+    .array(
+      z.strictObject({
+        automation_id: eventId,
+        revision: z.number().int().positive(),
+        matched: z.boolean(),
+        evidence_ids: z.array(eventId).max(30),
+      }),
+    )
+    .max(200),
+  proposed_actions: z
+    .array(
+      z.strictObject({
+        automation_ids: z.array(eventId).min(1).max(200),
+        scope: z.strictObject({ kind: z.literal("project"), project_id: eventId }),
+        execution_target: z.strictObject({
+          instanceId: eventId,
+          model: eventId,
+          effort: z.string().min(1).max(128).nullable(),
+        }),
+        thread_id: eventId,
+      }),
+    )
+    .max(200),
+});
 export const coordinatorToolCatalog: readonly Tool[] = [
+  {
+    name: "automation_assessment_read",
+    description:
+      "Coordinator only. Read retained assessment evidence with request_id and generation. Resources: triggers, thread, automations, pages (including completed), follows, decisions. Copy next_cursor for more. No URL, shell or credential access. Read every automation before submitting.",
+    inputSchema: toolInputSchema(automationAssessmentReadSchema),
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  },
+  {
+    name: "automation_assessment_submit",
+    description:
+      "Coordinator only. Judge every applicable automation exactly once, including negative judgements, with exact revision, factual reason and evidence IDs. Propose a Page for each matched automation using its exact Project and execution_target, and this thread. Core coalesces equivalent actions and supplies mode and authority; tools cannot change automations or grant work. Stale policy is requeued.",
+    inputSchema: toolInputSchema(automationAssessmentSubmitSchema),
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+  },
   {
     name: "inbox_suggest",
     description:
       "Coordinator only. Submit the complete Routing request response, echoing request_id and generation. Cover every member exactly once; grouped/refine requests need one action. explicit_request says the person clearly asked for work now. Only new_chat or plan steps choose a model; plans require explicit_request false and 2–8 acyclic steps; unused targets/model fields are null, non-chat additions are empty. Validation errors leave the request pending: correct them and resubmit.",
+    inputSchema: toolInputSchema(InboxSuggestionOutput),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
   {
     name: "write_turn_note",
     description:
       "Coordinator only. Add an immutable note of at most 100 words to a Page whose current Turn belongs to the local Member. Use 1–8 eventIds delivered to you concerning this Page or its active chat. Write only when it adds to the derived text; choose notify for review, blocked, failed or stalled work. Exact body, notify and event-set retries reuse the note.",
+    inputSchema: toolInputSchema(writeTurnNoteSchema),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
   {
     name: "answer_inbox_question",
     description:
       "Coordinator only. Answer the person's pending Inbox question in at most 100 words. Creates one quiet answer and handles the question atomically. An exact retry returns the same answer.",
+    inputSchema: toolInputSchema(answerInboxQuestionSchema),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
 ];
@@ -117,5 +170,6 @@ export const replyToOriginTool: Tool = {
   name: "reply_to_origin",
   description:
     "Nodex only. Send at most 100 words to this Page's original GitHub request. Use once to acknowledge that work started, or once when its result is ready or merged. Never send routine progress or repeat the same acknowledgement/result. The origin address is fixed by the Page; identical body retries in the same Turn episode reuse the outbox item.",
+  inputSchema: toolInputSchema(replyToOriginSchema),
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 };

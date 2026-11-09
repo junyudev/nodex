@@ -1,8 +1,23 @@
 import { describe, expect, test } from "vite-plus/test";
 import { buildAutomationsPath, resolveAutomationsRouteState } from "./workbench-automations-routes";
 
-describe("workbench automations routes", () => {
-  test("builds the Scheduled root without redundant params", () => {
+describe("workbench Automations routes", () => {
+  test("old Scheduled deep links select the same Automation and review mode", () => {
+    expect(
+      resolveAutomationsRouteState(
+        "/automations?automationId=kept&automationMode=edit&runSessionId=chat",
+      ),
+    ).toMatchObject({ automationId: "kept", automationMode: "edit", runSessionId: "chat" });
+    expect(resolveAutomationsRouteState("/scheduled/edit/kept")).toMatchObject({
+      automationId: "kept",
+      automationMode: "edit",
+    });
+    expect(resolveAutomationsRouteState("/automations/new?runbookPageId=book")).toMatchObject({
+      automationMode: "create",
+      runbookPageId: "book",
+    });
+  });
+  test("builds the Automations root without redundant params", () => {
     expect(buildAutomationsPath()).toBe("/automations");
     expect(buildAutomationsPath({ automationId: "  ", runSessionId: "" })).toBe("/automations");
   });

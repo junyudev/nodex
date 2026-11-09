@@ -15,7 +15,7 @@ System Modules and runtime boundaries live in
 [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 User-facing interactive conversations are **Chats**. `Session` and `Thread` are
-persistence and protocol terms. **Task** names real work items, scheduled tasks,
+persistence and protocol terms. **Task** names real work items, Automation actions,
 and external contracts that already use that noun; ordinary navigation does not
 rename a Chat to a task.
 
@@ -86,9 +86,9 @@ Selecting or closing a presentation never changes content ownership.
 
 The complete shell, sidebar, Scene, panel, tab, preview, Browser, Files,
 Terminal, Side chat, navigation-history, and multi-window contract lives in
-[Workbench Shell](workbench-shell.md). Settings and Scheduled are separate
+[Workbench Shell](workbench-shell.md). Settings and Automations are separate
 Workbench routes described by [Settings Route Behavior](settings-route-behavior.md)
-and [Scheduled Route Behavior](scheduled-route-behavior.md).
+and [Automations Behavior](automations-behavior.md).
 
 ## Product principles
 

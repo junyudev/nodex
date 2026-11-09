@@ -25,12 +25,18 @@ In watched repositories, Nodex reads known issues and pull requests, including
 pull requests linked to Pages' Workspaces. It records issue/PR comments, review
 comments, submitted reviews including approvals without text, lifecycle changes
 (opened, ready for review, draft, closed, merged and reopened), and check runs
+and commit statuses for the current PR head. Label additions and removals retain
+both the label and thread-root evidence. Enabled event Automations also discover recently
+updated unaddressed threads through the same complete, overlapping search window,
+without granting work. The Automations editor reads saved Source options without a
+credential check or network request.
 
 Discovery searches watched repositories for issues/PRs assigned to the verified
 account, PRs requesting its review, and mentions of that account. All result
 pages are read. Large search windows are split before GitHub's 1,000-result cap;
 an incomplete search never advances its position. Discovery records a candidate
 thread update with its reason. An unfollowed discovery from a person enters intake
+without consent to start work, unless an event assessment owns that Trigger.
 
 The first enable of each watched repository records its own boundary before any
 network read. Adding a repository later never imports its earlier activity. Existing thread
@@ -119,6 +125,11 @@ an accepted message never moves to a replacement chat. A target changed before
 admission remains unresolved or rejected with its reason. Handback returns the
 Host-proved GitHub message to intake with its external author and routing reason.
 
+Follow updates cannot provide the first input to an Automation-started chat. They wait
+for its Page-start admission receipt; a rejected automatic start stays blocked
+until the person starts a new attempt. This preserves the Automation grant fence while
+workspace preparation and Runtime admission are in flight.
+
 ## PR milestones
 
 Only an `own_pr` follow supplies Status facts. Context and origin follows deliver
@@ -140,6 +151,8 @@ Workspace cleanup path as other guarded transitions.
 
 ## GitHub intake
 
+An assignment, review request or mention on a thread no Page follows and no
+enabled event Automation assesses creates one
 Inbox entry for that thread. Later discovery Triggers append to that entry and
 refresh its routing basis. Intake excerpts and appended updates stay within the
 Inbox message budget; complete updates remain linked immutable Triggers, even
@@ -228,6 +241,7 @@ envelopes, truncated responses and incomplete searches fail the complete read.
 Activity derives from committed facts: intake dispositions, proposals and
 confirmations (including automatic starts), Trigger routing, own-PR moves and
 skipped moves with reasons, deliveries, Channel sends, Turn notes, handbacks,
+Automation assessments, and Problems opening and resolving. Each row carries time, actor, description,
 reason and links to its Page, chat and external evidence where available.
 The [Inbox Activity tab](inbox-behavior.md#activity) reads bounded, scope-bound
 windows; chat transcript text is not an audit authority.

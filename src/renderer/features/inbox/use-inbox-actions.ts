@@ -201,13 +201,13 @@ export function useInboxActions(
           chatTitle: chat?.sessionId === action.sessionId ? chat.displayTitle : null,
           projectName: null,
         };
-      case "run_task": {
+      case "execute_decision": {
         const source = visibleItems.find(
-          (item) => item.firing?.dispatchId === action.dispatchId,
+          (item) => item.automationDecision?.dispatchId === action.decisionId,
         )?.source;
         return {
           kind: "run",
-          taskName: source?.kind === "scheduled_task" ? source.label : "scheduled task",
+          taskName: source?.kind === "automation" ? source.label : "automation",
         };
       }
     }

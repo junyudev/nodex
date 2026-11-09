@@ -14,7 +14,7 @@ const BACKGROUND_CORE_REQUEST = {
 
 export type AutomationRoutingDefinition = Extract<
   AutomationReadSnapshot["value"],
-  { readonly kind: "definitions" }
+  { readonly kind: "automations" }
 >["window"]["items"][number];
 
 export type AutomationRoutingRun = Extract<
@@ -23,7 +23,7 @@ export type AutomationRoutingRun = Extract<
 >["window"]["items"][number];
 
 export interface AutomationRoutingCommit {
-  readonly definitions?: {
+  readonly automations?: {
     readonly removeIds?: readonly string[];
     readonly upsert?: readonly AutomationRoutingDefinition[];
   };
@@ -69,10 +69,10 @@ const emptyState = (): AutomationRoutingState => ({
 });
 
 const definitionIndex = (
-  definitions: readonly AutomationRoutingDefinition[],
+  automations: readonly AutomationRoutingDefinition[],
 ): ReadonlyMap<string, string> => {
   const index = new Map<string, string>();
-  for (const definition of definitions) {
+  for (const definition of automations) {
     if (
       definition.kind !== "heartbeat" ||
       definition.status !== "ACTIVE" ||
@@ -96,7 +96,7 @@ const applyCommit = (
 
   const activeHeartbeatBySessionId = new Map(state.activeHeartbeatBySessionId);
   const runAutomationByRunId = new Map(state.runAutomationByRunId);
-  const definitionChanges = input.definitions;
+  const definitionChanges = input.automations;
   const runChanges = input.runs;
 
   for (const automationId of definitionChanges?.removeIds ?? []) {
@@ -151,15 +151,15 @@ export const live: Layer.Layer<AutomationRoutingIndex, never, CoreModules> = Lay
       while (true) {
         const snapshot: AutomationReadSnapshot = yield* core.automation.read(
           {
-            kind: "definitions",
+            kind: "automations",
             include_deleted: false,
             window: { after, first: 200 },
           },
           BACKGROUND_CORE_REQUEST,
         );
-        if (snapshot.value.kind !== "definitions") {
+        if (snapshot.value.kind !== "automations") {
           return yield* new AutomationRoutingIndexError({
-            operation: "synchronize.definitions",
+            operation: "synchronize.automations",
             cause: new Error("Core returned a non-Definitions Automation read"),
           });
         }
@@ -168,7 +168,7 @@ export const live: Layer.Layer<AutomationRoutingIndex, never, CoreModules> = Lay
         if (next === null) return items;
         if (seenCursors.has(next)) {
           return yield* new AutomationRoutingIndexError({
-            operation: "synchronize.definitions",
+            operation: "synchronize.automations",
             cause: new Error("Core repeated an Automation Definition cursor"),
           });
         }
@@ -223,7 +223,7 @@ export const live: Layer.Layer<AutomationRoutingIndex, never, CoreModules> = Lay
             if (!before.accepting || before.completedRefresh >= requested) return;
             const mutationRevision = before.mutationRevision;
             const refreshRevision = before.requestedRefresh;
-            const [definitions, runs] = yield* Effect.all([readDefinitions(), readRuns()], {
+            const [automations, runs] = yield* Effect.all([readDefinitions(), readRuns()], {
               concurrency: 2,
             });
             let committed = false;
@@ -234,7 +234,7 @@ export const live: Layer.Layer<AutomationRoutingIndex, never, CoreModules> = Lay
               committed = true;
               return {
                 ...current,
-                activeHeartbeatBySessionId: definitionIndex(definitions),
+                activeHeartbeatBySessionId: definitionIndex(automations),
                 completedRefresh: refreshRevision,
                 runAutomationByRunId: runIndex(runs),
               };

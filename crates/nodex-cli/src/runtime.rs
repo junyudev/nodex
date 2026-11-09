@@ -222,6 +222,7 @@ pub(crate) fn execute_with_presentation(
     }
 
     match cli.command {
+        Command::Automations(args) => crate::automations::execute(&client, args),
         Command::Work(args) => crate::work::execute(&client, args, cli.project.as_deref(), &cwd),
         Command::Members(args) => crate::members::execute(&client, args),
         Command::Sources(args) => crate::sources::execute(&client, args),

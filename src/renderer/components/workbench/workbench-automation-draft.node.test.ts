@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
-import type { CodexModelOption, CodexScheduledAutomation } from "@/lib/types";
+import type { CodexModelOption, Automation } from "@/lib/types";
 import {
-  buildCodexScheduledAutomationCreateInput,
-  buildCodexScheduledAutomationUpdateInput,
-  createCodexScheduledAutomationId,
+  buildAutomationCreateInput,
+  buildAutomationUpdateInput,
+  createAutomationId,
   createWorkbenchAutomationDraft,
   createWorkbenchAutomationDraftFromCreateInput,
   createWorkbenchAutomationDraftFromUpdateInput,
@@ -52,18 +52,20 @@ const MODELS: CodexModelOption[] = [
   },
 ];
 
-function makeAutomation(
-  overrides: Partial<CodexScheduledAutomation> = {},
-): CodexScheduledAutomation {
+function makeAutomation(overrides: Partial<Automation> = {}): Automation {
   return {
     id: "automation-1",
-    definitionRevision: 1,
+    automationRevision: 1,
+    scope: { kind: "space" },
+    ownerMemberId: "member-owner",
+    conditionText: "Every day",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     projectId: null,
     notificationPolicy: null,
-    launch: "automatic",
+    mode: "run",
     runbookPageId: null,
     runbookTitle: null,
-    heldFiring: null,
+    heldDecision: null,
     kind: "heartbeat",
     status: "ACTIVE",
     targetSessionId: "thread-1",
@@ -86,6 +88,43 @@ function makeAutomation(
 }
 
 describe("workbench automation draft", () => {
+  test("editing a target retains the Automation's scope and observed revision", () => {
+    const automation = makeAutomation({
+      scope: { kind: "project", projectId: "scope-project" },
+      automationRevision: 7,
+    });
+    const draft = createWorkbenchAutomationDraft({ automation: automation });
+    expect(
+      buildAutomationUpdateInput({ draft: { ...draft, prompt: "Check the latest progress" } }),
+    ).toMatchObject({ scope: automation.scope, expectedRevision: 7 });
+  });
+
+  test("a reviewed proposal cannot inherit Run from an omitted mode", () => {
+    const automation = makeAutomation({
+      mode: "ask_first",
+      automationRevision: 7,
+      timezone: "Asia/Tokyo",
+    });
+    const draft = createWorkbenchAutomationDraftFromUpdateInput({
+      automation: automation,
+      update: {
+        id: automation.id,
+        expectedRevision: 7,
+        kind: "heartbeat",
+        status: "ACTIVE",
+        name: automation.name,
+        prompt: "Check the latest progress",
+        rrule: automation.rrule,
+        targetSessionId: automation.targetSessionId,
+      },
+    });
+    expect(buildAutomationUpdateInput({ draft })).toMatchObject({
+      mode: "ask_first",
+      ownerMemberId: automation.ownerMemberId,
+      timezone: "Asia/Tokyo",
+      scope: automation.scope,
+    });
+  });
   test("preserves a reviewed Claude profile and its Default intent when Codex models reload", () => {
     const draft = createWorkbenchAutomationDraftFromCreateInput({
       kind: "cron",
@@ -99,7 +138,7 @@ describe("workbench automation draft", () => {
     });
     const resolved = resolveWorkbenchAutomationDraftModelSettings({ draft, models: MODELS });
     expect(resolved).toBe(draft);
-    expect(buildCodexScheduledAutomationCreateInput({ draft: resolved })).toMatchObject({
+    expect(buildAutomationCreateInput({ draft: resolved })).toMatchObject({
       backendBinding: { kind: "claude", instanceConfigId: "gateway" },
       model: "default",
       reasoningEffort: "default",
@@ -140,7 +179,7 @@ describe("workbench automation draft", () => {
       rrule: "FREQ=HOURLY",
       model: "unused",
     });
-    expect(buildCodexScheduledAutomationCreateInput({ draft })).toMatchObject({
+    expect(buildAutomationCreateInput({ draft })).toMatchObject({
       backendBinding: { kind: "claude", instanceConfigId: "gateway" },
       targetSessionId: "session",
       model: null,
@@ -164,7 +203,11 @@ describe("workbench automation draft", () => {
       },
       automation: makeAutomation({
         kind: "cron",
-        definitionRevision: 4,
+        automationRevision: 4,
+        scope: { kind: "space" },
+        ownerMemberId: "member-owner",
+        conditionText: "Every day",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         projectId: "project:newer",
         cwds: ["/newer"],
         model: "newer-model",
@@ -193,7 +236,7 @@ describe("workbench automation draft", () => {
         targetSessionId: "session:original",
         ...(notificationPolicy !== undefined ? { notificationPolicy } : {}),
       });
-      const payload = buildCodexScheduledAutomationCreateInput({ draft });
+      const payload = buildAutomationCreateInput({ draft });
       expect(payload).toMatchObject({ targetSessionId: "session:original" });
       expect(payload?.notificationPolicy).toBe(notificationPolicy);
       expect(Object.hasOwn(payload ?? {}, "notificationPolicy")).toBe(
@@ -215,12 +258,16 @@ describe("workbench automation draft", () => {
         targetSessionId: "session:original",
       },
       automation: makeAutomation({
-        definitionRevision: 4,
+        automationRevision: 4,
+        scope: { kind: "space" },
+        ownerMemberId: "member-owner",
+        conditionText: "Every day",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         targetSessionId: "session:newer",
         notificationPolicy: "failed_runs_only",
       }),
     });
-    const payload = buildCodexScheduledAutomationUpdateInput({ draft });
+    const payload = buildAutomationUpdateInput({ draft });
     expect(payload).toMatchObject({
       expectedRevision: 3,
       targetSessionId: "session:original",
@@ -240,7 +287,7 @@ describe("workbench automation draft", () => {
     draft.model = "gpt-5.5";
     draft.reasoningEffort = "high";
 
-    const payload = buildCodexScheduledAutomationCreateInput({ draft });
+    const payload = buildAutomationCreateInput({ draft });
 
     expect(payload?.name).toBe("Weekly triage");
     expect(payload?.prompt).toBe("Triage the project queue.");
@@ -313,7 +360,7 @@ describe("workbench automation draft", () => {
     draft.status = "PAUSED";
     expect(isWorkbenchAutomationDraftDirty({ draft, existing: automation })).toBe(true);
 
-    const payload = buildCodexScheduledAutomationUpdateInput({
+    const payload = buildAutomationUpdateInput({
       draft,
       id: automation.id,
     });
@@ -338,7 +385,7 @@ describe("workbench automation draft", () => {
     draft.reasoningEffort = "high";
 
     const validation = validateWorkbenchAutomationDraft(draft);
-    const payload = buildCodexScheduledAutomationUpdateInput({
+    const payload = buildAutomationUpdateInput({
       draft,
       id: automation.id,
     });
@@ -432,7 +479,7 @@ describe("workbench automation draft", () => {
     expect(JSON.stringify(parseWorkbenchAutomationCwds(" /a, /b\n/c "))).toBe(
       JSON.stringify(["/a", "/b", "/c"]),
     );
-    expect(createCodexScheduledAutomationId(() => "abc").startsWith("automation-")).toBe(true);
+    expect(createAutomationId(() => "abc").startsWith("automation-")).toBe(true);
   });
 
   test("detects meaningful create draft changes without counting generated ids", () => {
@@ -475,7 +522,7 @@ test("builds a projectless local task without borrowing a directory or Project",
   draft.name = "Daily review";
   draft.prompt = "Review updates";
   draft.model = "gpt-5.5";
-  expect(buildCodexScheduledAutomationCreateInput({ draft })).toMatchObject({
+  expect(buildAutomationCreateInput({ draft })).toMatchObject({
     projectId: null,
     cwds: [],
     executionEnvironment: "local",
@@ -495,7 +542,7 @@ test("an ACP task keeps its exact instance and sends only options its model adve
   expect(draft).toMatchObject({ model: "", reasoningEffort: "" });
   expect(validateWorkbenchAutomationDraft(draft).missingRequirements).toContain("model");
   draft.model = "dfmodel";
-  expect(buildCodexScheduledAutomationCreateInput({ draft })).toMatchObject({
+  expect(buildAutomationCreateInput({ draft })).toMatchObject({
     backendBinding: { kind: "acp", agentDefinitionId: "qoder-cli", instanceConfigId: "qoder-work" },
     model: "dfmodel",
     reasoningEffort: null,
