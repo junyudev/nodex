@@ -147,7 +147,10 @@ export const live: Layer.Layer<
       authorize(event, "Window Session bootstrap").pipe(
         Effect.andThen(
           parse("bootstrap-window-session", () => ({
-            session: windows.bootstrap(event.sender.id),
+            session: windows.bootstrap(
+              event.sender.id,
+              new URL(event.senderFrame?.url ?? "").searchParams.get("spaceId"),
+            ),
           })),
         ),
       ),
@@ -159,6 +162,9 @@ export const live: Layer.Layer<
         ),
         Effect.flatMap((layout) =>
           parse("save-window-layout", () => {
+            const spaceId = new URL(event.senderFrame?.url ?? "").searchParams.get("spaceId");
+            if (layout.spaceId !== spaceId)
+              throw new Error("Window Session layout requires its sending Space");
             const window = windows.get(event.sender.id);
             const bounds =
               window && !window.isDestroyed() ? captureWindowSessionBounds(window) : undefined;

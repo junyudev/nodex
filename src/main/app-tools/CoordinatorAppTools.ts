@@ -320,6 +320,7 @@ export const makeWithCapture = (
               })),
               produced_by: context.producedBy,
               error: null,
+              automatic_dispatch: true,
             },
             operation.operationId,
           )

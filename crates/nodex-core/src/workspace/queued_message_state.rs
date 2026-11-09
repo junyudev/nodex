@@ -77,6 +77,11 @@ pub(super) fn accept_user_messages(
                 connection,
                 &session_id,
                 message_id,
+                &connection.query_row(
+                    "SELECT member_id FROM local_profile_members LIMIT 1",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )?,
                 &now,
             )? {
                 changed.insert(session_id.clone());

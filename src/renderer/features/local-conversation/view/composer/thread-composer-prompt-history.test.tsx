@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { renderWithMaitai } from "@/test/thread-maitai";
 import { settleAsyncRender } from "@/test/dom";
 import { clearPersistedAtomStoreForTests, writeAtom } from "@/lib/persisted-atom-store";
+import { spaceStorageKey } from "@/lib/renderer-space";
 import type {
   ComposerPromptEditorHandle,
   ComposerPromptEditorKeyboardEvent,
@@ -255,7 +256,7 @@ describe("useThreadComposerPromptHistoryRecall", () => {
   });
 
   test("recalls newest prompt from an empty composer and walks history with ArrowUp and ArrowDown", async () => {
-    await writeAtom(PROMPT_HISTORY_ATOM_KEY, { "thread-1": ["older", "newer"] });
+    await writeAtom(spaceStorageKey(PROMPT_HISTORY_ATOM_KEY), { "thread-1": ["older", "newer"] });
     const controllerRef: { current: FakeComposerController | null } = { current: null };
 
     renderWithMaitai(<PromptHistoryHarness controllerRef={controllerRef} />);
@@ -290,7 +291,7 @@ describe("useThreadComposerPromptHistoryRecall", () => {
   });
 
   test("does not recall when composer is non-empty, cursor is not at end, or a modifier is pressed", async () => {
-    await writeAtom(PROMPT_HISTORY_ATOM_KEY, { "thread-1": ["history"] });
+    await writeAtom(spaceStorageKey(PROMPT_HISTORY_ATOM_KEY), { "thread-1": ["history"] });
     const controllerRef: { current: FakeComposerController | null } = { current: null };
 
     renderWithMaitai(<PromptHistoryHarness controllerRef={controllerRef} initialText="draft" />);
@@ -321,7 +322,7 @@ describe("useThreadComposerPromptHistoryRecall", () => {
   });
 
   test("resets traversal after manual edits diverge from the recalled entry", async () => {
-    await writeAtom(PROMPT_HISTORY_ATOM_KEY, { "thread-1": ["older", "newer"] });
+    await writeAtom(spaceStorageKey(PROMPT_HISTORY_ATOM_KEY), { "thread-1": ["older", "newer"] });
     const controllerRef: { current: FakeComposerController | null } = { current: null };
 
     renderWithMaitai(<PromptHistoryHarness controllerRef={controllerRef} />);
@@ -347,7 +348,7 @@ describe("useThreadComposerPromptHistoryRecall", () => {
   });
 
   test("lets the latest queued follow-up consume ArrowUp before history recall", async () => {
-    await writeAtom(PROMPT_HISTORY_ATOM_KEY, { "thread-1": ["history"] });
+    await writeAtom(spaceStorageKey(PROMPT_HISTORY_ATOM_KEY), { "thread-1": ["history"] });
     const controllerRef: { current: FakeComposerController | null } = { current: null };
     let queueSelections = 0;
 

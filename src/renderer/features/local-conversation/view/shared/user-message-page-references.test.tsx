@@ -9,7 +9,7 @@ test("transcript references expose canonical Page navigation and dispatch the op
   const open = vi.fn();
   const subject = render(<UserMessagePageReferences references={references} onOpenPage={open} />);
   const link = subject.getByRole("link");
-  expect(link.getAttribute("href")).toBe("nodex://pages/page-a");
+  expect(link.getAttribute("href")).toBe("nodex://pages/page-a?spaceId=test-space");
   await act(async () => {
     fireEvent.click(link);
     await Promise.resolve();

@@ -1,7 +1,9 @@
 import type { RuntimeMode } from "@nodex/agent-runtime/contracts";
 import { AgentRuntimeModeSchema } from "../../../shared/schemas/agent-runtime-api";
 import { z } from "zod";
-import { persistedAtom } from "@/lib/maitai";
+import { persistedAtom, type PersistedAtomDefinition } from "@/lib/maitai";
+import { rendererSpace, spaceStorageKeyFor } from "@/lib/renderer-space";
+import type { SpaceConnectionSummary } from "../../../shared/space-connection";
 import type { AgentModelSelection } from "../../../shared/agent-model-catalog";
 import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import { AgentBackendBindingSchema } from "../../../shared/schemas/agent-backend";
@@ -126,15 +128,36 @@ export const agentRuntimeModelOptionMemoryAtom = persistedAtom<AgentRuntimeModel
   decode: (value) => decodeEntries(value, (models) => decodeEntries(models, decodeWith(options))),
 });
 
+const NEW_CHAT_CHOICE_KEY = "agent-runtime-new-chat-choice-v1";
+
 /**
- * What a new chat starts on: the last choice made in any unstarted chat's Composer, on any Agent.
- * It stands apart from the Composer choices so eviction there can never forget it.
+ * Where a Space remembers what its new chats start on. Hosts offer different Agents and models,
+ * so each team Space keeps its own choice for its Member; the personal Space keeps the desktop's.
  */
-export const agentRuntimeNewChatChoiceAtom = persistedAtom<AgentModelSelection | null>({
-  debugLabel: "agent-runtime-new-chat-choice",
-  storageKey: "agent-runtime-new-chat-choice-v1",
-  defaultValue: null,
-  hydration: "eager",
-  synchronization: "cross-window",
-  decode: (value) => decodeWith(selection)(value) ?? null,
-});
+export const newChatChoiceStorageKey = (
+  space: Pick<SpaceConnectionSummary, "kind" | "spaceId" | "memberId">,
+): string =>
+  space.kind === "team" ? spaceStorageKeyFor(space, NEW_CHAT_CHOICE_KEY) : NEW_CHAT_CHOICE_KEY;
+
+const newChatChoiceAtoms = new Map<string, PersistedAtomDefinition<AgentModelSelection | null>>();
+
+/**
+ * What a new chat starts on in this window's Space: the last choice made in any of its unstarted
+ * chats' Composers, on any Agent. It stands apart from the Composer choices so eviction there can
+ * never forget it.
+ */
+export function agentRuntimeNewChatChoiceAtom(): PersistedAtomDefinition<AgentModelSelection | null> {
+  const storageKey = newChatChoiceStorageKey(rendererSpace());
+  const existing = newChatChoiceAtoms.get(storageKey);
+  if (existing) return existing;
+  const definition = persistedAtom<AgentModelSelection | null>({
+    debugLabel: "agent-runtime-new-chat-choice",
+    storageKey,
+    defaultValue: null,
+    hydration: "eager",
+    synchronization: "cross-window",
+    decode: (value) => decodeWith(selection)(value) ?? null,
+  });
+  newChatChoiceAtoms.set(storageKey, definition);
+  return definition;
+}

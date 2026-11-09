@@ -68,6 +68,7 @@ pub(super) fn move_thread(
     }
 
     let owner = require_thread_owner(connection, library_id, thread_id)?;
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
     if owner.project_id.as_deref() != source_project_id
         || owner.session_project_id.as_deref() != source_project_id
     {
@@ -129,6 +130,7 @@ pub(super) fn move_thread(
             }
             update_thread_lane_rank(
                 connection,
+                &member,
                 thread_id,
                 &owner.session_id,
                 target_project_id,
@@ -283,6 +285,7 @@ fn move_thread_membership(
 
 fn update_thread_lane_rank(
     connection: &Connection,
+    member: &str,
     _moved_thread_id: &str,
     moved_session_id: &str,
     target_project_id: Option<&str>,
@@ -319,6 +322,7 @@ fn update_thread_lane_rank(
     if let Some(relative) = relative {
         return super::session_order::place(
             connection,
+            member,
             moved_session_id,
             target_project_id,
             &relative,
@@ -333,6 +337,7 @@ fn update_thread_lane_rank(
     }
     super::session_order::place_at_edge(
         connection,
+        member,
         moved_session_id,
         target_project_id,
         matches!(placement, ProjectWorkspaceThreadPlacement::Start),

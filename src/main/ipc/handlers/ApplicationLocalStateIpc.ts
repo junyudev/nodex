@@ -2,6 +2,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
+import { CoreAuthority } from "../../core-runtime/CoreAuthority";
+import { rendererSpaceParameter } from "../../../shared/space-ipc-policy";
+import {
+  personalStateKeyMatches,
+  personalStateKeySpace,
+} from "../../../shared/space-personal-state";
 import { MainConfig } from "../../app/MainConfig";
 import { safeBroadcastToWindows } from "../../ipc-safe-send";
 import { ProfilePersistedAtoms } from "../../local-store/ProfilePersistedAtoms";
@@ -20,17 +26,30 @@ const diagnostics = getLogger({ subsystem: "renderer", component: "diagnostics" 
 export const live: Layer.Layer<
   never,
   never,
-  ElectronIpc | MainConfig | WindowRuntime | ProfilePersistedAtoms
+  ElectronIpc | MainConfig | WindowRuntime | ProfilePersistedAtoms | CoreAuthority
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* MainConfig;
+    const authority = yield* CoreAuthority;
+    const senderSpace = (url: string) =>
+      rendererSpaceParameter(url) ?? authority.identity.libraryId;
     const persistedAtoms = yield* ProfilePersistedAtoms;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
     yield* Effect.acquireRelease(
       Effect.sync(() =>
         persistedAtoms.subscribe((event) => {
-          safeBroadcastToWindows(windows.all(), "persisted-atom:updated", [event]);
+          const owner = personalStateKeySpace(event.key);
+          safeBroadcastToWindows(
+            windows
+              .all()
+              .filter(
+                (window) =>
+                  owner === null || senderSpace(window.webContents.getURL?.() ?? "") === owner,
+              ),
+            "persisted-atom:updated",
+            [event],
+          );
         }),
       ),
       (unsubscribe) => Effect.sync(unsubscribe),
@@ -58,13 +77,30 @@ export const live: Layer.Layer<
       ),
     );
     yield* handleQuery("persisted-atom:sync-request", (event) =>
-      authorize(event).pipe(Effect.andThen(Effect.sync(() => persistedAtoms.readSnapshot()))),
+      authorize(event).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            const snapshot = persistedAtoms.readSnapshot();
+            const spaceId = senderSpace(event.senderFrame?.url ?? "");
+            return {
+              ...snapshot,
+              values: Object.fromEntries(
+                Object.entries(snapshot.values).filter(([key]) =>
+                  personalStateKeyMatches(key, spaceId),
+                ),
+              ),
+            };
+          }),
+        ),
+      ),
     );
     yield* handleRevisionedCommand("persisted-atom:update", (event, mutation) =>
       authorize(event).pipe(
         Effect.andThen(
           Effect.try({
             try: () => {
+              if (!personalStateKeyMatches(mutation.key, senderSpace(event.senderFrame?.url ?? "")))
+                throw new Error("Personal state belongs to another Space");
               const persistedEvent = persistedAtoms.commitMutation(
                 mutation,
                 String(event.sender.id),

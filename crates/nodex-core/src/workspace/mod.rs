@@ -52,6 +52,7 @@ pub(crate) use inbox_serialization::{
 mod inbox_tests;
 mod managed_worktree_lifecycle;
 mod managed_worktree_window;
+mod member_attention;
 mod mutation;
 mod page_chat;
 mod page_create;
@@ -159,6 +160,11 @@ impl ProjectWorkspaceModule {
         context: &BoundModuleContext,
         request: ModuleReadRequest<ProjectWorkspaceRead>,
     ) -> Result<ModuleReadSnapshot<ProjectWorkspaceReadValue>, CoreError> {
+        nodex_core_contracts::remote_admission::authorize(
+            context,
+            "workspace_read",
+            &request.read,
+        )?;
         self.validate_context(context)?;
         if request.contract_version != PROJECT_WORKSPACE_CONTRACT_VERSION {
             return Err(invalid("unsupported Project Workspace contract version"));
@@ -172,6 +178,7 @@ impl ProjectWorkspaceModule {
         readers
             .read_default(move |connection| {
                 let transaction = connection.unchecked_transaction()?;
+                let context = crate::infrastructure::actors::bind(&transaction, &context)?;
                 let identity = transaction
                     .query_row(
                         "SELECT 1 FROM libraries WHERE id = ?1 AND profile_id = ?2",
@@ -216,6 +223,11 @@ impl ProjectWorkspaceModule {
         context: &BoundModuleContext,
         request: ModuleApplyRequest<ProjectWorkspaceIntent>,
     ) -> Result<ProjectWorkspaceApplyOutcome, CoreError> {
+        nodex_core_contracts::remote_admission::authorize(
+            context,
+            "workspace_apply",
+            &request.intent,
+        )?;
         self.validate_context(context)?;
         if request.contract_version != PROJECT_WORKSPACE_CONTRACT_VERSION {
             return Err(invalid("unsupported Project Workspace contract version"));
@@ -331,7 +343,7 @@ fn core_error(error: StoreError) -> CoreError {
         code,
         message: error.message,
         retryable: error.retryable,
-        recovery: CoreErrorRecovery::None,
+        recovery: error.recovery.unwrap_or(CoreErrorRecovery::None),
     }
 }
 

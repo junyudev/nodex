@@ -185,6 +185,8 @@ pub enum ActivityFilter {
 pub struct ActivityRow {
     pub id: String,
     pub at: String,
+    pub actor: crate::Actor,
+    pub actor_label: String,
     pub subject: Option<ActivitySubject>,
     pub description: String,
     pub reason: Option<String>,
@@ -211,6 +213,7 @@ pub enum ActivitySubject {
     },
     Chat {
         session_id: String,
+        label: String,
     },
     Thread {
         url: String,
@@ -221,6 +224,7 @@ pub enum ActivitySubject {
         label: String,
     },
 }
+pub type ActivityActor = crate::Actor;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]

@@ -1,4 +1,5 @@
 import { resolveRendererTransport } from "./renderer-transport";
+import { rendererSpace } from "./renderer-space";
 import {
   defineRendererCommand,
   invokeRendererQuery,
@@ -137,7 +138,55 @@ const defaultTransport: PersistedAtomTransport = {
 };
 
 export function getPersistedAtomTransport(): PersistedAtomTransport {
-  return defaultTransport;
+  const space = rendererSpace();
+  return qualifyPersistedAtomTransport(defaultTransport, space.spaceId, space.memberId);
+}
+
+/** Relative atom names stay inside their owner; storage and broadcasts carry the full coordinate. */
+export function qualifyPersistedAtomTransport(
+  transport: PersistedAtomTransport,
+  spaceId: string,
+  memberId: string | null,
+): PersistedAtomTransport {
+  const qualify = (key: string) => JSON.stringify(["space", spaceId, memberId, key]);
+  const relative = (key: string): string | null => {
+    try {
+      const value: unknown = JSON.parse(key);
+      return Array.isArray(value) &&
+        value.length === 4 &&
+        value[0] === "space" &&
+        value[1] === spaceId &&
+        value[2] === memberId &&
+        typeof value[3] === "string"
+        ? value[3]
+        : null;
+    } catch {
+      return null;
+    }
+  };
+  return {
+    readSnapshot: async () => {
+      const snapshot = await transport.readSnapshot();
+      return {
+        revision: snapshot.revision,
+        values: Object.fromEntries(
+          Object.entries(snapshot.values).flatMap(([key, value]) => {
+            const unqualified = relative(key);
+            return unqualified === null ? [] : [[unqualified, value]];
+          }),
+        ),
+      };
+    },
+    mutate: async (mutation) => ({
+      ...(await transport.mutate({ ...mutation, key: qualify(mutation.key) })),
+      key: mutation.key,
+    }),
+    subscribe: (listener) =>
+      transport.subscribe((event) => {
+        const key = relative(event.key);
+        if (key !== null) listener({ ...event, key });
+      }),
+  };
 }
 
 export async function readAtom(key: string, fallback: unknown): Promise<unknown> {

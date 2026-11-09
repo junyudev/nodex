@@ -16,7 +16,7 @@ use super::projection_impact::{canonicalize, decode, encode};
 use super::projection_scope_head;
 use super::sqlite::{StoreError, StoreErrorCode};
 
-const CANONICAL_HASH_VERSION: u32 = 8;
+const CANONICAL_HASH_VERSION: u32 = 9;
 const PROJECTION_SCHEMA_VERSION: u32 = 1;
 const PHYSICAL_EFFECT_EVIDENCE_SQL: &str =
     "SELECT effect.effect_order, effect.change_log_seq, effect.project_id,
@@ -99,6 +99,8 @@ pub(crate) enum LocalCommitResourceMode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CommitContext {
+    actor: nodex_core_contracts::Actor,
+    authorizing_member_id: Option<String>,
     commit_seq: i64,
     store_epoch: String,
     operation_id: String,
@@ -179,6 +181,8 @@ pub(crate) struct RegisteredDocumentEffect<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LocalCommitRow {
+    pub actor: nodex_core_contracts::Actor,
+    pub authorizing_member_id: Option<String>,
     pub commit_seq: i64,
     pub store_epoch: String,
     pub operation_id: String,
@@ -192,6 +196,7 @@ pub(crate) struct LocalCommitRow {
 }
 
 pub(crate) struct VerifiedCommit {
+    pub actor: nodex_core_contracts::Actor,
     pub manifest: CommitManifest,
     pub(crate) sealed_projection_effects: Vec<SealedProjectionEffect>,
     #[cfg(test)]
@@ -216,6 +221,8 @@ pub(crate) struct SealedProjectionEffect {
 
 #[derive(Serialize)]
 struct CanonicalManifest<'a> {
+    actor: &'a nodex_core_contracts::Actor,
+    authorizing_member_id: &'a Option<String>,
     hash_version: u32,
     event_version: u32,
     store_epoch: &'a str,
@@ -306,7 +313,10 @@ pub(super) fn allocate(
     operation_id: &str,
     intent_hash: &str,
     committed_at: &str,
+    actor: &nodex_core_contracts::Actor,
+    authorizing_member_id: Option<&str>,
 ) -> Result<CommitContext, StoreError> {
+    let actor_json = super::actors::encode(actor)?;
     validate_identity(store_epoch, "LocalCommit Store epoch")?;
     validate_identity(operation_id, "LocalCommit operation")?;
     validate_sha256(intent_hash, "LocalCommit intent hash")?;
@@ -316,8 +326,8 @@ pub(super) fn allocate(
         "INSERT OR IGNORE INTO local_commits(
            store_epoch, operation_id, committed_at, projection_impact_json,
            canonical_hash, intent_hash, projection_json, receipt_json,
-           audience_json, finalized
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, '{}', '{}', '{}', 0)",
+           audience_json, finalized, actor_json, authorizing_member_id
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, '{}', '{}', '{}', 0, ?7, ?8)",
         params![
             store_epoch,
             operation_id,
@@ -325,6 +335,8 @@ pub(super) fn allocate(
             projection_impact_json,
             empty_hash(),
             intent_hash,
+            actor_json,
+            authorizing_member_id,
         ],
     )?;
     if inserted == 0 {
@@ -357,6 +369,8 @@ pub(super) fn allocate(
         return Err(corrupt("LocalCommit sequence allocation failed"));
     }
     Ok(CommitContext {
+        actor: actor.clone(),
+        authorizing_member_id: authorizing_member_id.map(str::to_owned),
         commit_seq,
         store_epoch: store_epoch.to_owned(),
         operation_id: operation_id.to_owned(),
@@ -382,6 +396,10 @@ pub(crate) fn begin(
         operation_id,
         intent_hash,
         committed_at,
+        &nodex_core_contracts::Actor::Service {
+            kind: nodex_core_contracts::ServiceKind::Maintenance,
+        },
+        None,
     )
 }
 
@@ -1104,7 +1122,7 @@ pub(crate) fn read_commit(
         .query_row(
             "SELECT commit_seq, store_epoch, operation_id, intent_hash, committed_at,
                     projection_json, receipt_json, audience_json, canonical_hash,
-                    manifest_json
+                    manifest_json, actor_json, authorizing_member_id
              FROM local_commits WHERE commit_seq = ?1 AND finalized = 1",
             [commit_seq],
             |row| {
@@ -1119,6 +1137,8 @@ pub(crate) fn read_commit(
                     row.get::<_, String>(7)?,
                     row.get::<_, String>(8)?,
                     row.get::<_, Option<String>>(9)?,
+                    row.get::<_, String>(10)?,
+                    row.get::<_, Option<String>>(11)?,
                 ))
             },
         )
@@ -1134,6 +1154,8 @@ pub(crate) fn read_commit(
         audience_json,
         canonical_hash,
         manifest_json,
+        actor_json,
+        authorizing_member_id,
     )) = raw
     else {
         return Ok(None);
@@ -1141,6 +1163,8 @@ pub(crate) fn read_commit(
     validate_sha256(&intent_hash, "LocalCommit intent hash")?;
     validate_sha256(&canonical_hash, "LocalCommit canonical hash")?;
     Ok(Some(LocalCommitRow {
+        actor: decode_json(&actor_json, "LocalCommit actor")?,
+        authorizing_member_id,
         commit_seq,
         store_epoch,
         operation_id,
@@ -1405,6 +1429,8 @@ pub(crate) fn load_verified_commit(
         return Err(corrupt("CommitManifest parent is missing or unfinalized"));
     };
     let context = CommitContext {
+        actor: row.actor.clone(),
+        authorizing_member_id: row.authorizing_member_id.clone(),
         commit_seq: row.commit_seq,
         store_epoch: row.store_epoch.clone(),
         operation_id: row.operation_id.clone(),
@@ -1447,6 +1473,7 @@ pub(crate) fn load_verified_commit(
         ));
     }
     Ok(VerifiedCommit {
+        actor: row.actor.clone(),
         sealed_projection_effects,
         manifest: row.manifest.unwrap_or(compiled),
         #[cfg(test)]
@@ -1474,6 +1501,8 @@ pub(crate) fn refresh_migrated_receipt(
         .ok_or_else(|| corrupt("Migrated receipt has no LocalCommit"))?;
     load_verified_commit(connection, commit_seq)?;
     let context = CommitContext {
+        actor: row.actor.clone(),
+        authorizing_member_id: row.authorizing_member_id.clone(),
         commit_seq,
         store_epoch: row.store_epoch.clone(),
         operation_id: row.operation_id.clone(),
@@ -2007,6 +2036,8 @@ fn compile_manifest(
         &evidence.projection.impact,
     );
     let hash_input = CanonicalManifest {
+        actor: &context.actor,
+        authorizing_member_id: &context.authorizing_member_id,
         hash_version: CANONICAL_HASH_VERSION,
         event_version: CORE_EVENT_VERSION,
         store_epoch: &context.store_epoch,

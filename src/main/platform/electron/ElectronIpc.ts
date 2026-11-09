@@ -15,6 +15,7 @@ import type {
   PlainResultCommandChannel,
 } from "../../../shared/ipc-endpoint-policy";
 import type { IpcApi } from "../../../shared/ipc-api";
+import { isSpaceIpcChannel } from "../../../shared/space-ipc-policy";
 import { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
 import { toElectronIpcRendererError } from "./electron-ipc-error";
 
@@ -163,6 +164,21 @@ export class ElectronSyncIpc extends Context.Service<
   }
 >()("nodex/main/platform/electron/ElectronSyncIpc") {}
 
+export type SpaceIpcDispatch = (input: {
+  readonly channel: keyof IpcApi;
+  readonly event: IpcMainInvokeEvent;
+  readonly request: unknown;
+  readonly personal: (args: readonly unknown[]) => Effect.Effect<unknown, unknown>;
+}) => Effect.Effect<unknown, unknown>;
+
+/** Installed after personal Core acquisition; bootstrap IPC never depends on Core. */
+export class ElectronSpaceIpc extends Context.Service<
+  ElectronSpaceIpc,
+  {
+    readonly configure: (dispatch: SpaceIpcDispatch) => Effect.Effect<void, never, Scope.Scope>;
+  }
+>()("nodex/main/platform/electron/ElectronSpaceIpc") {}
+
 const asyncLive: Layer.Layer<
   ElectronIpc,
   never,
@@ -187,15 +203,38 @@ const asyncLive: Layer.Layer<
         yield* Effect.acquireRelease(
           Effect.sync(() => {
             ipcMain.handle(channel, (event, ...args) => {
-              const task = Reflect.apply(handler, undefined, [event, ...args]) as Effect.Effect<
-                unknown,
-                unknown
-              >;
+              const personal = (arguments_: readonly unknown[]) => {
+                const task = Reflect.apply(handler, undefined, [
+                  event,
+                  ...arguments_,
+                ]) as Effect.Effect<unknown, unknown>;
+                return task.pipe(
+                  Effect.flatMap((result) =>
+                    delivery
+                      ? delivery.deliver(
+                          event,
+                          arguments_ as IpcApi[Channel]["args"],
+                          result as Result,
+                        )
+                      : Effect.succeed(result),
+                  ),
+                );
+              };
+              const task = isSpaceIpcChannel(channel)
+                ? Effect.suspend(() =>
+                    spaceDispatch
+                      ? spaceDispatch({
+                          channel,
+                          event,
+                          request: args.length === 1 ? args[0] : undefined,
+                          personal,
+                        })
+                      : Effect.fail(new Error("Space routing is not ready")),
+                  )
+                : personal(args);
               return callbacks.runPromise(
                 Effect.gen(function* () {
                   if (!queryScope) return yield* task;
-                  // The registration owns pending reads, so they drain before its dependencies.
-                  // raceFirst interrupts and awaits the query when its renderer disappears.
                   const fiber = yield* Effect.raceFirst(task, destruction.wait(event.sender)).pipe(
                     Effect.forkIn(queryScope),
                   );
@@ -204,11 +243,6 @@ const asyncLive: Layer.Layer<
                   if (Exit.isFailure(exit)) return yield* Effect.failCause(exit.cause);
                   return exit.value;
                 }).pipe(
-                  Effect.flatMap((result) =>
-                    delivery
-                      ? delivery.deliver(event, args as IpcApi[Channel]["args"], result as Result)
-                      : Effect.succeed(result),
-                  ),
                   Effect.catchCause((cause) =>
                     Effect.logError("Electron IPC handler failed").pipe(
                       Effect.annotateLogs({ channel, cause: Cause.pretty(cause) }),
@@ -243,6 +277,8 @@ const asyncLive: Layer.Layer<
         );
       },
     });
+                Effect.sync(() => {
+                }),
   }),
 );
 
@@ -261,5 +297,7 @@ const syncLive: Layer.Layer<ElectronSyncIpc> = Layer.succeed(
   }),
 );
 
-export const live: Layer.Layer<ElectronIpc | ElectronSyncIpc, never, ScopedCallbackRuntime> =
-  Layer.merge(asyncLive, syncLive).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));
+export const live: Layer.Layer<
+  ElectronIpc | ElectronSpaceIpc | ElectronSyncIpc,
+  never,
+  ScopedCallbackRuntime

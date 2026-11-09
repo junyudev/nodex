@@ -1,3 +1,4 @@
+import { rethrowCoreTransportFailure } from "./local-http";
 import {
   canonicalizeCanvasSceneMutationRequest,
   canonicalizeCanvasSceneMutationResult,
@@ -177,7 +178,6 @@ export const createCoreCanvasSceneCommands = (
           document_id: request.documentId,
           generation: stats.generation,
           expected_head_seq: stats.headSeq,
-          actor: { kind: "canvas_tombstone_compaction" },
         },
       });
       if (committed.outcome.canvas === undefined) {
@@ -216,6 +216,7 @@ export const createCoreCanvasSceneAdapter = (
       try {
         return await commands.sync(request);
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return mapCoreCanvasSceneFailure(error);
       }
     },
@@ -223,6 +224,7 @@ export const createCoreCanvasSceneAdapter = (
       try {
         return await commands.applyMutation(request);
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return mapCoreCanvasSceneFailure(error, request.mutationId);
       }
     },
@@ -230,6 +232,7 @@ export const createCoreCanvasSceneAdapter = (
       try {
         return await commands.readCompaction(request);
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return mapCoreCanvasSceneFailure(error);
       }
     },
@@ -237,6 +240,7 @@ export const createCoreCanvasSceneAdapter = (
       try {
         return await commands.compact(request, stats);
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return mapCoreCanvasSceneFailure(error, request.mutationId);
       }
     },

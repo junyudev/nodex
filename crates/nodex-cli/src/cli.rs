@@ -94,6 +94,7 @@ pub enum Command {
     Members(crate::members::MembersArgs),
     /// Inspect external Sources and their recorded observations.
     Sources(crate::sources::SourcesArgs),
+    Space(crate::space::SpaceArgs),
     /// Filter, join and summarize Pages, bodies, Properties and View results with read-only SQL.
     Sql(crate::sql::SqlArgs),
     /// Read one known Page body; --json includes reusable edit validators.

@@ -548,7 +548,6 @@ fn captured_property_order_preserves_overrides_and_completes_fields_before_sourc
                 "due_date",
                 "scheduled_start",
                 "scheduled_end",
-                "assignee",
                 "task_parent",
                 "blocked_by",
                 "owner",
@@ -566,7 +565,6 @@ fn captured_property_order_preserves_overrides_and_completes_fields_before_sourc
                 "due_date",
                 "scheduled_start",
                 "scheduled_end",
-                "assignee",
                 "task_parent",
                 "blocked_by",
                 "owner",
@@ -1254,16 +1252,19 @@ fn effective_list_queries_preserve_duplicate_hierarchy_occurrences_and_ignore_co
 
 #[test]
 fn effective_queries_fail_completely_on_input_budgets_and_honor_cancellation() {
-    let fixture = ViewFixture::new();
+    let mut fixture = ViewFixture::new();
+    // Capacity and elapsed time are independent limits. Tighten capacity rather than
+    // racing a multi-megabyte projection against the production request deadline.
+    fixture.query = fixture.query.with_test_input_byte_limit(2 * 1024);
     fixture.property("p_large001", DatabasePropertySchema::Text);
     fixture.rows(
         "large",
         SOURCE,
-        (0..100)
+        (0..4)
             .map(|index| LibraryAgentCreatePageDraft {
                 values: vec![LibraryPageCopyValue {
                     property_id: "p_large001".into(),
-                    value: json!("x".repeat(60_000)),
+                    value: json!("x".repeat(1024)),
                 }],
                 ..draft(&format!("Large {index}"))
             })
@@ -1301,6 +1302,21 @@ fn effective_queries_fail_completely_on_input_budgets_and_honor_cancellation() {
         CoreErrorCode::ResourceExhausted
     );
     let current = fixture.coordinate();
+    let expired = crate::infrastructure::request_execution::within_request_execution(
+        crate::infrastructure::request_execution::RequestExecutionContext::new(
+            crate::infrastructure::request_execution::RequestExecutionClass::Background,
+            crate::infrastructure::sqlite::QueryCancellation::new(),
+            std::time::Instant::now(),
+        ),
+        || {
+            fixture.read(
+                &fixture.base.authorization,
+                current.clone(),
+                DatabaseDisplayedViewSelection::Effective { limit: None },
+            )
+        },
+    );
+    assert_eq!(expired.unwrap_err().code, CoreErrorCode::DeadlineExceeded);
     let cancellation = crate::infrastructure::sqlite::QueryCancellation::new();
     cancellation.cancel();
     let failure = crate::infrastructure::request_execution::within_request_execution(

@@ -1,7 +1,6 @@
 import { createViewportMemory } from "./viewport-memory";
 
 const STORAGE_KEY = "nodex-page-stage-viewport-v2";
-const LEGACY_STORAGE_KEY = "nodex-page-stage-scroll-v1";
 const MAX_ENTRIES = 200;
 
 interface PageStageViewportSnapshotBase {
@@ -25,23 +24,9 @@ export type PageStageViewportSnapshot =
       readonly fallbackScrollTop: number;
     });
 
-type LegacyScrollMap = Record<string, number>;
-
 function makeKey(documentScopeKey: string, pageId: string, editorSessionKey?: string): string {
   if (editorSessionKey) return `page-stage-session:${editorSessionKey}`;
   return `page-stage:${documentScopeKey}:${pageId}`;
-}
-
-function makeLegacyKey(
-  documentScopeKey: string,
-  pageId: string,
-  editorSessionKey?: string,
-): string {
-  if (editorSessionKey) return `page-stage-session:${editorSessionKey}`;
-  const legacyProjectId = documentScopeKey.startsWith("project:")
-    ? documentScopeKey.slice("project:".length)
-    : documentScopeKey;
-  return `page-stage:${legacyProjectId}:${pageId}`;
 }
 
 function isNonNegativeFiniteNumber(value: unknown): value is number {
@@ -80,23 +65,6 @@ function decodeSnapshot(value: unknown): PageStageViewportSnapshot | null {
   };
 }
 
-function readLegacyScrollMap(): LegacyScrollMap {
-  try {
-    const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-
-    const result: LegacyScrollMap = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      if (isNonNegativeFiniteNumber(value)) result[key] = value;
-    }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
 const memory = createViewportMemory({
   storageKey: STORAGE_KEY,
   decode: decodeSnapshot,
@@ -126,20 +94,7 @@ export function loadPageStageViewportSnapshot(
   pageId: string,
   editorSessionKey?: string,
 ): PageStageViewportSnapshot | null {
-  const key = makeKey(documentScopeKey, pageId, editorSessionKey);
-  const snapshot = memory.load(key);
-  if (snapshot) return snapshot;
-
-  const legacyScrollTop =
-    readLegacyScrollMap()[makeLegacyKey(documentScopeKey, pageId, editorSessionKey)];
-  if (!isNonNegativeFiniteNumber(legacyScrollTop)) return null;
-  const migrated: PageStageViewportSnapshot = {
-    version: 2,
-    kind: "offset",
-    scrollTop: legacyScrollTop,
-  };
-  memory.remember(key, migrated);
-  return migrated;
+  return memory.load(makeKey(documentScopeKey, pageId, editorSessionKey));
 }
 
 export function forgetPageStageViewportSnapshot(
@@ -147,14 +102,5 @@ export function forgetPageStageViewportSnapshot(
   pageId: string,
   editorSessionKey?: string,
 ): void {
-  const key = makeKey(documentScopeKey, pageId, editorSessionKey);
-  memory.forget(key);
-
-  try {
-    const legacyMap = readLegacyScrollMap();
-    delete legacyMap[makeLegacyKey(documentScopeKey, pageId, editorSessionKey)];
-    localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(legacyMap));
-  } catch {
-    // localStorage may be unavailable in restricted renderer contexts.
-  }
+  memory.forget(makeKey(documentScopeKey, pageId, editorSessionKey));
 }

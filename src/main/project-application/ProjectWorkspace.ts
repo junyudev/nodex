@@ -174,8 +174,10 @@ export class ProjectWorkspaceError extends Schema.TaggedError<ProjectWorkspaceEr
 
 type ProjectWorkspaceEffect<A> = Effect.Effect<A, ProjectWorkspaceError>;
 
+/** A reminder one Member is owed, with the chat as that Member reads it. */
 export interface SessionReminderWork {
   readonly session: ProjectSession;
+  readonly memberId: string;
   readonly remindAt: string;
   readonly deliveryId: string | null;
   readonly wakeAt: string;
@@ -343,12 +345,15 @@ export interface ProjectWorkspaceService {
   readonly unreadChatCount: ProjectWorkspaceEffect<number>;
   readonly consumeSessionReminder: (
     sessionId: string,
+    memberId: string,
     remindAt: string,
     deliver: boolean,
   ) => ProjectWorkspaceEffect<boolean>;
+  /** Settles a claimed reminder; `unread` has Core turn the chat unread for its Member. */
   readonly completeSessionReminder: (
     sessionId: string,
     deliveryId: string,
+    unread: boolean,
   ) => ProjectWorkspaceEffect<boolean>;
   readonly deferSessionReminder: (
     sessionId: string,
@@ -1601,11 +1606,14 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       nextSessionReminder: read("session.reminder.next", { kind: "next_session_reminder" }).pipe(
         Effect.flatMap((snapshot) => {
           const value = expectVariant(snapshot, "next_session_reminder");
-          if (!value.session || !value.next_wake_at) return Effect.succeed(null);
+          if (!value.session || !value.member_id || !value.next_wake_at)
+            return Effect.succeed(null);
           const session = value.session;
+          const memberId = value.member_id;
           return requireSession(session.id).pipe(
             Effect.map((current) => ({
               session: current,
+              memberId,
               remindAt: value.delivery?.remind_at ?? session.remind_at!,
               deliveryId: value.delivery?.delivery_id ?? null,
               wakeAt: value.next_wake_at!,
@@ -1613,20 +1621,20 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
           );
         }),
       ),
-      consumeSessionReminder: (sessionId, remindAt, deliver) =>
+      consumeSessionReminder: (sessionId, memberId, remindAt, deliver) =>
         applyWithId("session.reminder.consume", createOperationId("session.reminder.consume"), {
           kind: "mutate_session",
           session_id: sessionId,
-          intent: { kind: "consume_reminder", remind_at: remindAt, deliver },
+          intent: { kind: "consume_reminder", member_id: memberId, remind_at: remindAt, deliver },
         }).pipe(
           Effect.map((result) => result.outcome.affected_session_ids.includes(sessionId)),
           Effect.catchIf(isNotFound, () => Effect.succeed(false)),
         ),
-      completeSessionReminder: (sessionId, deliveryId) =>
+      completeSessionReminder: (sessionId, deliveryId, unread) =>
         applyWithId("session.reminder.complete", createOperationId("session.reminder.complete"), {
           kind: "mutate_session",
           session_id: sessionId,
-          intent: { kind: "complete_reminder_delivery", delivery_id: deliveryId },
+          intent: { kind: "complete_reminder_delivery", delivery_id: deliveryId, unread },
         }).pipe(
           Effect.map((result) => result.outcome.affected_session_ids.includes(sessionId)),
           Effect.catchIf(isNotFound, () => Effect.succeed(false)),

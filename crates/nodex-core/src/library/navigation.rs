@@ -76,6 +76,7 @@ pub(super) fn read(
             items: super::members::list(connection, library_id)?,
         }),
         LibraryRead::LocalMember => Ok(LibraryReadValue::LocalMember {
+            value: super::members::requesting(connection, context, library_id)?,
         }),
         LibraryRead::PageFileInventory {
             page_id,
@@ -638,7 +639,9 @@ pub(super) fn read(
             value: Box::new(super::history::page_history(
                 connection,
                 library_id,
-                requesting_project_id,
+                Some(&crate::infrastructure::actors::requesting_member(
+                    connection, context,
+                )?),
                 &page_id,
                 before,
                 limit,
@@ -3791,7 +3794,12 @@ mod tests {
             })
             .expect("seed Profile identity");
         let context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),

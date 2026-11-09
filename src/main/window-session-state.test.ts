@@ -83,6 +83,101 @@ function saveLayout(
 }
 
 describe("WindowSessionState", () => {
+  test("restores separate Space layouts in one catalog and refuses a previous Space's save", () => {
+    withTempUserData((directory) => {
+      const state = new WindowSessionState(directory);
+      const session = state.createFreshSession();
+      state.attachWindow(1, session.id);
+      state.saveLayout(1, {
+        sessionId: session.id,
+        revision: 1,
+        layout: makeLayout("db", "personal-project"),
+        spaceId: null,
+      });
+      const team = state.bootstrap(1, "personal");
+      expect(getActiveProjectId(team.layout)).toBeNull();
+      state.saveLayout(1, {
+        sessionId: session.id,
+        revision: team.layoutRevision + 1,
+        layout: makeLayout("db", "team-project"),
+        spaceId: "personal",
+      });
+      const personal = state.bootstrap(1, null);
+      expect(getActiveProjectId(personal.layout)).toBe("personal-project");
+      expect(() =>
+        state.saveLayout(1, {
+          sessionId: session.id,
+          revision: personal.layoutRevision + 1,
+          layout: makeLayout("db", "wrong-project"),
+          spaceId: "personal",
+        }),
+      ).toThrow("cannot cross Spaces");
+      const restarted = new WindowSessionState(directory);
+      restarted.attachWindow(2, session.id);
+      expect(getActiveProjectId(restarted.bootstrap(2, "personal").layout)).toBe("team-project");
+      expect(restarted.readCatalog()?.sessions).toHaveLength(1);
+      const cloned = restarted.cloneSessionForWindow(2);
+      expect(cloned.activeSpaceId).toBe("personal");
+      restarted.attachWindow(3, cloned.id);
+      expect(getActiveProjectId(restarted.bootstrap(3, null).layout)).toBe("personal-project");
+      expect(restarted.readCatalog()?.sessions).toHaveLength(2);
+    });
+  });
+  test("canonicalizes dormant Automations routes without losing their Space or return route", () => {
+    withTempUserData((directory) => {
+      const state = new WindowSessionState(directory);
+      const session = state.createFreshSession();
+      state.attachWindow(1, session.id);
+      const personalLayout = {
+        ...makeLayout("db", "personal-project"),
+        location: {
+          kind: "automations" as const,
+          path: "/automations?automationId=same-automation",
+          returnTo: { kind: "project" as const, projectId: "personal-project" },
+        },
+      };
+      state.saveLayout(1, {
+        sessionId: session.id,
+        revision: 1,
+        spaceId: null,
+        layout: personalLayout,
+      });
+      state.bootstrap(1, "team");
+      state.bootstrap(1, null);
+      const catalog = state.readCatalog()!;
+      const teamLayout = {
+        ...makeLayout("db", "team-project"),
+        location: {
+          kind: "automations",
+          path: "/scheduled/edit/same-automation",
+          returnTo: { kind: "project", projectId: "team-project" },
+        },
+      };
+      writeFileSync(
+        join(directory, windowSessionStateTestHelpers.stateFileName),
+        JSON.stringify({
+          ...catalog,
+          sessions: catalog.sessions.map((entry) => ({
+            ...entry,
+            spaceLayouts: {
+              ...entry.spaceLayouts,
+              [JSON.stringify("team")]: { layout: teamLayout },
+            },
+          })),
+        }),
+      );
+      const restarted = new WindowSessionState(directory);
+      restarted.attachWindow(2, session.id);
+      expect(restarted.bootstrap(2, null).layout.location).toEqual(personalLayout.location);
+      expect(restarted.bootstrap(2, "team").layout.location).toEqual({
+        kind: "automations",
+        path: "/automations?automationId=same-automation&automationMode=edit",
+        returnTo: { kind: "project", projectId: "team-project" },
+      });
+      expect(restarted.readCatalog()?.sessions).toHaveLength(1);
+    });
+  });
+
   test("creates a fresh open versioned Window Session", () => {
     withTempUserData((userDataPath) => {
       const state = new WindowSessionState(userDataPath);

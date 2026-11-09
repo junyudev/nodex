@@ -144,7 +144,7 @@ impl CoreClient {
     }
 
     /// Presents a Core-issued Agent attribution credential on content requests, so Core
-    /// names that Agent's Session as their author. An invalid credential attributes nothing.
+    /// names that Agent's Session as their author. An invalid credential refuses admission.
     pub fn attribute_to_agent(&mut self, credential: String) -> Result<(), ClientError> {
         if !valid_header(&credential) {
             return Err(ClientError::InvalidRuntime(
@@ -153,6 +153,78 @@ impl CoreClient {
         }
         self.agent_attribution = Some(credential);
         Ok(())
+    }
+
+    pub fn space_listen(
+        &self,
+        request: nodex_core_contracts::team::ListenRequest,
+    ) -> Result<nodex_core_contracts::team::ListenerInfo, ClientError> {
+        self.connected_request(
+            "/core/v1/admin/space/listen",
+            &request,
+            ContextHeaders::default(),
+        )
+    }
+    pub fn space_rename(
+        &self,
+        name: String,
+    ) -> Result<nodex_core_contracts::team::SpaceName, ClientError> {
+        self.connected_request(
+            "/core/v1/admin/space/name",
+            &nodex_core_contracts::team::RenameSpaceRequest { name },
+            ContextHeaders::default(),
+        )
+    }
+    /// The requesting Member chooses the name other Members see.
+    pub fn space_rename_member(
+        &self,
+        name: String,
+    ) -> Result<nodex_core_contracts::library::Member, ClientError> {
+        self.connected_request(
+            "/core/v1/admin/space/member-name",
+            &nodex_core_contracts::team::RenameMemberRequest { name },
+            ContextHeaders::default(),
+        )
+    }
+    pub fn space_invite(
+        &self,
+        request: nodex_core_contracts::team::InviteRequest,
+    ) -> Result<nodex_core_contracts::team::InviteResponse, ClientError> {
+        self.connected_request(
+            "/core/v1/admin/space/invite",
+            &request,
+            ContextHeaders::default(),
+        )
+    }
+    pub fn space_devices(
+        &self,
+    ) -> Result<Vec<nodex_core_contracts::team::MemberDevice>, ClientError> {
+        request_without_body(
+            &self.socket,
+            &self.auth,
+            "/core/v1/admin/space/devices",
+            &[],
+        )
+    }
+    pub fn space_revoke(
+        &self,
+        request: nodex_core_contracts::team::RevokeDeviceRequest,
+    ) -> Result<serde_json::Value, ClientError> {
+        self.connected_request(
+            "/core/v1/admin/space/revoke",
+            &request,
+            ContextHeaders::default(),
+        )
+    }
+    pub fn space_remove_member(
+        &self,
+        request: nodex_core_contracts::team::RemoveMemberRequest,
+    ) -> Result<serde_json::Value, ClientError> {
+        self.connected_request(
+            "/core/v1/admin/space/remove-member",
+            &request,
+            ContextHeaders::default(),
+        )
     }
 
     pub fn health(&self) -> Result<HealthResponse, ClientError> {

@@ -130,7 +130,8 @@ const collectInlineReferences = (
       });
     } else if (item.type === "link") {
       const target = parsePageDeepLink(item.href ?? "");
-      if (target)
+      // Qualified links keep their destination authority; relative reference edges cannot.
+      if (target && target.spaceId === undefined)
         appendPageReference(references, {
           kind: "page",
           sourceBlockId,

@@ -94,6 +94,33 @@ Managed Skill directories use junctions, which need no Developer Mode or symlink
 privilege. Only completed junctions are published, atomically and without replacing
 an existing target. Browser-profile import reports `unsupported_platform` outside macOS.
 
+## HTTPS listener
+
+Core can enable an additional rustls HTTPS listener with `--listen <host:port>`
+or the private local `nodex space listen --address <host:port>` command.
+It serves the same HTTP/1.1 Module, blob and SSE routes through a distinct remote
+Member adapter. The local endpoint, descriptor and per-start bearer remain
+private and unchanged. The listener is process-scoped and counts as demand,
+preventing idle drain. Graceful Core shutdown closes its TCP and SSE connections.
+
+The generated certificate/key pair is published atomically in the private
+`<Profile>/team-transport/server-identity.pem` and persists independently of
+per-generation runtime files. It is an owned private regular file opened without
+following aliases. Operator-provided PEMs may be
+selected with `--cert` and `--key`. The listener returns its leaf-certificate
+SHA-256 fingerprint. See [Security](../SECURITY.md#team-transport-threat-model)
+and [Team Space enrollment](../product-specs/team-space-behavior.md).
+
+Remote transport limits are layered before the shared request executor: 128 TLS
+connections, at most 32 logical connections per Member and four per Device, five-second TLS and ten-second header deadlines, bounded enrollment
+body reads (64 KiB / ten seconds), authenticated bodies (32 MiB / twenty seconds),
+eight admitted remote requests globally, two FIFO admitted operations per Member with a two-second admission wait, and
+sixteen active streams per Member and eight per Device. Per-minute windows admit 240 pre-auth events
+per IP, 240 requests / 64 MiB per Member and 120 requests / 32 MiB per Device.
+Inbound and outbound bytes share the byte budget. Slow readers have a
+15-second socket-write bound; TCP keepalive probes detect dead peers.
+Remote clients may select interactive or background work, never maintenance.
+
 ## Generation recovery
 
 Electron's process Scope retains one Effect `CoreAuthority` and one logical Core

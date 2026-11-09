@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "vite-plus/test";
 import {
   resetSafeSendWarningRateLimitForTests,
   safeBroadcastToWindows,
+  safeBroadcastToPersonalWindows,
   safeSendToWebContents,
   safeSendToWindow,
   type SafeSendOptions,
@@ -12,6 +13,11 @@ class FakeWebContents {
   destroyed = false;
   sendCalls: Array<{ channel: string; args: unknown[] }> = [];
   throwOnSend: unknown = null;
+  url = "http://localhost:3000";
+
+  getURL() {
+    return this.url;
+  }
 
   constructor(id: number) {
     this.id = id;
@@ -73,6 +79,24 @@ function createOptions(
 describe("ipc-safe-send", () => {
   beforeEach(() => {
     resetSafeSendWarningRateLimitForTests();
+  });
+
+  test("delivers personal Automation changes only to personal windows", () => {
+    const personal = new FakeWindow(1);
+    const team = new FakeWindow(2);
+    team.webContents.url = "http://localhost:3000?spaceId=team";
+    for (const channel of ["automations:changed", "automations:runs:updated"]) {
+      expect(
+        safeBroadcastToPersonalWindows([personal, team], channel, [
+          { automationId: "same-automation" },
+        ]),
+      ).toBe(1);
+    }
+    expect(personal.webContents.sendCalls.map(({ channel }) => channel)).toEqual([
+      "automations:changed",
+      "automations:runs:updated",
+    ]);
+    expect(team.webContents.sendCalls).toEqual([]);
   });
 
   test("does not send to destroyed webContents", () => {

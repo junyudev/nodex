@@ -66,6 +66,9 @@ class PerformanceSeedPort implements ScenarioSeedPort {
   async settleCoordinatorSuggestion(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }
+  async setInboxRoutingConsent(): Promise<never> {
+    throw new Error("This scenario does not use Inbox consent");
+  }
   async confirmInboxRequestByNodex(): Promise<never> {
     throw new Error("Coordinator work is not part of this scenario");
   }

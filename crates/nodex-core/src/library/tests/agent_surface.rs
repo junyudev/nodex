@@ -77,6 +77,11 @@ impl Fixture {
                 }),
             },
         );
+        fixture
+            .kernel
+            .writer()
+            .call(|c| crate::infrastructure::actors::seed_agent_session(c, "thread:actor"))
+            .unwrap();
         fixture.workspace_apply(
             "freeze-turn",
             ProjectWorkspaceIntent::AdmitTurnAuthority {

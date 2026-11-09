@@ -13,7 +13,7 @@ import {
 } from "@/lib/ordered-list-groups";
 import { usePageTargetReadModel } from "@/lib/block-reference-queries";
 import { libraryContentRoute } from "../../../shared/content-routing-context";
-import { buildPageDeepLink } from "../../../shared/nodex-deeplink";
+import { buildPageDeepLink } from "@/lib/page-deeplink";
 import type { MarkdownBlock, MarkdownInline } from "../../../shared/nodex-markdown";
 import type { ImagePlaceholderReference } from "../../../shared/message-agent-input";
 import type { RichTextColor } from "../../../shared/rich-text/colors";

@@ -1,3 +1,4 @@
+import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -45,6 +46,9 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
       live.pipe(
         Layer.provide(
           Layer.mergeAll(
+            Layer.succeed(CoreAuthority, {
+              identity: { libraryId: "personal" },
+            } as CoreAuthority["Service"]),
             Layer.succeed(CoreModules, {
               workspace: {
                 read: () =>
@@ -105,6 +109,7 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
         hostId: "local",
         conversation: {
           conversationId: "thread-1",
+          runtimeSessionId: "runtime-session",
           title: "Question",
           threadSource: null,
           parentThreadId: null,

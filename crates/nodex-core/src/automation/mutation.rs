@@ -206,6 +206,8 @@ pub(super) fn apply(
             validate_id("operation_id", &request.operation_id)?;
             let intent =
                 super::agent_command::admit(transaction, &library_id, &context, &request.intent)?;
+            let context =
+                crate::infrastructure::actors::automation(transaction, &context, &request.intent)?;
             require_trusted_host(
                 &context,
                 intent,
@@ -247,6 +249,12 @@ pub(super) fn apply(
                 }
                 .map_err(|_| internal("Automation mutation cannot be fingerprinted"))?;
             let request_hash = sha256(&fingerprint);
+            crate::infrastructure::member_admission::admit_operation(
+                transaction,
+                &context,
+                MODULE_NAME,
+                &request.operation_id,
+            )?;
             if let Some(stored) =
                 read_module_receipt(transaction, MODULE_NAME, &request.operation_id)?
             {
@@ -738,6 +746,7 @@ fn dispatch_now(
             "automation-manual:{}",
             sha256(format!("{operation_id}:{automation_id}").as_bytes())
         );
+        super::clock::record_manual(connection, &context.actor, &definition, &dispatch, now_ms)?;
         let next = if definition.status == AutomationStatus::Active {
             scheduled_next_for_stored(connection, &definition, now_ms)?
         } else {
@@ -2501,7 +2510,12 @@ mod tests {
         workspace
             .apply(
                 &BoundModuleContext {
+                    actor: nodex_core_contracts::Actor::Service {
+                        kind: nodex_core_contracts::ServiceKind::Maintenance,
+                    },
+                    authorizing_member_id: None,
                     editor_history_owner: None,
+                    principal: None,
                     agent_attribution: None,
                     profile_id: ProfileId("profile-1".to_owned()),
                     library_id: LibraryId("library-1".to_owned()),
@@ -2533,7 +2547,12 @@ mod tests {
             kernel,
             module,
             context: BoundModuleContext {
+                actor: nodex_core_contracts::Actor::Service {
+                    kind: nodex_core_contracts::ServiceKind::Maintenance,
+                },
+                authorizing_member_id: None,
                 editor_history_owner: None,
+                principal: None,
                 agent_attribution: None,
                 profile_id: ProfileId("profile-1".to_owned()),
                 library_id: LibraryId("library-1".to_owned()),
@@ -2674,6 +2693,7 @@ mod tests {
     fn project_context(harness: &Harness) -> BoundModuleContext {
         BoundModuleContext {
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             project_id: Some(ProjectId("project:default".to_owned())),
             ..harness.context.clone()

@@ -1,3 +1,4 @@
+import { spaceStorageKey } from "./renderer-space";
 import { beforeEach, describe, expect, test } from "vite-plus/test";
 import { createViewportMemory } from "./viewport-memory";
 
@@ -23,7 +24,10 @@ describe("createViewportMemory", () => {
   });
 
   test("drops the oldest places beyond its bound and anything it cannot read", () => {
-    localStorage.setItem("test-viewport", JSON.stringify({ broken: { top: "x" } }));
+    localStorage.setItem(
+      spaceStorageKey("test-viewport"),
+      JSON.stringify({ broken: { top: "x" } }),
+    );
     const memory = createViewportMemory({ storageKey: "test-viewport", decode, maxEntries: 2 });
     memory.save("a", { top: 1 });
     memory.save("b", { top: 2 });

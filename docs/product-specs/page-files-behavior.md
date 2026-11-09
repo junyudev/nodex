@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last Updated: 2026-11-09
+Last Updated: 2026-11-01
 
 Page Files is the Page-local view of Library Files related to one Page. It lets a
 person organize a File under a portable path, see Files used in the Page body,
@@ -104,17 +104,12 @@ head-following Page body occurrences and entries will see the new content.
 
 ## Attachment provenance
 
-Each explicit entry records who attached it and when. Core stamps the time, and
-no caller names its own actor:
-
-- the desktop app attaches as the local person;
-- an Agent that Nodex runs carries a credential Core issued for its chat, so the
-  entry names that product Session and its backend family (Codex, Claude,
-  OpenCode or ACP), captured at attachment so a later provider change does not
-  rewrite it;
-- any other caller, such as the CLI run by hand or by an Agent Nodex did not
-  start, is external;
-- entries that predate provenance have an unknown origin and no time.
+Each explicit entry records its Actor and attachment time. Core derives both;
+commands cannot choose an actor. Desktop and local CLI attachments name the local
+Member. A remote attachment names its authenticated Member. Verified Agent work
+names its Session, optional Run and the Member it represents. Host ingestion names
+its Service. Historical entries without an original attachment time retain that
+absence as maintenance evidence.
 
 Renaming, moving and copying an entry, whole-Page copy, clipboard paste and
 structural restore keep its provenance. Replacing an entry's File, as `nodex page
@@ -126,9 +121,7 @@ not who attached it to a Page.
 ## Opening Files
 
 A Page File opens as a tab in its Page's tab group, immediately after the Page
-tab, so the Page stays one click away. A File referenced in the Page body, as an
-inline attachment, opens the same way from the reference itself (see
-[Attachment Chip](nfm-editor-attachment-chip-behavior.md#opening)). A click opens a preview tab that the next
+tab, so the Page stays one click away. A click opens a preview tab that the next
 preview in that group replaces; a double click, Cmd/Ctrl-click, Open in new tab,
 or switching between preview and source keeps the tab. Opening a File that
 already has a tab activates it. The tab follows its entry: a renamed path keeps

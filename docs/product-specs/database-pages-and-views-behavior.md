@@ -216,10 +216,11 @@ are selected from Pages in the current Library rather than entered as Page IDs. 
 window-local and does not become a saved rule.
 
 Rules and presentation may resolve through independent sparse fields in one
-Core personal-preference envelope keyed by durable View ID. View name, target
+Core personal-preference envelope keyed by Member and durable View ID. Core derives
+the Member from the caller. View name, target
 Source, layout, rank, lifecycle, and default status are always durable. The
 personal preference's monotonic revision applies only to that preference;
-List disclosure is a separate bounded sparse set changed by idempotent
+List disclosure belongs to the same Member in a separate bounded sparse set changed by idempotent
 per-target patches. The current List exposes disclosure only on group headers;
 Page occurrences remain expanded and do not create personal disclosure state.
 Changing either coordinate never rewrites or conflicts with the other. Each

@@ -14,6 +14,7 @@ import type {
   CoreEventSubscription,
   CoreStreamCheckpoint,
 } from "../core-client/types";
+import { CoreRateLimitError } from "../core-client/local-http";
 import { CoreAuthority, CoreSessionAccess } from "./CoreAuthority";
 import {
   classifyCoreOperationFailure,
@@ -224,9 +225,16 @@ export const live = (
         Schedule.setInputType<CoreRuntimeError>(),
         Schedule.while(({ input }) => isOpeningFailure(input)),
         Schedule.tap(({ input }) =>
-          Ref.updateAndGet(connectionAttempt, (attempt) => attempt + 1).pipe(
-            Effect.flatMap((attempt) =>
-              SubscriptionRef.set(connection, { kind: "backing-off", attempt, error: input }),
+          (input.cause instanceof CoreRateLimitError
+            ? Effect.sleep(input.cause.retryAfterMs)
+            : Effect.void
+          ).pipe(
+            Effect.andThen(
+              Ref.updateAndGet(connectionAttempt, (attempt) => attempt + 1).pipe(
+                Effect.flatMap((attempt) =>
+                  SubscriptionRef.set(connection, { kind: "backing-off", attempt, error: input }),
+                ),
+              ),
             ),
           ),
         ),
@@ -240,7 +248,11 @@ export const live = (
             Effect.flatMap((attempt) =>
               SubscriptionRef.set(connection, { kind: "backing-off", attempt, error }),
             ),
-            Effect.andThen(Effect.sleep(retryDelay)),
+            Effect.andThen(
+              Effect.sleep(
+                error.cause instanceof CoreRateLimitError ? error.cause.retryAfterMs : retryDelay,
+              ),
+            ),
           );
         }),
       );

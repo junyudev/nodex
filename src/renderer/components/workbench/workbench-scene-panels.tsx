@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { isRemoteSpace } from "@/lib/renderer-space";
 import { BrowserTabFavicon } from "@/features/browser-sidebar/browser-tab-favicon";
 import { requestTerminalFocus } from "@/lib/terminal-focus";
 import { isPanelActionTargetAllowed, type PanelNewTabAction } from "@/lib/workbench-panel-actions";
@@ -139,10 +140,12 @@ function makePanelItems(
         reorderable: !preview && surface.id !== scene.primary?.id,
         splittable: !preview && surface.id !== scene.primary?.id,
         renderPanel: (_close, context) =>
-          renderSurface(surface, {
-            active: context.active,
-            panelId,
-          }),
+          ) : (
+            renderSurface(surface, {
+              active: context.active,
+              panelId,
+            })
+          ),
       };
     });
     activeTabIdsByLeafId[leaf.id] =
@@ -203,8 +206,11 @@ export function buildWorkbenchScenePanels({
         layout={scene.panels[panelId].layout}
         tabItemsByLeafId={projection.itemsByLeafId}
         activeTabIdsByLeafId={projection.activeTabIdsByLeafId}
-        availableActions={availableActions.filter((action) =>
-          isPanelActionTargetAllowed(action, panelId),
+        availableActions={availableActions.filter(
+          (action) =>
+            isPanelActionTargetAllowed(action, panelId) &&
+            (!isRemoteSpace() ||
+              !["files", "side_chat", "terminal", "review"].includes(action.kind)),
         )}
         projects={projects}
         isMac={isMac}

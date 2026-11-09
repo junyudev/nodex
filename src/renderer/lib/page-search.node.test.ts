@@ -53,6 +53,7 @@ describe("card search", () => {
           id: "alice",
           library_id: "library",
           display_name: "Alice",
+          role: "member",
           lifecycle: "active",
           revision: 1,
         },

@@ -8,7 +8,7 @@ import { ClaudeUsageLogoutSchema } from "../../../shared/schemas/agent-runtime-a
 import { AgentRuntimeClaudeUsage } from "../../agent-runtime/AgentRuntimeClaudeUsage";
 import { MainConfig } from "../../app/MainConfig";
 import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
-import { safeBroadcastToWindows } from "../../ipc-safe-send";
+import { safeBroadcastToPersonalWindows } from "../../ipc-safe-send";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 
@@ -43,7 +43,10 @@ export const live = Layer.effectDiscard(
     yield* SubscriptionRef.changes(usage.snapshot).pipe(
       Stream.runForEach((snapshot) =>
         Effect.sync(() =>
-          safeBroadcastToWindows(windows.all(), "agent-runtime:claude-usage-changed", [snapshot]),
+          // This desktop's Claude accounts; a team window's Agents run on its Space host.
+          safeBroadcastToPersonalWindows(windows.all(), "agent-runtime:claude-usage-changed", [
+            snapshot,
+          ]),
         ),
       ),
       Effect.forkScoped,

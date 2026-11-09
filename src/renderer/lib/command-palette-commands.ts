@@ -1,3 +1,4 @@
+import { isRemoteSpace } from "./renderer-space";
 import type { CommandKeymapState } from "../../shared/command-keybindings";
 import {
   createCommandKeymapState,
@@ -614,14 +615,18 @@ export function buildCommandPaletteCommands(
       640,
       { shortcut: shortcutLabel("openInbox", "CmdOrCtrl+Shift+D") },
     ),
-    command(
-      "manageTasks",
-      "App",
-      "Manage automations",
-      "Open scheduled task management",
-      ["automation", "tasks", "manage"],
-      630,
-    ),
+    ...(!isRemoteSpace()
+      ? [
+          command(
+            "manageTasks",
+            "App",
+            "Manage automations",
+            "Open automation management",
+            ["automations", "schedule", "manage"],
+            630,
+          ),
+        ]
+      : []),
     command(
       "openProcessManager",
       "App",

@@ -55,11 +55,6 @@ export const unwrapDocumentSessionFailure = (error: unknown): unknown => {
   return error;
 };
 
-/** Let CoreAuthority observe physical failures before a semantic adapter returns a value. */
-export const rethrowCoreTransportFailure = (error: unknown): void => {
-  if (error instanceof CoreTransportError || error instanceof CoreHttpError) throw error;
-};
-
 export const isRetryableCoreTransportError = (error: CoreTransportError): boolean =>
   error.kind !== "aborted" && error.kind !== "unknown";
 

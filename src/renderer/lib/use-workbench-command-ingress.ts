@@ -1,3 +1,9 @@
+import { rendererSpaceId, isRemoteSpace } from "./renderer-space";
+import {
+  switchSpace,
+  switchSpaceForNotification,
+  takeSpaceNotification,
+} from "@/features/spaces/spaces-runtime";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef } from "react";
 import type {
   WorkbenchNavigationCommandSource,
@@ -49,12 +55,14 @@ export interface WorkbenchCommandDispatcher extends WorkbenchCommandPort {
 }
 
 export interface WorkbenchReminderOpenRequest {
+  readonly spaceId?: string;
   readonly projectId: string;
   readonly pageId: string;
   readonly occurrenceStart: string;
 }
 
 export interface WorkbenchPageDeepLinkRequest {
+  readonly spaceId?: string;
   readonly projectId: string;
   readonly pageId: string;
 }
@@ -69,11 +77,13 @@ export function reminderOpenToPageDeepLink(
 }
 
 export interface WorkbenchSessionDeepLinkRequest {
+  readonly spaceId?: string;
   readonly projectId: string | null;
   readonly sessionId: string;
 }
 
 export interface WorkbenchViewDeepLinkRequest {
+  readonly spaceId?: string;
   readonly projectId: string;
   readonly viewId: string;
 }
@@ -91,11 +101,14 @@ function parseReminderOpenRequest(value: unknown): WorkbenchReminderOpenRequest 
   const request = value as Record<string, unknown>;
   if (typeof request.projectId !== "string") return null;
   if (typeof request.pageId !== "string") return null;
+  if (request.spaceId !== undefined && (typeof request.spaceId !== "string" || !request.spaceId))
+    return null;
   if (typeof request.occurrenceStart !== "string") return null;
   return {
     projectId: request.projectId,
     pageId: request.pageId,
     occurrenceStart: request.occurrenceStart,
+    ...(typeof request.spaceId === "string" ? { spaceId: request.spaceId } : {}),
   };
 }
 
@@ -104,7 +117,10 @@ function parsePageDeepLinkRequest(value: unknown): WorkbenchPageDeepLinkRequest 
   const request = value as Record<string, unknown>;
   if (typeof request.projectId !== "string") return null;
   if (typeof request.pageId !== "string") return null;
+  if (request.spaceId !== undefined && (typeof request.spaceId !== "string" || !request.spaceId))
+    return null;
   return {
+    ...(typeof request.spaceId === "string" ? { spaceId: request.spaceId } : {}),
     projectId: request.projectId,
     pageId: request.pageId,
   };
@@ -117,7 +133,10 @@ function parseSessionDeepLinkRequest(value: unknown): WorkbenchSessionDeepLinkRe
     return null;
   }
   if (typeof request.sessionId !== "string") return null;
+  if (request.spaceId !== undefined && (typeof request.spaceId !== "string" || !request.spaceId))
+    return null;
   return {
+    ...(typeof request.spaceId === "string" ? { spaceId: request.spaceId } : {}),
     projectId: request.projectId,
     sessionId: request.sessionId,
   };
@@ -128,10 +147,21 @@ function parseViewDeepLinkRequest(value: unknown): WorkbenchViewDeepLinkRequest 
   const request = value as Record<string, unknown>;
   if (typeof request.projectId !== "string") return null;
   if (typeof request.viewId !== "string") return null;
+  if (request.spaceId !== undefined && (typeof request.spaceId !== "string" || !request.spaceId))
+    return null;
   return {
+    ...(typeof request.spaceId === "string" ? { spaceId: request.spaceId } : {}),
     projectId: request.projectId,
     viewId: request.viewId,
   };
+}
+
+function parsePendingSpaceLink(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -239,6 +269,9 @@ export function useWorkbenchCommandIngress(
   );
   const openDesktopNotification = useCallback<WorkbenchCommandPort["openDesktopNotification"]>(
     (invocation) => {
+      if (invocation.spaceId && invocation.spaceId !== rendererSpaceId())
+        return switchSpaceForNotification({ ...invocation, spaceId: invocation.spaceId });
+      if (!invocation.spaceId && isRemoteSpace()) return;
       if (!portRef.current) {
         pendingDesktopNotificationInvocationsRef.current.push(invocation);
         return;
@@ -250,27 +283,65 @@ export function useWorkbenchCommandIngress(
   const onReminderOpen = useEffectEvent((value: unknown) => {
     const request = parseReminderOpenRequest(value);
     if (!request) return;
+    if (!request.spaceId && isRemoteSpace()) return;
+    if (request.spaceId && request.spaceId !== rendererSpaceId()) {
+      void switchSpace(request.spaceId, { kind: "page", ...request });
+      return;
+    }
     externalHandlers.onReminderOpen?.(request);
   });
   const onPageDeepLinkOpen = useEffectEvent((value: unknown) => {
     const request = parsePageDeepLinkRequest(value);
     if (!request) return;
+    if (request.spaceId && request.spaceId !== rendererSpaceId()) {
+      void switchSpace(request.spaceId, { ...request, kind: "page" });
+      return;
+    }
     externalHandlers.onPageDeepLinkOpen?.(request);
   });
   const onSessionDeepLinkOpen = useEffectEvent((value: unknown) => {
     const request = parseSessionDeepLinkRequest(value);
     if (!request) return;
+    if (request.spaceId && request.spaceId !== rendererSpaceId()) {
+      void switchSpace(request.spaceId, { ...request, kind: "session" });
+      return;
+    }
     externalHandlers.onSessionDeepLinkOpen?.(request);
   });
   const onViewDeepLinkOpen = useEffectEvent((value: unknown) => {
     const request = parseViewDeepLinkRequest(value);
     if (!request) return;
+    if (request.spaceId && request.spaceId !== rendererSpaceId()) {
+      void switchSpace(request.spaceId, { ...request, kind: "view" });
+      return;
+    }
     externalHandlers.onViewDeepLinkOpen?.(request);
   });
   const onRequestNewWindow = useEffectEvent(() => {
     externalHandlers.onRequestNewWindow?.();
   });
 
+  useEffect(() => {
+    const notification = takeSpaceNotification();
+    if (notification) void openDesktopNotification(notification);
+    const url = new URL(window.location.href);
+    const pending = url.searchParams.get("spaceLink");
+    if (!pending) return;
+    url.searchParams.delete("spaceLink");
+    window.history.replaceState(null, "", url);
+    const value = parsePendingSpaceLink(pending);
+    if (
+      !value ||
+      typeof value !== "object" ||
+      !("spaceId" in value) ||
+      value.spaceId !== rendererSpaceId() ||
+      !("kind" in value)
+    )
+      return;
+    if (value.kind === "page") onPageDeepLinkOpen(value);
+    if (value.kind === "session") onSessionDeepLinkOpen(value);
+    if (value.kind === "view") onViewDeepLinkOpen(value);
+  }, [openDesktopNotification]);
   useEffect(() => window.api?.onNavigateBack?.(() => navigate("back", "menu")), [navigate]);
   useEffect(() => window.api?.onNavigateForward?.(() => navigate("forward", "menu")), [navigate]);
   useEffect(() => window.api?.onToggleSidebar?.(() => toggleSidebar("menu")), [toggleSidebar]);

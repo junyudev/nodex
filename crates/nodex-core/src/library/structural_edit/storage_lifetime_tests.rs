@@ -61,14 +61,19 @@ fn history_payload_storage_lifetime_preserves_replay_and_page_history() {
     kernel.writer().call(|connection| {
         with_immediate_transaction(connection, |transaction| {
             transaction.execute_batch("INSERT INTO profiles VALUES ('profile-1', '2026-01-01', '2026-01-01');
-                INSERT INTO libraries VALUES ('library-1', 'profile-1', '2026-01-01', '2026-01-01');
+                INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES ('library-1', 'profile-1', '2026-01-01', '2026-01-01');
                 INSERT INTO projects(id, library_id, name, created, updated) VALUES ('project-1', 'library-1', 'Storage lifetime', '2026-01-01', '2026-01-01');
                 INSERT INTO block_store_metadata VALUES (1, 'epoch-1', '2026-01-01', '2026-01-01');")?;
             Ok(())
         })
     }).expect("Profile identities");
     let context = BoundModuleContext {
+        actor: nodex_core_contracts::Actor::Service {
+            kind: nodex_core_contracts::ServiceKind::Maintenance,
+        },
+        authorizing_member_id: None,
         editor_history_owner: None,
+        principal: None,
         agent_attribution: None,
         profile_id: ProfileId("profile-1".to_owned()),
         library_id: LibraryId("library-1".to_owned()),

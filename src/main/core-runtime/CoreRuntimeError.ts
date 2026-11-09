@@ -4,6 +4,7 @@ import { CoreModuleResponseError } from "../core-client/core-client";
 import {
   CoreEventCompatibilityError,
   CoreHttpError,
+  CoreRateLimitError,
   isDefinitiveCoreGenerationLoss,
 } from "../core-client/local-http";
 
@@ -80,6 +81,15 @@ export const classifyCoreOperationFailure = (
   if (cause instanceof CoreEventCompatibilityError || cause instanceof CoreCodecError) {
     return coreRuntimeError({ operation, reason: "protocol", retryable: false, generation, cause });
   }
+  if (cause instanceof CoreRateLimitError)
+    return coreRuntimeError({
+      operation,
+      reason: "operation",
+      retryable: true,
+      generation,
+      cause,
+      message: cause.message,
+    });
   if (isRecoverableCoreTransportFailure(cause)) {
     return coreRuntimeError({
       operation,

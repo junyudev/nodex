@@ -249,6 +249,8 @@ export interface CoreRequestOptions {
 }
 
 export interface CoreClientPort {
+  /** The Space's one name, as Core shows it to every Member and Device. */
+  spaceInfo?(options?: CoreRequestOptions): Promise<components["schemas"]["RemoteCoreInfo"]>;
   readFileBlob(input: ReadFileBytesInput, options?: CoreRequestOptions): Promise<ManagedBlobBytes>;
   prepareBlob(
     input: {

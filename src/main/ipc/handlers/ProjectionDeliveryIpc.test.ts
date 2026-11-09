@@ -68,6 +68,7 @@ it.effect("owns all projection delivery handlers with the Main Scope", () =>
       id: 7,
       isDestroyed: () => false,
       mainFrame: frame,
+      on: () => undefined,
       once: (event: string, listener: () => void) => {
         if (event === "destroyed") destroyedListeners.add(listener);
       },

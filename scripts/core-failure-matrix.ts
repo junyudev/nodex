@@ -244,10 +244,6 @@ async function seedProfile(profile: string): Promise<void> {
         generation: 1,
         expected_head_seq: 1,
         markdown: "Failure matrix body",
-        actor: {
-          kind: "electron_renderer",
-          clientId: "failure-matrix:seed",
-        },
       },
     });
     await rootClient.shutdown();

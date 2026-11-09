@@ -160,6 +160,39 @@ backup under an explicit backup-retention operation.
 
 Read [Core Lifecycle and Store Reliability](reliability/core-lifecycle-and-store.md).
 
+## Remote Core reconnect and resume
+
+Remote Core uses HTTPS alongside the private local listener. A listener is
+explicitly enabled and keeps Core alive until shutdown. The remote adapter pins
+the enrolled certificate on every physical connection and renews hour-long
+sessions on demand, with one renewal in flight. Cancelling one request cancels only
+its wait for renewal; other requests keep their shared renewal. Ordinary HTTP
+deadlines cover waiting for a pooled socket and the complete response, including
+slow links that keep sending bytes. TLS and SSE opening also have absolute
+deadlines; an open SSE stream instead uses its heartbeat idle bound. A remote
+transport admits at most 64 requests waiting for a pooled socket; further calls
+receive a typed capacity refusal until the queue drains. Device revocation or Member
+removal refuses requests and closes all of that principal's live responses
+within seconds. Expiry also closes streams so a new session can be presented.
+
+SSE emits a heartbeat every 15 seconds. The TypeScript remote transport treats
+45 seconds without bytes as peer loss. Scoped reconnect uses exponential delay
+with jitter, capped at 15 seconds, and resumes at the last successfully delivered
+checkpoint's existing `after` cursor. Retention gaps retain the existing resync
+contract; certificate, membership and compatibility failures are terminal.
+Document/projection streams retain their existing barrier and repair protocols.
+A disconnected remote client never stops or replaces the server process.
+
+Semantic content adapters preserve physical transport failures for the Space
+authority to recover; projecting them into ordinary command results would hide
+the receipt retry boundary.
+
+Network ambiguity does not change mutation identity. Retry the exact operation
+and intent; receipts bind the Member rather than a connection or session, so a
+session renewal does not duplicate a committed operation. A lost enrollment
+response is different: its code has already been consumed, and the Owner must
+issue a new invite. No client silently re-enrolls or trusts a new certificate.
+
 ## Documents and collaborative state
 
 Exact Page/Block and Canvas subscriptions establish a current-resource live barrier
@@ -305,6 +338,22 @@ their timers and power-resume listener together.
 
 Read [Backup, Restore, and Maintenance](reliability/backup-restore-and-maintenance.md).
 
+handshake after a host restart triggers one shared device reauthentication. Only pinned device-credential renewal can prove withdrawn access: an unknown or
+revoked Device or a removed Member. Its typed `remote_access_withdrawn` evidence
+fences that Space. An operation refusal, conflict, stale fence or rate limit never
+withdraws the connection. Expired sessions and lost handshakes instead carry
+`renew_remote_session` evidence, including a session that expires while its mutation
+waits for the writer. Structured Module errors preserve that evidence through
+semantic adapters; recovery replays the original operation identity. Receipt-owner
+refusals carry no renewal evidence. A successful request clears a failed reconnect
+attempt even when the original session remains valid.
+
+Remote HTTP 429 responses carry a typed budget dimension, retry delay and
+`Retry-After`. Main shares the cooldown, coalesces simultaneous identical reads,
+and retries the same mutation identity within a bounded 90-second lifetime.
+Waiting requests are capped at 64. Hosted transcripts use targeted Session
+invalidations with a 15-second repair for provider-only deltas. Background repairs
+retain the loaded transcript, Composer and draft through transient failures.
 ## Desktop process lifecycle
 
 Electron performs only platform-required synchronous bootstrap before readiness: Profile paths,

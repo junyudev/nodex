@@ -13,7 +13,7 @@ where
     T::deserialize(deserializer).map(Some)
 }
 
-pub const CORE_EVENT_VERSION: u32 = 11;
+pub const CORE_EVENT_VERSION: u32 = 12;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(transparent)]
@@ -36,6 +36,7 @@ pub struct StoreEpoch(pub String);
 pub enum AdapterKind {
     ElectronHost,
     LoopbackHttp,
+    RemoteMember,
     NativeCli,
     Agent,
     Test,
@@ -45,11 +46,17 @@ pub enum AdapterKind {
 /// of the caller-authored protocol schema.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BoundModuleContext {
+    pub actor: Actor,
+    /// A standing grant is separate from the Service that performs its work.
+    pub authorizing_member_id: Option<String>,
     pub profile_id: ProfileId,
     pub library_id: LibraryId,
     pub project_id: Option<ProjectId>,
     pub connection_id: String,
     pub adapter: AdapterKind,
+    /// Core-verified remote identity; never caller-authored command data.
+    #[serde(default)]
+    pub principal: Option<RemotePrincipal>,
     /// Main-authenticated editor lifetime; never accepted from command JSON.
     #[serde(default)]
     pub editor_history_owner: Option<BoundEditorHistoryOwner>,
@@ -59,11 +66,22 @@ pub struct BoundModuleContext {
     pub agent_attribution: Option<BoundAgentAttribution>,
 }
 
+/// Space membership proven by a renewable, device-bound session.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct RemotePrincipal {
+    pub space_id: String,
+    pub member_id: String,
+    pub device_id: String,
+    pub session_id: String,
+    pub role: library::MemberRole,
+}
+
 /// The product Session and backend family whose Agent issued a request, proven by a
 /// credential Core itself issued to the desktop Host for that Session.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BoundAgentAttribution {
     pub session_id: String,
+    pub run_id: Option<String>,
     pub backend: crate::agent::AgentBackendKind,
 }
 
@@ -124,6 +142,13 @@ pub struct DocumentRecoveryArtifactReference {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CoreErrorRecovery {
+    /// Only device-credential renewal may return authenticated withdrawal evidence.
+    RemoteAccessWithdrawn,
+    RenewRemoteSession,
+    RetryAfter {
+        budget: team::RemoteBudget,
+        milliseconds: u64,
+    },
     RecoveryPackage {
         failure: Box<document::RecoveryPackageFailure>,
     },
@@ -219,7 +244,9 @@ pub trait VersionedModuleContract {
 /// Maximum bytes in one prepared immutable Blob, including private attachments.
 pub const MAX_MANAGED_BLOB_BYTES: u64 = 256 * 1024 * 1024;
 
+pub mod actor;
 pub mod administration;
+pub use actor::{Actor, ServiceKind};
 pub mod agent;
 pub mod automation;
 pub mod automation_assessment;
@@ -386,4 +413,6 @@ mod tests {
     }
 }
 
+pub mod remote_admission;
 pub mod sources;
+pub mod team;

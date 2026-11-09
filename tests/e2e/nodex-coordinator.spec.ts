@@ -175,6 +175,7 @@ test("shows Nodex's Inbox, managed work and the work graph", async ({}, testInfo
       await screenshot("12-activity-decisions");
       await page.getByRole("button", { name: "All", exact: true }).click();
       await expect(
+        activity.getByRole("img", { name: "by Nodex", exact: true }).first().locator("svg"),
       ).toHaveAttribute("data-nodex-logo-mark", "monochrome");
       await expect(
         activity.getByRole("button", { name: "NODEX-3", exact: true }).first(),

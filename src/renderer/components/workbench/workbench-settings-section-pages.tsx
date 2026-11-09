@@ -3,6 +3,9 @@ import type { SettingsPageComponentRegistry } from "./workbench-settings-page-re
 
 /** Each section loads independently of Settings navigation and every other page. */
 export const SETTINGS_PAGE_COMPONENTS: SettingsPageComponentRegistry = {
+  spaces: lazy(async () => ({
+    default: (await import("@/features/spaces/spaces-settings-page")).SpacesSettingsPage,
+  })),
   github: lazy(async () => ({
     default: (await import("./github-settings-page")).GitHubSettingsPage,
   })),
@@ -34,10 +37,6 @@ export const SETTINGS_PAGE_COMPONENTS: SettingsPageComponentRegistry = {
   })),
   inbox: lazy(async () => ({
     default: (await import("@/features/inbox/inbox-settings-page")).InboxSettingsPage,
-  })),
-  mobile: lazy(async () => ({
-    default: (await import("@/features/mobile-access/mobile-access-settings-page"))
-      .MobileAccessSettingsPage,
   })),
   agent: lazy(async () => ({
     default: (await import("./agent-settings-page")).AgentSettingsPage,

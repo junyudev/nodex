@@ -173,7 +173,7 @@ it("starts a launch with no choice of its own from the remembered new chat choic
     async () => ({
       revision: 1,
       values: {
-        [agentRuntimeNewChatChoiceAtom.storageKey]: {
+        [agentRuntimeNewChatChoiceAtom().storageKey]: {
           binding,
           model: "chosen",
           options: [{ id: "variant", value: "high" }],
@@ -196,7 +196,7 @@ it("never spends credit because a Composer once chose it: no picker shows this l
     async () => ({
       revision: 1,
       values: {
-        [agentRuntimeNewChatChoiceAtom.storageKey]: {
+        [agentRuntimeNewChatChoiceAtom().storageKey]: {
           binding: { kind: "codex", runtimeInstanceId: credit },
           model: "chosen",
         },

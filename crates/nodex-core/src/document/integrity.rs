@@ -77,11 +77,13 @@ pub(crate) fn rebuild_document_markdown_serialization(
 pub(crate) fn materialization_derivation_for_store_revision(
     store_revision: i64,
 ) -> Result<i64, StoreError> {
+    // Metadata-only Store revisions keep the latest serializer; unpublished revisions stay refused.
+    const LATEST_SUPPORTED_STORE_REVISION: i64 = nodex_store_format::CURRENT_STORE_VERSION as i64;
     match store_revision {
         130..=188 => Ok(2),
         189..=191 => Ok(3),
         192..=199 => Ok(4),
-        200..=203 => Ok(5),
+        200..=LATEST_SUPPORTED_STORE_REVISION => Ok(5),
         _ => Err(StoreError::new(
             StoreErrorCode::UnsupportedSchema,
             format!("Store v{store_revision} has no registered Document derivation"),

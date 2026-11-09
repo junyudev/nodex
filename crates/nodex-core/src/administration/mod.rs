@@ -300,6 +300,11 @@ impl StoreAdministrationModule {
         context: &BoundModuleContext,
         request: ModuleReadRequest<StoreAdministrationRead>,
     ) -> Result<ModuleReadSnapshot<StoreAdministrationReadValue>, CoreError> {
+        nodex_core_contracts::remote_admission::authorize(
+            context,
+            "administration_read",
+            &request.read,
+        )?;
         self.validate_context(context)?;
         if request.contract_version != STORE_ADMINISTRATION_CONTRACT_VERSION {
             return Err(invalid("unsupported Store Administration contract version"));
@@ -464,7 +469,43 @@ impl StoreAdministrationModule {
         context: &BoundModuleContext,
         request: ModuleApplyRequest<StoreAdministrationIntent>,
     ) -> Result<StoreAdministrationApplyOutcome, CoreError> {
+        nodex_core_contracts::remote_admission::authorize(
+            context,
+            "administration_apply",
+            &request.intent,
+        )?;
         self.validate_context(context)?;
+        let bound = self
+            .readers
+            .as_ref()
+            .ok_or_else(|| invalid("Store identity is unavailable"))?
+            .read_default(|connection| {
+                let bound = crate::infrastructure::actors::bind(connection, context)?;
+                let system = matches!(
+                    &request.intent,
+                    StoreAdministrationIntent::RunMaintenance { .. }
+                        | StoreAdministrationIntent::PruneBackups { .. }
+                        | StoreAdministrationIntent::CreateBackup {
+                            trigger: BackupTrigger::Auto,
+                            ..
+                        }
+                        | StoreAdministrationIntent::CoalesceBackup {
+                            trigger: BackupTrigger::Auto,
+                            ..
+                        }
+                );
+                Ok(if system {
+                    crate::infrastructure::actors::service(
+                        &bound,
+                        nodex_core_contracts::ServiceKind::Maintenance,
+                        None,
+                    )
+                } else {
+                    bound
+                })
+            })
+            .map_err(core_error)?;
+        let context = &bound;
         if request.contract_version != STORE_ADMINISTRATION_CONTRACT_VERSION {
             return Err(invalid("unsupported Store Administration contract version"));
         }

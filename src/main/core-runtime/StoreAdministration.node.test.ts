@@ -656,6 +656,7 @@ it("maps Store Administration invalidation without another event owner", () => {
     canonicalHash: "0".repeat(64),
   });
   assert.deepStrictEqual(mapCoreStoreAdministrationEvent(packet.atoms[0]!), {
+    operation: "create_backup",
     backupIds: ["core-backup"],
     readinessChanged: false,
   });

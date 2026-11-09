@@ -16,8 +16,6 @@ const MAX_MANUAL_TITLE_UTF16: usize = 60;
 
 pub(super) struct SessionAuthority {
     pub(super) project_id: Option<String>,
-    pub(super) pinned: bool,
-    pub(super) pinned_order: Option<i64>,
     pub(super) thread_id: Option<String>,
     pub(super) is_default_draft: bool,
     pub(super) archived: bool,
@@ -95,26 +93,35 @@ pub(super) fn mutate_session(
             request_hash,
             session_id,
             &authority,
+            &crate::infrastructure::actors::requesting_member(connection, context)?,
             remind_at.as_deref(),
             None,
             false,
         ),
-        ProjectSessionIntent::ConsumeReminder { remind_at, deliver } => set_session_reminder(
-            connection,
-            library_id,
-            context,
-            store_epoch,
-            operation_id,
-            request_hash,
-            session_id,
-            &authority,
-            None,
-            Some(remind_at),
-            *deliver,
-        ),
+        ProjectSessionIntent::ConsumeReminder {
+            member_id,
+            remind_at,
+            deliver,
+        } => {
+            validate_id("member_id", member_id)?;
+            set_session_reminder(
+                connection,
+                library_id,
+                context,
+                store_epoch,
+                operation_id,
+                request_hash,
+                session_id,
+                &authority,
+                member_id,
+                None,
+                Some(remind_at),
+                *deliver,
+            )
+        }
         ProjectSessionIntent::DeferReminderDelivery { delivery_id } => {
             validate_id("delivery_id", delivery_id)?;
-            connection.execute("UPDATE project_session_reminder_deliveries SET next_attempt_at=strftime('%Y-%m-%dT%H:%M:%fZ','now','+30 seconds') WHERE delivery_id=?1 AND session_id=?2", params![delivery_id,session_id])?;
+            connection.execute("UPDATE member_session_reminder_deliveries SET next_attempt_at=strftime('%Y-%m-%dT%H:%M:%fZ','now','+30 seconds') WHERE delivery_id=?1 AND session_id=?2", params![delivery_id,session_id])?;
             finish_session_mutation(
                 connection,
                 library_id,
@@ -130,9 +137,16 @@ pub(super) fn mutate_session(
                 sqlite_now(connection)?,
             )
         }
-        ProjectSessionIntent::CompleteReminderDelivery { delivery_id } => {
+        ProjectSessionIntent::CompleteReminderDelivery {
+            delivery_id,
+            unread,
+        } => {
             validate_id("delivery_id", delivery_id)?;
-            let changed = connection.execute("DELETE FROM project_session_reminder_deliveries WHERE delivery_id=?1 AND session_id=?2", params![delivery_id,session_id])?;
+            let member: Option<String> = connection.query_row("DELETE FROM member_session_reminder_deliveries WHERE delivery_id=?1 AND session_id=?2 RETURNING member_id", params![delivery_id,session_id], |row| row.get(0)).optional()?;
+            if *unread && let Some(member) = &member {
+                super::member_attention::set_unread(connection, member, session_id, true)?;
+            }
+            let changed = usize::from(member.is_some());
             finish_session_mutation(
                 connection,
                 library_id,
@@ -154,7 +168,13 @@ pub(super) fn mutate_session(
         }
         ProjectSessionIntent::RecordUserMessage { message_id } => {
             let now = sqlite_now(connection)?;
-            let changed = accept_person_message(connection, session_id, message_id, &now)?;
+            let changed = accept_person_message(
+                connection,
+                session_id,
+                message_id,
+                &crate::infrastructure::actors::requesting_member(connection, context)?,
+                &now,
+            )?;
             finish_session_mutation(
                 connection,
                 library_id,
@@ -385,28 +405,16 @@ fn set_session_pinned(
     pinned: bool,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let now = sqlite_now(connection)?;
-    let pinned_order = if pinned {
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    if pinned {
         connection.execute(
             "DELETE FROM workspace_sidebar_section_items WHERE session_id = ?1",
             [session_id],
         )?;
-        if authority.pinned && authority.pinned_order.is_some() {
-            authority.pinned_order
-        } else {
-            Some(super::sidebar_pins::next_order(connection)?)
-        }
+        super::sidebar_pins::pin(connection, &member, session_id, &now)?;
     } else {
-        None
-    };
-    let changed = connection.execute(
-        "UPDATE project_sessions SET pinned = ?1, pinned_order = ?2, updated_at = ?3 \
-         WHERE id = ?4",
-        params![i64::from(pinned), pinned_order, now, session_id],
-    )?;
-    if changed != 1 {
-        return Err(corrupt("Project Session disappeared during pin update"));
+        super::sidebar_pins::unpin(connection, &member, session_id, &now)?;
     }
-    super::sidebar_pins::sync_thread_projection(connection, session_id, &now)?;
     finish_session_mutation(
         connection,
         library_id,
@@ -452,13 +460,12 @@ fn set_session_unread(
             now,
         );
     }
-    let changed = connection.execute(
-        "UPDATE project_sessions SET unread = ?1, updated_at = ?2 WHERE id = ?3",
-        params![i64::from(unread), now, session_id],
+    super::member_attention::set_unread(
+        connection,
+        &crate::infrastructure::actors::requesting_member(connection, context)?,
+        session_id,
+        unread,
     )?;
-    if changed != 1 {
-        return Err(corrupt("Project Session disappeared during unread update"));
-    }
     finish_session_mutation(
         connection,
         library_id,
@@ -486,6 +493,7 @@ fn set_session_reminder(
     request_hash: &str,
     session_id: &str,
     authority: &SessionAuthority,
+    member: &str,
     remind_at: Option<&str>,
     expected: Option<&str>,
     deliver: bool,
@@ -511,24 +519,36 @@ fn set_session_reminder(
                 .to_rfc3339_opts(SecondsFormat::Millis, true))
         })
         .transpose()?;
-    let changed = connection.execute(
-        "UPDATE project_sessions SET remind_at = ?1, updated_at = ?2 WHERE id = ?3 AND remind_at IS NOT ?1 AND (?4 IS NULL OR (remind_at = ?4 AND remind_at <= ?2 AND archived = 0))",
-        params![normalized, now, session_id, expected],
-    )?;
-    let changed = if expected.is_none() {
-        changed
-            + connection.execute(
-                "DELETE FROM project_session_reminder_deliveries WHERE session_id=?1",
-                [session_id],
+    let changed = match (expected, normalized.as_deref()) {
+        // The host claims only the exact reminder it observed coming due.
+        (Some(expected), _) => connection.execute(
+            "DELETE FROM member_session_reminders WHERE member_id = ?1 AND session_id = ?2 \
+             AND remind_at = ?3 AND remind_at <= ?4 \
+             AND EXISTS (SELECT 1 FROM project_sessions WHERE id = ?2 AND archived = 0)",
+            params![member, session_id, expected, now],
+        )?,
+        (None, Some(remind_at)) => {
+            connection.execute(
+                "INSERT INTO member_session_reminders(member_id, session_id, remind_at) VALUES (?1, ?2, ?3) \
+                 ON CONFLICT(member_id, session_id) DO UPDATE SET remind_at = excluded.remind_at \
+                 WHERE remind_at IS NOT excluded.remind_at",
+                params![member, session_id, remind_at],
+            )? + connection.execute(
+                "DELETE FROM member_session_reminder_deliveries WHERE member_id = ?1 AND session_id = ?2",
+                params![member, session_id],
             )?
-    } else {
-        changed
+        }
+        (None, None) => super::member_attention::cancel_reminder(connection, member, session_id)?,
     };
     if changed > 0 && deliver {
-        connection.execute("INSERT INTO project_session_reminder_deliveries(delivery_id,session_id,remind_at,next_attempt_at) VALUES (?1,?2,?3,?4)", params![operation_id,session_id,expected,now])?;
+        connection.execute("INSERT INTO member_session_reminder_deliveries(delivery_id,member_id,session_id,remind_at,next_attempt_at) VALUES (?1,?2,?3,?4,?5)", params![operation_id,member,session_id,expected,now])?;
     }
-    // A reminder that comes due brings its chat back to the top, like a person's message.
-    if changed > 0 && expected.is_some() {
+    // A reminder that comes due brings its chat back to the top, like a person's message. Chat
+    // order is shared, so only a personal Space's one Member reorders it with their reminder.
+    if changed > 0
+        && expected.is_some()
+        && crate::infrastructure::actors::is_personal(connection, library_id)?
+    {
         super::session_order::raise_activity(connection, session_id, &now)?;
     }
     finish_session_mutation(
@@ -570,8 +590,7 @@ fn set_session_archived(
     let now = sqlite_now(connection)?;
     let changed = if archived {
         connection.execute(
-            "UPDATE project_sessions SET archived = 1, archived_at = ?1, pinned = 0, \
-               pinned_order = NULL, unread = 0, is_default_draft = 0, \
+            "UPDATE project_sessions SET archived = 1, archived_at = ?1, is_default_draft = 0, \
                updated_at = ?1 WHERE id = ?2",
             params![now, session_id],
         )?
@@ -738,9 +757,14 @@ fn link_thread(
         |row| row.get::<_, i64>(0),
     )?;
     connection.execute(
-        "UPDATE project_sessions SET unread = ?1, is_default_draft = 0, \
-           updated_at = ?2 WHERE id = ?3",
-        params![unread, now, session_id],
+        "UPDATE project_sessions SET is_default_draft = 0, updated_at = ?1 WHERE id = ?2",
+        params![now, session_id],
+    )?;
+    super::member_attention::set_unread(
+        connection,
+        &crate::infrastructure::actors::requesting_member(connection, context)?,
+        session_id,
+        unread == 1,
     )?;
     super::sidebar_pins::sync_thread_projection(connection, session_id, &now)?;
     let mut thread_ids = authority.thread_id.iter().cloned().collect::<BTreeSet<_>>();
@@ -882,8 +906,7 @@ pub(super) fn require_session(
 ) -> Result<SessionAuthority, StoreError> {
     connection
         .query_row(
-            "SELECT session.project_id, session.pinned, session.pinned_order, link.thread_id, \
-               session.is_default_draft, session.archived \
+            "SELECT session.project_id, link.thread_id, session.is_default_draft, session.archived \
              FROM project_sessions session \
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              WHERE session.id = ?1 AND (session.project_id IS NULL OR EXISTS(\
@@ -895,11 +918,9 @@ pub(super) fn require_session(
             |row| {
                 Ok(SessionAuthority {
                     project_id: row.get(0)?,
-                    pinned: row.get::<_, i64>(1)? == 1,
-                    pinned_order: row.get(2)?,
-                    thread_id: row.get(3)?,
-                    is_default_draft: row.get::<_, i64>(4)? == 1,
-                    archived: row.get::<_, i64>(5)? == 1,
+                    thread_id: row.get(1)?,
+                    is_default_draft: row.get::<_, i64>(2)? == 1,
+                    archived: row.get::<_, i64>(3)? == 1,
                 })
             },
         )
@@ -947,12 +968,13 @@ pub(super) fn validate_id(name: &str, value: &str) -> Result<(), StoreError> {
     )))
 }
 
-/// A person's newly accepted message becomes the Session's activity and ends its reminder.
+/// A person's newly accepted message becomes the Session's activity and ends their reminder.
 /// Receipts keep retries and restarts idempotent. Returns whether the Session changed.
 pub(super) fn accept_person_message(
     connection: &Connection,
     session_id: &str,
     message_id: &str,
+    member: &str,
     now: &str,
 ) -> Result<bool, StoreError> {
     validate_id("message_id", message_id)?;
@@ -963,16 +985,11 @@ pub(super) fn accept_person_message(
     if accepted == 0 {
         return Ok(false);
     }
+    connection.execute("INSERT INTO session_requesting_members(session_id,message_id,member_id,accepted_at) VALUES(?1,?2,?3,?4)",params![session_id,message_id,member,now])?;
+    connection.execute("INSERT OR IGNORE INTO page_turn_dirty SELECT page_id FROM page_active_chats WHERE session_id=?1",[session_id])?;
     let moved = super::session_order::raise_activity(connection, session_id, now)?;
-    let cleared = connection.execute(
-        "UPDATE project_sessions SET remind_at = NULL, updated_at = ?2 WHERE id = ?1 AND remind_at IS NOT NULL",
-        params![session_id, now],
-    )?;
-    let cancelled = connection.execute(
-        "DELETE FROM project_session_reminder_deliveries WHERE session_id = ?1",
-        [session_id],
-    )?;
-    Ok(moved || cleared + cancelled > 0)
+    let cancelled = super::member_attention::cancel_reminder(connection, member, session_id)?;
+    Ok(moved || cancelled > 0)
 }
 
 pub(super) fn sqlite_now(connection: &Connection) -> Result<String, StoreError> {

@@ -34,6 +34,7 @@ it.effect(
       const autoResolutionChanges = yield* PubSub.unbounded<CodexUserInputAutoResolutionChange>();
       const applicationEvents = yield* PubSub.unbounded<CodexApplicationEvent>();
       const projectedChanges: Array<readonly [string, unknown]> = [];
+      const remoteChanges: unknown[] = [];
       const windowEvents = yield* PubSub.unbounded<WindowRuntimeLifecycleEvent>();
       const scope = yield* Scope.make();
       const presentation = yield* makePresentationRegistry.pipe(
@@ -87,10 +88,20 @@ it.effect(
                   {
                     isDestroyed: () => false,
                     webContents: {
+                      getURL: () => "http://localhost:3000",
                       isDestroyed: () => false,
                       send: (channel: string, change: unknown) => {
                         projectedChanges.push([channel, change]);
                       },
+                    },
+                  },
+                  {
+                    isDestroyed: () => false,
+                    webContents: {
+                      isDestroyed: () => false,
+                      getURL: () => "http://localhost:3000?spaceId=team",
+                      send: (channel: string, change: unknown) =>
+                        remoteChanges.push([channel, change]),
                     },
                   },
                 ],
@@ -154,7 +165,22 @@ it.effect(
         kind: "pendingWorktreesChanged",
         value: [],
       });
+      yield* PubSub.publish(applicationEvents, {
+        kind: "codex",
+        value: {
+          type: "automationChanged",
+          event: { automationId: "same-automation", sessionId: null, reason: "upsert" },
+        },
+      });
+      yield* PubSub.publish(applicationEvents, {
+        kind: "codex",
+        value: {
+          type: "automationRunsUpdated",
+          event: { automationId: "same-automation", runId: "same-run", reason: "settle" },
+        },
+      });
       yield* Effect.yieldNow;
+      assert.deepEqual(remoteChanges, []);
       assert.deepEqual(projectedChanges, [
         [
           "codex:user-input:auto-resolution:changed",
@@ -166,6 +192,14 @@ it.effect(
           },
         ],
         ["codex:pending-worktrees:changed", []],
+        [
+          "automations:changed",
+          { automationId: "same-automation", sessionId: null, reason: "upsert" },
+        ],
+        [
+          "automations:runs:updated",
+          { automationId: "same-automation", runId: "same-run", reason: "settle" },
+        ],
       ]);
       yield* Scope.close(scope, Exit.void);
       yield* PubSub.publish(applicationEvents, {
@@ -188,7 +222,7 @@ it.effect(
       });
       yield* rendererClients.disposeClient(reconnectId);
       yield* Effect.yieldNow;
-      assert.strictEqual(projectedChanges.length, 2);
+      assert.strictEqual(projectedChanges.length, 4);
       assert.deepEqual(reevaluated, [
         { hostId: "local", conversationId: "thread-1" },
         { hostId: "local", conversationId: "thread-1" },

@@ -1,3 +1,4 @@
+import { isHostedChat } from "@/lib/hosted-chat";
 import {
   isCodexUserInputResponseRetry,
   type CodexQuestionResponseMetadata,
@@ -2933,6 +2934,7 @@ export class CodexAppServerManager {
       const conversation = this.conversationsById.get(threadId);
       return (
         !this.destroyed &&
+        !isHostedChat() &&
         this.hostId !== "durable" &&
         this.streamState.getRole(threadId)?.role === "owner" &&
         conversation !== undefined &&
@@ -3510,8 +3512,11 @@ export class CodexAppServerManager {
     }
 
     this.bootstrapStarted = true;
-    void this.bootstrapConnection();
-    void this.bootstrapAccount();
+    // A window whose chats run on its Space host has no native connection or account here.
+    if (!isHostedChat()) {
+      void this.bootstrapConnection();
+      void this.bootstrapAccount();
+    }
     void this.bootstrapDictationState();
   }
 
@@ -8732,7 +8737,7 @@ export class CodexAppServerManager {
   }
 
   private ensureProjectThreadSummariesLoaded(projectId: string): void {
-    if (this.loadedThreadSummariesByProject.has(projectId)) {
+    if (isHostedChat() || this.loadedThreadSummariesByProject.has(projectId)) {
       return;
     }
 
@@ -9824,6 +9829,8 @@ export function useCodexAppServerControl(
   const personalityIntentVersion = useRef(0);
 
   useEffect(() => {
+    // Personality is this desktop's own Codex setting; a hosted chat's Agents run on its host.
+    if (isHostedChat()) return undefined;
     let disposed = false;
     const observedIntentVersion = personalityIntentVersion.current;
     void runConversationOperation("codex:personality:get")

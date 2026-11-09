@@ -11,6 +11,8 @@ import {
   InboxSuggestionOutput,
   writeTurnNoteSchema,
   answerInboxQuestionSchema,
+  automationAssessmentReadSchema,
+  automationAssessmentSubmitSchema,
 } from "./coordinator-schema";
 import { reportWorkSchema, startWorkSchema, handBackMessageSchema } from "./work-schema";
 import { uninstallPluginSchema } from "./plugin-schema";
@@ -49,6 +51,8 @@ export const appToolArgumentSchemas: Readonly<Record<string, z.ZodType>> = {
   automations_update: automationSchema,
   send_to_inbox: sendToInboxSchema,
   inbox_suggest: InboxSuggestionOutput,
+  automation_assessment_read: automationAssessmentReadSchema,
+  automation_assessment_submit: automationAssessmentSubmitSchema,
   write_turn_note: writeTurnNoteSchema,
   answer_inbox_question: answerInboxQuestionSchema,
   follow_thread: followThreadSchema,

@@ -31,10 +31,10 @@ describe("page prompt context", () => {
       markdown: "![Architecture](nodex://assets/diagram.png)\n\nShip it",
     });
 
-    expect(context.source).toBe("nodex://pages/page-1");
+    expect(context.source).toBe("nodex://pages/page-1?spaceId=test-space");
     expect(context.pageKey).toBe("LAB-13");
     expect(context.promptInput.text).toBe(
-      "Page: Release plan\nPage key: LAB-13\nSource: nodex://pages/page-1\n\n[Image #1] (caption: Architecture)\n\nShip it",
+      "Page: Release plan\nPage key: LAB-13\nSource: nodex://pages/page-1?spaceId=test-space\n\n[Image #1] (caption: Architecture)\n\nShip it",
     );
     expect(context.promptInput.images).toEqual([
       {

@@ -1901,6 +1901,7 @@ export interface DesktopNotificationActionPayload {
 }
 
 export interface DesktopNotificationActionInvocation extends DesktopNotificationActionPayload {
+  readonly spaceId?: string;
   inboxEntry?: {
     readonly pageId: string;
     readonly scope: import("./inbox").InboxScope;

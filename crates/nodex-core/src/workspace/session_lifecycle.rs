@@ -188,10 +188,10 @@ pub(super) fn insert_session_records(
     let now = sqlite_now(connection)?;
     connection.execute(
         "INSERT INTO project_sessions(\
-           id, project_id, no_thread_fallback_title, activity_at, pinned, pinned_order, \
-           archived, archived_at, unread, is_default_draft, \
+           id, project_id, no_thread_fallback_title, activity_at, \
+           archived, archived_at, is_default_draft, \
            created_at, updated_at\
-         ) VALUES (?1, ?2, ?3, CAST(round(unixepoch(?5, 'subsec') * 1000) AS INTEGER), 0, NULL, 0, NULL, 0, ?4, ?5, ?5)",
+         ) VALUES (?1, ?2, ?3, CAST(round(unixepoch(?5, 'subsec') * 1000) AS INTEGER), 0, NULL, ?4, ?5, ?5)",
         params![
             session_id,
             project_id,
@@ -318,9 +318,9 @@ pub(super) fn move_session(
         None
     };
     let changed = connection.execute(
-        "UPDATE project_sessions SET project_id = ?1, manual_rank = NULL, pinned_order = ?2, \
-           updated_at = ?3 WHERE id = ?4",
-        params![project_id, next_pinned_order, now, session_id],
+        "UPDATE project_sessions SET project_id = ?1, manual_rank = NULL, updated_at = ?2 \
+         WHERE id = ?3",
+        params![project_id, now, session_id],
     )?;
     if changed != 1 {
         return Err(corrupt("Project Session disappeared during Project move"));
@@ -333,7 +333,13 @@ pub(super) fn move_session(
     )?;
 
     if let Some(placement) = placement {
-        super::session_order::place(connection, session_id, project_id, placement)?;
+        super::session_order::place(
+            connection,
+            &crate::infrastructure::actors::requesting_member(connection, context)?,
+            session_id,
+            project_id,
+            placement,
+        )?;
     }
     let mut project_ids = authority.project_id.iter().cloned().collect::<Vec<_>>();
     if let Some(project_id) = project_id
@@ -386,7 +392,8 @@ pub(super) fn reorder_pinned_sessions(
         validate_id("session_id", id)?;
     }
     let now = sqlite_now(connection)?;
-    let current = super::sidebar_pins::read_order(connection, library_id)?;
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    let current = super::sidebar_pins::read_order(connection, library_id, &member)?;
     let eligible = current
         .iter()
         .filter(|row| row.project_id.as_deref() == project_id)
@@ -397,8 +404,8 @@ pub(super) fn reorder_pinned_sessions(
         .filter(|id| eligible.contains(id.as_str()))
         .cloned()
         .collect::<Vec<_>>();
-    super::sidebar_pins::reorder_subset(connection, library_id, &selected, &now)?;
-    let pins = super::sidebar_pins::read_order(connection, library_id)?;
+    super::sidebar_pins::reorder_subset(connection, library_id, &member, &selected, &now)?;
+    let pins = super::sidebar_pins::read_order(connection, library_id, &member)?;
     finish_lifecycle_mutation(
         connection,
         library_id,
@@ -431,6 +438,7 @@ pub(super) fn place_session(
     let authority = require_session(connection, library_id, session_id)?;
     super::session_order::place(
         connection,
+        &crate::infrastructure::actors::requesting_member(connection, context)?,
         session_id,
         authority.project_id.as_deref(),
         placement,

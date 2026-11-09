@@ -1600,6 +1600,7 @@ mod tests {
     fn personal_database_event_is_view_authorized_without_shared_projection_ids() {
         let connection = compiler_store();
         let change = DatabasePersonalViewChange::OccurrenceDisclosure {
+            member_id: "member:test".into(),
             view_id: "view:personal".to_owned(),
             target: DatabaseViewDisclosureTarget::Page {
                 occurrence_key: "ITEM_parent/child".to_owned(),

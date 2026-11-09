@@ -26,7 +26,7 @@ describe("resolveDatabaseViewPageCopyRequest", () => {
         page,
         presentedTitle: "Release plan",
       }),
-    ).toMatchObject({ kind: "value", value: "nodex://pages/page-1" });
+    ).toMatchObject({ kind: "value", value: "nodex://pages/page-1?spaceId=test-space" });
     expect(
       resolveDatabaseViewPageCopyRequest({
         actionId: "copy-title",

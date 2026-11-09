@@ -8,6 +8,7 @@ import type {
 } from "./workbench-settings-routes";
 
 export type SettingsPageKey =
+  | "spaces"
   | "github"
   | "account"
   | "general"
@@ -18,7 +19,6 @@ export type SettingsPageKey =
   | "import"
   | "keyboard-shortcuts"
   | "inbox"
-  | "mobile"
   | "plugins"
   | "browser"
   | "computer-use"

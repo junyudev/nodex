@@ -20,6 +20,8 @@ export const WORKBENCH_RAIL_BUTTON_CLASS =
   "no-drag rounded-lg text-(--color-text-secondary-ghost) hover:text-(--color-text-secondary-ghost-hover)";
 
 export interface WorkbenchAppRailProps {
+  spaceSwitcher?: ReactNode;
+  contentOnly?: boolean;
   destination: WorkbenchPrimaryDestination;
   onHome: () => void;
   onSpace: () => void;
@@ -46,6 +48,8 @@ export function WorkbenchAppRail({
   onInsights,
   onPlugins,
   footer,
+  spaceSwitcher,
+  contentOnly = false,
 }: WorkbenchAppRailProps) {
   const destinations: readonly WorkbenchRailEntry[] = [
     {
@@ -91,29 +95,31 @@ export function WorkbenchAppRail({
       data-app-navigation-rail
       className="flex h-full min-h-0 w-13 shrink-0 flex-col items-center gap-2 bg-transparent px-2 pt-2 pb-1 select-none"
     >
-      {destinations.map(({ id, label, peekArea, icon, onSelect }) => {
-        const active = destination === id;
-        return (
-          <NodexTooltip key={id} tooltipContent={label} side="right">
-            <NodexButton
-              aria-label={label}
-              aria-current={active ? "page" : undefined}
-              data-workbench-destination={id}
-              {...{ [WORKBENCH_SIDEBAR_PEEK_AREA_ATTRIBUTE]: peekArea }}
-              variant="ghostSecondary"
-              size="icon"
-              className={cn(
-                WORKBENCH_RAIL_BUTTON_CLASS,
-                active &&
-                  "bg-(--color-background-secondary-ghost-hover) text-(--color-text-secondary-ghost-hover)",
-              )}
-              onClick={onSelect}
-            >
-              {icon(active)}
-            </NodexButton>
-          </NodexTooltip>
-        );
-      })}
+      {spaceSwitcher}
+      {destinations
+        .map(({ id, label, peekArea, icon, onSelect }) => {
+          const active = destination === id;
+          return (
+            <NodexTooltip key={id} tooltipContent={label} side="right">
+              <NodexButton
+                aria-label={label}
+                aria-current={active ? "page" : undefined}
+                data-workbench-destination={id}
+                {...{ [WORKBENCH_SIDEBAR_PEEK_AREA_ATTRIBUTE]: peekArea }}
+                variant="ghostSecondary"
+                size="icon"
+                className={cn(
+                  WORKBENCH_RAIL_BUTTON_CLASS,
+                  active &&
+                    "bg-(--color-background-secondary-ghost-hover) text-(--color-text-secondary-ghost-hover)",
+                )}
+                onClick={onSelect}
+              >
+                {icon(active)}
+              </NodexButton>
+            </NodexTooltip>
+          );
+        })}
       {footer}
     </nav>
   );

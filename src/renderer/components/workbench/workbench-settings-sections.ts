@@ -26,6 +26,7 @@ import { SETTINGS_SEARCH_CATALOG, settingsSearchAnchor } from "./workbench-setti
 import type { SettingsPageKey } from "./workbench-settings-page-registry";
 
 export type SettingsSectionId =
+  | "spaces"
   | "github"
   | "account"
   | "general-settings"
@@ -87,6 +88,13 @@ export const SETTINGS_SECTION_GROUP_ORDER: readonly SettingsSectionGroupKey[] = 
 ];
 
 export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
+  {
+    id: "spaces",
+    label: "Spaces",
+    pageKey: "spaces",
+    icon: SettingsGeneralIcon,
+    groupKey: "workspace",
+  },
   {
     id: "account",
     label: "Account",

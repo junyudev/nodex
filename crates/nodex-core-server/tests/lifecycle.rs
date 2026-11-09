@@ -725,7 +725,18 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
         "/core/v1/admin/shutdown",
         r#"{"kind":"shutdown"}"#,
     );
-    assert!(unbound_shutdown.starts_with("HTTP/1.1 401"));
+    assert!(
+        unbound_shutdown.starts_with("HTTP/1.1 403"),
+        "{unbound_shutdown}"
+    );
+    assert_eq!(
+        response_json(&unbound_shutdown)["payload"]["code"],
+        "unauthorized"
+    );
+    assert_eq!(
+        response_json(&unbound_shutdown)["payload"]["recovery"]["kind"],
+        "none"
+    );
 
     let mut event_stream = open_sse(
         &expected.endpoint,

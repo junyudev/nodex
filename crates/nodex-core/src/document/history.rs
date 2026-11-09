@@ -34,7 +34,6 @@ pub(crate) struct NewDocumentCheckpoint<'a> {
     pub(crate) revision_kind: &'a str,
     pub(crate) source_mutation_id: Option<&'a str>,
     pub(crate) source_change_seq: Option<i64>,
-    pub(crate) actor: Option<&'a Value>,
     pub(crate) context: &'a BoundModuleContext,
     pub(crate) now: &'a str,
 }
@@ -659,7 +658,6 @@ pub(crate) fn insert_prepared_canvas_revision(
             revision_kind: prepared.revision_kind,
             source_mutation_id: None,
             source_change_seq: None,
-            actor: None,
             context,
             now,
         },
@@ -720,7 +718,6 @@ fn prepare_revision(
                     revision_kind: "automatic",
                     source_mutation_id: None,
                     source_change_seq: None,
-                    actor: None,
                     context,
                     now,
                 },
@@ -750,7 +747,6 @@ fn prepare_revision(
             revision_kind: "safety",
             source_mutation_id: None,
             source_change_seq: None,
-            actor: None,
             context,
             now,
         },
@@ -1148,7 +1144,6 @@ pub(crate) fn insert_migrated_file_baselines(
         )?
         .query_map([], |row| row.get::<_, String>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    let actor = json!({ "kind": "store_migration", "revision": 152 });
     let mut inserted = 0_u64;
     for document_id in document_ids {
         let authority = super::read_document_authority(connection, &document_id)?
@@ -1166,7 +1161,12 @@ pub(crate) fn insert_migrated_file_baselines(
             |row| row.get::<_, String>(0),
         )?;
         let context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId(profile_id),
             library_id: LibraryId(authority.head.library_id.clone()),
@@ -1182,7 +1182,6 @@ pub(crate) fn insert_migrated_file_baselines(
             revision_kind: "safety",
             source_mutation_id: None,
             source_change_seq: None,
-            actor: Some(&actor),
             context: &context,
             now,
         };
@@ -1607,12 +1606,8 @@ fn validate_checkpoint_input(input: &NewDocumentCheckpoint<'_>) -> Result<(), St
 }
 
 fn checkpoint_actor(input: &NewDocumentCheckpoint<'_>) -> Result<Value, StoreError> {
-    let actor = input.actor.cloned().unwrap_or_else(|| {
-        json!({
-            "adapter": input.context.adapter,
-            "connectionId": input.context.connection_id,
-        })
-    });
+    let actor = serde_json::to_value(&input.context.actor)
+        .map_err(|_| internal("Document actor cannot be encoded"))?;
     if !actor.is_object() || canonical_json_bytes(actor.clone())?.len() > 64 * 1024 {
         return Err(invalid(
             "Document checkpoint actor must be a bounded portable object".to_owned(),

@@ -463,3 +463,5 @@ The product-level execution identity contract is in
 ## Agent task evaluation
 
 See [CLI Agent evaluation](CLI_AGENT_EVALUATION.md) for the optional paid, isolated task suite and evidence-driven improvement workflow.
+manage your Devices, and `space display-name NAME` sets the name other Members
+see for you; an Owner may administer all Devices, invite and remove

@@ -1,3 +1,4 @@
+import { isHostedChat } from "@/lib/hosted-chat";
 import { useExecutionHold } from "@/lib/execution-holds-runtime";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import type {
@@ -1131,6 +1132,8 @@ export function CodexProjectRow({
     onHoverCardOpenChange?.(nextOpen);
   };
   const prefetchProjectHoverCardMetadata = () => {
+    // A prefetch ignores `enabled`; a hosted Project has no path on this desktop to present.
+    if (isHostedChat()) return;
     void queryClient.prefetchQuery(localPathPresentationContextQueryOptions());
     if (!primaryWorkspaceRoot) return;
     void queryClient.prefetchQuery(gitRepositoryIdentityQueryOptions(primaryWorkspaceRoot));

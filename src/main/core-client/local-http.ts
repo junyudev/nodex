@@ -1,7 +1,8 @@
-import { request as httpRequest, type IncomingMessage } from "node:http";
+import { request as httpRequest, type RequestOptions, type IncomingMessage } from "node:http";
 import { randomUUID } from "node:crypto";
 import { CORE_TRANSPORT_BUDGETS, type components } from "@nodex/core-protocol";
 
+import { CoreResponseError, requiresCoreSessionRenewal } from "./core-response-error";
 import { CoreCodecError, decodeBoundedJson, encodeBoundedJson } from "./codec";
 import { SseParser } from "./sse-parser";
 import {
@@ -46,7 +47,18 @@ const DEFAULT_REQUEST_DEADLINES_MS: Readonly<Record<CoreRequestClass, number>> =
   maintenance: CORE_TRANSPORT_BUDGETS.maintenance_request_deadline_ms,
 };
 
+/** Physical HTTP adapter; semantic codecs, bounds and SSE stay shared. */
+export interface CoreHttpConnection {
+  readonly request: typeof httpRequest;
+  readonly options: RequestOptions;
+  readonly credential: () => string;
+  readonly beforeRequest?: (signal?: AbortSignal) => Promise<void>;
+  readonly streamIdleTimeoutMs?: number;
+  readonly maximumQueuedRequests?: number;
+}
+
 export interface LocalHttpTransportOptions {
+  readonly connection?: CoreHttpConnection;
   readonly maximumJsonResponseBytes?: number;
   readonly requestTimeoutMs?: number;
 }
@@ -99,15 +111,25 @@ export interface BoundedBytesResponse {
   readonly etag: string | undefined;
 }
 
-export class CoreHttpError extends Error {
+export class CoreHttpError extends CoreResponseError {
   constructor(
     readonly status: number,
     message: string,
     readonly failure?: components["schemas"]["RecoveryPackageFailure"],
-    readonly coreError?: components["schemas"]["CoreError"],
+    coreError?: components["schemas"]["CoreError"],
   ) {
-    super(message);
+    super(message, coreError);
     this.name = "CoreHttpError";
+  }
+}
+
+export class CoreRateLimitError extends CoreHttpError {
+  constructor(
+    error: CoreHttpError,
+    readonly retryAfterMs: number,
+  ) {
+    super(error.status, error.message, error.failure, error.coreError);
+    this.name = "CoreRateLimitError";
   }
 }
 
@@ -155,6 +177,16 @@ export class CoreTransportError extends Error {
     this.name = "CoreTransportError";
   }
 }
+
+/** Physical failures and renewal evidence must reach authority before semantic projection. */
+export const rethrowCoreTransportFailure = (error: unknown): void => {
+  if (
+    error instanceof CoreTransportError ||
+    error instanceof CoreHttpError ||
+    requiresCoreSessionRenewal(error)
+  )
+    throw error;
+};
 
 export const isDefinitiveCoreGenerationLoss = (error: unknown): boolean =>
   error instanceof CoreTransportError &&
@@ -233,12 +265,14 @@ export class LocalHttpTransport {
   readonly #maximumJsonResponseBytes: number;
   readonly #transportLivenessTimeoutMs: number;
   #eventContract: CoreEventContract | null = null;
+  readonly #connection: CoreHttpConnection | undefined;
 
   constructor(
     readonly endpoint: string,
     readonly authCapability: string,
     options: LocalHttpTransportOptions = {},
   ) {
+    this.#connection = options.connection;
     this.#maximumJsonResponseBytes = boundedPositiveInteger(
       options.maximumJsonResponseBytes ?? MAX_JSON_RESPONSE_BYTES,
       MAX_JSON_RESPONSE_BYTES,
@@ -249,6 +283,21 @@ export class LocalHttpTransport {
       MAX_CONFIGURED_REQUEST_TIMEOUT_MS,
       "Core request timeout",
     );
+  }
+
+  #admitRequest(): void {
+    const maximum = this.#connection?.maximumQueuedRequests;
+    const agent = this.#connection?.options.agent;
+    if (maximum === undefined || !agent || typeof agent === "boolean") return;
+    const queued = Object.values(agent.requests).reduce(
+      (count, requests) => count + (requests?.length ?? 0),
+      0,
+    );
+    if (queued >= maximum)
+      throw new CoreRateLimitError(
+        new CoreHttpError(429, "Core client request queue is full"),
+        1_000,
+      );
   }
 
   configureEventContract(contract: CoreEventContract): void {
@@ -267,13 +316,15 @@ export class LocalHttpTransport {
     this.#eventContract = contract;
   }
 
-  requestJson<Response>(
+  async requestJson<Response>(
     method: "GET" | "POST",
     requestPath: string,
     body?: unknown,
     requestHeaders: Readonly<Record<string, string>> = {},
     options: CoreRequestOptions = {},
   ): Promise<Response> {
+    await this.#connection?.beforeRequest?.(options.signal);
+    this.#admitRequest();
     const documentRoute = requestPath.startsWith(DOCUMENT_ROUTE_PREFIX);
     const maximumRequestBytes = documentRoute
       ? MAX_DOCUMENT_JSON_REQUEST_BYTES
@@ -293,6 +344,7 @@ export class LocalHttpTransport {
       const settle = (action: () => void): void => {
         if (settled) return;
         settled = true;
+        clearTimeout(deadline);
         options.signal?.removeEventListener("abort", cancelCoreRequest);
         action();
       };
@@ -300,12 +352,13 @@ export class LocalHttpTransport {
         if (!execution) return;
         void this.#cancelRequest(execution.requestId, requestHeaders);
       };
-      const request = httpRequest(
+      const request = (this.#connection?.request ?? httpRequest)(
         {
           socketPath: this.endpoint,
           path: requestPath,
           method,
           agent: false,
+          ...this.#connection?.options,
           signal: options.signal,
           headers: {
             ...requestHeaders,
@@ -317,7 +370,7 @@ export class LocalHttpTransport {
                 }
               : {}),
             accept: "application/json",
-            authorization: `Bearer ${this.authCapability}`,
+            authorization: `Bearer ${this.#connection?.credential() ?? this.authCapability}`,
             ...(encodedBody
               ? {
                   "content-length": encodedBody.byteLength,
@@ -331,7 +384,16 @@ export class LocalHttpTransport {
             .then((bytes) => {
               const status = response.statusCode ?? 0;
               if (status < 200 || status >= 300) {
-                settle(() => reject(decodeHttpError(status, bytes, maximumResponseBytes)));
+                settle(() =>
+                  reject(
+                    decodeHttpError(
+                      status,
+                      bytes,
+                      maximumResponseBytes,
+                      response.headers["retry-after"],
+                    ),
+                  ),
+                );
                 return;
               }
               const value = decodeBoundedJson<Response>(
@@ -351,10 +413,12 @@ export class LocalHttpTransport {
       } else {
         options.signal?.addEventListener("abort", cancelCoreRequest, { once: true });
       }
-      request.setTimeout(transportTimeoutMs, () => {
+      const deadline = setTimeout(() => {
         cancelCoreRequest();
-        request.destroy(new CoreTransportError("timeout", "response", "ETIMEDOUT", null));
-      });
+        const error = new CoreTransportError("timeout", "response", "ETIMEDOUT", null);
+        settle(() => reject(error));
+        request.destroy(error);
+      }, transportTimeoutMs);
       request.on("error", (error) =>
         settle(() => reject(normalizeTransportError(error, "connect"))),
       );
@@ -363,13 +427,15 @@ export class LocalHttpTransport {
     });
   }
 
-  requestDocumentFrame<Response>(
+  async requestDocumentFrame<Response>(
     requestPath: string,
     body: Uint8Array,
     requestHeaders: Readonly<Record<string, string>>,
     maximumResponseBytes: number,
     options: CoreRequestOptions = {},
   ): Promise<DocumentFrameResponse<Response>> {
+    await this.#connection?.beforeRequest?.(options.signal);
+    this.#admitRequest();
     const execution = requestExecution(requestPath, options);
     if (!execution) {
       return Promise.reject(new Error("Document requests require Core execution metadata"));
@@ -380,6 +446,7 @@ export class LocalHttpTransport {
       const settle = (action: () => void): void => {
         if (settled) return;
         settled = true;
+        clearTimeout(deadline);
         options.signal?.removeEventListener("abort", cancelCoreRequest);
         action();
       };
@@ -387,12 +454,13 @@ export class LocalHttpTransport {
         if (!execution) return;
         void this.#cancelRequest(execution.requestId, requestHeaders);
       };
-      const request = httpRequest(
+      const request = (this.#connection?.request ?? httpRequest)(
         {
           socketPath: this.endpoint,
           path: requestPath,
           method: "POST",
           agent: false,
+          ...this.#connection?.options,
           signal: options.signal,
           headers: {
             ...requestHeaders,
@@ -400,7 +468,7 @@ export class LocalHttpTransport {
             "x-nodex-request-class": execution.class,
             "x-nodex-request-deadline-ms": String(execution.deadlineMs),
             accept: `${DOCUMENT_HTTP_CONTENT_TYPE}, application/json`,
-            authorization: `Bearer ${this.authCapability}`,
+            authorization: `Bearer ${this.#connection?.credential() ?? this.authCapability}`,
             "content-length": body.byteLength,
             "content-type": DOCUMENT_HTTP_CONTENT_TYPE,
           },
@@ -410,7 +478,16 @@ export class LocalHttpTransport {
             .then((bytes) => {
               const status = response.statusCode ?? 0;
               if (status < 200 || status >= 300) {
-                settle(() => reject(decodeHttpError(status, bytes, maximumResponseBytes)));
+                settle(() =>
+                  reject(
+                    decodeHttpError(
+                      status,
+                      bytes,
+                      maximumResponseBytes,
+                      response.headers["retry-after"],
+                    ),
+                  ),
+                );
                 return;
               }
               const contentType = response.headers["content-type"]?.split(";", 1)[0];
@@ -441,10 +518,12 @@ export class LocalHttpTransport {
       } else {
         options.signal?.addEventListener("abort", cancelCoreRequest, { once: true });
       }
-      request.setTimeout(transportTimeoutMs, () => {
+      const deadline = setTimeout(() => {
         cancelCoreRequest();
-        request.destroy(new CoreTransportError("timeout", "response", "ETIMEDOUT", null));
-      });
+        const error = new CoreTransportError("timeout", "response", "ETIMEDOUT", null);
+        settle(() => reject(error));
+        request.destroy(error);
+      }, transportTimeoutMs);
       request.on("error", (error) =>
         settle(() => reject(normalizeTransportError(error, "connect"))),
       );
@@ -453,7 +532,7 @@ export class LocalHttpTransport {
     });
   }
 
-  requestBoundedBytes(
+  async requestBoundedBytes(
     method: "GET" | "POST",
     requestPath: string,
     body: Uint8Array | undefined,
@@ -461,6 +540,8 @@ export class LocalHttpTransport {
     maximumResponseBytes: number,
     options: CoreRequestOptions = {},
   ): Promise<BoundedBytesResponse> {
+    await this.#connection?.beforeRequest?.(options.signal);
+    this.#admitRequest();
     const execution = requestExecution(requestPath, options);
     if (!execution) {
       return Promise.reject(new Error("Blob requests require Core execution metadata"));
@@ -471,18 +552,20 @@ export class LocalHttpTransport {
       const settle = (action: () => void): void => {
         if (settled) return;
         settled = true;
+        clearTimeout(deadline);
         options.signal?.removeEventListener("abort", cancelCoreRequest);
         action();
       };
       const cancelCoreRequest = (): void => {
         void this.#cancelRequest(execution.requestId, requestHeaders);
       };
-      const request = httpRequest(
+      const request = (this.#connection?.request ?? httpRequest)(
         {
           socketPath: this.endpoint,
           path: requestPath,
           method,
           agent: false,
+          ...this.#connection?.options,
           signal: options.signal,
           headers: {
             ...requestHeaders,
@@ -490,7 +573,7 @@ export class LocalHttpTransport {
             "x-nodex-request-class": execution.class,
             "x-nodex-request-deadline-ms": String(execution.deadlineMs),
             accept: "application/octet-stream, application/json",
-            authorization: `Bearer ${this.authCapability}`,
+            authorization: `Bearer ${this.#connection?.credential() ?? this.authCapability}`,
             ...(body
               ? {
                   "content-length": body.byteLength,
@@ -510,6 +593,7 @@ export class LocalHttpTransport {
                       status,
                       bytes,
                       Math.min(maximumResponseBytes, MAX_JSON_RESPONSE_BYTES),
+                      response.headers["retry-after"],
                     ),
                   ),
                 );
@@ -533,10 +617,12 @@ export class LocalHttpTransport {
       } else {
         options.signal?.addEventListener("abort", cancelCoreRequest, { once: true });
       }
-      request.setTimeout(transportTimeoutMs, () => {
+      const deadline = setTimeout(() => {
         cancelCoreRequest();
-        request.destroy(new CoreTransportError("timeout", "response", "ETIMEDOUT", null));
-      });
+        const error = new CoreTransportError("timeout", "response", "ETIMEDOUT", null);
+        settle(() => reject(error));
+        request.destroy(error);
+      }, transportTimeoutMs);
       request.on("error", (error) =>
         settle(() => reject(normalizeTransportError(error, "connect"))),
       );
@@ -557,7 +643,7 @@ export class LocalHttpTransport {
     ).catch(() => undefined);
   }
 
-  openEventStream(
+  async openEventStream(
     after: number,
     onEvent: (event: CoreEventEnvelope) => void,
     requestHeaders: Readonly<Record<string, string>> = {},
@@ -568,6 +654,8 @@ export class LocalHttpTransport {
     documentLive?: DocumentLiveStreamOptions,
     projectionLive?: ProjectionLiveStreamOptions,
   ): Promise<CoreEventSubscription> {
+    await this.#connection?.beforeRequest?.(signal);
+    this.#admitRequest();
     if (!Number.isSafeInteger(after) || after < 0) {
       return Promise.reject(new Error("Event sequence must be a non-negative integer"));
     }
@@ -589,17 +677,22 @@ export class LocalHttpTransport {
         resolveDone = doneResolve;
         rejectDone = doneReject;
       });
-      const request = httpRequest(
+      const rejectOpening = (error: unknown): void => {
+        clearTimeout(openingDeadline);
+        reject(error);
+      };
+      const request = (this.#connection?.request ?? httpRequest)(
         {
           socketPath: this.endpoint,
           path: documentLive?.path ?? projectionLive?.path ?? `/core/v1/events?after=${after}`,
           method: "GET",
           agent: false,
+          ...this.#connection?.options,
           signal,
           headers: {
             ...requestHeaders,
             accept: "text/event-stream",
-            authorization: `Bearer ${this.authCapability}`,
+            authorization: `Bearer ${this.#connection?.credential() ?? this.authCapability}`,
           },
         },
         (response) => {
@@ -607,9 +700,16 @@ export class LocalHttpTransport {
           if (status !== 200) {
             collectResponse(response, this.#maximumJsonResponseBytes)
               .then((bytes) => {
-                reject(decodeHttpError(status, bytes, this.#maximumJsonResponseBytes));
+                rejectOpening(
+                  decodeHttpError(
+                    status,
+                    bytes,
+                    this.#maximumJsonResponseBytes,
+                    response.headers["retry-after"],
+                  ),
+                );
               })
-              .catch((error: unknown) => reject(normalizeTransportError(error, "response")));
+              .catch((error: unknown) => rejectOpening(normalizeTransportError(error, "response")));
             return;
           }
 
@@ -619,7 +719,14 @@ export class LocalHttpTransport {
             if (documentLive && !documentBarrier) return;
             if (projectionLive && !projectionBarrier) return;
             opened = true;
-            request.setTimeout(0);
+            clearTimeout(openingDeadline);
+            request.setTimeout(this.#connection?.streamIdleTimeoutMs ?? 0, () => {
+              request.destroy(
+                Object.assign(new Error("Core event stream heartbeat expired"), {
+                  code: "ETIMEDOUT",
+                }),
+              );
+            });
             resolve({
               done,
               ...(documentBarrier
@@ -645,7 +752,7 @@ export class LocalHttpTransport {
               rejectDone?.(normalized);
               return;
             }
-            reject(normalized);
+            rejectOpening(normalized);
           };
           const processFrame = (frame: { readonly event: string; readonly data: string }): void => {
             if (frame.event === "document-live-opened") {
@@ -768,14 +875,17 @@ export class LocalHttpTransport {
       );
       request.on("error", (error) => {
         if (!opened) {
-          reject(normalizeTransportError(error, "open"));
+          rejectOpening(normalizeTransportError(error, "open"));
           return;
         }
         if (!closed) rejectDone?.(normalizeTransportError(error, "response"));
       });
-      request.setTimeout(this.#transportLivenessTimeoutMs, () => {
-        request.destroy(new CoreTransportError("timeout", "open", "ETIMEDOUT", null));
-      });
+      const openingDeadline = setTimeout(() => {
+        closed = true;
+        const error = new CoreTransportError("timeout", "open", "ETIMEDOUT", null);
+        rejectOpening(error);
+        request.destroy(error);
+      }, this.#transportLivenessTimeoutMs);
       request.end();
     });
   }
@@ -882,10 +992,29 @@ const decodeHttpError = (
   status: number,
   bytes: Uint8Array,
   maximumBytes: number,
+  retryAfter?: string,
 ): CoreHttpError => {
+  const typed = (error: CoreHttpError): CoreHttpError => {
+    if (status !== 429) return error;
+    const retry = error.coreError?.recovery;
+    const headerMs =
+      retryAfter === undefined
+        ? 0
+        : /^\d+(?:\.\d+)?$/u.test(retryAfter)
+          ? Number(retryAfter) * 1_000
+          : Math.max(0, Date.parse(retryAfter) - Date.now());
+    return new CoreRateLimitError(
+      error,
+      Math.max(
+        1_000,
+        Number.isFinite(headerMs) ? headerMs : 0,
+        retry?.kind === "retry_after" ? retry.milliseconds : 0,
+      ),
+    );
+  };
   const fallback = (): CoreHttpError => {
     const detail = new TextDecoder().decode(bytes.subarray(0, 4_096)).trim();
-    return new CoreHttpError(status, detail || `Core HTTP request failed (${status})`);
+    return typed(new CoreHttpError(status, detail || `Core HTTP request failed (${status})`));
   };
   try {
     const value = decodeBoundedJson<unknown>(bytes, maximumBytes, "Core error response");
@@ -901,7 +1030,7 @@ const decodeHttpError = (
     const coreError = parseCoreError(value.payload);
     const failure =
       coreError.recovery.kind === "recovery_package" ? coreError.recovery.failure : undefined;
-    return new CoreHttpError(status, coreError.message, failure, coreError);
+    return typed(new CoreHttpError(status, coreError.message, failure, coreError));
   } catch {
     return fallback();
   }

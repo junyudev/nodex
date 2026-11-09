@@ -58,6 +58,25 @@ component -> owning feature Module -> typed renderer Adapter -> preload/Main Ada
 pure renderer helper -> transport-neutral shared contract
 ```
 
+Each renderer document binds one immutable Space before application Modules load.
+Switching flushes its local owners and opens a new renderer document; a delayed
+callback cannot retarget an existing command to the newly selected Space. Preload
+places the bound `spaceId` around every content/execution request and Main rejects
+missing, unknown or mismatched coordinates. Scene and surface references, routes,
+history and return routes remain relative inside one Space's Workbench aggregate;
+references leaving that aggregate, caches and leases carry the Space coordinate.
+Central Query keys start with the Space, and the production Query client also
+includes it in hashing. Board stores, durable atom transport, viewport state and
+Document journals use Space-qualified identities. Core owns Member View preferences,
+collapse state, unread state, routing consent, notification claims and recovery
+drafts across devices. Viewport positions, layouts and unsent-edit journals stay
+on the device, qualified by Space and Member. Navigation revokes the
+previous renderer's projection audiences. Team editors retain their text-history
+journals on the device and never request process-owned Core history leases.
+Personal notification and reminder routes carry their Space across a switch;
+notification replies use a window-local handoff rather than entering the
+next Space's command port.
+
 - Put feature workflows and deep feature-owned state under
   `src/renderer/features/`.
 - Put reusable surface composition and UI primitives under

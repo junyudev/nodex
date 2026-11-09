@@ -1,18 +1,19 @@
 import { useQueries } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
-import { AgentProviderIcon } from "@/components/shared/icons";
+import { ChatBubbleIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { formatCompactRelativeTime } from "@/lib/compact-relative-time";
 import { formatDate } from "@/lib/file-metadata-format";
 import type { PageFileTreeProvenance } from "@/lib/page-file-tree";
 import { parsePageFileSourceKey, type PageFileSource } from "@/lib/page-file-provenance";
 import { projectSessionDetailQueryOptions } from "@/lib/query-options";
+import { useLocalMember, useMembers } from "@/lib/members-runtime";
 import { cn } from "@/lib/utils";
 
 export interface PageFileSourcePresentation {
   readonly source: PageFileSource;
-  /** The chat's current title, `You`, or the command line. */
+  /** The Member, Service, or Agent and the Member it represents. */
   readonly label: string;
   /** Present for a chat that still exists and can be opened. */
   readonly sessionId: string | null;
@@ -22,13 +23,19 @@ export interface PageFileSourcePresentation {
 export function usePageFileSources(
   sourceKeys: readonly string[],
 ): (sourceKey: string) => PageFileSourcePresentation | null {
+  const members = useMembers();
+  const current = useLocalMember();
+  const memberLabel = (id: string) =>
+    id === current.data?.id
+      ? "You"
+      : (members.data?.find((member) => member.id === id)?.display_name ?? "Member");
   const sources = [...new Set(sourceKeys)].flatMap((key) => {
     const source = parsePageFileSourceKey(key);
     return source ? [[key, source] as const] : [];
   });
   const sessionIds = [
     ...new Set(
-      sources.flatMap(([, source]) => (source.kind === "agent" ? [source.sessionId] : [])),
+      sources.flatMap(([, source]) => (source.type === "agent" ? [source.session_id] : [])),
     ),
   ];
   const sessions = useQueries({
@@ -40,7 +47,24 @@ export function usePageFileSources(
   return (sourceKey) => {
     const source = parsePageFileSourceKey(sourceKey);
     if (!source) return null;
+    if (source.type === "member")
+      return { source, label: memberLabel(source.member_id), sessionId: null };
+    if (source.type === "service") {
+      const labels = {
+        sources: "Sources",
+        automations: "Automations",
         scheduler: "Nodex",
+        inbox_routing: "Nodex",
+        agent_runtime: "Agent runtime",
+        maintenance: "Maintenance",
+        notifications: "Notifications",
+        membership: "Members",
+      };
+      return { source, label: labels[source.kind], sessionId: null };
+    }
+    const session = titles.get(source.session_id);
+    const label = `${session?.displayTitle ?? "Agent"} on behalf of ${memberLabel(source.on_behalf_of)}`;
+    return { source, label, sessionId: session === null ? null : source.session_id };
   };
 }
 
@@ -53,19 +77,14 @@ const attachedTooltip = (
   presentation: PageFileSourcePresentation,
   provenance: PageFileTreeProvenance,
 ): string => {
-  const who =
-    presentation.source.kind === "agent"
-      ? `Attached by ${presentation.label}`
-      : presentation.source.kind === "person"
-        ? "Attached by you"
-        : "Attached from the command line";
+  const who = `Attached by ${presentation.label}`;
   return provenance.latestAttachedAtMs === null
     ? who
     : `${who} · ${formatDate(new Date(provenance.latestAttachedAtMs).toISOString())}`;
 };
 
 /**
- * Where Files came from: the attaching chat with its provider mark, you, or the command line,
+ * Who attached the Files,
  * and how long ago. A chat opens on click.
  */
 export function PageFileSourceLabel({
@@ -83,9 +102,7 @@ export function PageFileSourceLabel({
   const { source, sessionId } = presentation;
   const label = (
     <>
-      {source.kind === "agent" ? (
-        <AgentProviderIcon kind={source.backendKind} className="size-3 shrink-0" />
-      ) : null}
+      {source.type === "agent" ? <ChatBubbleIcon className="size-3 shrink-0" /> : null}
       <span className="min-w-0 truncate">{presentation.label}</span>
     </>
   );

@@ -57,7 +57,7 @@ export class CoreAuthority extends Context.Service<
   CoreAuthority,
   {
     readonly identity: CoreAuthorityIdentity;
-    readonly initialLaunch: CoreTransportSession["launch"];
+    readonly initialLaunch: CoreTransportSession["launch"] | null;
     readonly state: SubscriptionRef.SubscriptionRef<CoreAuthorityState>;
     readonly retry: Effect.Effect<void, CoreRuntimeError>;
     readonly requestRelaunch: Effect.Effect<void>;

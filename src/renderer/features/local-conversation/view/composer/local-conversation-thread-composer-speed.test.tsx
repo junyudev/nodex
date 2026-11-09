@@ -17,6 +17,7 @@ import {
 import { render, settleAsyncRender } from "@/test/dom";
 import { installAsyncRequestAnimationFrame, installWindowApi } from "@/test/browser-globals";
 import { clearPersistedAtomStoreForTests } from "@/lib/persisted-atom-store";
+import { spaceStorageKey } from "@/lib/renderer-space";
 import {
   clearImageEditComposerDraft,
   getImageEditComposerDraftSnapshot,
@@ -463,7 +464,11 @@ test.each([true, false])(
     await act(async () =>
       resolveDraft({
         revision: 1,
-        values: { "composer-prompt-drafts-v1": { "local:thread_1": "Restored startup draft" } },
+        values: {
+          [spaceStorageKey("composer-prompt-drafts-v1")]: {
+            "local:thread_1": "Restored startup draft",
+          },
+        },
       }),
     );
     await waitFor(() => expect(readComposerText(view)).toBe("Restored startup draft"));

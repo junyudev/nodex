@@ -1372,7 +1372,9 @@ const makeDesktopDocumentSessionState = (
             libraryId: input.coreAuthority.identity.libraryId,
             projectId: intent.projectId,
             storeEpoch: input.coreAuthority.identity.storeEpoch,
-            editorHistoryOwnerId,
+            ...(input.coreAuthority.initialLaunch !== null && editorHistoryOwnerId
+              ? { editorHistoryOwnerId }
+              : {}),
           }).commit(intent),
         { projectId: intent.projectId },
       )
@@ -1434,7 +1436,9 @@ const makeDesktopDocumentSessionState = (
             libraryId: input.coreAuthority.identity.libraryId,
             projectId: intent.projectId,
             storeEpoch: input.coreAuthority.identity.storeEpoch,
-            editorHistoryOwnerId,
+            ...(input.coreAuthority.initialLaunch !== null && editorHistoryOwnerId
+              ? { editorHistoryOwnerId }
+              : {}),
           }).undo(intent),
         { projectId: intent.projectId },
       )

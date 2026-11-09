@@ -14,6 +14,7 @@ import * as Logger from "effect/Logger";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { MainConfig } from "../app/MainConfig";
@@ -100,6 +101,7 @@ const fixture = Effect.gen(function* () {
     live.set(identity.runId ?? identity.incarnationId, proofOf(identity));
   bind(actor());
   bind(turn());
+  let attributionUnavailable = false;
   let caller: AppToolCaller | undefined;
   let bound = true;
   let coordinatorId: string | null = null;
@@ -224,10 +226,18 @@ const fixture = Effect.gen(function* () {
             coreWrites.push(input);
             return {};
           }),
-        issueAgentAttribution: (input: { session_id: string; backend: string }) =>
-          Effect.sync(() => {
-            attributions.push(input);
-            return `credential:${input.session_id}`;
+          Effect.suspend(() => {
+            if (attributionUnavailable)
+              return coreRuntimeError({
+                operation: "workspace.issueAgentAttribution",
+                reason: "operation",
+                retryable: false,
+                cause: new Error("Credential unavailable"),
+              });
+            return Effect.sync(() => {
+              attributions.push(input);
+              return `credential:${input.session_id}`;
+            });
           }),
       },
     } as never),
@@ -250,6 +260,9 @@ const fixture = Effect.gen(function* () {
     coreReads,
     coreWrites,
     attributions,
+    failAttribution: () => {
+      attributionUnavailable = true;
+    },
     live,
     bind,
     caller: () => caller!,
@@ -320,7 +333,8 @@ it.effect("a Turn's CLI is vouched for as its own Session's Agent", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
     yield* f.execute(prepareTurn());
-    assert.deepEqual(f.attributions, [{ session_id: "session", backend: "acp" }]);
+    assert.deepEqual(f.attributions, [
+    ]);
   }).pipe(Effect.scoped),
 );
 
@@ -570,6 +584,14 @@ it.effect("binds the managed Run to its proved inbound before tools execute", ()
     assert.equal(readHostedAppToolSessionContext(f.caller()!)?.inboundMessageId, "message");
   }),
 );
+
+it.effect("credential failure refuses Agent preparation before exposing CLI access", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    f.failAttribution();
+    const result = yield* Effect.result(f.execute(prepareTurn()));
+    assert.equal(result._tag, "Failure");
+    assert.isEmpty(f.attributions);
   }),
 );
 

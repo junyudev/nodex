@@ -1,9 +1,5 @@
 import * as MobilePushRelay from "../platform/node/MobilePushRelay";
-import * as MobileGateway from "../mobile-gateway/MobileGateway";
-import * as MobileApplication from "../mobile-gateway/MobileApplication";
-import * as MobileProfileFiles from "../platform/node/MobileProfileFiles";
-import * as MobileAccessIpc from "../ipc/handlers/MobileAccessIpc";
-import * as SecretEncryption from "../platform/electron/SecretEncryption";
+import { SpacePageFileHosts } from "../page-files/SpacePageFileHosts";
 import { SessionReminderRuntime } from "../host-runtime/SessionReminderRuntime";
 import { live as chatSearchLive } from "../chat-search/ChatSearch";
 import { live as insightsLive } from "../insights/Insights";
@@ -59,7 +55,7 @@ import { requestsExplicitNewWindow } from "../main-runtime-startup-events";
 import { getLogger } from "../logging/logger";
 import { ElectronApp } from "../platform/electron/ElectronApp";
 import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
-import { ElectronIpc, ElectronSyncIpc } from "../platform/electron/ElectronIpc";
+import { ElectronIpc, ElectronSyncIpc, ElectronSpaceIpc } from "../platform/electron/ElectronIpc";
 import { ElectronWindowHost } from "../platform/electron/ElectronWindowHost";
 import { ElectronSessionHost } from "../platform/electron/ElectronSessionHost";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
@@ -88,6 +84,7 @@ import * as AgentRuntimeApplicationLive from "./AgentRuntimeApplicationLive";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { AgentRuntimeSupervisor } from "../agent-runtime/AgentRuntimeSupervisor";
 import * as RendererIngressLive from "./RendererIngressLive";
+import * as SpacesApplicationLive from "./SpacesApplicationLive";
 import * as WindowApplicationLive from "./WindowApplicationLive";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
@@ -106,6 +103,9 @@ const runtimeError = (operation: string, cause: unknown) =>
   new MainApplicationError({ phase: "startup", operation, cause });
 
 const applicationLogger = getLogger({ subsystem: "app" });
+// A failed external navigation must not tear down the desktop's other Spaces.
+const reportSpaceLinkFailure = (cause: unknown) =>
+  Effect.sync(() => applicationLogger.warn("Could not open Space link", { cause }));
 const shellEnvironment = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
@@ -173,11 +173,13 @@ export const live: Layer.Layer<
   | ExecutionHostRuntimeError
   | CodexComposerPredictionError
   | MainApplicationError,
+  | SpacePageFileHosts
   | ElectronApp
   | ApplicationSettings
   | TemporaryAssets
   | ElectronDesktop
   | ElectronIpc
+  | ElectronSpaceIpc
   | ElectronSyncIpc
   | ElectronSessionHost
   | ElectronWindowHost
@@ -261,7 +263,9 @@ export const live: Layer.Layer<
           Effect.forkIn(runtimeScope),
           Effect.asVoid,
         );
-        yield* deepLinks.extractFromArgv(config.argv);
+        yield* deepLinks
+          .extractFromArgv(config.argv)
+          .pipe(Effect.catch((cause) => reportSpaceLinkFailure(cause).pipe(Effect.as(null))));
         yield* threadHandoffRuntime.recover().pipe(
           Effect.catch((cause) =>
             Effect.sync(() => applicationLogger.error("Task handoff recovery failed", { cause })),
@@ -276,12 +280,18 @@ export const live: Layer.Layer<
         );
         const initializationStartedAt = performance.now();
         const initialize = Effect.gen(function* () {
+          const launch = authority.initialLaunch;
+          if (!launch)
+            return yield* runtimeError(
+              "personal-core",
+              new Error("Personal Space must own its local Core"),
+            );
           applicationLogger.info("Native Core authority ready", {
-            ...authority.initialLaunch.timings,
-            artifactValidationMs: Math.round(authority.initialLaunch.timings.artifactValidationMs),
-            connectMs: Math.round(authority.initialLaunch.timings.connectMs),
-            selectionMs: Math.round(authority.initialLaunch.timings.selectionMs),
-            totalMs: Math.round(authority.initialLaunch.timings.totalMs),
+            ...launch.timings,
+            artifactValidationMs: Math.round(launch.timings.artifactValidationMs),
+            connectMs: Math.round(launch.timings.connectMs),
+            selectionMs: Math.round(launch.timings.selectionMs),
+            totalMs: Math.round(launch.timings.totalMs),
           });
           let coreStreamInterruptionPublished = false;
           yield* SubscriptionRef.changes(coreEventHub.connection).pipe(
@@ -318,15 +328,18 @@ export const live: Layer.Layer<
             Effect.forkIn(runtimeScope),
             Effect.asVoid,
           );
-          yield* deepLinks.markReady;
-          yield* automationRouting.synchronize.pipe(
+          yield* deepLinks.markReady.pipe(Effect.catch(reportSpaceLinkFailure));
             Effect.mapError((cause) => runtimeError("synchronize-automations", cause)),
           );
           yield* managedWorktreeRetention.request;
           yield* Effect.all(
             [
               reminderScheduler.activate({
-                openReminder: applicationWindows.sendReminderOpen,
+                openReminder: (payload) =>
+                  applicationWindows.sendReminderOpen({
+                    ...payload,
+                    spaceId: authority.identity.libraryId,
+                  }),
               }),
               sessionReminders.activate,
               scheduledAutomations.activate,
@@ -361,13 +374,13 @@ export const live: Layer.Layer<
           confirmQuit: trayIntegration.confirmQuit,
           handleBootstrapEvent: (event) => {
             if (event.type === "open-url") {
-              return deepLinks.handle(event.url).pipe(
-                Effect.mapError((cause) => runtimeError("handle-open-url", cause)),
-                Effect.asVoid,
-              );
+              return deepLinks
+                .handle(event.url)
+                .pipe(Effect.catch(reportSpaceLinkFailure), Effect.asVoid);
             }
             if (isWindowsStartupActivation(config.platform, event.argv)) return Effect.void;
             return deepLinks.extractFromArgv(event.argv).pipe(
+              Effect.catch((cause) => reportSpaceLinkFailure(cause).pipe(Effect.as(null))),
               Effect.tap((handled) =>
                 handled
                   ? Effect.void

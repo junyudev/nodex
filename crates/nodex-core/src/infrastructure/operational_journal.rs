@@ -1380,8 +1380,8 @@ mod tests {
             .execute(
                 "INSERT INTO local_commits( \
                    commit_seq, store_epoch, operation_id, committed_at, \
-                   projection_impact_json, canonical_hash, finalized \
-                 ) VALUES (?1, 'epoch:journal', ?2, ?3, '{}', ?4, 1)",
+                   projection_impact_json, canonical_hash, actor_json, finalized \
+                 ) VALUES (?1, 'epoch:journal', ?2, ?3, '{}', ?4, json_object('type','service','kind','maintenance'), 1)",
                 params![
                     commit_seq,
                     operation_id,
@@ -1649,9 +1649,9 @@ mod tests {
                 .execute(
                     "INSERT INTO local_commits( \
                        commit_seq, store_epoch, operation_id, committed_at, \
-                       projection_impact_json, canonical_hash, finalized \
+                       projection_impact_json, canonical_hash, actor_json, finalized \
                      ) VALUES (?1, 'epoch:backfill', ?2, '2099-01-01T00:00:00Z', \
-                       '{}', ?3, 1)",
+                       '{}', ?3, json_object('type','service','kind','maintenance'), 1)",
                     params![commit_seq, operation_id, format!("{commit_seq:064x}")],
                 )
                 .expect("legacy LocalCommit");

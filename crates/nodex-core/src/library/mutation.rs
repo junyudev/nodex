@@ -161,6 +161,8 @@ pub(super) fn apply(
     writer.call(move |connection| {
         let result = with_immediate_transaction(connection, |transaction| {
             assert_identity(transaction, &profile_id, &library_id)?;
+            let context = crate::infrastructure::actors::bind(transaction, &context)?;
+            let context = &context;
             let store_epoch = read_store_epoch(transaction)?;
             if request.store_epoch.0 != store_epoch {
                 return Err(StoreError::new(
@@ -169,9 +171,17 @@ pub(super) fn apply(
                     true,
                 ));
             }
+            let mut request = request.clone();
+            let actor = serde_json::to_value(&context.actor).map_err(|_|internal("Actor cannot be encoded"))?;
+            match &mut request.intent {
+                LibraryIntent::ApplyBlockPropertyMutation {mutation}=>mutation.actor=actor.clone(),
+                LibraryIntent::ApplyPageMetadataProperties {intrinsic_mutation,..}=>intrinsic_mutation.actor=actor.clone(),
+                LibraryIntent::TransferBlocks {intent,..}=>intent.actor=actor.clone(),
+                _=>{}
+            }
             let request_hash = match &request.intent {
                 LibraryIntent::TransferBlocks { intent, .. } => {
-                    super::block_transfer::semantic_request_hash(&context, &store_epoch, intent)?
+                    super::block_transfer::semantic_request_hash(context, &store_epoch, intent)?
                 }
                 LibraryIntent::ApplyBlockPropertyMutation { .. } => {
                     let fingerprint = serde_json::to_vec(&(
@@ -200,6 +210,7 @@ pub(super) fn apply(
                     sha256(&fingerprint)
                 }
             };
+            crate::infrastructure::member_admission::admit_operation(transaction, context, MODULE_NAME, &request.operation_id)?;
             if let Some(replayed) = durable_mutation::replay_existing(
                 transaction,
                 ReplayIdentity {
@@ -213,27 +224,27 @@ pub(super) fn apply(
                 return library_commit_result(transaction, replayed);
             }
             if !matches!(request.intent, LibraryIntent::CloseEditorHistoryOwner) {
-                super::structural_edit::history_owner::require_active(transaction, &context, &store_epoch)?;
+                super::structural_edit::history_owner::require_active(transaction, context, &store_epoch)?;
             }
             match &request.intent {
                 LibraryIntent::PutPageFileEntry { page_id, expected_manifest_revision, file_id, logical_path, mime_type, prepared_blob_receipt_id, replace_entry, turn_id } => super::page_file_entry_mutation::put(
-                    transaction, &context, &super::page_file_attachment::resolve_actor(&context)?, &store_epoch, &request.operation_id, &request_hash,
+                    transaction, context, &super::page_file_attachment::resolve_actor(context)?, &store_epoch, &request.operation_id, &request_hash,
                     page_id, *expected_manifest_revision, file_id, logical_path, mime_type,
                     prepared_blob_receipt_id, *replace_entry, turn_id.as_deref(),
                 ),
                 LibraryIntent::ApplyPageFileEntries { page_id, expected_manifest_revision, changes, turn_id } => super::page_file_entry_mutation::apply(
-                    transaction, &context, &super::page_file_attachment::resolve_actor(&context)?, &store_epoch, &request.operation_id, &request_hash,
+                    transaction, context, &super::page_file_attachment::resolve_actor(context)?, &store_epoch, &request.operation_id, &request_hash,
                     page_id, *expected_manifest_revision, changes, turn_id.as_deref(),
                 ),
                 LibraryIntent::TransferPageFileEntry { file_id, source_page_id, source_manifest_revision, target_page_id, target_manifest_revision, target_logical_path, copy } => super::page_file_entry_mutation::transfer(
-                    transaction, &context, &store_epoch, &request.operation_id, &request_hash, file_id,
+                    transaction, context, &store_epoch, &request.operation_id, &request_hash, file_id,
                     source_page_id, *source_manifest_revision, target_page_id, *target_manifest_revision, target_logical_path, *copy,
                 ),
                 LibraryIntent::ApplyFileChange { change, turn_id } => super::file_mutation::apply(
-                    transaction, &context, &store_epoch, &request.operation_id, &request_hash, change, turn_id.as_deref(),
+                    transaction, context, &store_epoch, &request.operation_id, &request_hash, change, turn_id.as_deref(),
                 ),
                 LibraryIntent::CloseEditorHistoryOwner => super::structural_edit::history_owner::close(
-                    transaction, &context, &request.operation_id, &store_epoch, &request_hash,
+                    transaction, context, &request.operation_id, &store_epoch, &request_hash,
                 ),
                 LibraryIntent::CreatePage {
                     page_id,
@@ -242,7 +253,7 @@ pub(super) fn apply(
                     parent,
                 } => create_page(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -260,7 +271,7 @@ pub(super) fn apply(
                     destination,
                 } => create_page_mention(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -271,7 +282,7 @@ pub(super) fn apply(
                     mention_host,
                     destination,
                 ),
-                LibraryIntent::CreatePagesFromText { request: create_request } => super::agent_page_create::create_native_pages(transaction, &context, &store_epoch, &library_id, &request.operation_id, &request_hash, create_request, false, None),
+                LibraryIntent::CreatePagesFromText { request: create_request } => super::agent_page_create::create_native_pages(transaction, context, &store_epoch, &library_id, &request.operation_id, &request_hash, create_request, false, None),
                 LibraryIntent::CreatePageFromText {
                     title_markdown,
                     markdown,
@@ -279,7 +290,7 @@ pub(super) fn apply(
                 } => {
                     super::page_write_semantic::create_page(
                         transaction,
-                        &context,
+                        context,
                         &store_epoch,
                         &library_id,
                         &request.operation_id,
@@ -297,7 +308,7 @@ pub(super) fn apply(
                     parent,
                 } => create_database(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -315,7 +326,7 @@ pub(super) fn apply(
                     destination,
                 } => super::canvas_mutation::create(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -332,7 +343,7 @@ pub(super) fn apply(
                     expected_metadata_revision,
                 } => super::canvas_mutation::rename(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -347,7 +358,7 @@ pub(super) fn apply(
                     destination,
                 } => super::canvas_mutation::move_canvas(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -366,7 +377,7 @@ pub(super) fn apply(
                     destination,
                 } => super::canvas_mutation::duplicate(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -387,7 +398,7 @@ pub(super) fn apply(
                     containing_document_head,
                 } => super::canvas_mutation::delete(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -407,7 +418,7 @@ pub(super) fn apply(
                     destination,
                 } => super::page_copy::copy_page(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -426,7 +437,7 @@ pub(super) fn apply(
                     destination,
                 } => super::page_write_semantic::duplicate_page(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -441,7 +452,7 @@ pub(super) fn apply(
                     expected_etag,
                 } => super::page_write_semantic::move_page(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -456,7 +467,7 @@ pub(super) fn apply(
                     expected_etag,
                 } => super::page_lifecycle_mutation::delete_with_etag(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -469,7 +480,7 @@ pub(super) fn apply(
                     expected_metadata_revision,
                 } => change_resource_lifecycle(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -483,7 +494,7 @@ pub(super) fn apply(
                     expected_metadata_revision,
                 } => change_resource_lifecycle(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -495,7 +506,7 @@ pub(super) fn apply(
                 LibraryIntent::ApplyPageLifecycle { mutation } => {
                     super::page_lifecycle_mutation::apply(
                         transaction,
-                        &context,
+                        context,
                         &store_epoch,
                         &library_id,
                         &request.operation_id,
@@ -506,7 +517,7 @@ pub(super) fn apply(
                 LibraryIntent::ApplyBlockPropertyMutation { mutation } => {
                     super::page_property_mutation::apply(
                         transaction,
-                        &context,
+                        context,
                         &store_epoch,
                         &library_id,
                         &request.operation_id,
@@ -530,14 +541,14 @@ pub(super) fn apply(
                     let database_receipt = crate::database::apply_intents_as_collaborator(
                         transaction,
                         &library_id,
-                        &context,
+                        context,
                         &request.operation_id,
                         database_intents,
                         &database_committed_at,
                     )?;
                     let outcome = super::page_property_mutation::apply(
                         transaction,
-                        &context,
+                        context,
                         &store_epoch,
                         &library_id,
                         &request.operation_id,
@@ -573,7 +584,7 @@ pub(super) fn apply(
                     parent,
                 } => move_block(
                     transaction,
-                    &context,
+                    context,
                     &store_epoch,
                     &library_id,
                     &request.operation_id,
@@ -584,7 +595,7 @@ pub(super) fn apply(
                 ),
                 LibraryIntent::TransferBlocks { intent } => super::block_transfer::apply(
                     transaction,
-                    &context,
+                    context,
                     &library_id,
                     &request.operation_id,
                     &store_epoch,
@@ -597,7 +608,7 @@ pub(super) fn apply(
                 ),
                 LibraryIntent::UndoBlockTransfer { token } => super::block_transfer::undo(
                     transaction,
-                    &context,
+                    context,
                     &library_id,
                     &request.operation_id,
                     &store_epoch,
@@ -607,7 +618,7 @@ pub(super) fn apply(
                 LibraryIntent::UndoPageRelocation { token } => {
                     super::block_transfer::undo_page_relocation(
                         transaction,
-                        &context,
+                        context,
                         &library_id,
                         &request.operation_id,
                         &store_epoch,
@@ -618,7 +629,7 @@ pub(super) fn apply(
                 }
                 LibraryIntent::ApplyStructuralEdit { command } => super::structural_edit::apply(
                     transaction,
-                    &context,
+                    context,
                     &library_id,
                     &request.operation_id,
                     &store_epoch,
@@ -628,7 +639,7 @@ pub(super) fn apply(
                 ),
                 LibraryIntent::ReverseStructuralEdit { token } => super::structural_edit::reverse(
                     transaction,
-                    &context,
+                    context,
                     &library_id,
                     &request.operation_id,
                     &store_epoch,
@@ -2840,6 +2851,8 @@ pub(super) fn build_mutation_result(
         .chain(effects.affected_page_ids.iter())
         .chain(&effects.affected_database_ids)
         .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .collect::<Vec<_>>();
     let mut payload = effects.change_payload.clone().unwrap_or_else(|| {
         json!({
@@ -3960,7 +3973,12 @@ mod tests {
 
     fn context() -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -3972,7 +3990,12 @@ mod tests {
 
     fn library_context() -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),

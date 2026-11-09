@@ -5,7 +5,7 @@ import type { IpcEvents } from "../../shared/ipc-api";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { CodexUserInputAutoResolution } from "../codex-application/CodexUserInputAutoResolution";
-import { safeBroadcastToWindows } from "../ipc-safe-send";
+import { safeBroadcastToPersonalWindows } from "../ipc-safe-send";
 import { RendererClientRuntime } from "./RendererClientRuntime";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { codexRequestTraceCoordinator } from "../codex-runtime/CodexRequestTraceCoordinator";
@@ -40,9 +40,11 @@ export const live: Layer.Layer<
     yield* userInputAutoResolution.changes.pipe(
       Stream.runForEach((change) =>
         Effect.sync(() =>
-          safeBroadcastToWindows(windows.all(), "codex:user-input:auto-resolution:changed", [
-            change,
-          ]),
+          safeBroadcastToPersonalWindows(
+            windows.all(),
+            "codex:user-input:auto-resolution:changed",
+            [change],
+          ),
         ),
       ),
       Effect.forkScoped({ startImmediately: true }),
@@ -75,7 +77,7 @@ export const live: Layer.Layer<
       channel: Channel,
       payload: IpcEvents[Channel],
     ): void => {
-      safeBroadcastToWindows(windows.all(), channel, [payload]);
+      safeBroadcastToPersonalWindows(windows.all(), channel, [payload]);
     };
     yield* events.events.pipe(
       Stream.runForEach((event) =>

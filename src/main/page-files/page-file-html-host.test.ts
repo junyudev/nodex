@@ -65,7 +65,6 @@ const fixture = (resolver: PageFileHtmlResolver) =>
         return native as unknown as Session;
       },
     });
-    host.createHost(owner);
     const result = yield* host.admit(owner, input);
     if (result.status !== "admitted") throw new Error(result.message);
     const claim = result.admission;
@@ -74,6 +73,33 @@ const fixture = (resolver: PageFileHtmlResolver) =>
       Promise.resolve(handler(new Request(new URL(path, claim.url), { method })));
     return { host, owner, stranger, claim, request };
   });
+
+it.effect("binds admission to its renderer before the Space guest gate is acquired", () =>
+  Effect.gen(function* () {
+    const { host, owner, stranger, claim, request } = yield* fixture({
+      resolve: (_input, path) => Effect.succeed(metadata(path ?? "report.html")),
+      read: () => Effect.succeed(new Uint8Array([1, 2, 3, 4])),
+    });
+    const rejected: boolean[] = [];
+    const event = {
+      defaultPrevented: false,
+      preventDefault: () => {
+        rejected.push(true);
+      },
+    };
+    host
+      .createHost(stranger)
+      .handleWillAttach(event, {}, { partition: claim.partition, src: claim.url });
+    assert.deepEqual(rejected, [true]);
+    host
+      .createHost(owner)
+      .handleWillAttach(event, {}, { partition: claim.partition, src: claim.url });
+    assert.deepEqual(rejected, [true]);
+    assert.equal((yield* Effect.promise(() => request())).status, 200);
+    owner.emit("did-start-navigation", {}, "https://renderer.invalid/another-space", false, true);
+    assert.equal((yield* Effect.promise(() => request())).status, 410);
+  }).pipe(Effect.scoped, Effect.provide(WebContentsDestructionSubscriptions.live)),
+);
 
 it.effect("bounds cumulative bytes before starting a read that would exceed the budget", () =>
   Effect.gen(function* () {

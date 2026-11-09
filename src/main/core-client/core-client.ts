@@ -1,3 +1,4 @@
+import { SpaceNameSchema } from "../../shared/space-connection";
 import {
   isBinaryDocumentRead,
   isBinaryDocumentIntent,
@@ -41,6 +42,7 @@ import {
 } from "../../shared/block-documents/document-sync";
 import { MAX_DOCUMENT_HTTP_METADATA_BYTES } from "../../shared/block-documents/http-wire";
 
+import { CoreResponseError } from "./core-response-error";
 import { readCoreRuntimeConnection } from "./runtime-descriptor";
 import { decodeBoundedJson } from "./codec";
 import type {
@@ -103,6 +105,7 @@ import type {
   StoreAdministrationReadResponse,
   StoreAdministrationReadSnapshot,
 } from "./types";
+import { RemoteHttpTransport, type RemoteCoreConnectionInput } from "./remote-http";
 import { CoreEventCompatibilityError, CoreHttpError, LocalHttpTransport } from "./local-http";
 
 const DOCUMENT_FRAME_OVERHEAD_BYTES = MAX_DOCUMENT_HTTP_METADATA_BYTES + 8;
@@ -140,9 +143,9 @@ export interface ConnectCoreClientInput {
   readonly signal?: AbortSignal;
 }
 
-export class CoreModuleResponseError extends Error {
-  constructor(readonly coreError: CoreModuleError) {
-    super(coreError.message);
+export class CoreModuleResponseError extends CoreResponseError {
+  constructor(override readonly coreError: CoreModuleError) {
+    super(coreError.message, coreError);
     this.name = "CoreModuleResponseError";
   }
 }
@@ -152,13 +155,16 @@ export class CoreClient implements CoreClientPort {
   readonly #projectId: string | undefined;
   readonly #connectionId: string;
   readonly handshake: CoreHandshakeResponse;
+  readonly spaceName: string | undefined;
 
   private constructor(
     transport: LocalHttpTransport,
     handshake: CoreHandshakeResponse,
     projectId: string | undefined,
     connectionId: string,
+    spaceName?: string,
   ) {
+    this.spaceName = spaceName;
     this.#transport = transport;
     this.handshake = handshake;
     this.#projectId = projectId;
@@ -209,17 +215,82 @@ export class CoreClient implements CoreClientPort {
     return new CoreClient(transport, handshake, input.projectId, connectionId);
   }
 
+  /** A remote connection has no authority over the server process lifetime. */
+  static async connectRemote(input: RemoteCoreConnectionInput): Promise<CoreClient> {
+    const transport = new RemoteHttpTransport(input);
+    const info = await transport.requestJson<components["schemas"]["RemoteCoreInfo"]>(
+      "GET",
+      "/core/v1/remote-info",
+      undefined,
+      {},
+      { signal: input.signal },
+    );
+    const connectionId = randomUUID();
+    const handshake = await transport.requestJson<CoreHandshakeResponse>(
+      "POST",
+      "/core/v1/handshake",
+      {
+        requirements: CORE_CLIENT_REQUIREMENTS,
+        client: { kind: "remote_member", build_id: input.buildId },
+        connection_id: connectionId,
+        expected_generation: info.generation,
+      },
+      {},
+      { signal: input.signal },
+    );
+    assertHandshake(
+      {
+        ...info.generation,
+        manifest_digest: info.generation.manifest_digest,
+        artifact: {
+          sha256: info.generation.artifact_sha256,
+          build_id: handshake.artifact.build_id,
+        },
+        manifest: info.manifest,
+        actual_store_format: info.actual_store_format,
+        endpoint: "",
+      },
+      handshake,
+    );
+    if (handshake.library_id !== input.spaceId || handshake.library_id !== info.library_id) {
+      throw new CoreEventCompatibilityError("Remote Space identity changed");
+    }
+    transport.configureEventContract({
+      transportVersion: handshake.selected_transport_version,
+      eventVersion: handshake.selected_event_version,
+      libraryId: handshake.library_id,
+      storeEpoch: handshake.store_epoch,
+      coreGeneration: handshake.generation.start_nonce,
+    });
+    return new CoreClient(
+      transport,
+      handshake,
+      input.projectId,
+      connectionId,
+      SpaceNameSchema.parse(info.space_name),
+    );
+  }
+
   forProject(projectId: string): CoreClient {
     const normalized = projectId.trim();
     if (!normalized || normalized !== projectId || normalized.length > 512) {
       throw new Error("Core Project binding is invalid");
     }
     if (normalized === this.#projectId) return this;
-    return new CoreClient(this.#transport, this.handshake, normalized, this.#connectionId);
+    return new CoreClient(
+      this.#transport,
+      this.handshake,
+      normalized,
+      this.#connectionId,
+      this.spaceName,
+    );
   }
 
   health(): Promise<HealthResponse> {
     return this.#transport.requestJson("GET", "/core/v1/health");
+  }
+
+  renameSpace(name: string): Promise<components["schemas"]["SpaceName"]> {
   }
 
   async admitAppToolOperation(
@@ -231,6 +302,16 @@ export class CoreClient implements CoreClientPort {
       "/core/v1/modules/workspace/tool-operations/admit",
       input,
       this.#moduleHeaders(),
+      options,
+    );
+  }
+
+  spaceInfo(options: CoreRequestOptions = {}) {
+    return this.#transport.requestJson<components["schemas"]["RemoteCoreInfo"]>(
+      "GET",
+      "/core/v1/remote-info",
+      undefined,
+      {},
       options,
     );
   }

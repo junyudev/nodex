@@ -557,6 +557,7 @@ pub struct RuntimeDescriptor {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ClientKind {
+    RemoteMember,
     ElectronHost,
     NativeCli,
     Test,
@@ -574,6 +575,8 @@ pub struct ClientIdentity {
 #[serde(deny_unknown_fields)]
 pub struct AgentAttributionRequest {
     pub session_id: String,
+    #[serde(default)]
+    pub run_id: Option<String>,
     pub backend: nodex_core_contracts::agent::AgentBackendKind,
 }
 
@@ -1257,10 +1260,53 @@ mod api {
     );
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+pub struct RemoteCoreInfo {
+    pub manifest: CoreCompatibilityManifest,
+    pub actual_store_format: StoreFormatIdentity,
+    pub generation: RuntimeGenerationIdentity,
+    pub library_id: String,
+    pub space_name: String,
+}
+
+#[allow(dead_code)]
+mod team_api {
+    use super::RemoteCoreInfo;
+    use nodex_core_contracts::team::*;
+    #[utoipa::path(post,path="/enroll",request_body=EnrollmentRequest,responses((status=200,description="One-time device credential",body=EnrollmentResponse)))]
+    pub(super) fn enroll() {}
+    #[utoipa::path(post,path="/session",request_body=SessionRequest,responses((status=200,description="Renewable device-bound session",body=SessionResponse)))]
+    pub(super) fn session() {}
+    #[utoipa::path(get,path="/core/v1/remote-info",responses((status=200,description="Authenticated compatibility discovery",body=RemoteCoreInfo)))]
+    pub(super) fn info() {}
+    #[utoipa::path(post,path="/core/v1/admin/space/listen",request_body=ListenRequest,responses((status=200,description="Local Owner enables HTTPS",body=ListenerInfo)))]
+    pub(super) fn listen() {}
+    pub(super) fn rename() {}
+    #[utoipa::path(post,path="/core/v1/admin/space/member-name",request_body=RenameMemberRequest,responses((status=200,description="A Member chooses the name others see",body=Member)))]
+    pub(super) fn rename_member() {}
+    pub(super) fn invite() {}
+    pub(super) fn devices() {}
+    #[utoipa::path(get,path="/core/v1/admin/space/transport-stats",responses((status=200,description="Local Owner remote budget diagnostics",body=RemoteTransportStats)))]
+    pub(super) fn transport_stats() {}
+    pub(super) fn revoke() {}
+    pub(super) fn remove() {}
+}
+
 #[derive(OpenApi)]
 #[openapi(
     info(title = "Nodex Core private protocol", version = "1.0.0"),
     paths(
+        team_api::enroll,
+        team_api::session,
+        team_api::info,
+        team_api::listen,
+        team_api::rename,
+        team_api::rename_member,
+        team_api::invite,
+        team_api::devices,
+        team_api::transport_stats,
+        team_api::revoke,
+        team_api::remove,
         api::health,
         api::handshake,
         api::issue_agent_attribution,
@@ -1290,6 +1336,18 @@ mod api {
         api::administration_apply,
     ),
     components(schemas(
+        nodex_core_contracts::team::EnrollmentRequest,
+        nodex_core_contracts::team::EnrollmentResponse,
+        nodex_core_contracts::team::SessionRequest,
+        nodex_core_contracts::team::SessionResponse,
+        nodex_core_contracts::team::ListenRequest,
+        nodex_core_contracts::team::ListenerInfo,
+        nodex_core_contracts::team::SpaceName,
+        nodex_core_contracts::team::RenameSpaceRequest,
+        nodex_core_contracts::team::RenameMemberRequest,
+        nodex_core_contracts::team::InviteRequest,
+        nodex_core_contracts::team::InviteResponse,
+        nodex_core_contracts::team::MemberDevice,
         document_module_wire::DocumentModuleFrameMetadata,
         nodex_core_contracts::document::RecoveryBundleManifest,
         nodex_core_contracts::document::RecoveryExportRequest,
@@ -1434,6 +1492,17 @@ mod tests {
             .cloned()
             .collect::<BTreeSet<_>>();
         let expected = [
+            "/enroll",
+            "/session",
+            "/core/v1/remote-info",
+            "/core/v1/admin/space/listen",
+            "/core/v1/admin/space/name",
+            "/core/v1/admin/space/member-name",
+            "/core/v1/admin/space/invite",
+            "/core/v1/admin/space/devices",
+            "/core/v1/admin/space/transport-stats",
+            "/core/v1/admin/space/revoke",
+            "/core/v1/admin/space/remove-member",
             "/core/v1/admin/shutdown",
             "/core/v1/agent-attributions",
             "/core/v1/events",

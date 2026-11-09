@@ -461,6 +461,7 @@ pub(super) fn read_session_linked_page_summaries(
 pub(super) fn read_page_chat_activity_summaries(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     page_ids: &[String],
 ) -> Result<Vec<ProjectWorkspacePageChatActivitySummary>, StoreError> {
     if page_ids.len() > MAX_ACTIVITY_PAGE_IDS {
@@ -476,7 +477,10 @@ pub(super) fn read_page_chat_activity_summaries(
         crate::library::require_page_read_access(connection, library_id, page_id)?;
     }
 
-    let mut parameters = vec![SqlValue::Text(library_id.to_owned())];
+    let mut parameters = vec![
+        SqlValue::Text(library_id.to_owned()),
+        SqlValue::Text(member.to_owned()),
+    ];
     let requested_values = page_ids
         .iter()
         .enumerate()
@@ -507,7 +511,7 @@ pub(super) fn read_page_chat_activity_summaries(
            COALESCE(SUM(CASE WHEN {active_thread} AND {has_user_input} THEN 1 ELSE 0 END), 0), \
            COALESCE(SUM(CASE WHEN thread.thread_id IS NOT NULL AND thread.archived = 0 \
              AND thread.status_type = 'systemError' THEN 1 ELSE 0 END), 0), \
-           COALESCE(SUM(CASE WHEN session.id IS NOT NULL AND session.unread = 1 \
+           COALESCE(SUM(CASE WHEN session.id IS NOT NULL AND EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=session.id AND attention.member_id=?2) \
              THEN 1 ELSE 0 END), 0), \
            CASE WHEN COUNT(session.id) = 1 THEN MIN(session.id) ELSE NULL END \
          FROM requested \
@@ -625,6 +629,7 @@ fn read_runtime_session_ids(
 pub(super) fn read_page_chat_window(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     commit_head: i64,
     page_id: &str,
     include_archived: bool,
@@ -692,12 +697,14 @@ pub(super) fn read_page_chat_window(
             .map_err(|_| invalid("Page Chat window size is invalid"))?,
     ));
     let limit_parameter = parameters.len();
+    parameters.push(SqlValue::Text(member.to_owned()));
+    let member_parameter = parameters.len();
     let sql = format!(
         "SELECT * FROM ( \
            SELECT session.id AS session_id, session.project_id, project.name, \
              session.no_thread_fallback_title, thread.thread_id, thread.thread_name, \
              COALESCE(substr(thread.thread_preview, 1, 1024), ''), thread.status_type, \
-             thread.status_active_flags_json, COALESCE(thread.archived, 0), session.unread, \
+             thread.status_active_flags_json, COALESCE(thread.archived, 0), EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=session.id AND attention.member_id=?{member_parameter}), \
              session.archived, \
              session.activity_at AS conversation_recency_at, \
              relation.linked_at AS linked_at, \

@@ -277,6 +277,8 @@ describe("owned Block Document renderer boundary", () => {
     });
     expect(JSON.stringify(options.queryKey)).toBe(
       JSON.stringify([
+        "space",
+        "test-space",
         "blockDocuments",
         "owned",
         { kind: "project", projectId: "project-a" },

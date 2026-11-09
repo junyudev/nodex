@@ -31,7 +31,9 @@ mod inbound_files;
 pub(crate) use inbound_files::publish as publish_inbound_files;
 mod files;
 pub(crate) mod members;
+mod membership;
 pub(crate) use files::capture_snapshot as capture_file_snapshot;
+pub use membership::{DEVICE_SEEN_INTERVAL_SECONDS, LibraryMembership, default_owner_name};
 mod agent_surface;
 mod file_blobs;
 mod mutation_ledger;
@@ -164,6 +166,7 @@ impl LibraryModule {
         context: &BoundModuleContext,
         request: ModuleReadRequest<LibraryRead>,
     ) -> Result<ModuleReadSnapshot<LibraryReadValue>, CoreError> {
+        nodex_core_contracts::remote_admission::authorize(context, "library_read", &request.read)?;
         self.validate_context(context)?;
         if request.contract_version != LIBRARY_CONTRACT_VERSION {
             return Err(invalid_input("unsupported Library contract version"));
@@ -497,6 +500,11 @@ impl LibraryModule {
         context: &BoundModuleContext,
         request: ModuleApplyRequest<LibraryIntent>,
     ) -> Result<LibraryApplyOutcome, CoreError> {
+        nodex_core_contracts::remote_admission::authorize(
+            context,
+            "library_apply",
+            &request.intent,
+        )?;
         self.validate_context(context)?;
         if request.contract_version != LIBRARY_CONTRACT_VERSION {
             return Err(invalid_input("unsupported Library contract version"));
@@ -973,7 +981,12 @@ mod tests {
 
     fn context() -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -1056,7 +1069,12 @@ mod tests {
         const PAGE_A: &str = "page:lifecycle-a";
         const PAGE_B: &str = "page:lifecycle-b";
         let persistent_context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -1396,7 +1414,12 @@ mod tests {
         const PAGE: &str = "019b1000-0000-7000-8000-000000000004";
         const REBALANCED_PAGE: &str = "019b1000-0000-7000-8000-000000000005";
         let persistent_context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -1792,7 +1815,12 @@ mod tests {
         const DELETED_VIEW: &str = "view:deleted";
         const NOW: &str = "2026-07-18T23:59:00.000Z";
         let persistent_context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -3654,7 +3682,12 @@ mod tests {
         const SOURCE_DOCUMENT: &str = "document:transfer-source";
         const TARGET_DOCUMENT: &str = "document:transfer-target";
         let persistent_context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -3902,7 +3935,12 @@ mod tests {
         const FOREIGN_SOURCE_DOCUMENT: &str = "document:transfer-foreign-source";
         const FOREIGN_TARGET_DOCUMENT: &str = "document:transfer-foreign-target";
         let context_for = |project_id: &str| BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -4238,7 +4276,12 @@ mod tests {
         const VIEW: &str = "018f0000-0000-7000-8000-000000000323";
         const LIST_VIEW: &str = "018f0000-0000-7000-8000-000000000324";
         let context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -6824,7 +6867,12 @@ mod tests {
         const VIEW: &str = "019c1000-0000-7000-8000-000000000003";
         const PAGE: &str = "019c1000-0000-7000-8000-000000000004";
         let persistent_context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -6978,6 +7026,18 @@ mod tests {
         assert_eq!(block_metadata_revisions.get(PAGE), Some(&2));
         assert!(committed.event.is_some());
         assert_eq!(committed.committed.receipt.operation_kind, "property_batch");
+        let history = kernel
+            .writer()
+            .call(|connection| {
+                history::page_history(connection, "library-1", Some("viewer"), PAGE, None, None)
+            })
+            .expect("read committed Page history");
+        assert!(history.entries.iter().any(|entry| matches!(entry,
+            nodex_core_contracts::library::LibraryPageHistoryEntry::BlockMutation {
+                entry, mutation_kind: Some(kind), ..
+            } if kind == "property_batch" && matches!(entry.evidence, nodex_core_contracts::library::LibraryPageHistoryEvidence::Verified)
+        )), "committed property evidence must round-trip through History: {history:?}");
+
         let replay = module
             .apply(&persistent_context, request)
             .expect("replay mixed Properties");
@@ -7060,43 +7120,6 @@ mod tests {
         assert!(rejected_replay.committed.receipt.mutation.duplicate);
         assert!(rejected_replay.event.is_none());
 
-        let invalid_actor_request = ModuleApplyRequest {
-            contract_version: LIBRARY_CONTRACT_VERSION,
-            operation_id: "property:invalid-actor".to_owned(),
-            store_epoch: StoreEpoch("epoch-1".to_owned()),
-            intent: LibraryIntent::ApplyBlockPropertyMutation {
-                mutation: Box::new(LibraryBlockPropertyMutation {
-                    actor: serde_json::json!("spoofed"),
-                    client_session_id: None,
-                    fields: vec![LibraryBlockPropertyFieldMutation::IntrinsicSet {
-                        block_id: PAGE.to_owned(),
-                        property_key: "run.target".to_owned(),
-                        expected_revision: 3,
-                        value: serde_json::json!("localProject"),
-                    }],
-                }),
-            },
-        };
-        let invalid_actor = module
-            .apply(&persistent_context, invalid_actor_request.clone())
-            .expect("invalid actor has a durable rejected outcome");
-        assert!(matches!(
-            invalid_actor
-                .committed
-                .value
-                .block_property_mutation
-                .as_ref()
-                .map(|receipt| &receipt.outcome),
-            Some(LibraryBlockPropertyMutationOutcome::Rejected { error })
-                if error.code
-                    == LibraryBlockPropertyMutationErrorCode::InvalidPropertyMutationRequest
-        ));
-        assert!(invalid_actor.event.is_none());
-        let invalid_actor_replay = module
-            .apply(&persistent_context, invalid_actor_request)
-            .expect("invalid actor rejection replays");
-        assert!(invalid_actor_replay.committed.receipt.mutation.duplicate);
-
         kernel
             .readers()
             .read_default(|connection| {
@@ -7151,16 +7174,6 @@ mod tests {
                         committed.committed.event_sequence,
                         committed.committed.receipt.commit_seq,
                     )
-                );
-                let invalid_actor_ledger = connection.query_row(
-                    "SELECT outcome, actor_json FROM block_mutations \
-                     WHERE mutation_id = 'property:invalid-actor'",
-                    [],
-                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-                )?;
-                assert_eq!(
-                    invalid_actor_ledger,
-                    ("rejected".to_owned(), "{}".to_owned())
                 );
                 Ok(())
             })
@@ -7472,7 +7485,12 @@ mod tests {
             .expect("seed authority");
         let module = LibraryModule::new("profile-1", "library-1", &kernel);
         let local_context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),

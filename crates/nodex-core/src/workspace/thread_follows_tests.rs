@@ -289,6 +289,21 @@ fn own_pr_requires_exact_head_repository_and_branch_and_verified_links_follow() 
     t.head.as_mut().unwrap().repository_id = "20".into();
     batch(&w, "fork", t, vec![]);
     assert!(follow_list(&w, second).is_empty());
+    let ProjectWorkspaceReadValue::PageWorkspace {
+        pull_request: Some(previous),
+        ..
+    } = read(
+        &w.module,
+        ProjectWorkspaceRead::PageWorkspace {
+            page_id: PAGE.into(),
+        },
+    )
+    else {
+        panic!("Discovered pull request")
+    };
+    let observed_at = (chrono::DateTime::parse_from_rfc3339(&previous.observed_at).unwrap()
+        + chrono::Duration::milliseconds(1))
+    .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     apply(
         &w.module,
         "verified-link",
@@ -299,6 +314,7 @@ fn own_pr_requires_exact_head_repository_and_branch_and_verified_links_follow() 
             number: 2,
             url: "https://github.com/alice/repo/pull/2".into(),
             state: "OPEN".into(),
+            observed_at,
         },
     );
     let follows = follow_list(&w, PAGE);

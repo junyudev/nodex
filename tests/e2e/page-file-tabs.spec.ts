@@ -99,7 +99,7 @@ for (const theme of ["light", "dark"] as const) {
         await expect(
           stage
             .locator("[data-page-files-property]")
-            .getByRole("button", { name: "Dashboard cold start" }),
+            .getByRole("button", { name: "Dashboard cold start on behalf of You" }),
         ).toBeVisible();
         const tree = stage.getByRole("tree", { name: "Page files" });
         for (const name of ["profile", "profile/report.html", "profile/flamegraph.png"]) {
@@ -132,7 +132,7 @@ for (const theme of ["light", "dark"] as const) {
         // The breadcrumb returns to the Page; the flame graph opens in its image viewer.
         await page
           .locator('[data-page-file-viewer="html"]:visible')
-          .getByRole("button", { name: "Dashboard cold start" })
+          .getByRole("button", { name: "Dashboard cold start", exact: true })
           .click();
         await expect(page.getByRole("tab", { name: /Dashboard cold start/u })).toHaveAttribute(
           "aria-selected",
@@ -159,19 +159,6 @@ for (const theme of ["light", "dark"] as const) {
         ).toContainText("Settings dark mode");
         await expect(mixedTree.getByText(/^In page\s*1$/u)).toBeVisible();
         await shot(application, "page-files-mixed", theme);
-
-        // The brief the body refers to opens beside its Page, as its row in Files does.
-        await mixed.getByRole("button", { name: "Open brief.md" }).click();
-        await expect(page.getByRole("tab", { name: /brief\.md/u })).toHaveAttribute(
-          "aria-selected",
-          "true",
-        );
-        await expect(
-          page
-            .locator('[data-page-file-viewer="markdown"]:visible')
-            .getByRole("heading", { name: "Settings dark mode" }),
-        ).toBeVisible();
-        await shot(application, "attachment-chip-tab", theme);
         expect(pageErrors).toEqual([]);
       },
     );

@@ -3,6 +3,7 @@ import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { readDatabaseViewWindow } from "./api";
 import { invokeRendererQuery as invoke } from "./renderer-command";
+import { isHostedChat } from "./hosted-chat";
 import { queryKeys } from "./query-keys";
 import { preferNewestProjectSessionSummaryWindow } from "./project-session-summary-window";
 import type {
@@ -212,6 +213,8 @@ export function codexComposerPluginsListQueryOptions(
       invoke("codex:composer-plugins:list", { hostId, cwds: normalizedCwds }) as Promise<
         CodexComposerPlugin[]
       >,
+    // This desktop's own Agent catalogs; a hosted chat's come from its Space host.
+    enabled: !isHostedChat(),
     retry: false,
     staleTime: 60_000,
     refetchOnWindowFocus: true,
@@ -230,6 +233,7 @@ export function codexComposerSkillsListQueryOptions(
       invoke("codex:composer-skills:list", { hostId, cwds: normalizedCwds }) as Promise<
         CodexComposerSkill[]
       >,
+    enabled: !isHostedChat(),
     retry: false,
     staleTime: 5 * 60_000,
     gcTime: 5 * 60_000,
@@ -241,6 +245,7 @@ export function codexComposerSitesListQueryOptions() {
   return queryOptions({
     queryKey: queryKeys.codexComposerSites.list(),
     queryFn: () => invoke("codex:composer-sites:list") as Promise<CodexComposerSiteListResult>,
+    enabled: !isHostedChat(),
     retry: false,
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: true,
@@ -255,6 +260,7 @@ export function codexComposerChatGptConversationsListQueryOptions(query: string)
       invoke("codex:composer-chatgpt-conversations:list", {
         query: normalizedQuery,
       }) as Promise<CodexComposerChatGptConversationListResult>,
+    enabled: !isHostedChat(),
     retry: false,
     staleTime: 60_000,
     refetchOnWindowFocus: true,
@@ -299,6 +305,8 @@ export function localPathPresentationContextQueryOptions() {
   return queryOptions({
     queryKey: queryKeys.shell.pathContext(),
     queryFn: () => invoke("shell:path-context:get") as Promise<LocalPathPresentationContext>,
+    // Paths in a hosted chat belong to its Space host, never to this desktop's home.
+    enabled: !isHostedChat(),
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
   });
@@ -345,6 +353,7 @@ export function mcpServerStatusesQueryOptions() {
     queryKey: queryKeys.mcp.statuses(),
     queryFn: () =>
       invoke("codex:mcp-server-statuses:list") as Promise<ProtocolListMcpServerStatusResponse>,
+    enabled: !isHostedChat(),
     staleTime: MCP_CATALOG_STALE_TIME_MS,
   });
 }
@@ -353,6 +362,7 @@ export function mcpAppsQueryOptions() {
   return queryOptions({
     queryKey: queryKeys.mcp.apps(),
     queryFn: () => invoke("codex:mcp-apps:list") as Promise<ProtocolAppInfo[]>,
+    enabled: !isHostedChat(),
     retry: false,
     staleTime: MCP_CATALOG_STALE_TIME_MS,
   });

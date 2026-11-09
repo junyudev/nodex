@@ -25,10 +25,11 @@ const setup = Effect.gen(function* () {
   });
   const logouts: (readonly string[])[] = [];
   const delivered = new Map<number, unknown[]>();
-  const window = (id: number) => ({
+  const window = (id: number, url = "app://-/index.html") => ({
     isDestroyed: () => false,
     webContents: {
       id,
+      getURL: () => url,
       isDestroyed: () => false,
       send: (channel: string, payload: unknown) => {
         if (channel === "agent-runtime:claude-usage-changed")
@@ -58,8 +59,8 @@ const setup = Effect.gen(function* () {
             }),
           ),
           Layer.succeed(WindowRuntime, {
-            has: (id: number) => id === 1 || id === 2,
-            all: () => [window(1), window(2)],
+            has: (id: number) => id === 1 || id === 2 || id === 3,
+            all: () => [window(1), window(2), window(3, "app://-/index.html?spaceId=team")],
           } as never),
           testLayer(),
         ),
@@ -80,7 +81,7 @@ const setup = Effect.gen(function* () {
   return { handlers, snapshot, logouts, delivered, event, settle };
 });
 
-it.effect("every window hears each change to the one Claude usage snapshot", () =>
+it.effect("every personal window hears each change to this desktop's Claude usage", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const fixture = yield* setup;
@@ -94,6 +95,8 @@ it.effect("every window hears each change to the one Claude usage snapshot", () 
       yield* fixture.settle;
       assert.deepEqual(fixture.delivered.get(1)?.at(-1), read);
       assert.deepEqual(fixture.delivered.get(2)?.at(-1), read);
+      // A team window's Agents run on its Space host; this desktop's accounts are not its own.
+      assert.isUndefined(fixture.delivered.get(3));
       assert.deepEqual(
         yield* fixture.handlers.get("agent-runtime:claude-usage:read")!(fixture.event),
         read,

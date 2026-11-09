@@ -41,6 +41,7 @@ const modal = vi.hoisted(() => ({ openModal: vi.fn() }));
 
 vi.mock("@/lib/api", () => api);
 vi.mock("@/lib/members-runtime", () => ({
+  useLocalMember: () => ({ data: { id: "person" } }),
   useMembers: () => ({ data: [{ id: "person", display_name: "You", lifecycle: "active" }] }),
 }));
 vi.mock("@/lib/use-agent-runtime-providers", () => ({
@@ -79,7 +80,10 @@ const pageFile = (
     | { readonly kind: "placed"; readonly placementCount: number },
 ): LibraryPageFileItem => ({
   logical_path: logicalPath,
-  attachment: { attached_by: { kind: "unknown" as const }, attached_at: null },
+  attachment: {
+    attached_by: { type: "service" as const, kind: "maintenance" as const },
+    attached_at: null,
+  },
   body_count: bodyUsage.kind === "placed" ? bodyUsage.placementCount : 0,
   file: {
     file_id: fileId,
@@ -91,7 +95,7 @@ const pageFile = (
     blob_etag: `etag-${fileId}`,
     lifecycle: "live",
     revision: 1,
-    created_by_actor_id: "actor-1",
+    created_by: { type: "member" as const, member_id: "member-local" },
     created_by_turn_id: null,
     created_at: "2026-08-28T00:00:00.000Z",
     updated_at: "2026-08-28T00:00:00.000Z",

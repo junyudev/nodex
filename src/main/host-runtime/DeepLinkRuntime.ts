@@ -3,38 +3,17 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import * as Scope from "effect/Scope";
 import {
   parsePageDeepLink,
   parseSessionDeepLink,
   parseViewDeepLink,
+  type NodexDeepLinkTarget,
+  type ResolvedSpaceDeepLink,
 } from "../../shared/nodex-deeplink";
+import { rendererSpaceParameter } from "../../shared/space-ipc-policy";
 import { safeSendToWindow } from "../ipc-safe-send";
-import { LibraryModule } from "../library-application/LibraryModule";
-import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { WindowRuntimeService } from "../window-runtime/WindowRuntime";
-
-interface DeepLinkState {
-  readonly ready: boolean;
-  readonly pageId: string | null;
-  readonly pageTarget: { readonly projectId: string; readonly pageId: string } | null;
-  readonly sessionId: string | null;
-  readonly sessionTarget: {
-    readonly projectId: string | null;
-    readonly sessionId: string;
-  } | null;
-  readonly viewId: string | null;
-  readonly viewTarget: { readonly projectId: string; readonly viewId: string } | null;
-}
-
-const initialState: DeepLinkState = {
-  ready: false,
-  pageId: null,
-  pageTarget: null,
-  sessionId: null,
-  sessionTarget: null,
-  viewId: null,
-  viewTarget: null,
-};
 
 export class DeepLinkRuntimeError extends Schema.TaggedError<DeepLinkRuntimeError>()(
   "DeepLinkRuntimeError",
@@ -45,10 +24,19 @@ export interface DeepLinkRuntimeOptions {
   readonly focusWindow: () => void;
   readonly windows: WindowRuntimeService;
 }
+interface SpaceLinkResolver {
+  readonly personalSpaceId: string;
+  readonly resolve: (
+    target: NodexDeepLinkTarget & { readonly spaceId: string },
+  ) => Effect.Effect<ResolvedSpaceDeepLink | null, DeepLinkRuntimeError>;
+}
 
 export class DeepLinkRuntime extends Context.Service<
   DeepLinkRuntime,
   {
+    readonly configureSpaces: (
+      resolver: SpaceLinkResolver,
+    ) => Effect.Effect<void, never, Scope.Scope>;
     readonly extractFromArgv: (
       argv: readonly string[],
     ) => Effect.Effect<string | null, DeepLinkRuntimeError>;
@@ -58,175 +46,113 @@ export class DeepLinkRuntime extends Context.Service<
   }
 >()("nodex/main/host-runtime/DeepLinkRuntime") {}
 
-export const live = (
-  options: DeepLinkRuntimeOptions,
-): Layer.Layer<DeepLinkRuntime, never, LibraryModule | ProjectWorkspace> =>
+/** Resolve against the addressed Space before delivering any navigation to a renderer. */
+export const live = (options: DeepLinkRuntimeOptions) =>
   Layer.effect(
     DeepLinkRuntime,
     Effect.gen(function* () {
-      const library = yield* LibraryModule;
-      const workspace = yield* ProjectWorkspace;
-      const state = yield* Ref.make(initialState);
-
-      const flush = Effect.gen(function* () {
-        const targetWindow = options.windows.getLastFocused();
-        if (!targetWindow || targetWindow.isDestroyed()) return;
-        // A tray action can create a window whose document has loaded before its route owner.
-        if (!options.windows.isRendererInitialized(targetWindow.webContents.id)) return;
-        if (
-          targetWindow.webContents.isDestroyed() ||
-          targetWindow.webContents.isLoadingMainFrame()
-        ) {
-          return;
-        }
-        const snapshot = yield* Ref.get(state);
-        if (
-          snapshot.pageTarget &&
-          safeSendToWindow(targetWindow, "deeplink:open-page", [snapshot.pageTarget])
-        ) {
-          yield* Ref.update(state, (current) =>
-            current.pageTarget === snapshot.pageTarget ? { ...current, pageTarget: null } : current,
-          );
-        }
-        if (
-          snapshot.sessionTarget &&
-          safeSendToWindow(targetWindow, "deeplink:open-session", [snapshot.sessionTarget])
-        ) {
-          yield* Ref.update(state, (current) =>
-            current.sessionTarget === snapshot.sessionTarget
-              ? { ...current, sessionTarget: null }
-              : current,
-          );
-        }
-        if (
-          snapshot.viewTarget &&
-          safeSendToWindow(targetWindow, "deeplink:open-view", [snapshot.viewTarget])
-        ) {
-          yield* Ref.update(state, (current) =>
-            current.viewTarget === snapshot.viewTarget ? { ...current, viewTarget: null } : current,
-          );
-        }
+      const state = yield* Ref.make({
+        ready: false,
+        pending: [] as NodexDeepLinkTarget[],
+        resolved: [] as ResolvedSpaceDeepLink[],
       });
-
-      const resolvePage = Effect.gen(function* () {
-        const snapshot = yield* Ref.get(state);
-        if (!snapshot.ready || !snapshot.pageId) return yield* flush;
-        const pageId = snapshot.pageId;
-        const location = yield* library
-          .findPageLocation(pageId)
-          .pipe(
-            Effect.mapError(
-              (cause) => new DeepLinkRuntimeError({ operation: "resolve-page", cause }),
-            ),
-          );
-        yield* Ref.update(state, (current) =>
-          current.pageId !== pageId
-            ? current
-            : {
-                ...current,
-                pageId: null,
-                pageTarget: location ? { projectId: location.projectId, pageId } : null,
-              },
-        );
-        yield* flush;
-      });
-      const resolveSession = Effect.gen(function* () {
-        const snapshot = yield* Ref.get(state);
-        if (!snapshot.ready || !snapshot.sessionId) return yield* flush;
-        const sessionId = snapshot.sessionId;
-        const session = yield* workspace
-          .getProjectSession(sessionId)
-          .pipe(
-            Effect.mapError(
-              (cause) => new DeepLinkRuntimeError({ operation: "resolve-session", cause }),
-            ),
-          );
-        yield* Ref.update(state, (current) =>
-          current.sessionId !== sessionId
-            ? current
-            : {
-                ...current,
-                sessionId: null,
-                sessionTarget: session ? { projectId: session.projectId, sessionId } : null,
-              },
-        );
-        yield* flush;
-      });
-      const resolveView = Effect.gen(function* () {
-        const snapshot = yield* Ref.get(state);
-        if (!snapshot.ready || !snapshot.viewId) return yield* flush;
-        const viewId = snapshot.viewId;
-        const location = yield* library
-          .findViewLocation(viewId)
-          .pipe(
-            Effect.mapError(
-              (cause) => new DeepLinkRuntimeError({ operation: "resolve-view", cause }),
-            ),
-          );
-        yield* Ref.update(state, (current) =>
-          current.viewId !== viewId
-            ? current
-            : {
-                ...current,
-                viewId: null,
-                viewTarget: location ? { projectId: location.projectId, viewId } : null,
-              },
-        );
-        yield* flush;
-      });
-
-      const queuePage = (pageId: string) =>
-        Ref.update(state, (current) => ({ ...current, pageId })).pipe(
-          Effect.andThen(Ref.get(state)),
-          Effect.flatMap((current) => {
-            if (!current.ready) return Effect.void;
-            options.focusWindow();
-            return resolvePage;
-          }),
-        );
-      const queueSession = (sessionId: string) =>
-        Ref.update(state, (current) => ({ ...current, sessionId })).pipe(
-          Effect.andThen(Ref.get(state)),
-          Effect.flatMap((current) => {
-            if (!current.ready) return Effect.void;
-            options.focusWindow();
-            return resolveSession;
-          }),
-        );
-      const queueView = (viewId: string) =>
-        Ref.update(state, (current) => ({ ...current, viewId })).pipe(
-          Effect.andThen(Ref.get(state)),
-          Effect.flatMap((current) => {
-            if (!current.ready) return Effect.void;
-            options.focusWindow();
-            return resolveView;
-          }),
-        );
-      const handle = (value: string): Effect.Effect<boolean, DeepLinkRuntimeError> => {
-        const session = parseSessionDeepLink(value);
-        if (session) return queueSession(session.sessionId).pipe(Effect.as(true));
-        const view = parseViewDeepLink(value);
-        if (view) return queueView(view.viewId).pipe(Effect.as(true));
-        const page = parsePageDeepLink(value);
-        if (!page) return Effect.succeed(false);
-        return queuePage(page.pageId).pipe(Effect.as(true));
+      let spaces: SpaceLinkResolver | null = null;
+      const fail = (cause: unknown) =>
+        new DeepLinkRuntimeError({ operation: "resolve-link", cause });
+      const resolve = (
+        target: NodexDeepLinkTarget,
+      ): Effect.Effect<ResolvedSpaceDeepLink | null, DeepLinkRuntimeError> => {
+        if (!target.spaceId)
+          return Effect.fail(fail(new Error("A Space-qualified link is required")));
+        if (!spaces) return Effect.fail(fail(new Error("Space routing is not ready")));
+        return spaces.resolve({ ...target, spaceId: target.spaceId });
       };
-
+      const flush = Effect.gen(function* () {
+        const snapshot = yield* Ref.get(state);
+        for (const target of snapshot.resolved) {
+          const focused = options.windows.getLastFocused();
+          const matches = (window: NonNullable<typeof focused>) =>
+            (rendererSpaceParameter(window.webContents.getURL?.() ?? "") ??
+              spaces?.personalSpaceId) === target.spaceId;
+          const window =
+            focused && matches(focused)
+              ? focused
+              : (options.windows.all().find(matches) ?? focused);
+          if (
+            !window ||
+            window.isDestroyed() ||
+            window.webContents.isDestroyed() ||
+            window.webContents.isLoadingMainFrame() ||
+            !options.windows.isRendererInitialized(window.webContents.id)
+          )
+            continue;
+          const { kind, ...payload } = target;
+          if (!safeSendToWindow(window, `deeplink:open-${kind}`, [payload])) continue;
+          yield* Ref.update(state, (current) => ({
+            ...current,
+            resolved: current.resolved.filter((entry) => entry !== target),
+          }));
+        }
+      });
+      const resolvePending = Effect.gen(function* () {
+        const snapshot = yield* Ref.get(state);
+        if (!snapshot.ready) return;
+        for (const target of snapshot.pending) {
+          yield* Ref.update(state, (current) => ({
+            ...current,
+            pending: current.pending.filter((entry) => entry !== target),
+          }));
+          const resolved = yield* resolve(target);
+          yield* Ref.update(state, (current) => ({
+            ...current,
+            resolved: resolved
+              ? [...current.resolved.filter((entry) => entry.kind !== target.kind), resolved]
+              : current.resolved,
+          }));
+        }
+        yield* flush;
+      });
+      const handle = (value: string) => {
+        const page = parsePageDeepLink(value);
+        const session = parseSessionDeepLink(value);
+        const view = parseViewDeepLink(value);
+        const target: NodexDeepLinkTarget | null = page
+          ? { ...page, kind: "page" }
+          : session
+            ? { ...session, kind: "session" }
+            : view
+              ? { ...view, kind: "view" }
+              : null;
+        if (!target?.spaceId) return Effect.succeed(false);
+        return Ref.update(state, (current) => ({
+          ...current,
+          pending: [...current.pending.filter((entry) => entry.kind !== target.kind), target],
+        })).pipe(
+          Effect.andThen(Effect.sync(() => options.focusWindow())),
+          Effect.andThen(resolvePending),
+          Effect.as(true),
+        );
+      };
       return DeepLinkRuntime.of({
+        configureSpaces: (resolver) =>
+          Effect.acquireRelease(
+            Effect.sync(() => {
+              spaces = resolver;
+            }),
+            () =>
+              Effect.sync(() => {
+                spaces = null;
+              }),
+          ),
         extractFromArgv: (argv) =>
           Effect.gen(function* () {
-            for (const value of argv) {
-              if (yield* handle(value)) return value;
-            }
+            for (const value of argv) if (yield* handle(value)) return value;
             return null;
           }),
         flush,
         handle,
         markReady: Ref.update(state, (current) => ({ ...current, ready: true })).pipe(
-          Effect.andThen(
-            Effect.all([resolvePage, resolveSession, resolveView], { concurrency: 3 }),
-          ),
-          Effect.asVoid,
+          Effect.andThen(resolvePending),
         ),
       });
     }),

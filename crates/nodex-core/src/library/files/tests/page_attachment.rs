@@ -124,7 +124,7 @@ fn desktop_attach_stamps_commit_time_and_exact_retry_retains_it() {
         },
     );
     let evidence = selected.attachment.clone().unwrap();
-    assert_eq!(evidence.attached_by, Actor::Person);
+    assert_eq!(evidence.attached_by, member_actor(&fixture));
     assert_eq!(
         evidence.attached_at.as_deref(),
         Some(attached.committed.receipt.committed_at.as_str())
@@ -171,7 +171,7 @@ fn desktop_attach_stamps_commit_time_and_exact_retry_retains_it() {
     assert_eq!(
         resolve(&module, "page-a", selector).attachment,
         Some(LibraryPageFileAttachment {
-            attached_by: Actor::External,
+            attached_by: member_actor(&fixture),
             attached_at: Some(readded.committed.receipt.committed_at),
         })
     );
@@ -183,8 +183,10 @@ fn verified_agent_attribution_names_the_attaching_session_on_any_adapter() {
     let module = crate::library::LibraryModule::new("profile-1", "library-1", &fixture.kernel);
     create_image(&fixture, &module);
     let mut context = bound_context(Some("project-1"));
+    fixture.kernel.writer().call(|c| { c.execute("INSERT INTO project_sessions(id,project_id,no_thread_fallback_title,created_at,updated_at,activity_at) VALUES('session:cold-start','project-1','Work',?1,?1,CAST(round(unixepoch(?1,'subsec')*1000) AS INTEGER))",[NOW])?; Ok(()) }).unwrap();
     context.adapter = AdapterKind::NativeCli;
     context.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
+        run_id: None,
         session_id: "session:cold-start".to_owned(),
         backend: AgentBackendKind::OpenCode,
     });
@@ -215,28 +217,12 @@ fn verified_agent_attribution_names_the_attaching_session_on_any_adapter() {
         Some(LibraryPageFileAttachment {
             attached_by: Actor::Agent {
                 session_id: "session:cold-start".to_owned(),
-                backend: AgentBackendKind::OpenCode,
+                run_id: None,
+                on_behalf_of: member_actor(&fixture).member_id().unwrap().to_owned(),
             },
             attached_at: Some(committed.committed.receipt.committed_at),
         })
     );
-}
-
-#[test]
-fn only_desktop_admission_implies_person_and_agent_labels_are_not_proof() {
-    for adapter in [
-        AdapterKind::NativeCli,
-        AdapterKind::LoopbackHttp,
-        AdapterKind::Agent,
-        AdapterKind::Test,
-    ] {
-        let mut context = bound_context(None);
-        context.adapter = adapter;
-        assert_eq!(
-            crate::library::page_file_attachment::resolve_actor(&context).unwrap(),
-            Actor::External
-        );
-    }
 }
 
 #[test]
@@ -245,7 +231,8 @@ fn swaps_transfers_and_shared_updates_preserve_captured_agent_binding() {
     let original = LibraryPageFileAttachment {
         attached_by: Actor::Agent {
             session_id: "session:product-chat".to_owned(),
-            backend: AgentBackendKind::Claude,
+            run_id: None,
+            on_behalf_of: member_actor(&fixture).member_id().unwrap().to_owned(),
         },
         attached_at: Some(NOW.to_owned()),
     };
@@ -430,7 +417,7 @@ fn swaps_transfers_and_shared_updates_preserve_captured_agent_binding() {
     assert_eq!(
         replacement.attachment,
         Some(LibraryPageFileAttachment {
-            attached_by: Actor::Person,
+            attached_by: member_actor(&fixture),
             attached_at: Some(retargeted.committed.receipt.committed_at),
         })
     );
@@ -543,7 +530,9 @@ fn retained_entry_evidence_without_provenance_decodes_as_unknown_without_time() 
     assert_eq!(
         entry.attachment,
         LibraryPageFileAttachment {
-            attached_by: Actor::Unknown,
+            attached_by: Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance
+            },
             attached_at: None
         }
     );

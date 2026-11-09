@@ -289,7 +289,12 @@ fn v196_deleted_pages_keep_readable_restore_evidence_and_verified_receipts() {
         })
     }).unwrap();
     let context = BoundModuleContext {
+        actor: nodex_core_contracts::Actor::Service {
+            kind: nodex_core_contracts::ServiceKind::Maintenance,
+        },
+        authorizing_member_id: None,
         editor_history_owner: None,
+        principal: None,
         agent_attribution: None,
         profile_id: ProfileId(profile.clone()),
         library_id: LibraryId(library.clone()),

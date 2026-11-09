@@ -1,3 +1,4 @@
+import { spaceQueryKey } from "./renderer-space";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import type {
   ProjectSessionSummaryWindowInput,
@@ -22,61 +23,68 @@ function normalizeNullable(value: string | null | undefined): string {
 
 export const queryKeys = {
   agentRuntime: {
-    providers: () => ["agentRuntime", "providers"] as const,
-    claudeUsage: () => ["agentRuntime", "claudeUsage"] as const,
+    providers: () => spaceQueryKey(["agentRuntime", "providers"] as const),
+    claudeUsage: () => spaceQueryKey(["agentRuntime", "claudeUsage"] as const),
   },
   projects: {
-    all: () => ["projects"] as const,
-    bootstrap: () => ["projects", "bootstrap"] as const,
-    lists: () => ["projects", "list"] as const,
-    list: (includeArchived = false) => ["projects", "list", includeArchived] as const,
-    detail: (projectId: string) => ["projects", "detail", projectId] as const,
+    all: () => spaceQueryKey(["projects"] as const),
+    bootstrap: () => spaceQueryKey(["projects", "bootstrap"] as const),
+    lists: () => spaceQueryKey(["projects", "list"] as const),
+    list: (includeArchived = false) =>
+      spaceQueryKey(["projects", "list", includeArchived] as const),
+    detail: (projectId: string) => spaceQueryKey(["projects", "detail", projectId] as const),
   },
   pageKeys: {
-    all: () => ["pageKeys"] as const,
+    all: () => spaceQueryKey(["pageKeys"] as const),
     prefixPreview: (
       projectId: string | undefined,
       databaseId: string | undefined,
       nameHint: string,
       requestedPrefix: string | undefined,
     ) =>
-      [
+      spaceQueryKey([
         "pageKeys",
         "prefixPreview",
         normalizeNullable(projectId),
         normalizeNullable(databaseId),
         nameHint,
         normalizeNullable(requestedPrefix),
-      ] as const,
-    namespace: (databaseId: string) => ["pageKeys", "namespace", databaseId] as const,
+      ] as const),
+    namespace: (databaseId: string) =>
+      spaceQueryKey(["pageKeys", "namespace", databaseId] as const),
   },
   pageSearch: {
     destinations: (projectIds: readonly string[], normalizedQuery: string) =>
-      ["pageSearch", "destinations", [...projectIds].sort(), normalizedQuery] as const,
+      spaceQueryKey([
+        "pageSearch",
+        "destinations",
+        [...projectIds].sort(),
+        normalizedQuery,
+      ] as const),
   },
   destinationStages: {
     byProject: (projectId: string, libraryId: string, databaseId: string, viewId: string | null) =>
-      ["destinationStages", projectId, libraryId, databaseId, viewId] as const,
+      spaceQueryKey(["destinationStages", projectId, libraryId, databaseId, viewId] as const),
   },
   boards: {
-    all: () => ["boards"] as const,
-    byProject: (projectId: string) => ["boards", "byProject", projectId] as const,
+    all: () => spaceQueryKey(["boards"] as const),
+    byProject: (projectId: string) => spaceQueryKey(["boards", "byProject", projectId] as const),
   },
   blockDocuments: {
-    all: () => ["blockDocuments"] as const,
+    all: () => spaceQueryKey(["blockDocuments"] as const),
     owned: (routingContext: ContentRoutingContext, ownerBlockId: string) =>
-      ["blockDocuments", "owned", routingContext, ownerBlockId] as const,
+      spaceQueryKey(["blockDocuments", "owned", routingContext, ownerBlockId] as const),
   },
   pageTargets: {
     byId: (routingContext: ContentRoutingContext, targetBlockId: string) =>
-      ["pageTargets", routingContext, targetBlockId] as const,
+      spaceQueryKey(["pageTargets", routingContext, targetBlockId] as const),
   },
   pageOwnershipPaths: {
-    all: () => ["pageOwnershipPaths"] as const,
+    all: () => spaceQueryKey(["pageOwnershipPaths"] as const),
     byScope: (routingContext: ContentRoutingContext) =>
-      ["pageOwnershipPaths", routingContext] as const,
+      spaceQueryKey(["pageOwnershipPaths", routingContext] as const),
     byPage: (routingContext: ContentRoutingContext, targetPageId: string) =>
-      ["pageOwnershipPaths", routingContext, targetPageId] as const,
+      spaceQueryKey(["pageOwnershipPaths", routingContext, targetPageId] as const),
   },
   blockReferences: {
     databaseView: (
@@ -84,143 +92,158 @@ export const queryKeys = {
       databaseViewId: string,
       hostBlockId?: string,
     ) =>
-      [
+      spaceQueryKey([
         "blockReferences",
         "databaseView",
         routingContext,
         databaseViewId,
         normalizeNullable(hostBlockId),
-      ] as const,
+      ] as const),
   },
   libraryDatabases: {
-    all: () => ["libraryDatabases"] as const,
+    all: () => spaceQueryKey(["libraryDatabases"] as const),
     descriptor: (projectId: string | undefined, databaseId: string | null, viewId: string | null) =>
-      [
+      spaceQueryKey([
         "libraryDatabases",
         "descriptor",
         normalizeNullable(projectId),
         normalizeNullable(databaseId),
         normalizeNullable(viewId),
-      ] as const,
+      ] as const),
     view: (projectId: string | undefined, viewId: string | null) =>
-      [
+      spaceQueryKey([
         "libraryDatabases",
         "view",
         normalizeNullable(projectId),
         normalizeNullable(viewId),
-      ] as const,
+      ] as const),
   },
   library: {
-    all: () => ["libraryNavigation"] as const,
-    metadata: () => ["libraryNavigation", "metadata"] as const,
+    all: () => spaceQueryKey(["libraryNavigation"] as const),
+    metadata: () => spaceQueryKey(["libraryNavigation", "metadata"] as const),
     children: (parentKey: string, input: unknown) =>
-      ["libraryNavigation", "children", parentKey, input] as const,
+      spaceQueryKey(["libraryNavigation", "children", parentKey, input] as const),
     childrenPages: (parentKey: string, input: unknown) =>
-      ["libraryNavigation", "childrenPages", parentKey, input] as const,
-    standaloneRoots: (input: unknown) => ["libraryNavigation", "standaloneRoots", input] as const,
+      spaceQueryKey(["libraryNavigation", "childrenPages", parentKey, input] as const),
+    standaloneRoots: (input: unknown) =>
+      spaceQueryKey(["libraryNavigation", "standaloneRoots", input] as const),
     standaloneRootPages: (input: unknown) =>
-      ["libraryNavigation", "standaloneRootPages", input] as const,
-    catalog: (input: unknown) => ["libraryNavigation", "catalog", input] as const,
-    catalogPages: (input: unknown) => ["libraryNavigation", "catalogPages", input] as const,
+      spaceQueryKey(["libraryNavigation", "standaloneRootPages", input] as const),
+    catalog: (input: unknown) => spaceQueryKey(["libraryNavigation", "catalog", input] as const),
+    catalogPages: (input: unknown) =>
+      spaceQueryKey(["libraryNavigation", "catalogPages", input] as const),
     moveDestinations: (target: unknown, input: unknown) =>
-      ["libraryNavigation", "moveDestinations", target, input] as const,
+      spaceQueryKey(["libraryNavigation", "moveDestinations", target, input] as const),
     moveDestinationPages: (target: unknown, input: unknown) =>
-      ["libraryNavigation", "moveDestinationPages", target, input] as const,
+      spaceQueryKey(["libraryNavigation", "moveDestinationPages", target, input] as const),
     pageRelocationDestinations: (pageId: string, input: unknown) =>
-      ["libraryNavigation", "pageRelocationDestinations", pageId, input] as const,
-    path: (target: unknown) => ["libraryNavigation", "path", target] as const,
-    canvasTarget: (canvasId: string) => ["libraryNavigation", "canvasTarget", canvasId] as const,
-    pageDetail: (pageId: string) => ["libraryPages", "detail", pageId] as const,
-    pageDocument: (pageId: string) => ["libraryPages", "document", pageId] as const,
+      spaceQueryKey(["libraryNavigation", "pageRelocationDestinations", pageId, input] as const),
+    path: (target: unknown) => spaceQueryKey(["libraryNavigation", "path", target] as const),
+    canvasTarget: (canvasId: string) =>
+      spaceQueryKey(["libraryNavigation", "canvasTarget", canvasId] as const),
+    pageDetail: (pageId: string) => spaceQueryKey(["libraryPages", "detail", pageId] as const),
+    pageDocument: (pageId: string) => spaceQueryKey(["libraryPages", "document", pageId] as const),
     pageBacklinks: (routingContext: unknown, pageId: string) =>
-      ["libraryPages", "backlinks", routingContext, pageId] as const,
+      spaceQueryKey(["libraryPages", "backlinks", routingContext, pageId] as const),
     pageFiles: (routingContext: unknown, pageId: string) =>
-      ["libraryPages", "files", routingContext, pageId] as const,
+      spaceQueryKey(["libraryPages", "files", routingContext, pageId] as const),
     pageFilesWindow: (routingContext: unknown, pageId: string, query: string) =>
-      ["libraryPages", "files", routingContext, pageId, query] as const,
+      spaceQueryKey(["libraryPages", "files", routingContext, pageId, query] as const),
   },
   libraryFiles: {
     file: (routingContext: unknown, fileId: string) =>
-      ["libraryFiles", "file", routingContext, fileId] as const,
-    all: () => ["libraryFiles"] as const,
+      spaceQueryKey(["libraryFiles", "file", routingContext, fileId] as const),
+    all: () => spaceQueryKey(["libraryFiles"] as const),
     catalog: (routingContext: unknown, lifecycle: string, usage: string, query: string) =>
-      ["libraryFiles", "catalog", routingContext, lifecycle, usage, query] as const,
+      spaceQueryKey(["libraryFiles", "catalog", routingContext, lifecycle, usage, query] as const),
     usages: (routingContext: unknown, fileId: string) =>
-      ["libraryFiles", "usages", routingContext, fileId] as const,
+      spaceQueryKey(["libraryFiles", "usages", routingContext, fileId] as const),
     versions: (routingContext: unknown, fileId: string) =>
-      ["libraryFiles", "versions", routingContext, fileId] as const,
+      spaceQueryKey(["libraryFiles", "versions", routingContext, fileId] as const),
   },
   projectSessions: {
-    all: () => ["projectSessions"] as const,
+    all: () => spaceQueryKey(["projectSessions"] as const),
     summaries: (
       projectId: string | null,
       placementScope: NonNullable<ProjectSessionSummaryWindowInput["placementScope"]> = "all",
       order: NonNullable<ProjectSessionSummaryWindowInput["order"]> = "activity",
     ) =>
-      [
+      spaceQueryKey([
         "projectSessions",
         "summaries",
         normalizeNullable(projectId),
         placementScope,
         order,
-      ] as const,
-    detail: (sessionId: string) => ["projectSessions", "detail", sessionId] as const,
+      ] as const),
+    detail: (sessionId: string) => spaceQueryKey(["projectSessions", "detail", sessionId] as const),
   },
   projectActivity: {
-    all: () => ["projectActivity"] as const,
+    all: () => spaceQueryKey(["projectActivity"] as const),
     summaries: (projectIds: readonly string[]) =>
-      ["projectActivity", "summaries", ...[...projectIds].sort()] as const,
-  },
-  mobileAccess: {
-    status: () => ["mobile-access", "status"] as const,
+      spaceQueryKey(["projectActivity", "summaries", ...[...projectIds].sort()] as const),
   },
   inbox: {
+    all: () => spaceQueryKey(["inbox"] as const),
+    summary: (scope: string) => spaceQueryKey(["inbox", "summary", scope] as const),
+    counts: () => spaceQueryKey(["inbox", "counts"] as const),
     window: (scope: string) => spaceQueryKey(["inbox", "window", scope] as const),
+    settings: () => spaceQueryKey(["inbox", "settings"] as const),
+    activity: (scope: string, filter: string) =>
+      spaceQueryKey(["inbox", "activity", scope, filter] as const),
   },
   conversationIdentity: {
-    all: () => ["conversationIdentity"] as const,
-    thread: (threadId: string) => ["conversationIdentity", threadId] as const,
+    all: () => spaceQueryKey(["conversationIdentity"] as const),
+    thread: (threadId: string) => spaceQueryKey(["conversationIdentity", threadId] as const),
   },
   threadExecution: {
-    all: () => ["threadExecution"] as const,
-    location: (threadId: string) => ["threadExecution", "location", threadId] as const,
+    all: () => spaceQueryKey(["threadExecution"] as const),
+    location: (threadId: string) =>
+      spaceQueryKey(["threadExecution", "location", threadId] as const),
   },
   pageChats: {
-    all: () => ["pageChats"] as const,
+    all: () => spaceQueryKey(["pageChats"] as const),
     activity: (pageIds: readonly string[]) =>
-      ["pageChats", "activity", ...normalizePageChatPageIds(pageIds)] as const,
+      spaceQueryKey(["pageChats", "activity", ...normalizePageChatPageIds(pageIds)] as const),
     detail: (pageId: string, includeArchived = false, first = 50) =>
-      ["pageChats", "detail", pageId, includeArchived, first] as const,
+      spaceQueryKey(["pageChats", "detail", pageId, includeArchived, first] as const),
   },
   settings: {
-    all: () => ["settings"] as const,
-    windowRestore: () => ["settings", "windowRestore"] as const,
-    threadNotifications: () => ["settings", "threadNotifications"] as const,
-    thirdPartyNotices: () => ["settings", "thirdPartyNotices"] as const,
-    commandKeymap: () => ["codex-command-keymap-state"] as const,
+    all: () => spaceQueryKey(["settings"] as const),
+    windowRestore: () => spaceQueryKey(["settings", "windowRestore"] as const),
+    threadNotifications: () => spaceQueryKey(["settings", "threadNotifications"] as const),
+    thirdPartyNotices: () => spaceQueryKey(["settings", "thirdPartyNotices"] as const),
+    commandKeymap: () => spaceQueryKey(["codex-command-keymap-state"] as const),
   },
   git: {
-    all: () => ["git"] as const,
-    branchState: (cwd: string) => ["git", "branchState", cwd] as const,
-    repositoryIdentity: (cwd: string) => ["git", "repositoryIdentity", cwd] as const,
+    all: () => spaceQueryKey(["git"] as const),
+    branchState: (cwd: string) => spaceQueryKey(["git", "branchState", cwd] as const),
+    repositoryIdentity: (cwd: string) => spaceQueryKey(["git", "repositoryIdentity", cwd] as const),
   },
   shell: {
-    pathContext: () => ["shell", "pathContext"] as const,
+    pathContext: () => spaceQueryKey(["shell", "pathContext"] as const),
   },
   localEnvironments: {
-    all: () => ["localEnvironments"] as const,
-    options: (projectId: string) => ["localEnvironments", "options", projectId] as const,
-    configs: (projectId: string) => ["localEnvironments", "configs", projectId] as const,
-    configScope: (projectId: string) => ["localEnvironments", "config", projectId] as const,
+    all: () => spaceQueryKey(["localEnvironments"] as const),
+    options: (projectId: string) =>
+      spaceQueryKey(["localEnvironments", "options", projectId] as const),
+    configs: (projectId: string) =>
+      spaceQueryKey(["localEnvironments", "configs", projectId] as const),
+    configScope: (projectId: string) =>
+      spaceQueryKey(["localEnvironments", "config", projectId] as const),
     config: (projectId: string, configPath?: string | null) =>
-      ["localEnvironments", "config", projectId, normalizeNullable(configPath)] as const,
+      spaceQueryKey([
+        "localEnvironments",
+        "config",
+        projectId,
+        normalizeNullable(configPath),
+      ] as const),
   },
   mcp: {
-    all: () => ["mcp"] as const,
-    apps: () => ["mcp", "apps"] as const,
-    statuses: () => ["mcp", "statuses"] as const,
+    all: () => spaceQueryKey(["mcp"] as const),
+    apps: () => spaceQueryKey(["mcp", "apps"] as const),
+    statuses: () => spaceQueryKey(["mcp", "statuses"] as const),
     resource: (params: ProtocolMcpResourceReadParams) =>
-      [
+      spaceQueryKey([
         "mcp",
         "resource",
         normalizeNullable(params.threadId),
@@ -228,61 +251,73 @@ export const queryKeys = {
         normalizeNullable(params.connectorId),
         params.server,
         params.uri,
-      ] as const,
+      ] as const),
   },
   codexSidebar: {
-    all: () => ["codexSidebar"] as const,
-    snapshot: () => ["codexSidebar", "snapshot"] as const,
-    pinnedThreads: () => ["codexSidebar", "pinnedThreads"] as const,
+    all: () => spaceQueryKey(["codexSidebar"] as const),
+    snapshot: () => spaceQueryKey(["codexSidebar", "snapshot"] as const),
+    pinnedThreads: () => spaceQueryKey(["codexSidebar", "pinnedThreads"] as const),
   },
   codexModels: {
-    all: () => ["codexModels"] as const,
-    list: () => ["codexModels", "list"] as const,
+    all: () => spaceQueryKey(["codexModels"] as const),
+    list: () => spaceQueryKey(["codexModels", "list"] as const),
   },
   codexComposerPlugins: {
-    all: () => ["codexComposerPlugins"] as const,
+    all: () => spaceQueryKey(["codexComposerPlugins"] as const),
     list: (cwds: readonly string[], hostId = DEFAULT_CODEX_HOST_ID) =>
-      ["codexComposerPlugins", "list", hostId, ...cwds] as const,
+      spaceQueryKey(["codexComposerPlugins", "list", hostId, ...cwds] as const),
   },
   codexComposerSkills: {
-    all: () => ["codexComposerSkills"] as const,
+    all: () => spaceQueryKey(["codexComposerSkills"] as const),
     list: (cwds: readonly string[], hostId = DEFAULT_CODEX_HOST_ID) =>
-      ["codexComposerSkills", "list", hostId, ...cwds] as const,
+      spaceQueryKey(["codexComposerSkills", "list", hostId, ...cwds] as const),
   },
   codexComposerSites: {
-    all: () => ["codexComposerSites"] as const,
-    list: () => ["codexComposerSites", "list"] as const,
+    all: () => spaceQueryKey(["codexComposerSites"] as const),
+    list: () => spaceQueryKey(["codexComposerSites", "list"] as const),
   },
   codexComposerChatGptConversations: {
-    all: () => ["codexComposerChatGptConversations"] as const,
-    list: (query: string) => ["codexComposerChatGptConversations", "list", query] as const,
+    all: () => spaceQueryKey(["codexComposerChatGptConversations"] as const),
+    list: (query: string) =>
+      spaceQueryKey(["codexComposerChatGptConversations", "list", query] as const),
   },
   codexExperimentalFeatures: {
-    all: () => ["codexExperimentalFeatures"] as const,
-    list: () => ["codexExperimentalFeatures", "list"] as const,
+    all: () => spaceQueryKey(["codexExperimentalFeatures"] as const),
+    list: () => spaceQueryKey(["codexExperimentalFeatures", "list"] as const),
   },
   codexHooks: {
-  automations: {
+    all: () => spaceQueryKey(["codexHooks"] as const),
+    host: (hostId: string) => spaceQueryKey(["codexHooks", hostId] as const),
+    list: (hostId: string, cwds: readonly string[]) =>
+      spaceQueryKey(["codexHooks", hostId, cwds] as const),
   },
-  codexScheduledAutomations: {
-    all: () => ["codexScheduledAutomations"] as const,
-    list: () => ["codexScheduledAutomations", "list"] as const,
+  automations: {
+    all: () => spaceQueryKey(["automations"] as const),
+    list: () => spaceQueryKey(["automations", "list"] as const),
+    decisions: (automationId: string) =>
+      spaceQueryKey(["automations", "decisions", automationId] as const),
+  },
+  sources: {
+    all: () => spaceQueryKey(["sources"] as const),
+    automationOptions: () => spaceQueryKey(["sources", "automationOptions"] as const),
   },
   automationRuns: {
+    all: () => spaceQueryKey(["automationRuns"] as const),
+    inbox: (limit: number) => spaceQueryKey(["automationRuns", "inbox", limit] as const),
   },
   codexBackgroundTerminals: {
-    all: () => ["codexBackgroundTerminals"] as const,
+    all: () => spaceQueryKey(["codexBackgroundTerminals"] as const),
     processManager: (threads: readonly { threadId: string; title: string }[]) =>
-      [
+      spaceQueryKey([
         "codexBackgroundTerminals",
         "processManager",
         ...threads.map((thread) => `${thread.threadId}\u0000${thread.title}`),
-      ] as const,
+      ] as const),
   },
   workspaceFiles: {
-    all: () => ["workspaceFiles"] as const,
+    all: () => spaceQueryKey(["workspaceFiles"] as const),
     directory: (input: WorkspaceDirectoryEntriesInput) =>
-      [
+      spaceQueryKey([
         "workspaceFiles",
         "directory",
         normalizeHostId(input.hostId),
@@ -290,34 +325,46 @@ export const queryKeys = {
         input.directoryPath ?? "",
         input.includeHidden ?? false,
         input.directoriesOnly ?? false,
-      ] as const,
+      ] as const),
     metadata: (input: WorkspaceFileMetadataInput) =>
-      [
+      spaceQueryKey([
         "workspaceFiles",
         "metadata",
         normalizeHostId(input.hostId),
         input.path,
         input.contentSampleByteLimit ?? 0,
         input.contentSampleMaxFileBytes ?? 0,
-      ] as const,
+      ] as const),
     text: (input: WorkspaceFileTextReadInput) =>
-      [
+      spaceQueryKey([
         "workspaceFiles",
         "text",
         normalizeHostId(input.hostId),
         input.path,
         input.maxBytes,
-      ] as const,
+      ] as const),
     binary: (input: WorkspaceFileRequest) =>
-      ["workspaceFiles", "binary", normalizeHostId(input.hostId), input.path] as const,
+      spaceQueryKey([
+        "workspaceFiles",
+        "binary",
+        normalizeHostId(input.hostId),
+        input.path,
+      ] as const),
   },
   codexConversationImageAssets: {
-    resolve: (pointer: string) => ["file", "image-src", pointer, "codex"] as const,
+    resolve: (pointer: string) => spaceQueryKey(["file", "image-src", pointer, "codex"] as const),
   },
   conversationImages: {
     file: (hostId: string, conversationId: string | null, sourceIdentity: string, path: string) =>
-      ["workspaceFiles", "binary", hostId, path, conversationId, sourceIdentity] as const,
+      spaceQueryKey([
+        "workspaceFiles",
+        "binary",
+        hostId,
+        path,
+        conversationId,
+        sourceIdentity,
+      ] as const),
     managed: (hostId: string, conversationId: string | null, source: string) =>
-      ["conversationImages", "managed", hostId, conversationId, source] as const,
+      spaceQueryKey(["conversationImages", "managed", hostId, conversationId, source] as const),
   },
 };

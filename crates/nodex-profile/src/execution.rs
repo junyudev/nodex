@@ -152,12 +152,17 @@ mod tests {
             "SELECT profile_id,id,(SELECT store_epoch FROM block_store_metadata WHERE id=1) FROM libraries",
             [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?)))?)).unwrap();
         let context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             profile_id: ProfileId(profile_id.clone()),
             library_id: LibraryId(library_id.clone()),
             project_id: None,
             connection_id: "profile-clone-test".into(),
             adapter: AdapterKind::Test,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
         };
         nodex_core::administration::StoreAdministrationModule::new(profile_id, library_id, &kernel)

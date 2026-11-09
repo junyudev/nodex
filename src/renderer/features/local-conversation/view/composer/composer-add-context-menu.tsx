@@ -1,4 +1,4 @@
-import { buildPageDeepLink } from "../../../../../shared/nodex-deeplink";
+import { buildPageDeepLink } from "@/lib/page-deeplink";
 import { useComposerPageSuggestions } from "./use-composer-page-suggestions";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../../shared/codex-host";
 import type { FileSearchScope } from "../../../../../shared/file-search";

@@ -309,7 +309,7 @@ export function buildSessionContextMenuItems(
     },
   ];
 
-  return [
+  // archives a chat every Member shares; Nodex management stays out of a team Space's chats.
     {
       id: SESSION_CONTEXT_MENU_ACTION_IDS.togglePin,
       label: session.pinned ? "Unpin" : "Pin",

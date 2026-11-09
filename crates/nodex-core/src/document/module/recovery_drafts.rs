@@ -115,16 +115,17 @@ impl OwnedDocumentModule {
         read: RecoveryRead,
     ) -> Result<ModuleReadSnapshot<OwnedDocumentReadValue>, CoreError> {
         self.readers.read_default(|connection| {
+            let member=crate::infrastructure::actors::requesting_member(connection,context)?;
             let value = match read {
                 RecoveryRead::List { ref document_id, include_resolved, ref before, limit } => {
                     if limit == 0 || limit > 50 { return Err(invalid_store("Recovery list limit must be between 1 and 50")); }
                     if let Some(id) = document_id { authorize_source(connection, context, &self.library_id, id)?; }
-                    let sql = format!("SELECT {SUMMARY_COLUMNS} FROM document_recovery_drafts WHERE library_id = ?1 AND (?2 IS NULL OR document_id = ?2) AND (?3 OR resolution IS NULL) AND (?4 IS NULL OR draft_id > ?4) ORDER BY draft_id LIMIT ?5");
+                    let sql = format!("SELECT {SUMMARY_COLUMNS} FROM document_recovery_drafts WHERE library_id = ?1 AND member_id=?6 AND (?2 IS NULL OR document_id = ?2) AND (?3 OR resolution IS NULL) AND (?4 IS NULL OR draft_id > ?4) ORDER BY draft_id LIMIT ?5");
                     // Scan a bounded page even when Project access filters some rows.
-                    let rows = connection.prepare(&sql)?.query_map(params![self.library_id, document_id, include_resolved, before, limit + 1], read_summary)?.collect::<rusqlite::Result<Vec<_>>>()?;
+                    let rows = connection.prepare(&sql)?.query_map(params![self.library_id, document_id, include_resolved, before, limit + 1,member], read_summary)?.collect::<rusqlite::Result<Vec<_>>>()?;
                     let next_cursor = (rows.len() > limit as usize).then(|| rows[limit as usize - 1].draft_id.clone());
                     let drafts = rows.into_iter().take(limit as usize).filter(|row| authorize_source(connection, context, &self.library_id, &row.document_id).is_ok()).collect();
-                    let pending_documents = connection.prepare("SELECT document_id FROM document_recovery_drafts WHERE library_id = ?1 AND (?2 IS NULL OR document_id = ?2) AND resolution IS NULL")?.query_map(params![self.library_id, document_id], |row| row.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+                    let pending_documents = connection.prepare("SELECT document_id FROM document_recovery_drafts WHERE library_id = ?1 AND member_id=?3 AND (?2 IS NULL OR document_id = ?2) AND resolution IS NULL")?.query_map(params![self.library_id, document_id,member], |row| row.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
                     let pending_count = pending_documents.iter().filter(|id| authorize_source(connection, context, &self.library_id, id).is_ok()).count() as u32;
                     RecoveryReadValue::List { page: RecoveryDraftPage { drafts, next_cursor, pending_count } }
                 },
@@ -219,11 +220,15 @@ impl OwnedDocumentModule {
         self.writer.call(move |connection| {
             let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             require_epoch(&tx, &epoch)?;
+            let context=crate::infrastructure::actors::bind(&tx,&context)?;
+            crate::infrastructure::member_admission::admit_operation(&tx,&context,MODULE_NAME,&operation_id)?;
+            require_member_if_present(&tx,&context,&library_id,&capture.draft_id)?;
+            let member=crate::infrastructure::actors::requesting_member(&tx,&context)?;
             let source = authorize_source(&tx, &context, &library_id, &capture.document_id)?;
             if source.is_none() && capture.source_store_epoch != epoch.0 {
                 return Err(invalid_store("These edits don’t belong to a Page in this Library. They’re still safe on this device."));
             }
-            if let Some(result) = replay(&tx, &operation_id, &payload_hash)? { return Ok(result); }
+            if let Some(result) = replay(&tx, &context, &operation_id, &payload_hash)? { return Ok(result); }
             if let Some(existing) = find_summary(&tx, &library_id, &capture.draft_id)? {
                 if existing.payload_hash != payload_hash {
                     let encoding: String = tx.query_row("SELECT payload_encoding FROM document_recovery_drafts WHERE library_id = ?1 AND draft_id = ?2", params![library_id, capture.draft_id], |row| row.get(0))?;
@@ -243,7 +248,7 @@ impl OwnedDocumentModule {
             if bytes + payload.len() as i64 > MAX_LIBRARY_DRAFT_BYTES { return Err(recovery_rejection(RecoveryFailureReason::CapacityExhausted, "Recovery storage is full. Export or handle retained drafts before continuing.", bytes as usize + payload.len(), MAX_LIBRARY_DRAFT_BYTES as usize)); }
             let now = sqlite_now(&tx)?;
             let result = durable_mutation::run(&tx, OperationIdentity { module: ModuleName::OwnedDocument, module_name: MODULE_NAME, operation_id: &operation_id, intent_hash: &payload_hash, store_epoch: &epoch.0, committed_at: &now, context: &context }, |scope| {
-                tx.execute("INSERT INTO document_recovery_drafts(library_id, draft_id, document_id, source_store_epoch, generation, created_at, received_at, payload_encoding, payload, payload_hash, byte_length) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'bundle_v1', ?8, ?9, ?10)", params![library_id, capture.draft_id, capture.document_id, capture.source_store_epoch, capture.generation, capture.created_at, now, payload, payload_hash, payload.len() as i64])?;
+                tx.execute("INSERT INTO document_recovery_drafts(library_id, draft_id, document_id, source_store_epoch, generation, created_at, received_at, payload_encoding, payload, payload_hash, byte_length, member_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'bundle_v1', ?8, ?9, ?10,?11)", params![library_id, capture.draft_id, capture.document_id, capture.source_store_epoch, capture.generation, capture.created_at, now, payload, payload_hash, payload.len() as i64,member])?;
                 let retained_file_ids = retained_file_uses(&tx, &capture);
                 let companion_bytes = super::super::recovery_files::capture(&tx, &context, &capture.document_id, &capture.draft_id, retained_file_ids)?;
                 let total_bytes = payload.len().checked_add(companion_bytes).ok_or_else(|| invalid_store("Recovery package is too large"))?;
@@ -288,8 +293,14 @@ impl OwnedDocumentModule {
             .call(move |connection| {
                 let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
                 require_epoch(&tx, &epoch)?;
+                crate::infrastructure::member_admission::admit_operation(
+                    &tx,
+                    &context,
+                    MODULE_NAME,
+                    &operation_id,
+                )?;
                 let (summary, capture) = load_draft(&tx, &context, &library_id, &resolve.draft_id)?;
-                if let Some(result) = replay(&tx, &operation_id, &request_hash)? {
+                if let Some(result) = replay(&tx, &context, &operation_id, &request_hash)? {
                     return Ok(result);
                 }
                 require_revision(&summary, &resolve)?;
@@ -555,12 +566,33 @@ fn load_verified_payload(
     Ok((summary, encoding, payload))
 }
 
+fn require_member_if_present(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library: &str,
+    draft: &str,
+) -> Result<(), StoreError> {
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    let owner = connection
+        .query_row(
+            "SELECT member_id FROM document_recovery_drafts WHERE library_id=?1 AND draft_id=?2",
+            params![library, draft],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?;
+    if owner.is_some_and(|owner| owner != member) {
+        return Err(not_found("Recovery draft was not found"));
+    }
+    Ok(())
+}
+
 fn load_raw_payload(
     connection: &Connection,
     context: &BoundModuleContext,
     library_id: &str,
     draft_id: &str,
 ) -> Result<(RecoveryDraftSummary, String, Vec<u8>), StoreError> {
+    require_member_if_present(connection, context, library_id, draft_id)?;
     let summary = find_summary(connection, library_id, draft_id)?
         .ok_or_else(|| not_found("Recovery draft was not found"))?;
     authorize_source(connection, context, library_id, &summary.document_id)?;
@@ -658,9 +690,16 @@ fn metadata_result(
 
 fn replay(
     connection: &Connection,
+    context: &BoundModuleContext,
     operation_id: &str,
     hash: &str,
 ) -> Result<Option<OwnedDocumentApplyOutcome>, StoreError> {
+    crate::infrastructure::member_admission::admit_operation(
+        connection,
+        context,
+        MODULE_NAME,
+        operation_id,
+    )?;
     let Some(stored) = read_module_receipt(connection, MODULE_NAME, operation_id)? else {
         return Ok(None);
     };
@@ -1411,7 +1450,6 @@ impl OwnedDocumentModule {
                         revision_kind: "restore",
                         source_mutation_id: Some(&operation_id),
                         source_change_seq: None,
-                        actor: None,
                         context: &context_for_prepare,
                         now: &now,
                     },
@@ -1431,7 +1469,6 @@ impl OwnedDocumentModule {
                 })
             },
             Some(DocumentCommitCheckpoint {
-                actor: serde_json::json!({"kind":"user"}),
                 cause: "after_restore",
                 label: Some("Restored unsaved edits".to_owned()),
                 revision_kind: "restore",
@@ -1457,8 +1494,9 @@ impl OwnedDocumentModule {
             .call(move |connection| {
                 let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
                 require_epoch(&tx, &epoch)?;
+                crate::infrastructure::member_admission::admit_operation(&tx,&context,MODULE_NAME,&operation_id)?;
                 let (summary, capture) = load_draft(&tx, &context, &library_id, &resolve.draft_id)?;
-                if let Some(result) = replay(&tx, &operation_id, &request_hash)? {
+                if let Some(result) = replay(&tx, &context, &operation_id, &request_hash)? {
                     return Ok(result);
                 }
                 require_revision(&summary, &resolve)?;
@@ -1518,7 +1556,6 @@ impl OwnedDocumentModule {
                                     revision_kind: "restore",
                                     source_mutation_id: Some(&operation_id),
                                     source_change_seq: None,
-                                    actor: None,
                                     context: &context,
                                     now: &now,
                                 },
@@ -1553,7 +1590,6 @@ impl OwnedDocumentModule {
                                     revision_kind: "restore",
                                     source_mutation_id: Some(&operation_id),
                                     source_change_seq: Some(persisted.event_sequence),
-                                    actor: None,
                                     context: &context,
                                     now: &persisted.committed_at,
                                 },
@@ -1709,7 +1745,7 @@ impl OwnedDocumentModule {
             let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             require_epoch(&tx, &epoch)?;
             let (summary, capture) = load_draft(&tx, &context, &library_id, &resolve.draft_id)?;
-            if let Some(result) = replay(&tx, &operation_id, &request_hash)? { return Ok(result); }
+            if let Some(result) = replay(&tx, &context, &operation_id, &request_hash)? { return Ok(result); }
             require_revision(&summary, &resolve)?;
             if let Some(authority) = read_document_authority(&tx, &capture.document_id)? { require_preview(&authority, &resolve)?; }
             let inspection = inspect_selected(&tx, &context, summary, capture.clone(), PreviewSelection::One(RecoveryPreviewView::Retained))?;

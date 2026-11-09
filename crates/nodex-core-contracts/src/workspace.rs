@@ -83,6 +83,7 @@ pub struct ExecutionHold {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceRead {
+    InboxRoutingConsent,
     AutomationAssessments {
         read: crate::automation_assessment::AutomationAssessmentRead,
     },
@@ -393,6 +394,9 @@ pub enum ProjectWorkspaceRead {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceReadValue {
+    InboxRoutingConsent {
+        start_my_requests: Option<bool>,
+    },
     AutomationAssessments {
         value: crate::automation_assessment::AutomationAssessmentReadValue,
     },
@@ -469,8 +473,10 @@ pub enum ProjectWorkspaceReadValue {
     ReadOpenEventBatches {
         batches: Vec<CoordinatorEventBatch>,
     },
+    /// The earliest reminder any Member is owed, with the chat as that Member reads it.
     NextSessionReminder {
         session: Option<ProjectWorkspaceSessionSummary>,
+        member_id: Option<String>,
         delivery: Option<ProjectWorkspaceSessionReminderDelivery>,
         next_wake_at: Option<String>,
     },
@@ -1872,6 +1878,10 @@ pub struct ProjectWorkspaceCreatedPage {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceIntent {
+    SetInboxRoutingConsent {
+        start_my_requests: bool,
+        initialize_only: bool,
+    },
     AutomationAssessment {
         command: crate::automation_assessment::AutomationAssessmentCommand,
     },
@@ -2582,22 +2592,27 @@ pub enum ProjectSessionIntent {
     Rename {
         title: String,
     },
+    /// The requesting Member's own pin; every Member keeps their own.
     SetPinned {
         pinned: bool,
     },
     SetUnread {
         unread: bool,
     },
+    /// The requesting Member's own reminder; every Member keeps their own.
     SetReminder {
         remind_at: Option<String>,
     },
-    /// Host delivery claims only the exact due reminder it observed.
+    /// Host delivery claims only the exact due reminder it observed, for its Member.
     ConsumeReminder {
+        member_id: String,
         remind_at: String,
         deliver: bool,
     },
+    /// Settles a claimed reminder, turning the chat unread for its Member when `unread`.
     CompleteReminderDelivery {
         delivery_id: String,
+        unread: bool,
     },
     DeferReminderDelivery {
         delivery_id: String,

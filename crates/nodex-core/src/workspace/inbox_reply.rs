@@ -7,6 +7,7 @@ use nodex_core_contracts::workspace::ProjectWorkspaceSessionExecutionRef;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn turn_reply(
     connection: &Connection,
+    context: &BoundModuleContext,
     library: &str,
     epoch: &str,
     operation: &str,
@@ -16,6 +17,13 @@ pub(super) fn turn_reply(
     dispatch: &InboxReplyDispatch,
     now: &str,
 ) -> Result<WorkspaceMutationEffects, StoreError> {
+    let turn = super::super::inbox_projection::require_member_turn(
+        connection,
+        context,
+        library,
+        page,
+        Some(episode),
+    )?;
     if body.trim().is_empty() || body.len() > MAX_MESSAGE_BYTES {
         return Err(invalid("Reply is empty or too large"));
     }

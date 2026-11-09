@@ -221,7 +221,12 @@ impl Fixture {
 
     fn context(&self) -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId(PROFILE_ID.to_owned()),
             library_id: LibraryId(LIBRARY_ID.to_owned()),

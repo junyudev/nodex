@@ -535,10 +535,12 @@ fn entry_source(
         return agent_source(connection, provenance);
     }
     match context.adapter {
-        AdapterKind::ElectronHost | AdapterKind::Test => Ok(EntrySource {
-            kind: "user",
-            ..EntrySource::default()
-        }),
+        AdapterKind::ElectronHost | AdapterKind::RemoteMember | AdapterKind::Test => {
+            Ok(EntrySource {
+                kind: "user",
+                ..EntrySource::default()
+            })
+        }
         AdapterKind::NativeCli => {
             let project = context
                 .project_id
@@ -855,6 +857,45 @@ fn capture_message_in_scope(
                     source.reply_to_page_id,
                 ],
             )?;
+    }
+    let author = match (
+        source.kind,
+        source.reply_to_page_id.as_deref(),
+        source.automation_id.as_deref(),
+    ) {
+        ("answer", Some(page), _) => connection
+            .query_row(
+                "SELECT author_member_id FROM inbox_entries WHERE page_id=?1",
+                [page],
+                |r| r.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten(),
+        ("automation", _, Some(automation)) => connection
+            .query_row(
+                "SELECT owner_member_id FROM automations WHERE automation_id=?1",
+                [automation],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()?,
+        _ => context.actor.member_id().map(str::to_owned),
+    };
+    if source.kind == "answer" {
+        let author =
+            author.ok_or_else(|| invalid("An Inbox answer requires its requesting Member"))?;
+        connection.execute(
+            "UPDATE inbox_answers SET member_id=?2 WHERE page_id=?1",
+            params![page_id, author],
+        )?;
+    } else {
+        connection.execute(
+            "UPDATE inbox_entries SET author_member_id=?2,actor_json=?3 WHERE page_id=?1",
+            params![
+                page_id,
+                author,
+                crate::infrastructure::actors::encode(&context.actor)?
+            ],
+        )?;
     }
     let mut block_ids = vec![created_page.page_create.page_id.clone()];
     block_ids.extend(created_page.page_create.block_ids.iter().cloned());
@@ -1450,6 +1491,20 @@ fn apply_confirmation(
             // The messages become the new chat's Linked Pages, so each Page shows the work it
             // started for as long as the chat exists.
             super::page_chat::insert_initial_page_links(connection, session_id, page_ids, now)?;
+            if let Some(member) = page_ids
+                .first()
+                .map(|page| {
+                    connection.query_row(
+                        "SELECT author_member_id FROM inbox_entries WHERE page_id=?1",
+                        [page],
+                        |r| r.get::<_, Option<String>>(0),
+                    )
+                })
+                .transpose()?
+                .flatten()
+            {
+                connection.execute("INSERT OR IGNORE INTO session_requesting_members(session_id,message_id,member_id,accepted_at) VALUES(?1,?2,?3,?4)",params![session_id,proposal_id,member,now])?;
+            }
             super::page_chat::set_active_chats(connection, session_id, page_ids, now)?;
             super::thread_follows::origin_on_dispatch(connection, library_id, page_ids, now)?;
             start_dispatch(

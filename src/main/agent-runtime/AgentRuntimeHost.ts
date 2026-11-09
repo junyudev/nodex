@@ -233,11 +233,12 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     const base = `You are working in Nodex Session ${sessionId}. Use the Nodex application tools for content operations.`;
     // Core vouches for this verified execution, so the CLI's changes name this chat.
     const backend = agentBackendKindOfRuntimeDriver(driverOf(proof.providerInstanceId));
-    const agentAttribution = backend
-      ? yield* core.workspace
-          .issueAgentAttribution({ session_id: sessionId, backend })
-          .pipe(Effect.orElseSucceed(() => null))
-      : null;
+    if (!backend) return yield* unavailable("turn.actor");
+    const agentAttribution = yield* core.workspace.issueAgentAttribution({
+      session_id: sessionId,
+      run_id: proof.runId,
+      backend,
+    });
     const cli = yield* buildAgentRuntimeCliContext(
       config,
       coreAuthority.identity,

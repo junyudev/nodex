@@ -36,6 +36,9 @@ const coreCodes = {
 } satisfies Record<CoreFailureEvidence["code"], true>;
 
 const recoveryKinds = {
+  remote_access_withdrawn: true,
+  renew_remote_session: true,
+  retry_after: true,
   none: true,
   recovery_package: true,
   reconnect_document_subscription: true,
@@ -86,6 +89,19 @@ const parseRecovery = (value: unknown): CoreRecovery => {
   if (!record(value) || typeof value.kind !== "string" || !Object.hasOwn(recoveryKinds, value.kind))
     throw new TypeError("Invalid Core recovery evidence");
   switch (value.kind) {
+    case "retry_after":
+      if (
+        uint(value.milliseconds) &&
+        typeof value.budget === "string" &&
+      )
+        return {
+          kind: value.kind,
+          milliseconds: value.milliseconds,
+          budget: value.budget as components["schemas"]["RemoteBudget"],
+        };
+      break;
+    case "remote_access_withdrawn":
+    case "renew_remote_session":
     case "none":
     case "reconnect_document_subscription":
       return { kind: value.kind };

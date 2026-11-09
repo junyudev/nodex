@@ -196,6 +196,13 @@ pub(crate) fn run<T>(
 where
     T: DeserializeOwned + Serialize,
 {
+    super::member_admission::require_current(connection, identity.context)?;
+    super::member_admission::require_operation_owner(
+        connection,
+        identity.context,
+        identity.module_name,
+        identity.operation_id,
+    )?;
     if connection.is_autocommit() {
         return Err(internal(
             "Durable mutation requires an active SQLite write transaction",
@@ -212,6 +219,8 @@ where
         identity.operation_id,
         identity.intent_hash,
         identity.committed_at,
+        &identity.context.actor,
+        identity.context.authorizing_member_id.as_deref(),
     )?;
     let scope = DurableMutationScope {
         connection,
@@ -239,6 +248,7 @@ where
         .map_err(|_| internal("Durable mutation outcome could not be encoded"))?;
     match sealed.disposition {
         Disposition::Commit => {
+            connection.execute("INSERT INTO mutation_actors(module_name,operation_id,library_id,actor_json,authorizing_member_id,committed_at) VALUES(?1,?2,?3,?4,?5,?6)", rusqlite::params![identity.module_name,identity.operation_id,identity.context.library_id.0,super::actors::encode(&identity.context.actor)?,identity.context.authorizing_member_id,identity.committed_at])?;
             insert_module_receipt(
                 connection,
                 NewModuleReceipt {
@@ -291,6 +301,13 @@ pub(crate) fn record_no_op<T: Serialize>(
     outcome: &T,
     receipt: ReceiptMetadata<'_>,
 ) -> Result<(), StoreError> {
+    super::member_admission::require_current(connection, identity.context)?;
+    super::member_admission::require_operation_owner(
+        connection,
+        identity.context,
+        identity.module_name,
+        identity.operation_id,
+    )?;
     if receipt.event_sequence.is_some() || receipt.committed_at != identity.committed_at {
         return Err(corrupt("Durable mutation no-op receipt is inconsistent"));
     }
@@ -301,6 +318,8 @@ pub(crate) fn record_no_op<T: Serialize>(
         identity.operation_id,
         identity.intent_hash,
         identity.committed_at,
+        &identity.context.actor,
+        identity.context.authorizing_member_id.as_deref(),
     )?;
     local_commit::abandon(connection, &context)?;
     let encoded = serde_json::to_value(outcome)
@@ -465,7 +484,12 @@ mod tests {
 
     fn context() -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile:durable-mutation".to_owned()),
             library_id: LibraryId("library:durable-mutation".to_owned()),
@@ -515,11 +539,33 @@ mod tests {
         intent_hash: &str,
         executions: &AtomicUsize,
     ) -> Result<CommitResult<TestOutcome>, StoreError> {
+        apply_test_mutation_owned(
+            ModuleName::Database,
+            connection,
+            context,
+            store_epoch,
+            operation_id,
+            intent_hash,
+            executions,
+        )
+    }
+
+    fn apply_test_mutation_owned(
+        module: ModuleName,
+        connection: &Connection,
+        context: &BoundModuleContext,
+        store_epoch: &str,
+        operation_id: &str,
+        intent_hash: &str,
+        executions: &AtomicUsize,
+    ) -> Result<CommitResult<TestOutcome>, StoreError> {
+        let encoded = serde_json::to_value(module).unwrap();
+        let module_name = encoded.as_str().unwrap();
         run(
             connection,
             OperationIdentity {
-                module: ModuleName::Database,
-                module_name: "database",
+                module,
+                module_name,
                 operation_id,
                 intent_hash,
                 store_epoch,
@@ -846,5 +892,31 @@ mod tests {
                 Ok(())
             })
             .expect("autocommit boundary proof");
+    }
+    #[test]
+    fn every_module_seals_its_actor_and_keeps_audit_after_delivery_collection() {
+        let directory = tempdir().unwrap();
+        let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
+        kernel.writer().call(|connection| {
+            let epoch=seed(connection)?;
+            let member=crate::infrastructure::actors::local_member(connection,"library:durable-mutation")?;
+            let context=BoundModuleContext {actor:nodex_core_contracts::Actor::Member {member_id:member},..context()};
+            for (index,module) in [ModuleName::Library,ModuleName::Database,ModuleName::OwnedDocument,ModuleName::ProjectWorkspace,ModuleName::Automation,ModuleName::StoreAdministration].into_iter().enumerate() {
+                with_immediate_transaction(connection,|c| {
+                    let operation=format!("actor:{index}");
+                    let result=apply_test_mutation_owned(module,c,&context,&epoch,&operation,&"a".repeat(64),&AtomicUsize::new(0))?;
+                    let CommitResult::Committed {outcome,..}=result else {panic!("committed mutation")};
+                    let row=local_commit::read_commit(c,outcome.commit_seq)?.unwrap();
+                    assert_eq!(row.actor,context.actor);
+                    assert!(c.execute("UPDATE local_commits SET actor_json=json_object('type','service','kind','maintenance') WHERE commit_seq=?1",[outcome.commit_seq]).is_err());
+                    Ok(())
+                })?;
+            }
+            with_immediate_transaction(connection,|c|local_commit::reset_delivery_window(c))?;
+            let actors=connection.prepare("SELECT actor_json FROM mutation_actors WHERE operation_id LIKE 'actor:%'")?.query_map([],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+            assert_eq!(actors.len(),6);
+            for raw in actors {assert_eq!(serde_json::from_str::<nodex_core_contracts::Actor>(&raw).unwrap(),context.actor);}
+            Ok(())
+        }).unwrap();
     }
 }

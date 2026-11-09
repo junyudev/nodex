@@ -1,3 +1,5 @@
+import { isRemoteSpace } from "@/lib/renderer-space";
+import { SpaceSwitcher } from "@/features/spaces/space-switcher";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { requestInboxEntryOpen } from "../../lib/inbox-entry-navigation";
 import { readInboxEntry } from "../../lib/inbox-runtime";
@@ -670,6 +672,10 @@ export function WorkbenchRuntime({
         ) {
           workbenchWindow.closeRoute();
         }
+        return;
+      }
+      if (isRemoteSpace() && kind === "automations") {
+        toast.danger("Automations for this Space run on its host");
         return;
       }
       if (location.kind === kind) {
@@ -4441,8 +4447,10 @@ export function WorkbenchRuntime({
           focusComposerToken={inboxFocusToken}
           onOpenSession={sessionCommands.openProjectSessionById}
           onShowPagesInChat={sessionCommands.showPagesInChat}
-          onOpenScheduledTask={(automationId) =>
-            navigateScheduled(buildAutomationsPath({ automationId }))
+          onOpenAutomation={
+            isRemoteSpace()
+              ? undefined
+              : (automationId) => navigateAutomations(buildAutomationsPath({ automationId }))
           }
           onOpenPage={(pageId) => {
             const peek = inboxPagePeek(surface.id);
@@ -4813,8 +4821,10 @@ export function WorkbenchRuntime({
           focusComposerToken={inboxFocusToken}
           onOpenSession={sessionCommands.openProjectSessionById}
           onShowPagesInChat={sessionCommands.showPagesInChat}
-          onOpenScheduledTask={(automationId) =>
-            navigateScheduled(buildAutomationsPath({ automationId }))
+          onOpenAutomation={
+            isRemoteSpace()
+              ? undefined
+              : (automationId) => navigateAutomations(buildAutomationsPath({ automationId }))
           }
           onOpenPage={(pageId) =>
             void presentLibraryTarget(
@@ -5145,6 +5155,7 @@ export function WorkbenchRuntime({
     getWorkbenchPanelActiveLeaf(activeProjectScene.panels.right.layout).activeTabId ===
       activeProjectScene.primary.id;
   const projectAgentDock =
+    !isRemoteSpace() &&
     !projectHomeActive &&
     selectedProjectSceneId &&
     projectSceneKey &&
@@ -5742,6 +5753,8 @@ export function WorkbenchRuntime({
                     widthClass={shellWidthClass}
                     rail={
                       <WorkbenchAppRail
+                        spaceSwitcher={<SpaceSwitcher />}
+                        contentOnly={isRemoteSpace()}
                         destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
                         onHome={workbenchWindow.selectHome}
                         onSpace={workbenchWindow.selectLibrary}

@@ -166,12 +166,13 @@ fn list(
             .as_ref()
             .map(|attachment| &attachment.attached_by)
         {
-            Some(LibraryPageFileAttachmentActor::Person) => "person".to_owned(),
+            Some(LibraryPageFileAttachmentActor::Member { member_id }) => {
+                format!("member:{member_id}")
+            }
             Some(LibraryPageFileAttachmentActor::Agent { session_id, .. }) => {
                 format!("agent:{session_id}")
             }
-            Some(LibraryPageFileAttachmentActor::External) => "external".to_owned(),
-            Some(LibraryPageFileAttachmentActor::Unknown) => "unknown".to_owned(),
+            Some(LibraryPageFileAttachmentActor::Service { kind }) => format!("service:{kind:?}"),
             None => "—".to_owned(),
         };
         let time = item

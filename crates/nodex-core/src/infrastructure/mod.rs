@@ -1,5 +1,7 @@
 //! Narrow runtime primitives shared by deep Modules.
 
+pub(crate) mod actors;
+mod actors_migration;
 pub mod agent_operations;
 pub(crate) mod authorized_delivery;
 pub mod collection_window;
@@ -14,6 +16,7 @@ pub(crate) mod local_commit;
 pub(crate) mod managed_asset_snapshot;
 pub(crate) mod managed_blob_gc;
 pub mod managed_blobs;
+pub(crate) mod member_admission;
 pub mod metrics;
 pub mod migration;
 pub(crate) mod migration_progress;

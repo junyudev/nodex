@@ -461,11 +461,14 @@ export const live = (
               opaqueWindowSurfaceEnabled: backdrop.opaqueWindowSurfaceEnabled,
               platform: options.platform,
             });
+            const spaceRendererUrl = new URL(rendererUrl);
+            if (session.activeSpaceId)
+              spaceRendererUrl.searchParams.set("spaceId", session.activeSpaceId);
             logger.info("Canonical application window constructed", {
               sessionId: session.id,
               webContentsId,
             });
-            void window.loadURL(rendererUrl).catch((cause: unknown) => {
+            void window.loadURL(spaceRendererUrl.toString()).catch((cause: unknown) => {
               failRendererDocumentLoad(record, cause);
             });
             return window;

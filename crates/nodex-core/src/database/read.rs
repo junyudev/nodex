@@ -597,7 +597,7 @@ pub(crate) fn read_at_commit_head(
             DatabaseReadValue::ViewPersonalPreferences {
                 value: view_personal_preferences(
                     connection,
-                    context.profile_id.0.as_str(),
+                    &crate::infrastructure::actors::requesting_member(connection, context)?,
                     &view_id,
                 )?,
             }
@@ -613,7 +613,7 @@ pub(crate) fn read_at_commit_head(
             DatabaseReadValue::ViewCollapsedOccurrences {
                 value: view_collapsed_occurrences(
                     connection,
-                    context.profile_id.0.as_str(),
+                    &crate::infrastructure::actors::requesting_member(connection, context)?,
                     &view_id,
                 )?,
             }
@@ -1041,15 +1041,15 @@ fn authorize_view(
 
 pub(super) fn view_personal_preferences(
     connection: &Connection,
-    profile_id: &str,
+    member_id: &str,
     view_id: &str,
 ) -> Result<DatabaseViewPersonalPreferences, StoreError> {
     let stored = connection
         .query_row(
             "SELECT preferences_json, revision \
              FROM database_view_personal_preferences \
-             WHERE profile_id = ?1 AND view_id = ?2",
-            params![profile_id, view_id],
+             WHERE member_id = ?1 AND view_id = ?2",
+            params![member_id, view_id],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
         )
         .optional()?;
@@ -1072,17 +1072,17 @@ pub(super) fn view_personal_preferences(
 
 fn view_collapsed_occurrences(
     connection: &Connection,
-    profile_id: &str,
+    member_id: &str,
     view_id: &str,
 ) -> Result<DatabaseViewCollapsedOccurrences, StoreError> {
     let rows = connection
         .prepare(
             "SELECT target_kind, occurrence_key \
              FROM database_view_collapsed_occurrences \
-             WHERE profile_id = ?1 AND view_id = ?2 \
+             WHERE member_id = ?1 AND view_id = ?2 \
              ORDER BY target_kind, occurrence_key LIMIT 2001",
         )?
-        .query_map(params![profile_id, view_id], |row| {
+        .query_map(params![member_id, view_id], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;

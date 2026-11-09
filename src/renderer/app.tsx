@@ -1,4 +1,7 @@
 import { RealtimeVoiceWindowProvider } from "@/features/realtime-voice/realtime-voice-window";
+import { SpaceAvailabilityNotice } from "@/features/spaces/space-availability";
+import { useFollowSpaceConnections } from "@/features/spaces/spaces-runtime";
+import { isRemoteSpace } from "@/lib/renderer-space";
 import { useEffect, useState } from "react";
 import { AgentRuntimeStatusNotice } from "@/components/agent-runtime-status-notice";
 import { AppStatusNoticeStack } from "@/components/app-status-notice";
@@ -28,6 +31,7 @@ export interface AppProps {
 }
 
 export default function App({ windowSessionBootstrap }: AppProps) {
+  useFollowSpaceConnections();
   useEffect(() => window.api?.onHistoryCommand?.(dispatchFocusedHistory), []);
   useEffect(publishFocusedHistory, []);
   const appUpdateStatus = useAppUpdateStatus();
@@ -52,6 +56,7 @@ export default function App({ windowSessionBootstrap }: AppProps) {
   }, [coreAuthorityStatus.kind]);
 
   useEffect(() => {
+    if (isRemoteSpace()) return;
     let cancelled = false;
     let observedPush = false;
     const unsubscribe = window.api?.onCoreAuthorityStatus?.((status) => {
@@ -89,9 +94,10 @@ export default function App({ windowSessionBootstrap }: AppProps) {
           <InlineVisualizationWindowProvider>
             <InlineVisualizationWindowLifecycle />
             <LocalConversationViewStateCleanupController />
-            <HeartbeatAutomationController />
+            {!isRemoteSpace() ? <HeartbeatAutomationController /> : null}
             <WorkbenchShell windowSessionBootstrap={windowSessionBootstrap} />
             <AppStatusNoticeStack>
+              <SpaceAvailabilityNotice />
               <AgentRuntimeStatusNotice />
               <CoreAuthorityStatusNotice
                 status={

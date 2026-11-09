@@ -176,7 +176,7 @@ export interface WindowRuntimeService {
   /** Primary Window Session windows only; auxiliary windows are intentionally excluded. */
   readonly all: () => readonly BrowserWindow[];
   readonly attach: (window: BrowserWindow, sessionId: string) => WindowSessionRecord;
-  readonly bootstrap: (webContentsId: number) => WindowSessionRecord;
+  readonly bootstrap: (webContentsId: number, spaceId?: string | null) => WindowSessionRecord;
   readonly beginApplicationQuit: () => void;
   readonly cloneSessionForWindow: (
     sourceWebContentsId: number,
@@ -532,7 +532,7 @@ export const fromState = (
               publishLifecycle({ kind: "registered", window: toWindowSnapshot(entry) });
               return session;
             },
-            bootstrap: (webContentsId) => sessions.bootstrap(webContentsId),
+            bootstrap: (webContentsId, spaceId) => sessions.bootstrap(webContentsId, spaceId),
             beginApplicationQuit: () => {
               applicationQuitRequested = true;
             },

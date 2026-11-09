@@ -106,6 +106,8 @@ pub(super) fn admit<'a>(
     }
     if matches!(
         intent.as_ref(),
+        ProjectWorkspaceIntent::SetInboxRoutingConsent { .. }
+            | ProjectWorkspaceIntent::AcceptPageWork { .. }
             | ProjectWorkspaceIntent::PauseWork { .. }
             | ProjectWorkspaceIntent::ResumeWork { .. }
     ) {

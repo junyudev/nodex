@@ -21,6 +21,13 @@ pub const HOME_VARIABLE: &str = "USERPROFILE";
 pub fn current_user() -> io::Result<UserIdentity> {
     process_sid(None)
 }
+/// How this OS account names its person: its account name.
+pub fn account_display_name() -> Option<String> {
+    std::env::var("USERNAME")
+        .ok()
+        .map(|name| name.trim().to_owned())
+        .filter(|name| !name.is_empty())
+}
 pub fn process_is_alive(pid: u32) -> bool {
     if pid == 0 {
         return false;

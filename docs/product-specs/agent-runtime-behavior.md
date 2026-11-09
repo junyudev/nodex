@@ -643,7 +643,10 @@ defaults. Goal mode is not offered for Runtime chats.
 
 New chat remembers its own model. A new chat starts on the last choice made in the composer
 of any unstarted chat, on any Agent, with that choice's effort and other options, in every
-Project and window and across restart. A choice made in a started chat stays with that chat.
+Project and window and across restart. Each Space remembers its own: a team Space's hosts offer
+their own Agents and models, so a choice made in one of its windows is remembered for that
+Space and Member only, and the personal Space keeps the choice it had. A choice made in a
+started chat stays with that chat.
 An unstarted chat keeps what was chosen in it, whatever is chosen elsewhere later. Native
 Codex's speed always comes from the global Fast preference, which only Settings and an
 unstarted chat's choice change.

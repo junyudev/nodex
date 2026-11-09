@@ -17,6 +17,7 @@ import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplica
 import { createBoundedOperationId } from "../../../shared/operation-identity";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
 import { ClockAutomationRuntime } from "../../host-runtime/ClockAutomationRuntime";
+import { safeBroadcastToPersonalWindows } from "../../ipc-safe-send";
 import { createOperationId } from "../../core-runtime/operation-identity";
 import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
@@ -213,13 +214,13 @@ export const live: Layer.Layer<
       reason: "upsert" | "delete",
     ) =>
       Effect.sync(() => {
-        safeBroadcastToWindows(windows.all(), "codex:scheduled-automations:changed", [
+        safeBroadcastToPersonalWindows(windows.all(), "automations:changed", [
           { automationId, targetSessionId, reason },
         ]);
       });
     const broadcastRunsUpdated = (event: AutomationRunsUpdatedEvent) =>
       Effect.sync(() => {
-        safeBroadcastToWindows(windows.all(), "codex:automation-runs:updated", [event]);
+        safeBroadcastToPersonalWindows(windows.all(), "automations:runs:updated", [event]);
       });
     const broadcastRunChanged = (event: AutomationRunsUpdatedEvent, refreshDefinition = true) =>
       broadcastRunsUpdated(event).pipe(

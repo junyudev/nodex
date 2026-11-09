@@ -1,4 +1,5 @@
 import { RecoveryBundleValidationError } from "../../shared/block-documents/recovery-bundle";
+import { spaceStorageKey } from "./renderer-space";
 import { parseRecoveryResolveOperation } from "./document-recovery-operation";
 import type {
   DocumentRecoveryCommand,
@@ -158,7 +159,7 @@ export class DocumentRecovery {
     });
     const releaseIssues = contentEditIssues.register(createDocumentRecoveryIssueSource(this));
     if (typeof BroadcastChannel !== "undefined") {
-      this.localChanges = new BroadcastChannel("nodex:recovery-local-changes");
+      this.localChanges = new BroadcastChannel(spaceStorageKey("nodex:recovery-local-changes"));
       this.localChanges.addEventListener("message", () => {
         void this.loadLocal(false).catch((error: unknown) =>
           this.publish({ localError: message(error) }),
@@ -293,48 +294,51 @@ export class DocumentRecovery {
   }
   private async transfer(entry: RecoveryStagingSummary, epoch: string): Promise<boolean> {
     // Web Locks share this critical section across coordinators and renderer windows.
-    return navigator.locks.request(`nodex:recovery:${entry.sourceKey}`, async () => {
-      const store = this.store(entry.sourceKind);
-      if (!store) throw new Error("Local recovery storage is unavailable");
-      this.publish({ sending: [...this.state.sending, entry.sourceKey] });
-      try {
-        const frozen = await store.freeze(entry, this.scope, epoch);
-        const previousClaim = await store.claimTransfer(entry);
-        const received = await this.port
-          .apply({
-            ...frozen.scope,
-            kind: "capture",
-            operationId: frozen.operationId,
-            storeEpoch: frozen.storeEpoch,
-            bundle: frozen.bundle,
-          })
-          .catch(async (error: unknown) => {
-            // A later rejection cannot disprove an earlier request with an uncertain receipt.
-            if (!previousClaim && this.transferFailure(error, null).effect === "not_applied")
-              await store.rejectTransfer(entry);
-            throw error;
+    return navigator.locks.request(
+      spaceStorageKey(`nodex:recovery:${entry.sourceKey}`),
+      async () => {
+        const store = this.store(entry.sourceKind);
+        if (!store) throw new Error("Local recovery storage is unavailable");
+        this.publish({ sending: [...this.state.sending, entry.sourceKey] });
+        try {
+          const frozen = await store.freeze(entry, this.scope, epoch);
+          const previousClaim = await store.claimTransfer(entry);
+          const received = await this.port
+            .apply({
+              ...frozen.scope,
+              kind: "capture",
+              operationId: frozen.operationId,
+              storeEpoch: frozen.storeEpoch,
+              bundle: frozen.bundle,
+            })
+            .catch(async (error: unknown) => {
+              // A later rejection cannot disprove an earlier request with an uncertain receipt.
+              if (!previousClaim && this.transferFailure(error, null).effect === "not_applied")
+                await store.rejectTransfer(entry);
+              throw error;
+            });
+          verifyRecoveryReceipt(frozen, received.capture_receipt);
+          if (
+            received.draft_id !== frozen.bundle.draftId ||
+            received.payload_hash !== received.capture_receipt?.stored_payload_hash
+          )
+            throw new Error(
+              "Nodex confirmed a different recovery copy. These edits are unchanged on this device.",
+            );
+          this.publish({
+            acceptedLocal: { ...this.state.acceptedLocal, [entry.sourceKey]: received.draft_id },
+            drafts: [
+              ...this.state.drafts.filter((draft) => draft.draft_id !== received.draft_id),
+              received,
+            ],
           });
-        verifyRecoveryReceipt(frozen, received.capture_receipt);
-        if (
-          received.draft_id !== frozen.bundle.draftId ||
-          received.payload_hash !== received.capture_receipt?.stored_payload_hash
-        )
-          throw new Error(
-            "Nodex confirmed a different recovery copy. These edits are unchanged on this device.",
-          );
-        this.publish({
-          acceptedLocal: { ...this.state.acceptedLocal, [entry.sourceKey]: received.draft_id },
-          drafts: [
-            ...this.state.drafts.filter((draft) => draft.draft_id !== received.draft_id),
-            received,
-          ],
-        });
-        return await store.acknowledge(entry, frozen, received.capture_receipt);
-      } finally {
-        const index = this.state.sending.indexOf(entry.sourceKey);
-        this.publish({ sending: this.state.sending.filter((_, position) => position !== index) });
-      }
-    });
+          return await store.acknowledge(entry, frozen, received.capture_receipt);
+        } finally {
+          const index = this.state.sending.indexOf(entry.sourceKey);
+          this.publish({ sending: this.state.sending.filter((_, position) => position !== index) });
+        }
+      },
+    );
   }
 
   private transferFailure(
@@ -471,7 +475,7 @@ export class DocumentRecovery {
     const store = this.store(entry.sourceKind);
     if (!store) throw new Error("Local recovery storage is unavailable");
     await navigator.locks.request(
-      `nodex:recovery:${entry.sourceKey}`,
+      spaceStorageKey(`nodex:recovery:${entry.sourceKey}`),
       { ifAvailable: true },
       async (lock) => {
         if (!lock)
@@ -635,7 +639,7 @@ export const getDocumentRecovery = (
   scope: DocumentRecoveryScope,
   documentId: string | null,
 ): DocumentRecovery => {
-  const key = JSON.stringify([contentRoutingIdentityKey(scope), documentId]);
+  const key = spaceStorageKey(JSON.stringify([contentRoutingIdentityKey(scope), documentId]));
   const existing = modules.get(key);
   if (existing) return existing;
   const module = new DocumentRecovery(scope, documentId);

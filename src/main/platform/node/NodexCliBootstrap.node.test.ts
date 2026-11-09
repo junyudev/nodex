@@ -221,16 +221,24 @@ describe("Nodex per-Turn CLI connection", () => {
           return inventory.files.find((item) => item.logical_path === path)?.attachment;
         };
 
+        const identity = await current.runtime.rootClient.libraryRead({ kind: "local_member" });
+        if (identity.value.kind !== "local_member") throw new Error("Member identity required");
+        const memberId = identity.value.value.id;
         const credential = await current.runtime.rootClient.issueAgentAttribution({
           session_id: chat.sessionId,
           backend: "claude",
         });
         expect(await attach(credential, "profile/report.html")).toMatchObject({
-          attached_by: { kind: "agent", session_id: chat.sessionId, backend: "claude" },
+          attached_by: {
+            type: "agent",
+            session_id: chat.sessionId,
+            run_id: null,
+            on_behalf_of: memberId,
+          },
         });
         // Without Nodex's credential, the same command cannot name a chat.
         expect(await attach(null, "profile/external.html")).toMatchObject({
-          attached_by: { kind: "external" },
+          attached_by: { type: "member", member_id: memberId },
         });
         await expect(
           current.runtime.rootClient.issueAgentAttribution({
@@ -258,6 +266,7 @@ describe("Nodex per-Turn CLI connection", () => {
     }
   });
 
+  // Two Profiles and repeated fresh CLI processes share I/O with native scenario workers.
   test("plain nodex refreshes task routing and checks Profile identity from unrelated directories", async () => {
     const root = await mkdtemp(join(tmpdir(), "nodex bootstrap ' "));
     try {
@@ -488,5 +497,5 @@ describe("Nodex per-Turn CLI connection", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 120_000);
 });

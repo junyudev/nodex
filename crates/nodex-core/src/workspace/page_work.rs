@@ -163,6 +163,13 @@ pub(super) fn apply(
         return Err(invalid("Not a work start"));
     };
     if let Some(episode) = expected_turn_episode {
+        super::inbox_projection::require_member_turn(
+            connection,
+            context,
+            library,
+            page_id,
+            Some(episode),
+        )?;
     }
     validate_start(
         connection, page_id, session_id, launch_id, message_id, brief,
@@ -270,9 +277,37 @@ pub(super) fn prepare_start(
         &page_ids,
         None,
     )?;
+    let requesting_member = context
+        .actor
+        .member_id()
+        .or(context.authorizing_member_id.as_deref())
+        .or(work.page_work.as_ref().map(|work| work.owner.as_str()))
+        .ok_or_else(|| {
+            StoreError::new(
+                StoreErrorCode::Unauthorized,
+                "Work requires its requesting Member",
+                false,
+            )
+        })?;
+    if !crate::library::members::is_active(connection, library, requesting_member)? {
+        return Err(StoreError::new(
+            StoreErrorCode::Unauthorized,
+            "Work requires an active requesting Member",
+            false,
+        ));
+    }
+    // Capture the person at launch; execution observations must not fall back to
+    super::session_mutation::accept_person_message(
+        connection,
+        session_id,
+        message_id,
+        requesting_member,
+        now,
+    )?;
     super::coordinator::set_managed(connection, session_id, true, now)?;
     let retired = super::inbox::nodex::retire_page_start(connection, library, page_id, now)?;
     let inbox_changed = !retired.is_empty();
+    connection.execute("INSERT INTO page_work_launches(launch_id,page_id,project_id,session_id,message_id,selection_json,brief,again,created_at,status_fence,actor_json) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,(SELECT status_person_revision FROM pages WHERE block_id=?2),?10)", params![launch_id,page_id,work.project_id,session_id,message_id,serde_json::to_string(&selection).map_err(|_|invalid("Invalid Agent selection"))?,brief,again,now,crate::infrastructure::actors::encode(&context.actor)?])?;
     connection.execute(
         "UPDATE page_work_launches SET automatic=?2 WHERE launch_id=?1",
         params![launch_id, expected_readiness_epoch.is_some()],

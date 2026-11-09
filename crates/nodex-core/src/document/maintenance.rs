@@ -183,7 +183,6 @@ pub(crate) fn finalize_idle_document_revisions(
                 revision_kind: "automatic",
                 source_mutation_id: None,
                 source_change_seq: None,
-                actor: None,
                 context: &actor_context,
                 now: &now,
             };
@@ -471,8 +470,10 @@ mod tests {
                 let finalized = finalize_idle_document_revisions(
                     connection,
                     &BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service { kind: nodex_core_contracts::ServiceKind::Maintenance },
+            authorizing_member_id: None,
                         editor_history_owner: None,
-                        agent_attribution: None,
+                        principal: None,                        agent_attribution: None,
                         profile_id: ProfileId("profile:revision-maintenance".to_owned()),
                         library_id: LibraryId("library:revision-maintenance".to_owned()),
                         project_id: None,

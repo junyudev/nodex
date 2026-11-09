@@ -254,6 +254,7 @@ export interface ScenarioSeedPort {
   }): Promise<{ readonly pageId: string }>;
   /** Begins Host routing and settles the same request as inbox_suggest. */
   settleCoordinatorSuggestion(input: ScenarioCoordinatorSuggestionSeed): Promise<string>;
+  setInboxRoutingConsent(startMyRequests: boolean): Promise<void>;
   confirmInboxRequestByNodex(proposalId: string, selection: AgentSelection): Promise<void>;
   createProject(input: ProjectCreateInput): Promise<Project>;
   createPage(input: ScenarioPageSeed): Promise<{ readonly documentId: string }>;

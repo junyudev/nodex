@@ -115,7 +115,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::InboxEntry { .. }
         | ProjectWorkspaceRead::InboxSuggestionRequest { .. }
         | ProjectWorkspaceRead::InboxSummary { .. }
-        | ProjectWorkspaceRead::InboxMessageEdit { .. } => ReadBudgetPolicy::Identity,
+        | ProjectWorkspaceRead::InboxRoutingConsent
     }
 }
 

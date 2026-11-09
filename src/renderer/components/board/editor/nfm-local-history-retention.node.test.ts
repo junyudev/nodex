@@ -1,4 +1,4 @@
-import { expect, test } from "vite-plus/test";
+import { afterEach, expect, test, vi } from "vite-plus/test";
 import * as Y from "yjs";
 import { createPageDocumentGenesis } from "../../../../shared/block-documents/block-document-codec";
 import type {
@@ -8,6 +8,12 @@ import type {
 import { prepareDocumentHistoryRetention } from "../../../lib/document-history-retention";
 import { NfmLocalHistoryRetention } from "./nfm-local-history-retention";
 import { NfmTextHistoryJournal } from "./nfm-text-history-journal";
+
+const connection = vi.hoisted(() => ({ remote: false }));
+vi.mock("@/lib/renderer-space", () => ({ isRemoteSpace: () => connection.remote }));
+afterEach(() => {
+  connection.remote = false;
+});
 
 const scope = {
   routingContext: { kind: "project", projectId: "project" } as const,
@@ -157,4 +163,19 @@ test("closing hands off a terminal revision without awaiting the pending pin", a
     complete(success());
     await f.close();
   }
+});
+
+test("a team editor keeps its journal without requesting a Host history lease", async () => {
+  connection.remote = true;
+  const apply = vi.fn(async () => success());
+  const f = fixture(apply);
+  try {
+    f.edit();
+    await prepareDocumentHistoryRetention(f.document);
+    await f.retention.flush();
+    expect(apply).not.toHaveBeenCalled();
+  } finally {
+    await f.close();
+  }
+  expect(f.releases).toEqual([]);
 });

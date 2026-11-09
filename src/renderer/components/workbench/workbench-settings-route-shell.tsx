@@ -1,3 +1,5 @@
+import { isRemoteSpace } from "@/lib/renderer-space";
+import { REMOTE_FILESYSTEM_REASON, REMOTE_AGENT_REASON } from "../../../shared/space-connection";
 import { lazy, startTransition, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { ApplicationSurface } from "@/bootstrap/application-surface";
 import {
@@ -80,6 +82,18 @@ function SettingsPageContent({
     document.getElementById(anchor)?.scrollIntoView({ block: "start" });
   }, [anchor, path]);
 
+  if (
+    isRemoteSpace() &&
+      path,
+    )
+  )
+    return (
+      <p className="p-3 text-sm text-token-text-secondary">
+        {/\/(git|worktrees|local-environments)(?:\/|$)/u.test(path)
+          ? REMOTE_FILESYSTEM_REASON
+          : REMOTE_AGENT_REASON}
+      </p>
+    );
   return children;
 }
 

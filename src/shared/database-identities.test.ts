@@ -84,6 +84,7 @@ describe("database identities", () => {
       "scheduled_start",
       "scheduled_end",
       "assignee",
+      "owner",
       "task_parent",
       "blocked_by",
     ]);

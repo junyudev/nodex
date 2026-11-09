@@ -21,6 +21,7 @@ fn decode<T: serde::de::DeserializeOwned>(value: String) -> rusqlite::Result<T> 
 }
 
 struct Facts {
+    question_member: Option<String>,
     work: PageWork,
     stage: Option<String>,
     active: bool,
@@ -72,6 +73,15 @@ fn choose(facts: &Facts) -> (TurnActor, Option<TurnReason>) {
             .iter()
             .any(|request| request.kind == SessionExecutionRequestKind::Question)
         {
+            return (
+                facts
+                    .question_member
+                    .as_ref()
+                    .map_or_else(owner, |member| TurnActor::Member {
+                        member_id: member.clone(),
+                    }),
+                Some(Question),
+            );
         }
         if observation
             .pending_requests
@@ -420,6 +430,7 @@ mod tests {
     use super::*;
     fn base() -> Facts {
         Facts {
+            question_member: None,
             work: PageWork {
                 owner: "owner".into(),
                 assignee: Some(PageAssignee::Agent {

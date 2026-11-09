@@ -7,12 +7,18 @@ use nodex_core_contracts::{
 use rusqlite::{Connection, OptionalExtension, params};
 
 pub(super) fn list(connection: &Connection, library: &str) -> Result<Vec<Member>, StoreError> {
+    let members = connection.prepare("SELECT id,library_id,display_name,lifecycle,revision,role FROM members WHERE library_id=?1 ORDER BY display_name COLLATE NOCASE,id LIMIT 1025")?
         .query_map([library], |row| Ok(Member {
             id: row.get(0)?, library_id: row.get(1)?, display_name: row.get(2)?,
             lifecycle: match row.get::<_,String>(3)?.as_str() {
                 "active" => MemberLifecycle::Active,
                 "removed" => MemberLifecycle::Removed,
                 _ => return Err(rusqlite::Error::InvalidQuery),
+            }, revision: row.get(4)?, role: match row.get::<_,String>(5)?.as_str() {
+                "owner" => nodex_core_contracts::library::MemberRole::Owner,
+                "member" => nodex_core_contracts::library::MemberRole::Member,
+                _ => return Err(rusqlite::Error::InvalidQuery),
+            },
         }))?.collect::<rusqlite::Result<Vec<_>>>()?;
     if members.len() > 1024 {
         return Err(StoreError::new(
@@ -24,8 +30,16 @@ pub(super) fn list(connection: &Connection, library: &str) -> Result<Vec<Member>
     Ok(members)
 }
 
+pub(super) fn requesting(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library: &str,
+) -> Result<Member, StoreError> {
+    let id = crate::infrastructure::actors::requesting_member(connection, context)?;
     list(connection, library)?
         .into_iter()
+        .find(|member| member.id == id && member.lifecycle == MemberLifecycle::Active)
+        .ok_or_else(|| invalid("Requesting Member is unavailable"))
 }
 
 pub(super) fn validate_work(
@@ -74,6 +88,13 @@ pub(crate) fn initialize_owner(
         (None, None) => None,
     };
     let Some(source) = source else {
+        if let Some(member) = context
+            .actor
+            .member_id()
+            .or(context.authorizing_member_id.as_deref())
+        {
+            connection.execute("UPDATE block_properties SET value_json=json_set(value_json,'$.owner',?2) WHERE block_id=?1 AND property_key='work'",params![page_id,member])?;
+        }
         return Ok(());
     };
     connection.execute("UPDATE block_properties SET value_json=json_set(value_json,'$.owner',(SELECT json_extract(value_json,'$.owner') FROM block_properties WHERE block_id=?2 AND library_id=?3 AND property_key='work')) WHERE block_id=?1 AND property_key='work' AND EXISTS(SELECT 1 FROM block_properties WHERE block_id=?2 AND library_id=?3 AND property_key='work')",params![page_id,source,context.library_id.0])?;
@@ -114,6 +135,15 @@ pub(crate) fn assign_agent_if_unassigned(
         context,
         commit,
         &operation,
+        vec![
+            nodex_core_contracts::library::LibraryBlockPropertyFieldMutation::IntrinsicSet {
+                block_id: page.to_owned(),
+                property_key: "work".into(),
+                expected_revision: revision,
+                value: serde_json::to_value(&work)
+                    .map_err(|_| invalid("Page work cannot be encoded"))?,
+            },
+        ],
     )
 }
 

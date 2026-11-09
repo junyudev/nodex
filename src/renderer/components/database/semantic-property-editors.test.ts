@@ -25,7 +25,7 @@ describe("semantic Property option authority", () => {
 
   test("uses a non-authoritative fallback only to present the selected value while loading", () => {
     expect(presentSemanticPropertyOptions("status", [], "review", "loading")).toEqual([
-      { id: "review", name: "Review" },
+      { id: "review", name: "In Review" },
     ]);
   });
 

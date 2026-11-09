@@ -153,7 +153,9 @@ export const live: Layer.Layer<LibraryModule, never, CoreAuthority | CoreSession
           libraryId: authority.identity.libraryId,
           profileId: authority.identity.profileId,
           storeEpoch: authority.identity.storeEpoch,
-          ...(editorHistoryOwnerId ? { editorHistoryOwnerId } : {}),
+          ...(authority.initialLaunch !== null && editorHistoryOwnerId
+            ? { editorHistoryOwnerId }
+            : {}),
         });
       const useClient = <A>(
         operation: string,
@@ -203,21 +205,23 @@ export const live: Layer.Layer<LibraryModule, never, CoreAuthority | CoreSession
             adapter(client, editorHistoryOwnerId).apply(request),
           ),
         closeEditorHistoryOwner: (ownerId, operationId) =>
-          useClient("library.closeEditorHistoryOwner", undefined, async (client, signal) => {
-            try {
-              await client.libraryApply(
-                { operationId, intent: { kind: "close_editor_history_owner" } },
-                { signal, editorHistoryOwnerId: ownerId },
-              );
-            } catch (error) {
-              if (
-                error instanceof CoreModuleResponseError &&
-                error.coreError.code === "idempotency_window_expired"
-              )
-                return "identity_expired" as const;
-              throw error;
-            }
-          }),
+          authority.initialLaunch === null
+            ? Effect.void
+            : useClient("library.closeEditorHistoryOwner", undefined, async (client, signal) => {
+                try {
+                  await client.libraryApply(
+                    { operationId, intent: { kind: "close_editor_history_owner" } },
+                    { signal, editorHistoryOwnerId: ownerId },
+                  );
+                } catch (error) {
+                  if (
+                    error instanceof CoreModuleResponseError &&
+                    error.coreError.code === "idempotency_window_expired"
+                  )
+                    return "identity_expired" as const;
+                  throw error;
+                }
+              }),
         prepareFileBlob: (routingContext, operationId, idempotencySlot, bytes) =>
           useClient(
             "library.prepareFileBlob",

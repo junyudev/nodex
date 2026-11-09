@@ -75,9 +75,18 @@ export const live: Layer.Layer<
         releaseDestruction: () => {},
       };
       senders.set(sender.id, state);
-      state.releaseDestruction = rendererDestruction.subscribe(sender, () => {
+      const releaseDestruction = rendererDestruction.subscribe(sender, () => {
         void runDelivery(releaseSender(sender.id, true));
       });
+      const navigated = (details: Electron.WebContentsDidStartNavigationEventParams) => {
+        if (!details.isMainFrame || details.isSameDocument) return;
+        void runDelivery(releaseSender(sender.id, true));
+      };
+      sender.on("did-start-navigation", navigated);
+      state.releaseDestruction = () => {
+        releaseDestruction();
+        sender.removeListener("did-start-navigation", navigated);
+      };
       return state;
     };
     const unsubscribe = (senderId: number, address: DeliveryAddress): Effect.Effect<void> =>

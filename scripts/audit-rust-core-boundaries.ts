@@ -163,6 +163,22 @@ for (const entry of readdirSync(path.join(repositoryRoot, "src/main/local-store"
 
 const expectedRoutes = new Set([
   "/core/v1/admin/shutdown",
+  "/core/v1/admin/space/listen",
+  "/core/v1/admin/space/name",
+  // A Member renames only their own Member; the writer admits it per command.
+  "/core/v1/admin/space/member-name",
+  "/core/v1/admin/space/invite",
+  "/core/v1/admin/space/devices",
+  // Transport counters are local Owner diagnostics, never a remote Member route.
+  "/core/v1/admin/space/transport-stats",
+  "/core/v1/admin/space/revoke",
+  "/core/v1/admin/space/remove-member",
+  // HTTPS bootstrap is public only to session middleware: enrollment verifies
+  // a one-time invite, and session issuance verifies the Device credential.
+  "/enroll",
+  "/session",
+  // Remote compatibility discovery requires an authenticated Device session.
+  "/core/v1/remote-info",
   // Core issues Agent attribution credentials only to the verified Desktop Host.
   "/core/v1/agent-attributions",
   "/core/v1/events",

@@ -57,7 +57,7 @@ import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLi
 import type { ProjectWorkspaceApplyInput } from "../core-client/types";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { isRetryableCoreTransportError } from "../core-client/document-session-error";
-import { CoreTransportError } from "../core-client/local-http";
+import { CoreRateLimitError, CoreTransportError } from "../core-client/local-http";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
@@ -308,6 +308,7 @@ const isTransientOpenReadFailure = (error: unknown): boolean => {
   let cause = error;
   for (let depth = 0; depth < OPEN_READ_MAX_CAUSE_DEPTH; depth += 1) {
     if (cause instanceof CoreModuleResponseError) return cause.coreError.retryable;
+    if (cause instanceof CoreRateLimitError) return true;
     if (cause instanceof CoreTransportError) return isRetryableCoreTransportError(cause);
     if (Schema.is(AgentRuntimeProcessError)(cause))
       return cause.reason === "closed" || cause.reason === "pressure";

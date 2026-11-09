@@ -2,6 +2,7 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef, StrictMode, useEffect, useRef } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { resolveSubagentAvatarAsset } from "../shared/subagent-avatar";
+import { buildPageDeepLink } from "@/lib/page-deeplink";
 import {
   appendComposerDictationText,
   parseComposerPromptMentionLink,
@@ -904,7 +905,7 @@ test("Page links round-trip as inline atoms with canonical ids and escaped title
   const mention = {
     kind: "page" as const,
     name: "Plan [v2] \\ draft",
-    path: "nodex://pages/page-a",
+    path: buildPageDeepLink({ pageId: "page-a" }),
   };
   const serialized = serializeComposerPromptMentionLink(mention);
   const match = /^\[((?:\\.|[^\]\\\n])+)\]\(([^)\n]+)\)$/u.exec(serialized)!;

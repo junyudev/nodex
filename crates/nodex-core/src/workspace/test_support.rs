@@ -25,7 +25,12 @@ pub(super) struct TestWorkspace {
 
 pub(super) fn context() -> BoundModuleContext {
     BoundModuleContext {
+        actor: nodex_core_contracts::Actor::Service {
+            kind: nodex_core_contracts::ServiceKind::Maintenance,
+        },
+        authorizing_member_id: None,
         editor_history_owner: None,
+        principal: None,
         agent_attribution: None,
         profile_id: ProfileId("profile-1".to_owned()),
         library_id: LibraryId("library-1".to_owned()),
@@ -297,4 +302,18 @@ pub(super) fn activity_rows(
         panic!("Activity window")
     };
     rows.items
+}
+
+pub(super) fn local_member(w: &TestWorkspace) -> String {
+    w.kernel
+        .readers()
+        .read_default(|c| {
+            c.query_row(
+                "SELECT member_id FROM local_profile_members WHERE library_id='library-1'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .map_err(crate::infrastructure::sqlite::StoreError::from)
+        })
+        .unwrap()
 }

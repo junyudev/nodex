@@ -27,12 +27,17 @@ const DOCUMENT: &str = "document:promotion-source-guard";
 
 fn context() -> BoundModuleContext {
     BoundModuleContext {
+        actor: nodex_core_contracts::Actor::Service {
+            kind: nodex_core_contracts::ServiceKind::Maintenance,
+        },
+        authorizing_member_id: None,
         profile_id: ProfileId("profile".into()),
         library_id: LibraryId("library".into()),
         project_id: Some(ProjectId("project".into())),
         connection_id: "promotion-guard-test".into(),
         adapter: AdapterKind::Test,
         editor_history_owner: None,
+        principal: None,
         agent_attribution: None,
     }
 }

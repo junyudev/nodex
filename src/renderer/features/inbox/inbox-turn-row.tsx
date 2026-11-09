@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { REMOTE_AGENT_REASON } from "../../../shared/space-connection";
 import type { InboxItem } from "../../../shared/inbox";
 import { PageTurnChip } from "@/components/workbench/page-turn-chip";
 import { NodexLogoMarkIcon } from "@/components/shared/icons";

@@ -24,6 +24,7 @@ pub struct QueryModule {
     library_id: String,
     readers: StoreReaders,
     page_search: Arc<PageSearchIndexRegistry>,
+    input_byte_limit: usize,
 }
 impl QueryModule {
     pub fn new(
@@ -36,6 +37,7 @@ impl QueryModule {
             library_id: library_id.into(),
             readers: kernel.readers(),
             page_search: Arc::new(PageSearchIndexRegistry::default()),
+            input_byte_limit: MAX_INPUT_BYTES,
         }
     }
 
@@ -45,11 +47,23 @@ impl QueryModule {
         self
     }
 
+    /// Exercise input exhaustion with small fixtures, independently of the elapsed-time limit.
+    #[cfg(test)]
+    pub(crate) fn with_test_input_byte_limit(mut self, maximum: usize) -> Self {
+        assert!(
+            maximum <= MAX_INPUT_BYTES,
+            "Tests may only tighten the input limit"
+        );
+        self.input_byte_limit = maximum;
+        self
+    }
+
     pub fn read(
         &self,
         context: &BoundModuleContext,
         request: ModuleReadRequest<QueryRead>,
     ) -> Result<ModuleReadSnapshot<QueryReadValue>, CoreError> {
+        nodex_core_contracts::remote_admission::authorize(context, "query_read", &request.read)?;
         self.read_inner(context, request).map_err(core_error)
     }
 
@@ -121,7 +135,10 @@ impl QueryModule {
             store_epoch: store_epoch.clone(),
             commit_head,
             page_search: self.page_search.clone(),
-            budget: Mutex::new(Budget::default()),
+            budget: Mutex::new(Budget {
+                maximum_bytes: self.input_byte_limit,
+                ..Budget::default()
+            }),
             #[cfg(test)]
             stats: Mutex::new(QueryStats::default()),
             error: Mutex::new(None),
@@ -190,10 +207,20 @@ impl QueryModule {
     }
 }
 
-#[derive(Default)]
 struct Budget {
     rows: usize,
     bytes: usize,
+    maximum_bytes: usize,
+}
+
+impl Default for Budget {
+    fn default() -> Self {
+        Self {
+            rows: 0,
+            bytes: 0,
+            maximum_bytes: MAX_INPUT_BYTES,
+        }
+    }
 }
 #[cfg(test)]
 #[derive(Clone, Debug, Default)]
@@ -270,7 +297,7 @@ impl Snapshot {
             .map_err(|_| invalid("Query budget lock unavailable"))?;
         budget.rows = budget.rows.saturating_add(rows);
         budget.bytes = budget.bytes.saturating_add(bytes);
-        if budget.rows > MAX_INPUT_ROWS || budget.bytes > MAX_INPUT_BYTES {
+        if budget.rows > MAX_INPUT_ROWS || budget.bytes > budget.maximum_bytes {
             return Err(exhausted(
                 "Public SQL input budget exceeded; reduce the query scope; no partial result returned",
             ));

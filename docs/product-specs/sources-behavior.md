@@ -7,6 +7,11 @@ requests addressed to the person enters the Inbox for a routing decision.
 
 ## GitHub setup
 
+Only the active local Owner can configure, enable or disable a Source through
+the trusted Desktop Host. Agents and remote Members, including remote Owners,
+can inspect its public configuration, positions, health and recorded Triggers
+but cannot change it. Polling leases, ingestion and health recording require
+the Host. The Desktop verifies the account's login and stable GitHub id before saving the
 configuration. Changing account identity requires a separate Source.
 
 On connection, GitHub repositories from Projects' git remotes are watched by
@@ -249,6 +254,8 @@ windows; chat transcript text is not an audit authority.
 ## Privacy and credentials
 
 Source configuration, read positions, observed text and metadata stay in the
+Space's Profile and are readable by its admitted Members. GitHub reads use the
+selected host/account's `gh auth token`.
 Tokens live only in Main memory for the request scope, are redacted in the
 transport, and are never stored in Core, preferences, diagnostics or renderer
 state. Core stores only the CLI credential reference and verified login/id.

@@ -142,6 +142,11 @@ export function makeWorkbenchSceneKey(owner: WorkbenchSceneOwner): WorkbenchScen
   return owner.kind;
 }
 
+/** Relative Scene owners are safe inside one Space's layout. References that
+ * leave that aggregate, such as editor leases, carry the Space coordinate. */
+export const makeSpaceWorkbenchSceneKey = (spaceId: string, owner: WorkbenchSceneOwner): string =>
+  JSON.stringify([spaceId, makeWorkbenchSceneKey(owner)]);
+
 export type WorkbenchSurfaceKind =
   | "conversation"
   | "inbox"

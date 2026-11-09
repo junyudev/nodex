@@ -69,7 +69,8 @@ pub(crate) fn resolve_verified(
         ));
     }
     let delivery_address = delivery_address(request);
-    let atoms=verified.delivery_atoms.iter().filter(|atom|request.document_id.is_none_or(|id|atom.descriptor.required_resources.iter().any(|resource|matches!(resource,ResourceKey::Document{document_id} if document_id==id))))
+    let member = super::actors::requesting_member(connection, request.context)?;
+    let atoms=verified.delivery_atoms.iter().filter(|atom|match &atom.payload {nodex_core_contracts::DeliveryAtomPayload::Database {event,..}=>event.personal_view_changes.iter().all(|change|change.member_id()==member), nodex_core_contracts::DeliveryAtomPayload::OwnedDocument {event:nodex_core_contracts::AuthorizedOwnedDocumentEvent::RecoveryChanged {..},..}=>verified.actor.member_id()==Some(member.as_str()),_=>true}).filter(|atom|request.document_id.is_none_or(|id|atom.descriptor.required_resources.iter().any(|resource|matches!(resource,ResourceKey::Document{document_id} if document_id==id))))
         .map(|atom|AuthorizedDeliveryAtom{descriptor:atom.descriptor.clone(),payload:atom.payload.clone()}).collect::<Vec<_>>();
     let mut document_effects = Vec::new();
     if request.resource_mode != DeliveryResourceMode::MetadataOnly {

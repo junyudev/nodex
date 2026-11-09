@@ -50,7 +50,12 @@ fn profile_home() -> PathBuf {
 
 fn context() -> BoundModuleContext {
     BoundModuleContext {
+        actor: nodex_core_contracts::Actor::Service {
+            kind: nodex_core_contracts::ServiceKind::Maintenance,
+        },
+        authorizing_member_id: None,
         editor_history_owner: None,
+        principal: None,
         agent_attribution: None,
         profile_id: ProfileId(PROFILE_ID.to_owned()),
         library_id: LibraryId(LIBRARY_ID.to_owned()),
@@ -130,10 +135,9 @@ fn seed_identity_and_workspace(kernel: &SqliteStoreKernel) {
                 {
                     let mut insert_session = transaction.prepare(
                         "INSERT INTO project_sessions(\
-                           id, project_id, no_thread_fallback_title, activity_at, pinned, \
-                           pinned_order, archived, archived_at, unread, \
-                           created_at, updated_at\
-                         ) VALUES (?1, ?2, ?3, CAST(round(unixepoch(?5, 'subsec') * 1000) AS INTEGER) + ?4, 0, NULL, 0, NULL, 0, ?5, ?5)",
+                           id, project_id, no_thread_fallback_title, activity_at, \
+                           archived, archived_at, created_at, updated_at\
+                         ) VALUES (?1, ?2, ?3, CAST(round(unixepoch(?5, 'subsec') * 1000) AS INTEGER) + ?4, 0, NULL, ?5, ?5)",
                     )?;
                     let mut link_thread = transaction.prepare(
                         "INSERT INTO project_session_threads(session_id, thread_id, linked_at) \

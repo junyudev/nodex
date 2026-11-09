@@ -12,5 +12,6 @@ const saveWindowSessionLayoutCommand = defineRendererCommand({
 export async function saveWindowSessionLayout(
   input: WindowSessionSaveLayoutInput,
 ): Promise<WindowSessionBootstrap> {
-  return await invokePlainCommand(saveWindowSessionLayoutCommand, input);
+  const spaceId = new URL(window.location.href).searchParams.get("spaceId");
+  return await invokePlainCommand(saveWindowSessionLayoutCommand, { ...input, spaceId });
 }

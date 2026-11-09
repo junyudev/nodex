@@ -143,7 +143,11 @@ hydrate only after the bounded fact window is selected.
   Assignee, Workspace and thread follows stay with the Page. A projectless chat
   keeps the Page in the Library Inbox Database. A plan creates each step's card
   directly in its chosen Project's Database.
+- Dispatch preserves the entry's original Inbox, authoring Member and origin
+  Actor. Relocation and assignment history name the Actor confirming the handoff,
+  including a Coordinator acting on a Member's behalf. The receiving Agent stays
   separate from this authorship. Library Activity still shows the message and the
+  Project chat or plan it went to.
 - The whole message, read as message text, becomes the Page body, and the stream
   bubble renders that body as the Page holds it now, images included; see
   [Message Content Behavior](./message-content-behavior.md). An edit made in the

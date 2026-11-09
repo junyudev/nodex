@@ -31,6 +31,8 @@ export interface CoreProjectWorkspaceInvalidation {
 }
 
 export interface CoreStoreAdministrationInvalidation {
+  /** What changed, such as `rename_space`. */
+  readonly operation: string;
   readonly backupIds: readonly string[];
   readonly readinessChanged: boolean;
 }
@@ -51,6 +53,7 @@ export const projectCoreStoreAdministrationEvent = (
   const payload = atom.payload;
   if (payload.module !== "store_administration") return null;
   return {
+    operation: payload.event.operation,
     backupIds: payload.event.backup_ids,
     readinessChanged: payload.event.readiness_changed,
   };

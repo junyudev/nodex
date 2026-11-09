@@ -1,4 +1,10 @@
-import { QueryClient, QueryClientProvider, type DefaultOptions } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  hashKey,
+  type DefaultOptions,
+} from "@tanstack/react-query";
+import { spaceQueryKey } from "./renderer-space";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { ProjectionInvalidationProvider } from "./projection-invalidation-context";
 import { PageFileQueryCacheSync } from "./page-file-query-cache";
@@ -12,6 +18,7 @@ const ReactQueryDevtools = lazy(async () => {
 
 export const NODEX_QUERY_DEFAULT_OPTIONS: DefaultOptions = {
   queries: {
+    queryKeyHashFn: (key) => hashKey(spaceQueryKey(key)),
     staleTime: 30_000,
     gcTime: 5 * 60_000,
     retry: 1,

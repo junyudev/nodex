@@ -772,15 +772,17 @@ export class AgentRuntimeConversationOwner {
     this.#state = { ...this.#state, ...patch };
     for (const listener of this.#listeners) listener();
   }
-  #restart(): void {
+  #restart(background = false): void {
     if (this.#disposed || this.#leases === 0 || this.#opening) return;
-    const generation = ++this.#generation;
+    let generation = background ? this.#generation : ++this.#generation;
     const transcript = this.#transcriptActive;
     this.#readMode = transcript ? "transcript" : "control";
     this.#historyRequest = null;
-    this.#releaseEvents?.();
-    this.#releaseEvents = null;
-    this.#patch({ connection: "connecting", error: null, historyLoading: false });
+    if (!background) {
+      this.#releaseEvents?.();
+      this.#releaseEvents = null;
+      this.#patch({ connection: "connecting", error: null, historyLoading: false });
+    }
     const pending = (
       transcript ? this.#transport.read(this.#target) : this.#transport.control(this.#target)
     )
@@ -791,6 +793,11 @@ export class AgentRuntimeConversationOwner {
           conversation.sessionId !== this.#target.sessionId
         )
           throw new Error("Conversation binding changed");
+        if (background) {
+          generation = ++this.#generation;
+          this.#releaseEvents?.();
+          this.#releaseEvents = null;
+        }
         this.#contentSource = {
           identity: JSON.stringify([this.#target.sessionId, this.#target.threadId, generation]),
           isCurrent: () =>
@@ -846,6 +853,10 @@ export class AgentRuntimeConversationOwner {
               notification.threadId !== this.#target.threadId
             )
               return;
+            if (notification.type === "reset-required" && notification.reason === "host-refresh") {
+              this.#restart(true);
+              return;
+            }
             if (notification.type === "reset-required") {
               this.#releaseEvents?.();
               this.#releaseEvents = null;
@@ -864,7 +875,7 @@ export class AgentRuntimeConversationOwner {
         this.#releaseEvents = release;
       })
       .catch((cause: unknown) => {
-        if (generation === this.#generation)
+        if (generation === this.#generation && !background)
           this.#patch({ connection: "failed", error: messageOf(cause) });
       })
       .finally(() => {

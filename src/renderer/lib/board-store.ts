@@ -1,3 +1,4 @@
+import { rendererSpaceId } from "./renderer-space";
 import {
   CoreApiError,
   readDatabaseViewGroups,
@@ -1873,7 +1874,7 @@ class BoardStoreRegistry {
   constructor(private readonly dependencies: BoardStoreDependencies) {}
 
   getStore(projectId: string, databaseViewId: string | null = null): BoardProjectStore {
-    const key = JSON.stringify([projectId, databaseViewId]);
+    const key = JSON.stringify([rendererSpaceId(), projectId, databaseViewId]);
     const existing = this.stores.get(key);
     if (existing) {
       this.touch(existing);

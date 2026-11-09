@@ -504,6 +504,10 @@ fn maintenance_context(
     host: ProcessInstance,
 ) -> BoundModuleContext {
     BoundModuleContext {
+        actor: nodex_core_contracts::Actor::Service {
+            kind: nodex_core_contracts::ServiceKind::Maintenance,
+        },
+        authorizing_member_id: None,
         profile_id: nodex_core_contracts::ProfileId(profile_id.to_owned()),
         library_id: nodex_core_contracts::LibraryId(library_id.to_owned()),
         project_id: None,
@@ -514,6 +518,7 @@ fn maintenance_context(
             peer_pid: host.pid,
             peer_started: host.started,
         }),
+        principal: None,
         agent_attribution: None,
     }
 }
@@ -662,7 +667,7 @@ mod tests {
         connection
             .execute_batch(
                 "INSERT INTO profiles VALUES ('profile', '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z');
-            INSERT INTO libraries VALUES ('library', 'profile', '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z');
+            INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES ('library', 'profile', '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z');
             INSERT INTO block_retention_state VALUES (1, 0, 0);
             INSERT INTO editor_history_owners VALUES ('owner', 'library', 'epoch', 42, 'active', 7);
             UPDATE structural_history_payload_backfill SET complete = 0;",
@@ -780,7 +785,7 @@ mod tests {
             .expect("pressure fixture");
         connection.execute_batch("BEGIN;
             INSERT INTO profiles VALUES ('profile', 'now', 'now');
-            INSERT INTO libraries VALUES ('library', 'profile', 'now', 'now');
+            INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES ('library', 'profile', 'now', 'now');
             INSERT INTO block_store_metadata(id, store_epoch, created_at, updated_at) VALUES (1, 'epoch', 'now', 'now');
             INSERT INTO editor_history_owners VALUES ('owner', 'library', 'epoch', 42, 'active', 7);
             WITH RECURSIVE items(n) AS (VALUES(0) UNION ALL SELECT n + 1 FROM items WHERE n < 19999)
@@ -794,6 +799,10 @@ mod tests {
             INSERT INTO editor_history_local_roots SELECT 'owner', 'surface', printf('local-%05d', n) FROM roots;
             COMMIT;").expect("large retention closure");
         let context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             profile_id: ProfileId("profile".into()),
             library_id: LibraryId("library".into()),
             project_id: None,
@@ -804,6 +813,7 @@ mod tests {
                 peer_pid: 42,
                 peer_started: 7,
             }),
+            principal: None,
             agent_attribution: None,
         };
         let close_id = crate::domain::identity::random_uuid_v7().expect("identity");
@@ -951,7 +961,7 @@ mod tests {
         connection
             .execute_batch(
                 "INSERT INTO profiles VALUES ('profile', 'now', 'now');
-            INSERT INTO libraries VALUES ('library', 'profile', 'now', 'now');
+            INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES ('library', 'profile', 'now', 'now');
             INSERT INTO editor_history_owners VALUES ('owner', 'library', 'epoch', 42, 'active', 7);",
             )
             .expect("owner");
@@ -1061,9 +1071,11 @@ mod tests {
             transaction.execute_batch("INSERT INTO profiles(id, created_at, updated_at) VALUES ('profile', 'now', 'now');
                 INSERT INTO libraries(id, profile_id, created_at, updated_at) VALUES ('library', 'profile', 'now', 'now');
                 INSERT INTO block_store_metadata(id, store_epoch, created_at, updated_at) VALUES (1, 'epoch', 'now', 'now');")?;
-            let context = BoundModuleContext { profile_id: ProfileId("profile".into()), library_id: LibraryId("library".into()), project_id: None,
+            let context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service { kind: nodex_core_contracts::ServiceKind::Maintenance },
+            authorizing_member_id: None, profile_id: ProfileId("profile".into()), library_id: LibraryId("library".into()), project_id: None,
                 connection_id: "temporary-connection".into(), adapter: AdapterKind::ElectronHost,
-                editor_history_owner: Some(BoundEditorHistoryOwner { id: "surface".into(), peer_pid: 42, peer_started: 7 }), agent_attribution: None };
+                editor_history_owner: Some(BoundEditorHistoryOwner { id: "surface".into(), peer_pid: 42, peer_started: 7 }), principal: None, agent_attribution: None };
             require_active(transaction, &context, "epoch")?;
             transaction.execute_batch("INSERT INTO editor_history_local_sets VALUES ('surface', 'local', '', 'former-document', 1, 1, 'hash', 0, 1);
                 INSERT INTO editor_history_local_roots VALUES ('surface', 'local', 'retained-block');
@@ -1104,9 +1116,11 @@ mod tests {
                 INSERT INTO libraries(id, profile_id, created_at, updated_at) VALUES ('library', 'profile', 'now', 'now');
                 INSERT INTO block_store_metadata(id, store_epoch, created_at, updated_at) VALUES (1, 'epoch', 'now', 'now');")?;
             for (id, peer_started) in [("crashed-host", 7), ("current-host", 9)] {
-                let context = BoundModuleContext { profile_id: ProfileId("profile".into()), library_id: LibraryId("library".into()), project_id: None,
+                let context = BoundModuleContext {
+                    actor: nodex_core_contracts::Actor::Service { kind: nodex_core_contracts::ServiceKind::Maintenance },
+                    authorizing_member_id: None, profile_id: ProfileId("profile".into()), library_id: LibraryId("library".into()), project_id: None,
                     connection_id: id.into(), adapter: AdapterKind::ElectronHost,
-                    editor_history_owner: Some(BoundEditorHistoryOwner { id: id.into(), peer_pid: 42, peer_started }), agent_attribution: None };
+                    editor_history_owner: Some(BoundEditorHistoryOwner { id: id.into(), peer_pid: 42, peer_started }), principal: None, agent_attribution: None };
                 require_active(transaction, &context, "epoch")?;
             }
             // PID 42 now belongs to the run that started at 9; the run at 7 crashed.
@@ -1131,6 +1145,10 @@ mod tests {
         connection.execute_batch("INSERT INTO profiles(id, created_at, updated_at) VALUES ('profile', 'now', 'now');
             INSERT INTO libraries(id, profile_id, created_at, updated_at) VALUES ('library', 'profile', 'now', 'now');").expect("Library");
         let context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             profile_id: ProfileId("profile".into()),
             library_id: LibraryId("library".into()),
             project_id: None,
@@ -1141,6 +1159,7 @@ mod tests {
                 peer_pid: 42,
                 peer_started: 7,
             }),
+            principal: None,
             agent_attribution: None,
         };
         assert!(!bind_owner(&connection, &context, "epoch", "closed").expect("closed marker"));

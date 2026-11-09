@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
-use nodex_core_contracts::AdapterKind;
+use nodex_core_contracts::{AdapterKind, RemotePrincipal};
 pub(crate) use nodex_platform::local_endpoint::PeerIdentity;
 use nodex_platform::process::ProcessInstance;
 
@@ -13,12 +13,14 @@ const STALE_CONNECTION_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 #[derive(Clone)]
 pub(crate) struct BoundConnection {
+    pub(crate) principal: Option<RemotePrincipal>,
     pub(crate) id: String,
     pub(crate) adapter: AdapterKind,
     pub(crate) peer_process: Option<ProcessInstance>,
 }
 
 struct ConnectionRecord {
+    principal: Option<RemotePrincipal>,
     binding: String,
     adapter: AdapterKind,
     peer: PeerIdentity,
@@ -61,6 +63,7 @@ pub(crate) struct ConnectionActivity {
 }
 
 pub(crate) struct EventSubscriptionLease {
+    binding: String,
     state: Weak<Mutex<RegistryState>>,
     connection_id: String,
     key: EventSubscriptionKey,
@@ -78,6 +81,9 @@ impl Drop for EventSubscriptionLease {
             .records
             .get_mut(&self.connection_id)
             .is_some_and(|record| {
+                if !constant_time_equal(record.binding.as_bytes(), self.binding.as_bytes()) {
+                    return false;
+                }
                 let removed = record.event_subscriptions.remove(&self.key);
                 if removed {
                     record.last_seen = Instant::now();
@@ -96,6 +102,15 @@ pub(crate) struct ConnectionRegistry {
     state: Arc<Mutex<RegistryState>>,
 }
 
+/// Who a connection claims to be when it registers: its binding and adapter, the peer
+/// and build it runs, and the verified principal a remote Member presents.
+pub(crate) struct ConnectionIdentity<'a> {
+    pub(crate) binding: String,
+    pub(crate) adapter: AdapterKind,
+    pub(crate) peer: &'a PeerIdentity,
+    pub(crate) build_id: &'a str,
+    pub(crate) transport_version: u32,
+    pub(crate) principal: Option<RemotePrincipal>,
 impl ConnectionRegistry {
     pub(crate) fn new() -> Self {
         Self {
@@ -109,23 +124,29 @@ impl ConnectionRegistry {
     pub(crate) fn register(
         &self,
         connection_id: &str,
-        binding: String,
-        adapter: AdapterKind,
-        peer: &PeerIdentity,
-        build_id: &str,
-        transport_version: u32,
+        identity: ConnectionIdentity<'_>,
     ) -> Result<(), ConnectionRegistryError> {
+        let ConnectionIdentity {
+            transport_version,
+            principal,
+        } = identity;
         let mut state = self
             .state
             .lock()
             .map_err(|_| unavailable("connection registry failed"))?;
+        if (adapter == AdapterKind::RemoteMember) != principal.is_some() {
+            return Err(unauthorized(
+                "Remote connections require a verified principal",
+            ));
+        }
         let now = Instant::now();
         state.records.retain(|_, record| {
             !record.event_subscriptions.is_empty()
                 || now.duration_since(record.last_seen) <= STALE_CONNECTION_AGE
         });
         if let Some(record) = state.records.get_mut(connection_id) {
-            if record.adapter != adapter
+            if record.principal != principal
+                || record.adapter != adapter
                 || record.peer != *peer
                 || record.build_id != build_id
                 || record.transport_version != transport_version
@@ -136,12 +157,54 @@ impl ConnectionRegistry {
             record.last_seen = now;
             return Ok(());
         }
+        if let Some(p) = &principal {
+            let device_count = state
+                .records
+                .values()
+                .filter(|r| {
+                    r.principal
+                        .as_ref()
+                        .is_some_and(|old| old.device_id == p.device_id)
+                })
+                .count();
+            if device_count >= 4 {
+                let idle = state
+                    .records
+                    .iter()
+                    .filter(|(_, r)| {
+                        r.event_subscriptions.is_empty()
+                            && r.principal
+                                .as_ref()
+                                .is_some_and(|old| old.device_id == p.device_id)
+                    })
+                    .min_by_key(|(_, r)| r.last_seen)
+                    .map(|(id, _)| id.clone());
+                let Some(idle) = idle else {
+                    return Err(exhausted("Device connection capacity is exhausted"));
+                };
+                state.records.remove(&idle);
+            }
+            if state
+                .records
+                .values()
+                .filter(|r| {
+                    r.principal
+                        .as_ref()
+                        .is_some_and(|old| old.member_id == p.member_id)
+                })
+                .count()
+                >= 32
+            {
+                return Err(exhausted("Member connection capacity is exhausted"));
+            }
+        }
         if state.records.len() >= MAX_CONNECTIONS {
             return Err(exhausted("connection registry is full"));
         }
         state.records.insert(
             connection_id.to_owned(),
             ConnectionRecord {
+                principal,
                 binding,
                 adapter,
                 peer: peer.clone(),
@@ -151,6 +214,26 @@ impl ConnectionRegistry {
                 event_subscriptions: HashSet::new(),
             },
         );
+        Ok(())
+    }
+
+    pub(crate) fn withdraw(
+        &self,
+        predicate: impl Fn(&RemotePrincipal) -> bool,
+    ) -> Result<(), ConnectionRegistryError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| unavailable("Connection registry failed"))?;
+        let mut released = 0;
+        state.records.retain(|_, record| {
+            if !record.principal.as_ref().is_some_and(&predicate) {
+                return true;
+            }
+            released += record.event_subscriptions.len();
+            false
+        });
+        state.event_subscriptions = state.event_subscriptions.saturating_sub(released);
         Ok(())
     }
 
@@ -179,6 +262,7 @@ impl ConnectionRegistry {
         let now = Instant::now();
         record.last_seen = now;
         let bound = BoundConnection {
+            principal: record.principal.clone(),
             id: connection_id.to_owned(),
             adapter: record.adapter.clone(),
             peer_process: record.peer.process,
@@ -216,8 +300,10 @@ impl ConnectionRegistry {
         record.event_subscriptions.insert(key.clone());
         let now = Instant::now();
         record.last_seen = now;
+        let binding = record.binding.clone();
         state.event_subscriptions += 1;
         Ok(EventSubscriptionLease {
+            binding,
             state: Arc::downgrade(&self.state),
             connection_id: connection_id.to_owned(),
             key,
@@ -240,11 +326,12 @@ impl ConnectionRegistry {
         state.records.retain(|_, record| {
             !record.event_subscriptions.is_empty()
                 || (now.duration_since(record.last_seen) <= STALE_CONNECTION_AGE
-                    && record
-                        .peer
-                        .process
-                        .as_ref()
-                        .is_some_and(&mut process_is_alive))
+                    && (record.adapter == AdapterKind::RemoteMember
+                        || record
+                            .peer
+                            .process
+                            .as_ref()
+                            .is_some_and(&mut process_is_alive)))
         });
         Ok(ConnectionActivity {
             clients: state.records.len(),
@@ -320,11 +407,13 @@ mod tests {
         registry
             .register(
                 "connection:one",
-                "binding:one".to_owned(),
-                AdapterKind::ElectronHost,
-                &peer(10),
-                "host-build",
-                1,
+                ConnectionIdentity {
+                    binding: "binding:one".to_owned(),
+                    adapter: AdapterKind::ElectronHost,
+                    peer: &peer(10),
+                    build_id: "host-build",
+                    transport_version: 1,
+                    principal: None,
             )
             .expect("first registration");
         assert!(
@@ -354,11 +443,13 @@ mod tests {
             registry
                 .register(
                     "connection:one",
-                    "binding:two".to_owned(),
-                    AdapterKind::NativeCli,
-                    &peer(10),
-                    "cli-build",
-                    1,
+                    ConnectionIdentity {
+                        binding: "binding:two".to_owned(),
+                        adapter: AdapterKind::NativeCli,
+                        peer: &peer(10),
+                        build_id: "cli-build",
+                        transport_version: 1,
+                        principal: None
                 )
                 .is_err()
         );
@@ -370,11 +461,13 @@ mod tests {
         registry
             .register(
                 "connection:one",
-                "binding:one".to_owned(),
-                AdapterKind::ElectronHost,
-                &peer(10),
-                "host-build",
-                1,
+                ConnectionIdentity {
+                    binding: "binding:one".to_owned(),
+                    adapter: AdapterKind::ElectronHost,
+                    peer: &peer(10),
+                    build_id: "host-build",
+                    transport_version: 1,
+                    principal: None,
             )
             .expect("registration");
 
@@ -425,11 +518,13 @@ mod tests {
         registry
             .register(
                 "connection:one",
-                "binding:one".to_owned(),
-                AdapterKind::ElectronHost,
-                &peer(10),
-                "host-build",
-                1,
+                ConnectionIdentity {
+                    binding: "binding:one".to_owned(),
+                    adapter: AdapterKind::ElectronHost,
+                    peer: &peer(10),
+                    build_id: "host-build",
+                    transport_version: 1,
+                    principal: None,
             )
             .expect("registration");
 
@@ -464,11 +559,13 @@ mod tests {
             registry
                 .register(
                     connection_id,
-                    format!("binding:{pid}"),
-                    AdapterKind::ElectronHost,
-                    &peer(pid),
-                    "host-build",
-                    1,
+                    ConnectionIdentity {
+                        binding: format!("binding:{pid}"),
+                        adapter: AdapterKind::ElectronHost,
+                        peer: &peer(pid),
+                        build_id: "host-build",
+                        transport_version: 1,
+                        principal: None,
                 )
                 .expect("registration");
         }
@@ -493,6 +590,135 @@ mod tests {
                 clients: 1,
                 event_subscriptions: 0,
             }
+        );
+    }
+    fn member_principal(device: &str) -> RemotePrincipal {
+        RemotePrincipal {
+            space_id: "space".into(),
+            member_id: "member".into(),
+            device_id: device.into(),
+            session_id: format!("session:{device}"),
+            role: nodex_core_contracts::library::MemberRole::Member,
+        }
+    }
+    #[test]
+    fn remote_connection_capacity_is_device_scoped_and_reclaims_idle_attempts() {
+        let registry = ConnectionRegistry::new();
+        let peer = PeerIdentity::unavailable();
+        let mut leases = Vec::new();
+        for index in 0..4 {
+            let id = format!("connection:{index}");
+            registry
+                .register(
+                    &id,
+                    ConnectionIdentity {
+                        binding: id.clone(),
+                        adapter: AdapterKind::RemoteMember,
+                        peer: &peer,
+                        build_id: "build",
+                        transport_version: 1,
+                        principal: Some(member_principal("device")),
+                )
+                .unwrap();
+            leases.push(
+                registry
+                    .acquire_event_subscription(&id, EventSubscriptionKey::Global)
+                    .unwrap(),
+            );
+        }
+        assert_eq!(
+            registry
+                .register(
+                    "overflow",
+                    ConnectionIdentity {
+                        binding: "binding".into(),
+                        adapter: AdapterKind::RemoteMember,
+                        peer: &peer,
+                        build_id: "build",
+                        transport_version: 1,
+                        principal: Some(member_principal("device"))
+                )
+                .unwrap_err()
+                .kind,
+            ConnectionRegistryErrorKind::ResourceExhausted
+        );
+        registry
+            .register(
+                "other-device",
+                ConnectionIdentity {
+                    binding: "binding".into(),
+                    adapter: AdapterKind::RemoteMember,
+                    peer: &peer,
+                    build_id: "build",
+                    transport_version: 1,
+                    principal: Some(member_principal("other")),
+            )
+            .unwrap();
+        drop(leases);
+        registry
+            .register(
+                "replacement",
+                ConnectionIdentity {
+                    binding: "binding".into(),
+                    adapter: AdapterKind::RemoteMember,
+                    peer: &peer,
+                    build_id: "build",
+                    transport_version: 1,
+                    principal: Some(member_principal("device")),
+            )
+            .unwrap();
+        assert_eq!(registry.activity_with(|_| false).unwrap().clients, 5);
+    }
+    #[test]
+    fn withdrawn_lease_cannot_remove_a_reused_connection_identity() {
+        let registry = ConnectionRegistry::new();
+        let peer = PeerIdentity::unavailable();
+        registry
+            .register(
+                "connection",
+                ConnectionIdentity {
+                    binding: "old".into(),
+                    adapter: AdapterKind::RemoteMember,
+                    peer: &peer,
+                    build_id: "build",
+                    transport_version: 1,
+                    principal: Some(member_principal("old")),
+            )
+            .unwrap();
+        let old = registry
+            .acquire_event_subscription("connection", EventSubscriptionKey::Global)
+            .unwrap();
+        registry.withdraw(|p| p.device_id == "old").unwrap();
+        registry
+            .register(
+                "connection",
+                ConnectionIdentity {
+                    binding: "new".into(),
+                    adapter: AdapterKind::RemoteMember,
+                    peer: &peer,
+                    build_id: "build",
+                    transport_version: 1,
+                    principal: Some(member_principal("new")),
+            )
+            .unwrap();
+        let new = registry
+            .acquire_event_subscription("connection", EventSubscriptionKey::Global)
+            .unwrap();
+        drop(old);
+        assert_eq!(
+            registry
+                .activity_with(|_| false)
+                .unwrap()
+                .event_subscriptions,
+            1
+        );
+        drop(new);
+        assert_eq!(
+            registry
+                .activity_with(|_| false)
+                .unwrap()
+                .event_subscriptions,
+            0
         );
     }
 }

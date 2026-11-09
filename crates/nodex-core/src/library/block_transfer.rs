@@ -77,7 +77,6 @@ use super::page_copy::{
 const MODULE_NAME: &str = "library";
 const MAX_ID_LENGTH: usize = 512;
 const MAX_TRANSFER_ROOTS: usize = 10_000;
-const MAX_ACTOR_BYTES: usize = 64 * 1024;
 const TRANSFER_CLIENT_SESSION_ID: &str = "rust:block-transfer";
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -757,7 +756,6 @@ pub(super) fn persist_agent_page_document_batch_checkpoints(
     connection: &Connection,
     context: &BoundModuleContext,
     operation_id: &str,
-    actor: &Value,
     batch: &AppliedAgentPageDocumentBatch,
     change_log_seq: i64,
     now: &str,
@@ -766,7 +764,6 @@ pub(super) fn persist_agent_page_document_batch_checkpoints(
         connection,
         context,
         operation_id,
-        actor,
         &batch.commits,
         change_log_seq,
         now,
@@ -863,6 +860,12 @@ pub(super) fn requires_preparation(
     intent: &LibraryBlockTransferLogicalIntent,
 ) -> Result<bool, StoreError> {
     let request_hash = semantic_request_hash(context, store_epoch, intent)?;
+    crate::infrastructure::member_admission::admit_operation(
+        connection,
+        context,
+        MODULE_NAME,
+        operation_id,
+    )?;
     let Some(stored) = read_module_receipt(connection, MODULE_NAME, operation_id)? else {
         return Ok(true);
     };
@@ -1271,6 +1274,10 @@ fn apply_with_authority(
     attached_scope: Option<&DurableMutationScope<'_>>,
     prepared_transfer: PreparedBlockTransfer,
 ) -> Result<LibraryApplyOutcome, StoreError> {
+    let mut intent = intent.clone();
+    intent.actor =
+        serde_json::to_value(&context.actor).map_err(|_| internal("Actor cannot be encoded"))?;
+    let intent = &intent;
     validate_intent(library_id, intent)?;
     let current_epoch = crate::document::read_store_epoch(connection)?;
     if current_epoch != store_epoch {
@@ -1528,6 +1535,7 @@ fn apply_with_authority(
                     if is_same_storage_relocation {
                         persist_relocation_ledger(
                             connection,
+                            &context.actor,
                             operation_id,
                             routing_project_id(context),
                             store_epoch,
@@ -1556,7 +1564,6 @@ fn apply_with_authority(
                         connection,
                         context,
                         operation_id,
-                        &intent.actor,
                         &document_commits,
                         event_sequence,
                         &now,
@@ -3034,7 +3041,6 @@ fn apply_page_ownership_transfer(
                     connection,
                     context,
                     operation_id,
-                    &intent.actor,
                     &document_commits,
                     event_sequence,
                     &now,
@@ -3248,7 +3254,6 @@ fn apply_page_ownership_copy(
                 connection,
                 context,
                 operation_id,
-                &intent.actor,
                 &checkpoint_commits,
                 event_sequence,
                 now,
@@ -4523,7 +4528,6 @@ fn apply_page_parent_transfer(
                         connection,
                         context,
                         operation_id,
-                        &intent.actor,
                         &document_commits,
                         event_sequence,
                         &now,
@@ -5638,11 +5642,6 @@ fn validate_intent(
     library_id: &str,
     intent: &LibraryBlockTransferLogicalIntent,
 ) -> Result<(), StoreError> {
-    let actor_bytes = serde_json::to_vec(&intent.actor)
-        .map_err(|_| invalid("Block transfer actor must be portable JSON"))?;
-    if !intent.actor.is_object() || actor_bytes.len() > MAX_ACTOR_BYTES {
-        return Err(invalid("Block transfer actor must be a bounded object"));
-    }
     if intent.root_block_ids.is_empty() || intent.root_block_ids.len() > MAX_TRANSFER_ROOTS {
         return Err(invalid(
             "Block transfer root selection is outside its bound",
@@ -5954,6 +5953,7 @@ pub(super) fn verify_agent_page_move_final_locations(
 #[allow(clippy::too_many_arguments)]
 fn persist_relocation_ledger(
     connection: &Connection,
+    actor: &nodex_core_contracts::Actor,
     operation_id: &str,
     project_id: Option<&str>,
     store_epoch: &str,
@@ -5988,8 +5988,11 @@ fn persist_relocation_ledger(
         } => (parent_block_id.as_deref(), before_block_id.as_deref()),
         _ => (None, None),
     };
-    let request_json =
-        serde_json::to_string(intent).map_err(|_| internal("Relocation request JSON"))?;
+    let mut request =
+        serde_json::to_value(intent).map_err(|_| internal("Relocation request JSON"))?;
+    request["actor"] =
+        serde_json::to_value(actor).map_err(|_| internal("Relocation actor JSON"))?;
+    let request_json = request.to_string();
     let roots_json = serde_json::to_string(&intent.root_block_ids)
         .map_err(|_| internal("Relocation roots JSON"))?;
     let expected_revisions_json = serde_json::to_string(&prepared.expected_location_revisions)
@@ -6119,7 +6122,6 @@ fn persist_operation_checkpoints(
     connection: &Connection,
     context: &BoundModuleContext,
     operation_id: &str,
-    actor: &Value,
     commits: &[PersistedTransferCommit],
     change_log_seq: i64,
     now: &str,
@@ -6138,7 +6140,6 @@ fn persist_operation_checkpoints(
                 revision_kind: "operation",
                 source_mutation_id: Some(operation_id),
                 source_change_seq: Some(change_log_seq),
-                actor: Some(actor),
                 context,
                 now,
             },
@@ -7515,7 +7516,12 @@ mod tests {
             promotion_policy: nodex_core_contracts::library::LibraryPagePromotionPolicy::Literal,
         };
         let mut first = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: nodex_core_contracts::ProfileId("profile-1".to_owned()),
             library_id: nodex_core_contracts::LibraryId("library-1".to_owned()),

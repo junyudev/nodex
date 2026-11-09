@@ -60,6 +60,7 @@ import { NewChatIcon, ThreadIcon } from "@/components/shared/icons";
 import { toast } from "@/components/ui/toast";
 import { setPendingWorktreePinnedBeforeThread } from "@/lib/pending-worktree-runtime";
 import { workspaceSidebarCommands } from "@/lib/workspace-catalog-commands";
+import { useCurrentSpace } from "@/features/spaces/spaces-runtime";
 import {
   CODEX_SIDEBAR_PROJECTLESS_THREAD_MAX_ITEMS,
   CODEX_SIDEBAR_PROJECT_GROUP_MAX_GROUPS,
@@ -185,6 +186,12 @@ function SidebarSessionCollectionFallback({
 }
 
 export type { SidebarResizePhase, SidebarResizeSurface } from "./workbench-sidebar-frame";
+
+/** A team Space names itself, so the person always knows whose work they are looking at. */
+function useHomeTitle(): string {
+  const space = useCurrentSpace();
+  return space.kind === "team" ? space.name : "Nodex";
+}
 
 function reportSidebarThreadReorderError(): void {
   toast.danger("Couldn’t reorder task");
@@ -1379,6 +1386,7 @@ function SidebarThreadOrganizerSections({
       if (!item) return null;
       const session = resolveSessionForItem(item);
       const sessionId = item.sessionId ?? session?.id ?? null;
+      const manageable = session?.canManage ?? true;
       const hoverCardProjectLabel =
         options.hoverCardProjectLabel ??
         (item.projectId ? (projectLabelById.get(item.projectId) ?? null) : null);
@@ -1934,6 +1942,7 @@ export function ProjectSessionSidebar({
   loadMoreProjectsFailed,
   onLoadMoreProjects,
 }: ProjectSessionSidebarProps) {
+  const homeTitle = useHomeTitle();
   const queryClient = useQueryClient();
   const sectionCatalog = useSidebarSectionsCatalog();
   const knownSidebarSessions = useMemo(() => {
@@ -2110,7 +2119,7 @@ export function ProjectSessionSidebar({
           aria-label="Home"
         >
           <WorkbenchSidebarHeader
-            title="Nodex"
+            title={homeTitle}
             searchShortcutLabel={resolveCodexPageSearchShortcutLabel()}
             scrolledContentUnderHeader={sidebarScrollChrome.scrolledContentUnderHeader}
             onSearch={onOpenCommandPalette}

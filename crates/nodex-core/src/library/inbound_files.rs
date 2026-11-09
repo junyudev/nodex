@@ -48,6 +48,7 @@ pub(crate) fn publish(
             &super::files::FileWriteContext {
                 connection,
                 library_id: &context.library_id.0,
+                actor_json: &crate::infrastructure::actors::encode(&context.actor)?,
                 turn_id: None,
                 operation_id: operation,
                 now,

@@ -11,6 +11,9 @@ mod lifecycle_summary;
 mod logging;
 mod metrics;
 pub mod private_filesystem;
+mod remote;
+/// Authenticated request windows, one source for the listener and its tests.
+pub use remote::{DEVICE_REQUESTS_PER_MINUTE, MEMBER_REQUESTS_PER_MINUTE};
 mod request_execution;
 mod runtime_files;
 mod transport_bounds;
@@ -53,7 +56,7 @@ use nodex_core::infrastructure::event_log::{
 };
 use nodex_core::infrastructure::metrics::DurationMetricSnapshot;
 use nodex_core::infrastructure::migration::StorePreparationEvent;
-use nodex_core::infrastructure::module_receipts::read_module_receipt;
+use nodex_core::infrastructure::module_receipts::{module_storage_name, read_module_receipt};
 use nodex_core::infrastructure::sqlite::{
     StoreError, StoreErrorCode, transaction_duration_metrics, with_immediate_transaction,
 };
@@ -61,7 +64,7 @@ use nodex_core::infrastructure::store::{
     SqliteStoreKernel, persist_clean_shutdown_validation_receipt,
 };
 use nodex_core::infrastructure::writer::StoreRuntimePhase;
-use nodex_core::library::LibraryModule;
+use nodex_core::library::{LibraryMembership, LibraryModule};
 use nodex_core::workspace::ProjectWorkspaceModule;
 use nodex_core_contracts::administration::StoreAdministrationIntent;
 use nodex_core_contracts::document::{
@@ -208,6 +211,9 @@ fn duration_millis(duration: std::time::Duration) -> u64 {
 }
 
 struct ServerState {
+    home: PathBuf,
+    membership: LibraryMembership,
+    remote: remote::RemoteState,
     auth_header: String,
     agent_attribution: agent_attribution::AgentAttributionKey,
     owner_user: UserIdentity,
@@ -472,6 +478,16 @@ async fn authenticate(
     request: Request,
     next: Next,
 ) -> Response {
+    if request.extensions().get::<remote::RemotePeer>().is_some() {
+        let mut response = remote::authenticate(&state, request, next).await;
+        if response.status() == StatusCode::TOO_MANY_REQUESTS {
+            response.headers_mut().insert(
+                axum::http::header::CONNECTION,
+                "close".parse().expect("static header"),
+            );
+        }
+        return response;
+    }
     let supplied = request
         .headers()
         .get(AUTHORIZATION)
@@ -584,13 +600,34 @@ async fn bind_connection(
     if state.lifecycle.is_draining() {
         return ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "Core is draining").into_response();
     }
-    let bound = match bind_authenticated_connection(&state, request.headers(), &peer) {
+    let mut bound = match bind_authenticated_connection(&state, request.headers(), &peer) {
         Ok(bound) => bound,
         Err(error) => return error.into_response(),
     };
+    let current_principal = request
+        .extensions()
+        .get::<nodex_core_contracts::RemotePrincipal>();
+    let same_device = match (bound.principal.as_ref(), current_principal) {
+        (Some(a), Some(b)) => {
+            a.space_id == b.space_id
+                && a.member_id == b.member_id
+                && a.device_id == b.device_id
+                && a.role == b.role
+        }
+        (None, None) => true,
+        _ => false,
+    };
+    if !same_device {
+        return ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "Connection belongs to another session",
+        )
+        .into_response();
+    }
     if !state.lifecycle.record_activity() {
         return ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "Core is draining").into_response();
     }
+    bound.principal = current_principal.cloned();
     let connection_id = log_identity(&bound.id);
     tracing::Span::current().record("connectionId", connection_id.as_str());
     tracing::Span::current().record("adapter", adapter_name(&bound.adapter));
@@ -605,6 +642,7 @@ fn adapter_name(adapter: &AdapterKind) -> &'static str {
         AdapterKind::NativeCli => "native_cli",
         AdapterKind::Agent => "agent",
         AdapterKind::Test => "test",
+        AdapterKind::RemoteMember => "remote_member",
     }
 }
 
@@ -782,6 +820,7 @@ fn usize_to_u64(value: usize) -> u64 {
 async fn handshake(
     State(state): State<Arc<ServerState>>,
     ConnectInfo(peer): ConnectInfo<PeerIdentity>,
+    remote_principal: Option<Extension<nodex_core_contracts::RemotePrincipal>>,
     Json(request): Json<HandshakeRequest>,
 ) -> Result<Json<HandshakeResponse>, ApiError> {
     if state.lifecycle.is_draining() {
@@ -816,7 +855,17 @@ async fn handshake(
             "client or connection identity is invalid",
         ));
     }
+    let principal = remote_principal.map(|Extension(p)| p);
+    if (principal.is_some() && request.client.kind != ClientKind::RemoteMember)
+        || (principal.is_none() && request.client.kind == ClientKind::RemoteMember)
+    {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Remote clients cannot claim local authority",
+        ));
+    }
     let adapter = match request.client.kind {
+        ClientKind::RemoteMember => AdapterKind::RemoteMember,
         ClientKind::ElectronHost => AdapterKind::ElectronHost,
         ClientKind::NativeCli => AdapterKind::NativeCli,
         ClientKind::Test => AdapterKind::Test,
@@ -826,17 +875,26 @@ async fn handshake(
         &request.connection_id,
         &adapter,
         &peer,
-        &request.client.build_id,
+        &format!(
+            "{}:{}",
+            request.client.build_id,
+            principal
+                .as_ref()
+                .map(|p| p.session_id.as_str())
+                .unwrap_or_default()
+        ),
     );
     state
         .connections
         .register(
             &request.connection_id,
-            connection_binding.clone(),
-            adapter.clone(),
-            &peer,
-            &request.client.build_id,
-            TRANSPORT_PROTOCOL_MAX,
+            connections::ConnectionIdentity {
+                binding: connection_binding.clone(),
+                adapter: adapter.clone(),
+                peer: &peer,
+                build_id: &request.client.build_id,
+                transport_version: TRANSPORT_PROTOCOL_MAX,
+                principal,
         )
         .map_err(connection_registry_error)?;
     let connection_id = log_identity(&request.connection_id);
@@ -1162,18 +1220,6 @@ async fn cancel_request(
     })
 }
 
-fn module_storage_name(module: ModuleName) -> &'static str {
-    match module {
-        ModuleName::Library => "library",
-        ModuleName::Database => "database",
-        ModuleName::OwnedDocument => "owned_document",
-        ModuleName::ProjectWorkspace => "project_workspace",
-        ModuleName::Automation => "automation",
-        ModuleName::StoreAdministration => "store_administration",
-        ModuleName::Query => "query",
-    }
-}
-
 /// Apply responses carry the command's addressed commit delivery. The Host also
 /// receives multiplexed live/durable deliveries; renderer responses retain the
 /// initiating presentation coordinates rather than that combined broker view.
@@ -1298,6 +1344,21 @@ async fn resolve_local_mutation(
     Json(request): Json<LocalMutationResolveRequest>,
 ) -> Result<Json<LocalMutationResolveResponse>, ApiError> {
     let context = module_context(&state, &headers, &bound).map_err(api_core_error)?;
+    if let Some(principal) = &context.principal {
+        let admitted = state
+            .membership
+            .owns_operation(principal, request.module, &request.operation_id)
+            .map_err(|_| {
+                ApiError::new(StatusCode::UNAUTHORIZED, "Receipt authority unavailable")
+            })?;
+        if !admitted {
+            return Err(ApiError::new(
+                StatusCode::FORBIDDEN,
+                "Receipt belongs to another principal",
+            ));
+        }
+    }
+
     if request.operation_id.is_empty()
         || request.operation_id.len() > 512
         || request.operation_id.trim() != request.operation_id
@@ -2624,10 +2685,13 @@ async fn projection_live_events(
     headers: HeaderMap,
     Query(query): Query<ProjectionLiveQuery>,
 ) -> Result<Sse<impl futures_core::Stream<Item = Result<Event, Infallible>>>, ApiError> {
-    if bound.adapter != AdapterKind::ElectronHost {
+    if !matches!(
+        bound.adapter,
+        AdapterKind::ElectronHost | AdapterKind::RemoteMember
+    ) {
         return Err(ApiError::new(
             StatusCode::UNAUTHORIZED,
-            "Projection live broker requires the Electron Host Adapter",
+            "Projection live broker requires an authenticated Library client",
         ));
     }
     if optional_header(&headers, PROJECT_HEADER, "Project")
@@ -3116,6 +3180,23 @@ fn replacement_handoff(
 
 fn router(state: Arc<ServerState>) -> Router {
     let infrastructure_routes = Router::new()
+        .route("/enroll", post(remote::enroll))
+        .route("/session", post(remote::session))
+        .route("/core/v1/admin/space/listen", post(remote::start_listener))
+        .route("/core/v1/admin/space/invite", post(remote::invite))
+        .route("/core/v1/admin/space/name", post(remote::rename_space))
+        .route(
+            "/core/v1/admin/space/member-name",
+            post(remote::rename_member),
+        )
+        .route("/core/v1/admin/space/devices", get(remote::devices))
+        .route(
+            "/core/v1/admin/space/transport-stats",
+            get(remote::transport_stats),
+        )
+        .route("/core/v1/admin/space/revoke", post(remote::revoke))
+        .route("/core/v1/admin/space/remove-member", post(remote::remove))
+        .route("/core/v1/remote-info", get(remote_info))
         .route("/core/v1/health", get(health))
         .route("/core/v1/handshake", post(handshake))
         .route("/core/v1/admin/shutdown", post(shutdown));
@@ -3205,19 +3286,29 @@ fn module_context(
     headers: &HeaderMap,
     bound: &BoundConnection,
 ) -> Result<BoundModuleContext, CoreError> {
+        .as_ref()
+        .is_some_and(|p| p.space_id != state.library_id || !state.membership.active(p))
+    {
+        return Err(unauthorized("Remote membership has been revoked"));
+    }
+    let attribution = agent_attribution(state, headers)?;
+    let actor = state
+        .membership
+        .map_err(|error| unauthorized(&error.message))?;
     Ok(BoundModuleContext {
+        actor,
+        authorizing_member_id: None,
         profile_id: ProfileId(state.profile_id.clone()),
         library_id: LibraryId(state.library_id.clone()),
         project_id: optional_header(headers, PROJECT_HEADER, "Project")?.map(ProjectId),
         connection_id: bound.id.clone(),
         adapter: bound.adapter.clone(),
         editor_history_owner: editor_history_owner(headers, bound)?,
-        agent_attribution: agent_attribution(state, headers)?,
+        agent_attribution: attribution,
     })
 }
 
-/// A credential this Core issued names the Agent behind a request. Anything else
-/// attributes nothing rather than failing the content change it accompanies.
+/// An invalid presented credential refuses admission; identity never degrades.
 fn agent_attribution(
     state: &ServerState,
     headers: &HeaderMap,
@@ -3231,10 +3322,9 @@ fn agent_attribution(
         return Ok(None);
     };
     let attribution = state.agent_attribution.verify(&credential);
-    if attribution.is_none() {
-        tracing::warn!("Ignored an Agent attribution credential this Core did not issue");
-    }
-    Ok(attribution)
+    attribution
+        .map(Some)
+        .ok_or_else(|| unauthorized("Agent attribution credential is invalid or expired"))
 }
 
 /// The desktop Host has verified an Agent execution of this Session and asks Core
@@ -3284,10 +3374,15 @@ async fn issue_agent_attribution(
             "An archived Session cannot be attributed",
         ));
     }
+            &request.session_id,
+            request.run_id.as_deref(),
+            request.backend,
     Ok(Json(nodex_core_protocol::AgentAttributionResponse {
-        credential: state
-            .agent_attribution
-            .issue(&request.session_id, request.backend),
+        credential: state.agent_attribution.issue(
+            &request.session_id,
+            request.backend,
+            request.run_id.clone(),
+        ),
     }))
 }
 
@@ -3527,6 +3622,7 @@ fn connection_binding(
         AdapterKind::ElectronHost => "electron_host",
         AdapterKind::NativeCli => "native_cli",
         AdapterKind::Test => "test",
+        AdapterKind::RemoteMember => "remote_member",
         AdapterKind::LoopbackHttp => "loopback_http",
         AdapterKind::Agent => "agent",
     };
@@ -3613,7 +3709,7 @@ fn valid_binding(value: &str) -> bool {
 
 fn api_core_error(error: CoreError) -> ApiError {
     let status = match error.code {
-        CoreErrorCode::Unauthorized => StatusCode::UNAUTHORIZED,
+        CoreErrorCode::Unauthorized => StatusCode::FORBIDDEN,
         CoreErrorCode::NotFound => StatusCode::NOT_FOUND,
         CoreErrorCode::InvalidInput => StatusCode::BAD_REQUEST,
         CoreErrorCode::ResourceExhausted | CoreErrorCode::Overloaded => {
@@ -3633,7 +3729,11 @@ fn connection_registry_error(error: ConnectionRegistryError) -> ApiError {
         ConnectionRegistryErrorKind::ResourceExhausted => StatusCode::TOO_MANY_REQUESTS,
         ConnectionRegistryErrorKind::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
     };
-    ApiError::new(status, error.message)
+    let error = ApiError::new(status, error.message);
+    if status == StatusCode::UNAUTHORIZED {
+        return error.with_recovery(CoreErrorRecovery::RenewRemoteSession);
+    }
+    error
 }
 
 fn realtime_event_document_id(event: &DocumentRealtimeEvent) -> &str {
@@ -3838,6 +3938,12 @@ fn ensure_local_identity(
                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
                 [&library_id, &proposed_profile_id],
             )?;
+            // Others recognize the local Owner by the name its OS account gives its person.
+            transaction.execute(
+                "UPDATE members SET display_name=?2 WHERE id=(SELECT member_id \
+                 FROM local_profile_members WHERE library_id=?1)",
+                [&library_id, &nodex_core::library::default_owner_name()],
+            )?;
             Ok(LocalIdentity {
                 profile_id: proposed_profile_id,
                 library_id,
@@ -3859,6 +3965,15 @@ pub async fn run_with_selection(
     home: PathBuf,
     selection_policy: CoreSelectionPolicy,
     launcher: LauncherKind,
+) -> Result<(), Box<dyn std::error::Error>> {
+    run_with_options(home, selection_policy, launcher, None).await
+}
+
+pub async fn run_with_options(
+    home: PathBuf,
+    selection_policy: CoreSelectionPolicy,
+    launcher: LauncherKind,
+    listen_request: Option<nodex_core_contracts::team::ListenRequest>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let idle_timeout = configured_idle_timeout()?;
     let manifest = core_compatibility_manifest();
@@ -3887,6 +4002,10 @@ pub async fn run_with_selection(
             match paths.wait_for_running_core(&lock, &candidate)? {
                 ExistingCore::LockAcquired => {}
                 ExistingCore::Reuse(descriptor, reason) => {
+                    if let Some(request) = listen_request {
+                        nodex_core_protocol::client::CoreClient::connect(&home, "space-listener")?
+                            .space_listen(request)?;
+                    }
                     println!(
                         "{}",
                         serde_json::to_string(&CoreSelectionResult {
@@ -3903,6 +4022,13 @@ pub async fn run_with_selection(
                     match paths.wait_for_handoff_completion(&lock, &descriptor, &candidate)? {
                         ExistingCore::LockAcquired => {}
                         ExistingCore::Reuse(descriptor, reason) => {
+                            if let Some(request) = listen_request {
+                                nodex_core_protocol::client::CoreClient::connect(
+                                    &home,
+                                    "space-listener",
+                                )?
+                                .space_listen(request)?;
+                            }
                             println!(
                                 "{}",
                                 serde_json::to_string(&CoreSelectionResult {
@@ -4104,6 +4230,9 @@ pub async fn run_with_selection(
         drain_lifecycle_summary.mark_draining(reason);
     });
     let state = Arc::new(ServerState {
+        home: home.clone(),
+        membership: LibraryMembership::new(&store, identity.library_id.clone()),
+        remote: remote::RemoteState::default(),
         auth_header: format!("Bearer {auth}"),
         agent_attribution: agent_attribution::AgentAttributionKey::generate()
             .map_err(|_| "Agent attribution key is unavailable")?,
@@ -4133,6 +4262,11 @@ pub async fn run_with_selection(
         order_maintenance_wake: ViewOrderMaintenanceWake::default(),
         logging: logging_handle,
     });
+    if let Some(request) = listen_request {
+        remote::listen(Arc::clone(&state), request)
+            .await
+            .map_err(|_| "Remote listener could not start")?;
+    }
     let idle_task = idle_timeout.map(|timeout| {
         let idle_state = Arc::clone(&state);
         let idle_lifecycle = lifecycle.clone();
@@ -4261,6 +4395,15 @@ pub async fn run_with_selection(
 }
 
 fn server_is_idle(state: &ServerState) -> bool {
+    if state
+        .remote
+        .info
+        .lock()
+        .map(|info| info.is_some())
+        .unwrap_or(true)
+    {
+        return false;
+    }
     if state.lifecycle.is_draining() {
         return false;
     }
@@ -4331,4 +4474,32 @@ fn unix_time_millis() -> Result<i64, std::time::SystemTimeError> {
 
 fn store_replacement_hook_error(error: CoreError) -> StoreError {
     StoreError::new(StoreErrorCode::Internal, error.message, error.retryable)
+}
+
+async fn remote_info(
+    State(state): State<Arc<ServerState>>,
+) -> Result<Json<nodex_core_protocol::RemoteCoreInfo>, ApiError> {
+    let d = descriptor_snapshot(&state);
+    let library_id = state.library_id.clone();
+    let space_name = tokio::task::spawn_blocking(move || state.membership.name())
+        .await
+        .map_err(|_| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Space identity unavailable",
+            )
+        })?
+        .map_err(|_| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Space identity unavailable",
+            )
+        })?;
+    Ok(Json(nodex_core_protocol::RemoteCoreInfo {
+        manifest: d.manifest.clone(),
+        actual_store_format: d.actual_store_format.clone(),
+        generation: RuntimeGenerationIdentity::from(&d),
+        library_id,
+        space_name,
+    }))
 }

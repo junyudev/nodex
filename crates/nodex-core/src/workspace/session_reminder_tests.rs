@@ -1,5 +1,7 @@
 use super::ProjectWorkspaceModule;
-use super::test_support::{apply, context, create_session_thread, read, request, seeded_workspace};
+use super::test_support::{
+    apply, context, create_session_thread, local_member, read, request, seeded_workspace,
+};
 use nodex_core_contracts::workspace::{
     ProjectSessionIntent, ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
 };
@@ -125,6 +127,7 @@ fn only_first_due_exact_value_claim_wins_even_after_reopening_core() {
                     ProjectWorkspaceIntent::MutateSession {
                         session_id: "chat".into(),
                         intent: ProjectSessionIntent::ConsumeReminder {
+                            member_id: local_member(&w),
                             remind_at: value.into(),
                             deliver: false,
                         },
@@ -272,6 +275,7 @@ fn claimed_delivery_survives_restart_and_settles_once_or_is_cancelled() {
         "claim-delivery",
         "chat",
         ProjectSessionIntent::ConsumeReminder {
+            member_id: local_member(&w),
             remind_at: "2020-01-01T00:00:00.000Z".into(),
             deliver: true,
         },
@@ -296,6 +300,7 @@ fn claimed_delivery_survives_restart_and_settles_once_or_is_cancelled() {
                         session_id: "chat".into(),
                         intent: ProjectSessionIntent::CompleteReminderDelivery {
                             delivery_id: delivery_id.into(),
+                            unread: false,
                         },
                     },
                 ),
@@ -313,6 +318,7 @@ fn claimed_delivery_survives_restart_and_settles_once_or_is_cancelled() {
         "claim-again",
         "chat",
         ProjectSessionIntent::ConsumeReminder {
+            member_id: local_member(&w),
             remind_at: "2020-01-01T00:00:00.000Z".into(),
             deliver: true,
         },
@@ -329,6 +335,7 @@ fn claimed_delivery_survives_restart_and_settles_once_or_is_cancelled() {
         "claim-replacement",
         "chat",
         ProjectSessionIntent::ConsumeReminder {
+            member_id: local_member(&w),
             remind_at: "2020-01-02T00:00:00.000Z".into(),
             deliver: true,
         },
@@ -443,6 +450,7 @@ fn person_messages_and_due_reminders_bring_a_chat_back_but_agent_activity_does_n
         "claim",
         "chat",
         ProjectSessionIntent::ConsumeReminder {
+            member_id: local_member(&w),
             remind_at: "2020-01-02T00:00:00.000Z".into(),
             deliver: false,
         },

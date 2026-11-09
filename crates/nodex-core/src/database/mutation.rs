@@ -148,6 +148,8 @@ pub(crate) fn apply_in_transaction(
 ) -> Result<DatabaseApplyOutcome, StoreError> {
     validate_request(request)?;
     assert_identity(connection, profile_id, library_id)?;
+    let context = crate::infrastructure::actors::bind(connection, context)?;
+    let context = &context;
     let authority = mutation_route(context);
     let store_epoch = read_store_epoch(connection)?;
     if request.store_epoch.0 != store_epoch {
@@ -188,7 +190,7 @@ pub(crate) fn apply_in_transaction(
             for (operation_index, intent) in request.intent.iter().enumerate() {
                 apply_intent(
                     scope.connection(),
-                    context.profile_id.0.as_str(),
+                    &crate::infrastructure::actors::requesting_member(connection, context)?,
                     library_id,
                     &authority,
                     intent,
@@ -293,7 +295,7 @@ fn apply_collaborator(
     for (operation_index, intent) in intents.iter().enumerate() {
         apply_intent(
             connection,
-            context.profile_id.0.as_str(),
+            &crate::infrastructure::actors::requesting_member(connection, context)?,
             library_id,
             &authority,
             intent,
@@ -788,7 +790,7 @@ fn page_detail_dependency_ids(intents: &[DatabaseIntent]) -> (BTreeSet<String>, 
 #[allow(clippy::too_many_arguments)]
 fn apply_intent(
     connection: &Connection,
-    profile_id: &str,
+    member_id: &str,
     library_id: &str,
     authority: &DatabaseMutationRoute,
     intent: &DatabaseIntent,
@@ -803,7 +805,7 @@ fn apply_intent(
             script,
         } => configuration::apply(
             connection,
-            profile_id,
+            member_id,
             library_id,
             authority,
             data_source_id,
@@ -1228,7 +1230,7 @@ fn apply_intent(
         ),
         DatabaseIntent::ReverseDataEdit { recipe } => data_history::reverse(
             connection,
-            profile_id,
+            member_id,
             library_id,
             authority,
             recipe,
@@ -1243,7 +1245,7 @@ fn apply_intent(
             presentation_override,
         } => put_view_personal_preferences(
             connection,
-            profile_id,
+            member_id,
             library_id,
             project_id,
             authority.project_id.as_deref(),
@@ -1260,7 +1262,7 @@ fn apply_intent(
             collapsed,
         } => set_view_occurrence_disclosure(
             connection,
-            profile_id,
+            member_id,
             library_id,
             authority.project_id.as_deref(),
             view_id,
@@ -6100,7 +6102,7 @@ fn rules_override_is_empty(rules: &DatabaseViewRulesOverrideInput) -> bool {
 #[allow(clippy::too_many_arguments)]
 fn put_view_personal_preferences(
     connection: &Connection,
-    profile_id: &str,
+    member_id: &str,
     library_id: &str,
     actor_project_id: Option<&str>,
     authority_project_id: Option<&str>,
@@ -6128,8 +6130,8 @@ fn put_view_personal_preferences(
         .query_row(
             "SELECT preferences_json, revision \
              FROM database_view_personal_preferences \
-             WHERE profile_id = ?1 AND view_id = ?2",
-            params![profile_id, view_id],
+             WHERE member_id = ?1 AND view_id = ?2",
+            params![member_id, view_id],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
         )
         .optional()?;
@@ -6149,7 +6151,7 @@ fn put_view_personal_preferences(
             && presentation_override_is_empty(presentation_override))
     {
         effects.revisions.insert(
-            format!("view_preferences:{profile_id}:{view_id}"),
+            format!("view_preferences:{member_id}:{view_id}"),
             current_revision,
         );
         return Ok(());
@@ -6158,12 +6160,12 @@ fn put_view_personal_preferences(
     let revision = current_revision + 1;
     connection.execute(
         "INSERT INTO database_view_personal_preferences(\
-           profile_id, view_id, preferences_json, revision, created_at, updated_at\
+           member_id, view_id, preferences_json, revision, created_at, updated_at\
          ) VALUES (?1, ?2, ?3, ?4, ?5, ?5) \
-         ON CONFLICT(profile_id, view_id) DO UPDATE SET \
+         ON CONFLICT(member_id, view_id) DO UPDATE SET \
            preferences_json = excluded.preferences_json, \
            revision = excluded.revision, updated_at = excluded.updated_at",
-        params![profile_id, view_id, preferences_json, revision, now],
+        params![member_id, view_id, preferences_json, revision, now],
     )?;
     let value = DatabaseViewPersonalPreferences {
         rules_override: rules_override.clone(),
@@ -6172,7 +6174,7 @@ fn put_view_personal_preferences(
     };
     effects
         .revisions
-        .insert(format!("view_preferences:{profile_id}:{view_id}"), revision);
+        .insert(format!("view_preferences:{member_id}:{view_id}"), revision);
     effects.personal_preferences.insert(view.id, value);
     Ok(())
 }
@@ -6180,7 +6182,7 @@ fn put_view_personal_preferences(
 #[allow(clippy::too_many_arguments)]
 fn set_view_occurrence_disclosure(
     connection: &Connection,
-    profile_id: &str,
+    member_id: &str,
     library_id: &str,
     project_id: Option<&str>,
     view_id: &str,
@@ -6195,9 +6197,9 @@ fn set_view_occurrence_disclosure(
     let exists = connection
         .query_row(
             "SELECT 1 FROM database_view_collapsed_occurrences \
-             WHERE profile_id = ?1 AND view_id = ?2 \
+             WHERE member_id = ?1 AND view_id = ?2 \
                AND target_kind = ?3 AND occurrence_key = ?4",
-            params![profile_id, view_id, target_kind, occurrence_key],
+            params![member_id, view_id, target_kind, occurrence_key],
             |_| Ok(()),
         )
         .optional()?
@@ -6209,8 +6211,8 @@ fn set_view_occurrence_disclosure(
     if collapsed {
         let count = connection.query_row(
             "SELECT count(*) FROM database_view_collapsed_occurrences \
-             WHERE profile_id = ?1 AND view_id = ?2",
-            params![profile_id, view_id],
+             WHERE member_id = ?1 AND view_id = ?2",
+            params![member_id, view_id],
             |row| row.get::<_, i64>(0),
         )?;
         if count >= MAX_COLLAPSED_OCCURRENCES {
@@ -6218,18 +6220,18 @@ fn set_view_occurrence_disclosure(
                 .query_row(
                     "SELECT target_kind, occurrence_key \
                      FROM database_view_collapsed_occurrences \
-                     WHERE profile_id = ?1 AND view_id = ?2 \
+                     WHERE member_id = ?1 AND view_id = ?2 \
                      ORDER BY collapsed_at, target_kind, occurrence_key LIMIT 1",
-                    params![profile_id, view_id],
+                    params![member_id, view_id],
                     |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
                 )
                 .optional()?
                 .ok_or_else(|| corrupt("Collapsed occurrence bound is inconsistent"))?;
             connection.execute(
                 "DELETE FROM database_view_collapsed_occurrences \
-                 WHERE profile_id = ?1 AND view_id = ?2 \
+                 WHERE member_id = ?1 AND view_id = ?2 \
                    AND target_kind = ?3 AND occurrence_key = ?4",
-                params![profile_id, view_id, evicted.0, evicted.1],
+                params![member_id, view_id, evicted.0, evicted.1],
             )?;
             effects.occurrence_disclosures.insert(
                 (
@@ -6241,16 +6243,16 @@ fn set_view_occurrence_disclosure(
         }
         connection.execute(
             "INSERT INTO database_view_collapsed_occurrences(\
-               profile_id, view_id, target_kind, occurrence_key, collapsed_at\
+               member_id, view_id, target_kind, occurrence_key, collapsed_at\
              ) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![profile_id, view_id, target_kind, occurrence_key, now],
+            params![member_id, view_id, target_kind, occurrence_key, now],
         )?;
     } else {
         connection.execute(
             "DELETE FROM database_view_collapsed_occurrences \
-             WHERE profile_id = ?1 AND view_id = ?2 \
+             WHERE member_id = ?1 AND view_id = ?2 \
                AND target_kind = ?3 AND occurrence_key = ?4",
-            params![profile_id, view_id, target_kind, occurrence_key],
+            params![member_id, view_id, target_kind, occurrence_key],
         )?;
     }
     effects
@@ -7717,13 +7719,19 @@ fn seal_commit(
     let view_ids = effects.view_ids.into_iter().collect::<Vec<_>>();
     let committed_revisions = effects.revisions;
     let operation_outcomes = effects.operation_outcomes;
+    let personal_member_id = crate::infrastructure::actors::requesting_member(connection, context)?;
     let personal_view_changes =
         effects
             .personal_preferences
             .into_iter()
-            .map(|(view_id, value)| DatabasePersonalViewChange::Preferences { view_id, value })
+            .map(|(view_id, value)| DatabasePersonalViewChange::Preferences {
+                member_id: personal_member_id.clone(),
+                view_id,
+                value,
+            })
             .chain(effects.occurrence_disclosures.into_iter().map(
                 |((view_id, target), collapsed)| DatabasePersonalViewChange::OccurrenceDisclosure {
+                    member_id: personal_member_id.clone(),
                     view_id,
                     target,
                     collapsed,

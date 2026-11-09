@@ -46,6 +46,10 @@ import type {
   UpdateThreadNotificationSettingsInput,
   UpdateWindowRestoreSettingsInput,
 } from "../../../shared/types";
+import { CoreModules } from "../../core-runtime/CoreModules";
+import {
+  readRoutingConsent,
+  writeRoutingConsent,
 import { MainConfig } from "../../app/MainConfig";
 import {
   AgentRuntimeProviderConfiguration,
@@ -164,6 +168,7 @@ const settingsError = (operation: string) => (cause: unknown) =>
 export const live: Layer.Layer<
   never,
   never,
+  | CoreModules
   | ApplicationMenuRuntime
   | ApplicationSettings
   | AgentRuntimeProviderConfiguration
@@ -175,6 +180,7 @@ export const live: Layer.Layer<
   | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
+    const core = yield* CoreModules;
     const applicationSettings = yield* ApplicationSettings;
     const runtimeProviders = yield* AgentRuntimeProviderConfiguration;
     const config = yield* MainConfig;
@@ -770,11 +776,32 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handleRead("settings:inbox:get", "Inbox settings", (value) => value.inbox);
+    yield* ipc.handleQuery("settings:inbox:get", (event) =>
+      authorize(event, "Inbox settings").pipe(
+        Effect.andThen(
+          Effect.gen(function* () {
+            const value = (yield* applicationSettings.snapshot()).inbox;
+            const start = yield* readRoutingConsent(core, value);
+            return {
+              ...value,
+              dispatchMode: start ? ("act_on_requests" as const) : ("suggest" as const),
+            };
+          }),
+        ),
+        Effect.mapError(settingsError("read-inbox-settings")),
+      ),
+    );
     yield* ipc.handlePlainCommand("settings:inbox:update", (event, input: unknown) =>
       authorize(event, "Inbox settings").pipe(
         Effect.andThen(
           parse("parse-inbox-settings", () => UpdateInboxSettingsInputSchema.parse(input)),
+        ),
+        Effect.tap((parsed) =>
+          parsed.dispatchMode === undefined
+            ? Effect.void
+            : writeRoutingConsent(core, parsed.dispatchMode === "act_on_requests").pipe(
+                Effect.mapError(settingsError("write-inbox-consent")),
+              ),
         ),
         Effect.flatMap((parsed) =>
           update(

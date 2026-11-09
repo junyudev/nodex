@@ -256,7 +256,19 @@ pub(super) fn execute_move_pages(
 ) -> Result<LibraryApplyOutcome, StoreError> {
     let profile_id = profile_id.to_owned();
     let library_id = library_id.to_owned();
-    let context = context.clone();
+    let context = readers.read_default(|c| {
+        super::agent_execution::validate_execution(
+            c,
+            context,
+            &library_id,
+            &authorization.authorization,
+        )?;
+        crate::infrastructure::actors::verified_turn(
+            c,
+            context,
+            &authorization.authorization.provenance,
+        )
+    })?;
     let assets_root = assets_root.to_path_buf();
     let operation_id = request.operation_id;
     let expected_store_epoch = request.store_epoch.0;
@@ -421,7 +433,6 @@ pub(super) fn execute_move_pages(
                                 &transaction,
                                 &agent_context,
                                 &operation_id,
-                                &agent_actor(&authorization.authorization),
                                 &document_batch,
                                 event_sequence,
                                 &committed_at,
@@ -1522,7 +1533,11 @@ fn request_hash(
     request: &LibraryAgentMovePagesRequest,
 ) -> Result<String, StoreError> {
     hash_serializable(&(
-        context,
+        &context.profile_id,
+        &context.library_id,
+        &context.project_id,
+        &context.connection_id,
+        &context.adapter,
         LIBRARY_CONTRACT_VERSION,
         store_epoch,
         authorization,

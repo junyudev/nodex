@@ -1,46 +1,20 @@
-import type { AgentBackendBinding } from "../../shared/agent-backend";
+import { actorSchema, type Actor } from "../../shared/actor";
 import type { LibraryPageFileItem } from "../../shared/library-files";
 import type { PageFileTreeFile } from "./page-file-tree";
 
-/** Who attached a Page File entry, as the Files tree presents it. */
-export type PageFileSource =
-  | { readonly kind: "person" }
-  | {
-      readonly kind: "agent";
-      readonly sessionId: string;
-      readonly backendKind: AgentBackendBinding["kind"];
-    }
-  | { readonly kind: "external" };
+export type PageFileSource = Actor;
+export const pageFileSource = (item: LibraryPageFileItem): PageFileSource | null =>
+  item.attachment?.attached_by ?? null;
 
-/** Entry provenance, or null for body-only Files and entries with no recorded origin. */
-export const pageFileSource = (item: LibraryPageFileItem): PageFileSource | null => {
-  const actor = item.attachment?.attached_by;
-  if (!actor) return null;
-  switch (actor.kind) {
-    case "person":
-      return { kind: "person" };
-    case "agent":
-      return { kind: "agent", sessionId: actor.session_id, backendKind: actor.backend };
-    case "external":
-      return { kind: "external" };
-    default:
-      return null;
-  }
-};
-
-/** One key per origin; a chat that changed providers between attachments has two. */
-export const pageFileSourceKey = (source: PageFileSource): string =>
-  source.kind === "agent" ? `agent:${source.sessionId}:${source.backendKind}` : source.kind;
-
+/** Actor keys retain Member and delegation identity when grouping attachments. */
+export const pageFileSourceKey = (source: PageFileSource): string => JSON.stringify(source);
 export const parsePageFileSourceKey = (key: string): PageFileSource | null => {
-  if (key === "person" || key === "external") return { kind: key };
-  const match = /^agent:(.+):([^:]+)$/u.exec(key);
-  if (!match) return null;
-  return {
-    kind: "agent",
-    sessionId: match[1]!,
-    backendKind: match[2] as AgentBackendBinding["kind"],
-  };
+  try {
+    const result = actorSchema.safeParse(JSON.parse(key));
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
 };
 
 const attachedAtMs = (item: LibraryPageFileItem): number | null => {

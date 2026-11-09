@@ -132,7 +132,9 @@ describe("DatabaseViewPageContextMenu", () => {
       await Promise.resolve();
     });
     await waitFor(() =>
-      expect(mocks.writeTextToClipboard).toHaveBeenLastCalledWith("nodex://pages/page-1"),
+      expect(mocks.writeTextToClipboard).toHaveBeenLastCalledWith(
+        "nodex://pages/page-1?spaceId=test-space",
+      ),
     );
 
     await openMenu(screen);

@@ -3,13 +3,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { assert, it } from "@effect/vitest";
 import type { BrowserWindow } from "electron";
-import { LibraryModule } from "../library-application/LibraryModule";
-import {
-  ProjectWorkspace,
-  type ProjectWorkspaceService,
-} from "../project-application/ProjectWorkspace";
 import type { WindowRuntimeService } from "../window-runtime/WindowRuntime";
-import { DeepLinkRuntime, live } from "./DeepLinkRuntime";
+import { DeepLinkRuntime, DeepLinkRuntimeError, live } from "./DeepLinkRuntime";
 
 it.effect("keeps the newest queued targets behind readiness and flushes resolved routes", () =>
   Effect.gen(function* () {
@@ -28,41 +23,15 @@ it.effect("keeps the newest queued targets behind readiness and flushes resolved
       getLastFocused: () => window,
       isRendererInitialized: () => rendererReady,
     } as unknown as WindowRuntimeService;
-    const library = {
-      findPageLocation: (pageId: string) => Effect.succeed({ pageId, projectId: "project-1" }),
-      findViewLocation: (viewId: string) =>
-        Effect.succeed({
-          dataSourceId: "source-1",
-          databaseId: "database-1",
-          projectId: "project-1",
-          viewId,
-        }),
-    } as unknown as LibraryModule["Service"];
-    const context = yield* Layer.build(
-      live({
-        focusWindow: () => undefined,
-        windows,
-      }).pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            Layer.succeed(LibraryModule, library),
-            Layer.succeed(
-              ProjectWorkspace,
-              ProjectWorkspace.of({
-                getProjectSession: (sessionId: string) =>
-                  Effect.succeed({
-                    id: sessionId,
-                    projectId: "project-1",
-                  }),
-              } as unknown as ProjectWorkspaceService),
-            ),
-          ),
-        ),
-      ),
-    );
+    const context = yield* Layer.build(live({ focusWindow: () => undefined, windows }));
     const runtime = Context.get(context, DeepLinkRuntime);
-    assert.isTrue(yield* runtime.handle("nodex://pages/old"));
-    assert.isTrue(yield* runtime.handle("nodex://pages/new"));
+    yield* runtime.configureSpaces({
+      personalSpaceId: "personal",
+      resolve: (target) => Effect.succeed({ ...target, projectId: "project-1" }),
+    });
+    assert.isFalse(yield* runtime.handle("nodex://pages/ambiguous"));
+    assert.isTrue(yield* runtime.handle("nodex://pages/old?spaceId=personal"));
+    assert.isTrue(yield* runtime.handle("nodex://pages/new?spaceId=personal"));
     assert.strictEqual(sent.length, 0);
 
     yield* runtime.markReady;
@@ -71,7 +40,68 @@ it.effect("keeps the newest queued targets behind readiness and flushes resolved
     yield* runtime.flush;
     assert.strictEqual(sent.length, 1);
     assert.strictEqual(sent[0]?.channel, "deeplink:open-page");
-    assert.deepStrictEqual(sent[0]?.payload, { projectId: "project-1", pageId: "new" });
+    assert.deepStrictEqual(sent[0]?.payload, {
+      spaceId: "personal",
+      projectId: "project-1",
+      pageId: "new",
+    });
     assert.isNull(yield* runtime.extractFromArgv(["--flag"]));
+  }),
+);
+
+it.effect("resolves a qualified link only in its Space and delivers to that Space's renderer", () =>
+  Effect.gen(function* () {
+    const sent: Array<{ window: string; payload: unknown }> = [];
+    const windowFor = (spaceId: string, id: number) =>
+      ({
+        isDestroyed: () => false,
+        webContents: {
+          id,
+          getURL: () => (spaceId === "personal" ? "app://-/" : `app://-/?spaceId=${spaceId}`),
+          isDestroyed: () => false,
+          isLoadingMainFrame: () => false,
+          send: (_channel: string, payload: unknown) => sent.push({ window: spaceId, payload }),
+        },
+      }) as unknown as BrowserWindow;
+    const personal = windowFor("personal", 1);
+    const team = windowFor("team", 2);
+    const context = yield* Layer.build(
+      live({
+        focusWindow: () => undefined,
+        windows: {
+          getLastFocused: () => personal,
+          all: () => [personal, team],
+          isRendererInitialized: () => true,
+        } as unknown as WindowRuntimeService,
+      }),
+    );
+    const links = Context.get(context, DeepLinkRuntime);
+    yield* links.configureSpaces({
+      personalSpaceId: "personal",
+      resolve: (target) =>
+        target.spaceId === "team"
+          ? Effect.succeed({ ...target, projectId: "team-project" })
+          : Effect.fail(
+              new DeepLinkRuntimeError({
+                operation: "unknown-space",
+                cause: new Error("Unknown Space"),
+              }),
+            ),
+    });
+    yield* links.markReady;
+    yield* links.handle("nodex://pages/same-page?spaceId=team");
+    assert.deepStrictEqual(sent, [
+      {
+        window: "team",
+        payload: { spaceId: "team", pageId: "same-page", projectId: "team-project" },
+      },
+    ]);
+    assert.strictEqual(
+      (yield* Effect.result(links.handle("nodex://views/same-view?spaceId=unknown")))._tag,
+      "Failure",
+    );
+    assert.strictEqual(sent.length, 1);
+    yield* links.handle("nodex://pages/another-page?spaceId=team");
+    assert.strictEqual(sent.length, 2);
   }),
 );

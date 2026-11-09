@@ -1,3 +1,4 @@
+import { rendererSpaceId } from "./renderer-space";
 import { buildPageDeepLink, parsePageDeepLink } from "../../shared/nodex-deeplink";
 
 export type PageDeepLinkPasteIntent =
@@ -16,7 +17,7 @@ export function resolvePageDeepLinkPasteIntent(input: {
   if (input.hasStructuredClipboard || input.hasFiles) return null;
 
   const target = parsePageDeepLink(input.plainText);
-  if (!target) return null;
+  if (!target || (target.spaceId && target.spaceId !== rendererSpaceId())) return null;
   const href = buildPageDeepLink(target);
   if (href !== input.plainText) return null;
 

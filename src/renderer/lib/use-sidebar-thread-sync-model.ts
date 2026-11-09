@@ -32,6 +32,7 @@ import {
   type CodexSidebarThreadSyncModel,
 } from "./codex-sidebar-thread-sync";
 import { invalidateProjectSessionScope } from "./project-session-query-cache";
+import { isHostedChat } from "./hosted-chat";
 
 const EMPTY_SIDEBAR_SNAPSHOT: CodexSidebarSnapshot = {
   items: [],
@@ -82,6 +83,8 @@ export function useSidebarThreadSyncModel(input: { projects: readonly Project[] 
   reorderPinned: (orderedThreadIds: readonly string[]) => Promise<CodexSidebarSnapshot>;
 } {
   const { projects } = input;
+  // This desktop's own native chats; a window whose chats run on its Space host has none to sync.
+  const nativeChats = !isHostedChat();
   const queryClient = useQueryClient();
   const focusedRef = useRef(true);
   const [pendingWorktrees, setPendingWorktrees] = useState<readonly CodexPendingWorktreeEntry[]>(
@@ -92,6 +95,7 @@ export function useSidebarThreadSyncModel(input: { projects: readonly Project[] 
   const query = useQuery({
     queryKey: queryKeys.codexSidebar.snapshot(),
     queryFn: readCodexSidebarSnapshot,
+    enabled: nativeChats,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
@@ -175,35 +179,40 @@ export function useSidebarThreadSyncModel(input: { projects: readonly Project[] 
   );
 
   useEffect(() => {
-    if (typeof window === "undefined") return undefined;
+    if (typeof window === "undefined" || !nativeChats) return undefined;
     const handle = window.setTimeout(() => {
       void syncSidebarThreads("stale", "mount").catch(() => undefined);
     }, SIDEBAR_THREAD_SYNC_MOUNT_IDLE_MS);
     return () => window.clearTimeout(handle);
-  }, [syncSidebarThreads]);
+  }, [nativeChats, syncSidebarThreads]);
 
   useEffect(
     () =>
-      subscribeCodexHostMessages((message) => {
-        if (message.type === "sidebarSyncUpdated") {
-          applySidebarSyncResult(message.result);
-          return;
-        }
-        const reason = resolveSidebarSyncReasonForHostMessage(message);
-        if (reason) scheduleHostMessageSync(reason);
-      }),
-    [applySidebarSyncResult, scheduleHostMessageSync],
+      nativeChats
+        ? subscribeCodexHostMessages((message) => {
+            if (message.type === "sidebarSyncUpdated") {
+              applySidebarSyncResult(message.result);
+              return;
+            }
+            const reason = resolveSidebarSyncReasonForHostMessage(message);
+            if (reason) scheduleHostMessageSync(reason);
+          })
+        : undefined,
+    [nativeChats, applySidebarSyncResult, scheduleHostMessageSync],
   );
 
   useEffect(
     () =>
-      subscribeCodexAutomationRunsUpdates(() => {
-        void syncSidebarThreads("stale", "host-message").catch(() => undefined);
-      }),
-    [syncSidebarThreads],
+      nativeChats
+        ? subscribeAutomationRunsUpdates(() => {
+            void syncSidebarThreads("stale", "host-message").catch(() => undefined);
+          })
+        : undefined,
+    [nativeChats, syncSidebarThreads],
   );
 
   useEffect(() => {
+    if (!nativeChats) return undefined;
     let disposed = false;
     void listPendingWorktrees()
       .then((entries) => {
@@ -217,14 +226,16 @@ export function useSidebarThreadSyncModel(input: { projects: readonly Project[] 
       disposed = true;
       unsubscribe();
     };
-  }, []);
+  }, [nativeChats]);
 
   useEffect(
     () =>
-      subscribeProjectChanges(() => {
-        void syncSidebarThreads("force", "project-change").catch(() => undefined);
-      }),
-    [syncSidebarThreads],
+      nativeChats
+        ? subscribeProjectChanges(() => {
+            void syncSidebarThreads("force", "project-change").catch(() => undefined);
+          })
+        : undefined,
+    [nativeChats, syncSidebarThreads],
   );
 
   useEffect(() => {
@@ -236,22 +247,24 @@ export function useSidebarThreadSyncModel(input: { projects: readonly Project[] 
 
   useEffect(
     () =>
-      subscribeWindowFocusChanges((focused) => {
-        focusedRef.current = focused;
-        if (focused) void syncSidebarThreads("stale", "focus").catch(() => undefined);
-      }),
-    [syncSidebarThreads],
+      nativeChats
+        ? subscribeWindowFocusChanges((focused) => {
+            focusedRef.current = focused;
+            if (focused) void syncSidebarThreads("stale", "focus").catch(() => undefined);
+          })
+        : undefined,
+    [nativeChats, syncSidebarThreads],
   );
 
   useEffect(() => {
-    if (typeof window === "undefined") return undefined;
+    if (typeof window === "undefined" || !nativeChats) return undefined;
     const handle = window.setInterval(() => {
       const visible = typeof document === "undefined" || document.visibilityState !== "hidden";
       if (!visible || !focusedRef.current) return;
       void syncSidebarThreads("stale", "heartbeat").catch(() => undefined);
     }, SIDEBAR_THREAD_SYNC_HEARTBEAT_MS);
     return () => window.clearInterval(handle);
-  }, [syncSidebarThreads]);
+  }, [nativeChats, syncSidebarThreads]);
 
   const snapshot = useMemo(
     () =>

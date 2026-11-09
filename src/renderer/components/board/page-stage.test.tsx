@@ -130,6 +130,10 @@ vi.mock("@/components/block-documents/block-document-surface", () => ({
   },
 }));
 
+vi.mock("@/components/workbench/execution-hold-controls", () => ({
+  PageExecutionHoldItem: () => null,
+}));
+
 vi.mock("./page-stage/properties-section", () => ({
   PageStagePropertiesSection: () => <div>Properties section</div>,
 }));
@@ -538,12 +542,12 @@ describe("page stage", () => {
     expect(queryByText("Inline property strip")).toBeNull();
 
     const trigger = getByRole("button", { name: "Page actions" });
-    fireEvent.pointerDown(trigger, {
-      button: 0,
-      ctrlKey: false,
+    await act(async () => {
+      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+      fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false });
+      fireEvent.click(trigger);
+      await Promise.resolve();
     });
-    fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false });
-    fireEvent.click(trigger);
     await settleAsyncRender();
 
     expect(queryByRole("menuitem", { name: "Copy deeplink" })).toBeTruthy();
@@ -562,18 +566,21 @@ describe("page stage", () => {
       const { getByRole } = renderStage();
 
       const trigger = getByRole("button", { name: "Page actions" });
-      fireEvent.pointerDown(trigger, {
-        button: 0,
-        ctrlKey: false,
+      await act(async () => {
+        fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+        fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false });
+        fireEvent.click(trigger);
+        await Promise.resolve();
       });
-      fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false });
-      fireEvent.click(trigger);
       await settleAsyncRender();
 
-      fireEvent.click(getByRole("menuitem", { name: "Copy deeplink" }));
+      await act(async () => {
+        fireEvent.click(getByRole("menuitem", { name: "Copy deeplink" }));
+        await Promise.resolve();
+      });
       await settleAsyncRender();
 
-      expect(writeText).toHaveBeenCalledWith("nodex://pages/page-1");
+      expect(writeText).toHaveBeenCalledWith("nodex://pages/page-1?spaceId=test-space");
     } finally {
       Object.defineProperty(navigator, "clipboard", {
         configurable: true,

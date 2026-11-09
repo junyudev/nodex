@@ -18,7 +18,6 @@ use nodex_core_contracts::{
     ModuleName, ModuleReadSnapshot, StoreEpoch,
 };
 use rusqlite::{Connection, TransactionBehavior};
-use serde_json::json;
 
 use crate::database::{
     ExistingPageTransferTarget, PageCopyDataSourceDestination, PageCopyPositionAnchor,
@@ -268,7 +267,19 @@ pub(super) fn execute_create_pages(
 ) -> Result<LibraryApplyOutcome, StoreError> {
     let profile_id = profile_id.to_owned();
     let library_id = library_id.to_owned();
-    let context = context.clone();
+    let context = readers.read_default(|c| {
+        super::agent_execution::validate_execution(
+            c,
+            context,
+            &library_id,
+            &authorization.authorization,
+        )?;
+        crate::infrastructure::actors::verified_turn(
+            c,
+            context,
+            &authorization.authorization.provenance,
+        )
+    })?;
     let operation_id = request.operation_id;
     let expected_store_epoch = request.store_epoch.0;
     let prepared_preflight = readers.read_default(|connection| {
@@ -439,7 +450,6 @@ pub(super) fn execute_create_pages(
                                 &transaction,
                                 &agent_context,
                                 &operation_id,
-                                &agent_actor(&authorization.authorization),
                                 &document_batch,
                                 event_sequence,
                                 &committed_at,
@@ -651,7 +661,6 @@ pub(super) fn create_native_pages(
                         connection,
                         context,
                         operation_id,
-                        &json!({ "kind": "native_cli", "command": "page_create_batch" }),
                         &document_batch,
                         event_sequence,
                         &committed_at,
@@ -1323,17 +1332,6 @@ fn data_source_destination(
                 expected_position_revision: before.expected_position_revision,
             }),
         }),
-    })
-}
-
-fn agent_actor(authorization: &AgentExecutionAuthorization) -> serde_json::Value {
-    let authority = &authorization.provenance.authority;
-    json!({
-        "kind": "nodex_agent",
-        "tool": "create_pages",
-        "threadId": authority.thread_id,
-        "turnId": authority.turn_id,
-        "callId": authorization.call_id,
     })
 }
 

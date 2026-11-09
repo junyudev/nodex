@@ -8,7 +8,7 @@ use nodex_core_contracts::database_configuration::{
 #[allow(clippy::too_many_arguments)]
 pub(super) fn apply(
     connection: &Connection,
-    profile_id: &str,
+    member_id: &str,
     library_id: &str,
     authority: &DatabaseMutationRoute,
     source_id: &str,
@@ -48,7 +48,7 @@ pub(super) fn apply(
         for intent in intents {
             apply_intent(
                 connection,
-                profile_id,
+                member_id,
                 library_id,
                 authority,
                 &intent,

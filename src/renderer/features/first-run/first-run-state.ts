@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { usePersistedAtomValue, useSetPersistedAtom, persistedAtom } from "@/lib/maitai";
 import { queryKeys } from "@/lib/query-keys";
 import { invokeRendererQuery } from "@/lib/renderer-command";
+import { isRemoteSpace } from "@/lib/renderer-space";
 import { useDesktopNotificationAuthorization } from "@/lib/desktop-notification-authorization";
 import type { ComposerNotice } from "@/features/local-conversation/thread-stage-types";
 import {
@@ -107,10 +108,13 @@ export function useFirstRunPresentation() {
   const bootstrap = useQuery({
     queryKey: queryKeys.projects.bootstrap(),
     queryFn: () => invokeRendererQuery("projects:bootstrap"),
+    // Setting up a first workspace is a personal Space's question; a team Space's host answers it.
+    enabled: !isRemoteSpace(),
     retry: false,
     staleTime: Number.POSITIVE_INFINITY,
   });
-  const workspace = bootstrap.isError ? "unknown" : (bootstrap.data?.status ?? null);
+  const workspace =
+    isRemoteSpace() || bootstrap.isError ? "unknown" : (bootstrap.data?.status ?? null);
   const decision = decideFirstRun({ state, workspace });
   const [closing, setClosing] = useState(false);
   const showing = decision === "show";

@@ -430,8 +430,7 @@ function SharedConnectedSessionThread({
       onOpenSummaryGitReview,
       onOpenProcessManager,
       onOpenBackgroundTerminalOutput,
-      onRequestRenameThread,
-      onArchiveThread,
+      // renames or archives a chat every Member shares.
       onToggleThreadPin,
       onSetThreadReminder,
       onOpenThread,

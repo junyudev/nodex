@@ -1,3 +1,4 @@
+import { CoreAuthority } from "../../core-runtime/CoreAuthority";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -30,6 +31,9 @@ it.effect("owns diagnostics and persisted atom ingress with the Main Scope", () 
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(ElectronIpc, ipc),
+            Layer.succeed(CoreAuthority, {
+              identity: { libraryId: "personal" },
+            } as CoreAuthority["Service"]),
             mainConfigLayer(),
             Layer.succeed(ProfilePersistedAtoms, makePersistedAtomStore("/tmp/nodex-test")),
             Layer.succeed(WindowRuntime, {

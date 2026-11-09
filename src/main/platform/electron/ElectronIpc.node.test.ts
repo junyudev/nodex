@@ -10,7 +10,7 @@ import * as Scope from "effect/Scope";
 import * as Exit from "effect/Exit";
 import type { IpcMainInvokeEvent } from "electron";
 import { layer as callbacks } from "../../app/ScopedCallbackRuntime";
-import { ElectronIpc, live, mapElectronIpcHandlers } from "./ElectronIpc";
+import { ElectronIpc, ElectronSpaceIpc, live, mapElectronIpcHandlers } from "./ElectronIpc";
 
 const { handlers } = vi.hoisted(() => ({
   handlers: new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>>(),
@@ -35,7 +35,7 @@ const event = { sender: { id: 8 } } as IpcMainInvokeEvent;
 const invoke = () => {
   const handler = handlers.get(channel);
   if (!handler) throw new Error("Missing registered native request handler");
-  return handler(event, request);
+  return handler(event, { spaceId: "personal", args: [request] });
 };
 
 const makeIpc = Effect.fn("makeIpc")(function* () {
@@ -43,6 +43,14 @@ const makeIpc = Effect.fn("makeIpc")(function* () {
     Scope.close(scope, Exit.void),
   );
   const context = yield* Layer.buildWithScope(live.pipe(Layer.provide(callbacks)), scope);
+  yield* Context.get(context, ElectronSpaceIpc)
+    .configure(({ request, personal }) => {
+      const envelope = request as { spaceId: string; args: readonly unknown[] };
+      if (!envelope || envelope.spaceId !== "personal" || !Array.isArray(envelope.args))
+        return Effect.fail(new Error("Unknown Space"));
+      return personal(envelope.args);
+    })
+    .pipe(Effect.provideService(Scope.Scope, scope));
   return { ipc: Context.get(context, ElectronIpc), scope };
 });
 
@@ -109,6 +117,105 @@ it.effect(
     }),
 );
 
+it.effect("fences content and Member settings ingress before a personal handler can run", () =>
+  Effect.gen(function* () {
+    const { ipc, scope } = yield* makeIpc();
+    yield* Effect.gen(function* () {
+      yield* ipc.handleQuery("settings:inbox:get", () =>
+        Effect.die("Must not read personal consent"),
+      );
+      yield* ipc.handlePlainCommand("settings:inbox:update", () =>
+        Effect.die("Must not write personal consent"),
+      );
+      yield* ipc.handleQuery("automations:list", () => Effect.succeed({ items: [] }));
+      yield* ipc.handleQuery("sources:automation-options", () =>
+        Effect.succeed([{ id: "source", label: "Alice" }]),
+      );
+      yield* ipc.handlePlainCommand("automations:update", () =>
+        Effect.die("Must not run in personal Space"),
+      );
+      yield* ipc.handleQuery("inbox:prepare-confirmation", () =>
+        Effect.die("Must not prepare personal execution"),
+      );
+      yield* ipc.handleLocalCommitCommand("inbox:confirm", () =>
+        Effect.die("Must not execute personal work"),
+      );
+      for (const key of [
+        "settings:inbox:get",
+        "settings:inbox:update",
+        "automations:list",
+        "sources:automation-options",
+        "automations:update",
+        "inbox:prepare-confirmation",
+        "inbox:confirm",
+      ]) {
+        const handler = handlers.get(key)!;
+        for (const raw of [
+          { args: [] },
+          { spaceId: "unknown", args: [] },
+          {
+            spaceId: "team",
+            args: [{ action: { type: "execute_decision", decisionId: "same-decision" } }],
+          },
+        ]) {
+          yield* Effect.promise(() => expect(handler(event, raw)).rejects.toThrow("Unknown Space"));
+        }
+      }
+      expect(
+        yield* Effect.promise(() =>
+          handlers.get("automations:list")!(event, { spaceId: "personal", args: [] }),
+        ),
+      ).toEqual({ items: [] });
+      expect(
+        yield* Effect.promise(() =>
+          handlers.get("sources:automation-options")!(event, { spaceId: "personal", args: [] }),
+        ),
+      ).toEqual([{ id: "source", label: "Alice" }]);
+    }).pipe(Effect.provideService(Scope.Scope, scope));
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+it.effect("a window's device channels run on this desktop whichever Space it shows", () =>
+  Effect.gen(function* () {
+    const { ipc, scope } = yield* makeIpc();
+    yield* Effect.gen(function* () {
+      yield* ipc.handleQuery("electron-window:focus:get", () => Effect.succeed(true));
+      yield* ipc.handleQuery("codex-command-keymap-state", () => Effect.succeed("keymap" as never));
+      yield* ipc.handleControl("global-dictation:keyboard-layout:update", () =>
+        Effect.succeed(undefined as never),
+      );
+      yield* ipc.handlePlainCommand("product-analytics:record", () =>
+        Effect.succeed(undefined as never),
+      );
+      yield* ipc.handleQuery("codex:dictation:state:read", () => Effect.succeed("ready" as never));
+      yield* ipc.handleQuery("codex:sidebar:snapshot", () =>
+        Effect.die("A team window must not reach the desktop's native chats"),
+      );
+      // A team window sends these without a Space; the Space router, which rejects every Space
+      // but the personal one here, never sees them.
+      expect(yield* Effect.promise(() => handlers.get("electron-window:focus:get")!(event))).toBe(
+        true,
+      );
+      expect(yield* Effect.promise(() => handlers.get("codex-command-keymap-state")!(event))).toBe(
+        "keymap",
+      );
+      expect(yield* Effect.promise(() => handlers.get("codex:dictation:state:read")!(event))).toBe(
+        "ready",
+      );
+      yield* Effect.promise(() =>
+        handlers.get("global-dictation:keyboard-layout:update")!(event, { layout: "us" }),
+      );
+      yield* Effect.promise(() => handlers.get("product-analytics:record")!(event, {}));
+      // The desktop's own chats stay behind the Space router.
+      yield* Effect.promise(() =>
+        expect(
+          handlers.get("codex:sidebar:snapshot")!(event, { spaceId: "team", args: [] }),
+        ).rejects.toThrow("Unknown Space"),
+      );
+    }).pipe(Effect.provideService(Scope.Scope, scope));
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
 for (const end of ["sender", "registration", "failure"] as const) {
   it.effect(`a held catalog read drains when ${end} ends its lifetime`, () =>
     Effect.gen(function* () {

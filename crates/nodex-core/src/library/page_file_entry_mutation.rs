@@ -230,7 +230,7 @@ fn apply_with_kind(
             let write = FileWriteContext {
                 connection,
                 library_id,
-                actor_id: authority.actor_project_id.as_deref(),
+                actor_json: &crate::infrastructure::actors::encode(&context.actor)?,
                 turn_id,
                 operation_id,
                 now: &now,

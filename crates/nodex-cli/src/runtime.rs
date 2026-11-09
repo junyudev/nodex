@@ -226,6 +226,7 @@ pub(crate) fn execute_with_presentation(
         Command::Work(args) => crate::work::execute(&client, args, cli.project.as_deref(), &cwd),
         Command::Members(args) => crate::members::execute(&client, args),
         Command::Sources(args) => crate::sources::execute(&client, args),
+        Command::Space(args) => crate::space::execute(&client, args),
         Command::Sql(args) => crate::sql::execute(
             &client,
             cli.project.as_deref(),

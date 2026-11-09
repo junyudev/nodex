@@ -194,12 +194,14 @@ fn page_work_start_freezes_page_selection_when_no_override_is_supplied() {
 fn managed_work_creates_followup_pages_for_its_owner() {
     let w = setup();
     w.kernel.writer().call(|connection| {
+        connection.execute("UPDATE libraries SET space_kind='team' WHERE id='library-1'",[])?;connection.execute("INSERT INTO members(id,library_id,display_name,lifecycle) VALUES('requester','library-1','Requester','active')",[])?;
         connection.execute("UPDATE block_properties SET value_json=json_set(value_json,'$.owner','requester') WHERE block_id=?1 AND property_key='work'",[PAGE])?;
         Ok(())
     }).unwrap();
     apply(&w.module, "work:start", start("owned", false));
     let mut actor = context();
     actor.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
+        run_id: None,
         session_id: "session:owned".into(),
         backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
     });
@@ -605,6 +607,7 @@ fn managed_chat_owner_uses_its_active_work_page_without_following_related_links(
         let w = setup();
         let local = w.kernel.writer().call(|c| {
             let local: String = c.query_row("SELECT member_id FROM local_profile_members WHERE library_id='library-1'", [], |r| r.get(0))?;
+            c.execute("UPDATE libraries SET space_kind='team' WHERE id='library-1'",[])?;c.execute("INSERT INTO members(id,library_id,display_name,lifecycle) VALUES('requester','library-1','Requester','active')",[])?;
             c.execute("UPDATE block_properties SET value_json=json_set(value_json,'$.owner','requester') WHERE block_id=?1 AND property_key='work'",[PAGE])?;
             Ok(local)
         }).unwrap();
@@ -650,6 +653,7 @@ fn managed_chat_owner_uses_its_active_work_page_without_following_related_links(
         );
         let mut actor = context();
         actor.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
+            run_id: None,
             session_id: "chat".into(),
             backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
         });

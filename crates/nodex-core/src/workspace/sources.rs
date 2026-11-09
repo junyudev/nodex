@@ -328,10 +328,13 @@ fn success(connection: &Connection, id: &str, scope: &str, _now: i64) -> Result<
     super::problems::resolve(connection, &library, &format!("{id}:{scope}"))
 }
 #[allow(clippy::too_many_arguments)]
+/// Check the current person and Host before receipt replay or Source writes.
+pub(super) fn authorize(
     connection: &Connection,
     context: &BoundModuleContext,
     library: &str,
     command: &SourceCommand,
+) -> Result<(), StoreError> {
     if matches!(command, SourceCommand::RetryProblem { .. })
         && matches!(
             context.adapter,
@@ -355,11 +358,37 @@ fn success(connection: &Connection, id: &str, scope: &str, _now: i64) -> Result<
             false,
         ));
     }
+    if !matches!(command, SourceCommand::ConfigureSource { .. }) {
+        return Ok(());
+    }
+    let owner: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM local_profile_members local JOIN members member ON member.id=local.member_id AND member.library_id=local.library_id WHERE local.profile_id=?1 AND local.library_id=?2 AND member.role='owner' AND member.lifecycle='active')",
+        params![context.profile_id.0, library],
+        |row| row.get(0),
+    )?;
+    if !owner {
+        return Err(StoreError::new(
+            StoreErrorCode::Unauthorized,
+            "Source configuration requires the local Owner",
+            false,
+        ));
+    }
+    Ok(())
+}
+
 /// The receipt identity of one Source command: the Store epoch, operation and request hash it replays under.
 pub(super) struct SourceReceiptIdentity<'a> {
+    pub(super) epoch: &'a str,
     pub(super) operation: &'a str,
     pub(super) hash: &'a str,
+pub(super) fn apply(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library: &str,
+    source_receipt_identity: SourceReceiptIdentity<'_>,
+    command: &SourceCommand,
     provenance: Option<&nodex_core_contracts::agent::AgentTurnProvenance>,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let SourceReceiptIdentity {
         operation,
     } = source_receipt_identity;

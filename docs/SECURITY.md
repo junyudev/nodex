@@ -24,6 +24,83 @@ outer Nodex startup wrappers to the recorded user files, and restores its own
 routing after user startup. Launching Nodex inside another Agent shell must not
 route the inner Agent's CLI to the outer Profile. See [Agent shell routing](CLI.md#agent-shell-routing).
 
+## Team transport threat model
+
+HTTPS adds untrusted network peers and potentially hostile Members to the local
+Profile boundary. Core itself verifies membership even behind a reverse proxy.
+The network listener cannot authenticate with `core.auth`, impersonate Electron
+Host/Test, issue Agent attribution, or select maintenance execution priority.
+
+A remote handshake requires a device session and the existing generation,
+transport, event, Store and Module compatibility negotiation. Every admitted
+request binds Space, Member, Device, Session and role into trusted Module context.
+Semantic admission uses an explicit remote command allowlist. Source commands,
+native execution bindings, Runner administration, backups, restore and maintenance stay
+host-only. Receipt admission checks the initiating Member, including exact retries and
+explicit resolution. Physical connection and session identities do not change
+the operation identity.
+Revocation is checked on new requests, at the durable writer boundary, and every
+second while responses remain open. Library blobs and all SSE routes share this
+boundary. A reverse proxy must forward HTTPS without substituting a local Host
+capability or buffering SSE.
+
+The Owner supplies the HTTPS URL, certificate fingerprint and one-time enrollment
+code through an authenticated channel. The client pins SHA-256 of the complete
+leaf DER certificate before HTTP receives the TLS socket, including enrollment
+and session requests. It never accepts a replacement certificate automatically.
+Self-signed certificates need no public CA. Generated keys live privately under
+`<Profile>/team-transport/`; operator PEM keys must also be private, owned regular
+files. Remote responses never publish the local socket or administration bearer.
+
+Invites, device credentials and session tokens contain 256 random bits. Core
+stores SHA-256 hashes in separate invite, device and session tables, never the
+bearer secrets; high-entropy credentials do not use human-password hashing.
+Authentication verifies stored hashes with constant-time comparison. Codes are
+one-time and expire after 24 hours. Sessions expire after an hour; devices can
+renew, and revocation invalidates every session for the Device. Do not place
+credentials, enrollment codes or tokens in URLs, logs or diagnostics. A Desktop
+integration must store device credentials through its native private credential
+storage; the transport adapter holds secrets only in memory and supplies no
+plaintext persistence fallback.
+
+Network work has a 240-per-minute pre-authentication IP admission window, and
+per-Member and per-Device request/byte budgets. TLS acceptance and credential
+attempts spend pre-authentication admission; already authenticated requests and
+handshakes do not spend or consult that IP window. Desktops behind one NAT retain
+their independent authenticated budgets. Only pinned device-credential renewal
+may return typed access-withdrawal evidence; per-operation authorization refusals
+The authenticated minute windows admit up to 1,200 requests and 32 MiB per Device,
+and 2,400 requests and 64 MiB per Member, including refused semantic commands. A
+Desktop opening a Space measured 530–600 requests in its first minute and under 100
+per minute while editing; the Device window admits two openings, and the Member
+window a Desktop and a phone together.
+Local Owner transport diagnostics expose each request/byte window's peaks and
+refusals, route totals and the exact admission dimension of each refusal, without
+credentials. HTTP 429 includes that typed dimension and `Retry-After`. Admission still has
+bounded queues, connection and stream caps, bounded body reads, TLS/header
+handshake deadlines and slow-reader write timeouts. These controls protect local
+administration and interactive execution capacity. They do not constitute a
+filesystem sandbox or a disk-storage quota.
+
+See [Team Space behavior](product-specs/team-space-behavior.md).
+
+## Mutation audit identity
+
+Core derives Actors from authenticated Member bindings, verified Agent execution,
+or an admitted Host producer. Command JSON cannot choose an actor. An invalid
+Agent credential refuses the request; it cannot fall back to a local person's
+identity. Agent launches require the Core-issued credential before exposing CLI
+access. An Agent records its Session, optional Run and the Member it represents.
+Schedulers and Automation admission retain the authorizing Member separately from the
+Service that executes the grant.
+
+LocalCommit integrity binds the actor and grant identity. Durable mutation audit
+records survive delivery-window collection. File versions, Page attachments,
+Document history and Activity use this same identity. Intake origin and channel
+remain separate evidence. Personal View preferences, recovery drafts, unread
+state, routing consent and notifications are admitted and projected for the
+requesting Member. A remote caller cannot supply another Member's personal key.
+
 ## History and resource lifecycle
 
 History replay validates current owner identity, resource lifecycle, schema,
@@ -193,6 +270,12 @@ JavaScript can still consume CPU/memory or display deceptive report content.
 
 ## GitHub Source credentials
 
+Source configuration requires the active local Owner. Core accepts configuration
+and polling commands only from the trusted Desktop Host without Agent attribution.
+Polling leases, ingestion and failure/success recording are Host producer commands.
+Remote Members and Owners can read Sources, positions, threads, Triggers, problems
+and known pull requests, but cannot issue any Source command. CLI and Agent reads
+expose public configuration and observations, never credentials.
 Remote authors and remote text cannot change Source policy or authorize work.
 
 Main obtains a token only through `gh auth token --hostname <host> --user <login>`

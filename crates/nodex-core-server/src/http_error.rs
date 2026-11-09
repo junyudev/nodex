@@ -51,6 +51,12 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        let retry_after = match &self.error.recovery {
+            CoreErrorRecovery::RetryAfter { milliseconds, .. } => {
+                Some(milliseconds.div_ceil(1_000).max(1))
+            }
+            _ => None,
+        };
         let mut response = (
             self.status,
             Json(HttpErrorResponse::Error(crate::record_core_error(
@@ -58,6 +64,11 @@ impl IntoResponse for ApiError {
             ))),
         )
             .into_response();
+        if let Some(seconds) = retry_after {
+            response
+                .headers_mut()
+                .insert(header::RETRY_AFTER, seconds.to_string().parse().unwrap());
+        }
         response.extensions_mut().insert(StructuredHttpError);
         response
     }

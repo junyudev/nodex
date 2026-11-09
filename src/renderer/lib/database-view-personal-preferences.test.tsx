@@ -1,3 +1,4 @@
+import * as rendererSpace from "./renderer-space";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
@@ -97,57 +98,64 @@ describe("useDatabaseViewPersonalPreference", () => {
     });
   });
 
-  test("serializes an optimistic occurrence disclosure behind both authority reads", async () => {
-    const presentation = deferred<ReturnType<typeof presentationResult>>();
-    const disclosure = deferred<ReturnType<typeof disclosureResult>>();
-    testState.readDatabaseModule.mockImplementation(
-      (
-        _: string,
-        request: {
-          readonly read: { readonly mode: string };
-        },
-      ) =>
-        request.read.mode === "view_personal_preferences"
-          ? presentation.promise
-          : disclosure.promise,
-    );
-
-    const { result } = renderHook(() => useDatabaseViewPersonalPreference("project-test", viewId));
-    await waitFor(() => expect(testState.readDatabaseModule).toHaveBeenCalledTimes(2));
-
-    let collapseResult: Promise<boolean> | undefined;
-    act(() => {
-      collapseResult = result.current.setOccurrenceDisclosure(
-        { kind: "group", occurrenceKey: 'GROUP_"local"' },
-        true,
-      );
-    });
-    expect(result.current.collapsedOccurrenceKeys).toEqual(['GROUP_"local"']);
-    expect(testState.applyDatabaseModule).not.toHaveBeenCalled();
-
-    await act(async () => {
-      presentation.resolve(presentationResult());
-      disclosure.resolve(disclosureResult([{ kind: "group", occurrenceKey: 'GROUP_"server"' }]));
-      await collapseResult;
-    });
-
-    expect(await collapseResult).toBe(true);
-    expect(testState.applyDatabaseModule).toHaveBeenCalledWith(
-      "project-test",
-      expect.objectContaining({
-        storeEpoch: "epoch-loaded",
-        operations: [
-          {
-            kind: "set_view_occurrence_disclosure",
-            viewId,
-            target: { kind: "group", occurrenceKey: 'GROUP_"local"' },
-            collapsed: true,
+  test.each([false, true])(
+    "serializes personal disclosure through Core (remote=%s)",
+    async (remote) => {
+      const space = vi.spyOn(rendererSpace, "isRemoteSpace").mockReturnValue(remote);
+      const presentation = deferred<ReturnType<typeof presentationResult>>();
+      const disclosure = deferred<ReturnType<typeof disclosureResult>>();
+      testState.readDatabaseModule.mockImplementation(
+        (
+          _: string,
+          request: {
+            readonly read: { readonly mode: string };
           },
-        ],
-      }),
-    );
-    expect(result.current.collapsedOccurrenceKeys).toEqual(['GROUP_"local"', 'GROUP_"server"']);
-  });
+        ) =>
+          request.read.mode === "view_personal_preferences"
+            ? presentation.promise
+            : disclosure.promise,
+      );
+
+      const { result } = renderHook(() =>
+        useDatabaseViewPersonalPreference("project-test", viewId),
+      );
+      await waitFor(() => expect(testState.readDatabaseModule).toHaveBeenCalledTimes(2));
+
+      let collapseResult: Promise<boolean> | undefined;
+      act(() => {
+        collapseResult = result.current.setOccurrenceDisclosure(
+          { kind: "group", occurrenceKey: 'GROUP_"local"' },
+          true,
+        );
+      });
+      expect(result.current.collapsedOccurrenceKeys).toEqual(['GROUP_"local"']);
+      expect(testState.applyDatabaseModule).not.toHaveBeenCalled();
+
+      await act(async () => {
+        presentation.resolve(presentationResult());
+        disclosure.resolve(disclosureResult([{ kind: "group", occurrenceKey: 'GROUP_"server"' }]));
+        await collapseResult;
+      });
+
+      expect(await collapseResult).toBe(true);
+      expect(testState.applyDatabaseModule).toHaveBeenCalledWith(
+        "project-test",
+        expect.objectContaining({
+          storeEpoch: "epoch-loaded",
+          operations: [
+            {
+              kind: "set_view_occurrence_disclosure",
+              viewId,
+              target: { kind: "group", occurrenceKey: 'GROUP_"local"' },
+              collapsed: true,
+            },
+          ],
+        }),
+      );
+      expect(result.current.collapsedOccurrenceKeys).toEqual(['GROUP_"local"', 'GROUP_"server"']);
+      space.mockRestore();
+    },
+  );
 
   test("retains one hydrated personal state store across surface remounts", async () => {
     testState.readDatabaseModule.mockImplementation(

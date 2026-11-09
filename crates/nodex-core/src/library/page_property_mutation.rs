@@ -124,6 +124,19 @@ pub(super) struct PagePropertyApplySupplement<'a> {
     pub(super) committed_at: Option<&'a str>,
 }
 
+fn authored_mutation(
+    context: &BoundModuleContext,
+    client_session_id: Option<String>,
+    fields: Vec<LibraryBlockPropertyFieldMutation>,
+) -> Result<LibraryBlockPropertyMutation, StoreError> {
+    Ok(LibraryBlockPropertyMutation {
+        actor: serde_json::to_value(&context.actor)
+            .map_err(|_| internal("Actor cannot be encoded"))?,
+        client_session_id,
+        fields,
+    })
+}
+
 /// A semantic owner may apply intrinsic fields inside its existing LocalCommit.
 /// Use the normal validation, projection and history ledger without another receipt or commit.
 pub(super) fn apply_collaborator(
@@ -131,7 +144,10 @@ pub(super) fn apply_collaborator(
     context: &BoundModuleContext,
     commit: &crate::infrastructure::local_commit::CommitContext,
     operation_id: &str,
+    fields: Vec<LibraryBlockPropertyFieldMutation>,
 ) -> Result<(), StoreError> {
+    let mutation = authored_mutation(context, None, fields)?;
+    let mutation = &mutation;
     let library = &context.library_id.0;
     let now = commit.committed_at();
     let project = actor_project_id(connection, context, library)?;
@@ -229,6 +245,12 @@ pub(super) fn apply(
     mutation: &LibraryBlockPropertyMutation,
     supplement: PagePropertyApplySupplement<'_>,
 ) -> Result<LibraryApplyOutcome, StoreError> {
+    let mutation = authored_mutation(
+        context,
+        mutation.client_session_id.clone(),
+        mutation.fields.clone(),
+    )?;
+    let mutation = &mutation;
     let PagePropertyApplySupplement {
         core_request_hash,
         database_receipt,
@@ -1025,6 +1047,13 @@ pub(super) fn require_work_launch_consent(
     current_value: &Value,
     value: &Value,
 ) -> Result<(), StoreError> {
+    if matches!(context.actor, nodex_core_contracts::Actor::Member { .. })
+        || (matches!(
+            context.actor,
+            nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::InboxRouting
+            }
+        ) && context.authorizing_member_id.is_some())
         || value.get("auto_start").and_then(Value::as_bool) != Some(true)
         || current_value.get("auto_start").and_then(Value::as_bool) == Some(true)
     {

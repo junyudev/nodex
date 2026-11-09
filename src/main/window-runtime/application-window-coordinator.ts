@@ -42,6 +42,7 @@ export interface ApplicationWindowCoordinator {
     input: WindowSessionSaveLayoutInput,
   ) => { readonly session: WindowSessionRecord };
   readonly sendReminderOpen: (payload: {
+    readonly spaceId?: string;
     readonly projectId: string;
     readonly pageId: string;
     readonly occurrenceStart: string;

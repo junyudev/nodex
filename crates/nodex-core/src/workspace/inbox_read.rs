@@ -74,15 +74,21 @@ fn scope_of(project_id: Option<String>) -> ProjectWorkspaceInboxScope {
 
 pub(super) fn read_summary(
     connection: &Connection,
-    _context: &BoundModuleContext,
+    context: &BoundModuleContext,
     library_id: &str,
     scope: &ProjectWorkspaceInboxScope,
 ) -> Result<ProjectWorkspaceInboxSummary, StoreError> {
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
     let project_id = scope_project(scope)?;
     let all = matches!(scope, ProjectWorkspaceInboxScope::All);
     let home = scope_home(connection, library_id, project_id)?;
     let (entries, actionable): (i64,i64) = connection.query_row(
+        "SELECT count(*),COALESCE(sum(actionable),0) FROM inbox_member_rows WHERE member_id=?4 AND library_id=?1 AND (?3 OR project_id IS ?2)",
+        params![library_id,project_id,all, &member], |r| Ok((r.get(0)?,r.get(1)?)))?;
     let (decision,pending,important_count):(i64,i64,i64)=connection.query_row(
+        "SELECT COALESCE(sum(entry.state='open' AND proposal.state='open'),0), COALESCE(sum(entry.state='open' AND entry.suggestion_state IN ('waiting','pending') AND entry.source_kind<>'automation'),0), COALESCE(sum(entry.important=1 AND rows.actionable=1),0) FROM inbox_member_rows rows JOIN inbox_entries entry ON entry.page_id=rows.page_id LEFT JOIN inbox_proposals proposal ON proposal.proposal_id=entry.current_proposal_id WHERE rows.member_id=?4 AND rows.library_id=?1 AND (?3 OR rows.project_id IS ?2)", params![library_id,project_id,all, &member],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?)))?;
+    let important=connection.prepare("SELECT rows.page_id,COALESCE(materialization.title,''),rows.sort_at FROM inbox_member_rows rows JOIN inbox_entries entry ON entry.page_id=rows.page_id JOIN pages page ON page.block_id=rows.page_id LEFT JOIN document_materializations materialization ON materialization.document_id=page.document_id WHERE rows.member_id=?5 AND rows.library_id=?1 AND (?3 OR rows.project_id IS ?2) AND rows.actionable=1 AND entry.important=1 ORDER BY rows.sort_at,rows.row_id LIMIT ?4")?.query_map(params![library_id,project_id,all,MAX_SUMMARY_IMPORTANT, &member],|r|Ok(ProjectWorkspaceInboxImportantMessage{page_id:r.get(0)?,title:r.get(1)?,submitted_at:r.get(2)?}))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let dispatching:i64=connection.query_row("SELECT count(DISTINCT proposal.proposal_id) FROM inbox_proposals proposal JOIN inbox_proposal_pages link ON link.proposal_id=proposal.proposal_id JOIN inbox_entries entry ON entry.page_id=link.page_id WHERE proposal.library_id=?1 AND (entry.source_kind<>'automation' OR entry.author_member_id=?4) AND proposal.state='dispatching' AND COALESCE(proposal.failure_kind,'')<>'unknown' AND (?3 OR entry.scope_project_id IS ?2)",params![library_id,project_id,all,&member],|r|r.get(0))?;
     Ok(ProjectWorkspaceInboxSummary {
         database_id: home.as_ref().map(|h| h.database_id.clone()),
         view_id: home.map(|h| h.view_id),
@@ -108,25 +114,11 @@ pub(super) const IN_INBOX: &str = "(entry.state = 'open' \
 /// Messages still waiting in the Library Inbox and in each active Project's Inbox.
 pub(super) fn read_counts(
     connection: &Connection,
-    _context: &BoundModuleContext,
+    context: &BoundModuleContext,
     library_id: &str,
 ) -> Result<ProjectWorkspaceInboxCounts, StoreError> {
-    let rows = connection
-        .prepare(&format!(
-            "SELECT entry.scope_project_id, COALESCE(SUM({IN_INBOX}), 0) AS waiting \
-             FROM inbox_entries entry \
-             JOIN blocks block ON block.id = entry.page_id AND block.lifecycle = 'active' \
-             LEFT JOIN inbox_proposals proposal ON proposal.proposal_id = entry.current_proposal_id \
-             LEFT JOIN projects project ON project.id = entry.scope_project_id \
-             WHERE entry.library_id = ?1 \
-               AND (entry.scope_project_id IS NULL OR project.lifecycle = 'active') \
-             GROUP BY entry.scope_project_id HAVING waiting > 0 \
-             ORDER BY entry.scope_project_id IS NOT NULL, entry.scope_project_id LIMIT ?2"
-        ))?
-        .query_map(params![library_id, MAX_COUNTED_PROJECTS + 1], |row| {
-            Ok((row.get::<_, Option<String>>(0)?, row.get::<_, i64>(1)?))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    let rows=connection.prepare("SELECT project_id,sum(actionable) AS waiting FROM inbox_member_rows WHERE member_id=?3 AND library_id=?1 GROUP BY project_id HAVING waiting>0 ORDER BY project_id LIMIT ?2")?.query_map(params![library_id,MAX_COUNTED_PROJECTS+1, &member],|r|Ok((r.get::<_,Option<String>>(0)?,r.get::<_,i64>(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
     let mut counts = ProjectWorkspaceInboxCounts {
         library_count: 0,
         projects: Vec::new(),
@@ -184,16 +176,18 @@ impl InboxReadCache {
 /// Newest-first stream window ordered by submission sequence.
 pub(super) fn read_window(
     connection: &Connection,
-    _context: &BoundModuleContext,
+    context: &BoundModuleContext,
     library_id: &str,
     commit_head: i64,
     scope: &ProjectWorkspaceInboxScope,
     filter: ProjectWorkspaceInboxWindowFilter,
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<ProjectWorkspaceInboxItem>, StoreError> {
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
     let project_id = scope_project(scope)?;
     let normalized = normalize_request(request)?;
-    let fingerprint = cursor::query_fingerprint(&("workspace_inbox_window_v2", scope, filter))?;
+    let fingerprint =
+        cursor::query_fingerprint(&("workspace_inbox_window_v5", &member, scope, filter))?;
     let subject = CollectionCursorSubject {
         kind: "workspace_inbox_rows",
         library_id,
@@ -218,6 +212,7 @@ pub(super) fn read_window(
         })
         .transpose()?;
     let (after_at, after_id) = after.map_or((None, None), |(at, id)| (Some(at), Some(id)));
+    let rows=connection.prepare("SELECT row_kind,page_id,sort_at,row_id FROM inbox_member_rows WHERE member_id=?8 AND library_id=?1 AND (?3 OR project_id IS ?2) AND in_inbox=?4 AND (?5 IS NULL OR (sort_at,row_id)<(?5,?6)) ORDER BY sort_at DESC,row_id DESC LIMIT ?7")?.query_map(params![library_id,project_id,matches!(scope,ProjectWorkspaceInboxScope::All),matches!(filter,ProjectWorkspaceInboxWindowFilter::Inbox),after_at,after_id,(normalized.first+1) as i64, &member],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
     let mut candidates = Vec::with_capacity(rows.len());
     let mut cache = InboxReadCache::default();
     for (kind, page, at, id) in rows {
@@ -242,7 +237,7 @@ pub(super) fn read_window(
                 ],
                 stable_id: id,
             },
-            item,
+            item: project_member_chat(connection, &member, item)?,
         });
     }
     assemble(
@@ -540,19 +535,29 @@ fn source(
 
 pub(super) fn read_single_entry(
     connection: &Connection,
+    context: &BoundModuleContext,
     library: &str,
     id: &str,
 ) -> Result<Option<ProjectWorkspaceInboxItem>, StoreError> {
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
     super::session_mutation::validate_id("page_id", id)?;
     let row_kind: Option<String> = connection
         .query_row(
+            "SELECT row_kind FROM inbox_member_rows WHERE member_id=?3 AND page_id=?1 AND library_id=?2 ORDER BY row_kind='turn' DESC LIMIT 1",
+            params![id, library, &member],
             |r| r.get(0),
         )
         .optional()?;
+    if row_kind.is_none() {
+        return Ok(None);
+    }
     if row_kind.as_deref() == Some("problem") {
         return super::problems::inbox_item(connection, library, id).map(Some);
     }
     if let Some(kind) = row_kind.filter(|kind| kind != "intake") {
+        return super::inbox_projection::item(connection, library, id, &kind)
+            .and_then(|item| project_member_chat(connection, &member, item))
+            .map(Some);
     }
     let project=connection.query_row("SELECT entry.scope_project_id FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.page_id=?1 AND entry.library_id=?2",params![id,library],|r|r.get::<_,Option<String>>(0)).optional()?;
     let Some(project) = project else {
@@ -569,6 +574,9 @@ pub(super) fn read_single_entry(
         id,
         &mut InboxReadCache::default(),
     )
+    .and_then(|(item, _)| project_member_chat(connection, &member, item).map(Some))
+}
+
 /// The messages an Activity window's message facts are about, as each stands now and as the
 /// reader sees its chat. A message deleted or no longer a Page in active use is absent.
 pub(super) fn read_message_items<'a>(
@@ -597,6 +605,28 @@ pub(super) fn read_message_items<'a>(
     Ok(items)
 }
 
+fn project_member_chat(
+    connection: &Connection,
+    member: &str,
+    mut item: ProjectWorkspaceInboxItem,
+) -> Result<ProjectWorkspaceInboxItem, StoreError> {
+    let project = |chat: &mut ProjectWorkspaceInboxChat| -> Result<(), StoreError> {
+        chat.unread=connection.query_row("SELECT EXISTS(SELECT 1 FROM member_session_unread WHERE member_id=?1 AND session_id=?2)",params![member,chat.session_id],|r|r.get(0))?;
+        Ok(())
+    };
+    if let Some(chat) = item
+        .turn
+        .as_mut()
+        .and_then(|turn| turn.active_chat.as_mut())
+    {
+        project(chat)?;
+    }
+    if let Some(chat) = item
+        .proposal
+        .as_mut()
+        .and_then(|proposal| proposal.chat.as_mut())
+    {
+        project(chat)?;
     }
     Ok(item)
 }
@@ -707,6 +737,7 @@ pub(super) fn automatic_dispatches(
     limit: u32,
 ) -> Result<Vec<ProjectWorkspaceInboxProposal>, StoreError> {
     super::inbox::require_host(context)?;
+    let ids=connection.prepare("SELECT proposal_id FROM inbox_proposals WHERE library_id=?1 AND auto_confirm_pending=1 AND state='open' AND explicit_request=1 AND origin='agent' AND json_extract(action_json,'$.type') IN ('new_chat','send_to_chat') AND NOT EXISTS(SELECT 1 FROM inbox_proposal_pages member JOIN inbox_entries entry ON entry.page_id=member.page_id WHERE member.proposal_id=inbox_proposals.proposal_id AND ((json_extract(entry.actor_json,'$.type')<>'member' OR entry.author_member_id IS NULL OR NOT EXISTS(SELECT 1 FROM member_inbox_preferences consent WHERE consent.member_id=entry.author_member_id AND consent.start_my_requests=1)) OR EXISTS(SELECT 1 FROM chat_message_handback_pages returned WHERE returned.page_id=entry.page_id) OR entry.state<>'open' OR entry.current_proposal_id IS NOT inbox_proposals.proposal_id)) ORDER BY created_at,proposal_id LIMIT ?2")?.query_map(params![library,i64::from(limit.clamp(1,100))],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
     let mut cache = InboxReadCache::default();
     ids.into_iter()
         .map(|id| read_proposal(connection, library, &id, &mut cache))
@@ -922,7 +953,7 @@ pub(super) fn read_chat(
             "SELECT session.id, session.project_id, project.name, session.no_thread_fallback_title, \
                COALESCE(binding.runtime_thread_id,thread.thread_id), thread.thread_name, \
                substr(COALESCE(thread.thread_preview, ''),1,240), \
-               thread.status_type, thread.status_active_flags_json, session.unread, session.archived, \
+               thread.status_type, thread.status_active_flags_json, EXISTS(SELECT 1 FROM member_session_unread attention JOIN local_profile_members local ON local.member_id=attention.member_id WHERE attention.session_id=session.id AND local.library_id=?2), session.archived, \
                binding.runtime_id \
              FROM project_sessions session \
              LEFT JOIN projects project ON project.id = session.project_id \
@@ -1525,6 +1556,7 @@ fn count(value: i64) -> Result<u32, StoreError> {
 pub(super) fn read_chat_targets(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     commit_head: i64,
     scope: &ProjectWorkspaceInboxScope,
     query: &str,
@@ -1536,7 +1568,7 @@ pub(super) fn read_chat_targets(
     }
     let query = query.trim().to_lowercase();
     let normalized = normalize_request(request)?;
-    let fingerprint = cursor::query_fingerprint(&("inbox_chat_targets_v1", scope, &query))?;
+    let fingerprint = cursor::query_fingerprint(&("inbox_chat_targets_v2", member, scope, &query))?;
     let subject = CollectionCursorSubject {
         kind: "inbox_chat_targets",
         library_id,
@@ -1562,7 +1594,7 @@ pub(super) fn read_chat_targets(
                     values: Vec::new(),
                     stable_id: id.clone(),
                 },
-                item: read_chat(connection, library_id, &id)?
+                item: read_chat(connection, library_id, &id)?.map(|mut chat| { chat.unread=connection.query_row("SELECT EXISTS(SELECT 1 FROM member_session_unread WHERE member_id=?1 AND session_id=?2)",params![member,id],|r|r.get(0))?; Ok::<_,StoreError>(chat) }).transpose()?
                     .ok_or_else(|| corrupt("Chat disappeared during read"))?,
             })
         })

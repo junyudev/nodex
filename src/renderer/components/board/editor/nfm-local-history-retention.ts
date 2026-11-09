@@ -1,3 +1,4 @@
+import { isRemoteSpace } from "@/lib/renderer-space";
 import type * as Y from "yjs";
 import type { ContentRoutingContext } from "../../../../shared/content-routing-context";
 import type { LibraryModuleApplyRequest } from "../../../../shared/library-module";
@@ -48,8 +49,11 @@ export class NfmLocalHistoryRetention {
     private readonly journal: NfmTextHistoryJournal,
     private readonly options: RetentionOptions,
   ) {
-    this.unregister = registerDocumentHistoryRetention(document, this.flush);
-    this.unsubscribe = journal.subscribeRetention(this.changed);
+    // Remote Cores do not admit a Desktop's process-owned history leases. Its journal stays local.
+    this.unregister = isRemoteSpace()
+      ? () => {}
+      : registerDocumentHistoryRetention(document, this.flush);
+    this.unsubscribe = isRemoteSpace() ? () => {} : journal.subscribeRetention(this.changed);
   }
 
   private readonly changed = (): void => {
@@ -85,6 +89,7 @@ export class NfmLocalHistoryRetention {
   }
 
   readonly flush = (): Promise<void> => {
+    if (isRemoteSpace()) return Promise.resolve();
     if (this.disposed) return Promise.resolve();
     if (this.task) return this.task;
     this.task = this.flushChanges().finally(() => {

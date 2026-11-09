@@ -57,6 +57,10 @@ independently; a failed item does not hide earlier successes or prevent later
 items from being attempted. The selection remains bounded to 100 Files and
 256 MiB. Partial-failure feedback asks users to retry only the failed items.
 
+File creation and each immutable version record a Core-derived Actor. Execution
+Project identity is separate from the Member, delegated Agent or Service that
+changed the File.
+
 ## Page relationships
 
 A Page optionally assigns one path to a File. These entries form that Page's

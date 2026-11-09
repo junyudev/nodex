@@ -58,7 +58,20 @@ pub(super) fn read(
     commit_head: i64,
     request: ProjectWorkspaceRead,
 ) -> Result<ProjectWorkspaceReadValue, StoreError> {
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
     match request {
+        ProjectWorkspaceRead::InboxRoutingConsent => {
+            let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+            Ok(ProjectWorkspaceReadValue::InboxRoutingConsent {
+                start_my_requests: connection
+                    .query_row(
+                        "SELECT start_my_requests FROM member_inbox_preferences WHERE member_id=?1",
+                        [member],
+                        |r| r.get(0),
+                    )
+                    .optional()?,
+            })
+        }
         ProjectWorkspaceRead::AutomationAssessments { read } => {
             Ok(ProjectWorkspaceReadValue::AutomationAssessments {
                 value: super::automation_assessment::read(connection, context, library_id, read)?,
@@ -147,17 +160,19 @@ pub(super) fn read(
         }
         ProjectWorkspaceRead::NextSessionReminder => {
             let work = connection.query_row(
-                "WITH work AS (SELECT id AS session_id,remind_at AS wake_at,remind_at,NULL AS delivery_id FROM project_sessions WHERE archived=0 AND remind_at IS NOT NULL UNION ALL SELECT session_id,next_attempt_at AS wake_at,remind_at,delivery_id FROM project_session_reminder_deliveries) SELECT session.id,work.wake_at,work.remind_at,work.delivery_id FROM work JOIN project_sessions session ON session.id=work.session_id WHERE session.archived=0 AND (session.project_id IS NULL OR EXISTS (SELECT 1 FROM projects owner WHERE owner.id=session.project_id AND owner.library_id=?1)) ORDER BY work.wake_at,session.id,work.delivery_id LIMIT 1",
-                [library_id], |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,String>(2)?, row.get::<_,Option<String>>(3)?)),
+                "WITH work AS (SELECT member_id,session_id,remind_at AS wake_at,remind_at,NULL AS delivery_id FROM member_session_reminders UNION ALL SELECT member_id,session_id,next_attempt_at AS wake_at,remind_at,delivery_id FROM member_session_reminder_deliveries) SELECT session.id,work.member_id,work.wake_at,work.remind_at,work.delivery_id FROM work JOIN project_sessions session ON session.id=work.session_id JOIN members member ON member.id=work.member_id AND member.library_id=?1 AND member.lifecycle='active' WHERE session.archived=0 AND (session.project_id IS NULL OR EXISTS (SELECT 1 FROM projects owner WHERE owner.id=session.project_id AND owner.library_id=?1)) ORDER BY work.wake_at,session.id,work.member_id,work.delivery_id LIMIT 1",
+                [library_id], |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,String>(2)?, row.get::<_,String>(3)?, row.get::<_,Option<String>>(4)?)),
             ).optional()?;
-            let Some((id, wake_at, remind_at, delivery_id)) = work else {
+            let Some((id, owed, wake_at, remind_at, delivery_id)) = work else {
                 return Ok(ProjectWorkspaceReadValue::NextSessionReminder {
                     session: None,
+                    member_id: None,
                     delivery: None,
                     next_wake_at: None,
                 });
             };
-            let session = read_session(connection, library_id, &id)?.map(session_summary);
+            // The chat as the reminded Member reads it, with their own pin and unread state.
+            let session = read_session(connection, library_id, &id, &owed)?.map(session_summary);
             let delivery = delivery_id.map(|delivery_id| {
                 nodex_core_contracts::workspace::ProjectWorkspaceSessionReminderDelivery {
                     delivery_id,
@@ -166,6 +181,7 @@ pub(super) fn read(
             });
             Ok(ProjectWorkspaceReadValue::NextSessionReminder {
                 session,
+                member_id: Some(owed),
                 delivery,
                 next_wake_at: Some(wake_at),
             })
@@ -181,6 +197,7 @@ pub(super) fn read(
             window: super::inbox_read::read_chat_targets(
                 connection,
                 library_id,
+                &member,
                 commit_head,
                 &scope,
                 &query,
@@ -231,9 +248,10 @@ pub(super) fn read(
         }
         ProjectWorkspaceRead::InboxTurnNotifications => {
             Ok(ProjectWorkspaceReadValue::InboxTurnNotifications {
+                intents: super::inbox_projection::notification_intents(
                     connection,
                     library_id,
-                    &request_ids,
+                    &crate::infrastructure::actors::requesting_member(connection, context)?,
                 )?,
             })
         }
@@ -257,6 +275,7 @@ pub(super) fn read(
             rows: super::activity::window(
                 connection,
                 library_id,
+                &member,
                 commit_head,
                 &scope,
                 filter,
@@ -348,6 +367,7 @@ pub(super) fn read(
             let (order_revision, items) = super::sidebar_builtin::read_order(
                 connection,
                 library_id,
+                &member,
                 commit_head,
                 lane,
                 &window,
@@ -399,6 +419,7 @@ pub(super) fn read(
                 summaries: super::project_activity_summary::read_project_activity_summaries(
                     connection,
                     library_id,
+                    &member,
                     &project_ids,
                 )?,
                 projection_revision: commit_head,
@@ -409,6 +430,7 @@ pub(super) fn read(
                 placements: super::sidebar_section::read_session_sidebar_placements(
                     connection,
                     library_id,
+                    &member,
                     &session_ids,
                 )?,
                 projection_revision: commit_head,
@@ -428,7 +450,7 @@ pub(super) fn read(
         ProjectWorkspaceRead::PageChatActivitySummaries { page_ids } => {
             Ok(ProjectWorkspaceReadValue::PageChatActivitySummaries {
                 summaries: super::page_chat::read_page_chat_activity_summaries(
-                    connection, library_id, &page_ids,
+                    connection, library_id, &member, &page_ids,
                 )?,
                 projection_revision: commit_head,
             })
@@ -441,6 +463,7 @@ pub(super) fn read(
             chats: super::page_chat::read_page_chat_window(
                 connection,
                 library_id,
+                &member,
                 commit_head,
                 &page_id,
                 include_archived.unwrap_or(false),
@@ -466,6 +489,7 @@ pub(super) fn read(
             sessions: super::session_listing::read_session_window(
                 connection,
                 library_id,
+                &member,
                 commit_head,
                 super::session_listing::SessionListingFilter {
                     archived,
@@ -490,6 +514,7 @@ pub(super) fn read(
             tasks: super::task_window::read_task_window(
                 connection,
                 library_id,
+                &member,
                 commit_head,
                 project_id.as_deref(),
                 include_archived.unwrap_or(false),
@@ -505,6 +530,7 @@ pub(super) fn read(
             pinned_tasks: super::task_window::read_pinned_task_window(
                 connection,
                 library_id,
+                &member,
                 commit_head,
                 include_archived.unwrap_or(false),
                 &pinned_window,
@@ -517,6 +543,7 @@ pub(super) fn read(
             sections: super::sidebar_section::read_section_window(
                 connection,
                 library_id,
+                &member,
                 commit_head,
                 include_deleted.unwrap_or(false),
                 &window,
@@ -530,6 +557,7 @@ pub(super) fn read(
             items: super::sidebar_section::read_section_item_window(
                 connection,
                 library_id,
+                &member,
                 commit_head,
                 &section_id,
                 include_archived.unwrap_or(false),
@@ -556,7 +584,7 @@ pub(super) fn read(
         }
         ProjectWorkspaceRead::Session { session_id } => {
             validate_id("session_id", &session_id)?;
-            let row = read_session(connection, library_id, &session_id)?
+            let row = read_session(connection, library_id, &session_id, &member)?
                 .ok_or_else(|| not_found("Project Session is unavailable"))?;
             Ok(ProjectWorkspaceReadValue::Session {
                 session: session_summary(row),
@@ -646,7 +674,7 @@ pub(super) fn read(
         } => {
             super::agent_command::admit_read_caller(connection, library_id, context, &provenance)?;
             validate_id("session_id", &session_id)?;
-            let row = read_session(connection, library_id, &session_id)?
+            let row = read_session(connection, library_id, &session_id, &member)?
                 .ok_or_else(|| not_found("Project Session is unavailable"))?;
             let thread = row
                 .thread_id
@@ -678,7 +706,7 @@ pub(super) fn read(
                 &expected_execution_host_id,
                 std::slice::from_ref(session_id),
             )?;
-            let session = read_session(connection, library_id, session_id)?
+            let session = read_session(connection, library_id, session_id, &member)?
                 .ok_or_else(|| not_found("Conversation Session is unavailable"))?;
             Ok(ProjectWorkspaceReadValue::CodexThreadSession {
                 thread: Box::new(thread),
@@ -932,15 +960,15 @@ fn read_session(
     connection: &Connection,
     library_id: &str,
     session_id: &str,
+    member: &str,
 ) -> Result<Option<SessionRow>, StoreError> {
     connection
         .query_row(
-            "SELECT session.id, session.project_id, session.no_thread_fallback_title, \
-               session.activity_at, session.pinned, session.pinned_order, session.archived, \
-               session.archived_at, session.unread, \
+               session.activity_at, {}, {}, session.archived, \
+               session.archived_at, {}, \
                thread.thread_id, thread.thread_name, \
                thread.thread_preview, session.created_at, session.updated_at, \
-               execution.runtime_id, execution.runtime_thread_id, session.remind_at \
+               execution.runtime_id, execution.runtime_thread_id, {}, \
              FROM project_sessions session \
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
@@ -950,7 +978,12 @@ fn read_session(
                  SELECT 1 FROM projects owner \
                  WHERE owner.id = session.project_id AND owner.library_id = ?2\
                ))",
-            params![session_id, library_id],
+                super::member_attention::pinned_sql("session.id", "?3"),
+                super::member_attention::pinned_order_sql("session.id", "?3"),
+                super::member_attention::unread_sql("session.id", "?3"),
+                super::member_attention::remind_at_sql("session.id", "?3"),
+            ),
+            params![session_id, library_id,member],
             session_row,
         )
         .optional()
@@ -1066,7 +1099,12 @@ mod tests {
 
     fn context() -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -1180,22 +1218,24 @@ mod tests {
                          UPDATE database_containers SET default_view_id = 'view-1' \
                            WHERE block_id = 'database-1'; \
                          INSERT INTO project_sessions( \
-                           id, project_id, no_thread_fallback_title, activity_at, pinned, \
-                           pinned_order, archived, archived_at, unread, created_at, updated_at \
+                           id, project_id, no_thread_fallback_title, activity_at, \
+                           archived, archived_at, created_at, updated_at \
                          ) VALUES \
-                           ('session-project', 'project-1', 'Fallback', 1784431980000, 1, 0, 0, NULL, 1, \
+                           ('session-project', 'project-1', 'Fallback', 1784431980000, 0, NULL, \
                             '2026-07-19T03:31:00.000Z', '2026-07-19T03:34:00.000Z'), \
-                           ('session-archived', 'project-1', 'Archived session', 1784431920000, 0, NULL, 1, \
-                            '2026-07-19T03:35:00.000Z', 0, \
+                           ('session-archived', 'project-1', 'Archived session', 1784431920000, 1, \
+                            '2026-07-19T03:35:00.000Z', \
                             '2026-07-19T03:32:00.000Z', '2026-07-19T03:35:00.000Z'), \
-                           ('session-archived-project', 'project-2', 'Archived project', 1784431920000, 0, \
-                            NULL, 0, NULL, 0, \
+                           ('session-archived-project', 'project-2', 'Archived project', 1784431920000, \
+                            0, NULL, \
                             '2026-07-19T03:32:00.000Z', '2026-07-19T03:35:00.000Z'), \
-                           ('session-foreign', 'project-foreign', 'Foreign session', 1784431980000, 0, NULL, \
-                            0, NULL, 0, \
+                           ('session-foreign', 'project-foreign', 'Foreign session', 1784431980000, \
+                            0, NULL, \
                             '2026-07-19T03:33:00.000Z', '2026-07-19T03:33:00.000Z'), \
-                           ('session-projectless', NULL, 'Projectless', 1784431800000, 0, NULL, 0, NULL, 0, \
+                           ('session-projectless', NULL, 'Projectless', 1784431800000, 0, NULL, \
                             '2026-07-19T03:30:00.000Z', '2026-07-19T03:30:00.000Z'); \
+                         INSERT INTO member_session_pins SELECT member_id, 'session-project', 0 FROM local_profile_members WHERE library_id='library-1'; \
+                         INSERT INTO member_session_unread SELECT member_id, 'session-project' FROM local_profile_members WHERE library_id='library-1'; \
                          INSERT INTO codex_threads( \
                            thread_id, project_id, thread_name, thread_preview, \
                            managed_worktree_path, status_type, status_active_flags_json, archived, \

@@ -9,7 +9,7 @@ import { useContentPageDetail } from "@/lib/content-page-detail";
 import { readPageDetailWorkflowStatus } from "@/lib/page-stage-properties";
 import { StatusIcon } from "@/lib/status-presentation";
 import type { PageTargetReadModel } from "../../../../shared/page-targets";
-import { buildPageDeepLink } from "../../../../shared/nodex-deeplink";
+import { buildPageDeepLink } from "@/lib/page-deeplink";
 import { libraryContentRoute } from "../../../../shared/content-routing-context";
 import { pageMentionInlineContentConfig } from "../../../../shared/block-documents/blocknote-schema-config";
 import { useBlockReferenceHostRuntime } from "../../block-documents/block-reference-runtime-context";

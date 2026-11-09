@@ -29,7 +29,7 @@ fn shutdown_existing(arguments: &[String]) -> Result<(), Box<dyn std::error::Err
 }
 
 fn parse_arguments() -> Result<(PathBuf, CoreSelectionPolicy, LauncherKind), String> {
-    let args = env::args().collect::<Vec<_>>();
+    let (args, _) = transport_arguments()?;
     match args.as_slice() {
         [_, home_flag, home] if home_flag == "--home" => Ok((
             PathBuf::from(home),
@@ -61,6 +61,37 @@ fn parse_arguments() -> Result<(PathBuf, CoreSelectionPolicy, LauncherKind), Str
     }
 }
 
+fn transport_arguments() -> Result<
+    (
+        Vec<String>,
+        Option<nodex_core_contracts::team::ListenRequest>,
+    ),
+    String,
+> {
+    let mut args = env::args();
+    let mut local = vec![args.next().ok_or("Missing executable")?];
+    let (mut address, mut cert, mut key) = (None, None, None);
+    while let Some(arg) = args.next() {
+        if matches!(arg.as_str(), "--listen" | "--cert" | "--key") {
+            let value = args.next().ok_or("Missing remote listener argument")?;
+            let target = match arg.as_str() {
+                "--listen" => &mut address,
+                "--cert" => &mut cert,
+                _ => &mut key,
+            };
+            if target.replace(value).is_some() {
+                return Err("Duplicate listener argument".into());
+            }
+            continue;
+        }
+        local.push(arg);
+    }
+    if address.is_none() && (cert.is_some() || key.is_some()) {
+        return Err("Certificate options require --listen".into());
+    }
+    Ok((local, listen))
+}
+
 // Every launcher gets the same lifetime guarantee before any runtime threads start.
 // Desktop may already have detached us; a native CLI normally has not.
 fn isolate_process() -> Result<(), Box<dyn std::error::Error>> {
@@ -74,7 +105,8 @@ async fn run(
     policy: CoreSelectionPolicy,
     launcher: LauncherKind,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    nodex_core_server::run_with_selection(home, policy, launcher).await
+    let (_, listen) = transport_arguments()?;
+    nodex_core_server::run_with_options(home, policy, launcher, listen).await
 }
 
 fn main() {

@@ -149,7 +149,7 @@ describe("Library File transport boundaries", () => {
       mime_type: "text/html",
       byte_length: 12,
       blob_etag: "a".repeat(64),
-      created_by_actor_id: "project-a",
+      created_by: { type: "member" as const, member_id: "member-local" },
       created_by_turn_id: null,
       created_at: "2026-10-01T00:00:00Z",
       updated_at: "2026-10-01T00:00:00Z",
@@ -175,28 +175,23 @@ describe("Library File transport boundaries", () => {
       );
     const time = "2026-11-01T10:15:00+08:00";
     const actors = [
-      { kind: "person" },
-      { kind: "external" },
-      { kind: "unknown" },
-      ...["codex", "claude", "opencode", "acp"].map((backend) => ({
-        kind: "agent",
-        session_id: "session-product-a",
-        backend,
-      })),
+      { type: "member", member_id: "alice" },
+      { type: "service", kind: "sources" },
+      { type: "agent", session_id: "session-product-a", run_id: "run-a", on_behalf_of: "alice" },
     ];
     for (const inventory of [true, false]) {
       const item = { file, logical_path: "output.html", body_count: 0 };
       for (const actor of actors) {
         const attachment = {
           attached_by: actor,
-          attached_at: actor.kind === "unknown" ? null : time,
+          attached_at: time,
         };
         expect(() => parse({ ...item, attachment }, inventory)).not.toThrow();
         expect(() =>
           parse(
             {
               ...item,
-              attachment: { ...attachment, attached_at: actor.kind === "unknown" ? time : null },
+              attachment: { ...attachment, attached_at: null },
             },
             inventory,
           ),
@@ -208,7 +203,10 @@ describe("Library File transport boundaries", () => {
       for (const attachment of [
         undefined,
         null,
-        { attached_by: { kind: "person" }, attached_at: "2026-11-01 10:15:00" },
+        {
+          attached_by: { type: "member", member_id: "member-local" },
+          attached_at: "2026-11-01 10:15:00",
+        },
         { attached_by: { kind: "agent", session_id: "project-a" }, attached_at: time },
         {
           attached_by: { kind: "agent", session_id: "chat", backend: "gemini" },
@@ -222,7 +220,10 @@ describe("Library File transport boundaries", () => {
           {
             ...item,
             logical_path: null,
-            attachment: { attached_by: { kind: "person" }, attached_at: time },
+            attachment: {
+              attached_by: { type: "member", member_id: "member-local" },
+              attached_at: time,
+            },
           },
           inventory,
         ),
@@ -246,7 +247,7 @@ describe("Library File transport boundaries", () => {
       ],
     };
     for (const forged of [
-      { attached_by: { kind: "person" } },
+      { attached_by: { type: "member", member_id: "member-local" } },
       { attached_at: "2026-11-01T00:00:00Z" },
     ]) {
       expect(() => libraryFileOperationSchema.parse({ ...operation, ...forged })).toThrow();

@@ -9,6 +9,11 @@ import type { ProjectionScope, ProjectionStreamMessage } from "../../shared/proj
 import type { ContentRoutingIdentity } from "../../shared/content-routing-context";
 
 export interface RendererTransport {
+  subscribeSpaceConnections?: (
+    callback: (
+      spaces: readonly import("../../shared/space-connection").SpaceConnectionSummary[],
+    ) => void,
+  ) => () => void;
   subscribeTerminalShellSettingsChanges?: (
     callback: (
       settings: import("../../shared/terminal-shell-settings").TerminalShellSettings,
@@ -148,7 +153,6 @@ export interface RendererTransport {
   subscribeInboxChanges?: (
     callback: (event: import("../../shared/inbox").InboxChangedEvent) => void,
   ) => () => void;
-  subscribeMobileAccessChanges?: (callback: () => void) => () => void;
   subscribeProjectChanges: (
     callback: (event: import("../../shared/ipc-api").ProjectsChangeEvent) => void,
   ) => () => void;

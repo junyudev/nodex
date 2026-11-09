@@ -14,13 +14,15 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 pub(super) struct EntryReplacement {
     pub(super) file_id: String,
     pub(super) logical_path: String,
-    #[serde(default = "unknown_attachment")]
+    #[serde(default = "imported_attachment")]
     pub(super) attachment: LibraryPageFileAttachment,
 }
 
-fn unknown_attachment() -> LibraryPageFileAttachment {
+fn imported_attachment() -> LibraryPageFileAttachment {
     LibraryPageFileAttachment {
-        attached_by: nodex_core_contracts::library::LibraryPageFileAttachmentActor::Unknown,
+        attached_by: nodex_core_contracts::library::LibraryPageFileAttachmentActor::Service {
+            kind: nodex_core_contracts::ServiceKind::Maintenance,
+        },
         attached_at: None,
     }
 }

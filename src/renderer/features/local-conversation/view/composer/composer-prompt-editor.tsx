@@ -1,4 +1,4 @@
-import { buildPageDeepLink, parsePageDeepLink } from "../../../../../shared/nodex-deeplink";
+import { buildPageDeepLink, parsePageDeepLink } from "@/lib/page-deeplink";
 import {
   forwardRef,
   useCallback,

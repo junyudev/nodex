@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { actorSchema } from "./actor";
 import type {
   CoreLibraryFileRead,
   LibraryFile,
@@ -15,7 +16,6 @@ import type {
   LibraryPageFileInventory,
   LibraryPageFileItem,
   LibraryPageFileAttachment,
-  LibraryPageFileAttachmentActor,
   LibraryPageFileSelector,
   ReadFileBytesInput,
   SaveFileInput,
@@ -283,7 +283,7 @@ export const libraryFileSchema = z
     mime_type: identity,
     byte_length: presentationFields.byte_length,
     blob_etag: hash,
-    created_by_actor_id: identity,
+    created_by: actorSchema,
     created_by_turn_id: identity.nullish(),
     created_at: identity,
     updated_at: identity,
@@ -296,33 +296,23 @@ const fileVersionSchema = z
     mime_type: identity,
     byte_length: presentationFields.byte_length,
     blob_etag: hash,
-    actor_id: identity,
+    actor: actorSchema,
     turn_id: identity.nullish(),
     operation_id: identity,
     occurred_at: identity,
   })
   .strict() satisfies z.ZodType<LibraryFileVersion>;
-const attachmentActorSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("person") }).strict(),
-  z.object({ kind: z.literal("external") }).strict(),
-  z.object({ kind: z.literal("unknown") }).strict(),
-  z
-    .object({
-      kind: z.literal("agent"),
-      session_id: identity,
-      backend: z.enum(["codex", "claude", "opencode", "acp"]),
-    })
-    .strict(),
-]) satisfies z.ZodType<LibraryPageFileAttachmentActor>;
 const attachmentSchema = z
   .object({
-    attached_by: attachmentActorSchema,
+    attached_by: actorSchema,
     attached_at: z.iso.datetime({ offset: true }).nullable(),
   })
   .strict()
   .refine(
-    ({ attached_by, attached_at }) => (attached_by.kind === "unknown") === (attached_at === null),
-    "Only unknown attachment origins have no time",
+    ({ attached_by, attached_at }) =>
+      attached_at !== null ||
+      (attached_by.type === "service" && attached_by.kind === "maintenance"),
+    "Only historical maintenance evidence can omit the attachment time",
   ) satisfies z.ZodType<LibraryPageFileAttachment>;
 const pageItemSchema = z
   .object({

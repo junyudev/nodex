@@ -255,6 +255,9 @@ function transport(initial: AgentRuntimeConversation, pages: readonly AgentHisto
         };
       listener?.({ type: "event", ...target, event });
     },
+    refresh() {
+      listener?.({ type: "reset-required", ...target, reason: "host-refresh" });
+    },
     reset() {
       listener?.({ type: "reset-required", ...target, reason: "delivery-gap" });
     },
@@ -3694,6 +3697,28 @@ test.each(["accept", "decline", "cancel"] as const)(
   },
 );
 
+test("a hosted refresh keeps the Composer ready through a transient refusal and repairs on the next invalidation", async () => {
+  const { owner, wire, release } = await open(conversation([assistant("Loaded transcript")]));
+  try {
+    const previous = owner.contentSource();
+    vi.mocked(wire.port.read).mockRejectedValueOnce(
+      new Error("Remote rate limit; retry after 1 second"),
+    );
+    wire.refresh();
+    expect(owner.getSnapshot().connection).toBe("ready");
+    await owner.resume();
+    expect(owner.getSnapshot().connection).toBe("ready");
+    expect(owner.contentSource()).toBe(previous);
+    expect(previous?.isCurrent()).toBe(true);
+    wire.refresh();
+    await owner.resume();
+    expect(owner.getSnapshot().connection).toBe("ready");
+    expect(owner.contentSource()).not.toBe(previous);
+  } finally {
+    release();
+    owner.dispose();
+  }
+});
 
 describe("Agent Runtime resident history window", () => {
   const tick = () => new Promise((resolve) => setTimeout(resolve, 0));

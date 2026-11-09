@@ -221,6 +221,13 @@ pub(super) fn apply(
             expected_turn_episode,
         } => {
             if let Some(episode) = expected_turn_episode {
+                super::inbox_projection::require_member_turn(
+                    connection,
+                    context,
+                    library,
+                    page_id,
+                    Some(episode),
+                )?;
             }
             if provenance.is_some()
                 || context.agent_attribution.is_some()
@@ -400,6 +407,9 @@ pub(super) fn apply(
                 .unwrap_or(0);
             if revision != *expected_revision {
                 return Err(conflict("Session execution observation revision changed"));
+            }
+            if let Some(run) = &observation.run_id {
+                connection.execute("INSERT OR IGNORE INTO session_run_members(session_id,run_id,member_id) SELECT ?1,?2,member_id FROM session_requesting_members WHERE session_id=?1 ORDER BY accepted_at DESC,message_id DESC LIMIT 1",params![session_id,run])?;
             }
             connection.execute("INSERT INTO session_execution_observations(session_id,revision,observed_json,observed_at) VALUES(?1,1,?2,?3) ON CONFLICT(session_id) DO UPDATE SET revision=revision+1,observed_json=excluded.observed_json,observed_at=excluded.observed_at",params![session_id,encoded,now])?;
             let managed = managed(connection, session_id)?.is_some();

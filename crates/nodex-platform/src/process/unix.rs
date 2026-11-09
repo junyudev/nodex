@@ -8,6 +8,37 @@ pub const HOME_VARIABLE: &str = "HOME";
 pub fn current_user() -> io::Result<UserIdentity> {
     Ok(rustix::process::geteuid().as_raw())
 }
+/// How this OS account names its person: the full name it records, else its login name.
+pub fn account_display_name() -> Option<String> {
+    let mut entry = std::mem::MaybeUninit::<libc::passwd>::uninit();
+    let mut found = std::ptr::null_mut();
+    let mut buffer = vec![0 as libc::c_char; 16 * 1024];
+    // SAFETY: every pointer refers to a live, writable value sized as passed; the strings it
+    // returns point into `buffer`, which outlives the reads below.
+    let status = unsafe {
+        libc::getpwuid_r(
+            libc::geteuid(),
+            entry.as_mut_ptr(),
+            buffer.as_mut_ptr(),
+            buffer.len(),
+            &mut found,
+        )
+    };
+    if status != 0 || found.is_null() {
+        return None;
+    }
+    // SAFETY: a successful lookup initialized the entry.
+    let entry = unsafe { entry.assume_init() };
+    let field = |value: *const libc::c_char| {
+        // SAFETY: non-null passwd fields are NUL-terminated strings inside `buffer`.
+        (!value.is_null()).then(|| unsafe { std::ffi::CStr::from_ptr(value) }.to_string_lossy())
+    };
+    field(entry.pw_gecos)
+        .and_then(|gecos| gecos.split(',').next().map(str::trim).map(str::to_owned))
+        .filter(|name| !name.is_empty())
+        .or_else(|| field(entry.pw_name).map(|name| name.trim().to_owned()))
+        .filter(|name| !name.is_empty())
+}
 pub fn process_is_alive(pid: u32) -> bool {
     let Some(pid) = i32::try_from(pid)
         .ok()

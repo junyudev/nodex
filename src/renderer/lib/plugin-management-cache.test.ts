@@ -1,3 +1,4 @@
+import { queryKeys } from "./query-keys";
 import { QueryClient } from "@tanstack/react-query";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { pluginRow } from "../../shared/test-fixtures/plugins";
@@ -191,8 +192,8 @@ it("refreshes skill and composer observations without invalidating unrelated set
   const skills = pluginManagementKeys.resource(scope, "skills");
   const apps = pluginManagementKeys.resource(scope, "apps");
   const recommended = pluginManagementKeys.resource(scope, "recommended-skills");
-  const composer = ["codexComposerSkills", "list", "local"];
-  const remoteComposer = ["codexComposerSkills", "list", "remote"];
+  const composer = queryKeys.codexComposerSkills.list([], "local");
+  const remoteComposer = queryKeys.codexComposerSkills.list([], "remote");
   for (const key of [skills, apps, recommended, composer, remoteComposer])
     queryClient.setQueryData(key, {});
   applyPluginManagementEvent(queryClient, { hostId: "local", accountEpoch: 1, kind: "skills" });

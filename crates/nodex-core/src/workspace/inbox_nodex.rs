@@ -105,6 +105,11 @@ pub(in crate::workspace) fn apply(
     ) {
         Some(coordinator_caller(connection, provenance)?)
     } else {
+        if !matches!(
+            intent,
+            ProjectWorkspaceIntent::ReplyToPageTurn { .. }
+                | ProjectWorkspaceIntent::ClaimTurnNotification { .. }
+        ) || context.adapter != nodex_core_contracts::AdapterKind::RemoteMember
         {
             require_host(context)?;
         }
@@ -152,6 +157,9 @@ pub(in crate::workspace) fn apply(
                     std::slice::from_ref(page_id),
                 )?
                 .remove(0);
+                let TurnActor::Member { member_id: local } = turn.actor.clone() else {
+                    return Err(conflict("This Page has no Member Turn"));
+                };
                 let caller = caller.as_ref().expect("Coordinator");
                 let active: Option<String> = connection
                     .query_row(
@@ -201,6 +209,7 @@ pub(in crate::workspace) fn apply(
                     return Ok(effects);
                 }
                 connection.execute(
+                    "INSERT INTO page_turn_notes(note_id,page_id,member_id,episode,coordinator_session_id,body,notify,created_seq,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
                     params![
                         note_id,
                         page_id,
@@ -286,6 +295,7 @@ pub(in crate::workspace) fn apply(
                 dispatch,
             } => super::reply::turn_reply(
                 connection,
+                context,
                 library,
                 epoch,
                 operation,
@@ -298,7 +308,9 @@ pub(in crate::workspace) fn apply(
                 &now,
             ),
             ProjectWorkspaceIntent::ClaimTurnNotification { page_id, episode } => {
+                let turn = super::super::inbox_projection::require_member_turn(
                     connection,
+                    context,
                     library,
                     page_id,
                     Some(episode),

@@ -1,3 +1,4 @@
+import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
@@ -19,6 +20,7 @@ const logger = getLogger({ component: "codex-thread-notification-runtime" });
 export const live: Layer.Layer<
   never,
   never,
+  | CoreAuthority
   | CoreModules
   | CodexApplicationEventHub
   | ApplicationSettings
@@ -29,6 +31,7 @@ export const live: Layer.Layer<
   | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
+    const spaceId = (yield* CoreAuthority).identity.libraryId;
     const events = yield* CodexApplicationEventHub;
     const core = yield* CoreModules;
     const applicationSettings = yield* ApplicationSettings;
@@ -66,7 +69,10 @@ export const live: Layer.Layer<
       },
       dismissNotification: notifications.dismiss,
       dispatchAction: (targetClientId, action) =>
-        rendererClients.sendToClient(targetClientId, "desktop-notification:action", action),
+        rendererClients.sendToClient(targetClientId, "desktop-notification:action", {
+          ...action,
+          spaceId,
+        }),
       focusTargetClient: (targetClientId) => {
         const webContentsId = rendererClients.getWebContentsIdForClientId(targetClientId);
         if (webContentsId === null) return;

@@ -29,7 +29,7 @@ export function useAgentRuntimeSessionLaunch() {
       };
       const [choices, newChatChoice] = await Promise.all([
         hydrated(agentRuntimeComposerChoicesAtom),
-        hydrated(agentRuntimeNewChatChoiceAtom),
+        hydrated(agentRuntimeNewChatChoiceAtom()),
       ]);
       const draft = choices[agentRuntimeChoiceKey.draft(input.sessionId, input.projectId)];
       const selected = input.modelSelection ? undefined : draft?.selection;

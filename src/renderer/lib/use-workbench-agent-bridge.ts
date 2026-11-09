@@ -1,3 +1,4 @@
+import { isRemoteSpace } from "./renderer-space";
 import { useEffectEvent, useEffect } from "react";
 import {
   createElectronWorkbenchAgentBridgePort,
@@ -15,7 +16,7 @@ export function useWorkbenchAgentBridge(
 ) {
   const readContext = useEffectEvent(() => context);
   useEffect(() => {
-    if (!window.api) return;
+    if (isRemoteSpace() || !window.api) return;
     const capability = createWorkbenchAgentBridge(
       owner,
       createElectronWorkbenchAgentBridgePort(window.api),

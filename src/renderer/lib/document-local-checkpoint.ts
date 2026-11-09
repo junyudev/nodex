@@ -1,3 +1,4 @@
+import { spaceStorageKey } from "./renderer-space";
 import { encodeRecoveryEnvelope, documentRecoveryBundleInput } from "./document-recovery-package";
 import type { DocumentRecoveryScope } from "../../shared/block-documents/document-recovery";
 import {
@@ -198,7 +199,7 @@ const transactionComplete = (transaction: IDBTransaction): Promise<void> =>
 
 const openCheckpointDatabase = (factory: IDBFactory): Promise<IDBDatabase> =>
   new Promise<IDBDatabase>((resolve, reject) => {
-    const request = factory.open(DATABASE_NAME, DATABASE_VERSION);
+    const request = factory.open(spaceStorageKey(DATABASE_NAME), DATABASE_VERSION);
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains(CHECKPOINT_STORE)) {

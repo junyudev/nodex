@@ -1,28 +1,19 @@
 //! Attachment evidence belongs to the Page/File relation, independently of File
 //! creation evidence. Only command admission chooses an actor; intents cannot.
 
+use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::library::{LibraryPageFileAttachment, LibraryPageFileAttachmentActor};
-use nodex_core_contracts::{AdapterKind, BoundModuleContext};
 
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 /// The single Page File attribution admission seam. An Agent is named only by
 /// the attribution its Core-issued credential proved for this request; a Project,
-/// an adapter label or caller-supplied Turn metadata proves nothing. The desktop
-/// Host acts for the person, and any other unverified caller is external.
+/// an adapter label or caller-supplied Turn metadata proves nothing. The Module
+/// has already derived the mandatory actor from the authenticated binding.
 pub(super) fn resolve_actor(
     context: &BoundModuleContext,
 ) -> Result<LibraryPageFileAttachmentActor, StoreError> {
-    if let Some(attribution) = &context.agent_attribution {
-        return Ok(LibraryPageFileAttachmentActor::Agent {
-            session_id: attribution.session_id.clone(),
-            backend: attribution.backend,
-        });
-    }
-    Ok(match context.adapter {
-        AdapterKind::ElectronHost => LibraryPageFileAttachmentActor::Person,
-        _ => LibraryPageFileAttachmentActor::External,
-    })
+    Ok(context.actor.clone())
 }
 
 pub(super) fn encode(attachment: &LibraryPageFileAttachment) -> Result<String, StoreError> {
@@ -75,15 +66,17 @@ pub(super) fn from_row(
 }
 
 fn validate(attachment: &LibraryPageFileAttachment) -> Result<(), &'static str> {
-    if matches!(
-        attachment.attached_by,
-        LibraryPageFileAttachmentActor::Unknown
-    ) {
-        return if attachment.attached_at.is_none() {
-            Ok(())
-        } else {
-            Err("Unknown Page File origins have no attachment time")
-        };
+    crate::infrastructure::actors::encode(&attachment.attached_by)
+        .map_err(|_| "Invalid attachment actor")?;
+    if attachment.attached_at.is_none()
+        && matches!(
+            attachment.attached_by,
+            LibraryPageFileAttachmentActor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance
+            }
+        )
+    {
+        return Ok(());
     }
     if attachment
         .attached_at
@@ -114,12 +107,9 @@ mod tests {
         };
         let time = Some("2026-11-01T00:00:00.000Z");
         for actor in [
-            r#"{"kind":"person"}"#,
-            r#"{"kind":"external"}"#,
-            r#"{"kind":"agent","session_id":"session:product","backend":"codex"}"#,
-            r#"{"kind":"agent","session_id":"session:product","backend":"claude"}"#,
-            r#"{"kind":"agent","session_id":"session:product","backend":"opencode"}"#,
-            r#"{"kind":"agent","session_id":"session:product","backend":"acp"}"#,
+            r#"{"type":"member","member_id":"alice"}"#,
+            r#"{"type":"service","kind":"sources"}"#,
+            r#"{"type":"agent","session_id":"session:product","run_id":null,"on_behalf_of":"alice"}"#,
         ] {
             let attachment = decode(actor, time).unwrap();
             assert_eq!(
@@ -128,7 +118,7 @@ mod tests {
             );
             assert!(decode(actor, None).is_err());
         }
-        assert!(decode(r#"{"kind":"unknown"}"#, None).is_ok());
+        assert!(decode(r#"{"type":"service","kind":"maintenance"}"#, None).is_ok());
         assert!(decode(r#"{"kind":"unknown"}"#, time).is_err());
         for actor in [
             r#"{"kind":"forged"}"#,

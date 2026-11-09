@@ -1,4 +1,4 @@
-use super::task_window::TASK_SUMMARY_COLUMNS;
+use super::task_window::summary_columns;
 use std::collections::{BTreeSet, HashMap};
 
 use nodex_core_contracts::BoundModuleContext;
@@ -77,6 +77,7 @@ pub(super) fn read_direct_placement(
 pub(super) fn read_session_sidebar_placements(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     session_ids: &[String],
 ) -> Result<Vec<ProjectWorkspaceSessionSidebarPlacement>, StoreError> {
     if session_ids.len() > 500 {
@@ -95,7 +96,8 @@ pub(super) fn read_session_sidebar_placements(
     connection
         .prepare(
             "WITH requested(session_id) AS (SELECT DISTINCT value FROM json_each(?2)) \
-             SELECT session.id, session.project_id, session.unread, session.remind_at, \
+             SELECT session.id, session.project_id, EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=session.id AND attention.member_id=?3), \
+               (SELECT reminder.remind_at FROM member_session_reminders reminder WHERE reminder.session_id=session.id AND reminder.member_id=?3), \
                CASE WHEN NOT EXISTS (SELECT 1 FROM project_session_side_chats side \
                  WHERE side.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) THEN COALESCE( \
                  (SELECT item.section_id FROM workspace_sidebar_section_items item \
@@ -113,7 +115,7 @@ pub(super) fn read_session_sidebar_placements(
              WHERE session.archived = 0 AND (session.project_id IS NULL OR project.library_id = ?1) \
              ORDER BY session.id",
         )?
-        .query_map(params![library_id, encoded], |row| {
+        .query_map(params![library_id, encoded,member], |row| {
             Ok(ProjectWorkspaceSessionSidebarPlacement {
                 session_id: row.get(0)?,
                 project_id: row.get(1)?,
@@ -129,13 +131,14 @@ pub(super) fn read_session_sidebar_placements(
 pub(super) fn read_section_window(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     commit_head: i64,
     include_deleted: bool,
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<ProjectWorkspaceSidebarSectionSummary>, StoreError> {
     let normalized = normalize_request(request)?;
     let fingerprint =
-        cursor::query_fingerprint(&("workspace_sidebar_sections_v1", include_deleted))?;
+        cursor::query_fingerprint(&("workspace_sidebar_sections_v2", member, include_deleted))?;
     let subject = CollectionCursorSubject {
         kind: "workspace_sidebar_sections",
         library_id,
@@ -193,7 +196,7 @@ pub(super) fn read_section_window(
         .into_iter()
         .map(|row| {
             let rank_key = row.rank_key;
-            let summary = section_summary(connection, library_id, row)?;
+            let summary = section_summary(connection, library_id, member, row)?;
             Ok(WindowCandidate {
                 coordinate: KeysetCoordinate {
                     values: vec![KeysetValue::Integer { value: rank_key }],
@@ -223,6 +226,7 @@ pub(super) fn read_section_window(
 pub(super) fn read_section_item_window(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     commit_head: i64,
     section_id: &str,
     include_archived: bool,
@@ -232,7 +236,8 @@ pub(super) fn read_section_item_window(
     require_custom_section(connection, library_id, section_id, true)?;
     let normalized = normalize_request(request)?;
     let fingerprint = cursor::query_fingerprint(&(
-        "workspace_sidebar_section_items_v2",
+        "workspace_sidebar_section_items_v3",
+        member,
         section_id,
         include_archived,
     ))?;
@@ -271,12 +276,14 @@ pub(super) fn read_section_item_window(
             .map_err(|_| invalid("Sidebar Section item window is too large"))?,
     ));
     let limit_parameter = parameters.len();
+    parameters.push(SqlValue::Text(member.to_owned()));
+    let task_columns = summary_columns(parameters.len());
     let sql = format!(
         "SELECT item.placement_id, item.rank_key, item.revision, \
            project.id, project.name, project.lifecycle, project.appearance_color, \
            project.appearance_marker_kind, project.appearance_marker_value, \
            pinned_project.project_id, \
-           {TASK_SUMMARY_COLUMNS} \
+           {task_columns} \
          FROM workspace_sidebar_section_items item \
          JOIN workspace_sidebar_sections section \
            ON section.library_id = item.library_id AND section.section_id = item.section_id \
@@ -835,8 +842,7 @@ pub(super) fn archive_section_sessions(
             project_ids.insert(project_id);
         }
         connection.execute(
-            "UPDATE project_sessions SET archived = 1, archived_at = ?1, pinned = 0, \
-               pinned_order = NULL, unread = 0, updated_at = ?1 WHERE id = ?2",
+            "UPDATE project_sessions SET archived = 1, archived_at = ?1, updated_at = ?1 WHERE id = ?2",
             params![now, session_id],
         )?;
         connection.execute(
@@ -989,12 +995,20 @@ pub(super) fn place_created_session(
 fn section_summary(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     row: SectionRow,
 ) -> Result<ProjectWorkspaceSidebarSectionSummary, StoreError> {
     let kind = parse_section_kind(&row.kind)?;
     let lifecycle = parse_lifecycle(&row.lifecycle)?;
     let (direct_item_count, effective_session_count, has_waiting, has_running, has_unread) =
-        section_metrics(connection, library_id, &row.section_id, kind, lifecycle)?;
+        section_metrics(
+            connection,
+            library_id,
+            member,
+            &row.section_id,
+            kind,
+            lifecycle,
+        )?;
     Ok(ProjectWorkspaceSidebarSectionSummary {
         section_id: row.section_id,
         kind,
@@ -1013,6 +1027,7 @@ fn section_summary(
 fn section_metrics(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     section_id: &str,
     kind: ProjectWorkspaceSidebarSectionKind,
     lifecycle: ProjectWorkspaceSidebarSectionLifecycle,
@@ -1039,17 +1054,19 @@ fn section_metrics(
                     JOIN projects project ON project.id = pinned.project_id \
                     WHERE project.library_id = ?1 AND project.lifecycle <> 'archived') \
                   + (SELECT count(*) FROM project_sessions session \
+                    JOIN member_session_pins pin ON pin.session_id = session.id AND pin.member_id = ?2 \
                     LEFT JOIN projects project ON project.id = session.project_id \
-                    WHERE session.pinned = 1 AND session.archived = 0 \
+                    WHERE session.archived = 0 AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) \
                       AND (session.project_id IS NULL OR project.library_id = ?1))",
-                [library_id],
+                params![library_id, member],
                 |row| row.get::<_, i64>(0),
             )?;
             let ids = connection
                 .prepare(
                     "SELECT session.id FROM project_sessions session \
                      LEFT JOIN projects project ON project.id = session.project_id \
-                     WHERE session.archived = 0 AND (session.pinned = 1 OR EXISTS ( \
+                     WHERE session.archived = 0 AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) AND (EXISTS ( \
+                       SELECT 1 FROM member_session_pins pin WHERE pin.session_id = session.id AND pin.member_id = ?2) OR EXISTS ( \
                        SELECT 1 FROM pinned_project_order pinned \
                        WHERE pinned.project_id = session.project_id)) \
                        AND NOT EXISTS (SELECT 1 FROM workspace_sidebar_section_items item \
@@ -1060,7 +1077,7 @@ fn section_metrics(
                            AND section.lifecycle = 'active') \
                        AND (session.project_id IS NULL OR project.library_id = ?1)",
                 )?
-                .query_map([library_id], |row| row.get::<_, String>(0))?
+                .query_map(params![library_id, member], |row| row.get::<_, String>(0))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             (direct, ids)
         }
@@ -1084,7 +1101,9 @@ fn section_metrics(
             let ids = connection
                 .prepare(
                     "SELECT session.id FROM project_sessions session \
-                     WHERE session.project_id IS NULL AND session.archived = 0 AND session.pinned = 0 \
+                     WHERE session.project_id IS NULL AND session.archived = 0 \
+                       AND NOT EXISTS (SELECT 1 FROM member_session_pins pin WHERE pin.session_id = session.id AND pin.member_id = ?2) \
+                       AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) \
                        AND NOT EXISTS (SELECT 1 FROM workspace_sidebar_section_items item \
                          JOIN workspace_sidebar_sections section \
                            ON section.library_id = item.library_id \
@@ -1092,13 +1111,14 @@ fn section_metrics(
                          WHERE item.session_id = session.id AND item.library_id = ?1 \
                            AND section.lifecycle = 'active')",
                 )?
-                .query_map([library_id], |row| row.get::<_, String>(0))?
+                .query_map(params![library_id, member], |row| row.get::<_, String>(0))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             (i64::try_from(ids.len()).unwrap_or(i64::MAX), ids)
         }
         ProjectWorkspaceSidebarSectionKind::Pages => (0, Vec::new()),
     };
-    let (has_waiting, has_running, has_unread) = session_activity(connection, &session_ids)?;
+    let (has_waiting, has_running, has_unread) =
+        session_activity(connection, member, &session_ids)?;
     Ok((
         u32::try_from(direct).map_err(|_| corrupt("Sidebar Section item count overflowed"))?,
         u32::try_from(session_ids.len())
@@ -1143,6 +1163,7 @@ fn effective_session_ids(
 
 fn session_activity(
     connection: &Connection,
+    member: &str,
     session_ids: &[String],
 ) -> Result<(bool, bool, bool), StoreError> {
     if session_ids.is_empty() {
@@ -1165,10 +1186,10 @@ fn session_activity(
            WHERE thread.status_type = 'active' AND NOT ({waiting_predicate})), \
          EXISTS(SELECT 1 FROM requested \
            JOIN project_sessions session ON session.id = requested.session_id \
-           WHERE session.unread = 1)"
+           WHERE EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=session.id AND attention.member_id=?2))"
     );
     connection
-        .query_row(&sql, [encoded], |row| {
+        .query_row(&sql, params![encoded, member], |row| {
             Ok((row.get(0)?, row.get(1)?, row.get(2)?))
         })
         .map_err(Into::into)
@@ -1338,9 +1359,13 @@ fn clear_pin(
                 [project_id],
             )?;
         }
+        // Sections are the local Profile's organization, so placing a chat in one ends its pin.
         ProjectWorkspaceSidebarSectionItemRef::Session { session_id } => {
             connection.execute(
-                "UPDATE project_sessions SET pinned = 0, pinned_order = NULL WHERE id = ?1",
+                &format!(
+                    "DELETE FROM member_session_pins WHERE session_id = ?1 AND member_id = {}",
+                    super::member_attention::LOCAL_MEMBER_SQL
+                ),
                 [session_id],
             )?;
             connection.execute(

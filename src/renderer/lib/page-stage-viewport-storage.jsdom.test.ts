@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, test } from "vite-plus/test";
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { spaceStorageKey } from "./renderer-space";
 import {
   forgetPageStageViewportSnapshot,
   loadPageStageViewportSnapshot,
@@ -47,39 +48,10 @@ describe("Page Stage viewport storage", () => {
     );
   });
 
-  test("loads a v1 pixel position as the v2 fallback for a legacy PageTab", () => {
-    const documentScopeKey = "project:legacy-viewport";
-    const pageId = "page-legacy-viewport";
-    const editorSessionKey = "legacy-session\u0000page-tab";
-    localStorage.setItem(
-      "nodex-page-stage-scroll-v1",
-      JSON.stringify({ [`page-stage-session:${editorSessionKey}`]: 640 }),
-    );
-
-    expect(loadPageStageViewportSnapshot(documentScopeKey, pageId, editorSessionKey)).toEqual({
-      version: 2,
-      kind: "offset",
-      scrollTop: 640,
-    });
-  });
-
-  test("migrates the former Project-scoped key when no editor session exists", () => {
-    localStorage.setItem(
-      "nodex-page-stage-scroll-v1",
-      JSON.stringify({ "page-stage:legacy-project:legacy-page": 320 }),
-    );
-
-    expect(loadPageStageViewportSnapshot("project:legacy-project", "legacy-page")).toEqual({
-      version: 2,
-      kind: "offset",
-      scrollTop: 320,
-    });
-  });
-
   test("drops the old within-Block ratio so delayed Block growth uses a stable pixel anchor", () => {
     const editorSessionKey = "legacy-ratio-session\u0000page-tab";
     localStorage.setItem(
-      "nodex-page-stage-viewport-v2",
+      spaceStorageKey("nodex-page-stage-viewport-v2"),
       JSON.stringify({
         [`page-stage-session:${editorSessionKey}`]: {
           version: 2,
@@ -100,6 +72,52 @@ describe("Page Stage viewport storage", () => {
       blockId: "legacy-ratio-block",
       viewportOffsetPx: -120,
       fallbackScrollTop: 640,
+    });
+  });
+
+  test("keeps identical PageTab positions private to their Space and Member across renderer documents", async () => {
+    const editorSessionKey = "shared-editor-session";
+    const coordinate = ["project:shared-project", "shared-page", editorSessionKey] as const;
+    localStorage.setItem(
+      "nodex-page-stage-scroll-v1",
+      JSON.stringify({ [`page-stage-session:${editorSessionKey}`]: 640 }),
+    );
+    const openSpace = async (spaceId: string, memberId: string) => {
+      vi.resetModules();
+      const { bindRendererSpace } = await import("./renderer-space");
+      return import("./page-stage-viewport-storage");
+    };
+    const first = await openSpace("space-a", "member-a");
+    first.savePageStageViewportSnapshot(
+      coordinate[0],
+      coordinate[1],
+      { version: 2, kind: "offset", scrollTop: 120 },
+      coordinate[2],
+    );
+
+    const otherSpace = await openSpace("space-b", "member-a");
+    expect(otherSpace.loadPageStageViewportSnapshot(...coordinate)).toBeNull();
+    otherSpace.savePageStageViewportSnapshot(
+      coordinate[0],
+      coordinate[1],
+      { version: 2, kind: "offset", scrollTop: 240 },
+      coordinate[2],
+    );
+
+    const otherMember = await openSpace("space-a", "member-b");
+    expect(otherMember.loadPageStageViewportSnapshot(...coordinate)).toBeNull();
+    otherMember.savePageStageViewportSnapshot(
+      coordinate[0],
+      coordinate[1],
+      { version: 2, kind: "offset", scrollTop: 360 },
+      coordinate[2],
+    );
+
+    const restored = await openSpace("space-a", "member-a");
+    expect(restored.loadPageStageViewportSnapshot(...coordinate)).toEqual({
+      version: 2,
+      kind: "offset",
+      scrollTop: 120,
     });
   });
 });

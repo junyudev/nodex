@@ -1471,8 +1471,7 @@ fn retire_child_sidebar_materialization(
     let now = sqlite_now(connection)?;
     for session_id in session_ids {
         let changed = connection.execute(
-            "UPDATE project_sessions SET archived = 1, archived_at = ?1, pinned = 0, \
-               pinned_order = NULL, unread = 0, updated_at = ?1 WHERE id = ?2",
+            "UPDATE project_sessions SET archived = 1, archived_at = ?1, updated_at = ?1 WHERE id = ?2",
             params![now, session_id],
         )?;
         if changed != 1 {
@@ -1748,8 +1747,7 @@ fn sync_linked_sessions_archived(
     for session_id in session_ids {
         let changed = if archived {
             connection.execute(
-                "UPDATE project_sessions SET archived = 1, archived_at = ?1, pinned = 0, \
-                   pinned_order = NULL, unread = 0, updated_at = ?1 WHERE id = ?2",
+                "UPDATE project_sessions SET archived = 1, archived_at = ?1, updated_at = ?1 WHERE id = ?2",
                 params![now, session_id],
             )?
         } else {
@@ -1802,6 +1800,7 @@ pub(super) fn set_thread_pinned(
         return Err(invalid("A Sidebar pin requires an owning Session"));
     }
     let now = sqlite_now(connection)?;
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
     if pinned {
         for session_id in &session_ids {
             connection.execute(
@@ -1815,12 +1814,18 @@ pub(super) fn set_thread_pinned(
             [thread_id],
         )?;
     }
-    sync_linked_session_pin_mirrors(connection, &session_ids, pinned, &now)?;
+    for session_id in &session_ids {
+        if pinned {
+            super::sidebar_pins::pin(connection, &member, session_id, &now)?;
+        } else {
+            super::sidebar_pins::unpin(connection, &member, session_id, &now)?;
+        }
+    }
     if pinned && let Some(placement) = placement {
-        place_pinned_thread(connection, library_id, thread_id, placement, &now)?;
+        place_pinned_thread(connection, library_id, &member, thread_id, placement, &now)?;
     }
     let affected_pins = if pinned && placement.is_some() {
-        super::sidebar_pins::read_order(connection, library_id)?
+        super::sidebar_pins::read_order(connection, library_id, &member)?
     } else {
         Vec::new()
     };
@@ -1855,6 +1860,7 @@ pub(super) fn set_thread_pinned(
 fn place_pinned_thread(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     thread_id: &str,
     placement: &ProjectWorkspaceThreadPlacement,
     now: &str,
@@ -1893,59 +1899,26 @@ fn place_pinned_thread(
         }
     };
     ordered.insert(insertion_index, thread_id.to_owned());
-    write_pinned_thread_order(connection, library_id, &ordered, now)
-}
-
-fn sync_linked_session_pin_mirrors(
-    connection: &Connection,
-    session_ids: &[String],
-    pinned: bool,
-    now: &str,
-) -> Result<(), StoreError> {
-    for session_id in session_ids {
-        let (was_pinned, existing_order) = connection.query_row(
-            "SELECT pinned, pinned_order FROM project_sessions WHERE id = ?1",
-            [session_id],
-            |row| Ok((row.get::<_, i64>(0)? != 0, row.get::<_, Option<i64>>(1)?)),
-        )?;
-        let pinned_order = if pinned {
-            if was_pinned && existing_order.is_some() {
-                existing_order
-            } else {
-                Some(super::sidebar_pins::next_order(connection)?)
-            }
-        } else {
-            None
-        };
-        let changed = connection.execute(
-            "UPDATE project_sessions SET pinned = ?1, pinned_order = ?2, updated_at = ?3 \
-             WHERE id = ?4",
-            params![i64::from(pinned), pinned_order, now, session_id],
-        )?;
-        if changed != 1 {
-            return Err(corrupt(
-                "Linked Project Session disappeared during Thread pin update",
-            ));
-        }
-        super::sidebar_pins::sync_thread_projection(connection, session_id, now)?;
-    }
-    Ok(())
+    write_pinned_thread_order(connection, library_id, member, &ordered, now)
 }
 
 fn write_pinned_thread_order(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     ordered: &[String],
     now: &str,
 ) -> Result<(), StoreError> {
     let mut session_ids = Vec::new();
     for thread_id in ordered {
         if let Some(session_id) = connection.query_row(
-            "SELECT session.id FROM project_session_threads link JOIN project_sessions session ON session.id = link.session_id WHERE link.thread_id = ?1 AND session.pinned = 1 AND session.archived = 0",
-            [thread_id], |row| row.get::<_, String>(0),
+            "SELECT session.id FROM project_session_threads link JOIN project_sessions session ON session.id = link.session_id \
+             JOIN member_session_pins pin ON pin.session_id = session.id AND pin.member_id = ?2 \
+             WHERE link.thread_id = ?1 AND session.archived = 0",
+            params![thread_id, member], |row| row.get::<_, String>(0),
         ).optional()? { session_ids.push(session_id); }
     }
-    super::sidebar_pins::reorder_subset(connection, library_id, &session_ids, now)
+    super::sidebar_pins::reorder_subset(connection, library_id, member, &session_ids, now)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1982,8 +1955,9 @@ pub(super) fn reorder_pinned_threads(
             .cloned(),
     );
     let now = sqlite_now(connection)?;
-    write_pinned_thread_order(connection, library_id, &ordered, &now)?;
-    let pinned_sessions = super::sidebar_pins::read_order(connection, library_id)?;
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    write_pinned_thread_order(connection, library_id, &member, &ordered, &now)?;
+    let pinned_sessions = super::sidebar_pins::read_order(connection, library_id, &member)?;
     let project_ids = current
         .iter()
         .filter_map(|thread| thread.project_id.clone())
@@ -2038,17 +2012,9 @@ pub(super) fn set_thread_unread(
             [thread_id],
         )?;
     }
-    let now = sqlite_now(connection)?;
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
     for session_id in &session_ids {
-        let changed = connection.execute(
-            "UPDATE project_sessions SET unread = ?1, updated_at = ?2 WHERE id = ?3",
-            params![i64::from(unread), now, session_id],
-        )?;
-        if changed != 1 {
-            return Err(corrupt(
-                "Linked Project Session disappeared during Thread unread update",
-            ));
-        }
+        super::member_attention::set_unread(connection, &member, session_id, unread)?;
     }
     let summary_scopes = if session_ids.is_empty() {
         Vec::new()
@@ -2238,18 +2204,21 @@ fn require_thread(
     Ok(thread)
 }
 
+/// Native Threads exist only on the local Profile's desktop, and mirror its Member's pins.
 fn pinned_threads(
     connection: &Connection,
     library_id: &str,
 ) -> Result<Vec<ProjectWorkspaceThread>, StoreError> {
+    const LOCAL_MEMBER: &str = super::member_attention::LOCAL_MEMBER_SQL;
     let sql = format!(
         "SELECT {THREAD_COLUMNS} \
          FROM codex_threads thread \
          JOIN codex_pinned_threads pinned ON pinned.thread_id = thread.thread_id \
          LEFT JOIN codex_unread_threads unread ON unread.thread_id = thread.thread_id \
          JOIN project_session_threads link ON link.thread_id = thread.thread_id \
-         JOIN project_sessions session ON session.id = link.session_id \
-           AND session.pinned = 1 AND session.archived = 0 \
+         JOIN project_sessions session ON session.id = link.session_id AND session.archived = 0 \
+         JOIN member_session_pins pin ON pin.session_id = session.id \
+           AND pin.member_id = {LOCAL_MEMBER} \
          WHERE thread.archived = 0 AND thread.parent_thread_id IS NULL \
            AND (thread.project_id IS NULL OR EXISTS (\
              SELECT 1 FROM projects project \
@@ -2983,7 +2952,12 @@ mod tests {
 
     fn context() -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -4241,7 +4215,7 @@ mod tests {
             .writer()
             .call(|connection| {
                 Ok(connection.query_row(
-                    "SELECT archived, pinned, unread, \
+                    "SELECT archived, EXISTS(SELECT 1 FROM member_session_pins pin WHERE pin.session_id=project_sessions.id), EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=project_sessions.id AND attention.member_id=(SELECT member_id FROM local_profile_members LIMIT 1)), \
                        (SELECT count(*) FROM project_session_threads \
                         WHERE session_id = 'session:candidate') \
                      FROM project_sessions WHERE id = 'session:candidate'",
@@ -4929,7 +4903,7 @@ mod tests {
             .writer()
             .call(move |connection| {
                 Ok(connection.query_row(
-                    "SELECT pinned, pinned_order, unread FROM project_sessions WHERE id = ?1",
+                    "SELECT EXISTS(SELECT 1 FROM member_session_pins pin WHERE pin.session_id=project_sessions.id), (SELECT pin.pinned_order FROM member_session_pins pin WHERE pin.session_id=project_sessions.id), EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=project_sessions.id AND attention.member_id=(SELECT member_id FROM local_profile_members LIMIT 1)) FROM project_sessions WHERE id = ?1",
                     [&session_id_for_state],
                     |row| {
                         Ok((
@@ -4986,7 +4960,7 @@ mod tests {
             .writer()
             .call(move |connection| {
                 Ok(connection.query_row(
-                    "SELECT archived, pinned, unread FROM project_sessions WHERE id = ?1",
+                    "SELECT archived, EXISTS(SELECT 1 FROM member_session_pins pin WHERE pin.session_id=project_sessions.id), EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=project_sessions.id AND attention.member_id=(SELECT member_id FROM local_profile_members LIMIT 1)) FROM project_sessions WHERE id = ?1",
                     [&archived_session_id],
                     |row| {
                         Ok((
@@ -5140,7 +5114,7 @@ mod tests {
             .writer()
             .call(move |connection| {
                 Ok(connection.query_row(
-                    "SELECT archived, pinned, unread FROM project_sessions WHERE id = ?1",
+                    "SELECT archived, EXISTS(SELECT 1 FROM member_session_pins pin WHERE pin.session_id=project_sessions.id), EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=project_sessions.id AND attention.member_id=(SELECT member_id FROM local_profile_members LIMIT 1)) FROM project_sessions WHERE id = ?1",
                     [&deleted_session_id],
                     |row| {
                         Ok((

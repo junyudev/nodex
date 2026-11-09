@@ -71,7 +71,7 @@ mod tests {
         connection
             .execute_batch(include_str!("../../schema/migrations/v166_to_v167.sql"))
             .unwrap();
-        connection.execute_batch("CREATE TABLE codex_threads(thread_id TEXT PRIMARY KEY, agent_backend_kind TEXT, execution_host_id TEXT, archived INTEGER); CREATE TABLE codex_unread_threads(thread_id TEXT PRIMARY KEY); CREATE TABLE project_sessions(id TEXT PRIMARY KEY, unread INTEGER); CREATE TABLE project_session_threads(session_id TEXT, thread_id TEXT); INSERT INTO codex_threads VALUES ('a','codex','local',0),('b','acp','local',0); INSERT INTO project_sessions VALUES ('sa',1),('sb',1); INSERT INTO project_session_threads VALUES ('sa','a'),('sb','b'); INSERT INTO codex_unread_threads VALUES ('a'),('b');").unwrap();
+        connection.execute_batch("CREATE TABLE codex_threads(thread_id TEXT PRIMARY KEY, agent_backend_kind TEXT, execution_host_id TEXT, archived INTEGER); CREATE TABLE codex_unread_threads(thread_id TEXT PRIMARY KEY); CREATE TABLE project_sessions(id TEXT PRIMARY KEY, unread INTEGER, archived INTEGER DEFAULT 0); CREATE TABLE project_session_threads(session_id TEXT, thread_id TEXT); CREATE TABLE local_profile_members(member_id TEXT); INSERT INTO local_profile_members VALUES('local'); CREATE TABLE member_session_unread(member_id TEXT, session_id TEXT, PRIMARY KEY(member_id,session_id)); INSERT INTO member_session_unread VALUES('local','sa'),('local','sb'); INSERT INTO codex_threads VALUES ('a','codex','local',0),('b','acp','local',0); INSERT INTO project_sessions(id,unread) VALUES ('sa',1),('sb',1); INSERT INTO project_session_threads VALUES ('sa','a'),('sb','b'); INSERT INTO codex_unread_threads VALUES ('a'),('b');").unwrap();
         let hosts = [("local".to_string(), "key".to_string())]
             .into_iter()
             .collect();
@@ -80,7 +80,7 @@ mod tests {
         assert_eq!(
             connection
                 .query_row(
-                    "SELECT unread FROM project_sessions WHERE id='sa'",
+                    "SELECT EXISTS(SELECT 1 FROM member_session_unread WHERE member_id='local' AND session_id='sa')",
                     [],
                     |row| row.get::<_, i64>(0)
                 )
@@ -90,7 +90,7 @@ mod tests {
         assert_eq!(
             connection
                 .query_row(
-                    "SELECT unread FROM project_sessions WHERE id='sb'",
+                    "SELECT EXISTS(SELECT 1 FROM member_session_unread WHERE member_id='local' AND session_id='sb')",
                     [],
                     |row| row.get::<_, i64>(0)
                 )
@@ -101,7 +101,7 @@ mod tests {
         assert_eq!(
             connection
                 .query_row(
-                    "SELECT unread FROM project_sessions WHERE id='sa'",
+                    "SELECT EXISTS(SELECT 1 FROM member_session_unread WHERE member_id='local' AND session_id='sa')",
                     [],
                     |row| row.get::<_, i64>(0)
                 )
@@ -112,7 +112,7 @@ mod tests {
         assert_eq!(
             connection
                 .query_row(
-                    "SELECT unread FROM project_sessions WHERE id='sa'",
+                    "SELECT EXISTS(SELECT 1 FROM member_session_unread WHERE member_id='local' AND session_id='sa')",
                     [],
                     |row| row.get::<_, i64>(0)
                 )
@@ -264,6 +264,13 @@ pub(super) fn project(
             connection.execute("INSERT OR IGNORE INTO codex_unread_threads(thread_id) SELECT unread.thread_id FROM codex_identity_unread_threads unread JOIN codex_threads thread ON thread.thread_id = unread.thread_id WHERE unread.identity_key = ?1 AND unread.execution_host_key = ?2 AND thread.execution_host_id = ?3 AND thread.agent_backend_kind = 'codex' AND thread.archived = 0", params![key, host_key, host_id])?;
         }
     }
-    connection.execute("UPDATE project_sessions SET unread = EXISTS(SELECT 1 FROM codex_unread_threads unread JOIN project_session_threads link ON link.thread_id = unread.thread_id WHERE link.session_id = project_sessions.id) WHERE id IN (SELECT link.session_id FROM project_session_threads link JOIN codex_threads thread ON thread.thread_id = link.thread_id WHERE thread.agent_backend_kind = 'codex')", [])?;
+    let member: String = connection.query_row(
+        "SELECT member_id FROM local_profile_members LIMIT 1",
+        [],
+        |r| r.get(0),
+    )?;
+    connection.execute("DELETE FROM member_session_unread WHERE member_id=?1 AND session_id IN (SELECT link.session_id FROM project_session_threads link JOIN codex_threads thread ON thread.thread_id=link.thread_id WHERE thread.agent_backend_kind='codex')",[&member])?;
+    connection.execute("INSERT OR IGNORE INTO member_session_unread(member_id,session_id) SELECT ?1,link.session_id FROM project_session_threads link JOIN codex_threads thread ON thread.thread_id=link.thread_id JOIN codex_unread_threads unread ON unread.thread_id=thread.thread_id JOIN project_sessions session ON session.id=link.session_id AND session.archived=0 WHERE thread.agent_backend_kind='codex'",[member])?;
+
     Ok(())
 }

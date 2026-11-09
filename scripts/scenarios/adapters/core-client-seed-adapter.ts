@@ -500,6 +500,17 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     );
   }
 
+  async setInboxRoutingConsent(startMyRequests: boolean) {
+    await this.#runtime.rootClient.workspaceApply({
+      operationId: createBoundedOperationId("scenario.inbox-consent"),
+      intent: {
+        kind: "set_inbox_routing_consent",
+        start_my_requests: startMyRequests,
+        initialize_only: false,
+      },
+    });
+  }
+
   async confirmInboxRequestByNodex(
     proposalId: string,
     selection: Parameters<ScenarioSeedPort["confirmInboxRequestByNodex"]>[1],

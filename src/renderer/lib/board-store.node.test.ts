@@ -1,4 +1,5 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
+import * as rendererSpace from "./renderer-space";
 import { plainTextToPortableRichText } from "../../shared/block-documents/portable-rich-text";
 import {
   boardContainsPageIds,
@@ -46,6 +47,25 @@ import {
   withPublishedDatabaseViewDefinition,
 } from "./database-view-render-model";
 import { createRendererCausalTrace } from "./renderer-causal-trace";
+
+test("Boards with identical resource IDs retain independent Space state", () => {
+  const namespace = vi.spyOn(rendererSpace, "rendererSpaceId");
+  try {
+    const registry = createBoardStoreRegistry();
+    namespace.mockReturnValue("space-a");
+    const first = registry.getStore("same-project", "same-view");
+    first.setError("Space A disconnected");
+    namespace.mockReturnValue("space-b");
+    const second = registry.getStore("same-project", "same-view");
+    expect(second.getSnapshot().error).toBe(null);
+    namespace.mockReturnValue("space-a");
+    expect(registry.getStore("same-project", "same-view").getSnapshot().error).toBe(
+      "Space A disconnected",
+    );
+  } finally {
+    namespace.mockRestore();
+  }
+});
 
 function createDatabaseViewSnapshot(
   viewId: string,

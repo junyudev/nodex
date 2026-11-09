@@ -386,7 +386,7 @@ pub(super) fn validate(recipe: &DatabaseDataEditUndoRecipe) -> Result<(), StoreE
 #[allow(clippy::too_many_arguments)]
 pub(super) fn reverse(
     connection: &Connection,
-    profile_id: &str,
+    member_id: &str,
     library_id: &str,
     authority: &DatabaseMutationRoute,
     recipe: &DatabaseDataEditUndoRecipe,
@@ -464,7 +464,7 @@ pub(super) fn reverse(
     // authority, membership, schema/options and anchors in this transaction.
     for operation in operations {
         apply_intent(
-            connection, profile_id, library_id, authority, &operation, 0, now, effects,
+            connection, member_id, library_id, authority, &operation, 0, now, effects,
         )?;
     }
     for (view_id, pages, runs) in positions {

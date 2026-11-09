@@ -52,6 +52,8 @@ describe("project session query cache", () => {
         queryKeys.projectSessions.summaries("project-1", scope, order),
       ),
     );
+    const foreignKey = ["space", "other-space", ...keys[0]!.slice(2)];
+    client.setQueryData(foreignKey, { items: [], projectionRevision: 1 });
     for (const key of keys)
       client.setQueryData(key, {
         items: [],
@@ -65,18 +67,35 @@ describe("project session query cache", () => {
       changeType: "update",
     });
     for (const key of keys) expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(foreignKey)?.isInvalidated).toBe(false);
     client.clear();
   });
 
   test("uses stable summary and detail keys", () => {
     expect(JSON.stringify(queryKeys.projectSessions.summaries("project-1"))).toBe(
-      JSON.stringify(["projectSessions", "summaries", "project-1", "all", "activity"]),
+      JSON.stringify([
+        "space",
+        "test-space",
+        "projectSessions",
+        "summaries",
+        "project-1",
+        "all",
+        "activity",
+      ]),
     );
     expect(JSON.stringify(queryKeys.projectSessions.summaries(null))).toBe(
-      JSON.stringify(["projectSessions", "summaries", "", "all", "activity"]),
+      JSON.stringify([
+        "space",
+        "test-space",
+        "projectSessions",
+        "summaries",
+        "",
+        "all",
+        "activity",
+      ]),
     );
     expect(JSON.stringify(queryKeys.projectSessions.detail("session-1"))).toBe(
-      JSON.stringify(["projectSessions", "detail", "session-1"]),
+      JSON.stringify(["space", "test-space", "projectSessions", "detail", "session-1"]),
     );
   });
 

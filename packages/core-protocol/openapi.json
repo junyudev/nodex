@@ -243,170 +243,21 @@
         }
       }
     },
-    "/core/v1/files/blobs/{file_id}": {
+    "/core/v1/admin/space/devices": {
       "get": {
         "tags": [
-          "api"
+          "team_api"
         ],
-        "operationId": "read_file_blob",
-        "parameters": [
-          {
-            "name": "file_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "kind",
-            "in": "query",
-            "description": "An explicit live, history, recovery, Canvas, or structural_clipboard File source",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "page_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "document_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "revision_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "canvas_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "scene_file_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "draft_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "bundle_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "capability",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "manifest_hash",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "store_epoch",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "version",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "x-nodex-request-id",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-class",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/CoreRequestClass"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-deadline-ms",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
+        "operationId": "devices",
         "responses": {
           "200": {
             "description": "Blob content",
             "content": {
-              "application/octet-stream": {
+              "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "integer",
-                    "format": "int32",
-                    "minimum": 0
+                    "$ref": "#/components/schemas/MemberDevice"
                   }
                 }
               }
@@ -425,17 +276,17 @@
         }
       }
     },
-    "/core/v1/handshake": {
+    "/core/v1/admin/space/invite": {
       "post": {
         "tags": [
-          "api"
+          "team_api"
         ],
-        "operationId": "handshake",
+        "operationId": "invite",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/HandshakeRequest"
+                "$ref": "#/components/schemas/InviteRequest"
               }
             }
           },
@@ -447,7 +298,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HandshakeResponse"
+                  "$ref": "#/components/schemas/InviteResponse"
                 }
               }
             }
@@ -495,58 +346,17 @@
         }
       }
     },
-    "/core/v1/local-mutations/resolve": {
+    "/core/v1/admin/space/listen": {
       "post": {
         "tags": [
-          "api"
+          "team_api"
         ],
-        "operationId": "resolve_local_mutation",
-        "parameters": [
-          {
-            "name": "x-nodex-request-id",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-class",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/CoreRequestClass"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-deadline-ms",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
+        "operationId": "listen",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LocalMutationResolveRequest"
+                "$ref": "#/components/schemas/ListenRequest"
               }
             }
           },
@@ -554,11 +364,11 @@
         },
         "responses": {
           "200": {
-            "description": "Local mutation outcome",
+            "description": "Local Owner enables HTTPS",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LocalMutationResolveResponse"
+                  "$ref": "#/components/schemas/ListenerInfo"
                 }
               }
             }
@@ -576,58 +386,17 @@
         }
       }
     },
-    "/core/v1/modules/administration/apply": {
+    "/core/v1/admin/space/member-name": {
       "post": {
         "tags": [
-          "api"
+          "team_api"
         ],
-        "operationId": "administration_apply",
-        "parameters": [
-          {
-            "name": "x-nodex-request-id",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-class",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/CoreRequestClass"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-deadline-ms",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
+        "operationId": "rename_member",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/StoreAdministrationApplyRequest"
+                "$ref": "#/components/schemas/RenameMemberRequest"
               }
             }
           },
@@ -635,11 +404,11 @@
         },
         "responses": {
           "200": {
-            "description": "Committed module mutation",
+            "description": "A Member chooses the name others see",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreAdministrationApplyResponse"
+                  "$ref": "#/components/schemas/Member"
                 }
               }
             }
@@ -703,12 +472,17 @@
               "minimum": 0
             }
           }
+    "/core/v1/admin/space/name": {
+      "post": {
+        "tags": [
+          "team_api"
         ],
+        "operationId": "rename",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/StoreAdministrationReadRequest"
+                "$ref": "#/components/schemas/RenameSpaceRequest"
               }
             }
           },
@@ -720,7 +494,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreAdministrationReadResponse"
+                  "$ref": "#/components/schemas/SpaceName"
                 }
               }
             }
@@ -865,12 +639,17 @@
               "minimum": 0
             }
           }
+    "/core/v1/admin/space/remove-member": {
+      "post": {
+        "tags": [
+          "team_api"
         ],
+        "operationId": "remove",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AutomationReadRequest"
+                "$ref": "#/components/schemas/RemoveMemberRequest"
               }
             }
           },
@@ -880,9 +659,9 @@
           "200": {
             "description": "Module read snapshot",
             "content": {
-              "application/json": {
+              "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/AutomationReadResponse"
+                  "type": "boolean"
                 }
               }
             }
@@ -900,58 +679,17 @@
         }
       }
     },
-    "/core/v1/modules/database/apply": {
+    "/core/v1/admin/space/revoke": {
       "post": {
         "tags": [
-          "api"
+          "team_api"
         ],
-        "operationId": "database_apply",
-        "parameters": [
-          {
-            "name": "x-nodex-request-id",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-class",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/CoreRequestClass"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-deadline-ms",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
+        "operationId": "revoke",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DatabaseApplyRequest"
+                "$ref": "#/components/schemas/RevokeDeviceRequest"
               }
             }
           },
@@ -961,9 +699,9 @@
           "200": {
             "description": "Committed module mutation",
             "content": {
-              "application/json": {
+              "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/DatabaseApplyResponse"
+                  "type": "boolean"
                 }
               }
             }
@@ -1011,22 +749,36 @@
                 {
                   "type": "null"
                 }
-              ]
+    "/core/v1/admin/space/transport-stats": {
+      "get": {
+        "tags": [
+          "team_api"
+        ],
+        "operationId": "transport_stats",
+        "responses": {
+          "200": {
+            "description": "Local Owner remote budget diagnostics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteTransportStats"
+                }
+              }
             }
           },
-          {
-            "name": "x-nodex-request-deadline-ms",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64",
-              "minimum": 0
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
             }
           }
+        }
+      }
+    },
     "/core/v1/agent-attributions": {
       "post": {
         "tags": [
@@ -3087,10 +2839,36 @@
         }
       }
     },
+    "/core/v1/remote-info": {
+      "get": {
+        "tags": [
+          "team_api"
         ],
+        "operationId": "info",
+        "responses": {
+          "200": {
+            "description": "Authenticated compatibility discovery",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteCoreInfo"
+                }
+              }
+            }
           },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
+      }
+    },
     "/core/v1/requests/cancel": {
       "post": {
         "tags": [
@@ -3183,29 +2961,105 @@
           }
         }
       }
+    },
+    "/enroll": {
+      "post": {
+        "tags": [
+          "team_api"
         ],
+        "operationId": "enroll",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnrollmentRequest"
+              }
+            }
           },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "One-time device credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentResponse"
+                }
+              }
+            }
           },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
+      }
+    },
+    "/session": {
+      "post": {
+        "tags": [
+          "team_api"
         ],
+        "operationId": "session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRequest"
+              }
+            }
           },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Renewable device-bound session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ActivityFilter": {
         "type": "string",
         "enum": [
+          "all",
           "messages",
+          "decisions",
+          "problems"
         ]
       },
-      "ApplyResponse_LibraryCommitValue_LibraryReceipt": {
+      "ActivitySubject": {
         "oneOf": [
           {
             "type": "object",
             "required": [
+              "automation_id",
               "label",
               "kind"
             ],
@@ -3216,6 +3070,7 @@
               "kind": {
                 "type": "string",
                 "enum": [
+                  "automation"
                 ]
               },
               "label": {
@@ -3226,15 +3081,22 @@
           {
             "type": "object",
             "required": [
+              "page_id",
+              "label",
               "kind"
             ],
             "properties": {
               "kind": {
                 "type": "string",
                 "enum": [
-                  "committed"
+                  "page"
                 ]
               },
+              "label": {
+                "type": "string"
+              },
+              "page_id": {
+                "type": "string"
               }
             }
           },
@@ -3242,6 +3104,7 @@
             "type": "object",
             "required": [
               "session_id",
+              "label",
               "kind"
             ],
             "properties": {
@@ -3251,164 +3114,18 @@
                   "chat"
                 ]
               },
-              "outcome": {
-                "type": "object",
-                "required": [
-                  "page_file_entries",
-                  "affected_resource_ids"
-                ],
-                "properties": {
-                  "affected_resource_ids": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "agent_create_pages": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryAgentCreatePagesResult"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "agent_move_pages": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryAgentMovePagesResult"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "agent_page_copy": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryAgentPageCopyResult"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "block_property_mutation": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryBlockPropertyMutationReceipt"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "block_transfer": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryBlockTransferResult"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "block_transfer_undo": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryBlockTransferUndoResult"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "canvas_mutation": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryCanvasMutationResult"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "file_mutation": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryFileMutationResult"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "page_copy": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryPageCopyResult"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "page_create": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryPageCreateResult"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "page_file_entries": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/LibraryPageFileEntryReceipt"
-                    }
-                  },
-                  "page_lifecycle": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryPageLifecycleMutationReceipt"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "page_relocation_undo": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryPageRelocationUndoResult"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "structural_edit": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryStructuralEditResult"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                }
+              "label": {
+                "type": "string"
               },
               "session_id": {
                 "type": "string"
               }
             }
+          },
           {
             "type": "object",
             "required": [
+              "url",
               "label",
               "kind"
             ],
@@ -3416,11 +3133,13 @@
               "kind": {
                 "type": "string",
                 "enum": [
+                  "thread"
                 ]
               },
               "label": {
                 "type": "string"
               },
+              "url": {
                 "type": "string"
               }
             }
@@ -3428,6 +3147,7 @@
           {
             "type": "object",
             "required": [
+              "source_id",
               "label",
               "kind"
             ],
@@ -3435,203 +3155,36 @@
               "kind": {
                 "type": "string",
                 "enum": [
-                  "no_op"
+                  "source"
                 ]
               },
               "label": {
                 "type": "string"
               },
+              "source_id": {
                 "type": "string"
               }
             }
           }
         ],
-        "description": "Closed result of an authorized command. A semantic mutation returns its\nimmutable commit identity; a validated no-op returns only the observed\nstore cursor and therefore cannot masquerade as a new commit."
+        "description": "The primary evidence link, named by its subject rather than its resource type."
       },
-      "ApplyResponse_OwnedDocumentCommitValue_OwnedDocumentReceipt": {
+      "Actor": {
         "oneOf": [
           {
             "type": "object",
             "required": [
-              "outcome",
-              "receipt",
-              "commit",
-              "status"
+              "member_id",
+              "type"
             ],
             "properties": {
-              "commit": {
-                "$ref": "#/components/schemas/CommitIdentity"
-              },
-                "type": "string",
-                "enum": [
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-            ],
-            "properties": {
-              },
-              "outcome": {
-                "type": "object",
-                "required": [
-                  "document_id",
-                  "generation",
-                  "head_seq",
-                  "outcome"
-                ],
-                "properties": {
-                  "canvas": {},
-                  "checkpoint_effect": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/DocumentCheckpointEffect"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "committed_at": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "document_id": {
-                    "type": "string"
-                  },
-                  "generation": {
-                    "type": "integer",
-                    "format": "int64"
-                  },
-                  "head_seq": {
-                    "type": "integer",
-                    "format": "int64"
-                  },
-                  "mutation_effect": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/DocumentMutationEffect"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "outcome": {
-                    "$ref": "#/components/schemas/DocumentCommitOutcome"
-                  },
-                  "owner_effect": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/DocumentOwnerEffect"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "recovery": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/RecoveryDraftSummary"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "recovery_capture": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/RecoveryCaptureReceipt"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "semantic_block_etags": {
-                    "type": [
-                      "object",
-                      "null"
-                    ],
-                    "additionalProperties": {
-                      "$ref": "#/components/schemas/DocumentSemanticBlockEtags"
-                    },
-                    "propertyNames": {
-                      "type": "string"
-                    }
-                  },
-                  "semantic_deleted_owner_block_ids": {
-                    "type": [
-                      "array",
-                      "null"
-                    ],
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "semantic_etags": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/DocumentSemanticEtags"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "semantic_local_block_ids": {
-                    "type": [
-                      "object",
-                      "null"
-                    ],
-                    "additionalProperties": {
-                      "type": "string"
-                    },
-                    "propertyNames": {
-                      "type": "string"
-                    }
-                  }
-                }
-              },
-              "receipt": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/ModuleMutationReceipt"
-                  },
-                  {
-                    "type": "object",
-                    "required": [
-                      "document_id",
-                      "generation",
-                      "head_seq"
-                    ],
-                    "properties": {
-                      "document_id": {
-                        "type": "string"
-                      },
-                      "generation": {
-                        "type": "integer",
-                        "format": "int64"
-                      },
-                      "head_seq": {
-                        "type": "integer",
-                        "format": "int64"
-                      }
-                    }
-                  }
-                ]
-              },
+              "member_id": {
                 "type": "string"
               },
+              "type": {
                 "type": "string",
                 "enum": [
-                  "committed"
+                  "member"
                 ]
               }
             }
@@ -3639,39 +3192,51 @@
           {
             "type": "object",
             "required": [
-              "outcome",
-              "receipt",
-              "observed",
-              "status"
+              "session_id",
+              "on_behalf_of",
+              "type"
+            ],
+            "properties": {
+              "on_behalf_of": {
+                "type": "string"
+              },
+              "run_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "type"
             ],
             "properties": {
               "kind": {
+                "$ref": "#/components/schemas/ServiceKind"
               },
-              "status": {
+              "type": {
                 "type": "string",
                 "enum": [
-                  "no_op"
+                  "service"
                 ]
               }
             }
           }
         ],
-        "description": "Closed result of an authorized command. A semantic mutation returns its\nimmutable commit identity; a validated no-op returns only the observed\nstore cursor and therefore cannot masquerade as a new commit."
-      },
-      "AuthorizedDeliveryAtom": {
-        "type": "object",
-        "required": [
-          "descriptor",
-          "payload"
-        ],
-        "properties": {
-          "descriptor": {
-            "$ref": "#/components/schemas/DeliveryAtomDescriptor"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/DeliveryAtomPayload"
-          }
-        }
+        "description": "Core-authored identity of a mutation. Transport, origin and execution Project\nare independent coordinates and cannot stand in for a person."
       },
       "AddressReset": {
         "type": "object",
@@ -3738,6 +3303,11 @@
               "minimum": 0
             }
           },
+          "run_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "session_id": {
             "type": "string"
@@ -7021,6 +6591,7 @@
                 ]
               },
               "run_id": {
+                "type": "string"
               }
             }
           },
@@ -8355,6 +7926,7 @@
       "ClientKind": {
         "type": "string",
         "enum": [
+          "remote_member",
           "electron_host",
           "native_cli",
           "test"
@@ -9938,6 +9510,7 @@
                 },
                 "task_parent_value_revision": {
                   "type": "integer",
+                  "format": "int64",
                   "description": "Revision of the standard `task_parent` Relation value. This remains\npopulated for root tasks, which have no Relation edge."
                 },
                 "task_sibling_rank": {
@@ -10429,6 +10002,7 @@
         ],
         "properties": {
           "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
           },
           "items": {
             "type": "array",
@@ -10929,6 +10503,7 @@
                 },
                 "project_name": {
                   "type": [
+                    "string",
                     "null"
                   ]
                 },
@@ -10937,6 +10512,7 @@
                 },
                 "project_section_id": {
                   "type": [
+                    "string",
                     "null"
                   ]
                 },
@@ -10948,6 +10524,7 @@
           },
           "next_cursor": {
             "type": [
+              "string",
               "null"
             ]
           }
@@ -10966,10 +10543,12 @@
           "items": {
             "type": "array",
             "items": {
+              "type": "object",
               "required": [
                 "item",
                 "title"
               ],
+              "properties": {
                 "item": {
                   "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemRef"
                 },
@@ -12325,6 +11904,7 @@
         "oneOf": [
           {
             "type": "object",
+            "description": "Only device-credential renewal may return authenticated withdrawal evidence.",
             "required": [
               "kind"
             ],
@@ -12354,36 +11934,18 @@
           {
             "type": "object",
             "required": [
-              "data_source_id",
-              "property_id",
-              "expected_data_source_revision",
-              "expected_property_revision",
-              "name",
-              "schema",
+              "budget",
+              "milliseconds",
               "kind"
             ],
             "properties": {
-              "before_property_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "data_source_id": {
-                "type": "string"
-              },
-              "expected_data_source_revision": {
-                "type": "integer",
-                "format": "int64"
-              },
-              "expected_property_revision": {
-                "type": "integer",
-                "format": "int64"
+              "budget": {
+                "$ref": "#/components/schemas/RemoteBudget"
               },
               "kind": {
                 "type": "string",
                 "enum": [
-                  "put_property"
+                  "retry_after"
                 ]
               },
               "milliseconds": {
@@ -13193,6 +12755,7 @@
       },
         "type": "object",
         "required": [
+          "member_id",
           "page_id",
           "title",
           "body"
@@ -15353,6 +14916,7 @@
           {
             "type": "object",
             "required": [
+              "occurrence_key",
               "edge",
               "kind"
             ],
@@ -16064,6 +15628,7 @@
           {
             "type": "object",
             "required": [
+              "member_id",
               "view_id",
               "value",
               "kind"
@@ -16075,6 +15640,7 @@
                   "preferences"
                 ]
               },
+              "member_id": {
                 "type": "string"
               },
               "value": {
@@ -16088,6 +15654,7 @@
           {
             "type": "object",
             "required": [
+              "member_id",
               "view_id",
               "target",
               "collapsed",
@@ -18861,6 +18428,8 @@
       },
         "type": "object",
         "required": [
+          "space_id",
+          "space_name",
           "member_id",
           "fingerprint",
           "routes",
@@ -18890,7 +18459,7 @@
           "space_id": {
             "type": "string"
           },
-          "target_membership_id": {
+          "space_name": {
             "type": "string"
           }
         }
@@ -18971,6 +18540,7 @@
             ],
             "properties": {
               "block_id": {
+                "type": "string"
               },
               "kind": {
                 "type": "string",
@@ -19507,7 +19077,7 @@
                   }
                 ]
               },
-              "property_id": {
+              "display_name": {
                 "type": "string"
               },
               "document_id": {
@@ -19689,6 +19259,7 @@
           "document_id": {
             "type": "string"
           },
+          "expires_at": {
             "type": "string"
           },
           "generation": {
@@ -19868,22 +19439,17 @@
         },
         "additionalProperties": false
       },
-      "LibraryAgentSurfaceMetadata": {
+      "DocumentSemanticBlockEtags": {
         "type": "object",
         "required": [
-          "title",
-          "library_id",
-          "displayed_routing_context"
+          "update",
+          "delete"
         ],
         "properties": {
-          "displayed_routing_context": {
-            "$ref": "#/components/schemas/ContentRoutingContext",
-            "description": "Presentation context for resolving the selected surface."
-          },
-          "library_id": {
+          "delete": {
             "type": "string"
           },
-          "title": {
+          "update": {
             "type": "string"
           }
         }
@@ -20263,6 +19829,7 @@
             "type": "string"
           }
         },
+        "additionalProperties": false
       },
       "EditorHistoryBlockState": {
         "type": "object",
@@ -20296,6 +19863,7 @@
             "type": "string"
           }
         },
+        "additionalProperties": false
       },
       "EditorHistoryPatch": {
         "type": "object",
@@ -20310,15 +19878,20 @@
             }
           }
         },
+        "additionalProperties": false
       },
+      "EnrollmentRequest": {
         "type": "object",
         "required": [
           "code",
+          "device_label",
           "display_name"
         ],
         "properties": {
+          "code": {
             "type": "string"
           },
+          "device_label": {
             "type": "string"
           },
           "display_name": {
@@ -20326,31 +19899,35 @@
           },
           }
         },
+        "additionalProperties": false
       },
+      "EnrollmentResponse": {
+        "type": "object",
+        "required": [
+          "space_id",
+          "space_name",
+          "member_id",
+          "device_id",
+          "device_credential"
+        ],
+        "properties": {
+          "device_credential": {
+            "type": "string"
           },
-          "final_locations": {
-            "type": "object",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/LibraryBlockLocation"
-            },
-            "propertyNames": {
-              "type": "string"
-            }
+          "device_id": {
+            "type": "string"
           },
-          "history": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/LibraryStructuralHistoryToken",
-                "description": "A complete symmetric inverse for a surface timeline. Missing means the\nentire gesture is a barrier, even if an explicit one-way Undo is available."
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "member_id": {
+            "type": "string"
           },
-          "mode": {
-            "$ref": "#/components/schemas/LibraryBlockTransferMode"
+          "space_id": {
+            "type": "string"
           },
+          "space_name": {
+            "type": "string"
+          }
+        }
+      },
       "EventEnvelope": {
         "type": "object",
         "required": [
@@ -21353,33 +20930,45 @@
           }
         }
       },
+      "InviteRequest": {
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "member_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "page_file_manifest_invalidations": {
-            "type": "object",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/LibraryPageFileInvalidation"
-            },
-            "propertyNames": {
-              "type": "string"
-            }
+          "role": {
+            "$ref": "#/components/schemas/MemberRole"
+          }
+        },
+        "additionalProperties": false
+      },
+      "InviteResponse": {
+        "type": "object",
+        "required": [
+          "url",
+          "fingerprint",
+          "code",
+          "expires_at"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
           },
-          "page_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          "expires_at": {
+            "type": "integer",
+            "format": "int64"
           },
-          "parent_keys": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          "fingerprint": {
+            "type": "string"
           },
-          "view_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          "url": {
+            "type": "string"
           }
         }
       },
@@ -24563,6 +24152,7 @@
           "mime_type",
           "byte_length",
           "blob_etag",
+          "created_by",
           "created_at",
           "updated_at"
         ],
@@ -24578,6 +24168,8 @@
           "created_at": {
             "type": "string"
           },
+          "created_by": {
+            "$ref": "#/components/schemas/Actor"
           },
           "created_by_turn_id": {
             "type": [
@@ -25190,13 +24782,13 @@
           "mime_type",
           "byte_length",
           "blob_etag",
+          "actor",
           "operation_id",
           "occurred_at"
         ],
         "properties": {
-          "commit_head": {
-            "type": "integer",
-            "format": "int64"
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
           },
           "blob_etag": {
             "type": "string"
@@ -26321,6 +25913,7 @@
             "description": "Core-authored RFC3339 time; unknown historical origins have no time."
           },
           "attached_by": {
+            "$ref": "#/components/schemas/Actor"
           }
         },
         "additionalProperties": false
@@ -31201,6 +30794,45 @@
           }
         ]
       },
+      "ListenRequest": {
+        "type": "object",
+        "required": [
+          "address"
+        ],
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "cert": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ListenerInfo": {
+        "type": "object",
+        "required": [
+          "url",
+          "fingerprint"
+        ],
+        "properties": {
+          "fingerprint": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
       "LocalMutationResolveRequest": {
         "type": "object",
         "required": [
@@ -31677,6 +31309,7 @@
           "library_id",
           "display_name",
           "lifecycle",
+          "role",
           "revision"
         ],
         "properties": {
@@ -31695,15 +31328,60 @@
           "revision": {
             "type": "integer",
             "format": "int64"
+          },
+          "role": {
+            "$ref": "#/components/schemas/MemberRole"
           }
         },
         "additionalProperties": false
+      },
+      "MemberDevice": {
+        "type": "object",
+        "required": [
+          "id",
+          "member_id",
+          "label",
+          "created_at",
+        ],
+        "properties": {
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "last_seen": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "member_id": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
       },
       "MemberLifecycle": {
         "type": "string",
         "enum": [
           "active",
           "removed"
+        ]
+      },
+      "MemberRole": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "member"
         ]
       },
       "ModuleApplyRequest_AutomationIntent": {
@@ -33907,17 +33585,22 @@
               {
                 "type": "object",
                 "required": [
+                  "start_my_requests",
+                  "initialize_only",
                   "kind"
                 ],
                 "properties": {
+                  "initialize_only": {
+                    "type": "boolean"
                   },
                   "kind": {
                     "type": "string",
                     "enum": [
+                      "set_inbox_routing_consent"
                     ]
                   },
-                  "view_id": {
-                    "type": "string"
+                  "start_my_requests": {
+                    "type": "boolean"
                   }
                 }
               },
@@ -41504,6 +41187,11 @@
                   "kind": {
                     "type": "string",
                     "enum": [
+                      "inbox_routing_consent"
+                    ]
+                  }
+                }
+              },
               {
                 "type": "object",
                 "required": [
@@ -45194,6 +44882,7 @@
           },
           {
             "type": "object",
+            "description": "The requesting Member's own pin; every Member keeps their own.",
             "required": [
               "pinned",
               "kind"
@@ -45230,6 +44919,7 @@
           },
           {
             "type": "object",
+            "description": "The requesting Member's own reminder; every Member keeps their own.",
             "required": [
               "kind"
             ],
@@ -45250,7 +44940,9 @@
           },
           {
             "type": "object",
+            "description": "Host delivery claims only the exact due reminder it observed, for its Member.",
             "required": [
+              "member_id",
               "remind_at",
               "deliver",
               "kind"
@@ -45265,6 +44957,9 @@
                   "consume_reminder"
                 ]
               },
+              "member_id": {
+                "type": "string"
+              },
               "remind_at": {
                 "type": "string"
               }
@@ -45272,8 +44967,10 @@
           },
           {
             "type": "object",
+            "description": "Settles a claimed reminder, turning the chat unread for its Member when `unread`.",
             "required": [
               "delivery_id",
+              "unread",
               "kind"
             ],
             "properties": {
@@ -45285,6 +44982,9 @@
                 "enum": [
                   "complete_reminder_delivery"
                 ]
+              },
+              "unread": {
+                "type": "boolean"
               }
             }
           },
@@ -47823,15 +47523,22 @@
           {
             "type": "object",
             "required": [
+              "start_my_requests",
+              "initialize_only",
               "kind"
             ],
             "properties": {
+              "initialize_only": {
+                "type": "boolean"
               },
               "kind": {
                 "type": "string",
                 "enum": [
+                  "set_inbox_routing_consent"
                 ]
               },
+              "start_my_requests": {
+                "type": "boolean"
               }
             }
           },
@@ -55664,6 +55371,211 @@
           }
         }
       },
+      "RemoteBudget": {
+        "type": "string",
+        "description": "The independently bounded resource which refused remote admission.",
+        "enum": [
+          "pre_auth_ip",
+          "device_requests",
+          "device_bytes",
+          "member_requests",
+          "member_bytes",
+          "member_concurrency",
+          "global_concurrency",
+          "device_streams",
+          "member_streams"
+        ]
+      },
+      "RemoteBudgetCounter": {
+        "type": "object",
+        "required": [
+          "requests",
+          "bytes",
+          "peak_requests",
+          "peak_bytes",
+          "refusals"
+        ],
+        "properties": {
+          "bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "peak_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "peak_requests": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "refusals": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "requests": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "RemoteCoreInfo": {
+        "type": "object",
+        "required": [
+          "manifest",
+          "actual_store_format",
+          "generation",
+          "library_id",
+          "space_name"
+        ],
+        "properties": {
+          "actual_store_format": {
+            "$ref": "#/components/schemas/StoreFormatIdentity"
+          },
+          "generation": {
+            "$ref": "#/components/schemas/RuntimeGenerationIdentity"
+          },
+          "library_id": {
+            "type": "string"
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/CoreCompatibilityManifest"
+          },
+          "space_name": {
+            "type": "string"
+          }
+        }
+      },
+      "RemotePrincipal": {
+        "type": "object",
+        "description": "Space membership proven by a renewable, device-bound session.",
+        "required": [
+          "space_id",
+          "member_id",
+          "device_id",
+          "session_id",
+          "role"
+        ],
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "member_id": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/MemberRole"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "space_id": {
+            "type": "string"
+          }
+        }
+      },
+      "RemoteTransportStats": {
+        "type": "object",
+        "required": [
+          "pre_auth_ips",
+          "members",
+          "devices",
+          "routes",
+          "refusals"
+        ],
+        "properties": {
+          "devices": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RemoteBudgetCounter"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "members": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RemoteBudgetCounter"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "pre_auth_ips": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RemoteBudgetCounter"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "refusals": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "routes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RemoveMemberRequest": {
+        "type": "object",
+        "required": [
+          "member_id"
+        ],
+        "properties": {
+          "member_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RenameMemberRequest": {
+        "type": "object",
+        "description": "The name other Members see for the requesting Member; never the relative word \"You\".",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RenameSpaceRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "ResourceKey": {
         "oneOf": [
           {
@@ -60284,17 +60196,13 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "page_location"
+                              "inbox_routing_consent"
                             ]
                           },
-                          "value": {
-                            "oneOf": [
-                              {
-                                "$ref": "#/components/schemas/LibraryPageLocation"
-                              },
-                              {
-                                "type": "null"
-                              }
+                          "start_my_requests": {
+                            "type": [
+                              "boolean",
+                              "null"
                             ]
                           }
                         }
@@ -60828,6 +60736,7 @@
                       },
                       {
                         "type": "object",
+                        "description": "The earliest reminder any Member is owed, with the chat as that Member reads it.",
                         "required": [
                           "kind"
                         ],
@@ -60846,6 +60755,12 @@
                             "type": "string",
                             "enum": [
                               "next_session_reminder"
+                            ]
+                          },
+                          "member_id": {
+                            "type": [
+                              "string",
+                              "null"
                             ]
                           },
                           "next_wake_at": {
@@ -61996,6 +61911,7 @@
               "status"
             ],
             "properties": {
+              "payload": {
                 "$ref": "#/components/schemas/CoreError"
               },
               "status": {
@@ -62013,9 +61929,11 @@
           {
             "type": "object",
             "required": [
+              "payload",
               "status"
             ],
             "properties": {
+              "payload": {
                 "type": "object",
                 "required": [
                   "contract_version",
@@ -62024,6 +61942,7 @@
                   "value"
                 ],
                 "properties": {
+                  "commit_head": {
                     "type": "integer",
                     "format": "int64"
                   },
@@ -62035,6 +61954,7 @@
                   "store_epoch": {
                     "$ref": "#/components/schemas/StoreEpoch"
                   },
+                  "value": {
                     "oneOf": [
                       {
                         "type": "object",
@@ -62049,6 +61969,7 @@
                               "schema"
                             ]
                           },
+                          "value": {
                             "$ref": "#/components/schemas/SqlSchema"
                           }
                         }
@@ -62066,6 +61987,7 @@
                               "query"
                             ]
                           },
+                          "value": {
                             "$ref": "#/components/schemas/SqlResult"
                           }
                         }
@@ -62083,184 +62005,8 @@
                               "displayed_view_query"
                             ]
                           },
+                          "value": {
                             "$ref": "#/components/schemas/DatabaseDisplayedViewQueryResult"
-                          }
-                        }
-                      }
-                    ]
-                  }
-                }
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "ok"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "status"
-            ],
-            "properties": {
-                "$ref": "#/components/schemas/CoreError"
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "error"
-                ]
-              }
-            }
-          }
-        ]
-      },
-      "ResponseEnvelope_ModuleReadSnapshot_StoreAdministrationReadValue": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "payload",
-              "status"
-            ],
-            "properties": {
-                "type": "object",
-                "required": [
-                  "store_epoch",
-                  "value"
-                ],
-                "properties": {
-                    "type": "integer",
-                    "format": "int64"
-                  },
-                    "type": "integer",
-                    "format": "int32",
-                    "minimum": 0
-                  },
-                  "store_epoch": {
-                  },
-                    "oneOf": [
-                      {
-                        "type": "object",
-                        "required": [
-                          "requests",
-                          "kind"
-                        ],
-                        "properties": {
-                          },
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "status"
-                            ]
-                          },
-                          },
-                          },
-                            "type": "integer",
-                            "format": "int32",
-                            "minimum": 0
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "request_ids",
-                          "kind"
-                        ],
-                        "properties": {
-                          },
-                          },
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "inbox_pending_suggestion_request_ids"
-                            ]
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "jobs",
-                          "kind"
-                        ],
-                        "properties": {
-                          "entries": {
-                            "type": "array",
-                            "items": {
-                            }
-                          },
-                            "type": "array",
-                            "items": {
-                            }
-                          },
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "inbox_pending_suggestions"
-                            ]
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "status",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "inbox_dispatch_context"
-                            ]
-                          },
-                          "status": {
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "active",
-                          "kind"
-                        ],
-                        "properties": {
-                            "type": "boolean"
-                          },
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                            ]
-                          },
-                            "type": [
-                              "string",
-                              "null"
-                            ]
-                          },
-                            "type": [
-                              "string",
-                              "null"
-                            ]
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "plan",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "inbox_message_edit"
-                            ]
-                          },
                           }
                         }
                       }
@@ -62284,6 +62030,219 @@
             ],
             "properties": {
               "payload": {
+                "$ref": "#/components/schemas/CoreError"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "error"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "ResponseEnvelope_ModuleReadSnapshot_StoreAdministrationReadValue": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "payload",
+              "status"
+            ],
+            "properties": {
+              "payload": {
+                "type": "object",
+                "required": [
+                  "contract_version",
+                  "store_epoch",
+                  "commit_head",
+                  "value"
+                ],
+                "properties": {
+                  "commit_head": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "contract_version": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  },
+                  "store_epoch": {
+                    "$ref": "#/components/schemas/StoreEpoch"
+                  },
+                  "value": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "required": [
+                          "readiness",
+                          "schema_version",
+                          "schema_owner",
+                          "integrity",
+                          "kind"
+                        ],
+                        "properties": {
+                          "integrity": {
+                            "$ref": "#/components/schemas/StoreIntegrity"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "status"
+                            ]
+                          },
+                          "readiness": {
+                            "$ref": "#/components/schemas/StoreReadiness"
+                          },
+                          "schema_owner": {
+                            "$ref": "#/components/schemas/SchemaOwner"
+                          },
+                          "schema_version": {
+                            "type": "integer",
+                            "format": "int32",
+                            "minimum": 0
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "backups",
+                          "capacity",
+                          "kind"
+                        ],
+                        "properties": {
+                          "backups": {
+                            "$ref": "#/components/schemas/CollectionWindow_BackupRecord"
+                          },
+                          "capacity": {
+                            "$ref": "#/components/schemas/BackupCapacity"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "backups"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "jobs",
+                          "coalesced_starts",
+                          "kind"
+                        ],
+                        "properties": {
+                          "coalesced_starts": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/BackupStartCoalescence"
+                            }
+                          },
+                          "jobs": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/BackupJobRecord"
+                            }
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "backup_jobs"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "status",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "operational_journal_status"
+                            ]
+                          },
+                          "status": {
+                            "$ref": "#/components/schemas/OperationalJournalStatus"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "active",
+                          "kind"
+                        ],
+                        "properties": {
+                          "active": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "maintenance_status"
+                            ]
+                          },
+                          "operation_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "phase": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "plan",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "maintenance_plan"
+                            ]
+                          },
+                          "plan": {
+                            "$ref": "#/components/schemas/MaintenanceDueWorkPlan"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ok"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "payload",
+              "status"
+            ],
+            "properties": {
+              "payload": {
+                "$ref": "#/components/schemas/CoreError"
               },
               "status": {
                 "type": "string",
@@ -62404,6 +62363,19 @@
         "enum": [
           "type_script",
           "rust"
+        ]
+      },
+      "ServiceKind": {
+        "type": "string",
+        "enum": [
+          "sources",
+          "automations",
+          "scheduler",
+          "inbox_routing",
+          "agent_runtime",
+          "maintenance",
+          "notifications",
+          "membership"
         ]
       },
       "SessionExecutionObservation": {
@@ -62627,6 +62599,38 @@
           "failed",
           "interrupted"
         ]
+      },
+      "SessionRequest": {
+        "type": "object",
+        "required": [
+          "device_credential"
+        ],
+        "properties": {
+          "device_credential": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SessionResponse": {
+        "type": "object",
+        "required": [
+          "session_token",
+          "expires_at",
+          "principal"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "principal": {
+            "$ref": "#/components/schemas/RemotePrincipal"
+          },
+          "session_token": {
+            "type": "string"
+          }
+        }
       },
       "ShutdownRequest": {
         "oneOf": [
@@ -64106,7 +64110,7 @@
       "ShutdownResponse": {
         "type": "object",
         "required": [
-          "status"
+          "space_name",
         ],
         "properties": {
           "retry_after_ms": {
@@ -64127,8 +64131,11 @@
               }
             ]
           },
-          "status": {
-            "$ref": "#/components/schemas/ShutdownStatus"
+          "space_id": {
+            "type": "string"
+          },
+          "space_name": {
+            "type": "string"
           }
         }
       },
@@ -64140,6 +64147,17 @@
           "incompatible"
         ]
       },
+      "SpaceName": {
+        "type": "object",
+        "description": "Display identity belongs to Core; endpoints remain transport coordinates.",
+        "required": [
+          "space_id",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
       "SqlBinding": {
         "type": "object",
         "required": [

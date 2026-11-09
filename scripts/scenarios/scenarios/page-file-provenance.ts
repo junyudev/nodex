@@ -10,7 +10,7 @@ import {
 } from "../contracts";
 
 export const PAGE_FILE_PROVENANCE_SCENARIO_ID = "page/file-provenance" as const;
-export const PAGE_FILE_PROVENANCE_SCENARIO_REVISION = 2 as const;
+export const PAGE_FILE_PROVENANCE_SCENARIO_REVISION = 1 as const;
 export const PAGE_FILE_PROVENANCE_REPORT_PAGE_KEY = "coldStart" as const;
 export const PAGE_FILE_PROVENANCE_MIXED_PAGE_KEY = "settings" as const;
 export const PAGE_FILE_PROVENANCE_REPORT_CHAT_KEY = "coldStartChat" as const;
@@ -18,10 +18,7 @@ export const PAGE_FILE_PROVENANCE_MIXED_CHAT_KEY = "settingsChat" as const;
 
 const FIXTURES = path.resolve("scripts/scenarios/fixtures/page-files");
 
-/**
- * One Agent's report beside its Page, and a Page whose Files came from you, an Agent and its body.
- * Each body also refers to one of its Files inline, as a person or Agent writing about it would.
- */
+/** One Agent's report beside its Page, and a Page whose Files came from you, an Agent and its body. */
 export interface PageFileProvenanceScenarioFacts extends ScenarioFacts {
   readonly reportPageId: string;
   readonly mixedPageId: string;
@@ -82,9 +79,6 @@ interface FileFixture {
   readonly mimeType: string;
   readonly bytes: Uint8Array;
 }
-
-const attachmentDirective = (fileId: string, name: string, mimeType: string): string =>
-  `:attachment{kind="file" source="nodex://files/${fileId}" name="${name}" mime="${mimeType}"}`;
 
 const fixture = async (relative: string, mimeType: string): Promise<FileFixture> => ({
   path: relative,
@@ -173,23 +167,12 @@ const materializePageFileProvenance = async (
     await fixture("cold-start/flamegraph.png", "image/png"),
     await fixture("cold-start/trace.json", "application/json"),
   ].map((file) => ({ ...file, path: `profile/${path.basename(file.path)}` }));
-  const reportFileIds: string[] = [];
   for (const file of reportFiles) {
-    reportFileIds.push(
-      await attach(reportPageId, file, { sessionId: reportChat.sessionId, backend: "codex" }),
-    );
+    await attach(reportPageId, file, { sessionId: reportChat.sessionId, backend: "codex" });
   }
-  const reportBody = await port.replaceOwnedDocument({
-    mutationId: createUuidV7(),
-    operationId: createUuidV7(),
-    clientSessionId: `scenario:${PAGE_FILE_PROVENANCE_SCENARIO_ID}`,
-    projectId: project.id,
-    pageId: reportPageId,
-    markdown: `${COLD_START_BODY}\n\nFull write-up: ${attachmentDirective(reportFileIds[0]!, "report.html", "text/html")}`,
-  });
 
   // Mixed origins: your brief, the design chat's mockup, and an image placed in the body.
-  const briefFileId = await attach(mixedPageId, {
+  await attach(mixedPageId, {
     path: "brief.md",
     mimeType: "text/markdown",
     bytes: new TextEncoder().encode(BRIEF),
@@ -216,13 +199,7 @@ const materializePageFileProvenance = async (
     clientSessionId: `scenario:${PAGE_FILE_PROVENANCE_SCENARIO_ID}`,
     projectId: project.id,
     pageId: mixedPageId,
-    markdown: [
-      `Requirements are in ${attachmentDirective(briefFileId, "brief.md", "text/markdown")}.`,
-      "",
-      SETTINGS_BODY,
-      "",
-      `![Settings, light](nodex://files/${lightFileId})`,
-    ].join("\n"),
+    markdown: `${SETTINGS_BODY}\n\n![Settings, light](nodex://files/${lightFileId})`,
   });
 
   return {
@@ -239,7 +216,7 @@ const materializePageFileProvenance = async (
       [PAGE_FILE_PROVENANCE_REPORT_CHAT_KEY]: reportChat.sessionId,
       [PAGE_FILE_PROVENANCE_MIXED_CHAT_KEY]: mixedChat.sessionId,
     },
-    minimumCommitSeq: Math.max(reportBody.commitSeq, body.commitSeq),
+    minimumCommitSeq: body.commitSeq,
     materializedAt: new Date().toISOString(),
   };
 };
@@ -260,13 +237,13 @@ const inspectPageFileProvenance = async (
     port.readPageFileInventory(manifest.projectId, mixedPageId),
   ]);
   const agentOf = (item: (typeof report.files)[number]) =>
-    item.attachment?.attached_by.kind === "agent" ? item.attachment.attached_by.session_id : null;
+    item.attachment?.attached_by.type === "agent" ? item.attachment.attached_by.session_id : null;
   if (
     report.files.length !== 3 ||
     !report.files.every((item) => agentOf(item) === reportChatId) ||
     mixed.files.length !== 3 ||
-    mixed.files.find((item) => item.logical_path === "brief.md")?.attachment?.attached_by.kind !==
-      "person" ||
+    mixed.files.find((item) => item.logical_path === "brief.md")?.attachment?.attached_by.type !==
+      "member" ||
     agentOf(mixed.files.find((item) => item.logical_path === "mockups/settings-dark.png")!) !==
       mixedChatId ||
     mixed.files.filter((item) => item.attachment === null && item.body_count === 1).length !== 1

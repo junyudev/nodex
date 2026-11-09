@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CodexComposerPredictionResult } from "../../../../../shared/codex-composer-prediction";
 import { recordProductEvent } from "../../../../lib/product-analytics";
+import { isHostedChat } from "../../../../lib/hosted-chat";
 import { analyticsCode, analyticsModelName } from "../../../../../shared/product-analytics/names";
 import { useConversationRuntimeOverride } from "../../conversation-runtime";
 import { runConversationOperation } from "../../local-conversation-operations";
@@ -48,7 +49,8 @@ export function useComposerPrediction({
   const preference = useComposerPredictionSettings();
   const enabledPreference =
     !preference.isLoading && !preference.error && preference.settings.enabled;
-  const allowed = eligible && (!override || override.kind === "codex") && threadId !== null;
+  const allowed =
+    eligible && !isHostedChat() && (!override || override.kind === "codex") && threadId !== null;
   const availability = useQuery({
     queryKey: ["composer_prediction_availability", hostId],
     queryFn: () => runConversationOperation("codex:composer-prediction:availability", hostId),

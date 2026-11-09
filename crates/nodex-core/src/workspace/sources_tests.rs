@@ -37,6 +37,48 @@ fn setup() -> TestWorkspace {
     claim(&w, "lease");
     w
 }
+
+#[test]
+fn source_configuration_requires_current_owner_even_for_receipt_replay() {
+    let w = setup();
+    w.kernel.writer().call(|connection| {
+        connection.execute_batch("UPDATE libraries SET space_kind='team' WHERE id='library-1'; UPDATE members SET role='member' WHERE id IN (SELECT member_id FROM local_profile_members WHERE library_id='library-1');")?;
+        Ok(())
+    }).unwrap();
+    for operation in ["configure", "configure-as-member"] {
+        let error = w
+            .module
+            .apply(
+                &context(),
+                request(
+                    operation,
+                    command(SourceCommand::ConfigureSource {
+                        source_id: "github".into(),
+                        expected_revision: 0,
+                        enabled: true,
+                        config: config(),
+                    }),
+                ),
+            )
+            .unwrap_err();
+        assert_eq!(
+            error.code,
+            nodex_core_contracts::CoreErrorCode::Unauthorized
+        );
+    }
+    // Producer authority remains a Host capability, independent of configuration.
+    apply(
+        &w.module,
+        "renew-after-role-change",
+        command(SourceCommand::ClaimSourcePartition {
+            source_id: "github".into(),
+            config_revision: 1,
+            partition: "repo:10".into(),
+            lease_token: "lease".into(),
+            lease_duration_ms: 120000,
+        }),
+    );
+}
 fn claim(w: &TestWorkspace, token: &str) {
     apply(
         &w.module,
@@ -230,6 +272,7 @@ fn sources_reject_agent_attribution_even_on_a_persons_receipt_replay() {
     let mut agent = context();
     agent.adapter = AdapterKind::ElectronHost;
     agent.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
+        run_id: None,
         session_id: "chat".into(),
         backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
     });

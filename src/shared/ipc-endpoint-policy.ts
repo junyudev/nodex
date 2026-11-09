@@ -58,6 +58,8 @@ export type IpcCommand<
 /** Exact owner-audited groups. Never replace one group with an `Exclude<keyof IpcApi, ...>` remainder. */
 type QueryEndpointPolicy =
   | "sources:automation-options"
+  | "spaces:list"
+  | "spaces:context"
   | "sources:settings"
   | "work:workspace"
   | "work:holds"
@@ -526,6 +528,10 @@ type MainRevisionCommandEndpointPolicy =
   | "codex:visualization:interaction:write";
 
 type PlainResultCommandEndpointPolicy =
+  | "spaces:join"
+  | "spaces:leave"
+  | "spaces:switch"
+  | "spaces:open-link"
   | "sources:retry"
   | "work:refresh-workspace"
   | "windows-startup:open-settings"

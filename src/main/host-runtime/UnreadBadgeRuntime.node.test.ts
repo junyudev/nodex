@@ -6,7 +6,12 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { makeAppBadge } from "../platform/electron/AppBadge";
-import { run } from "./UnreadBadgeRuntime";
+import { make } from "./UnreadBadgeRuntime";
+
+const yields = Effect.forEach(Array.from({ length: 10 }), () => Effect.yieldNow, {
+  discard: true,
+});
+const settle = TestClock.adjust("150 millis").pipe(Effect.andThen(yields));
 
 it.effect(
   "follows the unread count, replaces a stale badge and clears it when the Profile closes",
@@ -17,17 +22,18 @@ it.effect(
       let reads = 0;
       let count: number | null = 0;
       const scope = yield* Scope.make();
-      yield* run({
-        count: Effect.sync(() => {
-          reads += 1;
-          return count;
-        }),
-        changes: Stream.fromPubSub(changes),
-        setBadge: (next) => Effect.sync(() => badges.push(next)),
-      }).pipe(Scope.provide(scope));
-      const yields = Effect.forEach(Array.from({ length: 10 }), () => Effect.yieldNow, {
-        discard: true,
-      });
+      const badge = yield* make((next) => Effect.sync(() => badges.push(next))).pipe(
+        Scope.provide(scope),
+      );
+      yield* badge
+        .count("personal", {
+          count: Effect.sync(() => {
+            reads += 1;
+            return count;
+          }),
+          changes: Stream.fromPubSub(changes),
+        })
+        .pipe(Scope.provide(scope));
       yield* yields;
       const change = PubSub.publish(changes, undefined);
       const settle = TestClock.adjust("150 millis").pipe(Effect.andThen(yields));
@@ -57,6 +63,41 @@ it.effect(
       yield* Scope.close(scope, Exit.void);
       assert.deepEqual(badges, [0, 3, 0]);
     }),
+);
+
+it.effect("adds up every open Space's own count and drops a Space once it is no longer open", () =>
+  Effect.gen(function* () {
+    const badges: number[] = [];
+    const badge = yield* make((next) => Effect.sync(() => badges.push(next)));
+    const team = yield* PubSub.unbounded<void>();
+    let teamCount: number | null = 4;
+    let teamFails = false;
+    yield* badge.count("personal", { count: Effect.succeed(2), changes: Stream.never });
+    const open = yield* Scope.make();
+    yield* badge
+      .count("team", {
+        count: Effect.suspend(() =>
+          teamFails ? Effect.fail("unreachable") : Effect.succeed(teamCount),
+        ),
+        changes: Stream.fromPubSub(team),
+      })
+      .pipe(Scope.provide(open));
+    yield* yields;
+    yield* settle;
+    assert.deepEqual(badges, [6]);
+    // Each Space's changes reread it; one that cannot be read keeps its last count.
+    teamCount = 1;
+    yield* PubSub.publish(team, undefined);
+    yield* settle;
+    teamFails = true;
+    yield* PubSub.publish(team, undefined);
+    yield* settle;
+    assert.deepEqual(badges, [6, 3]);
+    // Leaving the Space takes its chats out of the badge.
+    yield* Scope.close(open, Exit.void);
+    yield* settle;
+    assert.deepEqual(badges, [6, 3, 2]);
+  }),
 );
 
 it.effect("badges the app where the platform has a badge, and never fails the caller", () =>

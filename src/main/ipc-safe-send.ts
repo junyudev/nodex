@@ -1,4 +1,5 @@
 import { getLogger, type BackendLogger } from "./logging/logger";
+import { rendererSpaceParameter } from "../shared/space-ipc-policy";
 
 export interface SafeSendWebContentsLike {
   id?: number;
@@ -132,4 +133,22 @@ export function safeBroadcastToWindows(
 
 export function resetSafeSendWarningRateLimitForTests(): void {
   lastWarnByKey.clear();
+}
+
+/** Personal producers cannot publish their resource identities into team renderers. */
+export function safeBroadcastToPersonalWindows(
+  windows: Iterable<
+    SafeSendWindowLike & { webContents: SafeSendWebContentsLike & { getURL(): string } }
+  >,
+  channel: string,
+  args: readonly unknown[] = [],
+  options: SafeSendOptions = {},
+): number {
+  let sentCount = 0;
+  for (const window of windows) {
+    if (window.isDestroyed() || window.webContents.isDestroyed()) continue;
+    if (rendererSpaceParameter(window.webContents.getURL()) !== null) continue;
+    if (safeSendToWindow(window, channel, args, options)) sentCount += 1;
+  }
+  return sentCount;
 }

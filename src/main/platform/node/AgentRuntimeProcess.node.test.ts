@@ -932,21 +932,37 @@ it.live("a Main event loop stall counts as one silent tick", () =>
     assert.deepEqual(states, [true]);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
-for (const unexpected of [false, true]) {
+for (const mode of ["shutdown", "unexpected exit", "shutdown overlapping crash cleanup"] as const) {
+  const unexpected = mode !== "shutdown";
+  const overlapping = mode === "shutdown overlapping crash cleanup";
   it.live.skipIf(process.platform === "win32")(
-    `reclaims the exited Runtime owner's recorded servers after ${unexpected ? "unexpected exit" : "shutdown"}`,
+    `reclaims the exited Runtime owner's recorded servers after ${mode}`,
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-runtime-reap-" });
         const scope = yield* Scope.fork(yield* Scope.Scope);
+        const orphaned = yield* Deferred.make<void>();
+        yield* Effect.acquireRelease(
+          Effect.sync(() =>
+            watch(home, (_event, name) => {
+              if (name?.toString() === "server-orphaned")
+                Deferred.doneUnsafe(orphaned, Effect.void);
+            }),
+          ),
+          (watcher) => Effect.sync(() => watcher.close()),
+        );
         const connection = yield* acquireAgentRuntimeProcess({
           executable: process.execPath,
           entryPath: fileURLToPath(
             new URL("../../../../tests/fixtures/agent-runtime-orphan.mts", import.meta.url),
           ),
           configuration: { home, cwd: home, providers: {} },
-          environment: { ...process.env, NODE_OPTIONS: `--import=${import.meta.resolve("tsx")}` },
+          environment: {
+            ...process.env,
+            NODE_OPTIONS: `--import=${import.meta.resolve("tsx")}`,
+            NODEX_FIXTURE_ORPHAN_GROUP: overlapping ? "1" : "0",
+          },
           host: () => Effect.void,
         }).pipe(Effect.provideService(Scope.Scope, scope));
         const pid = Number(yield* fs.readFileString(`${home}/server-pid`));
@@ -960,7 +976,9 @@ for (const unexpected of [false, true]) {
         );
         const running = () => {
           try {
-            process.kill(pid, 0);
+            // macOS can retain an orphan's zombie PID after its group is gone.
+            // The group owns the provider's live descendants and listening port.
+            process.kill(-pid, 0);
             return true;
           } catch {
             return false;
@@ -969,7 +987,12 @@ for (const unexpected of [false, true]) {
         assert.isTrue(running());
         if (unexpected) {
           yield* Effect.exit(connection.request("project.read", { projectId: "exit" }));
-          yield* connection.terminated;
+          if (overlapping) {
+            // The exit watcher is draining the still-live group. Scope close
+            // must join it even though its recorded leader has already gone.
+            yield* Deferred.await(orphaned).pipe(Effect.timeout("5 seconds"));
+            yield* Scope.close(scope, Exit.void);
+          } else yield* connection.terminated;
         } else yield* Scope.close(scope, Exit.void);
         assert.isFalse(running());
         assert.deepEqual(yield* fs.readDirectory(`${home}/userdata/opencode-servers`), []);

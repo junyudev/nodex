@@ -392,6 +392,43 @@ describe("Core Database Module Adapter", () => {
     });
   });
 
+  test("hydrates a Database's schema once per committed Store state", async () => {
+    const client = new FakeCoreClient();
+    const adapter = createCoreDatabaseModuleAdapter({ client, ...identity });
+    const read = () =>
+      adapter.read({
+        projectId: identity.projectId,
+        read: { target: { kind: "project_default" }, mode: "database" },
+      });
+    const atCommit = (commit: number) => {
+      client.enqueueDatabaseRead({ ...databaseSnapshot(), commit_head: commit });
+      client.enqueueDatabaseRead({ ...emptyDataSourceWindowSnapshot(), commit_head: commit });
+      client.enqueueDatabaseRead({ ...emptyViewDescriptorWindowSnapshot(), commit_head: commit });
+    };
+
+    atCommit(30);
+    const first = await read();
+    // Every View that refreshes after the same commit reuses its schema windows.
+    client.enqueueDatabaseRead({ ...databaseSnapshot(), commit_head: 30 });
+    const second = await read();
+    expect(second).toEqual(first);
+    expect(client.databaseReads.map((entry) => entry.kind)).toEqual([
+      "database",
+      "data_source_window",
+      "view_descriptor_window",
+      "database",
+    ]);
+
+    // A later commit may have changed the schema, so it is read again.
+    atCommit(31);
+    await read();
+    expect(client.databaseReads.map((entry) => entry.kind).slice(4)).toEqual([
+      "database",
+      "data_source_window",
+      "view_descriptor_window",
+    ]);
+  });
+
   test("hydrates catalog entries and maps Relation candidates", async () => {
     const catalogClient = new FakeCoreClient();
     catalogClient.enqueueDatabaseRead({

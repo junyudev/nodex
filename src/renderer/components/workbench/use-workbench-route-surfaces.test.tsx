@@ -1,3 +1,4 @@
+import * as rendererSpace from "@/lib/renderer-space";
 import { act, render } from "@testing-library/react";
 import { expect, test, vi } from "vite-plus/test";
 import { useWorkbenchRouteSurfaces } from "./use-workbench-route-surfaces";
@@ -158,4 +159,24 @@ test("keeps Settings navigation ready and loads other auxiliary routes when pres
   );
   expect(view.queryByRole("status", { name: "Automations route" })).toBeNull();
   expect(loadedRoutes).toEqual(["settings", "automations", "plugins", "pending-worktree"]);
+});
+
+test("a restored team Automations route shows the host boundary without mounting its manager", async () => {
+  const remote = vi.spyOn(rendererSpace, "isRemoteSpace").mockReturnValue(true);
+  try {
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(
+        <Routes
+          {...input}
+          automations={{ ...input.automations, path: "/automations?automationId=same-automation" }}
+        />,
+      );
+      await Promise.resolve();
+    });
+    expect(view.getByRole("status").textContent).toBe("Automations for this Space run on its host");
+    expect(view.queryByLabelText("Automations route")).toBeNull();
+  } finally {
+    remote.mockRestore();
+  }
 });

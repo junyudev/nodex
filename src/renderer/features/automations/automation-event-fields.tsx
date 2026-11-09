@@ -4,6 +4,8 @@ import { NodexOptionPicker } from "@/components/ui/dropdown";
 import { NodexCheckbox } from "@/components/ui/settings";
 import type { AutomationSourceFilter } from "@/lib/types";
 import { readSourceOptions } from "@/lib/sources";
+import { queryKeys } from "@/lib/query-keys";
+import { isRemoteSpace } from "@/lib/renderer-space";
 import { AutomationFieldRow, AutomationFieldTrigger } from "./automation-fields";
 
 export const DEFAULT_AUTOMATION_SOURCE_FILTER: AutomationSourceFilter = {
@@ -60,6 +62,13 @@ function FilterText({
     />
   );
 }
+function HostEventAutomations() {
+  return (
+    <p role="status" className="px-4 py-3 text-sm text-token-description-foreground">
+      Event Automations for this Space run on its host
+    </p>
+  );
+}
 export function AutomationEventFields({
   value,
   disabled,
@@ -71,6 +80,7 @@ export function AutomationEventFields({
   onChange: (value: AutomationSourceFilter) => void;
   sources?: readonly { id: string; label: string }[];
 }) {
+  if (isRemoteSpace()) return <HostEventAutomations />;
   const patch = (next: Partial<AutomationSourceFilter>) => onChange({ ...value, ...next });
   return (
     <>
@@ -162,5 +172,12 @@ export function AutomationEventFields({
 export function AutomationSourceFields(
   props: Omit<Parameters<typeof AutomationEventFields>[0], "sources">,
 ) {
+  return isRemoteSpace() ? <HostEventAutomations /> : <PersonalAutomationSourceFields {...props} />;
+}
+function PersonalAutomationSourceFields(props: Parameters<typeof AutomationSourceFields>[0]) {
+  const options = useQuery({
+    queryKey: queryKeys.sources.automationOptions(),
+    queryFn: readSourceOptions,
+  });
   return <AutomationEventFields {...props} sources={options.data ?? NO_SOURCES} />;
 }

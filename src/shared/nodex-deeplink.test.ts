@@ -39,3 +39,10 @@ describe("Nodex deep-link conformance", () => {
     expect(parseViewDeepLink(value)).toBe(null);
   });
 });
+
+test("retains a Space coordinate and refuses ambiguous or empty qualifiers", () => {
+  const target = { pageId: "same-page", spaceId: "team-a" };
+  expect(parsePageDeepLink(buildPageDeepLink(target))).toEqual(target);
+  expect(parsePageDeepLink("nodex://pages/same-page?spaceId=")).toBeNull();
+  expect(parsePageDeepLink("nodex://pages/same-page?spaceId=team-a&spaceId=team-b")).toBeNull();
+});

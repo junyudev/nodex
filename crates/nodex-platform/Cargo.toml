@@ -16,6 +16,7 @@ hex.workspace = true
 tokio = { workspace = true, features = ["io-util"] }
 
 [target.'cfg(unix)'.dependencies]
+libc = "0.2"
 signal-hook.workspace = true
 rustix = { workspace = true, features = ["stdio"] }
 

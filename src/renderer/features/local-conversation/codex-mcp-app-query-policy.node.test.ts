@@ -76,11 +76,11 @@ describe("Codex MCP app query policy", () => {
     expect(options.staleTime).toBe(5 * 60_000);
     expect(options.retry).toBe(false);
     expect(options.queryKey).toEqual(queryKeys.mcp.apps());
-    expect(options.queryKey).toEqual(["mcp", "apps"]);
+    expect(options.queryKey).toEqual(["space", "test-space", "mcp", "apps"]);
 
     const statusesOptions = mcpServerStatusesQueryOptions();
     expect(statusesOptions.staleTime).toBe(5 * 60_000);
     expect(statusesOptions.queryKey).toEqual(queryKeys.mcp.statuses());
-    expect(statusesOptions.queryKey).toEqual(["mcp", "statuses"]);
+    expect(statusesOptions.queryKey).toEqual(["space", "test-space", "mcp", "statuses"]);
   });
 });

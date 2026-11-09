@@ -14,6 +14,7 @@ use crate::database::{
 use crate::document::{ContentRoutingContext, DocumentHeadRevision};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
+pub const LIBRARY_CONTRACT_VERSION: u32 = 63;
 
 /// A person in the Library. Removing a Member retains references and identity.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -23,7 +24,15 @@ pub struct Member {
     pub library_id: String,
     pub display_name: String,
     pub lifecycle: MemberLifecycle,
+    pub role: MemberRole,
     pub revision: i64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MemberRole {
+    Owner,
+    Member,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -530,6 +539,8 @@ pub enum LibraryBlockTransferDataSourcePlacement {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryBlockTransferLogicalIntent {
+    #[serde(default, skip)]
+    #[schema(ignore)]
     pub actor: Value,
     pub mode: LibraryBlockTransferMode,
     pub root_block_ids: Vec<String>,
@@ -1601,6 +1612,8 @@ pub enum LibraryBlockPropertyFieldMutation {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryBlockPropertyMutation {
+    #[serde(default, skip)]
+    #[schema(ignore)]
     pub actor: Value,
     pub client_session_id: Option<String>,
     pub fields: Vec<LibraryBlockPropertyFieldMutation>,
@@ -1756,7 +1769,7 @@ pub struct LibraryFile {
     pub mime_type: String,
     pub byte_length: u64,
     pub blob_etag: String,
-    pub created_by_actor_id: Option<String>,
+    pub created_by: crate::Actor,
     pub created_by_turn_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -1769,7 +1782,7 @@ pub struct LibraryFileVersion {
     pub mime_type: String,
     pub byte_length: u64,
     pub blob_etag: String,
-    pub actor_id: Option<String>,
+    pub actor: crate::Actor,
     pub turn_id: Option<String>,
     pub operation_id: String,
     pub occurred_at: String,
@@ -1865,19 +1878,8 @@ pub struct LibraryFileMutationResult {
     pub file: Option<LibraryFile>,
 }
 
-/// The origin proven when an explicit Page File entry was attached. File
-/// creation evidence and the Session's current backend are independent facts.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum LibraryPageFileAttachmentActor {
-    Person,
-    Agent {
-        session_id: String,
-        backend: crate::agent::AgentBackendKind,
-    },
-    External,
-    Unknown,
-}
+/// The same Core-authored actor accompanies File creation, versions and attachments.
+pub type LibraryPageFileAttachmentActor = crate::Actor;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]

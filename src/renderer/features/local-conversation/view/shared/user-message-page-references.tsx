@@ -1,5 +1,5 @@
 import type { PageReference } from "../../../../../shared/page-reference";
-import { buildPageDeepLink } from "../../../../../shared/nodex-deeplink";
+import { buildPageDeepLink } from "@/lib/page-deeplink";
 import { PageIcon } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
 import { useConversationPageNavigation } from "../../conversation-page-navigation";

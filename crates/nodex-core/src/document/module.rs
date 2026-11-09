@@ -132,7 +132,6 @@ struct PreparedAgentExecutionJob {
 }
 
 struct DocumentCommitCheckpoint {
-    actor: Value,
     cause: &'static str,
     label: Option<String>,
     revision_kind: &'static str,
@@ -321,6 +320,7 @@ impl OwnedDocumentModule {
         context: &BoundModuleContext,
         request: ModuleReadRequest<OwnedDocumentRead>,
     ) -> Result<ModuleReadSnapshot<OwnedDocumentReadValue>, CoreError> {
+        nodex_core_contracts::remote_admission::authorize(context, "document_read", &request.read)?;
         self.validate_context(context)?;
         if request.contract_version != OWNED_DOCUMENT_CONTRACT_VERSION {
             return Err(invalid("Unsupported Owned Document contract version"));
@@ -677,9 +677,36 @@ impl OwnedDocumentModule {
         client_session_id: &str,
         request: ModuleApplyRequest<OwnedDocumentIntent>,
     ) -> Result<OwnedDocumentApplyOutcome, CoreError> {
+        nodex_core_contracts::remote_admission::authorize(
+            context,
+            "document_apply",
+            &request.intent,
+        )?;
         self.validate_context(context)?;
         if request.contract_version != OWNED_DOCUMENT_CONTRACT_VERSION {
             return Err(invalid("Unsupported Owned Document contract version"));
+        }
+        let bound = if matches!(
+            &request.intent,
+            OwnedDocumentIntent::ExecutePreparedAgentSemanticMutation { .. }
+        ) {
+            context.clone()
+        } else {
+            self.readers
+                .read_default(|c| crate::infrastructure::actors::bind(c, context))
+                .map_err(core_error)?
+        };
+        let context = &bound;
+        let mut request = request;
+        let derived_actor =
+            serde_json::to_value(&context.actor).map_err(|_| invalid("Actor cannot be encoded"))?;
+        match &mut request.intent {
+            OwnedDocumentIntent::ApplyOperationBatch { actor, .. }
+            | OwnedDocumentIntent::ReplaceFromMarkdown { actor, .. }
+            | OwnedDocumentIntent::CompactCanvasTombstones { actor, .. }
+            | OwnedDocumentIntent::CreateCheckpoint { actor, .. }
+            | OwnedDocumentIntent::RestoreVersion { actor, .. } => *actor = derived_actor,
+            _ => {}
         }
         match request.intent {
             OwnedDocumentIntent::CaptureRecovery { capture } => {
@@ -1177,6 +1204,12 @@ impl OwnedDocumentModule {
                     ));
                 }
                 let commit_head = read_local_commit_head(&transaction)?;
+                crate::infrastructure::member_admission::admit_operation(
+                    &transaction,
+                    &context,
+                    MODULE_NAME,
+                    &operation_id,
+                )?;
                 if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)?
                 {
                     if stored.request_hash != request_hash {
@@ -1428,6 +1461,12 @@ impl OwnedDocumentModule {
                         true,
                     ));
                 }
+                crate::infrastructure::member_admission::admit_operation(
+                    &transaction,
+                    &context,
+                    MODULE_NAME,
+                    &operation_id,
+                )?;
                 if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)?
                 {
                     if stored.request_hash != request_hash {
@@ -1581,6 +1620,12 @@ impl OwnedDocumentModule {
                         true,
                     ));
                 }
+                crate::infrastructure::member_admission::admit_operation(
+                    &transaction,
+                    &context,
+                    MODULE_NAME,
+                    &operation_id,
+                )?;
                 if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)?
                 {
                     if stored.request_hash != request_hash {
@@ -1971,6 +2016,12 @@ impl OwnedDocumentModule {
                         true,
                     ));
                 }
+                crate::infrastructure::member_admission::admit_operation(
+                    &transaction,
+                    &context,
+                    MODULE_NAME,
+                    &operation_id,
+                )?;
                 if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)?
                 {
                     if stored.request_hash != request_hash {
@@ -2192,6 +2243,7 @@ impl OwnedDocumentModule {
                         true,
                     ));
                 }
+                crate::infrastructure::member_admission::admit_operation(&transaction, &context, MODULE_NAME, &operation_id)?;
                 if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)?
                 {
                     if stored.request_hash != request_hash {
@@ -2269,7 +2321,6 @@ impl OwnedDocumentModule {
                                     revision_kind: "safety",
                                     source_mutation_id: None,
                                     source_change_seq: None,
-                                    actor: Some(&actor),
                                     context: &actor_context,
                                     now: &now,
                                 },
@@ -2840,7 +2891,6 @@ impl OwnedDocumentModule {
                 })
             },
             Some(DocumentCommitCheckpoint {
-                actor,
                 cause: "document_operation_batch",
                 label: None,
                 revision_kind: "operation",
@@ -2955,7 +3005,6 @@ impl OwnedDocumentModule {
                 })
             },
             Some(DocumentCommitCheckpoint {
-                actor,
                 cause: "replace_document_from_markdown",
                 label: None,
                 revision_kind: "operation",
@@ -3010,6 +3059,12 @@ impl OwnedDocumentModule {
                         true,
                     ));
                 }
+                crate::infrastructure::member_admission::admit_operation(
+                    &transaction,
+                    &context,
+                    MODULE_NAME,
+                    &operation_id,
+                )?;
                 if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)?
                 {
                     if stored.request_hash != request_hash {
@@ -3044,7 +3099,6 @@ impl OwnedDocumentModule {
                     revision_kind,
                     source_mutation_id: source_mutation_id.as_deref(),
                     source_change_seq,
-                    actor: Some(&actor),
                     context: &context,
                     now: &now,
                 };
@@ -3181,7 +3235,7 @@ impl OwnedDocumentModule {
         version_id: String,
         generation: i64,
         expected_head_seq: i64,
-        actor: Value,
+        _actor: Value,
     ) -> Result<OwnedDocumentApplyOutcome, CoreError> {
         let fingerprint = serde_json::to_vec(&(
             &context.profile_id,
@@ -3196,9 +3250,7 @@ impl OwnedDocumentModule {
         .map_err(|_| invalid("Document restore request cannot be fingerprinted"))?;
         let checkpoint_operation_id = operation_id.clone();
         let checkpoint_context = context.clone();
-        let before_restore_actor = restore_checkpoint_actor(&actor, &operation_id, &version_id)?;
         let after_restore_checkpoint = DocumentCommitCheckpoint {
-            actor,
             cause: "after_restore",
             label: Some(format!("Restored {version_id}")),
             revision_kind: "restore",
@@ -3256,7 +3308,6 @@ impl OwnedDocumentModule {
                         revision_kind: "restore",
                         source_mutation_id: Some(&checkpoint_operation_id),
                         source_change_seq: None,
-                        actor: Some(&before_restore_actor),
                         context: &checkpoint_context,
                         now: &now,
                     },
@@ -3289,7 +3340,7 @@ impl OwnedDocumentModule {
         version_id: String,
         generation: i64,
         expected_head_seq: i64,
-        actor: Value,
+        _actor: Value,
     ) -> Result<OwnedDocumentApplyOutcome, CoreError> {
         let fingerprint = serde_json::to_vec(&(
             &context.profile_id,
@@ -3304,7 +3355,6 @@ impl OwnedDocumentModule {
         .map_err(|_| invalid("Canvas restore request cannot be fingerprinted"))?;
         let request_hash = sha256(&fingerprint);
         let context = context.clone();
-        let before_restore_actor = restore_checkpoint_actor(&actor, &operation_id, &version_id)?;
         let fail_after_commit = Arc::clone(&self.fail_after_commit);
         let assets_root = self.assets_root.clone();
         self.writer
@@ -3319,6 +3369,12 @@ impl OwnedDocumentModule {
                         true,
                     ));
                 }
+                crate::infrastructure::member_admission::admit_operation(
+                    &transaction,
+                    &context,
+                    MODULE_NAME,
+                    &operation_id,
+                )?;
                 if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)?
                 {
                     if stored.request_hash != request_hash {
@@ -3431,7 +3487,6 @@ impl OwnedDocumentModule {
                                 revision_kind: "restore",
                                 source_mutation_id: Some(&operation_id),
                                 source_change_seq: None,
-                                actor: Some(&before_restore_actor),
                                 context: &context,
                                 now: &now,
                             },
@@ -3466,7 +3521,6 @@ impl OwnedDocumentModule {
                                 revision_kind: "restore",
                                 source_mutation_id: Some(&operation_id),
                                 source_change_seq: Some(persisted.event_sequence),
-                                actor: Some(&actor),
                                 context: &context,
                                 now: &persisted.committed_at,
                             },
@@ -3603,7 +3657,9 @@ impl OwnedDocumentModule {
                     None
                 };
                 let actor_project_id = job.context.project_id.as_ref().map(|project| project.0.clone());
-                let actor_context = job.context.clone();
+                let actor_context = if let Some(prepared)=&job.prepared_agent {
+                    crate::infrastructure::actors::verified_turn(&transaction,&job.context,&prepared.authorization.authorization.provenance)?
+                } else {job.context.clone()};
                 if authority.head.generation != job.generation {
                     return Err(StoreError::new(
                         StoreErrorCode::GenerationConflict,
@@ -3808,8 +3864,8 @@ impl OwnedDocumentModule {
                             &revision_now,
                         )?;
                         if let Some(plan) = &file_restore {
-                            let restored = crate::library::apply_file_restore(scope, &job.context, plan)?;
-                            file_events.extend(crate::library::publish_file_restore(scope, &job.context, &restored)?);
+                            let restored = crate::library::apply_file_restore(scope, &actor_context, plan)?;
+                            file_events.extend(crate::library::publish_file_restore(scope, &actor_context, &restored)?);
                         }
                         let persisted = persist_yjs_commit_with_local_commit(
                             &transaction,
@@ -3873,9 +3929,6 @@ impl OwnedDocumentModule {
                                         .unwrap_or("operation"),
                                     source_mutation_id: Some(&job.operation_id),
                                     source_change_seq: Some(persisted.event_sequence),
-                                    actor: commit_checkpoint
-                                        .as_ref()
-                                        .map(|checkpoint| &checkpoint.actor),
                                     context: &actor_context,
                                     now: &persisted.committed_at,
                                 },
@@ -4240,26 +4293,6 @@ fn validate_document_actor(actor: &Value) -> Result<(), CoreError> {
     Err(invalid(
         "Document mutation actor must be a bounded portable object",
     ))
-}
-
-fn restore_checkpoint_actor(
-    actor: &Value,
-    mutation_id: &str,
-    source_version_id: &str,
-) -> Result<Value, CoreError> {
-    validate_document_actor(actor)?;
-    let mut enriched = actor.as_object().expect("validated restore actor").clone();
-    enriched.insert(
-        "restoreMutationId".to_owned(),
-        Value::String(mutation_id.to_owned()),
-    );
-    enriched.insert(
-        "sourceVersionId".to_owned(),
-        Value::String(source_version_id.to_owned()),
-    );
-    let enriched = Value::Object(enriched);
-    validate_document_actor(&enriched)?;
-    Ok(enriched)
 }
 
 fn committed_value(
@@ -5890,7 +5923,12 @@ mod tests {
 
     fn context_for_project(connection_id: &str, project_id: &str) -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId(PROFILE_ID.to_owned()),
             library_id: LibraryId(LIBRARY_ID.to_owned()),
@@ -5902,7 +5940,12 @@ mod tests {
 
     fn library_context_for(connection_id: &str, adapter: AdapterKind) -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId(PROFILE_ID.to_owned()),
             library_id: LibraryId(LIBRARY_ID.to_owned()),
@@ -6373,6 +6416,14 @@ mod tests {
                 },
             )
             .expect("persist Agent Thread");
+        seeded
+            .kernel
+            .writer()
+            .call({
+                let thread_id = thread_id.clone();
+                move |c| crate::infrastructure::actors::seed_agent_session(c, &thread_id)
+            })
+            .unwrap();
         workspace
             .apply(
                 &host,
@@ -9538,7 +9589,7 @@ mod tests {
             .as_ref()
             .expect("public checkpoint effect");
         assert!(!checkpoint_effect.duplicate);
-        assert_eq!(checkpoint_effect.checkpoint["actor"]["kind"], "test");
+        assert_eq!(checkpoint_effect.checkpoint["actor"]["type"], "member");
         assert_eq!(checkpoint_effect.checkpoint["revisionKind"], "manual");
         assert!(
             seeded
@@ -9768,9 +9819,9 @@ mod tests {
                 assert_eq!(checkpoint_actors.len(), 2);
                 let before_actor: Value = serde_json::from_str(&checkpoint_actors[0].1).unwrap();
                 let after_actor: Value = serde_json::from_str(&checkpoint_actors[1].1).unwrap();
-                assert_eq!(before_actor["restoreMutationId"], "restore:initial");
-                assert_eq!(before_actor["sourceVersionId"], version_id);
-                assert_eq!(after_actor, json!({ "kind": "test" }));
+                assert_eq!(before_actor["type"], "member");
+                assert_eq!(before_actor, after_actor);
+                assert_eq!(after_actor["type"], "member");
                 Ok::<_, StoreError>(())
             })
             .unwrap();
@@ -12138,7 +12189,12 @@ mod tests {
         foreign_library
             .apply(
                 &BoundModuleContext {
+                    actor: nodex_core_contracts::Actor::Service {
+                        kind: nodex_core_contracts::ServiceKind::Maintenance,
+                    },
+                    authorizing_member_id: None,
                     editor_history_owner: None,
+                    principal: None,
                     agent_attribution: None,
                     profile_id: ProfileId(FOREIGN_PROFILE_ID.to_owned()),
                     library_id: LibraryId(FOREIGN_LIBRARY_ID.to_owned()),

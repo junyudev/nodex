@@ -94,3 +94,49 @@ it.effect("routes Library reads through the exact durable access boundary", () =
     yield* Scope.close(scope, Exit.void);
   }),
 );
+
+it.effect("a remote Library never forwards a local editor owner or closes a host lease", () =>
+  Effect.gen(function* () {
+    const owners: Array<string | undefined> = [];
+    const client = Object.assign(new FakeCoreClient(), {
+      libraryApply: async (_input: unknown, options?: { editorHistoryOwnerId?: string }) => {
+        owners.push(options?.editorHistoryOwnerId);
+        throw new Error("Boundary capture");
+      },
+    }) as unknown as CoreGenerationClient;
+    const context = yield* Layer.build(
+      live.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(CoreAuthority, {
+              identity,
+              initialLaunch: null,
+            } as CoreAuthority["Service"]),
+            Layer.succeed(CoreSessionAccess, {
+              handshake: Effect.succeed(createFakeCoreHandshake(identity)),
+              use: (_operation, run) => Effect.promise((signal) => run(client, signal)),
+            }),
+          ),
+        ),
+      ),
+    );
+    const library = Context.get(context, LibraryModule);
+    yield* library.apply(
+      { kind: "library" },
+      {
+        operationId: "create",
+        storeEpoch: identity.storeEpoch,
+        operation: {
+          kind: "create_page",
+          pageId: "page",
+          documentId: "doc",
+          title: "Page",
+          parent: { kind: "library" },
+        },
+      },
+      "local-editor-owner",
+    );
+    yield* library.closeEditorHistoryOwner("local-editor-owner", "close");
+    assert.deepStrictEqual(owners, [undefined]);
+  }),
+);

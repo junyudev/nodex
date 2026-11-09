@@ -9,10 +9,30 @@ import * as Ledger from "../../packages/agent-runtime/vendor/provider-opencode/s
 const home = process.argv[process.argv.indexOf("--home") + 1]!;
 const lines = createInterface({ input: process.stdin })[Symbol.asyncIterator]();
 await lines.next(); // bootstrap
-const child = spawn(process.execPath, ["--eval", "setInterval(() => {}, 1000)"], {
-  detached: true, stdio: "ignore",
+const slowGroup = process.env.NODEX_FIXTURE_ORPHAN_GROUP === "1";
+// The recorded leader exits on SIGTERM; its child keeps the group alive until
+// the ledger escalates. IPC disconnect proves the leader has physically exited.
+const descendant = `
+  const { writeFileSync } = require("node:fs");
+  process.on("SIGTERM", () => {});
+  process.on("disconnect", () => writeFileSync(${JSON.stringify(join(home, "server-orphaned"))}, "ready"));
+  process.send(process.pid);
+  setInterval(() => {}, 1000);
+`;
+const leader = `
+  const { spawn } = require("node:child_process");
+  const child = spawn(process.execPath, ["--eval", ${JSON.stringify(descendant)}], { stdio: ["ignore", "ignore", "ignore", "ipc"] });
+  child.once("message", (pid) => process.send(pid));
+  setInterval(() => {}, 1000);
+`;
+const child = spawn(process.execPath, ["--eval", slowGroup ? leader : "setInterval(() => {}, 1000)"], {
+  detached: true, stdio: slowGroup ? ["ignore", "ignore", "ignore", "ipc"] : "ignore",
 });
 await new Promise<void>((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
+if (slowGroup) {
+  await new Promise<void>((resolve) => child.once("message", () => resolve()));
+  child.disconnect();
+}
 await Effect.runPromise(Effect.gen(function* () {
   const ledger = yield* Ledger.make({ stateDir: join(home, "userdata") });
   yield* ledger.track({ pid: child.pid!, port: 4096, args: [] });

@@ -1,4 +1,4 @@
-//! Session pin positions are shared by draft, Codex, and ACP sidebar projections.
+//! Each Member's chat pins and their order, shared by draft, Codex, and ACP sidebar projections.
 use std::collections::{BTreeSet, VecDeque};
 
 use rusqlite::{Connection, params};
@@ -18,26 +18,29 @@ pub(super) struct PinnedSession {
 pub(super) fn read_order(
     connection: &Connection,
     library_id: &str,
+    member: &str,
 ) -> Result<Vec<PinnedSession>, StoreError> {
     let rows = connection
         .prepare(
             "SELECT session.id, session.project_id, thread.thread_id, \
            COALESCE(NULLIF(trim(thread.thread_name), ''), session.no_thread_fallback_title), \
-           COALESCE(session.pinned_order, 9223372036854775807) \
-         FROM project_sessions session \
+           pin.pinned_order \
+         FROM member_session_pins pin \
+         JOIN project_sessions session ON session.id = pin.session_id \
          LEFT JOIN project_session_threads link ON link.session_id = session.id \
          LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
-         WHERE session.pinned = 1 AND session.archived = 0 \
+         WHERE pin.member_id = ?3 AND session.archived = 0 \
            AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL) \
            AND (session.project_id IS NULL OR EXISTS (\
              SELECT 1 FROM projects project WHERE project.id = session.project_id \
                AND project.library_id = ?1 AND project.lifecycle <> 'archived')) \
-         ORDER BY COALESCE(session.pinned_order, 9223372036854775807), session.id LIMIT ?2",
+         ORDER BY pin.pinned_order, session.id LIMIT ?2",
         )?
         .query_map(
             params![
                 library_id,
-                i64::try_from(MAX_PINNED_SESSIONS + 1).expect("bounded pin count")
+                i64::try_from(MAX_PINNED_SESSIONS + 1).expect("bounded pin count"),
+                member
             ],
             |row| {
                 Ok(PinnedSession {
@@ -60,14 +63,33 @@ pub(super) fn read_order(
     Ok(rows)
 }
 
-pub(super) fn next_order(connection: &Connection) -> Result<i64, StoreError> {
-    connection
-        .query_row(
-            "SELECT COALESCE(MAX(pinned_order), -1) + 1 FROM project_sessions WHERE pinned = 1",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(StoreError::from)
+/// Pins `session` at the end of `member`'s pins, keeping an existing pin where it is.
+pub(super) fn pin(
+    connection: &Connection,
+    member: &str,
+    session_id: &str,
+    now: &str,
+) -> Result<(), StoreError> {
+    connection.execute(
+        "INSERT INTO member_session_pins(member_id, session_id, pinned_order) \
+         SELECT ?1, ?2, COALESCE(MAX(pinned_order), -1) + 1 FROM member_session_pins WHERE member_id = ?1 \
+         ON CONFLICT(member_id, session_id) DO NOTHING",
+        params![member, session_id],
+    )?;
+    sync_thread_projection(connection, session_id, now)
+}
+
+pub(super) fn unpin(
+    connection: &Connection,
+    member: &str,
+    session_id: &str,
+    now: &str,
+) -> Result<(), StoreError> {
+    connection.execute(
+        "DELETE FROM member_session_pins WHERE member_id = ?1 AND session_id = ?2",
+        params![member, session_id],
+    )?;
+    sync_thread_projection(connection, session_id, now)
 }
 
 pub(super) fn clear_thread_projection(
@@ -81,28 +103,36 @@ pub(super) fn clear_thread_projection(
     Ok(())
 }
 
-/// Attached Threads mirror their Session's pin without acquiring another position authority.
+/// Attached native Threads mirror their Session's pin for the local Member, the only one whose
+/// desktop has them, without acquiring another position authority.
 pub(super) fn sync_thread_projection(
     connection: &Connection,
     session_id: &str,
     now: &str,
 ) -> Result<(), StoreError> {
+    let local = super::member_attention::LOCAL_MEMBER_SQL;
     connection.execute(
-        "DELETE FROM codex_pinned_threads WHERE thread_id IN (\
+        &format!(
+            "DELETE FROM codex_pinned_threads WHERE thread_id IN (\
            SELECT link.thread_id FROM project_session_threads link \
            JOIN project_sessions session ON session.id = link.session_id \
-           WHERE session.id = ?1 AND (session.pinned = 0 OR session.archived = 1))",
+           WHERE session.id = ?1 AND (session.archived = 1 OR NOT EXISTS (\
+             SELECT 1 FROM member_session_pins pin WHERE pin.session_id = session.id AND pin.member_id = {local})))"
+        ),
         [session_id],
     )?;
     connection.execute(
-        "INSERT INTO codex_pinned_threads(thread_id, pinned_order, created_at, updated_at) \
-         SELECT link.thread_id, session.pinned_order, ?2, ?2 \
+        &format!(
+            "INSERT INTO codex_pinned_threads(thread_id, pinned_order, created_at, updated_at) \
+         SELECT link.thread_id, pin.pinned_order, ?2, ?2 \
          FROM project_sessions session \
+         JOIN member_session_pins pin ON pin.session_id = session.id AND pin.member_id = {local} \
          JOIN project_session_threads link ON link.session_id = session.id \
          JOIN codex_threads thread ON thread.thread_id = link.thread_id \
-         WHERE session.id = ?1 AND session.pinned = 1 AND session.archived = 0 \
+         WHERE session.id = ?1 AND session.archived = 0 \
            AND thread.parent_thread_id IS NULL AND thread.archived = 0 \
-         ON CONFLICT(thread_id) DO UPDATE SET pinned_order = excluded.pinned_order, updated_at = excluded.updated_at",
+         ON CONFLICT(thread_id) DO UPDATE SET pinned_order = excluded.pinned_order, updated_at = excluded.updated_at"
+        ),
         params![session_id, now],
     )?;
     Ok(())
@@ -110,6 +140,7 @@ pub(super) fn sync_thread_projection(
 
 pub(super) fn write_order(
     connection: &Connection,
+    member: &str,
     session_ids: &[String],
     now: &str,
 ) -> Result<(), StoreError> {
@@ -122,22 +153,23 @@ pub(super) fn write_order(
             )
         })?;
         connection.execute(
-            "UPDATE project_sessions SET pinned_order = ?1, updated_at = ?2 WHERE id = ?3",
-            params![rank, now, session_id],
+            "UPDATE member_session_pins SET pinned_order = ?1 WHERE member_id = ?2 AND session_id = ?3",
+            params![rank, member, session_id],
         )?;
         sync_thread_projection(connection, session_id, now)?;
     }
     Ok(())
 }
 
-/// A narrower Project or Thread gesture permutes its existing slots in the shared pin order.
+/// A narrower Project or Thread gesture permutes its existing slots in the Member's pin order.
 pub(super) fn reorder_subset(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     requested: &[String],
     now: &str,
 ) -> Result<(), StoreError> {
-    let current = read_order(connection, library_id)?;
+    let current = read_order(connection, library_id, member)?;
     let members = current
         .iter()
         .map(|row| row.id.as_str())
@@ -160,5 +192,5 @@ pub(super) fn reorder_subset(
             }
         })
         .collect::<Vec<_>>();
-    write_order(connection, &ordered, now)
+    write_order(connection, member, &ordered, now)
 }

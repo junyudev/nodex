@@ -5,6 +5,7 @@ import type {
   InsightsUsageSnapshot,
 } from "./insights";
 import type { ChatSearchInput, ChatSearchResult, ChatMessageSearchResult } from "./chat-search";
+import type { SpaceConnectionIpcApi } from "./space-connection";
 import type { PluginManagementIpcApi, PluginManagementChanged } from "./codex-plugin-management";
 import type { WorkspaceFileSaveDataInput } from "./native-file-save";
 import type { NativeResourceData, NativeResourceReadInput } from "./native-resource";
@@ -713,7 +714,11 @@ export interface RendererDiagnosticsLogInput {
 }
 
 export interface IpcApi
-  extends AgentRuntimeIpcApi, AcpIpcApi, PluginManagementIpcApi, McpAppDataIpcApi {
+  extends
+    AgentRuntimeIpcApi,
+    AcpIpcApi,
+    PluginManagementIpcApi,
+    McpAppDataIpcApi,
   "codex:turn-presentation:capture": {
     args: [input: CodexTurnPresentationCaptureInput];
     result: CodexTurnPresentationTicket | undefined;
@@ -3137,6 +3142,7 @@ export interface IpcEvents {
   "project-sessions-changed": ProjectSessionsChangeEvent;
   "inbox-changed": import("./inbox").InboxChangedEvent;
   "reminder:open": {
+    spaceId?: string;
     projectId: string;
     pageId: string;
     occurrenceStart: string;

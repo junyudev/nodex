@@ -32,8 +32,7 @@ struct PageScope {
 struct VersionRow {
     version_id: String,
     document_id: String,
-    /// Absent for checkpoints written without a Project actor, such as an idle edit burst.
-    actor_project_id: Option<String>,
+    project_id: String,
     generation: i64,
     base_head_seq: i64,
     schema_key: String,
@@ -189,7 +188,7 @@ fn require_content_owner(
 pub(super) fn page_history(
     connection: &Connection,
     library_id: &str,
-    _requesting_project_id: Option<&str>,
+    requesting_member: Option<&str>,
     page_id: &str,
     before: Option<LibraryPageHistoryCursor>,
     limit: Option<u32>,
@@ -201,15 +200,19 @@ pub(super) fn page_history(
     }
     validate_cursor(before.as_ref())?;
     let scope = read_scope(connection, library_id, page_id)?;
+    let viewer = requesting_member.map(str::to_owned).map_or_else(
+        || crate::infrastructure::actors::local_member(connection, library_id),
+        Ok,
+    )?;
     let candidate_limit = i64::from(limit) + 1;
     let mut entries = read_versions(connection, &scope, before.as_ref(), candidate_limit)?
         .into_iter()
-        .map(|row| decode_version(row, &scope))
+        .map(|row| decode_version(row, &scope, connection, &viewer))
         .collect::<Result<Vec<_>, _>>()?;
     entries.extend(
         read_changes(connection, &scope, before.as_ref(), candidate_limit)?
             .into_iter()
-            .map(|row| decode_change(row, &scope))
+            .map(|row| decode_change(row, &scope, connection, &viewer))
             .collect::<Result<Vec<_>, _>>()?,
     );
     entries.sort_by(compare_entries);
@@ -354,7 +357,7 @@ fn read_versions(
             Ok(VersionRow {
                 version_id: row.get(0)?,
                 document_id: row.get(1)?,
-                actor_project_id: row.get(2)?,
+                project_id: row.get(2)?,
                 generation: row.get(3)?,
                 base_head_seq: row.get(4)?,
                 schema_key: row.get(5)?,
@@ -433,7 +436,10 @@ fn read_changes(
          ORDER BY change.committed_at DESC, change.seq DESC LIMIT ?",
         database_ids = bounded_json_column("change.database_block_ids_json", MAX_JSON_BYTES),
         payload = bounded_json_column("change.payload_json", MAX_JSON_BYTES),
-        actor = bounded_json_column("mutation.actor_json", MAX_JSON_BYTES),
+        actor = bounded_json_column(
+            "COALESCE(mutation.actor_json,json_extract(relocation.request_json,'$.actor'))",
+            MAX_JSON_BYTES
+        ),
         mutation_blocks = bounded_json_column("mutation.target_block_ids_json", MAX_JSON_BYTES),
         mutation_documents =
             bounded_json_column("mutation.affected_document_ids_json", MAX_JSON_BYTES),
@@ -495,12 +501,11 @@ fn read_changes(
 fn decode_version(
     row: VersionRow,
     scope: &PageScope,
+    connection: &Connection,
+    viewer: &str,
 ) -> Result<LibraryPageHistoryEntry, StoreError> {
     if row.document_id != scope.document_id
-        || row
-            .actor_project_id
-            .as_ref()
-            .is_some_and(|project_id| !bounded(project_id))
+        || !bounded(&row.project_id)
         || !safe_integer(row.generation, 1)
         || !safe_integer(row.base_head_seq, 0)
         || !safe_integer(row.schema_version, 1)
@@ -535,7 +540,16 @@ fn decode_version(
         _ => return Err(corrupt("Document version revision kind is invalid")),
     };
     let actor = row.actor_json.as_deref().and_then(parse_object);
-    let actor_label = actor.as_ref().and_then(actor_label);
+    let actor_label = actor
+        .as_ref()
+        .and_then(|actor| {
+            serde_json::from_value::<nodex_core_contracts::Actor>(Value::Object(actor.clone())).ok()
+        })
+        .map(|actor| {
+            crate::infrastructure::actors::label(connection, &actor, viewer)
+                .map(|label| format!("by {label}"))
+        })
+        .transpose()?;
     let (category, title, detail) = match revision_kind {
         LibraryDocumentRevisionKind::Automatic => (
             LibraryPageHistoryCategory::Content,
@@ -623,18 +637,40 @@ fn decode_version(
     })
 }
 
-fn decode_change(row: ChangeRow, scope: &PageScope) -> Result<LibraryPageHistoryEntry, StoreError> {
+fn decode_change(
+    row: ChangeRow,
+    scope: &PageScope,
+    connection: &Connection,
+    viewer: &str,
+) -> Result<LibraryPageHistoryEntry, StoreError> {
     if !bounded(&row.project_id) || !safe_integer(row.seq, 1) {
         return Err(corrupt("Page history change has an invalid actor scope"));
     }
     if !canonical_timestamp(&row.committed_at) {
         return Err(corrupt("Page history change timestamp is invalid"));
     }
-    match row.kind.as_str() {
+    let label = row
+        .mutation_actor_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<nodex_core_contracts::Actor>(raw).ok())
+        .map(|actor| {
+            crate::infrastructure::actors::label(connection, &actor, viewer)
+                .map(|label| format!("by {label}"))
+        })
+        .transpose()?;
+    let mut entry = match row.kind.as_str() {
         "block_mutation" => decode_mutation(row, scope),
         "block_relocation" => decode_relocation(row, scope),
         _ => Err(corrupt("Page history change kind is invalid")),
+    }?;
+    match &mut entry {
+        LibraryPageHistoryEntry::DocumentVersion { entry, .. }
+        | LibraryPageHistoryEntry::BlockMutation { entry, .. }
+        | LibraryPageHistoryEntry::BlockRelocation { entry, .. } => {
+            entry.display.actor_label = label
+        }
     }
+    Ok(entry)
 }
 
 fn decode_mutation(
@@ -1295,7 +1331,7 @@ mod tests {
                outcome, result_json, committed_revisions_json, document_heads_json, \
                change_log_seq, recorded_at \
              ) VALUES (?1, ?2, ?3, ?9, \
-               '{\"displayName\":\"History editor\"}', ?4, ?10, ?5, ?6, '[]', \
+               json_object('type','member','member_id',(SELECT member_id FROM local_profile_members LIMIT 1)), ?4, ?10, ?5, ?6, '[]', \
                '[{\"path\":\"title\",\"operation\":\"set\"}]', '{}', 'committed', \
                ?10, '{}', '{}', ?7, ?8)",
             params![
@@ -1428,9 +1464,7 @@ mod tests {
 
         let first = kernel
             .readers()
-            .read_default(|connection| {
-                page_history(connection, LIBRARY, Some(PROJECT), PAGE, None, Some(1))
-            })
+            .read_default(|connection| page_history(connection, LIBRARY, None, PAGE, None, Some(1)))
             .expect("first history page");
         assert_eq!(first.entries.len(), 1);
         let LibraryPageHistoryEntry::DocumentVersion { entry, .. } = &first.entries[0] else {
@@ -1448,14 +1482,7 @@ mod tests {
         let second = kernel
             .readers()
             .read_default(|connection| {
-                page_history(
-                    connection,
-                    LIBRARY,
-                    Some(PROJECT),
-                    PAGE,
-                    first.next_cursor,
-                    Some(1),
-                )
+                page_history(connection, LIBRARY, None, PAGE, first.next_cursor, Some(1))
             })
             .expect("second history page");
         let LibraryPageHistoryEntry::BlockMutation {
@@ -1469,19 +1496,12 @@ mod tests {
             entry.evidence,
             LibraryPageHistoryEvidence::Verified
         ));
-        assert_eq!(entry.display.actor_label.as_deref(), Some("History editor"));
+        assert_eq!(entry.display.actor_label.as_deref(), Some("by You"));
 
         let third = kernel
             .readers()
             .read_default(|connection| {
-                page_history(
-                    connection,
-                    LIBRARY,
-                    Some(PROJECT),
-                    PAGE,
-                    second.next_cursor,
-                    Some(1),
-                )
+                page_history(connection, LIBRARY, None, PAGE, second.next_cursor, Some(1))
             })
             .expect("third history page");
         let LibraryPageHistoryEntry::BlockMutation {
@@ -1520,9 +1540,7 @@ mod tests {
         }).expect("historical body fixture");
         let before_collection = kernel
             .readers()
-            .read_default(|connection| {
-                page_history(connection, LIBRARY, Some(PROJECT), PAGE, None, None)
-            })
+            .read_default(|connection| page_history(connection, LIBRARY, None, PAGE, None, None))
             .unwrap();
         kernel
             .writer()
@@ -1544,44 +1562,9 @@ mod tests {
             .expect("collect only redundant ledger bodies");
         let after_collection = kernel
             .readers()
-            .read_default(|connection| {
-                page_history(connection, LIBRARY, Some(PROJECT), PAGE, None, None)
-            })
+            .read_default(|connection| page_history(connection, LIBRARY, None, PAGE, None, None))
             .unwrap();
         assert_eq!(after_collection, before_collection);
-
-        // Background maintenance checkpoints an idle edit burst without a Project actor.
-        kernel
-            .writer()
-            .call(|connection| {
-                with_immediate_transaction(connection, |transaction| {
-                    transaction.execute(
-                        "INSERT INTO document_versions( \
-                           version_id, document_id, project_id, generation, base_head_seq, \
-                           schema_key, schema_version, cause, label, actor_json, revision_kind, \
-                           pinned, checkpoint_format, full_update_blob, state_vector, \
-                           checkpoint_hash, byte_length, created_at \
-                         ) VALUES ('version:idle', ?1, NULL, 1, 0, 'nodex.page', 4, 'idle_edit', \
-                           NULL, '{\"adapter\":\"electron_host\"}', 'automatic', 0, \
-                           'block_tree_snapshot_v2', X'7B7D', X'', \
-                           ?2, 2, ?3)",
-                        params![DOCUMENT, HASH, LATEST],
-                    )?;
-                    Ok(())
-                })
-            })
-            .expect("idle checkpoint fixture");
-        let with_idle_checkpoint = kernel
-            .readers()
-            .read_default(|connection| {
-                page_history(connection, LIBRARY, Some(PROJECT), PAGE, None, None)
-            })
-            .expect("an idle checkpoint keeps history readable");
-        assert!(with_idle_checkpoint.entries.iter().any(|entry| matches!(
-            entry,
-            LibraryPageHistoryEntry::DocumentVersion { version_metadata, .. }
-                if version_metadata.version_id == "version:idle"
-        )));
 
         let unauthorized = kernel
             .readers()

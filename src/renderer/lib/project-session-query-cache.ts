@@ -205,14 +205,18 @@ export async function invalidateProjectSessionScope(
     if (scope.kind === "all") {
       invalidations.push(
         queryClient.invalidateQueries({
-          queryKey: ["projectSessions", "summaries"],
+          queryKey: [...queryKeys.projectSessions.all(), "summaries"],
         }),
       );
       continue;
     }
     invalidations.push(
       queryClient.invalidateQueries({
-        queryKey: ["projectSessions", "summaries", scope.kind === "project" ? scope.projectId : ""],
+        queryKey: [
+          ...queryKeys.projectSessions.all(),
+          "summaries",
+          scope.kind === "project" ? scope.projectId : "",
+        ],
       }),
     );
   }
@@ -233,7 +237,7 @@ export async function invalidateProjectSessionScope(
   if (event.detailInvalidation.kind === "all") {
     invalidations.push(
       queryClient.invalidateQueries({
-        queryKey: ["projectSessions", "detail"],
+        queryKey: [...queryKeys.projectSessions.all(), "detail"],
       }),
     );
     await Promise.all(invalidations);

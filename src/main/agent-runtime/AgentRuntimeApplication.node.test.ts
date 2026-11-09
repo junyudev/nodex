@@ -41,7 +41,7 @@ import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../../scripts/scenarios/s
 import { createOperationId } from "../core-runtime/operation-identity";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreModuleResponseError } from "../core-client/core-client";
-import { CoreTransportError } from "../core-client/local-http";
+import { CoreHttpError, CoreRateLimitError, CoreTransportError } from "../core-client/local-http";
 import { AgentRuntimeSupervisorError } from "./AgentRuntimeSupervisor";
 import { coreRuntimeError, type CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import type { ProjectWorkspaceApplyInput, ProjectWorkspaceRead } from "../core-client/types";
@@ -1513,9 +1513,22 @@ const openReadCoreFailure = (retryable: boolean) =>
     }),
   );
 
-it.effect.each(openReads)(
-  "$operation retries transient Core reads after each full backoff",
-  ({ run }) =>
+const transientOpenReads = openReads.flatMap((read) =>
+  [
+    { name: "Core", error: openReadCoreFailure(true) },
+    {
+      name: "HTTP 429",
+      error: classifyCoreOperationFailure(
+        "workspace.read",
+        new CoreRateLimitError(new CoreHttpError(429, "Device request capacity reached"), 1_000),
+      ),
+    },
+  ].map((failure) => ({ ...read, ...failure })),
+);
+
+it.effect.each(transientOpenReads)(
+  "$operation retries transient $name reads after each full backoff",
+  ({ run, error }) =>
     Effect.gen(function* () {
       const fixture = setupOpenRead();
       const owner = yield* fixture.owner;
@@ -1542,9 +1555,9 @@ it.effect.each(openReads)(
     }),
 );
 
-it.effect.each(openReads)(
-  "$operation stops after five attempts and preserves the Core failure",
-  ({ operation, run }) =>
+it.effect.each(transientOpenReads)(
+  "$operation stops after five attempts and preserves the $name failure",
+  ({ operation, run, error }) =>
     Effect.gen(function* () {
       const fixture = setupOpenRead();
       const owner = yield* fixture.owner;

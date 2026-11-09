@@ -267,6 +267,17 @@ pub(super) fn execute_page_copy(
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             super::mutation::assert_identity(&transaction, &profile_id, &library_id)?;
+            super::agent_execution::validate_execution(
+                &transaction,
+                &context,
+                &library_id,
+                &authorization.authorization,
+            )?;
+            let context = crate::infrastructure::actors::verified_turn(
+                &transaction,
+                &context,
+                &authorization.authorization.provenance,
+            )?;
             let store_epoch = read_store_epoch(&transaction)?;
             if store_epoch != expected_store_epoch {
                 return Err(StoreError::new(

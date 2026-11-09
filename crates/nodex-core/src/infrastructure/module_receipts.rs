@@ -1,4 +1,4 @@
-use nodex_core_contracts::{AdapterKind, BoundModuleContext};
+use nodex_core_contracts::{AdapterKind, BoundModuleContext, ModuleName};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use serde_json::Value;
@@ -61,6 +61,8 @@ pub struct DurableModuleContext<'a> {
     library_id: &'a str,
     project_id: Option<&'a str>,
     adapter: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    member_id: Option<&'a str>,
 }
 
 impl<'a> From<&'a BoundModuleContext> for DurableModuleContext<'a> {
@@ -70,7 +72,21 @@ impl<'a> From<&'a BoundModuleContext> for DurableModuleContext<'a> {
             library_id: &context.library_id.0,
             project_id: context.project_id.as_ref().map(|id| id.0.as_str()),
             adapter: adapter_kind(&context.adapter),
+            member_id: context.principal.as_ref().map(|p| p.member_id.as_str()),
         }
+    }
+}
+
+/// Storage identity shared by receipt persistence and its transport-independent readers.
+pub fn module_storage_name(module: ModuleName) -> &'static str {
+    match module {
+        ModuleName::Library => "library",
+        ModuleName::Database => "database",
+        ModuleName::OwnedDocument => "owned_document",
+        ModuleName::ProjectWorkspace => "project_workspace",
+        ModuleName::Automation => "automation",
+        ModuleName::StoreAdministration => "store_administration",
+        ModuleName::Query => "query",
     }
 }
 
@@ -221,6 +237,7 @@ pub(crate) fn insert_module_receipt(
     connection: &Connection,
     receipt: NewModuleReceipt<'_>,
 ) -> Result<(), StoreError> {
+    super::member_admission::require_current(connection, receipt.context)?;
     // The LocalCommit ledger is the durable source for the full event/update
     // envelope. Receipts retain only the replayable module result and cursor;
     // storing the envelope here would duplicate Yjs updates and make an
@@ -242,6 +259,9 @@ pub(crate) fn insert_module_receipt(
             "Core Module receipt result exceeds its bound",
             false,
         ));
+    }
+    if let Some(principal) = &receipt.context.principal {
+        connection.execute("INSERT INTO remote_operation_members(module_name,operation_id,member_id) VALUES(?1,?2,?3)",params![receipt.module_name,receipt.operation_id,principal.member_id])?;
     }
     let cutover_ms = operation_identity_cutover_ms(connection)?;
     let (issued_at_ms, expires_at_ms, receipt_bytes) = receipt_retention_values(
@@ -536,6 +556,7 @@ fn adapter_kind(kind: &AdapterKind) -> &'static str {
         AdapterKind::NativeCli => "native_cli",
         AdapterKind::Agent => "agent",
         AdapterKind::Test => "test",
+        AdapterKind::RemoteMember => "remote_member",
     }
 }
 
@@ -563,7 +584,12 @@ mod tests {
 
     fn context(connection_id: &str, adapter: AdapterKind) -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),

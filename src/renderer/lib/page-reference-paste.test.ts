@@ -11,6 +11,20 @@ const base = {
 } as const;
 
 describe("resolvePageDeepLinkPasteIntent", () => {
+  test("only converts qualified links from the current Space into relative references", () => {
+    expect(
+      resolvePageDeepLinkPasteIntent({
+        ...base,
+        plainText: `${base.plainText}?spaceId=test-space`,
+      }),
+    ).toEqual({ kind: "mention", pageId: "page-1" });
+    expect(
+      resolvePageDeepLinkPasteIntent({
+        ...base,
+        plainText: `${base.plainText}?spaceId=another-space`,
+      }),
+    ).toBeNull();
+  });
   test("maps one canonical Page deeplink by editor context", () => {
     expect(resolvePageDeepLinkPasteIntent({ ...base, hasTextSelection: true })).toEqual({
       kind: "link",

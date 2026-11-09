@@ -1,3 +1,4 @@
+import { isRemoteSpace } from "./lib/renderer-space";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { NodexHoverCardProvider } from "./components/ui/hover-card";
@@ -102,8 +103,12 @@ export function AppProviders({
               <AppUpdateStatusProvider>
                 <KeyboardLayoutProvider>
                   <InAppDictationRouter>
-                    <BrowserSidebarRuntimeSynchronizer />
-                    <BrowserSidebarThemeSynchronizer />
+                    {!isRemoteSpace() ? (
+                      <>
+                        <BrowserSidebarRuntimeSynchronizer />
+                        <BrowserSidebarThemeSynchronizer />
+                      </>
+                    ) : null}
                     <TypographyProvider>
                       <FileLinkOpenerProvider>
                         <CodexServiceTierSettingsProvider>

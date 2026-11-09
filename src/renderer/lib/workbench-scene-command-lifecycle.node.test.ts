@@ -210,8 +210,10 @@ describe("Workbench Scene content and runtime close boundary", () => {
       persisted: true,
       error: null,
     });
-    expect(runtime.getEditor).toHaveBeenCalledWith("library-page:page-tab");
-    expect(runtime.disposeEditor).toHaveBeenCalledExactlyOnceWith("library-page:page-tab");
+    expect(runtime.getEditor).toHaveBeenCalledWith("test-space\u0000library-page:page-tab");
+    expect(runtime.disposeEditor).toHaveBeenCalledExactlyOnceWith(
+      "test-space\u0000library-page:page-tab",
+    );
   });
 
   test("preserves a File conflict and a Canvas whose pending changes cannot be committed", async () => {

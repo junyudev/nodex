@@ -137,6 +137,10 @@ export function startStartupController(): StartupController {
   void measure("native", awaitInitialization)
     .then(async () => {
       if (disposed) return;
+      if (api.getSpaceContext) {
+        const { bindRendererSpace } = await import("../lib/renderer-space");
+        bindRendererSpace(await api.getSpaceContext());
+      }
       renderStep({ phase: "done" });
       const [windowSession, runtimeCapabilities] = await measure("bootstrap", () =>
         Promise.all([

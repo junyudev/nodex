@@ -130,7 +130,7 @@ test("projects every Core application event through one discriminated boundary",
     projectCoreApplicationEvent(envelope(administration), administration.atoms[0]!, "library:test"),
   ).toEqual({
     kind: "store-administration",
-    value: { backupIds: ["backup:one"], readinessChanged: true },
+    value: { operation: "create_backup", backupIds: ["backup:one"], readinessChanged: true },
   });
 });
 
@@ -152,6 +152,7 @@ test("repairs historical personal filter drafts before strict renderer parsing",
         personal_view_changes: [
           {
             kind: "preferences",
+            member_id: "member-local",
             view_id: "view:one",
             value: {
               rules_override: {

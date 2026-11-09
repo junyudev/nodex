@@ -73,6 +73,11 @@ impl AutomationModule {
         context: &BoundModuleContext,
         request: ModuleReadRequest<AutomationRead>,
     ) -> Result<ModuleReadSnapshot<AutomationReadValue>, CoreError> {
+        nodex_core_contracts::remote_admission::authorize(
+            context,
+            "automation_read",
+            &request.read,
+        )?;
         self.validate_context(context)?;
         if request.contract_version != AUTOMATION_CONTRACT_VERSION {
             return Err(invalid("unsupported Automation contract version"));
@@ -117,6 +122,11 @@ impl AutomationModule {
         context: &BoundModuleContext,
         request: ModuleApplyRequest<AutomationIntent>,
     ) -> Result<AutomationApplyOutcome, CoreError> {
+        nodex_core_contracts::remote_admission::authorize(
+            context,
+            "automation_apply",
+            &request.intent,
+        )?;
         self.validate_context(context)?;
         if request.contract_version != AUTOMATION_CONTRACT_VERSION {
             return Err(invalid("unsupported Automation contract version"));

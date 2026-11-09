@@ -277,12 +277,17 @@ mod tests {
             Ok(())
         })).expect("seed authority");
         let context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             profile_id: ProfileId("profile".into()),
             library_id: LibraryId("library".into()),
             project_id: Some(ProjectId("project".into())),
             connection_id: "history-test".into(),
             adapter: AdapterKind::Test,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
         };
         let module = LibraryModule::new("profile", "library", &kernel);

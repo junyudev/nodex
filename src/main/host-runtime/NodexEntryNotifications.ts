@@ -1,3 +1,4 @@
+import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type { DesktopNotificationPayload, ThreadNotificationTurnMode } from "../../shared/types";
@@ -9,6 +10,7 @@ import { RendererClientRuntime } from "./RendererClientRuntime";
 
 export const turnNotification = (
   input: {
+    spaceId: string;
     memberId: string;
     pageId: string;
     episode: string;
@@ -27,6 +29,7 @@ export const turnNotification = (
   )
     return null;
   return {
+    id: JSON.stringify(["turn", input.spaceId, input.memberId, input.pageId, input.episode]),
     kind: "nodex",
     title: input.title,
     body: input.body,

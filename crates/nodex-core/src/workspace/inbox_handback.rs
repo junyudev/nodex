@@ -240,6 +240,7 @@ fn bind(
         connection.execute("UPDATE chat_message_deliveries SET body_hash=?2,attachment_count=?3 WHERE delivery_id=?1",params![delivery,body_hash,attachment_count])?;
     }
     connection.execute("INSERT OR IGNORE INTO chat_message_inbounds(session_id,run_id,delivery_id,question_answered) VALUES(?1,?2,?3,EXISTS(SELECT 1 FROM chat_message_deliveries WHERE session_id=?1 AND answer_run_id=?2))",params![session,run,delivery])?;
+    connection.execute("INSERT OR REPLACE INTO session_run_members(session_id,run_id,member_id) SELECT ?1,?2,entry.author_member_id FROM chat_message_delivery_pages link JOIN inbox_entries entry ON entry.page_id=link.page_id WHERE link.delivery_id=?3 AND entry.author_member_id IS NOT NULL ORDER BY link.page_id LIMIT 1",params![session,run,delivery])?;
     Ok(simple_effects("chat_inbound", now))
 }
 #[allow(clippy::too_many_arguments)]
@@ -398,6 +399,7 @@ fn hand_back(
     }
     let receipt = stable_uuid_v7("inbox-handback", "delivery", &input.delivery_id);
     connection.execute(
+        "INSERT INTO chat_message_handbacks(receipt_id,delivery_id,reason,created_seq,created_at) VALUES(?1,?2,?3,?4,?5)",
         params![
             receipt,
             input.delivery_id,

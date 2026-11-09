@@ -17,8 +17,8 @@ use crate::infrastructure::cursor::{
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 pub(super) const TASK_SUMMARY_COLUMNS: &str = "session.id AS session_id, session.project_id, \
-             session.no_thread_fallback_title, session.activity_at, session.pinned, \
-             session.pinned_order, session.archived, session.archived_at, session.unread, \
+             session.no_thread_fallback_title, session.activity_at, {pinned}, \
+             {pinned_order}, session.archived, session.archived_at, {unread}, \
              session.created_at, session.updated_at, \
              thread.thread_id, thread.project_id, thread.forked_from_id, \
              thread.parent_thread_id, thread.thread_name, thread.thread_source, \
@@ -33,7 +33,17 @@ pub(super) const TASK_SUMMARY_COLUMNS: &str = "session.id AS session_id, session
              thread.status_active_flags_json, thread.archived, thread.created_at, \
              thread.updated_at, thread.recency_at, thread.linked_at, \
              (SELECT execution.runtime_id FROM project_session_execution_bindings execution WHERE execution.session_id = session.id), \
+             (SELECT execution.runtime_thread_id FROM project_session_execution_bindings execution WHERE execution.session_id = session.id), {remind_at}, \
              EXISTS(SELECT 1 FROM coordinator_managed_sessions managed WHERE managed.session_id = session.id) AS managed";
+
+pub(super) fn summary_columns(member_parameter: usize) -> String {
+    use super::member_attention::{pinned_order_sql, pinned_sql, remind_at_sql, unread_sql};
+        TASK_SUMMARY_COLUMNS
+            .replace("{pinned_order}", &pinned_order_sql("session.id", &member))
+            .replace("{pinned}", &pinned_sql("session.id", &member))
+            .replace("{unread}", &unread_sql("session.id", &member))
+            .replace("{remind_at}", &remind_at_sql("session.id", &member)),
+}
 
 const MAX_PREVIEW_UTF16: usize = 240;
 const MAX_PREVIEW_BYTES: usize = 1_024;
@@ -42,6 +52,7 @@ const MAX_PREVIEW_BYTES: usize = 1_024;
 pub(super) fn read_task_window(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     commit_head: i64,
     project_id: Option<&str>,
     include_archived: bool,
@@ -52,6 +63,7 @@ pub(super) fn read_task_window(
     read_task_window_in_scope(
         connection,
         library_id,
+        member,
         commit_head,
         project_id,
         false,
@@ -65,6 +77,7 @@ pub(super) fn read_task_window(
 pub(super) fn read_pinned_task_window(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     commit_head: i64,
     include_archived: bool,
     request: &CollectionWindowRequest,
@@ -72,6 +85,7 @@ pub(super) fn read_pinned_task_window(
     read_task_window_in_scope(
         connection,
         library_id,
+        member,
         commit_head,
         None,
         true,
@@ -86,6 +100,7 @@ pub(super) fn read_pinned_task_window(
 fn read_task_window_in_scope(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     commit_head: i64,
     project_id: Option<&str>,
     pinned_only: bool,
@@ -107,8 +122,10 @@ fn read_task_window_in_scope(
         }
     }
     let normalized = normalize_request(request)?;
+    // Pins order each Member's lanes, so a cursor belongs to its reader.
     let fingerprint = cursor::query_fingerprint(&(
-        "workspace_task_window_v6",
+        "workspace_task_window_v7",
+        member,
         project_id,
         pinned_only,
         include_archived,
@@ -180,23 +197,32 @@ fn read_task_window_in_scope(
         order,
         nodex_core_contracts::workspace::ProjectWorkspaceTaskOrder::Manual
     );
+    parameters.push(SqlValue::Text(member.to_owned()));
+    let member_parameter = format!("?{}", parameters.len());
+    let pinned = super::member_attention::pinned_sql("session.id", &member_parameter);
+    let pinned_order = super::member_attention::pinned_order_sql("session.id", &member_parameter);
     let bucket = if manual {
-        "CASE WHEN session.pinned = 1 THEN 0 WHEN session.manual_rank IS NULL THEN 1 ELSE 2 END"
+        format!("CASE WHEN {pinned} THEN 0 WHEN session.manual_rank IS NULL THEN 1 ELSE 2 END")
     } else {
-        "CASE WHEN session.pinned = 1 THEN 0 ELSE 1 END"
+        format!("CASE WHEN {pinned} THEN 0 ELSE 1 END")
     };
     let lane_order = if manual {
-        "CASE WHEN session.pinned = 1 THEN COALESCE(session.pinned_order, 9223372036854775807) WHEN session.manual_rank IS NOT NULL THEN session.manual_rank ELSE -session.activity_at END"
+        format!(
+            "CASE WHEN {pinned} THEN COALESCE({pinned_order}, 9223372036854775807) WHEN session.manual_rank IS NOT NULL THEN session.manual_rank ELSE -session.activity_at END"
+        )
     } else {
-        "CASE WHEN session.pinned = 1 THEN COALESCE(session.pinned_order, 9223372036854775807) ELSE -session.activity_at END"
+        format!(
+            "CASE WHEN {pinned} THEN COALESCE({pinned_order}, 9223372036854775807) ELSE -session.activity_at END"
+        )
     };
+    let task_columns = summary_columns(parameters.len());
     let sql = format!(
         "WITH task_rows AS (\
-           SELECT {TASK_SUMMARY_COLUMNS}, {bucket} AS pin_bucket, {lane_order} AS lane_order \
+           SELECT {task_columns}, {bucket} AS pin_bucket, {lane_order} AS lane_order \
            FROM project_sessions session \
            LEFT JOIN project_session_threads link ON link.session_id = session.id \
            LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
-           WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND ((?4 = 1 AND session.pinned = 1) OR (?4 = 0 AND \
+           WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) AND ((?4 = 1 AND {pinned}) OR (?4 = 0 AND \
              ((?1 IS NULL AND session.project_id IS NULL) OR session.project_id = ?1))) \
              AND (session.project_id IS NULL OR EXISTS (\
                SELECT 1 FROM projects project \

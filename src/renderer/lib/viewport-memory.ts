@@ -1,3 +1,5 @@
+import { spaceStorageKey } from "./renderer-space";
+
 const DEFAULT_MAX_ENTRIES = 200;
 const EDGE_EPSILON_PX = 2;
 
@@ -22,11 +24,12 @@ export function createViewportMemory<Snapshot>(options: {
   readonly maxEntries?: number;
 }): ViewportMemory<Snapshot> {
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
+  const storageKey = spaceStorageKey(options.storageKey);
   const hot = new Map<string, Snapshot>();
 
   const readPersisted = (): Record<string, Snapshot> => {
     try {
-      const raw = localStorage.getItem(options.storageKey);
+      const raw = localStorage.getItem(storageKey);
       if (!raw) return {};
       const parsed: unknown = JSON.parse(raw);
       if (!parsed || typeof parsed !== "object") return {};
@@ -45,7 +48,7 @@ export function createViewportMemory<Snapshot>(options: {
     try {
       const keys = Object.keys(entries);
       for (const key of keys.slice(0, Math.max(0, keys.length - maxEntries))) delete entries[key];
-      localStorage.setItem(options.storageKey, JSON.stringify(entries));
+      localStorage.setItem(storageKey, JSON.stringify(entries));
     } catch {
       // localStorage may be unavailable in restricted renderer contexts.
     }

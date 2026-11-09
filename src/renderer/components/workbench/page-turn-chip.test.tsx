@@ -52,6 +52,7 @@ describe("a card's turn", () => {
       />,
     );
     expect(screen.getByRole("link", { name: "Waiting for NODEX-2" }).getAttribute("href")).toBe(
+      "nodex://pages/prerequisite?spaceId=test-space",
     );
     await act(async () => {
       fireEvent.click(screen.getByRole("link", { name: "Waiting for NODEX-2" }));

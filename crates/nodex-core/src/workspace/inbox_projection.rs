@@ -25,6 +25,25 @@ pub(super) fn require_turn(
     Ok(turn)
 }
 
+pub(super) fn require_member_turn(
+    connection: &Connection,
+    context: &nodex_core_contracts::BoundModuleContext,
+    library: &str,
+    page: &str,
+    episode: Option<&str>,
+) -> Result<PageTurn, StoreError> {
+    let turn = require_turn(connection, library, page, episode)?;
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    if turn.actor != (nodex_core_contracts::workspace::TurnActor::Member { member_id: member }) {
+        return Err(StoreError::new(
+            crate::infrastructure::sqlite::StoreErrorCode::Unauthorized,
+            "This Turn belongs to another Member",
+            false,
+        ));
+    }
+    Ok(turn)
+}
+
 pub(super) fn item(
     connection: &Connection,
     library: &str,
@@ -198,5 +217,7 @@ pub(super) fn item(
 pub(super) fn notification_intents(
     connection: &Connection,
     library: &str,
+    member: &str,
 ) -> Result<Vec<InboxTurnNotification>, StoreError> {
+    Ok(connection.prepare("SELECT intent.member_id,intent.page_id,intent.episode FROM page_turn_notification_intents intent JOIN page_turn_episodes episode ON episode.page_id=intent.page_id AND episode.episode=intent.episode JOIN inbox_rows rows ON rows.page_id=intent.page_id AND rows.row_kind='turn' WHERE rows.library_id=?1 AND intent.member_id=?2 AND intent.claimed_at IS NULL ORDER BY intent.created_at,intent.page_id LIMIT 50")?.query_map(params![library,member],|r|Ok(InboxTurnNotification{member_id:r.get(0)?,page_id:r.get(1)?,episode:r.get(2)?}))?.collect::<rusqlite::Result<Vec<_>>>()?)
 }

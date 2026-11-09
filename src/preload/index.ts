@@ -54,6 +54,8 @@ import {
   CodexHostMessageReceiver,
 } from "../shared/codex-host-chunked-message";
 import type { IpcApi } from "../shared/ipc-api";
+import { isSpaceIpcChannel } from "../shared/space-ipc-policy";
+import type { SpaceConnectionSummary, SpaceRequest } from "../shared/space-connection";
 import {
   CodexNativeIpcClient,
   isCodexNativeIpcChannel,
@@ -76,12 +78,14 @@ const CONVERSATION_SERVICE_CHANNEL: typeof import("../shared/codex-client-coordi
   "codex:conversation-service:connect";
 const CONVERSATION_SERVICE_CONNECT: typeof import("../shared/codex-client-coordination").CODEX_CONVERSATION_SERVICE_CONNECT =
   "connect-conversation-host";
+const remoteSpaceRenderer = new URL(window.location.href).searchParams.has("spaceId");
 const DICTATION_STREAM_CHANNEL: typeof import("../shared/dictation-stream-transport").DICTATION_STREAM_CONNECT_CHANNEL =
   "codex:dictation:stream:connect";
 const DICTATION_STREAM_CONNECT: typeof import("../shared/dictation-stream-transport").DICTATION_STREAM_CONNECT_MESSAGE =
   "connect-dictation-stream";
 
 window.addEventListener("message", (event: MessageEvent<unknown>) => {
+  if (remoteSpaceRenderer) return;
   if (event.source !== window || event.data === null || typeof event.data !== "object") return;
   if (!("type" in event.data)) return;
   const channel =
@@ -123,12 +127,14 @@ const runtimeSessionListeners = new Set<
 ipcRenderer.on(
   "agent-runtime:session-event",
   (_event, message: import("../shared/agent-runtime-api").AgentRuntimeSessionEvent) => {
+    if (remoteSpaceRenderer) return;
     for (const listener of runtimeSessionListeners) listener(message);
   },
 );
 
 // One receiver owns chunk assembly and acknowledgements, independently of renderer subscriptions.
 ipcRenderer.on("codex:host-message", (_event, payload: unknown) => {
+  if (remoteSpaceRenderer) return;
   const received = chunkedMessageReceiver.receive(payload);
   if (received.type !== "passthrough" && received.acknowledgement)
     ipcRenderer.send(
@@ -144,6 +150,23 @@ ipcRenderer.on("codex:host-message", (_event, payload: unknown) => {
 });
 window.addEventListener("beforeunload", () => nativeRequestClient[Symbol.dispose]());
 
+let spaceContext: Promise<SpaceConnectionSummary> | null = null;
+const readSpaceContext = (): Promise<SpaceConnectionSummary> => {
+  spaceContext ??= ipcRenderer.invoke("spaces:context") as Promise<SpaceConnectionSummary>;
+  return spaceContext;
+};
+
+const invokeBoundIpc = async <Channel extends keyof IpcApi>(
+  channel: Channel,
+  args: IpcApi[Channel]["args"],
+): Promise<IpcApi[Channel]["result"]> => {
+  if (!isSpaceIpcChannel(channel))
+    return ipcRenderer.invoke(channel, ...args) as Promise<IpcApi[Channel]["result"]>;
+  const context = await readSpaceContext();
+  const request: SpaceRequest<IpcApi[Channel]["args"]> = { spaceId: context.spaceId, args };
+  return ipcRenderer.invoke(channel, request) as Promise<IpcApi[Channel]["result"]>;
+};
+
 const invokeIpc = <Channel extends keyof IpcApi>(
   channel: Channel,
   ...args: IpcApi[Channel]["args"]
@@ -152,17 +175,18 @@ const invokeIpc = <Channel extends keyof IpcApi>(
     return nativeRequestClient.invoke<CodexNativeIpcChannel>(
       channel,
       args as IpcApi[CodexNativeIpcChannel]["args"],
-      () => ipcRenderer.invoke(channel, ...args),
+      () => invokeBoundIpc(channel, args),
     ) as Promise<IpcApi[Channel]["result"]>;
   if (channel === "codex:app-server:request:abandon") {
     const input = args[0] as IpcApi["codex:app-server:request:abandon"]["args"][0];
     if (input.reason === "disposed") nativeRequestClient.abandon(input.requestId);
   }
-  return ipcRenderer.invoke(channel, ...args) as Promise<IpcApi[Channel]["result"]>;
+  return invokeBoundIpc(channel, args);
 };
 
 contextBridge.exposeInMainWorld("api", {
   getWindowZoomFactor: () => webFrame.getZoomFactor(),
+  getSpaceContext: readSpaceContext,
   invoke: invokeIpc,
 
   on: (event: string, callback: (...args: unknown[]) => void) => {
@@ -202,11 +226,10 @@ contextBridge.exposeInMainWorld("api", {
       ipcRenderer.removeListener(event, listener);
     };
   },
-  getStartupFailureEvidence: () => ipcRenderer.invoke("app:startup-failure-evidence"),
-  awaitInitialization: () => ipcRenderer.invoke("app:await-initialization"),
-  restartApplication: () => ipcRenderer.invoke(APP_RESTART_CHANNEL),
-  getCoreAuthorityStatus: () =>
-    ipcRenderer.invoke(GET_CORE_AUTHORITY_STATUS_CHANNEL) as Promise<CoreAuthorityStatus>,
+  getStartupFailureEvidence: () => invokeIpc("app:startup-failure-evidence"),
+  awaitInitialization: () => invokeIpc("app:await-initialization"),
+  restartApplication: () => invokeIpc(APP_RESTART_CHANNEL),
+  getCoreAuthorityStatus: () => invokeIpc(GET_CORE_AUTHORITY_STATUS_CHANNEL),
   onCoreAuthorityStatus: (callback: (status: CoreAuthorityStatus) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: CoreAuthorityStatus) =>
       callback(status);
@@ -215,8 +238,8 @@ contextBridge.exposeInMainWorld("api", {
       ipcRenderer.removeListener(CORE_AUTHORITY_STATUS_CHANNEL, listener);
     };
   },
-  retryCoreAuthority: () => ipcRenderer.invoke(RETRY_CORE_AUTHORITY_CHANNEL),
-  relaunchForCoreAuthority: () => ipcRenderer.invoke(RELAUNCH_FOR_CORE_AUTHORITY_CHANNEL),
+  retryCoreAuthority: () => invokeIpc(RETRY_CORE_AUTHORITY_CHANNEL),
+  relaunchForCoreAuthority: () => invokeIpc(RELAUNCH_FOR_CORE_AUTHORITY_CHANNEL),
   onInitializationStep: (callback: (step: AppInitializationStep) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, step: AppInitializationStep) =>
       callback(step);
@@ -310,28 +333,15 @@ contextBridge.exposeInMainWorld("api", {
   },
   resolveManagedAssetPath,
   resolveManagedBlobPath,
-  readPasteClipboard: () =>
-    ipcRenderer.invoke("clipboard:read-paste") as Promise<ClipboardPastePayload>,
+  readPasteClipboard: () => invokeIpc("clipboard:read-paste") as Promise<ClipboardPastePayload>,
   beginStructuralClipboard: (input: StructuralClipboardBeginInput) =>
-    ipcRenderer.invoke(
-      "clipboard:structural-begin",
-      input,
-    ) as Promise<StructuralClipboardLifecycleResult>,
+    invokeIpc("clipboard:structural-begin", input) as Promise<StructuralClipboardLifecycleResult>,
   publishStructuralClipboard: (input: StructuralClipboardWriteInput) =>
-    ipcRenderer.invoke(
-      "clipboard:structural-publish",
-      input,
-    ) as Promise<StructuralClipboardWriteResult>,
+    invokeIpc("clipboard:structural-publish", input) as Promise<StructuralClipboardWriteResult>,
   settleStructuralClipboard: (input: StructuralClipboardSettleInput) =>
-    ipcRenderer.invoke(
-      "clipboard:structural-settle",
-      input,
-    ) as Promise<StructuralClipboardLifecycleResult>,
+    invokeIpc("clipboard:structural-settle", input) as Promise<StructuralClipboardLifecycleResult>,
   awaitStructuralClipboard: (input: StructuralClipboardAwaitInput) =>
-    ipcRenderer.invoke(
-      "clipboard:structural-await",
-      input,
-    ) as Promise<StructuralClipboardResolution>,
+    invokeIpc("clipboard:structural-await", input) as Promise<StructuralClipboardResolution>,
   getPathInfoForFile: (file: File) => {
     try {
       const absolutePath = webUtils.getPathForFile(file);
@@ -352,7 +362,7 @@ contextBridge.exposeInMainWorld("api", {
     }
   },
   sendGitWorkerMessage: (message: GitWorkerMessageFromView) =>
-    ipcRenderer.invoke(GIT_WORKER_MESSAGE_FROM_VIEW_CHANNEL, message).then(() => undefined),
+    invokeIpc(GIT_WORKER_MESSAGE_FROM_VIEW_CHANNEL, message).then(() => undefined),
   onGitWorkerMessage: (callback: (message: GitWorkerMessageForView) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, message: GitWorkerMessageForView) =>
       callback(message);
@@ -364,6 +374,8 @@ contextBridge.exposeInMainWorld("api", {
 });
 
 contextBridge.exposeInMainWorld("electronBridge", {
-  showContextMenu: (items: unknown[], options?: unknown) =>
-    ipcRenderer.invoke("native-context-menu:show", items, options),
+  showContextMenu: (
+    items: import("../shared/native-context-menu").NativeContextMenuItem[],
+    options?: import("../shared/native-context-menu").NativeContextMenuOptions,
+  ) => invokeIpc("native-context-menu:show", items, options),
 });

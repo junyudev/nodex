@@ -149,16 +149,30 @@ impl<'a> AssetImports<'a> {
              VALUES (?1, ?2, ?3, ?4)",
             params![blob.content_hash, blob.physical_asset_name, blob.byte_length as i64, self.now],
         )?;
+        let current:bool=self.connection.query_row("SELECT EXISTS(SELECT 1 FROM pragma_table_info('library_files') WHERE name='created_by_actor_json')",[],|r|r.get(0))?;
+        let creator_column = if current {
+            "created_by_actor_json"
+        } else {
+            "created_by_actor_id"
+        };
+        let version_actor_column = if current { "actor_json" } else { "actor_id" };
+        let actor_sql = if current {
+            "json_object('type','service','kind','maintenance')"
+        } else {
+            "'store-migration:v160'"
+        };
         self.connection.execute(
-            "INSERT INTO library_files(file_id, library_id, default_name, head_version, revision,
-               lifecycle, created_by_actor_id, created_at, updated_at)
-             VALUES (?1, ?2, ?3, 1, 1, 'live', 'store-migration:v160', ?4, ?4)",
+            &format!("INSERT INTO library_files(file_id, library_id, default_name, head_version, revision,
+               lifecycle, {creator_column}, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 1, 1, 'live', {actor_sql}, ?4, ?4)"),
             params![id, library_id, default_name, self.now],
         )?;
         self.connection.execute(
-            "INSERT INTO file_versions(file_id, version, library_id, blob_hash, mime_type,
-               byte_length, actor_id, operation_id, occurred_at)
-             VALUES (?1, 1, ?2, ?3, ?4, ?5, 'store-migration:v160', ?6, ?7)",
+            &format!(
+                "INSERT INTO file_versions(file_id, version, library_id, blob_hash, mime_type,
+               byte_length, {version_actor_column}, operation_id, occurred_at)
+             VALUES (?1, 1, ?2, ?3, ?4, ?5, {actor_sql}, ?6, ?7)"
+            ),
             params![
                 id,
                 library_id,

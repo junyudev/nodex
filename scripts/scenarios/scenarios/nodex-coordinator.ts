@@ -306,6 +306,7 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
     }),
   );
 
+  await port.setInboxRoutingConsent(true);
   const started = await port.sendInboxMessage("Audit README links.");
   pages.startedRequest = started.pageId;
   const startedProposal = await port.settleCoordinatorSuggestion({

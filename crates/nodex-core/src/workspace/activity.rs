@@ -19,6 +19,7 @@ use rusqlite::{Connection, params};
 pub(super) fn window(
     c: &Connection,
     library: &str,
+    member: &str,
     head: i64,
     scope: &ProjectWorkspaceInboxScope,
     filter: ActivityFilter,
@@ -168,6 +169,7 @@ fn row(
         at: r.get(1)?,
         actor: serde_json::from_str(&r.get::<_, String>(2)?)
             .map_err(|_| rusqlite::Error::InvalidQuery)?,
+        actor_label: String::new(),
         subject: None,
         description: r.get(3)?,
         reason: r.get(4)?,

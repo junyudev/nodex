@@ -555,13 +555,22 @@ export const make: Effect.Effect<
           ? yield* readCodexLinkedRootSession(core, {
               hostId: executionHostId,
               threadId: input.threadId,
-            }).pipe(Effect.orElseSucceed(() => null))
+            })
           : null;
+      if (executionHostId === CODEX_APP_LOCAL_HOST_ID && (!linkedSession || linkedSession.archived))
+        return yield* Effect.fail(
+          new CodexTurnPreparationError({
+            operation: "start",
+            threadId: input.threadId,
+            cause: new Error("Agent execution requires its active Nodex Session"),
+          }),
+        );
       const agentAttribution =
         linkedSession && !linkedSession.archived
-          ? yield* core.workspace
-              .issueAgentAttribution({ session_id: linkedSession.id, backend: "codex" })
-              .pipe(Effect.orElseSucceed(() => null))
+          ? yield* core.workspace.issueAgentAttribution({
+              session_id: linkedSession.id,
+              backend: "codex",
+            })
           : null;
       const cliBootstrap = yield* buildNodexCliBootstrap(config, coreAuthority.identity, {
         threadId: input.threadId,

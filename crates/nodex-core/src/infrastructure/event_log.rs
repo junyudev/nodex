@@ -790,10 +790,14 @@ fn validate_projection_live_request(
     host_context: &BoundModuleContext,
     scopes: &[DeliveryAddress],
 ) -> Result<(), StoreError> {
-    if host_context.adapter != AdapterKind::ElectronHost || host_context.project_id.is_some() {
+    if !matches!(
+        host_context.adapter,
+        AdapterKind::ElectronHost | AdapterKind::RemoteMember
+    ) || host_context.project_id.is_some()
+    {
         return Err(StoreError::new(
             StoreErrorCode::Unauthorized,
-            "Projection live broker requires an unscoped Electron Host",
+            "Projection live broker requires an unscoped authenticated Library client",
             false,
         ));
     }
@@ -1670,7 +1674,12 @@ mod tests {
 
     fn context(library_id: &str, project_id: &str) -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile:events".to_owned()),
             library_id: LibraryId(library_id.to_owned()),
@@ -1682,7 +1691,12 @@ mod tests {
 
     fn host_context(library_id: &str) -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile:events".to_owned()),
             library_id: LibraryId(library_id.to_owned()),
@@ -1808,7 +1822,12 @@ mod tests {
                 module_name,
                 operation_id: &operation_id,
                 context: &BoundModuleContext {
+                    actor: nodex_core_contracts::Actor::Service {
+                        kind: nodex_core_contracts::ServiceKind::Maintenance,
+                    },
+                    authorizing_member_id: None,
                     editor_history_owner: None,
+                    principal: None,
                     agent_attribution: None,
                     profile_id: ProfileId("profile:events".to_owned()),
                     library_id: LibraryId("library:events".to_owned()),
@@ -2111,7 +2130,7 @@ mod tests {
                             "dataSourceIds": ["source:one"],
                             "pageIds": [],
                             "viewIds": ["view:one"],
-                            "personalViewChanges": [{
+                            "personalViewChanges": [{"member_id":"member:test",
                                 "kind": "occurrence_disclosure",
                                 "view_id": "view:one",
                                 "target": {
@@ -2165,6 +2184,7 @@ mod tests {
         assert_eq!(
             database_event.personal_view_changes,
             vec![DatabasePersonalViewChange::OccurrenceDisclosure {
+                member_id: "member:test".into(),
                 view_id: "view:one".to_owned(),
                 target: DatabaseViewDisclosureTarget::Page {
                     occurrence_key: "ITEM_parent/child".to_owned(),

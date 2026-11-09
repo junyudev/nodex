@@ -5,23 +5,28 @@ use rusqlite::{Connection, params};
 
 const RANK_GAP: i64 = 1_000_000;
 
+/// The Member arranging the lane: their own pins are not in it.
 fn lane(
     connection: &Connection,
+    member: &str,
     project_id: Option<&str>,
     moved: &str,
 ) -> Result<Vec<(String, Option<i64>)>, StoreError> {
     connection.prepare(
         "SELECT session.id, session.manual_rank FROM project_sessions session \
+         WHERE session.project_id IS ?1 AND session.id <> ?2 AND session.archived = 0 \
+           AND NOT EXISTS (SELECT 1 FROM member_session_pins pin WHERE pin.session_id=session.id AND pin.member_id=?3) \
            AND NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id=session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) \
            AND NOT EXISTS (SELECT 1 FROM project_session_threads link JOIN codex_threads thread ON thread.thread_id=link.thread_id WHERE link.session_id=session.id AND thread.parent_thread_id IS NOT NULL) \
            AND NOT EXISTS (SELECT 1 FROM workspace_sidebar_section_items item JOIN workspace_sidebar_sections section ON section.section_id=item.section_id WHERE item.session_id=session.id AND section.lifecycle='active') \
          ORDER BY session.manual_rank IS NOT NULL, CASE WHEN session.manual_rank IS NULL THEN -session.activity_at ELSE session.manual_rank END, session.id"
-    )?.query_map(params![project_id, moved], |r| Ok((r.get(0)?,r.get(1)?)))?
+    )?.query_map(params![project_id, moved, member], |r| Ok((r.get(0)?,r.get(1)?)))?
         .collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
 }
 
 pub(super) fn place(
     connection: &Connection,
+    member: &str,
     moved: &str,
     project_id: Option<&str>,
     placement: &ProjectWorkspaceSessionPlacement,
@@ -34,7 +39,7 @@ pub(super) fn place(
             "Session placement anchor must reference another Session",
         ));
     }
-    let rows = lane(connection, project_id, moved)?;
+    let rows = lane(connection, member, project_id, moved)?;
     let index = rows
         .iter()
         .position(|(id, _)| id == anchor)
@@ -44,31 +49,35 @@ pub(super) fn place(
             placement,
             ProjectWorkspaceSessionPlacement::After { .. }
         ));
-    place_at(connection, moved, project_id, rows, index)
+    place_at(connection, member, moved, project_id, rows, index)
 }
 
 pub(super) fn place_at_edge(
     connection: &Connection,
+    member: &str,
     moved: &str,
     project_id: Option<&str>,
     start: bool,
 ) -> Result<(), StoreError> {
-    let rows = lane(connection, project_id, moved)?;
+    let rows = lane(connection, member, project_id, moved)?;
     let index = if start { 0 } else { rows.len() };
-    place_at(connection, moved, project_id, rows, index)
+    place_at(connection, member, moved, project_id, rows, index)
 }
 
 fn place_at(
     connection: &Connection,
+    member: &str,
     moved: &str,
     project_id: Option<&str>,
     mut rows: Vec<(String, Option<i64>)>,
     index: usize,
 ) -> Result<(), StoreError> {
     let eligible = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM project_sessions session WHERE id=?1 AND project_id IS ?2 AND archived=0 \
+          AND NOT EXISTS(SELECT 1 FROM member_session_pins pin WHERE pin.session_id=session.id AND pin.member_id=?3) \
           AND NOT EXISTS(SELECT 1 FROM project_session_side_chats side WHERE side.session_id=session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) \
           AND NOT EXISTS(SELECT 1 FROM workspace_sidebar_section_items item JOIN workspace_sidebar_sections section ON section.section_id=item.section_id WHERE item.session_id=session.id AND section.lifecycle='active'))",
-        params![moved, project_id], |r| r.get::<_, bool>(0))?;
+        params![moved, project_id, member], |r| r.get::<_, bool>(0))?;
     if !eligible {
         return Err(invalid("Only active built-in lane Sessions can be placed"));
     }

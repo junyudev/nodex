@@ -7,10 +7,12 @@ import {
 import { useProjectionRegistration } from "./projection-invalidation-context";
 import { useLocalMember } from "./members-runtime";
 import { createBoundedOperationId } from "../../shared/operation-identity";
+import { spaceQueryKey } from "./renderer-space";
 export function usePageTurn(pageId: string) {
   const client = useQueryClient();
   const local = useLocalMember();
   const libraryId = local.data?.library_id;
+  const key = spaceQueryKey(["pageTurn", pageId]);
   const query = useQuery({
     queryKey: key,
     queryFn: () => invokeRendererQuery("work:turn", pageId),

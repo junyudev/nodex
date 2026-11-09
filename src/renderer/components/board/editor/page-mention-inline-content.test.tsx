@@ -170,7 +170,7 @@ describe("Page mention inline content", () => {
       name: "Open Page Keep projection updates bounded",
     });
     expect(mention.tagName).toBe("A");
-    expect(mention.getAttribute("href")).toBe("nodex://pages/page-1");
+    expect(mention.getAttribute("href")).toBe("nodex://pages/page-1?spaceId=test-space");
     expect(mention.getAttribute("tabindex")).toBe("0");
     expect(mention.getAttribute("contenteditable")).toBe("false");
     expect(view.container.querySelector('[data-mention-inline-guard="start"]')).not.toBeNull();

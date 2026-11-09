@@ -7,6 +7,7 @@ type ShutdownResponse = components["schemas"]["ShutdownResponse"];
 /** Promise-facing Core generation contract at the HTTP transport frontier. */
 export interface CoreGenerationClient extends CoreClientPort {
   readonly handshake: CoreHandshakeResponse;
+  readonly spaceName?: string;
   forProject(projectId: string): CoreGenerationClient;
   health(): Promise<HealthResponse>;
   shutdown(): Promise<ShutdownResponse>;

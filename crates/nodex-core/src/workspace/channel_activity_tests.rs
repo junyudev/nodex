@@ -462,6 +462,23 @@ fn activity_is_paginated_filtered_and_records_channel_and_trigger_facts() {
         .find(|r| r.id.starts_with("channel:"))
         .unwrap();
     assert_eq!(channel.description, "Queued a reply on alice/repo #1");
+    assert!(
+        matches!(&channel.actor,nodex_core_contracts::Actor::Agent {session_id,..} if session_id=="nodex")
+    );
+    let sent = outbox(&w).remove(0);
+    claim_send(&w, &sent.id, "actor-delivery");
+    settle(&w, &sent.id, "actor-delivery", true, false);
+    let delivered = activity(&w, ActivityFilter::All, None, 100)
+        .items
+        .into_iter()
+        .find(|row| row.id == format!("channel:{}", sent.id))
+        .unwrap();
+    assert_eq!(
+        delivered.actor,
+        nodex_core_contracts::Actor::Service {
+            kind: nodex_core_contracts::ServiceKind::Sources
+        }
+    );
     assert_eq!(
         channel.subject,
         Some(ActivitySubject::Thread {

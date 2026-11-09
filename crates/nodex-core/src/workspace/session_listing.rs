@@ -1,4 +1,4 @@
-use super::task_window::{TASK_SUMMARY_COLUMNS, task_summary_from_row};
+use super::task_window::{summary_columns, task_summary_from_row};
 use crate::infrastructure::collection_window::{WindowCandidate, assemble, normalize_request};
 use crate::infrastructure::cursor::{
     self, CollectionCursorSubject, CursorDirection, KeysetCoordinate, KeysetValue,
@@ -56,6 +56,7 @@ pub(super) struct SessionListingFilter<'a> {
 pub(super) fn read_session_window(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     commit_head: i64,
     filter: SessionListingFilter<'_>,
     request: &CollectionWindowRequest,
@@ -104,7 +105,7 @@ pub(super) fn read_session_window(
         .map_err(|_| invalid("Session execution references are invalid"))?;
     let normalized = normalize_request(request)?;
     let fingerprint = cursor::query_fingerprint(&(
-        "workspace_session_listing_v6",
+        member,
         order,
         archived,
         projectless_only,
@@ -153,6 +154,8 @@ pub(super) fn read_session_window(
             .map_err(|_| invalid("Workspace task window size is invalid"))?,
     ));
     let limit_parameter = parameters.len();
+    parameters.push(SqlValue::Text(member.to_owned()));
+    let task_columns = summary_columns(parameters.len());
     // Exact Runtime candidates use the unique execution index before joining Session metadata.
     let execution_predicate = if execution_refs.is_some() {
         "AND session.id IN (SELECT execution.session_id FROM json_each(?6) wanted
@@ -172,7 +175,7 @@ pub(super) fn read_session_window(
         ProjectWorkspaceSessionOrder::Conversation => "-session.activity_at",
     };
     let sql = format!(
-        "WITH task_rows AS (SELECT {TASK_SUMMARY_COLUMNS},
+        "WITH task_rows AS (SELECT {task_columns},
            project.name AS project_name,
            usage.opened_at AS opened_at, usage.score AS open_score,
            direct_section.section_id AS direct_section_id,
@@ -622,6 +625,7 @@ mod tests {
                 let error = read_session_window(
                     connection,
                     "library-1",
+                    "member:test",
                     0,
                     SessionListingFilter {
                         order: ProjectWorkspaceSessionOrder::Conversation,

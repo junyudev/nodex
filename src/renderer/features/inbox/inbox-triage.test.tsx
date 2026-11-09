@@ -1,3 +1,4 @@
+import * as rendererSpace from "@/lib/renderer-space";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
@@ -341,6 +342,40 @@ describe("InboxTriage", () => {
     await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(runTask));
     await click("Skip this run");
     await waitFor(() => expect(commands.setState).toHaveBeenCalledWith(["page:1"], "done"));
+  });
+
+  test("team Automation execution stays disabled while the person can skip the held decision", async () => {
+    const remote = vi.spyOn(rendererSpace, "isRemoteSpace").mockReturnValue(true);
+    try {
+      const commands = renderTriage({
+        item: item({
+          proposal: proposal({
+            origin: "automation",
+            action: { type: "execute_decision", decisionId: "dispatch:team", agent: null },
+          }),
+          automationDecision: {
+            automationId: "same-automation",
+            dispatchId: "dispatch:team",
+            status: "held",
+            firstScheduledFor: 1,
+            lastScheduledFor: 1,
+            missedCount: 0,
+            failureMessage: null,
+          },
+        }),
+      });
+      const run = screen.getByRole("button", { name: /^Run/ });
+      expect((run as HTMLButtonElement).disabled).toBe(true);
+      await act(async () => {
+        fireEvent.click(run);
+        await Promise.resolve();
+      });
+      expect(commands.confirm).not.toHaveBeenCalled();
+      await click("Skip this run");
+      await waitFor(() => expect(commands.setState).toHaveBeenCalledWith(["page:1"], "done"));
+    } finally {
+      remote.mockRestore();
+    }
   });
 
   test("a note gets a concrete Keep decision without asking the user to dispatch", async () => {

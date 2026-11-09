@@ -15,7 +15,7 @@ mod recovery;
 pub use recovery::*;
 pub mod recovery_bundle;
 
-pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 17;
+pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 18;
 pub const OWNED_DOCUMENT_DESCRIPTOR_VERSION: u32 = 4;
 /// A complete 2 MiB Canvas mutation plus bounded identity and File metadata.
 pub const MAX_CANVAS_MUTATION_EVENT_BYTES: usize = 2 * 1024 * 1024 + 256 * 1024;
@@ -402,6 +402,8 @@ pub enum OwnedDocumentIntent {
         generation: i64,
         expected_head_seq: i64,
         operations: Vec<DocumentBlockOperation>,
+        #[serde(default, skip)]
+        #[schema(ignore)]
         actor: Value,
     },
     ReplaceFromMarkdown {
@@ -410,6 +412,8 @@ pub enum OwnedDocumentIntent {
         expected_head_seq: i64,
         markdown: String,
         rich_title: Option<Vec<Value>>,
+        #[serde(default, skip)]
+        #[schema(ignore)]
         actor: Value,
     },
     ExecutePreparedAgentSemanticMutation {
@@ -426,6 +430,8 @@ pub enum OwnedDocumentIntent {
         document_id: String,
         generation: i64,
         expected_head_seq: i64,
+        #[serde(default, skip)]
+        #[schema(ignore)]
         actor: Value,
     },
     CreateCheckpoint {
@@ -434,6 +440,8 @@ pub enum OwnedDocumentIntent {
         expected_head_seq: i64,
         cause: String,
         label: Option<String>,
+        #[serde(default, skip)]
+        #[schema(ignore)]
         actor: Value,
         revision_kind: Option<DocumentRevisionKind>,
         source_mutation_id: Option<String>,
@@ -444,6 +452,8 @@ pub enum OwnedDocumentIntent {
         version_id: String,
         generation: i64,
         expected_head_seq: i64,
+        #[serde(default, skip)]
+        #[schema(ignore)]
         actor: Value,
     },
     ApplyOwnerCommand {

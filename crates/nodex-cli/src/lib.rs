@@ -36,6 +36,7 @@ mod selection_batch;
 mod service;
 pub mod skills;
 mod sources;
+mod space;
 mod sql;
 mod view;
 mod work;

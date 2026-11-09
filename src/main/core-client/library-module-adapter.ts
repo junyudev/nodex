@@ -1,3 +1,4 @@
+import { rethrowCoreTransportFailure } from "./local-http";
 import { parsePageAssignee } from "../../shared/work-graph";
 import { toCoreLibraryFileRead } from "../../shared/library-files-transport";
 import type { components } from "@nodex/core-protocol";
@@ -1985,6 +1986,7 @@ export const createCoreLibraryModuleAdapter = (
         },
       };
     } catch (error) {
+      rethrowCoreTransportFailure(error);
       return blockPropertyFailure(request.mutationId, error);
     }
   };
@@ -2015,6 +2017,7 @@ export const createCoreLibraryModuleAdapter = (
           },
         };
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return failure(error);
       }
     },
@@ -2163,6 +2166,7 @@ export const createCoreLibraryModuleAdapter = (
           },
         };
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return failure(error);
       }
     },
@@ -2177,6 +2181,7 @@ export const createCoreLibraryModuleAdapter = (
           },
         });
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return { ok: false, error: pageDetailError(error) };
       }
     },
@@ -2190,6 +2195,7 @@ export const createCoreLibraryModuleAdapter = (
           },
         });
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return { ok: false, error: pageDetailError(error) };
       }
     },
@@ -2225,6 +2231,7 @@ export const createCoreLibraryModuleAdapter = (
           value: mapPageHistory(page),
         });
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return { ok: false, error: pageHistoryError(error) };
       }
     },
@@ -2460,6 +2467,7 @@ export const createCoreLibraryModuleAdapter = (
           },
         });
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return pageLifecyclePreflightFailure(error);
       }
     },
@@ -2525,6 +2533,7 @@ export const createCoreLibraryModuleAdapter = (
           },
         });
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return pageLifecycleMutationFailure(request, error);
       }
     },

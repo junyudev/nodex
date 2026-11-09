@@ -13,6 +13,7 @@ import {
 } from "../../../shared/core-authority-status";
 import { MainConfig } from "../../app/MainConfig";
 import { CoreAuthority, type CoreAuthorityState } from "../../core-runtime/CoreAuthority";
+import { rendererSpaceParameter } from "../../../shared/space-ipc-policy";
 import { safeBroadcastToWindows } from "../../ipc-safe-send";
 import { getLogger } from "../../logging/logger";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
@@ -90,7 +91,13 @@ export const live: Layer.Layer<
           } else if (previous.kind !== "ready") {
             logger.info("Native Core authority recovered");
           }
-          safeBroadcastToWindows(windows.all(), CORE_AUTHORITY_STATUS_CHANNEL, [current]);
+          safeBroadcastToWindows(
+            windows
+              .all()
+              .filter((window) => !rendererSpaceParameter(window.webContents.getURL?.() ?? "")),
+            CORE_AUTHORITY_STATUS_CHANNEL,
+            [current],
+          );
         }),
       ),
       Effect.forkScoped,

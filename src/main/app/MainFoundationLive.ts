@@ -1,3 +1,4 @@
+import * as SpacePageFileHosts from "../page-files/SpacePageFileHosts";
 import * as NodeServices from "../platform/node/NodeServices";
 import * as Layer from "effect/Layer";
 import { BrowserProfileHelperPlatform } from "../browser/browser-profile-helper-client";
@@ -29,12 +30,14 @@ export type MainFoundation =
   | NativeNotificationAuthorization.NativeNotificationAuthorization
   | ElectronIpc.ElectronIpc
   | ElectronIpc.ElectronSyncIpc
+  | ElectronIpc.ElectronSpaceIpc
   | ElectronSessionHost.ElectronSessionHost
   | ElectronWindowHost.ElectronWindowHost
   | BrowserProfileHelperPlatform
   | ApplicationSettings.ApplicationSettings
   | TemporaryAssets.TemporaryAssets
-  | NodeServices.NodeServices;
+  | NodeServices.NodeServices
+  | SpacePageFileHosts.SpacePageFileHosts;
 
 const electronPlatform = Layer.mergeAll(
   ElectronApp.live,
@@ -61,6 +64,7 @@ export const make = (config: unknown): Layer.Layer<MainFoundation, MainConfig.Ma
   const profileServices = Layer.mergeAll(
     ApplicationSettings.live.pipe(Layer.provide(SecretEncryption.live)),
     TemporaryAssets.live,
+    SpacePageFileHosts.live,
     NativeNotificationAuthorization.live,
   ).pipe(Layer.provideMerge(base));
   return electronPlatform.pipe(Layer.provideMerge(profileServices));

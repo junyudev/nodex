@@ -1,3 +1,4 @@
+import { isHostedChat } from "@/lib/hosted-chat";
 import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import type {
@@ -167,7 +168,8 @@ export const realtimeVoiceAvailabilityQueryOptions = (target: CodexRealtimeVoice
       target?.threadId ?? null,
       target,
     ],
-    enabled: target !== null,
+    // Voice runs on this desktop's own Codex, which a hosted chat does not use.
+    enabled: target !== null && !isHostedChat(),
     queryFn: () => {
       if (!target) throw new Error("A native chat is required");
       return mainRealtimeVoiceClient.read(target);

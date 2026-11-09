@@ -106,7 +106,7 @@ export const pluginPageOptions = (
     retry: false,
     placeholderData: (previous, previousQuery) =>
       scope &&
-      JSON.stringify(previousQuery?.queryKey.slice(0, 7)) ===
+      JSON.stringify(previousQuery?.queryKey.slice(0, pluginManagementKeys.scope(scope).length)) ===
         JSON.stringify(pluginManagementKeys.scope(scope))
         ? previous
         : undefined,

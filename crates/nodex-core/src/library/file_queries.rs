@@ -261,7 +261,7 @@ pub(super) fn versions(
     let limit = limit(requested_limit)?;
     let mut items = connection
         .prepare(
-            "SELECT file_id, version, mime_type, byte_length, blob_hash, actor_id, turn_id, operation_id, occurred_at FROM file_versions WHERE file_id = ?1 AND library_id = ?2
+            "SELECT file_id, version, mime_type, byte_length, blob_hash, actor_json, turn_id, operation_id, occurred_at FROM file_versions WHERE file_id = ?1 AND library_id = ?2
         AND (?3 IS NULL OR version < ?3) ORDER BY version DESC LIMIT ?4",
         )?
         .query_map(
@@ -334,7 +334,12 @@ mod tests {
 
     fn context() -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -400,17 +405,17 @@ mod tests {
                     )?;
                     let mut insert_version = transaction.prepare(
                         "INSERT INTO file_versions(file_id, version, library_id, blob_hash, mime_type,
-                           byte_length, actor_id, operation_id, occurred_at)
-                         VALUES (?1, 1, 'library-1', ?2, 'text/plain', 1, 'pressure', ?1, ?3)",
+                           byte_length, actor_json, operation_id, occurred_at)
+                         VALUES (?1, 1, 'library-1', ?2, 'text/plain', 1, json_object('type','service','kind','maintenance'), ?1, ?3)",
                     )?;
                     let mut insert_file = transaction.prepare(
                         "INSERT INTO library_files(file_id, library_id, default_name, head_version,
-                           revision, lifecycle, created_by_actor_id, created_at, updated_at)
-                         VALUES (?1, 'library-1', ?2, 1, 1, 'live', 'pressure', ?3, ?3)",
+                           revision, lifecycle, created_by_actor_json, created_at, updated_at)
+                         VALUES (?1, 'library-1', ?2, 1, 1, 'live', json_object('type','service','kind','maintenance'), ?3, ?3)",
                     )?;
                     let mut insert_entry = transaction.prepare(
-                        "INSERT INTO page_file_entries(page_id, library_id, file_id, logical_path, path_key)
-                         VALUES ('page-1', 'library-1', ?1, ?2, ?2)",
+                        "INSERT INTO page_file_entries(page_id, library_id, file_id, logical_path, path_key,attached_by_json)
+                         VALUES ('page-1', 'library-1', ?1, ?2, ?2,json_object('type','service','kind','maintenance'))",
                     )?;
                     for index in 0..10_000 {
                         let file_id = format!("file-{index:05}");

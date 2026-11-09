@@ -33,7 +33,8 @@ fn parse_link(link: &str, kind: &str) -> Option<String> {
         .eq_ignore_ascii_case("nodex://")
         .then(|| &link[8..])?;
     let (host, path) = rest.split_once('/')?;
-    if !host.eq_ignore_ascii_case(kind) || path.is_empty() || path.contains('/') {
+    // A qualified URL must remain a link: a relative mention cannot retain its Space.
+    if !host.eq_ignore_ascii_case(kind) || path.is_empty() || path.contains(['/', '?', '#']) {
         return None;
     }
     let id = decode_component(path)?;
@@ -99,5 +100,16 @@ mod tests {
         assert_eq!(parse_page_link("nodex://pages/a/b"), None);
         assert_eq!(parse_page_link("nodex://pages/%20a"), None);
         assert_eq!(parse_page_link("NODEX://Pages/p1").as_deref(), Some("p1"));
+    }
+
+    #[test]
+    fn qualified_links_never_become_relative_mentions() {
+        assert_eq!(parse_page_link("nodex://pages/p1?spaceId=team"), None);
+        assert_eq!(parse_session_link("nodex://sessions/s1?spaceId=team"), None);
+        assert_eq!(parse_page_link("nodex://pages/p1#block"), None);
+        assert_eq!(
+            parse_page_link(&page_link("p1?literal")).as_deref(),
+            Some("p1?literal")
+        );
     }
 }

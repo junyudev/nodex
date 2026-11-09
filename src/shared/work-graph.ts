@@ -245,14 +245,18 @@ export const projectCoreWorkSummary = (
 
 export const parseMember = (value: unknown): Member => {
   const member = record(value);
+  exact(member, ["id", "library_id", "display_name", "lifecycle", "revision", "role"]);
   if (member.lifecycle !== "active" && member.lifecycle !== "removed")
     throw new TypeError("Invalid Member lifecycle");
+  if (member.role !== "owner" && member.role !== "member")
+    throw new TypeError("Invalid Member role");
   if (count(member.revision) < 1) throw new TypeError("Member revision must be positive");
   return {
     id: text(member.id),
     library_id: text(member.library_id),
     display_name: text(member.display_name, 1024),
     lifecycle: member.lifecycle,
+    role: member.role,
     revision: count(member.revision),
   };
 };

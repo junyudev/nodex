@@ -1,4 +1,5 @@
-import { documentSessionError, rethrowCoreTransportFailure } from "./document-session-error";
+import { documentSessionError } from "./document-session-error";
+import { rethrowCoreTransportFailure } from "./local-http";
 import {
   parseBlockTransferIntent,
   parseBlockTransferUndoIntent,
@@ -38,7 +39,6 @@ type CoreTransferIntent = Extract<LibraryIntent, { kind: "transfer_blocks" }>["i
 type CoreUndoTransferResult = NonNullable<LibraryApplyResult["outcome"]["block_transfer_undo"]>;
 
 const toCoreIntent = (intent: BlockTransferIntent): CoreTransferIntent => ({
-  actor: intent.actor,
   mode: intent.mode,
   root_block_ids: intent.rootBlockIds,
   causal_dependencies: (intent.causalDependencies ?? []).map((dependency) => ({

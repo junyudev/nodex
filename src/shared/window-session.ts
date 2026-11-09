@@ -29,6 +29,9 @@ export interface WindowSessionRecord {
   updatedAt: string;
   focusedAt: string;
   bounds?: WindowSessionBounds;
+  /** Absent for the personal Space. All nested resource references are relative to this Space. */
+  activeSpaceId?: string;
+  spaceLayouts?: Record<string, { layout: WorkbenchLayoutSnapshot }>;
 }
 
 export interface WindowSessionCatalog {
@@ -48,6 +51,7 @@ export interface WindowSessionNewWindowRequest {
 }
 
 export interface WindowSessionSaveLayoutInput {
+  spaceId?: string | null;
   sessionId: string;
   revision: number;
   layout: WorkbenchLayoutSnapshot;

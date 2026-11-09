@@ -41,6 +41,12 @@ async function makeBackend(
   const socketPath = path.join(directory, name);
   const server = net.createServer((socket) => {
     const decoder = new BrowserUseNativePipeFrameDecoder();
+    const replies = new Set<ReturnType<typeof setTimeout>>();
+    socket.on("error", () => socket.destroy());
+    socket.on("close", () => {
+      for (const reply of replies) clearTimeout(reply);
+      replies.clear();
+    });
     socket.on("data", (chunk) => {
       for (const message of decoder.push(chunk)) {
         const request = JSON.parse(message) as {
@@ -66,8 +72,15 @@ async function makeBackend(
               JSON.stringify({ jsonrpc: "2.0", id: request.id, result }),
             ),
           );
-        if (options.responseDelayMs) setTimeout(respond, options.responseDelayMs);
-        else respond();
+        if (!options.responseDelayMs) {
+          respond();
+          continue;
+        }
+        const reply = setTimeout(() => {
+          replies.delete(reply);
+          if (!socket.destroyed) respond();
+        }, options.responseDelayMs);
+        replies.add(reply);
       }
     });
   });
@@ -232,17 +245,20 @@ describe("Chrome extension pipe registry", () => {
     });
     await registry.start();
 
-    const startedAt = Date.now();
-    await expect(
-      registry.focusPresentation({
-        extensionInstanceId: "profile-slow",
-        sessionId: "thread-1",
-        tabId: "42",
-      }),
-    ).rejects.toThrow(/timed out|deadline expired/);
-    expect(Date.now() - startedAt).toBeLessThan(650);
-    expect(requests.slice(-2).map((request) => request.method)).toEqual(["getInfo", "focusTab"]);
-    registry.stop();
+    try {
+      const startedAt = Date.now();
+      await expect(
+        registry.focusPresentation({
+          extensionInstanceId: "profile-slow",
+          sessionId: "thread-1",
+          tabId: "42",
+        }),
+      ).rejects.toThrow(/timed out|deadline expired/);
+      expect(Date.now() - startedAt).toBeLessThan(650);
+      expect(requests.slice(-2).map((request) => request.method)).toEqual(["getInfo", "focusTab"]);
+    } finally {
+      registry.stop();
+    }
   });
 
   test("treats a missing controlled directory as a healthy disconnected provider", async () => {

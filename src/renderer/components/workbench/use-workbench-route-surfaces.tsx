@@ -1,3 +1,4 @@
+import { isRemoteSpace } from "@/lib/renderer-space";
 import { lazy, type ComponentProps } from "react";
 import { ApplicationSurface } from "@/bootstrap/application-surface";
 import { SettingsRouteShell } from "./workbench-settings-route-shell";
@@ -62,7 +63,10 @@ export function useWorkbenchRouteSurfaces({
 
   const automationsRouteShell = automations.path ? (
     <ApplicationSurface>
-      <ScheduledRoute path={automations.path} {...automations.props} />
+      {isRemoteSpace() ? (
+      ) : (
+        <AutomationsRoute path={automations.path} {...automations.props} />
+      )}
     </ApplicationSurface>
   ) : null;
 

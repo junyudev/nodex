@@ -9,7 +9,7 @@ use nodex_core_contracts::library::{
     LibraryPageCopyValue, LibraryPageCopyViewPlacement, LibraryPageWriteDestination,
 };
 use rusqlite::{Connection, OptionalExtension, params};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
@@ -255,7 +255,9 @@ pub(crate) fn move_page_in_scope(
     }
     let target = transfer_target(library_id, &destination)?;
     let intent = LibraryBlockTransferLogicalIntent {
-        actor: json!({ "kind": "native_cli", "command": "page_move" }),
+        actor: serde_json::to_value(&context.actor).map_err(|_| {
+            StoreError::new(StoreErrorCode::Internal, "Page move actor JSON", false)
+        })?,
         mode: LibraryBlockTransferMode::Move,
         root_block_ids: vec![page_id.to_owned()],
         causal_dependencies: Vec::new(),

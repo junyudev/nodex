@@ -190,8 +190,9 @@ is the only user-directed exception and does not claim Core receipt. The acknowl
 draft, source revision and exact submitted-byte digest; deleting the row also
 requires that its persisted revision has not changed. Lost replies leave staging bytes
 intact; repeated reception cannot overwrite a different package under the same
-identity. Drafts are Library-owned and every operation rechecks exact Profile, Store and
-resource identity.
+identity. Drafts belong to the authenticated Member within the Library and are
+available on that Member's enrolled devices. Every operation rechecks the Member,
+Profile, Store and resource identity. Local unsent-edit journals stay on their device.
 A Core recovery artifact still covers one rejected update rather than a complete
 later renderer draft. Cached content never replaces current lifecycle or identity
 checks.

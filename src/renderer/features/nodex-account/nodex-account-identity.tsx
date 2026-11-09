@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NODEX_ACCOUNT_ERROR_COPY } from "../../../shared/nodex-account-copy";
 import type { NodexAccountIdentity } from "../../../shared/nodex-account";
 import { NodexLogoMarkIcon } from "@/components/shared/icons";
+import { hueOf, identityGlyphColor, initialsOf } from "@/lib/identity-glyph";
 import { cn } from "@/lib/utils";
 import type { useNodexAccount } from "./use-nodex-account";
 
@@ -33,19 +34,6 @@ function secureImageUrl(value: string | null | undefined): string | null {
   } catch {
     return null;
   }
-}
-
-function initialsOf(source: string): string {
-  const words = source.split(/[ ._-]+/u).filter(Boolean);
-  const first = Array.from(words[0] ?? "")[0] ?? "";
-  const last = words.length > 1 ? (Array.from(words.at(-1) ?? "")[0] ?? "") : "";
-  return `${first}${last}`.toLocaleUpperCase();
-}
-
-function hueOf(seed: string): number {
-  let hue = 0;
-  for (const char of seed) hue = (hue * 31 + (char.codePointAt(0) ?? 0)) % 360;
-  return hue;
 }
 
 /** Null without a remembered identity, so no state claims an account it cannot name. */
@@ -169,7 +157,7 @@ export function NodexAccountAvatar({
     <span
       aria-hidden="true"
       className={cn(box, "text-white")}
-      style={{ backgroundColor: `oklch(0.56 0.11 ${identity.hue})` }}
+      style={{ backgroundColor: identityGlyphColor(identity.hue) }}
     >
       {initials}
     </span>

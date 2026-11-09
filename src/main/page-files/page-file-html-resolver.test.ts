@@ -6,6 +6,7 @@ import type { LibraryFile, ReadFileBytesInput } from "../../shared/library-files
 import { makePageFileHtmlResolver } from "./page-file-html-resolver";
 
 const file: LibraryFile = {
+  created_by: { type: "member", member_id: "member-local" },
   file_id: "report",
   library_id: "library",
   default_name: "report.html",
@@ -41,7 +42,10 @@ function setup(logicalPath: string | null = input.logicalPath) {
                   file,
                   logical_path: logicalPath,
                   attachment: logicalPath
-                    ? { attached_by: { kind: "person" }, attached_at: "2026-11-01T00:00:00.000Z" }
+                    ? {
+                        attached_by: { type: "member", member_id: "member-local" },
+                        attached_at: "2026-11-01T00:00:00.000Z",
+                      }
                     : null,
                   body_count: 1,
                 },

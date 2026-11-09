@@ -14,6 +14,7 @@ import {
 import { InlineVisualizationFrameView } from "./inline-visualization-frame";
 import { startInlineVisualizationPrewarmer } from "../../../lib/inline-visualization/inline-visualization-prewarmer";
 import { registerAppCloseFlushHandler } from "../../../lib/app-close-flush";
+import { isHostedChat } from "../../../lib/hosted-chat";
 
 const FrameOwnerContext = createContext<InlineVisualizationFrameOwner | null>(null);
 export const InlineVisualizationSurfaceContext = createContext<string | null>(null);
@@ -26,9 +27,11 @@ export function InlineVisualizationWindowProvider({ children }: { readonly child
   const ids = useSyncExternalStore(owner.subscribe, owner.readIds, owner.readIds);
   useLayoutEffect(() => {
     const releaseWindow = owner.acquireWindow();
-    const stopPrewarmer = standbyRoot
-      ? startInlineVisualizationPrewarmer(standbyRoot, { start: owner.startStandby })
-      : undefined;
+    // Interactive responses render through this desktop's own Codex, which a hosted chat does not use.
+    const stopPrewarmer =
+      standbyRoot && !isHostedChat()
+        ? startInlineVisualizationPrewarmer(standbyRoot, { start: owner.startStandby })
+        : undefined;
     const unregisterClose = registerAppCloseFlushHandler(() => {
       stopPrewarmer?.();
       // Detach native guests while the window's synchronous IPC is still available.

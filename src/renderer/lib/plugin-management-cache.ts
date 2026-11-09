@@ -1,3 +1,4 @@
+import { spaceQueryKey } from "./renderer-space";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
   PluginContext,
@@ -120,10 +121,10 @@ export async function invalidatePluginManagement(
   await Promise.all([
     client.invalidateQueries({
       queryKey: pluginManagementKeys.all(hostId),
-      predicate: (query) => resources === null || resources.includes(String(query.queryKey[7])),
+      predicate: (query) => resources === null || resources.includes(String(query.queryKey[9])),
     }),
     ...composer.map((queryKey) =>
-      client.invalidateQueries({ queryKey, predicate: (query) => query.queryKey[2] === hostId }),
+      client.invalidateQueries({ queryKey, predicate: (query) => query.queryKey[4] === hostId }),
     ),
     ...(kind === "skills" || kind === "hooks"
       ? []
@@ -151,7 +152,7 @@ export function applyPluginManagementEvent(
 ): void {
   if (event.progress || event.mcpOauthCompletion) {
     for (const [key] of client.getQueriesData({
-      queryKey: ["plugin-management-context", event.hostId],
+      queryKey: spaceQueryKey(["plugin-management-context", event.hostId]),
     })) {
       const capabilities =
         client.getQueryData<import("../../shared/codex-plugin-management").ResolvedPluginContext>(
@@ -200,14 +201,18 @@ export function applyPluginManagementEvent(
     ]) {
       void client.cancelQueries({
         queryKey,
-        predicate: (query) => query.queryKey[2] === event.hostId,
+        predicate: (query) => query.queryKey[4] === event.hostId,
       });
-      client.removeQueries({ queryKey, predicate: (query) => query.queryKey[2] === event.hostId });
+      client.removeQueries({ queryKey, predicate: (query) => query.queryKey[4] === event.hostId });
     }
     client.removeQueries({ queryKey: queryKeys.mcp.apps() });
     client.removeQueries({ queryKey: queryKeys.mcp.statuses() });
-    void client.resetQueries({ queryKey: ["plugin-management-context", event.hostId] });
-    void client.resetQueries({ queryKey: ["plugin-management-capabilities", event.hostId] });
+    void client.resetQueries({
+      queryKey: spaceQueryKey(["plugin-management-context", event.hostId]),
+    });
+    void client.resetQueries({
+      queryKey: spaceQueryKey(["plugin-management-capabilities", event.hostId]),
+    });
   }
   void invalidatePluginManagement(client, event.hostId, event.kind);
 }
@@ -221,14 +226,17 @@ export function acquirePluginManagementSubscription(client: QueryClient): () => 
     const releaseProjects = subscribePluginProjectChanges((event) => {
       if (!["sources", "lifecycle", "delete"].includes(event.changeType)) return;
       const matches = (query: { queryKey: QueryKey }) =>
-        event.projectId === undefined || query.queryKey[4] === event.projectId;
-      void client.cancelQueries({ queryKey: ["plugin-management"], predicate: matches });
-      client.removeQueries({ queryKey: ["plugin-management"], predicate: matches });
+        event.projectId === undefined || query.queryKey[6] === event.projectId;
+      void client.cancelQueries({
+        queryKey: spaceQueryKey(["plugin-management"]),
+        predicate: matches,
+      });
+      client.removeQueries({ queryKey: spaceQueryKey(["plugin-management"]), predicate: matches });
       for (const prefix of ["plugin-management-context", "plugin-management-capabilities"])
         void client.resetQueries({
-          queryKey: [prefix],
+          queryKey: spaceQueryKey([prefix]),
           predicate: (query) =>
-            event.projectId === undefined || query.queryKey[2] === event.projectId,
+            event.projectId === undefined || query.queryKey[4] === event.projectId,
         });
     });
     subscription = {
@@ -293,13 +301,13 @@ export async function runPluginMutation<K extends keyof PluginCommands>(
   await client.cancelQueries({ queryKey });
   if (name === "mcp-login")
     for (const [key] of client.getQueriesData({ queryKey })) {
-      if (key[7] === "mcp-oauth-completion") client.setQueryData(key, null);
+      if (key[9] === "mcp-oauth-completion") client.setQueryData(key, null);
     }
   const snapshots = client.getQueriesData({ queryKey });
   const touched: typeof snapshots = [];
   if (name === "skill-enabled")
     for (const snapshot of snapshots) {
-      if (!["skills", "read"].includes(String(snapshot[0][7]))) continue;
+      if (!["skills", "read"].includes(String(snapshot[0][9]))) continue;
       touched.push(snapshot);
       client.setQueryData(snapshot[0], (current: unknown) =>
         patchSkillData(current, input as unknown as SkillEnabledSelector),
@@ -384,7 +392,7 @@ export async function runPluginMutation<K extends keyof PluginCommands>(
             .find(Boolean);
           if (candidate)
             for (const [key] of snapshots) {
-              if (key[7] !== "installed") continue;
+              if (key[9] !== "installed") continue;
               client.setQueryData(key, (current: unknown) => {
                 if (
                   !record(current) ||

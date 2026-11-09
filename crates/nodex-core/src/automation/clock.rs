@@ -32,6 +32,9 @@ pub(super) fn record_occurrence(
     }
     record_decision(
         connection,
+        &nodex_core_contracts::Actor::Service {
+            kind: nodex_core_contracts::ServiceKind::Automations,
+        },
         automation,
         DecisionRecord {
             dispatch,
@@ -56,24 +59,38 @@ struct DecisionRecord<'a> {
     completed: bool,
 fn record_decision(
     connection: &Connection,
+    actor: &nodex_core_contracts::Actor,
     automation: &Automation,
     decision: DecisionRecord<'_>,
 ) -> Result<(), StoreError> {
     let DecisionRecord {
         dispatch,
+        completed,
     let frozen = serde_json::to_string(automation)
         .map_err(|_| invalid("Automation action cannot be frozen"))?;
     let authority = serde_json::json!({"owner_member_id":automation.owner_member_id,"mode":automation.mode,"automation_revision":automation.automation_revision});
+    let current: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('automation_decisions') WHERE name='actor_json')",
+        [],
+        |r| r.get(0),
+    )?;
+    if current {
+        connection.execute("INSERT OR IGNORE INTO automation_decisions(dispatch_id,automation_id,status,page_id,automation_revision,mode,reason,frozen_action_json,frozen_authority_json,first_scheduled_for_ms,last_scheduled_for_ms,hold_basis_json,due_at_ms,created_at_ms,updated_at_ms,automation_name,actor_json) VALUES(?1,?2,?3,NULL,?4,?5,?6,?7,?8,?9,?9,'{}',NULL,?10,?10,?11,?12)",params![dispatch,automation.automation_id,if completed{"completed"}else{"admitted"},automation.automation_revision,super::mutation::mode_literal(automation.mode),reason,frozen,authority.to_string(),due,now,automation.name,crate::infrastructure::actors::encode(actor)?])?;
+    } else {
+        connection.execute("INSERT OR IGNORE INTO automation_decisions(dispatch_id,automation_id,status,page_id,automation_revision,mode,reason,frozen_action_json,frozen_authority_json,first_scheduled_for_ms,last_scheduled_for_ms,hold_basis_json,due_at_ms,created_at_ms,updated_at_ms,automation_name) VALUES(?1,?2,?3,NULL,?4,?5,?6,?7,?8,?9,?9,'{}',NULL,?10,?10,?11)",params![dispatch,automation.automation_id,if completed{"completed"}else{"admitted"},automation.automation_revision,super::mutation::mode_literal(automation.mode),reason,frozen,authority.to_string(),due,now,automation.name])?;
+    }
     Ok(())
 }
 pub(super) fn record_manual(
     connection: &Connection,
+    actor: &nodex_core_contracts::Actor,
     automation: &Automation,
     dispatch: &str,
     now: i64,
 ) -> Result<(), StoreError> {
     record_decision(
         connection,
+        actor,
         automation,
         DecisionRecord {
             dispatch,
@@ -139,6 +156,9 @@ pub(crate) fn backfill_snapshots(connection: &Connection) -> Result<(), StoreErr
         });
         record_decision(
             connection,
+            &nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Automations,
+            },
             &automation,
             DecisionRecord {
                 dispatch: &dispatch,
@@ -279,6 +299,9 @@ pub(super) fn record_unavailable_owner(
 ) -> Result<(), StoreError> {
     record_decision(
         connection,
+        &nodex_core_contracts::Actor::Service {
+            kind: nodex_core_contracts::ServiceKind::Automations,
+        },
         automation,
         DecisionRecord {
             dispatch,

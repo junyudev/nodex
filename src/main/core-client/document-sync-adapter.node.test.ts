@@ -456,7 +456,6 @@ describe("Core Document sync adapter", () => {
         expected_head_seq: 2,
         cause: "manual",
         label: "Before refactor",
-        actor: checkpointRequest.actor,
         revision_kind: "manual",
         source_mutation_id: undefined,
         source_change_seq: undefined,
@@ -601,7 +600,6 @@ describe("Core Document sync adapter", () => {
           version_id: request.versionId,
           generation: request.generation,
           expected_head_seq: request.expectedHeadSeq,
-          actor: request.actor,
         },
       },
     ]);
@@ -733,7 +731,6 @@ describe("Core Document sync adapter", () => {
               },
             },
           ],
-          actor: request.actor,
         },
       },
     ]);

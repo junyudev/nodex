@@ -66,6 +66,15 @@ pub(crate) fn content_from_markdown(
     connection: &Connection,
     markdown: String,
 ) -> Result<MessageContent, StoreError> {
+    // Image syntax requires ASCII punctuation. Plain text cannot contain images or
+    // malformed Markdown constructs, so evidence needs only its exact UTF-8 body.
+    // In particular, edited Pages may be much larger than the capture limit.
+    if !markdown.bytes().any(|byte| byte.is_ascii_punctuation()) {
+        return Ok(MessageContent {
+            markdown,
+            images: Vec::new(),
+        });
+    }
     let blocks = crate::domain::markdown::parse_markdown(&markdown)
         .map_err(|_| super::inbox::corrupt("Inbox Page Markdown is unreadable"))?;
     let mut sources = Vec::new();
@@ -246,6 +255,31 @@ fn replace_images(blocks: &mut [Block], marker: &mut impl FnMut(&str, &str) -> O
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn plain_text_evidence_preserves_bytes_and_syntax_still_requires_validation() {
+        let workspace = super::super::test_support::seeded_workspace();
+        workspace
+            .kernel
+            .readers()
+            .read_default(|connection| {
+                let markdown = "  界と世界。\n\nUnicode café\t\n";
+                let expected = MessageContent {
+                    markdown: markdown.into(),
+                    images: Vec::new(),
+                };
+                let actual = content_from_markdown(connection, markdown.into())?;
+                assert_eq!(actual, expected);
+                assert_eq!(
+                    content_from_markdown(connection, "<div>Invalid Nodex content</div>".into())
+                        .unwrap_err()
+                        .code,
+                    StoreErrorCode::StoreCorrupt
+                );
+                Ok(())
+            })
+            .unwrap();
+    }
+
     #[test]
     fn inbox_content_keeps_images_in_prompt_first_lines_and_children() {
         let workspace = super::super::test_support::seeded_workspace();

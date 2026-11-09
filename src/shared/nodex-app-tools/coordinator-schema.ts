@@ -105,6 +105,7 @@ export const automationAssessmentSubmitSchema = z.strictObject({
         automation_id: eventId,
         revision: z.number().int().positive(),
         matched: z.boolean(),
+        reason: z.string().min(1).max(2000).regex(/\S/, "Reason is empty"),
         evidence_ids: z.array(eventId).max(30),
       }),
     )
@@ -114,6 +115,8 @@ export const automationAssessmentSubmitSchema = z.strictObject({
       z.strictObject({
         automation_ids: z.array(eventId).min(1).max(200),
         scope: z.strictObject({ kind: z.literal("project"), project_id: eventId }),
+        title: z.string().min(1).max(200).regex(/\S/, "Title is empty"),
+        body: z.string().min(1).max(32000).regex(/\S/, "Body is empty"),
         execution_target: z.strictObject({
           instanceId: eventId,
           model: eventId,

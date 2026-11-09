@@ -13,6 +13,9 @@ import { createCoreDocumentSyncAdapter } from "./document-sync-adapter";
 describe("library/files authoritative scenario", () => {
   test("materializes one independent File and one exact File shared by two Pages", async () => {
     await withCoreScenario({ scenarioId: LIBRARY_FILES_SCENARIO_ID }, async (context) => {
+      const identity = await context.client.libraryRead({ kind: "local_member" });
+      if (identity.value.kind !== "local_member") throw new Error("Member identity required");
+      const memberId = identity.value.value.id;
       const facts = requireLibraryFilesScenarioFacts(context.facts);
       expect(facts).toMatchObject({
         pageAPath: "assets/shared.png",
@@ -27,7 +30,7 @@ describe("library/files authoritative scenario", () => {
         context.manifest.pageIdsByKey[LIBRARY_FILES_PAGE_A_KEY]!,
       );
       const shared = inventory.files.find((item) => item.file.file_id === facts.sharedFileId);
-      expect(shared?.attachment?.attached_by).toEqual({ kind: "person" });
+      expect(shared?.attachment?.attached_by).toEqual({ type: "member", member_id: memberId });
       expect(shared?.attachment?.attached_at).toEqual(expect.any(String));
       expect(Number.isFinite(Date.parse(shared!.attachment!.attached_at!))).toBe(true);
 

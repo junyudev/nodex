@@ -317,11 +317,20 @@ export class WindowSessionState {
       ...layout,
       location,
     };
-    const session = this.createSessionRecord(
-      override.browserUrl === undefined
-        ? requestedLayout
-        : openBrowserInClonedLayout(requestedLayout, override.browserUrl),
-    );
+    const session = {
+      ...this.createSessionRecord(
+        override.browserUrl === undefined
+          ? requestedLayout
+          : openBrowserInClonedLayout(requestedLayout, override.browserUrl),
+      ),
+      activeSpaceId: sourceSession.activeSpaceId,
+      spaceLayouts: Object.fromEntries(
+        Object.entries(sourceSession.spaceLayouts ?? {}).map(([spaceId, snapshot]) => [
+          spaceId,
+          { layout: cloneWorkbenchSceneLayoutForNewWindow(snapshot.layout) },
+        ]),
+      ),
+    };
     const catalog = this.readOrCreateCatalog();
     const written = this.writeCatalog({
       version: WINDOW_SESSION_VERSION,
@@ -534,13 +543,37 @@ export class WindowSessionState {
     );
   }
 
-  bootstrap(webContentsId: number): WindowSessionRecord {
+  bootstrap(webContentsId: number, spaceId?: string | null): WindowSessionRecord {
     const assignedSessionId = this.webContentsToSessionId.get(webContentsId);
     const catalog = this.readOrCreateCatalog();
     const assignedSession = assignedSessionId
       ? catalog.sessions.find((session) => session.id === assignedSessionId)
       : undefined;
-    if (assignedSession) return assignedSession;
+    if (assignedSession) {
+      if (spaceId === undefined || spaceId === (assignedSession.activeSpaceId ?? null))
+        return assignedSession;
+      const previousKey = JSON.stringify(assignedSession.activeSpaceId ?? null);
+      const targetKey = JSON.stringify(spaceId ?? null);
+      const spaceLayouts = {
+        ...assignedSession.spaceLayouts,
+        [previousKey]: { layout: assignedSession.layout },
+      };
+      const next: WindowSessionRecord = {
+        ...assignedSession,
+        activeSpaceId: spaceId ?? undefined,
+        spaceLayouts,
+        layout: spaceLayouts[targetKey]?.layout ?? createDefaultWorkbenchLayoutSnapshot(),
+        layoutRevision: assignedSession.layoutRevision + 1,
+        updatedAt: this.nowIso(),
+      };
+      return this.requireSession(
+        this.writeCatalog({
+          ...catalog,
+          sessions: catalog.sessions.map((entry) => (entry.id === next.id ? next : entry)),
+        }),
+        next.id,
+      );
+    }
 
     const session = this.createFreshSession();
     return this.attachWindow(webContentsId, session.id);
@@ -576,6 +609,9 @@ export class WindowSessionState {
     const session = catalog.sessions.find((entry) => entry.id === assignedSessionId);
     if (!session) {
       throw new Error("Assigned Window Session is unavailable");
+    }
+    if ((input.spaceId ?? null) !== (session.activeSpaceId ?? null)) {
+      throw new Error("A Window Session layout cannot cross Spaces");
     }
     if (input.revision <= session.layoutRevision) return session;
 

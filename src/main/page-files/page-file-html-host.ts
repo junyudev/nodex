@@ -316,8 +316,13 @@ export const makePageFileHtmlHost = (options: {
       input: PageFileHtmlAdmissionInput,
     ): Effect.Effect<PageFileHtmlAdmissionResult> =>
       Effect.gen(function* () {
+        if (closed || contents.isDestroyed())
+          return { status: "refused", message: "Page File preview is unavailable" } as const;
+        // A Space's content graph can admit before its native guest gate is acquired.
+        // Admission owns the renderer lifetime; attachment must use this same owner.
+        createHost(contents);
         const owner = owners.get(contents);
-        if (closed || !owner || contents.isDestroyed())
+        if (!owner)
           return { status: "refused", message: "Page File preview is unavailable" } as const;
         const generation = owner.generation;
         const document = yield* options.resolver.resolve(input);

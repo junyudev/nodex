@@ -1,3 +1,4 @@
+import { isHostedChat } from "@/lib/hosted-chat";
 import { remoteHostedPipRuntime } from "@/lib/remote-hosted-pip-runtime";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RemoteHostedPipTaskStateSnapshot } from "../../../../shared/remote-hosted-pip";
@@ -33,6 +34,8 @@ export function useRemoteHostedPipSummaryControl(
   const [snapshot, setSnapshot] = useState<RemoteHostedPipTaskStateSnapshot | null>(null);
 
   useEffect(() => {
+    // A hosted chat's Agents run on its Space host, so no PiP of this desktop's tasks applies.
+    if (isHostedChat()) return undefined;
     let accepting = true;
     const refresh = async (): Promise<void> => {
       const next = await remoteHostedPipRuntime.snapshot().catch(() => null);

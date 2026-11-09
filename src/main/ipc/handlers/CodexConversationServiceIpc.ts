@@ -52,6 +52,8 @@ export const live = Layer.effectDiscard(
       Effect.gen(function* () {
         yield* Effect.try(() => {
           requireTrustedAppRendererSender(event, "Conversation service", config.rendererUrl);
+          if (new URL(event.senderFrame?.url ?? "").searchParams.has("spaceId"))
+            throw new Error("Team transcripts are read from the Space host");
           if (!windows.has(event.sender.id))
             throw new Error("Conversation service requires an active Nodex window");
           if (event.ports.length !== 1)

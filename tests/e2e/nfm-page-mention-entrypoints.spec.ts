@@ -1,4 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { parsePageDeepLink, buildPageDeepLink } from "../../src/shared/nodex-deeplink";
+import { invokeIpc } from "./support/editor-scenario";
 import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
@@ -8,7 +10,13 @@ import { focusBoardDenseUi } from "../../scripts/scenarios/scenarios/board-dense
 const primaryShortcut = (key: string): string =>
   `${process.platform === "darwin" ? "Meta" : "Control"}+${key}`;
 
-const focusEditableBlockEnd = async (page: Page, block: Locator): Promise<void> => {
+const startParagraphAfterBlock = async (
+  page: Page,
+  editor: Locator,
+  block: Locator,
+): Promise<void> => {
+  await block.scrollIntoViewIfNeeded();
+  const blockCount = await editor.locator(".bn-block[data-id]").count();
   const point = await block.evaluate((element) => {
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     let editableText: Text | null = null;
@@ -26,7 +34,9 @@ const focusEditableBlockEnd = async (page: Page, block: Locator): Promise<void> 
     return { x: rect.right - 1, y: rect.top + rect.height / 2 };
   });
   await page.mouse.click(point.x, point.y);
-  await page.keyboard.press("End");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowRight" : "End");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => editor.locator(".bn-block[data-id]").count()).toBeGreaterThan(blockCount);
 };
 
 const waitForMentionOrFailure = async (page: Page, mention: Locator): Promise<void> => {
@@ -68,8 +78,7 @@ test("opens an empty-query Page destination flow and resumes the mention session
         .locator(".bn-block[data-id]")
         .filter({ hasText: "Keep Board and Page views convergent." })
         .first();
-      await focusEditableBlockEnd(page, sourceBlock);
-      await page.keyboard.press("Enter");
+      await startParagraphAfterBlock(page, editor, sourceBlock);
       await page.keyboard.type("@");
 
       await page.getByRole("option", { name: /^Add new page in/u }).click();
@@ -135,6 +144,16 @@ test("creates Page mentions atomically under current and chosen parent Pages", a
     {
       label: "nfm-page-mention-entrypoints",
       scenarioId: BOARD_DENSE_SCENARIO_ID,
+      onFailure: async ({ page }) => {
+        if (!page) return;
+        await test
+          .info()
+          .attach("page-state", { body: await page.screenshot(), contentType: "image/png" });
+        await test.info().attach("page-dom", {
+          body: await page.locator("body").ariaSnapshot(),
+          contentType: "text/plain",
+        });
+      },
     },
     async ({ application, page, manifest }) => {
       if (!manifest) throw new Error("board/dense did not materialize");
@@ -152,8 +171,7 @@ test("creates Page mentions atomically under current and chosen parent Pages", a
         .locator(".bn-block[data-id]")
         .filter({ hasText: "Keep Board and Page views convergent." })
         .first();
-      await focusEditableBlockEnd(page, sourceBlock);
-      await page.keyboard.press("Enter");
+      await startParagraphAfterBlock(page, editor, sourceBlock);
 
       const title = "E2E atomic mention child";
       await page.keyboard.type(`+${title}`);
@@ -165,7 +183,10 @@ test("creates Page mentions atomically under current and chosen parent Pages", a
       const mention = editor.getByRole("link", { name: `Open Page ${title}` });
       await waitForMentionOrFailure(page, mention);
       const href = await mention.getAttribute("href");
-      const createdPageId = href?.match(/^nodex:\/\/pages\/(.+)$/u)?.[1];
+      const target = parsePageDeepLink(href ?? "");
+      const spaceId = (await invokeIpc(page, "spaces:context")).spaceId;
+      expect(target?.spaceId).toBe(spaceId);
+      const createdPageId = target?.pageId;
       if (!createdPageId) throw new Error("Created Page mention has no canonical Page URL");
       const owningShell = editor.locator(`[data-page-outliner-target="${createdPageId}"]`);
       await expect(owningShell).toBeVisible({ timeout: 15_000 });
@@ -180,14 +201,17 @@ test("creates Page mentions atomically under current and chosen parent Pages", a
       await page.keyboard.press(primaryShortcut("Shift+z"));
       await expect(mention).toBeVisible({ timeout: 15_000 });
       await expect(owningShell).toBeVisible({ timeout: 15_000 });
-      await expect(mention).toHaveAttribute("href", `nodex://pages/${createdPageId}`);
+      await expect(mention).toHaveAttribute(
+        "href",
+        buildPageDeepLink({ pageId: createdPageId, spaceId }),
+      );
 
       const destinationPageId = manifest.pageIdsByKey.boundedProjection;
       if (!destinationPageId) throw new Error("board/dense has no destination Page");
       const remoteTitle = "E2E remote mention child";
-      await focusEditableBlockEnd(page, sourceBlock);
-      await page.keyboard.press("Enter");
+      await startParagraphAfterBlock(page, editor, sourceBlock);
       await page.keyboard.type(`+${remoteTitle}`);
+      await expect(temporaryInput).toHaveText(`+${remoteTitle}`);
       await page
         .getByRole("option", { name: new RegExp(`New “${remoteTitle}” page in`, "u") })
         .click();
@@ -202,7 +226,9 @@ test("creates Page mentions atomically under current and chosen parent Pages", a
       const remoteMention = editor.getByRole("link", { name: `Open Page ${remoteTitle}` });
       await waitForMentionOrFailure(page, remoteMention);
       const remoteHref = await remoteMention.getAttribute("href");
-      const remotePageId = remoteHref?.match(/^nodex:\/\/pages\/(.+)$/u)?.[1];
+      const remoteTarget = parsePageDeepLink(remoteHref ?? "");
+      expect(remoteTarget?.spaceId).toBe(spaceId);
+      const remotePageId = remoteTarget?.pageId;
       if (!remotePageId) throw new Error("Remote Page mention has no canonical Page URL");
       await expect(editor.locator(`[data-page-outliner-target="${remotePageId}"]`)).toHaveCount(0);
 

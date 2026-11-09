@@ -62,12 +62,14 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/core/v1/admin/space/devices": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
+        readonly get: operations["devices"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -76,6 +78,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/core/v1/admin/space/invite": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -84,7 +87,7 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["issue_agent_attribution"];
+        readonly post: operations["invite"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -107,51 +110,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/events": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get: operations["events"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/core/v1/files/blobs/{file_id}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly put?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/core/v1/files/blobs/prepare": {
+    readonly "/core/v1/admin/space/listen": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -160,7 +119,53 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["prepare_file_blob"];
+        readonly post: operations["listen"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/core/v1/admin/space/member-name": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["rename_member"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/core/v1/admin/space/name": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["rename"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -199,7 +204,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/local-mutations/resolve": {
+    readonly "/core/v1/admin/space/remove-member": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -208,14 +213,14 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["resolve_local_mutation"];
+        readonly post: operations["remove"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/modules/administration/apply": {
+    readonly "/core/v1/admin/space/revoke": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -224,7 +229,7 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post: operations["administration_apply"];
+        readonly post: operations["revoke"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -247,13 +252,16 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/core/v1/admin/space/transport-stats": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
+        readonly get: operations["transport_stats"];
         readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -771,7 +779,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/core/v1/remote-info": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
         };
+        readonly get: operations["info"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/core/v1/requests/cancel": {
         readonly parameters: {
             readonly query?: never;
@@ -798,6 +821,38 @@ export interface paths {
         readonly get: operations["read_thread_asset_blob"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/enroll": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["enroll"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/session": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["session"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -838,46 +893,23 @@ export interface components {
             readonly source_id: string;
         };
         /**
-         * @description Closed result of an authorized command. A semantic mutation returns its
-         *     immutable commit identity; a validated no-op returns only the observed
-         *     store cursor and therefore cannot masquerade as a new commit.
+         * @description Core-authored identity of a mutation. Transport, origin and execution Project
+         *     are independent coordinates and cannot stand in for a person.
          */
-        readonly ApplyResponse_OwnedDocumentCommitValue_OwnedDocumentReceipt: {
-            readonly commit: components["schemas"]["CommitIdentity"];
-            readonly delivery?: components["schemas"]["AuthorizedDeliveryPacket"] | null;
-            readonly outcome: {
-                readonly canvas?: unknown;
-                readonly checkpoint_effect?: components["schemas"]["DocumentCheckpointEffect"] | null;
-                readonly committed_at?: string | null;
-                readonly document_id: string;
-                /** Format: int64 */
-                readonly generation: number;
-                /** Format: int64 */
-                readonly head_seq: number;
-                readonly mutation_effect?: components["schemas"]["DocumentMutationEffect"] | null;
-                readonly outcome: components["schemas"]["DocumentCommitOutcome"];
-                readonly owner_effect?: components["schemas"]["DocumentOwnerEffect"] | null;
-                readonly recovery?: components["schemas"]["RecoveryDraftSummary"] | null;
-                readonly recovery_capture?: components["schemas"]["RecoveryCaptureReceipt"] | null;
-                readonly semantic_block_etags?: {
-                    readonly [key: string]: components["schemas"]["DocumentSemanticBlockEtags"];
-                } | null;
-                readonly semantic_deleted_owner_block_ids?: readonly string[] | null;
-                readonly semantic_etags?: components["schemas"]["DocumentSemanticEtags"] | null;
-                readonly semantic_local_block_ids?: {
-                    readonly [key: string]: string;
-                } | null;
-            };
-            readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
-                readonly document_id: string;
-                /** Format: int64 */
-                readonly generation: number;
-                /** Format: int64 */
-                readonly head_seq: number;
-            };
+        readonly Actor: {
+            readonly member_id: string;
             /** @enum {string} */
+            readonly type: "member";
         } | {
+            readonly on_behalf_of: string;
+            readonly run_id?: string | null;
+            readonly session_id: string;
             /** @enum {string} */
+            readonly type: "agent";
+        } | {
+            readonly kind: components["schemas"]["ServiceKind"];
+            /** @enum {string} */
+            readonly type: "service";
         };
         readonly AddressReset: {
             readonly delivery_address: components["schemas"]["DeliveryAddress"];
@@ -893,6 +925,7 @@ export interface components {
         /** @description The desktop Host asks Core to vouch for one Agent execution of a product Session. */
         readonly AgentAttributionRequest: {
             readonly backend: components["schemas"]["AgentBackendKind"];
+            readonly run_id?: string | null;
             readonly session_id: string;
         };
         /**
@@ -1989,7 +2022,7 @@ export interface components {
             readonly kind: components["schemas"]["ClientKind"];
         };
         /** @enum {string} */
-        readonly ClientKind: "electron_host" | "native_cli" | "test";
+        readonly ClientKind: "remote_member" | "electron_host" | "native_cli" | "test";
         /** @enum {string} */
         readonly CodexThreadActiveFlag: "waitingOnApproval" | "waitingOnUserInput";
         /** @enum {string} */
@@ -1997,6 +2030,8 @@ export interface components {
         readonly CollectionWindow_ActivityRow: {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
+                readonly actor: components["schemas"]["Actor"];
+                readonly actor_label: string;
                 readonly at: string;
                 readonly category: string;
                 readonly description: string;
@@ -2930,6 +2965,18 @@ export interface components {
         /** @enum {string} */
         readonly CoreErrorCode: "invalid_input" | "unauthorized" | "not_found" | "ambiguous" | "conflict" | "stale_store_epoch" | "revision_conflict" | "generation_conflict" | "head_conflict" | "patch_not_found" | "patch_ambiguous" | "patch_overlap" | "idempotency_key_reused" | "idempotency_window_expired" | "legacy_idempotency_unavailable" | "protected_owner_deletion" | "document_update_missing_dependencies" | "invalid_document_schema" | "materialization_stale" | "maintenance_in_progress" | "schema_unsupported" | "store_corrupt" | "protocol_incompatible" | "event_replay_unavailable" | "deadline_exceeded" | "cancelled" | "overloaded" | "resource_exhausted" | "core_unavailable";
         readonly CoreErrorRecovery: {
+            /** @enum {string} */
+            readonly kind: "remote_access_withdrawn";
+        } | {
+            /** @enum {string} */
+            readonly kind: "renew_remote_session";
+        } | {
+            readonly budget: components["schemas"]["RemoteBudget"];
+            /** @enum {string} */
+            readonly kind: "retry_after";
+            /** Format: int64 */
+            readonly milliseconds: number;
+        } | {
             readonly failure: components["schemas"]["RecoveryPackageFailure"];
             /** @enum {string} */
             readonly kind: "recovery_package";
@@ -3881,12 +3928,14 @@ export interface components {
         readonly DatabasePersonalViewChange: {
             /** @enum {string} */
             readonly kind: "preferences";
+            readonly member_id: string;
             readonly value: components["schemas"]["DatabaseViewPersonalPreferences"];
             readonly view_id: string;
         } | {
             readonly collapsed: boolean;
             /** @enum {string} */
             readonly kind: "occurrence_disclosure";
+            readonly member_id: string;
             readonly target: components["schemas"]["DatabaseViewDisclosureTarget"];
             readonly view_id: string;
         };
@@ -4331,7 +4380,7 @@ export interface components {
             readonly presentation_override: components["schemas"]["DatabaseViewPresentationOverrideInput"];
             /**
              * Format: int64
-             * @description Zero means that this Profile has never changed this View.
+             * @description Zero means that this Member has never changed this View.
              */
             readonly revision: number;
             readonly rules_override: components["schemas"]["DatabaseViewRulesOverrideInput"];
@@ -4911,6 +4960,18 @@ export interface components {
         readonly EditorHistoryPatch: {
             readonly changes: readonly components["schemas"]["EditorHistoryBlockChange"][];
         };
+        readonly EnrollmentRequest: {
+            readonly code: string;
+            readonly device_label: string;
+            readonly display_name: string;
+        };
+        readonly EnrollmentResponse: {
+            readonly device_credential: string;
+            readonly device_id: string;
+            readonly member_id: string;
+            readonly space_id: string;
+            readonly space_name: string;
+        };
         readonly EventEnvelope: {
             readonly packet: components["schemas"]["AuthorizedDeliveryPacket"];
             /** Format: int32 */
@@ -5136,6 +5197,17 @@ export interface components {
         readonly InboxWriteResult: {
             readonly page_id: string;
             readonly replay: boolean;
+        };
+        readonly InviteRequest: {
+            readonly member_id?: string | null;
+            readonly role: components["schemas"]["MemberRole"];
+        };
+        readonly InviteResponse: {
+            readonly code: string;
+            /** Format: int64 */
+            readonly expires_at: number;
+            readonly fingerprint: string;
+            readonly url: string;
         };
         /** @enum {string} */
         readonly LauncherKind: "electron_host" | "native_cli" | "test";
@@ -5857,7 +5929,7 @@ export interface components {
             /** Format: int64 */
             readonly byte_length: number;
             readonly created_at: string;
-            readonly created_by_actor_id?: string | null;
+            readonly created_by: components["schemas"]["Actor"];
             readonly created_by_turn_id?: string | null;
             readonly default_name: string;
             readonly file_id: string;
@@ -6015,7 +6087,7 @@ export interface components {
             readonly next_cursor?: string | null;
         };
         readonly LibraryFileVersion: {
-            readonly actor_id?: string | null;
+            readonly actor: components["schemas"]["Actor"];
             readonly blob_etag: string;
             /** Format: int64 */
             readonly byte_length: number;
@@ -6311,26 +6383,7 @@ export interface components {
         readonly LibraryPageFileAttachment: {
             /** @description Core-authored RFC3339 time; unknown historical origins have no time. */
             readonly attached_at: string | null;
-            readonly attached_by: components["schemas"]["LibraryPageFileAttachmentActor"];
-        };
-        /**
-         * @description The origin proven when an explicit Page File entry was attached. File
-         *     creation evidence and the Session's current backend are independent facts.
-         */
-        readonly LibraryPageFileAttachmentActor: {
-            /** @enum {string} */
-            readonly kind: "person";
-        } | {
-            readonly backend: components["schemas"]["AgentBackendKind"];
-            /** @enum {string} */
-            readonly kind: "agent";
-            readonly session_id: string;
-        } | {
-            /** @enum {string} */
-            readonly kind: "external";
-        } | {
-            /** @enum {string} */
-            readonly kind: "unknown";
+            readonly attached_by: components["schemas"]["Actor"];
         };
         /** @enum {string} */
         readonly LibraryPageFileCollisionPolicy: "reject" | "suffix";
@@ -7449,6 +7502,15 @@ export interface components {
             readonly kind: "page";
             readonly page_id: string;
         };
+        readonly ListenerInfo: {
+            readonly fingerprint: string;
+            readonly url: string;
+        };
+        readonly ListenRequest: {
+            readonly address: string;
+            readonly cert?: string | null;
+            readonly key?: string | null;
+        };
         readonly LocalMutationResolveRequest: {
             readonly intent_hash: string;
             readonly module: components["schemas"]["ModuleName"];
@@ -7569,9 +7631,23 @@ export interface components {
             readonly lifecycle: components["schemas"]["MemberLifecycle"];
             /** Format: int64 */
             readonly revision: number;
+            readonly role: components["schemas"]["MemberRole"];
+        };
+        readonly MemberDevice: {
+            /** Format: int64 */
+            readonly created_at: number;
+            readonly id: string;
+            readonly label: string;
+            /** Format: int64 */
+            readonly last_seen: number;
+            readonly member_id: string;
+            /** Format: int64 */
+            readonly revoked_at?: number | null;
         };
         /** @enum {string} */
         readonly MemberLifecycle: "active" | "removed";
+        /** @enum {string} */
+        readonly MemberRole: "owner" | "member";
         readonly ModuleApplyRequest_AutomationIntent: {
             /** Format: int32 */
             readonly contract_version: number;
@@ -8105,12 +8181,10 @@ export interface components {
             /** Format: int32 */
             readonly contract_version: number;
             readonly intent: {
-                readonly document_id: string;
-                readonly for: components["schemas"]["ProjectWorkspacePageCreationTarget"];
+                readonly initialize_only: boolean;
                 /** @enum {string} */
-                readonly kind: "create_page_for";
-                readonly page_id: string;
-                readonly title: string;
+                readonly kind: "set_inbox_routing_consent";
+                readonly start_my_requests: boolean;
             } | {
                 readonly command: components["schemas"]["AutomationAssessmentCommand"];
                 /** @enum {string} */
@@ -9801,6 +9875,7 @@ export interface components {
             readonly contract_version: number;
             readonly read: {
                 /** @enum {string} */
+                readonly kind: "inbox_routing_consent";
             } | {
                 /** @enum {string} */
                 readonly kind: "automation_assessments";
@@ -10725,11 +10800,13 @@ export interface components {
             readonly deliver: boolean;
             /** @enum {string} */
             readonly kind: "consume_reminder";
+            readonly member_id: string;
             readonly remind_at: string;
         } | {
             readonly delivery_id: string;
             /** @enum {string} */
             readonly kind: "complete_reminder_delivery";
+            readonly unread: boolean;
         } | {
             readonly delivery_id: string;
             /** @enum {string} */
@@ -11344,7 +11421,10 @@ export interface components {
         /** @enum {string} */
         readonly ProjectWorkspaceInboxWindowFilter: "inbox" | "processed";
         readonly ProjectWorkspaceIntent: {
+            readonly initialize_only: boolean;
             /** @enum {string} */
+            readonly kind: "set_inbox_routing_consent";
+            readonly start_my_requests: boolean;
         } | {
             readonly command: components["schemas"]["AutomationAssessmentCommand"];
             /** @enum {string} */
@@ -13056,6 +13136,64 @@ export interface components {
             /** Format: int64 */
             readonly snooze_id: number;
         };
+        /**
+         * @description The independently bounded resource which refused remote admission.
+         * @enum {string}
+         */
+        readonly RemoteBudgetCounter: {
+            /** Format: int64 */
+            readonly bytes: number;
+            /** Format: int64 */
+            readonly peak_bytes: number;
+            /** Format: int64 */
+            readonly peak_requests: number;
+            /** Format: int64 */
+            readonly refusals: number;
+            /** Format: int64 */
+            readonly requests: number;
+        };
+        readonly RemoteCoreInfo: {
+            readonly actual_store_format: components["schemas"]["StoreFormatIdentity"];
+            readonly generation: components["schemas"]["RuntimeGenerationIdentity"];
+            readonly library_id: string;
+            readonly manifest: components["schemas"]["CoreCompatibilityManifest"];
+            readonly space_name: string;
+        };
+        /** @description Space membership proven by a renewable, device-bound session. */
+        readonly RemotePrincipal: {
+            readonly device_id: string;
+            readonly member_id: string;
+            readonly role: components["schemas"]["MemberRole"];
+            readonly session_id: string;
+            readonly space_id: string;
+        };
+        readonly RemoteTransportStats: {
+            readonly devices: {
+                readonly [key: string]: components["schemas"]["RemoteBudgetCounter"];
+            };
+            readonly members: {
+                readonly [key: string]: components["schemas"]["RemoteBudgetCounter"];
+            };
+            readonly pre_auth_ips: {
+                readonly [key: string]: components["schemas"]["RemoteBudgetCounter"];
+            };
+            readonly refusals: {
+                readonly [key: string]: number;
+            };
+            readonly routes: {
+                readonly [key: string]: number;
+            };
+        };
+        readonly RemoveMemberRequest: {
+            readonly member_id: string;
+        };
+        /** @description The name other Members see for the requesting Member; never the relative word "You". */
+        readonly RenameMemberRequest: {
+            readonly name: string;
+        };
+        readonly RenameSpaceRequest: {
+            readonly name: string;
+        };
         /** @description Exact resource vocabulary used for delivery routing and projection invalidation. */
         readonly ResourceKey: {
             /** @enum {string} */
@@ -13994,6 +14132,8 @@ export interface components {
                 readonly store_epoch: components["schemas"]["StoreEpoch"];
                 readonly value: {
                     /** @enum {string} */
+                    readonly kind: "inbox_routing_consent";
+                    readonly start_my_requests?: boolean | null;
                 } | {
                     /** @enum {string} */
                     readonly kind: "automation_assessments";
@@ -14096,6 +14236,7 @@ export interface components {
                     readonly delivery?: components["schemas"]["ProjectWorkspaceSessionReminderDelivery"] | null;
                     /** @enum {string} */
                     readonly kind: "next_session_reminder";
+                    readonly member_id?: string | null;
                     readonly next_wake_at?: string | null;
                     readonly session?: components["schemas"]["ProjectWorkspaceSessionSummary"] | null;
                 } | {
@@ -14415,6 +14556,9 @@ export interface components {
             /** @enum {string} */
             readonly status: "error";
         };
+        readonly RevokeDeviceRequest: {
+            readonly device_id: string;
+        };
         readonly RuntimeDescriptor: {
             readonly actual_store_format: components["schemas"]["StoreFormatIdentity"];
             readonly artifact: components["schemas"]["CoreArtifactIdentity"];
@@ -14442,6 +14586,8 @@ export interface components {
         };
         /** @enum {string} */
         readonly SchemaOwner: "type_script" | "rust";
+        /** @enum {string} */
+        readonly ServiceKind: "sources" | "automations" | "scheduler" | "inbox_routing" | "agent_runtime" | "maintenance" | "notifications" | "membership";
         readonly SessionExecutionObservation: {
             readonly agent?: components["schemas"]["AgentWorkSelection"] | null;
             readonly failureReason?: string | null;
@@ -14488,6 +14634,15 @@ export interface components {
         readonly SessionExecutionState: "working" | "queued" | "waiting" | "idle" | "failed" | "unavailable";
         /** @enum {string} */
         readonly SessionExecutionTerminalStatus: "completed" | "failed" | "interrupted";
+        readonly SessionRequest: {
+            readonly device_credential: string;
+        };
+        readonly SessionResponse: {
+            /** Format: int64 */
+            readonly expires_at: number;
+            readonly principal: components["schemas"]["RemotePrincipal"];
+            readonly session_token: string;
+        };
         readonly ShutdownRequest: {
             /** @enum {string} */
             readonly kind: "shutdown";
@@ -14840,6 +14995,12 @@ export interface components {
             readonly thread_id: string;
             readonly url: string;
         };
+            readonly space_name: string;
+        };
+        /** @description Display identity belongs to Core; endpoints remain transport coordinates. */
+        readonly SpaceName: {
+            readonly name: string;
+            readonly space_id: string;
         readonly SqlBinding: {
             readonly data_source_id: string;
             readonly table: string;
@@ -15045,70 +15206,260 @@ export interface operations {
             };
         };
     };
+    readonly devices: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
         };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
                 };
-                };
-            };
-                };
-                };
-            };
-        };
-        };
-        };
-        };
-                };
-            };
-        };
-                };
-            };
-        };
-        };
-        };
-        };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["MemberDevice"][];
                 };
             };
-        };
-        readonly ResponseEnvelope_ModuleReadSnapshot_QueryReadValue: {
-            readonly payload: {
-                /** Format: int64 */
-                readonly commit_head: number;
-                /** Format: int32 */
-                readonly contract_version: number;
-                readonly store_epoch: components["schemas"]["StoreEpoch"];
-                readonly value: {
-                    /** @enum {string} */
-                    readonly kind: "schema";
-                    readonly value: components["schemas"]["SqlSchema"];
-                } | {
-                    /** @enum {string} */
-                    readonly kind: "query";
-                    readonly value: components["schemas"]["SqlResult"];
-                } | {
-                    /** @enum {string} */
-                    readonly kind: "displayed_view_query";
-                    readonly value: components["schemas"]["DatabaseDisplayedViewQueryResult"];
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
         };
+    };
+    readonly invite: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
         };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["InviteRequest"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InviteResponse"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
         };
-        readonly RuntimeDescriptor: {
-            readonly actual_store_format: components["schemas"]["StoreFormatIdentity"];
-            readonly artifact: components["schemas"]["CoreArtifactIdentity"];
-            readonly endpoint: string;
-            readonly manifest: components["schemas"]["CoreCompatibilityManifest"];
-            readonly manifest_digest: string;
-            /** Format: int32 */
-            readonly pid: number;
-            readonly profile_id: string;
-            /** Format: int64 */
-            readonly readiness_generation: number;
-            readonly start_nonce: string;
-            readonly store_epoch: string;
+    };
+    readonly listen: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
         };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ListenRequest"];
+            };
         };
+        readonly responses: {
+            /** @description Local Owner enables HTTPS */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ListenerInfo"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+    readonly rename_member: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RenameMemberRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description A Member chooses the name others see */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Member"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly rename: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RenameSpaceRequest"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SpaceName"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+                };
+            };
+        };
+    readonly remove: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RemoveMemberRequest"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "text/plain": boolean;
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly revoke: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RevokeDeviceRequest"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "text/plain": boolean;
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly transport_stats: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Local Owner remote budget diagnostics */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RemoteTransportStats"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
     readonly issue_agent_attribution: {
         readonly parameters: {
             readonly query?: never;
@@ -16287,6 +16638,35 @@ export interface operations {
             };
         };
     };
+    readonly info: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Authenticated compatibility discovery */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RemoteCoreInfo"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
     readonly cancel_request: {
         readonly parameters: {
             readonly query?: never;
@@ -16339,6 +16719,72 @@ export interface operations {
                 };
                 content: {
                     readonly "application/octet-stream": readonly number[];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly enroll: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["EnrollmentRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description One-time device credential */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["EnrollmentResponse"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly session: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SessionRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Renewable device-bound session */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionResponse"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */

@@ -9,7 +9,7 @@ use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::events::ProjectionSnapshotAuthority;
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const DATABASE_CONTRACT_VERSION: u32 = 28;
+pub const DATABASE_CONTRACT_VERSION: u32 = 34;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1009,7 +1009,7 @@ pub enum DatabaseReadValue {
 pub struct DatabaseViewPersonalPreferences {
     pub rules_override: DatabaseViewRulesOverrideInput,
     pub presentation_override: DatabaseViewPresentationOverrideInput,
-    /// Zero means that this Profile has never changed this View.
+    /// Zero means that this Member has never changed this View.
     pub revision: i64,
 }
 
@@ -1037,10 +1037,12 @@ pub struct DatabaseViewCollapsedOccurrences {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DatabasePersonalViewChange {
     Preferences {
+        member_id: String,
         view_id: String,
         value: DatabaseViewPersonalPreferences,
     },
     OccurrenceDisclosure {
+        member_id: String,
         view_id: String,
         target: DatabaseViewDisclosureTarget,
         collapsed: bool,
@@ -1048,6 +1050,14 @@ pub enum DatabasePersonalViewChange {
 }
 
 impl DatabasePersonalViewChange {
+    pub fn member_id(&self) -> &str {
+        match self {
+            Self::Preferences { member_id, .. } | Self::OccurrenceDisclosure { member_id, .. } => {
+                member_id
+            }
+        }
+    }
+
     pub fn view_id(&self) -> &str {
         match self {
             Self::Preferences { view_id, .. } | Self::OccurrenceDisclosure { view_id, .. } => {

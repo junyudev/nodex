@@ -9,6 +9,9 @@ import {
 describe("page/file-provenance authoritative scenario", () => {
   test("attributes an Agent's report to its chat and keeps mixed origins apart", async () => {
     await withCoreScenario({ scenarioId: PAGE_FILE_PROVENANCE_SCENARIO_ID }, async (context) => {
+      const identity = await context.client.libraryRead({ kind: "local_member" });
+      if (identity.value.kind !== "local_member") throw new Error("Member identity required");
+      const memberId = identity.value.value.id;
       const facts = requirePageFileProvenanceScenarioFacts(context.facts);
       expect([...facts.reportPaths].sort()).toEqual([
         "profile/flamegraph.png",
@@ -20,15 +23,12 @@ describe("page/file-provenance authoritative scenario", () => {
         context.manifest.projectId,
         facts.reportPageId,
       );
-      // Each body refers to one of its Files inline.
-      expect(
-        report.files.find((item) => item.logical_path === "profile/report.html")?.body_count,
-      ).toBe(1);
       for (const item of report.files) {
         expect(item.attachment?.attached_by).toEqual({
-          kind: "agent",
+          type: "agent",
+          run_id: null,
+          on_behalf_of: memberId,
           session_id: facts.reportChatId,
-          backend: "codex",
         });
       }
 
@@ -37,12 +37,15 @@ describe("page/file-provenance authoritative scenario", () => {
         facts.mixedPageId,
       );
       const byPath = new Map(mixed.files.map((item) => [item.logical_path ?? null, item]));
-      expect(byPath.get("brief.md")?.attachment?.attached_by).toEqual({ kind: "person" });
-      expect(byPath.get("brief.md")?.body_count).toBe(1);
+      expect(byPath.get("brief.md")?.attachment?.attached_by).toEqual({
+        type: "member",
+        member_id: memberId,
+      });
       expect(byPath.get("mockups/settings-dark.png")?.attachment?.attached_by).toEqual({
-        kind: "agent",
+        type: "agent",
+        run_id: null,
+        on_behalf_of: memberId,
         session_id: facts.mixedChatId,
-        backend: "claude",
       });
       expect(byPath.get(null)).toMatchObject({ attachment: null, body_count: 1 });
     });

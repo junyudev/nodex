@@ -1,3 +1,4 @@
+import { CoreAuthority } from "../../core-runtime/CoreAuthority";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -37,6 +38,9 @@ it.effect(
         let registered = true;
         const store = makePersistedAtomStore(home);
         const dependencies = Layer.mergeAll(
+          Layer.succeed(CoreAuthority, {
+            identity: { libraryId: "personal" },
+          } as CoreAuthority["Service"]),
           Layer.succeed(ProfilePersistedAtoms, store),
           stateLive.pipe(Layer.provide(Layer.succeed(ProfilePersistedAtoms, store))),
           testLayer({ nodexHome: home, rendererUrl: "http://localhost:5173" }),

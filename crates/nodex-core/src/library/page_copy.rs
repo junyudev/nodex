@@ -1689,7 +1689,12 @@ mod tests {
 
     fn context_for(project_id: &str) -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -1785,6 +1790,10 @@ mod tests {
                 },
             )
             .expect("persist Agent move Thread");
+        kernel
+            .writer()
+            .call(|c| crate::infrastructure::actors::seed_agent_session(c, "thread:agent-move"))
+            .unwrap();
         workspace
             .apply(
                 &context(),
@@ -1981,6 +1990,10 @@ mod tests {
                 },
             )
             .expect("persist Agent Thread");
+        kernel
+            .writer()
+            .call(|c| crate::infrastructure::actors::seed_agent_session(c, "thread:agent-copy"))
+            .unwrap();
         workspace
             .apply(
                 &context(),
@@ -2229,6 +2242,10 @@ mod tests {
                 },
             )
             .expect("persist Agent Thread");
+        kernel
+            .writer()
+            .call(|c| crate::infrastructure::actors::seed_agent_session(c, "thread:agent-create"))
+            .unwrap();
         workspace
             .apply(
                 &context(),

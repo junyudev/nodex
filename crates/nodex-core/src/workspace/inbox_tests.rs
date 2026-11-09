@@ -5143,18 +5143,38 @@ mod scheduled {
         input.owner_member_id = Some("remote-owner".into());
         setup(&workspace, input);
         workspace.kernel.writer().call(|c|{assert_eq!(c.query_row("SELECT json_extract(value_json,'$.owner') FROM block_properties WHERE block_id='page:firing' AND property_key='work'",[],|r|r.get::<_,String>(0))?,"remote-owner");Ok(())}).unwrap();
+        assert!(
+            window(&workspace.module, ProjectWorkspaceInboxWindowFilter::Inbox)
+                .iter()
+                .all(|item| item.page_id != "page:firing")
+        );
+        workspace.kernel.writer().call(|c| {c.execute_batch("INSERT INTO member_devices(id,library_id,member_id,label,credential_hash,created_at,last_seen) VALUES('remote-owner','library-1','remote-owner','Device','remote-owner',unixepoch(),unixepoch()); INSERT INTO member_sessions(id,device_id,token_hash,created_at,expires_at) VALUES('remote-owner','remote-owner','remote-owner',unixepoch(),unixepoch()+3600)")?;Ok(())}).unwrap();
+        let owner = BoundModuleContext {
+            adapter: AdapterKind::RemoteMember,
+            principal: Some(nodex_core_contracts::RemotePrincipal {
+                space_id: "library-1".into(),
+                member_id: "remote-owner".into(),
+                device_id: "remote-owner".into(),
+                session_id: "remote-owner".into(),
+                role: nodex_core_contracts::library::MemberRole::Owner,
+            }),
+            ..host()
+        };
+        let value = workspace
+            .module
             .read(
-                &host(),
+                &owner,
                 ModuleReadRequest {
-                    contract_version: nodex_core_contracts::AUTOMATION_CONTRACT_VERSION,
-                    read: AutomationRead::DueWork {
-                        lane: AutomationDueWorkLane::Definitions,
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: ProjectWorkspaceRead::InboxEntry {
+                        page_id: "page:firing".into(),
                     },
                 },
             )
-            .unwrap();
-        let AutomationReadValue::DueWork { plan } = snapshot.value else {
-            panic!("due work")
+            .unwrap()
+            .value;
+        let ProjectWorkspaceReadValue::InboxEntry { item: Some(item) } = value else {
+            panic!("Owner's decision")
         };
         assert!(plan.due_now);
         automation(
@@ -5825,6 +5845,7 @@ mod scheduled {
                     execution_selection: None,
                 }
             ),
+            CoreErrorCode::Unauthorized
         );
         let error = workspace.module.apply(&host(), request("suggest-firing", ProjectWorkspaceIntent::RequestInboxSuggestion {
             request_id: "suggest:task".into(), mode: nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionMode::Grouped,
@@ -8258,6 +8279,7 @@ mod plans {
         let w = seeded_workspace();
         super::super::test_support::create_project(&w.module, "create:other", "project:other");
         send(&w.module, "plan", "Prepare and implement");
+        w.kernel.writer().call(|c| {c.execute("UPDATE libraries SET space_kind='team' WHERE id='library-1'",[])?;c.execute("INSERT INTO members(id,library_id,display_name,lifecycle) VALUES('member:requester','library-1','Requester','active')",[])?;c.execute("UPDATE block_properties SET value_json=json_set(value_json,'$.owner','member:requester') WHERE property_key='work' AND block_id IN (SELECT page_id FROM inbox_entries)",[])?;Ok(())}).unwrap();
 
         propose(
             &w.module,

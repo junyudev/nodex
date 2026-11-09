@@ -494,13 +494,16 @@ HTML style tags are read but never written.
 A link to a Page with its own text stays a link: `[Roadmap](nodex://pages/ID)`.
 An autolink to a Page, `<nodex://pages/ID>`, is a Page mention, which shows the
 Page's current title. An autolink to a Session, `<nodex://sessions/ID>`, is a
-chat mention, which shows the chat's current title; these are the links Nodex
-copies for a Page and a chat. A mention's text is never in the exact text, so
+chat mention, which shows the chat's current title. A mention's text is never in the exact text, so
 the exact text does not change when the Page or chat is renamed.
+
+Copied links include `?spaceId=ID` to retain their destination Space. Qualified
+Page and Session URLs remain ordinary links, including in angle brackets; they
+never become relative mentions or edges in the current Space's reference graph.
 
 A chat mention names the chat's Session, the identity Page links, the sidebar
 and the Workbench use. A newly added mention must name a Session in the current
-Profile; projectless Sessions and Sessions in other Projects are valid targets. Until the schema renames it, it is the `threadMention`
+Space; projectless Sessions and Sessions in other Projects are valid targets. Until the schema renames it, it is the `threadMention`
 inline type, whose `uuid` holds the Session's id. A conversation that only Codex
 holds has no Session and is not mentioned: it is imported first, or linked as
 `[Title](codex://threads/ID)`.

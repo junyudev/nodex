@@ -17,6 +17,7 @@ import {
 import type { ProjectSession } from "./types";
 import { queryKeys } from "./query-keys";
 import { readThreadExecutionLocation } from "./thread-handoff-runtime";
+import { isHostedChat } from "./hosted-chat";
 
 export function threadExecutionLocationQueryOptions(threadId: string) {
   return queryOptions({
@@ -41,8 +42,11 @@ export function useRuntimeExecutionLocation(
   store?: AgentRuntimeActivityStore,
 ): ThreadExecutionLocationView | null {
   const connection = useAgentRuntimeConnectionState(store);
+  // Where a hosted chat runs belongs to its Space host; this desktop cannot locate or move it.
   const enabled =
-    rootThreadId !== null && (policy === "on-demand" || connection.status === "ready");
+    rootThreadId !== null &&
+    !isHostedChat() &&
+    (policy === "on-demand" || connection.status === "ready");
   const query = useQuery({ ...threadExecutionLocationQueryOptions(rootThreadId ?? ""), enabled });
   return rootThreadId ? (query.data ?? null) : null;
 }

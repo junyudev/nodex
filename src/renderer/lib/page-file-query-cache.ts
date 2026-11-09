@@ -1,9 +1,14 @@
+import { rendererSpaceId } from "./renderer-space";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
 import { subscribeAllPageFileChanges } from "./page-library-changes";
 
 const isFileSourceQueryForPage = (queryKey: QueryKey, pageId: string): boolean =>
-  queryKey[0] === "libraryPages" && queryKey[1] === "files" && queryKey[3] === pageId;
+  queryKey[0] === "space" &&
+  queryKey[1] === rendererSpaceId() &&
+  queryKey[2] === "libraryPages" &&
+  queryKey[3] === "files" &&
+  queryKey[5] === pageId;
 
 /** Marks every cached access-context view stale, including currently unmounted Page tabs. */
 export const invalidateCachedPageFileQueries = async (

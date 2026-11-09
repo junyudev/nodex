@@ -15,6 +15,7 @@ import {
 } from "../../shared/database-module-v2";
 import type { DatabaseChangeEvent } from "../../shared/database-events";
 import { applyDatabaseModule, readDatabaseModule, subscribeDatabaseChanges } from "./api";
+import { isRemoteSpace, spaceStorageKey } from "./renderer-space";
 
 const LEGACY_STORAGE_KEY = "nodex-database-view-presentation-overrides-v1";
 const EMPTY_OVERRIDES: Readonly<Record<string, DatabaseViewPresentationOverride>> = Object.freeze(
@@ -45,6 +46,7 @@ export const normalizeDatabaseViewPresentationPreferences = (value: unknown): Ov
 };
 
 const readLegacyOverrides = (): OverrideMap => {
+  if (isRemoteSpace()) return EMPTY_OVERRIDES;
   if (typeof window === "undefined") return EMPTY_OVERRIDES;
   try {
     const raw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
@@ -703,7 +705,7 @@ class DatabaseViewPersonalStateRegistry {
   private accessSequence = 0;
 
   getStore(projectId: string, viewId: DatabaseViewId): DatabaseViewPersonalStateStore {
-    const key = JSON.stringify([projectId, viewId]);
+    const key = spaceStorageKey(JSON.stringify([projectId, viewId]));
     const existing = this.stores.get(key);
     if (existing) {
       this.touch(existing);

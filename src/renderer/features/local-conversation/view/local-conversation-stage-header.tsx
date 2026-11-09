@@ -31,7 +31,7 @@ import {
   TOOLBAR_BUTTON_BASE_CLASS,
   TOOLBAR_BUTTON_GHOST_CLASS,
 } from "@/lib/workbench-toolbar-control-styles";
-import { buildSessionDeepLink } from "../../../../shared/nodex-deeplink";
+import { buildSessionDeepLink } from "@/lib/page-deeplink";
 import type {
   ConversationProviderPresentation,
   ThreadStageActions,

@@ -579,6 +579,8 @@ describe("Electron native data authority", () => {
           `Core Document checkpoint failed: ${checkpoint.error.code}: ${checkpoint.error.message}`,
         );
       }
+      const member = await runtime.rootClient.libraryRead({ kind: "local_member" });
+      if (member.value.kind !== "local_member") throw new Error("Expected the local Member");
       expect(checkpoint).toMatchObject({
         ok: true,
         value: {
@@ -588,7 +590,7 @@ describe("Electron native data authority", () => {
             documentId: nativeSourceDocumentId,
             generation: 1,
             baseHeadSeq: 1,
-            actor: checkpointRequest.actor,
+            actor: { type: "member", member_id: member.value.value.id },
             revisionKind: "manual",
             materializationKind: "synced_block",
           },

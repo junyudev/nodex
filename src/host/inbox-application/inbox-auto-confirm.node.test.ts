@@ -1,6 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { DEFAULT_INBOX_SETTINGS, LIBRARY_INBOX, type InboxSettings } from "../../shared/inbox";
+import { writeRoutingConsent } from "./InboxRoutingConsent";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { captureInbox, inboxOverRealCore } from "./InboxApplication.test-support";
 
@@ -30,6 +31,7 @@ it.effect.each(["suggest", "act_on_requests"] as const)(
           () => Effect.succeed([provider]),
           () => current,
         );
+        yield* writeRoutingConsent(core, mode === "act_on_requests");
         const captured = yield* captureInbox(inbox, "Fix the README typo");
         const original = (yield* inbox.entry(captured.pageId))!;
         yield* inbox.requestSuggestion({
@@ -100,6 +102,7 @@ it.effect.each(["suggest", "act_on_requests"] as const)(
           assert.isNull(entry.proposal?.confirmedBy);
           assert.isEmpty(yield* inbox.outbox(16));
           current = { ...current, dispatchMode: "act_on_requests" };
+          yield* writeRoutingConsent(core, true);
           yield* inbox.autoConfirm;
           assert.isEmpty(yield* inbox.outbox(16));
           return;

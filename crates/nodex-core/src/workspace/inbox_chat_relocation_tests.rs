@@ -2,6 +2,69 @@ use super::*;
 use nodex_core_contracts::LIBRARY_CONTRACT_VERSION;
 use nodex_core_contracts::library::*;
 
+fn requesting_member(w: &TestWorkspace) -> nodex_core_contracts::BoundModuleContext {
+    use nodex_core_contracts::{AdapterKind, team::*};
+    let membership = crate::library::LibraryMembership::new(&w.kernel, "library-1".into());
+    let invite = membership
+        .invite(
+            InviteRequest {
+                role: MemberRole::Member,
+                member_id: None,
+            },
+            ListenerInfo {
+                url: "https://localhost".into(),
+                fingerprint: "test".into(),
+            },
+        )
+        .unwrap();
+    let enrolled = membership
+        .enroll(EnrollmentRequest {
+            code: invite.code,
+            device_label: "Laptop".into(),
+            display_name: "Bob".into(),
+        })
+        .unwrap();
+    let session = membership
+        .session(SessionRequest {
+            device_credential: enrolled.device_credential,
+        })
+        .unwrap();
+    nodex_core_contracts::BoundModuleContext {
+        adapter: AdapterKind::RemoteMember,
+        principal: Some(session.principal),
+        project_id: None,
+        ..context()
+    }
+}
+
+fn attribution(w: &TestWorkspace, page: &str) -> (serde_json::Value, Option<String>) {
+    w.kernel
+        .readers()
+        .read_default(|c| {
+            c.query_row(
+                "SELECT actor_json,author_member_id FROM inbox_entries WHERE page_id=?1",
+                [page],
+                |r| {
+                    let actor: String = r.get(0)?;
+                    Ok((serde_json::from_str(&actor).unwrap(), r.get(1)?))
+                },
+            )
+            .map_err(Into::into)
+        })
+        .unwrap()
+}
+
+fn assignment_evidence(w: &TestWorkspace, page: &str) -> (nodex_core_contracts::Actor, i64) {
+    let id = crate::domain::identity::stable_uuid_v7("dispatch", "chat-assignment", page);
+    w.kernel.readers().read_default(|c| {
+        let (actor, sequence): (String, i64) = c.query_row(
+            "SELECT mutation.actor_json,effect.commit_seq FROM block_mutations mutation JOIN local_commit_effects effect ON effect.change_log_seq=mutation.change_log_seq WHERE mutation.mutation_id=?1",
+            [id], |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        Ok((serde_json::from_str(&actor).unwrap(), sequence))
+    }).unwrap()
+}
+
 fn intake(w: &TestWorkspace, github: bool) -> ProjectWorkspaceInboxItem {
     if github {
         batch(
@@ -16,6 +79,24 @@ fn intake(w: &TestWorkspace, github: bool) -> ProjectWorkspaceInboxItem {
             )],
         );
     } else {
+        let author = requesting_member(w);
+        w.module
+            .apply(
+                &author,
+                request(
+                    "intake",
+                    ProjectWorkspaceIntent::SendInboxMessage {
+                        reply_to_page_id: None,
+                        expected_store_epoch: None,
+                        page_id: PAGE.into(),
+                        document_id: "document:intake".into(),
+                        body: "Fix the documentation".into(),
+                        title: None,
+                        project_id: None,
+                    },
+                ),
+            )
+            .unwrap();
     }
     let ProjectWorkspaceReadValue::InboxWindow { items } = read(
         &w.module,
@@ -193,6 +274,22 @@ fn assert_relocation(existing: bool) {
         let before_work = work(&w, page);
         let before_follows = follow_list(&w, page);
         let before_workspace = page_workspace(&w, page);
+        let before_attribution = attribution(&w, page);
+        let confirmer = crate::library::LibraryMembership::new(&w.kernel, "library-1".into())
+            .require_owner()
+            .unwrap();
+        if github {
+            assert_eq!(
+                before_attribution,
+                (json!({"type":"service","kind":"sources"}), None)
+            );
+        } else {
+            assert_ne!(before_attribution.1.as_deref(), Some(confirmer.as_str()));
+            assert_eq!(
+                before_attribution.0,
+                json!({"type":"member","member_id":before_attribution.1})
+            );
+        }
         let home = project_home(&w);
         assert_ne!(membership(&w, page), home);
         let intent = dispatch(&w, page, existing, Some("project:work"));
@@ -208,6 +305,31 @@ fn assert_relocation(existing: bool) {
         assert_eq!(handled.page_status.as_ref().unwrap().id, "doing");
         assert_eq!(work(&w, page), before_work);
         assert_eq!(handled.source, original.source);
+        assert_eq!(
+            attribution(&w, page),
+            before_attribution,
+            "Relocation must preserve the author and origin actor"
+        );
+        let expected_actor = json!({"type":"member","member_id":confirmer});
+        let (move_actors, commit_actor) = w.kernel.readers().read_default(|c| {
+            let actors = c.prepare("SELECT actor_json FROM block_mutations WHERE mutation_id='dispatch:inbox-move:0' UNION ALL SELECT json_extract(request_json,'$.actor') FROM block_relocations WHERE id='dispatch:inbox-move:0'")?
+                .query_map([], |r| r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+            let commit: String = c.query_row("SELECT actor_json FROM mutation_actors WHERE module_name='project_workspace' AND operation_id='dispatch'", [], |r|r.get(0))?;
+            Ok((actors, commit))
+        }).unwrap();
+        assert_eq!(
+            move_actors.len(),
+            1,
+            "The relocation must retain one history fact"
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&move_actors[0]).unwrap(),
+            expected_actor
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&commit_actor).unwrap(),
+            expected_actor
+        );
         assert_eq!(handled.scope, ProjectWorkspaceInboxScope::Library);
         assert_eq!(handled.body, original.body);
         assert!(
@@ -269,6 +391,7 @@ fn dispatch_assigns_only_empty_user_and_github_pages_to_the_receiving_agent() {
                 let w = setup();
                 let original = intake(&w, github);
                 let page = &original.page_id;
+                let original_attribution = attribution(&w, page);
                 board(&w);
                 let before = work(&w, page);
                 let mut expected = before.clone();
@@ -334,7 +457,16 @@ fn dispatch_assigns_only_empty_user_and_github_pages_to_the_receiving_agent() {
                     .unwrap();
                 if assigned == "none" {
                     expected["assignee"] = json!({"kind":"agent","instance_id":"codex","model":if existing {"receiver-model"} else {"dispatch-model"},"effort":if existing {"high"} else {"medium"}});
+                    let (actor, commit_seq) = assignment_evidence(&w, page);
+                    let confirmer =
+                        crate::library::LibraryMembership::new(&w.kernel, "library-1".into())
+                            .require_owner()
+                            .unwrap();
                     assert_eq!(
+                        actor,
+                        nodex_core_contracts::Actor::Member {
+                            member_id: confirmer
+                        },
                     );
                     assert_eq!(commit_seq, result.committed.commit_seq);
                 }
@@ -344,6 +476,7 @@ fn dispatch_assigns_only_empty_user_and_github_pages_to_the_receiving_agent() {
                     "github={github}, existing={existing}, assigned={assigned}"
                 );
                 assert_eq!(expected["auto_start"], false);
+                assert_eq!(attribution(&w, page), original_attribution);
                 assert_eq!(membership(&w, page), project_home(&w));
                 assert_eq!(read_item(&w, page).page_status.unwrap().id, "doing");
                 let replay = w
@@ -355,6 +488,128 @@ fn dispatch_assigns_only_empty_user_and_github_pages_to_the_receiving_agent() {
                 assert!(!result.committed.receipt.mutation.duplicate);
             }
         }
+    }
+}
+
+#[test]
+fn assignment_history_names_the_dispatching_agent_and_keeps_the_receiving_agent_separate() {
+    use nodex_core_contracts::{
+        Actor, BoundAgentAttribution, BoundModuleContext, agent::AgentBackendKind,
+    };
+    use nodex_core_contracts::{
+        agent::AgentTurnProvenance,
+        workspace::{
+            ProjectWorkspaceAgentRuntimeAuthority, ProjectWorkspaceAgentRuntimeTurnKind,
+            ProjectWorkspaceTurnAuthority,
+        },
+    };
+    for (existing, host_turn) in [(false, false), (false, true), (true, false), (true, true)] {
+        let w = setup();
+        let original = intake(&w, true);
+        let page = &original.page_id;
+        let original_attribution = attribution(&w, page);
+        board(&w);
+        apply(
+            &w.module,
+            "coordinator",
+            ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                coordinator: true,
+                side_chat_source_session_id: None,
+                session_id: "dispatching-coordinator".into(),
+                project_id: None,
+                title: "Dispatching Coordinator".into(),
+                initial_page_ids: vec![],
+                agent_selection: None,
+                runtime_id: "runtime:coordinator".into(),
+                runtime_thread_id: "thread:coordinator".into(),
+                launch_request_id: "launch:coordinator".into(),
+            },
+        );
+        if existing {
+            apply(
+                &w.module,
+                "receiver",
+                ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                    coordinator: false,
+                    side_chat_source_session_id: None,
+                    session_id: "chat".into(),
+                    project_id: Some("project:work".into()),
+                    title: "Receiver".into(),
+                    initial_page_ids: vec![],
+                    agent_selection: Some(AgentWorkSelection {
+                        instance_id: "codex".into(),
+                        model: "receiver-model".into(),
+                        effort: Some("high".into()),
+                    }),
+                    runtime_id: "runtime:receiver".into(),
+                    runtime_thread_id: "thread:receiver".into(),
+                    launch_request_id: "launch:receiver".into(),
+                },
+            );
+        }
+        let caller = BoundModuleContext {
+            agent_attribution: (!host_turn).then(|| BoundAgentAttribution {
+                session_id: "dispatching-coordinator".into(),
+                run_id: None,
+                backend: AgentBackendKind::Codex,
+            }),
+            ..context()
+        };
+        let expected = Actor::Agent {
+            session_id: "dispatching-coordinator".into(),
+            run_id: host_turn.then(|| "run:coordinator".into()),
+            on_behalf_of: crate::library::LibraryMembership::new(&w.kernel, "library-1".into())
+                .require_owner()
+                .unwrap(),
+        };
+        let mut intent = dispatch(&w, page, existing, Some("project:work"));
+        if host_turn {
+            intent = ProjectWorkspaceIntent::AgentCommand {
+                provenance: Box::new(AgentTurnProvenance {
+                    profile_id: "profile-1".into(),
+                    authority: ProjectWorkspaceTurnAuthority {
+                        thread_id: "thread:coordinator".into(),
+                        root_thread_id: "thread:coordinator".into(),
+                        turn_id: "run:coordinator".into(),
+                        actor_project_id: None,
+                        library_id: "library-1".into(),
+                        store_epoch: "epoch-1".into(),
+                        runtime: Some(ProjectWorkspaceAgentRuntimeAuthority {
+                            session_id: "dispatching-coordinator".into(),
+                            runtime_id: "runtime:coordinator".into(),
+                            turn_kind: ProjectWorkspaceAgentRuntimeTurnKind::Run,
+                        }),
+                    },
+                }),
+                intent: Box::new(intent),
+            };
+        }
+        let result = w
+            .module
+            .apply(&caller, request("dispatch", intent))
+            .unwrap();
+        let (actor, commit_seq) = assignment_evidence(&w, page);
+        assert_eq!(actor, expected);
+        assert_eq!(commit_seq, result.committed.commit_seq);
+        let audit: Actor = w.kernel.readers().read_default(|c| {
+            let actor: String = c.query_row(
+                "SELECT actor_json FROM mutation_actors WHERE module_name='project_workspace' AND operation_id='dispatch'",
+                [], |row| row.get(0),
+            )?;
+            Ok(serde_json::from_str(&actor).unwrap())
+        }).unwrap();
+        assert_eq!(audit, expected);
+        let assigned = work(&w, page);
+        assert_eq!(
+            assigned["assignee"]["model"],
+            if existing {
+                "receiver-model"
+            } else {
+                "dispatch-model"
+            }
+        );
+        assert_eq!(assigned["auto_start"], false);
+        assert_eq!(attribution(&w, page), original_attribution);
     }
 }
 #[test]

@@ -1,3 +1,4 @@
+import { bindRendererSpace } from "./renderer-space";
 import { decodeRecoveryBundleSections } from "../../shared/block-documents/recovery-bundle";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
@@ -21,6 +22,13 @@ import type {
   DocumentRecoveryCommand,
 } from "../../shared/block-documents/document-recovery";
 
+bindRendererSpace({
+  spaceId: "library:one",
+  kind: "team",
+  memberId: "bob",
+  name: "Team",
+  availability: "ready",
+});
 const scope = { libraryId: "library:one", routingContext: { kind: "library" as const } };
 const snapshot = (): DocumentRecoverySnapshot => {
   const { document } = createPageDocument({ documentId: "document:one", initialTitle: "Retained" });

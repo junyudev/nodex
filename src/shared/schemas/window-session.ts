@@ -35,6 +35,7 @@ export const WindowSessionNewWindowRequestSchema = z
 export const WindowSessionSaveLayoutInputSchema = z
   .object({
     sessionId: z.string().min(1),
+    spaceId: z.string().min(1).nullable().optional(),
     revision: z.number().int().nonnegative(),
     layout: WorkbenchLayoutSnapshotSchema,
   })
@@ -63,6 +64,10 @@ export const WindowSessionRecordSchema = z.object({
   updatedAt: z.string(),
   focusedAt: z.string(),
   bounds: WindowSessionBoundsSchema.optional().catch(undefined),
+  activeSpaceId: z.string().min(1).optional(),
+  spaceLayouts: z
+    .record(z.string().min(1), z.object({ layout: WorkbenchLayoutSnapshotSchema }))
+    .optional(),
 }) satisfies z.ZodType<WindowSessionRecord>;
 
 export const WindowSessionCatalogSchema = z.object({

@@ -723,7 +723,7 @@ fn agent_attribution_credentials_name_the_attaching_session() {
             &native_headers
         )
         .0,
-        401
+        403
     );
     let host = bind_electron_host(&client, &home);
     assert_eq!(
@@ -804,26 +804,28 @@ fn agent_attribution_credentials_name_the_attaching_session() {
         value.attachment.unwrap().attached_by
     };
 
-    assert_eq!(
-        attach(&client, 0, "profile/unverified.txt"),
-        LibraryPageFileAttachmentActor::External
-    );
+    let unverified = attach(&client, 0, "profile/unverified.txt");
+    let LibraryPageFileAttachmentActor::Member { member_id } = unverified else {
+        panic!("CLI Member")
+    };
     client.attribute_to_agent(credential.clone()).unwrap();
     assert_eq!(
         attach(&client, 1, "profile/report.html"),
         LibraryPageFileAttachmentActor::Agent {
             session_id: session_id.to_owned(),
-            backend: nodex_core_contracts::agent::AgentBackendKind::OpenCode,
+            run_id: None,
+            on_behalf_of: member_id
         }
     );
-    // An altered credential proves nothing; the change is still made, as external.
     let (prefix, rest) = credential.split_once('.').unwrap();
     client
         .attribute_to_agent(format!("{prefix}.{}x", rest))
         .unwrap();
-    assert_eq!(
-        attach(&client, 2, "profile/trace.json"),
-        LibraryPageFileAttachmentActor::External
+    let refused = client
+        .library_read(Some(project_id), LibraryRead::LocalMember)
+        .unwrap();
+    assert!(
+        matches!(refused.0,ResponseEnvelope::Error(error) if error.code==nodex_core_contracts::CoreErrorCode::Unauthorized)
     );
 
     client.shutdown().expect("authenticated cleanup");

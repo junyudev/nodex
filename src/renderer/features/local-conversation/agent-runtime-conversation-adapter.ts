@@ -1025,8 +1025,8 @@ export function useAgentRuntimeConversationAdapter(input: {
     setChoices((current) => withAgentRuntimeComposerChoice(current, key, patch));
   const modelOptionMemory = usePersistedAtomValue(agentRuntimeModelOptionMemoryAtom).value;
   const setModelOptionMemory = useSetPersistedAtom(agentRuntimeModelOptionMemoryAtom);
-  const newChatChoice = usePersistedAtomValue(agentRuntimeNewChatChoiceAtom).value;
-  const setNewChatChoice = useSetPersistedAtom(agentRuntimeNewChatChoiceAtom);
+  const newChatChoice = usePersistedAtomValue(agentRuntimeNewChatChoiceAtom()).value;
+  const setNewChatChoice = useSetPersistedAtom(agentRuntimeNewChatChoiceAtom());
   const draftKey = agentRuntimeChoiceKey.draft(input.sessionId, input.modelProjectId);
   const draft = choices[draftKey] ?? {};
   const draftMode = draft.interactionMode ?? "default";

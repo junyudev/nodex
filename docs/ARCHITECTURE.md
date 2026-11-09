@@ -136,6 +136,13 @@ Project                              execution context
 
 One Profile owns one Library. Library owns durable content; Project owns execution and presentation context. Archiving or deleting a Project never owns, moves, or deletes Library content.
 
+Every semantic mutation has a Core-derived Actor in its bound context and sealed
+LocalCommit evidence: a Member, an Agent Session and optional Run acting on behalf
+of a Member, or a named Service. Missing required identity refuses admission.
+Transport, origin channel and execution Project cannot author Actor identity.
+A Service's authorizing Member remains separate from its Actor. Durable audit
+identity survives retirement of the rebuildable delivery window.
+
 Library owns Member identity and the local Profile binding. Each Page owns its
 Member Owner, typed person-or-Agent Assignee, and consent to start automatically.
 Data Source Views project those fields without owning another assignment value.
@@ -223,7 +230,7 @@ and [ADR 0057](adr/0057-library-files-and-page-relations.md).
 
 A Canvas has canonical Library ownership. Moving between Library and Page placement changes its structural parent atomically with the host shell and never rehomes content.
 
-A Database is a Container Block that owns Data Sources and Views. An enabled Database also owns one Page-key namespace whose Library-unique prefix history, monotonic counter, and immutable Database/Page assignments provide readable aliases without replacing Page UUID identity. A Data Source owns its schema, row Pages, typed Property values, Page Property layout, and query identity. Its fixed `task_parent` Property is a cardinality-one self-Relation; the Relation value header is the sole concurrency authority for roots and children, and only its edge may carry sibling rank. The resulting task hierarchy is non-owning presentation semantics: it never changes a Page's structural `library | page | data_source` parent or changes content access, and there is no parallel hierarchy graph. A View targets exactly one Data Source and owns one durable Board or List layout, ordered query rules, presentation, conditional colors, complete Property order and visibility, and one View-global Page rank. Every visible View tab selects one View identity; an explicit layout conversion preserves that identity while replacing layout-specific settings. Per-View Profile state has two independent authorities: one revision-fenced preference envelope with separately sparse rules and presentation overrides that cannot change layout or identity, and a bounded set of typed collapsed occurrences changed by idempotent per-target patches. Their delivery atoms bind the current Profile and View identity but carry no shared projection coordinates, so personal changes converge without invalidating View content or Library navigation. The Rust Database Module contract owns the complete typed View-definition grammar and a tagged read command for each legal coordinate set; identity descriptors are typed responses, so unrelated target, window, group, and Page-ID parameters cannot cross the Core boundary. SQLite schema markers and canonical JSON are storage encoding, while Main and renderer casing and compatibility envelopes are explicit mechanical projections rather than parallel domain grammars. Core validates Property-typed operators and normalizes the effective rules and presentation against Data Source capabilities before query execution. Board consumes its established bounded group windows. List consumes a dedicated grouped/nested occurrence window whose complete Core projection graph also resolves semantic subtree moves; the renderer's bounded window owns pointer preview only and never expands descendants or composes authoritative Property, Parent, or order writes. Both View layouts commit through the same atomic Database boundary. View display and Source-owned Page layout are independent identities and must not be derived from one another.
+A Database is a Container Block that owns Data Sources and Views. An enabled Database also owns one Page-key namespace whose Library-unique prefix history, monotonic counter, and immutable Database/Page assignments provide readable aliases without replacing Page UUID identity. A Data Source owns its schema, row Pages, typed Property values, Page Property layout, and query identity. Its fixed `task_parent` Property is a cardinality-one self-Relation; the Relation value header is the sole concurrency authority for roots and children, and only its edge may carry sibling rank. The resulting task hierarchy is non-owning presentation semantics: it never changes a Page's structural `library | page | data_source` parent or changes content access, and there is no parallel hierarchy graph. A View targets exactly one Data Source and owns one durable Board or List layout, ordered query rules, presentation, conditional colors, complete Property order and visibility, and one View-global Page rank. Every visible View tab selects one View identity; an explicit layout conversion preserves that identity while replacing layout-specific settings. Per-View Member state has two independent authorities: one revision-fenced preference envelope with separately sparse rules and presentation overrides that cannot change layout or identity, and a bounded set of typed collapsed occurrences changed by idempotent per-target patches. Their delivery atoms bind the requesting Member and View identity but carry no shared projection coordinates, so personal changes converge without invalidating View content or Library navigation. The Rust Database Module contract owns the complete typed View-definition grammar and a tagged read command for each legal coordinate set; identity descriptors are typed responses, so unrelated target, window, group, and Page-ID parameters cannot cross the Core boundary. SQLite schema markers and canonical JSON are storage encoding, while Main and renderer casing and compatibility envelopes are explicit mechanical projections rather than parallel domain grammars. Core validates Property-typed operators and normalizes the effective rules and presentation against Data Source capabilities before query execution. Board consumes its established bounded group windows. List consumes a dedicated grouped/nested occurrence window whose complete Core projection graph also resolves semantic subtree moves; the renderer's bounded window owns pointer preview only and never expands descendants or composes authoritative Property, Parent, or order writes. Both View layouts commit through the same atomic Database boundary. View display and Source-owned Page layout are independent identities and must not be derived from one another.
 
 The content ownership decisions are recorded in [ADR 0017](adr/0017-library-pages-data-sources-and-project-resource-grants.md), [ADR 0020](adr/0020-database-identity-scopes.md), [ADR 0039](adr/0039-data-source-relation-properties-and-property-semantics.md), and [ADR 0043](adr/0043-database-scoped-page-keys.md). Current execution identity and Profile-wide access follow [ADR 0068](adr/0068-agent-runtime-execution-authority.md).
 
@@ -285,15 +292,23 @@ Chat discovery is one Main-owned capability across every chat picker. Main ranks
 
 ### Native Core
 
-The Rust Core is the only production authority allowed to open `nodex.db`, write the WAL, reconstruct durable Yrs/Canvas Documents, execute semantic transactions, advance projections, or maintain receipts and history. It runs as one detached process per Profile and exposes authenticated HTTP/1.1 over a Profile-private local endpoint. Core owns its process isolation independently of the client that starts it; caller lifetime cannot terminate an authority later shared by Desktop and CLI. See [Core Lifecycle and Store Reliability](reliability/core-lifecycle-and-store.md).
+The Rust Core is the only production authority allowed to open `nodex.db`, write the WAL, reconstruct durable Yrs/Canvas Documents, execute semantic transactions, advance projections, or maintain receipts and history. It runs as one detached process per Profile and exposes authenticated HTTP/1.1 over a Profile-private local endpoint. An explicitly enabled HTTPS adapter binds remote Member, Device, Session and role identity without granting local Host authority. The same Core remains the single Space authority. Core owns its process isolation independently of the client that starts it; caller lifetime cannot terminate an authority later shared by Desktop and CLI. See [Core Lifecycle and Store Reliability](reliability/core-lifecycle-and-store.md).
 
 Core is organized as seven deep semantic Modules under [`crates/nodex-core/src`](../crates/nodex-core/src):
 
+| Module         | Owns                                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------------- |
+| Library        | Block/Page ownership, Files, navigation, lifecycle, content operations, Space Members and credentials |
+| Database       | Database/Data Source/View schema, values, relations, queries, and positions                           |
+| Query          | Cross-domain SQL observations, lazy public projections, query budgets                                 |
+| Document       | Yrs/Canvas persistence, live sync, versions, and content operations                                   |
+| Workspace      | Projects, Sessions, execution references, sidebar order and Inbox triage                              |
 | Automation     | Automations, decisions, schedules, runs, occurrences, reminders, leases                               |
+| Administration | Backup, restore, retention, compaction, Store maintenance                                             |
 
 Each public Module presents a versioned `read` Interface and, where it owns mutations, an `apply` Interface in [`crates/nodex-core-contracts`](../crates/nodex-core-contracts). Module implementations may share internal transaction kernels, but callers may not compose several public Module calls and call the result atomic. A cross-domain mutation belongs to one owning aggregate that invokes the other domain seams inside the same Core transaction.
 
-[`crates/nodex-core-protocol`](../crates/nodex-core-protocol) owns authenticated transport envelopes, compatibility negotiation, generated OpenAPI artifacts, event versions, and bounded codecs. [`crates/nodex-core-server`](../crates/nodex-core-server) owns local endpoint transport, connections, process lifecycle, stream admission, and health metrics. Transport code depends on semantic contracts; semantic Modules never depend on transport code. `nodex-platform` owns operating-system filesystem, process, and local IPC primitives for all native crates.
+[`crates/nodex-core-protocol`](../crates/nodex-core-protocol) owns authenticated transport envelopes, compatibility negotiation, generated OpenAPI artifacts, event versions, and bounded codecs. [`crates/nodex-core-server`](../crates/nodex-core-server) owns local and HTTPS endpoint transport, connections, process lifecycle, stream admission, and health metrics. Library owns Space membership, enrollment, credential verification and persistence; transport binds its verified identity and withdraws connections when that authority ends. Transport code depends on semantic contracts; semantic Modules never depend on transport code. `nodex-platform` owns operating-system filesystem, process, and local IPC primitives for all native crates.
 
 Core Server also owns one request-execution boundary for synchronous Module work. It admits bounded `interactive`, `background`, and `maintenance` classes, preserves capacity for interactive requests, runs admitted work outside async transport workers, and carries one absolute deadline and cancellation token through reader checkout, writer queueing, and SQLite execution. Electron supplies request identity and intent but does not decide when Core work has actually stopped. A semantic deadline, caller cancellation, admission overload, and authority/transport loss are distinct typed outcomes.
 
@@ -302,6 +317,25 @@ That class continues through the serialized Store writer rather than ending at r
 Store formats and migration sequences are implementation/recovery contracts, not architecture prose. Their executable authority is under [`crates/nodex-core/src/infrastructure`](../crates/nodex-core/src/infrastructure), [`crates/nodex-core/schema`](../crates/nodex-core/schema), and the corresponding Core tests. Operational expectations belong in [Reliability](RELIABILITY.md).
 
 ### Electron Main / Desktop Host
+
+The headless serve process embeds the same kernel for a team Space, and delivers every
+Member's chat reminders there; Core keeps pins, reminders and unread state per Member,
+and a desktop presents only its own Member's. Core relays
+The Space connection registry owns a stable Core-authored identity and a separate
+authority/client scope for each Space. Core owns the Space name; enrollment and
+connection discovery refresh encrypted desktop caches, independently of transport
+addresses. Each team connection has its own content,
+event, projection-audience and Document services. It acquires no Core process,
+Agent Runtime, Coordinator, scheduler, Source poller or other producer. Remote
+loss, identity drift and access withdrawal fence only that Space; only the
+personal authority retains fatal-Core relaunch and local process supervision.
+Content IPC carries an explicit Space envelope. Main verifies it against the
+sending renderer's fixed Space and resolves that connection without fallback.
+Remote requests never acquire the personal conversation peer service. Desktop
+settings, window management, device input and installation analytics carry no
+Space and run on the desktop in every window ([Space IPC policy](../src/shared/space-ipc-policy.ts));
+a team window never asks for the desktop's own Agents or native chats at all. See
+[Team Spaces](product-specs/team-space-behavior.md).
 
 Main's scoped [WebContents destruction owner](../src/main/platform/electron/WebContentsDestructionSubscriptions.ts)
 shares one native `destroyed` listener per WebContents across renderer requests, subscriptions,
@@ -315,7 +349,7 @@ Direct native destruction listeners outside this owner are forbidden by the Main
 
 [`src/main`](../src/main) owns the non-transactional desktop boundary:
 
-- Core transport selection, authenticated connection, and compatibility checks through [`src/main/core-client`](../src/main/core-client); process-lifetime supervision and recovery through Effect [`CoreAuthority`](../src/main/core-runtime/CoreAuthority.ts).
+- Core transport selection, authenticated connection, and compatibility checks through [`src/main/core-client`](../src/main/core-client); Space-scoped recovery through Effect [`CoreAuthority`](../src/main/core-runtime/CoreAuthority.ts), with process supervision only for the personal Space.
 - Trusted identity binding and strict mapping between renderer/Host contracts and Core Module contracts.
 - BrowserWindow, preload, IPC, application menus, deep links, clipboard, notifications, temporary media capture, logs, and platform integration.
 - Native Codex account/catalog and explicit remote-host lifecycles. Local conversation
@@ -690,7 +724,7 @@ EventEmitter construction inside application Module roots. The companion
 Oxlint rule also covers `.test-support.ts`, so support code cannot hide a manual
 runtime from `@effect/vitest` lifecycle checks.
 
-Long-lived Core adapters target the process-scoped Effect `CoreAuthority`, not one raw socket generation. A replacement Core generation is acceptable only when it proves the same Profile, Library, and Store epoch. Authority drift is an application relaunch boundary. One-generation scenario and integration harnesses are bounded transport fixtures, not alternate recovery owners. The lifecycle decision is detailed in the [Core generation ADR](adr/0041-core-generations-are-supervised-runtime-sessions.md).
+Long-lived Core adapters target their Space's Effect `CoreAuthority`, not one raw socket generation. A replacement Core generation is acceptable only when it proves the same Profile, Library, and Store epoch. Authority drift requests application relaunch only for the personal Space; a team connection becomes unavailable within its own Scope. One-generation scenario and integration harnesses are bounded transport fixtures, not alternate recovery owners. The personal lifecycle decision is detailed in the [Core generation ADR](adr/0041-core-generations-are-supervised-runtime-sessions.md).
 
 Each logical Document or Canvas live subscription is a `DocumentLiveRuntime`
 lease under the Main Scope. That Module owns physical opening, bounded callback
@@ -967,6 +1001,9 @@ Inbox routing enters the Profile's persistent Coordinator through queued Host me
 Core owns each request's fence, retained routing recipient and deadline; Runtime
 admission prevents duplicate delivery. Coordinator-only tools validate suggestions
 through the Inbox application Interface and author Page Turn notes and quiet
+Inbox answers through Workspace. Core owns each Member's routing consent across
+devices; host execution preferences remain owned by ApplicationSettings. Core
+atomically checks the author's consent, proposal provenance, action and unchanged written content for
 automatic confirmations. See [Inbox behavior](product-specs/inbox-behavior.md).
 
 Inbox confirmation freezes the reviewed message, its Markdown and images, target and execution
@@ -1253,7 +1290,7 @@ The complete user-visible and recovery contracts are [Dictation Behavior](produc
 
 ### Window Session and Workbench presentation
 
-A Window Session owns one restorable Workbench layout with owner-scoped Scenes. A Scene owner is a Project, a Session, the window-local Library Inbox, or the window-local Library. Project, Inbox, and Session owners have semantic primary surfaces, and an Inbox is the Home tab of its Project or Inbox Scene; the Library Scene has no protected primary. Right and bottom split trees are the only surface placement and ordering source.
+A Window Session owns a separate restorable Workbench layout for each connected Space, within one Desktop catalog. Scenes, surfaces, routes, history and return routes are relative to that layout's Space. A Scene owner is a Project, a Session, the window-local Library Inbox, or the window-local Library. Project, Inbox, and Session owners have semantic primary surfaces, and an Inbox is the Home tab of its Project or Inbox Scene; the Library Scene has no protected primary. Right and bottom split trees are the only surface placement and ordering source.
 
 Home and Space selection is derived from that canonical location. Space selects the Library Scene, while the Window Session retains the last stable Home route, including the Inbox Scene, for return navigation. This checkpoint participates in the same atomic navigation history and persisted layout as Scenes; authoritative owner removal repairs both the checkpoint and retained history. Settings retains its actual stable return route and derives its destination from it. No separate destination selector owns navigation.
 
@@ -1360,9 +1397,9 @@ semantic update-state owner outside the Module.
 
 The launcher selects a single Core candidate while holding the Profile lifetime lock, then proves authority with an authenticated handshake. Existing descriptors and PIDs are hints, not process identity. Core compatibility is evaluated across transport, event, Module contracts, artifact policy, and exact Store identity.
 
-Electron keeps one process-scoped Effect `CoreAuthority` for its lifetime. A disconnected transport may recover by selecting another compatible Core generation for the same Store epoch; epoch or authority drift fails closed. Long-lived stream owners reconnect from their retained logical cursors or resource identities.
+Each Space connection keeps its own Effect `CoreAuthority`. The personal connection supervises a local process and may select another compatible Core generation for the same Store epoch. A team connection replaces only its authenticated client and streams; it never acquires process supervision or application relaunch. Epoch or authority drift fails closed within the addressed Space. Long-lived stream owners reconnect from retained logical cursors or resource identities.
 
-Whole-store restore is an exclusive Core maintenance operation. It drains admitted work, validates and journals the database/assets replacement, rotates the Store epoch, resets native caches and streams, and returns a committed receipt. Electron then performs a controlled relaunch so every Adapter binds the new authority.
+Personal whole-store restore is an exclusive Core maintenance operation. It drains admitted work, validates and journals the database/assets replacement, rotates the Store epoch, resets native caches and streams, and returns a committed receipt. Electron then performs a controlled relaunch so every Adapter binds the new authority.
 
 The operational contract belongs in [Reliability](RELIABILITY.md); release and packaged-runtime recovery belong in [the application release runbook](release.md) and [the Windows packaging runbook](release-windows.md).
 

@@ -106,6 +106,10 @@ cells, null and non-text scalars fail. Explicit JSON output conflicts with raw.
 
 Queries are read-only, complete or failed, and bounded by input, output, elapsed
 time and execution-work budgets. Facts and View results are not pre-truncated.
+Input exhaustion reports `ResourceExhausted`; an elapsed request deadline reports
+`DeadlineExceeded`, and caller cancellation reports `Cancelled`. These limits are
+independent: a large input does not guarantee capacity exhaustion precedes the
+deadline. Each failure returns no partial result.
 A caller's SQL `LIMIT` is part of its query semantics; internal budget exhaustion
 fails the whole query. Writes, private tables, schema changes, attachment and
 extension loading are unavailable. Body columns are read on demand; an indexed

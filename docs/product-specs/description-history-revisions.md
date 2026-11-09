@@ -24,6 +24,11 @@ Page History combines content revisions with property, Database, lifecycle, and
 relocation activity. The default view shows revisions grouped by date and a
 non-restorable `Current` item. Activity is available separately.
 
+Activity verifies the committed mutation against its ledger using canonical sets
+of affected identities. Overlapping Block and Page effects name each identity
+once. The authenticated Actor is resolved for the viewing Member in personal and
+team Spaces, including History read through a remote connection.
+
 The panel loads the selected revision's detail on demand and renders its body
 through the read-only Page preview. Revision previews and exact Nodex Markdown
 are projections of the retained Blocks. Only compatible Document revisions offer

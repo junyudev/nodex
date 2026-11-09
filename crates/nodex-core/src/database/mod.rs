@@ -139,6 +139,7 @@ impl DatabaseModule {
         context: &BoundModuleContext,
         request: ModuleReadRequest<DatabaseRead>,
     ) -> Result<ModuleReadSnapshot<DatabaseReadValue>, CoreError> {
+        nodex_core_contracts::remote_admission::authorize(context, "database_read", &request.read)?;
         self.validate_context(context)?;
         if request.contract_version != DATABASE_CONTRACT_VERSION {
             return Err(invalid("unsupported Database contract version"));
@@ -152,6 +153,7 @@ impl DatabaseModule {
         readers
             .read_default(move |connection| {
                 let transaction = connection.unchecked_transaction()?;
+                let context = crate::infrastructure::actors::bind(&transaction, &context)?;
                 let identity = transaction
                     .query_row(
                         "SELECT 1 FROM libraries WHERE id = ?1 AND profile_id = ?2",
@@ -200,6 +202,9 @@ impl DatabaseModule {
         context: &BoundModuleContext,
         request: ModuleApplyRequest<Vec<DatabaseIntent>>,
     ) -> Result<DatabaseApplyOutcome, CoreError> {
+        for intent in &request.intent {
+            nodex_core_contracts::remote_admission::authorize(context, "database_apply", intent)?;
+        }
         self.validate_context(context)?;
         if request.contract_version != DATABASE_CONTRACT_VERSION {
             return Err(invalid("unsupported Database contract version"));
@@ -368,7 +373,12 @@ mod tests {
 
     fn context() -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -380,7 +390,12 @@ mod tests {
 
     fn library_context(adapter: AdapterKind) -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -2304,11 +2319,8 @@ mod tests {
                     },
                 },
             )
-            .expect("authenticated Profile reads concrete Data Source");
-        assert!(matches!(
-            untrusted_library_read.value,
-            DatabaseReadValue::DataSource { .. }
-        ));
+            .expect_err("uncredentialed Agent identity is refused");
+        assert_eq!(untrusted_library_read.code, CoreErrorCode::Unauthorized);
 
         let library_write = module
             .apply(
@@ -4362,11 +4374,13 @@ mod tests {
             )
             .expect("reset personal View presentation");
         assert_eq!(
-            reset
-                .committed
-                .receipt
-                .committed_revisions
-                .get(&format!("view_preferences:profile-1:{VIEW_ID}")),
+            reset.committed.receipt.committed_revisions.get(&format!(
+                "view_preferences:{}:{VIEW_ID}",
+                kernel
+                    .readers()
+                    .read_default(|c| crate::infrastructure::actors::local_member(c, "library-1"))
+                    .unwrap()
+            )),
             Some(&2),
         );
         let reset_value = read_personal_presentation(&module);
@@ -9096,9 +9110,11 @@ mod tests {
         let directory = tempdir().unwrap();
         let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
         let _module = work_graph_fixture(&kernel);
+        kernel.writer().call(|c| {c.execute("INSERT INTO project_sessions(id,no_thread_fallback_title,created_at,updated_at,activity_at) VALUES('session:agent','Agent',?1,?1,CAST(round(unixepoch(?1,'subsec')*1000) AS INTEGER))",[NOW])?;Ok(())}).unwrap();
         let mut agent = context();
         agent.adapter = AdapterKind::Agent;
         agent.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
+            run_id: None,
             session_id: "session:agent".into(),
             backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
         });
@@ -9434,6 +9450,7 @@ mod tests {
         assert!(value.groups.iter().any(|group| group.group_key.as_deref()
             == Some(r#"agent:["codex:account-one","gpt-6-luna"]"#)
             && group.total_rows == 2));
+        kernel.writer().call(|c| {c.execute("UPDATE libraries SET space_kind='team' WHERE id='library-1'",[])?;c.execute("INSERT INTO members(id,library_id,display_name,lifecycle) VALUES('member:other','library-1','A person','active')",[])?;Ok(())}).unwrap();
         graph_set_page_work_result(
             &kernel,
             &context(),
@@ -9532,6 +9549,7 @@ mod tests {
         };
         assert!(!value.page_work.unwrap().auto_start);
         let foreign = kernel.writer().call(|connection| {
+            connection.execute_batch("INSERT INTO profiles VALUES('other-profile','today','today'); INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES('other-library','other-profile','today','today');")?;
             connection.query_row("SELECT member_id FROM local_profile_members WHERE library_id='other-library'",[],|row|row.get::<_,String>(0)).map_err(StoreError::from)
         }).unwrap();
         assert!(matches!(

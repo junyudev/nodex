@@ -21,6 +21,11 @@ vi.mock("@/lib/use-library-navigation", () => ({
   useLibraryMetadata: () => ({ data: { storeEpoch: "epoch", libraryId: "library-1" } }),
 }));
 
+vi.mock("@/lib/members-runtime", () => ({
+  useMembers: () => ({ data: [{ id: "member-local", display_name: "You" }] }),
+  useLocalMember: () => ({ data: { id: "member-local" } }),
+}));
+
 import { PageFilesRow } from "./page-files-row";
 
 const NOW = "2026-11-01T10:00:00.000Z";
@@ -42,7 +47,7 @@ const item = (
     mime_type: "text/html",
     byte_length: 14_336,
     blob_etag: "a".repeat(64),
-    created_by_actor_id: "project-1",
+    created_by: { type: "member" as const, member_id: "member-local" },
     created_by_turn_id: null,
     created_at: NOW,
     updated_at: NOW,
@@ -52,7 +57,12 @@ const item = (
   attachment: attachedBy ? { attached_by: attachedBy, attached_at: NOW } : null,
 });
 
-const agent = { kind: "agent" as const, session_id: CHAT, backend: "opencode" as const };
+const agent = {
+  type: "agent" as const,
+  session_id: CHAT,
+  run_id: null,
+  on_behalf_of: "member-local",
+};
 
 const model = (files: readonly LibraryPageFileItem[]): PageFilesReadModel => ({
   inventory: {
@@ -130,9 +140,13 @@ describe("PageFilesRow", () => {
     const stage = renderRow([report, flamegraph]);
 
     const caption = await screen.findByText("From");
-    const chat = await screen.findByRole("button", { name: "Dashboard cold start" });
+    const chat = await screen.findByRole("button", {
+      name: "Dashboard cold start on behalf of You",
+    });
     expect(caption.parentElement?.contains(chat)).toBe(true);
-    expect(screen.getAllByRole("button", { name: "Dashboard cold start" })).toHaveLength(1);
+    expect(
+      screen.getAllByRole("button", { name: "Dashboard cold start on behalf of You" }),
+    ).toHaveLength(1);
 
     await act(async () => {
       fireEvent.click(chat);
@@ -145,7 +159,7 @@ describe("PageFilesRow", () => {
   test("states mixed origins on the narrowest folder or File and lists body-only Files apart", async () => {
     renderRow([
       report,
-      item("brief", "brief.md", { kind: "person" }),
+      item("brief", "brief.md", { type: "member", member_id: "member-local" }),
       item("photo", null, null, 1),
     ]);
 

@@ -1,3 +1,4 @@
+import { spaceStorageKey } from "./renderer-space";
 import { encodeRecoveryEnvelope, canvasRecoveryBundleInput } from "./document-recovery-package";
 import {
   RECOVERY_DIRECTORY_STORE,
@@ -301,7 +302,7 @@ const intentFromStoredRow = (value: unknown): CanvasSceneMutationIntent => {
 const openDatabase = (factory: IDBFactory): Promise<IDBDatabase> =>
   new Promise<IDBDatabase>((resolve, reject) => {
     const request = factory.open(
-      CANVAS_SCENE_OUTBOX_DATABASE_NAME,
+      spaceStorageKey(CANVAS_SCENE_OUTBOX_DATABASE_NAME),
       CANVAS_SCENE_OUTBOX_DATABASE_VERSION,
     );
     request.onupgradeneeded = (event) => {

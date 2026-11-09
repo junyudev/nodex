@@ -20,6 +20,7 @@ import {
   make as makeApplicationSettings,
 } from "../../settings/ApplicationSettings";
 import { DesktopNotificationRuntime } from "../../host-runtime/DesktopNotificationRuntime";
+import { CoreModules } from "../../core-runtime/CoreModules";
 import { ApplicationSettingsIpcError, live } from "./ApplicationSettingsIpc";
 import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import {
@@ -34,6 +35,7 @@ type Handler = (
 
 it.effect("owns the complete application settings ingress with the Main Scope", () =>
   Effect.gen(function* () {
+    let routingConsent: boolean | null = null;
     const handlers = new Map<string, Handler>();
     let providerRefreshes = 0;
     let providerResult: ProviderConfigurationResult = { applied: true, deferredInstanceIds: [] };
@@ -94,6 +96,24 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       live.pipe(
         Layer.provide(
           Layer.mergeAll(
+            Layer.succeed(CoreModules, {
+              workspace: {
+                read: () =>
+                  Effect.succeed({
+                    value: { kind: "inbox_routing_consent", start_my_requests: routingConsent },
+                  }),
+                apply: ({
+                  intent,
+                }: {
+                  intent: { start_my_requests: boolean; initialize_only: boolean };
+                }) =>
+                  Effect.sync(() => {
+                    if (!intent.initialize_only || routingConsent === null)
+                      routingConsent = intent.start_my_requests;
+                    return {};
+                  }),
+              },
+            } as unknown as CoreModules["Service"]),
             Layer.succeed(ApplicationMenuRuntime, menus),
             Layer.succeed(ApplicationSettings, settings),
             Layer.succeed(AgentRuntimeProviderConfiguration, {
@@ -239,13 +259,15 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       );
     }
     assert.deepEqual(yield* handlers.get("settings:agent-runtime:get")!(event), {
+      agentsRunningAtOnce: 4,
       defaultRuntimeMode: "full-access",
       titleModel: null,
     });
     assert.deepEqual(
       yield* handlers.get("settings:agent-runtime:update")!(event, { defaultRuntimeMode: "auto" }),
-      { defaultRuntimeMode: "auto", titleModel: null },
+      { agentsRunningAtOnce: 4, defaultRuntimeMode: "auto", titleModel: null },
     );
+    assert.strictEqual(providerRefreshes, 1);
     assert.equal(
       (yield* Effect.result(
         handlers.get("settings:agent-runtime:update")!(event, {
@@ -258,6 +280,7 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       (yield* Effect.result(
         handlers.get("settings:agent-runtime:update")!(untrustedEvent, {
           defaultRuntimeMode: "full-access",
+          agentsRunningAtOnce: 4,
         }),
       ))._tag,
       "Failure",
@@ -286,14 +309,14 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       broadcasts.filter(({ channel }) => channel === "composer-prediction-settings-changed"),
       [{ channel: "composer-prediction-settings-changed", value: { enabled: false } }],
     );
-    assert.strictEqual(providerRefreshes, 0);
+    assert.strictEqual(providerRefreshes, 1);
     for (const channel of [
       "settings:claude-agents:update",
       "settings:opencode-agents:update",
       "settings:acp-agents:update",
     ] as const)
       yield* handlers.get(channel)!(event, { instances: [] });
-    assert.strictEqual(providerRefreshes, 3);
+    assert.strictEqual(providerRefreshes, 4);
     const acpInstance = {
       id: "acp-work",
       agentDefinitionId: "generic",

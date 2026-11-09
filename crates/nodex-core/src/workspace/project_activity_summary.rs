@@ -13,6 +13,7 @@ const MAX_PROJECT_ACTIVITY_SUMMARY_PROJECTS: usize = 200;
 pub(super) fn read_project_activity_summaries(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     project_ids: &[String],
 ) -> Result<Vec<ProjectWorkspaceProjectActivitySummary>, StoreError> {
     validate_project_ids(project_ids)?;
@@ -20,7 +21,10 @@ pub(super) fn read_project_activity_summaries(
         return Ok(Vec::new());
     }
 
-    let mut parameters = vec![SqlValue::Text(library_id.to_owned())];
+    let mut parameters = vec![
+        SqlValue::Text(library_id.to_owned()),
+        SqlValue::Text(member.to_owned()),
+    ];
     let requested_values = project_ids
         .iter()
         .enumerate()
@@ -43,10 +47,10 @@ pub(super) fn read_project_activity_summaries(
            COALESCE(SUM(CASE WHEN session.id IS NOT NULL AND {waiting_predicate} \
              THEN 1 ELSE 0 END), 0) AS waiting_count, \
            COALESCE(SUM(CASE WHEN session.id IS NOT NULL \
-             AND NOT ({waiting_predicate}) AND session.unread = 1 \
+             AND NOT ({waiting_predicate}) AND EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=session.id AND attention.member_id=?2) \
              THEN 1 ELSE 0 END), 0) AS unread_count, \
            COALESCE(SUM(CASE WHEN session.id IS NOT NULL \
-             AND NOT ({waiting_predicate}) AND session.unread = 0 \
+             AND NOT ({waiting_predicate}) AND NOT EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=session.id AND attention.member_id=?2) \
              AND thread.status_type = 'active' THEN 1 ELSE 0 END), 0) AS active_count \
          FROM requested \
          JOIN projects project \
@@ -166,7 +170,7 @@ mod tests {
                     [],
                 )?;
                 connection.execute(
-                    "UPDATE project_sessions SET unread = 1 WHERE id = 'session:000'",
+                    "INSERT INTO member_session_unread SELECT member_id,'session:000' FROM local_profile_members WHERE library_id='library-1'",
                     [],
                 )?;
                 connection.execute(
@@ -175,7 +179,7 @@ mod tests {
                     [],
                 )?;
                 connection.execute(
-                    "UPDATE project_sessions SET unread = 1 WHERE id = 'session:001'",
+                    "INSERT INTO member_session_unread SELECT member_id,'session:001' FROM local_profile_members WHERE library_id='library-1'",
                     [],
                 )?;
                 connection.execute(

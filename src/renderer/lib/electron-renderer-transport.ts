@@ -184,6 +184,12 @@ export const initializeElectronRendererLocalCommitIngress = (
 
 export function createElectronRendererTransport(bridge: ElectronRendererBridge): RendererTransport {
   return {
+    subscribeSpaceConnections: (callback) =>
+      bridge.on("spaces:changed", (...args) =>
+        callback(
+          args[0] as readonly import("../../shared/space-connection").SpaceConnectionSummary[],
+        ),
+      ),
     sendGitWorkerMessage(
       message: import("../../shared/git-worker-protocol").GitWorkerMessageFromView,
     ) {

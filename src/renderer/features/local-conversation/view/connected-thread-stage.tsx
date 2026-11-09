@@ -1,3 +1,4 @@
+import { isHostedChat } from "@/lib/hosted-chat";
 import { toastFailure } from "@/lib/failure-toast";
 import { useComposerDraftIntent, type ComposerChatKey } from "@/lib/composer-draft-intents";
 import { useConversationBodyPresentation } from "../use-conversation-body-presentation";
@@ -730,25 +731,26 @@ export function ConnectedThreadStageFooter({
   );
   const composerPluginCwds = workspaceSearchContext?.skillRoots ?? [];
   const queryClient = useQueryClient();
+  // The composer's catalogs come from this desktop's own Codex; a hosted chat's are its host's.
   const composerPluginsQuery = useQuery({
     ...codexComposerPluginsListQueryOptions(composerPluginCwds, hostId),
-    enabled: runtime.kind === "codex" && workspaceSearchContext !== null,
+    enabled: desktopCatalogs && workspaceSearchContext !== null,
   });
   const composerSkillsQuery = useQuery({
     ...codexComposerSkillsListQueryOptions(composerPluginCwds, hostId),
-    enabled: runtime.kind === "codex" && workspaceSearchContext !== null,
+    enabled: desktopCatalogs && workspaceSearchContext !== null,
   });
   const composerAppsQuery = useQuery({
     ...mcpAppsQueryOptions(),
-    enabled: runtime.kind === "codex",
+    enabled: desktopCatalogs,
   });
   const composerSitesQuery = useQuery({
     ...codexComposerSitesListQueryOptions(),
-    enabled: runtime.kind === "codex",
+    enabled: desktopCatalogs,
   });
   const composerChatGptConversationsQuery = useQuery({
     ...codexComposerChatGptConversationsListQueryOptions(""),
-    enabled: runtime.kind === "codex",
+    enabled: desktopCatalogs,
   });
   const { refetch: refetchComposerPlugins } = composerPluginsQuery;
   const { refetch: refetchComposerSkills } = composerSkillsQuery;

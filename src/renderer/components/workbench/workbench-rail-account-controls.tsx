@@ -437,5 +437,5 @@ export function WorkbenchRailAccountControls({
  * these controls.
  */
 export function WorkbenchRailFoot(props: Omit<WorkbenchRailAccountControlsProps, "claudeUsage">) {
-  return <WorkbenchRailAccountControls {...props} claudeUsage={useClaudeUsage()} />;
+  return <WorkbenchRailAccountControls {...props} claudeUsage={useClaudeUsage() ?? undefined} />;
 }

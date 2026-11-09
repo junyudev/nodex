@@ -172,7 +172,12 @@ pub(super) fn seed_rootless_default_project_for_test(
                 &assets_root,
             )?;
             let receipt_context = nodex_core_contracts::BoundModuleContext {
+                actor: nodex_core_contracts::Actor::Service {
+                    kind: nodex_core_contracts::ServiceKind::Maintenance,
+                },
+                authorizing_member_id: None,
                 editor_history_owner: None,
+                principal: None,
                 agent_attribution: None,
                 profile_id: nodex_core_contracts::ProfileId(profile_id.clone()),
                 library_id: nodex_core_contracts::LibraryId(library_id.clone()),
@@ -249,6 +254,8 @@ pub(super) fn apply(
                 ));
             }
             validate_id("operation_id", &request.operation_id)?;
+            if let ProjectWorkspaceIntent::Source { command } = &request.intent {
+                super::sources::authorize(transaction, &context, &library_id, command)?;
             }
             super::automation_assessment::authorize(transaction, &library_id, &context, &request.intent)?;
             let admitted_intent = super::agent_command::admit(
@@ -257,6 +264,7 @@ pub(super) fn apply(
                 &context,
                 &request.intent,
             )?;
+            let context = crate::infrastructure::actors::workspace(transaction, &context, &request.intent)?;
             }
             // An Agent command retry belongs to its caller root across Turns. Admission above
             // still checks the current Turn's persisted authority before receipt replay.
@@ -289,6 +297,7 @@ pub(super) fn apply(
             ))
             .map_err(|_| internal("Project Workspace mutation cannot be fingerprinted"))?;
             let request_hash = sha256(&fingerprint);
+            crate::infrastructure::member_admission::admit_operation(transaction, &context, MODULE_NAME, &request.operation_id)?;
             if let Some(stored) =
                 read_module_receipt(transaction, MODULE_NAME, &request.operation_id)?
             {
@@ -323,6 +332,16 @@ pub(super) fn apply(
                 _ => None,
             };
             match admitted_intent {
+                ProjectWorkspaceIntent::SetInboxRoutingConsent {start_my_requests,initialize_only}=>{
+                    if !matches!(context.actor,nodex_core_contracts::Actor::Member {..}) {return Err(StoreError::new(StoreErrorCode::Unauthorized,"Only a Member may grant routing consent",false));}
+                    let member=crate::infrastructure::actors::requesting_member(transaction,&context)?;
+                    let now=super::session_mutation::sqlite_now(transaction)?;
+                    run_mutation(transaction,&context,&store_epoch,&request.operation_id,&request_hash,&now,|_| {
+                        let sql=if *initialize_only {"INSERT OR IGNORE INTO member_inbox_preferences(member_id,start_my_requests) VALUES(?1,?2)"} else {"INSERT INTO member_inbox_preferences(member_id,start_my_requests) VALUES(?1,?2) ON CONFLICT(member_id) DO UPDATE SET start_my_requests=excluded.start_my_requests"};
+                        transaction.execute(sql,params![member,start_my_requests])?;
+                        Ok(super::inbox::simple_effects("inbox_routing_consent",&now))
+                    })
+                },
                 intent @ (ProjectWorkspaceIntent::RecordChatDelivery{..}|ProjectWorkspaceIntent::BindChatInbound{..}|ProjectWorkspaceIntent::HandBackMessage{..}) => super::inbox::handback::apply(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, agent_provenance, intent),
 
                 intent @ (ProjectWorkspaceIntent::PauseWork { .. } | ProjectWorkspaceIntent::ResumeWork { .. }) => super::execution_holds::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, intent),
@@ -1580,6 +1599,16 @@ pub(super) fn seal_mutation_with_created_page(
 > {
     let connection = scope.connection();
     let store_epoch = scope.store_epoch();
+    if matches!(
+        effects.operation_kind,
+        "create_session"
+            | "create_agent_runtime_session"
+            | "ensure_default_draft_session"
+            | "create_session_in_sidebar_section"
+    {
+        for session in &effects.session_ids {
+        }
+    }
     if effects.operation_kind.starts_with("inbox_")
         && effects.operation_kind != "inbox_automation_assessment"
     {
@@ -2633,7 +2662,12 @@ mod tests {
 
     fn context() -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -2646,6 +2680,7 @@ mod tests {
     fn bootstrap_context() -> BoundModuleContext {
         BoundModuleContext {
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             project_id: None,
             ..context()
@@ -3985,8 +4020,8 @@ mod tests {
             .call(move |connection| {
                 connection
                     .query_row(
-                        "SELECT session.no_thread_fallback_title, session.pinned, \
-                            session.pinned_order, session.unread, thread.thread_name, \
+                        "SELECT session.no_thread_fallback_title, EXISTS(SELECT 1 FROM member_session_pins pin WHERE pin.session_id=session.id), \
+                            (SELECT pin.pinned_order FROM member_session_pins pin WHERE pin.session_id=session.id), EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=session.id AND attention.member_id=(SELECT member_id FROM local_profile_members LIMIT 1)), thread.thread_name, \
                             thread.thread_preview, thread.status_type, \
                             (SELECT count(*) FROM project_session_threads \
                              WHERE session_id = session.id), \
@@ -4617,7 +4652,7 @@ mod tests {
             .call(move |connection| {
                 let session_rows = connection
                     .prepare(
-                        "SELECT id, activity_at, pinned, pinned_order, archived, archived_at, \
+                        "SELECT id, activity_at, EXISTS(SELECT 1 FROM member_session_pins pin WHERE pin.session_id=project_sessions.id), (SELECT pin.pinned_order FROM member_session_pins pin WHERE pin.session_id=project_sessions.id), archived, archived_at, \
                            no_thread_fallback_title \
                          FROM project_sessions WHERE project_id = 'project-native' \
                          ORDER BY id",

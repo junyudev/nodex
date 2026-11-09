@@ -508,6 +508,36 @@ async function answerPasskeys(prompt, server, native) {
   return "The sign-in UI and session flow are ready for review. The delegated work will report here as it finishes.";
 }
 
+  if (recipe.questionMode === "blocking") {
+    const requestId = `host-question:${native.turnId}`;
+    const response = await new Promise((resolve) => {
+      hostQuestions.set(requestId, resolve);
+      emit({
+        id: requestId,
+        method: "item/tool/requestUserInput",
+        params: {
+          ...native,
+          itemId: requestId,
+          isBlocking: true,
+          autoResolutionMs: null,
+          questions: [
+            {
+              id: "scope",
+              header: "Scope",
+              question: "Which scope should the host use?",
+              isOther: false,
+              isSecret: false,
+              options: [
+                { label: "Project", description: "Use this Project" },
+                { label: "Library", description: "Use the Library" },
+              ],
+            },
+          ],
+        },
+      });
+    });
+    return finishHostedAnswer(JSON.stringify(response), server, native);
+  }
 async function answer(prompt, server, native) {
   if (passkeys()) return await answerPasskeys(prompt, server, native);
   const plan = JSON.parse(fs.readFileSync(path.join(home, "plan.json"), "utf8"));

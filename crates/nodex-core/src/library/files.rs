@@ -17,7 +17,7 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 pub(super) const FILE_COLUMNS: &str = "file.file_id, file.library_id, file.default_name, file.head_version,
     file.revision, file.lifecycle = 'live', version.mime_type, version.byte_length, version.blob_hash,
-    file.created_by_actor_id, file.created_by_turn_id, file.created_at, file.updated_at";
+    file.created_by_actor_json, file.created_by_turn_id, file.created_at, file.updated_at";
 pub(super) const FILE_TABLES: &str = "FROM library_files file JOIN file_versions version
     ON version.file_id = file.file_id AND version.version = file.head_version AND version.library_id = file.library_id";
 
@@ -28,7 +28,7 @@ pub(super) fn select_sql() -> String {
 pub(super) struct FileWriteContext<'a> {
     pub(super) connection: &'a Connection,
     pub(super) library_id: &'a str,
-    pub(super) actor_id: Option<&'a str>,
+    pub(super) actor_json: &'a str,
     pub(super) turn_id: Option<&'a str>,
     pub(super) operation_id: &'a str,
     pub(super) now: &'a str,
@@ -72,7 +72,7 @@ pub(super) fn read_version(
     }
     connection
         .query_row(
-            "SELECT file_id, version, mime_type, byte_length, blob_hash, actor_id, \
+            "SELECT file_id, version, mime_type, byte_length, blob_hash, actor_json, \
                     turn_id, operation_id, occurred_at FROM file_versions \
              WHERE file_id = ?1 AND version = ?2 AND library_id = ?3",
             params![file_id, version, library_id],
@@ -103,13 +103,13 @@ pub(super) fn create(
     insert_version(context, file_id, 1, content)?;
     context.connection.execute(
         "INSERT INTO library_files(file_id, library_id, default_name, head_version, \
-           revision, lifecycle, created_by_actor_id, created_by_turn_id, created_at, updated_at) \
+           revision, lifecycle, created_by_actor_json, created_by_turn_id, created_at, updated_at) \
          VALUES (?1, ?2, ?3, 1, 1, 'live', ?4, ?5, ?6, ?6)",
         params![
             file_id,
             context.library_id,
             default_name,
-            context.actor_id,
+            context.actor_json,
             context.turn_id,
             context.now
         ],
@@ -328,9 +328,9 @@ fn insert_version(
         .ok_or_else(|| not_found("Prepared File bytes are unavailable"))?;
     context.connection.execute(
         "INSERT INTO file_versions(file_id, version, library_id, blob_hash, mime_type, byte_length, \
-           actor_id, turn_id, operation_id, occurred_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+           actor_json, turn_id, operation_id, occurred_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![file_id, version, context.library_id, content.blob_hash, mime_type, byte_length,
-            context.actor_id, context.turn_id, context.operation_id, context.now],
+            context.actor_json, context.turn_id, context.operation_id, context.now],
     )?;
     Ok(())
 }
@@ -346,6 +346,19 @@ fn require_revision(
         return Err(revision_conflict());
     }
     Ok(file)
+}
+
+fn decode_actor(
+    row: &rusqlite::Row<'_>,
+    column: usize,
+) -> rusqlite::Result<nodex_core_contracts::Actor> {
+    serde_json::from_str(&row.get::<_, String>(column)?).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(
+            column,
+            rusqlite::types::Type::Text,
+            Box::new(error),
+        )
+    })
 }
 
 fn require_transaction(context: &FileWriteContext<'_>) -> Result<(), StoreError> {
@@ -381,7 +394,7 @@ pub(super) fn file_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Library
         mime_type: row.get(6)?,
         byte_length: byte_length_from_row(row, 7)?,
         blob_etag: row.get(8)?,
-        created_by_actor_id: row.get(9)?,
+        created_by: decode_actor(row, 9)?,
         created_by_turn_id: row.get(10)?,
         created_at: row.get(11)?,
         updated_at: row.get(12)?,
@@ -395,7 +408,7 @@ pub(super) fn version_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Libr
         mime_type: row.get(2)?,
         byte_length: byte_length_from_row(row, 3)?,
         blob_etag: row.get(4)?,
-        actor_id: row.get(5)?,
+        actor: decode_actor(row, 5)?,
         turn_id: row.get(6)?,
         operation_id: row.get(7)?,
         occurred_at: row.get(8)?,
@@ -452,9 +465,23 @@ mod tests {
 
     fn external_attachment() -> nodex_core_contracts::library::LibraryPageFileAttachment {
         nodex_core_contracts::library::LibraryPageFileAttachment {
-            attached_by: nodex_core_contracts::library::LibraryPageFileAttachmentActor::External,
+            attached_by: nodex_core_contracts::library::LibraryPageFileAttachmentActor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
             attached_at: Some(NOW.to_owned()),
         }
+    }
+
+    fn member_actor(fixture: &Fixture) -> nodex_core_contracts::Actor {
+        fixture
+            .kernel
+            .readers()
+            .read_default(|c| {
+                Ok(nodex_core_contracts::Actor::Member {
+                    member_id: crate::infrastructure::actors::local_member(c, "library-1")?,
+                })
+            })
+            .unwrap()
     }
 
     struct Fixture {
@@ -479,7 +506,12 @@ mod tests {
             module
                 .apply(
                     &BoundModuleContext {
+                        actor: nodex_core_contracts::Actor::Service {
+                            kind: nodex_core_contracts::ServiceKind::Maintenance,
+                        },
+                        authorizing_member_id: None,
                         editor_history_owner: None,
+                        principal: None,
                         agent_attribution: None,
                         profile_id: ProfileId("profile-1".to_owned()),
                         library_id: LibraryId("library-1".to_owned()),
@@ -525,7 +557,7 @@ mod tests {
                 action(&FileWriteContext {
                     connection: transaction,
                     library_id: "library-1",
-                    actor_id: Some("project-1"),
+                    actor_json: r#"{"type":"service","kind":"maintenance"}"#,
                     turn_id: None,
                     operation_id: operation,
                     now: NOW,
@@ -562,7 +594,12 @@ mod tests {
 
     fn bound_context(project_id: Option<&str>) -> BoundModuleContext {
         BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             editor_history_owner: None,
+            principal: None,
             agent_attribution: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -2714,10 +2751,7 @@ mod tests {
             .attachment
             .clone()
             .unwrap();
-        assert_eq!(
-            attachment.attached_by,
-            nodex_core_contracts::library::LibraryPageFileAttachmentActor::External
-        );
+        assert_eq!(attachment.attached_by, member_actor(&fixture));
         assert_eq!(
             attachment.attached_at.as_deref(),
             Some(applied.committed.receipt.committed_at.as_str())

@@ -3,6 +3,50 @@ import { deriveBlockDocumentRecords } from "./derived-records";
 import { createPageDocumentGenesis } from "./block-document-codec";
 
 describe("Block references and asset occurrences", () => {
+  test("materializing a qualified autolink retains its destination Space", () => {
+    const page = createPageDocumentGenesis({
+      documentId: "qualified-link",
+      markdown: "See <nodex://pages/same-id?spaceId=another-space>",
+    });
+    try {
+      expect(page.materialization.references).toEqual([]);
+      expect(page.materialization.blockTree[0]?.content).toEqual([
+        { type: "text", text: "See ", styles: {} },
+        {
+          type: "link",
+          href: "nodex://pages/same-id?spaceId=another-space",
+          content: [
+            { type: "text", text: "nodex://pages/same-id?spaceId=another-space", styles: {} },
+          ],
+        },
+      ]);
+    } finally {
+      page.document.destroy();
+    }
+  });
+  test("keeps qualified Page links out of the local reference graph", () => {
+    const records = deriveBlockDocumentRecords([
+      {
+        id: "paragraph",
+        type: "paragraph",
+        props: {},
+        children: [],
+        content: [
+          { type: "link", href: "nodex://pages/same-id?spaceId=another-space", content: [] },
+          { type: "link", href: "nodex://pages/same-id", content: [] },
+        ],
+      },
+    ]);
+    expect(records.references).toEqual([
+      {
+        kind: "page",
+        sourceBlockId: "paragraph",
+        targetPageId: "same-id",
+        presentation: "link",
+        occurrenceCount: 1,
+      },
+    ]);
+  });
   test("aggregates Page mentions separately from links and reference Blocks", () => {
     const page = createPageDocumentGenesis({
       documentId: "references",

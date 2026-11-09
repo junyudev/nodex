@@ -4,6 +4,7 @@ import {
   agentRuntimeComposerChoicesAtom,
   agentRuntimeModelOptionMemoryAtom,
   agentRuntimeNewChatChoiceAtom,
+  newChatChoiceStorageKey,
   rememberAgentModelOptions,
   rememberedAgentModelOptions,
   withAgentRuntimeComposerChoice,
@@ -59,16 +60,29 @@ describe("Agent Runtime Composer choices", () => {
     ).toEqual({ codex: { gpt: [{ id: "reasoningEffort", value: "high" }] } });
   });
 
+  test("each team Space remembers its own new chat choice; the personal Space keeps its own", () => {
+    const team = (spaceId: string) => ({ kind: "team" as const, spaceId, memberId: "alice" });
+    expect(newChatChoiceStorageKey({ kind: "personal", spaceId: "personal", memberId: null })).toBe(
+      "agent-runtime-new-chat-choice-v1",
+    );
+    expect(newChatChoiceStorageKey(team("acme"))).toBe(
+      JSON.stringify(["space", "acme", "alice", "agent-runtime-new-chat-choice-v1"]),
+    );
+    expect(newChatChoiceStorageKey(team("acme"))).not.toBe(newChatChoiceStorageKey(team("labs")));
+    // A window's Space is fixed for its lifetime, so it keeps one definition.
+    expect(agentRuntimeNewChatChoiceAtom()).toBe(agentRuntimeNewChatChoiceAtom());
+  });
+
   test("forgets a remembered new chat choice only when it no longer decodes", () => {
     const remembered = {
       binding: claude,
       model: "sonnet",
       options: [{ id: "effort", value: "max" }],
     };
-    expect(agentRuntimeNewChatChoiceAtom.decode(remembered)).toEqual(remembered);
-    expect(agentRuntimeNewChatChoiceAtom.decode({ binding: { kind: "retired" }, model: "x" })).toBe(
-      null,
-    );
-    expect(agentRuntimeNewChatChoiceAtom.decode(null)).toBe(null);
+    expect(agentRuntimeNewChatChoiceAtom().decode(remembered)).toEqual(remembered);
+    expect(
+      agentRuntimeNewChatChoiceAtom().decode({ binding: { kind: "retired" }, model: "x" }),
+    ).toBe(null);
+    expect(agentRuntimeNewChatChoiceAtom().decode(null)).toBe(null);
   });
 });

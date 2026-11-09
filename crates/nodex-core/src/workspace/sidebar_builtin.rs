@@ -69,6 +69,7 @@ fn require_bounded(rows: Vec<OrderRow>) -> Result<Vec<OrderRow>, StoreError> {
 fn rows(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     lane: ProjectWorkspaceBuiltinSidebarLane,
 ) -> Result<Vec<OrderRow>, StoreError> {
     match lane {
@@ -79,7 +80,7 @@ fn rows(
             project_rows(connection, library_id, true, false)
         }
         ProjectWorkspaceBuiltinSidebarLane::PinnedSessions => require_bounded(
-            super::sidebar_pins::read_order(connection, library_id)?
+            super::sidebar_pins::read_order(connection, library_id, member)?
                 .into_iter()
                 .map(|row| OrderRow {
                     id: row.id,
@@ -109,12 +110,13 @@ fn order_revision(
 pub(super) fn read_order(
     connection: &Connection,
     library_id: &str,
+    member: &str,
     commit_head: i64,
     lane: ProjectWorkspaceBuiltinSidebarLane,
     request: &CollectionWindowRequest,
 ) -> Result<(String, CollectionWindow<ProjectWorkspaceSidebarOrderEntry>), StoreError> {
     let normalized = normalize_request(request)?;
-    let current = rows(connection, library_id, lane)?;
+    let current = rows(connection, library_id, member, lane)?;
     let revision = order_revision(lane, &current)?;
     let subject = CollectionCursorSubject {
         kind: "builtin_sidebar_order",
@@ -215,7 +217,8 @@ pub(super) fn reorder(
     for id in item_ids {
         validate_id("item_id", id)?;
     }
-    let current = rows(connection, library_id, lane)?;
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    let current = rows(connection, library_id, &member, lane)?;
     if expected_revision != order_revision(lane, &current)? {
         return Err(conflict("Sidebar order changed; read every page again"));
     }
@@ -297,7 +300,7 @@ pub(super) fn reorder(
             }
         }
         ProjectWorkspaceBuiltinSidebarLane::PinnedSessions => {
-            super::sidebar_pins::write_order(connection, &item_ids, &now)?
+            super::sidebar_pins::write_order(connection, &member, &item_ids, &now)?
         }
     }
     finish_mutation(

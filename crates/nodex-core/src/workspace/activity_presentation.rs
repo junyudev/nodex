@@ -377,6 +377,10 @@ mod tests {
         ActivityRow {
             id: format!("{kind}:fact"),
             at: "2026-11-06T00:00:00Z".into(),
+            actor: ActivityActor::Service {
+                kind: nodex_core_contracts::ServiceKind::InboxRouting,
+            },
+            actor_label: "by Nodex".into(),
             subject: None,
             description: String::new(),
             reason: Some("A reason".into()),

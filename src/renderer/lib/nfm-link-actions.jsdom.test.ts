@@ -6,8 +6,12 @@ import {
   resolveNfmLinkTooltipLabel,
 } from "./nfm-link-actions";
 
-const links = vi.hoisted(() => ({ open: vi.fn(async () => true) }));
+const links = vi.hoisted(() => ({ open: vi.fn(async () => true), remote: false }));
 vi.mock("./link-opening", () => ({ openLink: links.open }));
+vi.mock("./renderer-space", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./renderer-space")>()),
+  isRemoteSpace: () => links.remote,
+}));
 const originalWindowOpen = window.open;
 const originalApi = window.api;
 
@@ -18,6 +22,7 @@ let invokeCalls: unknown[][] = [];
 describe("markdown link actions", () => {
   beforeEach(() => {
     links.open.mockClear();
+    links.remote = false;
     windowOpenCalls = [];
     locationAssignCalls = [];
     invokeCalls = [];
@@ -61,6 +66,24 @@ describe("markdown link actions", () => {
       }),
     );
     expect(windowsAction?.kind).toBe("local-file");
+  });
+
+  test("team content cannot open host paths on this device", async () => {
+    links.remote = true;
+    const opener = vi.fn(async () => true);
+    for (const href of ["/host/secret.txt", "file:///host/secret.txt", "./secret.txt"]) {
+      const action = resolveNfmLinkAction(href, "/host/project");
+      expect(action?.kind).toBe("blocked");
+      await expect(openNfmResolvedLinkAction(action!, "fileManager", opener)).resolves.toBe(false);
+    }
+    expect(opener).not.toHaveBeenCalled();
+  });
+
+  test("qualified foreign Pages bypass the current Space's Page port", () => {
+    expect(resolveNfmLinkAction("nodex://pages/same-id?spaceId=another-space")).toEqual({
+      kind: "space-link",
+      href: "nodex://pages/same-id?spaceId=another-space",
+    });
   });
 
   test("classifies bare domains as open-time web urls", () => {

@@ -1,3 +1,4 @@
+import { SpacePageFileHosts } from "../page-files/SpacePageFileHosts";
 import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -323,6 +324,7 @@ export const live: Layer.Layer<
   | WindowSessionCatalog.WindowSessionCatalog
   | WindowShutdown,
   ApplicationHostRuntimeError,
+  | SpacePageFileHosts
   | ApplicationInitializationRuntime
   | ApplicationSettings
   | ApplicationWindowShellRuntime

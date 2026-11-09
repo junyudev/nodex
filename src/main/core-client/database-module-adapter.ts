@@ -1,3 +1,4 @@
+import { rethrowCoreTransportFailure } from "./local-http";
 import { WORKFLOW_STATUS_ORDER } from "../../shared/workflow-status";
 import { projectCorePrerequisites, projectCoreWorkPage } from "../../shared/work-graph";
 import type {
@@ -1157,6 +1158,44 @@ export const mapCorePropertyDescriptor = (input: unknown): DataSourcePropertyRec
   });
 };
 
+/**
+ * A Database's schema at one committed Store state is fixed. Every View and panel that refreshes
+ * after the same commit asks for the same descriptors, so they share one hydration instead of each
+ * paging every schema window again; a later commit is a different key, so nothing reads stale.
+ */
+const hydrationCache = new WeakMap<
+  CoreClientPort,
+  Map<string, DatabaseContainerDescriptorV2 | DataSourceDescriptorV2>
+>();
+const HYDRATION_CACHE_ENTRIES = 64;
+
+type HydrationBasis = Pick<DatabaseReadSnapshot, "store_epoch" | "commit_head">;
+
+const hydrateOnce = async <Value extends DatabaseContainerDescriptorV2 | DataSourceDescriptorV2>(
+  client: CoreClientPort,
+  key: string,
+  hydrate: () => Promise<Value>,
+): Promise<Value> => {
+  let cache = hydrationCache.get(client);
+  if (!cache) {
+    cache = new Map();
+    hydrationCache.set(client, cache);
+  }
+  const cached = cache.get(key);
+  if (cached) {
+    cache.delete(key);
+    cache.set(key, cached);
+    return cached as Value;
+  }
+  const value = await hydrate();
+  cache.set(key, value);
+  if (cache.size > HYDRATION_CACHE_ENTRIES) cache.delete(cache.keys().next().value!);
+  return value;
+};
+
+const basisKey = (kind: string, id: string, basis: HydrationBasis) =>
+  JSON.stringify([kind, id, basis.store_epoch, basis.commit_head]);
+
 const hydrateCoreDataSource = async (
   client: CoreClientPort,
   descriptor: CoreDataSourceDescriptor,
@@ -1263,13 +1302,18 @@ const hydrateCoreDatabase = async (
 
 const hydrateCoreReadValue = async (
   client: CoreClientPort,
-  value: DatabaseReadSnapshot["value"],
+  snapshot: DatabaseReadSnapshot,
   options?: CoreRequestOptions,
 ): Promise<DatabaseReadValueV2> => {
+  const value = snapshot.value;
+  const database = (descriptor: CoreDatabaseDescriptor) =>
+    hydrateOnce(client, basisKey("database", descriptor.database.database_id, snapshot), () =>
+      hydrateCoreDatabase(client, descriptor, options),
+    );
   if (value.kind === "catalog_window") {
     const databases: DatabaseContainerDescriptorV2[] = [];
     for (const compact of value.databases.items) {
-      databases.push(await hydrateCoreDatabase(client, compact, options));
+      databases.push(await database(compact));
     }
     return {
       kind: value.kind,
@@ -1283,7 +1327,7 @@ const hydrateCoreReadValue = async (
   if (value.kind === "database") {
     return {
       kind: value.kind,
-      value: await hydrateCoreDatabase(client, value.value, options),
+      value: await database(value.value),
     };
   }
   if (value.kind === "page_key_prefix_preview") {
@@ -1317,7 +1361,11 @@ const hydrateCoreReadValue = async (
   if (value.kind === "data_source") {
     return {
       kind: value.kind,
-      value: await hydrateCoreDataSource(client, value.value, options),
+      value: await hydrateOnce(
+        client,
+        basisKey("data_source", value.value.data_source.data_source_id, snapshot),
+        () => hydrateCoreDataSource(client, value.value, options),
+      ),
     };
   }
   if (value.kind === "view") {
@@ -1463,7 +1511,7 @@ export const createCoreDatabaseModuleAdapter = (
         input.storeEpoch,
         input.requestOptions,
       );
-      const value = await hydrateCoreReadValue(input.client, snapshot.value, input.requestOptions);
+      const value = await hydrateCoreReadValue(input.client, snapshot, input.requestOptions);
       return parseDatabaseModuleReadResultV2({
         ok: true,
         value: {
@@ -1475,6 +1523,7 @@ export const createCoreDatabaseModuleAdapter = (
         },
       });
     } catch (error) {
+      rethrowCoreTransportFailure(error);
       return failure(error);
     }
   };
@@ -1535,6 +1584,7 @@ export const createCoreDatabaseModuleAdapter = (
           },
         });
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return applyFailure(error, request.operationId);
       }
     },
@@ -1564,10 +1614,11 @@ export const createCoreLibraryDatabaseModuleAdapter = (
           libraryId: input.libraryId,
           storeEpoch: snapshot.store_epoch,
           commitSeq: snapshot.commit_head,
-          value: await hydrateCoreReadValue(input.client, snapshot.value, input.requestOptions),
+          value: await hydrateCoreReadValue(input.client, snapshot, input.requestOptions),
         },
       });
     } catch (error) {
+      rethrowCoreTransportFailure(error);
       return failure(error);
     }
   },
@@ -1607,6 +1658,7 @@ export const createCoreLibraryDatabaseModuleAdapter = (
         },
       });
     } catch (error) {
+      rethrowCoreTransportFailure(error);
       return applyFailure(error, request.operationId);
     }
   },

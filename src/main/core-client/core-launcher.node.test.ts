@@ -126,6 +126,7 @@ describe("native Core launcher", () => {
     ).toThrow("NODEX_CORE_EXECUTABLE must be absolute");
   });
 
+  // Copying and verifying the packaged executable shares I/O with native scenario workers.
   test("starts packaged Core using its logical manifest identity", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "nodex-pkg-"));
     const resources = path.join(root, "resources");
@@ -175,7 +176,7 @@ describe("native Core launcher", () => {
       // Child close is asserted above; NTFS may still be completing image deletion.
       rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
-  });
+  }, 120_000);
 
   test("starts one detached Core and reuses the validated runtime", async () => {
     expect(existsSync(CORE_BINARY), "run vp run test:core-client").toBe(true);

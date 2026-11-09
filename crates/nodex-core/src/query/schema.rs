@@ -265,7 +265,7 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
                 ("mime_type", "TEXT", false),
                 ("byte_length", "INTEGER", false),
                 ("blob_etag", "TEXT", false),
-                ("actor_id", "TEXT", false),
+                ("actor_json", "TEXT", false),
                 ("turn_id", "TEXT", true),
                 ("operation_id", "TEXT", false),
                 ("occurred_at", "TEXT", false),

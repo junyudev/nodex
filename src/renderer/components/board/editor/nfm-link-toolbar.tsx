@@ -44,7 +44,7 @@ import {
   configuredPageSearchProjectIds,
   useInteractivePageSearch,
 } from "@/lib/interactive-page-search";
-import { buildPageDeepLink } from "../../../../shared/nodex-deeplink";
+import { buildPageDeepLink } from "@/lib/page-deeplink";
 import { PageIcon } from "@/components/shared/icons";
 
 function hasLinkInSchema(editor: {

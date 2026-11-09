@@ -1,3 +1,5 @@
+import { REMOTE_FILESYSTEM_REASON } from "../../shared/space-connection";
+import { openSpaceLink } from "@/features/spaces/spaces-runtime";
 import {
   parseLocalFileLinkHref,
   parseFileReferenceLocation,
@@ -10,7 +12,8 @@ import { DEFAULT_NFM_AUTOLINK_SETTINGS, shouldAutoLinkValue } from "./nfm-autoli
 import { openLink } from "./link-opening";
 import type { LinkOpenRequest } from "../../shared/link-opening";
 import { isExternallyOpenableUrl } from "../../shared/browser-url-policy";
-import { parsePageDeepLink, parseSessionDeepLink } from "../../shared/nodex-deeplink";
+import { rendererSpaceId, isRemoteSpace } from "./renderer-space";
+import { parsePageDeepLink, parseSessionDeepLink } from "@/lib/page-deeplink";
 
 const LIKELY_RELATIVE_FILE_SUFFIXES = new Set([
   "avif",
@@ -59,6 +62,7 @@ const LIKELY_RELATIVE_FILE_SUFFIXES = new Set([
 ]);
 
 export type NfmResolvedLinkAction =
+  | { kind: "space-link"; href: string }
   | { kind: "session"; href: string; sessionId: string }
   | { kind: "page"; href: string; pageId: string }
   | { kind: "local-file" | "workspace-file"; href: string; target: FileLinkTarget }
@@ -196,15 +200,21 @@ export function resolveNfmLinkAction(
   if (!trimmed) return null;
 
   const sessionTarget = parseSessionDeepLink(trimmed);
+  if (sessionTarget?.spaceId && sessionTarget.spaceId !== rendererSpaceId())
+    return { kind: "space-link", href: trimmed };
   if (sessionTarget) return { kind: "session", href: trimmed, sessionId: sessionTarget.sessionId };
 
   const pageTarget = parsePageDeepLink(trimmed);
+  if (pageTarget?.spaceId && pageTarget.spaceId !== rendererSpaceId())
+    return { kind: "space-link", href: trimmed };
   if (pageTarget) {
     return { kind: "page", href: trimmed, pageId: pageTarget.pageId };
   }
 
   const localFileTarget = parseLocalFileLinkHref(trimmed);
   if (localFileTarget) {
+    if (isRemoteSpace())
+      return { kind: "blocked", href: trimmed, reason: REMOTE_FILESYSTEM_REASON };
     return { kind: "local-file", href: trimmed, target: localFileTarget };
   }
 
@@ -229,6 +239,8 @@ export function resolveNfmLinkAction(
     (parseFileReferenceLocation(trimmed).line !== undefined ||
       isLikelyRelativeFileLike(parseFileReferenceLocation(trimmed).path))
   ) {
+    if (isRemoteSpace())
+      return { kind: "blocked", href: trimmed, reason: REMOTE_FILESYSTEM_REASON };
     const workspaceTarget = resolveWorkspaceFileTarget(trimmed, projectWorkspacePath);
     if (workspaceTarget) {
       return { kind: "workspace-file", href: trimmed, target: workspaceTarget };
@@ -301,6 +313,7 @@ export async function openNfmResolvedLinkAction(
     return false;
   }
 
+  if (action.kind === "space-link") return openSpaceLink(action.href);
   if (action.kind === "web-url") {
     const { openLink: open = openLink, ...request } = linkRequest ?? {};
     return open({

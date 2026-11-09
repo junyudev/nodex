@@ -35,3 +35,5 @@ export function registerAppCloseFlushHandler(handler: AppCloseFlushHandler): () 
 export const appCloseFlushTestHelpers = {
   flushHandlers,
 };
+
+export const flushForSpaceSwitch = flushHandlers;

@@ -6,6 +6,7 @@ import {
   mcpServerStatusesQueryOptions,
 } from "./query-options";
 import type { ProtocolMcpResourceReadParams } from "../../shared/types";
+import { isHostedChat } from "./hosted-chat";
 
 interface QueryEnabledOptions {
   enabled?: boolean;
@@ -21,7 +22,7 @@ export function useCodexExperimentalFeatures(options: QueryEnabledOptions = {}) 
 export function useMcpApps(options: QueryEnabledOptions = {}) {
   return useQuery({
     ...mcpAppsQueryOptions(),
-    enabled: options.enabled !== false,
+    enabled: options.enabled !== false && !isHostedChat(),
   });
 }
 
@@ -34,7 +35,7 @@ const EMPTY_RESOURCE_PARAMS: ProtocolMcpResourceReadParams = {
 export function useMcpServerStatuses(options: QueryEnabledOptions = {}) {
   return useQuery({
     ...mcpServerStatusesQueryOptions(),
-    enabled: options.enabled !== false,
+    enabled: options.enabled !== false && !isHostedChat(),
   });
 }
 

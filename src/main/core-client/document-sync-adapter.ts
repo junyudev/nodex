@@ -1,4 +1,5 @@
-import { documentSessionError, rethrowCoreTransportFailure } from "./document-session-error";
+import { documentSessionError } from "./document-session-error";
+import { rethrowCoreTransportFailure } from "./local-http";
 import { createHash } from "node:crypto";
 import type { components } from "@nodex/core-protocol";
 
@@ -556,7 +557,6 @@ const coreDocumentMutationIntent = (request: DocumentMutationRequest): OwnedDocu
       generation: request.generation,
       expected_head_seq: request.expectedHeadSeq,
       operations: request.operations.map(coreDocumentOperation),
-      actor: request.actor,
     };
   }
   if ("markdown" in request) {
@@ -567,7 +567,6 @@ const coreDocumentMutationIntent = (request: DocumentMutationRequest): OwnedDocu
       expected_head_seq: request.expectedHeadSeq,
       markdown: request.markdown,
       ...(request.richTitle === undefined ? {} : { rich_title: request.richTitle }),
-      actor: request.actor,
     };
   }
   return {
@@ -576,7 +575,6 @@ const coreDocumentMutationIntent = (request: DocumentMutationRequest): OwnedDocu
     version_id: request.versionId,
     generation: request.generation,
     expected_head_seq: request.expectedHeadSeq,
-    actor: request.actor,
   };
 };
 
@@ -964,7 +962,6 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
             expected_head_seq: request.expectedHeadSeq,
             cause: request.cause,
             label: request.label,
-            actor: request.actor,
             revision_kind: request.revisionKind,
             source_mutation_id: request.sourceMutationId,
             source_change_seq: request.sourceChangeSeq,

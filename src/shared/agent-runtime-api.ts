@@ -301,7 +301,7 @@ export type AgentRuntimeSessionEvent =
       readonly subscriptionId?: string;
       readonly sessionId: string;
       readonly threadId: string;
-      readonly reason: "delivery-gap" | "runtime-restarted" | "stream-failed";
+      readonly reason: "delivery-gap" | "runtime-restarted" | "stream-failed" | "host-refresh";
     };
 
 /**

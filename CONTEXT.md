@@ -25,8 +25,50 @@ Accepted system-wide decisions live in `docs/adr/`.
 
 ## Canonical terms
 
+### Space
+
+A Space is one Core authority with one Library. Its stable `spaceId` is the
+Core-authored Library identity, independent of its endpoint, process generation
+matching Page or Project IDs never authorize crossing into another Space.
+
+and successful reconnection refresh that name on each Desktop. A network address
+is a transport coordinate and never becomes the Space's display identity.
+
+### Space connection
+
+A Space connection is a Desktop-owned scope over one Space's authority, client,
+event delivery and collaborative Documents. The personal connection owns the
+local supervised Core and execution capabilities. A team connection owns only
+authenticated remote access; execution and producers belong to its host.
+Availability and credential withdrawal affect that connection independently.
+Core owns Member attention and retained recovery drafts across devices. Viewport
+positions, window and Workbench layouts, and journals of unsent edits remain
+device-local, qualified by Space and Member.
+
 ### Member
 
+A Member is a person in a Library, with an Owner or Member role. Its stable identity
+survives removal. A personal Space has exactly one active Owner, bound to the local
+Profile and displayed as You. A team Space admits multiple Members to one Library.
+The Space Owner role controls administration; Page Owner remains responsibility
+for one Page.
+
+### Actor
+
+An Actor is the Member, delegated Agent, or Service responsible for a mutation.
+An Agent acts on behalf of a Member; a Service may act under a Member's standing grant.
+
+### Device and Session credential
+
+A Device is a revocable client installation enrolled for one Member in one Space.
+Its credential obtains short-lived sessions bound to that Device. Core verifies
+Space, Member, Device, Session and current role; remote identity never grants
+local Host authority.
+
+### Invite
+
+An Invite is an Owner-issued, expiring one-time enrollment code with a role.
+Core stores only its hash and consumes it atomically when enrolling a Device.
 
 ### Page Owner
 
@@ -59,6 +101,10 @@ A Hold survives restart and is independent of Status and Stop.
 
 ### Source
 
+A Source is an Owner-configured connection that watches an external service for a
+Library. Configuration requires the local Host; Members can read its public
+configuration and observations. It binds a verified account, watched repositories
+and discovery choices.
 A Source can be paused without discarding its observations.
 
 ### Trigger
@@ -120,14 +166,16 @@ relationships owners of the conversation or its delegated tasks.
 
 ### Chat reminder
 
-A Chat reminder makes a chat unread again at a chosen time. A message the person
-sends into the chat or archiving it cancels its reminder.
+A Chat reminder makes a chat unread again at a chosen time for the Member who set it;
+each Member keeps their own, as they keep their own pins. A message that Member sends
+into the chat, or archiving it, cancels the reminder.
 
 ### Session activity
 
-Session activity is when a chat was created, when the person last sent it a message, or
-when its reminder came due. It orders chat lists; Agent replies, messages from other
-Agents, reading and organizing a chat never change it.
+Session activity is when a chat was created, when a person last sent it a message, or,
+in a personal Space, when its reminder came due. It orders chat lists for every Member;
+Agent replies, messages from other Agents, reading, organizing a chat and another
+Member's reminder never change it.
 
 ### Mobile Gateway
 
@@ -551,7 +599,7 @@ _Avoid_: View kind, Table view, toggle-list view, Calendar layout
 
 ### View Preference Override
 
-A View Preference Override is a sparse Profile-local Filter and Presentation
+A View Preference Override is a sparse Member-owned Filter and Presentation
 preference for one Database View. It can change only the fields explicitly
 supported for that View's current Layout. It cannot change the View's name,
 target Data Source, Layout, rank, lifecycle, or Manual Order.
@@ -587,7 +635,7 @@ has been explicitly positioned; physical rank changes do not change its semantic
 position.
 
 Page key is an intrinsic Board/List display field. It participates in the same
-durable-default plus sparse Profile-local View Preference flow as other display
+durable-default plus sparse Member-owned View Preference flow as other display
 fields. Hiding it changes only that effective View presentation; it cannot
 disable assignment, exact lookup, copy, CLI, or Agent projection.
 
@@ -690,6 +738,7 @@ edge or a scheduled action. See
 ### Inbox
 
 An Inbox is what is yours: waiting intake messages, Pages whose current Turn
+requires the requesting Member, and Nodex's answers to that person's Inbox questions.
 The Library Inbox includes every Project and messages without a Project. A
 Project Inbox filters that same set. Core owns one ordered window, cursor,
 counts and badge predicate. Answers are visible but do not increase the badge.
@@ -700,6 +749,7 @@ created on first capture. A Turn row is the work Page itself, never another
 message Page. It appears for question, approval, review, blocked, failed or
 stalled, and for ready-to-start only when it has Prerequisites that are all
 Done. Todo backlog and paused Pages stay out. Its episode start orders it;
+it leaves immediately when the Turn changes away from the requesting Member.
 
 ### Inbox entry
 

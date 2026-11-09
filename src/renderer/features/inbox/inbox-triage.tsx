@@ -182,6 +182,7 @@ function Decision({
   label,
   target,
   why = null,
+  disabledReason,
   icon: Icon,
   variant = "primary",
   menu = null,
@@ -192,6 +193,7 @@ function Decision({
   readonly target: string | null;
   /** What the suggestion does and why, a hover away. */
   readonly why?: ReactNode;
+  readonly disabledReason?: string;
   readonly icon: InboxIcon;
   readonly variant?: DecisionVariant;
   /** The other half of a split decision, which changes how it runs rather than running it. */
@@ -209,12 +211,17 @@ function Decision({
         menu && variant === "outline" && "border-e-0",
       )}
       onClick={onClick}
+      disabled={Boolean(disabledReason)}
     >
       <Icon className="icon-xs shrink-0" />
       <span className="truncate">{target ?? label}</span>
     </NodexButton>
   );
-  const decision = target ? (
+  const decision = disabledReason ? (
+    <NodexTooltip tooltipContent={disabledReason} side="top">
+      <span>{button}</span>
+    </NodexTooltip>
+  ) : target ? (
     <NodexTooltip
       tooltipContent={
         <div className="flex max-w-80 flex-col gap-1">
@@ -768,6 +775,8 @@ export function InboxTriage({
               </InboxIconActions>
               <Decision
                 label={presentation.verb}
+                disabledReason={
+                }
                 target={presentation.target}
                 variant={variant}
                 why={

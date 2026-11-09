@@ -299,7 +299,7 @@ fn resolve_coordinate(
     if let Some(revision) = coordinate.expected_preferences_revision {
         let preferences = super::super::read::view_personal_preferences(
             connection,
-            &context.profile_id.0,
+            &crate::infrastructure::actors::requesting_member(connection, context)?,
             &coordinate.view_id,
         )?;
         if preferences.revision != revision {

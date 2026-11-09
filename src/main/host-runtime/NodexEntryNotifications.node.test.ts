@@ -1,3 +1,4 @@
+import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { assert, it } from "@effect/vitest";
 import { expect } from "vitest";
 import * as Effect from "effect/Effect";
@@ -9,6 +10,7 @@ import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { DesktopNotificationRuntime } from "./DesktopNotificationRuntime";
 import { RendererClientRuntime } from "./RendererClientRuntime";
 const occurrence = {
+  spaceId: "personal",
   memberId: "member",
   pageId: "page",
   episode: "episode",
@@ -20,6 +22,12 @@ it("applies preferences to episode notifications", () => {
   expect(turnNotification(occurrence, "off", true, false)).toBeNull();
   expect(turnNotification(occurrence, "unfocused", true, true)).toBeNull();
   expect(turnNotification({ ...occurrence, blocking: true }, "always", false, false)).toBeNull();
+  expect(turnNotification(occurrence, "always", true, false)?.id).toBe(
+    JSON.stringify(["turn", "personal", "member", "page", "episode"]),
+  );
+  expect(turnNotification({ ...occurrence, spaceId: "team" }, "always", true, false)?.id).not.toBe(
+    turnNotification(occurrence, "always", true, false)?.id,
+  );
 });
 it.effect("claims once per current episode and opens the Inbox on click", () =>
   Effect.gen(function* () {
@@ -29,6 +37,9 @@ it.effect("claims once per current episode and opens the Inbox on click", () =>
     const clicks: unknown[] = [];
     let click: ((action: unknown) => void) | undefined;
     const service = yield* make.pipe(
+      Effect.provideService(CoreAuthority, {
+        identity: { libraryId: "personal" },
+      } as CoreAuthority["Service"]),
       Effect.provideService(CoreModules, {
         workspace: {
           read: (input: { kind: string }) =>
@@ -94,5 +105,9 @@ it.effect("claims once per current episode and opens the Inbox on click", () =>
     yield* service.drain;
     assert.lengthOf(shown, 2);
     click?.({ actionType: "open" });
+    expect(clicks[0]).toMatchObject({
+      spaceId: "personal",
+      inboxEntry: { pageId: "page", scope: { kind: "all" } },
+    });
   }),
 );

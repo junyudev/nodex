@@ -7,9 +7,9 @@ import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import type { ProjectSession } from "../../shared/types";
-import type { SessionReminderWork } from "../project-application/ProjectWorkspace";
-import { make } from "./SessionReminderRuntime";
+import type { ProjectSession } from "../shared/types";
+import type { SessionReminderWork } from "../main/project-application/ProjectWorkspace";
+import { make } from "./SessionReminders";
 
 const chat = (id: string, due: number): ProjectSession => ({
   id,
@@ -17,6 +17,7 @@ const chat = (id: string, due: number): ProjectSession => ({
   noThreadFallbackTitle: id,
   displayTitle: id,
   activityAt: 0,
+  managed: false,
   pinned: false,
   pinnedOrder: null,
   archived: false,
@@ -34,6 +35,7 @@ const memory = Effect.gen(function* () {
   const sessions = new Map<string, ProjectSession>();
   const pending = new Map<string, SessionReminderWork>();
   const notifications: string[] = [];
+  const notifiedMembers: string[] = [];
   const unread: string[] = [];
   const state = { reads: 0, presented: false, failUnread: false, rescheduleDuringClaim: false };
   const options = {
@@ -41,14 +43,22 @@ const memory = Effect.gen(function* () {
       state.reads++;
       const work = [...sessions.values()].flatMap((session): SessionReminderWork[] =>
         session.remindAt
-          ? [{ session, remindAt: session.remindAt, deliveryId: null, wakeAt: session.remindAt }]
+          ? [
+              {
+                session,
+                memberId: "member",
+                remindAt: session.remindAt,
+                deliveryId: null,
+                wakeAt: session.remindAt,
+              },
+            ]
           : [],
       );
       return (
         [...work, ...pending.values()].sort((a, b) => a.wakeAt.localeCompare(b.wakeAt))[0] ?? null
       );
     }),
-    consume: (id: string, expected: string, deliver: boolean) =>
+    consume: (id: string, _member: string, expected: string, deliver: boolean) =>
       Effect.gen(function* () {
         if (state.rescheduleDuringClaim) {
           state.rescheduleDuringClaim = false;
@@ -61,6 +71,7 @@ const memory = Effect.gen(function* () {
         if (deliver)
           pending.set(id, {
             session: current,
+            memberId: "member",
             remindAt: expected,
             deliveryId: id,
             wakeAt: DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis)),
@@ -86,8 +97,9 @@ const memory = Effect.gen(function* () {
           : Effect.sync(() => unread.push(session.id)),
       ),
     isPresented: () => state.presented,
-    notify: (session: ProjectSession) => {
+    notify: (session: ProjectSession, _remindAt: string, memberId: string) => {
       notifications.push(session.id);
+      notifiedMembers.push(memberId);
     },
     changes: Stream.fromPubSub(changes),
   };
@@ -95,6 +107,7 @@ const memory = Effect.gen(function* () {
     sessions,
     pending,
     notifications,
+    notifiedMembers,
     unread,
     state,
     options,
@@ -128,6 +141,8 @@ it.effect(
       yield* settle;
       assert.deepEqual(f.notifications, ["earlier", "later"]);
       assert.deepEqual(f.unread, f.notifications);
+      // Each reminder reaches the Member who set it, on every channel that tells them.
+      assert.deepEqual(f.notifiedMembers, ["member", "member"]);
       yield* owner.wake;
       yield* settle;
       assert.lengthOf(f.notifications, 2);

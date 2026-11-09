@@ -646,6 +646,10 @@ pub(crate) fn persist_yjs_genesis(
     connection: &Connection,
     input: PersistYjsGenesis<'_>,
 ) -> Result<PersistedDocumentCommit, StoreError> {
+    let legacy:bool=connection.query_row("SELECT NOT EXISTS(SELECT 1 FROM pragma_table_info('local_commits') WHERE name='actor_json')",[],|r|r.get(0))?;
+    if legacy {
+        connection.execute_batch("ALTER TABLE local_commits ADD COLUMN actor_json TEXT; ALTER TABLE local_commits ADD COLUMN authorizing_member_id TEXT;")?;
+    }
     let intent_hash =
         sha256(format!("{}\0{}", input.operation_id, sha256(input.update)).as_bytes());
     let context = local_commit::begin(
@@ -660,6 +664,9 @@ pub(crate) fn persist_yjs_genesis(
         persist_yjs_genesis_inner(connection, input, &context, page_projection_required)?;
     record_internal_receipt(connection, &context, &intent_hash)?;
     local_commit::finalize(connection, &context)?;
+    if legacy {
+        connection.execute_batch("ALTER TABLE local_commits DROP COLUMN actor_json; ALTER TABLE local_commits DROP COLUMN authorizing_member_id;")?;
+    }
     Ok(persisted)
 }
 

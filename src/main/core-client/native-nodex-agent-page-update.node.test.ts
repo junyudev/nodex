@@ -32,6 +32,16 @@ async function agentPage(context: CoreScenarioContext, key: string, markdown: st
   await client.workspaceApply({
     operationId: createUuidV7(),
     intent: {
+      kind: "create_session",
+      session_id: `session:${key}`,
+      project_id: projectId,
+      title: key,
+      initial_page_ids: [pageId],
+    },
+  });
+  await client.workspaceApply({
+    operationId: createUuidV7(),
+    intent: {
       kind: "upsert_thread",
       thread_id: threadId,
       patch: {
@@ -40,6 +50,18 @@ async function agentPage(context: CoreScenarioContext, key: string, markdown: st
         created_at: 1,
         updated_at: 1,
         linked_at: new Date().toISOString(),
+      },
+    },
+  });
+  await client.workspaceApply({
+    operationId: createUuidV7(),
+    intent: {
+      kind: "mutate_session",
+      session_id: `session:${key}`,
+      intent: {
+        kind: "link_thread",
+        thread_id: threadId,
+        expected_project_id: projectId,
       },
     },
   });

@@ -1,4 +1,5 @@
 use super::*;
+use crate::workspace::test_support::local_member;
 use nodex_core_contracts::inbox::{
     InboxConfirmedBy, InboxRowKind, ProjectWorkspaceInboxSuggestedDispatch,
 };
@@ -119,6 +120,14 @@ fn automatic_inbox_confirmation_enforces_source_intent_basis_and_action_in_the_t
     ] {
         let w = seeded_workspace();
         let m = &w.module;
+        apply_host(
+            m,
+            "consent",
+            ProjectWorkspaceIntent::SetInboxRoutingConsent {
+                start_my_requests: true,
+                initialize_only: false,
+            },
+        );
         let send = ProjectWorkspaceIntent::SendInboxMessage {
             reply_to_page_id: None,
             expected_store_epoch: None,
@@ -207,6 +216,7 @@ fn automatic_inbox_confirmation_enforces_source_intent_basis_and_action_in_the_t
         }
         let confirmation=ProjectWorkspaceIntent::ConfirmInboxDispatch {confirmed_by:InboxConfirmedBy::Nodex,expected_store_epoch:"epoch-1".into(),basis:proposal_basis(m,"proposal:auto"),execution_selection:Some(serde_json::from_value(serde_json::json!({"model_selection":{"instanceId":"codex","model":"model"},"interaction_mode":"default"})).unwrap()),proposal_id:"proposal:auto".into(),expected_revision:1,action:Some(confirmed_action),session_id:Some("session:dispatched".into())};
         let result = m.apply(&host(), request("confirm", confirmation.clone()));
+        if case == "user" || case == "cli" {
             result.unwrap();
             apply_host(m, "confirm", confirmation);
             assert_eq!(

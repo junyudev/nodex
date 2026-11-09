@@ -211,6 +211,10 @@ mod tests {
         c.execute("INSERT INTO automations(automation_id,owner_member_id,condition_text,timezone,jitter_salt,kind,status,name,prompt,rrule,model,cwds_json,execution_environment,created_at,updated_at,mode) VALUES('auto',?1,'Clock','UTC','salt','cron','ACTIVE','Automation','Saved action','FREQ=MINUTELY;INTERVAL=5','model','[]','local',1,1,'run')",[&owner]).unwrap();
         c.execute("INSERT INTO automations(automation_id,owner_member_id,condition_text,timezone,jitter_salt,kind,status,name,prompt,rrule,model,cwds_json,execution_environment,created_at,updated_at,mode) VALUES('ask',?1,'Clock','UTC','salt','cron','ACTIVE','Automation','Saved action','FREQ=MINUTELY;INTERVAL=5','model','[]','local',1,1,'ask_first')",[&owner]).unwrap();
         let context = BoundModuleContext {
+            actor: nodex_core_contracts::Actor::Service {
+                kind: nodex_core_contracts::ServiceKind::Maintenance,
+            },
+            authorizing_member_id: None,
             profile_id: ProfileId("profile".into()),
             library_id: LibraryId("library".into()),
             project_id: None,
@@ -237,6 +241,7 @@ mod tests {
     fn an_attributed_cli_agent_cannot_edit_existing_auto_or_create_auto() {
         let (c, mut context, _) = fixture();
         context.agent_attribution = Some(BoundAgentAttribution {
+            run_id: None,
             session_id: "managed".into(),
             backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
         });
@@ -398,6 +403,8 @@ mod tests {
     #[test]
     fn removing_the_owner_retires_automations_and_cancels_unstarted_authority_atomically() {
         let (c, context, owner) = fixture();
+        c.execute_batch("INSERT INTO automation_execution_leases(lease_id,automation_id,dispatch_id,automation_revision,scheduled_for_ms,attempt,status,claimed_at_ms,expires_at_ms,purpose) VALUES('lease','auto','dispatch',1,1000,1,'claimed',1,9999999999999,'run'); INSERT INTO automation_decisions(dispatch_id,automation_id,status,first_scheduled_for_ms,last_scheduled_for_ms,hold_basis_json,created_at_ms,updated_at_ms,mode,actor_json) VALUES('dispatch','auto','admitted',1000,1000,'{}',1,1,'run',json_object('type','service','kind','automations'));").unwrap();
+        c.execute_batch("INSERT INTO automation_decisions(dispatch_id,automation_id,status,waiting_in_inbox,first_scheduled_for_ms,last_scheduled_for_ms,hold_basis_json,created_at_ms,updated_at_ms,mode,actor_json) VALUES('failed-waiting','auto','failed',1,2000,2000,'{}',2,2,'ask_first',json_object('type','service','kind','automations')),('failed-history','auto','failed',0,500,500,'{}',1,1,'run',json_object('type','service','kind','automations'));").unwrap();
         c.execute(
             "UPDATE members SET lifecycle='removed' WHERE id=?1",
             [owner],

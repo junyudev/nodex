@@ -1,3 +1,4 @@
+import { isRemoteSpace } from "@/lib/renderer-space";
 import { InboxActivity, InboxActivityFilters } from "./inbox-activity";
 import { InboxProblemRow } from "./inbox-problem-row";
 import { SpaceExecutionHoldControl } from "@/components/workbench/execution-hold-controls";
@@ -170,7 +171,9 @@ function InboxHeader({
             <BoardIcon className="icon-sm" />
           </ToolbarIconButton>
         ) : null}
-        <InboxAgentsPopover agents={agents} onOpenSettings={onOpenSettings} />
+        {!isRemoteSpace() ? (
+          <InboxAgentsPopover agents={agents} onOpenSettings={onOpenSettings} />
+        ) : null}
       </div>
     </header>
   );
@@ -366,7 +369,7 @@ export function InboxRoute({
   const linkedChats = usePageChatActivitySummaries(inboxChatPageIds(inboxItems));
   const nowMs = useInboxClock();
   const policy = inboxSuggestionPolicy(settings, agents.providers, nowMs);
-  const suggestionsOffered = inboxSuggestionsOffered(policy);
+  const suggestionsOffered = !isRemoteSpace() && inboxSuggestionsOffered(policy);
   const entries = streamEntries(inboxItems, nowMs);
   const anchors = groupAnchors(inboxItems);
   const keysByPage = new Map(
@@ -918,6 +921,7 @@ export function InboxRoute({
           onRetry={capture.retry}
           onRecover={capture.recover}
         />
+        {!isRemoteSpace() && policy.kind === "paused" && view === "inbox" ? (
           <InboxSuggestionPauseNotice pause={policy.pause} nowMs={nowMs} />
         ) : null}
         {capture.validationError ? (

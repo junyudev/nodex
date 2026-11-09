@@ -26,6 +26,7 @@ pub(crate) struct AgentAttributionKey([u8; 32]);
 struct Claim {
     session_id: String,
     backend: AgentBackendKind,
+    run_id: Option<String>,
     issued_at: u64,
 }
 
@@ -40,14 +41,30 @@ impl AgentAttributionKey {
         Hmac::<Sha256>::new_from_slice(&self.0).expect("HMAC accepts a 32-byte key")
     }
 
-    pub(crate) fn issue(&self, session_id: &str, backend: AgentBackendKind) -> String {
-        self.issue_at(session_id, backend, now_seconds())
+    pub(crate) fn issue(
+        &self,
+        session_id: &str,
+        backend: AgentBackendKind,
+        run_id: Option<String>,
+    ) -> String {
+        self.issue_claim(session_id, backend, run_id, now_seconds())
+    }
+    #[cfg(test)]
+    fn issue_at(&self, session_id: &str, backend: AgentBackendKind, issued_at: u64) -> String {
+        self.issue_claim(session_id, backend, None, issued_at)
     }
 
-    fn issue_at(&self, session_id: &str, backend: AgentBackendKind, issued_at: u64) -> String {
+    fn issue_claim(
+        &self,
+        session_id: &str,
+        backend: AgentBackendKind,
+        run_id: Option<String>,
+        issued_at: u64,
+    ) -> String {
         let claim = Claim {
             session_id: session_id.to_owned(),
             backend,
+            run_id,
             issued_at,
         };
         let payload =
@@ -86,6 +103,7 @@ impl AgentAttributionKey {
         let age = now.checked_sub(claim.issued_at)?;
         (age <= MAX_AGE.as_secs()).then_some(BoundAgentAttribution {
             session_id: claim.session_id,
+            run_id: claim.run_id,
             backend: claim.backend,
         })
     }
@@ -103,6 +121,7 @@ mod tests {
 
     fn attribution(session_id: &str, backend: AgentBackendKind) -> BoundAgentAttribution {
         BoundAgentAttribution {
+            run_id: None,
             session_id: session_id.to_owned(),
             backend,
         }
@@ -133,6 +152,7 @@ mod tests {
             serde_json::to_vec(&Claim {
                 session_id: "session-b".to_owned(),
                 backend: AgentBackendKind::Claude,
+                run_id: None,
                 issued_at: 1_000,
             })
             .unwrap(),

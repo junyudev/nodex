@@ -15,6 +15,8 @@ afterEach(() => {
 const fact = (overrides: Partial<ActivityRow>): ActivityRow => ({
   id: "note:one",
   at: "2026-11-06T00:30:00Z",
+  actor: { type: "service", kind: "inbox_routing" },
+  actor_label: "by Nodex",
   subject: { kind: "page", page_id: "page", label: "NODEX-3" },
   description: "Noted on NODEX-3",
   reason: "Ready for review",
@@ -284,13 +286,20 @@ test("filters name the messages and Nodex's own decisions", async () => {
   expect(onChange).toHaveBeenCalledWith("decisions");
 });
 
+const actors = [
+  { actor: { type: "member", member_id: "alice" }, label: "by Alice" },
+  { actor: { type: "member", member_id: "local" }, label: "by You" },
   {
+    actor: { type: "agent", session_id: "chat", run_id: "run", on_behalf_of: "alice" },
+    label: "by Codex on behalf of Alice",
   },
   { actor: { type: "service", kind: "sources" }, label: "by GitHub" },
+] satisfies { actor: ActivityRow["actor"]; label: string }[];
 
 test.each(actors)("exposes $label on an Activity fact", ({ actor, label }) => {
   show([fact({ actor, actor_label: label })]);
   expect(screen.getByRole("img", { name: label })).toBeTruthy();
+});
 
 const subjects = [
   { kind: "page", page_id: "page", label: "NODEX-3" },

@@ -214,9 +214,18 @@ fn native_cli_shares_files_replaces_only_one_relation_and_replays_exact_writes()
     }
     let inventory = success(&home, &["page", "file", "list", &a]);
     let attachment = inventory["files"][0]["attachment"].clone();
+    let members = serde_json::to_value(
+        client
+            .library_read(
+                None,
+                nodex_core_contracts::library::LibraryRead::LocalMember,
+            )
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         attachment["attached_by"],
-        serde_json::json!({"kind":"external"})
+        serde_json::json!({"type":"member","member_id":members["payload"]["value"]["value"]["id"]})
     );
     chrono::DateTime::parse_from_rfc3339(attachment["attached_at"].as_str().unwrap()).unwrap();
     let downloaded = success(

@@ -128,7 +128,6 @@ test.each([
         intent: {
           kind: "transfer_blocks",
           intent: {
-            actor: { kind: "electron_host" },
             mode,
             root_block_ids: source.materialization.blockTree.map((block) => block.id),
             source: { kind: "document", document_id: descriptor.documentId },
@@ -232,7 +231,6 @@ test.each(["copy", "move"] as const)(
         intent: {
           kind: "transfer_blocks",
           intent: {
-            actor: { kind: "electron_host" },
             mode,
             root_block_ids: [source.materialization.blockTree[0]!.id],
             causal_dependencies: [
@@ -327,7 +325,6 @@ test.each([
         intent: {
           kind: "transfer_blocks",
           intent: {
-            actor: { kind: "electron_host" },
             mode,
             root_block_ids: source.materialization.blockTree.map((block) => block.id),
             source: { kind: "document", document_id: documentId },
@@ -434,7 +431,6 @@ test.each([
         intent: {
           kind: "transfer_blocks",
           intent: {
-            actor: { kind: "electron_host" },
             mode,
             root_block_ids: source.materialization.blockTree.map((block) => block.id),
             source: { kind: "document", document_id: documentId },
@@ -561,7 +557,6 @@ test("nested body-only File promotion can be undone after removing its Page", as
       intent: {
         kind: "transfer_blocks",
         intent: {
-          actor: { kind: "electron_host" },
           mode: "move",
           root_block_ids: [facts.paragraphRootId],
           source: { kind: "document", document_id: facts.sourceDocumentId },

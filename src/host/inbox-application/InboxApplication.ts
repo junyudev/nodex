@@ -77,6 +77,7 @@ import type {
   ProjectWorkspaceApplyInput,
   ProjectWorkspaceRead,
   ProjectWorkspaceReadSnapshot,
+import { readRoutingConsent } from "./InboxRoutingConsent";
 import { resolveInboxModel } from "./InboxRuntimeSelection";
 import { automationDecisionCapture, automationDecisionTitle } from "./automation-decision";
 import type { AutomationClaim } from "../automation-application/AutomationApplication";
@@ -935,6 +936,10 @@ export const make = Effect.gen(function* () {
   const autoLane = yield* Semaphore.make(1);
   const autoConfirm = autoLane.withPermits(1)(
     Effect.gen(function* () {
+      yield* readRoutingConsent(
+        core,
+        (yield* settings.snapshot().pipe(Effect.mapError(fail("automatic-dispatch")))).inbox,
+      ).pipe(Effect.mapError(fail("automatic-dispatch")));
       if (yield* spaceHeld(core).pipe(Effect.mapError(fail("automatic-dispatch")))) return;
       const snapshot = yield* read("automatic-dispatches", {
         kind: "inbox_automatic_dispatches",

@@ -1,3 +1,4 @@
+import { spaceStorageKey } from "./renderer-space";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { beforeAll, describe, expect, test } from "vite-plus/test";
 import {
@@ -151,7 +152,7 @@ const verifyAccessIsolation = async (outbox: CanvasSceneOutbox): Promise<void> =
 
 const openVersionOneDatabase = (factory: IDBFactory, rows: readonly unknown[]): Promise<void> =>
   new Promise<void>((resolve, reject) => {
-    const request = factory.open(CANVAS_SCENE_OUTBOX_DATABASE_NAME, 1);
+    const request = factory.open(spaceStorageKey(CANVAS_SCENE_OUTBOX_DATABASE_NAME), 1);
     request.onupgradeneeded = () => {
       const store = request.result.createObjectStore("canvas-scene-mutations", { keyPath: "key" });
       store.createIndex("document-id", "documentId", { unique: false });
@@ -194,7 +195,7 @@ const openVersionThreeDatabase = (
   quarantineRows: readonly VersionThreeQuarantineRow[],
 ): Promise<void> =>
   new Promise<void>((resolve, reject) => {
-    const request = factory.open(CANVAS_SCENE_OUTBOX_DATABASE_NAME, 3);
+    const request = factory.open(spaceStorageKey(CANVAS_SCENE_OUTBOX_DATABASE_NAME), 3);
     request.onupgradeneeded = () => {
       const database = request.result;
       const mutationStore = database.createObjectStore("canvas-scene-mutations", {

@@ -1,3 +1,4 @@
+import { isHostedChat } from "@/lib/hosted-chat";
 import { remoteHostedPipRuntime } from "@/lib/remote-hosted-pip-runtime";
 import { useEffect, useEffectEvent, useLayoutEffect, useRef } from "react";
 import {
@@ -33,7 +34,8 @@ export interface RemoteHostedPipHostLayoutReporterControl {
 export function createRemoteHostedPipHostLayoutReporter(
   scale = 1,
 ): RemoteHostedPipHostLayoutReporterControl {
-  if (!window.api || document.body === null) return NOOP_REPORTER;
+  // The PiP shows this desktop's own Agents at work; a window whose chats run on its Space host has none.
+  if (!window.api || document.body === null || isHostedChat()) return NOOP_REPORTER;
 
   const effectiveScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
   let frameId: number | null = null;

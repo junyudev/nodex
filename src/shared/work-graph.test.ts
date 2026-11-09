@@ -3,6 +3,7 @@ import {
   agentSelectionOf,
   parsePageAssignee,
   parsePageWork,
+  parseMember,
   pageAssigneeGroupKey,
   pageAssigneeFromGroupKey,
   withPageAssignee,
@@ -81,4 +82,18 @@ test("work graph reads preserve scoped coordinates and bounded windows", () => {
       read: { target: { kind: "library" }, mode: "ready_work", limit: 101 },
     }),
   ).toThrow();
+});
+
+test("Members preserve their Core role and reject unsupported authority", () => {
+  const member = {
+    id: "bob",
+    library_id: "space",
+    display_name: "Bob",
+    lifecycle: "active",
+    revision: 1,
+    role: "member",
+  };
+  expect(parseMember(member)).toEqual(member);
+  expect(parseMember({ ...member, role: "owner" }).role).toBe("owner");
+  expect(() => parseMember({ ...member, role: "host" })).toThrow("Invalid Member role");
 });
